@@ -103,6 +103,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	if boardStore != nil && db != nil {
 		boardStore.SetSessionsDB(db.Reader())
 	}
+	applyBoardRekeys(context.Background(), boardStore, db, cfg.CoralDir())
 
 	// Initialize API key auth
 	keyStore, err := auth.NewKeyStore(cfg.CoralDir())

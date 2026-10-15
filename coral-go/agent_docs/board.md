@@ -21,6 +21,10 @@ the label.
   may use its board's label. When several boards share it, the answer is 409 `ambiguous_board` with
   `candidates` (`board_id`, `board_label`, `created_at`, `members`). A key that can't be an id
   in a URL (`.`, `..`, `/`, control characters) gets 400 `invalid_board_key`.
+- A legacy board whose name can't be an id in a URL (`.`, `..`, a `/` or a control
+  character) gets a fresh `b-` id at startup, and its name stays as its label. Its
+  messages, tasks, settings, team, live sessions and agents' `coral-board` state follow, so
+  it opens from the dashboard again.
 - `GET /api/board/{id}` returns `{board_id, board_label, created_at, created_by, members}`.
 - `PATCH /api/board/{id}` with `{"label": "new-name"}` renames the board. It is the Operator's
   (an agent's token gets 403 `forbidden_for_agent` with strict local auth), and the new label

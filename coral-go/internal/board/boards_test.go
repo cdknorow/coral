@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -149,4 +150,117 @@ func TestBoardsLabelledForLaunch(t *testing.T) {
 	got, err = s.BoardsLabelledForLaunch(ctx, "team")
 	require.NoError(t, err)
 	assert.Empty(t, got, "an old empty row (a failed launch) doesn't take the name")
+}
+
+// #3541: a legacy board whose name can't be an id in a URL ("." here) gets a fresh b- id at
+// startup, keeping its name as the label; every board table follows; it's recorded for the
+// server; and a second start changes nothing.
+func TestUnusableLegacyBoardIsRekeyed(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "board.db")
+	s, err := NewStore(path)
+	require.NoError(t, err)
+	_, err = s.Subscribe(ctx, ".", "Lead", "Lead", "claude-x", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = s.PostMessage(ctx, ".", "Lead", "old message", nil)
+	require.NoError(t, err)
+	task, err := s.CreateTask(ctx, ".", "old task", "", "medium", "Lead")
+	require.NoError(t, err)
+	_, err = s.SetWorkingMode(ctx, ".", WorkingMode{Mode: "none", CustomInstructions: "KEEP"})
+	require.NoError(t, err)
+	_, err = s.Subscribe(ctx, "fine", "Dev", "Dev", "", nil, nil, "all")
+	require.NoError(t, err)
+	// As before #3536: no boards rows, no re-key yet.
+	_, err = s.db.Exec(`DELETE FROM boards; DELETE FROM board_rekeys`)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	s, err = NewStore(path)
+	require.NoError(t, err)
+	rekeys, err := s.BoardRekeys(ctx)
+	require.NoError(t, err)
+	id := rekeys["."]
+	require.Regexp(t, regexp.MustCompile(`^b-[a-z2-7]{10}$`), id)
+	assert.Len(t, rekeys, 1, "a usable name isn't touched")
+	b, err := s.GetBoard(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, ".", b.Label, "the name is kept as the label")
+	_, err = s.GetBoard(ctx, ".")
+	assert.True(t, errors.Is(err, ErrBoardNotFound))
+	subs, err := s.ListSubscribers(ctx, id)
+	require.NoError(t, err)
+	assert.Len(t, subs, 1)
+	got, err := s.GetTask(ctx, id, task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, id, got.BoardID)
+	wm, err := s.GetWorkingMode(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "KEEP", wm.CustomInstructions)
+	for _, tc := range boardKeyColumns {
+		var n int
+		require.NoError(t, s.db.Get(&n, `SELECT COUNT(*) FROM `+tc[0]+` WHERE `+tc[1]+` = '.'`))
+		assert.Zero(t, n, "%s.%s still has the old key", tc[0], tc[1])
+	}
+	require.NoError(t, s.Close())
+
+	s, err = NewStore(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	again, err := s.BoardRekeys(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, rekeys, again, "a second start re-keys nothing")
+	_, err = s.GetBoard(ctx, id)
+	assert.NoError(t, err)
+}
+
+// Security's #3541 review: a copy of the database is saved once, before the first real
+// re-key (none when nothing needs re-keying), and a re-key that fails never keeps the board
+// store from opening; the board stays as it was.
+func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
+	ctx := context.Background()
+	// Nothing to re-key: no copy.
+	clean := filepath.Join(t.TempDir(), "board.db")
+	s, err := NewStore(clean)
+	require.NoError(t, err)
+	_, err = s.Subscribe(ctx, "fine", "Dev", "Dev", "", nil, nil, "all")
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	s, err = NewStore(clean)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	_, err = os.Stat(clean + ".pre-rekey")
+	assert.True(t, os.IsNotExist(err), "no copy without a re-key")
+
+	// A re-key that fails: the store still opens, the board keeps its key, no record.
+	path := filepath.Join(t.TempDir(), "board.db")
+	s, err = NewStore(path)
+	require.NoError(t, err)
+	_, err = s.Subscribe(ctx, "..", "Lead", "Lead", "", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = s.db.Exec(`CREATE TRIGGER block_rekey BEFORE UPDATE ON boards BEGIN SELECT RAISE(ABORT, 'blocked'); END`)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	s, err = NewStore(path)
+	require.NoError(t, err, "a failed re-key never stops the store from opening")
+	_, err = s.GetBoard(ctx, "..")
+	assert.NoError(t, err, "the board stays as it was")
+	rekeys, err := s.BoardRekeys(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, rekeys)
+	_, err = os.Stat(path + ".pre-rekey")
+	assert.NoError(t, err, "the copy was saved before the attempt")
+
+	// Unblocked: the next start re-keys it, and the copy isn't replaced.
+	before, _ := os.Stat(path + ".pre-rekey")
+	_, err = s.db.Exec(`DROP TRIGGER block_rekey`)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	s, err = NewStore(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	rekeys, err = s.BoardRekeys(ctx)
+	require.NoError(t, err)
+	assert.Contains(t, rekeys, "..")
+	after, _ := os.Stat(path + ".pre-rekey")
+	assert.Equal(t, before.ModTime(), after.ModTime(), "the first copy is kept")
 }

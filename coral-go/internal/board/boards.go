@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -56,7 +59,15 @@ func (s *Store) ensureBoardsSchema(ctx context.Context) error {
 			UNION ALL SELECT project, created_at FROM board_messages
 			UNION ALL SELECT board_id, created_at FROM board_tasks
 		) WHERE key <> '' GROUP BY key`)
-	return err
+	if err != nil {
+		return err
+	}
+	// A re-key that fails never keeps the boards from opening (Security's #3541 review): the
+	// board stays as it was (listed, not openable) and the next start tries again.
+	if err := s.rekeyUnusableBoards(ctx); err != nil {
+		slog.Warn("[boards] re-keying a board whose name can't be an id failed; it stays as it was", "error", err)
+	}
+	return nil
 }
 
 // boardIDShape is the shape of a generated board id.
@@ -262,4 +273,115 @@ func (s *Store) BoardMembers(ctx context.Context, id string) int {
 	var n int
 	_ = s.reader().GetContext(ctx, &n, `SELECT COUNT(*) FROM board_subscribers WHERE project = ? AND is_active = 1`, id)
 	return n
+}
+
+// boardKeyColumns are every column in messageboard.db that holds a board's key.
+var boardKeyColumns = [][2]string{
+	{"board_subscribers", "project"}, {"board_messages", "project"}, {"board_reminders", "project"},
+	{"board_groups", "project"}, {"board_tasks", "board_id"}, {"task_dependencies", "blocked_by_board_id"},
+	{"board_settings", "project"}, {"hub_operator_actions", "project"}, {"board_waits", "project"},
+	{"board_working_modes", "board_id"}, {"board_workflow_presets", "board_id"},
+}
+
+// rekeyUnusableBoards gives every board whose key can't be an id in a URL ("." , "..", a
+// '/', a control or bidi character; UsableBoardKey) a fresh b- id, keeping its name as the
+// label (#3541, design v2 point 3), so the dashboard can open it. Every board table is
+// re-keyed in one transaction per board, and the change is recorded in board_rekeys, which
+// BoardRekeys returns so the server can apply it to the sessions database and the agents'
+// state files at every start (idempotent).
+func (s *Store) rekeyUnusableBoards(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS board_rekeys (
+		old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL, rekeyed_at TEXT NOT NULL)`); err != nil {
+		return err
+	}
+	var ids []string
+	if err := s.db.SelectContext(ctx, &ids, `SELECT id FROM boards`); err != nil {
+		return err
+	}
+	backedUp := false
+	for _, old := range ids {
+		if UsableBoardKey(old) {
+			continue
+		}
+		if !backedUp {
+			s.backupBeforeRekey(ctx)
+			backedUp = true
+		}
+		if err := s.rekeyBoard(ctx, old); err != nil {
+			return fmt.Errorf("re-key board %q: %w", old, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) rekeyBoard(ctx context.Context, old string) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var id string
+	for attempt := 0; ; attempt++ {
+		if attempt == 8 {
+			return fmt.Errorf("could not allocate a board id")
+		}
+		if id, err = newBoardID(); err != nil {
+			return err
+		}
+		var taken int
+		if err := tx.GetContext(ctx, &taken, `SELECT (SELECT COUNT(*) FROM boards WHERE id = ?1 OR label = ?1) +
+			(SELECT COUNT(*) FROM board_rekeys WHERE old_id = ?1 OR new_id = ?1)`, id); err != nil {
+			return err
+		}
+		if taken == 0 {
+			break
+		}
+	}
+	for _, tc := range boardKeyColumns {
+		if _, err := tx.ExecContext(ctx, `UPDATE `+tc[0]+` SET `+tc[1]+` = ? WHERE `+tc[1]+` = ?`, id, old); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE boards SET id = ? WHERE id = ?`, id, old); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO board_rekeys (old_id, new_id, rekeyed_at) VALUES (?, ?, ?)`, old, id, nowUTC()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// backupBeforeRekey copies messageboard.db next to itself once (messageboard.db.pre-rekey,
+// with VACUUM INTO, which is consistent under WAL) before an install's first re-key, so the
+// change can be undone by hand. A failure is logged and doesn't stop the re-key.
+func (s *Store) backupBeforeRekey(ctx context.Context) {
+	var file string
+	if err := s.db.GetContext(ctx, &file, `SELECT file FROM pragma_database_list WHERE name = 'main'`); err != nil || file == "" {
+		return
+	}
+	dst := file + ".pre-rekey"
+	if _, err := os.Stat(dst); err == nil {
+		return
+	}
+	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, dst); err != nil {
+		slog.Warn("[boards] backup before re-keying failed; re-keying anyway", "error", err)
+		return
+	}
+	slog.Info("[boards] saved a copy of the board database before re-keying", "copy", filepath.Base(dst))
+}
+
+// BoardRekeys returns every re-keyed board, old key to new id.
+func (s *Store) BoardRekeys(ctx context.Context) (map[string]string, error) {
+	var rows []struct {
+		Old string `db:"old_id"`
+		New string `db:"new_id"`
+	}
+	if err := s.reader().SelectContext(ctx, &rows, `SELECT old_id, new_id FROM board_rekeys`); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.Old] = r.New
+	}
+	return out, nil
 }
