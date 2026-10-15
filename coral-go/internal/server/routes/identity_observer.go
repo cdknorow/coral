@@ -298,6 +298,11 @@ var operatorOnlyRoutes = map[string]string{
 	"PATCH /api/webhooks/{webhookID}":     "change a webhook",
 	"DELETE /api/webhooks/{webhookID}":    "delete a webhook",
 	"POST /api/webhooks/{webhookID}/test": "send a test webhook",
+	// #3513 (Security's #3509 finding 3): the API key is the Operator's credential (with it an
+	// agent drops its token and is the Operator, settings included), and deleting a board
+	// deletes the team's whole history.
+	"GET /api/system/api-key":     "read the API key",
+	"DELETE /api/board/{project}": "delete a board",
 }
 
 // recordedAgentRoutes are allowed to an agent in every mode (an agent launches the agents of
@@ -322,7 +327,8 @@ func guardedRoute(r *http.Request) (route string, only, ok bool) {
 			break
 		}
 	}
-	if !hit {
+	// Board traffic is the busiest: only its DELETEs can be a guarded route (delete a board).
+	if !hit && !(r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/board/")) {
 		return "", false, false
 	}
 	rc := chi.RouteContext(r.Context())
