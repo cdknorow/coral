@@ -64,7 +64,23 @@ func NewLocalRegisteredCheckRunner(workdir string) *LocalRegisteredCheckRunner {
 
 // safeRevision: a revision, remote or branch name; never an option (no leading "-").
 var safeRevision = regexp.MustCompile(`^[A-Za-z0-9._/@:][A-Za-z0-9._/@:-]{0,255}$`)
-var safePackage = regexp.MustCompile(`^[A-Za-z0-9_./-]+$`)
+
+// safePackage: a package pattern inside the designated repository: "." or "./" and a
+// path, so never a go flag (a leading '-'), an absolute path, a Windows path or non-ASCII
+// (#3586). safeGoPackage also refuses a ".." element.
+var safePackage = regexp.MustCompile(`^\.(?:/[A-Za-z0-9_./-]*)?$`)
+
+func safeGoPackage(pkg string) bool {
+	if !safePackage.MatchString(pkg) {
+		return false
+	}
+	for _, elem := range strings.Split(pkg, "/") {
+		if elem == ".." {
+			return false
+		}
+	}
+	return true
+}
 
 func (r *LocalRegisteredCheckRunner) Run(ctx context.Context, checkID, candidateRevision string, parameters map[string]string) RegisteredCheckEvidence {
 	evidence := RegisteredCheckEvidence{CheckID: checkID, Runner: "coral-local-registered", StartedAt: nowUTC()}
@@ -108,7 +124,7 @@ func (r *LocalRegisteredCheckRunner) Run(ctx context.Context, checkID, candidate
 			return finish()
 		}
 		for _, pkg := range packageArgs {
-			if !safePackage.MatchString(pkg) {
+			if !safeGoPackage(pkg) {
 				evidence.Details = "go_test package contains unsupported characters"
 				return finish()
 			}

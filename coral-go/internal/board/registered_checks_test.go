@@ -88,3 +88,26 @@ func TestLocalRegisteredCheckRunnerUnavailableAndTimeoutAreExplicit(t *testing.T
 	require.False(t, timeout.Passed)
 	require.NotNil(t, timeout.ExitCode)
 }
+
+// #3586: a go_test package is a pattern inside the repository, never a go flag or a path
+// outside it, so the evidence can only describe the candidate revision's own packages.
+func TestRegisteredGoTestPackagesStayInTheRepo(t *testing.T) {
+	for _, pkg := range []string{"./...", ".", "./internal/board", "./internal/...", "./a/b_c-d.e"} {
+		require.True(t, safeGoPackage(pkg), pkg)
+	}
+	refused := []string{"-C", "-toolexec", "-exec", "-modfile", "-overlay", "-o", "/tmp", "/tmp/...",
+		"../x/...", "./a/../../b", "./..", "..", "internal/board", `.\x`, `.\..\x`, "‐C", "./a–b", "./a b", "", "./a=b"}
+	for _, pkg := range refused {
+		require.False(t, safeGoPackage(pkg), pkg)
+	}
+	// Through the runner: refused before anything runs (no command, no exit code).
+	dir := t.TempDir()
+	runner := NewLocalRegisteredCheckRunner(dir)
+	for _, packages := range []string{"-C /tmp ./...", "./... -toolexec ./x", "../x/...", "./a/../../b", `.\x`, "‐C ./..."} {
+		evidence := runner.Run(context.Background(), "go_test", "abc123", map[string]string{"packages": packages})
+		require.False(t, evidence.Passed, packages)
+		require.Contains(t, evidence.Details, "unsupported", packages)
+		require.Empty(t, evidence.Command, packages)
+		require.Nil(t, evidence.ExitCode, packages)
+	}
+}
