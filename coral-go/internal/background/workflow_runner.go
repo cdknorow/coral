@@ -964,6 +964,18 @@ func expandShellTemplates(text string, env []string) (string, error) {
 	return out, tooBig
 }
 
+// templatePath is a path template's value: in a shell command, with forward slashes. Steps
+// run in sh, which on Windows (Git's sh) takes the backslashes of an unquoted C:\Users\...
+// as escapes, so {{prev_stdout}} named a file that doesn't exist (#3638); C:/Users/... is the
+// same file to sh and to Windows. On Unix ToSlash changes nothing. An agent prompt keeps the
+// native path.
+func templatePath(v string, shell bool) string {
+	if shell {
+		return filepath.ToSlash(v)
+	}
+	return v
+}
+
 // maxTemplateContent caps a content template in a shell command (F3): above it, the
 // command line could not be executed (Linux allows 128 KiB per argument).
 const maxTemplateContent = 64 << 10
@@ -998,7 +1010,7 @@ func expandTemplatesWith(text string, env []string, shell bool, tooBig func(name
 		// Check direct mapping
 		if envKey, ok := envKeyForTemplate[varName]; ok {
 			if val, found := envMap[envKey]; found {
-				return val
+				return templatePath(val, shell)
 			}
 			return match // leave unexpanded if env var not set
 		}
@@ -1011,7 +1023,7 @@ func expandTemplatesWith(text string, env []string, shell bool, tooBig func(name
 			}
 			envKey := fmt.Sprintf("CORAL_STEP_%s_%s", m[1], suffix)
 			if val, found := envMap[envKey]; found {
-				return val
+				return templatePath(val, shell)
 			}
 			return match
 		}

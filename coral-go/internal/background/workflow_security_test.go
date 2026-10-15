@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -58,7 +59,7 @@ func TestStepOutputTemplatesCannotInjectShell(t *testing.T) {
 			src := filepath.Join(t.TempDir(), "payload")
 			require.NoError(t, os.WriteFile(src, []byte(payload), 0o644))
 			final, repo, _ := runWorkflowSteps(t, []StepDef{
-				{Name: "produce", Type: "shell", Command: "cat " + src},
+				{Name: "produce", Type: "shell", Command: "cat '" + filepath.ToSlash(src) + "'"},
 				{Name: "use", Type: "shell", Command: "printf %s {{prev_stdout_content}} > got.txt && printf %s {{step_0_stdout_content}} > got0.txt"},
 			})
 			assert.Equal(t, "completed", final.Status, "%v %s", final.ErrorMsg, final.StepResults)
@@ -73,6 +74,15 @@ func TestStepOutputTemplatesCannotInjectShell(t *testing.T) {
 	}
 }
 
+// lnS is ln -s that makes a real symlink: Git's sh on Windows copies the target unless MSYS asks
+// for a native link, and a copy would leave nothing for these refusal tests to refuse (#3638).
+var lnS = func() string {
+	if runtime.GOOS == "windows" {
+		return "MSYS=winsymlinks:nativestrict ln -s"
+	}
+	return "ln -s"
+}()
+
 // CRIT-02: output_artifact never escapes the step's folder: not with "..", not an absolute
 // path, not through a symlink at the file or at a folder on the way.
 func TestOutputArtifactStaysInTheStepFolder(t *testing.T) {
@@ -83,8 +93,8 @@ func TestOutputArtifactStaysInTheStepFolder(t *testing.T) {
 	_, _, runDir := runWorkflowSteps(t, []StepDef{
 		{Name: "dotdot", Type: "shell", Command: "echo pwned", OutputArtifact: "../../../../../../../../.." + victim},
 		{Name: "abs", Type: "shell", Command: "echo pwned", OutputArtifact: victim},
-		{Name: "linkfile", Type: "shell", Command: `ln -s "` + victim + `" "$CORAL_WORKFLOW_STEP_DIR/art.txt"; echo pwned`, OutputArtifact: "art.txt"},
-		{Name: "linkdir", Type: "shell", Command: `ln -s "` + outside + `" "$CORAL_WORKFLOW_STEP_DIR/sub"; echo pwned`, OutputArtifact: "sub/victim.txt"},
+		{Name: "linkfile", Type: "shell", Command: lnS + ` "` + victim + `" "$CORAL_WORKFLOW_STEP_DIR/art.txt"; echo pwned`, OutputArtifact: "art.txt"},
+		{Name: "linkdir", Type: "shell", Command: lnS + ` "` + outside + `" "$CORAL_WORKFLOW_STEP_DIR/sub"; echo pwned`, OutputArtifact: "sub/victim.txt"},
 		{Name: "ok", Type: "shell", Command: "echo fine", OutputArtifact: "reports/out.txt"},
 	})
 	got, _ := os.ReadFile(victim)
@@ -179,7 +189,7 @@ func TestContentTemplateDropsTrailingNewlines(t *testing.T) {
 func TestRefusedArtifactIsVisibleAndEmpty(t *testing.T) {
 	outside := t.TempDir()
 	final, repo, _ := runWorkflowSteps(t, []StepDef{
-		{Name: "link", Type: "shell", Command: `ln -s "` + outside + `" "$CORAL_WORKFLOW_STEP_DIR/sub"; echo data`, OutputArtifact: "sub/a.txt"},
+		{Name: "link", Type: "shell", Command: lnS + ` "` + outside + `" "$CORAL_WORKFLOW_STEP_DIR/sub"; echo data`, OutputArtifact: "sub/a.txt"},
 		{Name: "use", Type: "shell", Command: `printf '[%s]' {{prev_artifact_content}} > got.txt`},
 	})
 	assert.Equal(t, "completed", final.Status, "%v", final.ErrorMsg)

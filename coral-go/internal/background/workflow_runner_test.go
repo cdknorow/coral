@@ -103,7 +103,7 @@ func TestFireHooks_ExecutesCommand(t *testing.T) {
 				"hooks": []interface{}{
 					map[string]interface{}{
 						"type":    "command",
-						"command": "touch " + markerFile,
+						"command": "touch '" + filepath.ToSlash(markerFile) + "'", // sh keeps a quoted C:/... path (#3638)
 					},
 				},
 			},
@@ -132,7 +132,7 @@ func TestFireHooks_SkipsUnmatchedEvent(t *testing.T) {
 				"hooks": []interface{}{
 					map[string]interface{}{
 						"type":    "command",
-						"command": "touch " + markerFile,
+						"command": "touch '" + filepath.ToSlash(markerFile) + "'", // sh keeps a quoted C:/... path (#3638)
 					},
 				},
 			},
@@ -161,7 +161,7 @@ func TestFireHooks_PassesEnvVars(t *testing.T) {
 				"hooks": []interface{}{
 					map[string]interface{}{
 						"type":    "command",
-						"command": "echo $CORAL_STEP_NAME > " + outputFile,
+						"command": "echo $CORAL_STEP_NAME > '" + filepath.ToSlash(outputFile) + "'",
 					},
 				},
 			},
