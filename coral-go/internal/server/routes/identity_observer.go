@@ -298,6 +298,8 @@ var operatorOnlyRoutes = map[string]string{
 	"PATCH /api/webhooks/{webhookID}":     "change a webhook",
 	"DELETE /api/webhooks/{webhookID}":    "delete a webhook",
 	"POST /api/webhooks/{webhookID}/test": "send a test webhook",
+	// #3553: the Operator removes an artifact (also refused to anyone but a person, in every mode).
+	"DELETE /api/artifacts/{id}": "delete an artifact",
 	// #3513 (Security's #3509 finding 3): the API key is the Operator's credential (with it an
 	// agent drops its token and is the Operator, settings included), and deleting a board
 	// deletes the team's whole history.

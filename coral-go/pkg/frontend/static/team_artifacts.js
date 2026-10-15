@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { escapeHtml, escapeAttr, jsStr, sanitizeHtml } from './utils.js';
 import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
-import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath } from './server_base.js';
+import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud } from './server_base.js';
 import { refreshDistill, startDistill, distillJob } from './knowledge_distill.js';
 
 let source = 'files';
@@ -13,6 +13,50 @@ let previewArtifact = null;
 let previewFile = null;
 const fresh = () => ({items:[], loaded:false, busy:false, error:'', hasMore:false, truncated:false, controller:null, generation:0});
 const caches = {artifacts:fresh(), 'team-artifacts':fresh()};
+let notice = ''; // the outcome of the last delete (#3553), shown once under the heading
+
+// ── Delete (#3553): the Operator removes a stored artifact ──────────────────
+// Only on this computer's own dashboard (not through Coral Hub, not in the pop-out), and only for
+// an artifact stored on this Coral (a remote's goes through the hub, which never deletes).
+function canDelete(link) {
+    return !!link && link.preview && /^\/api\/artifacts\/[a-f0-9]{64}/.test(link.url)
+        && !isCloud() && !document.body.classList.contains('popout-mode');
+}
+
+// Other tabs of this dashboard drop a row deleted here.
+const deletions = typeof BroadcastChannel === 'function' ? new BroadcastChannel('coral-artifact-deletions') : null;
+deletions?.addEventListener('message', e => { if (/^[a-f0-9]{64}$/.test(String(e.data))) forget(e.data); });
+
+function forget(hex) {
+    for (const c of Object.values(caches)) {
+        c.items = c.items.filter(it => !String(it.uri || '').toLowerCase().includes(hex));
+    }
+    if (isArtifactSource()) render();
+}
+
+function deleteArtifact(hex, name, size) {
+    window.showConfirmModal?.('Delete artifact',
+        `Delete ${name}${size ? ` (${size})` : ''}? It is removed from Coral, and links to it in board posts and task results will show "unavailable". A copy a browser already cached may remain. This can't be undone.`,
+        async () => {
+            try {
+                const r = await fetch(`/api/artifacts/${hex}`, { method: 'DELETE' });
+                if (r.ok || r.status === 404) {
+                    notice = r.ok ? `Deleted ${name}.` : `${name} was already gone.`;
+                    forget(hex);
+                    deletions?.postMessage(hex);
+                } else {
+                    const d = await r.json().catch(() => ({}));
+                    notice = `Couldn't delete ${name}: ${d.error || `HTTP ${r.status}`}`;
+                    render();
+                }
+            } catch {
+                notice = `Couldn't delete ${name}: Coral didn't answer.`;
+                render();
+            }
+        });
+    // No default: focus starts on Cancel.
+    requestAnimationFrame(() => document.querySelector('#confirm-modal .modal-actions .btn:not(#confirm-modal-yes)')?.focus());
+}
 const isArtifactSource = () => source === 'artifacts' || source === 'team-artifacts';
 const panels = {files:'agentic-panel-files', browse:'agentic-panel-browse', artifacts:'agentic-panel-artifacts', 'team-artifacts':'agentic-panel-team-artifacts', knowledge:'agentic-panel-knowledge'};
 function cancel(cache) { cache.controller?.abort(); ++cache.generation; cache.busy=false; }
@@ -126,6 +170,12 @@ function render() {
         setTimeout(() => { helpIcon.textContent = 'content_copy'; }, 1500);
     });
     heading.append(refresh, help); root.append(heading);
+    if (notice) {
+        const n = el('div', 'team-artifacts-status team-artifacts-notice', notice);
+        n.setAttribute('role', 'status');
+        root.append(n);
+        notice = '';
+    }
     const status = el('div', 'team-artifacts-status');
     status.setAttribute('role', error ? 'alert' : 'status');
     status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
@@ -217,6 +267,16 @@ function render() {
             if (link.preview) bindDownload(download, link.url, name);
             download.setAttribute('aria-label', `${link.preview ? 'Download' : 'Open'} ${name}`);
             actions.append(download, copyLinkButton(link.url, name));
+            if (canDelete(link)) {
+                const hex = /([a-f0-9]{64})/.exec(link.url)[1];
+                const del = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-delete');
+                del.type = 'button';
+                del.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4"/></svg>';
+                del.title = 'Delete';
+                del.setAttribute('aria-label', `Delete ${name}`);
+                del.addEventListener('click', () => deleteArtifact(hex, name, sizeLabel(item.size)));
+                actions.append(del);
+            }
             actionCell.append(actions);
         } else actionCell.append(el('span', 'team-artifact-missing', item.available === false ? 'Missing' : 'Unavailable'));
         rows.append(row);

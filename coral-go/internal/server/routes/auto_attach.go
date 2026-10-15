@@ -81,6 +81,9 @@ type AutoAttacher struct {
 	mu      sync.Mutex
 	windows map[string]*attachUsage
 	total   int64 // bytes auto-attached by this Coral (persisted)
+	// storeFullLogged: the artifact store's cap was hit (#3553); logged once, then files are
+	// left as written without failing the agent's turn.
+	storeFullLogged bool
 }
 
 type attachUsage struct {
@@ -196,7 +199,20 @@ func (a *AutoAttacher) Rewrite(ctx context.Context, project, sessionID, sessionN
 						res = result{prev}
 						break
 					}
-					err = a.charge(sessionID, int64(len(data)))
+					if !storeFor(a.coralDir).fits(int64(len(data))) {
+						// The store is at its cap (artifact_store_max_bytes, #3553): leave the link
+						// as written (nothing charged), say so once, and never fail the agent's turn.
+						a.mu.Lock()
+						first := !a.storeFullLogged
+						a.storeFullLogged = true
+						a.mu.Unlock()
+						if first {
+							slog.Warn("[auto-attach] the artifact store is at its cap (artifact_store_max_bytes); files are left as written until the Operator deletes artifacts or raises the cap")
+						}
+						err = errAttach("store_full")
+					} else {
+						err = a.charge(sessionID, int64(len(data)))
+					}
 				}
 				if err == nil {
 					var hexID string

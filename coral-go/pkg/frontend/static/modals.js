@@ -3221,6 +3221,48 @@ async function saveDatabaseEncryptionSettings() {
 
 
 
+// ── Artifact store (#3553) ─────────────────────────────────────────────
+const GIB = 1024 ** 3;
+function _gib(n) {
+    n = Number(n) || 0;
+    if (n >= GIB / 10) return `${(n / GIB).toFixed(1)} GiB`;
+    if (n >= 1024 ** 2) return `${Math.round(n / (1024 ** 2))} MiB`;
+    if (n >= 1024) return `${Math.round(n / 1024)} KiB`;
+    return `${n} B`;
+}
+
+/** Settings: the artifact store's size and the saved diffs' sizes, as separate lines, next to the
+ *  store limit (which counts the artifacts only). This computer's dashboard only. */
+async function loadArtifactStoreSize() {
+    const out = document.getElementById('settings-artifact-store-size');
+    const input = document.getElementById('settings-artifact-store-max');
+    if (!out || !input) return;
+    try {
+        const r = await fetch('/api/system/artifact-store');
+        if (!r.ok) throw new Error(String(r.status));
+        const d = await r.json();
+        input.value = d.max_bytes > 0 ? String(Math.round(d.max_bytes / GIB)) : '0';
+        input.dataset.loaded = '1'; // only a limit read from Coral is saved back
+        const lines = [
+            `Artifacts: ${_gib(d.bytes)} in ${Number(d.objects).toLocaleString()} file${d.objects === 1 ? '' : 's'}${d.max_bytes > 0 ? ` (limit ${_gib(d.max_bytes)})` : ''}`,
+            `Saved task diffs: ${_gib(d.task_diffs?.bytes || 0)} in ${Number(d.task_diffs?.files || 0).toLocaleString()} files (not limited)`,
+            `Saved session diffs: ${_gib(d.session_diffs?.bytes || 0)} in ${Number(d.session_diffs?.files || 0).toLocaleString()} files (not limited)`,
+        ];
+        out.replaceChildren(...lines.flatMap((l, i) => (i ? [document.createElement('br'), l] : [l])));
+    } catch {
+        out.textContent = "Couldn't read the store's size.";
+    }
+}
+
+/** The limit to save, in bytes ({} when the field isn't on this page). */
+function artifactStoreMaxSetting() {
+    const input = document.getElementById('settings-artifact-store-max');
+    // Not on this page, or never read from Coral (a failed load must not reset a limit to 0).
+    if (!input || isCloud() || input.dataset.loaded !== '1') return {};
+    const gib = Math.max(0, Math.floor(Number(input.value) || 0));
+    return { artifact_store_max_bytes: String(gib * GIB) };
+}
+
 export async function showSettingsModal() {
     // Focus moves in on open, Tab stays inside, and focus comes back on close (accessibility pass).
     attachDialogFocus(document.getElementById('settings-modal'));
@@ -3230,6 +3272,7 @@ export async function showSettingsModal() {
     if (!isCloud()) {
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
+        loadArtifactStoreSize(); // the store's size next to its limit (#3553)
         const autoAttach = document.getElementById('settings-board-auto-attach');
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach, true);
         const debugInput = document.getElementById('settings-debug-input-log');
@@ -3533,6 +3576,7 @@ export async function applySettings() {
         agent_priority: agentPriority,
         telemetry_enabled: telemetryEnabled,
         board_auto_attach: boardAutoAttach,
+        ...artifactStoreMaxSetting(),
         debug_input_log: debugInputLog,
         remote_access_enabled: remoteAccessEnabled,
     };

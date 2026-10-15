@@ -593,6 +593,14 @@
                     <input type="checkbox" id="settings-board-auto-attach">
                 </dd>
                 <dt class="toggle-dt">
+                    <label for="settings-artifact-store-max">Artifact store limit (GiB)</label>
+                    <span class="toggle-desc">The most space stored artifacts may take. Above it, agents' new uploads are refused until you delete some (Team Artifacts &gt; Delete). 0 means no limit. Saved task and session diffs aren't counted.</span>
+                </dt>
+                <dd>
+                    <input type="number" id="settings-artifact-store-max" min="0" step="1" inputmode="numeric" aria-describedby="settings-artifact-store-size">
+                    <div id="settings-artifact-store-size" class="settings-hint" role="status">Loading…</div>
+                </dd>
+                <dt class="toggle-dt">
                     <label for="settings-debug-input-log">Log terminal input (debug)</label>
                     <span class="toggle-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
                 </dt>

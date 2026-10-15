@@ -1,17 +1,23 @@
 package routes
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/go-chi/chi/v5"
 )
@@ -46,8 +52,84 @@ func uploadsDir(coralDir, sessionID string) string {
 // are authenticated through the calling agent session; downloads use the
 // opaque digest ID so task hand-offs remain reachable by other agents/users.
 func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
+	// The store's size is measured now, before any upload (#3553), and capped by the setting.
+	st := storeFor(h.cfg.CoralDir())
+	st.mu.Lock()
+	st.maxBytes = h.artifactStoreMaxBytes
+	st.mu.Unlock()
 	r.Post("/api/agent/artifacts", h.uploadAgentArtifact)
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
+	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
+	r.Get("/api/system/artifact-store", h.getArtifactStore)
+}
+
+// ArtifactStoreMaxBytesSetting caps the artifact store's size in bytes (#3553); 0 or unset is no cap.
+const ArtifactStoreMaxBytesSetting = "artifact_store_max_bytes"
+
+func (h *SessionsHandler) artifactStoreMaxBytes() int64 {
+	if h.ss == nil {
+		return 0
+	}
+	s, err := h.ss.GetSettings(context.Background())
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(s[ArtifactStoreMaxBytesSetting]), 10, 64)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// getArtifactStore: GET /api/system/artifact-store, the object store's size, object count and
+// cap, and, as separate lines, the saved task and session diffs (artifacts/tasks and
+// artifacts/sessions), which the cap doesn't cover (#3553; Settings shows them). Not in the
+// tunnel table: this computer only.
+func (h *SessionsHandler) getArtifactStore(w http.ResponseWriter, r *http.Request) {
+	coralDir := h.cfg.CoralDir()
+	b, n, max := storeFor(coralDir).size()
+	tb, tn, sb, sn := diffStoreSizes(coralDir)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"bytes": b, "objects": n, "max_bytes": max,
+		"task_diffs":    map[string]int64{"bytes": tb, "files": tn},
+		"session_diffs": map[string]int64{"bytes": sb, "files": sn},
+	})
+}
+
+var diffSizes struct {
+	sync.Mutex
+	dir    string
+	at     time.Time
+	tb, tn int64
+	sb, sn int64
+}
+
+// diffStoreSizes walks artifacts/tasks and artifacts/sessions (regular files only, no links
+// followed), at most every 30 s.
+func diffStoreSizes(coralDir string) (tb, tn, sb, sn int64) {
+	diffSizes.Lock()
+	defer diffSizes.Unlock()
+	if diffSizes.dir == coralDir && time.Since(diffSizes.at) < 30*time.Second {
+		return diffSizes.tb, diffSizes.tn, diffSizes.sb, diffSizes.sn
+	}
+	walk := func(dir string) (bytes, files int64) {
+		_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+			if err != nil || !d.Type().IsRegular() {
+				return nil
+			}
+			if info, ierr := d.Info(); ierr == nil {
+				bytes += info.Size()
+				files++
+			}
+			return nil
+		})
+		return
+	}
+	tb, tn = walk(filepath.Join(coralDir, "artifacts", "tasks"))
+	sb, sn = walk(filepath.Join(coralDir, "artifacts", "sessions"))
+	diffSizes.dir, diffSizes.at = coralDir, time.Now()
+	diffSizes.tb, diffSizes.tn, diffSizes.sb, diffSizes.sn = tb, tn, sb, sn
+	return
 }
 
 func (h *SessionsHandler) artifactDir() string {
@@ -68,6 +150,7 @@ func (h *SessionsHandler) artifactDir() string {
 func storeArtifact(coralDir, sessionID, name, mediaType string, data []byte) (string, agentArtifactMeta, error) {
 	digestBytes := sha256.Sum256(data)
 	hexID := hex.EncodeToString(digestBytes[:])
+	defer lockArtifact(hexID)() // a delete of the same digest waits (#3553)
 	mine := agentArtifactMeta{Name: name, MediaType: mediaType, Size: int64(len(data)), Digest: "sha256:" + hexID}
 	dir := filepath.Join(coralDir, "artifacts", "objects")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -78,6 +161,7 @@ func storeArtifact(coralDir, sessionID, name, mediaType string, data []byte) (st
 		if err := writeFileAtomic(objectPath, data, 0o600); err != nil {
 			return "", mine, err
 		}
+		storeFor(coralDir).added(int64(len(data)))
 	}
 	stored, err := createSidecarOnce(objectPath+".json", mine)
 	if err != nil {
@@ -206,30 +290,238 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 	if mediaType == "" {
 		mediaType = mediatype.Generic
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxAgentArtifactSize+1)
-	data, err := io.ReadAll(r.Body)
+	coralDir := h.cfg.CoralDir()
+	st := storeFor(coralDir)
+	// The hourly cap is per agent session (its verified token); token-less uploads, possible
+	// only in default mode, share one bucket rather than having none (#3553).
+	key := sharedUploadBucket
+	if owner, ok := VerifiedSession(r.Context()); ok && owner.SessionID != "" {
+		key = "session:" + owner.SessionID
+	}
+	if ok, retry := st.admitUpload(key); !ok {
+		artifactRefusal(w, http.StatusRequestEntityTooLarge, "artifact_quota", "hourly",
+			fmt.Sprintf("this agent's upload limit for the hour is used up (%d uploads or %d MiB); try again in %s", uploadWindowCount, uploadWindowBytes>>20, retry.Round(time.Minute)))
+		return
+	}
+
+	// Streamed into a temp file next to the objects while hashing (no io.ReadAll, #3553).
+	dir := filepath.Join(coralDir, "artifacts", "objects")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		errInternalServer(w, "could not store the artifact")
+		return
+	}
+	tmp, err := os.CreateTemp(dir, artifactUploadTempP+"*")
 	if err != nil {
-		errBadRequest(w, "artifact exceeds 64 MiB")
+		errInternalServer(w, "could not store the artifact")
 		return
 	}
-	if len(data) > maxAgentArtifactSize {
-		errBadRequest(w, "artifact exceeds 64 MiB")
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath) // a no-op once it has been renamed into the store
+	hash := sha256.New()
+	n, err := io.Copy(io.MultiWriter(tmp, hash), http.MaxBytesReader(w, r.Body, maxAgentArtifactSize+1))
+	closeErr := tmp.Close()
+	withinWindow := st.chargeUpload(key, n) // what was read counts, stored or refused
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) || n > maxAgentArtifactSize {
+		artifactRefusal(w, http.StatusRequestEntityTooLarge, "artifact_too_large", "", "artifact exceeds 64 MiB")
 		return
 	}
-	hexID, meta, err := storeArtifact(h.cfg.CoralDir(), sid, name, mediaType, data)
+	if err != nil || closeErr != nil {
+		errBadRequest(w, "the upload was cut short")
+		return
+	}
+	if !withinWindow {
+		artifactRefusal(w, http.StatusRequestEntityTooLarge, "artifact_quota", "hourly",
+			fmt.Sprintf("this agent's upload limit for the hour is used up (%d MiB); try again later", uploadWindowBytes>>20))
+		return
+	}
+	hexID, size := hex.EncodeToString(hash.Sum(nil)), n
+
+	// An image is recognised by its bytes, whatever its declared type, and stored without its
+	// metadata, or refused when its format can't be stripped (finding 5). Its id is then the
+	// hash of the stored bytes.
+	stripped := false
+	if head, herr := readHead(tmpPath, 16); herr == nil && sniffImageFamily(head) != "" {
+		data, rerr := os.ReadFile(tmpPath)
+		if rerr != nil {
+			errInternalServer(w, "could not store the artifact")
+			return
+		}
+		clean, changed, cerr := cleanUploadedImage(data)
+		if cerr != nil {
+			artifactRefusal(w, http.StatusBadRequest, "image_metadata", "", cerr.Error())
+			return
+		}
+		if changed {
+			if werr := os.WriteFile(tmpPath, clean, 0o600); werr != nil {
+				errInternalServer(w, "could not store the artifact")
+				return
+			}
+			sum := sha256.Sum256(clean)
+			hexID, size, stripped = hex.EncodeToString(sum[:]), int64(len(clean)), true
+		}
+	}
+
+	meta, fresh, err := storeArtifactFile(coralDir, sid, name, mediaType, tmpPath, hexID, size)
+	if errors.Is(err, errStoreFull) {
+		b, _, max := st.size()
+		artifactRefusal(w, http.StatusRequestEntityTooLarge, "artifact_quota", "store",
+			fmt.Sprintf("the artifact store is full (%s of %s): ask the Operator to delete old artifacts", humanBytes(b), humanBytes(max)))
+		return
+	}
 	if err != nil {
-		errInternalServer(w, err.Error())
+		errInternalServer(w, "could not store the artifact")
 		return
 	}
+	_ = fresh
 	// The name and type viewers get: the first upload's, when these bytes were stored before.
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"uri":        "coral://artifacts/" + hexID,
 		"url":        artifactURL(hexID),
 		"name":       meta.Name,
 		"media_type": meta.MediaType,
-		"size":       len(data),
+		"size":       meta.Size, // the stored size: smaller than the file when metadata was removed
 		"digest":     meta.Digest,
+		"stripped":   stripped, // image metadata was removed: the id is the hash of the stored bytes
 	})
+}
+
+var errStoreFull = errors.New("artifact store is full")
+
+// storeArtifactFile moves an already hashed temp file (in the objects folder) into the store as
+// hexID, with its sidecar and the session's upload record (#3553: the streamed counterpart of
+// storeArtifact). An object that is already stored makes it a free duplicate. It refuses a new
+// object that would take the store past its cap. fresh reports whether the object is new.
+func storeArtifactFile(coralDir, sessionID, name, mediaType, tmpPath, hexID string, size int64) (agentArtifactMeta, bool, error) {
+	defer lockArtifact(hexID)()
+	mine := agentArtifactMeta{Name: name, MediaType: mediaType, Size: size, Digest: "sha256:" + hexID}
+	st := storeFor(coralDir)
+	objectPath := filepath.Join(coralDir, "artifacts", "objects", hexID)
+	fresh := false
+	if _, err := os.Stat(objectPath); os.IsNotExist(err) {
+		if !st.fits(size) {
+			return mine, false, errStoreFull
+		}
+		if err := os.Chmod(tmpPath, 0o600); err != nil {
+			return mine, false, err
+		}
+		if err := os.Rename(tmpPath, objectPath); err != nil {
+			return mine, false, err
+		}
+		st.added(size)
+		fresh = true
+	}
+	// As storeArtifact (#3552): the first writer's sidecar stays; this uploader's name is kept
+	// in its own upload record.
+	stored, err := createSidecarOnce(objectPath+".json", mine)
+	if err != nil {
+		return mine, fresh, err
+	}
+	if up := uploadsDir(coralDir, sessionID); up != "" {
+		if os.MkdirAll(up, 0o700) == nil {
+			rec, _ := json.Marshal(agentUploadRecord{mine, time.Now().UTC().Format(time.RFC3339)})
+			_ = writeFileAtomic(filepath.Join(up, hexID+".json"), rec, 0o600)
+		}
+	}
+	return stored, fresh, nil
+}
+
+// readHead reads up to n bytes from the start of path.
+func readHead(path string, n int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	buf := make([]byte, n)
+	k, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return buf[:k], nil
+}
+
+// artifactRefusal answers an upload Coral won't store, with a code the CLI can tell apart:
+// artifact_too_large, artifact_quota (limit "hourly" or "store") or image_metadata.
+func artifactRefusal(w http.ResponseWriter, status int, code, limit, msg string) {
+	body := map[string]string{"error": msg, "code": code, "message": msg}
+	if limit != "" {
+		body["limit"] = limit
+	}
+	writeJSON(w, status, body)
+}
+
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+	}
+	return fmt.Sprintf("%d KiB", (n+1023)>>10)
+}
+
+// deleteArtifactFiles removes an artifact's object, its sidecar and every upload record of it,
+// under its digest lock, and keeps the store's size current (#3553). It's the one delete path:
+// the Operator's DELETE and #3554's prune both use it. found is false when neither the object
+// nor its sidecar existed.
+func deleteArtifactFiles(coralDir, id string) (freed int64, records int, found bool, err error) {
+	if !objectNameRe.MatchString(id) {
+		return 0, 0, false, nil
+	}
+	defer lockArtifact(id)()
+	objectPath := filepath.Join(coralDir, "artifacts", "objects", id)
+	info, statErr := os.Stat(objectPath)
+	_, sideErr := os.Stat(objectPath + ".json")
+	if statErr != nil && sideErr != nil {
+		return 0, 0, false, nil
+	}
+	if statErr == nil {
+		if err := os.Remove(objectPath); err != nil {
+			return 0, 0, true, err
+		}
+		freed = info.Size()
+		storeFor(coralDir).removed(freed)
+	}
+	_ = os.Remove(objectPath + ".json")
+	if sessions, rerr := os.ReadDir(filepath.Join(coralDir, "artifacts", "uploads")); rerr == nil {
+		for _, s := range sessions {
+			if up := uploadsDir(coralDir, s.Name()); up != "" && s.IsDir() {
+				if os.Remove(filepath.Join(up, id+".json")) == nil {
+					records++
+				}
+			}
+		}
+	}
+	return freed, records, true, nil
+}
+
+// deleteAgentArtifact: DELETE /api/artifacts/{id}, the Operator removes an artifact (#3553,
+// from the #3551 audit): its object, its sidecar and every agent's upload record of it. A
+// person only: the dashboard on this computer or the operator's signed command line, in every
+// mode; an agent's token, a script, an API key and Coral Hub get 403 (and the tunnel never
+// forwards it). Links to it in posts and task results stay and show "unavailable".
+func (h *SessionsHandler) deleteAgentArtifact(w http.ResponseWriter, r *http.Request) {
+	if cloud.Tunneled(r) || !humanInputCaller(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can delete an artifact, from this computer's dashboard or the signed command line", "code": "operator_only"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if !objectNameRe.MatchString(id) {
+		errBadRequest(w, "invalid artifact id")
+		return
+	}
+	freed, removed, found, err := deleteArtifactFiles(h.cfg.CoralDir(), id)
+	if !found {
+		errNotFound(w, "artifact not found")
+		return
+	}
+	if err != nil {
+		errInternalServer(w, "could not delete the artifact")
+		return
+	}
+	slog.Info("[artifacts] deleted by the Operator", "digest", id, "bytes", freed, "upload_records", removed)
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "bytes": freed})
 }
 
 func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Request) {
@@ -259,6 +551,8 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 	// run on the dashboard's origin when someone opens its link.
 	setUntrustedContentHeaders(w.Header(), meta.MediaType, meta.Name)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", meta.Size))
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// The bytes never change for an id, but an artifact can be deleted (#3553): private, so no
+	// shared cache (in front of Coral Hub, a proxy) keeps serving it after that.
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	http.ServeFile(w, r, path)
 }

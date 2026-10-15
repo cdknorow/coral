@@ -1,4 +1,5 @@
 DELETE /api/agent/ui/{id} never
+DELETE /api/artifacts/{id} never
 DELETE /api/board/remotes never
 DELETE /api/board/{project} launch
 DELETE /api/board/{project}/groups/{groupID}/members/{sessionID} interact
@@ -121,6 +122,7 @@ GET /api/settings/default-prompts view
 GET /api/settings/prompt-inspection never
 GET /api/spec.json never
 GET /api/system/api-key never
+GET /api/system/artifact-store never
 GET /api/system/auth-status never
 GET /api/system/cli-check never
 GET /api/system/database-security never

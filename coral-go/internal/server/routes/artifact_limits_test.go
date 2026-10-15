@@ -1,0 +1,372 @@
+package routes
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// The artifact store (#3553, from the #3551 audit): streamed uploads, image metadata by the
+// bytes, the hourly and store caps, the Operator-only delete, and Cache-Control.
+
+const testDashboardHeader = "X-Test-Dashboard"
+
+// artifactRig is a server with the artifact routes on its own data folder. A request with
+// testDashboardHeader acts as this computer's dashboard; one with testAgentHeader as an agent.
+type artifactRig struct {
+	t        *testing.T
+	srv      *httptest.Server
+	h        *SessionsHandler
+	ss       *store.SessionStore
+	coralDir string
+}
+
+func newArtifactRig(t *testing.T) *artifactRig {
+	t.Helper()
+	cfg := config.Load(t.TempDir())
+	_, h, _, ss := setupSessionsTestServerWithConfig(t, cfg)
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "s1", AgentName: "a1", AgentType: "codex", WorkingDir: t.TempDir()}))
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "s2", AgentName: "a2", AgentType: "codex", WorkingDir: t.TempDir()}))
+	r := chi.NewRouter()
+	ident := testIdentity(h.db)
+	r.Use(func(next http.Handler) http.Handler {
+		withIdent := ident(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.Header.Get(testDashboardHeader) != "" {
+				next.ServeHTTP(w, req.WithContext(context.WithValue(req.Context(), callerKindKey{}, callerDashCookie)))
+				return
+			}
+			withIdent.ServeHTTP(w, req)
+		})
+	})
+	h.RegisterAgentArtifacts(r)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	return &artifactRig{t: t, srv: srv, h: h, ss: ss, coralDir: cfg.CoralDir()}
+}
+
+// upload sends data as session's agent (its token); it returns the status and the JSON body.
+func (rig *artifactRig) upload(session, name, mediaType string, body io.Reader) (int, map[string]any) {
+	req, err := http.NewRequest(http.MethodPost, rig.srv.URL+"/api/agent/artifacts?session_id="+session, body)
+	require.NoError(rig.t, err)
+	req.Header.Set("X-Artifact-Name", name)
+	if mediaType != "" {
+		req.Header.Set("X-Artifact-Media-Type", mediaType)
+	}
+	resp, err := agentClient.Do(req)
+	require.NoError(rig.t, err)
+	defer resp.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+func (rig *artifactRig) del(id string, header map[string]string) (int, map[string]any) {
+	req, err := http.NewRequest(http.MethodDelete, rig.srv.URL+"/api/artifacts/"+id, nil)
+	require.NoError(rig.t, err)
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(rig.t, err)
+	defer resp.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+func (rig *artifactRig) get(id string) (int, http.Header, []byte) {
+	resp, err := http.Get(rig.srv.URL + "/api/artifacts/" + id)
+	require.NoError(rig.t, err)
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header, b
+}
+
+func (rig *artifactRig) object(id string) string {
+	return filepath.Join(rig.coralDir, "artifacts", "objects", id)
+}
+
+func idOf(uri any) string { return strings.TrimPrefix(fmt.Sprint(uri), "coral://artifacts/") }
+
+func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
+
+func TestArtifactUploadStreamsAndKeepsTheID(t *testing.T) {
+	rig := newArtifactRig(t)
+	body := bytes.Repeat([]byte("streamed artifact line\n"), 50_000) // ~1.1 MB
+	code, out := rig.upload("s1", "log.txt", "text/plain", bytes.NewReader(body))
+	require.Equal(t, http.StatusCreated, code, out)
+	require.Equal(t, sha(body), idOf(out["uri"]), "a non-image's id is the hash of what was sent")
+	require.EqualValues(t, len(body), out["size"])
+	require.Equal(t, false, out["stripped"])
+	stored, err := os.ReadFile(rig.object(sha(body)))
+	require.NoError(t, err)
+	require.Equal(t, body, stored)
+	// No temp file left behind.
+	ents, _ := os.ReadDir(filepath.Dir(rig.object("x")))
+	for _, e := range ents {
+		assert.False(t, strings.HasPrefix(e.Name(), artifactUploadTempP), e.Name())
+	}
+	_, hdr, _ := rig.get(sha(body))
+	require.Equal(t, "private, max-age=31536000, immutable", hdr.Get("Cache-Control"), "no shared cache keeps a deletable artifact")
+}
+
+func TestArtifactUploadTooLarge(t *testing.T) {
+	rig := newArtifactRig(t)
+	code, out := rig.upload("s1", "big.bin", "", io.LimitReader(zeroReader{}, maxAgentArtifactSize+1))
+	require.Equal(t, http.StatusRequestEntityTooLarge, code)
+	require.Equal(t, "artifact_too_large", out["code"])
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 0
+	}
+	return len(p), nil
+}
+
+func exifJPEG(t *testing.T) []byte {
+	j := jpegBytes(t)
+	app1 := append([]byte{0xFF, 0xE1, 0, 0}, []byte("Exif\x00\x00GPS-LAT-51.5")...)
+	binary.BigEndian.PutUint16(app1[2:], uint16(len(app1)-2))
+	return append(append([]byte{0xFF, 0xD8}, app1...), j[2:]...)
+}
+
+func TestArtifactImageMetadataByTheBytes(t *testing.T) {
+	rig := newArtifactRig(t)
+	img := exifJPEG(t)
+	// Labelled as anything but an image: the bytes decide.
+	code, out := rig.upload("s1", "photo.bin", "application/octet-stream", bytes.NewReader(img))
+	require.Equal(t, http.StatusCreated, code, out)
+	require.Equal(t, true, out["stripped"])
+	id := idOf(out["uri"])
+	require.NotEqual(t, sha(img), id, "the id is the hash of the STORED bytes")
+	stored, err := os.ReadFile(rig.object(id))
+	require.NoError(t, err)
+	require.Equal(t, sha(stored), id)
+	require.NotContains(t, string(stored), "GPS-LAT", "EXIF removed")
+	require.EqualValues(t, len(stored), out["size"], "the response gives the stored size")
+	require.Less(t, len(stored), len(img))
+
+	// Formats the server can't strip are refused when they carry metadata.
+	webp := webpLossless(4, 4, append([]byte("EXIF\x04\x00\x00\x00"), "GPS!"...))
+	code, out = rig.upload("s1", "a.webp", "", bytes.NewReader(webp))
+	require.Equal(t, http.StatusBadRequest, code)
+	require.Equal(t, "image_metadata", out["code"])
+	heic := append([]byte("\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic"), []byte("....infe....Exif....GPS")...)
+	code, out = rig.upload("s1", "a.heic", "", bytes.NewReader(heic))
+	require.Equal(t, http.StatusBadRequest, code, out)
+	require.Equal(t, "image_metadata", out["code"])
+	tiff := []byte("II*\x00\x08\x00\x00\x00\x01\x00\x25\x88\x04\x00\x01\x00\x00\x00\x1a\x00\x00\x00\x00\x00\x00\x00") // one IFD entry: the GPS IFD tag (0x8825)
+	code, out = rig.upload("s1", "a.tif", "", bytes.NewReader(tiff))
+	require.Equal(t, http.StatusBadRequest, code, out)
+	// A plain PNG (nothing to strip) keeps its id.
+	p := pngBytes(t, 4, 4)
+	code, out = rig.upload("s1", "p.png", "", bytes.NewReader(p))
+	require.Equal(t, http.StatusCreated, code, out)
+	require.Equal(t, sha(p), idOf(out["uri"]))
+}
+
+func TestArtifactHourlyCap(t *testing.T) {
+	rig := newArtifactRig(t)
+	for i := 0; i < uploadWindowCount; i++ {
+		code, out := rig.upload("s1", "n.txt", "", strings.NewReader(fmt.Sprintf("note %d", i)))
+		require.Equal(t, http.StatusCreated, code, out)
+	}
+	code, out := rig.upload("s1", "n.txt", "", strings.NewReader("one too many"))
+	require.Equal(t, http.StatusRequestEntityTooLarge, code)
+	require.Equal(t, "artifact_quota", out["code"])
+	require.Equal(t, "hourly", out["limit"])
+	code, _ = rig.upload("s2", "n.txt", "", strings.NewReader("another agent"))
+	require.Equal(t, http.StatusCreated, code, "the cap is per agent session")
+
+	// A refused upload's bytes count too (a client can't probe for free).
+	st := storeFor(rig.coralDir)
+	st.mu.Lock()
+	st.windows["session:s2"].bytes = uploadWindowBytes - 10
+	st.mu.Unlock()
+	code, out = rig.upload("s2", "big.txt", "", strings.NewReader(strings.Repeat("x", 100)))
+	require.Equal(t, http.StatusRequestEntityTooLarge, code, out)
+	require.Equal(t, "hourly", out["limit"])
+}
+
+func TestArtifactStoreCapAndDeleteFreesIt(t *testing.T) {
+	rig := newArtifactRig(t)
+	require.NoError(t, rig.ss.SetSetting(context.Background(), ArtifactStoreMaxBytesSetting, "1000"))
+	a := bytes.Repeat([]byte("a"), 600)
+	code, out := rig.upload("s1", "a.txt", "", bytes.NewReader(a))
+	require.Equal(t, http.StatusCreated, code, out)
+	code, out = rig.upload("s1", "b.txt", "", bytes.NewReader(bytes.Repeat([]byte("b"), 600)))
+	require.Equal(t, http.StatusRequestEntityTooLarge, code)
+	require.Equal(t, "store", out["limit"])
+	require.Contains(t, out["message"], "ask the Operator to delete old artifacts")
+	code, _ = rig.upload("s1", "a-again.txt", "", bytes.NewReader(a))
+	require.Equal(t, http.StatusCreated, code, "a duplicate is free, even at the cap")
+
+	code, out = rig.del(sha(a), map[string]string{testDashboardHeader: "1"})
+	require.Equal(t, http.StatusOK, code, out)
+	require.EqualValues(t, 600, out["bytes"])
+	code, _ = rig.upload("s1", "b.txt", "", bytes.NewReader(bytes.Repeat([]byte("b"), 600)))
+	require.Equal(t, http.StatusCreated, code, "a delete frees quota")
+
+	resp, err := http.Get(rig.srv.URL + "/api/system/artifact-store")
+	require.NoError(t, err)
+	var st map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&st))
+	resp.Body.Close()
+	require.EqualValues(t, 600, st["bytes"])
+	require.EqualValues(t, 1, st["objects"])
+	require.EqualValues(t, 1000, st["max_bytes"])
+}
+
+func TestArtifactDeleteIsTheOperators(t *testing.T) {
+	rig := newArtifactRig(t)
+	data := []byte("delete me")
+	id := sha(data)
+	code, _ := rig.upload("s1", "d.txt", "", bytes.NewReader(data))
+	require.Equal(t, http.StatusCreated, code)
+	code, _ = rig.upload("s2", "d2.txt", "", bytes.NewReader(data)) // a second agent's record of it
+	require.Equal(t, http.StatusCreated, code)
+
+	for name, hdr := range map[string]map[string]string{
+		"an agent's token":       {testAgentHeader: "s1"},
+		"a token-less script":    {},
+		"Coral Hub (the tunnel)": {tunnel.ViaHeader: "x"},
+	} {
+		code, out := rig.del(id, hdr)
+		assert.Equal(t, http.StatusForbidden, code, name)
+		assert.Equal(t, "operator_only", out["code"], name)
+	}
+	_, err := os.Stat(rig.object(id))
+	require.NoError(t, err, "still there after the refusals")
+
+	code, _ = rig.del("not-hex", map[string]string{testDashboardHeader: "1"})
+	require.Equal(t, http.StatusBadRequest, code)
+	code, out := rig.del(id, map[string]string{testDashboardHeader: "1"})
+	require.Equal(t, http.StatusOK, code, out)
+	for _, p := range []string{rig.object(id), rig.object(id) + ".json",
+		filepath.Join(rig.coralDir, "artifacts", "uploads", "s1", id+".json"), filepath.Join(rig.coralDir, "artifacts", "uploads", "s2", id+".json")} {
+		_, err := os.Stat(p)
+		assert.True(t, os.IsNotExist(err), "removed: %s", p)
+	}
+	code, _, _ = rig.get(id)
+	require.Equal(t, http.StatusNotFound, code)
+	code, _ = rig.del(id, map[string]string{testDashboardHeader: "1"})
+	require.Equal(t, http.StatusNotFound, code)
+}
+
+// Uploads and deletes of one digest, at the same time: the store is never left half done (an
+// object without its sidecar, or a sidecar without its object), and the size stays exact.
+func TestArtifactUploadDeleteRace(t *testing.T) {
+	rig := newArtifactRig(t)
+	data := []byte("raced artifact")
+	id := sha(data)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); rig.upload("s1", "r.txt", "", bytes.NewReader(data)) }()
+		go func() { defer wg.Done(); rig.del(id, map[string]string{testDashboardHeader: "1"}) }()
+	}
+	wg.Wait()
+	_, objErr := os.Stat(rig.object(id))
+	_, sideErr := os.Stat(rig.object(id) + ".json")
+	require.Equal(t, os.IsNotExist(objErr), os.IsNotExist(sideErr), "object and sidecar together, or neither")
+	b, n, _ := storeFor(rig.coralDir).size()
+	if objErr == nil {
+		require.EqualValues(t, len(data), b)
+		require.Equal(t, 1, n)
+	} else {
+		require.Zero(t, b)
+		require.Zero(t, n)
+	}
+}
+
+// The size is measured from the objects only, and a crash's temp file is removed.
+func TestArtifactStoreMeasure(t *testing.T) {
+	dir := t.TempDir()
+	objects := filepath.Join(dir, "artifacts", "objects")
+	require.NoError(t, os.MkdirAll(objects, 0o700))
+	obj := bytes.Repeat([]byte("o"), 300)
+	require.NoError(t, os.WriteFile(filepath.Join(objects, sha(obj)), obj, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(objects, sha(obj)+".json"), []byte(`{"name":"o"}`), 0o600))
+	stale := filepath.Join(objects, artifactUploadTempP+"crash")
+	fresh := filepath.Join(objects, artifactUploadTempP+"live")
+	require.NoError(t, os.WriteFile(stale, make([]byte, 5000), 0o600))
+	require.NoError(t, os.WriteFile(fresh, make([]byte, 5000), 0o600))
+	staleAtomic := filepath.Join(objects, artifactAtomicTempP+"crash") // #3552's atomic writes
+	require.NoError(t, os.WriteFile(staleAtomic, make([]byte, 5000), 0o600))
+	old := time.Now().Add(-2 * time.Hour)
+	require.NoError(t, os.Chtimes(stale, old, old))
+	require.NoError(t, os.Chtimes(staleAtomic, old, old))
+	b, n, _ := storeFor(dir).size()
+	require.EqualValues(t, 300, b, "only objects count")
+	require.Equal(t, 1, n)
+	_, err := os.Stat(stale)
+	require.True(t, os.IsNotExist(err), "a crash's temp file is removed")
+	_, err = os.Stat(staleAtomic)
+	require.True(t, os.IsNotExist(err), "a crash's atomic-write temp file is removed")
+	_, err = os.Stat(fresh)
+	require.NoError(t, err, "a live upload's temp file is left alone")
+}
+
+func TestSniffImageFamily(t *testing.T) {
+	for want, data := range map[string][]byte{
+		"image/jpeg": {0xFF, 0xD8, 0xFF, 0xE0},
+		"image/png":  []byte("\x89PNG\r\n\x1a\nxxxx"),
+		"image/gif":  []byte("GIF89a......"),
+		"image/webp": []byte("RIFF\x00\x00\x00\x00WEBPVP8L"),
+		"image/tiff": []byte("MM\x00*\x00\x00\x00\x08"),
+		"image/heif": []byte("\x00\x00\x00\x18ftypavif"),
+		"":           []byte("plain text, not an image"),
+	} {
+		assert.Equal(t, want, sniffImageFamily(data), want)
+	}
+}
+
+// A streamed upload follows #3552: the same bytes uploaded again under another name keep the
+// first writer's sidecar (and so the name viewers get); the second uploader's record has its own,
+// and the files are 0600.
+func TestArtifactStreamedUploadFirstWriterWins(t *testing.T) {
+	rig := newArtifactRig(t)
+	body := []byte("the same bytes, twice " + t.Name())
+	st, first := rig.upload("s1", "first.txt", "text/plain", bytes.NewReader(body))
+	require.Equal(t, http.StatusCreated, st, first)
+	st, second := rig.upload("s2", "second.md", "text/markdown", bytes.NewReader(body))
+	require.Equal(t, http.StatusCreated, st, second)
+	require.Equal(t, first["uri"], second["uri"])
+	require.Equal(t, "first.txt", second["name"])
+	require.Equal(t, "text/plain", second["media_type"])
+	id := idOf(second["uri"])
+	var side agentArtifactMeta
+	raw, err := os.ReadFile(rig.object(id) + ".json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &side))
+	require.Equal(t, "first.txt", side.Name)
+	for _, p := range []string{rig.object(id), rig.object(id) + ".json"} {
+		info, err := os.Stat(p)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0o600), info.Mode().Perm(), p)
+	}
+}
