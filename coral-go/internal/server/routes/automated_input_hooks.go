@@ -127,10 +127,7 @@ func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessio
 	}
 	h.applyTranscriptState(&in, events, agentType, sessionID, workingDir)
 	st := sessionstate.Derive(in)
-	cliVersion := h.ss.CLIVersion(ctx, sessionID)
-	if cliVersion == "" {
-		h.ensureCLIVersion(sessionID, agentType) // the next decision line has it (#3573)
-	}
+	cliVersion := h.runningCLIVersion(ctx, agentType, sessionID, workingDir)
 	as := ptymanager.AgentState{
 		State:      ptymanager.StateIdle,
 		Since:      st.Since,

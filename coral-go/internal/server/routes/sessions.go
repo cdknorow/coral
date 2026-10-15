@@ -6951,6 +6951,29 @@ func (h *SessionsHandler) ensureCLIVersion(sessionID, agentType string) {
 	}()
 }
 
+// runningCLIVersion is the CLI version a session's agent runs, for each decision line (#3573).
+// For Claude it is the newest transcript line's version: Claude Code updates itself while an
+// agent keeps running, so this is re-read every time (only the transcript's new lines are read)
+// and the recorded version follows it. Otherwise, or without a transcript yet, it is the
+// recorded version, asked for once in the background when there is none.
+func (h *SessionsHandler) runningCLIVersion(ctx context.Context, agentType, sessionID, workingDir string) string {
+	recorded := h.ss.CLIVersion(ctx, sessionID)
+	if agentType == "claude" && h.jsonl != nil {
+		if v := h.jsonl.ReadClaudeVersion(sessionID, workingDir); v != "" {
+			if v != recorded {
+				if err := h.ss.SetCLIVersion(ctx, sessionID, v); err != nil {
+					slog.Warn("could not record the agent's CLI version", "session_id", sessionID, "error", err)
+				}
+			}
+			return v
+		}
+	}
+	if recorded == "" {
+		h.ensureCLIVersion(sessionID, agentType) // the next decision line has it
+	}
+	return recorded
+}
+
 // boardLabel is a board's display name for an agent's prompt (#3536); "" if unknown.
 func (h *SessionsHandler) boardLabel(key string) string {
 	if h.bs == nil || key == "" {

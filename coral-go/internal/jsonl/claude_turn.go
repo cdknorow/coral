@@ -1,7 +1,9 @@
 package jsonl
 
 import (
+	"bytes"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,6 +18,20 @@ import (
 // starts come from the UserPromptSubmit hook. The path is resolved and the file read
 // incrementally, like Codex's.
 func (r *SessionReader) ReadClaudeTurnEvent(sessionID, workingDir string) (string, time.Time) {
+	st := r.scanClaudeTranscript(sessionID, workingDir)
+	return st.event, st.at
+}
+
+// ReadClaudeVersion returns the Claude Code version the session's newest transcript line
+// carries, or "" (#3573). It is the running process's own version: Claude Code updates itself
+// while an agent keeps running, so the binary's --version can already be newer.
+func (r *SessionReader) ReadClaudeVersion(sessionID, workingDir string) string {
+	return r.scanClaudeTranscript(sessionID, workingDir).version
+}
+
+// scanClaudeTranscript reads what a Claude transcript gained since the last call and returns the
+// turn and version state; the zero state when no transcript is found.
+func (r *SessionReader) scanClaudeTranscript(sessionID, workingDir string) claudeTurnCache {
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -26,13 +42,41 @@ func (r *SessionReader) ReadClaudeTurnEvent(sessionID, workingDir string) (strin
 		}
 	}
 	if c.path == "" {
-		return "", time.Time{}
+		return claudeTurnCache{}
 	}
 	scanTranscriptAppend(c.path, &c.claudeState.transcriptReadState, func() {
-		c.claudeState.event, c.claudeState.at = "", time.Time{}
-	}, func(line []byte) { updateClaudeTurnState(&c.claudeState, line) })
-	return c.claudeState.event, c.claudeState.at
+		c.claudeState.event, c.claudeState.at, c.claudeState.version = "", time.Time{}, ""
+	}, func(line []byte) {
+		if v := claudeLineVersion(line); v != "" {
+			c.claudeState.version = v
+		}
+		updateClaudeTurnState(&c.claudeState, line)
+	})
+	return c.claudeState
 }
+
+var claudeVersionKey = []byte(`"version"`)
+
+// claudeLineVersion is a transcript line's top-level "version" value, or "". The line is decoded
+// for that one field (Go's decoder takes the top-level key whatever the order): a tool's
+// structured result (toolUseResult) can carry its own "version" and come before the record's,
+// so the first occurrence in the text isn't the record's (QA's #3573 review). It must look like
+// a version. Only lines that contain the key are decoded, each once (the scan reads new lines).
+func claudeLineVersion(line []byte) string {
+	if !bytes.Contains(line, claudeVersionKey) {
+		return ""
+	}
+	var rec struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(line, &rec) != nil || !versionLike(rec.Version) {
+		return ""
+	}
+	return rec.Version
+}
+
+// versionLike: a semantic version as Claude Code writes it ("2.1.300", "2.2.0-beta.1").
+var versionLike = regexp.MustCompile(`^\d+\.\d+\.\d+[0-9A-Za-z.+-]*$`).MatchString
 
 // updateClaudeTurnState records a turn's end from one transcript line.
 func updateClaudeTurnState(state *claudeTurnCache, line []byte) {

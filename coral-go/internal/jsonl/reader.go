@@ -44,8 +44,9 @@ type sessionCache struct {
 // claudeTurnCache tracks the latest end of a turn in a Claude transcript (#3481).
 type claudeTurnCache struct {
 	transcriptReadState
-	event string
-	at    time.Time
+	event   string
+	at      time.Time
+	version string // the newest line's "version": the running Claude Code's own (#3573)
 }
 
 type codexTurnCache struct {
