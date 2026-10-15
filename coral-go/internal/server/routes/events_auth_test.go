@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,4 +80,36 @@ func TestRefusedEventSendersAreLoggedOnce(t *testing.T) {
 	assert.False(t, s.add("a"), "once per session")
 	assert.True(t, s.add("b"))
 	assert.False(t, s.add("c"), "full: quiet, not one line per event")
+}
+
+// #3481 part 1b (Backend's finding): the pending tool, which auto-accept and the gate
+// read, is set only by the agent's own hook, by its session token.
+func TestPendingToolIsBoundToTheAgentsToken(t *testing.T) {
+	server, h, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sidA, sidB := "aaaaaaaa-3481-1b00-0000-000000000001", "bbbbbbbb-3481-1b00-0000-000000000002"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sidA, AgentType: "claude", AgentName: "alpha", WorkingDir: "/tmp/s"}))
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sidB, AgentType: "claude", AgentName: "beta", WorkingDir: "/tmp/s"}))
+	tokA := agentToken(t, h, sidA, "claude-"+sidA)
+	post := func(body string, tok string) int {
+		req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/beta/pending-tool", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if tok != "" {
+			req.Header.Set(store.SessionTokenHeader, tok)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	now := func(sid string) (pendingTool, bool) { return h.pending.get(sid, time.Now()) }
+
+	assert.Equal(t, http.StatusUnauthorized, post(`{"session_id":"`+sidB+`","tool_name":"Bash","tool_input":{"command":"ls"}}`, ""))
+	assert.Equal(t, http.StatusForbidden, post(`{"session_id":"`+sidB+`","tool_name":"Bash"}`, tokA))
+	_, ok := now(sidB)
+	assert.False(t, ok, "nobody set B's pending tool")
+	require.Equal(t, http.StatusOK, post(`{"tool_name":"`+strings.Repeat("T", 500)+`","tool_use_id":"t1"}`, tokA))
+	p, ok := now(sidA)
+	require.True(t, ok, "recorded for the token's own session")
+	assert.LessOrEqual(t, len(p.ToolName), 200+len("…"), "capped")
 }

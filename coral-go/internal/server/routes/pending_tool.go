@@ -137,10 +137,28 @@ func (h *SessionsHandler) SetPendingTool(w http.ResponseWriter, r *http.Request)
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	if body.SessionID == "" || body.ToolName == "" {
-		errBadRequest(w, "session_id and tool_name are required")
+	// Only the agent's own hook may say which tool it is about to run (#3481, Backend's
+	// finding, like POST .../events in part 1): the pending tool tells auto-accept what an
+	// approval is for, and the gate when an agy prompt can be open. The session token
+	// decides the session, in every mode.
+	owner, hasToken := VerifiedSession(r.Context())
+	if !hasToken {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session_token_required",
+			"message": "The pending tool comes from the agent's own hooks, with its session token"})
 		return
 	}
+	if body.SessionID != "" && body.SessionID != owner.SessionID {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "identity_mismatch",
+			"message": "An agent can set the pending tool only for its own session"})
+		return
+	}
+	body.SessionID = owner.SessionID
+	if body.ToolName == "" {
+		errBadRequest(w, "tool_name is required")
+		return
+	}
+	body.ToolName = truncateUTF8(body.ToolName, 200)
+	body.ToolUseID = truncateUTF8(body.ToolUseID, 200)
 	h.pending.set(body.SessionID, pendingTool{
 		ToolUseID: body.ToolUseID,
 		ToolName:  body.ToolName,

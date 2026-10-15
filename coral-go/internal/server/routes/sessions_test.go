@@ -2124,7 +2124,9 @@ func TestSessionsPendingTool(t *testing.T) {
 	post("/events", `{"event_type":"stop","summary":"Agent stopped: unknown","session_id":"pend-1"}`)
 	assert.Nil(t, get())
 
-	assert.Equal(t, http.StatusBadRequest, post("/pending-tool", `{"tool_name":"Bash"}`), "session_id required")
+	// The session comes from the token (#3481): a missing session_id is filled in; a tool name is still required.
+	assert.Equal(t, http.StatusOK, post("/pending-tool", `{"tool_name":"Bash"}`), "session_id from the token")
+	assert.Equal(t, http.StatusBadRequest, post("/pending-tool", `{"session_id":"pend-1"}`), "tool_name required")
 }
 
 func TestSessionsTasks_CRUD(t *testing.T) {
