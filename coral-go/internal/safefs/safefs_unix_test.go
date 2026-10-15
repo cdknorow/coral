@@ -5,6 +5,7 @@ package safefs
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -158,4 +159,79 @@ func TestRootRefusesALinkInsideTheRootAsTheLastName(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotRegular)
 	b, _ := os.ReadFile(hook)
 	assert.Equal(t, "#!/bin/sh\n", string(b), "the hook is unchanged")
+}
+
+// Security's SHOULD 1: a FIFO where the file goes fails the write at once (it used to block
+// in the open until a reader came).
+func TestWriteFileFIFOFailsPromptly(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, syscall.Mkfifo(filepath.Join(root, "fifo"), 0o600))
+	r, err := OpenRoot(root)
+	require.NoError(t, err)
+	defer r.Close()
+	done := make(chan error, 1)
+	go func() { done <- r.WriteFile("fifo", []byte("x"), 0o644) }()
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, ErrNotRegular)
+	case <-time.After(5 * time.Second):
+		t.Fatal("writing to a FIFO blocked")
+	}
+}
+
+// Security's SHOULD 2: a folder swapped for a link that stays INSIDE the root (into
+// .git/hooks) after the caller's checks, right before the open. The path is decided again
+// after the open, so the deny check sees .git and refuses; an existing hook is unchanged and a
+// new one the open created is removed again.
+func TestWriteFileUnlessSeesASwapAfterTheCheck(t *testing.T) {
+	root := t.TempDir()
+	hooks := filepath.Join(root, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooks, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte("#!/bin/sh\n"), 0o755))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "sub"), 0o755))
+	r, err := OpenRoot(root)
+	require.NoError(t, err)
+	defer r.Close()
+	denyGit := func(fresh string) bool {
+		for _, c := range strings.Split(filepath.ToSlash(fresh), "/") {
+			if strings.EqualFold(c, ".git") {
+				return true
+			}
+		}
+		return false
+	}
+	// A RELATIVE link (sub -> .git/hooks) stays inside the root, so os.Root follows it: this is
+	// the race the deny-after-open closes. (An absolute link is refused by os.Root itself.)
+	swapped := false
+	testBeforeOpen = func(string) {
+		if !swapped {
+			swapped = true
+			require.NoError(t, os.Remove(filepath.Join(root, "sub")))
+			require.NoError(t, os.Symlink(filepath.Join(".git", "hooks"), filepath.Join(root, "sub")))
+		}
+	}
+	t.Cleanup(func() { testBeforeOpen = nil })
+
+	assert.ErrorIs(t, r.WriteFileUnless(filepath.Join("sub", "post-checkout"), []byte("touch PWNED"), 0o644, denyGit), ErrDenied)
+	b, _ := os.ReadFile(filepath.Join(hooks, "post-checkout"))
+	assert.Equal(t, "#!/bin/sh\n", string(b), "the existing hook is unchanged")
+
+	assert.ErrorIs(t, r.WriteFileUnless(filepath.Join("sub", "pre-push"), []byte("touch PWNED"), 0o644, denyGit), ErrDenied)
+	_, err = os.Stat(filepath.Join(hooks, "pre-push"))
+	assert.True(t, os.IsNotExist(err), "a hook the open created is removed again")
+
+	// Without the deny check (the local dashboard), the root still keeps it inside: this write
+	// lands in the hooks folder only because no deny was asked for.
+	testBeforeOpen = nil
+
+	// An absolute link, even into the root, is refused by os.Root itself.
+	require.NoError(t, os.Remove(filepath.Join(root, "sub")))
+	require.NoError(t, os.Symlink(hooks, filepath.Join(root, "sub")))
+	assert.Error(t, r.WriteFileUnless(filepath.Join("sub", "post-merge"), []byte("touch PWNED"), 0o644, denyGit))
+	_, err = os.Stat(filepath.Join(hooks, "post-merge"))
+	assert.True(t, os.IsNotExist(err))
+
+	// Without the swap, an ordinary write through the same call works.
+	require.NoError(t, r.MkdirAll("plain", 0o755))
+	require.NoError(t, r.WriteFileUnless(filepath.Join("plain", "f.txt"), []byte("ok"), 0o644, denyGit))
 }

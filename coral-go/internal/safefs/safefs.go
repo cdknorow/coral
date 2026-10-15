@@ -13,6 +13,10 @@
 //   - UNC paths (\\host\share, //host/share) are refused before anything resolves them, and a
 //     reparse point or symlink as the final name is refused (Windows too);
 //   - ids that end up in paths have one checking function per shape.
+//
+// On Windows (no O_NOFOLLOW, and older Go versions don't report every reparse point as
+// ModeIrregular) write protection rests on the root plus the regular-file check on the handle;
+// the package is vetted there, and a Windows-run test is still to come.
 package safefs
 
 import (
@@ -142,17 +146,25 @@ func (r *Root) MkdirAll(rel string, perm os.FileMode) error {
 	return r.root.MkdirAll(rel, perm)
 }
 
-// final checks the last name of rel: if it exists it must not be a symlink or a reparse point.
+// final checks the last name of rel: if it exists it must be a regular file (not a symlink, a
+// reparse point, a FIFO, a device or a folder).
 func (r *Root) final(rel string) (fs.FileInfo, error) {
 	fi, err := r.root.Lstat(rel)
 	if err != nil {
 		return nil, err
 	}
-	if fi.Mode()&(fs.ModeSymlink|fs.ModeIrregular) != 0 {
+	if !fi.Mode().IsRegular() {
 		return nil, ErrNotRegular
 	}
 	return fi, nil
 }
+
+// testBeforeOpen, when a test sets it, runs between WriteFile's checks and its open: where a
+// racing writer would swap a folder for a link.
+var testBeforeOpen func(rel string)
+
+// ErrDenied: after the open, the file turned out to be at a path the caller refuses.
+var ErrDenied = errors.New("safefs: the path is not allowed")
 
 // Open opens rel for reading: a regular file (on the handle), non-blocking, never through a
 // symlink as its last name.
@@ -196,21 +208,60 @@ func (r *Root) ReadFile(rel string, max int64) ([]byte, error) {
 // WriteFile writes data to rel inside the root, creating it (perm) or replacing the content of
 // an existing regular file with one link. It is truncated only after those checks pass.
 func (r *Root) WriteFile(rel string, data []byte, perm os.FileMode) error {
+	return r.WriteFileUnless(rel, data, perm, nil)
+}
+
+// WriteFileUnless is WriteFile with a deny check that can't be raced: the file is opened FIRST,
+// then its path is resolved afresh and must not be one deny refuses, and the open handle must
+// be the file at that path. A folder swapped for a link before the open resolves to where it
+// leads (and is refused there); a swap after the open can't move the handle. Nothing is written
+// before these pass; a file the open itself created is removed again.
+func (r *Root) WriteFileUnless(rel string, data []byte, perm os.FileMode, deny func(freshRel string) bool) error {
 	if _, err := r.final(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	f, err := r.root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|oNoFollow, perm)
+	if testBeforeOpen != nil {
+		testBeforeOpen(rel)
+	}
+	// Whether this call creates the file is decided by the open itself (O_EXCL), never by the
+	// check above, which a racing swap could make stale.
+	created := true
+	f, err := r.root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL|oNoFollow|oNonBlock, perm)
+	if errors.Is(err, fs.ErrExist) {
+		created = false
+		f, err = r.root.OpenFile(rel, os.O_WRONLY|oNoFollow|oNonBlock, 0)
+	}
 	if err != nil {
 		return err
 	}
 	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() {
+	refuse := func(e error) error {
 		f.Close()
-		return ErrNotRegular
+		// Remove only the file this call made, and only while it is still that file.
+		if created && fi != nil {
+			if fresh, werr := Within(r.dir, filepath.Join(r.dir, rel)); werr == nil {
+				if at, lerr := r.root.Lstat(fresh); lerr == nil && os.SameFile(fi, at) {
+					_ = r.root.Remove(fresh)
+				}
+			}
+		}
+		return e
+	}
+	if err != nil || !fi.Mode().IsRegular() {
+		return refuse(ErrNotRegular)
 	}
 	if fileLinks(fi) > 1 {
-		f.Close()
-		return ErrLinked
+		return refuse(ErrLinked)
+	}
+	fresh, err := Within(r.dir, filepath.Join(r.dir, rel))
+	if err != nil {
+		return refuse(err)
+	}
+	if deny != nil && deny(fresh) {
+		return refuse(ErrDenied)
+	}
+	if at, err := r.root.Lstat(fresh); err != nil || !os.SameFile(fi, at) {
+		return refuse(ErrNotRegular)
 	}
 	if err := f.Truncate(0); err != nil {
 		f.Close()

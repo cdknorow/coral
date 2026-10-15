@@ -5930,8 +5930,16 @@ func (h *SessionsHandler) SaveFileContent(w http.ResponseWriter, r *http.Request
 		errInternalServer(w, "could not write file")
 		return
 	}
-	if err := root.WriteFile(rel, []byte(*body.Content), 0o644); err != nil {
-		if errors.Is(err, safefs.ErrNotRegular) || errors.Is(err, safefs.ErrLinked) {
+	// Decided again on the path the opened file really has, so a folder swapped for a link into
+	// .git after the check above can't carry the write there (Security's SHOULD 2).
+	var deny func(string) bool
+	if strictBounds(r) {
+		deny = func(fresh string) bool {
+			return gitControlPath(fresh) || sensitivePath(filepath.Join(root.Dir(), fresh)) || h.inHooksPath(r.Context(), root.Dir(), fresh)
+		}
+	}
+	if err := root.WriteFileUnless(rel, []byte(*body.Content), 0o644, deny); err != nil {
+		if errors.Is(err, safefs.ErrNotRegular) || errors.Is(err, safefs.ErrLinked) || errors.Is(err, safefs.ErrDenied) || errors.Is(err, safefs.ErrOutside) {
 			errForbidden(w, "Path not allowed")
 			return
 		}
