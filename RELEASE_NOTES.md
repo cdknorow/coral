@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.4.41 — Coral Hub moved to app.coralhub.dev
+
+**Coral Hub moved to app.coralhub.dev; run `coral cloud connect --force` to reconnect.** The old address, app.coralai.ai, no longer serves Coral Hub, so a Coral connected there is disconnected until you connect it again.
+
+### Coral Hub
+
+- **The new address.** Release builds now connect to https://app.coralhub.dev by default. Coral's messages, the dashboard and the docs name the new host. A Coral that was never connected just shows Connect, which now goes to app.coralhub.dev.
+- **Reconnecting.** A Coral enrolled with the old host doesn't connect after the upgrade. Settings › Coral Hub and the hub indicator in the header (amber) say "Coral Hub moved to app.coralhub.dev: run coral cloud connect --force". To reconnect:
+  1. On the computer running Coral, run `coral cloud connect --force` and approve the code in your browser.
+  2. In Coral Hub, revoke the server's old entry.
+- **Your token stays safe.** Coral never sends its token to a host it wasn't enrolled with and never follows a redirect to a hub. Until you connect again, it contacts neither hub. The "moved" notice stays until reconnecting succeeds, and a failed attempt shows its own error next to it.
+
 ## v1.4.40 — Security hotfix: the task hook's cache stays in its own folder
 
 **Security advisory — please upgrade.** Delete the old `/tmp/coral_task_cache` (or `$TMPDIR/coral_task_cache`) folder: older versions stored task subjects and pieces of hook payloads (prompts, commands) there, readable by other users on a shared machine.
