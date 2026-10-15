@@ -16,6 +16,7 @@ import (
 	"unicode"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/clitext"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/safefs"
@@ -158,17 +159,18 @@ func validateAutoWakeSettings(body map[string]any) error {
 	return nil
 }
 
-// cleanAgentName drops control and bidirectional-formatting characters from a name shown in a
-// notice, and caps its length (Security's point e).
+// cleanAgentName makes a name safe to show in a notice (Security's point e and NIT): the shared
+// cleaner (clitext.Clean: controls and bidi), then every other format character (Unicode Cf:
+// zero-width spaces and joiners, tag characters), which clitext.Clean keeps; one line, capped
+// at 80.
 func cleanAgentName(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) || r == '‎' || r == '‏' || r == '؜' {
-			continue
+	s = strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.Cf, r) {
+			return -1
 		}
-		b.WriteRune(r)
-	}
-	out := strings.TrimSpace(b.String())
+		return r
+	}, clitext.Clean(s))
+	out := strings.Join(strings.Fields(s), " ")
 	if r := []rune(out); len(r) > 80 {
 		out = string(r[:80])
 	}

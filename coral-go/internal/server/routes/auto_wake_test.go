@@ -306,6 +306,9 @@ func TestCleanAgentName(t *testing.T) {
 	assert.Equal(t, "Dev One", cleanAgentName("Dev ‮One\x07"))
 	assert.Equal(t, "ab", cleanAgentName("a‏b⁦"))
 	assert.Len(t, []rune(cleanAgentName(strings.Repeat("x", 200))), 80)
+	// Zero-width and tag characters (Security's NIT), and a name on one line.
+	assert.Equal(t, "Dev One", cleanAgentName("De\u200bv\u200d One\U000E0041"))
+	assert.Equal(t, "a b", cleanAgentName("a\n\tb"))
 }
 
 // The named agent is nudged by its notice (an ordinary title), and nobody else is.
