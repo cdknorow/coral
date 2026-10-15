@@ -37,12 +37,19 @@ func NewEvent(eventType, summary string, detailJSON *string) Event {
 	}
 	if json.Unmarshal([]byte(*detailJSON), &d) == nil {
 		e.Kind = d.Kind
+		if !RequestKinds[e.Kind] {
+			e.Kind = "" // agent-controlled: only the known kinds
+		}
 		if eventType == "notification" {
 			e.Kind = d.NotificationType
 		}
 	}
 	return e
 }
+
+// RequestKinds are what an agent's request to the user can be (#3481). The kind comes
+// from the agent's own event, so anything else is ignored.
+var RequestKinds = map[string]bool{"permission": true, "question": true, "plan": true, "elicitation": true}
 
 // Input contains the latest event context needed to derive a state.
 type Input struct {

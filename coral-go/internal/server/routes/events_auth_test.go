@@ -164,3 +164,28 @@ func TestPendingToolIsBoundToTheAgentsToken(t *testing.T) {
 	require.True(t, ok, "recorded for the token's own session")
 	assert.LessOrEqual(t, len(p.ToolName), 200+len("…"), "capped")
 }
+
+// #3481 (QA's review): an unknown request kind is stored empty, so the dashboard never
+// shows agent-chosen text as what the agent waits on.
+func TestUnknownRequestKindIsStoredEmpty(t *testing.T) {
+	server, h, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "ffffffff-3481-0000-0000-000000000009"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "golf", WorkingDir: "/tmp/g"}))
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/golf/events", strings.NewReader(
+		`{"event_type":"permission_request","summary":"Waiting for the user","detail_json":{"kind":"constructor","tool_name":"Bash"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(store.SessionTokenHeader, agentToken(t, h, sid, "claude-"+sid))
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	st := h.deriveSingleSessionState(ctx, sid, 0)
+	assert.True(t, st.NeedsInput)
+	assert.Empty(t, st.WaitingKind, "an unknown kind isn't shown")
+	evs, err := h.ts.ListAgentEvents(ctx, "golf", 5, &sid)
+	require.NoError(t, err)
+	require.NotEmpty(t, evs)
+	require.NotNil(t, evs[0].DetailJSON)
+	assert.JSONEq(t, `{"kind":"","tool_name":"Bash"}`, *evs[0].DetailJSON, "stored without the agent's kind")
+}

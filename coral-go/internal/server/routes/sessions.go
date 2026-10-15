@@ -4393,6 +4393,15 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	if body.EventType == "goal" && body.DetailJSON == nil {
 		body.DetailJSON = map[string]string{"source": "user"}
 	}
+	// A request's kind is shown on the dashboard: only the known kinds are stored (#3481,
+	// QA's review). The event comes from the agent's own hook, but its text is the agent's.
+	if body.EventType == "permission_request" || body.EventType == "request_resolved" {
+		if d, ok := body.DetailJSON.(map[string]any); ok {
+			if k, _ := d["kind"].(string); !sessionstate.RequestKinds[k] {
+				d["kind"] = ""
+			}
+		}
+	}
 	if body.DetailJSON != nil {
 		djBytes, err := json.Marshal(body.DetailJSON)
 		if err != nil {

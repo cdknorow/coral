@@ -24,7 +24,7 @@ function check(label, cond, detail) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const U = () => require('crypto').randomUUID();
 
-const ID = { working: U(), idle: U(), needs: U(), check: U(), stuck: U(), turnSolo: U(), sleeping: U(), turnMember: U(), turnOrch: U(), kill: U(), taskIdle: U(), waiter: U(), waiterAsks: U(), twinHere: U(), twinThere: U(), asks: U(), screenPrompt: U() };
+const ID = { working: U(), idle: U(), needs: U(), check: U(), stuck: U(), turnSolo: U(), sleeping: U(), turnMember: U(), turnOrch: U(), kill: U(), taskIdle: U(), waiter: U(), waiterAsks: U(), twinHere: U(), twinThere: U(), asks: U(), screenPrompt: U(), oddKind: U() };
 const base = (o) => Object.assign({ name: 'coral-go', display_name: '', agent_type: 'claude', summary: 'Goal text', context_pct: 10, working: false, waiting_for_input: false, not_started: false, stuck: false, sleeping: false, awaiting_user: false, done: false, board_unread: 0, working_directory: '/repo/coral-go' }, o);
 const SESSIONS = [
     base({ session_id: ID.working, display_name: 'Worker', working: true }),
@@ -34,6 +34,8 @@ const SESSIONS = [
     // #3481: the agent says what it waits on (waiting_kind); a prompt seen only on screen has no kind.
     base({ session_id: ID.asks, display_name: 'Asker Q', waiting_for_input: true, waiting_kind: 'question' }),
     base({ session_id: ID.screenPrompt, display_name: 'Asker S', waiting_for_input: true, waiting_kind: 'prompt' }),
+    // An agent-chosen kind that names a prototype property is not a label (QA's review).
+    base({ session_id: ID.oddKind, display_name: 'Asker C', waiting_for_input: true, waiting_kind: 'constructor' }),
     base({ session_id: ID.stuck, display_name: 'Jammed', stuck: true }),
     base({ session_id: ID.turnSolo, display_name: 'Solo Turn', awaiting_user: true, done: true }),
     base({ session_id: ID.sleeping, display_name: 'Sleeper', sleeping: true, status: 'Sleeping' }),
@@ -85,6 +87,7 @@ const EXPECT = {
     [ID.needs]: { state: 'needs_input', label: 'Needs input', dot: 'waiting', pill: 'Needs input', attention: true },
     [ID.asks]: { state: 'needs_input', label: 'Needs input · Question', dot: 'waiting', pill: 'Needs input · Question', attention: true },
     [ID.screenPrompt]: { state: 'needs_input', label: 'Needs input', dot: 'waiting', pill: 'Needs input', attention: true },
+    [ID.oddKind]: { state: 'needs_input', label: 'Needs input', dot: 'waiting', pill: 'Needs input', attention: true },
     [ID.check]: { state: 'check_terminal', label: 'Check terminal', dot: 'waiting', pill: 'Check terminal', attention: true },
     [ID.stuck]: { state: 'stuck', label: 'Stuck', dot: 'stuck', pill: 'Stuck', attention: true },
     [ID.turnSolo]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },

@@ -335,3 +335,17 @@ func TestRequestsClearPerTool(t *testing.T) {
 		t.Errorf("stale turn: inTurn=%v working=%v", got.InTurn, got.Working)
 	}
 }
+
+// #3481 (QA's review): a request's kind is the agent's own text; only the known kinds count.
+func TestUnknownRequestKindsAreIgnored(t *testing.T) {
+	for _, k := range []string{"constructor", "toString", "__proto__", "Plan", "x"} {
+		d := `{"kind":"` + k + `"}`
+		if e := NewEvent("permission_request", "s", &d); e.Kind != "" {
+			t.Errorf("%q kept as %q", k, e.Kind)
+		}
+	}
+	d := `{"kind":"plan"}`
+	if e := NewEvent("permission_request", "s", &d); e.Kind != "plan" {
+		t.Errorf("plan: %q", e.Kind)
+	}
+}

@@ -253,7 +253,9 @@ export function sessionStateInfo(s, opts) {
     if (key === 'waiting_on') info.label = waitingOnLabel(getCachedAgentAvailability(s)?.waiting_on) || info.label;
     // What the agent itself says it waits on (#3481): its permission, question, plan or
     // input request. A prompt Coral only saw on the screen has no kind: plain Needs input.
-    if (key === 'needs_input' && WAITING_KINDS[s.waiting_kind]) {
+    // waiting_kind comes from the agent's own event: only an own key of the table counts
+    // (never 'constructor' or 'toString' from the prototype; QA's review).
+    if (key === 'needs_input' && Object.hasOwn(WAITING_KINDS, s.waiting_kind || '')) {
         info.label = info.pill = `Needs input · ${WAITING_KINDS[s.waiting_kind]}`;
     }
     return info;
