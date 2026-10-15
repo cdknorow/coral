@@ -1148,6 +1148,19 @@ func mentionTerms(subscriberID, jobTitle string) []string {
 	return terms
 }
 
+// numberedSuffixAt reports whether s continues at i with " <digits>" and then a word
+// boundary: the number of a numbered agent's name ("Backend Dev 2").
+func numberedSuffixAt(s string, i int) bool {
+	if i >= len(s) || s[i] != ' ' {
+		return false
+	}
+	j := i + 1
+	for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+		j++
+	}
+	return j > i+1 && (j == len(s) || !isAlphaNum(s[j]))
+}
+
 func isAlphaNum(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
@@ -1177,6 +1190,11 @@ func containsExplicitTag(content, subscriberID, jobTitle string) bool {
 			// Check word boundary at the end if the term starts with '@' (e.g. @Dev in @Developer)
 			if strings.HasPrefix(term, "@") {
 				if endPos < len(contentLower) && isAlphaNum(contentLower[endPos]) {
+					continue
+				}
+				// "@Backend Dev 2" names the numbered agent "Backend Dev 2", not "Backend Dev"
+				// (#3543: a role taken on the board gets a numbered name).
+				if numberedSuffixAt(contentLower, endPos) {
 					continue
 				}
 			}

@@ -1,0 +1,108 @@
+package routes
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"sort"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
+)
+
+// #3543: joining a board with a team template whose roles are already held by running agents
+// gives each duplicate a numbered name ("Backend Dev 2"), so the two never share a
+// subscription, mentions or read state. A role whose holder isn't running keeps its name.
+func TestDuplicateRolesGetNumberedNames(t *testing.T) {
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	handler := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, newMockTerminal(), bs)
+	ctx := context.Background()
+
+	launchTeam := func(body map[string]any) (int, map[string]any) {
+		body["working_dir"] = t.TempDir()
+		body["agents"] = []map[string]any{{"name": "Orchestrator", "prompt": "lead"}, {"name": "Backend Dev", "prompt": "build"}}
+		b, _ := json.Marshal(body)
+		rec := httptest.NewRecorder()
+		handler.LaunchTeam(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewReader(b)))
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	names := func(boardID string) []string {
+		subs, err := bs.ListSubscribers(ctx, boardID)
+		require.NoError(t, err)
+		var out []string
+		seen := map[string]bool{}
+		for _, s := range subs {
+			assert.False(t, seen[s.SessionName], "each agent has its own subscription")
+			seen[s.SessionName] = true
+			out = append(out, s.SubscriberID)
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	code, out := launchTeam(map[string]any{"board_name": "alpha"})
+	require.Equal(t, http.StatusOK, code, out)
+	id := out["board_id"].(string)
+	assert.Equal(t, []string{"Backend Dev", "Orchestrator"}, names(id))
+
+	code, out = launchTeam(map[string]any{"board_id": id})
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Equal(t, []string{"Backend Dev", "Backend Dev 2", "Orchestrator", "Orchestrator 2"}, names(id))
+	agents, _ := out["agents"].([]any)
+	require.Len(t, agents, 2)
+	assert.Equal(t, "Orchestrator 2", agents[0].(map[string]any)["name"], "the answer names the agent as launched")
+
+	code, _ = launchTeam(map[string]any{"board_id": id})
+	require.Equal(t, http.StatusOK, code)
+	assert.Contains(t, names(id), "Backend Dev 3")
+
+	// A mention reaches only that agent, and read state is separate.
+	_, err = bs.PostMessage(ctx, id, "Orchestrator", "@Backend Dev 2 please take #7", nil)
+	require.NoError(t, err)
+	n2, err := bs.CheckUnread(ctx, id, "Backend Dev 2")
+	require.NoError(t, err)
+	n1, err := bs.CheckUnread(ctx, id, "Backend Dev")
+	require.NoError(t, err)
+	assert.Equal(t, 1, n2, "the mention reaches Backend Dev 2")
+	assert.Equal(t, 0, n1, "and not Backend Dev")
+	_, err = bs.ReadMessages(ctx, id, "Backend Dev 2", 50)
+	require.NoError(t, err)
+	after, err := bs.CheckUnread(ctx, id, "Backend Dev 2")
+	require.NoError(t, err)
+	assert.Equal(t, 0, after)
+	_, err = bs.PostMessage(ctx, id, "Orchestrator", "@Backend Dev and @Backend Dev 2 sync up", nil)
+	require.NoError(t, err)
+	n1, _ = bs.CheckUnread(ctx, id, "Backend Dev")
+	n2, _ = bs.CheckUnread(ctx, id, "Backend Dev 2")
+	assert.Equal(t, 1, n1)
+	assert.Equal(t, 1, n2, "reading as Backend Dev 2 left Backend Dev's state alone, and vice versa")
+
+	// A role whose holder isn't running keeps its name (a relaunch or resurrect).
+	_, err = bs.Subscribe(ctx, "beta", "QA", "QA", "claude-gone-session", nil, nil, "all")
+	require.NoError(t, err)
+	assert.Equal(t, "QA", handler.uniqueBoardRole(ctx, "beta", "QA", "claude"))
+
+	// The 409 shows live agents next to members.
+	code, out = launchTeam(map[string]any{"board_name": "alpha"})
+	require.Equal(t, http.StatusConflict, code, out)
+	cand := out["candidates"].([]any)[0].(map[string]any)
+	assert.EqualValues(t, 6, cand["members"])
+	assert.EqualValues(t, 6, cand["live_agents"])
+	_ = store.NewSessionStore
+}

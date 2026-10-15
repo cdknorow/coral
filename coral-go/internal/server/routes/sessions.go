@@ -3653,7 +3653,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	// Setup board subscription in background (prompt is passed as CLI arg, not via tmux send-keys)
 	if body.BoardName != "" {
 		h.setupBoardAndPrompt(result["session_id"].(string), result["session_name"].(string),
-			body.AgentType, body.BoardName, body.DisplayName)
+			body.AgentType, body.BoardName, launchedName(result, body.DisplayName))
 	}
 
 	tracking.TrackEvent(tracking.EventSessionLaunched, nil)
@@ -3927,11 +3927,11 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		// Board subscription handled by setupBoardAndPrompt (prompt passed as CLI arg)
 		if body.BoardName != "" {
 			h.setupBoardAndPrompt(sessionID, result["session_name"].(string),
-				agentType, body.BoardName, agentDef.Name)
+				agentType, body.BoardName, launchedName(result, agentDef.Name))
 		}
 
 		launchResult := map[string]any{
-			"name": agentDef.Name, "session_id": sessionID, "session_name": result["session_name"],
+			"name": launchedName(result, agentDef.Name), "session_id": sessionID, "session_name": result["session_name"],
 		}
 		if worktreePath != "" {
 			launchResult["worktree_path"] = worktreePath
@@ -4115,7 +4115,7 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 
 		// Re-setup board subscription
 		h.setupBoardAndPrompt(result["session_id"].(string), result["session_name"].(string),
-			cfg.AgentType, boardName, displayName)
+			cfg.AgentType, boardName, launchedName(result, displayName))
 
 		launched = append(launched, map[string]any{
 			"name":         displayName,
@@ -4836,6 +4836,12 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	if agentType == "" {
 		agentType = at.Claude
 	}
+	// A role another running agent already holds on this board gets a numbered name
+	// ("Backend Dev 2"), so the two never share a subscription, mentions or read state
+	// (#3543). On this Coral's boards only; a remote board's Coral decides its own.
+	if boardName != "" && (boardServer == "" || boardServer == "local") {
+		displayName = h.uniqueBoardRole(ctx, boardName, displayName, agentType)
+	}
 	if err := validateAgentModel(agentType, model); err != nil {
 		return nil, err
 	}
@@ -5087,7 +5093,8 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	return map[string]any{
 		"ok": true, "session_id": sessionID, "session_name": sessionName,
 		"agent_type": agentType, "working_dir": absDir,
-		"log_file": logFile, "backend": backend,
+		"display_name": displayName, // numbered when the role was taken on the board (#3543)
+		"log_file":     logFile, "backend": backend,
 		// backend names the launch path and reads as "pty" even for a tmux
 		// session; terminal names what the session actually runs on. Reporting
 		// only the former is how a silent backend downgrade went unnoticed.
@@ -6123,7 +6130,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 
 		// Setup board subscription
 		h.setupBoardAndPrompt(sessionID, result["session_name"].(string),
-			agentType, team.Name, m.AgentName)
+			agentType, team.Name, launchedName(result, m.AgentName))
 
 		launched = append(launched, map[string]any{
 			"name": m.AgentName, "session_id": sessionID, "session_name": result["session_name"],
@@ -6847,9 +6854,15 @@ func (h *SessionsHandler) launchBoard(w http.ResponseWriter, r *http.Request, bo
 		return "", false
 	}
 	if len(existing) > 0 && !newBoard {
+		// Next to the member count, how many of the board's agents are running (#3543).
+		cands := boardCandidates(r, h.bs, existing)
+		live := h.liveSessionNames(ctx)
+		for _, c := range cands {
+			c["live_agents"] = h.liveAgentsOn(ctx, c["board_id"].(string), live)
+		}
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "board_name_exists", "code": "board_name_exists",
 			"message":    "A board named \"" + boardName + "\" already exists: join it (board_id) or start another (new_board)",
-			"candidates": boardCandidates(r, h.bs, existing)})
+			"candidates": cands})
 		return "", false
 	}
 	if problem := h.bs.LabelProblem(boardName); problem != "" {
@@ -6897,4 +6910,74 @@ func boardKeyOf(v any) string {
 		}
 	}
 	return ""
+}
+
+// liveSessionNames is the set of session names of every live (running or sleeping) session.
+func (h *SessionsHandler) liveSessionNames(ctx context.Context) map[string]bool {
+	live := map[string]bool{}
+	if h.ss == nil {
+		return live
+	}
+	sessions, err := h.ss.GetAllLiveSessions(ctx)
+	if err != nil {
+		return live
+	}
+	for _, ls := range sessions {
+		live[naming.SessionName(ls.AgentType, ls.SessionID)] = true
+	}
+	return live
+}
+
+// uniqueBoardRole returns displayName, or "<role> N" (the lowest N from 2) when another
+// live agent already holds that role on the board (#3543). A subscription left by an agent
+// that is no longer running doesn't count: a relaunched or resurrected member keeps its name.
+func (h *SessionsHandler) uniqueBoardRole(ctx context.Context, boardName, displayName, agentType string) string {
+	if h.bs == nil {
+		return displayName
+	}
+	subs, err := h.bs.ListSubscribers(ctx, boardName)
+	if err != nil || len(subs) == 0 {
+		return displayName
+	}
+	live := h.liveSessionNames(ctx)
+	taken := map[string]bool{}
+	for _, s := range subs {
+		if s.SessionName != "" && live[s.SessionName] {
+			taken[strings.ToLower(s.SubscriberID)] = true
+		}
+	}
+	role := naming.SubscriberID(displayName, agentType)
+	if !taken[strings.ToLower(role)] {
+		return displayName
+	}
+	for n := 2; n < 1000; n++ {
+		if candidate := fmt.Sprintf("%s %d", role, n); !taken[strings.ToLower(candidate)] {
+			return candidate
+		}
+	}
+	return displayName
+}
+
+// liveAgentsOn counts the board's subscribers whose session is live.
+func (h *SessionsHandler) liveAgentsOn(ctx context.Context, boardID string, live map[string]bool) int {
+	subs, err := h.bs.ListSubscribers(ctx, boardID)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, s := range subs {
+		if s.SessionName != "" && live[s.SessionName] {
+			n++
+		}
+	}
+	return n
+}
+
+// launchedName is the display name launchSession gave the agent (numbered when its role was
+// taken on the board, #3543), else the one asked for.
+func launchedName(result map[string]any, asked string) string {
+	if n, _ := result["display_name"].(string); n != "" {
+		return n
+	}
+	return asked
 }

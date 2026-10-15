@@ -31,9 +31,17 @@ func uncachedMentionsUnread(t *testing.T, s *Store, project, subscriberID string
 		clauses[i] = "content LIKE ? COLLATE NOCASE"
 		args = append(args, "%"+term+"%")
 	}
-	var count int
-	require.NoError(t, s.db.Get(&count, `SELECT COUNT(*) FROM board_messages
+	// The SQL finds candidates; each counts only if it really tags the subscriber, the rule
+	// ReadMessages uses (word boundaries; "@Backend Dev 2" isn't "@Backend Dev", #3543).
+	var contents []string
+	require.NoError(t, s.db.Select(&contents, `SELECT content FROM board_messages
 	 WHERE project = ? AND id > ? AND subscriber_id != ? AND subscriber_id NOT IN ('Coral Task Queue') AND (`+strings.Join(clauses, " OR ")+`)`, args...))
+	count := 0
+	for _, c := range contents {
+		if containsExplicitTag(c, subscriberID, sub.JobTitle) {
+			count++
+		}
+	}
 	return count
 }
 

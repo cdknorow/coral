@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"sync/atomic"
 )
@@ -117,16 +118,37 @@ func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, 
 			c.mu.Unlock()
 		}
 
-		// One statement, so the count and the watermark come from one snapshot.
+		// One read transaction, so the count and the watermark come from one snapshot. The
+		// SQL filter (LIKE) finds candidates; each is confirmed with the same rule
+		// ReadMessages uses (containsExplicitTag: word boundaries, and "@Backend Dev 2" isn't
+		// "@Backend Dev", #3543).
 		var row struct {
-			N  int   `db:"n"`
-			Hi int64 `db:"hi"`
+			N  int
+			Hi int64
 		}
-		args := append([]any{}, filterArgs...)
-		args = append(args, start, project, start)
-		if err := s.reader().GetContext(ctx, &row,
-			`SELECT COALESCE(SUM(CASE WHEN `+filter+` THEN 1 ELSE 0 END), 0) AS n, COALESCE(MAX(id), ?) AS hi
-			 FROM board_messages WHERE project = ? AND id > ?`, args...); err != nil {
+		if err := func() error {
+			tx, err := s.reader().BeginTxx(ctx, &sql.TxOptions{ReadOnly: true})
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+			if err := tx.GetContext(ctx, &row.Hi, `SELECT COALESCE(MAX(id), ?) FROM board_messages WHERE project = ? AND id > ?`, start, project, start); err != nil {
+				return err
+			}
+			args := append([]any{}, filterArgs...)
+			args = append(args, project, start, row.Hi)
+			var contents []string
+			if err := tx.SelectContext(ctx, &contents,
+				`SELECT content FROM board_messages WHERE `+filter+` AND project = ? AND id > ? AND id <= ?`, args...); err != nil {
+				return err
+			}
+			for _, c := range contents {
+				if containsExplicitTag(c, subscriberID, jobTitle) {
+					row.N++
+				}
+			}
+			return nil
+		}(); err != nil {
 			return 0, err
 		}
 
