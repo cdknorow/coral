@@ -1,6 +1,6 @@
 // At phone width every top nav tab is reachable (#3608): the strip scrolls sideways with no
 // scrollbar (#3152), so a tab past the edge has to come into view the ways a person reaches it:
-// a swipe, a mouse wheel (a desktop window that narrow), keyboard focus, and the page it opens
+// a swipe (real touch events), a mouse wheel (a desktop window that narrow), keyboard focus, and the page it opens
 // (a link to /docs shows Docs as the current tab). The page itself never scrolls sideways.
 // Checked at 390x844 in dark and light. NAV_TABS_SHOTS=<dir> also saves the top bar.
 'use strict';
@@ -39,6 +39,25 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             scrollLeft: Math.round(n.scrollLeft), max: n.scrollWidth - n.clientWidth,
             pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
             navRight: Math.round(n.getBoundingClientRect().right), innerWidth }; })()`);
+    // A swipe as a finger makes it: touchStart, a dozen moves a frame apart, touchEnd; then wait
+    // until the strip stops moving (a fling coasts). Synthesized scroll gestures didn't move the
+    // strip in headless Linux Chrome on epoch (#3608).
+    const scrollLeft = () => ev(`Math.round(document.querySelector('.top-nav-tabs').scrollLeft)`);
+    const swipe = async (x, y, dx) => {
+        await Input.dispatchTouchEvent({ type: 'touchStart', touchPoints: [{ x, y }] });
+        for (let i = 1; i <= 12; i++) {
+            await Input.dispatchTouchEvent({ type: 'touchMove', touchPoints: [{ x: x + Math.round(dx * i / 12), y }] });
+            await settle(16);
+        }
+        await Input.dispatchTouchEvent({ type: 'touchEnd', touchPoints: [] });
+        let last = await scrollLeft();
+        for (let i = 0; i < 20; i++) {
+            await settle(80);
+            const now = await scrollLeft();
+            if (now === last) break;
+            last = now;
+        }
+    };
     const navCenter = () => ev(`(() => { const r = document.querySelector('.top-nav-tabs').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
     const open = async (route, touch) => {
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: touch });
@@ -65,9 +84,8 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             await shot(`${t}-start`);
             const seen = new Set(s.seen);
             const c = await navCenter();
-            for (let i = 0; i < 8 && s.scrollLeft < s.max - 1; i++) {
-                await Input.synthesizeScrollGesture({ x: c.x, y: c.y, xDistance: -120, yDistance: 0, gestureSourceType: 'touch', speed: 1200 });
-                await settle(150);
+            for (let i = 0; i < 8 && s.scrollLeft < s.max; i++) { // to the very end: a stop 1px short hides Docs' edge
+                await swipe(c.x + 60, c.y, -120);
                 s = await state();
                 s.seen.forEach(x => seen.add(x));
             }
@@ -111,7 +129,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             const d = await navCenter();
             const seenW = new Set((await state()).seen);
             let w = await state();
-            for (let i = 0; i < 8 && w.scrollLeft < w.max - 1; i++) {
+            for (let i = 0; i < 8 && w.scrollLeft < w.max; i++) {
                 await Input.dispatchMouseEvent({ type: 'mouseWheel', x: d.x, y: d.y, deltaX: 0, deltaY: 120 });
                 await settle(150);
                 w = await state();
