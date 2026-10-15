@@ -135,7 +135,8 @@ export async function loadSettings() {
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
         const autoAttach = document.getElementById('settings-board-auto-attach');
-        if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach, true);
+        // Off unless the Operator turned it on (#3563); an empty value is unset.
+        if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach || undefined, false);
         const debugInput = document.getElementById('settings-debug-input-log');
         if (debugInput) debugInput.checked = settingBool(s.debug_input_log, false);
         try {

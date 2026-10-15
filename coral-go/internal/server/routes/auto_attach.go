@@ -40,9 +40,11 @@ import (
 // held to: the agent's working directory (images also its git root), no dot-components, the
 // sensitive-path list, files modified in the last day, regular files with one link, sniffed
 // image types with a pixel cap (EXIF stripped), UTF-8 Markdown, per-message, per-agent and
-// per-Coral caps, and the Operator's switch (setting board_auto_attach = "false").
+// per-Coral caps, and the Operator's switch (setting board_auto_attach, off unless set to
+// true: #3563).
 
-// AutoAttachSetting turns auto-attach off when set to false (on by default).
+// AutoAttachSetting turns auto-attach on when set to true. It is off by default (#3563, the
+// Operator's request): a link stays as written unless the Operator turns it on.
 const AutoAttachSetting = "board_auto_attach"
 
 const (
@@ -128,21 +130,25 @@ func SessionDirs(ss *store.SessionStore) func(context.Context, string) (string, 
 	}
 }
 
-// AutoAttachEnabled reads the Operator's switch: on unless set to false, 0, off or disabled. A
-// settings read that fails counts as off.
+// AutoAttachEnabled reads the Operator's switch: off when it isn't set (#3563) or is set to
+// false, 0, off or disabled; on for any other value (the dashboard's settingBool rule; a JSON
+// true is stored as "True"). A settings read that fails counts as off.
 func AutoAttachEnabled(ss *store.SessionStore) func(context.Context) bool {
 	return func(ctx context.Context) bool {
 		s, err := ss.GetSettings(ctx)
 		if err != nil {
 			return false
 		}
-		// The dashboard's settingBool rule; a JSON false is stored as "False".
-		switch strings.ToLower(strings.TrimSpace(s[AutoAttachSetting])) {
-		case "false", "0", "off", "disabled":
-			return false
-		}
-		return true
+		return autoAttachOn(s[AutoAttachSetting])
 	}
+}
+
+func autoAttachOn(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "false", "0", "off", "disabled":
+		return false
+	}
+	return true
 }
 
 func (a *AutoAttacher) totalFile() string {

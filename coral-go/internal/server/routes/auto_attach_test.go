@@ -502,3 +502,13 @@ func TestAutoAttachImageWhitelists(t *testing.T) {
 	rig.write("cut.gif", gb[:len(gb)-1])
 	unchanged(t, rig, "![x](cut.gif)", "a GIF without its trailer")
 }
+
+// #3563: the switch is off unless set to a true value; a JSON true is stored as "True".
+func TestAutoAttachOnlyWhenTurnedOn(t *testing.T) {
+	for v, want := range map[string]bool{
+		"": false, " ": false, "false": false, "False": false, "0": false, "off": false, "disabled": false,
+		"true": true, "True": true, "1": true, "on": true, "enabled": true,
+	} {
+		assert.Equal(t, want, autoAttachOn(v), "%q", v)
+	}
+}

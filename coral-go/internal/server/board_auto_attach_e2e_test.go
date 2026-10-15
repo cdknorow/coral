@@ -23,7 +23,8 @@ import (
 // #3515 end to end, the real router: an agent's own post (its token) that links a fresh
 // image in its working directory is stored with the link pointed at the new artifact, which
 // the artifact route then serves; the same post from the Operator, or from a token-less
-// script, is stored as written; and the Operator's switch turns it off.
+// script, is stored as written; and the Operator's switch turns it off. #3563: it is off until
+// the Operator turns it on, so a Coral that never set it stores the link as written.
 func TestBoardAutoAttachEndToEnd(t *testing.T) {
 	srv, ts, _ := strictServer(t, false)
 	ctx := context.Background()
@@ -64,10 +65,23 @@ func TestBoardAutoAttachEndToEnd(t *testing.T) {
 	asAgent := http.Header{store.SessionTokenHeader: {tok}}
 	link := regexp.MustCompile(`^done: !\[run\]\(coral://artifacts/([0-9a-f]{64})\)$`)
 
+	// Never set: off (#3563). The link is stored as written and nothing is uploaded.
+	settings, err := ss.GetSettings(ctx)
+	require.NoError(t, err)
+	_, set := settings["board_auto_attach"]
+	require.False(t, set, "a fresh Coral has no board_auto_attach setting")
+	assert.Equal(t, "done: ![run](shot.png)", post("done: ![run](shot.png)", asAgent, "Dev"), "off by default")
+	objects, _ := filepath.Glob(filepath.Join(srv.cfg.CoralDir(), "artifacts", "*", "*"))
+	assert.Empty(t, objects, "nothing was stored")
+
+	// The Operator turns it on, as the dashboard's Settings does.
+	code, b := do("PUT", "/api/settings", `{"board_auto_attach":true}`, nil)
+	require.Equal(t, http.StatusOK, code, string(b))
+
 	stored := post("done: ![run](shot.png)", asAgent, "Dev")
 	m := link.FindStringSubmatch(stored)
 	require.NotNil(t, m, "the agent's link points at the artifact: %q", stored)
-	code, b := do("GET", "/api/artifacts/"+m[1]+"?v=2", "", nil)
+	code, b = do("GET", "/api/artifacts/"+m[1]+"?v=2", "", nil)
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, img.Bytes(), b, "the artifact is the image")
 
