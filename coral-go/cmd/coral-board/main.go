@@ -336,6 +336,8 @@ func main() {
 		cmdWait()
 	case "send":
 		cmdSend()
+	case "targets":
+		cmdTargets()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		printUsage()
@@ -370,6 +372,10 @@ Commands:
   send --board <target> [--to <orchestrator>] "<message>"
                                Message another team's Orchestrator (Orchestrators
                                and the Operator only; both boards must allow it)
+  send --address <server>/<team> [--reply-to <id>] [--message-id <id>] "<message>"
+                               Message a team on another Coral through Coral Hub
+                               (a target from 'targets'; --message-id retries)
+  targets                      Teams on other Corals this board may message
   wait [--from <agent>] [--task <id>] [--commit <hash>] [--reason <text>]
        [--timeout <dur>] [--status] [--cancel] [--block]
                                Park work and wait for an event. Coral will wake
@@ -1329,7 +1335,13 @@ func renderHTML(buf *bytes.Buffer, d *exportData) {
 // apiCallRaw performs an HTTP request and returns the response body, status code, and error.
 // Unlike apiCall, it preserves the status code for conflict/not-found handling.
 func apiCallRaw(method, path string, body any) ([]byte, int, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	return apiCallRawTimeout(method, path, body, 10*time.Second)
+}
+
+// apiCallRawTimeout is apiCallRaw with its own timeout (a message relayed to another
+// Coral can take up to about 30 s: the hub waits up to 20 s for the target, #3489).
+func apiCallRawTimeout(method, path string, body any, timeout time.Duration) ([]byte, int, error) {
+	client := &http.Client{Timeout: timeout}
 	var lastErr error
 	for i, endpoint := range requestURLs(serverURL + "/api/board" + path) {
 		if i > 0 && !retryLoopbackTransport(method, lastErr) {

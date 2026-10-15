@@ -22,12 +22,15 @@ var tooManyRequestsSites = map[string]struct {
 	count  int
 	reason string
 }{
-	"internal/httputil/limit.go":   {1, "WriteActionLimit itself: always sends X-Coral-Limit: action"},
-	"internal/auth/middleware.go":  {1, "too many wrong API keys: marked by hand (X-Coral-Limit set just before), plain-text body"},
-	"internal/cloud/enroll.go":     {2, "client side: reads Coral Hub's 429, never writes one"},
-	"internal/cloud/redeem.go":     {1, "client side: reads Coral Hub's 429"},
-	"internal/tracking/posthog.go": {2, "client side: retries the analytics service's 429 (and says so in a comment)"},
-	"cmd/coral/cloud_connect.go":   {1, "client side: the CLI reads Coral Hub's 429"},
+	"internal/httputil/limit.go":                {1, "WriteActionLimit itself: always sends X-Coral-Limit: action"},
+	"internal/auth/middleware.go":               {1, "too many wrong API keys: marked by hand (X-Coral-Limit set just before), plain-text body"},
+	"internal/cloud/enroll.go":                  {2, "client side: reads Coral Hub's 429, never writes one"},
+	"internal/cloud/redeem.go":                  {1, "client side: reads Coral Hub's 429"},
+	"internal/tracking/posthog.go":              {2, "client side: retries the analytics service's 429 (and says so in a comment)"},
+	"cmd/coral/cloud_connect.go":                {1, "client side: the CLI reads Coral Hub's 429"},
+	"cmd/coral-board/send.go":                   {1, "client side: coral-board reads a relayed send's 429 to suggest a retry (#3489)"},
+	"pkg/tunnel/relay.go":                       {1, "relay protocol, not HTTP to the dashboard: the hub's per-tunnel in-flight cap answer to a connector, which Coral passes on marked (#3489)"},
+	"internal/server/routes/cross_team_send.go": {2, "a relayed send's per-sender limit, and Coral Hub's 429 passed on: relayError writes every 429 with WriteActionLimitBody (marked), the other mention is that check (#3489)"},
 }
 
 func TestEveryTooManyRequestsIsAccountedFor(t *testing.T) {

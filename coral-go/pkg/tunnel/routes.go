@@ -247,6 +247,8 @@ var routeTable = cat(
 		"/api/board/{project}/messages",
 		"/api/board/{project}/messages/mark-read",
 		"/api/board/{project}/external-messages",
+		// Coral Hub's notice about a team link (#3489): only with its stamped header.
+		"/api/board/{project}/hub-notice",
 		"/api/board/{project}/subscribe",
 		"/api/board/{project}/pause",
 		"/api/board/{project}/reminder",

@@ -762,6 +762,16 @@ const OriginHubOperator = "hub_operator"
 // an older pkg/hubproxy (#3377). It's sent as HubUnknownSender.
 const OriginHubUserUnknown = "hub_user_unknown"
 
+// OriginHubNotice marks a fixed-template notice from Coral Hub about a team link (#3489):
+// sent as HubUnknownSender ("Coral Hub"), never an agent or the Operator.
+const OriginHubNotice = "hub_notice"
+
+// PostHubNotice posts a notice Coral Hub asked for, as "Coral Hub" with origin hub_notice,
+// marked as one of Coral's own messages. content is built by Coral from a fixed template.
+func (s *Store) PostHubNotice(ctx context.Context, project, content string) (*Message, error) {
+	return s.postMessage(ctx, project, HubUnknownSender, content, nil, OriginHubNotice, "", true)
+}
+
 // PostMessageWithOrigin is PostMessage with a server-set origin ("" for none).
 func (s *Store) PostMessageWithOrigin(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin string) (*Message, error) {
 	return s.postMessage(ctx, project, subscriberID, content, targetGroupID, origin, "", false)

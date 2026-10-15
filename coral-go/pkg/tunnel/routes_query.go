@@ -24,6 +24,7 @@ var routeQueries = map[string]string{
 	"GET /api/board/{}/messages/all":                    "after_id,before_id,format,id,limit,offset",
 	"GET /api/board/{}/messages/check":                  "session_id,subscriber_id",
 	"GET /api/board/{}/peek":                            "lines,subscriber_id,target",
+	"GET /api/board/{}/relay-targets":                   "session_name,subscriber_id",
 	"GET /api/board/{}/status":                          "activity,name,subscriber_id",
 	"GET /api/board/{}/tasks":                           "cursor,full,limit,session_id,status",
 	"GET /api/board/{}/tasks/{}/artifact-content":       "index,source",

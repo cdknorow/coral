@@ -298,6 +298,9 @@ var forwardRequestHeaders = map[string]bool{
 	// hub's relay path, forwarded only on POST /api/board/{project}/external-messages,
 	// and trusted by the server only on a request this connector stamped.
 	"X-Coral-Hub-Server": true,
+	// Coral Hub's notice about a team link (#3489): forwarded only on
+	// POST /api/board/{project}/hub-notice, trusted only on a request this connector stamped.
+	"X-Coral-Hub-Notice": true,
 }
 
 // HubUserHeader names the Coral Hub user behind a tunnel board write: the sender of a
@@ -333,6 +336,18 @@ func ForwardsHubServer(method, decodedPath string) bool {
 	return method == http.MethodPost && hubServerRoute.MatchString(decodedPath)
 }
 
+// HubNoticeHeader marks a notice Coral Hub posts about a team link (#3489). The hub sets
+// it only on its own notice requests and strips it from browser requests.
+const HubNoticeHeader = "X-Coral-Hub-Notice"
+
+var hubNoticeRoute = regexp.MustCompile(`^/api/board/[^/]+/hub-notice$`)
+
+// ForwardsHubNotice reports whether X-Coral-Hub-Notice is forwarded: a POST to
+// /api/board/{project}/hub-notice, and nothing else.
+func ForwardsHubNotice(method, decodedPath string) bool {
+	return method == http.MethodPost && hubNoticeRoute.MatchString(decodedPath)
+}
+
 // scrub keeps the allowlisted hub headers for a request to method and decodedPath.
 func scrub(h http.Header, method, decodedPath string) http.Header {
 	out := http.Header{}
@@ -346,6 +361,9 @@ func scrub(h http.Header, method, decodedPath string) http.Header {
 	}
 	if !ForwardsHubServer(method, decodedPath) {
 		out.Del(HubServerHeader)
+	}
+	if !ForwardsHubNotice(method, decodedPath) {
+		out.Del(HubNoticeHeader)
 	}
 	// The hub cannot send this header (it is not on the allowlist) and cannot remove it:
 	// Coral's file endpoints use it to apply the strict, tunnel-only path bounds.

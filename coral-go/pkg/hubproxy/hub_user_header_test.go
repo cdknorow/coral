@@ -85,3 +85,13 @@ func TestAllowlistHeadersDropsHubServerFromBrowsers(t *testing.T) {
 		}
 	}
 }
+
+// #3489: a browser can never send X-Coral-Hub-Notice either.
+func TestAllowlistHeadersDropsHubNoticeFromBrowsers(t *testing.T) {
+	for _, key := range []string{"X-Coral-Hub-Notice", "x-coral-hub-notice"} {
+		h := http.Header{}
+		h[key] = []string{"1"}
+		allowlistHeaders(h, http.MethodPost, "/api/board/team/hub-notice")
+		assert.Empty(t, h, key)
+	}
+}

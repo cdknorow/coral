@@ -82,3 +82,28 @@ func TestScrubForwardsTheHubServerHeaderOnlyOnExternalMessages(t *testing.T) {
 		}
 	}
 }
+
+// #3489: Coral Hub's notice header is forwarded ONLY on POST /api/board/{project}/hub-notice.
+func TestScrubForwardsTheHubNoticeHeaderOnlyOnHubNotice(t *testing.T) {
+	for _, tc := range []struct {
+		method, path string
+		kept         bool
+	}{
+		{http.MethodPost, "/api/board/team/hub-notice", true},
+		{http.MethodGet, "/api/board/team/hub-notice", false},
+		{http.MethodPost, "/api/board/team/messages", false},
+		{http.MethodPost, "/api/board/team/external-messages", false},
+		{http.MethodPost, "/api/board/team/hub-notice/x", false},
+	} {
+		for _, key := range []string{HubNoticeHeader, "x-coral-hub-notice"} {
+			in := http.Header{}
+			in[key] = []string{"1"}
+			out := scrub(in, tc.method, tc.path)
+			if tc.kept {
+				assert.Equal(t, "1", out.Get(HubNoticeHeader), "%s %s", tc.method, tc.path)
+			} else {
+				assert.Empty(t, out.Values(HubNoticeHeader), "%s %s", tc.method, tc.path)
+			}
+		}
+	}
+}

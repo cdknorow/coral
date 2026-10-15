@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
@@ -106,6 +107,12 @@ type Manager struct {
 	// hub): until then an enrolled server still looks idle.
 	loaded     chan struct{}
 	loadedOnce sync.Once
+	// session is the live tunnel session, nil while disconnected (#3489: relay requests).
+	session atomic.Pointer[tunnel.ClientSession]
+	// relaySlots keeps this Coral's relay requests at or below the hub's per-tunnel
+	// in-flight cap (4), so a legitimate request is never closed for being over its
+	// stream cap (which the connector would read as "no relay").
+	relaySlots chan struct{}
 }
 
 // New creates a Manager. Nothing runs until Run.
@@ -120,7 +127,7 @@ func New(o Options) *Manager {
 	if hc == nil {
 		hc = NewHubHTTPClient()
 	}
-	m := &Manager{o: o, hc: hc, loaded: make(chan struct{})}
+	m := &Manager{o: o, hc: hc, loaded: make(chan struct{}), relaySlots: make(chan struct{}, 4)}
 	m.st = Status{Configured: o.HubURL != "", HubURL: o.HubURL, State: StateOff}
 	if o.HubURL != "" {
 		m.st.State = StateIdle
@@ -215,6 +222,7 @@ func (m *Manager) Status() Status {
 
 func (m *Manager) stopLocked() {
 	m.gen++
+	m.session.Store(nil) // the stopped tunnel's session is gone; its own clear is now stale
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
@@ -486,6 +494,7 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		HTTPClient:    m.hc,
 		Backoff:       m.o.Backoff,
 		Logger:        m.o.Logger,
+		OnSession:     func(cs *tunnel.ClientSession) { m.setSession(gen, cs) },
 		OnState: func(connected bool, err error) {
 			switch {
 			case connected:
@@ -561,4 +570,36 @@ func (m *Manager) ModeChanged(ctx context.Context) {
 	if st == StateConnected || st == StateConnecting || st == StateRetrying {
 		m.startTunnel(conn)
 	}
+}
+
+// setSession records generation gen's live tunnel session (nil when it ends). Only the
+// current generation sets or clears it, so an old tunnel ending after a reconnect can't
+// clear the new one; the check and the store are one critical section with stopLocked,
+// so a stop can't land between them and leave a closed session behind.
+func (m *Manager) setSession(gen int, cs *tunnel.ClientSession) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.stale(gen) {
+		m.session.Store(cs)
+	}
+}
+
+// ErrNotLinked: this Coral has no live Coral Hub tunnel right now.
+var ErrNotLinked = errors.New("this Coral isn't connected to Coral Hub")
+
+// Relay sends one relay request (tunnel.RelayMessagePath or tunnel.RelayTargetsPath) to
+// Coral Hub over the live tunnel (#3489): ErrNotLinked without one, and
+// tunnel.ErrRelayUnsupported when the hub doesn't relay for this server.
+func (m *Manager) Relay(ctx context.Context, path string, body []byte) (tunnel.RelayResponse, error) {
+	cs := m.session.Load()
+	if cs == nil {
+		return tunnel.RelayResponse{}, ErrNotLinked
+	}
+	select {
+	case m.relaySlots <- struct{}{}:
+		defer func() { <-m.relaySlots }()
+	case <-ctx.Done():
+		return tunnel.RelayResponse{}, ctx.Err()
+	}
+	return cs.Relay(ctx, path, body)
 }

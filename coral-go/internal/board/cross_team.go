@@ -370,6 +370,67 @@ func (s *Store) PostRelayedCrossTeamMessage(ctx context.Context, p CrossTeamPost
 	return &Message{ID: id, Project: in.TargetBoard, SubscriberID: from, Content: content, CreatedAt: now, JobTitle: from, External: inJSON}, false, nil
 }
 
+// PostRelayMirror stores the sender's copy of a cross-team message this Coral sent to
+// another Coral through Coral Hub (#3489): on the sender's board, from the sender, with
+// the outbound envelope (the target Coral and board, the target's message id, and the
+// relay message id and hops). The target Coral stores the inbound copy.
+func (s *Store) PostRelayMirror(ctx context.Context, o MessageOrigin, content string) (*Message, error) {
+	o.Direction = "outbound"
+	raw, err := json.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	names, err := s.boardMentionNames(ctx, o.Board)
+	if err != nil {
+		return nil, err
+	}
+	content = DefuseMentions(content, names)
+	now := nowUTC()
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO board_messages (project, session_id, subscriber_id, content, external_json, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`, o.Board, o.Sender, o.Sender, content, string(raw), now)
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return &Message{ID: id, Project: o.Board, SubscriberID: o.Sender, Content: content, CreatedAt: now, External: raw}, nil
+}
+
+// RelayMirrorID returns the id of the sender's copy already stored on board for a relay
+// message id (0 if none), so a retry that Coral Hub answers "duplicate" stores no second copy.
+func (s *Store) RelayMirrorID(ctx context.Context, project, relayMessageID string) (int64, error) {
+	var id int64
+	err := s.db.GetContext(ctx, &id, `SELECT id FROM board_messages
+		WHERE project = ? AND external_json IS NOT NULL
+		  AND json_extract(external_json, '$.direction') = 'outbound'
+		  AND json_extract(external_json, '$.relay_message_id') = ?
+		ORDER BY id LIMIT 1`, project, relayMessageID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
+}
+
+// RelayedOrigin returns the envelope of message id on board if it is a cross-team
+// message received from another Coral (#3489): ok is false otherwise.
+func (s *Store) RelayedOrigin(ctx context.Context, project string, id int64) (MessageOrigin, bool, error) {
+	m, err := s.GetMessageByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MessageOrigin{}, false, nil
+	}
+	if err != nil || m == nil || m.Project != project || len(m.External) == 0 {
+		return MessageOrigin{}, false, err
+	}
+	var o MessageOrigin
+	if json.Unmarshal(m.External, &o) != nil || o.Direction != "inbound" || !o.remote() {
+		return MessageOrigin{}, false, nil
+	}
+	return o, true, nil
+}
+
 // zeroWidthSpace is invisible when rendered but breaks every mention pattern.
 const zeroWidthSpace = "\u200b"
 

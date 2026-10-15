@@ -12,7 +12,7 @@ var commands = map[string]bool{
 	"join": true, "post": true, "read": true, "check": true, "projects": true,
 	"subscribers": true, "status": true, "working-mode": true, "leave": true,
 	"delete": true, "export": true, "peek": true, "task": true, "workflow": true,
-	"wait": true, "send": true,
+	"wait": true, "send": true, "targets": true,
 }
 
 // textFlags take free text that is sent to the server.
@@ -93,7 +93,8 @@ func checkFreeText(args []string) error {
 			if rest[i] == "--" {
 				break
 			}
-			if rest[i] == "--board" || rest[i] == "--to" {
+			switch rest[i] {
+			case "--board", "--to", "--address", "--reply-to", "--message-id":
 				i++
 				continue
 			}

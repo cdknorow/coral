@@ -123,7 +123,7 @@ func (s *Session) serveRelay(st io.ReadWriteCloser, setDeadline func(time.Time) 
 	var h Header
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
-	if dec.Decode(&h) != nil || dec.More() || !validRelayHeader(h) {
+	if dec.Decode(&h) != nil || dec.Decode(new(json.RawMessage)) != io.EOF || !validRelayHeader(h) {
 		return
 	}
 	body, err := readFrameGrowing(st, relayCap(h.Path))
@@ -246,7 +246,7 @@ func (c *ClientSession) Relay(ctx context.Context, path string, body []byte) (Re
 		return RelayResponse{}, c.relayErr(ctx, err)
 	}
 	var rh ResponseHeader
-	if json.Unmarshal(b, &rh) != nil || rh.Status < 100 || rh.Status > 599 {
+	if json.Unmarshal(b, &rh) != nil || rh.Status < 200 || rh.Status > 599 {
 		return RelayResponse{}, ErrBadHeader
 	}
 	respBody, err := readFrame(st, RelayMaxResponse)

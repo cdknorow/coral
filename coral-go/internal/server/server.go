@@ -171,6 +171,10 @@ func (s *Server) SetCloud(m *cloud.Manager) {
 	if s.cloudHandler != nil {
 		s.cloudHandler.SetManager(m)
 	}
+	// Cross-team messages to another Coral go through the same Coral Hub tunnel (#3489).
+	if s.boardHandler != nil && m != nil {
+		s.boardHandler.SetRelay(m.Relay)
+	}
 }
 
 func (s *Server) SetScheduler(sched *background.JobScheduler) {
@@ -764,6 +768,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/board/{project}/settings", boardHandler.GetBoardSettings)
 	r.Put("/api/board/{project}/settings", boardHandler.UpdateBoardSettings)
 	r.Post("/api/board/{project}/external-messages", boardHandler.PostExternalMessage)
+	// To another Coral through Coral Hub (#3489); this computer only (not in the tunnel's table).
+	r.Post("/api/board/{project}/relay-messages", boardHandler.PostRelayMessage)
+	r.Get("/api/board/{project}/relay-targets", boardHandler.ListRelayTargets)
+	r.Post("/api/board/{project}/hub-notice", boardHandler.PostHubNotice)
 	r.Delete("/api/board/{project}", boardHandler.DeleteBoard)
 	r.Get("/api/board/{project}/groups", boardHandler.ListGroups)
 	r.Get("/api/board/{project}/groups/{groupID}/members", boardHandler.ListGroupMembers)

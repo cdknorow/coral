@@ -105,6 +105,16 @@ func (l *crossTeamLimiter) allow(key string) (bool, time.Duration) {
 	return true, 0
 }
 
+// refund gives back the message allow just admitted for key, when it never went anywhere
+// (a relayed send that couldn't reach Coral Hub, #3489).
+func (l *crossTeamLimiter) refund(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if tat, ok := l.tats[key]; ok {
+		l.tats[key] = tat.Add(-crossTeamRefill)
+	}
+}
+
 // GetBoardSettings returns a board's settings.
 // GET /api/board/{project}/settings
 func (h *BoardHandler) GetBoardSettings(w http.ResponseWriter, r *http.Request) {

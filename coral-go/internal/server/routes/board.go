@@ -58,6 +58,10 @@ type BoardHandler struct {
 	deleteSubscriberReminder func(ctx context.Context, project, subscriber string) error
 	// crossTeam rate-limits cross-team messages per sender and target.
 	crossTeam crossTeamLimiter
+	// relay sends a cross-team message to another Coral through Coral Hub (#3489).
+	relay RelaySender
+	// hubNotices drops a repeated Coral Hub notice (#3489).
+	hubNotices hubNoticeSeen
 	// isArchivedSession reports whether a board session (agentType-sessionID) is
 	// an archived agent. Nil means no agent is ever treated as archived.
 	isArchivedSession func(ctx context.Context, sessionName string) bool
