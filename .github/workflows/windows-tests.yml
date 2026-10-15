@@ -2,9 +2,10 @@ name: windows-tests
 # Runs go test on Windows for the packages with Windows-specific code paths (#3614), so the paths
 # Security flagged as compile-only actually run: reparse points and link counts
 # (GetFileInformationByHandle) in safefs, routes, agent and background; UNC and device-path refusal
-# in auto-attach; the no-hooks path in gitutil; the token owner check in cliauth; and ptymanager's
-# Windows input and pipe-log code. The server builds with CGO_ENABLED=0 and -tags fts5 (the
-# pure-Go SQLite driver), as release.yml's Windows build does, so no C toolchain is needed.
+# in auto-attach; the no-hooks path in gitutil; the token owner check in cliauth; ptymanager's
+# Windows input and pipe-log code; and the data folder's ACL in config (#3637). The server builds
+# with CGO_ENABLED=0 and -tags fts5 (the pure-Go SQLite driver), as release.yml's Windows build
+# does, so no C toolchain is needed.
 #
 # REQUIRED since 2026-10-15: green on ci/3641 (run 38814223172) and on main 725773f8 (run 38817692004);
 # a Windows failure now fails this workflow.
@@ -54,6 +55,7 @@ jobs:
           go test -count=1 -timeout 30m -tags fts5
           ./internal/safefs/... ./internal/agent/... ./internal/cliauth/...
           ./internal/gitutil/... ./internal/background/... ./internal/ptymanager/...
+          ./internal/config/...
       - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
         if: ${{ !cancelled() }} # report the routes results even when the packages step failed
         env:
