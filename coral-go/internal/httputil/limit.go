@@ -14,9 +14,16 @@ const ActionLimitHeader = "X-Coral-Limit"
 // WriteActionLimit answers 429 for a per-action limit: the marker, Retry-After (seconds,
 // when > 0), and {"error": msg, "code": code}.
 func WriteActionLimit(w http.ResponseWriter, retryAfterSeconds int, code, msg string) {
+	WriteActionLimitBody(w, retryAfterSeconds, map[string]string{"error": msg, "code": code})
+}
+
+// WriteActionLimitBody is WriteActionLimit with the caller's own JSON body, for a reply
+// with a fixed shape (a cross-team message relayed by Coral Hub answers
+// {"ok": false, "error": "rate_limited", ...}, #3489).
+func WriteActionLimitBody(w http.ResponseWriter, retryAfterSeconds int, body any) {
 	w.Header().Set(ActionLimitHeader, "action")
 	if retryAfterSeconds > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
 	}
-	WriteJSON(w, http.StatusTooManyRequests, map[string]string{"error": msg, "code": code})
+	WriteJSON(w, http.StatusTooManyRequests, body)
 }

@@ -373,16 +373,17 @@ POST /api/board/{target}/external-messages
 
 `session_name` must equal the session of the sender's subscription on `from_board` (the Operator sends without one). The response is `{"message": {...}, "mirror": {...}, "delivered_to": ["Orchestrator"]}`. Errors: 403 (not an Orchestrator or Operator, session mismatch, or a board with cross-team messaging disabled; the error names the board), 404 (unknown target board or `from_board`, or `to` is not an Orchestrator there), 409 (the target has no active Orchestrator), 429 (rate limit; see `Retry-After`).
 
-Both copies carry an `external` envelope in message JSON (`coral-board read`, `messages/all`): `{"direction": "inbound"|"outbound", "server_id", "board", "sender", "sender_role", "target_server_id", "target_board", "target_message_id"}`. `target_message_id` is set on the outbound copy. Mention syntax in `content` is defused with zero-width spaces on both copies (after every `@`; before `:`, ` —` or `—` only when it follows a subscriber id or job title of the board that copy lands on), so only the server's own recipient mention notifies anyone. Other colons and dashes are untouched.
+Both copies carry an `external` envelope in message JSON (`coral-board read`, `messages/all`): `{"direction": "inbound"|"outbound", "server_id", "board", "sender", "sender_role", "target_server_id", "target_board", "target_message_id"}`. `target_message_id` is set on the outbound copy. A message relayed from another Coral also has `relay_message_id` and `hops`. Mention syntax in `content` is defused with zero-width spaces on both copies (after every `@`; before `:`, ` —` or `—` only when it follows a subscriber id or job title of the board that copy lands on), so only the server's own recipient mention notifies anyone. Other colons and dashes are untouched.
 
 ### Board Settings
 
 ```
 GET /api/board/{project}/settings
 PUT /api/board/{project}/settings   {"subscriber_id": "Operator", "cross_team_messaging": true}
+PUT /api/board/{project}/settings   {"subscriber_id": "Operator", "cross_team_servers": ["<Coral Hub server id>"]}
 ```
 
-Only the Operator can change settings. Every setting defaults to off.
+Only the Operator can change settings. Every setting defaults to off. `cross_team_servers` lists the other Corals (Coral Hub server ids, up to 20, stored lower case; `[]` clears it) whose Orchestrators may send this board cross-team messages through Coral Hub (see [cross-team.md](cross-team.md#messages-from-another-coral-through-coral-hub)).
 
 ## Board status and routing
 

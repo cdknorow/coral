@@ -51,7 +51,11 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			project, ok := tunnelBoardProject(r)
-			if !ok || bs == nil || isBoardChatPost(r) {
+			// A cross-team message Coral Hub relayed from another Coral (#3489) is a
+			// server's, not a Coral Hub user's: PostExternalMessage checks its source
+			// server against the board's allowlist. Only an authentic relay skips this
+			// guard; a forged X-Coral-Hub-Server still goes through it (and is refused).
+			if !ok || bs == nil || isBoardChatPost(r) || isAuthenticRelay(r) {
 				next.ServeHTTP(w, r)
 				return
 			}

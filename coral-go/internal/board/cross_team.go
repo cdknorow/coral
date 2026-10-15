@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // RawJSON is a JSON document stored as TEXT. It marshals as the document
@@ -44,21 +45,49 @@ type BoardSettings struct {
 	// message other boards' Orchestrators, and receive their messages. Both
 	// boards must enable it.
 	CrossTeamMessaging bool `json:"cross_team_messaging"`
+	// CrossTeamServers are the other Corals (Coral Hub server ids) whose Orchestrators may
+	// message this board through Coral Hub (#3489). Empty: none. Needs CrossTeamMessaging.
+	CrossTeamServers []string `json:"cross_team_servers"`
 }
 
 // BoardSettingsUpdate changes only the settings that are set.
 type BoardSettingsUpdate struct {
-	CrossTeamMessaging *bool `json:"cross_team_messaging"`
+	CrossTeamMessaging *bool     `json:"cross_team_messaging"`
+	CrossTeamServers   *[]string `json:"cross_team_servers"`
 }
 
-const settingCrossTeamMessaging = "cross_team_messaging"
+const (
+	settingCrossTeamMessaging = "cross_team_messaging"
+	settingCrossTeamServers   = "cross_team_servers"
+)
+
+// AllowsServer reports whether a relayed message from server may reach this board.
+func (b BoardSettings) AllowsServer(server string) bool {
+	for _, s := range b.CrossTeamServers {
+		if strings.EqualFold(s, server) {
+			return true
+		}
+	}
+	return false
+}
 
 func (s *Store) ensureBoardSettingsSchema(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS board_settings (
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS board_settings (
 		project TEXT NOT NULL,
 		key     TEXT NOT NULL,
 		value   TEXT NOT NULL,
 		PRIMARY KEY (project, key)
+	)`); err != nil {
+		return err
+	}
+	// Relayed cross-team messages already delivered, by their sender's message id, so a
+	// retry through Coral Hub (after a hub restart too) is never delivered twice (#3489).
+	_, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS board_relayed_messages (
+		source_server     TEXT NOT NULL,
+		message_id        TEXT NOT NULL,
+		target_message_id INTEGER NOT NULL,
+		created_at        TEXT NOT NULL,
+		PRIMARY KEY (source_server, message_id)
 	)`)
 	return err
 }
@@ -74,8 +103,11 @@ func (s *Store) GetBoardSettings(ctx context.Context, project string) (BoardSett
 		return out, err
 	}
 	for _, r := range rows {
-		if r.Key == settingCrossTeamMessaging {
+		switch r.Key {
+		case settingCrossTeamMessaging:
 			out.CrossTeamMessaging = r.Value == "true"
+		case settingCrossTeamServers:
+			_ = json.Unmarshal([]byte(r.Value), &out.CrossTeamServers)
 		}
 	}
 	return out, nil
@@ -88,6 +120,22 @@ func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u Board
 			`INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)
 			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`,
 			project, settingCrossTeamMessaging, fmt.Sprint(*u.CrossTeamMessaging)); err != nil {
+			return BoardSettings{}, err
+		}
+	}
+	if u.CrossTeamServers != nil {
+		list := *u.CrossTeamServers
+		if list == nil {
+			list = []string{}
+		}
+		raw, err := json.Marshal(list)
+		if err != nil {
+			return BoardSettings{}, err
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)
+			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`,
+			project, settingCrossTeamServers, string(raw)); err != nil {
 			return BoardSettings{}, err
 		}
 	}
@@ -109,7 +157,20 @@ type MessageOrigin struct {
 	TargetServerID  string `json:"target_server_id"`
 	TargetBoard     string `json:"target_board"`
 	TargetMessageID int64  `json:"target_message_id,omitempty"` // set on the outbound mirror
+	// A message relayed by Coral Hub from another Coral (#3489): the sender's message id
+	// (the de-duplication key) and how many relayed replies led to it.
+	RelayMessageID string `json:"relay_message_id,omitempty"`
+	Hops           int    `json:"hops,omitempty"`
 }
+
+// remote reports whether the message came from another Coral.
+func (o MessageOrigin) remote() bool {
+	return o.ServerID != "" && o.ServerID != localServerID
+}
+
+// localServerID is store.LocalServerID (not imported here: the board package doesn't
+// depend on the sessions store).
+const localServerID = "local"
 
 // CrossTeamPost is a validated cross-team message, ready to store.
 type CrossTeamPost struct {
@@ -151,6 +212,13 @@ func (s *Store) TargetOrchestrators(ctx context.Context, project, to string) ([]
 // SenderLabel is how a cross-team message is shown on the receiving board,
 // e.g. "Orchestrator (coral-go-team)".
 func SenderLabel(o MessageOrigin) string {
+	if o.remote() {
+		id := o.ServerID
+		if len(id) > 8 {
+			id = id[:8]
+		}
+		return fmt.Sprintf("%s (%s, server %s)", o.SenderRole, o.Board, id)
+	}
 	return fmt.Sprintf("%s (%s)", o.SenderRole, o.Board)
 }
 
@@ -219,6 +287,87 @@ func (s *Store) PostCrossTeamMessage(ctx context.Context, p CrossTeamPost) (inbo
 	inbound = &Message{ID: inID, Project: in.TargetBoard, SubscriberID: from, Content: inContent, CreatedAt: now, JobTitle: from, External: inJSON}
 	outbound = &Message{ID: outID, Project: out.Board, SubscriberID: out.Sender, Content: mirrorContent, CreatedAt: now, External: outJSON}
 	return inbound, outbound, nil
+}
+
+// relayDedupKeep is how long a relayed message id is remembered.
+const relayDedupKeep = 30 * 24 * time.Hour
+
+// PostRelayedCrossTeamMessage stores a cross-team message that Coral Hub relayed from
+// another Coral (#3489): only the inbound copy (the sender's server keeps the outbound
+// mirror), from SenderLabel with the @mentions, and its (source server, message id), in
+// one transaction. A message id already delivered from that server is not stored again:
+// duplicate is true and inbound is the first delivery's id only.
+func (s *Store) PostRelayedCrossTeamMessage(ctx context.Context, p CrossTeamPost) (inbound *Message, duplicate bool, err error) {
+	in := p.Origin
+	in.Direction = "inbound"
+	in.TargetMessageID = 0
+	if !in.remote() || in.RelayMessageID == "" {
+		return nil, false, errors.New("a relayed message needs its source server and message id")
+	}
+	inJSON, err := json.Marshal(in)
+	if err != nil {
+		return nil, false, err
+	}
+	var mentions []string
+	for _, m := range p.Mentions {
+		mentions = append(mentions, "@"+m)
+	}
+	targetNames, err := s.boardMentionNames(ctx, in.TargetBoard)
+	if err != nil {
+		return nil, false, err
+	}
+	content := strings.TrimSpace(strings.Join(mentions, " ") + " " + DefuseMentions(p.Content, targetNames))
+	from := SenderLabel(in)
+	now := nowUTC()
+
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback()
+	// Claim the message id FIRST: the write takes SQLite's write lock, so two deliveries
+	// of the same message at once (a hub retry racing the first) serialise, and the second
+	// sees the claim and answers duplicate instead of failing on the key.
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO board_relayed_messages (source_server, message_id, target_message_id, created_at) VALUES (?, ?, 0, ?)
+		 ON CONFLICT (source_server, message_id) DO NOTHING`, in.ServerID, in.RelayMessageID, now)
+	if err != nil {
+		return nil, false, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return nil, false, err
+	} else if n == 0 {
+		var first int64
+		if err := tx.GetContext(ctx, &first, `SELECT target_message_id FROM board_relayed_messages WHERE source_server = ? AND message_id = ?`,
+			in.ServerID, in.RelayMessageID); err != nil {
+			return nil, false, err
+		}
+		return &Message{ID: first, Project: in.TargetBoard}, true, nil
+	}
+	res, err = tx.ExecContext(ctx,
+		`INSERT INTO board_messages (project, session_id, subscriber_id, content, external_json, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`, in.TargetBoard, from, from, content, string(inJSON), now)
+	if err != nil {
+		return nil, false, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, false, err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE board_relayed_messages SET target_message_id = ? WHERE source_server = ? AND message_id = ?`,
+		id, in.ServerID, in.RelayMessageID); err != nil {
+		return nil, false, err
+	}
+	// De-duplication only has to outlast Coral Hub's retries: ids older than 30 days go.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM board_relayed_messages WHERE created_at < ?`,
+		time.Now().UTC().Add(-relayDedupKeep).Format(time.RFC3339)); err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, err
+	}
+	return &Message{ID: id, Project: in.TargetBoard, SubscriberID: from, Content: content, CreatedAt: now, JobTitle: from, External: inJSON}, false, nil
 }
 
 // zeroWidthSpace is invisible when rendered but breaks every mention pattern.

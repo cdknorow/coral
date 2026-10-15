@@ -294,6 +294,10 @@ var forwardRequestHeaders = map[string]bool{
 	// The Coral Hub user behind a board write (#3377, #3404): honoured only on board
 	// writes, validated by the server (hub-user-<8 hex>).
 	"X-Coral-Hub-User": true,
+	// The other Coral a relayed cross-team message comes from (#3489): set only by the
+	// hub's relay path, forwarded only on POST /api/board/{project}/external-messages,
+	// and trusted by the server only on a request this connector stamped.
+	"X-Coral-Hub-Server": true,
 }
 
 // HubUserHeader names the Coral Hub user behind a tunnel board write: the sender of a
@@ -315,6 +319,20 @@ func ForwardsHubUser(method, decodedPath string) bool {
 	return hubUserRoute.MatchString(decodedPath)
 }
 
+// HubServerHeader names the other Coral (its Coral Hub server id) that a relayed
+// cross-team message comes from (#3489). Coral Hub sets it on the relay path only and
+// strips it from browser requests.
+const HubServerHeader = "X-Coral-Hub-Server"
+
+// hubServerRoute is the only route the Coral Hub server header is forwarded to.
+var hubServerRoute = regexp.MustCompile(`^/api/board/[^/]+/external-messages$`)
+
+// ForwardsHubServer reports whether X-Coral-Hub-Server is forwarded for a request: a POST
+// to /api/board/{project}/external-messages, and nothing else.
+func ForwardsHubServer(method, decodedPath string) bool {
+	return method == http.MethodPost && hubServerRoute.MatchString(decodedPath)
+}
+
 // scrub keeps the allowlisted hub headers for a request to method and decodedPath.
 func scrub(h http.Header, method, decodedPath string) http.Header {
 	out := http.Header{}
@@ -325,6 +343,9 @@ func scrub(h http.Header, method, decodedPath string) http.Header {
 	}
 	if !ForwardsHubUser(method, decodedPath) {
 		out.Del(HubUserHeader)
+	}
+	if !ForwardsHubServer(method, decodedPath) {
+		out.Del(HubServerHeader)
 	}
 	// The hub cannot send this header (it is not on the allowlist) and cannot remove it:
 	// Coral's file endpoints use it to apply the strict, tunnel-only path bounds.

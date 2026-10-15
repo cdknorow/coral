@@ -71,3 +71,17 @@ func TestAllowlistHeadersHubUser(t *testing.T) {
 	assert.Equal(t, 1, added)
 	assert.Len(t, forwardToConnector, 13, "12 before, plus exactly X-Coral-Hub-User")
 }
+
+// #3489: a browser can never send X-Coral-Hub-Server (the source Coral of a relayed
+// cross-team message). It isn't on the browser allowlist, so every spelling is dropped,
+// on every route, external-messages included; only the hub's relay path sets it.
+func TestAllowlistHeadersDropsHubServerFromBrowsers(t *testing.T) {
+	for _, path := range []string{"/api/board/team/external-messages", "/api/board/team/messages", "/api/sessions/live"} {
+		for _, key := range []string{"X-Coral-Hub-Server", "x-coral-hub-server", "X-CORAL-HUB-SERVER"} {
+			h := http.Header{}
+			h[key] = []string{"0b6c6a52-8a0e-4f4e-9d61-3f1e2a1b9c00"}
+			allowlistHeaders(h, http.MethodPost, path)
+			assert.Empty(t, h, "%s %s must not survive", key, path)
+		}
+	}
+}

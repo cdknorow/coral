@@ -3,8 +3,10 @@ package routes
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,6 +16,7 @@ import (
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // Cross-team messaging lets a board's Orchestrator (or the Operator) message
@@ -28,7 +31,40 @@ const (
 	maxCrossTeamContent = 8000
 	crossTeamOperatorID = "Operator"
 	crossTeamSenderRole = "Orchestrator"
+
+	// A cross-team message relayed by Coral Hub from another Coral (#3489).
+	maxRelayedContent  = 32 << 10 // the hub's whole relay body is capped at 64 KiB
+	maxRelayHops       = 3        // replies to replies: a cap on two Orchestrators looping
+	maxCrossTeamServer = 20       // source servers one board may allow
 )
+
+// relayIDRe is a Coral Hub server id (as enrollment accepts it) or a relay message id.
+var relayIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// relaySource returns the X-Coral-Hub-Server value of a request: present is true when
+// the header is there at all; a repeated header gives "" (malformed).
+func relaySource(r *http.Request) (server string, present bool) {
+	vals := r.Header.Values(tunnel.HubServerHeader)
+	if len(vals) == 0 {
+		return "", false
+	}
+	if len(vals) != 1 {
+		return "", true
+	}
+	return strings.TrimSpace(vals[0]), true
+}
+
+// isAuthenticRelay reports whether r is a cross-team message Coral Hub relayed from
+// another Coral: POST .../external-messages with X-Coral-Hub-Server, stamped by this
+// process's connector. The browser identity guard leaves it to PostExternalMessage, which
+// checks the source server against the board's allowlist instead.
+func isAuthenticRelay(r *http.Request) bool {
+	if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/external-messages") {
+		return false
+	}
+	_, present := relaySource(r)
+	return present && cloud.TunneledAuthentic(r)
+}
 
 // crossTeamLimiter rate-limits per (sender board, sender, target board), so
 // two Orchestrators cannot drive each other into a reply loop. It is GCRA: a
@@ -97,6 +133,26 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		errForbidden(w, "only the Operator can change board settings")
 		return
 	}
+	if body.CrossTeamServers != nil {
+		var clean []string
+		seen := map[string]bool{}
+		for _, id := range *body.CrossTeamServers {
+			id = strings.ToLower(strings.TrimSpace(id))
+			if !relayIDRe.MatchString(id) {
+				errBadRequest(w, fmt.Sprintf("cross_team_servers: %q is not a Coral Hub server id", id))
+				return
+			}
+			if !seen[id] {
+				seen[id] = true
+				clean = append(clean, id)
+			}
+		}
+		if len(clean) > maxCrossTeamServer {
+			errBadRequest(w, fmt.Sprintf("cross_team_servers: at most %d servers", maxCrossTeamServer))
+			return
+		}
+		body.CrossTeamServers = &clean
+	}
 	settings, err := h.bs.UpdateBoardSettings(r.Context(), urlParam(r, "project"), body.BoardSettingsUpdate)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -113,6 +169,10 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 // POST /api/board/{project}/external-messages
 // {"from_board": "...", "subscriber_id": "...", "session_name": "...", "content": "...", "to": "..."}
 func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Request) {
+	if src, present := relaySource(r); present {
+		h.postRelayedExternalMessage(w, r, src)
+		return
+	}
 	target := urlParam(r, "project")
 	var body struct {
 		FromBoard    string `json:"from_board"`
@@ -247,4 +307,129 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 	}
 	h.goBG(func() { h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content) })
 	writeJSON(w, http.StatusOK, map[string]any{"message": inbound, "mirror": outbound, "delivered_to": recipients})
+}
+
+// relayRefuse answers a relayed message with one of the fixed error codes Coral Hub maps
+// (#3489): never free text from this server beyond the message.
+func relayRefuse(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]any{"ok": false, "error": code, "message": msg})
+}
+
+// postRelayedExternalMessage delivers a cross-team message that Coral Hub relayed from
+// another Coral of the same account (#3489). The hub sets X-Coral-Hub-Server from the
+// sending Coral's tunnel; it is trusted only on a request this process's connector
+// stamped. The sender's own checks (Orchestrator or Operator, its session, its board's
+// opt-in) are the sending Coral's; here the target board must have cross-team messaging
+// on and list the source server in cross_team_servers (Operator-only). Only the inbound
+// copy is stored (the sender keeps the mirror), de-duplicated on (source server,
+// relay.message_id), and the reply names no recipients.
+// POST /api/board/{project}/external-messages with X-Coral-Hub-Server
+// {"from_board", "subscriber_id", "content", "to", "relay": {"message_id", "hops"}}
+func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http.Request, src string) {
+	if r.Header.Get(tunnel.HubUserHeader) != "" {
+		relayRefuse(w, http.StatusBadRequest, "ambiguous_origin", "a relayed message comes from a server, never a Coral Hub user")
+		return
+	}
+	if !cloud.TunneledAuthentic(r) {
+		relayRefuse(w, http.StatusForbidden, "hub_server_untrusted", "X-Coral-Hub-Server is only accepted from Coral Hub")
+		return
+	}
+	src = strings.ToLower(src)
+	if !relayIDRe.MatchString(src) {
+		relayRefuse(w, http.StatusBadRequest, "bad_request", "malformed source server")
+		return
+	}
+	target := urlParam(r, "project")
+	var body struct {
+		FromBoard    string `json:"from_board"`
+		SubscriberID string `json:"subscriber_id"`
+		Content      string `json:"content"`
+		To           string `json:"to"`
+		Relay        *struct {
+			MessageID string `json:"message_id"`
+			Hops      int    `json:"hops"`
+		} `json:"relay"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		relayRefuse(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+		return
+	}
+	body.Content = strings.TrimSpace(unescapeLineBreaks(body.Content))
+	body.FromBoard = strings.TrimSpace(body.FromBoard)
+	body.SubscriberID = strings.TrimSpace(body.SubscriberID)
+	switch {
+	case body.Relay == nil || !relayIDRe.MatchString(body.Relay.MessageID):
+		relayRefuse(w, http.StatusBadRequest, "bad_request", "relay.message_id is required")
+		return
+	case body.Relay.Hops < 0 || body.Relay.Hops > maxRelayHops:
+		relayRefuse(w, http.StatusBadRequest, "too_many_hops", fmt.Sprintf("a relayed reply chain is limited to %d hops", maxRelayHops))
+		return
+	case body.Content == "" || body.FromBoard == "" || body.SubscriberID == "":
+		relayRefuse(w, http.StatusBadRequest, "bad_request", "from_board, subscriber_id and content are required")
+		return
+	case len(body.Content) > maxRelayedContent:
+		relayRefuse(w, http.StatusRequestEntityTooLarge, "too_large", fmt.Sprintf("content must be at most %d bytes", maxRelayedContent))
+		return
+	}
+	ctx := r.Context()
+	if ok, err := h.bs.BoardExists(ctx, target); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	} else if !ok {
+		relayRefuse(w, http.StatusNotFound, "not_found", "no such board")
+		return
+	}
+	settings, err := h.bs.GetBoardSettings(ctx, target)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if !settings.CrossTeamMessaging {
+		relayRefuse(w, http.StatusForbidden, "cross_team_disabled", "cross-team messaging is off on this board")
+		return
+	}
+	if !settings.AllowsServer(src) {
+		relayRefuse(w, http.StatusForbidden, "source_not_allowed", "this board doesn't accept messages from that server")
+		return
+	}
+	recipients, err := h.bs.TargetOrchestrators(ctx, target, strings.TrimSpace(body.To))
+	if err != nil {
+		relayRefuse(w, http.StatusConflict, "no_orchestrator", "no active Orchestrator to receive the message")
+		return
+	}
+	if ok, wait := h.crossTeam.allow("relay\x00" + src + "\x00" + body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); !ok {
+		secs := int(math.Ceil(wait.Seconds()))
+		// A limit on this sender's messages, not a busy server (#3434).
+		httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "rate_limited", "message": fmt.Sprintf("retry in %ds", secs)})
+		return
+	}
+	role := crossTeamSenderRole
+	if body.SubscriberID == crossTeamOperatorID {
+		role = crossTeamOperatorID
+	}
+	inbound, duplicate, err := h.bs.PostRelayedCrossTeamMessage(ctx, board.CrossTeamPost{
+		Origin: board.MessageOrigin{
+			ServerID: src, Board: body.FromBoard, Sender: body.SubscriberID, SenderRole: role,
+			TargetServerID: store.LocalServerID, TargetBoard: target,
+			RelayMessageID: body.Relay.MessageID, Hops: body.Relay.Hops,
+		},
+		Mentions: recipients,
+		Content:  body.Content,
+	})
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	// Ids, sizes and the outcome only: never the content (as Coral Hub's audit).
+	slog.Info("[cloud] relayed cross-team message", "source_server", src, "board", target, "bytes", len(body.Content), "duplicate", duplicate)
+	if duplicate {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "duplicate": true, "target_message_id": inbound.ID})
+		return
+	}
+	go h.dispatchWebhooks(target, inbound.SubscriberID, inbound)
+	if h.notifyFn != nil {
+		h.notifyFn()
+	}
+	go h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "target_message_id": inbound.ID})
 }

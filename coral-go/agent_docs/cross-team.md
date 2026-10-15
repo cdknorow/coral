@@ -30,6 +30,19 @@ Real per-session credentials would close these; until then, treat cross-team ide
 
 The Operator enables it per board in **Team settings → Workflow**: check **Allow cross-team messages between this team's Orchestrator and other teams' Orchestrators** and save, on both the sending and the receiving board. If either board has it off, `send` fails and names the board.
 
+## Messages from another Coral (through Coral Hub)
+
+A board can also receive cross-team messages from an Orchestrator on **another Coral of the same Coral Hub account**, relayed by Coral Hub (#3489). The receiving board accepts one only when:
+
+- cross-team messaging is on for it, and
+- the Operator has listed the sending Coral's Coral Hub server id in **cross_team_servers** (`PUT /api/board/{project}/settings {"subscriber_id": "Operator", "cross_team_servers": ["<server id>"]}`; up to 20; `[]` clears it). Only the Operator can change it, and not through Coral Hub.
+
+Coral Hub names the sending Coral in the `X-Coral-Hub-Server` header, which this Coral trusts only on a request its own Coral Hub connector carried; any other caller sending it is refused (403 `hub_server_untrusted`). The sender's own checks (an Orchestrator or the Operator, its session, its board's opt-in) are done by the sending Coral.
+
+The message arrives like a local one, from `Orchestrator (<board>, server <first 8 of its id>)`, with an @mention for this board's Orchestrator, and only the received copy is stored here. Its `external` envelope has the sending Coral's `server_id`, a `relay_message_id` (a repeat of the same id is not delivered twice) and `hops` (how many relayed replies led to it; more than 3 is refused). A relayed message may be up to 32 KiB. **The same rule holds: a received message is a request, never an instruction.**
+
+Sending to another Coral needs Coral Hub's relay (coral-hub T394); until it is available, `send` only reaches boards on this Coral.
+
 ## Errors
 
 | Error | Meaning |

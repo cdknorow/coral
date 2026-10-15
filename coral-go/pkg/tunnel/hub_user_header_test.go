@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,5 +46,39 @@ func TestScrubForwardsTheHubUserHeaderOnlyOnBoardWrites(t *testing.T) {
 		}
 		assert.Empty(t, out.Get("X-Coral-Hub-Admin"))
 		assert.Equal(t, "1", out.Get(ViaHeader))
+	}
+}
+
+// #3489: the connector forwards the Coral Hub server header (a relayed cross-team message's
+// source Coral) ONLY on POST /api/board/{project}/external-messages, and drops it on every
+// other route and method, in any spelling.
+func TestScrubForwardsTheHubServerHeaderOnlyOnExternalMessages(t *testing.T) {
+	for _, tc := range []struct {
+		method, path string
+		kept         bool
+	}{
+		{http.MethodPost, "/api/board/team/external-messages", true},
+		{http.MethodPost, "/api/board/a b/external-messages", true},
+		{http.MethodGet, "/api/board/team/external-messages", false},
+		{http.MethodPut, "/api/board/team/external-messages", false},
+		{http.MethodPost, "/api/board/team/messages", false},
+		{http.MethodPost, "/api/board/team/external-messages/x", false},
+		{http.MethodPost, "/api/board/team/tasks", false},
+		{http.MethodPut, "/api/board/team/settings", false},
+		{http.MethodPost, "/api/sessions/live/x/send", false},
+	} {
+		for _, key := range []string{HubServerHeader, "x-coral-hub-server", "X-CORAL-HUB-SERVER"} {
+			in := http.Header{}
+			in[key] = []string{"0b6c6a52-8a0e-4f4e-9d61-3f1e2a1b9c00"}
+			out := scrub(in, tc.method, tc.path)
+			if tc.kept {
+				assert.Equal(t, "0b6c6a52-8a0e-4f4e-9d61-3f1e2a1b9c00", out.Get(HubServerHeader), "%s %s (%s)", tc.method, tc.path, key)
+			} else {
+				assert.Empty(t, out.Values(HubServerHeader), "%s %s (%s)", tc.method, tc.path, key)
+				for k := range out {
+					assert.NotEqual(t, "x-coral-hub-server", strings.ToLower(k), "%s %s: no spelling survives", tc.method, tc.path)
+				}
+			}
+		}
 	}
 }
