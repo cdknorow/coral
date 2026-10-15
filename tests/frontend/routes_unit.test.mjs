@@ -3,7 +3,7 @@
 // coral-hub Security's condition): a crafted path never becomes a route, so no /api path is
 // built from it.
 import assert from 'node:assert/strict';
-import { parse, build, fromLegacyHash, valid, chatsQuery } from '../../coral-go/pkg/frontend/static/routes.js';
+import { parse, build, fromLegacyHash, valid, normalize, chatsQuery } from '../../coral-go/pkg/frontend/static/routes.js';
 
 const S = '6f9a3c1e-0000-4000-8000-000000000001';
 const rt = (path, route) => {
@@ -39,7 +39,7 @@ assert.equal(chatsQuery('?q=x&page=1&page_size=50&debug=1'), 'q=x');
 
 // Hostile or malformed segments are never routes.
 for (const bad of [
-    '/agents/..%2F..%2Fapi%2Fsettings', `/agents/${S}%2F..%2Fx`, `/agents/${S}%3Fx`, '/agents/not-a-uuid', `/agents/${S}/evil`,
+    '/agents/..%2F..%2Fapi%2Fsettings', `/agents/${S}%2F..%2Fx`, `/agents/${S}%3Fx`, '/agents/not-a-uuid', `/agents/${S}/evil`, `/agents/${S}/changes`, `/agents/${S}/team-settings`,
     `/agents/@bad%2Fslug/${S}`, `/agents/@../${S}`, `/agents/@/${S}`,
     '/chats/..%2F..%2Fapi', '/chats/a%2Fb', '/chats/a%3Fb', '/chats/%E0%A4%A', '/chats/' + 'x'.repeat(200), '/chats/a%00b', '/chats/..',
     '/team/%3Cscript%3E%0d%0a', '/team/' + encodeURIComponent('x'.repeat(201)), '/team/a%00b', '/team/%E0%A4%A', '/team/a/b/c', '/team/x/admin',
@@ -73,4 +73,12 @@ assert.deepEqual(fromLegacyHash('#history'), { view: 'chats', query: '' });
 assert.equal(fromLegacyHash('#nonsense'), null);
 assert.equal(valid(fromLegacyHash('#chat/..%2F..%2Fapi')), false, 'a bad legacy id is dropped');
 assert.equal(valid(fromLegacyHash(`#chat/${S}`)), true);
+// An uppercase server marker reads lower-case (QA).
+assert.deepEqual(parse(`/agents/@M2/${S}`), { view: 'agents', server: 'm2', id: S, sub: null });
+// A board or team literally named "." or "..": linked by its legacy hash, and it opens.
+assert.equal(build({ view: 'team', server: null, id: '..', sub: null }), '/#team-view=..');
+assert.equal(build({ view: 'team', server: null, id: '.', sub: 'settings' }), '/#team-settings=.');
+assert.equal(build({ view: 'board', server: null, id: '..' }), '/#board/..');
+assert.deepEqual(normalize({ view: 'team', id: '..' }), { view: 'team', server: null, id: '..', sub: null });
+assert.deepEqual(fromLegacyHash('#team-view=..'), { view: 'team', server: null, id: '..', sub: null });
 console.log('routes_unit: ok');

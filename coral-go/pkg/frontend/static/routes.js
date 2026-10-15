@@ -23,7 +23,8 @@ export const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 export const HISTORY_ID_RE = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 export const DOC_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 export const INT_RE = /^[1-9][0-9]{0,15}$/;
-export const AGENT_SUBTABS = ['files', 'changes', 'board', 'artifacts', 'team'];
+// An agent's own tabs (live_session.html #agentic-tab-<id>); the team-scoped ones belong to /team.
+export const AGENT_SUBTABS = ['board', 'tasks', 'notes', 'files', 'browse', 'artifacts', 'activity', 'agent-ui'];
 const NAME_MAX = 200; // board.MaxIdentityRunes
 
 // The query keys the Chats tab owns (search_filters.js), kept on /chats only.
@@ -49,7 +50,8 @@ function decode(raw) {
 /** A server from a raw "@<server>" segment, or null when the segment is not a marker. */
 function serverOf(raw) {
     if (!raw || raw[0] !== '@') return null;
-    const s = decode(raw.slice(1));
+    const d = decode(raw.slice(1));
+    const s = d === null ? null : d.toLowerCase(); // "@M2" is server m2 (QA)
     return s !== null && SERVER_RE.test(s) ? s : undefined; // undefined: a bad marker
 }
 
@@ -130,6 +132,12 @@ function seg(v) {
 
 const srvSeg = server => (server ? `@${encodeURIComponent(server)}/` : '');
 
+// A board or team literally named "." or "..": no path can carry it (a browser resolves "/team/.."
+// and even "/team/%2E%2E" as a dot segment), so it is linked by its legacy hash, which the router
+// still reads. New names like these are refused at creation (QA).
+const DOT_NAME = new Set(['.', '..']);
+const dotKey = r => encodeURIComponent(r.server ? `@${r.server}/${r.id}` : r.id);
+
 /** build(route) returns the path (and query) for a route. */
 export function build(r) {
     switch (r && r.view) {
@@ -138,8 +146,10 @@ export function build(r) {
         case 'chats':
             return r.id ? `/chats/${seg(r.id)}` : `/chats${r.query ? '?' + r.query : ''}`;
         case 'team':
+            if (DOT_NAME.has(r.id)) return `/#team-${r.sub === 'settings' ? 'settings' : 'view'}=${dotKey(r)}`;
             return `/team/${srvSeg(r.server)}${seg(r.id)}${r.sub === 'settings' ? '/settings' : ''}`;
         case 'board':
+            if (DOT_NAME.has(r.id) && !r.server) return `/#board/${encodeURIComponent(r.id)}`;
             return `/board/${srvSeg(r.server)}${seg(r.id)}`;
         case 'workflows':
             return r.id ? `/workflows/${r.id}${r.run ? '/runs/' + r.run : ''}` : '/workflows';
@@ -190,10 +200,21 @@ export function fromLegacyHash(hash) {
     }
 }
 
-/** Is this route valid? (A legacy hash's route is checked by building and parsing it.) */
-export function valid(route) {
-    if (!route) return false;
-    const url = new URL(build(route), 'http://x');
-    const back = parse(url.pathname, url.search);
-    return !!back && back.view === route.view;
+/** The route as the parser reads it back from its own URL, or null: the ONLY form handlers
+ *  ever see, so a field build() ignores (a stray sub, markup) can't reach a view, and an old or
+ *  tampered history.state is checked like a typed URL (Security's review of 1b part 1). */
+export function normalize(route) {
+    if (!route || typeof route !== 'object') return null;
+    let url;
+    try { url = new URL(build(route), 'http://x'); } catch { return null; }
+    const back = url.hash ? fromLegacyHash(url.hash) : parse(url.pathname, url.search);
+    if (!back || back.view !== route.view) return null;
+    if (url.hash) { // a dot name: the legacy reading has no null fields; give it the parse shape
+        if (back.view === 'team') return { view: 'team', server: back.server || null, id: back.id, sub: back.sub || null };
+        if (back.view === 'board') return { view: 'board', server: null, id: back.id };
+    }
+    return back;
 }
+
+/** Is this route valid? */
+export function valid(route) { return normalize(route) !== null; }

@@ -4,7 +4,7 @@
    paging). One popstate listener shows the route of the entry the user went back or forward to.
    Paths come from routes.js (parse/build); old hash links are read once at startup and replaced. */
 
-import { parse, build, fromLegacyHash, valid, chatsQuery } from './routes.js';
+import { parse, build, fromLegacyHash, normalize, chatsQuery } from './routes.js';
 
 const handlers = new Map();
 let current = null;
@@ -27,7 +27,7 @@ function write(route, replace) {
 /** Go to a route: write it to history (a push unless replace) and show it. An invalid route
  *  goes home. */
 export function go(route, { replace = false } = {}) {
-    if (!valid(route)) route = { view: 'agents' };
+    route = normalize(route) || { view: 'agents' };
     write(route, replace);
     return show(route, { fromHistory: false });
 }
@@ -35,7 +35,8 @@ export function go(route, { replace = false } = {}) {
 /** Record the route of a view that is already on screen (no show): a view the user opened by
  *  clicking calls this, so the click and Back stay in step without showing it twice. */
 export function note(route, { replace = false } = {}) {
-    if (!valid(route)) return;
+    route = normalize(route);
+    if (!route) return;
     const same = current && build(current) === build(route);
     write(route, replace || same);
 }
@@ -50,11 +51,11 @@ async function show(route, opts) {
  *  older Coral, become their path; anything else is parsed; an invalid path is home. */
 export function startRoute(loc = location) {
     if (loc.hash && loc.hash !== '#') {
-        const legacy = fromLegacyHash(loc.hash);
-        if (legacy && valid(legacy)) return legacy;
+        const legacy = normalize(fromLegacyHash(loc.hash));
+        if (legacy) return legacy;
     }
     if ((loc.pathname === '/' || loc.pathname === '') && chatsQuery(loc.search)) {
-        return { view: 'chats', query: chatsQuery(loc.search) };
+        return normalize({ view: 'chats', query: chatsQuery(loc.search) }) || { view: 'agents' };
     }
     return parse(loc.pathname, loc.search) || { view: 'agents' };
 }
@@ -66,8 +67,11 @@ export function startNav() {
     started = true;
     const route = startRoute();
     write(route, true);
-    window.addEventListener('popstate', e => {
-        const r = (e.state && e.state.coralRoute) || startRoute();
+    window.addEventListener('popstate', () => {
+        // The URL is the truth: the route is parsed from the location every time, never taken
+        // from history.state, which may come from an older Coral, a restored session or a
+        // tampered entry (Security; an old-shape state would otherwise read as a different view).
+        const r = startRoute();
         current = r;
         show(r, { fromHistory: true });
     });

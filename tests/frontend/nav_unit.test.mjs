@@ -31,7 +31,7 @@ function fakeBrowser(href) {
 // startRoute: legacy hashes, old filters on "/", invalid paths.
 fakeBrowser('/');
 let nav = await import('../../coral-go/pkg/frontend/static/nav.js?' + Math.random());
-assert.deepEqual(nav.startRoute({ pathname: '/', search: '', hash: `#chat/${S}` }), { view: 'agents', id: S });
+assert.deepEqual(nav.startRoute({ pathname: '/', search: '', hash: `#chat/${S}` }), { view: 'agents', server: null, id: S, sub: null });
 assert.deepEqual(nav.startRoute({ pathname: '/', search: '', hash: '#team-settings=qa' }), { view: 'team', server: null, id: 'qa', sub: 'settings' });
 assert.deepEqual(nav.startRoute({ pathname: '/', search: '?q=battle&page=2&page_size=50', hash: '' }), { view: 'chats', query: 'page=2&q=battle' });
 assert.deepEqual(nav.startRoute({ pathname: '/nope', search: '', hash: '' }), { view: 'agents' });
@@ -44,7 +44,7 @@ const shown = [];
 for (const v of ['agents', 'chats', 'team', 'workflows', 'docs']) nav.onRoute(v, (r, o) => shown.push([r.view, r.id || null, !!o.fromHistory]));
 nav.startNav();
 assert.equal(b.url(), `/agents/${S}`, 'the legacy hash is replaced with the path');
-assert.deepEqual(history.state, { coralRoute: { view: 'agents', id: S } }, 'history.state set on a hash load');
+assert.deepEqual(history.state, { coralRoute: { view: 'agents', server: null, id: S, sub: null } }, 'history.state set on a hash load');
 assert.equal(b.length, 1, 'replaced, not pushed');
 
 // Tabs and objects push; a refinement replaces; note() records without showing.
@@ -72,4 +72,28 @@ await nav.go({ view: 'agents', id: '../../api' });
 assert.equal(b.url(), '/agents');
 await nav.go({ view: 'agents' });
 assert.equal(b.length, before - 1 + 1, 'the same URL again is not a second entry');
+// Handlers only ever see the parsed route (Security's review of 1b part 1): a stray field is
+// dropped through go(), note() and startRoute(), and a tampered or old-shape history.state is
+// checked like a typed URL, falling back to the location's own route.
+shown.length = 0;
+const got = [];
+nav.onRoute('team', r => got.push(r));
+await nav.go({ view: 'team', id: 'qa', sub: '<img onerror=1>', evil: 'x' });
+assert.deepEqual(got.pop(), { view: 'team', server: null, id: 'qa', sub: null }, 'go(): stray fields dropped');
+nav.note({ view: 'team', id: 'qa', sub: 'settings', html: '<b>' });
+assert.deepEqual(nav.currentRoute(), { view: 'team', server: null, id: 'qa', sub: 'settings' }, 'note(): stray fields dropped');
+assert.deepEqual(nav.startRoute({ pathname: '/team/qa', search: '', hash: '' }), { view: 'team', server: null, id: 'qa', sub: null });
+// A history entry whose stored route was tampered with, or has an old shape.
+// (A name like "../../api" is a legal board name, kept as one encoded segment; a bidi
+// override is not, so this state is refused.)
+history.replaceState({ coralRoute: { view: 'team', id: '\u202eevil', sub: '<script>' } }, '', '/chats');
+await nav.go({ view: 'workflows' });
+got.length = 0; shown.length = 0;
+b.back();
+assert.equal(got.length, 0, 'the tampered team route never reached a handler');
+assert.deepEqual(nav.currentRoute(), { view: 'chats', query: '' }, "it fell back to the location's own route");
+history.replaceState({ coralRoute: { view: 'agents', sessionId: S } }, '', `/agents/${S}`); // an old shape
+await nav.go({ view: 'workflows' });
+b.back();
+assert.deepEqual(nav.currentRoute(), { view: 'agents', server: null, id: S, sub: null }, 'an old-shape state is read from the location');
 console.log('nav_unit: ok');
