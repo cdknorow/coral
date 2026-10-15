@@ -79,7 +79,7 @@ func ReadToken(dir string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	if fi.Mode().Perm()&0o077 != 0 || fi.Size() > 256 || !ownedByMe(fi) {
+	if !privateMode(fi) || fi.Size() > 256 || !ownedByMe(fi) {
 		return "", fmt.Errorf("%s is not a private regular file of this user", p)
 	}
 	b, err := io.ReadAll(io.LimitReader(f, 257))
