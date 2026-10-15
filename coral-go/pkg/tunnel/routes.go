@@ -96,6 +96,7 @@ func cat(groups ...[]route) []route {
 //
 //	/api/settings (GET, PUT)           PUT can set cli_path_* (code execution) and remote access
 //	/api/system/*                      API key read/rotate, DB security, editors, QR/network info, privacy
+//	/api/sessions/live/{name}/open-in-editor   opens an editor on this computer: local only (#3619, hub audit H4)
 //	                                   (except GET /api/system/hub-operator, read only)
 //	/api/tracking/*                    telemetry
 //	/api/webhooks*                     outbound HTTP (SSRF) and stored URLs
@@ -317,7 +318,6 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/resume",
 		"/api/sessions/live/{name}/restart",
 		"/api/sessions/live/{name}/attach",
-		"/api/sessions/live/{name}/open-in-editor",
 		"/api/sessions/live/{id}/wake",
 		"/api/sessions/live/team/{board}/wake",
 		"/api/sessions/live/team/{board}/reset",

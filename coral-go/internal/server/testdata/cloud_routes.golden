@@ -260,7 +260,7 @@ POST /api/sessions/live/{name}/goal interact
 POST /api/sessions/live/{name}/keys interact
 POST /api/sessions/live/{name}/kill interact
 POST /api/sessions/live/{name}/notes interact
-POST /api/sessions/live/{name}/open-in-editor launch
+POST /api/sessions/live/{name}/open-in-editor never
 POST /api/sessions/live/{name}/pending-tool never
 POST /api/sessions/live/{name}/resize interact
 POST /api/sessions/live/{name}/restart launch

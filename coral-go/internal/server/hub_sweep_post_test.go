@@ -65,7 +65,6 @@ func TestHubSweepNoHomeInAnyWriteAnswer(t *testing.T) {
 	// Not called: these start a process on this computer (an editor, a terminal window, an agent
 	// CLI) even when they fail; their path handling is the same HubPaths expansion.
 	skip := map[string]string{
-		"/api/sessions/live/{name}/open-in-editor":          "opens an editor on the host",
 		"/api/sessions/live/{name}/attach":                  "opens a terminal window on the host",
 		"/api/teams/detail/{name}/distill-knowledge":        "runs an agent CLI",
 		"/api/teams/generate":                               "runs an agent CLI",

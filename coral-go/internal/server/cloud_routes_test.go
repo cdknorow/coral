@@ -92,11 +92,10 @@ func TestCloudAllowlistHasNoDeadOrDangerousRules(t *testing.T) {
 		}
 		require.True(t, registered[method+" "+shape(pattern)], "allowlist rule matches no registered route (typo?): %s", rule)
 	}
-	require.Equal(t, tunnel.TierLaunch, tunnel.Classify("POST", "/api/sessions/live/x/open-in-editor", ""), "spawns a process on the host: launch tier")
 	// Routes that must never be forwarded, whatever the table says.
 	for _, never := range []string{
 		"GET /api/settings", "PUT /api/settings", "GET /api/system/api-key", "POST /api/system/api-key/regenerate",
-		"GET /api/system/editors",
+		"GET /api/system/editors", "POST /api/sessions/live/x/open-in-editor", // opens an editor here: local only (#3619, H4)
 		"POST /api/webhooks", "PUT /api/system/database-security",
 		"GET /api/cloud/status", "POST /api/cloud/connect", "POST /api/cloud/disconnect", "PUT /api/cloud/max-mode",
 		"POST /api/board/remotes", "PUT /api/agent/ui/x", "DELETE /api/agent/ui/x", "POST /api/agent/artifacts", "GET /api/agent/tasks", "POST /api/workflows", "POST /api/scheduled/jobs",
@@ -139,6 +138,19 @@ func TestGuardRefusesTunneledRequestsOutsideThePolicy(t *testing.T) {
 	}
 	require.NotEqual(t, 403, call(h, "GET", "/api/settings", "", nil).Code, "local dashboard access must be unaffected")
 	require.NotEqual(t, 403, call(h, "GET", "/api/cloud/status", "", nil).Code)
+}
+
+// #3619 (hub audit H4): open-in-editor opens an editor on this computer, and its handler
+// already refused every non-local caller; it is out of the tunnel table, so even at the Launch
+// mode the Guard refuses it before the handler runs.
+func TestGuardRefusesOpenInEditorAtLaunch(t *testing.T) {
+	r := newE2ERemote(t, "editor", nil)
+	h := r.srv.Router()
+	js := map[string]string{"Content-Type": "application/json"}
+	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"launch"}`, js).Code)
+	rec := call(h, "POST", "/api/sessions/live/x/open-in-editor", `{"filepath":"a.txt"}`, mergeHdr(tunneled, js))
+	require.Equal(t, 403, rec.Code)
+	require.Contains(t, rec.Body.String(), "not available through the Coral Hub", "refused by the Guard, not the handler")
 }
 
 func mergeHdr(a, b map[string]string) map[string]string {
