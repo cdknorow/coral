@@ -94,7 +94,8 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 				slog.Warn("reading settings for the agent CLI path failed", "error", err)
 			}
 		}
-		launchCmd = ag.BuildLaunchCommand(agent.LaunchParams{
+		var err error
+		launchCmd, err = ag.LaunchCommand(agent.LaunchParams{
 			SessionID:       sessionID,
 			ProtocolPath:    protocolPath,
 			ResumeSessionID: resumeSessionID,
@@ -102,6 +103,9 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 			WorkingDir:      workingDir,
 			CLIPath:         agent.ResolveCLIPath(settings, agentType),
 		})
+		if err != nil {
+			return nil, fmt.Errorf("launch command: %w", err)
+		}
 		// Ensure coral-hook-* binaries are reachable from app bundles
 		launchCmd = agent.WrapWithBundlePath(launchCmd)
 	}

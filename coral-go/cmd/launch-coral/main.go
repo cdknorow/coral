@@ -204,6 +204,19 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 		// Clear old log
 		ptymanager.ResetAgentLog(logFile) // 0600, never through a link (#3601, W17)
 
+		// Build the launch command first: its prompt and settings files must be written
+		// before a session is made for it (#3601 W12).
+		cmd, err := ag.LaunchCommand(agent.LaunchParams{
+			SessionID:    sessionID,
+			ProtocolPath: protocolPath,
+			WorkingDir:   dir,
+		})
+		if err != nil {
+			log.Printf("Warning: not launching %s: %v", sessionName, err)
+			continue
+		}
+		launchCmd := agent.WrapWithBundlePath(cmd)
+
 		// Create a new detached tmux session rooted in the worktree
 		if err := tc.NewSession(ctx, sessionName, dir); err != nil {
 			log.Printf("Warning: failed to create tmux session %s: %v", sessionName, err)
@@ -218,12 +231,7 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 		// Set pane title using native tmux command (avoids shell echo issues)
 		tc.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, agentType))
 
-		// Build and send the launch command
-		launchCmd := agent.WrapWithBundlePath(ag.BuildLaunchCommand(agent.LaunchParams{
-			SessionID:    sessionID,
-			ProtocolPath: protocolPath,
-			WorkingDir:   dir,
-		}))
+		// Send the launch command
 		tc.SendKeysToTarget(ctx, sessionName+".0", launchCmd)
 
 		// Open a terminal window attached to this session

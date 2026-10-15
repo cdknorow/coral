@@ -222,8 +222,9 @@ type Agent interface {
 	AgentType() string
 	// SupportsResume returns whether the agent supports resuming a previous session.
 	SupportsResume() bool
-	// BuildLaunchCommand builds the shell command to launch this agent.
-	BuildLaunchCommand(params LaunchParams) string
+	// LaunchCommand builds the shell command to launch this agent. It fails when the
+	// prompt, settings or instructions files can't be written (#3601 W12).
+	LaunchCommand(params LaunchParams) (string, error)
 	// HistoryBasePath returns the root directory for history files.
 	HistoryBasePath() string
 	// HistoryGlobPattern returns the glob pattern for history files.
@@ -431,31 +432,80 @@ func joinQuoted(parts, raw []string, quote func(string) string, callOp bool) str
 
 // writeTempFile creates a temp file with an unpredictable name using os.CreateTemp
 // (O_CREATE|O_EXCL) to prevent symlink attacks. The file name includes the session
-// ID for later cleanup via CleanupTempFiles. Returns the file path, or "" when the
-// file can't be created or fully written: there is no fallback to a predictable name
-// in the shared temp folder, which another user could plant first (#3601 W12).
-// Callers leave the argument out when the path is "".
-func writeTempFile(prefix, id, ext string, content []byte) string {
+// ID for later cleanup via CleanupTempFiles. Returns the file path. When the file
+// can't be created or fully written it returns an error naming the temp folder: there
+// is no fallback to a predictable name in the shared temp folder, which another user
+// could plant first, and a half-written file is removed (#3601 W12).
+func writeTempFile(prefix, id, ext string, content []byte) (string, error) {
 	// The path is typed into the launch line inside $(cat …): the id (a session id,
 	// possibly from a request) keeps only safe characters (#3362).
 	id = safeFileID(id)
 	pattern := fmt.Sprintf("coral_%s_%s_*.%s", prefix, id, ext)
 	f, err := createTemp("", pattern)
 	if err != nil {
-		slog.Error("failed to create temp file; launching without it", "prefix", prefix, "id", id, "error", err)
-		return ""
+		return "", fmt.Errorf("can't create the agent's %s file in the temp folder %s: %w", prefix, os.TempDir(), err)
 	}
 	_, err = f.Write(content)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
-		// A half-written prompt or settings file is never handed to the agent.
-		slog.Error("failed to write temp file; launching without it", "path", f.Name(), "error", err)
 		os.Remove(f.Name())
+		return "", fmt.Errorf("can't write the agent's %s file in the temp folder %s: %w", prefix, os.TempDir(), err)
+	}
+	return f.Name(), nil
+}
+
+// launchFiles collects the temp files one launch command writes. After the first failure
+// it writes nothing more, and done removes the files already made and returns the error,
+// so a launch never starts without its prompt, settings or instructions.
+type launchFiles struct {
+	made []string
+	dirs []string
+	err  error
+}
+
+func (l *launchFiles) write(prefix, id, ext string, content []byte) string {
+	if l.err != nil {
 		return ""
 	}
-	return f.Name()
+	p, err := writeTempFile(prefix, id, ext, content)
+	if err != nil {
+		l.err = err
+		return ""
+	}
+	l.made = append(l.made, p)
+	return p
+}
+
+// dir records a temp folder made for the launch (removed with the files on a failure), or
+// the error making it.
+func (l *launchFiles) dir(d string, err error) string {
+	if l.err != nil {
+		if d != "" {
+			os.RemoveAll(d)
+		}
+		return ""
+	}
+	if err != nil {
+		l.err = err
+		return ""
+	}
+	l.dirs = append(l.dirs, d)
+	return d
+}
+
+func (l *launchFiles) done(cmd string) (string, error) {
+	if l.err != nil {
+		for _, p := range l.made {
+			os.Remove(p)
+		}
+		for _, d := range l.dirs {
+			os.RemoveAll(d)
+		}
+		return "", l.err
+	}
+	return cmd, nil
 }
 
 // createTemp is os.CreateTemp; tests replace it to make the create or the write fail.

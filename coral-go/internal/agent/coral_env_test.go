@@ -89,7 +89,7 @@ func TestEveryAgentPassesTheCoralEnvironmentToItsCLI(t *testing.T) {
 			if impl == nil {
 				t.Skipf("no implementation for %s", agentType)
 			}
-			cmd := impl.BuildLaunchCommand(params)
+			cmd := buildLaunch(impl, params)
 			// claude passes env through a settings file rather than exports, so
 			// assert on the port reaching the command line one way or another.
 			if !containsAny(cmd, "CORAL_PORT", "settings") {

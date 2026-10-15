@@ -3239,7 +3239,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 
 	// When capabilities are available, strip agent-specific permission flags
 	// from the stored flags — capabilities are the source of truth and
-	// BuildLaunchCommand will generate the correct flags for the target agent type.
+	// LaunchCommand will generate the correct flags for the target agent type.
 	// This prevents flag mismatches when changing agent type (e.g. Codex --full-auto → Claude).
 	cleanFlags := stripAgentPermissionFlags(storedFlags)
 	// Also strip --model from old flags (we'll re-add from storedModel)
@@ -3264,7 +3264,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 
 	userSettings, _ := h.ss.GetSettings(ctx)
 
-	cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(agent.LaunchParams{
+	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
 		SessionID:       newSessionID,
 		SessionName:     newSessionName,
 		ProtocolPath:    h.protocolPath(),
@@ -3284,7 +3284,11 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
-	}))
+	})
+	if err != nil {
+		errInternalServer(w, fmt.Sprintf("launch command failed: %v", err))
+		return
+	}
 	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
 	if usePTY {
 		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
@@ -3523,7 +3527,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		h.terminal.StartLogging(ctx, target, newLogPath)
 	}
 
-	cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(agent.LaunchParams{
+	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
 		SessionID:       newSessionID,
 		SessionName:     newSessionName,
 		ProtocolPath:    h.protocolPath(),
@@ -3542,7 +3546,11 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
-	}))
+	})
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
 	if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -5082,12 +5090,18 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		log.Printf("[launch] using custom CLI path: %s", cliPath)
 	}
 
+	// The launch command is built before any terminal is made: when its prompt or settings
+	// files can't be written, the launch fails with nothing left behind (#3601 W12).
+	var cmd string
+	if !isTerminal {
+		var err error
+		if cmd, err = launchCommand(agentImpl, launchParams); err != nil {
+			return nil, err
+		}
+	}
+
 	if backend == "pty" && h.backend != nil {
 		// PTY backend: spawn the agent process directly
-		var cmd string
-		if !isTerminal {
-			cmd = agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(launchParams))
-		}
 		// Spawn a shell first (empty command), then send the agent command as input.
 		// This matches the tmux pattern and works cross-platform — the shell
 		// interprets bash syntax like $(cat ...) correctly.
@@ -5185,7 +5199,6 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 
 		// Launch the agent (unless terminal)
 		if !isTerminal {
-			cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(launchParams))
 			log.Printf("[launch] tmux session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
 			if err := sendLaunchCommand(ctx, h.terminal, sessionName+".0", cmd); err != nil {
 				return nil, err
@@ -6485,7 +6498,10 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	// resume the agent in that shell, as launch does, instead of only clearing the flag.
 	if alreadyRunning && ls.AgentType != at.Terminal && h.terminal != nil {
 		if exited, fg := ptymanager.AgentExited(ctx, h.terminal, sessionName, ls.AgentType, ls.SessionID); exited {
-			cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(launchParams))
+			cmd, err := launchCommand(agentImpl, launchParams)
+			if err != nil {
+				return err
+			}
 			target := sessionName + ".0"
 			if backend == "pty" {
 				target = sessionName
@@ -6498,7 +6514,10 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	}
 
 	if !alreadyRunning && ls.AgentType != at.Terminal {
-		cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(launchParams))
+		cmd, err := launchCommand(agentImpl, launchParams)
+		if err != nil {
+			return err
+		}
 		log.Printf("[wake] session=%s agent=%s backend=%s cmd=%s", sessionName, ls.AgentType, backend, cmd)
 
 		if backend == "pty" && h.backend != nil {
@@ -7260,4 +7279,15 @@ func diffPathRefused(workdir, fp, fullPath string) bool {
 		return true
 	}
 	return false
+}
+
+// launchCommand is the agent's launch command with the bundled tools on PATH. It fails when
+// the agent's prompt, settings or instructions files can't be written to the temp folder: the
+// launch fails with that error instead of starting an agent without them (#3601 W12).
+func launchCommand(ag agent.Agent, p agent.LaunchParams) (string, error) {
+	cmd, err := ag.LaunchCommand(p)
+	if err != nil {
+		return "", err
+	}
+	return agent.WrapWithBundlePath(cmd), nil
 }

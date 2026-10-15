@@ -41,7 +41,9 @@ func TestRepoSettingsNeverReachTheSettingsFlag(t *testing.T) {
 
 	// Both the merged map and the whole launch's settings file.
 	merged := buildMergedSettings(nil)
-	path := claudeSettingsFile(LaunchParams{WorkingDir: repo, SessionID: "0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11"}, "0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11")
+	files := &launchFiles{}
+	path := claudeSettingsFile(files, LaunchParams{WorkingDir: repo, SessionID: "0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11"}, "0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11")
+	require.NoError(t, files.err)
 	t.Cleanup(func() { os.Remove(path) })
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)

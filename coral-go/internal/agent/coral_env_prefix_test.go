@@ -28,7 +28,7 @@ func TestLaunchLineOverridesAnInheritedCoralEnvironment(t *testing.T) {
 		os.Remove(out)
 		p := LaunchParams{SessionID: "11111111-2222-3333-4444-555555555555", SessionName: "claude-own", Role: "Backend Dev",
 			CLIPath: stub, CoralPort: 8583, CoralHost: "127.0.0.1", CoralDir: "/tmp/own-data"}
-		line := ag.BuildLaunchCommand(p)
+		line := buildLaunch(ag, p)
 		cmd := exec.Command("/bin/sh", "-c", line)
 		cmd.Env = hostile
 		b, err := cmd.CombinedOutput()
@@ -49,7 +49,7 @@ func TestLaunchLineOverridesAnInheritedCoralEnvironment(t *testing.T) {
 
 	// A launch that knows no role or name still never keeps the inherited identity.
 	os.Remove(out)
-	line := (&ClaudeAgent{}).BuildLaunchCommand(LaunchParams{SessionID: "22222222-2222-3333-4444-555555555555", CLIPath: stub})
+	line := buildLaunch((&ClaudeAgent{}), LaunchParams{SessionID: "22222222-2222-3333-4444-555555555555", CLIPath: stub})
 	cmd := exec.Command("/bin/sh", "-c", line)
 	cmd.Env = hostile
 	b, err := cmd.CombinedOutput()

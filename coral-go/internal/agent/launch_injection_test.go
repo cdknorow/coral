@@ -63,7 +63,7 @@ func TestLaunchCommandNeverRunsInjectedShell(t *testing.T) {
 						CLIPath: stub, BoardName: "team", Role: "Dev", Prompt: "hello", CoralPort: 8420,
 					}
 					set(&p, fmt.Sprintf(payload, marker))
-					cmd := WrapWithBundlePath(ag.BuildLaunchCommand(p))
+					cmd := WrapWithBundlePath(buildLaunch(ag, p))
 					out, _ := exec.Command("/bin/sh", "-c", cmd).CombinedOutput()
 					_, err := os.Stat(marker)
 					if !assert.True(t, os.IsNotExist(err), "payload %d ran a command:\n%s\noutput: %s", i, cmd, out) {
@@ -101,7 +101,7 @@ func TestShellJoinQuotesEverythingButNamedRawParts(t *testing.T) {
 func TestPromptFilePathIsQuoted(t *testing.T) {
 	t.Setenv("SHELL", "/bin/sh")
 	assert.Equal(t, "ab_c_d-1", safeFileID("ab'c;d-1"))
-	path := writeTempFile("prompt", "x'$(touch /tmp/p)'", "txt", []byte("hi"))
+	path := mustTempFile("prompt", "x'$(touch /tmp/p)'", "txt", []byte("hi"))
 	defer os.Remove(path)
 	assert.NotContains(t, filepath.Base(path), "'")
 	assert.Equal(t, fmt.Sprintf(`"$(cat '%s')"`, path), FormatPromptFileArg(path))

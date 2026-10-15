@@ -157,7 +157,8 @@ func extractFirstText(content any) string {
 	return ""
 }
 
-func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
+func (a *ClaudeAgent) LaunchCommand(params LaunchParams) (string, error) {
+	files := &launchFiles{}
 	bin := resolveBinary(params.CLIPath, "claude")
 	parts := []string{bin}
 	// raw: the shell syntax this builder makes itself; every other part is quoted (#3362).
@@ -171,11 +172,8 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, "--session-id", params.SessionID)
 	}
 
-	// No settings file (the temp folder refused it, logged): Claude still reads its own
-	// settings, without Coral's hooks and prompt, rather than a guessable path.
-	if settingsFile := claudeSettingsFile(params, effectiveID); settingsFile != "" {
-		parts = append(parts, "--settings", settingsFile)
-	}
+	settingsFile := claudeSettingsFile(files, params, effectiveID)
+	parts = append(parts, "--settings", settingsFile)
 
 	if len(params.Flags) > 0 {
 		parts = append(parts, params.Flags...)
@@ -187,20 +185,19 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 	// without relying on fragile tmux send-keys delivery.
 	cliPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if cliPrompt != "" {
-		if promptFile := writeTempFile("prompt", effectiveID, "txt", []byte(cliPrompt)); promptFile != "" {
-			arg := FormatPromptFileArg(promptFile)
-			raw = append(raw, arg)
-			parts = append(parts, arg)
-		}
+		promptFile := files.write("prompt", effectiveID, "txt", []byte(cliPrompt))
+		arg := FormatPromptFileArg(promptFile)
+		raw = append(raw, arg)
+		parts = append(parts, arg)
 	}
 
 	parts, raw = withSessionToken(parts, raw, params, "claude")
-	return ShellJoin(parts, raw...)
+	return files.done(ShellJoin(parts, raw...))
 }
 
 // claudeSettingsFile writes the agent's merged settings (hooks, system prompt, permissions,
 // tools, MCP servers, Coral's environment) to a temp file and returns its path.
-func claudeSettingsFile(params LaunchParams, effectiveID string) string {
+func claudeSettingsFile(files *launchFiles, params LaunchParams, effectiveID string) string {
 	// Build merged settings with hooks and system prompt
 	merged := buildMergedSettings(params.Hooks)
 
@@ -276,7 +273,7 @@ func claudeSettingsFile(params LaunchParams, effectiveID string) string {
 
 	// Write settings to temp file using writeTempFile for safe creation
 	data, _ := json.MarshalIndent(merged, "", "  ")
-	return writeTempFile("settings", effectiveID, "json", append(data, '\n'))
+	return files.write("settings", effectiveID, "json", append(data, '\n'))
 }
 
 // appendPermissionMode adds --permission-mode from the settings unless Flags already has it.
@@ -300,17 +297,18 @@ func appendPermissionMode(parts []string, params LaunchParams) []string {
 // PrintArgs is the argument list for a non-interactive "claude --print" run with the same
 // settings a launch gets (hooks, permissions, tools, MCP), as real argv, not a shell line:
 // no session id, and no prompt, which the caller sends on stdin (#3521). A workflow step
-// used to split BuildLaunchCommand's shell line on spaces, so Claude got env-var names and
+// used to split the launch command's shell line on spaces, so Claude got env-var names and
 // a "$(cat ...)" fragment instead of the prompt and settings. settingsFile is the temp file
 // the args name: the caller removes it once the command has exited.
-func (a *ClaudeAgent) PrintArgs(params LaunchParams) (args []string, settingsFile string) {
-	settingsFile = claudeSettingsFile(params, params.SessionID)
-	args = []string{"--print", "--no-session-persistence"}
-	if settingsFile != "" {
-		args = append(args, "--settings", settingsFile)
+func (a *ClaudeAgent) PrintArgs(params LaunchParams) (args []string, settingsFile string, err error) {
+	files := &launchFiles{}
+	settingsFile = claudeSettingsFile(files, params, params.SessionID)
+	if _, err := files.done(""); err != nil {
+		return nil, "", err
 	}
+	args = []string{"--print", "--no-session-persistence", "--settings", settingsFile}
 	args = append(args, params.Flags...)
-	return appendPermissionMode(args, params), settingsFile
+	return appendPermissionMode(args, params), settingsFile, nil
 }
 
 func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {

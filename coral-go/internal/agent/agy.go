@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -256,7 +257,8 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 	}, nil
 }
 
-func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
+func (a *AgyAgent) LaunchCommand(params LaunchParams) (string, error) {
+	files := &launchFiles{}
 	bin := resolveBinary(params.CLIPath, "agy")
 	var parts []string
 	// raw: the shell syntax this builder makes itself; every other part is quoted (#3362).
@@ -287,7 +289,7 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 	// on agy 1.3.5), so nothing is written into the user's repo or ~/.gemini.
 	if params.SessionID == "" {
 		// no session (a preview or test line): no hooks
-	} else if dir := agyHooksDir(params.SessionID); dir != "" {
+	} else if dir := files.dir(agyHooksDir(params.SessionID)); dir != "" {
 		parts = append(parts, "--add-dir", dir)
 	}
 
@@ -364,15 +366,14 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	if len(promptSections) > 0 {
 		fullPrompt := strings.Join(promptSections, "\n\n")
-		if promptFile := writeTempFile("agy_prompt", params.SessionID, "txt", []byte(fullPrompt)); promptFile != "" {
-			arg := FormatPromptFileArg(promptFile)
-			raw = append(raw, arg)
-			parts = append(parts, "-i", arg)
-		}
+		promptFile := files.write("agy_prompt", params.SessionID, "txt", []byte(fullPrompt))
+		arg := FormatPromptFileArg(promptFile)
+		raw = append(raw, arg)
+		parts = append(parts, "-i", arg)
 	}
 
 	parts, raw = withSessionToken(parts, raw, params, a.AgentType())
-	return ShellJoin(parts, raw...)
+	return files.done(ShellJoin(parts, raw...))
 }
 
 // agyHookEvents are the agy hooks Coral installs; coral-hook-agentic-state turns each
@@ -380,14 +381,13 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 var agyHookEvents = []string{"SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"}
 
 // agyHooksDir writes this session's hooks.json into a new private temp folder,
-// <tmp>/coral_agyhooks_<session>_*/.agents/hooks.json, and returns the folder ("" on
-// error: the agent then runs without Coral's hooks, as before). CleanupTempFiles
-// removes it with the session's other temp files.
-func agyHooksDir(sessionID string) string {
+// <tmp>/coral_agyhooks_<session>_*/.agents/hooks.json, and returns the folder. On an
+// error the launch fails (#3601 W12: an agent without Coral's hooks is silently degraded).
+// CleanupTempFiles removes it with the session's other temp files.
+func agyHooksDir(sessionID string) (string, error) {
 	dir, err := os.MkdirTemp("", "coral_agyhooks_"+safeFileID(sessionID)+"_*")
 	if err != nil {
-		slog.Warn("agy hooks: could not create the hooks folder", "error", err)
-		return ""
+		return "", fmt.Errorf("can't create agy's hooks folder in the temp folder %s: %w", os.TempDir(), err)
 	}
 	spec := map[string]any{}
 	for _, event := range agyHookEvents {
@@ -402,16 +402,14 @@ func agyHooksDir(sessionID string) string {
 	b, _ := json.MarshalIndent(map[string]any{"coral": spec}, "", "  ")
 	agents := filepath.Join(dir, ".agents")
 	if err := os.Mkdir(agents, 0o700); err != nil {
-		slog.Warn("agy hooks: could not create the hooks folder", "error", err)
 		os.RemoveAll(dir)
-		return ""
+		return "", fmt.Errorf("can't create agy's hooks folder in %s: %w", dir, err)
 	}
 	if err := os.WriteFile(filepath.Join(agents, "hooks.json"), b, 0o600); err != nil {
-		slog.Warn("agy hooks: could not write hooks.json", "error", err)
 		os.RemoveAll(dir)
-		return ""
+		return "", fmt.Errorf("can't write agy's hooks.json in %s: %w", dir, err)
 	}
-	return dir
+	return dir, nil
 }
 
 func appendAgyPermissionMode(parts []string, mode string) []string {

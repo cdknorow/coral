@@ -133,7 +133,8 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 	}, nil
 }
 
-func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
+func (a *PiAgent) LaunchCommand(params LaunchParams) (string, error) {
+	files := &launchFiles{}
 	bin := resolveBinary(params.CLIPath, "pi")
 	var parts []string
 	// raw: the shell syntax this builder makes itself; every other part is quoted (#3362).
@@ -213,7 +214,7 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// System prompt via --append-system-prompt with temp file
 	if len(sysParts) > 0 {
-		sysFile := writeTempFile("pi_sys", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
+		sysFile := files.write("pi_sys", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
 		arg := FormatPromptFileArg(sysFile)
 		raw = append(raw, arg)
 		parts = append(parts, "--append-system-prompt", arg)
@@ -225,12 +226,12 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 		cliPrompt = params.Prompt
 	}
 	if cliPrompt != "" {
-		promptFile := writeTempFile("pi_prompt", params.SessionID, "txt", []byte(cliPrompt))
+		promptFile := files.write("pi_prompt", params.SessionID, "txt", []byte(cliPrompt))
 		arg := FormatPromptFileArg(promptFile)
 		raw = append(raw, arg)
 		parts = append(parts, arg)
 	}
 
 	parts, raw = withSessionToken(parts, raw, params, at.Pi)
-	return ShellJoin(parts, raw...)
+	return files.done(ShellJoin(parts, raw...))
 }

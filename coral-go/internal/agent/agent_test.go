@@ -179,11 +179,11 @@ func TestGetCLIName(t *testing.T) {
 	}
 }
 
-// ── Claude BuildLaunchCommand Tests ─────────────────────────
+// ── Claude LaunchCommand Tests ─────────────────────────
 
 func TestClaude_BasicLaunch(t *testing.T) {
 	a := &ClaudeAgent{}
-	cmd := launchBody(a.BuildLaunchCommand(LaunchParams{
+	cmd := launchBody(buildLaunch(a, LaunchParams{
 		SessionID: "test-session-123",
 	}))
 	if !strings.HasPrefix(cmd, "claude ") {
@@ -196,7 +196,7 @@ func TestClaude_BasicLaunch(t *testing.T) {
 
 func TestClaude_Resume(t *testing.T) {
 	a := &ClaudeAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID:       "test-session-123",
 		ResumeSessionID: "resume-456",
 	})
@@ -221,7 +221,7 @@ func TestClaude_PermissionModeAllValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("mode="+tt.mode, func(t *testing.T) {
 			a := &ClaudeAgent{}
-			cmd := a.BuildLaunchCommand(LaunchParams{
+			cmd := buildLaunch(a, LaunchParams{
 				SessionID:      "perm-test",
 				PermissionMode: tt.mode,
 			})
@@ -241,7 +241,7 @@ func TestClaude_PermissionModeAllValues(t *testing.T) {
 
 func TestClaude_PermissionModeWithOtherFlags(t *testing.T) {
 	a := &ClaudeAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID:      "s1",
 		PermissionMode: "auto",
 		Flags:          []string{"--verbose"},
@@ -256,7 +256,7 @@ func TestClaude_PermissionModeWithOtherFlags(t *testing.T) {
 
 func TestClaude_WithFlags(t *testing.T) {
 	a := &ClaudeAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID: "s1",
 		Flags:     []string{"--verbose", "--model", "opus"},
 	})
@@ -267,7 +267,7 @@ func TestClaude_WithFlags(t *testing.T) {
 
 func TestClaude_WithBoardWorker(t *testing.T) {
 	a := &ClaudeAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID: "claude-board-w1",
 		BoardName: "test-board",
 		Role:      "developer",
@@ -284,7 +284,7 @@ func TestClaude_WithBoardWorker(t *testing.T) {
 
 func TestClaude_WithBoardOrchestrator(t *testing.T) {
 	a := &ClaudeAgent{}
-	a.BuildLaunchCommand(LaunchParams{
+	buildLaunch(a, LaunchParams{
 		SessionID: "claude-board-o1",
 		BoardName: "test-board",
 		Role:      "Orchestrator",
@@ -298,7 +298,7 @@ func TestClaude_WithBoardOrchestrator(t *testing.T) {
 
 func TestClaude_WithPrompt(t *testing.T) {
 	a := &ClaudeAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID: "s1",
 		Prompt:    "Fix the login bug",
 	})
@@ -309,7 +309,7 @@ func TestClaude_WithPrompt(t *testing.T) {
 
 func TestClaude_WithCapabilities(t *testing.T) {
 	a := &ClaudeAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID:    "s1",
 		Capabilities: &Capabilities{Allow: []string{CapFileRead, CapShell}},
 	})
@@ -388,11 +388,11 @@ func TestBuildBoardSystemPrompt_PromptOnly(t *testing.T) {
 	}
 }
 
-// ── Codex BuildLaunchCommand Tests ──────────────────────────
+// ── Codex LaunchCommand Tests ──────────────────────────
 
 func TestCodex_BasicLaunch(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := launchBody(a.BuildLaunchCommand(LaunchParams{}))
+	cmd := launchBody(buildLaunch(a, LaunchParams{}))
 	if !strings.HasPrefix(cmd, "codex ") {
 		t.Errorf("expected codex command with Coral hooks, got %q", cmd)
 	}
@@ -400,7 +400,7 @@ func TestCodex_BasicLaunch(t *testing.T) {
 
 func TestCodex_Resume(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{ResumeSessionID: "resume-789"})
+	cmd := buildLaunch(a, LaunchParams{ResumeSessionID: "resume-789"})
 	if !strings.Contains(cmd, "codex resume resume-789") {
 		t.Errorf("expected 'codex resume resume-789', got %q", cmd)
 	}
@@ -408,7 +408,7 @@ func TestCodex_Resume(t *testing.T) {
 
 func TestCodex_WithFlags(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{Flags: []string{"--json", "--model", "gpt-4"}})
+	cmd := buildLaunch(a, LaunchParams{Flags: []string{"--json", "--model", "gpt-4"}})
 	if !strings.Contains(cmd, "--json") || !strings.Contains(cmd, "--model gpt-4") {
 		t.Errorf("expected flags, got %q", cmd)
 	}
@@ -417,7 +417,7 @@ func TestCodex_WithFlags(t *testing.T) {
 func TestCodex_WithPrompt(t *testing.T) {
 	a := &CodexAgent{}
 	sid := "codex-prompt-test1"
-	a.BuildLaunchCommand(LaunchParams{SessionID: sid, Prompt: "Fix the bug"})
+	buildLaunch(a, LaunchParams{SessionID: sid, Prompt: "Fix the bug"})
 	sysFile := findTempFile(t, "codex_instructions", sid, "md")
 	sysContent, _ := os.ReadFile(sysFile)
 	if !strings.Contains(string(sysContent), "CORAL_SESSION_ID: "+sid) {
@@ -450,7 +450,7 @@ func TestInstructionPromptsIncludeCoralSessionMarker(t *testing.T) {
 			// command. Without an explicit CoralDir it falls back to
 			// CORAL_DATA_DIR or ~/.coral and leaves a directory in the
 			// real install.
-			tt.agent.BuildLaunchCommand(LaunchParams{SessionID: sid, CoralDir: t.TempDir()})
+			buildLaunch(tt.agent, LaunchParams{SessionID: sid, CoralDir: t.TempDir()})
 			path := findTempFile(t, tt.prefix, sid, tt.extension)
 			content, err := os.ReadFile(path)
 			if err != nil {
@@ -466,7 +466,7 @@ func TestInstructionPromptsIncludeCoralSessionMarker(t *testing.T) {
 func TestCodex_WithBoardWorker(t *testing.T) {
 	a := &CodexAgent{}
 	sid := "codex-board-w1"
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID: sid, Prompt: "Build frontend", BoardName: "dev-board", Role: "developer",
 	})
 	if !strings.Contains(cmd, "-c developer_instructions=") {
@@ -487,7 +487,7 @@ func TestCodex_WithBoardWorker(t *testing.T) {
 func TestCodex_WithBoardOrchestrator(t *testing.T) {
 	a := &CodexAgent{}
 	sid := "codex-board-o1"
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID: sid, Prompt: "Coordinate team", BoardName: "dev-board", Role: "orchestrator",
 	})
 	if !strings.Contains(cmd, "-c developer_instructions=") {
@@ -503,7 +503,7 @@ func TestCodex_WithBoardOrchestrator(t *testing.T) {
 func TestCodex_SystemPromptSeparation(t *testing.T) {
 	a := &CodexAgent{}
 	sid := "codex-sep-test1"
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID: sid, Prompt: "Do work", BoardName: "board1", Role: "dev",
 	})
 	findTempFile(t, "codex_instructions", sid, "md") // verifies existence
@@ -517,7 +517,7 @@ func TestCodex_SystemPromptSeparation(t *testing.T) {
 
 func TestCodex_WithCapabilities_FullAuto(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{Capabilities: &Capabilities{Allow: []string{CapShell}}})
+	cmd := buildLaunch(a, LaunchParams{Capabilities: &Capabilities{Allow: []string{CapShell}}})
 	if !strings.Contains(cmd, "--sandbox workspace-write") || !strings.Contains(cmd, "-a never") {
 		t.Errorf("expected full-auto equivalent flags, got %q", cmd)
 	}
@@ -528,7 +528,7 @@ func TestCodex_WithCapabilities_FullAuto(t *testing.T) {
 
 func TestCodex_WithCapabilities_BypassSandbox(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapShell, CapFileRead, CapFileWrite, CapGitWrite}},
 	})
 	if !strings.Contains(cmd, "--dangerously-bypass-approvals-and-sandbox") {
@@ -538,7 +538,7 @@ func TestCodex_WithCapabilities_BypassSandbox(t *testing.T) {
 
 func TestCodex_WithCapabilities_ReadOnly(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{Capabilities: &Capabilities{Allow: []string{CapFileRead}}})
+	cmd := buildLaunch(a, LaunchParams{Capabilities: &Capabilities{Allow: []string{CapFileRead}}})
 	if !strings.Contains(cmd, "--sandbox read-only") || !strings.Contains(cmd, "-a on-request") {
 		t.Errorf("expected read-only sandbox, got %q", cmd)
 	}
@@ -546,7 +546,7 @@ func TestCodex_WithCapabilities_ReadOnly(t *testing.T) {
 
 func TestCodex_WithCapabilities_ReadWrite(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapFileRead, CapFileWrite}},
 	})
 	if !strings.Contains(cmd, "--sandbox workspace-write") || !strings.Contains(cmd, "-a on-request") {
@@ -556,7 +556,7 @@ func TestCodex_WithCapabilities_ReadWrite(t *testing.T) {
 
 func TestCodex_WithCapabilities_ShellWithDeny(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapShell}, Deny: []string{CapGitWrite}},
 	})
 	if strings.Contains(cmd, "--full-auto") {
@@ -569,7 +569,7 @@ func TestCodex_WithCapabilities_ShellWithDeny(t *testing.T) {
 
 func TestCodex_WithCapabilities_WebSearch(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapFileRead, CapWebAccess}},
 	})
 	if !strings.Contains(cmd, "--search") {
@@ -579,7 +579,7 @@ func TestCodex_WithCapabilities_WebSearch(t *testing.T) {
 
 func TestCodex_WithCapabilities_Nil(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{})
+	cmd := buildLaunch(a, LaunchParams{})
 	if strings.Contains(cmd, "--full-auto") {
 		t.Errorf("should not have --full-auto with nil capabilities, got %q", cmd)
 	}
@@ -588,7 +588,7 @@ func TestCodex_WithCapabilities_Nil(t *testing.T) {
 func TestCodex_ResumeWithPromptAndInstructions(t *testing.T) {
 	a := &CodexAgent{}
 	sid := "codex-resume-test1"
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID: sid, ResumeSessionID: "resume-abc", Prompt: "Continue work",
 		BoardName: "board1", Role: "dev",
 	})
@@ -602,14 +602,14 @@ func TestCodex_ResumeWithPromptAndInstructions(t *testing.T) {
 
 func TestCodex_FlagTranslation(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{Flags: []string{"--dangerously-skip-permissions"}})
+	cmd := buildLaunch(a, LaunchParams{Flags: []string{"--dangerously-skip-permissions"}})
 	if strings.Contains(cmd, "--dangerously-skip-permissions") ||
 		!strings.Contains(cmd, "--sandbox workspace-write") ||
 		!strings.Contains(cmd, "-a never") {
 		t.Errorf("expected flag translation, got %q", cmd)
 	}
 
-	cmd = a.BuildLaunchCommand(LaunchParams{Flags: []string{"--full-auto"}})
+	cmd = buildLaunch(a, LaunchParams{Flags: []string{"--full-auto"}})
 	if strings.Contains(cmd, "--full-auto") ||
 		!strings.Contains(cmd, "--sandbox workspace-write") ||
 		!strings.Contains(cmd, "-a never") {
@@ -681,7 +681,7 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &CodexAgent{}
-			cmd := a.BuildLaunchCommand(tt.params)
+			cmd := buildLaunch(a, tt.params)
 			for _, want := range tt.want {
 				if !strings.Contains(cmd, want) {
 					t.Errorf("expected %q in %q", want, cmd)
@@ -696,18 +696,18 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 	}
 }
 
-// ── Agy BuildLaunchCommand Tests ─────────────────────────────
+// ── Agy LaunchCommand Tests ─────────────────────────────
 
 func TestAgy_BasicLaunch(t *testing.T) {
 	a := &AgyAgent{}
-	if cmd := launchBody(a.BuildLaunchCommand(LaunchParams{})); cmd != "agy" {
+	if cmd := launchBody(buildLaunch(a, LaunchParams{})); cmd != "agy" {
 		t.Errorf("expected bare 'agy', got %q", cmd)
 	}
 }
 
 func TestAgy_WithFlags(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{Flags: []string{"--verbose"}})
+	cmd := buildLaunch(a, LaunchParams{Flags: []string{"--verbose"}})
 	if !strings.Contains(cmd, "--verbose") {
 		t.Errorf("expected --verbose, got %q", cmd)
 	}
@@ -715,7 +715,7 @@ func TestAgy_WithFlags(t *testing.T) {
 
 func TestAgy_Resume(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{ResumeSessionID: "some-id"})
+	cmd := buildLaunch(a, LaunchParams{ResumeSessionID: "some-id"})
 	if !strings.Contains(cmd, "--conversation some-id") {
 		t.Errorf("agy should have --conversation flag for resume, got %q", cmd)
 	}
@@ -724,7 +724,7 @@ func TestAgy_Resume(t *testing.T) {
 func TestAgy_WithPromptTempFile(t *testing.T) {
 	a := &AgyAgent{}
 	sid := "agy-prompt-test1"
-	cmd := a.BuildLaunchCommand(LaunchParams{SessionID: sid, Prompt: "Analyze the codebase"})
+	cmd := buildLaunch(a, LaunchParams{SessionID: sid, Prompt: "Analyze the codebase"})
 	promptFile := findTempFile(t, "agy_prompt", sid, "txt")
 	content, _ := os.ReadFile(promptFile)
 	if !strings.Contains(string(content), "Analyze the codebase") {
@@ -738,7 +738,7 @@ func TestAgy_WithPromptTempFile(t *testing.T) {
 func TestAgy_WithBoardWorker(t *testing.T) {
 	a := &AgyAgent{}
 	sid := "agy-board-w1"
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID: sid, Prompt: "Build API", BoardName: "team-board", Role: "developer",
 	})
 	if !strings.Contains(cmd, "CORAL_SUBSCRIBER_ID='developer'") {
@@ -755,7 +755,7 @@ func TestAgy_WithBoardWorker(t *testing.T) {
 
 func TestAgy_WithCapabilities_Yolo(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapShell, CapFileWrite}},
 	})
 	if !strings.Contains(cmd, "--dangerously-skip-permissions") {
@@ -765,7 +765,7 @@ func TestAgy_WithCapabilities_Yolo(t *testing.T) {
 
 func TestAgy_WithCapabilities_AutoEdit(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapShell, CapFileWrite}, Deny: []string{CapGitWrite}},
 	})
 	if !strings.Contains(cmd, "--mode accept-edits") {
@@ -775,7 +775,7 @@ func TestAgy_WithCapabilities_AutoEdit(t *testing.T) {
 
 func TestAgy_WithCapabilities_Plan(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapFileRead}},
 	})
 	if !strings.Contains(cmd, "--mode plan") {
@@ -785,7 +785,7 @@ func TestAgy_WithCapabilities_Plan(t *testing.T) {
 
 func TestAgy_WithCapabilities_ReadWrite(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapFileRead, CapFileWrite}},
 	})
 	if !strings.Contains(cmd, "--mode accept-edits") {
@@ -795,7 +795,7 @@ func TestAgy_WithCapabilities_ReadWrite(t *testing.T) {
 
 func TestAgy_WithCapabilities_Nil(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{})
+	cmd := buildLaunch(a, LaunchParams{})
 	if strings.Contains(cmd, "--mode") || strings.Contains(cmd, "--dangerously-skip-permissions") {
 		t.Errorf("should not have permission flags for nil caps, got %q", cmd)
 	}
@@ -803,7 +803,7 @@ func TestAgy_WithCapabilities_Nil(t *testing.T) {
 
 func TestAgy_ResumeWithPermissions(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		ResumeSessionID: "resume-xyz",
 		Capabilities:    &Capabilities{Allow: []string{CapShell, CapFileWrite}},
 	})
@@ -878,7 +878,7 @@ func TestAgy_PermissionModeTranslation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &AgyAgent{}
-			cmd := a.BuildLaunchCommand(tt.params)
+			cmd := buildLaunch(a, tt.params)
 			for _, want := range tt.want {
 				if !strings.Contains(cmd, want) {
 					t.Errorf("expected %q in %q", want, cmd)
@@ -1297,7 +1297,7 @@ func TestSanitizeShellValue_StripsDangerousChars(t *testing.T) {
 
 func TestCodex_EnvVarsExported(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: "codex-abc123", Role: "developer"})
+	cmd := buildLaunch(a, LaunchParams{SessionName: "codex-abc123", Role: "developer"})
 	wantName := formatEnvExport("CORAL_SESSION_NAME", "codex-abc123")
 	wantRole := formatEnvExport("CORAL_SUBSCRIBER_ID", "developer")
 	if !strings.Contains(cmd, wantName) {
@@ -1309,7 +1309,7 @@ func TestCodex_EnvVarsExported(t *testing.T) {
 }
 
 func TestCodex_InjectsCoralAgenticHooks(t *testing.T) {
-	cmd := (&CodexAgent{}).BuildLaunchCommand(LaunchParams{SessionID: "codex-hooks-test", SessionName: "codex-hooks-test"})
+	cmd := buildLaunch((&CodexAgent{}), LaunchParams{SessionID: "codex-hooks-test", SessionName: "codex-hooks-test"})
 	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
 		want := fmt.Sprintf("hooks.%s=", event)
 		if !strings.Contains(cmd, want) {
@@ -1323,7 +1323,7 @@ func TestCodex_InjectsCoralAgenticHooks(t *testing.T) {
 
 func TestAgy_EnvVarsExported(t *testing.T) {
 	a := &AgyAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: "agy-xyz789", Role: "qa"})
+	cmd := buildLaunch(a, LaunchParams{SessionName: "agy-xyz789", Role: "qa"})
 	wantName := formatEnvExport("CORAL_SESSION_NAME", "agy-xyz789")
 	wantRole := formatEnvExport("CORAL_SUBSCRIBER_ID", "qa")
 	if !strings.Contains(cmd, wantName) {
@@ -1338,7 +1338,7 @@ func TestCodex_EnvVarsQuotedNotExpanded(t *testing.T) {
 	// Metacharacters are neutralised by quoting, not by stripping —
 	// stripping destroyed legitimate values like URLs and paths.
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: `$(evil)`, Role: "`whoami`"})
+	cmd := buildLaunch(a, LaunchParams{SessionName: `$(evil)`, Role: "`whoami`"})
 	wantName := formatEnvExport("CORAL_SESSION_NAME", "$(evil)")
 	wantRole := formatEnvExport("CORAL_SUBSCRIBER_ID", "`whoami`")
 	if !strings.Contains(cmd, wantName) {
@@ -1352,7 +1352,7 @@ func TestCodex_EnvVarsQuotedNotExpanded(t *testing.T) {
 // ── Temp File Tests ─────────────────────────────────────────
 
 func TestWriteTempFile_CreatesFile(t *testing.T) {
-	path := writeTempFile("test", "session123", "txt", []byte("hello"))
+	path := mustTempFile("test", "session123", "txt", []byte("hello"))
 	defer os.Remove(path)
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1368,8 +1368,8 @@ func TestWriteTempFile_CreatesFile(t *testing.T) {
 
 func TestCleanupTempFiles(t *testing.T) {
 	sid := "5c1e0a7d-2b3c-4d5e-8f60-718293a4b5c6" // a canonical UUID, as every session id is (#3598)
-	p1 := writeTempFile("prompt", sid, "txt", []byte("prompt"))
-	p2 := writeTempFile("instructions", sid, "md", []byte("instructions"))
+	p1 := mustTempFile("prompt", sid, "txt", []byte("prompt"))
+	p2 := mustTempFile("instructions", sid, "md", []byte("instructions"))
 	CleanupTempFiles(sid)
 	if _, err := os.Stat(p1); !os.IsNotExist(err) {
 		t.Error("prompt file should be removed")
@@ -1571,7 +1571,7 @@ func TestBuildMergedSettings_NilAgentHooks(t *testing.T) {
 	}
 }
 
-func TestBuildLaunchCommand_HooksInSettings(t *testing.T) {
+func TestLaunchCommand_HooksInSettings(t *testing.T) {
 	tmpDir := t.TempDir()
 	a := &ClaudeAgent{}
 
@@ -1585,7 +1585,7 @@ func TestBuildLaunchCommand_HooksInSettings(t *testing.T) {
 		},
 	}
 
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch(a, LaunchParams{
 		SessionID:  "test-hooks-session",
 		WorkingDir: tmpDir,
 		Hooks:      hooks,
@@ -1664,7 +1664,7 @@ func TestLaunchCommands_PreserveURLAndPathEnvValues(t *testing.T) {
 		"agy":   &AgyAgent{},
 		"pi":    &PiAgent{},
 	} {
-		cmd := a.BuildLaunchCommand(params)
+		cmd := buildLaunch(a, params)
 		for _, want := range []string{
 			formatEnvExport("CORAL_URL", "http://127.0.0.1:8455"),
 			formatEnvExport("CORAL_DIR", "/Users/someone/.coral"),
@@ -1679,7 +1679,7 @@ func TestLaunchCommands_PreserveURLAndPathEnvValues(t *testing.T) {
 }
 
 func TestLaunchCommands_EscapeSingleQuotesInEnvValues(t *testing.T) {
-	cmd := (&CodexAgent{}).BuildLaunchCommand(LaunchParams{
+	cmd := buildLaunch((&CodexAgent{}), LaunchParams{
 		SessionName: "codex-x",
 		Role:        "Bob's QA",
 	})
@@ -1782,7 +1782,7 @@ func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
 // .agents/hooks.json from an --add-dir folder), and the session's cleanup removes it.
 func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
 	sid := "a9f3c4d1-0000-4000-8000-000000003481" // canonical: CleanupTempFiles only acts on one (#3598)
-	line := (&AgyAgent{}).BuildLaunchCommand(LaunchParams{SessionID: sid, WorkingDir: t.TempDir()})
+	line := buildLaunch((&AgyAgent{}), LaunchParams{SessionID: sid, WorkingDir: t.TempDir()})
 	m := regexp.MustCompile(`--add-dir '?([^' ]+)'?`).FindStringSubmatch(line)
 	if m == nil {
 		t.Fatalf("no --add-dir in %q", line)

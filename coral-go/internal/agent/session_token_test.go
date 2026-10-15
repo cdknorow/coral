@@ -38,7 +38,7 @@ func TestLaunchLineDeliversTheSessionTokenWithoutTypingIt(t *testing.T) {
 	for name, ag := range map[string]Agent{"claude": &ClaudeAgent{}, "codex": &CodexAgent{}, "agy": &AgyAgent{}, "pi": &PiAgent{}} {
 		os.Remove(envOut)
 		p := LaunchParams{SessionID: "11111111-2222-3333-4444-555555555555", CLIPath: stub, CoralPort: 8420}
-		line := WrapWithBundlePath(ag.BuildLaunchCommand(p))
+		line := WrapWithBundlePath(buildLaunch(ag, p))
 		assert.NotContains(t, line, token, "%s: the token is never typed", name)
 		assert.Contains(t, line, file, name)
 		out, err := exec.Command("/bin/sh", "-c", line).CombinedOutput()
@@ -52,7 +52,7 @@ func TestLaunchLineDeliversTheSessionTokenWithoutTypingIt(t *testing.T) {
 
 	// The CLI never starts: the file is still deleted.
 	p := LaunchParams{SessionID: "11111111-2222-3333-4444-555555555555", CLIPath: filepath.Join(dir, "missing-cli")}
-	line := (&ClaudeAgent{}).BuildLaunchCommand(p)
+	line := buildLaunch((&ClaudeAgent{}), p)
 	_, _ = exec.Command("/bin/sh", "-c", line).CombinedOutput()
 	assert.NoFileExists(t, file)
 	CleanupTempFiles(p.SessionID)
@@ -60,8 +60,8 @@ func TestLaunchLineDeliversTheSessionTokenWithoutTypingIt(t *testing.T) {
 	// No minter (tests, other callers): no token part at all.
 	SessionTokenMinter = nil
 	// (It is still unset: an agent never keeps a token from whatever started Coral, #3421.)
-	assert.NotContains(t, (&ClaudeAgent{}).BuildLaunchCommand(p), `CORAL_SESSION_TOKEN="$(cat`)
-	assert.False(t, strings.Contains((&CodexAgent{}).BuildLaunchCommand(p), `CORAL_SESSION_TOKEN="$(cat`))
-	assert.Contains(t, (&ClaudeAgent{}).BuildLaunchCommand(p), "unset ")
+	assert.NotContains(t, buildLaunch((&ClaudeAgent{}), p), `CORAL_SESSION_TOKEN="$(cat`)
+	assert.False(t, strings.Contains(buildLaunch((&CodexAgent{}), p), `CORAL_SESSION_TOKEN="$(cat`))
+	assert.Contains(t, buildLaunch((&ClaudeAgent{}), p), "unset ")
 	CleanupTempFiles(p.SessionID)
 }

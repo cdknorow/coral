@@ -51,7 +51,10 @@ func TestCodexLinkReplacesCachedTranscriptAndResumeIdentity(t *testing.T) {
 	if _, n := NewSessionReader().ReadAllMessagesForLive(sid, "", "codex"); n != 1 {
 		t.Fatalf("cold restart count=%d", n)
 	}
-	cmd := (&agent.CodexAgent{}).BuildLaunchCommand(agent.LaunchParams{ResumeSessionID: sid})
+	cmd, err := (&agent.CodexAgent{}).LaunchCommand(agent.LaunchParams{ResumeSessionID: sid})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(cmd, "resume "+thread) {
 		t.Fatalf("wrong resume: %s", cmd)
 	}

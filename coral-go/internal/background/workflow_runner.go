@@ -622,7 +622,7 @@ func KnownStepAgentType(agentType string) bool {
 
 // executeAgentPrint runs an agent in non-interactive --print mode.
 // When the agent config includes tools/capabilities, those are passed via a settings
-// file (same as BuildLaunchCommand) so the agent has tool access in headless mode.
+// file (same as LaunchCommand) so the agent has tool access in headless mode.
 // Captures stdout/stderr to step files. No tmux session.
 func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, step StepDef, sf stepFiles, repoPath string, env []string, agentCfg *AgentStepConfig, prompt string, stepHooks map[string]interface{}, result *StepResult) error {
 	binPath, err := agent.FindCLI(wr.settings(ctx), agentCfg.AgentType)
@@ -660,7 +660,10 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 				params.MCPServers = servers
 			}
 			var settingsFile string
-			args, settingsFile = (&agent.ClaudeAgent{}).PrintArgs(params)
+			args, settingsFile, err = (&agent.ClaudeAgent{}).PrintArgs(params)
+			if err != nil {
+				return fmt.Errorf("step %q: %w", step.Name, err)
+			}
 			// The step's settings temp file goes once the step has run (Security's review).
 			defer os.Remove(settingsFile)
 		} else {

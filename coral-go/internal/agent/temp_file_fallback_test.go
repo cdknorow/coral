@@ -5,17 +5,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// #3601 W12: when the temp file can't be made, writeTempFile returns "" instead of writing
-// to the predictable coral_<prefix>_<id>.<ext> in the shared temp folder, where another user
-// could have planted a link first. A half-written file is removed, and the launch line
-// leaves the argument out.
+// #3601 W12: when the temp file can't be made, writeTempFile returns an error naming the temp
+// folder instead of writing to the predictable coral_<prefix>_<id>.<ext> there, where another
+// user could have planted a link first. A half-written file is removed, and the launch fails
+// with that error rather than starting an agent without its prompt, settings or instructions.
 func TestWriteTempFileHasNoPredictableFallback(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
@@ -34,19 +33,37 @@ func TestWriteTempFileHasNoPredictableFallback(t *testing.T) {
 	createTemp = func(string, string) (*os.File, error) { return nil, errors.New("no space left") }
 	t.Cleanup(func() { createTemp = os.CreateTemp })
 
-	assert.Equal(t, "", writeTempFile("prompt", sid, "txt", []byte("PROMPT")))
+	p, err := writeTempFile("prompt", sid, "txt", []byte("PROMPT"))
+	assert.Equal(t, "", p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), os.TempDir(), "the error names the temp folder")
 	b, err := os.ReadFile(victim)
 	require.NoError(t, err)
 	assert.Equal(t, "UNCHANGED", string(b), "nothing is written through the planted name")
 
-	cmd := (&ClaudeAgent{}).BuildLaunchCommand(LaunchParams{SessionID: sid, Prompt: "do the thing", BoardName: "b", Role: "r"})
-	assert.NotContains(t, cmd, "--settings", "no settings argument without a settings file")
-	assert.NotContains(t, cmd, "$(cat", "no prompt argument without a prompt file")
-	args, settings := (&ClaudeAgent{}).PrintArgs(LaunchParams{SessionID: sid})
+	params := LaunchParams{SessionID: sid, Prompt: "do the thing", BoardName: "b", Role: "r", CoralDir: t.TempDir()}
+	for _, ag := range []Agent{&ClaudeAgent{}, &CodexAgent{}, &AgyAgent{}, &PiAgent{}} {
+		cmd, err := ag.LaunchCommand(params)
+		assert.Error(t, err, "%s launches without its files", ag.AgentType())
+		assert.Equal(t, "", cmd, ag.AgentType())
+	}
+	args, settings, err := (&ClaudeAgent{}).PrintArgs(LaunchParams{SessionID: sid})
+	assert.Error(t, err)
+	assert.Nil(t, args)
 	assert.Equal(t, "", settings)
-	assert.NotContains(t, args, "--settings")
-	codex := (&CodexAgent{}).BuildLaunchCommand(LaunchParams{SessionID: sid, Prompt: "do the thing", BoardName: "b", Role: "r"})
-	assert.NotContains(t, codex, "$(cat", "codex: no instructions or prompt argument")
+
+	// The first file is made, the second fails: the launch fails and the first is removed.
+	calls := 0
+	createTemp = func(dir, pattern string) (*os.File, error) {
+		calls++
+		if calls == 2 {
+			return nil, errors.New("no space left")
+		}
+		return os.CreateTemp(dir, pattern)
+	}
+	_, err = (&ClaudeAgent{}).LaunchCommand(params)
+	require.Error(t, err)
+	require.Equal(t, 2, calls, "settings, then the prompt")
 
 	// The write fails after the create: the half-written file is removed.
 	var made string
@@ -59,13 +76,19 @@ func TestWriteTempFileHasNoPredictableFallback(t *testing.T) {
 		f.Close()
 		return os.Open(made) // read-only: the write fails
 	}
-	assert.Equal(t, "", writeTempFile("prompt", sid, "txt", []byte("PROMPT")))
+	_, err = writeTempFile("prompt", sid, "txt", []byte("PROMPT"))
+	assert.Error(t, err)
 	require.NotEmpty(t, made)
 	_, err = os.Lstat(made)
 	assert.True(t, os.IsNotExist(err), "the half-written file is removed")
 
+	// Nothing is left in the temp folder but the planted link.
 	entries, _ := os.ReadDir(tmp)
+	var left []string
 	for _, e := range entries {
-		assert.False(t, strings.HasPrefix(e.Name(), "coral_") && e.Name() != filepath.Base(planted), "left in the temp folder: %s", e.Name())
+		if e.Name() != filepath.Base(planted) {
+			left = append(left, e.Name())
+		}
 	}
+	assert.Empty(t, left, "files left in the temp folder")
 }
