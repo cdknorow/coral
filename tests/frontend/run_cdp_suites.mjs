@@ -3,7 +3,7 @@
 //
 //   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome]
 //                           [--shards N] [--retries N] [--allow-flaky] [--keep] [--stress [--runs N] [--cpu-throttle X]]
-//                           [--sequences]
+//                           [--sequences] [--strict | --no-strict]
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
@@ -63,7 +63,7 @@
 // that is no longer alive (runners running at the same time are left alone), and only groups whose
 // command line still names that run's temp directory, so a reused pid is never hit.
 // Never run bare 'tmux' from an agent shell: $TMUX there points at production Coral's ~/.coral/tmux.sock.
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -122,6 +122,15 @@ const SEQUENCES = [
   ['terminal_pane_size_browser.test.js', 'terminal_scroll.test.js'],
 ];
 const keep = flag('--keep');
+// Strict local auth (#3527, Security's #3509 item 6): --strict runs STRICT_SUITES on shards whose Coral has
+// --strict-local-auth, each suite starting in a tab signed in through 'coral open --print'. A full run (no
+// --only, no --stress) adds one such shard at the end; --no-strict leaves it out.
+const strictOnly = flag('--strict');
+const STRICT_SUITES = [
+  'strict_mode_browser.test.js', 'server_switcher_browser.test.js', 'agent_state.test.js',
+  'team_view_consolidation.test.js', 'team_view_responsive_rows.test.js', 'a11y_dashboard_browser.test.js',
+];
+const strictShard = strictOnly || (!flag('--no-strict') && !only && !stress && !flag('--sequences'));
 const PROD_PORT = 8420;
 const chromePath = arg('--chrome', process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
@@ -254,7 +263,7 @@ const allLogs = []; // every shard's Coral log, including shards that were repla
 // startShard starts one isolated Coral server and one headless Chrome. Each shard has its own data dir,
 // Codex home, ports and Chrome profile, so shards share nothing but the built binary. gen counts the
 // replacements of shard n (after a timeout or a dead process), so each start gets fresh directories.
-async function startShard(n, gen = 0) {
+async function startShard(n, gen = 0, strict = false) {
   const dir = path.join(tmp, `shard${n}${gen ? `-${gen}` : ''}`);
   fs.mkdirSync(dir, { recursive: true });
   const port = await freePort();
@@ -268,7 +277,8 @@ async function startShard(n, gen = 0) {
   const hostHome = path.join(dir, 'home'); fs.mkdirSync(hostHome);
   const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome };
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
-  const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off', ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
+  const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
+    ...(strict ? ['--strict-local-auth'] : []), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
     { env: serverEnv, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
   track(coral);
   allLogs.push(log);
@@ -315,8 +325,8 @@ async function startShard(n, gen = 0) {
   // CORAL_TEST_TMUX_SOCKET: this shard's own tmux socket (<data>/tmux.sock), for suites that compare
   // the pane with the dashboard (#3422). CORAL_TEST_LOG: this shard's Coral log, which a suite reads
   // only to explain its own failure (helpers/stand_in_agent.js, #3502).
-  return { n, gen, log, coral, chrome, throttler, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
-    CORAL_TEST_TMUX_SOCKET: path.join(data, 'tmux.sock'), CORAL_TEST_LOG: log } };
+  return { n, gen, log, coral, chrome, throttler, strict, data, serverEnv, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
+    CORAL_TEST_TMUX_SOCKET: path.join(data, 'tmux.sock'), CORAL_TEST_LOG: log, ...(strict ? { CORAL_TEST_STRICT: '1' } : {}) } };
 }
 
 async function stopShard(shard) {
@@ -328,13 +338,16 @@ async function stopShard(shard) {
 // starting at once could be handed the same port. Each shard also waits for coral's own "bound" log line.
 const shardsUp = [];
 try {
-  for (let i = 1; i <= shards; i++) shardsUp.push(await startShard(i));
+  for (let i = 1; i <= shards; i++) shardsUp.push(await startShard(i, 0, strictOnly));
 } catch (e) { console.error(e.message); process.exit(2); }
 console.log('');
 
-const tests = sequencesOnly ? [] : [...suites.cdp, ...suites.server]
+for (const t of STRICT_SUITES) if (!suites.cdp.includes(t)) { console.error(`STRICT_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
+let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : [...suites.cdp, ...suites.server])
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
-const sequences = stress || (only && !sequencesOnly) ? [] : SEQUENCES;
+// The strict phase's results are named 'strict: <suite>' (the default-mode run of a suite is separate).
+let phase = strictOnly ? 'strict: ' : '';
+const sequences = stress || strictOnly || (only && !sequencesOnly) ? [] : SEQUENCES;
 for (const t of sequences.flat()) if (!suites.cdp.includes(t)) { console.error(`SEQUENCES names ${t}, which is not a CDP suite`); process.exit(2); }
 if (!tests.length && !sequences.length) { console.error('no CDP suites matched'); process.exit(2); }
 console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.length} suites${only ? ` (--only ${only})` : ''}${sequences.length ? `, then ${sequences.length} sequence(s)` : ''}`);
@@ -368,8 +381,39 @@ async function clearOrigin(shard) {
 }
 
 // runAttempt runs one suite once in its own process group, with the hard per-attempt timeout.
+// signIn gives a strict shard's fresh tab the dashboard's sign-in cookie, as a person gets it: a single-use
+// link from 'coral open --print' (the command line's signed request), opened in the tab, which redirects to
+// the dashboard; the tab then goes back to about:blank for the suite.
+async function signIn(shard) {
+  const out = execFileSync(bin, ['open', '--print', '--url', shard.env.CORAL_TEST_URL, '--home', shard.data],
+    { env: shard.serverEnv, encoding: 'utf8', timeout: 15000 });
+  const link = (out.match(/https?:\/\/\S+login_token=\S+/) || [])[0];
+  if (!link) throw new Error(`coral open --print gave no sign-in link: ${out.trim().slice(0, 200)}`);
+  let client;
+  try {
+    client = await CDP({ port: Number(shard.env.CDP_PORT) });
+    await client.Page.enable();
+    const loaded = client.Page.loadEventFired();
+    await client.Page.navigate({ url: link });
+    await loaded;
+    for (const end = Date.now() + 10000; ; await sleep(100)) {
+      const { result } = await client.Runtime.evaluate({ expression: 'location.search.includes("login_token")', returnByValue: true });
+      if (!result.value) break;
+      if (Date.now() > end) throw new Error('the sign-in link did not redirect');
+    }
+    await client.Page.navigate({ url: 'about:blank' });
+  } finally {
+    try { if (client) await client.close(); } catch { /* closed */ }
+  }
+}
+
 async function runAttempt(t, shard) {
   await clearOrigin(shard);
+  if (shard.strict) {
+    try { await signIn(shard); } catch (e) {
+      return { status: 'fail', code: 'sign-in', secs: '0.0', shard: shard.n, log: shard.log, out: `[runner] strict shard: could not sign the browser in: ${e.message}` };
+    }
+  }
   const started = Date.now();
   return await new Promise(resolve => {
     const p = spawn('node', [t], { cwd: here, env: shard.env, detached: true });
@@ -410,7 +454,7 @@ async function ensureShard(i, force) {
   const why = problem;
   await stopShard(sh);
   console.log(`  [runner] replacing shard ${sh.n} (${why})`);
-  shardsUp[i] = await startShard(sh.n, sh.gen + 1);
+  shardsUp[i] = await startShard(sh.n, sh.gen + 1, sh.strict);
   return shardsUp[i];
 }
 
@@ -429,7 +473,7 @@ async function runOnce(run) {
         attempts.push(r);
         if (r.status === 'pass') break;
         if (a < retries) {
-          console.log(`RETRY ${t}  (${r.status === 'timeout' ? `TIMEOUT after ${r.secs}s` : `exit=${r.code} after ${r.secs}s`})${shards > 1 ? `  [shard ${r.shard}]` : ''}${label}`);
+          console.log(`RETRY ${phase}${t}  (${r.status === 'timeout' ? `TIMEOUT after ${r.secs}s` : `exit=${r.code} after ${r.secs}s`})${shards > 1 ? `  [shard ${r.shard}]` : ''}${label}`);
           // A retry gets a fresh Coral and Chrome: retrying on the same server and browser would repeat a
           // failure caused by their state rather than by the suite.
           shard = await ensureShard(i, r.status === 'timeout' ? 'after a TIMEOUT' : 'before a retry');
@@ -440,14 +484,14 @@ async function runOnce(run) {
       const final = attempts[attempts.length - 1];
       const status = final.status === 'pass' ? (attempts.length > 1 ? 'flaky' : 'pass') : final.status;
       const res = {
-        test: t, run, status, ok: status === 'pass', code: final.code, secs: final.secs, tail: lastLines(final.out, 6),
+        test: phase + t, run, status, ok: status === 'pass', code: final.code, secs: final.secs, tail: lastLines(final.out, 6),
         attempts: attempts.map(x => ({ status: x.status, code: x.code, secs: x.secs, shard: x.shard, coralLog: x.log, ...(x.status !== 'pass' ? { output: x.out } : {}) })),
       };
       if (shards > 1) res.shard = final.shard;
       if (status !== 'pass') res.output = attempts.filter(x => x.status !== 'pass').map(x => x.out).join('\n\n----- next attempt -----\n\n');
       results.push(res);
       const word = { pass: 'PASS', flaky: 'FLAKY', fail: 'FAIL', timeout: 'TIMEOUT' }[status];
-      console.log(`${word.padEnd(7)} ${t}  (${final.secs}s${attempts.length > 1 ? `, ${attempts.length} attempts` : ''})${shards > 1 ? `  [shard ${final.shard}]` : ''}${label}${status === 'fail' ? `  exit=${final.code}` : ''}`);
+      console.log(`${word.padEnd(7)} ${phase}${t}  (${final.secs}s${attempts.length > 1 ? `, ${attempts.length} attempts` : ''})${shards > 1 ? `  [shard ${final.shard}]` : ''}${label}${status === 'fail' ? `  exit=${final.code}` : ''}`);
       // CDP_FULL=1 prints a failing attempt's whole output (the default shows its last 30 lines, which can hide
       // the failing check); results.json always has it in full.
       for (const x of attempts.filter(x => x.status !== 'pass')) {
@@ -481,6 +525,16 @@ const runStarted = Date.now();
 try {
   for (let run = 1; run <= runs; run++) await runOnce(run);
   await runSequences();
+  if (strictShard && !strictOnly) {
+    // One more shard, in strict mode, for the suites that matter there (#3527).
+    tests = STRICT_SUITES.slice().sort();
+    phase = 'strict: ';
+    console.log(`\nstrict phase: ${tests.length} suites on one shard with --strict-local-auth, each in a signed-in tab`);
+    for (const sh of shardsUp) await stopShard(sh);
+    shardsUp.length = 0;
+    shardsUp.push(await startShard(shards + 1, 0, true));
+    await runOnce(1);
+  }
 } catch (e) { console.error(`runner error (a shard could not be replaced?): ${e.message}`); process.exit(2); }
 const elapsed = ((Date.now() - runStarted) / 1000).toFixed(1);
 results.sort((a, b) => a.test.localeCompare(b.test) || a.run - b.run);
