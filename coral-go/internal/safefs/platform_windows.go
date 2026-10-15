@@ -4,6 +4,8 @@ package safefs
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/windows"
 )
@@ -23,4 +25,43 @@ func LinkCount(f *os.File, _ os.FileInfo) (n uint64, ok bool) {
 		return 0, false
 	}
 	return uint64(info.NumberOfLinks), true
+}
+
+// realPath is where p really is. filepath.EvalSymlinks resolves symlinks but not junctions
+// (mount points) in current Go, so a junction leading out of a root looked inside it to
+// Within (#3615, found by the Windows CI run). So the resolved path is opened (attributes
+// only, a folder too) and the handle's final path is the answer: every symlink and junction on
+// the way resolved by the system itself.
+func realPath(p string) (string, error) {
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return "", err
+	}
+	name, err := windows.UTF16PtrFromString(r)
+	if err != nil {
+		return "", err
+	}
+	h, err := windows.CreateFile(name, windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
+		windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		return "", &os.PathError{Op: "open", Path: r, Err: err}
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n, err := windows.GetFinalPathNameByHandle(h, &buf[0], uint32(len(buf)), 0) // FILE_NAME_NORMALIZED | VOLUME_NAME_DOS (both 0)
+	if err != nil {
+		return "", &os.PathError{Op: "GetFinalPathNameByHandle", Path: r, Err: err}
+	}
+	if int(n) >= len(buf) {
+		return "", &os.PathError{Op: "GetFinalPathNameByHandle", Path: r, Err: windows.ERROR_FILENAME_EXCED_RANGE}
+	}
+	final := windows.UTF16ToString(buf[:n])
+	switch {
+	case strings.HasPrefix(final, `\\?\UNC\`):
+		final = `\\` + final[len(`\\?\UNC\`):] // a share: IsUNC refuses it where it matters
+	case strings.HasPrefix(final, `\\?\`):
+		final = final[len(`\\?\`):]
+	}
+	return filepath.Clean(final), nil
 }

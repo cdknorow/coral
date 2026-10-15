@@ -4,6 +4,7 @@ package safefs
 
 import (
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
@@ -21,3 +22,6 @@ func LinkCount(_ *os.File, fi os.FileInfo) (n uint64, ok bool) {
 	}
 	return 0, false
 }
+
+// realPath is p with every symlink resolved.
+func realPath(p string) (string, error) { return filepath.EvalSymlinks(p) }

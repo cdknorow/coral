@@ -59,7 +59,7 @@ func Resolve(p string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.EvalSymlinks(abs)
+	return realPath(abs)
 }
 
 // Within resolves root (which must exist) and p (absolute, or relative to root), and returns
@@ -99,7 +99,7 @@ func Within(root, p string) (string, error) {
 func resolveExisting(p string) (string, error) {
 	rest := ""
 	for cur := p; ; {
-		if r, err := filepath.EvalSymlinks(cur); err == nil {
+		if r, err := realPath(cur); err == nil {
 			return filepath.Join(r, rest), nil
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return "", err

@@ -57,8 +57,39 @@ func TestWindowsJunctionOutIsRefused(t *testing.T) {
 	assert.Error(t, r.MkdirAll(`junc\made`, 0o755))
 	secretIntact(t, out, secret)
 
-	_, err = Within(root, `junc\secret.txt`)
-	assert.ErrorIs(t, err, ErrOutside, "Within sees the junction")
+	// Within and Resolve follow the junction: filepath.EvalSymlinks alone doesn't (#3615).
+	for _, p := range []string{`junc\secret.txt`, `junc\new.txt`, "junc", filepath.Join(root, "junc", "secret.txt")} {
+		_, err = Within(root, p)
+		assert.ErrorIs(t, err, ErrOutside, "Within sees the junction: %s", p)
+	}
+	realOut, err := Resolve(out)
+	require.NoError(t, err)
+	got, err := Resolve(filepath.Join(root, "junc"))
+	require.NoError(t, err)
+	assert.Equal(t, realOut, got, "Resolve follows the junction")
+}
+
+// A junction that stays inside the root is resolved to where it leads, inside: no false
+// refusal, and the relative path Within returns is the real one.
+func TestWindowsJunctionWithinTheRootResolves(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "real"), 0o755))
+	junction(t, filepath.Join(root, "alias"), filepath.Join(root, "real"))
+	for p, want := range map[string]string{
+		`alias\x.txt`:          `real\x.txt`,
+		`alias\new\deeper.txt`: `real\new\deeper.txt`,
+		"alias":                "real",
+	} {
+		rel, err := Within(root, p)
+		require.NoError(t, err, p)
+		assert.Equal(t, want, rel, p)
+	}
+	// The root given through a junction works too.
+	outer := filepath.Join(t.TempDir(), "root-alias")
+	junction(t, outer, root)
+	rel, err := Within(outer, `real\x.txt`)
+	require.NoError(t, err)
+	assert.Equal(t, `real\x.txt`, rel)
 }
 
 // A junction that stays inside the root is still not written through as the last name, and a
