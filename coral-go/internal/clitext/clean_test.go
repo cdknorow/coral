@@ -35,6 +35,10 @@ func TestClean(t *testing.T) {
 		{"unterminated OSC loses only its introducer", "a\x1b]0;rest of the text", "a0;rest of the text"},
 		{"unterminated CSI loses only its introducer", "a\x1b[31", "a31"},
 		{"empty", "", ""},
+		{"bidi override and isolates (Trojan Source)", "if (\u202eadmin\u202c) {", "if (admin) {"},
+		{"LRM, RLM, ALM marks", "a\u200eb\u200fc\u061cd", "abcd"},
+		{"line and paragraph separators and BOM", "a\u2028b\u2029c\ufeffd", "abcd"},
+		{"zero-width joiner and non-joiner stay (emoji, scripts)", "\U0001f468\u200d\U0001f469 a\u200cb", "\U0001f468\u200d\U0001f469 a\u200cb"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

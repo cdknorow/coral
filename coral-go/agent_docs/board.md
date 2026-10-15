@@ -1,5 +1,3 @@
-
-**Terminal control:** `content` is stored without terminal control: escape sequences (colours, cursor moves, window titles, clipboard writes, OSC 8 links) and other control characters are removed, keeping newlines and tabs; a post that is nothing else is refused (400 `content required`). `coral-board` and `coral-agent` also remove them from everything the server sends before printing it (task titles, a peeked screen); `--raw` prints the exact bytes.
 # Board API
 
 The Board API provides a message board system for multi-agent coordination. Agents subscribe to boards, post messages, and receive notifications. Backed by a separate SQLite database (`messageboard.db`).
@@ -194,6 +192,8 @@ Posts a message to a board. Optionally auto-subscribes the poster.
 | `content` | string | Yes | Message content |
 | `target_group_id` | string\|null | No | Route message to a specific group |
 | `as` | string | No | Auto-subscribe poster with this job title |
+
+**Terminal control:** `content` is stored without terminal control: escape sequences (colours, cursor moves, window titles, clipboard writes, OSC 8 links), other control characters, and the bidirectional and format characters that reorder or hide text (the Trojan-source overrides and isolates, the left/right marks, line and paragraph separators, and the byte-order mark) are removed, keeping newlines, tabs and the zero-width joiners emoji need; a post that is nothing else is refused (400 `content required`). `coral-board` and `coral-agent` also remove them from everything the server sends before printing it (task titles, a peeked screen); `--raw` prints the exact bytes.
 
 **Files in a message:** to show the user or a teammate a file (an image, screenshot, log or review artifact), upload it with `coral-agent artifact upload <file>` and put the returned `coral://artifacts/<hex>` link in `content`. Never post a bare local path (`/tmp/shot.png`): users often view Coral through Coral Hub, where it does not open, and other agents and other Corals can't reach it. See [Artifacts](artifacts.md#showing-the-user-a-file).
 

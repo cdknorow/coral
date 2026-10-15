@@ -15,9 +15,11 @@ const (
 )
 
 // Clean returns s without terminal control: escape sequences are removed whole (CSI, OSC, DCS,
-// APC, PM, SOS and two-byte ones, in their 7-bit and C1 forms), and every other control
-// character goes (C0 except newline and tab, DEL, C1). Text, newlines and tabs stay. A string
-// sequence with no terminator loses only its introducer, so no text after it is lost.
+// APC, PM, SOS and two-byte ones, in their 7-bit and C1 forms), every other control character
+// goes (C0 except newline and tab, DEL, C1), and the bidirectional and other format characters
+// that reorder or hide text go too (see isBidiOrFormat). Text, newlines and tabs stay, and the
+// zero-width joiner and non-joiner stay so emoji and scripts render. A string sequence with no
+// terminator loses only its introducer, so no text after it is lost.
 func Clean(s string) string {
 	if clean(s) {
 		return s
@@ -40,7 +42,7 @@ func Clean(s string) string {
 		case r == '\n' || r == '\t':
 			b = append(b, s[i])
 			i++
-		case r < 0x20 || r == 0x7f:
+		case r < 0x20 || r == 0x7f || isBidiOrFormat(r):
 			i += size
 		default:
 			b = append(b, s[i:i+size]...)
@@ -50,18 +52,37 @@ func Clean(s string) string {
 	return string(b)
 }
 
+// isBidiOrFormat reports whether r reorders or hides text without showing a glyph: the
+// bidirectional overrides, embeddings and isolates (the Trojan Source attack), the left/right
+// marks, the line and paragraph separators, and the byte-order mark. The zero-width joiner
+// (U+200D) and non-joiner (U+200C) are NOT here: they shape emoji and scripts.
+func isBidiOrFormat(r rune) bool {
+	switch {
+	case r >= 0x202a && r <= 0x202e: // LRE RLE PDF LRO RLO
+		return true
+	case r >= 0x2066 && r <= 0x2069: // LRI RLI FSI PDI
+		return true
+	case r == 0x200e || r == 0x200f || r == 0x061c: // LRM RLM ALM
+		return true
+	case r == 0x2028 || r == 0x2029: // line and paragraph separators
+		return true
+	case r == 0xfeff: // zero-width no-break space / BOM
+		return true
+	}
+	return false
+}
+
 // clean reports whether s has nothing Clean would remove (the common case: no copy).
 func clean(s string) bool {
 	if !utf8.ValidString(s) {
 		return false // a stray byte may be an 8-bit C1 control: Clean decides
 	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if (c < 0x20 && c != '\n' && c != '\t') || c == 0x7f {
+	for _, r := range s {
+		if (r < 0x20 && r != '\n' && r != '\t') || r == 0x7f {
 			return false
 		}
-		if c == 0xc2 && i+1 < len(s) && s[i+1] >= 0x80 && s[i+1] <= 0x9f {
-			return false // a C1 control in UTF-8 (U+0080..U+009F)
+		if (r >= 0x80 && r <= 0x9f) || isBidiOrFormat(r) {
+			return false
 		}
 	}
 	return true
