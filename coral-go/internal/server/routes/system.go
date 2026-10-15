@@ -8,7 +8,6 @@ import (
 	"github.com/cdknorow/coral/internal/agentprio"
 	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
@@ -235,6 +235,16 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		body[RetentionKindsSetting] = s
 	}
+	// require_auth_on_loopback (#3585): a boolean, normalised to "true"/"false". This route is
+	// Operator-only and not reachable through the Coral Hub (operatorOnlyRoutes), so the setting is too.
+	if v, ok := body[auth.RequireAuthOnLoopbackSetting]; ok {
+		on, valid := validBoolSetting(v)
+		if !valid {
+			errBadRequest(w, auth.RequireAuthOnLoopbackSetting+" must be true or false")
+			return
+		}
+		body[auth.RequireAuthOnLoopbackSetting] = strconv.FormatBool(on)
+	}
 	var current map[string]string
 	for k, v := range body {
 		agentType, isCLIPath := agent.IsCLIPathSetting(k)
@@ -318,6 +328,9 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		if k == inputlog.SettingKey {
 			inputlog.SetSetting(inputlog.SettingOn(s))
 		}
+		if k == auth.RequireAuthOnLoopbackSetting {
+			auth.SetRequireAuthOnLoopback(auth.SettingOn(s)) // #3585: takes effect for the next request
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -346,14 +359,11 @@ func (h *SystemHandler) DeleteDebugInputLog(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": n, "debug_input_log": inputlog.State()})
 }
 
-// fromLoopback reports whether the request's peer is a loopback address.
+// fromLoopback reports whether r is a direct local client, allowed to delete the input log from
+// this machine. It goes through auth.IsDirectLocal (#3585): a request a local proxy forwarded,
+// and every request while require_auth_on_loopback is on, is not treated as local.
 func fromLoopback(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	ip, err := netip.ParseAddr(host)
-	return err == nil && ip.Unmap().IsLoopback()
+	return auth.IsDirectLocal(r)
 }
 
 // gitDiffModes are the comparison bases the changed-files panel offers.
@@ -1614,4 +1624,21 @@ func parseFrontmatterMD(content string) (agentFrontmatter, string) {
 func tmuxServerIssue() string {
 	msg, _ := tmux.IncompatibleServer()
 	return msg
+}
+
+// validBoolSetting normalises a settings value that should be a boolean. It accepts a JSON bool
+// or the strings true/false/1/0/yes/no/on/off (any case); anything else is invalid (#3585).
+func validBoolSetting(v any) (on bool, valid bool) {
+	switch t := v.(type) {
+	case bool:
+		return t, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(t)) {
+		case "1", "true", "yes", "on":
+			return true, true
+		case "0", "false", "no", "off", "":
+			return false, true
+		}
+	}
+	return false, false
 }

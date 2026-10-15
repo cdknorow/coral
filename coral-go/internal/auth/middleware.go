@@ -45,13 +45,24 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			if ks.handleLoginToken(w, r) {
 				return
 			}
-			// Always allow localhost — but validate Host header to prevent
-			// DNS rebinding (attacker domain resolving to 127.0.0.1)
-			if isLocalhost(r) {
-				// CONNECT requests (MITM proxy) have the target host in r.Host
-				// (e.g. "chatgpt.com:443"), not the proxy host. Skip DNS rebinding
-				// check for CONNECT since the client is verified as localhost by IP.
-				if r.Method == http.MethodConnect || isValidLocalhostHost(r.Host) {
+			// CONNECT requests (the local MITM proxy for agent browsing) carry the target
+			// host in r.Host (e.g. "chatgpt.com:443"), not a proxy host, and no forwarding
+			// header; they are trusted by loopback IP alone, as before (#3585 keeps this).
+			if r.Method == http.MethodConnect && isLocalhost(r) {
+				next.ServeHTTP(w, withMethod(r, MethodLoopback))
+				return
+			}
+			// A direct local client (a loopback peer with no reverse-proxy header) reaches the
+			// handlers as MethodLoopback. A request a local reverse proxy forwarded is not direct
+			// and falls through to key/session auth, so a proxy that rewrites Host to localhost
+			// can't lend its clients this pass (#3585). When require_auth_on_loopback is on, this
+			// pass is NOT a credential by itself: the identity middleware then runs in strict mode
+			// and refuses a direct-local request that carries no agent token, session or CLI
+			// signature (so a signed command line, coral open and agents still work, a tokenless
+			// terminal does not) — but a proxied request never reaches that strict path. The Host
+			// header is still validated against DNS rebinding.
+			if IsDirectLocalPeer(r) {
+				if isValidLocalhostHost(r.Host) {
 					next.ServeHTTP(w, withMethod(r, MethodLoopback))
 					return
 				}

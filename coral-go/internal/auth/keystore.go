@@ -164,8 +164,12 @@ func (ks *KeyStore) SetTrustedProxies(list string) error {
 	return nil
 }
 
-// fromTrustedProxy reports whether the request's peer is a proxy whose forwarding headers
-// are believed: a loopback peer, or one in SetTrustedProxies.
+// fromTrustedProxy reports whether the request's peer is a proxy whose forwarding headers are
+// believed: a loopback peer, or one in SetTrustedProxies. This is header BELIEF (X-Forwarded-Proto
+// for the Secure cookie, X-Forwarded-Host for the Origin check), not a no-credentials grant, so it
+// stays on isLocalhost: a local TLS reverse proxy is exactly a loopback peer that sets these
+// headers, and the caller still needs the key or a session. The no-credentials loopback pass is
+// the one gated on isDirectLocal (#3585, in Middleware).
 func (ks *KeyStore) fromTrustedProxy(r *http.Request) bool {
 	if isLocalhost(r) {
 		return true

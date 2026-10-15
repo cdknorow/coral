@@ -1,12 +1,12 @@
 package routes
 
 import (
-	"net"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/executil"
 )
 
@@ -14,12 +14,7 @@ import (
 // browser on that same machine; a phone or another computer would launch an
 // editor nobody is looking at.
 func isLocalClient(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return auth.IsDirectLocal(r) // #3585: a proxied request, or any request with the setting on, is not local
 }
 
 // Swapped in tests so nothing is launched.

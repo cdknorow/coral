@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -34,11 +35,9 @@ func localDashboard(r *http.Request) bool {
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Authorization"))), "bearer ") {
 		return false // a proxy such as the self-hosted hub, not a browser
 	}
-	peer, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	if ip := net.ParseIP(peer); ip == nil || !ip.IsLoopback() {
+	// A direct local client only (#3585): a request a local proxy forwarded, and every request
+	// while require_auth_on_loopback is on, gets the strict file roots, not the relaxed bounds.
+	if !auth.IsDirectLocal(r) {
 		return false
 	}
 	if !localHostOK(r.Host) {

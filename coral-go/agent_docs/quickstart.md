@@ -144,6 +144,19 @@ HTTP …`) and **Settings › Privacy › Remote access** all say so. Pick one o
   `http://127.0.0.1:8420`, with remote access left **off** so Coral itself listens on
   loopback only. Forward WebSocket upgrades (`/ws/…`), and send
   `X-Forwarded-Proto: https`.
+
+  > **Warning — the proxy must not lend its clients the loopback bypass.** The proxy reaches
+  > Coral from `127.0.0.1`, so if it rewrites `Host` to `localhost` **and** forwards no
+  > `X-Forwarded-*` / `Tailscale-*` header, every client it proxies — a remote tailnet user
+  > included — would land on the no-credentials loopback pass. Coral already denies that pass to
+  > any loopback request carrying a forwarding header, but a proxy that strips those headers
+  > (nginx's default `proxy_pass` sends none) still looks direct. With **any** proxy on this
+  > machine, either turn on **`require_auth_on_loopback`** (Settings; Operator-only) so even a
+  > plain loopback request must authenticate, or don't front loopback at all — bind Coral to the
+  > tailnet address with `--host <tailnet-ip>` (with remote access on), so the tailnet reaches
+  > Coral directly as a remote caller that needs the key, and a local proxy isn't in the path.
+  > Coral's loopback trust keys on the connection's peer address, not the `Host` header, so a
+  > caller arriving on the tailnet address is never treated as local.
 - **Native TLS**: `coral --tls-cert cert.pem --tls-key key.pem` (or `CORAL_TLS_CERT` and
   `CORAL_TLS_KEY`), PEM files, with remote access on. The same port then serves HTTPS, and
   WSS for the terminal and live feeds (the dashboard picks `wss:` on an `https:` page). From

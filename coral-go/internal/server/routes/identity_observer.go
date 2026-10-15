@@ -136,6 +136,14 @@ func (o *IdentityObserver) SetOtherUser(f func(*http.Request) bool) { o.otherUse
 // mode would refuse are refused instead of counted.
 func (o *IdentityObserver) SetStrict() { o.strict = true }
 
+// effectiveStrict is strict local auth OR require_auth_on_loopback (#3585): the setting makes
+// every direct-local request strict-local, so a tokenless one is refused and a token, session or
+// CLI signature is verified here, exactly as strict mode does. A proxied request never reaches
+// this middleware with the loopback pass, so it is unaffected.
+func (o *IdentityObserver) effectiveStrict() bool {
+	return o != nil && (o.strict || auth.RequireAuthOnLoopback())
+}
+
 // Strict reports whether strict local auth is on.
 func (o *IdentityObserver) Strict() bool { return o != nil && o.strict }
 
@@ -148,7 +156,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		if !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/ws/") {
-			if o.strict && o.lockPage(w, r) {
+			if o.effectiveStrict() && o.lockPage(w, r) {
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -159,7 +167,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			if err != nil {
 				o.count(callerAgentBadToken)
 				o.logOnce("bad_token:"+r.UserAgent(), "[identity] request with an unknown or revoked session token", "request", r.Method+" "+r.URL.Path, "tool", r.UserAgent(), "strict", o.strict)
-				if o.strict {
+				if o.effectiveStrict() {
 					o.countBreak(callerAgentBadToken, r)
 					o.refuse(w, http.StatusUnauthorized, "session_token_required",
 						"This agent's session token is unknown or no longer valid (the agent was restarted or closed). Restart the agent from Coral.")
@@ -171,7 +179,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			}
 			o.count(callerAgentToken)
 			o.attribute(owner.SessionName, r.UserAgent())
-			if o.strict {
+			if o.effectiveStrict() {
 				// The token is the whole identity: a command-line signature on the same
 				// request never adds the Operator's authority (#3418).
 				r.Header.Del(cliauth.CLIAuthHeader)
@@ -179,7 +187,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			r = r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, owner))
 			if route, only, ok := guardedRoute(r); ok {
 				o.countOperatorCall(owner.SessionName, r.Method+" "+route)
-				if only && o.strict {
+				if only && o.effectiveStrict() {
 					o.refuse(w, http.StatusForbidden, "forbidden_for_agent",
 						"An agent can't "+operatorOnlyRoutes[r.Method+" "+route]+": that is for the Operator (the dashboard, or the command line outside an agent)")
 					return
@@ -198,7 +206,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 					"Coral couldn't check this agent's board identity just now; try again")
 				return
 			}
-			if m != nil && (o.strict || m.Kind != mismatchCrossBoard) {
+			if m != nil && (o.effectiveStrict() || m.Kind != mismatchCrossBoard) {
 				o.refuse(w, http.StatusForbidden, "identity_mismatch",
 					"This agent can't act as "+strconv.Quote(m.Claimed)+" ("+m.Field+"): its session is "+strconv.Quote(m.Expected)+" ("+m.Kind+")")
 				return
@@ -220,7 +228,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 		// strict mode (counted in the identity report as local_other); with strict local
 		// auth, every caller needs one.
 		claimed := caller == callerCLISigned || caller == callerAPIKey || caller == callerHub
-		if o.strict || claimed {
+		if o.effectiveStrict() || claimed {
 			r2, ok := o.admit(r, caller)
 			if !ok {
 				o.countBreak(caller, r)
@@ -688,7 +696,7 @@ func (o *IdentityObserver) mismatch(r *http.Request, owner *store.SessionTokenOw
 	}
 	o.mu.Unlock()
 	msg := "[identity] mismatch refused"
-	if kind == mismatchCrossBoard && !o.strict {
+	if kind == mismatchCrossBoard && !o.effectiveStrict() {
 		msg = "[identity] mismatch (log only)"
 	}
 	o.logOnce("mismatch:"+owner.SessionName+":"+kind, msg,
@@ -733,7 +741,7 @@ func (o *IdentityObserver) Report() map[string]any {
 		tools[k] = v
 	}
 	mode := "log_only"
-	if o.strict {
+	if o.effectiveStrict() {
 		mode = "strict"
 	}
 	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls,
@@ -763,5 +771,5 @@ func (o *IdentityObserver) AgentOperatorAction(r *http.Request, action string) b
 		return false
 	}
 	o.countOperatorCall(owner.SessionName, action)
-	return o.strict
+	return o.effectiveStrict()
 }

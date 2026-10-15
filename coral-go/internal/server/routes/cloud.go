@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -648,11 +647,11 @@ func localCLI(r *http.Request) bool {
 	if viaTunnel(r) || r.Header.Get("Origin") != "" || r.Header.Get("Referer") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
 		return false
 	}
-	peer, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	if ip := net.ParseIP(peer); ip == nil || !ip.IsLoopback() {
+	// A direct local peer only (#3585): a request a local proxy forwarded is not the command line
+	// on this computer. The require_auth_on_loopback clause is intentionally NOT applied here --
+	// the signed handshakes signature is the credential, so the setting is already satisfied and
+	// must not block `coral cloud connect`.
+	if !auth.IsDirectLocalPeer(r) {
 		return false
 	}
 	return localHostOK(r.Host)

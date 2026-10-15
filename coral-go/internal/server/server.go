@@ -116,6 +116,25 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	if err := keyStore.SetTrustedProxies(os.Getenv("CORAL_TRUSTED_PROXIES")); err != nil {
 		log.Printf("[auth] CORAL_TRUSTED_PROXIES ignored: %v", err)
 	}
+	// require_auth_on_loopback (#3585): read once at startup; PutSettings re-applies it on change.
+	// A failed read leaves it at the default (off); it never flips silently on a later read error.
+	// CORAL_REQUIRE_AUTH_ON_LOOPBACK overrides the stored value (the HTTP-free recovery, point C).
+	if auth.EnvOverridesRequireAuthOnLoopback() {
+		auth.SetRequireAuthOnLoopback(auth.ResolveRequireAuthOnLoopback(""))
+		log.Printf("[auth] %s overrides the stored require_auth_on_loopback setting", auth.RequireAuthOnLoopbackEnv)
+	} else {
+		ss := store.NewSessionStore(db)
+		st, err := ss.GetSettings(context.Background())
+		if err != nil { // a security switch must not fail silently open: say so and retry once (#3585 NIT 3)
+			log.Printf("[auth] WARNING: could not read settings for require_auth_on_loopback (%v); retrying once", err)
+			st, err = ss.GetSettings(context.Background())
+		}
+		if err != nil {
+			log.Printf("[auth] WARNING: require_auth_on_loopback could not be read (%v); leaving it OFF until the next change saves it", err)
+		} else {
+			auth.SetRequireAuthOnLoopback(auth.SettingOn(st[auth.RequireAuthOnLoopbackSetting]))
+		}
+	}
 
 	s := &Server{
 		cfg:        cfg,

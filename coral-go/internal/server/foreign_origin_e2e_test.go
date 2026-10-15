@@ -104,12 +104,18 @@ func TestForeignPageCannotWriteOrOpenSockets(t *testing.T) {
 // Host (nginx proxy_pass without proxy_set_header Host), the dashboard's own write carries
 // the proxy's X-Forwarded-Host and still works; without it, the same Origin is foreign.
 func TestDashboardWriteBehindAHostRewritingProxy(t *testing.T) {
-	_, ts, _ := strictServer(t, false)
-	put := func(fwd string) (int, string) {
+	srv, ts, _ := strictServer(t, false)
+	// A request a local proxy forwarded carries X-Forwarded-Host, so it no longer gets the
+	// no-credentials loopback pass (#3585); the dashboard behind a proxy authenticates (here with
+	// the API key). Origin/X-Forwarded-Host validation then still applies on top.
+	put := func(fwd string, authed bool) (int, string) {
 		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Origin", "https://coral.example")
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		if authed {
+			req.Header.Set("Authorization", "Bearer "+srv.keyStore.Key())
+		}
 		if fwd != "" {
 			req.Header.Set("X-Forwarded-Host", fwd)
 		}
@@ -119,11 +125,15 @@ func TestDashboardWriteBehindAHostRewritingProxy(t *testing.T) {
 		b, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, string(b)
 	}
-	code, body := put("coral.example")
-	assert.Equal(t, http.StatusOK, code, "through the proxy: %s", body)
-	code, body = put("")
+	// Without a credential the proxied write is now refused (the bypass it used to rely on is gone).
+	code, body := put("coral.example", false)
+	assert.Equal(t, http.StatusUnauthorized, code, "a proxied write with no credential is refused: %s", body)
+	// With the key, Origin validation decides, as before.
+	code, body = put("coral.example", true)
+	assert.Equal(t, http.StatusOK, code, "through the proxy with the key: %s", body)
+	code, body = put("", true)
 	assert.Equal(t, http.StatusForbidden, code, "no forwarded host: %s", body)
-	code, body = put("other.example")
+	code, body = put("other.example", true)
 	assert.Equal(t, http.StatusForbidden, code, "a forwarded host that isn't the Origin's: %s", body)
 }
 
