@@ -538,8 +538,8 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 		return nil
 	}
 	sub, err := o.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
-	if err != nil || sub == nil {
-		return nil // not on a board yet (it may be subscribing now)
+	if err != nil {
+		return nil
 	}
 	// The mismatch returned is the one that decides: an impersonation or Operator claim
 	// before a cross-board one (only the first two are refused outside strict mode).
@@ -548,26 +548,47 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 			first = &m
 		}
 	}
-	if !strings.EqualFold(project, sub.Project) {
-		note(o.mismatch(r, owner, mismatchCrossBoard, sub.Project, project, "project"))
+	claims := boardClaims(r)
+	// A subscription is bound to the session that holds it: an agent can't subscribe (or
+	// act) under another session's name (#3512).
+	for _, v := range claims["session_name"] {
+		if v = strings.TrimSpace(v); v != "" && v != owner.SessionName {
+			note(o.mismatch(r, owner, mismatchImpersonate, owner.SessionName, v, "session_name"))
+		}
 	}
-	claims := map[string][]string{}
-	for _, f := range []string{"subscriber_id", "as", "created_by"} {
-		claims[f] = append(claims[f], r.URL.Query()[f]...)
-	}
-	if r.Body != nil && r.Body != http.NoBody {
-		raw, err := io.ReadAll(r.Body)
-		r.Body.Close()
-		r.Body = io.NopCloser(bytes.NewReader(raw))
-		var body map[string]json.RawMessage
-		if err == nil && json.Unmarshal(raw, &body) == nil {
-			for f := range claims {
-				var s string
-				if v, ok := body[f]; ok && json.Unmarshal(v, &s) == nil {
-					claims[f] = append(claims[f], s)
+	delete(claims, "session_name")
+	if sub == nil {
+		// Not on a board yet (it may be subscribing now): it can name itself anything new,
+		// but never the Operator or a subscriber another session holds on this board
+		// (#3512; before, such an agent skipped every check here and could act as the
+		// Operator: post as it, change board settings).
+		var held []board.Subscriber
+		listed := false
+		for f, vs := range claims {
+			for _, v := range vs {
+				v = strings.TrimSpace(v)
+				switch {
+				case v == "":
+				case strings.EqualFold(v, "Operator"):
+					note(o.mismatch(r, owner, mismatchOperator, notSubscribed, v, f))
+				default:
+					if !listed {
+						held, _ = o.bs.ListSubscribers(r.Context(), project)
+						listed = true
+					}
+					for _, s := range held {
+						if strings.EqualFold(s.SubscriberID, v) && s.SessionName != owner.SessionName {
+							note(o.mismatch(r, owner, mismatchImpersonate, notSubscribed, v, f))
+							break
+						}
+					}
 				}
 			}
 		}
+		return first
+	}
+	if !strings.EqualFold(project, sub.Project) {
+		note(o.mismatch(r, owner, mismatchCrossBoard, sub.Project, project, "project"))
 	}
 	for f, vs := range claims {
 		for _, v := range vs {
@@ -584,6 +605,35 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 		}
 	}
 	return first
+}
+
+// notSubscribed is the expected identity logged for an agent that holds a token but
+// no board subscription yet.
+const notSubscribed = "(not subscribed)"
+
+// boardClaims collects the identities a board request names: subscriber_id, as,
+// created_by and session_name, from the query and a JSON body (the body is put back for
+// the handler).
+func boardClaims(r *http.Request) map[string][]string {
+	claims := map[string][]string{}
+	for _, f := range []string{"subscriber_id", "as", "created_by", "session_name"} {
+		claims[f] = append(claims[f], r.URL.Query()[f]...)
+	}
+	if r.Body != nil && r.Body != http.NoBody {
+		raw, err := io.ReadAll(r.Body)
+		r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		var body map[string]json.RawMessage
+		if err == nil && json.Unmarshal(raw, &body) == nil {
+			for f := range claims {
+				var s string
+				if v, ok := body[f]; ok && json.Unmarshal(v, &s) == nil {
+					claims[f] = append(claims[f], s)
+				}
+			}
+		}
+	}
+	return claims
 }
 
 func (o *IdentityObserver) mismatch(r *http.Request, owner *store.SessionTokenOwner, kind, expected, claimed, field string) IdentityMismatch {

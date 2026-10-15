@@ -117,6 +117,26 @@ func TestIdentityBindingOnAgentRoutes(t *testing.T) {
 	expect(403, "POST", "/api/board/b3495/messages", `{"subscriber_id":"Operator","content":"as the Operator"}`, asA, "claiming the Operator")
 	expect(200, "POST", "/api/board/b3495/messages", `{"subscriber_id":"Alpha","content":"as itself"}`, asA, "its own subscriber")
 	expect(200, "POST", "/api/board/b3495/messages", `{"subscriber_id":"Beta","content":"a bare script"}`, nil, "a token-less script, default mode (unchanged)")
+	expect(403, "POST", "/api/board/b3495/subscribe", `{"subscriber_id":"Alpha","session_name":"claude-`+sidB+`"}`, asA, "subscribing under another session's name")
+
+	// #3512: an agent with a token but no subscription yet is checked too. It can join
+	// under a new name, but never act as the Operator or as a subscriber another session
+	// holds (before, it skipped every board check).
+	sidC := "cccccccc-3512-0000-0000-00000000000c"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sidC, AgentType: "claude", AgentName: "agent-cccc", WorkingDir: "/tmp/cccc"}))
+	tokC, err := srv.db.MintSessionToken(ctx, sidC, "claude-"+sidC)
+	require.NoError(t, err)
+	asC := http.Header{store.SessionTokenHeader: {tokC}}
+	out = expect(403, "POST", "/api/board/b3495/messages", `{"subscriber_id":"Operator","content":"as the Operator"}`, asC, "unsubscribed, claiming the Operator")
+	assert.Equal(t, "identity_mismatch", out["code"])
+	expect(403, "PUT", "/api/board/b3495/settings", `{"subscriber_id":"Operator","cross_team_messaging":true}`, asC, "unsubscribed, changing settings as the Operator")
+	expect(403, "POST", "/api/board/b3512new/messages", `{"subscriber_id":"operator","content":"x"}`, asC, "unsubscribed, the Operator in any case, on a new board")
+	expect(403, "POST", "/api/board/b3495/messages", `{"subscriber_id":"alpha","content":"as Alpha"}`, asC, "unsubscribed, as a subscriber another session holds")
+	expect(403, "POST", "/api/board/b3495/subscribe", `{"subscriber_id":"Beta","session_name":"claude-`+sidC+`"}`, asC, "unsubscribed, taking over another session's subscriber")
+	expect(403, "POST", "/api/board/b3495/subscribe", `{"subscriber_id":"Gamma","session_name":"claude-`+sidA+`"}`, asC, "unsubscribed, joining under another session's name")
+	expect(200, "POST", "/api/board/b3495/subscribe", `{"subscriber_id":"Gamma","session_name":"claude-`+sidC+`","job_title":"Gamma"}`, asC, "joining under a new name")
+	expect(200, "POST", "/api/board/b3495/messages", `{"subscriber_id":"Gamma","content":"as itself"}`, asC, "then posting as itself")
+	expect(403, "POST", "/api/board/b3495/messages", `{"subscriber_id":"Operator","content":"still not"}`, asC, "and still never the Operator")
 }
 
 // With strict local auth, a terminal session's token-less coral-agent request is
