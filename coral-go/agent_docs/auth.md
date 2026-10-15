@@ -133,6 +133,8 @@ The routes only an agent's own tools call need its token in every mode (401 `ses
 
 **Threat model.** Tokens stop mistakes and prompt-injected impersonation through Coral's own tools. They do not stop a malicious process running as the same user: it can read another process's environment (`/proc/<pid>/environ` on Linux, `ps -E` on macOS). Isolation between users is the OS's; isolation between agents of one user is about honest attribution.
 
+**What default mode still allows** (strict mode closes both): any local process can act as a terminal session by naming its `session_id` without a token (an agent can too, by dropping its own token), and can pass as the Operator on the routes the dashboard also uses by sending a browser's same-origin headers from this computer. A token decides only when it is sent; default mode trusts token-less callers on this computer as it always has.
+
 ### Dashboard sign-in links
 
 At startup Coral mints a single-use sign-in token, valid 10 minutes, writes it to `<data>/login_token` (0600) and opens the browser with `http://localhost:<port>/?login_token=…`. With no display (`--no-browser`, a Linux box without `DISPLAY`) it prints the link instead. Opening the link trades the token for the dashboard's session cookie (HttpOnly, SameSite=Strict) and redirects to the same page without it. A used or expired link answers 403.
