@@ -217,6 +217,29 @@ export function syncHomeEditions() {
     el.hidden = !_available() || String((state.settings || {}).home_editions_hidden) === 'True';
 }
 
+// A server enrolled with the hub's old host (#3546, hub_moved; the header indicator reports the
+// status) is not offered Coral Hub as if it had never connected: the home section's Coral Hub
+// item says it must be connected again, set as text. Any other status restores the offer.
+document.addEventListener('coral:cloud-status', e => {
+    const copy = document.querySelector('#editions-home [data-editions="home-hub"] .editions-home-copy');
+    if (!copy) return;
+    const st = e.detail || {};
+    const moved = st.state === 'idle' && st.last_error_code === 'hub_moved';
+    if (copy.dataset.offer === undefined) copy.dataset.offer = copy.innerHTML; // the template's own offer
+    if (!moved) {
+        if (copy.dataset.moved) { copy.innerHTML = copy.dataset.offer; delete copy.dataset.moved; }
+        return;
+    }
+    let host = '';
+    try { host = new URL(String(st.hub_url || '')).host; } catch { /* no host */ }
+    const title = document.createElement('strong');
+    title.textContent = 'Coral Hub moved';
+    const text = document.createElement('span');
+    text.textContent = `Connect this server again${host ? ` at ${host}` : ''}: run coral cloud connect --force on this computer.`;
+    copy.replaceChildren(title, ' ', text); // the space keeps the two apart for a screen reader
+    copy.dataset.moved = '1';
+});
+
 // ── Actions ──────────────────────────────────────────────────────────────
 
 document.addEventListener('click', e => {

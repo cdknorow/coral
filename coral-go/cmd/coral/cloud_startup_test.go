@@ -218,3 +218,18 @@ func TestCloudStartupStepLeavesAConnectedServerAlone(t *testing.T) {
 	assert.Zero(t, f2.connects)
 	assert.Empty(t, out.String())
 }
+
+// A server enrolled with the hub's old host (#3546, hub_moved) is left alone in both modes: the
+// step logs why and starts no enrollment, so nothing reaches either hub and the message stays.
+func TestCloudStartupStepLeavesAMovedHubAlone(t *testing.T) {
+	moved := `{"configured":true,"hub_url":"https://app.coralhub.dev","state":"idle","last_error_code":"hub_moved","last_error":"this server is enrolled with a different hub (https://app.coralai.ai); run 'coral cloud connect --force' to enroll with https://app.coralhub.dev","max_mode":"view"}`
+	for _, mode := range []string{cloudConnectPrompt, "log"} {
+		f, cfg, logs := stepEnv(t, moved, moved, moved)
+		var out bytes.Buffer
+		runCloudStartupStep(context.Background(), cfg, mode, &interruptRouter{}, strings.NewReader("\n"), &out)
+		time.Sleep(200 * time.Millisecond) // log mode would start its flow in a goroutine
+		assert.Zero(t, f.connects, mode)
+		assert.Empty(t, out.String(), "no prompt")
+		assert.Contains(t, logs.String(), "[CLOUD] Coral Hub: this server is enrolled with a different hub (https://app.coralai.ai); run 'coral cloud connect --force'", mode)
+	}
+}

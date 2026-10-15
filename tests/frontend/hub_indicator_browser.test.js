@@ -25,6 +25,8 @@ const STATES = {
     idle: { configured: true, hub_url: 'https://app.coralhub.dev', state: 'idle', max_mode: 'interact' },
     enrolling: { ...base, state: 'enrolling' },
     off: { configured: false, state: 'off', max_mode: 'interact' },
+    moved: { configured: true, hub_url: 'https://app.coralhub.dev', state: 'idle', last_error_code: 'hub_moved', max_mode: 'interact',
+        last_error: "this server is enrolled with a different hub (https://app.coralai.ai); run 'coral cloud connect --force' to enroll with https://app.coralhub.dev" },
 };
 
 (async () => {
@@ -85,6 +87,15 @@ const STATES = {
         check('retrying: the same look, says reconnecting', !l.hidden && l.state === 'connecting' && l.aria === 'Coral Hub: reconnecting to app.coralhub.dev', JSON.stringify(l));
         await show('revoked'); l = await look();
         check('enrolled but disconnected: warning tint and why', !l.hidden && l.state === 'disconnected' && l.color === rgb(l.warning) && /disconnected from app\.coralhub\.dev \(/.test(l.aria), JSON.stringify(l));
+        const homeHub = `((document.querySelector('#editions-home [data-editions="home-hub"] .editions-home-copy') || {}).textContent || '').replace(/\\s+/g, ' ').trim()`;
+        const offer = await ev(homeHub);
+        await show('moved'); l = await look();
+        check('enrolled with the old host (hub_moved): amber, saying where it moved and what to run', !l.hidden && l.state === 'disconnected' && l.color === rgb(l.warning)
+            && l.aria === 'Coral Hub moved to app.coralhub.dev: run coral cloud connect --force', JSON.stringify(l));
+        const movedHome = await ev(homeHub);
+        check('the home section says to connect again, not the never-enrolled offer', /^Coral Hub moved Connect this server again at app\.coralhub\.dev: run coral cloud connect --force/.test(movedHome) && movedHome !== offer, movedHome);
+        await show('connected');
+        check('and the offer comes back with any other status', (await ev(homeHub)) === offer, await ev(homeHub));
         for (const name of ['idle', 'enrolling', 'off']) {
             await show(name); l = await look();
             check(`not enrolled (${name}): hidden, with no state, title or name left`, l && l.hidden && !l.state && !l.title && l.aria === null, JSON.stringify(l));

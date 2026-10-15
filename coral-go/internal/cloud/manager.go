@@ -100,6 +100,10 @@ const (
 	ErrCodeExpired      = "code_expired"
 	ErrCodeAccessDenied = "access_denied"
 	ErrCodeRateLimited  = "rate_limited"
+	// ErrCodeHubMoved: this server is enrolled with another hub than the configured one (Coral
+	// Hub moved to app.coralhub.dev, #3546). Nothing dials either hub until the operator
+	// enrolls again; the dashboard shows it as disconnected, and the startup step leaves it.
+	ErrCodeHubMoved = "hub_moved"
 )
 
 // codeExpiredMessage is coral-hub's required text for a code that expired. A user outside
@@ -182,7 +186,10 @@ func (m *Manager) Run(ctx context.Context) {
 		// Coral Hub moved to app.coralhub.dev (#3546): a server enrolled with the old host stops
 		// here, says which host, and is re-enrolled; a token is never sent to a host it wasn't
 		// enrolled with.
-		m.setError(StateIdle, "this server is enrolled with a different hub ("+conn.HubURL+"); run 'coral cloud connect --force' to enroll with "+m.o.HubURL)
+		m.mu.Lock()
+		m.st.State, m.st.LastErrorCode = StateIdle, ErrCodeHubMoved
+		m.st.LastError = "this server is enrolled with a different hub (" + conn.HubURL + "); run 'coral cloud connect --force' to enroll with " + m.o.HubURL
+		m.mu.Unlock()
 	case conn.State == store.CloudStateRevoked:
 		m.mu.Lock()
 		m.st.State, m.st.Label, m.st.ServerID = StateRevoked, conn.Label, conn.ServerID

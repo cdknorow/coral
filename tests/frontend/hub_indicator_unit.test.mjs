@@ -9,6 +9,12 @@ for (const [state, want] of [['connected', 'connected'], ['connecting', 'connect
     assert.equal(indicatorState({ state }), want, state);
 }
 assert.equal(indicatorState({ state: 'connected', loading: true }), null, 'loading: not final yet');
+// Enrolled with the hub's old host (#3546): disconnected, not hidden; plain idle stays hidden.
+const moved = { state: 'idle', last_error_code: 'hub_moved', hub_url: 'https://app.coralhub.dev',
+    last_error: "this server is enrolled with a different hub (https://app.coralai.ai); run 'coral cloud connect --force' to enroll with https://app.coralhub.dev" };
+assert.equal(indicatorState(moved), 'disconnected');
+assert.equal(indicatorState({ state: 'idle', last_error_code: 'code_expired' }), null);
+assert.equal(indicatorLabel(moved, 'disconnected', new Date()), 'Coral Hub moved to app.coralhub.dev: run coral cloud connect --force', 'the fixed message, the new host only');
 assert.equal(indicatorState(null), null);
 
 assert.equal(hubHost('https://app.coralhub.dev'), 'app.coralhub.dev');

@@ -396,6 +396,7 @@ func TestEnrollmentMismatchedHubIsNotDialed(t *testing.T) {
 	// It says which host it was enrolled with and how to move (#3546: the hub moved hosts).
 	require.Contains(t, m.Status().LastError, other.srv.URL)
 	require.Contains(t, m.Status().LastError, "coral cloud connect --force")
+	require.Equal(t, ErrCodeHubMoved, m.Status().LastErrorCode, "a code the dashboard can show (#3546)")
 	time.Sleep(150 * time.Millisecond)
 	require.Zero(t, other.hits.Load())
 	require.Zero(t, e.hub.hits.Load())

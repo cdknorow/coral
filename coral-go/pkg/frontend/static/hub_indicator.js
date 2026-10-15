@@ -5,7 +5,8 @@
  *   connecting    muted, with a slow pulse (none with prefers-reduced-motion): dialing, or
  *                 reconnecting after the hub was unreachable or busy
  *   disconnected  a warning tint: enrolled, but the hub refused the token, the stored token
- *                 can't be read, or this Coral must be upgraded
+ *                 can't be read, this Coral must be upgraded, or it is enrolled with the hub's
+ *                 old host (hub_moved, #3546: it connects nowhere until enrolled again)
  *
  * Hidden when this Coral isn't enrolled (no hub configured, not enrolled, enrolling, or still
  * loading), on Coral Hub itself, in the pop-out, and whenever the status can't be read (only
@@ -23,6 +24,7 @@ const POLL_MS = 15000;
  *  null (hidden). Pure, for the unit test. */
 export function indicatorState(st) {
     if (!st || typeof st !== 'object' || st.loading) return null;
+    if (st.state === 'idle' && st.last_error_code === 'hub_moved') return 'disconnected';
     switch (st.state) {
         case 'connected': return 'connected';
         case 'connecting': case 'retrying': return 'connecting';
@@ -54,6 +56,10 @@ export function indicatorLabel(st, state, now = new Date(), locale) {
     }
     if (state === 'connecting') {
         return st && st.state === 'retrying' ? `Coral Hub: reconnecting${at}` : `Coral Hub: connecting${at}`;
+    }
+    if (st && st.last_error_code === 'hub_moved') {
+        // A fixed message with the new host only (Security): what to run, nothing else.
+        return `Coral Hub moved to ${host || 'a new host'}: run coral cloud connect --force`;
     }
     const why = { revoked: 'the hub no longer accepts this Coral', key_unreadable: "the stored connection can't be read", upgrade_required: 'this Coral needs an update' }[st && st.state] || 'not connected';
     return `Coral Hub: disconnected${host ? ` from ${host}` : ''} (${why})`;
@@ -90,6 +96,8 @@ function button() {
 
 /** Show a status on the indicator (exported for the browser test). */
 export function renderIndicator(st, now = new Date()) {
+    // Other views follow the same status (the home section's Coral Hub item, #3546).
+    try { document.dispatchEvent(new CustomEvent('coral:cloud-status', { detail: st })); } catch { /* no DOM events */ }
     const b = button();
     if (!b) return;
     const state = indicatorState(st);
