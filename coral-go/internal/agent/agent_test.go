@@ -1400,93 +1400,6 @@ func writeSettingsFile(t *testing.T, dir, filename string, content map[string]in
 	}
 }
 
-func TestBuildMergedSettings_EnvDeepMerge_GlobalAndProject(t *testing.T) {
-	tmpDir := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	writeSettingsFile(t, filepath.Join(home, ".claude"), "settings.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"AWS_REGION":              "us-east-1",
-			"CLAUDE_CODE_USE_BEDROCK": "1",
-		},
-	})
-	writeSettingsFile(t, filepath.Join(tmpDir, ".claude"), "settings.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"ANTHROPIC_API_KEY": "sk-test-key",
-		},
-	})
-
-	merged := buildMergedSettings(tmpDir, nil)
-	env, ok := merged["env"].(map[string]interface{})
-	if !ok {
-		t.Fatal("expected env map in merged settings")
-	}
-	if env["AWS_REGION"] != "us-east-1" {
-		t.Errorf("AWS_REGION lost during merge, got %v", env["AWS_REGION"])
-	}
-	if env["CLAUDE_CODE_USE_BEDROCK"] != "1" {
-		t.Errorf("CLAUDE_CODE_USE_BEDROCK lost during merge, got %v", env["CLAUDE_CODE_USE_BEDROCK"])
-	}
-	if env["ANTHROPIC_API_KEY"] != "sk-test-key" {
-		t.Errorf("ANTHROPIC_API_KEY missing, got %v", env["ANTHROPIC_API_KEY"])
-	}
-}
-
-func TestBuildMergedSettings_EnvDeepMerge_ProjectOverridesGlobal(t *testing.T) {
-	tmpDir := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	writeSettingsFile(t, filepath.Join(home, ".claude"), "settings.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"AWS_REGION":      "us-east-1",
-			"ANTHROPIC_MODEL": "claude-3-opus",
-		},
-	})
-	writeSettingsFile(t, filepath.Join(tmpDir, ".claude"), "settings.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"AWS_REGION": "eu-west-1",
-		},
-	})
-
-	merged := buildMergedSettings(tmpDir, nil)
-	env := merged["env"].(map[string]interface{})
-	if env["AWS_REGION"] != "eu-west-1" {
-		t.Errorf("project should override global AWS_REGION, got %v", env["AWS_REGION"])
-	}
-	if env["ANTHROPIC_MODEL"] != "claude-3-opus" {
-		t.Errorf("global ANTHROPIC_MODEL should be preserved, got %v", env["ANTHROPIC_MODEL"])
-	}
-}
-
-func TestBuildMergedSettings_EnvDeepMerge_LocalOverridesProject(t *testing.T) {
-	tmpDir := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	writeSettingsFile(t, filepath.Join(tmpDir, ".claude"), "settings.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"AWS_REGION":      "us-east-1",
-			"ANTHROPIC_MODEL": "claude-3-opus",
-		},
-	})
-	writeSettingsFile(t, filepath.Join(tmpDir, ".claude"), "settings.local.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"AWS_REGION": "ap-southeast-1",
-		},
-	})
-
-	merged := buildMergedSettings(tmpDir, nil)
-	env := merged["env"].(map[string]interface{})
-	if env["AWS_REGION"] != "ap-southeast-1" {
-		t.Errorf("local should override project AWS_REGION, got %v", env["AWS_REGION"])
-	}
-	if env["ANTHROPIC_MODEL"] != "claude-3-opus" {
-		t.Errorf("project ANTHROPIC_MODEL should be preserved, got %v", env["ANTHROPIC_MODEL"])
-	}
-}
-
 func TestBuildMergedSettings_EnvDeepMerge_EmptyEnvDoesNotWipe(t *testing.T) {
 	tmpDir := t.TempDir()
 	home := t.TempDir()
@@ -1501,7 +1414,7 @@ func TestBuildMergedSettings_EnvDeepMerge_EmptyEnvDoesNotWipe(t *testing.T) {
 		"env": map[string]interface{}{},
 	})
 
-	merged := buildMergedSettings(tmpDir, nil)
+	merged := buildMergedSettings(nil)
 	env, ok := merged["env"].(map[string]interface{})
 	if !ok {
 		t.Fatal("expected env map in merged settings")
@@ -1511,50 +1424,7 @@ func TestBuildMergedSettings_EnvDeepMerge_EmptyEnvDoesNotWipe(t *testing.T) {
 	}
 }
 
-func TestBuildMergedSettings_EnvDeepMerge_ThreeLevelPrecedence(t *testing.T) {
-	tmpDir := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	writeSettingsFile(t, filepath.Join(home, ".claude"), "settings.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"VAR_A": "global-a",
-			"VAR_B": "global-b",
-			"VAR_C": "global-c",
-		},
-	})
-	writeSettingsFile(t, filepath.Join(tmpDir, ".claude"), "settings.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"VAR_B": "project-b",
-			"VAR_D": "project-d",
-		},
-	})
-	writeSettingsFile(t, filepath.Join(tmpDir, ".claude"), "settings.local.json", map[string]interface{}{
-		"env": map[string]interface{}{
-			"VAR_C": "local-c",
-			"VAR_E": "local-e",
-		},
-	})
-
-	merged := buildMergedSettings(tmpDir, nil)
-	env := merged["env"].(map[string]interface{})
-
-	expected := map[string]string{
-		"VAR_A": "global-a",
-		"VAR_B": "project-b",
-		"VAR_C": "local-c",
-		"VAR_D": "project-d",
-		"VAR_E": "local-e",
-	}
-	for k, want := range expected {
-		if got := env[k]; got != want {
-			t.Errorf("env[%q] = %v, want %q", k, got, want)
-		}
-	}
-}
-
 func TestBuildMergedSettings_EnvDeepMerge_NoEnvBlocks(t *testing.T) {
-	tmpDir := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -1562,7 +1432,7 @@ func TestBuildMergedSettings_EnvDeepMerge_NoEnvBlocks(t *testing.T) {
 		"permissions": map[string]interface{}{"allow": []string{"Read"}},
 	})
 
-	merged := buildMergedSettings(tmpDir, nil)
+	merged := buildMergedSettings(nil)
 	if _, ok := merged["env"]; ok {
 		t.Error("should not have env key when no sources define env")
 	}
@@ -1587,59 +1457,6 @@ func TestClassifyShell(t *testing.T) {
 }
 
 // ── Env Deep-Merge Tests ──────────────────────────────────────
-
-func TestBuildMergedSettings_EnvDeepMerge(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create global settings with AWS env vars
-	globalDir := filepath.Join(tmpDir, "global")
-	os.MkdirAll(globalDir, 0755)
-	globalSettings := map[string]interface{}{
-		"env": map[string]interface{}{
-			"AWS_REGION":              "us-east-1",
-			"CLAUDE_CODE_USE_BEDROCK": "1",
-		},
-	}
-	globalData, _ := json.Marshal(globalSettings)
-	os.WriteFile(filepath.Join(globalDir, "settings.json"), globalData, 0644)
-
-	// Create project settings with a different env var
-	projectClaudeDir := filepath.Join(tmpDir, "project", ".claude")
-	os.MkdirAll(projectClaudeDir, 0755)
-	projectSettings := map[string]interface{}{
-		"env": map[string]interface{}{
-			"ANTHROPIC_API_KEY": "sk-test-key",
-		},
-	}
-	projectData, _ := json.Marshal(projectSettings)
-	os.WriteFile(filepath.Join(projectClaudeDir, "settings.json"), projectData, 0644)
-
-	// We can't easily test buildMergedSettings with custom home dir,
-	// so test the merge logic directly by calling readSettingsFile and merging.
-	global := readSettingsFile(filepath.Join(globalDir, "settings.json"))
-	project := readSettingsFile(filepath.Join(projectClaudeDir, "settings.json"))
-
-	// Simulate the deep-merge logic
-	mergedEnv := make(map[string]interface{})
-	for _, source := range []map[string]interface{}{global, project} {
-		if env, ok := source["env"].(map[string]interface{}); ok {
-			for k, v := range env {
-				mergedEnv[k] = v
-			}
-		}
-	}
-
-	// Verify all env vars are present (deep merge)
-	if mergedEnv["AWS_REGION"] != "us-east-1" {
-		t.Errorf("expected AWS_REGION from global, got %v", mergedEnv["AWS_REGION"])
-	}
-	if mergedEnv["CLAUDE_CODE_USE_BEDROCK"] != "1" {
-		t.Errorf("expected CLAUDE_CODE_USE_BEDROCK from global, got %v", mergedEnv["CLAUDE_CODE_USE_BEDROCK"])
-	}
-	if mergedEnv["ANTHROPIC_API_KEY"] != "sk-test-key" {
-		t.Errorf("expected ANTHROPIC_API_KEY from project, got %v", mergedEnv["ANTHROPIC_API_KEY"])
-	}
-}
 
 func TestBuildMergedSettings_EnvProjectOverridesGlobal(t *testing.T) {
 	// Verify that project-level env var overrides global
@@ -1675,7 +1492,6 @@ func TestBuildMergedSettings_EnvProjectOverridesGlobal(t *testing.T) {
 // ── Hooks Merge Tests ─────────────────────────────────────────
 
 func TestBuildMergedSettings_AgentHooksAppended(t *testing.T) {
-	tmpDir := t.TempDir()
 
 	agentHooks := map[string]interface{}{
 		"PostToolUse": []interface{}{
@@ -1695,7 +1511,7 @@ func TestBuildMergedSettings_AgentHooksAppended(t *testing.T) {
 		},
 	}
 
-	merged := buildMergedSettings(tmpDir, agentHooks)
+	merged := buildMergedSettings(agentHooks)
 	hooks, ok := merged["hooks"].(map[string][]interface{})
 	if !ok {
 		t.Fatal("merged settings should contain hooks map")
@@ -1740,9 +1556,8 @@ func TestBuildMergedSettings_AgentHooksAppended(t *testing.T) {
 }
 
 func TestBuildMergedSettings_NilAgentHooks(t *testing.T) {
-	tmpDir := t.TempDir()
 
-	merged := buildMergedSettings(tmpDir, nil)
+	merged := buildMergedSettings(nil)
 	hooks, ok := merged["hooks"].(map[string][]interface{})
 	if !ok {
 		t.Fatal("merged settings should contain hooks map")
@@ -1949,7 +1764,7 @@ func launchBody(line string) string {
 // to Coral's state.
 func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	merged := buildMergedSettings(t.TempDir(), nil)
+	merged := buildMergedSettings(nil)
 	hooks := merged["hooks"].(map[string][]interface{})
 	for _, event := range []string{"UserPromptSubmit", "PermissionRequest", "Elicitation", "ElicitationResult", "StopFailure", "SessionEnd"} {
 		groups := hooks[event]

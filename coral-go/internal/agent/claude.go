@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -197,7 +198,7 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 // tools, MCP servers, Coral's environment) to a temp file and returns its path.
 func claudeSettingsFile(params LaunchParams, effectiveID string) string {
 	// Build merged settings with hooks and system prompt
-	merged := buildMergedSettings(params.WorkingDir, params.Hooks)
+	merged := buildMergedSettings(params.Hooks)
 
 	// Combine protocol + board system prompt into systemPrompt
 	var sysParts []string
@@ -405,32 +406,24 @@ var agenticStateHook = map[string]interface{}{"hooks": []map[string]interface{}{
 	{"type": "command", "command": "coral-hook-agentic-state"},
 }}
 
-func buildMergedSettings(workingDir string, agentHooks map[string]interface{}) map[string]interface{} {
+// buildMergedSettings is the settings file Coral passes with --settings: the user's global
+// ~/.claude/settings.json, Coral's hooks and the agent's own hooks. Never the repository's
+// .claude/settings.json or settings.local.json (#3591): a file passed with --settings is the
+// CLI's flag channel, so a repository's hooks, env, statusLine or apiKeyHelper put there
+// would apply before the folder-trust prompt, and its permissions would replace the user's.
+// Claude Code reads the project and local files itself, with its own trust gating and
+// scope merge.
+func buildMergedSettings(agentHooks map[string]interface{}) map[string]interface{} {
 	home, _ := os.UserHomeDir()
-	homeClaude := filepath.Join(home, ".claude")
+	global := readSettingsFile(filepath.Join(home, ".claude", "settings.json"))
 
-	global := readSettingsFile(filepath.Join(homeClaude, "settings.json"))
-	var project, local map[string]interface{}
-	if workingDir != "" {
-		project = readSettingsFile(filepath.Join(workingDir, ".claude", "settings.json"))
-		local = readSettingsFile(filepath.Join(workingDir, ".claude", "settings.local.json"))
-	}
-
-	// Shallow merge: local > project > global
 	merged := make(map[string]interface{})
 	for k, v := range global {
 		merged[k] = v
 	}
-	for k, v := range project {
-		merged[k] = v
-	}
-	for k, v := range local {
-		merged[k] = v
-	}
 
-	// Deep-merge env maps (project env should not replace global env entirely)
 	mergedEnv := make(map[string]interface{})
-	for _, source := range []map[string]interface{}{global, project, local} {
+	for _, source := range []map[string]interface{}{global} {
 		if env, ok := source["env"].(map[string]interface{}); ok {
 			for k, v := range env {
 				mergedEnv[k] = v
@@ -441,9 +434,9 @@ func buildMergedSettings(workingDir string, agentHooks map[string]interface{}) m
 		merged["env"] = mergedEnv
 	}
 
-	// Deep-merge hooks
+	// The user's hooks, then Coral's
 	mergedHooks := make(map[string][]interface{})
-	for _, source := range []map[string]interface{}{global, project, local} {
+	for _, source := range []map[string]interface{}{global} {
 		if hooks, ok := source["hooks"].(map[string]interface{}); ok {
 			for event, groups := range hooks {
 				if groupList, ok := groups.([]interface{}); ok {
@@ -480,9 +473,23 @@ func buildMergedSettings(workingDir string, agentHooks map[string]interface{}) m
 	return merged
 }
 
+// maxSettingsFile caps how much of a settings file Coral reads.
+const maxSettingsFile = 1 << 20
+
+// readSettingsFile reads a settings file: a regular file, not a symlink, a FIFO or a device
+// (opened non-blocking, then checked on the handle), at most maxSettingsFile bytes. Anything
+// else, or invalid JSON, is an empty map.
 func readSettingsFile(path string) map[string]interface{} {
-	data, err := os.ReadFile(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|settingsOpenFlags, 0)
 	if err != nil {
+		return map[string]interface{}{}
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() || fi.Size() > maxSettingsFile {
+		return map[string]interface{}{}
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxSettingsFile+1))
+	if err != nil || len(data) > maxSettingsFile {
 		return map[string]interface{}{}
 	}
 	var result map[string]interface{}
