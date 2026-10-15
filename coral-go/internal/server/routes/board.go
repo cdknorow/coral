@@ -66,6 +66,10 @@ type BoardHandler struct {
 	// hubOperatorAllowed reports whether a tunnel request may act as the Operator
 	// (#3404); nil means never.
 	hubOperatorAllowed func(*http.Request) bool
+	// background counts the fire-and-forget work a request starts after it answers
+	// (notifications, wait resolution, webhook dispatch), all of which use the store,
+	// so a shutdown or a test can wait for it before closing the store (#3486).
+	background sync.WaitGroup
 }
 
 // SetHubOperatorAllowed tells the board whether a Coral Hub user may act as the
@@ -893,7 +897,7 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	_ = h.bs.TouchActiveTask(r.Context(), project, subscriberID)
 
 	// Fire-and-forget webhook dispatch
-	go h.dispatchWebhooks(project, subscriberID, msg)
+	h.goBG(func() { h.dispatchWebhooks(project, subscriberID, msg) })
 
 	// Trigger immediate board notification so subscribers get nudged right away
 	if h.notifyFn != nil {
@@ -901,7 +905,7 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve any active registered waits for this message
-	go h.resolveMessageWaits(project, subscriberID, body.Content)
+	h.goBG(func() { h.resolveMessageWaits(project, subscriberID, body.Content) })
 
 	writeJSON(w, http.StatusOK, msg)
 }
@@ -1489,19 +1493,19 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		assignee = *task.AssignedTo
 	}
 	if task.Status == "draft" {
-		go func() {
+		h.goBG(func() {
 			notification := fmt.Sprintf("[Task #%d (draft)] %s", task.ID, task.Title)
 			h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notification, nil)
-		}()
+		})
 	} else if task.Status == "blocked" {
-		go func() {
+		h.goBG(func() {
 			deps, _ := h.bs.GetTaskDependencies(context.Background(), task.ID)
 			blockerList := formatBlockerList(deps)
 			notification := fmt.Sprintf("[Task #%d (blocked)] %s — blocked by %s", task.ID, task.Title, blockerList)
 			h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notification, nil)
-		}()
+		})
 	} else {
-		go func() {
+		h.goBG(func() {
 			ctx := context.Background()
 			notification := h.buildAssignmentNotification(ctx, project, task, assignee, false)
 			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
@@ -1524,7 +1528,7 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-		}()
+		})
 	}
 	writeJSON(w, http.StatusCreated, task)
 }
@@ -1700,10 +1704,10 @@ func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Post board notification asynchronously to avoid DB contention
-	go func() {
+	h.goBG(func() {
 		notification := fmt.Sprintf("[Task #%d claimed by %s] %s", task.ID, body.SubscriberID, task.Title)
 		h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notification, nil)
-	}()
+	})
 	writeJSON(w, http.StatusOK, task)
 }
 
@@ -1756,7 +1760,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// Post board notification and send direct terminal nudge asynchronously
-	go func() {
+	h.goBG(func() {
 		ctx := context.Background()
 		msg := completedTask.Title
 		if completionMsg != "" {
@@ -1782,7 +1786,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", auditMsg, nil)
 			h.sendTaskNudge(ctx, project, subscriberID, taskNudge)
 		}
-	}()
+	})
 	writeJSON(w, http.StatusOK, task)
 }
 
@@ -1817,7 +1821,7 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 	if stallErr != nil {
 		slog.Warn("failed to reconcile downstream tasks after cancellation", "project", project, "task_id", task.ID, "error", stallErr)
 	}
-	go func() {
+	h.goBG(func() {
 		ctx := context.Background()
 		notification := fmt.Sprintf("[Task #%d cancelled by %s] %s", task.ID, body.SubscriberID, task.Title)
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
@@ -1835,7 +1839,7 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 
 		// Resolve active task waits
 		h.resolveTaskWaits(project, task.ID, task.Title, "cancelled")
-	}()
+	})
 	writeJSON(w, http.StatusOK, task)
 }
 
@@ -1955,7 +1959,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.bs.TouchTask(r.Context(), project, taskID)
-	go func() {
+	h.goBG(func() {
 		ctx := context.Background()
 		nudged := false
 		notification := fmt.Sprintf("[Task #%d edited] %s", task.ID, task.Title)
@@ -2002,7 +2006,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	}()
+	})
 	writeJSON(w, http.StatusOK, task)
 }
 
@@ -2037,13 +2041,13 @@ func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	go func() {
+	h.goBG(func() {
 		notice := fmt.Sprintf("[Task #%d amended to revision %d] %s", task.ID, task.Revision, task.Title)
 		if task.AssignedTo != nil && *task.AssignedTo != "" {
 			notice += fmt.Sprintf(" — @%s reread task detail before acting", *task.AssignedTo)
 		}
 		h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notice, nil)
-	}()
+	})
 	writeJSON(w, http.StatusOK, task)
 }
 
@@ -2075,7 +2079,7 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	go func() {
+	h.goBG(func() {
 		ctx := context.Background()
 		notification := h.buildAssignmentNotification(ctx, project, task, body.Assignee, true)
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
@@ -2098,7 +2102,7 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 			}
 			h.bs.PostSystemMessage(ctx, t.BoardID, "Coral Task Queue", msg, nil)
 		}
-	}()
+	})
 	writeJSON(w, http.StatusOK, task)
 }
 
@@ -2122,14 +2126,14 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 		assignee = *task.AssignedTo
 	}
 	if task.Status == "blocked" {
-		go func() {
+		h.goBG(func() {
 			deps, _ := h.bs.GetTaskDependencies(context.Background(), task.ID)
 			blockerList := formatBlockerList(deps)
 			notification := fmt.Sprintf("[Task #%d published (blocked)] %s — blocked by %s", task.ID, task.Title, blockerList)
 			h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notification, nil)
-		}()
+		})
 	} else {
-		go func() {
+		h.goBG(func() {
 			ctx := context.Background()
 			notification := fmt.Sprintf("[Task #%d published] %s", task.ID, task.Title)
 			if assignee != "" {
@@ -2143,7 +2147,7 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 					h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
 				}
 			}
-		}()
+		})
 	}
 	writeJSON(w, http.StatusOK, task)
 }
@@ -2427,4 +2431,22 @@ func taskOutcomeForTracking(task *board.Task, requested string) string {
 		return tracking.OutcomeFailed
 	}
 	return tracking.OutcomeSuccess
+}
+
+// goBG runs f after the request, counted in h.background (#3486).
+func (h *BoardHandler) goBG(f func()) {
+	h.background.Add(1)
+	go func() {
+		defer h.background.Done()
+		f()
+	}()
+}
+
+// WaitBackground waits for the work requests started after answering (#3486):
+// call it before closing the store, or that work can still open the database.
+// Call it only once the server takes no more requests (after its Close or
+// Shutdown): a request starting work while the wait is at zero is a WaitGroup
+// misuse.
+func (h *BoardHandler) WaitBackground() {
+	h.background.Wait()
 }

@@ -29,6 +29,11 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 	t.Cleanup(func() { bs.Close() })
 
 	handler := NewBoardHandler(bs)
+	// Cleanups run last-registered first: the server closes, then the work requests
+	// started after answering finishes, then the store closes, then the TempDir goes.
+	// Without the wait that work could still open the database while the directory
+	// is removed ('TempDir RemoveAll cleanup: directory not empty', #3486).
+	t.Cleanup(handler.WaitBackground)
 
 	r := chi.NewRouter()
 	r.Get("/api/board/projects", handler.ListProjects)

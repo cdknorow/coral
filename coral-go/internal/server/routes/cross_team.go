@@ -241,10 +241,10 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
-	go h.dispatchWebhooks(target, inbound.SubscriberID, inbound)
+	h.goBG(func() { h.dispatchWebhooks(target, inbound.SubscriberID, inbound) })
 	if h.notifyFn != nil {
 		h.notifyFn()
 	}
-	go h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content)
+	h.goBG(func() { h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content) })
 	writeJSON(w, http.StatusOK, map[string]any{"message": inbound, "mirror": outbound, "delivered_to": recipients})
 }
