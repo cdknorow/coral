@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.4.34 — Two agents in one role get their own names; a Coral Hub status light in the header
+
+### Changes
+
+- **Two agents in the same role get their own names.** An agent that joins a board where a running agent already holds its role is named "Backend Dev 2" (then 3, …), so the two never share a subscription, mentions or read state. `@Backend Dev` reaches only "Backend Dev"; use `@all` to reach everyone. "@Backend Dev 2" skips "Backend Dev" only on a board that has a "Backend Dev 2", so "@Orchestrator 3 tasks are ready" still reaches the Orchestrator elsewhere. Concurrent launches of one role never pick the same name. The "Join it / Create another" choice now shows how many of a board's agents are running next to its members.
+- **Mentions and unread counts are exact:** '@Dev' no longer counts a message for '@Developer' or an email like user@dev.com, and the unread badge matches what reading the board returns.
+- **Coral Hub status in the header.** When this Coral is enrolled with Coral Hub, an icon next to Home, the panel toggle and Settings shows it: green when connected, muted with a slow pulse while connecting (the pulse stops if you prefer reduced motion), amber when enrolled but disconnected. Its tooltip gives the state, the hub's host and when it connected; a click opens Settings at Coral Hub. It's hidden when this Coral isn't enrolled.
+- **Readable links on the board.** Links in board posts and the names in Subscribers use the theme's link colour instead of the browser's dark blue, which was unreadable on the dark theme; they underline on hover and show the focus ring.
+- **Very old boards named `.` or `..`** (or with `/`, control or bidi characters in the name) get a fresh `b-` id at startup, with their name kept as the label, so the dashboard can open them again. A backup of the board database is taken first (same file permissions as the database), and the log names each table it updated.
+- The site links (Coral Hub's "request access" page and the specs) point to coralhub.dev.
+
+### Docs
+
+- The README's signature check now works with cosign 2.x (`--new-bundle-format`), and says the checksum step must print `<file>: OK`.
+
 ## v1.4.33 — Boards have ids; every dashboard view has its own URL; Markdown files preview in the dashboard
 
 **For scripts that launch agents or teams by board name — please check.** Boards now have ids. A launch with `board_name` starts a **new** board; if a board with that name already exists, the launch answers **409 `board_name_exists`** with the candidates (`[{board_id, board_label, created_at, members}]`). Send `board_id` to join one of them, or `new_board: true` to start another with the same name. Existing boards keep their names as their ids, so links, scripts, `CORAL_BOARD` and agents keep working. `coral-agent launch --board <id>` joins an existing board. The dashboard asks "Join it" or "Create another" for you. Starting another board with a name that's taken (`new_board: true`) is Operator-only: dashboard or signed CLI. An agent's token gets 403 `forbidden_for_agent` in strict mode, and the call is recorded in default mode.
