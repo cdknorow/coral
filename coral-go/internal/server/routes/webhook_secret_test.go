@@ -40,7 +40,8 @@ func TestWebhookURLsAreMaskedOutsideAnEdit(t *testing.T) {
 	w := send(t, r, "GET", "/api/webhooks", nil)
 	require.Equal(t, 200, w.Code)
 	assert.NotContains(t, w.Body.String(), "XyZsecretPATH", "the list masks the URL")
-	assert.Contains(t, w.Body.String(), "https://hooks.slack.com/…PATH")
+	assert.NotContains(t, w.Body.String(), "PATH", "not even a tail of it")
+	assert.Contains(t, w.Body.String(), "https://hooks.slack.com/…#")
 
 	w = send(t, r, "GET", "/api/webhooks/"+id, nil)
 	require.Equal(t, 200, w.Code)

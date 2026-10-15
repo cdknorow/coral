@@ -159,6 +159,12 @@ func writeKeyFile(path, key string) error {
 		return err
 	}
 	done = true
+	// The rename itself is made durable: without syncing the folder, a crash could bring the old
+	// key back (Security's NIT on #3627; a folder can't be synced on Windows, where this is a no-op).
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		d.Close()
+	}
 	return nil
 }
 

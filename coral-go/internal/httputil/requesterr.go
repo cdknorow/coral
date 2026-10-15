@@ -1,6 +1,8 @@
 package httputil
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/url"
 	"regexp"
@@ -35,8 +37,10 @@ func RequestError(err error) string {
 	return msg
 }
 
-// MaskURL shows a URL as its scheme and host plus a short tail of the rest, so a webhook can be
-// recognised in a list without its secret path or query: https://hooks.slack.com/…a1b2.
+// MaskURL shows a URL as its scheme and host plus a short fingerprint of the rest (8 hex digits
+// of its SHA-256), so two webhooks to one host can be told apart in a list without any of the
+// secret path or query: https://hooks.slack.com/…#1a2b3c4d. (Security's NIT on #3627: a tail of
+// the path itself would show part of the secret.)
 func MaskURL(raw string) string {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Host == "" {
@@ -47,11 +51,9 @@ func MaskURL(raw string) string {
 		rest += "?" + u.RawQuery
 	}
 	host := u.Scheme + "://" + u.Host
-	if len(rest) <= 12 {
-		if rest == "" {
-			return host
-		}
-		return host + "/…"
+	if rest == "" {
+		return host
 	}
-	return host + "/…" + rest[len(rest)-4:]
+	sum := sha256.Sum256([]byte(rest))
+	return host + "/…#" + hex.EncodeToString(sum[:4])
 }

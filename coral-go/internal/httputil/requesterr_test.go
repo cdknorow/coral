@@ -25,16 +25,17 @@ func TestRequestErrorNeverCarriesTheURL(t *testing.T) {
 }
 
 func TestMaskURL(t *testing.T) {
-	for raw, want := range map[string]string{
-		"https://hooks.slack.com/services/T0001/B0002/XyZsecretPATH": "https://hooks.slack.com/…PATH",
-		"https://example.com/hook?token=abcdefghij1234":              "https://example.com/…1234",
-		"https://example.com/short":                                  "https://example.com/…",
-		"https://example.com":                                        "https://example.com",
-		"not a url":                                                  "<url>",
-	} {
-		assert.Equal(t, want, MaskURL(raw), raw)
-		if strings.Contains(raw, "secret") {
-			assert.NotContains(t, MaskURL(raw), "secret")
-		}
+	a := MaskURL("https://hooks.slack.com/services/T0001/B0002/XyZsecretPATH")
+	b := MaskURL("https://hooks.slack.com/services/T0001/B0002/OtherPATH")
+	assert.Regexp(t, `^https://hooks\.slack\.com/…#[0-9a-f]{8}$`, a)
+	assert.NotEqual(t, a, b, "two hooks to one host are told apart")
+	assert.Equal(t, a, MaskURL("https://hooks.slack.com/services/T0001/B0002/XyZsecretPATH"), "stable")
+	for _, part := range []string{"secret", "PATH", "T0001", "services"} {
+		assert.NotContains(t, a, part, "no part of the path")
 	}
+	q := MaskURL("https://example.com/hook?token=abcdefghij1234")
+	assert.NotContains(t, q, "1234")
+	assert.NotContains(t, q, "token")
+	assert.Equal(t, "https://example.com", MaskURL("https://example.com"))
+	assert.Equal(t, "<url>", MaskURL("not a url"))
 }
