@@ -128,7 +128,10 @@ func TestCLIAuthHelloRefusals(t *testing.T) {
 	assert.False(t, NewCLIAuth("").Verify(r, nil))
 
 	// A flood never locks the real command line out: at the cap the oldest
-	// pending hello is dropped, and the table stays bounded.
+	// pending hello is dropped, and the table stays bounded. The clock is frozen, as a
+	// coarse one (Windows) is between hellos: the oldest is still the first to arrive (#3633).
+	frozen := time.Now()
+	a.now = func() time.Time { return frozen }
 	first := signed(t, a, "the-token", "GET", "/api/cloud/status", nil)
 	for i := 0; i < 300; i++ {
 		_, _, err := a.Hello(b64.EncodeToString(nonce(t)))
@@ -136,7 +139,10 @@ func TestCLIAuthHelloRefusals(t *testing.T) {
 	}
 	a.mu.Lock()
 	assert.LessOrEqual(t, len(a.pending), cliMaxPending, "bounded")
+	firstSN, _, _ := strings.Cut(first.Header.Get(CLIAuthHeader), ".")
+	_, kept := a.pending[firstSN]
 	a.mu.Unlock()
+	assert.False(t, kept, "the oldest was dropped")
 	assert.False(t, a.Verify(first, nil), "the oldest was dropped")
 	fresh := signed(t, a, "the-token", "GET", "/api/cloud/status", nil)
 	assert.True(t, a.Verify(fresh, nil), "a new hello after the flood works")

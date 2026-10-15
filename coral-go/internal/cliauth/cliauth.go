@@ -93,11 +93,13 @@ type CLIAuth struct {
 	now     func() time.Time
 	mu      sync.Mutex
 	pending map[string]cliHello // by server nonce
+	seq     uint64              // hellos so far: the order they came in
 }
 
 type cliHello struct {
 	client  []byte
 	expires time.Time
+	seq     uint64
 }
 
 // NewCLIAuth returns the server side for token.
@@ -129,17 +131,20 @@ func (a *CLIAuth) Hello(clientNonce string) (serverNonce, proof string, err erro
 	if len(a.pending) >= cliMaxPending {
 		// Full (a flood of hellos): drop the oldest instead of refusing, so a burst
 		// cannot lock the real command line out; whoever loses its slot just gets
-		// a refusal and says hello again (#3285 security review).
-		oldest, at := "", time.Time{}
+		// a refusal and says hello again (#3285 security review). The oldest by arrival:
+		// a coarse clock (Windows) gives many hellos the same time, and a tie must not
+		// leave the choice to map order (#3633).
+		oldest, first := "", uint64(0)
 		for k, h := range a.pending {
-			if oldest == "" || h.expires.Before(at) {
-				oldest, at = k, h.expires
+			if oldest == "" || h.seq < first {
+				oldest, first = k, h.seq
 			}
 		}
 		delete(a.pending, oldest)
 	}
 	sn := b64.EncodeToString(s)
-	a.pending[sn] = cliHello{client: c, expires: now.Add(cliHelloTTL)}
+	a.seq++
+	a.pending[sn] = cliHello{client: c, expires: now.Add(cliHelloTTL), seq: a.seq}
 	return sn, b64.EncodeToString(cliMAC(a.token, cliServerLabel, c, s)), nil
 }
 
