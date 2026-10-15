@@ -91,3 +91,37 @@ func TestForeignBrowserWritesBehindAProxy(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, do(direct, "https://coral.example"), "no trusted forwarded host: refused")
 	assert.Equal(t, http.StatusForbidden, do(RefuseForeignBrowserWrites(ok), "https://coral.example"))
 }
+
+// #3524: a request with Origin or Sec-Fetch-Site repeated is refused, whatever its method
+// and even when one of the values is Coral's own: a browser never sends either twice.
+func TestRepeatedOriginOrFetchSiteIsRefused(t *testing.T) {
+	reached := 0
+	h := RefuseForeignBrowserWrites(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached++ }))
+	for name, c := range map[string]struct {
+		method string
+		hdr    http.Header
+		want   int
+	}{
+		"two Origins, own first":        {"POST", http.Header{"Origin": {"http://localhost:8420", "http://evil.example"}}, 403},
+		"two Origins, foreign first":    {"PUT", http.Header{"Origin": {"http://evil.example", "http://localhost:8420"}}, 403},
+		"two Sec-Fetch-Site":            {"POST", http.Header{"Origin": {"http://localhost:8420"}, "Sec-Fetch-Site": {"same-origin", "cross-site"}}, 403},
+		"a GET (WebSocket) with two":    {"GET", http.Header{"Origin": {"http://localhost:8420", "http://evil.example"}}, 403},
+		"one of each (Coral's page)":    {"POST", http.Header{"Origin": {"http://localhost:8420"}, "Sec-Fetch-Site": {"same-origin"}}, 200},
+		"a GET with one foreign Origin": {"GET", http.Header{"Origin": {"http://evil.example"}}, 200},
+	} {
+		reached = 0
+		r := httptest.NewRequest(c.method, "http://localhost:8420/api/settings", strings.NewReader(`{}`))
+		r.Host = "localhost:8420"
+		r.Header = c.hdr
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code == 0 || w.Code == http.StatusOK {
+			w.Code = http.StatusOK
+		}
+		assert.Equal(t, c.want, w.Code, name)
+		if c.want == 403 {
+			assert.Zero(t, reached, name)
+			assert.Contains(t, w.Body.String(), "foreign_origin", name)
+		}
+	}
+}

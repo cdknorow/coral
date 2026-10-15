@@ -126,3 +126,27 @@ func TestDashboardWriteBehindAHostRewritingProxy(t *testing.T) {
 	code, body = put("other.example")
 	assert.Equal(t, http.StatusForbidden, code, "a forwarded host that isn't the Origin's: %s", body)
 }
+
+// #3524 end to end, both modes: a write or a WebSocket upgrade carrying Origin (or
+// Sec-Fetch-Site) twice is refused, even when the first value is Coral's own.
+func TestRepeatedOriginRefusedEndToEnd(t *testing.T) {
+	for _, strict := range []bool{false, true} {
+		_, ts, _ := strictServer(t, strict)
+		send := func(method, path string, hdr http.Header) int {
+			req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(`{}`))
+			req.Header.Set("Content-Type", "application/json")
+			for k, v := range hdr {
+				req.Header[k] = v
+			}
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			resp.Body.Close()
+			return resp.StatusCode
+		}
+		assert.Equal(t, http.StatusForbidden, send("PUT", "/api/settings", http.Header{"Origin": {ts.URL, "http://evil.example"}}), "strict=%v: two Origins", strict)
+		assert.Equal(t, http.StatusForbidden, send("PUT", "/api/settings", http.Header{"Origin": {ts.URL}, "Sec-Fetch-Site": {"same-origin", "cross-site"}}), "strict=%v: two Sec-Fetch-Site", strict)
+		ws := http.Header{"Connection": {"Upgrade"}, "Upgrade": {"websocket"}, "Sec-Websocket-Version": {"13"},
+			"Sec-Websocket-Key": {"dGhlIHNhbXBsZSBub25jZQ=="}, "Origin": {ts.URL, "http://evil.example"}}
+		assert.Equal(t, http.StatusForbidden, send("GET", "/ws/coral", ws), "strict=%v: a WebSocket with two Origins", strict)
+	}
+}

@@ -499,7 +499,8 @@ func TestSetTrustedProxies_RejectsGarbage(t *testing.T) {
 }
 
 // #3511 follow-up: X-Forwarded-Host is believed only from a trusted proxy (loopback, or
-// CORAL_TRUSTED_PROXIES), first value only; a nil KeyStore has none.
+// CORAL_TRUSTED_PROXIES); the LAST value counts, the one the proxy added (#3524); a nil
+// KeyStore has none.
 func TestForwardedHostOnlyFromATrustedProxy(t *testing.T) {
 	ks, err := NewKeyStore(t.TempDir())
 	require.NoError(t, err)
@@ -513,7 +514,13 @@ func TestForwardedHostOnlyFromATrustedProxy(t *testing.T) {
 		return ks.ForwardedHost(r)
 	}
 	assert.Equal(t, "coral.example", at("127.0.0.1:5000", "coral.example"), "a loopback proxy")
-	assert.Equal(t, "coral.example", at("10.1.2.3:5000", " coral.example , evil.example"), "a configured proxy, first value")
+	assert.Equal(t, "coral.example", at("10.1.2.3:5000", " evil.example , coral.example "), "a configured proxy that appended: the last value")
+	// Appended as a second header line: the client's value first, the proxy's last.
+	r := httptest.NewRequest("POST", "/api/settings", nil)
+	r.RemoteAddr = "127.0.0.1:5000"
+	r.Header.Add("X-Forwarded-Host", "evil.example")
+	r.Header.Add("X-Forwarded-Host", "coral.example")
+	assert.Equal(t, "coral.example", ks.ForwardedHost(r), "repeated headers: the last")
 	assert.Equal(t, "", at("192.168.1.5:5000", "coral.example"), "any other peer is ignored")
 	assert.Equal(t, "", at("127.0.0.1:5000", ""), "no header")
 	var none *KeyStore

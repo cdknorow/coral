@@ -6,6 +6,8 @@ Coral uses a layered authentication system:
 2. **API key** — An auto-generated key stored in `~/.coral/`. Remote clients pass it via `Authorization: Bearer <key>` header or `X-API-Key` header.
 3. **Session cookie** — After validating an API key via `POST /auth/key`, a session cookie is set for browser access. It is `HttpOnly`, `SameSite=Lax`, lasts 24 hours, and is `Secure` when the browser reached Coral over https: over TLS directly, or through a trusted reverse proxy that sends `X-Forwarded-Proto: https`. A proxy on this machine (a loopback peer) is always trusted; list others in `CORAL_TRUSTED_PROXIES` (comma-separated IPs or CIDRs, e.g. `10.0.0.5,192.168.1.0/24`). The header is ignored from any other peer.
 
+   **Behind a reverse proxy:** a change from a browser (POST, PUT, PATCH, DELETE) must come from Coral's own page: its `Origin` must name the host the browser reached, which is the request's `Host` or, from a trusted proxy, `X-Forwarded-Host`. Coral reads the LAST `X-Forwarded-Host` value (the one your proxy added), so configure the proxy to overwrite the header rather than append to a client's (nginx: `proxy_set_header X-Forwarded-Host $host;`), or to pass the original `Host` (`proxy_set_header Host $host;`). A request with `Origin` or `Sec-Fetch-Site` repeated is refused (403 `foreign_origin`): a browser never sends either twice.
+
 ## Auth Page
 
 ```

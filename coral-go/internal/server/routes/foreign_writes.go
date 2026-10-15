@@ -35,6 +35,14 @@ func ForeignBrowserWrites(forwardedHost func(*http.Request) string) func(http.Ha
 
 func refuseForeignBrowserWrites(next http.Handler, forwardedHost func(*http.Request) string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A browser sends Origin and Sec-Fetch-Site once. A request with either repeated is
+		// refused whatever its method (#3524): checks that read only the first value (here,
+		// CORS, the WebSocket accept) must not disagree about which one counts.
+		if len(r.Header.Values("Origin")) > 1 || len(r.Header.Values("Sec-Fetch-Site")) > 1 {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "foreign_origin",
+				"message": "Coral accepts changes only from its own page"})
+			return
+		}
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 			next.ServeHTTP(w, r)

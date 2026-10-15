@@ -185,15 +185,23 @@ func (ks *KeyStore) fromTrustedProxy(r *http.Request) bool {
 }
 
 // ForwardedHost is the host the browser reached Coral on, as a trusted reverse proxy
-// (fromTrustedProxy) reports it in X-Forwarded-Host (the first value), when the proxy
-// rewrites Host to Coral's own address. From any other peer, or without the header, it is
-// "". A page in a browser can't add the header to a request without a CORS preflight, which
-// Coral refuses for any origin but its own (#3511 follow-up).
+// (fromTrustedProxy) reports it in X-Forwarded-Host, when the proxy rewrites Host to
+// Coral's own address. It is the LAST value (across repeated headers and comma lists): a
+// proxy that appends puts its own value after whatever the client sent (#3524, coral-hub
+// Security); a proxy should overwrite the header (nginx: proxy_set_header X-Forwarded-Host
+// $host). From any other peer, or without the header, it is "". A page in a browser can't
+// add the header to a request without a CORS preflight, which Coral refuses for any origin
+// but its own (#3511 follow-up).
 func (ks *KeyStore) ForwardedHost(r *http.Request) string {
 	if ks == nil || !ks.fromTrustedProxy(r) {
 		return ""
 	}
-	return strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0])
+	vals := r.Header.Values("X-Forwarded-Host")
+	if len(vals) == 0 {
+		return ""
+	}
+	parts := strings.Split(vals[len(vals)-1], ",")
+	return strings.TrimSpace(parts[len(parts)-1])
 }
 
 // overHTTPS reports whether the browser reached Coral over https: directly over TLS, or
