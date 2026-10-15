@@ -183,3 +183,31 @@ func TestEndLeftoverTmuxAgentsTouchesOnlyCoralsAgents(t *testing.T) {
 	assert.Equal(t, "decoy\n", list(private), "the decoy on Coral's server is left alone")
 	assert.Contains(t, list(other), "claude-11111111-2222-4333-8444-555555555555", "another tmux server is never touched")
 }
+
+// A symlink at <data dir>/tmux.sock is not Coral's socket: nothing is listed or ended through it,
+// and the server it points at is left alone (Security's Lstat check, #3634).
+func TestEndLeftoverRefusesASymlinkedSocket(t *testing.T) {
+	bin, ok := tmux.IsAvailable()
+	if !ok {
+		t.Skip("tmux not installed")
+	}
+	dataDir, err := os.MkdirTemp("/tmp", "cs")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(dataDir) })
+	target := filepath.Join(dataDir, "elsewhere.sock")
+	start := exec.Command(bin, "-S", target, "new-session", "-d", "-s", "claude-11111111-2222-4333-8444-555555555555", "sleep 600")
+	start.Env = append(os.Environ(), "TMUX=")
+	out, err := start.CombinedOutput()
+	require.NoError(t, err, string(out))
+	t.Cleanup(func() { exec.Command(bin, "-S", target, "kill-server").Run() })
+	require.NoError(t, os.Symlink(target, tmux.PrivateSocketPath(dataDir)))
+
+	assert.Empty(t, tmux.PrivateAgentSessions(context.Background(), tmux.PrivateSocketPath(dataDir)))
+	b := newBackendRig(t, dataDir)
+	b.h.BackendRunning = "pty"
+	rec := b.req("POST", "/api/system/terminal-backend/end-leftover", `{}`, "dashboard")
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.JSONEq(t, `{"ended":0,"left":0}`, rec.Body.String())
+	ls, _ := exec.Command(bin, "-S", target, "list-sessions", "-F", "#{session_name}").CombinedOutput()
+	assert.Contains(t, string(ls), "claude-11111111-2222-4333-8444-555555555555", "the server behind the link is untouched")
+}

@@ -21,7 +21,17 @@ var agentSessionRE = regexp.MustCompile(`(?i)^\w+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-
 // PrivateSocketPath is Coral's tmux socket in the data folder coralDir.
 func PrivateSocketPath(coralDir string) string { return filepath.Join(coralDir, "tmux.sock") }
 
+// privateSocketOK: the path itself is a socket, never a symlink (Lstat), so a link planted at
+// <data dir>/tmux.sock can't point these helpers at another tmux server (Security, #3634).
+func privateSocketOK(socket string) bool {
+	st, err := os.Lstat(socket)
+	return err == nil && st.Mode()&os.ModeSocket != 0
+}
+
 func privateTmux(ctx context.Context, socket string, args ...string) (string, error) {
+	if !privateSocketOK(socket) {
+		return "", os.ErrNotExist
+	}
 	bin, ok := IsAvailable()
 	if !ok {
 		return "", exec.ErrNotFound
@@ -44,7 +54,7 @@ func privateTmux(ctx context.Context, socket string, args ...string) (string, er
 // PrivateAgentSessions lists the Coral agent sessions still running on the tmux server at
 // socket. No socket, no server or no tmux: none.
 func PrivateAgentSessions(ctx context.Context, socket string) []string {
-	if st, err := os.Stat(socket); err != nil || st.IsDir() {
+	if !privateSocketOK(socket) {
 		return nil
 	}
 	out, err := privateTmux(ctx, socket, "list-sessions", "-F", "#{session_name}")
