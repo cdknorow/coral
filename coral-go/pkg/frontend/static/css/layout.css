@@ -1179,7 +1179,7 @@ body.panel-dragging .sidebar {
 
 /* Coral Hub connection indicator in the header (#3544) */
 .hub-indicator[hidden] { display: none; }
-.hub-indicator[data-state="connected"] { color: var(--accent); }
+.hub-indicator[data-state="connected"] { color: var(--success); } /* a status, not a selected button (the accent) */
 .hub-indicator[data-state="connecting"] { color: var(--text-muted); animation: hub-indicator-pulse 1.6s ease-in-out infinite; }
 .hub-indicator[data-state="disconnected"] { color: var(--warning); }
 .hub-indicator[data-state]:hover { background: var(--bg-hover); }

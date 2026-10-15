@@ -1,7 +1,7 @@
 /* The Coral Hub connection indicator in the dashboard header (#3544): one icon beside Home,
  * the panel toggle and Settings that says whether this Coral's tunnel to its hub is up.
  *
- *   connected     the hub icon in the accent colour
+ *   connected     the hub icon in the success colour (green: a status, not a selected button)
  *   connecting    muted, with a slow pulse (none with prefers-reduced-motion): dialing, or
  *                 reconnecting after the hub was unreachable or busy
  *   disconnected  a warning tint: enrolled, but the hub refused the token, the stored token

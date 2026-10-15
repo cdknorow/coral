@@ -67,14 +67,14 @@ const STATES = {
             const cs = getComputedStyle(b); const r = b.getBoundingClientRect();
             return { hidden: b.hidden || cs.display === 'none', state: b.dataset.state || null, title: b.title, aria: b.getAttribute('aria-label'),
                 color: cs.color, anim: cs.animationName, inBar: !!b.closest('.top-bar-actions'), x: r.right, w: r.width,
-                accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), warning: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim(),
+                success: getComputedStyle(document.documentElement).getPropertyValue('--success').trim(), warning: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim(),
                 dom: document.documentElement.outerHTML.includes(${JSON.stringify(SECRET_ID)}) || document.documentElement.outerHTML.includes(${JSON.stringify(SECRET_CODE)}) }; })()`);
         const rgb = hex => { const h = hex.replace('#', ''); return `rgb(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)})`; };
 
         console.log('1. The page start reads the status and shows it');
         await until(`!!document.getElementById('hub-indicator') && document.getElementById('hub-indicator').dataset.state === 'connected'`, 'the indicator');
         let l = await look();
-        check('connected: shown in the header, accent colour', l && !l.hidden && l.inBar && l.state === 'connected' && l.color === rgb(l.accent), JSON.stringify(l));
+        check('connected: shown in the header, success colour (green)', l && !l.hidden && l.inBar && l.state === 'connected' && l.color === rgb(l.success), JSON.stringify(l));
         check('its name: the state, the hub host and since when', l && /^Coral Hub: connected to app\.coralai\.ai since /.test(l.aria) && l.title === l.aria, l && l.aria);
         check('no id or code anywhere in the page', l && !l.dom);
 
