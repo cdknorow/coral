@@ -173,7 +173,7 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	// canonical session id; an invalid one is ignored, starting a fresh session rather than
 	// reaching outside pi-sessions (#3582). params.SessionID is server-generated.
 	resumeID := params.ResumeSessionID
-	if resumeID != "" && !IsResumeID(resumeID) {
+	if resumeID != "" && !IsResumeID(at.Pi, resumeID) {
 		resumeID = ""
 	}
 	if coralDir != "" {

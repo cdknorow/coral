@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,16 +11,31 @@ import (
 )
 
 func TestIsResumeID(t *testing.T) {
-	assert.True(t, IsResumeID("11111111-2222-4333-8444-555555555555"))
-	for _, bad := range []string{
-		"", "../x", "a/../../b", "/abs", "..",
-		"11111111-2222-4333-8444-555555555555/../x",
-		"urn:uuid:11111111-2222-4333-8444-555555555555", // uuid.Parse accepts it; we don't
-		"{11111111-2222-4333-8444-555555555555}",        // braces
-		"11111111222243338444555555555555",              // no hyphens
-		"11111111-2222-4333-8444-555555555555\x00",      // trailing NUL
-	} {
-		assert.False(t, IsResumeID(bad), "%q must be rejected", bad)
+	uuidV := "11111111-2222-4333-8444-555555555555"
+	// Every type accepts a canonical UUID.
+	for _, at := range []string{"claude", "agy", "gemini", "terminal", "pi", "codex", "", "unknown"} {
+		assert.True(t, IsResumeID(at, uuidV), "type %q must accept a canonical UUID", at)
+	}
+	// A non-UUID that fits the safe charset: rejected for the UUID types, accepted for codex and
+	// the unclassified types (their native ids aren't UUIDs). Codex's real ids run to 64 chars.
+	codexID := "0199c3d2-6f3a-7bb1-codex-rollout-01HZX8Y3QK7-session-abcdef0123456789"[:64]
+	for _, at := range []string{"claude", "agy", "gemini", "terminal", "pi"} {
+		assert.False(t, IsResumeID(at, codexID), "type %q must reject a non-UUID id", at)
+	}
+	for _, at := range []string{"codex", "antigravity", "", "unknown"} {
+		assert.True(t, IsResumeID(at, codexID), "type %q must accept a safe non-UUID id", at)
+		assert.True(t, IsResumeID(at, "codex_thread-42"), "type %q safe charset", at)
+	}
+	// The anti-traversal boundary holds for EVERY type, UUID or not.
+	for _, at := range []string{"claude", "codex", "", "pi", "unknown"} {
+		for _, bad := range []string{
+			"", "../x", "a/../../b", "/abs", "..", "a.b", "a/b",
+			"-x", "--help", "-", "_x", "-codex",
+			uuidV + "/../x", "urn:uuid:" + uuidV, "{" + uuidV + "}",
+			uuidV + "\x00", "a b", strings.Repeat("a", 129),
+		} {
+			assert.False(t, IsResumeID(at, bad), "type %q must reject %q", at, bad)
+		}
 	}
 }
 

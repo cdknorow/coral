@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Pi's launch command keeps the session dir under pi-sessions and adds --continue only for a
@@ -37,5 +36,4 @@ func TestPiLaunchResumeIDIsValidated(t *testing.T) {
 			}
 		})
 	}
-	require.NoError(t, nil)
 }

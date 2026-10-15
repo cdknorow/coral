@@ -3385,14 +3385,14 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "session_id is required")
 		return
 	}
-	if !agent.IsResumeID(body.SessionID) {
-		errBadRequest(w, "session_id must be a session UUID") // #3582: it goes into file paths
-		return
-	}
 
 	agentType := body.AgentType
 	if agentType == "" {
 		agentType = at.Claude
+	}
+	if !agent.IsResumeID(agentType, body.SessionID) {
+		errBadRequest(w, "session_id is not a valid resume id") // #3582: it goes into file paths
+		return
 	}
 	agentImpl := agent.GetAgent(agentType)
 	if !agentImpl.SupportsResume() {
@@ -3680,16 +3680,16 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	if body.ResumeSessionID != "" && !agent.IsResumeID(body.ResumeSessionID) {
-		errBadRequest(w, "resume_session_id must be a session UUID") // #3582: it goes into file paths
-		return
-	}
 	// No agent_type (e.g. `coral-agent launch`) means the operator's default,
 	// as the + New Agent modal pre-selects it.
 	if body.AgentType == "" {
 		if settings, err := h.ss.GetSettings(r.Context()); err == nil {
 			body.AgentType = settings["default_agent_type"]
 		}
+	}
+	if body.ResumeSessionID != "" && !agent.IsResumeID(body.AgentType, body.ResumeSessionID) {
+		errBadRequest(w, "resume_session_id is not a valid resume id") // #3582: it goes into file paths
+		return
 	}
 	// Analytics: one requested/result pair per attempt, with controlled
 	// categories only (never error text, paths, names or prompts).

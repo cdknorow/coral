@@ -307,7 +307,7 @@ func (a *ClaudeAgent) PrintArgs(params LaunchParams) (args []string, settingsFil
 }
 
 func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {
-	if !IsResumeID(sessionID) {
+	if !IsResumeID(a.AgentType(), sessionID) {
 		return // not a canonical session id: never touch the filesystem with it (#3582)
 	}
 	basePath := a.HistoryBasePath()
