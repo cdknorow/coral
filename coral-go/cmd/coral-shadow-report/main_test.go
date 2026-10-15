@@ -11,9 +11,9 @@ const sampleLog = `2026/10/14 19:03:54.100000 INFO launch request received worki
 2026/10/14 19:04:19.152583 INFO automated input decision session=claude-80f7a3e0-fe4f-a309-acdd-fcd06ff9f5e8 sender="board nudge" key=board-unread:t1b old=send new="hold: signals: in turn" agree=false mode=signals
 2026/10/14 19:05:09.535082 INFO automated input decision session=claude-80f7a3e0-fe4f-a309-acdd-fcd06ff9f5e8 sender="board nudge" key=board-unread:t1b old=send new=send agree=true mode=signals
 2026/10/14 19:06:00.000001 INFO automated input decision session=agy-11111111-2222-3333-4444-555555555555 sender="board message" key="SECRET message text the key carries" old="hold: prompt question: Allow rm -rf / ?" new=send agree=false mode=screen cli_version=1.3.5
-2026/10/14 19:06:01.000001 INFO automated input decision session=claude-22222222-2222-3333-4444-555555555555 sender="board nudge" key=board-unread:t1b old="hold: selection menu" new="hold: signals: blocked (permission)" agree=true mode=screen cli_version=2.1.300
+2026/10/14 19:06:01.000001 INFO automated input decision session=claude-22222222-2222-3333-4444-555555555555 sender="board nudge" key=board-unread:t1b old="hold: selection menu" new="hold: signals: blocked (permission)" agree=true mode=screen cli_version=2.1.300 agent_type=claude state=blocked kind=permission
 2026/10/14 19:06:02.000001 WARN automated input: state_disagreement: the signals say idle but the screen shows a prompt session=agy-11111111-2222-3333-4444-555555555555 why="prompt question: Allow rm -rf / ?" cli_version=1.3.5
-2026/10/15 08:00:00.000001 INFO automated input decision session=codex-33333333-2222-3333-4444-555555555555 sender="task notification" key=x old=send new=send agree=true mode=screen
+2026/10/15 08:00:00.000001 INFO automated input decision session=codex-33333333-2222-3333-4444-555555555555 sender="task notification" key=x old=send new=send agree=true mode=screen agent_type=codex state=idle kind=
 `
 
 func TestReport(t *testing.T) {
@@ -32,6 +32,10 @@ func TestReport(t *testing.T) {
 		"old=hold new=send: 1", // the reverse, to check one by one
 		"agy: hold: prompt question  ->  send",
 		"claude: hold: selection menu  ->  hold: signals: blocked (permission)",
+		"Agreement by state",
+		"claude blocked (permission)", // state and kind from the line
+		"codex idle ",                 // an empty kind is left out
+		"claude ?  ",                  // lines before delta 3 have no state
 		"state_disagreement (signals idle, a prompt on screen): 1",
 		"prompt question (CLI 1.3.5)",
 	} {

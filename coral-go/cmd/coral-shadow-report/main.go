@@ -45,6 +45,7 @@ func main() {
 // decision is one parsed "automated input decision" line.
 type decision struct {
 	session, sender, agentType, cliVersion, mode string
+	state, kind                                  string // the signals' state and open request kind (#3482 delta 3)
 	old, new                                     string // "send" or the hold reason class
 	agree                                        bool
 }
@@ -75,6 +76,7 @@ func (r *report) read(in io.Reader) {
 			d := decision{
 				session: kv["session"], sender: kv["sender"], mode: kv["mode"],
 				agentType: kv["agent_type"], cliVersion: kv["cli_version"],
+				state: kv["state"], kind: kv["kind"],
 				old: outcome(kv["old"]), new: outcome(kv["new"]), agree: kv["agree"] == "true",
 			}
 			if d.agentType == "" {
@@ -112,28 +114,17 @@ func (r *report) print(w io.Writer, top int) {
 		fmt.Fprintf(w, "Sessions: %d   Mode: %s\n", len(sessions), joinCounts(modes))
 	}
 
-	// Agreement by agent type and CLI version.
-	type group struct{ total, agree int }
-	groups := map[string]*group{}
-	for _, d := range r.decisions {
-		k := d.agentType + " " + orUnknown(d.cliVersion)
-		if groups[k] == nil {
-			groups[k] = &group{}
+	agreementTable(w, r.decisions, "Agreement by agent type and CLI version:", func(d decision) string {
+		return d.agentType + " " + orUnknown(d.cliVersion)
+	})
+	// By the state the signals saw: where in a turn the two rules part ways.
+	agreementTable(w, r.decisions, "Agreement by state (agent type, signals' state, request kind):", func(d decision) string {
+		k := d.agentType + " " + orUnknown(d.state)
+		if d.kind != "" {
+			k += " (" + d.kind + ")"
 		}
-		groups[k].total++
-		if d.agree {
-			groups[k].agree++
-		}
-	}
-	if len(groups) > 0 {
-		fmt.Fprintln(w, "\nAgreement by agent type and CLI version:")
-		for _, k := range sortedKeys(groups, func(a, b string) bool {
-			return groups[a].total > groups[b].total || (groups[a].total == groups[b].total && a < b)
-		}) {
-			g := groups[k]
-			fmt.Fprintf(w, "  %-28s %6d decisions  %5.1f%% agree  %d disagree\n", k, g.total, 100*float64(g.agree)/float64(g.total), g.total-g.agree)
-		}
-	}
+		return k
+	})
 
 	// Disagreements by class and reason pair.
 	classes := []struct{ name, desc string }{
@@ -189,6 +180,32 @@ func (r *report) print(w io.Writer, top int) {
 		}
 		cls, ver, _ := strings.Cut(k, "|")
 		fmt.Fprintf(w, "  %5d  %s (CLI %s)   e.g. %s\n", r.disagreements[k], cls, ver, strings.Join(r.disExamples[k], ", "))
+	}
+}
+
+// agreementTable prints the agreement rate of the decisions grouped by key, largest first.
+func agreementTable(w io.Writer, decisions []decision, title string, key func(decision) string) {
+	type group struct{ total, agree int }
+	groups := map[string]*group{}
+	for _, d := range decisions {
+		k := key(d)
+		if groups[k] == nil {
+			groups[k] = &group{}
+		}
+		groups[k].total++
+		if d.agree {
+			groups[k].agree++
+		}
+	}
+	if len(groups) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "\n"+title)
+	for _, k := range sortedKeys(groups, func(a, b string) bool {
+		return groups[a].total > groups[b].total || (groups[a].total == groups[b].total && a < b)
+	}) {
+		g := groups[k]
+		fmt.Fprintf(w, "  %-40s %6d decisions  %5.1f%% agree  %d disagree\n", k, g.total, 100*float64(g.agree)/float64(g.total), g.total-g.agree)
 	}
 }
 
