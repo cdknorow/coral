@@ -943,7 +943,11 @@ func TestSessionsChangesDiff_ReturnsTrackedAndUntrackedChanges(t *testing.T) {
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{
 		SessionID: sessionID, AgentType: "codex", AgentName: name, WorkingDir: repo,
 	}))
-	resp, err := http.Get(server.URL + "/api/sessions/" + sessionID + "/changes")
+	// As this computer's dashboard fetches it (the working directory is shown only there, #3596 W3).
+	req, err := http.NewRequest("GET", server.URL+"/api/sessions/"+sessionID+"/changes", nil)
+	require.NoError(t, err)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 

@@ -214,8 +214,12 @@ func TestTunneledDiffsAreFiltered(t *testing.T) {
 		assert.NotContains(t, rec.Body.String(), "do-not-leak", route)
 		assert.NotContains(t, rec.Body.String(), "zcmZ?w", route)
 		rec = httptest.NewRecorder()
+		sr.ServeHTTP(rec, dashboardRequest(httptest.NewRequest("GET", "/api/sessions/"+sid+route, nil)))
+		assert.Contains(t, rec.Body.String(), "do-not-leak", "this computer's dashboard gets %s whole", route)
+		// Any other local caller (curl, a Bearer-key proxy) gets it filtered too (#3596 W3).
+		rec = httptest.NewRecorder()
 		sr.ServeHTTP(rec, httptest.NewRequest("GET", "/api/sessions/"+sid+route, nil))
-		assert.Contains(t, rec.Body.String(), "do-not-leak", "locally %s is served whole", route)
+		assert.NotContains(t, rec.Body.String(), "do-not-leak", "a non-dashboard caller: %s", route)
 	}
 
 	// The live diff through the tunnel: filtered, and no local path.
@@ -226,8 +230,11 @@ func TestTunneledDiffsAreFiltered(t *testing.T) {
 	writeSessionChanges(rec, req, safeDiff([]byte(old)), repo)
 	assert.Empty(t, rec.Header().Get("X-Coral-Working-Directory"))
 	rec = httptest.NewRecorder()
+	writeSessionChanges(rec, dashboardRequest(httptest.NewRequest("GET", "/x", nil)), []byte(old), repo)
+	assert.Equal(t, repo, rec.Header().Get("X-Coral-Working-Directory"), "this computer's dashboard: unchanged")
+	rec = httptest.NewRecorder()
 	writeSessionChanges(rec, httptest.NewRequest("GET", "/x", nil), []byte(old), repo)
-	assert.Equal(t, repo, rec.Header().Get("X-Coral-Working-Directory"), "locally unchanged")
+	assert.Empty(t, rec.Header().Get("X-Coral-Working-Directory"), "no local path for a non-dashboard caller (#3596 W3)")
 	live, err := sh.generatePersistedDiff(context.Background(), repo)
 	require.NoError(t, err)
 	assert.NotContains(t, string(live), "do-not-leak")
@@ -276,4 +283,13 @@ func TestDiffStoreSizesCountSharedDiffsOnce(t *testing.T) {
 	assert.Equal(t, int64(len(shared)+len(other)), tb+sb, "each stored diff's bytes once")
 	assert.Equal(t, int64(3), tn)
 	assert.Equal(t, int64(1), sn)
+}
+
+// dashboardRequest makes r look like this computer's own dashboard: a loopback peer, a localhost
+// Host and a same-origin browser fetch (localDashboard).
+func dashboardRequest(r *http.Request) *http.Request {
+	r.RemoteAddr = "127.0.0.1:50000"
+	r.Host = "localhost:8420"
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
+	return r
 }
