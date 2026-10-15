@@ -169,7 +169,12 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 		if result.Message != "" {
 			msg += ": " + result.Message
 		}
-		if status == http.StatusTooManyRequests || status >= 500 {
+		switch {
+		case status == http.StatusNotImplemented:
+			// The hub doesn't relay (switched off, or too old): a retry fails the same way
+			// until whoever runs the hub turns it on or updates it (#3503).
+			msg += " (not delivered; retrying won't help until the hub relays messages)"
+		case status == http.StatusTooManyRequests || status >= 500:
 			msg += fmt.Sprintf(" (retry later with --message-id %s, so it is never delivered twice)", messageID)
 		}
 		return fmt.Errorf("%s", msg)

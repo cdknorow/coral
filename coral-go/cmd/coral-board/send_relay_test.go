@@ -127,3 +127,35 @@ func TestSendAddressPrintsItsMessageIDOnFailure(t *testing.T) {
 		t.Fatalf("the failure names the id %q: %v", sent, err)
 	}
 }
+
+// #3503: a hub that doesn't relay (501 relay_unsupported: switched off, or too old) isn't
+// a passing failure, so the error says so instead of suggesting a retry; a 503 still
+// gets the retry hint.
+func TestSendAddressDoesNotSuggestARetryWhenTheHubDoesNotRelay(t *testing.T) {
+	isolateBoardEnv(t)
+	status, reply := http.StatusNotImplemented, `{"ok":false,"error":"relay_unsupported","message":"Coral Hub doesn't relay messages (its relay is switched off, or the hub is too old)"}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		w.Write([]byte(reply))
+	}))
+	defer ts.Close()
+	oldURL := serverURL
+	serverURL = ts.URL
+	defer func() { serverURL = oldURL }()
+	send := func() error {
+		return runSend([]string{"--address", "homelab/qa", "hi"}, sendIdentity{Board: "alpha", SubscriberID: "Orchestrator", SessionName: "s"}, &bytes.Buffer{})
+	}
+	err := send()
+	if err == nil || strings.Contains(err.Error(), "retry later") || strings.Contains(err.Error(), "--message-id") {
+		t.Fatalf("no retry hint for a hub that doesn't relay: %v", err)
+	}
+	if !strings.Contains(err.Error(), "relay_unsupported") || !strings.Contains(err.Error(), "retrying won't help") {
+		t.Fatalf("the error says the hub doesn't relay: %v", err)
+	}
+
+	status, reply = http.StatusServiceUnavailable, `{"ok":false,"error":"not_linked"}`
+	if err := send(); err == nil || !strings.Contains(err.Error(), "retry later with --message-id") {
+		t.Fatalf("a 503 keeps the retry hint: %v", err)
+	}
+}
