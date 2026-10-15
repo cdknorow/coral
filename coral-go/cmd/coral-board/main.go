@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/cdknorow/coral/internal/clitext"
 	"github.com/cdknorow/coral/internal/hooks"
 	"github.com/cdknorow/coral/internal/taskcli"
 	"github.com/cdknorow/coral/internal/testguard"
@@ -29,6 +30,21 @@ import (
 )
 
 var serverURL = "http://localhost:8420"
+
+// rawOutput is --raw: print what the server sent byte for byte. Otherwise every reply is cleaned
+// of terminal control first (#3580): board posts, task text and another agent's screen are
+// written by agents, and an escape sequence in them could rewrite or hide what the terminal
+// shows, set its title or reach the clipboard.
+var rawOutput bool
+
+// readServer reads a reply from the Coral server, cleaned of terminal control unless --raw.
+func readServer(r io.Reader) ([]byte, error) {
+	b, err := io.ReadAll(r)
+	if rawOutput {
+		return b, err
+	}
+	return clitext.CleanJSON(b), err
+}
 
 func init() {
 	serverURL = endpointFromEnv(os.Getenv("CORAL_URL"), os.Getenv("CORAL_HOST"), os.Getenv("CORAL_PORT"))
@@ -199,7 +215,8 @@ func resolveViaPID() *pidResolution {
 	defer resp.Body.Close()
 
 	var result map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	data, _ := readServer(resp.Body)
+	if err := json.Unmarshal(data, &result); err != nil {
 		return nil
 	}
 
@@ -278,7 +295,7 @@ func apiCall(method, path string, body any) (map[string]any, error) {
 	}
 	defer resp.Body.Close()
 
-	respData, _ := io.ReadAll(resp.Body)
+	respData, _ := readServer(resp.Body)
 	var result map[string]any
 	json.Unmarshal(respData, &result)
 	return result, nil
@@ -289,6 +306,7 @@ func main() {
 	// A person running it in their own terminal (no agent session) signs with the
 	// command-line token instead, as the local Operator (strict local auth, #3418).
 	cliauth.InstallOperatorSigning()
+	os.Args, rawOutput = clitext.TakeRaw(os.Args)
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -405,6 +423,11 @@ Commands:
   workflow status <run-id>       Check run status
   workflow runs [--workflow <name>] [--status <s>]  List recent runs
   workflow kill <run-id>         Kill a running workflow
+
+Output:
+  --raw       Print what the server sent byte for byte. Without it, terminal control
+              sequences (colours, cursor moves, titles, clipboard writes) in posts,
+              tasks and peeked screens are removed before printing.
 
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
@@ -722,7 +745,7 @@ func cmdRead() {
 	}
 	defer resp.Body.Close()
 
-	data, _ := io.ReadAll(resp.Body)
+	data, _ := readServer(resp.Body)
 	var messages []map[string]any
 	json.Unmarshal(data, &messages)
 
@@ -821,7 +844,7 @@ func cmdPeek() {
 	}
 	defer resp.Body.Close()
 
-	data, _ := io.ReadAll(resp.Body)
+	data, _ := readServer(resp.Body)
 
 	if resp.StatusCode == http.StatusForbidden {
 		var errResp map[string]string
@@ -881,7 +904,7 @@ func cmdProjects() {
 	}
 	defer resp.Body.Close()
 
-	data, _ := io.ReadAll(resp.Body)
+	data, _ := readServer(resp.Body)
 	var projects []map[string]any
 	json.Unmarshal(data, &projects)
 
@@ -912,7 +935,7 @@ func cmdSubscribers() {
 	}
 	defer resp.Body.Close()
 
-	data, _ := io.ReadAll(resp.Body)
+	data, _ := readServer(resp.Body)
 	var subs []map[string]any
 	json.Unmarshal(data, &subs)
 
@@ -1076,7 +1099,7 @@ func cmdExport() {
 	}
 	defer resp.Body.Close()
 
-	data, _ := io.ReadAll(resp.Body)
+	data, _ := readServer(resp.Body)
 	var messages []map[string]any
 	json.Unmarshal(data, &messages)
 
@@ -1123,7 +1146,7 @@ func cmdExport() {
 	subsResp, _ := http.Get(serverURL + "/api/board/" + st.Project + "/subscribers")
 	var rawSubs []map[string]any
 	if subsResp != nil {
-		subsData, _ := io.ReadAll(subsResp.Body)
+		subsData, _ := readServer(subsResp.Body)
 		subsResp.Body.Close()
 		json.Unmarshal(subsData, &rawSubs)
 	}
@@ -1415,7 +1438,7 @@ func apiCallRawTimeout(method, path string, body any, timeout time.Duration) ([]
 			continue
 		}
 		defer resp.Body.Close()
-		respData, _ := io.ReadAll(resp.Body)
+		respData, _ := readServer(resp.Body)
 		return respData, resp.StatusCode, nil
 	}
 	return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, lastErr)
@@ -2038,7 +2061,7 @@ func workflowAPICall(method, path string, body any) ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
 	}
 	defer resp.Body.Close()
-	respData, _ := io.ReadAll(resp.Body)
+	respData, _ := readServer(resp.Body)
 	return respData, resp.StatusCode, nil
 }
 
@@ -2678,7 +2701,7 @@ func cmdWait() {
 				fmt.Fprintln(os.Stderr, "Poll error:", err)
 				os.Exit(1)
 			}
-			respBytes, _ := io.ReadAll(resp.Body)
+			respBytes, _ := readServer(resp.Body)
 			resp.Body.Close()
 			var pollResult struct {
 				Status string `json:"status"`

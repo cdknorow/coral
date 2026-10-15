@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/clitext"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -834,6 +835,12 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Content = unescapeLineBreaks(body.Content)
+	// Terminal control goes before anything reads the text (#3580): mentions, links and the
+	// stored post all see what readers will see.
+	if body.Content = clitext.Clean(body.Content); strings.TrimSpace(body.Content) == "" {
+		errBadRequest(w, "content required")
+		return
+	}
 	if refuseNewBoardName(w, r, h.bs, project) {
 		return
 	}

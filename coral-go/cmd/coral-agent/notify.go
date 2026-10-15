@@ -53,7 +53,7 @@ func cmdNotify(args []string, out io.Writer) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		b, _ := readServer(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Coral answered %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
 	fmt.Fprintln(out, "Notification sent")

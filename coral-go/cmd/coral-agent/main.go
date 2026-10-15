@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/cdknorow/coral/internal/clitext"
 	"github.com/cdknorow/coral/internal/taskcli"
 	"io"
 	"net/http"
@@ -62,6 +63,11 @@ Commands:
   notify --title T [--message M] [--level L] [--alert]
                                  Show a notification on the dashboard
 
+Output:
+  --raw       Print what the server sent byte for byte. Without it, terminal control
+              sequences in task text, history and messages are removed before printing.
+              (Downloaded artifacts are always byte for byte.)
+
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
   CORAL_PORT  Server port (overrides CORAL_URL)`
@@ -71,6 +77,7 @@ func main() {
 	// A person running it in their own terminal (no agent session) signs with the
 	// command-line token instead, as the local Operator (strict local auth, #3418).
 	cliauth.InstallOperatorSigning()
+	os.Args, rawOutput = clitext.TakeRaw(os.Args)
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -170,7 +177,7 @@ func cmdArtifact(args []string) {
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := readServer(resp.Body)
 	var reply struct {
 		Error    string `json:"error"`
 		Code     string `json:"code"`
@@ -733,6 +740,21 @@ func apiCall(method, path string, body any, timeout time.Duration) ([]byte, int,
 	}
 	defer resp.Body.Close()
 
-	respData, _ := io.ReadAll(resp.Body)
+	respData, _ := readServer(resp.Body)
 	return respData, resp.StatusCode, nil
+}
+
+// rawOutput is --raw: print what the server sent byte for byte. Otherwise every reply is cleaned
+// of terminal control first (#3580): task text, history and messages are written by agents, and
+// an escape sequence in them could rewrite or hide what the terminal shows, set its title or
+// reach the clipboard. Artifact downloads are never changed.
+var rawOutput bool
+
+// readServer reads a reply from the Coral server, cleaned of terminal control unless --raw.
+func readServer(r io.Reader) ([]byte, error) {
+	b, err := io.ReadAll(r)
+	if rawOutput {
+		return b, err
+	}
+	return clitext.CleanJSON(b), err
 }

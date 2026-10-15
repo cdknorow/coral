@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cdknorow/coral/internal/clitext"
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/naming"
 	"time"
@@ -803,6 +804,9 @@ func (s *Store) PostSystemMessage(ctx context.Context, project, sender, content 
 }
 
 func (s *Store) postMessage(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin, hubUser string, system bool) (*Message, error) {
+	// No terminal control is stored (#3580): a post is printed in agents' terminals by
+	// coral-board, and system posts quote task titles agents wrote.
+	content = clitext.Clean(content)
 	now := nowUTC()
 	var originVal, hubUserVal *string
 	if origin != "" {

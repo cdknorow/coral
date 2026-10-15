@@ -1,0 +1,194 @@
+// Package clitext makes text from the server safe to print in a terminal (#3580). Board posts,
+// task titles and another agent's screen are written by agents, so a control sequence in them
+// could rewrite or hide what the terminal shows, set its title or reach the clipboard (OSC 52).
+package clitext
+
+import (
+	"bytes"
+	"encoding/json"
+	"unicode/utf8"
+)
+
+const (
+	esc = 0x1b
+	bel = 0x07
+)
+
+// Clean returns s without terminal control: escape sequences are removed whole (CSI, OSC, DCS,
+// APC, PM, SOS and two-byte ones, in their 7-bit and C1 forms), and every other control
+// character goes (C0 except newline and tab, DEL, C1). Text, newlines and tabs stay. A string
+// sequence with no terminator loses only its introducer, so no text after it is lost.
+func Clean(s string) string {
+	if clean(s) {
+		return s
+	}
+	var b []byte
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && size == 1:
+			if c := s[i]; c >= 0x80 && c <= 0x9f {
+				i++ // a raw 8-bit C1 byte: a control on a terminal that isn't in UTF-8 mode
+				continue
+			}
+			b = append(b, s[i])
+			i++
+		case r == esc:
+			i = skipEscape(s, i)
+		case r >= 0x80 && r <= 0x9f:
+			i = skipC1(s, i, r, size)
+		case r == '\n' || r == '\t':
+			b = append(b, s[i])
+			i++
+		case r < 0x20 || r == 0x7f:
+			i += size
+		default:
+			b = append(b, s[i:i+size]...)
+			i += size
+		}
+	}
+	return string(b)
+}
+
+// clean reports whether s has nothing Clean would remove (the common case: no copy).
+func clean(s string) bool {
+	if !utf8.ValidString(s) {
+		return false // a stray byte may be an 8-bit C1 control: Clean decides
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < 0x20 && c != '\n' && c != '\t') || c == 0x7f {
+			return false
+		}
+		if c == 0xc2 && i+1 < len(s) && s[i+1] >= 0x80 && s[i+1] <= 0x9f {
+			return false // a C1 control in UTF-8 (U+0080..U+009F)
+		}
+	}
+	return true
+}
+
+// skipEscape returns the index after the escape sequence starting at s[i] (an ESC).
+func skipEscape(s string, i int) int {
+	if i+1 >= len(s) {
+		return i + 1 // a bare ESC at the end
+	}
+	switch c := s[i+1]; {
+	case c == '[':
+		return skipCSI(s, i+2, i+2)
+	case c == ']' || c == 'P' || c == '_' || c == '^' || c == 'X':
+		return skipString(s, i+2, i+2)
+	case c >= 0x20 && c <= 0x2f: // intermediates, then one final byte (ESC ( B and the like)
+		j := i + 1
+		for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2f {
+			j++
+		}
+		if j < len(s) && s[j] >= 0x30 && s[j] <= 0x7e {
+			return j + 1
+		}
+		return i + 1
+	case c >= 0x30 && c <= 0x7e: // a two-byte sequence: ESC 7, ESC c, ESC M ...
+		return i + 2
+	default:
+		return i + 1
+	}
+}
+
+// skipC1 handles a C1 control (UTF-8 encoded, size bytes at s[i]): CSI and the string
+// introducers take their sequence with them; any other C1 goes alone.
+func skipC1(s string, i int, r rune, size int) int {
+	switch r {
+	case 0x9b: // CSI
+		return skipCSI(s, i+size, i+size)
+	case 0x9d, 0x90, 0x9f, 0x9e, 0x98: // OSC, DCS, APC, PM, SOS
+		return skipString(s, i+size, i+size)
+	}
+	return i + size
+}
+
+// skipCSI skips parameter and intermediate bytes and the final byte from j. Unterminated, only
+// the introducer goes (the rest is printed as text): it returns orElse.
+func skipCSI(s string, j, orElse int) int {
+	for j < len(s) && s[j] >= 0x20 && s[j] <= 0x3f {
+		j++
+	}
+	if j < len(s) && s[j] >= 0x40 && s[j] <= 0x7e {
+		return j + 1
+	}
+	return orElse
+}
+
+// skipString skips a string sequence's body up to its terminator: BEL (as OSC allows), ESC \
+// or the C1 ST. Unterminated, only the introducer goes: it returns orElse.
+func skipString(s string, j, orElse int) int {
+	for ; j < len(s); j++ {
+		switch {
+		case s[j] == bel:
+			return j + 1
+		case s[j] == esc && j+1 < len(s) && s[j+1] == '\\':
+			return j + 2
+		case s[j] == 0xc2 && j+1 < len(s) && s[j+1] == 0x9c:
+			return j + 2
+		}
+	}
+	return orElse
+}
+
+// CleanJSON returns a server reply with every string in it cleaned (keys too), so whatever a
+// CLI decodes and prints from it is safe. A reply that isn't JSON is cleaned as text. A reply
+// with nothing to remove is returned as it came.
+func CleanJSON(body []byte) []byte {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[' && trimmed[0] != '"') {
+		if s := string(body); !clean(s) {
+			return []byte(Clean(s))
+		}
+		return body
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber() // numbers come back exactly as sent
+	var v any
+	if err := dec.Decode(&v); err != nil || dec.More() {
+		if s := string(body); !clean(s) {
+			return []byte(Clean(s))
+		}
+		return body
+	}
+	v, changed := cleanValue(v)
+	if !changed {
+		return body
+	}
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return body
+	}
+	return bytes.TrimRight(out.Bytes(), "\n")
+}
+
+func cleanValue(v any) (any, bool) {
+	switch t := v.(type) {
+	case string:
+		c := Clean(t)
+		return c, c != t
+	case []any:
+		changed := false
+		for i, e := range t {
+			ce, ch := cleanValue(e)
+			t[i] = ce
+			changed = changed || ch
+		}
+		return t, changed
+	case map[string]any:
+		changed := false
+		out := make(map[string]any, len(t))
+		for k, e := range t {
+			ck := Clean(k)
+			ce, ch := cleanValue(e)
+			out[ck] = ce
+			changed = changed || ch || ck != k
+		}
+		return out, changed
+	}
+	return v, false
+}

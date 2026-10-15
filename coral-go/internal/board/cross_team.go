@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/clitext"
 )
 
 // RawJSON is a JSON document stored as TEXT. It marshals as the document
@@ -227,6 +229,7 @@ func SenderLabel(o MessageOrigin) string {
 // the outbound mirror on the sender's board (from the sender, linked to the
 // inbound message id), in one transaction.
 func (s *Store) PostCrossTeamMessage(ctx context.Context, p CrossTeamPost) (inbound, outbound *Message, err error) {
+	p = p.cleaned()
 	in := p.Origin
 	in.Direction = "inbound"
 	in.TargetMessageID = 0
@@ -298,6 +301,7 @@ const relayDedupKeep = 30 * 24 * time.Hour
 // one transaction. A message id already delivered from that server is not stored again:
 // duplicate is true and inbound is the first delivery's id only.
 func (s *Store) PostRelayedCrossTeamMessage(ctx context.Context, p CrossTeamPost) (inbound *Message, duplicate bool, err error) {
+	p = p.cleaned()
 	in := p.Origin
 	in.Direction = "inbound"
 	in.TargetMessageID = 0
@@ -384,7 +388,7 @@ func (s *Store) PostRelayMirror(ctx context.Context, o MessageOrigin, content st
 	if err != nil {
 		return nil, err
 	}
-	content = DefuseMentions(content, names)
+	content = DefuseMentions(clitext.Clean(content), names) // cleaned first: no control character can hide a mention from the defusing
 	now := nowUTC()
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO board_messages (project, session_id, subscriber_id, content, external_json, created_at)
@@ -507,4 +511,17 @@ func (s *Store) BoardExists(ctx context.Context, project string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// cleaned is p with no terminal control in its text or mentions (#3580). It runs before
+// DefuseMentions, so a control character can't hide a mention from the defusing and then be
+// removed.
+func (p CrossTeamPost) cleaned() CrossTeamPost {
+	p.Content = clitext.Clean(p.Content)
+	mentions := make([]string, len(p.Mentions))
+	for i, m := range p.Mentions {
+		mentions[i] = clitext.Clean(m)
+	}
+	p.Mentions = mentions
+	return p
 }
