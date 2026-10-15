@@ -559,8 +559,11 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	}
 	rewriteLocation(hdr)
 	if redactRoute && textReply(resp.Header.Get("Content-Type")) && bodyAllowed(s.Header.Method, resp.StatusCode) {
-		// The reply's length changes with each token replaced: none is announced.
-		hdr.Del(BodyLengthHeader)
+		// X-Coral-Content-Length stays the upstream length when it is known (#3568): it is
+		// advisory, read only by the hub to refuse an oversize artifact or panel with a clean 413
+		// before streaming, never passed on to the browser, and the hub caps the body by its own
+		// limit, so the redacted body's different length breaks nothing. Content-Length itself is
+		// already removed (the body is re-framed). A decoded or open-ended reply has none.
 		l.serveRedacted(s, resp, respBody, hdr, decoded)
 		return
 	}

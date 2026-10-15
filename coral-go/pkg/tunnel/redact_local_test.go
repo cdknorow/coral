@@ -42,6 +42,11 @@ func TestRedactThroughTheTunnel(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Content-Length", strconv.Itoa(len(small)))
 			w.Write(small)
+		case r.URL.Path == "/api/sessions/live/a/events":
+			// Larger than one whole-reply write, with a known length: streamed through the redactor.
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Length", strconv.Itoa(large.Len()))
+			w.Write(large.Bytes())
 		case r.URL.Path == "/api/sessions/live/a/chat":
 			w.Header().Set("Content-Type", "application/json")
 			// Written in uneven pieces with flushes, so tokens straddle the relay's chunks.
@@ -82,15 +87,23 @@ func TestRedactThroughTheTunnel(t *testing.T) {
 	assert.NotContains(t, body, tok)
 	assert.Contains(t, body, RedactMarker)
 	assert.True(t, json.Valid([]byte(body)), body)
-	assert.Empty(t, resp.Header.Get(BodyLengthHeader), "no stale length is announced")
+	assert.Equal(t, strconv.Itoa(len(small)), resp.Header.Get(BodyLengthHeader), "the upstream length stays advisory for the hub's cap (#3568)")
+	assert.Empty(t, resp.Header.Get("Content-Length"), "the body is re-framed: no Content-Length")
 	assert.Equal(t, "", sawRange.Load(), "a Range isn't sent on for a redacted route")
 
 	resp, body = get("GET", "/api/sessions/live/a/chat", nil)
 	assert.Equal(t, 200, resp.StatusCode)
+	assert.Empty(t, resp.Header.Get(BodyLengthHeader), "a streamed reply of unknown length announces none (#3568)")
 	assert.NotContains(t, body, tok)
 	assert.NotContains(t, body, "PRIVATE KEY")
 	assert.NotContains(t, body, key[100:160], "no part of the key")
 	assert.Equal(t, string(RedactTokens(large.Bytes())), body, "the stream gives what redacting the whole gives")
+
+	// A large reply of known length streams through the redactor and keeps the upstream length.
+	resp, body = get("GET", "/api/sessions/live/a/events", nil)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, strconv.Itoa(large.Len()), resp.Header.Get(BodyLengthHeader), "a known upstream length stays (#3568)")
+	assert.NotContains(t, body, tok)
 
 	hex := strings.Repeat("a", 64)
 	_, body = get("GET", "/api/artifacts/"+hex, http.Header{"Range": {"bytes=0-"}})
@@ -183,6 +196,7 @@ func TestRedactDecodedReplyWhole(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.Equal(t, string(RedactTokens(plain)), string(body), "the whole decoded body, redacted")
+	assert.Empty(t, resp.Header.Get(BodyLengthHeader), "a decoded body's length isn't known, so none is announced")
 	assert.True(t, json.Valid(body))
 	assert.Contains(t, string(body), "end of output")
 	assert.NotContains(t, string(body), tok)
