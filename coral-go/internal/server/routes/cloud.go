@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/board"
@@ -47,11 +48,21 @@ func HubRedactTokens(settings map[string]string) bool {
 	return settings[RedactTokensSetting] != "false"
 }
 
-// RedactTokensFromSettings reads the switch on every request; an unreadable store means on.
+// RedactTokensFromSettings reads the switch for each redacted reply, from the settings at most
+// a second old (a change applies within a second); an unreadable store means on.
 func RedactTokensFromSettings(ss *store.SessionStore) func() bool {
+	var mu sync.Mutex
+	var at time.Time
+	on := true
 	return func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(at) < time.Second {
+			return on
+		}
 		s, err := ss.GetSettings(context.Background())
-		return err != nil || HubRedactTokens(s)
+		on, at = err != nil || HubRedactTokens(s), time.Now()
+		return on
 	}
 }
 

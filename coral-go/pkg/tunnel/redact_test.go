@@ -187,3 +187,68 @@ func TestRedactStreamHoldsLittle(t *testing.T) {
 	require.NoError(t, r.Close())
 	assert.Equal(t, 50*len(chunk), out.Len())
 }
+
+// Security's #3560 review (MUST 1): a token longer than its rule's ceiling is still redacted
+// whole (one marker, no tail), in one write and split at every offset.
+func TestRedactLongTokens(t *testing.T) {
+	m := RedactMarker
+	jwt := fake("eyJ", 500, alnum+"_-") + "." + fake("", 600, alnum+"_-") + "." + fake("", 396, alnum+"_-")
+	require.Greater(t, len(jwt), 1400)
+	longSK := fake("sk-", 300, alnum)
+	longGH := fake("ghp_", 400, alnum)
+	for _, c := range []struct{ in, want string }{
+		{"Authorization: Bearer " + jwt + "\nnext", "Authorization: Bearer " + m + "\nnext"},
+		{`{"h":"Bearer ` + jwt + `"}`, `{"h":"Bearer ` + m + `"}`},
+		{"key=" + longSK + " ok", "key=" + m + " ok"},
+		{longGH, m},
+		{"AKIA" + fake("", 20, upper), "AKIA" + fake("", 20, upper)}, // an exact-length rule: 20 isn't an access key id
+	} {
+		assert.Equal(t, c.want, string(RedactTokens([]byte(c.in))), c.in[:min(40, len(c.in))])
+		body := []byte(c.in)
+		for split := 0; split <= len(body); split++ {
+			var out bytes.Buffer
+			r := NewRedactor(&out)
+			_, _ = r.Write(body[:split])
+			_, _ = r.Write(body[split:])
+			require.NoError(t, r.Close())
+			require.Equal(t, c.want, out.String(), "split at %d", split)
+			assert.LessOrEqual(t, len(r.pending), 0)
+		}
+	}
+	// Memory stays flat: a token far longer than any ceiling, in small writes.
+	var out bytes.Buffer
+	r := NewRedactor(&out)
+	_, _ = r.Write([]byte("Bearer "))
+	for i := 0; i < 2000; i++ {
+		_, _ = r.Write([]byte(fake("", 64, alnum)))
+		assert.LessOrEqual(t, len(r.pending), 600)
+	}
+	_, _ = r.Write([]byte(" end"))
+	require.NoError(t, r.Close())
+	assert.Equal(t, "Bearer "+m+" end", out.String())
+}
+
+// SHOULD 2: PGP private keys; NIT 4: a bare Authorization value needs a digit or a symbol.
+func TestRedactPGPAndBareAuthorization(t *testing.T) {
+	m := RedactMarker
+	pgp := "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n" + fake("", 64, alnum) + "\n=abcd\n-----END PGP PRIVATE KEY BLOCK-----"
+	assert.Equal(t, "a\n"+m+"\nb", string(RedactTokens([]byte("a\n"+pgp+"\nb"))))
+	pub := "-----BEGIN PGP PUBLIC KEY BLOCK-----\nx\n-----END PGP PUBLIC KEY BLOCK-----"
+	assert.Equal(t, pub, string(RedactTokens([]byte(pub))))
+	for split := 0; split <= len(pgp); split++ {
+		var out bytes.Buffer
+		r := NewRedactor(&out)
+		_, _ = r.Write([]byte(pgp[:split]))
+		_, _ = r.Write([]byte(pgp[split:]))
+		require.NoError(t, r.Close())
+		require.Equal(t, m, out.String(), "split at %d", split)
+	}
+	for in, want := range map[string]string{
+		"Authorization: unavailable":                 "Authorization: unavailable",
+		"authorization=forbiddenwhenoff":             "authorization=forbiddenwhenoff",
+		"Authorization: " + fake("", 30, alnum):      "Authorization: " + m,
+		"Authorization: Basic onlyletterscredential": "Authorization: Basic " + m, // a scheme word: any value
+	} {
+		assert.Equal(t, want, string(RedactTokens([]byte(in))), in)
+	}
+}

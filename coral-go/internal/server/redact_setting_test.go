@@ -14,14 +14,15 @@ import (
 )
 
 // #3560's switch: on by default, changed only on this computer (the dashboard or the signed
-// command line), never through Coral Hub at any mode, and read on every reply.
+// command line), never through Coral Hub at any mode, and read for the replies (cached a second).
 func TestRedactTokensSwitch(t *testing.T) {
 	require.Equal(t, tunnel.TierNever, tunnel.Classify("PUT", "/api/cloud/redact-tokens", ""))
 	r := newE2ERemote(t, "redact-switch", nil)
 	h := r.srv.Router()
 	js := map[string]string{"Content-Type": "application/json"}
 	hub := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), "Content-Type": "application/json"}
-	read := routes.RedactTokensFromSettings(store.NewSessionStore(r.db))
+	ss := store.NewSessionStore(r.db)
+	read := func() bool { return routes.RedactTokensFromSettings(ss)() } // a fresh reader: no cached value
 	status := func() map[string]any {
 		rec := call(h, "GET", "/api/cloud/status", "", nil)
 		require.Equal(t, 200, rec.Code, rec.Body.String())
@@ -40,7 +41,7 @@ func TestRedactTokensSwitch(t *testing.T) {
 
 	require.Equal(t, 400, call(h, "PUT", "/api/cloud/redact-tokens", `{}`, js).Code, "redact is required")
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/redact-tokens", `{"redact":false}`, js).Code)
-	assert.False(t, read(), "off at once")
+	assert.False(t, read(), "off")
 	assert.Equal(t, false, status()["redact_tokens"])
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/redact-tokens", `{"redact":true}`, js).Code)
 	assert.True(t, read())

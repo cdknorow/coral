@@ -24,13 +24,13 @@ import (
 const RedactMarker = "[redacted token]"
 
 type tokenRule struct {
-	prefixes []string         // literal starts (case variants listed explicitly)
-	glue     func([]byte) int // after the prefix, the separator before the value (Authorization); nil: none
-	class    func(byte) bool  // the value's characters
-	min, max int              // the value's length
-	exact    bool             // the value is exactly min long (AKIA)
-	keep     bool             // keep the prefix and glue, replace only the value (Bearer, Authorization)
-	notAfter func(byte) bool  // a character that may not come right before the prefix
+	prefixes []string                 // literal starts (case variants listed explicitly)
+	glue     func([]byte) (int, bool) // after the prefix, the separator before the value and whether it named a scheme (Authorization); nil: none
+	class    func(byte) bool          // the value's characters
+	min, max int                      // the value's length; a longer run is still redacted (max only bounds what is held back)
+	exact    bool                     // the value is exactly min long (AKIA)
+	keep     bool                     // keep the prefix and glue, replace only the value (Bearer, Authorization)
+	notAfter func(byte) bool          // a character that may not come right before the prefix
 }
 
 func isAlnum(c byte) bool {
@@ -46,8 +46,9 @@ func isCredValue(c byte) bool {
 
 // authGlue measures what follows "authorization" up to its value: an optional closing quote,
 // spaces, ':' or '=', spaces, an optional opening quote, and an optional scheme word and one
-// space. -1: not an Authorization value; -2: the buffer ended before that could be told.
-func authGlue(b []byte) int {
+// space. -1: not an Authorization value; -2: the buffer ended before that could be told. scheme
+// reports whether a scheme word came before the value.
+func authGlue(b []byte) (n int, scheme bool) {
 	i := 0
 	if i < len(b) && (b[i] == '"' || b[i] == '\'') {
 		i++
@@ -56,10 +57,10 @@ func authGlue(b []byte) int {
 		i++
 	}
 	if i >= len(b) {
-		return -2
+		return -2, false
 	}
 	if b[i] != ':' && b[i] != '=' {
-		return -1
+		return -1, false
 	}
 	i++
 	for i < len(b) && b[i] == ' ' {
@@ -73,15 +74,15 @@ func authGlue(b []byte) int {
 		j++
 	}
 	if j == len(b) {
-		return -2
+		return -2, false
 	}
 	if j > i && j-i <= 16 && b[j] == ' ' {
-		i = j + 1
+		i, scheme = j+1, true
 	}
 	if i >= len(b) {
-		return -2
+		return -2, false
 	}
-	return i
+	return i, scheme
 }
 
 var tokenRules = []tokenRule{
@@ -97,7 +98,8 @@ var tokenRules = []tokenRule{
 // PEM private-key blocks: "-----BEGIN <LABEL>PRIVATE KEY-----" ... "-----END <LABEL>-----".
 var (
 	pemBegin  = []byte("-----BEGIN ")
-	pemKeyEnd = []byte("PRIVATE KEY-----")
+	pemKeyEnd = []byte("PRIVATE KEY")
+	pemTails  = [][]byte{[]byte("-----"), []byte(" BLOCK-----")} // "...PRIVATE KEY-----", PGP's "...PRIVATE KEY BLOCK-----"
 	pemEnd    = []byte("-----END ")
 	pemDashes = []byte("-----")
 )
@@ -107,9 +109,10 @@ const maxPEMLabel = 64
 // Redactor redacts what is written to it and passes the result on to its destination.
 type Redactor struct {
 	dst     io.Writer
-	pending []byte // held back: it could still start or continue a token
-	prev    []byte // the last few bytes of the original stream before pending (for the boundary)
-	inPEM   bool   // inside a private key: dropped until its END line or the closing quote
+	pending []byte          // held back: it could still start or continue a token
+	prev    []byte          // the last few bytes of the original stream before pending (for the boundary)
+	inPEM   bool            // inside a private key: dropped until its END line or the closing quote
+	inToken func(byte) bool // inside a token longer than its rule's ceiling: its class is dropped
 	err     error
 	buf     []byte // pending + the new bytes (reused)
 	out     []byte // the redacted output of one Write (reused; dst must not keep it)
@@ -178,6 +181,22 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 	st.reset(data, r.prev)
 	i := 0
 	for i < len(data) {
+		if r.inToken != nil {
+			// The rest of an over-long token: dropped up to the first byte outside its class.
+			j := i
+			for j < len(data) && r.inToken(data[j]) {
+				j++
+			}
+			if j == len(data) {
+				if final {
+					r.inToken = nil
+				}
+				return out, len(data)
+			}
+			r.inToken = nil
+			i = j
+			continue
+		}
 		if r.inPEM {
 			end, found, hold := pemClose(data[i:], final)
 			if !found {
@@ -214,7 +233,7 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 			}
 			continue
 		}
-		n, valueAt, ok, need := rule.match(data[start:], final)
+		n, valueAt, ok, need, long := rule.match(data[start:], final)
 		switch {
 		case need && !final:
 			return out, start
@@ -227,6 +246,9 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 			}
 			out = append(out, RedactMarker...)
 			i = start + n
+			if long {
+				r.inToken = rule.class // the rest of the run is dropped as it arrives
+			}
 		}
 	}
 	return out, len(data)
@@ -369,10 +391,11 @@ func (s *starts) boundaryOK(at int, ru *tokenRule) bool {
 	return false
 }
 
-// match reports the token at b, which starts with one of the rule's prefixes: its length,
-// where its value starts, whether it is a token, and whether more bytes are needed to tell
-// (never when final: the body ends there).
-func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need bool) {
+// match reports the token at b, which starts with one of the rule's prefixes: its length so far,
+// where its value starts, whether it is a token, whether more bytes are needed to tell (never
+// when final: the body ends there), and whether it runs past the rule's ceiling (it is then a
+// token whose rest is dropped as it arrives; the ceiling only bounds what is held back).
+func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long bool) {
 	at := 0
 	for _, pre := range ru.prefixes {
 		if bytes.HasPrefix(b, []byte(pre)) {
@@ -380,33 +403,55 @@ func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need bool)
 			break
 		}
 	}
+	scheme := true
 	if ru.glue != nil {
-		g := ru.glue(b[at:])
+		g, sch := ru.glue(b[at:])
 		switch {
 		case g == -2:
-			return 0, 0, false, !final
+			return 0, 0, false, !final, false
 		case g < 0:
-			return 0, 0, false, false
+			return 0, 0, false, false, false
 		}
-		at += g
+		at, scheme = at+g, sch
 	}
 	run := 0
 	for at+run < len(b) && ru.class(b[at+run]) {
 		run++
 		if run > ru.max {
-			return 0, 0, false, false // longer than any token of this kind
+			if ru.exact {
+				return 0, 0, false, false, false // longer than the fixed length: not this kind
+			}
+			if !scheme && !mixedValue(b[at:at+run]) {
+				return 0, 0, false, false, false
+			}
+			return at + run, at, true, false, true
 		}
 	}
 	if at+run == len(b) && !final {
-		return 0, 0, false, true // the value may go on in the next chunk
+		return 0, 0, false, true, false // the value may go on in the next chunk
 	}
 	if run < ru.min || (ru.exact && run != ru.min) {
-		return 0, 0, false, false
+		return 0, 0, false, false, false
 	}
-	return at + run, at, true, false
+	if !scheme && !mixedValue(b[at:at+run]) {
+		// "Authorization: unavailable": a bare value of letters only is a word, not a credential.
+		return 0, 0, false, false, false
+	}
+	return at + run, at, true, false, false
 }
 
-// pemLabel checks for "-----BEGIN <LABEL>PRIVATE KEY-----" at b and returns its length.
+// mixedValue: the value holds a digit or a symbol, as credentials do.
+func mixedValue(v []byte) bool {
+	for _, c := range v {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+			return true
+		}
+	}
+	return false
+}
+
+// pemLabel checks for "-----BEGIN <LABEL>PRIVATE KEY-----" (or PGP's "...PRIVATE KEY BLOCK-----")
+// at b and returns its length.
 func pemLabel(b []byte) (n int, ok, need bool) {
 	rest := b[len(pemBegin):]
 	limit := min(len(rest), maxPEMLabel)
@@ -416,7 +461,18 @@ func pemLabel(b []byte) (n int, ok, need bool) {
 				return 0, false, false
 			}
 		}
-		return len(pemBegin) + k + len(pemKeyEnd), true, false
+		after := rest[k+len(pemKeyEnd):]
+		for _, tail := range pemTails {
+			if bytes.HasPrefix(after, tail) {
+				return len(pemBegin) + k + len(pemKeyEnd) + len(tail), true, false
+			}
+		}
+		for _, tail := range pemTails {
+			if len(after) < len(tail) && bytes.HasPrefix(tail, after) {
+				return 0, false, true // the label's end is still arriving
+			}
+		}
+		return 0, false, false
 	}
 	if len(rest) >= maxPEMLabel {
 		return 0, false, false
