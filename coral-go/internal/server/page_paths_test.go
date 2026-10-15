@@ -14,20 +14,22 @@ import (
 // One sample URL per dashboard page family (#3532); every family in DashboardPagePaths must
 // have one, so a family added without a test fails here.
 var pageSamples = map[string]string{
-	"/agents":       "/agents",
-	"/agents/*":     "/agents/@m2/6f9a3c1e-0000-4000-8000-000000000001/files",
-	"/chats":        "/chats?q=battle&page=2",
-	"/chats/{id}":   "/chats/42",
-	"/team/*":       "/team/@m2/coral-go-team/settings",
-	"/board/*":      "/board/%40odd",
-	"/workflows":    "/workflows",
-	"/workflows/*":  "/workflows/7/runs/3",
-	"/jobs":         "/jobs",
-	"/analytics":    "/analytics",
-	"/docs":         "/docs",
-	"/docs/{name}":  "/docs/board",
-	"/servers":      "/servers",
-	"/servers/{id}": "/servers/m2",
+	"/agents":      "/agents",
+	"/agents/*":    "/agents/@m2/6f9a3c1e-0000-4000-8000-000000000001/files",
+	"/chats":       "/chats?q=battle&page=2",
+	"/chats/*":     "/chats/42",
+	"/team/*":      "/team/@m2/coral-go-team/settings",
+	"/board/*":     "/board/%40odd",
+	"/workflows":   "/workflows",
+	"/workflows/*": "/workflows/7/runs/3",
+	"/jobs":        "/jobs",
+	"/jobs/*":      "/jobs/x",
+	"/analytics":   "/analytics",
+	"/analytics/*": "/analytics/x",
+	"/docs":        "/docs",
+	"/docs/*":      "/docs/board",
+	"/servers":     "/servers",
+	"/servers/*":   "/servers/m2",
 }
 
 func pageGet(t *testing.T, c *http.Client, method, u string) (*http.Response, string) {
@@ -84,5 +86,35 @@ func TestDashboardPagePathsStrictKeepTheView(t *testing.T) {
 		loc, err := url.Parse(resp.Header.Get("Location"))
 		require.NoError(t, err)
 		assert.Equal(t, sample, loc.Query().Get("return_to"), "%s: return_to keeps the view", sample)
+	}
+}
+
+// One canonical form (QA's nit on 1a): a trailing slash on any page path redirects 301 to the
+// path without it, the query kept; bare /team and /board, which name no view, go to /agents.
+func TestDashboardPagePathsCanonicalForm(t *testing.T) {
+	_, ts, _ := strictServer(t, false)
+	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	cases := map[string]string{
+		"/agents/":                          "/agents",
+		"/chats/?q=battle&page=2":           "/chats?q=battle&page=2",
+		"/workflows/":                       "/workflows",
+		"/workflows/7/runs/3/":              "/workflows/7/runs/3",
+		"/docs/":                            "/docs",
+		"/servers/":                         "/servers",
+		"/team/@m2/coral-go-team/settings/": "/team/@m2/coral-go-team/settings",
+		"/team":                             "/agents",
+		"/team/":                            "/agents",
+		"/board":                            "/agents",
+		"/board/?x=1":                       "/agents?x=1",
+		"/agents//":                         "/agents",
+	}
+	for from, to := range cases {
+		resp, _ := pageGet(t, c, "GET", ts.URL+from)
+		assert.Equal(t, http.StatusMovedPermanently, resp.StatusCode, from)
+		assert.Equal(t, to, resp.Header.Get("Location"), from)
+	}
+	for _, p := range []string{"/agents", "/chats?q=x", "/team/qa"} {
+		resp, _ := pageGet(t, c, "GET", ts.URL+p)
+		assert.Equal(t, 200, resp.StatusCode, "%s is already canonical", p)
 	}
 }

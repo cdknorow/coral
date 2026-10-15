@@ -878,26 +878,50 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/agent/{server}/{sessionID}", s.serveAgentPopout)
 	r.Get("/", s.serveIndex)
 	for _, p := range DashboardPagePaths {
-		r.Get(p, s.serveIndex)
+		r.Get(p, s.servePagePath)
 	}
+	// Bare /team and /board name no view: they go to /agents (QA, one rule with the slashes).
+	r.Get("/team", s.servePagePath)
+	r.Get("/board", s.servePagePath)
 	return r
 }
 
-// DashboardPagePaths are the dashboard's page routes (#3532): each serves the same shell as
-// "/", GET only, behind the same middleware. The client router reads the view from the path
-// and validates its segments; the server doesn't. An explicit list, never a NotFound
+// servePagePath serves the shell for a dashboard page path, with one canonical form (#3532):
+// a trailing slash redirects 301 to the path without it (the query kept), and a bare /team or
+// /board, which names no view, redirects 301 to /agents. Coral Hub follows the same rule.
+func (s *Server) servePagePath(w http.ResponseWriter, r *http.Request) {
+	p := r.URL.Path
+	clean := strings.TrimRight(p, "/")
+	if clean == "/team" || clean == "/board" {
+		clean = "/agents"
+	}
+	if clean != p {
+		target := clean
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+		return
+	}
+	s.serveIndex(w, r)
+}
+
+// DashboardPagePaths are the dashboard's page routes (#3532): each family is its base path and
+// everything under it, serving the same shell as "/", GET only, behind the same middleware.
+// The client router reads the view from the path and validates its segments; the server
+// doesn't. An explicit list, never a NotFound
 // catch-all, so a miss under /api, /ws, /auth or /static stays a 404 that isn't HTML.
 // Coral Hub's webui serves the same families (the contract in #3532's hub spec).
 var DashboardPagePaths = []string{
 	"/agents", "/agents/*",
-	"/chats", "/chats/{id}",
+	"/chats", "/chats/*",
 	"/team/*",
 	"/board/*",
 	"/workflows", "/workflows/*",
-	"/jobs",
-	"/analytics",
-	"/docs", "/docs/{name}",
-	"/servers", "/servers/{id}",
+	"/jobs", "/jobs/*",
+	"/analytics", "/analytics/*",
+	"/docs", "/docs/*",
+	"/servers", "/servers/*",
 }
 
 // noCacheHandler wraps an http.Handler to set Cache-Control headers that force
