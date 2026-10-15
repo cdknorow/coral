@@ -210,7 +210,7 @@ The run folder is private (0700, files 0600). Coral makes each step's folder and
 - `agent` steps require `prompt`.
 - `agent` steps also need an `agent_type`, either in the step-level `agent` object or inherited from `default_agent`.
 - `timeout_s`, when set, must be between `1` and `86400`. When a step times out, its whole process group is killed, including anything it started in the background.
-- `output_artifact`, when set, must be a relative path inside the step's folder (no absolute path, no `..`). Coral never writes or reads it through a symlink, so a step can't make it point elsewhere; a refused one is shown in that step's `note` and at the end of its stderr.
+- `output_artifact`, when set, must be a relative path inside the step's folder (no absolute path, no `..`). Coral writes it as a new file (a name already there in the step's folder isn't overwritten) and never writes or reads it through a link, so a step can't make it point elsewhere; a refused one is shown in that step's `note` and at the end of its stderr.
 - `hooks`, when set, must use valid event names and hook group structure (see [Hooks](hooks.md)).
 
 ### Example

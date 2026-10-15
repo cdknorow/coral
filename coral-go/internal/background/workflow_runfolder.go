@@ -158,13 +158,15 @@ func (sf stepFiles) appendNote(name, line string) {
 		return
 	}
 	defer f.Close()
-	if fi, err := f.Stat(); err == nil && fi.Mode().IsRegular() {
+	// Never a file with another name somewhere else: a step could have replaced stderr.txt
+	// with a hard link to an outside file it owns (#3587, Security's SHOULD 1).
+	if fi, err := f.Stat(); err == nil && fi.Mode().IsRegular() && fileLinks(fi) == 1 {
 		fmt.Fprintln(f, line)
 	}
 }
 
-// writeArtifact copies the step's stdout to its output_artifact, a relative path inside the
-// step folder, through the run folder's root.
+// writeArtifact copies the step's stdout to its output_artifact, a new file at a relative path
+// inside the step folder, through the run folder's root.
 func (sf stepFiles) writeArtifact(rel string) error {
 	if !filepath.IsLocal(rel) {
 		return errArtifactPath
@@ -173,17 +175,16 @@ func (sf stepFiles) writeArtifact(rel string) error {
 	if err := sf.run.root.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	if fi, err := sf.run.root.Lstat(p); err == nil && !fi.Mode().IsRegular() {
-		return fmt.Errorf("%s exists and is not a regular file", rel)
-	}
 	src, err := sf.open("stdout.txt")
 	if err != nil {
 		return err
 	}
 	defer src.Close()
-	dst, err := sf.run.root.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|oNoFollow, 0o600)
+	// A new file only: an existing name (a symlink, or a hard link to an outside file) is
+	// never written through, and fails the step's artifact (#3587).
+	dst, err := sf.run.root.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL|oNoFollow, 0o600)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s already exists or can't be made: %w", rel, err)
 	}
 	_, err = io.Copy(dst, src)
 	if cerr := dst.Close(); err == nil {

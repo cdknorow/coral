@@ -169,3 +169,19 @@ func TestTailIsBounded(t *testing.T) {
 		t.Fatal("reading a FIFO blocked")
 	}
 }
+
+// Security's SHOULD 1: a HARD link is the same file under another name, so the root doesn't
+// see it leave the run folder. A step hard-links an outside file as its artifact's name and
+// as its stderr.txt: the artifact isn't written through it (O_EXCL), and the refusal note
+// isn't appended to it (a file with more than one link is never written).
+func TestHardLinkedStepFilesAreNotWrittenThrough(t *testing.T) {
+	out, secret := outsideFiles(t)
+	t.Setenv("SECRET", secret)
+	final, _, _ := runWorkflowSteps(t, []StepDef{
+		{Name: "hardlink", Type: "shell",
+			Command:        `ln "$SECRET" "$CORAL_WORKFLOW_STEP_DIR/art.txt" && rm "$CORAL_WORKFLOW_STEP_DIR/stderr.txt" && ln "$SECRET" "$CORAL_WORKFLOW_STEP_DIR/stderr.txt" && echo pwned`,
+			OutputArtifact: "art.txt"},
+	})
+	unchanged(t, out, secret)
+	assert.Contains(t, final.StepResults, "was not written", "the refused artifact is noted in the result")
+}
