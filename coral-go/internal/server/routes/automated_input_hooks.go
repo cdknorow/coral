@@ -48,7 +48,8 @@ func (h *SessionsHandler) gateNeedsInput(ctx context.Context, name, agentType, s
 // events. Only a hold for an open prompt (prompt) shows the agent as needing the
 // user. An agent that is only waiting on its teammates (coral-board wait) and
 // whose nudge waits behind its input box needs nobody (#3471).
-func (h *SessionsHandler) recordHeldTooLong(name, agentType, sessionID, what string, prompt bool) {
+func (h *SessionsHandler) recordHeldTooLong(name, agentType, sessionID, what, kind string) {
+	prompt := kind != "" // a request to the user (the gate's hold kind, #3482)
 	if sessionID == "" {
 		_, sessionID = logparse.ParseSessionName(name)
 	}

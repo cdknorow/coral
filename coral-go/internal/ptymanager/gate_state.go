@@ -96,19 +96,19 @@ type HumanInputReader interface {
 var claudeBusyRe = regexp.MustCompile(`(?i)esc to interrupt`)
 
 // signalWaiting is the signal rule (design 2.1 and 2.2): whether the send must wait,
-// why, and whether it is a request to the user. ok is false when the session has no
+// why, and what it waits on when it is a request to the user (holdKind). ok is false when the session has no
 // signals, and the screen rule decides alone.
-func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why string, prompt, ok bool) {
+func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why, kind string, ok bool) {
 	stateFunc.RLock()
 	fn := stateFunc.fn
 	stateFunc.RUnlock()
 	if fn == nil {
-		return false, "", false, false
+		return false, "", "", false
 	}
 	agentType, sessionID := in.identity()
 	st, ok := fn(ctx, in.Name, agentType, sessionID)
 	if !ok {
-		return false, "", false, false
+		return false, "", "", false
 	}
 	var screen string
 	haveScreen := false
@@ -119,24 +119,24 @@ func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why s
 	}
 	switch st.State {
 	case StateGone:
-		return true, "signals: the agent's session ended", false, true
+		return true, "signals: the agent's session ended", "", true
 	case StateStarting:
 		// No hooks run before a trust screen is answered: the screen says whether
 		// the launch waits on the user (Blocked{trust} in the design; #3484's corpus).
 		if haveScreen {
 			if open, why := PromptOnScreen(screen); open && isPromptHold(why) {
-				return true, "signals: starting, screen: " + why, true, true
+				return true, "signals: starting, screen: " + why, kindTrust, true
 			}
 		}
-		return true, "signals: starting", false, true
+		return true, "signals: starting", "", true
 	case StateBlocked:
-		return true, "signals: blocked (" + st.Kind + ")", true, true
+		return true, "signals: blocked (" + st.Kind + ")", blockedKind(st.Kind), true
 	case StateInTurn:
 		// agy and pi signal no prompt: the screen is read for one only while a tool
 		// call is pending (2.2.3), so a busy footer is never a prompt.
 		if haveScreen && st.ToolPending && !hasPromptSignal(agentType) {
 			if open, why := PromptOnScreen(screen); open && isPromptHold(why) {
-				return true, "signals: in turn, tool pending, screen: " + why, true, true
+				return true, "signals: in turn, tool pending, screen: " + why, kindPrompt, true
 			}
 		}
 		if in.staleRelaxation(st, agentType, screen, haveScreen) {
@@ -144,10 +144,10 @@ func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why s
 				"session", in.Name, "last_event", st.LastEvent.Format(time.RFC3339), "cli_version", st.CLIVersion)
 			break
 		}
-		return true, "signals: in turn", false, true
+		return true, "signals: in turn", "", true
 	case StateIdle:
 	default:
-		return true, "signals: unknown state", false, true
+		return true, "signals: unknown state", "", true
 	}
 	// Idle by signals: the screen may still hold more.
 	if haveScreen {
@@ -156,18 +156,43 @@ func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why s
 				slog.Warn("automated input: state_disagreement: the signals say idle but the screen shows a prompt",
 					"session", in.Name, "why", why, "cli_version", st.CLIVersion)
 			}
-			return true, "signals: idle, screen: " + why, isPromptHold(why), true
+			return true, "signals: idle, screen: " + why, promptKind(why), true
 		}
 	}
 	if in.RequireInputBox && (agentType == at.Claude || agentType == at.Codex) && (!haveScreen || !InputBoxOnScreen(screen)) {
-		return true, "signals: idle, the agent's input box isn't on screen yet", false, true
+		return true, "signals: idle, the agent's input box isn't on screen yet", "", true
 	}
 	if hr, isPTY := in.Term.(HumanInputReader); isPTY && !st.LastStop.IsZero() && hr.HumanInputSince(in.Name, st.LastStop) {
 		// The PTY's box can't be read; a person who typed since the turn ended has a
 		// draft by definition (2.2.6, P3).
-		return true, whyDraft, false, true
+		return true, whyDraft, "", true
 	}
-	return false, "", false, true
+	return false, "", "", true
+}
+
+// Hold kinds (HeldTooLongFunc): what a request to the user is. "" is a hold for the
+// input box (a draft, no box on screen) or a busy agent: not a request.
+const (
+	kindPrompt = "prompt" // a prompt read from the screen
+	kindTrust  = "trust"  // a trust screen at launch (no hooks run before it)
+)
+
+// blockedKind is the kind a Blocked state reports: the agent's own (permission,
+// question, plan, elicitation), or a prompt when it didn't say.
+func blockedKind(k string) string {
+	if k == "" {
+		return kindPrompt
+	}
+	return k
+}
+
+// promptKind is the kind for a reason PromptOnScreen gave: a prompt, or "" for a
+// footer alone or a busy agent.
+func promptKind(why string) string {
+	if isPromptHold(why) {
+		return kindPrompt
+	}
+	return ""
 }
 
 // hasPromptSignal reports whether the CLI signals its prompts (PermissionRequest).

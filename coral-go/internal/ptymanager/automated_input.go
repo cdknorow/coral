@@ -134,13 +134,14 @@ func SetNeedsInputFunc(fn func(ctx context.Context, name, agentType, sessionID s
 
 // HeldTooLongFunc is called once when a send has been held a while (2 minutes), so
 // the dashboard can show that the agent needs the user (instead of anything
-// being typed into the prompt). prompt says why it is held: true for an open prompt
-// (or the agent's state says it needs input), false for the input box (a draft in
-// it, no box on screen, or a paste that never landed), which is not a request from
-// the agent (#3468).
+// being typed into the prompt). kind says what holds it when it is a request to the
+// user: the agent's own Blocked kind (permission, question, plan, elicitation),
+// "trust" for a trust screen at launch, or "prompt" for one read from the screen or a
+// state of needs input; "" for the input box (a draft in it, no box on screen, a
+// paste that never landed) or a busy agent, which is not a request (#3468, #3482).
 var heldTooLong struct {
 	sync.RWMutex
-	fn func(name, agentType, sessionID, what string, prompt bool)
+	fn func(name, agentType, sessionID, what, kind string)
 }
 
 // HeldEndedFunc is called once when a session that had a send reported to
@@ -195,7 +196,7 @@ func (n *notifier) run() {
 }
 
 // SetHeldTooLongFunc installs the callback for sends held a while.
-func SetHeldTooLongFunc(fn func(name, agentType, sessionID, what string, prompt bool)) {
+func SetHeldTooLongFunc(fn func(name, agentType, sessionID, what, kind string)) {
 	heldTooLong.Lock()
 	heldTooLong.fn = fn
 	heldTooLong.Unlock()
@@ -249,37 +250,37 @@ func WaitingOnUser(ctx context.Context, term any, name, agentType, sessionID str
 // the user. It runs the screen rule and, where the session has signals, the signal
 // rule (#3482): the decision follows the screen rule and the signal rule is logged
 // next to it (shadow mode), unless CORAL_GATE_MODE=signals.
-func (in AutomatedInput) waiting(ctx context.Context) (waiting bool, why string, prompt bool) {
-	waiting, why, prompt = in.screenWaiting(ctx)
-	sWait, sWhy, sPrompt, ok := in.signalWaiting(ctx)
+func (in AutomatedInput) waiting(ctx context.Context) (waiting bool, why, kind string) {
+	waiting, why, kind = in.screenWaiting(ctx)
+	sWait, sWhy, sKind, ok := in.signalWaiting(ctx)
 	if !ok {
-		return waiting, why, prompt
+		return waiting, why, kind
 	}
 	gate.shadowLog(in, waiting, why, sWait, sWhy)
 	if signalsMode() {
-		return sWait, sWhy, sPrompt
+		return sWait, sWhy, sKind
 	}
-	return waiting, why, prompt
+	return waiting, why, kind
 }
 
 // screenWaiting is the screen rule: the agent is waiting on the user (prompt), or
 // (RequireInputBox) its input box isn't on screen yet.
-func (in AutomatedInput) screenWaiting(ctx context.Context) (waiting bool, why string, prompt bool) {
+func (in AutomatedInput) screenWaiting(ctx context.Context) (waiting bool, why, kind string) {
 	if waiting, why := WaitingOnUser(ctx, in.Term, in.Name, in.AgentType, in.SessionID); waiting {
-		return true, why, isPromptHold(why)
+		return true, why, promptKind(why)
 	}
 	if !in.RequireInputBox {
-		return false, "", false
+		return false, "", ""
 	}
 	r, ok := in.Term.(ScreenReader)
 	if !ok {
-		return false, "", false // can't tell: the caller's own startup wait applies
+		return false, "", "" // can't tell: the caller's own startup wait applies
 	}
 	screen, err := r.AgentScreen(ctx, in.Name, in.AgentType, in.SessionID)
 	if err != nil || !InputBoxOnScreen(screen) {
-		return true, "the agent's input box isn't on screen yet", false
+		return true, "the agent's input box isn't on screen yet", ""
 	}
-	return false, "", false
+	return false, "", ""
 }
 
 // DeliverAutomated types an automated send now if the agent is not waiting on
@@ -297,14 +298,14 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 	gate.mu.Lock()
 	in.gen = gate.gens[in.Name]
 	gate.mu.Unlock()
-	if waiting, why, prompt := in.waiting(ctx); waiting {
-		gate.hold(in, why, prompt)
+	if waiting, why, kind := in.waiting(ctx); waiting {
+		gate.hold(in, why, kind)
 		return Held, nil
 	}
 	// Anything already held for this agent goes first, so order is kept.
 	if gate.flush(ctx, in.Name) {
 		// The flush found the agent waiting again: queue behind what it held.
-		gate.hold(in, "earlier sends still held", false)
+		gate.hold(in, "earlier sends still held", "")
 		return Held, nil
 	}
 	enterHeld, err := gate.sendChecked(ctx, in)
@@ -341,7 +342,11 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 	}
 	err = in.Send(tmux.WithBeforeEnter(ctx, check))
 	if errors.Is(err, tmux.ErrEnterWithheld) {
-		g.holdEnter(in, !footerOnly.Load())
+		kind := kindPrompt
+		if footerOnly.Load() {
+			kind = ""
+		}
+		g.holdEnter(in, kind)
 		return true, nil
 	}
 	return false, err
@@ -376,11 +381,11 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 		// text Coral can't recognise): never added to; held, and reported.
 		screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
 		if serr != nil {
-			g.holdPaste(in, "the screen couldn't be read", false, false)
+			g.holdPaste(in, "the screen couldn't be read", false, "")
 			return true, nil, true
 		}
 		if open, why := PromptOnScreen(screen); open {
-			g.holdPaste(in, "a prompt is still open", false, isPromptHold(why))
+			g.holdPaste(in, "a prompt is still open", false, promptKind(why))
 			return true, nil, true
 		}
 		state := boxOurs // a PTY's raw output can't show the box: Enter only, never paste again
@@ -399,14 +404,14 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 			return false, es.SendEnter(ctx, in.Name, agentType, sessionID), true
 		case boxEmpty:
 			if in.pasteRetry > maxPasteRetries {
-				g.holdPaste(in, "pasted again but it never reached the input box", false, false)
+				g.holdPaste(in, "pasted again but it never reached the input box", false, "")
 				return true, nil, true
 			}
 		case boxOther:
-			g.holdPaste(in, whyDraft, false, false)
+			g.holdPaste(in, whyDraft, false, "")
 			return true, nil, true
 		default:
-			g.holdPaste(in, "the input box isn't on screen", false, false)
+			g.holdPaste(in, "the input box isn't on screen", false, "")
 			return true, nil, true
 		}
 	}
@@ -421,7 +426,7 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 			in.hadPlaceholder = hasPlaceholder(screen)
 			switch in.boxState(ctx, screen, agentType, sessionID) {
 			case boxOther:
-				g.holdPaste(in, whyDraft, false, false)
+				g.holdPaste(in, whyDraft, false, "")
 				return true, nil, true
 			case boxOurs:
 				es, ok := in.Term.(EnterSender)
@@ -470,9 +475,9 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 		return false, nil, false
 	case errors.Is(err, tmux.ErrEnterWithheld):
 		if promptOpened.Load() {
-			g.holdPaste(in, "a prompt opened before its Enter", true, true)
+			g.holdPaste(in, "a prompt opened before its Enter", true, kindPrompt)
 		} else {
-			g.holdPaste(in, "the paste didn't reach the input box", true, false)
+			g.holdPaste(in, "the paste didn't reach the input box", true, "")
 		}
 		return true, nil, true
 	}
@@ -513,7 +518,7 @@ var (
 // holdPaste holds a paste send whose Enter was withheld, first in the agent's queue.
 // pasted says the text was just pasted (a later turn may paste it once more); prompt
 // that an open prompt holds it (HeldTooLongFunc).
-func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted, prompt bool) {
+func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted bool, kind string) {
 	if pasted {
 		in.pasteRetry++
 	}
@@ -529,7 +534,7 @@ func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted, prompt bool
 	in.heldSince = heldAt
 	again := in.heldWhy == why
 	in.heldWhy = why
-	g.held[in.Name] = append([]*heldInput{{in: in, heldAt: heldAt, why: why, prompt: prompt, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
+	g.held[in.Name] = append([]*heldInput{{in: in, heldAt: heldAt, why: why, kind: kind, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
 	start := !g.running
 	g.running = true
 	g.mu.Unlock()
@@ -543,7 +548,7 @@ func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted, prompt bool
 
 // holdEnter holds the Enter of a send whose text was typed but whose Enter was
 // withheld, first in the agent's queue: it belongs to the text already typed.
-func (g *inputGate) holdEnter(in AutomatedInput, prompt bool) {
+func (g *inputGate) holdEnter(in AutomatedInput, kind string) {
 	enter := AutomatedInput{Term: in.Term, Name: in.Name, AgentType: in.AgentType, SessionID: in.SessionID,
 		Key: in.Key + "#enter", Text: "[Enter] " + in.Text, What: in.What + " (its Enter)",
 		Send: func(ctx context.Context) error {
@@ -564,7 +569,7 @@ func (g *inputGate) holdEnter(in AutomatedInput, prompt bool) {
 		heldAt = g.now()
 	}
 	enter.heldSince, enter.heldReported, enter.heldReportedPrompt = heldAt, in.heldReported, in.heldReportedPrompt
-	g.held[in.Name] = append([]*heldInput{{in: enter, heldAt: heldAt, why: "a prompt opened before its Enter", prompt: prompt, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
+	g.held[in.Name] = append([]*heldInput{{in: enter, heldAt: heldAt, why: "a prompt opened before its Enter", kind: kind, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
 	start := !g.running
 	g.running = true
 	g.mu.Unlock()
@@ -587,7 +592,7 @@ type heldInput struct {
 	in       AutomatedInput
 	heldAt   time.Time
 	why      string
-	prompt   bool // held by an open prompt, not by the input box (HeldTooLongFunc)
+	kind     string // what holds it when it is a request to the user ("" otherwise; HeldTooLongFunc)
 	reported bool
 	// reportedPrompt: reported with prompt=true (a calm report is followed by a
 	// prompt one if a prompt holds it later).
@@ -633,7 +638,7 @@ func (g *inputGate) lockSession(name string) func() {
 	return mu.Unlock
 }
 
-func (g *inputGate) hold(in AutomatedInput, why string, prompt bool) {
+func (g *inputGate) hold(in AutomatedInput, why, kind string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.staleLocked(in) {
@@ -643,7 +648,7 @@ func (g *inputGate) hold(in AutomatedInput, why string, prompt bool) {
 	for i, h := range q {
 		if h.in.Key == in.Key {
 			// Superseded: the newer send replaces it, in its place.
-			q[i] = &heldInput{in: in, heldAt: h.heldAt, why: why, prompt: prompt, reported: h.reported, reportedPrompt: h.reportedPrompt}
+			q[i] = &heldInput{in: in, heldAt: h.heldAt, why: why, kind: kind, reported: h.reported, reportedPrompt: h.reportedPrompt}
 			g.held[in.Name] = q
 			g.logHeld(in, why, "replaced a held send")
 			return
@@ -653,7 +658,7 @@ func (g *inputGate) hold(in AutomatedInput, why string, prompt bool) {
 		slog.Warn("automated input: too many held sends; dropping the oldest", "session", in.Name, "dropped", q[0].in.What)
 		q = q[1:]
 	}
-	g.held[in.Name] = append(q, &heldInput{in: in, heldAt: g.now(), why: why, prompt: prompt})
+	g.held[in.Name] = append(q, &heldInput{in: in, heldAt: g.now(), why: why, kind: kind})
 	g.logHeld(in, why, "held")
 	if !g.running {
 		g.running = true
@@ -728,12 +733,12 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 			in.RequireInputBox = false
 		}
 		g.mu.Unlock()
-		if waiting, why, prompt := in.waiting(ctx); waiting {
+		if waiting, why, kind := in.waiting(ctx); waiting {
 			// Keep the current reason: a send held for a busy footer or a draft
 			// that a real prompt now holds must say so (QA, after #3478).
 			g.mu.Lock()
 			changed := h.why != why
-			h.why, h.prompt = why, prompt
+			h.why, h.kind = why, kind
 			g.mu.Unlock()
 			if changed {
 				g.logHeld(h.in, why, "still held")
@@ -804,12 +809,12 @@ func (g *inputGate) expireAndReportLocked() {
 				slog.Warn("automated input: dropping a send held too long", "session", name, "sender", h.in.What)
 				continue
 			}
-			if (!h.reported || (h.prompt && !h.reportedPrompt)) && now.Sub(h.heldAt) > g.timings.tooLong && report != nil {
+			if (!h.reported || (h.kind != "" && !h.reportedPrompt)) && now.Sub(h.heldAt) > g.timings.tooLong && report != nil {
 				h.reported = true
-				h.reportedPrompt = h.reportedPrompt || h.prompt
+				h.reportedPrompt = h.reportedPrompt || h.kind != ""
 				g.reportedFor[name] = h.in
-				in, prompt := h.in, h.prompt
-				g.notes.post(func() { report(in.Name, in.AgentType, in.SessionID, in.What, prompt) })
+				in, kind := h.in, h.kind
+				g.notes.post(func() { report(in.Name, in.AgentType, in.SessionID, in.What, kind) })
 			}
 			kept = append(kept, h)
 		}

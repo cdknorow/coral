@@ -360,7 +360,8 @@ func TestASendHeldByADraftIsReportedAndLoggedOnce(t *testing.T) {
 	var mu sync.Mutex
 	var prompts []bool
 	ended := 0
-	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) {
+	SetHeldTooLongFunc(func(name, _, _, _, kind string) {
+		prompt := kind != ""
 		if name == in.Name {
 			mu.Lock()
 			prompts = append(prompts, prompt)
@@ -411,7 +412,8 @@ func TestADraftHoldIsNotAPromptWhateverTheState(t *testing.T) {
 	SetNeedsInputFunc(func(context.Context, string, string, string) bool { return true })
 	var mu sync.Mutex
 	var prompts []bool
-	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) {
+	SetHeldTooLongFunc(func(name, _, _, _, kind string) {
+		prompt := kind != ""
 		if name == in.Name {
 			mu.Lock()
 			prompts = append(prompts, prompt)

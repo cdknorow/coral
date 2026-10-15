@@ -154,7 +154,8 @@ func TestASendHeldTooLongIsReportedOnce(t *testing.T) {
 	gate.setTimings(gateTimings{tooLong: 50 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
 	var mu sync.Mutex
 	var reports []string
-	SetHeldTooLongFunc(func(name, _, _, what string, prompt bool) {
+	SetHeldTooLongFunc(func(name, _, _, what, kind string) {
+		prompt := kind != ""
 		mu.Lock()
 		reports = append(reports, fmt.Sprintf("%s/%s/%v", name, what, prompt))
 		mu.Unlock()
@@ -287,7 +288,7 @@ func TestAFooterAloneIsNotReportedAsAPrompt(t *testing.T) {
 	gate.setTimings(gateTimings{tooLong: 50 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
 	var mu sync.Mutex
 	reports := map[string]bool{}
-	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) { mu.Lock(); reports[name] = prompt; mu.Unlock() })
+	SetHeldTooLongFunc(func(name, _, _, _, kind string) { prompt := kind != ""; mu.Lock(); reports[name] = prompt; mu.Unlock() })
 	footer := &fakeAgent{screen: "⠋ Running npm test (esc to cancel, 12s)\n  Gemini 3.8 Flash · high\n"}
 	menu := &fakeAgent{screen: permissionMenu}
 	_, _ = DeliverAutomated(context.Background(), footer.input("agy-footer", "", "nudge", false))
@@ -325,7 +326,8 @@ type eventLog struct {
 // and other tests' sessions may still end while this one runs.
 func (e *eventLog) install() {
 	mine := func(name string) bool { return strings.HasPrefix(name, "claude-end-") }
-	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) {
+	SetHeldTooLongFunc(func(name, _, _, _, kind string) {
+		prompt := kind != ""
 		if mine(name) {
 			e.add(fmt.Sprintf("report %s %v", name, prompt))
 		}
@@ -399,9 +401,9 @@ func TestASendInFlightDuringDropHeldIsNotHeldAgain(t *testing.T) {
 	in.gen = gate.gens[name] // as DeliverAutomated records it
 	gate.mu.Unlock()
 	DropHeld(name, "agent restarted") // meanwhile
-	gate.holdPaste(in, whyDraft, false, false)
-	gate.hold(in, "a prompt", true)
-	gate.holdEnter(in, true)
+	gate.holdPaste(in, whyDraft, false, "")
+	gate.hold(in, "a prompt", kindPrompt)
+	gate.holdEnter(in, kindPrompt)
 	assert.Zero(t, HeldCount(name), "the old process's send is dropped")
 
 	d, err := DeliverAutomated(context.Background(), a.input(name, "", "new", false))
@@ -419,7 +421,8 @@ func TestAHeldSendsReasonFollowsTheScreen(t *testing.T) {
 	gate.setTimings(gateTimings{tooLong: 50 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
 	var mu sync.Mutex
 	var prompts []bool
-	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) {
+	SetHeldTooLongFunc(func(name, _, _, _, kind string) {
+		prompt := kind != ""
 		if name == "agy-reason" {
 			mu.Lock()
 			prompts = append(prompts, prompt)

@@ -3,7 +3,10 @@ package ptymanager
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -62,11 +65,29 @@ func TestSignalRule(t *testing.T) {
 		a := &fakeAgent{screen: c.screen}
 		in := a.input(c.agent+"-rule", "", "nudge", false)
 		in.AgentType = c.agent
-		wait, why, prompt, ok := in.signalWaiting(context.Background())
+		wait, why, kind, ok := in.signalWaiting(context.Background())
+		prompt := kind != ""
 		require.True(t, ok, name)
 		assert.Equal(t, c.wait, wait, "%s: %s", name, why)
 		assert.Equal(t, c.prompt, prompt, "%s: %s", name, why)
 		assert.Contains(t, why, c.why, name)
+	}
+
+	// The kinds HeldTooLongFunc reports.
+	for _, c := range []struct {
+		st     AgentState
+		screen string
+		kind   string
+	}{
+		{AgentState{State: StateBlocked, Kind: "plan"}, permissionMenu, "plan"},
+		{AgentState{State: StateBlocked}, permissionMenu, kindPrompt},
+		{AgentState{State: StateStarting}, " Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n", kindTrust},
+		{AgentState{State: StateIdle}, permissionMenu, kindPrompt},
+		{AgentState{State: StateInTurn, LastEvent: time.Now()}, claudeWorking, ""},
+	} {
+		withState(t, c.st, true)
+		_, why, kind, _ := (&fakeAgent{screen: c.screen}).input("claude-kind", "", "x", false).signalWaiting(context.Background())
+		assert.Equal(t, c.kind, kind, "%s: %s", c.st.State, why)
 	}
 
 	withState(t, AgentState{}, false)
@@ -193,4 +214,67 @@ func TestPTYBackendRecordsHumanInput(t *testing.T) {
 	assert.False(t, b.HumanInputSince("claude-y", before), "per session")
 	var _ HumanInputReader = (*PTYSessionTerminal)(nil)
 	var _ HumanInputSender = b
+}
+
+// The signal rule over every real capture in the screen corpus (#3484): phase 2's
+// switch is gated on it as well as on the shadow log. For each screen and CLI, the
+// state from signals and what the corpus labels say must give the same decision.
+func TestSignalRuleOverCorpus(t *testing.T) {
+	fastGate(t)
+	dirs, err := filepath.Glob(filepath.Join("testdata", "screens", "*", "*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, dirs)
+	old := time.Now().Add(-10 * time.Minute)
+	checked := 0
+	for _, dir := range dirs {
+		cli := filepath.Base(filepath.Dir(dir))
+		raw, err := os.ReadFile(filepath.Join(dir, "expect.json"))
+		require.NoError(t, err)
+		var labels map[string]screenLabel
+		require.NoError(t, json.Unmarshal(raw, &labels))
+		for file, l := range labels {
+			b, err := os.ReadFile(filepath.Join(dir, file))
+			require.NoError(t, err)
+			plain := sgrRe.ReplaceAllString(string(b), "")
+			decide := func(st AgentState) (bool, bool, string) {
+				withState(t, st, true)
+				a := &fakeAgent{screen: plain}
+				in := a.input(cli+"-corpus", "", corpusNudge, false)
+				in.AgentType = cli
+				wait, why, kind, ok := in.signalWaiting(context.Background())
+				require.True(t, ok)
+				return wait, kind != "", why
+			}
+			name := filepath.Join(dir, file) + " (" + l.State + ")"
+			wait, prompt, why := decide(AgentState{State: StateIdle})
+			assert.Equal(t, l.Prompt, wait, "%s idle: %s", name, why)
+			assert.Equal(t, l.PromptHold, prompt, "%s idle: %s", name, why)
+
+			wait, prompt, why = decide(AgentState{State: StateStarting})
+			assert.True(t, wait, name)
+			assert.Equal(t, l.PromptHold, prompt, "%s starting: %s", name, why)
+
+			wait, prompt, _ = decide(AgentState{State: StateBlocked, Kind: "permission"})
+			assert.True(t, wait && prompt, "%s blocked", name)
+
+			wait, prompt, why = decide(AgentState{State: StateInTurn, LastEvent: time.Now()})
+			assert.True(t, wait, name)
+			if hasPromptSignal(cli) {
+				assert.False(t, prompt, "%s in turn: the CLI signals its prompts: %s", name, why)
+			}
+
+			if !hasPromptSignal(cli) {
+				_, prompt, why = decide(AgentState{State: StateInTurn, LastEvent: time.Now(), ToolPending: true})
+				assert.Equal(t, l.PromptHold, prompt, "%s tool pending: %s", name, why)
+			}
+
+			// Claude's stale in-turn relaxation: only an empty box with no prompt
+			// and no working line.
+			wait, _, why = decide(AgentState{State: StateInTurn, LastEvent: old})
+			relax := cli == "claude" && l.Box == "empty" && !l.Prompt && l.State != "working"
+			assert.Equal(t, !relax, wait, "%s stale in turn: %s", name, why)
+			checked++
+		}
+	}
+	t.Logf("%d captures checked", checked)
 }

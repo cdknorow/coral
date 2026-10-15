@@ -25,20 +25,20 @@ func TestHeldTooLongShowsNeedsInputOnlyForAPrompt(t *testing.T) {
 	require.Equal(t, sessionstate.NotificationInformational, sessionstate.Classify(heldForInputBoxSummary), "the input-box note raises nothing")
 
 	// A send held behind the input box (a draft, or a suggestion): a calm note only.
-	h.recordHeldTooLong(name, "claude", sid, "board nudge", false)
+	h.recordHeldTooLong(name, "claude", sid, "board nudge", "")
 	st := h.deriveSingleSessionState(ctx, sid, 0)
 	assert.False(t, st.NeedsInput, "an input-box hold is not Needs input")
 	assert.False(t, h.gateNeedsInput(ctx, name, "claude", sid))
 
 	// A send held for an open prompt: Needs input, as before (#3431).
-	h.recordHeldTooLong(name, "claude", sid, "board nudge", true)
+	h.recordHeldTooLong(name, "claude", sid, "board nudge", "prompt")
 	st = h.deriveSingleSessionState(ctx, sid, 0)
 	assert.True(t, st.NeedsInput, "a prompt hold shows Needs input")
 	assert.Equal(t, heldInputSummary, st.WaitingSummary)
 	// The loop guard: Coral's own notice doesn't tell the gate the agent waits on a
 	// prompt, so a later draft hold is still reported as a draft hold.
 	assert.False(t, h.gateNeedsInput(ctx, name, "claude", sid), "Coral's own notice never feeds the gate")
-	h.recordHeldTooLong(name, "claude", sid, "board nudge", false)
+	h.recordHeldTooLong(name, "claude", sid, "board nudge", "")
 	st = h.deriveSingleSessionState(ctx, sid, 0)
 	assert.Equal(t, heldInputSummary, st.WaitingSummary, "the informational note neither raises nor rewrites Needs input")
 
