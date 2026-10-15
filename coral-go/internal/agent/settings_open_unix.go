@@ -4,5 +4,7 @@ package agent
 
 import "syscall"
 
-// settingsOpenFlags: opening a settings file never follows a symlink or waits on a FIFO.
-const settingsOpenFlags = syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+// settingsOpenFlags: opening the user's settings file never waits on a FIFO. A symlink is
+// followed (dotfiles setups link ~/.claude/settings.json); the handle must still be a
+// regular file.
+const settingsOpenFlags = syscall.O_NONBLOCK

@@ -476,9 +476,9 @@ func buildMergedSettings(agentHooks map[string]interface{}) map[string]interface
 // maxSettingsFile caps how much of a settings file Coral reads.
 const maxSettingsFile = 1 << 20
 
-// readSettingsFile reads a settings file: a regular file, not a symlink, a FIFO or a device
-// (opened non-blocking, then checked on the handle), at most maxSettingsFile bytes. Anything
-// else, or invalid JSON, is an empty map.
+// readSettingsFile reads the user's settings file: a regular file (a symlink to one is fine,
+// for dotfiles setups; a FIFO or a device isn't: it's opened non-blocking, then checked on
+// the handle), at most maxSettingsFile bytes. Anything else, or invalid JSON, is an empty map.
 func readSettingsFile(path string) map[string]interface{} {
 	f, err := os.OpenFile(path, os.O_RDONLY|settingsOpenFlags, 0)
 	if err != nil {
