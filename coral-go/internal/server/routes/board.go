@@ -759,6 +759,13 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	// A webhook URL is a stored outbound address that keeps receiving board traffic after the
+	// hub session ends: like /api/webhooks (Never through the tunnel), it is set only from this
+	// computer (#3619, hub audit H1).
+	if body.WebhookURL != nil && *body.WebhookURL != "" && cloud.Tunneled(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "a webhook URL can only be set from this computer, not through Coral Hub", "code": "webhook_not_via_hub"})
+		return
+	}
 	if refuseNewBoardName(w, r, h.bs, project) {
 		return
 	}
