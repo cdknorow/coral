@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -154,6 +155,9 @@ func inferRole(prompt string) string {
 
 // DistillTeamKnowledge runs the three-pass knowledge distillation pipeline for a team.
 func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store.TeamStore, teamName, coralDir string, progressFn func(DistillProgress)) (*KnowledgeBundle, error) {
+	if !ValidKnowledgeTeam(teamName) {
+		return nil, ErrBadKnowledgeTeam
+	}
 	settings, _ := ss.GetSettings(ctx)
 	claudePath, err := checkClaudeCLI(ctx, settings)
 	if err != nil {
@@ -351,9 +355,30 @@ func distillAgents(bundle *KnowledgeBundle, agents []agentMeta, call func(prompt
 	return bundle, nil
 }
 
+// ErrBadKnowledgeTeam: a team name that can't name a knowledge folder (#3518).
+var ErrBadKnowledgeTeam = errors.New("invalid team name for knowledge")
+
+// ValidKnowledgeTeam reports whether name can name a team's knowledge folder: one plain path
+// component, so every read and write stays inside <coral>/agent_knowledge (#3518).
+func ValidKnowledgeTeam(name string) bool {
+	return name != "" && len(name) <= 128 && name != "." && name != ".." &&
+		!strings.ContainsAny(name, "/\\\x00") && filepath.Base(name) == name
+}
+
+// knowledgeTeamDir is a team's knowledge folder, or ErrBadKnowledgeTeam.
+func knowledgeTeamDir(coralDir, teamName string) (string, error) {
+	if !ValidKnowledgeTeam(teamName) {
+		return "", ErrBadKnowledgeTeam
+	}
+	return filepath.Join(coralDir, "agent_knowledge", teamName), nil
+}
+
 // ReadKnowledgeBundle reads an existing knowledge bundle from disk.
 func ReadKnowledgeBundle(coralDir, teamName string) (*KnowledgeBundle, error) {
-	dir := filepath.Join(coralDir, "agent_knowledge", teamName)
+	dir, err := knowledgeTeamDir(coralDir, teamName)
+	if err != nil {
+		return nil, err
+	}
 	indexPath := filepath.Join(dir, "index.md")
 	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
 		return nil, nil
@@ -396,7 +421,11 @@ func ReadKnowledgeBundle(coralDir, teamName string) (*KnowledgeBundle, error) {
 // LoadAgentKnowledge reads the OKF knowledge file for a specific agent on a team.
 func LoadAgentKnowledge(coralDir, teamName, agentName string) string {
 	slug := slugify(agentName)
-	path := filepath.Join(coralDir, "agent_knowledge", teamName, slug+".md")
+	dir, err := knowledgeTeamDir(coralDir, teamName)
+	if err != nil {
+		return ""
+	}
+	path := filepath.Join(dir, slug+".md")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
@@ -406,7 +435,10 @@ func LoadAgentKnowledge(coralDir, teamName, agentName string) string {
 
 // WriteKnowledgeFile writes a single agent's knowledge file to disk.
 func WriteKnowledgeFile(coralDir, teamName, agentName, content string) error {
-	dir := filepath.Join(coralDir, "agent_knowledge", teamName)
+	dir, err := knowledgeTeamDir(coralDir, teamName)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -416,7 +448,10 @@ func WriteKnowledgeFile(coralDir, teamName, agentName, content string) error {
 
 // WriteKnowledgeIndex writes the team's index.md knowledge file.
 func WriteKnowledgeIndex(coralDir, teamName, content string) error {
-	dir := filepath.Join(coralDir, "agent_knowledge", teamName)
+	dir, err := knowledgeTeamDir(coralDir, teamName)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -502,7 +537,10 @@ func callClaudeForKnowledge(ctx context.Context, claudePath string, timeout time
 
 // writeKnowledgeBundle writes the OKF bundle to disk.
 func writeKnowledgeBundle(coralDir string, bundle *KnowledgeBundle) error {
-	dir := filepath.Join(coralDir, "agent_knowledge", bundle.TeamName)
+	dir, err := knowledgeTeamDir(coralDir, bundle.TeamName)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}

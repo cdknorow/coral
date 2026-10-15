@@ -140,7 +140,7 @@ GET /api/tasks/runs/{runID} view
 GET /api/teams/all view
 GET /api/teams/detail/{name} view
 GET /api/teams/detail/{name}/availability view
-GET /api/teams/detail/{name}/distill-knowledge never
+GET /api/teams/detail/{name}/distill-knowledge view
 GET /api/teams/detail/{name}/knowledge view
 GET /api/teams/detail/{name}/knowledge/{agentName} view
 GET /api/teams/generate/{jobId} never
@@ -268,7 +268,7 @@ POST /api/system/telemetry/acknowledge never
 POST /api/tags never
 POST /api/tasks/run launch
 POST /api/tasks/runs/{runID}/kill interact
-POST /api/teams/detail/{name}/distill-knowledge never
+POST /api/teams/detail/{name}/distill-knowledge launch
 POST /api/teams/detail/{name}/resurrect launch
 POST /api/teams/generate launch
 POST /api/teams/import launch

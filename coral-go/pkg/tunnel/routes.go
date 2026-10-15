@@ -194,6 +194,8 @@ var routeTable = cat(
 		"/api/teams/detail/{name}/availability",
 		"/api/teams/detail/{name}/knowledge",
 		"/api/teams/detail/{name}/knowledge/{agent}",
+		// A distillation run's status (#3518): fixed keys, bounded text, no paths.
+		"/api/teams/detail/{name}/distill-knowledge",
 		"/api/token-usage", "/api/token-usage/summary", "/api/token-usage/timeseries",
 		"/api/token-usage/by-team", "/api/token-usage/by-branch", "/api/token-usage/session/{id}/turns",
 		"/api/goals/metrics", "/api/call-metrics/summary",
@@ -320,6 +322,9 @@ var routeTable = cat(
 		"/api/sessions/live/wake-all",
 		"/api/board/{project}/resume",
 		"/api/teams/detail/{name}/resurrect",
+		// Distilling a team's knowledge runs the Claude CLI and spends model usage (#3518):
+		// no query, no body, one run per team at a time, a minimum interval between runs.
+		"/api/teams/detail/{name}/distill-knowledge",
 		"/api/teams/import",
 		"/api/teams/generate",
 		"/api/tasks/run",

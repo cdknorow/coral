@@ -1,16 +1,24 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"log"
+	"math"
 	"net/http"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/httputil"
 )
 
 // knowledgeJobs tracks distillation runs: the running one, or the last one to finish, per
@@ -40,26 +48,105 @@ type knowledgeJob struct {
 // goroutine updates the job under it.
 func (j *knowledgeJob) snapshot() knowledgeJob { return *j }
 
+// knowledgeMinInterval is the least time between two runs for a team (#3518): a run spawns
+// the Claude CLI once per member and spends model usage.
+const knowledgeMinInterval = 60 * time.Second
+
+// Bounds on what a status answer carries (#3518, coral-hub Security): it is shown through
+// Coral Hub, so text is short, has no file paths, and lists a bounded number of agents.
+const (
+	knowledgeMaxText   = 200
+	knowledgeMaxName   = 64
+	knowledgeMaxFailed = 20
+)
+
+// A file path: starts the text or follows a space, quote, bracket or '=' ("and/or" is not one).
+var knowledgePathRe = regexp.MustCompile(`(^|[\s('"=])(?:~|\.{1,2})?/[^\s:'"),]+`)
+
+// knowledgeText makes an error or name safe to show: one line, no file paths, bounded.
+func knowledgeText(s string, max int) string {
+	s = knowledgePathRe.ReplaceAllString(s, "${1}<path>")
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > max {
+		s = string(r[:max]) + "…"
+	}
+	return s
+}
+
+// knowledgeStatus is the answer about a run: these keys only, text bounded (#3518).
+type knowledgeStatus struct {
+	Status             string                      `json:"status"`
+	Progress           background.DistillProgress  `json:"progress"`
+	Error              string                      `json:"error,omitempty"`
+	StartedAt          string                      `json:"started_at,omitempty"`
+	FinishedAt         string                      `json:"finished_at,omitempty"`
+	FailedAgents       []background.DistillFailure `json:"failed_agents,omitempty"`
+	CollaborationError string                      `json:"collaboration_error,omitempty"`
+}
+
+func (j knowledgeJob) status() knowledgeStatus {
+	out := knowledgeStatus{Status: j.Status, Progress: j.Progress, Error: knowledgeText(j.Error, knowledgeMaxText),
+		StartedAt: j.StartedAt, FinishedAt: j.FinishedAt, CollaborationError: knowledgeText(j.CollaborationError, knowledgeMaxText)}
+	out.Progress.Agent = knowledgeText(out.Progress.Agent, knowledgeMaxName)
+	out.Progress.Error = knowledgeText(out.Progress.Error, knowledgeMaxText)
+	for i, f := range j.FailedAgents {
+		if i == knowledgeMaxFailed {
+			break
+		}
+		out.FailedAgents = append(out.FailedAgents, background.DistillFailure{Agent: knowledgeText(f.Agent, knowledgeMaxName), Error: knowledgeText(f.Error, knowledgeMaxText)})
+	}
+	return out
+}
+
+// teamExists reports whether name is a saved team with members or a board with live agents:
+// a run is only started for a team that exists, so a made-up name never makes a job.
+func (h *SessionsHandler) teamExists(ctx context.Context, name string) bool {
+	if t, _ := h.teamStore.GetTeam(ctx, name); t != nil && len(t.Members) > 0 {
+		return true
+	}
+	ls, err := h.ss.GetBoardSessions(ctx, name)
+	return err == nil && len(ls) > 0
+}
+
 // DistillKnowledge starts or returns the status of a knowledge distillation run.
 // POST /api/teams/detail/{name}/distill-knowledge
 func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Request) {
 	teamName := chi.URLParam(r, "name")
-	if teamName == "" {
-		errBadRequest(w, "team name required")
+	if !background.ValidKnowledgeTeam(teamName) {
+		errBadRequest(w, "invalid team name")
 		return
 	}
-
+	// No body and no query (#3518): the run is decided by the path alone.
+	if b, _ := io.ReadAll(io.LimitReader(r.Body, 1024)); len(bytes.TrimSpace(b)) > 0 || r.URL.RawQuery != "" {
+		errBadRequest(w, "this request takes no body or query")
+		return
+	}
 	if h.teamStore == nil {
 		errBadRequest(w, "team persistence not available")
 		return
 	}
+	if !h.teamExists(r.Context(), teamName) {
+		errNotFound(w, "team not found")
+		return
+	}
 
 	knowledgeJobsMu.Lock()
+	// One run per team: a second request while it runs gets that run, never a second one.
 	if job, exists := knowledgeJobs[teamName]; exists && job.Status == "running" {
 		snap := job.snapshot()
 		knowledgeJobsMu.Unlock()
-		writeJSON(w, http.StatusOK, snap)
+		writeJSON(w, http.StatusOK, snap.status())
 		return
+	} else if exists {
+		if started, err := time.Parse(time.RFC3339, job.StartedAt); err == nil {
+			if wait := knowledgeMinInterval - time.Since(started); wait > 0 {
+				knowledgeJobsMu.Unlock()
+				secs := int(math.Ceil(wait.Seconds()))
+				httputil.WriteActionLimitBody(w, secs, map[string]any{"error": "rate_limited",
+					"message": fmt.Sprintf("a team's knowledge can be distilled once a minute; retry in %ds", secs)})
+				return
+			}
+		}
 	}
 
 	job := &knowledgeJob{
@@ -101,13 +188,17 @@ func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Reques
 		knowledgeJobsMu.Unlock()
 	}()
 
-	writeJSON(w, http.StatusAccepted, started)
+	writeJSON(w, http.StatusAccepted, started.status())
 }
 
 // GetKnowledgeStatus returns the status of a distillation run.
 // GET /api/teams/detail/{name}/distill-knowledge
 func (h *SessionsHandler) GetKnowledgeStatus(w http.ResponseWriter, r *http.Request) {
 	teamName := chi.URLParam(r, "name")
+	if !background.ValidKnowledgeTeam(teamName) {
+		errBadRequest(w, "invalid team name")
+		return
+	}
 
 	knowledgeJobsMu.Lock()
 	job, exists := knowledgeJobs[teamName]
@@ -121,7 +212,7 @@ func (h *SessionsHandler) GetKnowledgeStatus(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusOK, map[string]string{"status": "none"})
 		return
 	}
-	writeJSON(w, http.StatusOK, snap)
+	writeJSON(w, http.StatusOK, snap.status())
 }
 
 // GetTeamKnowledge returns the distilled knowledge bundle for a team.
@@ -131,6 +222,10 @@ func (h *SessionsHandler) GetTeamKnowledge(w http.ResponseWriter, r *http.Reques
 	coralDir := h.cfg.CoralDir()
 
 	bundle, err := background.ReadKnowledgeBundle(coralDir, teamName)
+	if errors.Is(err, background.ErrBadKnowledgeTeam) {
+		errBadRequest(w, "invalid team name")
+		return
+	}
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
