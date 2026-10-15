@@ -113,3 +113,20 @@ func TestArtifactModes(t *testing.T) {
 		assert.Equal(t, want, fi.Mode().Perm(), path)
 	}
 }
+
+// Security's #3552 nit (b): on a file system without hard links the sidecar is created with
+// O_EXCL and a full write; the first writer still wins.
+func TestArtifactSidecarWithoutHardLinks(t *testing.T) {
+	sidecarLinkHook = func() error { return &os.LinkError{Op: "link", Err: os.ErrPermission} }
+	t.Cleanup(func() { sidecarLinkHook = nil })
+	dir := t.TempDir()
+	id, first, err := storeArtifact(dir, "a", "notes.txt", "text/plain", []byte("bytes"))
+	require.NoError(t, err)
+	assert.Equal(t, "notes.txt", first.Name)
+	_, again, err := storeArtifact(dir, "b", "invoice.html", "text/html", []byte("bytes"))
+	require.NoError(t, err)
+	assert.Equal(t, "notes.txt", again.Name, "still the first writer's")
+	side, ok := readSidecar(filepath.Join(dir, "artifacts", "objects", id+".json"))
+	require.True(t, ok)
+	assert.Equal(t, "text/plain", side.MediaType)
+}

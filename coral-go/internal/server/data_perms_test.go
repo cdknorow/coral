@@ -53,3 +53,29 @@ func TestTightenDataPermissions(t *testing.T) {
 	tightenDataPermissions(dir)
 	assert.Equal(t, os.FileMode(0o600), mode(files[0]))
 }
+
+// Security's #3552 nit (c): a data folder reached through a symlink has its real folder
+// tightened.
+func TestTightenDataPermissionsThroughSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	real := filepath.Join(t.TempDir(), "real-data")
+	require.NoError(t, os.MkdirAll(filepath.Join(real, "artifacts", "objects"), 0o755))
+	require.NoError(t, os.Chmod(real, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(real, "sessions.db"), []byte("x"), 0o644))
+	link := filepath.Join(t.TempDir(), "coral-link")
+	require.NoError(t, os.Symlink(real, link))
+
+	tightenDataPermissions(link)
+
+	fi, err := os.Stat(real)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm())
+	fi, err = os.Stat(filepath.Join(real, "sessions.db"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	fi, err = os.Stat(filepath.Join(real, "artifacts", "objects"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm())
+}

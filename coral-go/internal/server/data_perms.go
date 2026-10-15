@@ -19,6 +19,11 @@ func tightenDataPermissions(coralDir string) {
 	if runtime.GOOS == "windows" || coralDir == "" {
 		return
 	}
+	// A data folder reached through a symlink: tighten the real folder (resolved once; no
+	// link below it is followed).
+	if real, err := filepath.EvalSymlinks(coralDir); err == nil {
+		coralDir = real
+	}
 	changed := 0
 	tighten := func(path string, mode os.FileMode) {
 		fi, err := os.Lstat(path)

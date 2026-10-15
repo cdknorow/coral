@@ -103,6 +103,10 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 		tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil { // on disk before it gets the real name
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
@@ -129,17 +133,52 @@ func createSidecarOnce(path string, meta agentArtifactMeta) (agentArtifactMeta, 
 		tmp.Close()
 		return meta, err
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return meta, err
+	}
 	if err := tmp.Close(); err != nil {
 		return meta, err
 	}
 	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
 		return meta, err
 	}
-	if err := os.Link(tmp.Name(), path); err != nil {
+	link := os.Link
+	if sidecarLinkHook != nil {
+		link = func(string, string) error { return sidecarLinkHook() }
+	}
+	if err := link(tmp.Name(), path); err != nil {
 		if existing, ok := readSidecar(path); ok { // another upload of the same bytes won
 			return existing, nil
 		}
+		if !os.IsExist(err) {
+			// A file system without hard links: an exclusive create and a full write.
+			return createSidecarExclusive(path, meta, data)
+		}
 		return meta, err
+	}
+	return meta, nil
+}
+
+// sidecarLinkHook lets a test make the hard link fail, as on a file system without them.
+var sidecarLinkHook func() error
+
+// createSidecarExclusive is createSidecarOnce without a hard link: O_EXCL creates the name
+// (the first writer wins), and the data is written and synced at once.
+func createSidecarExclusive(path string, meta agentArtifactMeta, data []byte) (agentArtifactMeta, error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if existing, ok := readSidecar(path); ok {
+			return existing, nil
+		}
+		return meta, err
+	}
+	_, werr := f.Write(data)
+	serr := f.Sync()
+	cerr := f.Close()
+	if werr != nil || serr != nil || cerr != nil {
+		os.Remove(path)
+		return meta, fmt.Errorf("write sidecar: %v %v %v", werr, serr, cerr)
 	}
 	return meta, nil
 }
