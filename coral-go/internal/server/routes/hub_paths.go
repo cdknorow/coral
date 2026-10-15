@@ -16,13 +16,13 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -88,7 +88,7 @@ func hubHomes() []string {
 	defer hubHome.Unlock()
 	if hubHome.for_ != home {
 		hubHome.for_, hubHome.homes = home, []string{home}
-		if real, err := filepath.EvalSymlinks(home); err == nil {
+		if real, err := safefs.Resolve(home); err == nil {
 			if real = strings.TrimRight(real, `/\`); real != home {
 				hubHome.homes = append(hubHome.homes, real)
 			}

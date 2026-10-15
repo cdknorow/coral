@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 // Explorer lists names only, one directory at a time. Preview limits are
@@ -26,12 +28,12 @@ func serveExplorerDirectory(w http.ResponseWriter, r *http.Request, root, dir st
 		errBadRequest(w, "directory must be inside the workspace")
 		return
 	}
-	realRoot, err := filepath.EvalSymlinks(root)
+	realRoot, err := safefs.Resolve(root)
 	if err != nil || (strict && !rootAllowed(realRoot)) {
 		errNotFound(w, "Working directory unavailable")
 		return
 	}
-	target, err := filepath.EvalSymlinks(filepath.Join(realRoot, clean))
+	target, err := safefs.Resolve(filepath.Join(realRoot, clean))
 	if err != nil {
 		errNotFound(w, "Directory unavailable")
 		return

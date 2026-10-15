@@ -20,6 +20,7 @@ import (
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/mediatype"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -677,7 +678,7 @@ func repoPathError(err error) string {
 
 func canonicalizeRepoPath(p string) (string, error) {
 	cleaned := filepath.Clean(p)
-	resolved, err := filepath.EvalSymlinks(cleaned)
+	resolved, err := safefs.Resolve(cleaned)
 	if err != nil {
 		return "", err
 	}

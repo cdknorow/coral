@@ -101,7 +101,7 @@ func maxFileBytes() int64 {
 
 // realPath resolves symlinks; it returns "" if the path cannot be resolved.
 func realPath(p string) string {
-	r, err := filepath.EvalSymlinks(p)
+	r, err := safefs.Resolve(p)
 	if err != nil {
 		return ""
 	}

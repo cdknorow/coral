@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 // urlParam extracts a chi URL parameter and percent-decodes it.
@@ -131,11 +132,11 @@ func emptyIfNil[T any](s []T) []T {
 // isPathWithinDir checks that fullPath is within workdir after resolving symlinks.
 // Returns true if the path is safe, false if it escapes the working directory.
 func isPathWithinDir(workdir, fullPath string) bool {
-	realWorkdir, _ := filepath.EvalSymlinks(workdir)
+	realWorkdir, _ := safefs.Resolve(workdir)
 	if realWorkdir == "" {
 		return false // an unresolvable root contains nothing (the old prefix test passed everything)
 	}
-	realFull, _ := filepath.EvalSymlinks(fullPath)
+	realFull, _ := safefs.Resolve(fullPath)
 	if realFull == "" {
 		return true // file doesn't exist yet; caller handles separately if needed
 	}

@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 // A best-effort safety net, not a guarantee (#3182; operator, 2026-10-13): the
@@ -603,7 +605,7 @@ func resolvePath(p string) string {
 	p = filepath.Clean(p)
 	rest := ""
 	for cur := p; ; {
-		if r, err := filepath.EvalSymlinks(cur); err == nil {
+		if r, err := safefs.Resolve(cur); err == nil {
 			return filepath.Join(r, rest)
 		}
 		parent := filepath.Dir(cur)

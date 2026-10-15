@@ -2126,8 +2126,8 @@ func (h *SessionsHandler) Diff(w http.ResponseWriter, r *http.Request) {
 	// For untracked files, show the file content as a "new file" diff
 	if diffText == "" {
 		fullPath := filepath.Join(workdir, fp)
-		realFull, err := filepath.EvalSymlinks(fullPath)
-		realWork, _ := filepath.EvalSymlinks(workdir)
+		realFull, err := safefs.Resolve(fullPath)
+		realWork, _ := safefs.Resolve(workdir)
 		if err == nil && strings.HasPrefix(realFull, realWork+string(os.PathSeparator)) {
 			if info, err := os.Stat(realFull); err == nil && !info.IsDir() {
 				if strict && (info.Size() > maxFileBytes() || isBinaryFile(realFull)) {
@@ -5563,7 +5563,7 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 	if root == "" {
 		return resolvedFileRef{}, errNoWorkdir
 	}
-	realRoot, err := filepath.EvalSymlinks(root)
+	realRoot, err := safefs.Resolve(root)
 	if err != nil {
 		return resolvedFileRef{}, errNoWorkdir
 	}
@@ -5572,7 +5572,7 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 	}
 
 	check := func(c string) (resolvedFileRef, bool) {
-		real, err := filepath.EvalSymlinks(c)
+		real, err := safefs.Resolve(c)
 		if err != nil {
 			return resolvedFileRef{}, false
 		}
@@ -5667,8 +5667,8 @@ func suffixMatches(ctx context.Context, root, workdir, ref string, changed map[s
 	}
 
 	wdPrefix := ""
-	realRoot, err1 := filepath.EvalSymlinks(root)
-	realWd, err2 := filepath.EvalSymlinks(workdir)
+	realRoot, err1 := safefs.Resolve(root)
+	realWd, err2 := safefs.Resolve(workdir)
 	if rel, err := filepath.Rel(realRoot, realWd); err1 == nil && err2 == nil && err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
 		wdPrefix = filepath.ToSlash(rel) + "/"
 	}
@@ -5726,7 +5726,7 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 				return
 			}
 			fullPath = real
-		} else if real, rerr := filepath.EvalSymlinks(fp); rerr == nil {
+		} else if real, rerr := safefs.Resolve(fp); rerr == nil {
 			// Local dashboard: absolute paths are read-only, wherever they are.
 			fullPath, err, tempFile = real, nil, true
 		}
