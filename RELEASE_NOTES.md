@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.26 — Antigravity drafts are protected; "Waiting on" instead of "Ready for input"
+
+**Please upgrade if you use Antigravity (agy) agents.** In v1.4.25 and earlier, a message from Coral could be added to text you were typing in an Antigravity agent's input box and submitted with it. Coral now holds its message until you send or clear your draft, as it already does for Claude, Codex and Gemini.
+
+### Fixes
+
+- **Your draft is never added to, for any agent:** Coral reads Antigravity's input box, and for any agent whose input line already holds someone else's text, it holds its own message instead of pasting it. A new Antigravity agent's first prompt also waits for its input box.
+- **Antigravity no longer shows "Needs input" while it is working:** its busy line ("Working...", "Generating...", "Running command...") is not taken for a question. Coral's message is still held until the agent is ready.
+- **Board mentions reach agents promptly:** a new mention that arrived just after an agent read its previous message could wait up to 15 minutes for a nudge; it is now nudged at once.
+- **Agent priority:** Settings only accepts **Low** or **Normal**; any other value is refused (HTTP 400) and nothing in that save is changed.
+
+### Changes
+
+- **"Waiting on" in the dashboard:** an agent that is waiting on the board (`coral-board wait`) now shows a calm "Waiting on <agent>", "Waiting on task #N" or "Waiting on commit <ref>" instead of "Ready for input", with no attention badge. Needs input, Check terminal, Stuck, Sleeping and Working still take precedence. With agents of the same name on several boards, each shows its own team's state.
+
+### For integrators
+
+- `PUT /api/settings` answers **400** `agent_priority must be "low" or "normal"` for any other `agent_priority` value, and saves nothing from that request.
+
 ## v1.4.25 — Hotfix: board messages and nudges reach Claude agents again
 
 **Please upgrade from v1.4.24.** In v1.4.24, once a Claude agent finished a turn, Coral could stop delivering board messages, nudges and other automated messages to it: Claude shows a faint suggestion for your next prompt in its empty input box, and Coral took it for text you had typed, so it held every message for that agent indefinitely. Coral now recognises the faint suggestion as an empty box, and delivers the held messages. A real draft in the input box (anything you typed, including a draft followed by Claude's faint suggestion, or a suggestion you accepted with Tab) still holds Coral's message until you send or clear it.
