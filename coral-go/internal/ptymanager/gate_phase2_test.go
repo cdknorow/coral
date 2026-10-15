@@ -63,6 +63,20 @@ func TestPhase2HoldsRoutineSendsForTheTurn(t *testing.T) {
 	assert.Equal(t, 0, HeldCount("claude-p2-routine"))
 }
 
+// Signals mode doesn't lose the screen fallback for menus (the shadow's 591 lines: the signals
+// said idle while a selection menu was open): a routine nudge is held (Security's NIT 1).
+func TestPhase2HoldsARoutineSendForAMenuTheSignalsMiss(t *testing.T) {
+	fastGate(t)
+	phase2(t, true)
+	withState(t, AgentState{State: StateIdle, Since: time.Now(), LastEvent: time.Now(), LastStop: time.Now()}, true)
+	a := &fakeAgent{screen: permissionMenu}
+	d, err := DeliverAutomated(context.Background(), a.input("claude-p2-idle-menu", "board-unread:team", "You have 1 unread message", false))
+	require.NoError(t, err)
+	assert.Equal(t, Held, d, "signals idle, a menu on screen: held")
+	assert.Empty(t, a.sent())
+	DropHeld("claude-p2-idle-menu", "test done")
+}
+
 // After inTurnFallback in one turn, a routine send follows the screen rule (nothing waits on
 // a turn for ever), and the decision line says so.
 func TestPhase2LongTurnFallsBackToTheScreen(t *testing.T) {
