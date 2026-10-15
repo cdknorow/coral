@@ -30,6 +30,11 @@ const HEX = 'c'.repeat(64);
     const shots = process.env.BOARD_LINK_SHOTS || '';
     try {
         await Page.enable();
+        // A desktop window (run.sh's default headless size hides the Subscribers column) with
+        // focus emulated, so :focus-visible can match in a headless page (QA, #3548).
+        const VIEW = { width: 1300, height: 900, deviceScaleFactor: 1, mobile: false };
+        await Emulation.setDeviceMetricsOverride(VIEW);
+        await Emulation.setFocusEmulationEnabled({ enabled: true });
         const loaded = Page.loadEventFired();
         await Page.navigate({ url: BASE + '/' });
         await loaded;
@@ -70,7 +75,7 @@ const HEX = 'c'.repeat(64);
                     return { x, y, width: Math.min(innerWidth - x, Math.max(r1.right, r2.right) - x + 8), height: Math.max(r1.bottom, r2.bottom) - y + 8, scale: 1 }; })()`);
                 const shot = await Page.captureScreenshot({ format: 'png', clip });
                 fs.writeFileSync(path.join(shots, `board-links-${theme}.png`), Buffer.from(shot.data, 'base64'));
-                await Emulation.clearDeviceMetricsOverride();
+                await Emulation.setDeviceMetricsOverride(VIEW); // back to the test's window
             }
         }
 
