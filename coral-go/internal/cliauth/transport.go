@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 // Strict local auth (#3418): with --strict-local-auth, a request from this computer needs
@@ -61,16 +63,31 @@ func DataDir() string {
 // readable by group or others, owned by this user where the system says, at most 256 bytes.
 func ReadToken(dir string) (string, error) {
 	p := filepath.Join(dir, TokenFile)
-	fi, err := os.Lstat(p)
+	// Opened once, then checked and read through the same handle (#3601, weak site W22): a
+	// regular file, never through a symlink, never a FIFO; the mode, size and owner checks are
+	// on what was opened, so nothing can be swapped in between the check and the read.
+	root, err := safefs.OpenRoot(dir)
 	if err != nil {
 		return "", err
 	}
-	if !fi.Mode().IsRegular() || fi.Mode().Perm()&0o077 != 0 || fi.Size() > 256 || !ownedByMe(fi) {
+	f, fi, err := root.Open(TokenFile)
+	root.Close()
+	if err != nil {
+		if errors.Is(err, safefs.ErrNotRegular) {
+			return "", fmt.Errorf("%s is not a private regular file of this user", p)
+		}
+		return "", err
+	}
+	defer f.Close()
+	if fi.Mode().Perm()&0o077 != 0 || fi.Size() > 256 || !ownedByMe(fi) {
 		return "", fmt.Errorf("%s is not a private regular file of this user", p)
 	}
-	b, err := os.ReadFile(p)
+	b, err := io.ReadAll(io.LimitReader(f, 257))
 	if err != nil {
 		return "", err
+	}
+	if len(b) > 256 {
+		return "", fmt.Errorf("%s is not a private regular file of this user", p)
 	}
 	tok := strings.TrimSpace(string(b))
 	if tok == "" {
