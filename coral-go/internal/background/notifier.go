@@ -250,9 +250,8 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		}
 		// A nudge about a message that tags the agent is a mention: typed in mid-turn when the
 		// gate follows the signals; a routine one waits for the turn to end (#3578). Decided
-		// from the unread messages themselves for every subscriber, whatever its receive mode:
-		// an Orchestrator in mentions mode is still nudged for every message (Backend's and
-		// Security's review). A failed check counts as a mention (today's behaviour).
+		// from the unread messages themselves (confirmed tags) for every subscriber, never from
+		// the receive mode alone. A failed check counts as a mention (today's behaviour).
 		mention, mErr := n.boardStore.HasUnreadMention(ctx, sub.Project, subscriberID)
 		if mErr != nil {
 			n.logger.Warn("mention check failed; the nudge goes as a mention", "subscriber_id", subscriberID, "error", mErr)
