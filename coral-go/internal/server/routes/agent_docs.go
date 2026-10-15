@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"errors"
 	"io/fs"
 	"net/http"
 	"path/filepath"
@@ -25,6 +26,9 @@ func NewAgentDocsHandler(docsFS fs.FS) *AgentDocsHandler {
 // GET /api/agent-docs
 func (h *AgentDocsHandler) List(w http.ResponseWriter, r *http.Request) {
 	entries, err := fs.ReadDir(h.docsFS, ".")
+	if errors.Is(err, fs.ErrNotExist) {
+		entries, err = nil, nil // a dev build without the docs folder lists none
+	}
 	if err != nil {
 		errInternalServer(w, "failed to read docs directory")
 		return
@@ -35,7 +39,7 @@ func (h *AgentDocsHandler) List(w http.ResponseWriter, r *http.Request) {
 		Title string `json:"title"`
 	}
 
-	var docs []docEntry
+	docs := []docEntry{} // [] when there are none, never null: the Docs tab reads null as a failed load
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 			continue

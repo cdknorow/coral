@@ -29,7 +29,7 @@ async function loadDocsList() {
     }
     // The doc the page names, else README, else the first document; an empty list says so.
     const first = startDoc(wantedDoc);
-    if (wantedDoc && first && first.name !== wantedDoc) docNotFound();
+    if (wantedDoc && (!first || first.name !== wantedDoc)) docNotFound();
     wantedDoc = null;
     if (first) selectDoc(first.name, { noteRoute: false });
     else if (content) content.innerHTML = '<div class="docs-empty"><p>No documentation found.</p></div>';
