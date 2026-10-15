@@ -56,3 +56,63 @@ func openLogAppend(path string) (*os.File, error) {
 }
 
 var errNotRegularLog = errors.New("the agent log is not a regular file with one name")
+
+// maxMigratedLog caps how much of an old log is carried over on upgrade: the end of it, which
+// is what the terminal replay shows.
+const maxMigratedLog = 16 << 20
+
+// migrateTempLog moves a running agent's log from the shared temp dir, where installs before
+// #3601 kept it (readable by other users), into newPath's folder: when newPath doesn't exist yet
+// and the temp dir holds a log of the same name, its last maxMigratedLog bytes become the new
+// log (0600, through the safe writer), and the old file is removed if it is still the one read.
+// It reports whether a log was moved.
+func migrateTempLog(newPath string) bool {
+	dir, name := filepath.Dir(newPath), filepath.Base(newPath)
+	tmp := os.TempDir()
+	if sameFolder(dir, tmp) {
+		return false
+	}
+	if _, err := os.Lstat(newPath); err == nil {
+		return false
+	}
+	old, err := safefs.OpenRoot(tmp)
+	if err != nil {
+		return false
+	}
+	defer old.Close()
+	f, fi, err := old.Open(name)
+	if err != nil {
+		return false
+	}
+	start := fi.Size() - maxMigratedLog
+	if start < 0 {
+		start = 0
+	}
+	data := make([]byte, fi.Size()-start)
+	n, _ := f.ReadAt(data, start)
+	f.Close()
+	if err := resetLog(newPath); err != nil {
+		return false
+	}
+	root, err := safefs.OpenRoot(dir)
+	if err != nil {
+		return false
+	}
+	defer root.Close()
+	if err := root.WriteFile(name, data[:n], 0o600); err != nil {
+		return false
+	}
+	if at, err := old.Lstat(name); err == nil && os.SameFile(fi, at) {
+		os.Remove(filepath.Join(tmp, name))
+	}
+	return true
+}
+
+func sameFolder(a, b string) bool {
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return ra == rb
+}

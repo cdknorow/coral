@@ -71,3 +71,32 @@ func TestAgentLogIsPrivateAndNeverFollowed(t *testing.T) {
 	fi, _ = os.Stat(filepath.Join(dir, "fresh.log"))
 	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
 }
+
+// Security's SHOULD-2 on #3601: an agent started by an older install logged to the shared temp
+// dir at 0644. On reattach its log moves into the data folder: the new log holds the old output
+// at 0600 and the old file is gone. A symlink at the old name is not followed.
+func TestReattachMovesAnOldTempLog(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	logs := t.TempDir()
+	name := "claude_coral_0b2f6c1e-3d4a-4b5c-8d6e-7f8091a2b3c4.log"
+	old := filepath.Join(tmp, name)
+	require.NoError(t, os.WriteFile(old, []byte("scrollback before the upgrade\n"), 0o644))
+
+	assert.True(t, migrateTempLog(filepath.Join(logs, name)))
+	b, err := os.ReadFile(filepath.Join(logs, name))
+	require.NoError(t, err)
+	assert.Equal(t, "scrollback before the upgrade\n", string(b))
+	fi, _ := os.Stat(filepath.Join(logs, name))
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	assert.NoFileExists(t, old, "the readable copy in the temp dir is gone")
+	assert.False(t, migrateTempLog(filepath.Join(logs, name)), "only when the new log doesn't exist yet")
+
+	// A symlink planted at the old name isn't read or followed.
+	secret := filepath.Join(t.TempDir(), "secret")
+	require.NoError(t, os.WriteFile(secret, []byte("not yours"), 0o600))
+	name2 := "claude_coral_a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d.log"
+	require.NoError(t, os.Symlink(secret, filepath.Join(tmp, name2)))
+	assert.False(t, migrateTempLog(filepath.Join(logs, name2)))
+	assert.NoFileExists(t, filepath.Join(logs, name2))
+}

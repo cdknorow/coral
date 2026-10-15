@@ -76,7 +76,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	}
 
 	// Clear old log
-	if err := os.WriteFile(logFile, nil, 0644); err != nil {
+	if err := ptymanager.ResetAgentLog(logFile); err != nil { // 0600, never through a link (#3601, W17)
 		slog.Warn("failed to clear agent log file", "path", logFile, "error", err)
 	}
 

@@ -72,7 +72,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		return nil, fmt.Errorf("startPTYProcess: %w", err)
 	}
 
-	// Set up log file (the default log dir is the temp dir unless startup moved it)
+	// Set up log file (in the data folder's logs folder, which startup sets; #3601)
 	logPath := naming.LogFile(naming.DefaultLogDir(), agentType, sessionID)
 	logFile, err := openLogAppend(logPath)
 	if err != nil {

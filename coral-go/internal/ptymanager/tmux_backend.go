@@ -306,14 +306,15 @@ func (b *TmuxBackend) recoverSession(name string) *tmuxSession {
 
 		logPath := naming.LogFile(b.logDir, agentType, sessionID)
 
-		// Ensure log file exists
+		// Reset pipe-pane: close any stale pipe from a previous server
+		// instance, then re-establish to ensure output goes to our log file.
+		// In between, an agent started by an older install has its log moved
+		// out of the shared temp dir, scrollback included (#3601, W17).
+		b.client.ClosePipePane(ctx, pane.SessionName)
+		migrateTempLog(logPath)
 		if _, err := os.Lstat(logPath); os.IsNotExist(err) {
 			createLog(logPath)
 		}
-
-		// Reset pipe-pane: close any stale pipe from a previous server
-		// instance, then re-establish to ensure output goes to our log file.
-		b.client.ClosePipePane(ctx, pane.SessionName)
 		b.client.PipePane(ctx, pane.SessionName, logPath)
 
 		agentName := filepath.Base(strings.TrimRight(pane.CurrentPath, "/"))

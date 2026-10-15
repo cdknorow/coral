@@ -31,6 +31,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/loginlink"
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -74,9 +75,10 @@ func main() {
 	cfg := config.Load()
 	logDir := strings.TrimRight(cfg.LogDir, "/")
 	if logDir == "" {
-		logDir = strings.TrimRight(os.TempDir(), "/")
+		logDir = filepath.Join(cfg.CoralDir(), "logs") // never the shared temp dir (#3601, W17)
 	}
-	os.MkdirAll(logDir, 0o755)
+	os.MkdirAll(logDir, 0o700) // agents' terminal output: this user only (#3601, W17)
+	os.Chmod(logDir, 0o700)
 
 	// Clean up old coral logs (only in a folder of our own, never the shared temp dir)
 	cleanOldLogs(logDir)
@@ -200,7 +202,7 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 		logFile := filepath.Join(logDir, fmt.Sprintf("%s_coral_%s.log", agentType, sessionID))
 
 		// Clear old log
-		os.WriteFile(logFile, nil, 0644)
+		ptymanager.ResetAgentLog(logFile) // 0600, never through a link (#3601, W17)
 
 		// Create a new detached tmux session rooted in the worktree
 		if err := tc.NewSession(ctx, sessionName, dir); err != nil {
