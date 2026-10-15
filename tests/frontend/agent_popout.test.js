@@ -23,8 +23,6 @@
 
 const CDP = require('chrome-remote-interface');
 const http = require('http');
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const BASE = require('./test_base').BASE;
@@ -40,6 +38,7 @@ function check(label, cond, detail) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const randomUuid = () => require('crypto').randomUUID();
+const { launchStandIn } = require('./helpers/stand_in_agent');
 
 // ── Pre-navigation stubs (fixture sections) ─────────────────────────────
 // Installed with Page.addScriptToEvaluateOnNewDocument. Stubs the resolver,
@@ -430,23 +429,16 @@ async function run() {
     // showed "Needs input" on an agent that was asking nothing.
     // Agent events are accepted only with the agent's own session token (#3481), and a
     // terminal session has none. A stand-in Claude agent (its CLI path is a script that
-    // keeps the token Coral launched it with) posts them, as its hooks would.
-    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-popout-agent-'));
-    const tokenFile = path.join(stubDir, 'token');
-    const stubCLI = path.join(stubDir, 'claude');
-    fs.writeFileSync(stubCLI, `#!/bin/sh\nprintf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}'\nexec sleep 600\n`, { mode: 0o755 });
-    const prevCLI = ((await httpJson('GET', '/api/settings')).data?.settings || {}).cli_path_claude || '';
-    await httpJson('PUT', '/api/settings', { cli_path_claude: stubCLI });
+    // keeps the token Coral launched it with) posts them, as its hooks would
+    // (helpers/stand_in_agent.js, shared with agent_task_cli).
     // Always undone, even if a step throws: the suites after this one share the shard (QA's review).
-    let agentLaunch = null;
+    let standIn = null;
     // Section C reuses the real resolver record from 33, so it is declared outside the try.
     let realIdleResolve = {};
     try {
-        agentLaunch = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'claude', display_name: 'Popout QA Agent' });
-        const asid = agentLaunch.data && agentLaunch.data.session_id; const asname = agentLaunch.data && agentLaunch.data.session_name;
-        let agentToken = '';
-        for (let i = 0; i < 100 && !agentToken; i++) { try { agentToken = fs.readFileSync(tokenFile, 'utf8').trim(); } catch { /* not yet */ } if (!agentToken) await sleep(100); }
-        check('33 stand-in agent launched with its own session token', !!asid && !!agentToken, JSON.stringify({ asid, status: agentLaunch.status, token: !!agentToken }));
+        standIn = await launchStandIn(httpJson, { displayName: 'Popout QA Agent' });
+        const asid = standIn.sid; const asname = standIn.name; const agentToken = standIn.token;
+        check('33 stand-in agent launched with its own session token', !!asid && !!agentToken, agentToken ? `token after ${standIn.ms} ms` : standIn.diag);
         const postEvent = (event_type, summary) => httpJson('POST', `/api/sessions/live/${encodeURIComponent(asname)}/events`, { event_type, summary, session_id: asid }, { 'X-Coral-Session-Token': agentToken });
         const stateOf = (o) => ({ waiting_for_input: o && o.waiting_for_input, awaiting_user: o && o.awaiting_user, waiting_reason: o && o.waiting_reason, waiting_summary: o && o.waiting_summary });
         const listRow = async () => { const l = await httpJson('GET', '/api/sessions/live'); return (Array.isArray(l.data) ? l.data : []).find(r => r.session_id === asid); };
@@ -466,10 +458,7 @@ async function run() {
         check('33 real server: status endpoint is not waiting_for_input for an idle agent', idleStatus.waiting_for_input === false && idleStatus.awaiting_user === true && idleStatus.state !== 'waiting_for_input', JSON.stringify({ state: idleStatus.state, ...stateOf(idleStatus) }));
     } finally {
         // The stand-in goes; the setting is put back.
-        const launched = agentLaunch && agentLaunch.data;
-        if (launched && launched.session_id) await httpJson('POST', `/api/sessions/live/${encodeURIComponent(launched.session_name)}/kill`, { agent_type: 'claude', session_id: launched.session_id });
-        await httpJson('PUT', '/api/settings', { cli_path_claude: prevCLI });
-        fs.rmSync(stubDir, { recursive: true, force: true });
+        if (standIn) await standIn.stop();
     }
 
     // 21: ended on kill; 24: no reconnect loop

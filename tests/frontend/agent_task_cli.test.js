@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const BASE = require('./test_base').BASE;
+const { launchStandIn } = require('./helpers/stand_in_agent');
 const PORT = new URL(BASE).port;
 // Built on the fly unless CORAL_AGENT_BIN points at a coral-agent binary.
 let BIN = process.env.CORAL_AGENT_BIN;
@@ -76,28 +77,19 @@ function agentWith(sessionName, token, ...args) {
   // Not a terminal session Coral knows, and no token: refused before the lookup (#3495).
   check('an unknown session is refused', r.code !== 0 && /Unknown session|session_token_required/.test(r.out), r.out.trim());
 
-  // A token decides the session (#3495): a stand-in Claude agent (its CLI path is a
-  // script that keeps the token Coral launched it with) can't act as the terminal session.
-  const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-agent-stub-'));
-  const tokenFile = path.join(stubDir, 'token');
-  const stubCLI = path.join(stubDir, 'claude');
-  fs.writeFileSync(stubCLI, `#!/bin/sh\nprintf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}'\nexec sleep 600\n`, { mode: 0o755 });
-  const prevCLI = ((await json('GET', '/api/settings')).data?.settings || {}).cli_path_claude || '';
-  await json('PUT', '/api/settings', { cli_path_claude: stubCLI });
+  // A token decides the session (#3495): a stand-in Claude agent (helpers/stand_in_agent.js,
+  // its CLI path a script that keeps the token Coral launched it with) can't act as the
+  // terminal session.
   let stand = null;
   try {
-    stand = await json('POST', '/api/sessions/launch', { working_dir: work, agent_type: 'claude', display_name: 'E2E Stand-in' });
-    let token = '';
-    for (let i = 0; i < 100 && !token; i++) { try { token = fs.readFileSync(tokenFile, 'utf8').trim(); } catch { /* not yet */ } if (!token) await new Promise(res => setTimeout(res, 100)); }
-    check('a stand-in Claude agent is launched with its own session token', stand.status === 200 && !!token, JSON.stringify({ status: stand.status, token: !!token }));
-    r = agentWith(stand.data.session_name, token, 'task', 'list');
+    stand = await launchStandIn(json, { workingDir: work, displayName: 'E2E Stand-in' });
+    check('a stand-in Claude agent is launched with its own session token', !!stand.sid && !!stand.token, stand.token ? `token after ${stand.ms} ms` : stand.diag);
+    r = agentWith(stand.name, stand.token, 'task', 'list');
     check('with its own token, the stand-in lists its own tasks', r.code === 0, r.out.trim());
-    r = agentWith(sessionName, token, 'task', 'list');
+    r = agentWith(sessionName, stand.token, 'task', 'list');
     check('a token naming another session is refused (403 identity_mismatch)', r.code !== 0 && /identity_mismatch|only for its own session/.test(r.out), r.out.trim());
   } finally {
-    if (stand && stand.data && stand.data.session_name) await json('POST', `/api/sessions/live/${encodeURIComponent(stand.data.session_name)}/kill`, { agent_type: 'claude', session_id: stand.data.session_id });
-    await json('PUT', '/api/settings', { cli_path_claude: prevCLI });
-    fs.rmSync(stubDir, { recursive: true, force: true });
+    if (stand) await stand.stop();
   }
 
   await json('POST', `/api/sessions/live/${encodeURIComponent(name)}/kill`, { agent_type: 'terminal', session_id: sid });

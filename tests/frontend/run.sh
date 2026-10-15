@@ -154,6 +154,8 @@ export CORAL_TEST_URL="http://127.0.0.1:$CORAL_PORT"
 # The test server's own tmux socket (<home>/tmux.sock): suites that compare the pane with the
 # dashboard read it with 'tmux -S' on this path, never the production socket (#3422).
 export CORAL_TEST_TMUX_SOCKET="$CORAL_HOME/tmux.sock"
+# The test server's log, read by a suite only to explain its own failure (#3502).
+export CORAL_TEST_LOG="$CORAL_HOME/server.log"
 unset CORAL_URL CORAL_PORT CORAL_HOST CORAL_DATA_DIR CORAL_DIR
 export CDP_PORT
 cd "$HERE"
