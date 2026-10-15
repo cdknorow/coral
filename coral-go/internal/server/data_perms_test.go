@@ -30,6 +30,7 @@ func TestTightenDataPermissions(t *testing.T) {
 		mk("sessions.db", 0o644), mk("messageboard.db", 0o644), mk("messageboard.db-wal", 0o644),
 		mk("coral.log", 0o644), mk("artifacts/objects/abc", 0o644), mk("artifacts/objects/abc.json", 0o644),
 		mk("artifacts/uploads/sess/abc.json", 0o644), mk("artifacts/sessions/s1/changes.diff", 0o644),
+		mk("uploads/abc_shot.png", 0o644), // #3602 W28: the dashboard's uploads too
 	}
 	tight := mk("artifacts/objects/def", 0o400)
 	outside := filepath.Join(t.TempDir(), "elsewhere")
@@ -40,7 +41,7 @@ func TestTightenDataPermissions(t *testing.T) {
 
 	mode := func(p string) os.FileMode { fi, err := os.Stat(p); require.NoError(t, err); return fi.Mode().Perm() }
 	assert.Equal(t, os.FileMode(0o700), mode(dir))
-	for _, d := range []string{"artifacts", "artifacts/objects", "artifacts/uploads", "artifacts/uploads/sess", "artifacts/sessions/s1"} {
+	for _, d := range []string{"artifacts", "artifacts/objects", "artifacts/uploads", "artifacts/uploads/sess", "artifacts/sessions/s1", "uploads"} {
 		assert.Equal(t, os.FileMode(0o700), mode(filepath.Join(dir, d)), d)
 	}
 	for _, f := range files {

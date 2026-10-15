@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/safefs"
 	"io"
 	"log/slog"
 	"math"
@@ -43,7 +44,9 @@ type agentUploadRecord struct {
 // uploadsDir is where per-session upload records live. The session id is
 // rejected unless it is a plain name, so it cannot escape the directory.
 func uploadsDir(coralDir, sessionID string) string {
-	if coralDir == "" || sessionID == "" || len(sessionID) > 128 || strings.ContainsAny(sessionID, "/\\\x00") || strings.Contains(sessionID, "..") {
+	// One safe path element: [A-Za-z0-9_-], at most 128, starting with a letter or digit, so
+	// never ".", "..", a separator, a drive ("C:") or a Windows device-like name (#3602 W26).
+	if coralDir == "" || !safefs.IsSafeID(sessionID) {
 		return ""
 	}
 	return filepath.Join(coralDir, "artifacts", "uploads", sessionID)

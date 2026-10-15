@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,4 +154,38 @@ func TestUploadCapAndDelete(t *testing.T) {
 		assert.NotEqual(t, http.StatusOK, del(n), n)
 	}
 	assert.FileExists(t, outside)
+}
+
+// #3602 W28: a dashboard upload is this user's only: the folder 0700, the file 0600.
+func TestUploadIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	coralDir := t.TempDir()
+	prevDir, prevSettings := uploadDir, uploadSettings
+	t.Cleanup(func() { uploadDir, uploadSettings = prevDir, prevSettings })
+	InitUploadDir(coralDir)
+	SetUploadSettings(func(context.Context) (map[string]string, error) { return map[string]string{}, nil })
+	r := chi.NewRouter()
+	r.Post("/api/upload", UploadFile)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+	code, out := uploadPNG(t, srv.URL, 1<<10)
+	require.Equal(t, http.StatusOK, code)
+	fi, err := os.Stat(uploadDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm(), "the uploads folder")
+	fi, err = os.Stat(out["path"].(string))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm(), "the uploaded file")
+}
+
+// #3602 W26: an upload folder's session id is one safe path element.
+func TestUploadsDirTakesOnlySafeIDs(t *testing.T) {
+	coralDir := t.TempDir()
+	assert.Equal(t, filepath.Join(coralDir, "artifacts", "uploads", "0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11"), uploadsDir(coralDir, "0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11"))
+	assert.NotEmpty(t, uploadsDir(coralDir, "sess-1"))
+	for _, bad := range []string{"", ".", "..", "../x", "a/b", `a\b`, "C:", "a:b", "a.b", "-x", "a b", strings.Repeat("a", 129)} {
+		assert.Empty(t, uploadsDir(coralDir, bad), "%q", bad)
+	}
 }

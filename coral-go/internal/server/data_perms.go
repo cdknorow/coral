@@ -43,19 +43,22 @@ func tightenDataPermissions(coralDir string) {
 			tighten(m, 0o600)
 		}
 	}
-	_ = filepath.WalkDir(filepath.Join(coralDir, "artifacts"), func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
+	// The artifacts tree and the dashboard's uploads (#3602 W28: they were 0755 and 0644).
+	for _, tree := range []string{"artifacts", "uploads"} {
+		_ = filepath.WalkDir(filepath.Join(coralDir, tree), func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			switch {
+			case d.Type()&fs.ModeSymlink != 0:
+			case d.IsDir():
+				tighten(path, 0o700)
+			case d.Type().IsRegular():
+				tighten(path, 0o600)
+			}
 			return nil
-		}
-		switch {
-		case d.Type()&fs.ModeSymlink != 0:
-		case d.IsDir():
-			tighten(path, 0o700)
-		case d.Type().IsRegular():
-			tighten(path, 0o600)
-		}
-		return nil
-	})
+		})
+	}
 	if changed > 0 {
 		log.Printf("[data] made %d files and folders in the data folder readable by this user only (folders 0700, files 0600)", changed)
 	}

@@ -110,7 +110,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	if err := os.MkdirAll(uploadDir, 0o700); err != nil { // this user's files only (#3602 W28)
 		errInternalServer(w, "Failed to create upload directory")
 		return
 	}
@@ -144,7 +144,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	safeName = strings.ReplaceAll(safeName, " ", "_")
 
 	dest := filepath.Join(uploadDir, safeName)
-	if err := os.WriteFile(dest, content, 0644); err != nil {
+	if err := os.WriteFile(dest, content, 0o600); err != nil {
 		errInternalServer(w, "Failed to save file")
 		return
 	}
