@@ -154,6 +154,9 @@ class CloudPanel {
         show('auto-accept-row', mode === 'launch');
         const allow = this.part('allow-auto-accept');
         if (allow) allow.checked = st.allow_hub_auto_accept !== false;
+        // Token redaction for hub viewers (#3560): on unless the owner turned it off here.
+        const redact = this.part('redact-tokens');
+        if (redact) redact.checked = st.redact_tokens !== false;
         // The Hub link came or went (connect, disconnect, revoke): the server clears the
         // Operator setting with it, so read it again.
         const enrolled = ENROLLED.includes(st.state);
@@ -284,6 +287,7 @@ class CloudPanel {
         });
         this.part('max-mode')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/max-mode', { mode: e.target.value }));
         this.part('allow-auto-accept')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked }));
+        this.part('redact-tokens')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/redact-tokens', { redact: e.target.checked }));
         this.part('hub-operator')?.addEventListener('change', (e) => this.setHubOperator(e.target.checked));
     }
 

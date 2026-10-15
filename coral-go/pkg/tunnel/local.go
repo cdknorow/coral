@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -266,6 +267,10 @@ type LocalHandler struct {
 	// from a local process that forges the header (any value still makes
 	// tunnel-only rules apply, so a forged stamp can only make things stricter).
 	ViaValue string
+	// RedactTokens turns on token redaction in View replies (#3560): well-known credential
+	// formats and private keys are replaced by RedactMarker before a reply leaves this
+	// computer. Read on every request; nil means on.
+	RedactTokens func() bool
 
 	once   sync.Once
 	client *http.Client
@@ -500,6 +505,12 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		return
 	}
 	req.Header = l.stamp(scrub(h.Headers, h.Method, dec))
+	redactRoute := l.redacting() && redactsRoute(h.Method, dec)
+	if redactRoute {
+		// A partial body could start inside a token: the whole reply is fetched and redacted.
+		req.Header.Del("Range")
+		req.Header.Del("If-Range")
+	}
 	if h.ContentLength > 0 {
 		req.ContentLength = h.ContentLength
 	}
@@ -547,6 +558,12 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		hdr.Set(BodyLengthHeader, strconv.FormatInt(resp.ContentLength, 10))
 	}
 	rewriteLocation(hdr)
+	if redactRoute && textReply(resp.Header.Get("Content-Type")) && bodyAllowed(s.Header.Method, resp.StatusCode) {
+		// The reply's length changes with each token replaced: none is announced.
+		hdr.Del(BodyLengthHeader)
+		l.serveRedacted(s, resp, respBody, hdr)
+		return
+	}
 	if resp.ContentLength >= 0 && resp.ContentLength <= wholeReplyMax && !decoded && bodyAllowed(s.Header.Method, resp.StatusCode) {
 		// A small reply of known length goes in one write: one turn on the uplink (#3440).
 		body := make([]byte, resp.ContentLength)
@@ -576,6 +593,91 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 			return // anything else: leave the body unterminated so the hub sees a truncated response
 		}
 	}
+}
+
+func (l *LocalHandler) redacting() bool { return l.RedactTokens == nil || l.RedactTokens() }
+
+// redactFailed is the whole answer when a reply couldn't be scanned: it never passes unscanned.
+const redactFailed = `{"error":"this reply could not be checked for secrets, so it is not shown through Coral Hub; open it on the computer"}` + "\n"
+
+var redactFailLog sync.Once
+
+// serveRedacted relays a View reply with its tokens replaced (#3560). A reply of known size up
+// to wholeReplyMax goes in one write, as unredacted ones do; a larger or open-ended one
+// streams through a Redactor, which holds back only a tail that could still be a token.
+func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Reader, hdr http.Header) {
+	if resp.ContentLength >= 0 && resp.ContentLength <= wholeReplyMax {
+		raw := make([]byte, resp.ContentLength)
+		if _, err := io.ReadFull(body, raw); err != nil {
+			s.Reject(CodeUpstream, "local response ended early", 0)
+			return
+		}
+		out, ok := redactWhole(raw)
+		if !ok {
+			l.respondRedactFailed(s)
+			return
+		}
+		_ = s.RespondWhole(ResponseHeader{Status: resp.StatusCode, Headers: hdr}, out)
+		return
+	}
+	w, err := s.Respond(ResponseHeader{Status: resp.StatusCode, Headers: hdr})
+	if err != nil {
+		return
+	}
+	red := NewRedactor(w)
+	buf := make([]byte, maxChunk)
+	for {
+		n, rerr := body.Read(buf)
+		if n > 0 && !redactWrite(red, buf[:n]) {
+			return // the scanner failed mid-stream: leave it unterminated, so the hub sees a truncated reply
+		}
+		if rerr != nil {
+			if rerr == io.EOF && redactClose(red) {
+				_ = w.Close()
+			}
+			return
+		}
+	}
+}
+
+func (l *LocalHandler) respondRedactFailed(s *Stream) {
+	redactFailLog.Do(func() { slog.Warn("[tunnel] a reply could not be checked for secrets; it was not sent to Coral Hub") })
+	w, err := s.Respond(ResponseHeader{Status: http.StatusBadGateway, Headers: http.Header{"Content-Type": {"application/json"}}})
+	if err != nil {
+		return
+	}
+	_, _ = io.WriteString(w, redactFailed)
+	_ = w.Close()
+}
+
+// redactWhole, redactWrite and redactClose turn a panic in the scanner into a failure, so a
+// reply is never sent unscanned.
+func redactWhole(b []byte) (out []byte, ok bool) {
+	defer func() {
+		if recover() != nil {
+			out, ok = nil, false
+		}
+	}()
+	return RedactTokens(b), true
+}
+
+func redactWrite(r *Redactor, b []byte) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	_, err := r.Write(b)
+	return err == nil
+}
+
+func redactClose(r *Redactor) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	return r.Close() == nil
 }
 
 // bodyless reports whether a response to method with status carries no body.

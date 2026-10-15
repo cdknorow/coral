@@ -96,6 +96,17 @@ The Coral Hub may add `coral_version`, `latest_coral` (no `v`) and `update` (`cu
 
 Archive needs v1.4.2 on the machine: the dashboard offers **Archive** only for rows that carry the `archived` field, so it is hidden for older remotes. A machine lists archived agents last and never reports them as waiting for input; the hub's per-machine `agents` count excludes them.
 
+## What Coral Hub viewers see
+
+**View access is the whole session.** A Coral Hub user at View reads everything the dashboard shows: every agent's terminal output (capture and the live terminal), chat and transcripts, tool events and pending tool calls, subagents, history and search, every board's messages, tasks and peeks, team knowledge, and workflow and scheduled-run output. Anything an agent printed or a person pasted (a `cat .env`, an environment dump, a token in a command) is in those replies. Grant View only to people who may see that.
+
+**Tokens are hidden by default.** Before a View reply leaves this computer, the connector replaces well-known credential formats with `[redacted token]`: GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), OpenAI and Anthropic keys (`sk-`), AWS access key ids (`AKIA`, `ASIA`), Slack tokens (`xoxa-`, `xoxb-`, `xoxp-`, `xoxr-`, `xoxs-`), `Bearer` and `Authorization` values (the scheme word stays), and PEM private-key blocks (from `BEGIN` to `END`, or to the end of the reply when it is cut off). Every View reply is scanned except artifact downloads (byte-exact, their id is their hash) and health, and binary types (images, audio, video, fonts, PDF, archives). On this computer nothing is hidden. Turn it off in **Settings > Coral Hub** ("Hide tokens from Coral Hub viewers"); only someone at this computer can.
+
+What it doesn't cover:
+- **Live streams:** the live terminal (`/ws/terminal`) and the live session list (`/ws/coral`) aren't redacted yet (planned for v1.4.38). Their capture and history replies are.
+- **Other formats:** a token in a format not listed above, or a token split across terminal lines or by colour codes, passes as it is.
+- A false match (a word that looks like a token) shows `[redacted token]` on the hub only.
+
 ## Connecting a server to Coral Hub
 
 Coral connects to Coral Hub only when it has a Coral Hub URL: `--cloud-url <hub origin>`, `CORAL_CLOUD_URL`, or a release build's default (`https://app.coralai.ai`; `--cloud-url off` turns it off). The release build's default URL never connects, prompts or pops anything up by itself: a fresh install offers Coral Hub only on the home screen, in **Settings > Coral Hub** and through `coral cloud connect`, unless a URL is passed explicitly or Coral is started with `--cloud-connect` (see [At startup](#at-startup)). Connecting links this server to your Coral Hub account; only someone at this computer, as the user Coral runs as, can do it. The dashboard's **Settings > Coral Hub** does it from a browser on this computer. Opened from another computer, every `/api/cloud` route answers `403` with `code: local_dashboard_required` and `command: coral cloud connect`.

@@ -961,6 +961,7 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		Store:        store.NewCloudStore(db, store.NewRemoteServerStore(db, cfg.CoralDir())),
 		LocalBaseURL: "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Port)),
 		MaxMode:      routes.MaxModeFromSettings(ss),
+		RedactTokens: routes.RedactTokensFromSettings(ss),
 		CoralVersion: config.ReportedVersion(),
 		Logger:       slog.Default(),
 		OnLinkLost: func(ctx context.Context) {

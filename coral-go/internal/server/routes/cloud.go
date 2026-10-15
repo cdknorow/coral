@@ -37,6 +37,24 @@ const MaxModeSetting = "cloud_max_mode"
 // the mode cap; turning it off ends every enable that came from the hub.
 const AllowHubAutoAcceptSetting = "cloud_allow_hub_auto_accept"
 
+// RedactTokensSetting is the local switch "hide tokens from Coral Hub viewers" (#3560): the
+// connector replaces well-known credential formats and private keys in View replies before
+// they leave this computer. On unless set to "false"; local only, like the mode cap.
+const RedactTokensSetting = "hub_redact_tokens"
+
+// HubRedactTokens reads the switch (default on).
+func HubRedactTokens(settings map[string]string) bool {
+	return settings[RedactTokensSetting] != "false"
+}
+
+// RedactTokensFromSettings reads the switch on every request; an unreadable store means on.
+func RedactTokensFromSettings(ss *store.SessionStore) func() bool {
+	return func() bool {
+		s, err := ss.GetSettings(context.Background())
+		return err != nil || HubRedactTokens(s)
+	}
+}
+
 // HubAutoAcceptAllowed reads the switch (default on).
 func HubAutoAcceptAllowed(settings map[string]string) bool {
 	return settings[AllowHubAutoAcceptSetting] != "false"
@@ -133,6 +151,8 @@ func (h *CloudHandler) manager() *cloud.Manager {
 type cloudStatus struct {
 	cloud.Status
 	AllowHubAutoAccept bool `json:"allow_hub_auto_accept"`
+	// RedactTokens: tokens and private keys are hidden from Coral Hub viewers (#3560).
+	RedactTokens bool `json:"redact_tokens"`
 	// Bootstrap is the last one-time-credential enrollment's outcome
 	// ({status, detail, at}); absent when there was none.
 	Bootstrap json.RawMessage `json:"bootstrap,omitempty"`
@@ -146,15 +166,15 @@ func (h *CloudHandler) status() cloudStatus {
 	if m := h.manager(); m != nil {
 		st = m.Status()
 	}
-	allow := true
+	allow, redact := true, true
 	var boot json.RawMessage
 	if s, err := h.ss.GetSettings(context.Background()); err == nil {
-		allow = HubAutoAcceptAllowed(s)
+		allow, redact = HubAutoAcceptAllowed(s), HubRedactTokens(s)
 		if v := s[cloud.BootstrapStatusSetting]; json.Valid([]byte(v)) {
 			boot = json.RawMessage(v)
 		}
 	}
-	return cloudStatus{Status: st, AllowHubAutoAccept: allow, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	return cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
 }
 
 // Who may use the /api/cloud routes. Never the Cloud Hub (they are not in the
@@ -550,6 +570,30 @@ func (h *CloudHandler) SetMaxMode(w http.ResponseWriter, r *http.Request) {
 	}
 	if m := h.manager(); m != nil {
 		m.ModeChanged(r.Context())
+	}
+	writeJSON(w, http.StatusOK, h.status())
+}
+
+// SetRedactTokens: PUT /api/cloud/redact-tokens {"redact": bool}. Local dashboard and the
+// signed command line only (never through the tunnel). It applies to the next reply.
+func (h *CloudHandler) SetRedactTokens(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Redact *bool `json:"redact"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.Redact == nil {
+		errBadRequest(w, "redact is required")
+		return
+	}
+	v := "true"
+	if !*body.Redact {
+		v = "false"
+	}
+	if err := h.ss.SetSetting(r.Context(), RedactTokensSetting, v); err != nil {
+		errInternalServer(w, "Could not save the setting")
+		return
 	}
 	writeJSON(w, http.StatusOK, h.status())
 }

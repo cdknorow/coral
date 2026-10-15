@@ -548,6 +548,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/system/identity-report", s.cloudHandler.IdentityReport)
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
+	r.Put("/api/cloud/redact-tokens", s.cloudHandler.SetRedactTokens)
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)
 	r.Post("/api/cloud/cli-hello", s.cloudHandler.CLIHello)
 

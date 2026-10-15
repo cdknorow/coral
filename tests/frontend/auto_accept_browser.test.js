@@ -234,6 +234,38 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(await ev(`window.__cloudPuts[0]`), { method: 'PUT', body: { allow: false } });
         console.log('   ✓ hidden below Launch; on by default; PUT /api/cloud/allow-auto-accept {allow}');
 
+        console.log('10b. Settings: "Hide tokens from Coral Hub viewers" (#3560) is on by default and saves locally');
+        const redactRow = await ev(`(async () => {
+            const box = document.getElementById('settings-cloud-redact-tokens');
+            if (!box) return 'missing';
+            const prev = window.fetch;
+            window.__redactPuts = [];
+            window.fetch = async (url, opts) => {
+                if (String(url).endsWith('/api/cloud/redact-tokens')) {
+                    const body = JSON.parse(opts.body);
+                    window.__redactPuts.push({ method: opts.method, body });
+                    window.__setCloud({ redact_tokens: body.redact });
+                }
+                return prev(url, opts);
+            };
+            const cc = await import(${S}+'cloud_connect.js');
+            window.__setCloud({ redact_tokens: undefined });
+            await cc.loadCloudStatus();
+            const byDefault = box.checked;
+            window.__setCloud({ redact_tokens: false });
+            await cc.loadCloudStatus();
+            const off = box.checked;
+            window.__setCloud({ redact_tokens: true });
+            await cc.loadCloudStatus();
+            box.checked = false; box.dispatchEvent(new Event('change'));
+            return { byDefault, off, describedBy: box.getAttribute('aria-describedby') };
+        })()`);
+        assert.notEqual(redactRow, 'missing', 'the switch is in the Settings markup');
+        assert.deepEqual(redactRow, { byDefault: true, off: false, describedBy: 'settings-cloud-redact-desc' });
+        await waitFor(`window.__redactPuts.length === 1`, 'the local PUT');
+        assert.deepEqual(await ev(`window.__redactPuts[0]`), { method: 'PUT', body: { redact: false } });
+        console.log('   ✓ on by default (also when the server does not say); PUT /api/cloud/redact-tokens {redact}');
+
         console.log('11. A refused enable says why, in words (403 codes)');
         const refusals = await ev(`(async () => {
             const real = window.fetch; const out = {};

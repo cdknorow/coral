@@ -293,6 +293,7 @@ PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} interact
 PUT /api/cloud/allow-auto-accept never
 PUT /api/cloud/max-mode never
+PUT /api/cloud/redact-tokens never
 PUT /api/scheduled/jobs/{jobID} never
 PUT /api/sessions/history/{sessionID}/notes never
 PUT /api/sessions/live/{name}/display-name interact
