@@ -198,7 +198,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if err := dbcrypt.RejectUnsupportedEncryption(coralDir, cfg.DBPath, filepath.Join(coralDir, "messageboard.db")); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(coralDir, 0755); err != nil {
+	if err := config.EnsureDataDir(coralDir); err != nil { // this user only (#3637)
 		return nil, fmt.Errorf("failed to create data directory %s: %w", coralDir, err)
 	}
 

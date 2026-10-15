@@ -38,7 +38,7 @@ const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
 // terminal copy never blocks: see logOutput (#3226). Exits go through logexit,
 // which flushes the terminal copy first so the last lines are not lost.
 func setupCrashLogging(coralDir string) {
-	os.MkdirAll(coralDir, 0o700)
+	_ = config.EnsureDataDir(coralDir) // this user only (#3637); the log open below reports a failure
 	logFile := filepath.Join(coralDir, "coral.log")
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {

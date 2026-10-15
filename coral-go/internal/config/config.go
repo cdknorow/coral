@@ -130,7 +130,9 @@ func Load(dataDir ...string) *Config {
 
 	// Ensure data directory exists: only this user may read it (#3552, Security's #3551 audit)
 	testguard.CheckDataPath(coralDir)
-	os.MkdirAll(coralDir, 0o700)
+	if err := EnsureDataDir(coralDir); err != nil {
+		log.Printf("[config] data folder %s: %v", coralDir, err)
+	}
 
 	// Agent pipe logs (everything an agent's terminal shows) live in the data folder, never in
 	// the shared system temp dir, where other users of the computer could read them (#3259 for

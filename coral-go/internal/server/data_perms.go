@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/cdknorow/coral/internal/config"
 )
 
 // tightenDataPermissions makes Coral's data readable by this user only (#3552, Security's
@@ -16,7 +18,11 @@ import (
 // touches what is looser, and logs once when it changed something). Symlinks are never
 // followed; Windows has no such modes and is skipped.
 func tightenDataPermissions(coralDir string) {
-	if runtime.GOOS == "windows" || coralDir == "" {
+	if coralDir == "" {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		warnBroadDataFolder(coralDir)
 		return
 	}
 	// A data folder reached through a symlink: tighten the real folder (resolved once; no
@@ -61,5 +67,14 @@ func tightenDataPermissions(coralDir string) {
 	}
 	if changed > 0 {
 		log.Printf("[data] made %d files and folders in the data folder readable by this user only (folders 0700, files 0600)", changed)
+	}
+}
+
+// warnBroadDataFolder: on Windows the data folder's access list is the protection for the API
+// key, the command-line token and the databases; a folder others can read is reported loudly at
+// every start (#3637). Coral doesn't change an existing folder's access list itself.
+func warnBroadDataFolder(coralDir string) {
+	if msg := config.DataDirWarning(coralDir); msg != "" {
+		log.Printf("[security] %s", msg)
 	}
 }
