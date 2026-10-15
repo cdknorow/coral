@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -153,4 +154,36 @@ func TestTextReply(t *testing.T) {
 	} {
 		assert.Equal(t, want, textReply(ct), ct)
 	}
+}
+
+// #3564 (Security's note on #3560): a gzip reply from the local app is decoded by the connector,
+// and its Content-Length is the compressed size. The redacted reply streams it whole instead of
+// reading only that many bytes of the decoded body.
+func TestRedactDecodedReplyWhole(t *testing.T) {
+	tok := fake("ghp_", 36, alnum)
+	plain, _ := json.Marshal(map[string]string{"output": strings.Repeat("compressible line of output\n", 400) + "export GH=" + tok + "\nend of output"})
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	_, _ = zw.Write(plain)
+	require.NoError(t, zw.Close())
+	require.Less(t, gz.Len(), len(plain)/4, "the compressed size is far below the body's")
+	require.Less(t, len(plain), wholeReplyMax, "small enough for the whole-reply path")
+
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Length", strconv.Itoa(gz.Len()))
+		w.Write(gz.Bytes())
+	})
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, local, nil)
+	resp := do(t, sess, "GET", "/api/sessions/live/a/capture", "", strings.NewReader(""), nil)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, string(RedactTokens(plain)), string(body), "the whole decoded body, redacted")
+	assert.True(t, json.Valid(body))
+	assert.Contains(t, string(body), "end of output")
+	assert.NotContains(t, string(body), tok)
 }

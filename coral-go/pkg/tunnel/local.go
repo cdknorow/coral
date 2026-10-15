@@ -561,7 +561,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	if redactRoute && textReply(resp.Header.Get("Content-Type")) && bodyAllowed(s.Header.Method, resp.StatusCode) {
 		// The reply's length changes with each token replaced: none is announced.
 		hdr.Del(BodyLengthHeader)
-		l.serveRedacted(s, resp, respBody, hdr)
+		l.serveRedacted(s, resp, respBody, hdr, decoded)
 		return
 	}
 	if resp.ContentLength >= 0 && resp.ContentLength <= wholeReplyMax && !decoded && bodyAllowed(s.Header.Method, resp.StatusCode) {
@@ -603,10 +603,16 @@ const redactFailed = `{"error":"this reply could not be checked for secrets, so 
 var redactFailLog sync.Once
 
 // serveRedacted relays a View reply with its tokens replaced (#3560). A reply of known size up
-// to wholeReplyMax goes in one write, as unredacted ones do; a larger or open-ended one
-// streams through a Redactor, which holds back only a tail that could still be a token.
-func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Reader, hdr http.Header) {
-	if resp.ContentLength >= 0 && resp.ContentLength <= wholeReplyMax {
+// to wholeReplyMax goes in one write, as unredacted ones do; a larger, open-ended or decoded one
+// streams through a Redactor, which holds back only a tail that could still be a token. Range
+// is dropped per route, not per content type, so a binary reply on a redacted View route (an
+// image the agent's page serves, say) is a 200 with the whole body: accepted (Security's #3560
+// note 2), since only artifact downloads need byte ranges and they are exempt.
+func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Reader, hdr http.Header, decoded bool) {
+	// The whole-reply path reads exactly Content-Length bytes, which for a decoded (gzip) reply is
+	// the compressed size, not the body's: such a reply streams instead (#3564, as the unredacted
+	// path does).
+	if resp.ContentLength >= 0 && resp.ContentLength <= wholeReplyMax && !decoded {
 		raw := make([]byte, resp.ContentLength)
 		if _, err := io.ReadFull(body, raw); err != nil {
 			s.Reject(CodeUpstream, "local response ended early", 0)
