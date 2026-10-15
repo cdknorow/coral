@@ -1176,3 +1176,14 @@ body.panel-dragging .sidebar {
 
 /* Agent counts on team, folder and sub-group headers are hidden. */
 .sidebar .session-group-count { display: none; }
+
+/* Coral Hub connection indicator in the header (#3544) */
+.hub-indicator[hidden] { display: none; }
+.hub-indicator[data-state="connected"] { color: var(--accent); }
+.hub-indicator[data-state="connecting"] { color: var(--text-muted); animation: hub-indicator-pulse 1.6s ease-in-out infinite; }
+.hub-indicator[data-state="disconnected"] { color: var(--warning); }
+.hub-indicator[data-state]:hover { background: var(--bg-hover); }
+@keyframes hub-indicator-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) {
+    .hub-indicator[data-state="connecting"] { animation: none; }
+}

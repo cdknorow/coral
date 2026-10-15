@@ -78,6 +78,20 @@ type Status struct {
 	// Loading is true from startup until the connector has read the stored
 	// enrollment (and a startup credential, if any): State is not final yet.
 	Loading bool `json:"loading,omitempty"`
+	// ConnectedAt is when the tunnel came up, while State is connected (the dashboard's hub
+	// indicator says "connected since", #3544); zero in every other state.
+	ConnectedAt time.Time `json:"connected_at,omitzero"`
+}
+
+// applyTunnelState records a tunnel state change: ConnectedAt is set when the tunnel comes
+// up, kept while it stays up, and cleared in any other state.
+func applyTunnelState(st *Status, state, msg string, now time.Time) {
+	if state == StateConnected && st.State != StateConnected {
+		st.ConnectedAt = now.UTC()
+	} else if state != StateConnected {
+		st.ConnectedAt = time.Time{}
+	}
+	st.State, st.LastError, st.LastErrorCode = state, msg, ""
 }
 
 // Last error codes (Status.LastErrorCode).
@@ -472,7 +486,7 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if !m.stale(gen) {
-			m.st.State, m.st.LastError, m.st.LastErrorCode = state, msg, ""
+			applyTunnelState(&m.st, state, msg, time.Now())
 		}
 	}
 	token, err := m.o.Store.Token(ctx)

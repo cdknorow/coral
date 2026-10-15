@@ -63,6 +63,7 @@ import { initChatFind } from './chat_find.js';
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
 import { teamFetch, sessionServer, keyLabel } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
+import { initHubIndicator } from './hub_indicator.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './csp_compat.js';   // runs inline handlers without eval on the Coral Hub (inert elsewhere)
 import { markReady } from './ready.js';
@@ -935,6 +936,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Single-agent popout mode (/agent/{uuid}): chrome-free workspace only.
     // Marked before any renderer runs so CSS and storage scoping apply.
     const popout = applyPopoutBodyClass();
+    if (!popout) initHubIndicator(); // the Coral Hub connection in the header (#3544)
 
     // Restore filter state from URL query params before first load
     const restored = deserializeFromUrl();
