@@ -6,7 +6,8 @@ name: windows-tests
 # Windows input and pipe-log code. The server builds with CGO_ENABLED=0 and -tags fts5 (the
 # pure-Go SQLite driver), as release.yml's Windows build does, so no C toolchain is needed.
 #
-# NON-BLOCKING at first: continue-on-error until it has been green twice, then it becomes required.
+# REQUIRED since 2026-10-15: green on ci/3641 (run 38814223172) and on main 725773f8 (run 38817692004);
+# a Windows failure now fails this workflow.
 on:
   push:
     branches: [main]
@@ -30,7 +31,6 @@ jobs:
   go:
     name: go test (windows-latest)
     runs-on: windows-latest
-    continue-on-error: true # until green twice (#3614), then required
     timeout-minutes: 45
     env:
       CGO_ENABLED: "0"
