@@ -425,7 +425,6 @@ func (s *TaskStore) CreateAgentNote(ctx context.Context, agentName, content stri
 	}, nil
 }
 
-// UpdateAgentNote updates note content.
 // GetAgentNote returns a note, or nil when there is none with that id.
 func (s *TaskStore) GetAgentNote(ctx context.Context, noteID int64) (*AgentNote, error) {
 	var n AgentNote
@@ -440,6 +439,7 @@ func (s *TaskStore) GetAgentNote(ctx context.Context, noteID int64) (*AgentNote,
 	return &n, nil
 }
 
+// UpdateAgentNote updates note content.
 func (s *TaskStore) UpdateAgentNote(ctx context.Context, noteID int64, content string) error {
 	now := nowUTC()
 	_, err := s.db.ExecContext(ctx,

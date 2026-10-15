@@ -4147,7 +4147,20 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "title is required")
 		return
 	}
-	name := chi.URLParam(r, "name")
+	// Whose list it goes on (#3498): an agent's own, or the path's for the Operator.
+	// A notify types a claim prompt into that agent, so the path can't redirect it.
+	claim := body.SessionID
+	if claim == "" {
+		claim = queryClaim(r)
+	}
+	scope, ok := h.itemScope(w, r, claim)
+	if !ok {
+		return
+	}
+	name := scope.name
+	if scope.sid != nil {
+		body.SessionID = *scope.sid
+	}
 
 	// One row per open task: the operator's task and the agent's own
 	// TaskCreate for it (synced by title) converge instead of duplicating.
@@ -4185,35 +4198,49 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// itemScope is whose tasks and notes a live-session route may change (#3498, security
-// sweep item 9). An agent, by its session token, acts only on its own: its agent name
-// and session come from the token, whatever the path says (the path's name comes from
-// the hook's working folder, which can drift: #3495's rule). The Operator (the
-// dashboard, the verified CLI) acts on the path's {name}, and its ?session_id= when
-// given. Anyone else is refused (callerSession).
+// itemScope is whose tasks and notes a live-session route may create or change
+// (#3498, security sweep item 9). claimed is the session the request names (its
+// ?session_id=, or a create's body session_id).
+//   - An agent, by its session token, acts only on its own: its agent name and session
+//     come from the token, whatever the path says (the path's name comes from the
+//     hook's working folder, which can drift: #3495's rule); claiming another session
+//     is 403.
+//   - A terminal session with no token (default mode only, the operator's rule as in
+//     #3495) acts as the session it names, under that session's own agent name.
+//   - The Operator (the dashboard, the verified CLI, the Hub's stamp) acts on the
+//     path's {name}, and on the claimed session when one is given.
+//   - Anyone else is 401 (callerSession).
+//
+// The GET list routes are not identity-bound (reads; #3475's design).
 type itemScope struct {
 	name  string
 	sid   *string
-	agent bool
+	agent bool // an agent (or a terminal session) acting for itself
 }
 
-func (h *SessionsHandler) itemScope(w http.ResponseWriter, r *http.Request) (itemScope, bool) {
-	claimed := ""
-	if q := querySessionID(r); q != nil {
-		claimed = *q
-	}
-	sid, ok := callerSession(w, r, claimed, true, nil)
+func (h *SessionsHandler) itemScope(w http.ResponseWriter, r *http.Request, claimed string) (itemScope, bool) {
+	sid, ok := callerSession(w, r, claimed, true, h.isTerminalSession(r.Context()))
 	if !ok {
 		return itemScope{}, false
 	}
-	if owner, isAgent := VerifiedSession(r.Context()); isAgent {
-		name := owner.SessionName
-		if ls, err := h.ss.GetLiveSession(r.Context(), owner.SessionID); err == nil && ls != nil {
-			name = ls.AgentName
+	agentName := func(sessionID, fallback string) string {
+		if ls, err := h.ss.GetLiveSession(r.Context(), sessionID); err == nil && ls != nil {
+			return ls.AgentName
 		}
-		return itemScope{name: name, sid: &sid, agent: true}, true
+		return fallback
 	}
-	return itemScope{name: chi.URLParam(r, "name"), sid: querySessionID(r)}, true
+	if owner, isAgent := VerifiedSession(r.Context()); isAgent {
+		return itemScope{name: agentName(owner.SessionID, owner.SessionName), sid: &sid, agent: true}, true
+	}
+	if !humanInputCaller(r) { // a terminal session, by the session it names
+		return itemScope{name: agentName(sid, chi.URLParam(r, "name")), sid: &sid, agent: true}, true
+	}
+	return itemScope{name: chi.URLParam(r, "name"), sid: strPtr(claimed)}, true
+}
+
+// queryClaim is the session a request names in its query, or "".
+func queryClaim(r *http.Request) string {
+	return r.URL.Query().Get("session_id")
 }
 
 // owns reports whether an item of agent itemName and session itemSID is in scope: the
@@ -4262,7 +4289,7 @@ func (h *SessionsHandler) ownNote(w http.ResponseWriter, r *http.Request, scope 
 
 func (h *SessionsHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	taskID, _ := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
-	scope, ok := h.itemScope(w, r)
+	scope, ok := h.itemScope(w, r, queryClaim(r))
 	if !ok {
 		return
 	}
@@ -4288,7 +4315,7 @@ func (h *SessionsHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionsHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	taskID, _ := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
-	scope, ok := h.itemScope(w, r)
+	scope, ok := h.itemScope(w, r, queryClaim(r))
 	if !ok {
 		return
 	}
@@ -4303,15 +4330,15 @@ func (h *SessionsHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SessionsHandler) ReorderTasks(w http.ResponseWriter, r *http.Request) {
+	scope, ok := h.itemScope(w, r, queryClaim(r))
+	if !ok {
+		return
+	}
 	var body struct {
 		TaskIDs []int64 `json:"task_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.TaskIDs) == 0 {
 		errBadRequest(w, "task_ids required")
-		return
-	}
-	scope, ok := h.itemScope(w, r)
-	if !ok {
 		return
 	}
 	for _, id := range body.TaskIDs {
@@ -4339,7 +4366,6 @@ func (h *SessionsHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SessionsHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
 	var body struct {
 		Content   string `json:"content"`
 		SessionID string `json:"session_id"`
@@ -4347,6 +4373,18 @@ func (h *SessionsHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Content == "" {
 		errBadRequest(w, "content is required")
 		return
+	}
+	claim := body.SessionID
+	if claim == "" {
+		claim = queryClaim(r)
+	}
+	scope, ok := h.itemScope(w, r, claim) // whose notes (#3498)
+	if !ok {
+		return
+	}
+	name := scope.name
+	if scope.sid != nil {
+		body.SessionID = *scope.sid
 	}
 	note, err := h.ts.CreateAgentNote(r.Context(), name, body.Content, strPtr(body.SessionID))
 	if err != nil {
@@ -4358,7 +4396,7 @@ func (h *SessionsHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionsHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 	noteID, _ := strconv.ParseInt(chi.URLParam(r, "noteID"), 10, 64)
-	scope, ok := h.itemScope(w, r)
+	scope, ok := h.itemScope(w, r, queryClaim(r))
 	if !ok {
 		return
 	}
@@ -4381,7 +4419,7 @@ func (h *SessionsHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionsHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 	noteID, _ := strconv.ParseInt(chi.URLParam(r, "noteID"), 10, 64)
-	scope, ok := h.itemScope(w, r)
+	scope, ok := h.itemScope(w, r, queryClaim(r))
 	if !ok {
 		return
 	}

@@ -88,6 +88,8 @@ var routeQueries = map[string]string{
 	"PATCH /api/sessions/live/{}/tasks/{}":              "session_id",
 	"POST /api/agent/ui-request":                        "session_id",
 	"POST /api/agent/ui/{}/events":                      "session_id",
+	"POST /api/sessions/live/{}/notes":                  "session_id",
+	"POST /api/sessions/live/{}/tasks":                  "session_id",
 	"POST /api/sessions/live/{}/tasks/reorder":          "session_id",
 	"PUT /api/sessions/live/{}/file-content":            "filepath*,session_id",
 }

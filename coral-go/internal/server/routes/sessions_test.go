@@ -2144,7 +2144,7 @@ func TestSessionsTasks_CRUD(t *testing.T) {
 
 	// Create task
 	body := bytes.NewBufferString(`{"title": "Test task", "session_id": "test-task-123"}`)
-	resp, err = http.Post(server.URL+"/api/sessions/live/claude-test-tasks/tasks", "application/json", body)
+	resp, err = operatorClient.Post(server.URL+"/api/sessions/live/claude-test-tasks/tasks", "application/json", body)
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -2158,7 +2158,7 @@ func TestSessionsTasks_SameTitleReusesOpenTask(t *testing.T) {
 	base := server.URL + "/api/sessions/live/claude-task-dedupe/tasks"
 
 	create := func(title string) map[string]any {
-		resp, err := http.Post(base, "application/json", bytes.NewBufferString(`{"title": "`+title+`", "session_id": "dedupe-1"}`))
+		resp, err := operatorClient.Post(base, "application/json", bytes.NewBufferString(`{"title": "`+title+`", "session_id": "dedupe-1"}`))
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -2179,7 +2179,7 @@ func TestSessionsTasks_SameTitleReusesOpenTask(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", server.URL) // the operator, from the dashboard (#3498)
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := operatorClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
 	fresh := create("Add a battle log")
@@ -2194,7 +2194,7 @@ func TestSessionsNotes_Create(t *testing.T) {
 	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "claude-test-notes", AgentType: "claude", WorkingDir: "/tmp/test", SessionID: "test-note-123"})
 
 	body := bytes.NewBufferString(`{"content": "Test note", "session_id": "test-note-123"}`)
-	resp, err := http.Post(server.URL+"/api/sessions/live/claude-test-notes/notes", "application/json", body)
+	resp, err := operatorClient.Post(server.URL+"/api/sessions/live/claude-test-notes/notes", "application/json", body)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -2362,6 +2362,18 @@ func (asNamedAgent) RoundTrip(r *http.Request) (*http.Response, error) {
 	if sid != "" {
 		r.Header.Set(testAgentHeader, sid)
 	}
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// operatorClient sends each request as the dashboard does (same-origin headers), the
+// Operator on routes that bind the caller (#3498).
+var operatorClient = &http.Client{Transport: dashboardTransport{}}
+
+type dashboardTransport struct{}
+
+func (dashboardTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.Header.Set("Origin", r.URL.Scheme+"://"+r.URL.Host)
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	return http.DefaultTransport.RoundTrip(r)
 }
 
