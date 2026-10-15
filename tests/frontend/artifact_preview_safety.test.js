@@ -124,7 +124,12 @@ const BASE = require('./test_base').BASE;
         return {hasFrame:!!frame,referrer:frame?frame.referrerPolicy:null,messages:window.__messages,canary:window.__canary};
       })()`);
       await new Promise(r => setTimeout(r, 500)); // sleep-ok: late loads (proves a negative)
-    } finally { await new Promise(r => sink.close(r)); }
+    } finally {
+      // Drop open sockets first: Linux Chrome keeps one to the sink that never sent a request (a
+      // preconnect), and close() alone waits for it until headersTimeout, over a minute on Linux.
+      sink.closeAllConnections();
+      await new Promise(r => sink.close(r));
+    }
     await ev(`window.__closePreview()`);
     // Collected and reported together so each property shows up on its own when it is the one that breaks.
     const isoProblems = [];
