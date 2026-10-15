@@ -229,6 +229,25 @@ function resetTeam(boardName) {
 // ── Top Nav Tab Switching ─────────────────────────────────────────────
 let _navGeneration = 0;
 
+// At phone width the nav strip scrolls sideways (#3152): the current tab is scrolled clear of the
+// strip's edge fade, so a page opened by a link (/docs) or a switch made elsewhere shows its tab
+// (#3608). Only the strip scrolls, never the page. Measured again on the next frame, after the
+// view the switch shows has laid out.
+const NAV_EDGE_FADE = 24;
+function revealNavTab(btn) {
+    const reveal = () => {
+        const nav = btn.parentElement;
+        if (!nav || !btn.classList.contains('active') || nav.scrollWidth <= nav.clientWidth + 1) return;
+        const n = nav.getBoundingClientRect(), r = btn.getBoundingClientRect();
+        if (!r.width) return;
+        const pad = Math.min(NAV_EDGE_FADE, Math.max(0, (n.width - r.width) / 2));
+        if (r.left < n.left + pad) nav.scrollLeft -= n.left + pad - r.left;
+        else if (r.right > n.right - pad) nav.scrollLeft += r.right - (n.right - pad);
+    };
+    reveal();
+    requestAnimationFrame(reveal);
+}
+
 function switchNavTab(tab, opts = {}) {
     // A panel that loads on first use (lazy_panels.js) shows its view only if
     // nothing else was selected or shown while it loaded. Once loaded it shows at once.
@@ -258,7 +277,7 @@ function switchNavTab(tab, opts = {}) {
     // Update the nav buttons: page navigation, so the current one is aria-current="page".
     document.querySelectorAll('.top-nav-tab').forEach(btn => { btn.classList.remove('active'); btn.removeAttribute('aria-current'); });
     const activeTab = document.getElementById(`nav-tab-${tab}`);
-    if (activeTab) { activeTab.classList.add('active'); activeTab.setAttribute('aria-current', 'page'); }
+    if (activeTab) { activeTab.classList.add('active'); activeTab.setAttribute('aria-current', 'page'); revealNavTab(activeTab); }
 
     // Show/hide sidebar sections based on tab
     const liveSection = document.querySelector('[data-section="live-sessions"]');

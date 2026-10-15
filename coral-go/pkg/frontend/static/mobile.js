@@ -383,6 +383,17 @@ function _initNavFade() {
         nav.classList.toggle('fade-right', max > 2 && nav.scrollLeft < max - 2);
     };
     nav.addEventListener('scroll', update, { passive: true });
+    // A mouse wheel in a window this narrow turns only vertically, and the strip has no scrollbar
+    // to drag: a vertical turn over a clipped strip scrolls it sideways (#3608).
+    nav.addEventListener('wheel', e => {
+        const max = nav.scrollWidth - nav.clientWidth;
+        if (max <= 2 || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        const step = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * nav.clientWidth : e.deltaY;
+        const next = Math.max(0, Math.min(max, nav.scrollLeft + step));
+        if (next === nav.scrollLeft) return;
+        e.preventDefault();
+        nav.scrollLeft = next;
+    }, { passive: false });
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(update).observe(nav);
     else window.addEventListener('resize', update);
     update();
