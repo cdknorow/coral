@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // hostileRepo makes a repository whose config names a command for every way git can be told
@@ -161,7 +162,8 @@ func TestHostileRepoRunsCommandsWithoutTheGuard(t *testing.T) {
 func TestFilterOverrides(t *testing.T) {
 	repo, _ := hostileRepo(t)
 	got := filterOverrides(context.Background(), repo)
-	for _, want := range []string{"filter.evil.clean=", "filter.evil.smudge=", "filter.lfs.process=", "filter.other.clean=", "filter.Mixed.smudge="} {
+	for _, want := range []string{"filter.evil.clean=", "filter.evil.smudge=", "filter.lfs.process=", "filter.other.clean=", "filter.Mixed.smudge=",
+		"filter.evil.required=false", "filter.Mixed.required=false"} {
 		if !slices.Contains(got, want) {
 			t.Errorf("no %s in %v", want, got)
 		}
@@ -182,7 +184,10 @@ func TestDiffGuards(t *testing.T) {
 		{[]string{"diff", "HEAD"}, []string{"diff", "--no-ext-diff", "--no-textconv", "HEAD"}},
 		{[]string{"--literal-pathspecs", "diff", "x"}, []string{"--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "x"}},
 		{[]string{"show", "HEAD:a"}, []string{"show", "--no-ext-diff", "--no-textconv", "HEAD:a"}},
-		{[]string{"log", "-1"}, []string{"log", "-1"}},
+		{[]string{"log", "-1"}, []string{"log", "--no-ext-diff", "--no-textconv", "-1"}},
+		{[]string{"blame", "f"}, []string{"blame", "--no-textconv", "f"}},
+		{[]string{"grep", "-e", "x"}, []string{"grep", "--no-textconv", "-e", "x"}},
+		{[]string{"status", "--porcelain"}, []string{"status", "--porcelain"}},
 		{[]string{"rev-parse", "diff"}, []string{"rev-parse", "diff"}},
 	} {
 		if got := withDiffGuards(c.in); !slices.Equal(got, c.want) {
@@ -190,7 +195,8 @@ func TestDiffGuards(t *testing.T) {
 		}
 	}
 	args := Args(context.Background(), "", "status")
-	for _, want := range []string{"core.fsmonitor=false", "core.hooksPath=" + noHooksPath(), "diff.external=", "core.pager=cat", "core.sshCommand=ssh", "protocol.ext.allow=never", "log.showSignature=false"} {
+	for _, want := range []string{"core.fsmonitor=false", "core.hooksPath=" + noHooksPath(), "diff.external=", "core.pager=cat", "core.sshCommand=ssh", "protocol.ext.allow=never", "log.showSignature=false",
+		"diff.ignoreSubmodules=all", "submodule.recurse=false", "status.submoduleSummary=false"} {
 		if !slices.Contains(args, want) {
 			t.Errorf("Args lacks -c %s: %v", want, args)
 		}
@@ -198,4 +204,124 @@ func TestDiffGuards(t *testing.T) {
 	if env := Env(); !slices.Contains(env, "GIT_TERMINAL_PROMPT=0") || !slices.Contains(env, "GIT_OPTIONAL_LOCKS=0") {
 		t.Errorf("Env = %v", env)
 	}
+}
+
+// A required filter driver (git-crypt sets required=true) whose commands are emptied must not
+// fail the command: the driver is made not required too (Security's SHOULD 1 on #3579).
+func TestRequiredFilterStillWorks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell scripts")
+	}
+	if !Available() {
+		t.Skip("git not installed")
+	}
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	run := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	os.MkdirAll(repo, 0o755)
+	run("init", "-q", "-b", "main")
+	run("config", "user.email", "t@example.invalid")
+	run("config", "user.name", "t")
+	os.WriteFile(filepath.Join(repo, ".gitattributes"), []byte("*.sec filter=crypt\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "a.sec"), []byte("stored\n"), 0o644)
+	run("add", "-A")
+	run("commit", "-qm", "init")
+	run("config", "filter.crypt.clean", "cat")
+	run("config", "filter.crypt.smudge", "cat")
+	run("config", "filter.crypt.required", "true")
+	os.WriteFile(filepath.Join(repo, "a.sec"), []byte("stored\nmore\n"), 0o644)
+	ctx := context.Background()
+	wt := filepath.Join(root, "wt")
+	for _, args := range [][]string{
+		{"status", "--porcelain"},
+		{"diff", "HEAD", "--numstat", "-z"},
+		{"diff", "--binary", "HEAD", "--"},
+		{"worktree", "add", "-b", "coral-x", wt, "main"},
+	} {
+		if out, err := Command(ctx, repo, args...).CombinedOutput(); err != nil {
+			t.Errorf("git %v failed: %v\n%s", args, err, out)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(wt, "a.sec")); string(b) != "stored\n" {
+		t.Errorf("the worktree's file is %q, want it as stored", b)
+	}
+}
+
+// A submodule has its own config: git status and diff look into it and run its filter
+// drivers, which the top repository's overrides don't name. Command doesn't look into
+// submodules (Security's SHOULD 2 on #3579).
+func TestSubmoduleFiltersDontRun(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell scripts")
+	}
+	if !Available() {
+		t.Skip("git not installed")
+	}
+	root := t.TempDir()
+	marker := filepath.Join(root, "marker")
+	clean := filepath.Join(root, "clean.sh")
+	os.WriteFile(clean, []byte("#!/bin/sh\necho subclean >> '"+marker+"'\ncat\n"), 0o755)
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+root)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	sub, top := filepath.Join(root, "sub"), filepath.Join(root, "top")
+	for _, d := range []string{sub, top} {
+		os.MkdirAll(d, 0o755)
+		git(d, "init", "-q", "-b", "main")
+		git(d, "config", "user.email", "t@example.invalid")
+		git(d, "config", "user.name", "t")
+	}
+	os.WriteFile(filepath.Join(sub, ".gitattributes"), []byte("*.txt filter=s\n"), 0o644)
+	os.WriteFile(filepath.Join(sub, "f.txt"), []byte("a\n"), 0o644)
+	git(sub, "add", "-A")
+	git(sub, "commit", "-qm", "sub")
+	git(top, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "sub")
+	git(top, "commit", "-qm", "top")
+	inner := filepath.Join(top, "sub")
+	git(inner, "config", "filter.s.clean", clean)
+	// The same size and a new mtime: git has to hash the file, through the clean filter.
+	f := filepath.Join(inner, "f.txt")
+	os.WriteFile(f, []byte("b\n"), 0o644)
+	old := mustParseTime(t, "2021-01-01T00:00:00Z")
+	os.Chtimes(f, old, old)
+
+	ran := func() string { b, _ := os.ReadFile(marker); return strings.TrimSpace(string(b)) }
+	// The control: plain git runs the submodule's filter.
+	exec.Command("git", "-C", top, "status", "--porcelain").Run()
+	if ran() == "" {
+		t.Fatal("plain git status didn't run the submodule's filter: the rig proves nothing")
+	}
+	ctx := context.Background()
+	for _, args := range [][]string{
+		{"status", "--porcelain", "-z", "--untracked-files=normal"},
+		{"diff", "HEAD", "--numstat", "-z"},
+		{"diff", "--binary", "HEAD", "--"},
+	} {
+		os.Remove(marker)
+		if out, err := Command(ctx, top, args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		if got := ran(); got != "" {
+			t.Errorf("git %v ran the submodule's %s", args, got)
+		}
+	}
+}
+
+func mustParseTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	tm, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tm
 }

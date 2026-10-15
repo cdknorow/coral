@@ -16,15 +16,24 @@ import (
 // prompts, so every git Coral runs goes through Command, which turns all of them off:
 //
 //   - core.fsmonitor=false, core.hooksPath=<a path with no hooks in it>
-//   - diff.external= and, for diff and show, --no-ext-diff and --no-textconv
+//   - diff.external=; --no-ext-diff and --no-textconv after diff, show and log, and
+//     --no-textconv after blame and grep
 //   - every clean, smudge and process command of every filter driver the repository's
-//     config names, emptied (git then copies the file as it is). The exception is Git
-//     LFS's own standard driver, word for word, which runs the git-lfs on the PATH.
+//     config names, emptied (git then copies the file as it is), with that driver's
+//     required=false so an emptied required driver doesn't fail the command. The exception
+//     is Git LFS's own standard driver, word for word, which runs the git-lfs on the PATH.
+//   - submodules aren't looked into (diff.ignoreSubmodules=all, submodule.recurse=false,
+//     status.submoduleSummary=false): a submodule has its own config, with filter drivers
+//     the overrides above don't name, and git runs them when it checks a submodule
 //   - core.pager=cat, core.sshCommand=ssh, protocol.ext.allow=never,
 //     log.showSignature=false (a signature check runs gpg.program)
 //   - GIT_TERMINAL_PROMPT=0 and GIT_OPTIONAL_LOCKS=0 in its environment
 //
-// TestGitRunsOnlyThroughCommand fails when code runs git any other way.
+// Not neutralised: merge drivers (merge.<name>.driver). Coral never merges, rebases or
+// cherry-picks; a caller that starts to must add them.
+//
+// TestGitRunsOnlyThroughCommand fails when code runs git any other way, or asks git for
+// textconv or filters (--textconv, --filters).
 
 // Command returns a git command run in dir (git -C dir, when dir isn't ""), with a
 // repository's command-running config turned off.
@@ -58,11 +67,15 @@ func safeConfig() []string {
 		"-c", "core.sshCommand=ssh",
 		"-c", "protocol.ext.allow=never",
 		"-c", "log.showSignature=false",
+		"-c", "diff.ignoreSubmodules=all",
+		"-c", "submodule.recurse=false",
+		"-c", "status.submoduleSummary=false",
 	}
 }
 
-// withDiffGuards adds --no-ext-diff and --no-textconv right after a diff or show
-// subcommand (the first argument that isn't an option).
+// withDiffGuards adds --no-ext-diff and --no-textconv right after a diff, show or log
+// subcommand, and --no-textconv after blame or grep (the subcommand is the first argument
+// that isn't an option).
 func withDiffGuards(args []string) []string {
 	for i, a := range args {
 		if strings.HasPrefix(a, "-") {
@@ -71,12 +84,18 @@ func withDiffGuards(args []string) []string {
 			}
 			continue
 		}
-		if a != "diff" && a != "show" {
+		var guards []string
+		switch a {
+		case "diff", "show", "log":
+			guards = []string{"--no-ext-diff", "--no-textconv"}
+		case "blame", "grep":
+			guards = []string{"--no-textconv"}
+		default:
 			return args
 		}
-		out := make([]string, 0, len(args)+2)
+		out := make([]string, 0, len(args)+len(guards))
 		out = append(out, args[:i+1]...)
-		out = append(out, "--no-ext-diff", "--no-textconv")
+		out = append(out, guards...)
 		return append(out, args[i+1:]...)
 	}
 	return args
@@ -109,7 +128,13 @@ func filterOverrides(ctx context.Context, dir string) []string {
 	for _, entry := range bytes.Split(out, []byte{0}) {
 		key, value, _ := strings.Cut(string(entry), "\n")
 		lower := strings.ToLower(key)
-		if !strings.HasSuffix(lower, ".clean") && !strings.HasSuffix(lower, ".smudge") && !strings.HasSuffix(lower, ".process") {
+		dot := strings.LastIndexByte(key, '.')
+		if dot <= len("filter.") {
+			continue
+		}
+		switch lower[dot+1:] {
+		case "clean", "smudge", "process":
+		default:
 			continue
 		}
 		if want, ok := lfsDriver[lower]; ok && value == want {
@@ -118,6 +143,12 @@ func filterOverrides(ctx context.Context, dir string) []string {
 		if !seen[lower] {
 			seen[lower] = true
 			over = append(over, "-c", key+"=")
+		}
+		// An emptied command of a required driver fails the command ("clean filter
+		// failed"): the driver is no longer required.
+		if required := key[:dot] + ".required"; !seen[strings.ToLower(required)] {
+			seen[strings.ToLower(required)] = true
+			over = append(over, "-c", required+"=false")
 		}
 	}
 	return over

@@ -283,13 +283,16 @@ Coral runs git itself in folders that agents can change: the changed-files list,
 the worktrees it makes for teams and scheduled jobs. A repository's config could name
 commands for that git to run, and an agent can edit that config. So every git Coral runs
 has them turned off: hooks (`post-checkout` included), `core.fsmonitor`, external diff
-programs and textconv, and the clean, smudge and process commands of filter drivers.
+programs and textconv, and the clean, smudge and process commands of filter drivers (a
+`required` driver is then not required, so the command still works).
 
 - Git LFS's standard driver, exactly as `git lfs install` writes it, still runs, so LFS files
   are checked out in Coral's worktrees.
 - Any other filter isn't run. For example, a worktree Coral makes of a `git-crypt` repository
   holds its files as they're stored (encrypted). Run `git checkout -- .` in the worktree
   yourself if you need them filtered.
+- Coral doesn't look into submodules: a submodule has its own config, so changes inside one
+  don't appear in the changed-files list or the diff.
 - Agents' own git commands are unchanged: they run in the agent's terminal, under the agent
   CLI's permission prompts.
 

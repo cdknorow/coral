@@ -12,9 +12,14 @@ import (
 
 // Every git Coral runs goes through Command or Args (#3579). This fails when code starts
 // git another way: exec.Command("git", ...), exec.CommandContext(ctx, "git", ...) or
-// executil.Command(ctx, "git", ...). (A runner given git as a variable, like
-// board.runBoundedCommand, builds its arguments with Args.)
+// executil.Command(ctx, "git", ...), or when code asks git for textconv or filters.
+// (A runner given git as a variable, like board.runBoundedCommand, builds its arguments
+// with Args.)
 var rawGit = regexp.MustCompile(`(?:exec\.Command|exec\.CommandContext|executil\.Command)\((?:[^()"]*,\s*)?"git"`)
+
+// textconvAsked: an argument that asks git to run textconv or filter drivers (cat-file
+// --textconv or --filters, diff/log/show --textconv). Command can't turn those off.
+var textconvAsked = regexp.MustCompile(`"--(?:textconv|filters)(?:=[^"]*)?"`)
 
 // allowedRawGit: the helper itself.
 var allowedRawGit = map[string]bool{
@@ -50,7 +55,7 @@ func TestGitRunsOnlyThroughCommand(t *testing.T) {
 			return err
 		}
 		for i, line := range strings.Split(string(src), "\n") {
-			if rawGit.MatchString(line) {
+			if lintFlags(line) {
 				bad = append(bad, rel+":"+strconv.Itoa(i+1)+": "+strings.TrimSpace(line))
 			}
 		}
@@ -61,17 +66,34 @@ func TestGitRunsOnlyThroughCommand(t *testing.T) {
 	}
 }
 
+// lintFlags: the line starts git without the helper, or asks it for textconv or filters.
+func lintFlags(line string) bool {
+	return rawGit.MatchString(line) || textconvAsked.MatchString(line)
+}
+
 func TestRawGitPatternCatchesTheForms(t *testing.T) {
 	for _, line := range []string{
 		`cmd := exec.Command("git", "status")`,
 		`exec.CommandContext(ctx, "git", "-C", dir, "diff")`,
 		`out, err := executil.Command(ctx, "git", args...).Output()`,
 	} {
-		if !rawGit.MatchString(line) {
+		if !lintFlags(line) {
 			t.Errorf("not caught: %s", line)
 		}
 	}
-	if rawGit.MatchString(`gitutil.Command(ctx, dir, "status")`) {
+	if lintFlags(`gitutil.Command(ctx, dir, "status")`) {
 		t.Error("the helper itself is flagged")
+	}
+	for _, line := range []string{
+		`gitutil.Command(ctx, dir, "cat-file", "--textconv", rev)`,
+		`gitutil.Command(ctx, dir, "cat-file", "--filters", "--path=x", rev)`,
+		`args = append(args, "--textconv")`,
+	} {
+		if !lintFlags(line) {
+			t.Errorf("not caught: %s", line)
+		}
+	}
+	if lintFlags(`out = append(out, "--no-ext-diff", "--no-textconv")`) {
+		t.Error("--no-textconv is flagged")
 	}
 }
