@@ -268,10 +268,22 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.26.9"
-          cache-dependency-path: coral-go/go.sum
+      # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
+      # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
+      # pinned to the official SHA-256 of the same version.
+      - name: Install Go 1.26.9 (go.dev, checksum-pinned)
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            arm64) f=go1.26.9.darwin-arm64.tar.gz; sum=f9bb7c0a02506c5d9bf0d1eb1f7ee6c7684f844ae49558308a0427b830e022cc ;;
+            x86_64) f=go1.26.9.darwin-amd64.tar.gz; sum=00c29e3d4c8562f547410daa18d2959b641bd691ab00c4a525ea817a0253d4bd ;;
+            *) echo "::error::unexpected architecture $(uname -m)"; exit 1 ;;
+          esac
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$f" "https://go.dev/dl/$f"
+          echo "$sum  $RUNNER_TEMP/$f" | shasum -a 256 -c -
+          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/$f"
+          echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/go/bin/go" version
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
       - name: Build arm64 binaries
@@ -311,10 +323,22 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.26.9"
-          cache-dependency-path: coral-go/go.sum
+      # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
+      # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
+      # pinned to the official SHA-256 of the same version.
+      - name: Install Go 1.26.9 (go.dev, checksum-pinned)
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            arm64) f=go1.26.9.darwin-arm64.tar.gz; sum=f9bb7c0a02506c5d9bf0d1eb1f7ee6c7684f844ae49558308a0427b830e022cc ;;
+            x86_64) f=go1.26.9.darwin-amd64.tar.gz; sum=00c29e3d4c8562f547410daa18d2959b641bd691ab00c4a525ea817a0253d4bd ;;
+            *) echo "::error::unexpected architecture $(uname -m)"; exit 1 ;;
+          esac
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$f" "https://go.dev/dl/$f"
+          echo "$sum  $RUNNER_TEMP/$f" | shasum -a 256 -c -
+          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/$f"
+          echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/go/bin/go" version
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
       - name: Build amd64 binaries
@@ -355,10 +379,22 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.26.9"
-          cache-dependency-path: coral-go/go.sum
+      # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
+      # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
+      # pinned to the official SHA-256 of the same version.
+      - name: Install Go 1.26.9 (go.dev, checksum-pinned)
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            arm64) f=go1.26.9.darwin-arm64.tar.gz; sum=f9bb7c0a02506c5d9bf0d1eb1f7ee6c7684f844ae49558308a0427b830e022cc ;;
+            x86_64) f=go1.26.9.darwin-amd64.tar.gz; sum=00c29e3d4c8562f547410daa18d2959b641bd691ab00c4a525ea817a0253d4bd ;;
+            *) echo "::error::unexpected architecture $(uname -m)"; exit 1 ;;
+          esac
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$f" "https://go.dev/dl/$f"
+          echo "$sum  $RUNNER_TEMP/$f" | shasum -a 256 -c -
+          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/$f"
+          echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/go/bin/go" version
       - name: Require macOS release signing credentials
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
