@@ -79,8 +79,9 @@ func requestedProtocols(r *http.Request) []string {
 	return out
 }
 
-// legacyOrigins are the self-hosted hub's default WebSocket origins.
-var legacyOrigins = []string{"localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*", "[::1]", "[::1]:*"}
+// legacyOrigins are the self-hosted hub's default WebSocket origins besides the
+// request's own host: none. Other ports of localhost are not this hub's page (#3511).
+var legacyOrigins = []string{}
 
 // originPatterns returns the host patterns a WebSocket Origin may match and
 // whether an Origin header is required. ok is false when the upgrade must be

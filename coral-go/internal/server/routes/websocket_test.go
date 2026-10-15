@@ -417,6 +417,8 @@ func TestWSTerminal_RejectsSessionTupleMismatchWithPolicyViolation(t *testing.T)
 
 // TestWSAcceptOptions_LocalhostPatterns verifies that wsAcceptOptions always
 // includes localhost variants so local browser connections are accepted.
+// #3511: only this server's own origin may open a WebSocket. Another port of localhost
+// is a different page (it could open /ws/terminal and type into an agent).
 func TestWSAcceptOptions_LocalhostPatterns(t *testing.T) {
 	_, handler := setupTestServer(t)
 
@@ -428,13 +430,10 @@ func TestWSAcceptOptions_LocalhostPatterns(t *testing.T) {
 	opts := handler.wsAcceptOptions(r)
 	require.NotNil(t, opts)
 
-	patterns := opts.OriginPatterns
-	assert.Contains(t, patterns, "localhost")
-	assert.Contains(t, patterns, "localhost:*")
-	assert.Contains(t, patterns, "127.0.0.1")
-	assert.Contains(t, patterns, "127.0.0.1:*")
-	assert.Contains(t, patterns, "[::1]")
-	assert.Contains(t, patterns, "[::1]:*")
+	assert.Equal(t, []string{"localhost:8450"}, opts.OriginPatterns, "the request's own host only")
+	for _, p := range []string{"localhost:*", "127.0.0.1:*", "[::1]:*", "localhost", "127.0.0.1"} {
+		assert.NotContains(t, opts.OriginPatterns, p)
+	}
 }
 
 // TestWSAcceptOptions_RemoteHostIncluded verifies that when accessed via

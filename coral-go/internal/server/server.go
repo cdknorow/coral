@@ -304,27 +304,20 @@ func (s *Server) buildRouter() chi.Router {
 	// 127.0.0.1 and bypass auth.IsLocalhost(). Coral is a desktop app with no
 	// reverse proxy, so RealIP is not needed.
 
-	// CORS: allow localhost origins and same-origin requests (where the
-	// Origin host matches the request Host). This lets remote users who
-	// access the server directly by IP/hostname work correctly, while
-	// still blocking cross-site requests from unrelated origins.
+	// CORS: only this server's own origin (the Origin's host is the request's Host,
+	// which also covers remote access by IP or hostname). Other ports of localhost are
+	// NOT allowed: a page there is the same site as the dashboard, so the sign-in
+	// cookie goes with its requests (#3511).
 	r.Use(cors.Handler(cors.Options{
-		AllowOriginFunc: func(r *http.Request, origin string) bool {
-			if isLocalhostOrigin(origin) {
-				return true
-			}
-			// Allow same-origin: the browser's Origin should match the Host
-			// the user navigated to. This covers remote access via IP/hostname.
-			parsed, err := url.Parse(origin)
-			if err == nil && parsed.Host == r.Host {
-				return true
-			}
-			return false
-		},
+		AllowOriginFunc:  corsSameOrigin,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"*"},
 		AllowCredentials: true,
 	}))
+
+	// A write from another page in a browser is refused before any auth: a page on
+	// another localhost port or any site can make the browser send one (#3511).
+	r.Use(routes.RefuseForeignBrowserWrites)
 
 	// API key auth — gates remote access behind an auto-generated key.
 	// Localhost connections bypass auth entirely.
@@ -963,26 +956,11 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func isLocalhostOrigin(origin string) bool {
-	// Match http(s)://localhost or http(s)://127.0.0.1, optionally followed
-	// by a port (:1234) or path (/...). Rejects tricky subdomains like
-	// localhost.evil.com by requiring the character after the hostname to be
-	// ':', '/', or end-of-string.
-	for _, prefix := range []string{
-		"http://localhost", "https://localhost",
-		"http://127.0.0.1", "https://127.0.0.1",
-	} {
-		if len(origin) >= len(prefix) && origin[:len(prefix)] == prefix {
-			if len(origin) == len(prefix) {
-				return true
-			}
-			next := origin[len(prefix)]
-			if next == ':' || next == '/' {
-				return true
-			}
-		}
-	}
-	return false
+// corsSameOrigin is the CORS rule: only this server's own origin, the Origin's host
+// being the request's Host (#3511).
+func corsSameOrigin(r *http.Request, origin string) bool {
+	parsed, err := url.Parse(origin)
+	return err == nil && parsed.Host != "" && strings.EqualFold(parsed.Host, r.Host)
 }
 
 // markWelcomePending records that the first-launch screen is due, unless the user has

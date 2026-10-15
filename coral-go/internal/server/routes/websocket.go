@@ -20,24 +20,13 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 )
 
-// wsAcceptOptions returns WebSocket accept options with origin validation.
-// The nhooyr.io/websocket library automatically allows same-origin requests
-// (where Origin host matches the request Host). OriginPatterns adds
-// cross-origin exceptions for localhost variants and the actual request host
-// so that remote access (where the browser's Origin may differ from the
-// bound address) works correctly.
+// wsAcceptOptions returns WebSocket accept options with origin validation: only
+// this server's own page (the Origin's host is the request's Host). Other ports of
+// localhost are not allowed: a page there could open /ws/terminal and type into an
+// agent (#3511). The nhooyr.io/websocket library allows same-origin by itself; the
+// request host is added for remote access by IP or hostname.
 func (h *SessionsHandler) wsAcceptOptions(r *http.Request) *websocket.AcceptOptions {
-	patterns := []string{
-		"localhost",
-		"localhost:*",
-		"127.0.0.1",
-		"127.0.0.1:*",
-		"[::1]",
-		"[::1]:*",
-	}
-	// When bound to 0.0.0.0, the request Host (e.g. 192.168.1.5:8450)
-	// won't match the library's same-origin check. Add the request host
-	// as an allowed origin so remote access works.
+	var patterns []string
 	if host := r.Host; host != "" {
 		patterns = append(patterns, host)
 	}

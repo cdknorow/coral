@@ -220,10 +220,11 @@ func TestAutoAcceptEnableFromALoggedInRemoteDashboard(t *testing.T) {
 		require.Equal(t, 403, rec.Code, q+" "+rec.Body.String())
 		assert.Equal(t, "no_dashboard_provenance", codeOf(rec), q)
 	}
-	// Logged in, but another site's page: refused.
+	// Logged in, but another site's page: refused, before the route (the foreign-origin
+	// guard, #3511).
 	rec = lan(enable, map[string]string{"Sec-Fetch-Site": "cross-site"}, token)
 	require.Equal(t, 403, rec.Code)
-	assert.Equal(t, "no_dashboard_provenance", codeOf(rec))
+	assert.Contains(t, rec.Body.String(), "foreign_origin")
 	rec = lan(enable, map[string]string{"Origin": "http://evil.example"}, token)
 	require.Equal(t, 403, rec.Code)
 	// A session plus a Bearer key is a proxy, not a browser.

@@ -321,9 +321,11 @@ func (c *countingResolver) Resolve(ctx context.Context, id string) (Target, erro
 }
 func (c *countingResolver) resolves() int32 { c.mu.Lock(); defer c.mu.Unlock(); return c.n }
 
-// The self-hosted default is unchanged: localhost origins and a missing Origin work.
+// The self-hosted default: the hub's own host and a missing Origin work; another port of
+// localhost does not (#3511: it is another page, not the hub's).
 func TestSelfHostedOriginDefaultUnchanged(t *testing.T) {
-	assert.True(t, originAllowed(reqWithOrigin("http://localhost:3000"), append(legacyOrigins, "hub.local"), false))
+	assert.False(t, originAllowed(reqWithOrigin("http://localhost:3000"), append(legacyOrigins, "hub.local"), false))
+	assert.True(t, originAllowed(reqWithOrigin("http://localhost:8420"), append(legacyOrigins, "localhost:8420"), false), "the hub's own page")
 	assert.True(t, originAllowed(reqWithOrigin("http://hub.local"), append(legacyOrigins, "hub.local"), false))
 	assert.True(t, originAllowed(reqWithOrigin(""), legacyOrigins, false))
 	assert.False(t, originAllowed(reqWithOrigin("https://evil.example"), legacyOrigins, false))
