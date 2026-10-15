@@ -63,7 +63,7 @@ async function load(policy, { strict }) {
     assert.equal(served, 1, 'the page was served through the policy interception');
     if (strict) {
       const where = await Runtime.evaluate({ expression: `location.pathname`, returnByValue: true });
-      assert.equal(where.result.value, '/', 'stayed on the dashboard (no redirect to sign-in)');
+      assert.equal(where.result.value, '/agents', 'stayed on the dashboard (no redirect to sign-in; "/" is the Agents page since #3532)');
       const mode = await Runtime.evaluate({ expression: `JSON.parse(document.getElementById('coral-boot').textContent).mode`, returnByValue: true });
       assert.equal(mode.result.value, 'cloud', 'cloud mode boot flag');
       const inline = await Runtime.evaluate({ expression: `document.querySelectorAll('script:not([src]):not([type="application/json"])').length`, returnByValue: true });

@@ -146,12 +146,13 @@ async function run() {
       ext: (a => a && { target: a.target, rel: a.rel })(last.querySelector('a[href^="https://"]')) }; })()`);
   check('path-looking inline code and relative links become file refs; identifiers and versions do not', JSON.stringify(refs.refs) === JSON.stringify(['coral-go/static/render.js:1558', 'CLAUDE.md', 'static/app.js']), JSON.stringify(refs.refs));
   check('web links open in a new tab without opener access', refs.ext && refs.ext.target === '_blank' && /noopener/.test(refs.ext.rel), JSON.stringify(refs.ext));
+  const pageBefore = await ev(`location.pathname`); // the agent's page (#3532 paths); the click must not leave it
   await ev(`Array.from(${C}.querySelectorAll('[data-file-ref]')).find(e => e.dataset.fileRef.startsWith('coral-go')).click(); true`);
   await until(`!!document.querySelector('.chat-file-menu [data-action="preview"]')`, 'the file menu');
   check('clicking a file ref opens its action menu', await ev(`!!document.querySelector('.chat-file-menu [data-action="preview"]')`));
   await ev(`document.querySelector('.chat-file-menu [data-action="preview"]').click(); true`);
   const refClick = await ev(`({ resolves: window.__resolves, opened: window.__opened, url: location.pathname })`);
-  check('Preview in Coral resolves the file and opens the Files preview', JSON.stringify(refClick.resolves) === '["coral-go/static/render.js:1558"]' && JSON.stringify(refClick.opened) === '["resolved/coral-go/static/render.js"]' && refClick.url === '/', JSON.stringify(refClick));
+  check('Preview in Coral resolves the file and opens the Files preview', JSON.stringify(refClick.resolves) === '["coral-go/static/render.js:1558"]' && JSON.stringify(refClick.opened) === '["resolved/coral-go/static/render.js"]' && refClick.url === pageBefore, JSON.stringify({ ...refClick, pageBefore }));
 
   // Chat colors come from the theme (theme editor > Chat), nothing overrides them
   const themed = await ev(`(() => { const root = document.documentElement.style; root.setProperty('--chat-prose-inline-code', 'rgb(1, 2, 3)'); root.setProperty('--chat-prose-human-bg', 'rgb(4, 5, 6)');

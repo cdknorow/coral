@@ -66,10 +66,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
         // A 401 that doesn't mean signed out (an agent-only route answers session_token_required to the
         // dashboard) stays the caller's: the tab is NOT sent to /auth (#3528).
+        const pageBefore = await ev(`location.pathname`); // the dashboard's page (/agents since #3532)
         const agentOnly = await api('GET', '/api/agent/tasks?session_id=strict-qa');
         await sleep(500); // sleep-ok: proves a negative (no redirect to /auth follows the 401)
         const stayed = await ev(`location.pathname`);
-        check('a 401 that is not a sign-out leaves the page where it is', agentOnly.status === 401 && stayed === '/', JSON.stringify({ status: agentOnly.status, code: agentOnly.data && (agentOnly.data.code || agentOnly.data.error), path: stayed }));
+        check('a 401 that is not a sign-out leaves the page where it is', agentOnly.status === 401 && stayed === pageBefore && stayed !== '/auth', JSON.stringify({ status: agentOnly.status, code: agentOnly.data && (agentOnly.data.code || agentOnly.data.error), path: stayed, before: pageBefore }));
 
         // Settings: read, save, read back, restore.
         const before = await api('GET', '/api/settings');
