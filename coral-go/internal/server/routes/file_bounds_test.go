@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -27,6 +28,7 @@ type boundsEnv struct {
 	repo    string
 	outside string
 	home    string
+	ss      *store.SessionStore
 }
 
 func newBoundsEnv(t *testing.T) *boundsEnv {
@@ -75,7 +77,7 @@ func newBoundsEnv(t *testing.T) *boundsEnv {
 	_ = server
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
-	return &boundsEnv{t: t, srv: srv, base: base, repo: repo, outside: filepath.Join(base, "outside.txt"), home: home}
+	return &boundsEnv{t: t, srv: srv, base: base, repo: repo, outside: filepath.Join(base, "outside.txt"), home: home, ss: ss}
 }
 
 // caller kinds: what the server sees. Only "dashboard" is the relaxed one.
@@ -485,4 +487,66 @@ func TestGitDirectoryIsNeverServed(t *testing.T) {
 	assert.True(t, sensitivePath("/r/.GIT/config"))
 	assert.False(t, sensitivePath("/r/.github/workflows/ci.yml"))
 	assert.False(t, sensitivePath("/r/.gitignore"))
+}
+
+// #3596 W1: SaveFileContent writes only inside the session's existing working tree, decided on
+// the resolved path, and through the tunnel never anything git runs or obeys.
+func TestSaveFileContentStaysInTheTree(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks and hard links")
+	}
+	e := newBoundsEnv(t)
+	put := func(name, sid, fp string, via kind) int {
+		code, _ := e.doAs("PUT", "/api/sessions/live/"+name+"/file-content", url.Values{"filepath": {fp}, "session_id": {sid}}, `{"content":"PWNED"}`, via)
+		return code
+	}
+	absent := func(p string) {
+		t.Helper()
+		_, err := os.Stat(p)
+		assert.True(t, os.IsNotExist(err), "%s was written", p)
+	}
+	outsideUnchanged := func() {
+		t.Helper()
+		b, _ := os.ReadFile(e.outside)
+		assert.Equal(t, "outside-secret", string(b), "the outside file is unchanged")
+	}
+
+	// (a) A session whose working tree is gone: before, every path passed the check.
+	gone := filepath.Join(e.base, "gone", "tree")
+	require.NoError(t, e.ss.RegisterLiveSession(context.Background(), &store.LiveSession{AgentName: "claude-gone", AgentType: "claude", WorkingDir: gone, SessionID: "gone-1"}))
+	assert.NotEqual(t, 200, put("claude-gone", "gone-1", "../../written-by-gone.txt", kindDashboard))
+	absent(filepath.Join(e.base, "written-by-gone.txt"))
+
+	// (b) A new file under a symlinked folder that leads out (the parent doesn't exist yet).
+	assert.Equal(t, 403, put("claude-fb", "fb-1", "app/linkdir/new/f.txt", kindDashboard))
+	absent(filepath.Join(e.base, "outdir", "new"))
+
+	// A hard link inside the tree to the outside file: another name for it.
+	require.NoError(t, os.Link(e.outside, filepath.Join(e.repo, "hard.txt")))
+	assert.Equal(t, 403, put("claude-fb", "fb-1", "hard.txt", kindDashboard))
+	outsideUnchanged()
+
+	// (c) Through the tunnel, a link inside the repository into .git/hooks, as a folder or as
+	// the file itself; .GIT in any case; .husky; core.hooksPath; a .git FILE.
+	hooks := filepath.Join(e.repo, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooks, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte("#!/bin/sh\n"), 0o755))
+	require.NoError(t, os.Symlink(hooks, filepath.Join(e.repo, "tools-link")))
+	require.NoError(t, os.Symlink(filepath.Join(hooks, "post-checkout"), filepath.Join(e.repo, "notes-link")))
+	require.NoError(t, exec.Command("git", "-C", e.repo, "config", "core.hooksPath", "ci/hooks").Run())
+	for _, fp := range []string{"tools-link/pre-commit", "notes-link", ".GIT/hooks/pre-push", ".Git/config", ".husky/pre-commit", "ci/hooks/pre-commit", "CI/Hooks/pre-commit", "sub/.git"} {
+		assert.Equal(t, 403, put("claude-fb", "fb-1", fp, kindTunnel), fp)
+	}
+	absent(filepath.Join(hooks, "pre-commit"))
+	absent(filepath.Join(hooks, "pre-push"))
+	absent(filepath.Join(e.repo, ".husky"))
+	absent(filepath.Join(e.repo, "ci"))
+	b, _ := os.ReadFile(filepath.Join(hooks, "post-checkout"))
+	assert.Equal(t, "#!/bin/sh\n", string(b), "the hook is unchanged")
+
+	// What should work still does.
+	assert.Equal(t, 200, put("claude-fb", "fb-1", "app/new/dir/file.go", kindTunnel))
+	assert.Equal(t, 200, put("claude-fb", "fb-1", "README.md", kindDashboard))
+	got, _ := os.ReadFile(filepath.Join(e.repo, "app", "new", "dir", "file.go"))
+	assert.Equal(t, "PWNED", string(got))
 }

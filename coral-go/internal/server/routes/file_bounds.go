@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/auth"
+	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -133,6 +136,67 @@ var sensitiveDirs = map[string]bool{
 	".docker": true, ".azure": true, ".gcloud": true, ".password-store": true, ".git-credentials": true,
 	"keychains": true, ".mozilla": true, ".chrome": true, ".terraform": true, ".vscode-server": true,
 	".terraform.d": true, ".npm": true, ".cargo": true, ".gem": true, ".m2": true, ".gradle": true,
+}
+
+// gitControlDirs are folder (or file) names whose contents git runs or obeys: a hook, git's
+// config, a .git FILE that points git at another directory (worktrees, submodules), husky's
+// hooks. Nothing under them is written for a strict caller (#3596, W1), and they are part of
+// sensitiveDirs (never served), so one list covers both.
+var gitControlDirs = []string{".git", ".husky"}
+
+func init() {
+	for _, d := range gitControlDirs {
+		sensitiveDirs[d] = true
+	}
+}
+
+// gitControlPath reports whether rel (relative to a repository, already resolved) is or is
+// inside one of gitControlDirs, compared case-insensitively (a case-insensitive file system
+// treats .GIT as .git).
+func gitControlPath(rel string) bool {
+	for _, c := range strings.Split(filepath.ToSlash(rel), "/") {
+		for _, d := range gitControlDirs {
+			if strings.EqualFold(c, d) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// inHooksPath reports whether rel (relative to the repository root) is inside the folder the
+// repository's core.hooksPath names: hooks there run like .git/hooks (#3596, W1). git's own
+// config is read (reading runs nothing); a hooksPath outside the repository can't be written
+// through rel anyway.
+func (h *SessionsHandler) inHooksPath(ctx context.Context, repoRoot, rel string) bool {
+	// gitutil.Command itself passes -c core.hooksPath=<no hooks> on the command line, so the
+	// repository's own value is the last one whose origin isn't the command line.
+	out, err := gitutil.Command(ctx, repoRoot, "config", "--show-origin", "--get-all", "core.hooksPath").Output()
+	if err != nil {
+		return false
+	}
+	hp := ""
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		origin, value, ok := strings.Cut(line, "\t")
+		if ok && !strings.HasPrefix(origin, "command line:") {
+			hp = strings.TrimSpace(value)
+		}
+	}
+	if hp == "" {
+		return false
+	}
+	if !filepath.IsAbs(hp) {
+		hp = filepath.Join(repoRoot, hp)
+	}
+	hpRel, err := safefs.Within(repoRoot, hp)
+	if err != nil {
+		return false
+	}
+	if hpRel == "." {
+		return true // hooks in the repository root itself: every file there could be one
+	}
+	r, p := strings.ToLower(filepath.ToSlash(rel)), strings.ToLower(filepath.ToSlash(hpRel))
+	return r == p || strings.HasPrefix(r, p+"/")
 }
 
 // sensitiveSeqs are multi-component locations (lower case) that are never served.

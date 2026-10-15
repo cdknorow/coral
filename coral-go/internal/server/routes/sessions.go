@@ -46,6 +46,7 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
@@ -5894,63 +5895,46 @@ func (h *SessionsHandler) SaveFileContent(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	fullPath, err := filepath.Abs(filepath.Join(workdir, fp))
+	// Through safefs (#3596, W1): the working tree is held open as a root, which must still
+	// exist (a gone one used to mean "anything goes"); the path is decided on its resolved
+	// form, so a symlinked ancestor can't lead out; and the write goes through the root, so
+	// nothing swapped in after the check can either.
+	root, err := safefs.OpenRoot(workdir)
 	if err != nil {
-		errBadRequest(w, "invalid path")
+		errBadRequest(w, "the working directory no longer exists")
 		return
 	}
-	realWorkdir, _ := filepath.EvalSymlinks(workdir)
-
-	// For new files, EvalSymlinks fails because the path doesn't exist yet.
-	// Check the parent directory instead, which must already exist or will be created.
-	realPath, evalErr := filepath.EvalSymlinks(fullPath)
-	if evalErr != nil {
-		// File doesn't exist — resolve via parent dir + filename
-		parentDir := filepath.Dir(fullPath)
-		realParent, parentErr := filepath.EvalSymlinks(parentDir)
-		if parentErr != nil {
-			// Parent doesn't exist either — resolve via workdir prefix check on the absolute path
-			// This is safe because filepath.Abs already resolved ".." components
-			if !strings.HasPrefix(fullPath, realWorkdir+string(os.PathSeparator)) {
-				errForbidden(w, "Path traversal not allowed")
-				return
-			}
-		} else {
-			// Append separator to both sides to prevent prefix collisions
-			// (e.g. /home/user/project vs /home/user/project-evil)
-			if !strings.HasPrefix(realParent+string(os.PathSeparator), realWorkdir+string(os.PathSeparator)) {
-				errForbidden(w, "Path traversal not allowed")
-				return
-			}
-		}
-	} else if !strings.HasPrefix(realPath, realWorkdir+string(os.PathSeparator)) {
+	defer root.Close()
+	target := fp
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(root.Dir(), target)
+	}
+	rel, err := safefs.Within(root.Dir(), target)
+	if err != nil || rel == "." {
 		errForbidden(w, "Path traversal not allowed")
 		return
 	}
 
-	// Through the tunnel nothing under .git may be written (hooks run code), nor any
-	// credential-bearing file.
+	// Through the tunnel nothing that git runs may be written (hooks, its config, a .git
+	// file that points git elsewhere, .husky, a core.hooksPath folder), nor any
+	// credential-bearing file. Decided on the resolved target, case-insensitively.
 	if strictBounds(r) {
-		rel, rerr := filepath.Rel(realWorkdir, fullPath)
-		for _, c := range strings.Split(filepath.ToSlash(rel), "/") {
-			if rerr != nil || strings.EqualFold(c, ".git") {
-				errForbidden(w, "Path not allowed")
-				return
-			}
-		}
-		if sensitivePath(fullPath) {
+		resolved := filepath.Join(root.Dir(), rel)
+		if !rootAllowed(root.Dir()) || gitControlPath(rel) || sensitivePath(resolved) || h.inHooksPath(r.Context(), root.Dir(), rel) {
 			errForbidden(w, "Path not allowed")
 			return
 		}
 	}
 
-	// Create parent directories for new files
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+	if err := root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		errInternalServer(w, "could not write file")
 		return
 	}
-
-	if err := os.WriteFile(fullPath, []byte(*body.Content), 0644); err != nil {
+	if err := root.WriteFile(rel, []byte(*body.Content), 0o644); err != nil {
+		if errors.Is(err, safefs.ErrNotRegular) || errors.Is(err, safefs.ErrLinked) {
+			errForbidden(w, "Path not allowed")
+			return
+		}
 		errInternalServer(w, "could not write file")
 		return
 	}
