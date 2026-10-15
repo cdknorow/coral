@@ -298,7 +298,7 @@ programs and textconv, and the clean, smudge and process commands of filter driv
 
 ### A team's worktree is still there after Coral restarted
 
-When Coral starts and finds a team that was running but has no live agents (its server stopped mid-work), it marks the team stopped and removes the team's git worktree only if git can remove it without losing anything: a clean worktree. A worktree with uncommitted or untracked changes, or one git can't place (git missing, a timeout, a broken `.git` file), is left where it is, and `coral.log` says why (`left the orphaned worktree … in place`). Commit or copy what you need, then remove it yourself with `git worktree remove <path>` (add `--force` to discard the changes).
+When Coral starts and finds a team that was running but has no live agents (its server stopped mid-work), it marks the team stopped and removes the team's git worktree only if git can remove it without losing anything: a clean worktree. A worktree with uncommitted or untracked changes, or one git can't place (git missing, a timeout, a broken `.git` file), is left where it is, and `coral.log` says why (`left the orphaned worktree … in place`). To remove it by hand, check it first: `git -C <path> status` shows what would be lost (commit, stash or copy what you need). Then run `git worktree remove <path>`, or `git worktree remove --force <path>` to discard the changes; for a worktree git can't place (a broken `.git` file), delete the folder and run `git worktree prune` in the repository.
 
 ### A scheduled job ends in `killed` / `timeout` instead of `completed`
 
