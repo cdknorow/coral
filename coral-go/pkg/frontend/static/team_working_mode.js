@@ -1,6 +1,7 @@
 import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
 import { splitKey, keyLabel, serverUrl } from './server_base.js';
+import { boardRenameControl } from './board_rename.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
 
@@ -109,6 +110,14 @@ export async function showTeamWorkingMode(team, options = {}) {
       <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span>Saves selected working mode, additional guidance, and global health. Save preset instructions separately.</span></div>
       </form>`;
     dialog.querySelector('.working-mode-team').textContent = keyLabel(team);
+    dialog.querySelector('.working-mode-team').dataset.team = team; // which team, as data (the text is its label)
+    // Rename the board (#3536): its label only; the heading and every list follow.
+    dialog.querySelector('header > div').append(boardRenameControl(team, {
+        onRenamed: () => {
+            dialog.querySelector('.working-mode-team').textContent = keyLabel(team);
+            importOnce('./render.js').then(m => m.scheduleLiveSessionsRender()); // the board list follows on its next poll
+        },
+    }));
     if (workspaceMode) {
         // Rendered into the sidebar's Team Settings tab (see team_context.js).
         document.getElementById('agentic-panel-team-settings')?.replaceChildren(dialog);

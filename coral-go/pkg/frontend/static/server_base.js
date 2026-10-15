@@ -145,8 +145,61 @@ export function splitKey(key) {
 }
 
 /** Display name of a key (drops the server part). */
-export function keyLabel(key) {
+// Board labels (#3536): a board's KEY (its id; for a board made before ids, its name) is what
+// the API, URLs and state use; its LABEL is what people read. The views note the labels that
+// come with their payloads (board_label next to board_project / project), and keyLabel shows
+// them. Keyed by identity key, since two servers can each have a board with the same id.
+const _boardLabels = new Map();   // identity key -> label
+const _labelKeys = new Map();     // label (lower-case) -> Set of identity keys carrying it
+
+/** Note the label a payload gave for a board key on server. A row without one (an older
+ *  Coral, a board with no label) leaves what is known. */
+export function noteBoardLabel(server, key, label) {
+    if (!key || typeof label !== 'string' || !label) return;
+    const k = identityKey(server, key);
+    const prev = _boardLabels.get(k);
+    if (prev === label) return;
+    if (prev !== undefined) _labelKeys.get(prev.toLowerCase())?.delete(k);
+    _boardLabels.set(k, label);
+    const lk = label.toLowerCase();
+    if (!_labelKeys.has(lk)) _labelKeys.set(lk, new Set());
+    _labelKeys.get(lk).add(k);
+}
+
+/** Note the labels of a list of rows: keyField holds the board key, board_label its label,
+ *  and the row's server (or `server`) the server it is on. */
+export function noteBoardLabels(rows, keyField = 'board_project', server = null) {
+    for (const r of Array.isArray(rows) ? rows : []) {
+        if (r && r[keyField]) noteBoardLabel(server ?? r.server, splitKey(r[keyField]).name, r.board_label);
+    }
+}
+
+/** A board's key as data (the name part of an identity key): for comparing with another key,
+ *  never for showing. */
+export function boardKeyName(key) {
     return splitKey(key).name;
+}
+
+/** The short form of a board key, shown after a label two boards share: a new board's id is
+ *  "b-" plus 10 characters, so its first 6 are plenty; an older board's key is its name. */
+function shortKey(name) {
+    return /^b-[a-z0-9]{6,}$/.test(name) ? name.slice(0, 6) : name;
+}
+
+/** A board's label as known (no short id), or the key's name. */
+export function boardLabel(key) {
+    const k = String(key ?? '');
+    return _boardLabels.get(k) || splitKey(k).name;
+}
+
+/** What people read for a board or team key: its label, or the key's name when no label is
+ *  known; with a short id when another known board has the same label (#3536). */
+export function keyLabel(key) {
+    const k = String(key ?? '');
+    const name = splitKey(k).name;
+    const label = _boardLabels.get(k) || name;
+    const same = _labelKeys.get(label.toLowerCase());
+    return same && same.size > 1 && label !== name ? `${label} (${shortKey(name)})` : label;
 }
 
 /** Team key of a session ("" when it is not on a board). */

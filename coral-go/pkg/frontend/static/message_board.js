@@ -6,7 +6,7 @@ import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
-import { identityKey, keyLabel, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
+import { identityKey, keyLabel, noteBoardLabels, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
 import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { note } from './nav.js';
@@ -43,12 +43,14 @@ let pendingMessageId = null;
 async function fetchProjects() {
     const resp = await fetch('/api/board/projects');
     const local = await resp.json();
+    noteBoardLabels(local, 'project'); // board_label beside each key (#3536)
     const remotes = !state.hub ? [] : (state.servers || []).filter(s => s.id !== 'local' && s.status === 'online');
     const lists = await Promise.all(remotes.map(async srv => {
         try {
             const r = await serverFetch(srv.id, '/api/board/projects');
             if (!r.ok) return [];
             const rows = await r.json();
+            noteBoardLabels(rows, 'project', srv.id);
             return (Array.isArray(rows) ? rows : []).map(p => ({ ...p, project: identityKey(srv.id, p.project), server: srv.id }));
         } catch { return []; }
     }));

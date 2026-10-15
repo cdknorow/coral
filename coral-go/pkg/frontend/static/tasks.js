@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG, jsStr } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
-import { serverUrl, artifactPath, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
+import { serverUrl, artifactPath, contextServer, keyLabel, boardKeyName, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
 import { platform } from './platform/detect.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 
@@ -1419,8 +1419,8 @@ function _taskDetailHtml(task, liveCost) {
                 : dep.status === 'blocked' ? 'blocked'
                 : dep.status === 'draft' ? 'draft'
                 : 'pending';
-            const isCrossBoard = task._source !== 'agent' && dep.board_id && dep.board_id !== keyLabel(boardProject);
-            const boardPrefix = isCrossBoard ? `${escapeHtml(dep.board_id)} ` : '';
+            const isCrossBoard = task._source !== 'agent' && dep.board_id && dep.board_id !== boardKeyName(boardProject); // keys, not labels
+            const boardPrefix = isCrossBoard ? `${escapeHtml(dep.board_label || keyLabel(identityKey(splitKey(boardProject).server, dep.board_id)))} ` : '';
             const depTitle = dep.title ? ` — ${escapeHtml(dep.title)}` : '';
             const clickable = !isCrossBoard ? ` onclick="${task._source === 'agent' ? 'showAgentTaskDetailModal' : 'showTaskDetailModal'}(${Number(dep.task_id)})" style="cursor:pointer"` : '';
             return `<div class="task-dep-item">

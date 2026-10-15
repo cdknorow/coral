@@ -20,6 +20,7 @@ import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
 import './modal_chrome.js'; // modal backdrop/Escape/Tab handling for every dialog (#3140)
+import './board_choice.js'; // the duplicate-name choice used by the lazy modals.js (#3538): loaded at startup so a launch never fails on it
 import './dialog_focus.js'; // focus into a dialog and back to its opener (accessibility pass); used by lazy modals.js
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
 import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
@@ -60,7 +61,7 @@ import { initBrowser } from './platform/browser.js';
 import { initChatFind } from './chat_find.js';
 
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
-import { teamFetch, sessionServer } from './server_base.js';
+import { teamFetch, sessionServer, keyLabel } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './csp_compat.js';   // runs inline handlers without eval on the Coral Hub (inert elsewhere)
@@ -209,11 +210,11 @@ Object.assign(window, {
 
 // ── Reset Team ───────────────────────────────────────────────────────
 function resetTeam(boardName) {
-    showConfirmModal('Reset Team', `Reset all agents in "${boardName}"? Their context will be cleared and they'll restart with their original prompts.`, async () => {
+    showConfirmModal('Reset Team', `Reset all agents in "${keyLabel(boardName)}"? Their context will be cleared and they'll restart with their original prompts.`, async () => {
         try {
             const resp = await teamFetch(boardName, n => `/api/sessions/live/team/${encodeURIComponent(n)}/reset`, { method: 'POST' });
             if (resp.ok) {
-                showToast(`Team "${boardName}" is resetting...`);
+                showToast(`Team "${keyLabel(boardName)}" is resetting...`);
             } else {
                 const data = await resp.json().catch(() => ({}));
                 showToast(data.error || 'Reset failed', true);

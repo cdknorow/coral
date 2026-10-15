@@ -159,6 +159,6 @@ export function renderTeamSettingsTab() {
     const team = getSelectedTeam();
     const panel = document.getElementById('agentic-panel-team-settings');
     if (!team || !panel) return;
-    if (panel.querySelector('#team-settings-workspace .working-mode-team')?.textContent?.trim() === splitKey(team).name) return;
+    if (panel.querySelector('#team-settings-workspace .working-mode-team')?.dataset.team === team) return;
     showTeamWorkingMode(team, { workspace: true });
 }

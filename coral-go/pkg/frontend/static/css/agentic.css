@@ -2827,3 +2827,21 @@ button.team-artifact-name { cursor: pointer; }
 .event-icon.tool-auto-accept { color: var(--warning); background: rgba(var(--warning-rgb), 0.12); }
 .event-icon.tool-auto-accept-paused { color: var(--error); background: rgba(var(--error-rgb), 0.12); }
 .event-icon.tool-auto-accept-skipped { color: var(--text-secondary); background: rgba(136, 136, 136, 0.12); }
+
+/* Rename board in Team settings (#3536) */
+.board-rename { margin-top: 6px; }
+.board-rename-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.board-rename-form[hidden] { display: none; }
+.board-rename-form label { font-size: 12px; color: var(--text-secondary); }
+.board-rename-form input { min-width: 0; flex: 1 1 140px; }
+.board-rename-error { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--error); }
+.board-rename-error:empty { display: none; }
+.board-rename-note { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--text-secondary); }
+
+/* A launch naming a board that exists: join it or start another (#3536) */
+.board-choice-modal .modal-content { width: min(480px, calc(100vw - 32px)); }
+.board-choice-text { margin: 8px 0 12px; font-size: 13px; color: var(--text-secondary); }
+.board-choice-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.board-choice-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.board-choice-label { font-weight: 600; overflow-wrap: anywhere; }
+.board-choice-detail { flex: 1; font-size: 12px; color: var(--text-secondary); }

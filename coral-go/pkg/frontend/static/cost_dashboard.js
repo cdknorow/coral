@@ -3,6 +3,7 @@
 import { showView, escapeHtml, escapeAttr, jsStr } from './utils.js';
 import { state } from './state.js';
 import { pollEvery } from './overload.js';
+import { keyLabel } from './server_base.js';
 
 function _formatTokens(n) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
@@ -539,7 +540,7 @@ function _renderAgentTable(rows) {
         } else {
             nameHtml = escapeHtml(displayName);
         }
-        const teamHtml = r.board_name ? escapeHtml(r.board_name) : '\u2014';
+        const teamHtml = r.board_name ? escapeHtml(keyLabel(r.board_name)) : '\u2014'; // the key's label (#3536)
         const folderHtml = r.folder
             ? `<span title="${escapeAttr(r.working_dir || r.folder)}">${escapeHtml(r.folder)}</span>`
             : '\u2014';
@@ -986,7 +987,7 @@ function _renderTeamTable(teams) {
     const totalCost = teams.reduce((s, t) => s + (t.cost_usd || 0), 0) || 1;
 
     for (const t of sorted) {
-        const name = t.board_name || '(no team)';
+        const name = t.board_name ? keyLabel(t.board_name) : '(no team)';
         const pct = ((t.cost_usd / totalCost) * 100).toFixed(1);
         const barWidth = Math.max(2, (t.cost_usd / totalCost) * 100);
         html += `<tr>
@@ -1050,7 +1051,7 @@ function _renderBranchTable(branches) {
 
     for (const b of sorted) {
         const name = b.repo_name && b.branch ? `${b.repo_name} : ${b.branch}` : (b.branch || '(unknown)');
-        const teamHtml = b.board_name ? escapeHtml(b.board_name) : '—';
+        const teamHtml = b.board_name ? escapeHtml(keyLabel(b.board_name)) : '—';
         const prCell = _formatPRLink(b.pr_number, b.remote_url);
         const pct = ((b.cost_usd / totalCost) * 100).toFixed(1);
         const barWidth = Math.max(2, (b.cost_usd / totalCost) * 100);

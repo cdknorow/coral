@@ -5,7 +5,7 @@ import { refreshAgentUI } from './agent_ui.js';
 import { state, sessionKey, saveSessionDraft } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
-import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey } from './server_base.js';
+import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey, keyLabel } from './server_base.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
 import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
 import { renderQuickActions, updateSidebarActive, renderAttachments } from './controls.js';
@@ -356,7 +356,7 @@ export async function selectHistorySession(sessionId, locator = null) {
     if (boardLink) {
         const boardName = historyEntry?.board_project || historyEntry?.board_name;
         if (boardName) {
-            boardLink.textContent = boardName;
+            boardLink.textContent = keyLabel(boardName); // its label (#3536)
             boardLink.onclick = () => { if (window.selectBoardProject) window.selectBoardProject(boardName); };
             boardLink.style.display = "";
         } else {

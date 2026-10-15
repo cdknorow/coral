@@ -3,7 +3,7 @@
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { launchBlockedReason } from './hub_access.js';
-import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
+import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, noteBoardLabels, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { distillChip } from './knowledge_distill.js';
 import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge, hubUserBadge, boardMessageDisplayText } from './utils.js';
@@ -319,7 +319,7 @@ export function buildSessionTooltip(s) {
     if (s.board_project) {
         const ttUnread = sessionUnreadCount(s);
         const unreadBadge = ttUnread > 0 ? ` <span class="tt-unread">(${ttUnread} unread)</span>` : '';
-        rows.push(`<tr><td class="tt-label">Board</td><td class="tt-value">${escapeHtml(s.board_project)}${unreadBadge}</td></tr>`);
+        rows.push(`<tr><td class="tt-label">Board</td><td class="tt-value">${escapeHtml(keyLabel(sessionTeamKey(s)))}${unreadBadge}</td></tr>`);
         rows.push(`<tr><td class="tt-label">Role</td><td class="tt-value">${escapeHtml(s.board_job_title)}</td></tr>`);
     }
     return `<table class="session-tooltip-table">${rows.join("")}</table>`;
@@ -802,7 +802,7 @@ async function _toggleBoardPause(boardName) {
     try {
         await boardFetch(boardName, `/${endpoint}`, { method: 'POST' });
         if (btn) btn.classList.toggle('paused');
-        showToast(isPaused ? `Board "${boardName}" resumed` : `Board "${boardName}" paused`);
+        showToast(isPaused ? `Board "${keyLabel(boardName)}" resumed` : `Board "${keyLabel(boardName)}" paused`);
     } catch { /* ignore */ }
 }
 window._toggleBoardPause = _toggleBoardPause;
@@ -829,12 +829,12 @@ async function _checkBoardPauseState(boardName) {
 }
 
 async function _clearBoardMessages(boardName) {
-    showConfirmModal('Clear Messages', `Clear all messages from "${boardName}"? This cannot be undone.`, async () => {
+    showConfirmModal('Clear Messages', `Clear all messages from "${keyLabel(boardName)}"? This cannot be undone.`, async () => {
         try {
             await boardFetch(boardName, ``, { method: 'DELETE' });
             _boardChatLastId[boardName] = null;
             _loadBoardPanelChat(boardName);
-            showToast(`Cleared messages from "${boardName}"`);
+            showToast(`Cleared messages from "${keyLabel(boardName)}"`);
         } catch { /* ignore */ }
     });
 }
@@ -2237,7 +2237,7 @@ function _railRoleIcon(s) {
 }
 
 function _railTile(s, active) {
-    const label = resolveSessionIdentity(s) + (s.board_project ? ` · ${s.board_project}` : '');
+    const label = resolveSessionIdentity(s) + (s.board_project ? ` · ${keyLabel(sessionTeamKey(s))}` : '');
     const dot = getDotClass(s);
     const unread = sessionUnreadCount(s);
     const icon = s.icon && !s.sleeping
@@ -2307,7 +2307,7 @@ function _renderSidebarRail(sessions) {
         if (!g.agents.length) continue;
         const collapsed = _isGroupCollapsed(g.key);
         const letter = (g.label.trim()[0] || '?').toUpperCase();
-        const accent = g.kind === 'team' ? _railTeamColor(g.key) : getAgentColor(keyLabel(g.key));
+        const accent = g.kind === 'team' ? _railTeamColor(g.key) : getAgentColor(splitKey(g.key).name); // the key: a rename keeps the colour
         const style = ` style="--rail-accent:${escapeAttr(accent)}"`;
         const title = `${g.label} (${g.agents.length}) — click to ${collapsed ? 'expand' : 'collapse'}`;
         html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
@@ -2360,6 +2360,7 @@ export function agentSearchKey(e) {
  *  A pending scheduled render is dropped: this one shows the latest list. */
 export function renderLiveSessions(sessions) {
     if (_scheduledRender) { cancelAnimationFrame(_scheduledRender); _scheduledRender = 0; }
+    noteBoardLabels(sessions); // board_label beside board_project (#3536): what keyLabel shows
     const result = _renderLiveSessions(sessions);
     liveListRendered(Array.isArray(sessions) ? sessions.length : 0); // window.__coralReady (#3118)
     return result;

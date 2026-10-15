@@ -14,7 +14,8 @@ import { recordRecentDir, setDirServerResolver } from './browser.js';
 import { updateTerminalTheme, getTerminal } from './xterm_renderer.js';
 import { desktopNotifySupported, desktopNotifyEnabled, enableDesktopNotify, disableDesktopNotify } from './desktop_notify.js';
 import { applyCloudSettingsDialog, filterSettingsPayload } from './cloud_settings.js';
-import { serverFetch, currentServer, splitKey, identityKey, isHub, isCloud, normServer, LOCAL_SERVER } from './server_base.js';
+import { serverFetch, currentServer, splitKey, identityKey, isHub, isCloud, normServer, LOCAL_SERVER, keyLabel, noteBoardLabels } from './server_base.js';
+import { chooseBoard, retryPayload, isBoardNameExists } from './board_choice.js';
 import {
     pickerVisible, pickerOptions, serverLabel, launchBlockReason, coerceSelection,
     bareBoardName, postLaunch, waitForLaunched,
@@ -436,8 +437,15 @@ function _launchBlocked(server) {
  * on success, or null after showing the error. Never falls back to another
  * server.
  */
-async function _launchOn(server, path, payload, agentType, { dirInput = null } = {}) {
-    const res = await postLaunch(server, path, payload);
+export async function _launchOn(server, path, payload, agentType, { dirInput = null } = {}) { // exported for board_ids_browser
+    let res = await postLaunch(server, path, payload);
+    // A board of that name exists (#3536): the person chooses to join it or start another.
+    if (!res.ok && isBoardNameExists(res)) {
+        const pick = await chooseBoard(res.data, payload.board_name || '');
+        const retry = retryPayload(payload, pick);
+        if (!retry) return null; // cancelled: nothing launched
+        res = await postLaunch(server, path, retry);
+    }
     if (!res.ok) {
         if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server);
         else showToast(res.error, true);
@@ -1262,7 +1270,9 @@ export async function launchSession() {
                     payload.board_name = boardName;
                 }
             } else {
-                payload.board_name = boardSelect.value;
+                // An existing board joins by its id (#3536); board_name is the same key, for a Coral
+                // from before board ids.
+                payload.board_id = payload.board_name = bareBoardName(boardSelect.value);
             }
             const boardServer = document.getElementById("launch-board-server").value.trim();
             if (boardServer) payload.board_server = boardServer;
@@ -1305,10 +1315,11 @@ async function _loadAgentBoardProjects() {
         const resp = await serverFetch(server, "/api/board/projects");
         const projects = await resp.json();
         if (!Array.isArray(projects) || server !== _effectiveServer(_launchServer)) return;
+        noteBoardLabels(projects, 'project', server);
         for (const p of projects) {
             const opt = document.createElement("option");
             opt.value = p.project;
-            opt.textContent = p.project;
+            opt.textContent = keyLabel(identityKey(server, p.project)); // its label, with a short id when two share it
             select.appendChild(opt);
         }
     } catch (_) {}
@@ -1565,7 +1576,7 @@ export function showAddAgentToBoard(boardName, workDir) {
     document.getElementById("add-agent-board-name").value = boardName;
     document.getElementById("add-agent-board-workdir").value = workDir;
     document.getElementById("add-agent-board-subtitle").textContent =
-        `Board: ${bareBoardName(boardName)}${_onServerSuffix(server)}`;
+        `Board: ${keyLabel(boardName)}${_onServerSuffix(server)}`;
 
     const open = () => {
         renderAgentConfigForm('add-agent-board-acf', {
@@ -1630,13 +1641,13 @@ export async function launchAgentToBoard() {
             flags,
             prompt: config.prompt,
         };
-        // Standalone (no board) when opened from a folder group.
-        if (boardName) launchBody.board_name = boardName;
+        // Standalone (no board) when opened from a folder group; a board joins by its id (#3536).
+        if (boardName) launchBody.board_id = launchBody.board_name = boardName;
         if (config.model) launchBody.model = config.model;
         if (config.capabilities) launchBody.capabilities = config.capabilities;
         const result = await _launchOn(server, "/api/sessions/launch", launchBody, config.agentType);
         if (result) {
-            showToast(boardName ? `Launched ${config.name} on board ${boardName}${_onServerSuffix(server)}` : `Launched ${config.name}${_onServerSuffix(server)}`);
+            showToast(boardName ? `Launched ${config.name} on board ${keyLabel(boardKey)}${_onServerSuffix(server)}` : `Launched ${config.name}${_onServerSuffix(server)}`);
             hideAddAgentBoardModal();
             _refreshAfterLaunch(server, { sessionName: result.session_name, sessionId: result.session_id });
         }
@@ -1658,10 +1669,11 @@ export async function launchTerminalToBoard(boardName, workDir) {
             working_dir: workDir,
             agent_type: "terminal",
             display_name: "Terminal",
+            board_id: board, // joins the board (#3536)
             board_name: board,
         });
         if (result) {
-            showToast(`Launched Terminal on ${board}${_onServerSuffix(server)}`);
+            showToast(`Launched Terminal on ${keyLabel(boardName)}${_onServerSuffix(server)}`);
             _refreshAfterLaunch(server, { sessionName: result.session_name, sessionId: result.session_id });
         }
     } catch (e) {
@@ -2274,7 +2286,7 @@ async function _checkTeamGitDir() {
     } catch { worktreeOpt.style.display = 'none'; }
 }
 
-/** Team names must be unique among the target server's boards. */
+/** The target server's board names and labels, to say before launching that one exists (#3536). */
 async function _loadExistingTeamBoards() {
     const server = _effectiveServer(_launchServer);
     _existingTeamBoardNames = new Set();
@@ -2284,6 +2296,7 @@ async function _loadExistingTeamBoards() {
         if (server !== _effectiveServer(_launchServer) || !Array.isArray(projects)) return;
         for (const p of projects) {
             if (p.project) _existingTeamBoardNames.add(String(p.project).trim().toLowerCase());
+            if (p.board_label) _existingTeamBoardNames.add(String(p.board_label).trim().toLowerCase());
         }
     } catch (_) {}
     _validateTeamName();
@@ -2784,16 +2797,17 @@ function _validateTeamName() {
         hint.classList.remove("error");
         return false;
     }
-    if (_existingTeamBoardNames.has(value.toLowerCase())) {
-        hint.textContent = "That team name is already in use. Pick a unique name.";
-        hint.classList.add("error");
-        return false;
-    }
     const problem = boardNameProblem(value);
     if (problem) {
         hint.textContent = problem;
         hint.classList.add("error");
         return false;
+    }
+    // A name in use is allowed (#3536): launching asks whether to join that board or start another.
+    if (_existingTeamBoardNames.has(value.toLowerCase())) {
+        hint.textContent = "A board with this name exists. Launching asks whether to join it or start another.";
+        hint.classList.remove("error");
+        return true;
     }
     hint.textContent = "Looks good. This will also be the message board name.";
     hint.classList.remove("error");
@@ -2975,7 +2989,7 @@ export async function showInfoModal() {
             boardVal.style.display = "";
             const boardLink = document.createElement("a");
             boardLink.href = "#";
-            boardLink.textContent = info.board_name;
+            boardLink.textContent = info.board_label || keyLabel(identityKey(currentServer(), info.board_name));
             boardLink.style.cssText = "color:var(--accent);cursor:pointer;text-decoration:underline";
             boardLink.onclick = (e) => {
                 e.preventDefault();
@@ -3054,11 +3068,13 @@ export async function showResumeModal() {
 
     // Show board reconnect option if the session was on a board
     if (boardName) {
-        boardNameEl.textContent = boardName;
+        boardNameEl.textContent = keyLabel(boardName); // its label; the key rejoins it (#3536)
+        boardNameEl.dataset.boardKey = boardName;
         boardRow.style.display = "";
         document.getElementById("resume-board-check").checked = true;
     } else {
         boardRow.style.display = "none";
+        delete boardNameEl.dataset.boardKey; // never rejoin the previous chat's board
     }
 
     // Store agent type and display name for the launch function
@@ -3099,7 +3115,7 @@ export async function resumeLaunchNew() {
     const displayName = modal.dataset.displayName || "";
     const boardCheck = document.getElementById("resume-board-check");
     const boardNameEl = document.getElementById("resume-board-name");
-    const boardName = (boardCheck && boardCheck.checked && boardNameEl) ? boardNameEl.textContent : "";
+    const boardName = (boardCheck && boardCheck.checked && boardNameEl) ? (boardNameEl.dataset.boardKey || "") : "";
 
     const btn = document.getElementById("btn-resume-launch");
     if (btn) { btn.disabled = true; btn.textContent = "Resuming..."; }
@@ -3111,7 +3127,7 @@ export async function resumeLaunchNew() {
             resume_session_id: resumeSessionId,
         };
         if (displayName) payload.display_name = displayName;
-        if (boardName) payload.board_name = boardName;
+        if (boardName) payload.board_id = payload.board_name = boardName; // rejoins that board (#3536)
 
         const resp = await fetch("/api/sessions/launch", {
             method: "POST",
