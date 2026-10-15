@@ -226,7 +226,7 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 
 		// Open a terminal window attached to this session
 		if !isSSH() {
-			openAgentTerminal(tc, sessionName, fmt.Sprintf("%s — %s", folderName, agentType))
+			openAgentTerminal(tc, sessionName, fmt.Sprintf("%s - %s", folderName, agentType))
 		}
 
 		fmt.Printf("  [+] Session : %s\n", sessionName)
@@ -302,44 +302,87 @@ func isSSH() bool {
 }
 
 func openAgentTerminal(tc *tmux.Client, session, title string) {
-	attachCmd := tc.AttachCommand(session)
-	switch runtime.GOOS {
-	case "darwin":
-		// macOS: try iTerm2 first, then Terminal.app
-		script := fmt.Sprintf(`tell application "iTerm2"
-    create window with default profile command "%s"
-end tell`, attachCmd)
-		cmd := exec.Command("osascript", "-e", script)
-		if err := cmd.Run(); err == nil {
-			return
-		}
-		script = fmt.Sprintf(`tell application "Terminal"
-    do script "%s"
-    set custom title of front window to "%s"
-end tell`, attachCmd, title)
-		exec.Command("osascript", "-e", script).Run()
-
-	case "windows":
-		// Windows: try Windows Terminal first, then conhost
-		if wtPath, err := exec.LookPath("wt.exe"); err == nil {
-			exec.Command(wtPath, "--title", title, "cmd", "/k",
-				fmt.Sprintf("echo Attached to session %s", session)).Start()
-			return
-		}
-		exec.Command("cmd.exe", "/c", "start", title, "cmd", "/k",
-			fmt.Sprintf("echo Attached to session %s", session)).Start()
-
-	default:
-		// Linux: try terminal emulators
-		for _, term := range []string{"x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal"} {
-			if path, err := exec.LookPath(term); err == nil {
-				cmd := exec.Command(path, "-e", attachCmd)
-				cmd.Start()
+	cmds := terminalCommands(runtime.GOOS, tc.AttachCommand(session), session, title, exec.LookPath)
+	if len(cmds) == 0 {
+		fmt.Printf("  [~] No supported terminal emulator found (use: %s)\n", tc.AttachCommand(session))
+		return
+	}
+	if runtime.GOOS == "darwin" {
+		// iTerm2 first, then Terminal.app.
+		for _, argv := range cmds {
+			if exec.Command(argv[0], argv[1:]...).Run() == nil {
 				return
 			}
 		}
-		fmt.Printf("  [~] No supported terminal emulator found (use: %s)\n", attachCmd)
+		return
 	}
+	exec.Command(cmds[0][0], cmds[0][1:]...).Start()
+}
+
+// terminalCommands builds the commands that open a terminal window attached to session, in
+// the order to try them (#3588). The title comes from a folder name, which is anything the
+// target folder holds (a cloned repo's directories), so no script or command line is ever
+// built from it: osascript gets the attach command and the title as arguments ('on run
+// argv'), and every title is reduced to [A-Za-z0-9 _.-] first.
+func terminalCommands(goos, attachCmd, session, title string, lookPath func(string) (string, error)) [][]string {
+	title = safeTitle(title)
+	switch goos {
+	case "darwin":
+		return [][]string{
+			{"osascript",
+				"-e", "on run argv",
+				"-e", `tell application "iTerm2" to create window with default profile command (item 1 of argv)`,
+				"-e", "end run",
+				attachCmd},
+			{"osascript",
+				"-e", "on run argv",
+				"-e", `tell application "Terminal"`,
+				"-e", "do script (item 1 of argv)",
+				"-e", "set custom title of front window to (item 2 of argv)",
+				"-e", "end tell",
+				"-e", "end run",
+				attachCmd, title},
+		}
+	case "windows":
+		echo := "echo Attached to session " + safeText(session)
+		if wtPath, err := lookPath("wt.exe"); err == nil {
+			return [][]string{{wtPath, "--title", title, "cmd", "/k", echo}}
+		}
+		// cmd re-parses this line: the title is safe text with a space in it, so it is quoted
+		// and start takes it as the window title, never as a program.
+		return [][]string{{"cmd.exe", "/c", "start", title, "cmd", "/k", echo}}
+	default:
+		for _, term := range []string{"x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal"} {
+			if path, err := lookPath(term); err == nil {
+				return [][]string{{path, "-e", attachCmd}}
+			}
+		}
+		return nil
+	}
+}
+
+// safeTitle is the window title: "Coral " and the safe text of s, so it is never empty and
+// always has a space.
+func safeTitle(s string) string {
+	return "Coral " + safeText(s)
+}
+
+// safeText keeps letters, digits, space, '_', '.' and '-' (anything else becomes '_'), at
+// most 80 of them.
+func safeText(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if b.Len() >= 80 {
+			break
+		}
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == ' ', r == '_', r == '.', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }
 
 // sameDir reports whether a and b name the same directory (symlinks resolved when they exist).
