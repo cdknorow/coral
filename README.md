@@ -85,13 +85,13 @@ Five things Coral does that your agent's own tooling doesn't:
 
 Everything else — cron-scheduled runs, shell-and-agent workflows with OAuth tokens injected, per-task cost, one searchable history across every vendor's transcripts, a board-health monitor that escalates idle work to the orchestrator, agents that publish their own UI panels — is in the [feature list](#features) below.
 
-**Coral is free to use.**
+**Coral is open source (Apache-2.0).**
 
 ## Quick Start
 
 ### Download a release
 
-Download the latest binary for free from [GitHub Releases](https://github.com/cdknorow/coral/releases):
+Download the latest binary from [GitHub Releases](https://github.com/cdknorow/coral/releases):
 
 - **macOS**: `Coral.v<version>.dmg` (universal binary), or `brew install --cask cdknorow/coral/coral`
 - **Linux**: `coral-linux-amd64-<version>.tar.gz` (x86-64) or `coral-linux-arm64-<version>.tar.gz` (ARM64, e.g. Graviton or Docker on Apple silicon)
