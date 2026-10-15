@@ -136,7 +136,10 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		if rec.Code != 200 && os.Getenv("SWEEP_DEBUG") == "1" {
 			t.Logf("NON200 %s%s -> %d %.160s", path, q, rec.Code, rec.Body.String())
 		}
-		if rec.Code == 200 {
+		// The template routes fetch only names GitHub's listings hold (#3619, Security's SHOULD on
+		// H2): the placeholder "x" isn't one, so its answer is a 404 template_not_found, which is
+		// the route answering.
+		if rec.Code == 200 || (strings.HasPrefix(f[1], "/api/templates/") && rec.Code == 404 && strings.Contains(rec.Body.String(), "template_not_found")) {
 			answered++
 		}
 		for _, home := range homes {
