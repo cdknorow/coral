@@ -26,6 +26,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/executil"
@@ -646,6 +647,18 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "type or binary parameter required")
 		return
 	}
+	if binaryPath != "" {
+		// Running a named binary is the Operator's, and only a CLI's: never a path an agent
+		// chose or could have written (#3583, Security's sweep item 5).
+		if cloud.Tunneled(r) || !humanInputCaller(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can check a CLI by its path", "code": "operator_only"})
+			return
+		}
+		if why := h.cliCheckRefusal(r.Context(), binaryPath, agentType); why != "" {
+			errBadRequest(w, why)
+			return
+		}
+	}
 
 	var installCmd string
 	if binaryPath == "" {
@@ -1106,6 +1119,14 @@ func (h *SystemHandler) NetworkInfo(w http.ResponseWriter, r *http.Request) {
 //
 // Each .md file has YAML frontmatter (---\nkey: value\n---) followed by the prompt body.
 func (h *SystemHandler) ImportTeam(w http.ResponseWriter, r *http.Request) {
+	// Reading a folder of the caller's choosing is the Operator's (#3583, Security's sweep item 4):
+	// an agent's token is refused, and the folder and its files are bounded (importTeamRoot,
+	// readImportFile): no symlink is followed, no dot-file or sensitive path is read, files are
+	// capped at 256 KiB and agents/ at 50.
+	if !humanInputCaller(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can import a team from a folder", "code": "operator_only"})
+		return
+	}
 	var body struct {
 		Path string `json:"path"`
 	}
@@ -1118,9 +1139,9 @@ func (h *SystemHandler) ImportTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := os.Stat(body.Path)
-	if err != nil || !info.IsDir() {
-		errBadRequest(w, "path does not exist or is not a directory")
+	root, err := importTeamRoot(body.Path)
+	if err != nil {
+		errBadRequest(w, strings.TrimPrefix(err.Error(), errImportRefused.Error()+": "))
 		return
 	}
 
@@ -1128,8 +1149,13 @@ func (h *SystemHandler) ImportTeam(w http.ResponseWriter, r *http.Request) {
 	var agents []map[string]any
 
 	// Parse SKILL.md as orchestrator
-	skillPath := filepath.Join(body.Path, "SKILL.md")
-	if data, err := os.ReadFile(skillPath); err == nil {
+	skillPath := filepath.Join(root, "SKILL.md")
+	data, found, err := readImportFile(root, skillPath)
+	if err != nil {
+		errBadRequest(w, strings.TrimPrefix(err.Error(), errImportRefused.Error()+": "))
+		return
+	}
+	if found {
 		meta, prompt := parseFrontmatterMD(string(data))
 		if meta.Name == "" {
 			meta.Name = "Orchestrator"
@@ -1152,16 +1178,27 @@ func (h *SystemHandler) ImportTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse agents/*.md as workers
-	agentsDir := filepath.Join(body.Path, "agents")
-	if entries, err := os.ReadDir(agentsDir); err == nil {
+	agentsDir := filepath.Join(root, "agents")
+	if fi, lerr := os.Lstat(agentsDir); lerr == nil && fi.IsDir() {
+		entries, _ := os.ReadDir(agentsDir)
+		read := 0
 		for _, entry := range entries {
 			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 				continue
 			}
-			data, err := os.ReadFile(filepath.Join(agentsDir, entry.Name()))
+			if read >= importAgentsMax {
+				errBadRequest(w, fmt.Sprintf("agents/ has more than %d agent files", importAgentsMax))
+				return
+			}
+			data, found, err := readImportFile(root, filepath.Join(agentsDir, entry.Name()))
 			if err != nil {
+				errBadRequest(w, strings.TrimPrefix(err.Error(), errImportRefused.Error()+": "))
+				return
+			}
+			if !found {
 				continue
 			}
+			read++
 			meta, prompt := parseFrontmatterMD(string(data))
 			if meta.Name == "" {
 				meta.Name = strings.TrimSuffix(entry.Name(), ".md")

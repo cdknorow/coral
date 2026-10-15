@@ -312,6 +312,8 @@ var operatorOnlyRoutes = map[string]string{
 	"GET /api/system/api-key":     "read the API key",
 	"DELETE /api/board/{project}": "delete a board",
 	"PATCH /api/board/{project}":  "rename a board",
+	// #3583 (Security's sweep item 4): a team import reads files from a folder the request names.
+	"POST /api/teams/import": "import a team from a folder",
 }
 
 // recordedAgentRoutes are allowed to an agent in every mode (an agent launches the agents of
@@ -323,7 +325,7 @@ var recordedAgentRoutes = map[string]string{
 }
 
 // guardedRoutePrefixes limit the (costly) route match to the paths the tables above can hold.
-var guardedRoutePrefixes = []string{"/api/workflows", "/api/scheduled/", "/api/tasks/", "/api/settings", "/api/sessions/launch", "/api/system/", "/api/cloud/", "/api/webhooks"}
+var guardedRoutePrefixes = []string{"/api/workflows", "/api/scheduled/", "/api/tasks/", "/api/settings", "/api/sessions/launch", "/api/system/", "/api/cloud/", "/api/webhooks", "/api/teams/"}
 
 // guardedRoute returns the route pattern of r when it is one of operatorOnlyRoutes (only is
 // true: an agent is refused in strict mode) or recordedAgentRoutes (recorded, never refused),

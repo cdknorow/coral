@@ -1115,9 +1115,15 @@ async function _checkOneCLI(inputId, resultId) {
     resultEl.className = 'cli-verify-result';
 
     try {
-        const resp = await fetch(`/api/system/cli-check?binary=${encodeURIComponent(binary)}`);
+        // The type lets the server accept a path to that CLI's binary (#3583).
+        const type = inputId.replace('settings-cli-path-', '');
+        const resp = await fetch(`/api/system/cli-check?binary=${encodeURIComponent(binary)}&type=${encodeURIComponent(type)}`);
         const data = await resp.json();
-        if (data.found) {
+        if (!resp.ok) {
+            resultEl.textContent = 'Not allowed';
+            resultEl.title = data.error || '';
+            resultEl.classList.add('cli-verify-fail');
+        } else if (data.found) {
             resultEl.textContent = data.version || 'Found';
             resultEl.classList.add('cli-verify-ok');
         } else {

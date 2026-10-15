@@ -83,6 +83,7 @@ func newSystemHandlerForTest(t *testing.T) *SystemHandler {
 func cliCheck(t *testing.T, h *SystemHandler, query string) map[string]any {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/system/cli-check?"+query, nil)
+	req = req.WithContext(context.WithValue(req.Context(), callerKindKey{}, callerDashCookie))
 	rec := httptest.NewRecorder()
 	h.CLICheck(rec, req)
 	require.Equal(t, 200, rec.Code, rec.Body.String())
@@ -187,7 +188,7 @@ func TestPrerequisiteTrackingSkipsUntrackedChecksAndDoesNotConsumeWhileDisabled(
 
 	// A caller-supplied binary, an untracked agent type and a cancelled request
 	// are not prerequisite observations.
-	cliCheck(t, h, "binary="+cli.present["claude"])
+	cliCheck(t, h, "binary=claude")
 	cliCheck(t, h, "type=gemini")
 	cli.install(t, "gemini", `echo 1`)
 	cliCheck(t, h, "type=gemini")

@@ -150,9 +150,11 @@ Verifies whether a CLI tool is installed and returns its path and version.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `type` | string | Agent type to check (e.g., `"claude"`) |
-| `binary` | string | Specific binary path to check |
+| `binary` | string | A CLI name (`claude`, `codex`, `agy`, `pi`) or the absolute path of one |
 
 One of `type` or `binary` must be provided.
+
+`binary` is the Operator's (the dashboard or the command line outside an agent): with an agent's token, or through Coral Hub, it returns 403 `operator_only`. A path must be the CLI path configured in Settings or a file named like the CLI's binary (for `type`'s CLI when `type` is given), and it is refused (400, nothing runs) when it or what it links to is in Coral's data folder, a live agent's working folder or a temp folder. `type` alone needs no permission.
 
 **Response (found):**
 ```json
@@ -436,7 +438,9 @@ Manually triggers a session index refresh.
 POST /api/teams/import
 ```
 
-Imports a team definition from a folder of markdown files.
+Imports a team definition from a folder of markdown files: `SKILL.md` (the orchestrator) and `agents/*.md`.
+
+The Operator's only: an agent's token gets 403 `operator_only`. The path must be an absolute folder that is not the file system's root, the home folder, a dot-folder or a sensitive location (`.ssh`, `.aws`, `.git` and the like). Only regular files are read, never a symlink, a dot-file or a sensitive name; each file is at most 256 KiB and `agents/` at most 50 files (400 otherwise).
 
 **Request Body:**
 ```json
