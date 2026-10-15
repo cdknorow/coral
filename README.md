@@ -116,6 +116,8 @@ cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json --new-bu
 sha256sum --check --ignore-missing SHA256SUMS.txt   # macOS: shasum -a 256 --check --ignore-missing
 ```
 
+The checksum command must print `<your file>: OK` for the file you downloaded; if it prints nothing, nothing was checked.
+
 Each Linux tarball also has its own bundle (`coral-linux-<amd64|arm64>-<version>.tar.gz.sigstore.json`), verified the same way. The bundles are in Sigstore's current bundle format: cosign 2.x reads them only with `--new-bundle-format` (without it, it fails with "bundle does not contain cert for verification"); cosign 3 reads them either way. Either check failing means the file is not an official build: don't run it.
 
 ### Build from source
