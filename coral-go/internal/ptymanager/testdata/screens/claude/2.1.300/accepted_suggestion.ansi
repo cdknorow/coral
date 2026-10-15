@@ -1,0 +1,30 @@
+  to come again, as surely as can be.
+  The shore is never lost, only left dry
+  a little while, to listen, and to wait
+  beneath the same unhurried, patient sky
+  for water's slow and faithful arithmetic.
+
+[38;5;246m✻[39m [38;5;246mSautéed for 13s · done[39m [38;5;246m6:08 PM[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231mRun ls -la here and tell me what you see.[39m
+
+[49m  [38;5;246mListed [1m1[0m[38;5;246m directory (ctrl+o to expand)[39m
+
+[38;5;231m⏺[39m The directory [38;5;153m/private/tmp/q3431/w[39m has nothing in it except a [38;5;153m.git[39m folder. The listing shows three
+  entries:
+
+  - [38;5;153m.[39m: the current directory, owned by [38;5;153mqauser0000[39m, last modified Oct 14 15:09.
+  - [38;5;153m..[39m: the parent directory, [38;5;153m/private/tmp/q3431[39m.
+  - [38;5;153m.git[39m: the repository metadata, last modified Oct 14 12:18.
+
+  This matches the git status from the start of the session: a clean [38;5;153mmain[39m branch with a single [38;5;153minit[39m
+  commit. That commit has no tracked files in the working tree, or they were removed and the removal
+  is committed.
+
+[38;5;246m✻[39m [38;5;246mBrewed[39m [38;5;246mfor[39m [38;5;246m4s[39m [38;5;246m·[39m [38;5;246mdone[39m [38;5;246m6:09[39m [38;5;246mPM[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m❯ git log --stat
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;220m⏵⏵[39m [38;5;220mauto[39m [38;5;220mmode[39m [38;5;220mon[38;5;246m (shift+tab[39m [38;5;246mto[39m [38;5;246mcycle)[39m
+

@@ -1,0 +1,30 @@
+
+[37m▸ Thought for 3s, 250 tokens[39m
+[37m  The available tool, `ask_question`, appears suitable for the task. It takes an array of questi...[39m
+
+[1m[33m?[0m Red or blue?
+[37m(skipped)[39m
+
+  I presented the question via the interactive prompt, but it was skipped. Let me know if you
+  would like to proceed with either red or blue, or if there is anything else you need!
+
+[90m────────────────────────────────────────────────────────────[39m
+[1m[34m> Run this exact shell command: echo spinner-test && sleep 20 && echo done[0m
+
+[37m○[39m [37mThought for 4.3s[39m [37m(The requested command includes a 20-second sleep, exceeding the synchronous...)[39m
+[33m○[39m [1m[33mRunning[0m [37m(echo spinner-test && sleep 20 && echo done)[39m [37m(ctrl+o to expand)[39m
+⣷  [90mRunning com[94mmand.[90m..[39m
+[90m└ Tip: You can switch conversations with /resume.[39m
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────
+[94m>[39m
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────
+esc to cancel[39m                                                                [2mGemini 3.8 Flash · high
+
+
+
+
+
+
+
+
+

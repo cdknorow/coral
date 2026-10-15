@@ -1,0 +1,42 @@
+{
+ "draft.ansi": {
+  "state": "draft",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "other",
+  "suggestion_only": false,
+  "note": "usage limit reached: no turn possible"
+ },
+ "idle.ansi": {
+  "state": "idle",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": true,
+  "note": "faint Ask Codex placeholder, usage-limit banner"
+ },
+ "trust.ansi": {
+  "state": "trust",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "Do you trust the contents of this directory? (left unanswered)"
+ },
+ "update_menu.ansi": {
+  "state": "update_menu",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "Update available menu at launch"
+ }
+}

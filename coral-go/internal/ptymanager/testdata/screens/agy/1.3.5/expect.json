@@ -1,0 +1,132 @@
+{
+ "after_turn.ansi": {
+  "state": "idle",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": false,
+  "note": "after a finished turn"
+ },
+ "busy.ansi": {
+  "state": "busy",
+  "prompt": true,
+  "why_prefix": "agent busy: ",
+  "prompt_hold": false,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "Generating spinner"
+ },
+ "busy_wide.txt": {
+  "state": "busy",
+  "prompt": true,
+  "why_prefix": "agent busy: ",
+  "prompt_hold": false,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "#3472 capture, 89 columns"
+ },
+ "draft.ansi": {
+  "state": "draft",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "other",
+  "suggestion_only": false
+ },
+ "draft_80.ansi": {
+  "state": "draft",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "other",
+  "suggestion_only": false,
+  "note": "#3478 capture, 80 columns"
+ },
+ "idle.ansi": {
+  "state": "idle",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": false,
+  "note": "fresh start, a dismissable tip above"
+ },
+ "idle_80.ansi": {
+  "state": "idle",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": false,
+  "note": "#3478 capture, 80 columns"
+ },
+ "idle_wide.txt": {
+  "state": "idle",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": false,
+  "note": "#3472 capture, 89 columns"
+ },
+ "permission_menu.ansi": {
+  "state": "permission_menu",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "Run this command?"
+ },
+ "question.ansi": {
+  "state": "question",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "ask_question tool"
+ },
+ "queued_wide.txt": {
+  "state": "idle",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": false,
+  "note": "#3472 capture: a queued message, 89 columns"
+ },
+ "spinner.ansi": {
+  "state": "spinner",
+  "prompt": true,
+  "why_prefix": "agent busy: ",
+  "prompt_hold": false,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "Running command spinner"
+ },
+ "trust.ansi": {
+  "state": "trust",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "known_gap": "\"> Yes, I trust this folder\" reads today as agy's input box holding a draft: no prompt, calm hold",
+  "note": "Do you trust the contents of this project? (left unanswered)"
+ }
+}

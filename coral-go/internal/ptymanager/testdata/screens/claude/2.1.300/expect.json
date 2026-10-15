@@ -1,0 +1,102 @@
+{
+ "accepted_suggestion.ansi": {
+  "state": "accepted_suggestion",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "other",
+  "suggestion_only": false,
+  "note": "Tab-accepted suggestion, normal intensity"
+ },
+ "after_turn.ansi": {
+  "state": "idle",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": false,
+  "note": "after a finished turn, no suggestion"
+ },
+ "draft.ansi": {
+  "state": "draft",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "other",
+  "suggestion_only": false
+ },
+ "idle.ansi": {
+  "state": "idle",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": true,
+  "note": "fresh start: faint Try \"...\" placeholder"
+ },
+ "permission_menu.ansi": {
+  "state": "permission_menu",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "Bash permission, manual mode"
+ },
+ "plan_approval.ansi": {
+  "state": "plan_approval",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "plan mode, ready to execute"
+ },
+ "question.ansi": {
+  "state": "question",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "AskUserQuestion"
+ },
+ "suggestion.ansi": {
+  "state": "suggestion",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "other",
+  "suggestion_only": true,
+  "note": "faint prompt suggestion after a turn"
+ },
+ "trust.ansi": {
+  "state": "trust",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "known_gap": "unnumbered options; read today as a footer (calm hold, no Needs input)",
+  "note": "Quick safety check (left unanswered)"
+ },
+ "working.ansi": {
+  "state": "working",
+  "prompt": false,
+  "why_prefix": "",
+  "prompt_hold": false,
+  "input_box": true,
+  "box": "empty",
+  "suggestion_only": false,
+  "note": "esc to interrupt, Thinking spinner"
+ }
+}

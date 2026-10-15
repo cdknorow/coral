@@ -1,0 +1,42 @@
+{
+ "bash.txt": {
+  "state": "permission_menu",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "auto_accept fixture"
+ },
+ "edit.txt": {
+  "state": "permission_menu",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "auto_accept fixture"
+ },
+ "question.txt": {
+  "state": "question",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "auto_accept fixture"
+ },
+ "write.txt": {
+  "state": "permission_menu",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "auto_accept fixture"
+ }
+}

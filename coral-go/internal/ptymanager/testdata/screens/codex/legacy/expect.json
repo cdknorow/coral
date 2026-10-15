@@ -1,0 +1,22 @@
+{
+ "edit.txt": {
+  "state": "permission_menu",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "auto_accept fixture"
+ },
+ "exec.txt": {
+  "state": "permission_menu",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "auto_accept fixture"
+ }
+}

@@ -1,0 +1,30 @@
+
+[38;5;231m⏺[39m The directory [38;5;153m/private/tmp/q3431/w[39m has nothing in it except a [38;5;153m.git[39m folder. The listing shows three
+  entries:
+
+  - [38;5;153m.[39m: the current directory, owned by [38;5;153mqauser0000[39m, last modified Oct 14 15:09.
+  - [38;5;153m..[39m: the parent directory, [38;5;153m/private/tmp/q3431[39m.
+  - [38;5;153m.git[39m: the repository metadata, last modified Oct 14 12:18.
+
+  This matches the git status from the start of the session: a clean [38;5;153mmain[39m branch with a single [38;5;153minit[39m
+  commit. That commit has no tracked files in the working tree, or they were removed and the removal
+  is committed.
+
+[38;5;246m✻[39m [38;5;246mBrewed[39m [38;5;246mfor[39m [38;5;246m4s[39m [38;5;246m·[39m [38;5;246mdone[39m [38;5;246m6:09[39m [38;5;246mPM[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231mUse the AskUserQuestion tool right now to ask me: pick red or blue (two options). Nothing else.[39m
+[38;5;246m[49m────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;16m[48;5;153m ☐ Color [39m[49m
+
+[1m[38;5;231mPick red or blue?[0m
+
+[38;5;153m❯[39m [38;5;246m1.[39m [38;5;153mRed[39m
+     [38;5;246mChoose red[39m
+  [38;5;246m2.[39m Blue
+     [38;5;246mChoose[39m [38;5;246mblue[39m
+  [38;5;246m3.[39m [38;5;246mType[39m [38;5;246msomething.[39m
+[38;5;246m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  4. Chat about this
+
+[38;5;246mEnter[39m [38;5;246mto[39m [38;5;246mselect[39m [38;5;246m·[39m [38;5;246m↑/↓[39m [38;5;246mto[39m [38;5;246mnavigate[39m [38;5;246m·[39m [38;5;246mEsc[39m [38;5;246mto[39m [38;5;246mcancel[39m
+
