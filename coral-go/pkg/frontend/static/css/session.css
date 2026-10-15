@@ -1663,26 +1663,7 @@
     box-sizing: border-box;
 }
 
-.board-chat-messages .mb-message {
-    margin-bottom: 8px;
-    background: var(--board-msg-bg, transparent);
-    border-radius: 6px;
-    padding: 8px 10px;
-}
-
-.board-chat-messages .mb-message-grouped {
-    margin-top: 4px;
-    margin-bottom: 8px;
-}
-
-.board-chat-messages .board-msg-left {
-    margin-right: 4%;
-}
-
-.board-chat-messages .board-msg-right {
-    margin-left: 4%;
-    border-right: none;
-}
+/* The team view's group chat uses the board's soft cards (components.css). */
 
 .board-chat-empty {
     color: var(--text-muted);

@@ -811,6 +811,30 @@ export function boardMessageDisplayText(m) {
     return text;
 }
 
+/** Markdown options for board posts: GFM, and a single newline is a line break (agents write
+ *  one point per line, which plain Markdown runs together into one paragraph; #3590). */
+export const BOARD_MARKDOWN = { gfm: true, breaks: true };
+
+/** A board message's body as sanitized HTML (board link policy). */
+export function renderBoardMessageBody(m) {
+    return renderMarkdown(boardMessageText(boardMessageDisplayText(m)), BOARD_MARKDOWN, 'board');
+}
+
+/** A board sender's avatar (#3590): their icon, else up to two initials ("QA Engineer" is QE,
+ *  "Orchestrator (coral-hub)" is OR), escaped as text. Coloured by the message's --mb-color. */
+export function boardAvatar(m, name) {
+    const icon = m && m.icon ? String(m.icon) : '';
+    const words = String(name || '?').replace(/\(.*?\)/g, ' ').trim().split(/\s+/).filter(Boolean);
+    const initials = icon || (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
+    return `<span class="mb-avatar" aria-hidden="true">${escapeHtml(initials)}</span>`;
+}
+
+/** The sender's palette colour as CSS variables on a board message: the avatar's text and its
+ *  tinted square (#3590). color is a getAgentColor palette hex. */
+export function boardMessageColorStyle(color) {
+    return `--mb-color:${color};--mb-tint:${hexToRgba(color, 0.18)}`;
+}
+
 export function labelCodeBlocks(root) {
     for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
         const lang = /language-([\w+#.-]+)/.exec(code.className);

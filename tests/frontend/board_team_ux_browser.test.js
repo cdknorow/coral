@@ -29,6 +29,48 @@ const BASE = require('./test_base').BASE;
         await Input.dispatchKeyEvent({ type: 'keyUp', key: k, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
     };
     const LONG = 'a'.repeat(160);
+    // #3590: a board post is an avatar row (the sender's initials in their palette colour, no box or
+    // bar), a single newline in it is a line break, and a second post in a row shares the avatar.
+    const rowCheck = async (feedId, where) => {
+        const r = await ev(`(async () => {
+            const { getAgentColor, hexToRgba } = await import((window.__coralStatic||'/static/')+'utils.js');
+            const feed = document.getElementById(${JSON.stringify(feedId)});
+            const msgs = [...feed.querySelectorAll('.mb-message')];
+            const i = msgs.findIndex(m => m.textContent.includes('first line'));
+            if (i < 0) return null;
+            const msg = msgs[i], next = msgs[i + 1];
+            const body = msg.querySelector('.mb-message-body');
+            const p = body.querySelector('p');
+            const av = msg.querySelector('.mb-avatar');
+            const probe = document.createElement('div'); probe.style.color = getAgentColor('QA Engineer'); probe.style.background = hexToRgba(getAgentColor('QA Engineer'), 0.18); document.body.appendChild(probe);
+            const want = { color: getComputedStyle(probe).color, bg: getComputedStyle(probe).backgroundColor }; probe.remove();
+            const cs = getComputedStyle(msg), acs = av && getComputedStyle(av);
+            const ar = av && av.getBoundingClientRect(), br = body.getBoundingClientRect();
+            const nav = next && next.querySelector('.mb-avatar');
+            return { br: !!p && !!p.querySelector('br'), lines: p ? p.innerText.split('\\n') : [], items: body.querySelectorAll('li').length,
+                borderLeft: cs.borderLeftWidth, borderBottom: cs.borderBottomWidth, bg: cs.backgroundColor,
+                initials: av && av.textContent, avChildren: av ? av.children.length : -1, avColor: acs && acs.color, avBg: acs && acs.backgroundColor, want,
+                bodyRightOfAvatar: !!ar && br.left >= ar.right,
+                nextGrouped: !!next && next.classList.contains('mb-message-grouped') && next.textContent.includes('a follow-up'),
+                nextAvatarHidden: !!nav && getComputedStyle(nav).visibility === 'hidden',
+                nextNameHidden: !!next && getComputedStyle(next.querySelector('.mb-agent-name')).display === 'none' };
+        })()`);
+        assert.ok(r, `${where}: the two-line post rendered`);
+        assert.ok(r.br, `${where}: a single newline is a <br>`);
+        assert.deepEqual(r.lines, ['first line', 'second line'], `${where}: the two lines stay separate`);
+        assert.equal(r.items, 2, `${where}: the list still renders`);
+        assert.equal(r.borderLeft, '0px', `${where}: no colour bar`);
+        assert.equal(r.borderBottom, '0px', `${where}: no underline`);
+        assert.equal(r.bg, 'rgba(0, 0, 0, 0)', `${where}: no box (the page's background)`);
+        assert.equal(r.initials, 'QE', `${where}: the avatar shows the initials`);
+        assert.equal(r.avChildren, 0, `${where}: the avatar is text only`);
+        assert.equal(r.avColor, r.want.color, `${where}: the initials are in the sender's palette colour`);
+        assert.equal(r.avBg, r.want.bg, `${where}: the avatar's tint is that colour`);
+        assert.ok(r.bodyRightOfAvatar, `${where}: the body sits right of the avatar`);
+        assert.ok(r.nextGrouped, `${where}: the next post from the same sender is grouped`);
+        assert.ok(r.nextAvatarHidden, `${where}: a grouped post shares the avatar`);
+        assert.ok(r.nextNameHidden, `${where}: a grouped post shares the name`);
+    };
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -42,6 +84,8 @@ const BASE = require('./test_base').BASE;
             const msgs = Array.from({ length: 60 }, (_, i) => ({ id: i + 1, project: 'alpha', subscriber_id: i % 2 ? 'Lead Developer' : 'QA Engineer', job_title: i % 2 ? 'Lead Developer' : 'QA Engineer', content: 'message ' + (i + 1), created_at: new Date(Date.UTC(2026, 9, 13, 10, 0, i)).toISOString() }));
             msgs.push({ id: 61, project: 'alpha', subscriber_id: 'Lead Developer', job_title: 'Lead Developer', content: 'long ${LONG} end', created_at: '2026-10-13T10:01:01Z' });
             msgs.push({ id: 62, project: 'alpha', subscriber_id: 'Lead Developer', job_title: 'Lead Developer', content: 'A block:\\n\\n\\u0060\\u0060\\u0060go\\nfunc main() {}\\n\\u0060\\u0060\\u0060\\n', created_at: '2026-10-13T10:01:02Z' });
+            msgs.push({ id: 63, project: 'alpha', subscriber_id: 'QA Engineer', job_title: 'QA Engineer', content: 'first line\\nsecond line\\n\\n- one\\n- two', created_at: '2026-10-13T10:01:03Z' });
+            msgs.push({ id: 64, project: 'alpha', subscriber_id: 'QA Engineer', job_title: 'QA Engineer', content: 'a follow-up', created_at: '2026-10-13T10:01:04Z' });
             window.__boardMsgs = msgs;
             window.fetch = async (url, opts) => {
                 const u = String(url);
@@ -85,7 +129,7 @@ const BASE = require('./test_base').BASE;
         console.log('   ✓ button shown and focusable, Enter opens the team view; kebab visible on focus');
 
         console.log('#5 Entering the team view opens the group chat at the newest message');
-        const atBottom = `(() => { const m = document.getElementById('board-panel-msgs'); return !!m && m.scrollHeight > m.clientHeight + 50 && m.scrollHeight - m.scrollTop - m.clientHeight < 24 && m.textContent.includes('A block'); })()`;
+        const atBottom = `(() => { const m = document.getElementById('board-panel-msgs'); return !!m && m.scrollHeight > m.clientHeight + 50 && m.scrollHeight - m.scrollTop - m.clientHeight < 24 && m.textContent.includes('second line'); })()`;
         const scrollDiag = `(() => { const m = document.getElementById('board-panel-msgs'); return m && { top: m.scrollTop, h: m.scrollHeight, c: m.clientHeight }; })()`;
         await waitFor(atBottom, 'the newest message in view on first entry', { diag: scrollDiag });
         // With one of the team's agents selected the chat stays loaded across leaving and coming back,
@@ -113,6 +157,10 @@ const BASE = require('./test_base').BASE;
         assert.ok(feed.sw <= feed.cw + 1, `the feed does not scroll sideways (scrollWidth ${feed.sw} > clientWidth ${feed.cw})`);
         assert.ok(feed.pre, 'a fenced block renders as pre > code');
         console.log('   ✓ no sideways scroll; fence renders as a code block');
+
+        console.log('#3590 Team chat: avatar rows, a single newline is a line break');
+        await rowCheck('board-panel-msgs', 'team chat');
+        console.log('   ✓ initials in the palette colour, no box, <br> between lines, a run shares the avatar');
 
         console.log('#4 Closing the team view from its Tasks tab leaves only Tasks in the sidebar');
         await ev(`document.querySelector('.team-center-close').click(); true`);
@@ -214,6 +262,12 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`document.querySelector('#workflows-view .wf-run-step-output-toggle').getAttribute('aria-expanded')`), 'true');
         assert.ok(await ev(`document.querySelector('#workflows-view .wf-run-step-output').getBoundingClientRect().height > 20`), 'expanded output is shown');
         console.log('   ✓ stderr inline, header excerpt, no clipped strip, toggle is a button');
+
+        console.log('#3590 Board view: avatar rows, a single newline is a line break');
+        await ev(`window.selectBoardProject('alpha'); true`);
+        await waitFor(`[...document.querySelectorAll('#mb-messages .mb-message')].some(m => m.textContent.includes('first line'))`, 'the board view');
+        await rowCheck('mb-messages', 'board view');
+        console.log('   ✓ initials in the palette colour, no box, <br> between lines, a run shares the avatar');
 
         console.log('PASS board_team_ux_browser');
     } finally {

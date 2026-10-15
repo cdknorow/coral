@@ -1,6 +1,6 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast, jsStr, externalMessageBadge, hubUserBadge, boardMessageDisplayText } from './utils.js';
+import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, getAgentColor, hexToRgba, showToast, jsStr, externalMessageBadge, hubUserBadge, boardMessageDisplayText, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
@@ -340,7 +340,8 @@ function renderMessages(messages) {
         const selectedClass = _selectMode && _selectedIds.has(m.id) ? ' mb-message-selected' : '';
         const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_selectedIds.has(m.id) ? 'checked' : ''} onclick="toggleMessageSelect(${Number(m.id)}, this.checked)">` : '';
         return `
-        <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}" style="border-left:3px solid ${hexToRgba(color, 0.55)}; border-bottom:2px solid ${hexToRgba(color, 0.3)}">
+        <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}" style="${boardMessageColorStyle(color)}">
+            ${boardAvatar(m, agent)}
             <div class="mb-message-header">
                 ${checkbox}
                 <span class="mb-agent-name" style="color:${color}">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
@@ -348,7 +349,7 @@ function renderMessages(messages) {
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
                 <button class="mb-delete-msg-btn" onclick="deleteBoardMessage(${Number(m.id)})" title="Delete message">&times;</button>
             </div>
-            <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)), undefined, 'board')}</div>
+            <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
         </div>`;
     }).join('');
     resolveBoardArtifacts(container, state.currentBoardServer);

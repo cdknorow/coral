@@ -6,7 +6,7 @@ import { launchBlockedReason } from './hub_access.js';
 import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, noteBoardLabels, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { distillChip } from './knowledge_distill.js';
-import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge, hubUserBadge, boardMessageDisplayText } from './utils.js';
+import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge, hubUserBadge, boardMessageDisplayText, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { isGoneAsleep } from './terminal_gone.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
@@ -626,18 +626,18 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
         const spacing = sameAsPrev ? 'mb-message-grouped' : 'mb-message-first';
         const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id || m.session_id);
         const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
-        const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
 
         const selectedClass = _boardChatSelectMode && _boardChatSelectedIds.has(m.id) ? ' mb-message-selected' : '';
         const checkbox = _boardChatSelectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_boardChatSelectedIds.has(m.id) ? 'checked' : ''} onclick="window._toggleBoardChatMsgSelect(${Number(m.id)}, this.checked)">` : '';
-        return `<div class="mb-message ${spacing}${alignClass}${selectedClass}" style="border-left:3px solid rgba(${r},${g},${b},0.55); border-bottom:2px solid rgba(${r},${g},${b},0.3)">
+        return `<div class="mb-message ${spacing}${alignClass}${selectedClass}" style="${boardMessageColorStyle(color)}">
+            ${boardAvatar(m, agent)}
             <div class="mb-message-header">
                 ${checkbox}
                 <span class="mb-agent-name" style="color:${color}">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
                 ${externalMessageBadge(m)}${hubUserBadge(m)}
                 <span class="mb-message-time">${_formatTime(m.created_at)}</span>
             </div>
-            <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)), undefined, 'board')}</div>
+            <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
         </div>`;
     }).join('');
     resolveBoardArtifacts(msgsEl, _activeBoardChat ? splitKey(_activeBoardChat).server : undefined);
