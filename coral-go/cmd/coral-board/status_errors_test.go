@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -90,6 +92,52 @@ func TestCLICommandsFailLoudlyOnNon2xx(t *testing.T) {
 			assert.NotContains(t, run.stdout, "No new messages", label)
 		}
 		srv.Close()
+	}
+}
+
+// On a non-2xx, export writes NO output file — the silent empty export this task closes (#3589).
+func TestExportWritesNoFileOnNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"denied"}`)
+	}))
+	t.Cleanup(srv.Close)
+	dir := subscribedDataDir(t, srv.URL)
+	out := t.TempDir() + "/export.json"
+	run := runBoard(t, srv.URL, dir, "export", "--output", out)
+	assert.NotEqual(t, 0, run.code, "export must exit non-zero on a 401; stdout=%q", run.stdout)
+	assert.Contains(t, run.stderr, "401")
+	_, err := os.Stat(out)
+	assert.True(t, os.IsNotExist(err), "no export file must be written on a non-2xx; got err=%v", err)
+	assert.NotContains(t, run.stdout, "Exported")
+}
+
+// The wait --block poll loop exits on a non-2xx instead of spinning against the server (#3589).
+// A regression would hang, so the subprocess is given a hard deadline and must finish before it.
+func TestWaitBlockExitsOnNon2xx(t *testing.T) {
+	// Registration succeeds; only /waits/poll answers 401, so the block poll loop itself is the
+	// thing under test (its old form spun against the server with no delay).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/waits/poll") {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"denied","code":"denied"}`)
+			return
+		}
+		fmt.Fprint(w, `{"ok":true,"status":"registered"}`)
+	}))
+	t.Cleanup(srv.Close)
+	dir := subscribedDataDir(t, srv.URL)
+
+	done := make(chan boardRun, 1)
+	go func() { done <- runBoard(t, srv.URL, dir, "wait", "--from", "someone", "--block") }()
+	select {
+	case run := <-done:
+		assert.NotEqual(t, 0, run.code, "wait --block must exit non-zero when the poll answers 401; stdout=%q stderr=%q", run.stdout, run.stderr)
+		assert.Contains(t, run.stdout+run.stderr, "401", "the poll's 401 is reported")
+	case <-time.After(20 * time.Second):
+		t.Fatal("wait --block did not exit on a non-2xx poll: it is spinning against the server")
 	}
 }
 
