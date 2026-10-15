@@ -35,7 +35,7 @@ import { initCommandMention } from './command_mention.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
 import { loadCustomViews, activateCustomView } from './custom_views.js';
 import { startNav, go, note, onRoute, currentRoute } from './nav.js';
-import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS } from './routes.js';
+import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } from './routes.js';
 import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
 import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize } from './live_chat.js';
@@ -848,6 +848,22 @@ function registerRouteHandlers() {
         await liveListReady;
         const m = await importOnce('./servers_tab.js');
         if (!(await m.openServersTab(r.id || undefined, { fromHistory: true }))) go({ view: 'agents' }, { replace: true });
+    });
+
+    // A dashboard page link in agent-written text (#3542 keeps it as a[data-route], rebuilt from
+    // the parsed route): a plain click goes through the router instead of reloading the dashboard.
+    // A modified or middle click, another origin, or a path the router refuses keeps the browser's.
+    document.addEventListener('click', e => {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const a = e.target.closest && e.target.closest('a[data-route][href]');
+        if (!a || (a.target && a.target !== '_self')) return;
+        let url;
+        try { url = new URL(a.getAttribute('href'), location.origin); } catch { return; }
+        if (url.origin !== location.origin) return;
+        const r = parseRoute(url.pathname, url.search);
+        if (!r) return;
+        e.preventDefault();
+        go(r);
     });
 
     // A sidebar tab the user picks is part of the page (a replace): an agent's tab, or a team's

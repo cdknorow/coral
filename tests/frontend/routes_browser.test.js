@@ -218,6 +218,22 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         const after = await ev(`({ path: location.pathname, hash: location.hash, board: ${shown('messageboard-view')}, team: !!(document.getElementById('team-center-view') && !document.getElementById('team-center-view').hidden) })`);
         check('a #team-view= link in a post drives nothing', after.path === `/board/${board}` && !after.hash && after.board && !after.team, JSON.stringify(after));
 
+        // A dashboard page link in a post (#3542 keeps it, rebuilt from the parsed route): a plain
+        // click goes through the router, with no page load, and Back returns to the board.
+        await api('POST', `/api/board/${board}/messages`, { subscriber_id: 'Routes QA', content: 'open [the chats](/chats?q=routeclick&x=1) now' });
+        await open(`/board/${board}`);
+        const routeLink = `[...document.querySelectorAll('#messageboard-view .mb-message-body a[data-route]')].find(a => a.textContent === 'the chats')`;
+        await until(`!!(${routeLink})`, 'the route link');
+        const linkHref = await ev(`(${routeLink}).getAttribute('href')`);
+        await ev(`window.__samePage = true; (${routeLink}).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })); true`);
+        await atUrl('/chats?q=routeclick');
+        await until(`(document.querySelector('.top-nav-tab.active') || {}).id === 'nav-tab-history'`, 'the Chats tab');
+        const rc = await ev(`({ url: location.pathname + location.search, same: window.__samePage === true, box: (document.getElementById('history-search') || {}).value })`);
+        check('a page link in a post opens it through the router (no page load, its own query only)', linkHref === '/chats?q=routeclick' && rc.url === '/chats?q=routeclick' && rc.same && rc.box === 'routeclick', JSON.stringify({ linkHref, ...rc }));
+        await ev('history.back(); true');
+        await atUrl(`/board/${board}`);
+        check('and Back returns to the board', (await url()) === `/board/${board}` && (await ev('window.__samePage === true')), await url());
+
         // "../../api" is a legal name: encoded, it stays one segment under /api/board/.
         const climb = '../../api';
         boards.push(climb);
