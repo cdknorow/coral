@@ -134,7 +134,7 @@ export function notificationLinkTarget(url) {
         let parsed;
         try { parsed = new URL(u); } catch { return null; }
         if (!/^https?:$/.test(parsed.protocol) || !parsed.hostname || parsed.username || parsed.password) return null;
-        return { kind: 'web', href: parsed.href };
+        return { kind: 'web', href: parsed.href, host: parsed.host, insecure: parsed.protocol === 'http:' };
     }
     const route = routeHref(u);
     return route !== null ? { kind: 'route', href: route } : null;
@@ -148,7 +148,10 @@ export function showAlertNotification(title, message, level = 'info', link = nul
     const target = link ? notificationLinkTarget(link.url) : null;
     const label = link ? String(link.label || link.url || '') : '';
     const linkHtml = !link ? ''
+        // A web link shows where it goes next to its label (the label is the agent's own text), and
+        // says so when it isn't encrypted (#3623, Security's NIT on #3622).
         : target ? `<a href="#" class="alert-notification-link">${escapeHtml(label)}</a>`
+            + (target.kind === 'web' ? ` <span class="alert-notification-host">${escapeHtml(target.host)}${target.insecure ? ' · not encrypted' : ''}</span>` : '')
         : `<span class="alert-notification-link blocked-link" title="Link not opened">${escapeHtml(label)}</span>`;
     overlay.innerHTML = `<div class="alert-notification">
             <div class="alert-notification-icon">${icon}</div>
@@ -272,8 +275,12 @@ export const DOMPURIFY_CONFIG = {
  * Attributes come from an allowlist: no id, name, for, role, data-* or event wiring that could
  * shadow the dashboard's own elements or pick up its handlers. A class is kept only for code
  * highlighting (language-*, hljs*). Ids are kept only for a file shown in the viewer ('file'
- * links), where #fragments need them, and are prefixed there (user-content-<id>). */
-const CONTENT_FORBID_TAGS = ['button', 'label', 'fieldset', 'legend', 'dialog', 'details', 'summary', 'progress', 'meter', 'option', 'optgroup', 'datalist', 'output', 'menu'];
+ * links), where #fragments need them, and are prefixed there (user-content-<id>).
+ * Media and embedded documents are dropped too (#3623, Security's SHOULD on #3622): video, audio,
+ * source, track and picture would fetch a remote address (src, poster, srcset), and svg and math
+ * are separate documents with their own links and images. The page's media-src is the second layer. */
+const CONTENT_FORBID_TAGS = ['button', 'label', 'fieldset', 'legend', 'dialog', 'details', 'summary', 'progress', 'meter', 'option', 'optgroup', 'datalist', 'output', 'menu',
+    'video', 'audio', 'source', 'track', 'picture', 'svg', 'math'];
 const CONTENT_ATTRS = new Set(['href', 'title', 'alt', 'src', 'width', 'height', 'colspan', 'rowspan', 'align', 'start', 'reversed',
     'type', 'value', 'lang', 'dir', 'datetime', 'cite', 'abbr', 'scope', 'target', 'rel', 'referrerpolicy',
     // Set by Coral's own sanitizer hook on images (artifact and blocked-image markers).

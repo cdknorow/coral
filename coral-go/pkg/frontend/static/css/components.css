@@ -1267,6 +1267,12 @@ button.subscriber-history-link {
     text-decoration: underline;
 }
 
+.alert-notification-host {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-left: 6px;
+}
+
 .alert-notification-ok {
     min-width: 100px;
     padding: 8px 24px;
