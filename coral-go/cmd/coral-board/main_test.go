@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -117,20 +118,64 @@ func TestStateFile_LoadMissing(t *testing.T) {
 	}
 }
 
+// A state file's server_url is used only when it's a loopback address (Coral writes one
+// for sandboxes that drop CORAL_URL) or this agent's configured Coral; anything else would
+// get the session token (#3581).
 func TestStateFile_ServerURLOverride(t *testing.T) {
-	isolateBoardEnv(t)
-
-	// Save state with custom server URL
-	st := &boardState{Project: "test", JobTitle: "Dev", ServerURL: "http://custom:9999"}
-	saveState(st)
-
-	// loadState overrides serverURL; isolateBoardEnv restores it on cleanup.
-	loaded := loadState()
-	if loaded == nil {
-		t.Fatal("loadState returned nil")
+	for _, c := range []struct {
+		saved, configured, want string
+	}{
+		{"http://127.0.0.1:9999", "http://localhost:8420", "http://127.0.0.1:9999"},
+		{"http://[::1]:8455/", "http://localhost:8420", "http://[::1]:8455/"},
+		{"https://coral.example:9443", "https://coral.example:9443", "https://coral.example:9443"},
+		{"http://custom:9999", "http://localhost:8420", "http://localhost:8420"},
+		{"https://evil.example", "https://coral.example:9443", "https://coral.example:9443"},
+		{"http://127.0.0.1.evil.example:8420", "http://localhost:8420", "http://localhost:8420"},
+		{"http://user@127.0.0.1:8420", "http://localhost:8420", "http://localhost:8420"},
+		{"file:///tmp/x", "http://localhost:8420", "http://localhost:8420"},
+	} {
+		t.Run(c.saved, func(t *testing.T) {
+			isolateBoardEnv(t)
+			serverURL = c.configured
+			saveState(&boardState{Project: "test", JobTitle: "Dev", ServerURL: c.saved})
+			if loadState() == nil {
+				t.Fatal("loadState returned nil")
+			}
+			if serverURL != c.want {
+				t.Errorf("serverURL = %q, want %q", serverURL, c.want)
+			}
+		})
 	}
-	if serverURL != "http://custom:9999" {
-		t.Errorf("serverURL = %q, want %q", serverURL, "http://custom:9999")
+}
+
+func TestStateFile_Modes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	dataDir := isolateBoardEnv(t)
+	sub := filepath.Join(dataDir, "fresh")
+	t.Setenv("CORAL_DATA_DIR", sub)
+	t.Setenv("CORAL_DIR", sub)
+	// An older version's 0644 file is tightened when it's written again.
+	os.MkdirAll(sub, 0o700)
+	os.WriteFile(stateFilePath(), []byte("{}"), 0o644)
+	saveState(&boardState{Project: "p", JobTitle: "Dev"})
+	for p, want := range map[string]os.FileMode{sub: 0o700, stateFilePath(): 0o600} {
+		fi, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != want {
+			t.Errorf("%s is %o, want %o", p, fi.Mode().Perm(), want)
+		}
+	}
+	// A folder the CLI makes is 0700.
+	newDir := filepath.Join(dataDir, "made-by-cli")
+	t.Setenv("CORAL_DATA_DIR", newDir)
+	t.Setenv("CORAL_DIR", newDir)
+	saveState(&boardState{Project: "p", JobTitle: "Dev"})
+	if fi, err := os.Stat(newDir); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Errorf("the folder the CLI made: %v %v", fi, err)
 	}
 }
 

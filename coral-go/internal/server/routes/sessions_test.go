@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -3000,6 +3001,21 @@ func TestWriteBoardStateFilePersistsLoopbackURLOnDefaultPort(t *testing.T) {
 	assert.Equal(t, "death-or-trade-ai-auto", state["project"])
 	assert.Equal(t, "Frontend Dev", state["job_title"])
 	assert.Equal(t, "http://127.0.0.1:8420", state["server_url"])
+}
+
+// The board state file names the agent's board and server: 0600, and an older 0644 file is
+// tightened (#3581).
+func TestWriteBoardStateFileIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	cfg := config.Load(t.TempDir())
+	path := filepath.Join(cfg.CoralDir(), "board_state_mode-session.json")
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644))
+	writeBoardStateFile("mode-session", "fixture-board", "Fixture", cfg)
+	fi, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
 }
 
 // A Config not built by config.Load has no data dir. The state file must not

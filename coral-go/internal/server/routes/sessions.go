@@ -5329,7 +5329,7 @@ func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config
 		return
 	}
 	testguard.CheckDataPath(stateDir)
-	os.MkdirAll(stateDir, 0755)
+	os.MkdirAll(stateDir, 0o700)
 
 	state := map[string]string{
 		"project":   boardName,
@@ -5349,8 +5349,11 @@ func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config
 
 	data, _ := json.Marshal(state)
 	statePath := filepath.Join(stateDir, fmt.Sprintf("board_state_%s.json", sessionName))
-	if err := os.WriteFile(statePath, data, 0644); err != nil {
+	// 0600: it names the agent's board and server (#3581).
+	if err := os.WriteFile(statePath, data, 0o600); err != nil {
 		log.Printf("Failed to write board state file for %s: %v", sessionName, err)
+	} else {
+		os.Chmod(statePath, 0o600) // a file an older version wrote 0644
 	}
 }
 

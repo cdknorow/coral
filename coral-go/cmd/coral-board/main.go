@@ -104,15 +104,23 @@ func loadState() *boardState {
 		return nil
 	}
 	if s.ServerURL != "" {
-		serverURL = s.ServerURL
+		// Only this agent's own Coral: anything else would get the session token (#3581).
+		if hooks.TrustedServerURL(s.ServerURL, serverURL) {
+			serverURL = s.ServerURL
+		} else {
+			fmt.Fprintln(os.Stderr, "[coral-board] ignoring the board state's server_url: it isn't a loopback address or this agent's Coral")
+		}
 	}
 	return &s
 }
 
 func saveState(s *boardState) {
 	data, _ := json.Marshal(s)
-	os.MkdirAll(filepath.Dir(stateFilePath()), 0755)
-	os.WriteFile(stateFilePath(), data, 0644)
+	path := stateFilePath()
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	if os.WriteFile(path, data, 0o600) == nil {
+		os.Chmod(path, 0o600) // a file an older version wrote 0644
+	}
 }
 
 func deleteState() {

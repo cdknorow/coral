@@ -51,12 +51,14 @@ func main() {
 	}
 
 	// Server resolution: state file > CORAL_URL env > localhost fallback
-	base := ""
+	// A state file's server_url only if it's this agent's own Coral (#3581).
+	base := hooks.CoralBase()
 	if v, ok := state["server_url"].(string); ok && v != "" {
-		base = strings.TrimRight(v, "/")
-	}
-	if base == "" {
-		base = hooks.CoralBase()
+		if hooks.TrustedServerURL(v, base) {
+			base = strings.TrimRight(strings.TrimSpace(v), "/")
+		} else {
+			hooks.DebugLog("message_check: ignored a board state server_url that isn't loopback or this agent's Coral")
+		}
 	}
 
 	resp, err := hooks.CoralAPI(base, "GET",
