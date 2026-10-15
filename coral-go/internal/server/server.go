@@ -890,7 +890,9 @@ func (s *Server) buildRouter() chi.Router {
 // a trailing slash redirects 301 to the path without it (the query kept), and a bare /team or
 // /board, which names no view, redirects 301 to /agents. Coral Hub follows the same rule.
 func (s *Server) servePagePath(w http.ResponseWriter, r *http.Request) {
-	p := r.URL.Path
+	// The ESCAPED path: a redirect built from the decoded one would undo %40, %2F, %3F, %23 and
+	// %20 and change what the link means (QA and Security on the 1a delta).
+	p := r.URL.EscapedPath()
 	clean := strings.TrimRight(p, "/")
 	if clean == "/team" || clean == "/board" {
 		clean = "/agents"

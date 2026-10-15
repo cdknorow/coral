@@ -107,6 +107,13 @@ func TestDashboardPagePathsCanonicalForm(t *testing.T) {
 		"/board":                            "/agents",
 		"/board/?x=1":                       "/agents?x=1",
 		"/agents//":                         "/agents",
+		// The escaped form is kept exactly (QA and Security): a trailing slash never changes a link's meaning.
+		"/board/%40odd/":  "/board/%40odd",
+		"/team/%40m2/qa/": "/team/%40m2/qa",
+		"/team/a%2Fb/":    "/team/a%2Fb",
+		"/chats/a%3Fb/":   "/chats/a%3Fb",
+		"/docs/x%23y/":    "/docs/x%23y",
+		"/docs/x%20y/":    "/docs/x%20y",
 	}
 	for from, to := range cases {
 		resp, _ := pageGet(t, c, "GET", ts.URL+from)
