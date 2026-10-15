@@ -198,6 +198,14 @@ func TestStripURLCredentials(t *testing.T) {
 		"https://host/path/with@at":                       "https://host/path/with@at",
 		"https://a:b@c@host/r":                            "https://host/r",
 		"":                                                "",
+		"https://host/org/r.git?access_token=X#frag":      "https://host/org/r.git",
+		"https://host/r#t=X":                              "https://host/r",
+		"https://user:pa#ss@host/r":                       "https://host/r",
+		"https://user:pa?ss@host/r":                       "https://host/r",
+		"https://tok@host?x=1":                            "https://host",
+		"user:pass@host:org/repo.git":                     "host:org/repo.git",
+		"git@host:org/r@v.git":                            "git@host:org/r@v.git",
+		"/srv/git/repo@x:y":                               "/srv/git/repo@x:y",
 	} {
 		if got := StripURLCredentials(in); got != want {
 			t.Errorf("StripURLCredentials(%q) = %q, want %q", in, got, want)

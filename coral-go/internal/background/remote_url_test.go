@@ -29,3 +29,13 @@ func TestQueryGitStripsRemoteCredentials(t *testing.T) {
 	require.NotNil(t, info.RemoteURL)
 	assert.Equal(t, "https://github.com/org/repo.git", *info.RemoteURL)
 }
+
+// #3558 SHOULD 1: the repo name a PR check uses never carries a credential either.
+func TestGetRepoFromWorkdirStripsCredentials(t *testing.T) {
+	repo := t.TempDir()
+	out, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput()
+	require.NoError(t, err, string(out))
+	out, err = exec.Command("git", "-C", repo, "remote", "add", "origin", "https://user:ghp_SECRET3558@git.example.test/org/repo.git?t=X").CombinedOutput()
+	require.NoError(t, err, string(out))
+	assert.Equal(t, "https://git.example.test/org/repo", getRepoFromWorkdir(context.Background(), repo))
+}

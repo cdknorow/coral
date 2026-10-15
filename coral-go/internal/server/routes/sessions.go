@@ -2090,13 +2090,24 @@ func (h *SessionsHandler) Diff(w http.ResponseWriter, r *http.Request) {
 			errNotFound(w, "File not found")
 			return
 		}
+		// One file, not a folder's worth (QA's #3558 review).
+		if fi, err := os.Stat(real); err == nil && fi.IsDir() {
+			errNotFound(w, "File not found")
+			return
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	base := gitutil.GetDiffBase(ctx, workdir, h.getDiffMode(r.Context()))
-	out, err := exec.CommandContext(ctx, "git", "-C", workdir, "diff", base, "--", fp).Output()
+	gitArgs := []string{"-C", workdir, "diff", base, "--", fp}
+	if strict {
+		// The filepath is a name, never a pathspec: '*' or ':(glob)**' would diff the whole
+		// tree (QA's #3558 review).
+		gitArgs = append([]string{"--literal-pathspecs"}, gitArgs...)
+	}
+	out, err := exec.CommandContext(ctx, "git", gitArgs...).Output()
 	diffText := ""
 	if err != nil {
 		slog.Warn("git diff failed", "agent_name", name, "filepath", fp, "error", err)

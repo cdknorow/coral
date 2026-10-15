@@ -598,7 +598,7 @@ func getRepoFromWorkdir(ctx context.Context, workdir string) string {
 	if err != nil {
 		return ""
 	}
-	remote := strings.TrimSpace(string(out))
+	remote := gitutil.StripURLCredentials(strings.TrimSpace(string(out)))
 
 	// Convert git@github.com:org/repo.git or https://github.com/org/repo.git to org/repo
 	remote = strings.TrimSuffix(remote, ".git")

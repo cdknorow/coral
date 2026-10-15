@@ -211,22 +211,46 @@ func isBinary(data []byte) bool {
 	return bytes.IndexByte(data, 0) >= 0
 }
 
-// StripURLCredentials removes the userinfo (user:password@ or token@) from a URL with a
-// scheme ("https://user:TOKEN@host/repo.git" becomes "https://host/repo.git"), so a stored or
-// served remote URL never carries a credential (#3558, Security's #3556 finding 2). An
-// scp-style remote ("git@host:org/repo") has no credential and is returned as is.
+// StripURLCredentials removes the userinfo (user:password@ or token@) and any ?query or
+// #fragment from a URL with a scheme ("https://user:TOKEN@host/repo.git?t=X" becomes
+// "https://host/repo.git"), so a stored or served remote URL never carries a credential
+// (#3558, Security's #3556 finding 2 and SHOULD 2). The userinfo is everything before the last
+// "@" ahead of the first "/" after the scheme, so a "?" or "#" inside a password is removed with
+// it. An scp-style remote keeps a plain user ("git@host:org/repo") and loses a password
+// ("user:pass@host:org/repo" becomes "host:org/repo"; QA's #3558 review).
 func StripURLCredentials(raw string) string {
 	i := strings.Index(raw, "://")
 	if i < 0 {
-		return raw
+		return stripSCPCredentials(raw)
 	}
 	rest := raw[i+3:]
 	end := len(rest)
-	if j := strings.IndexAny(rest, "/?#"); j >= 0 {
+	if j := strings.IndexByte(rest, '/'); j >= 0 {
 		end = j
 	}
 	if at := strings.LastIndex(rest[:end], "@"); at >= 0 {
-		return raw[:i+3] + rest[at+1:]
+		rest = rest[at+1:]
+	}
+	if q := strings.IndexAny(rest, "?#"); q >= 0 {
+		rest = rest[:q]
+	}
+	return raw[:i+3] + rest
+}
+
+// stripSCPCredentials drops a userinfo that holds a password (has a ':') from an scp-style
+// remote, user:pass@host:path; the userinfo is everything before the last "@" ahead of the
+// first "/". A local path (a leading "/", or a "\\" in the userinfo) is left alone.
+func stripSCPCredentials(raw string) string {
+	end := len(raw)
+	if j := strings.IndexByte(raw, '/'); j >= 0 {
+		end = j
+	}
+	at := strings.LastIndex(raw[:end], "@")
+	if at < 0 {
+		return raw
+	}
+	if user := raw[:at]; strings.Contains(user, ":") && !strings.Contains(user, "\\") {
+		return raw[at+1:]
 	}
 	return raw
 }

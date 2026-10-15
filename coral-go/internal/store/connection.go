@@ -442,6 +442,11 @@ CREATE TABLE IF NOT EXISTS live_sessions (
 	created_at    TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS store_meta (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_settings (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
@@ -856,24 +861,42 @@ func reportForeignKeyOrphans(ctx context.Context, dbPath, key string) {
 // fkCheckBudget bounds the startup foreign key check (a test seam).
 var fkCheckBudget = 5 * time.Second
 
-// scrubRemoteURLCredentials removes credentials from remote URLs recorded before #3558
-// (https://user:TOKEN@host/...). Rows recorded now are stored without them; this cleans the
-// older ones once (each later start finds none).
+// remoteURLScrubKey marks, in store_meta, that remote URLs recorded before #3558 were cleaned.
+const remoteURLScrubKey = "remote_url_credentials_scrubbed"
+
+// scrubRemoteURLCredentials removes credentials (and any ?query or #fragment) from remote URLs
+// recorded before #3558 (https://user:TOKEN@host/...). Rows recorded now are stored without
+// them, so this runs once: a store_meta row marks it done, and it is set only when every row
+// was cleaned, so a failure is retried at the next start.
 func scrubRemoteURLCredentials(ctx context.Context, d *DB) {
+	var done int
+	if err := d.GetContext(ctx, &done, `SELECT COUNT(*) FROM store_meta WHERE key = ?`, remoteURLScrubKey); err != nil {
+		slog.Warn("[store] removing credentials from stored git remote URLs: read marker", "error", err)
+		return
+	}
+	if done > 0 {
+		return
+	}
 	var rows []struct {
 		ID  int64  `db:"id"`
 		URL string `db:"remote_url"`
 	}
-	if err := d.SelectContext(ctx, &rows, `SELECT id, remote_url FROM git_snapshots WHERE remote_url LIKE '%://%@%'`); err != nil {
+	if err := d.SelectContext(ctx, &rows, `SELECT id, remote_url FROM git_snapshots WHERE remote_url LIKE '%://%'`); err != nil {
+		slog.Warn("[store] removing credentials from stored git remote URLs: read rows", "error", err)
 		return
 	}
 	n := 0
 	for _, r := range rows {
 		if clean := gitutil.StripURLCredentials(r.URL); clean != r.URL {
-			if _, err := d.ExecContext(ctx, `UPDATE git_snapshots SET remote_url = ? WHERE id = ?`, clean, r.ID); err == nil {
-				n++
+			if _, err := d.ExecContext(ctx, `UPDATE git_snapshots SET remote_url = ? WHERE id = ?`, clean, r.ID); err != nil {
+				slog.Warn("[store] removing credentials from stored git remote URLs: update", "id", r.ID, "error", err)
+				return
 			}
+			n++
 		}
+	}
+	if _, err := d.ExecContext(ctx, `INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)`, remoteURLScrubKey, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		slog.Warn("[store] removing credentials from stored git remote URLs: write marker", "error", err)
 	}
 	if n > 0 {
 		slog.Info("[store] removed credentials from stored git remote URLs", "rows", n)
