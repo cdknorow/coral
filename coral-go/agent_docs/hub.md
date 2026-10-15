@@ -105,7 +105,7 @@ Archive needs v1.4.2 on the machine: the dashboard offers **Archive** only for r
 What it doesn't cover:
 - **Live streams:** the live terminal (`/ws/terminal`) and the live session list (`/ws/coral`) aren't redacted yet (planned for v1.4.38). Their capture and history replies are.
 - **Other formats:** a token in a format not listed above, or a token split across terminal lines or by colour codes, passes as it is.
-- A false match (a word that looks like a token) shows `[redacted token]` on the hub only.
+- A false match (a word that looks like a token, such as a package name starting with `sk-` and 20 or more characters long, like `sk-learn-contrib-…`) shows `[redacted token]` on the hub only. Turning redaction off or on applies within a second.
 
 ## Connecting a server to Coral Hub
 
