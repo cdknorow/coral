@@ -23,6 +23,9 @@
 
 const CDP = require('chrome-remote-interface');
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const BASE = require('./test_base').BASE;
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
@@ -425,23 +428,41 @@ async function run() {
     // merges the resolver record over the live row, so Claude Code's idle
     // reminder ("waiting for your input", sent ~1 min after every turn ends)
     // showed "Needs input" on an agent that was asking nothing.
-    const postEvent = (event_type, summary) => httpJson('POST', `/api/sessions/live/${encodeURIComponent(aname)}/events`, { event_type, summary, session_id: sid });
+    // Agent events are accepted only with the agent's own session token (#3481), and a
+    // terminal session has none. A stand-in Claude agent (its CLI path is a script that
+    // keeps the token Coral launched it with) posts them, as its hooks would.
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-popout-agent-'));
+    const tokenFile = path.join(stubDir, 'token');
+    const stubCLI = path.join(stubDir, 'claude');
+    fs.writeFileSync(stubCLI, `#!/bin/sh\nprintf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}'\nexec sleep 600\n`, { mode: 0o755 });
+    const prevCLI = ((await httpJson('GET', '/api/settings')).data?.settings || {}).cli_path_claude || '';
+    await httpJson('PUT', '/api/settings', { cli_path_claude: stubCLI });
+    const agentLaunch = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'claude', display_name: 'Popout QA Agent' });
+    const asid = agentLaunch.data && agentLaunch.data.session_id; const asname = agentLaunch.data && agentLaunch.data.session_name;
+    let agentToken = '';
+    for (let i = 0; i < 100 && !agentToken; i++) { try { agentToken = fs.readFileSync(tokenFile, 'utf8').trim(); } catch { /* not yet */ } if (!agentToken) await sleep(100); }
+    check('33 stand-in agent launched with its own session token', !!asid && !!agentToken, JSON.stringify({ asid, status: agentLaunch.status, token: !!agentToken }));
+    const postEvent = (event_type, summary) => httpJson('POST', `/api/sessions/live/${encodeURIComponent(asname)}/events`, { event_type, summary, session_id: asid }, { 'X-Coral-Session-Token': agentToken });
     const stateOf = (o) => ({ waiting_for_input: o && o.waiting_for_input, awaiting_user: o && o.awaiting_user, waiting_reason: o && o.waiting_reason, waiting_summary: o && o.waiting_summary });
-    const listRow = async () => { const l = await httpJson('GET', '/api/sessions/live'); return (Array.isArray(l.data) ? l.data : []).find(r => r.session_id === sid); };
+    const listRow = async () => { const l = await httpJson('GET', '/api/sessions/live'); return (Array.isArray(l.data) ? l.data : []).find(r => r.session_id === asid); };
     await postEvent('prompt_submit', 'User submitted prompt');
     await postEvent('notification', 'Notification: Claude needs your permission to use Bash');
-    const pendingResolve = (await httpJson('GET', `/api/sessions/${sid}/resolve`)).data || {};
+    const pendingResolve = (await httpJson('GET', `/api/sessions/${asid}/resolve`)).data || {};
     const pendingRow = await listRow();
     check('33 real server: a pending permission request is Needs input in resolver and list alike', pendingResolve.waiting_for_input === true && pendingResolve.awaiting_user === false && pendingResolve.waiting_reason === 'notification' && JSON.stringify(stateOf(pendingResolve)) === JSON.stringify(stateOf(pendingRow)), JSON.stringify({ resolve: stateOf(pendingResolve), list: stateOf(pendingRow) }));
     // Denied: no tool event follows, the turn just ends, then the idle reminder.
     await postEvent('stop', 'Agent stopped: unknown');
     await postEvent('notification', 'Notification: Claude is waiting for your input');
-    const realIdleResolve = (await httpJson('GET', `/api/sessions/${sid}/resolve`)).data || {};
+    const realIdleResolve = (await httpJson('GET', `/api/sessions/${asid}/resolve`)).data || {};
     const idleRow = await listRow();
-    const idleStatus = (await httpJson('GET', `/api/sessions/${sid}/status`)).data || {};
+    const idleStatus = (await httpJson('GET', `/api/sessions/${asid}/status`)).data || {};
     check('33 real server: turn ended + idle reminder is Ready for input in the resolver, never Needs input', realIdleResolve.waiting_for_input === false && realIdleResolve.awaiting_user === true && realIdleResolve.waiting_reason === null && realIdleResolve.waiting_summary === null && realIdleResolve.done === false, JSON.stringify(stateOf(realIdleResolve)));
     check('33 real server: resolver state fields equal the list row', !!idleRow && JSON.stringify(stateOf(realIdleResolve)) === JSON.stringify(stateOf(idleRow)), JSON.stringify({ resolve: stateOf(realIdleResolve), list: stateOf(idleRow) }));
     check('33 real server: status endpoint is not waiting_for_input for an idle agent', idleStatus.waiting_for_input === false && idleStatus.awaiting_user === true && idleStatus.state !== 'waiting_for_input', JSON.stringify({ state: idleStatus.state, ...stateOf(idleStatus) }));
+    // The stand-in goes; the setting is put back.
+    await httpJson('POST', `/api/sessions/live/${encodeURIComponent(asname)}/kill`, { agent_type: 'claude', session_id: asid });
+    await httpJson('PUT', '/api/settings', { cli_path_claude: prevCLI });
+    fs.rmSync(stubDir, { recursive: true, force: true });
 
     // 21: ended on kill; 24: no reconnect loop
     await t1.sync();
