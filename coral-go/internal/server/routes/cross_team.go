@@ -436,10 +436,10 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "duplicate": true, "target_message_id": inbound.ID})
 		return
 	}
-	go h.dispatchWebhooks(target, inbound.SubscriberID, inbound)
+	h.goBG(func() { h.dispatchWebhooks(target, inbound.SubscriberID, inbound) })
 	if h.notifyFn != nil {
 		h.notifyFn()
 	}
-	go h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content)
+	h.goBG(func() { h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content) })
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "target_message_id": inbound.ID})
 }

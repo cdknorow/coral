@@ -39,7 +39,9 @@ func newCrossTeamEnv(t *testing.T) *crossTeamEnv {
 	r.Post("/api/board/{project}/external-messages", e.h.PostExternalMessage)
 	r.Get("/api/board/{project}/messages/all", e.h.ListAllMessages)
 	srv := httptest.NewServer(r)
-	t.Cleanup(srv.Close)
+	// The server stops first, then the work its requests started after answering
+	// (webhooks, message waits) finishes, and only then the store closes.
+	t.Cleanup(func() { srv.Close(); e.h.WaitBackground() })
 	e.url = srv.URL
 	ctx := context.Background()
 	for _, s := range []struct{ board, id, role string }{
