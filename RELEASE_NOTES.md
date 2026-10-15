@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.4.36 — Security hotfix: file diffs, git remote URLs and home paths through Coral Hub
+
+**Security advisory — please upgrade.** If a git remote URL ever held a token (`https://user:TOKEN@host/...`), rotate that token: older copies may remain in Coral's database files until they are overwritten.
+
+### Security
+
+- **A file's diff has the same bounds as the file.** Through Coral Hub (and for API keys, curl and other callers that aren't this computer's dashboard), `GET /api/sessions/live/{name}/diff?filepath=` now refuses, as if the file were missing, a session root of `/` or your home folder, sensitive paths, dot-files and dot-folders (`.env`, keys, `.pem`, `.git/config`) and symlinks that lead out of the session. An untracked binary file or one over 5 MiB is shown as a note instead of its content, the diff is filtered and capped like the other diffs, and the working directory is not sent. The dashboard on this computer is unchanged.
+- **Credentials are removed from git remote URLs.** A remote like `https://user:TOKEN@host/repo.git` is recorded and shown as `https://host/repo.git` (its `?query` and `#fragment` dropped too), and `user:pass@host:path` becomes `host:path`; existing records of https/ssh-style URLs are cleaned once at startup (older `user:pass@host:path` records are cleaned in a later release). A plain `git@host:org/repo` is unchanged.
+- **A diff is of one file.** Through Coral Hub the file path is taken literally, so a pattern like `*` or a folder name never widens the diff.
+- **No home paths or hidden file names through Coral Hub.** In answers to Coral Hub, a path under your home folder is shown as `~/…` (the working directory, repository and similar path fields, and error messages that quote a path), and log paths and tmux commands are left out. A `~/…` path the hub sends back is understood, so resuming or launching in a folder still works. The changed-files lists leave out hidden files (dot-files, dot-folders and sensitive paths) through the hub. The dashboard on this computer is unchanged.
+
 ## v1.4.35 — Task diffs stop filling the disk; the artifact store gets caps, a Delete button and private files
 
 **Upgrade note:** at startup Coral makes its data folder private to your user: folders become 0700, and the databases, `coral.log` and artifact files 0600. Coral's hooks and CLIs run as the same user and keep working.
