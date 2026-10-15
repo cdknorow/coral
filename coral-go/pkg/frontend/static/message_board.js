@@ -6,7 +6,7 @@ import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
-import { identityKey, keyLabel, noteBoardLabels, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
+import { identityKey, keyLabel, noteBoardLabel, noteBoardLabels, hasBoardLabel, onBoardLabelsChanged, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
 import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { note } from './nav.js';
@@ -112,6 +112,13 @@ function renderBoardSidebar(projects) {
     }).join('');
 }
 
+// The open board's header and the board list show labels; when one arrives or changes, they
+// follow (a board opened at /board/<id> before the lists loaded, a rename).
+onBoardLabelsChanged(() => {
+    const badge = document.getElementById('messageboard-project-badge');
+    if (badge && currentProject) badge.textContent = keyLabel(currentProject);
+});
+
 // ── View switching ───────────────────────────────────────────────────────
 
 export function selectBoardProject(project, messageId = null) {
@@ -141,6 +148,13 @@ export function selectBoardProject(project, messageId = null) {
     const badge = document.getElementById('messageboard-project-badge');
     badge.textContent = keyLabel(project);
     badge.style.display = '';
+    // A board opened before its label is known (a /board/<id> page, a board with no agents)
+    // asks for it; the header follows when it, or any list, brings it (#3536).
+    if (!hasBoardLabel(project)) {
+        boardFetch(project, '').then(r => (r.ok ? r.json() : null)).then(d => {
+            if (d && typeof d.board_label === 'string') noteBoardLabel(splitKey(project).server, splitKey(project).name, d.board_label);
+        }).catch(() => {});
+    }
     document.getElementById('messageboard-title').textContent = 'Message Board';
 
     // Ensure dashboard is subscribed as a reader

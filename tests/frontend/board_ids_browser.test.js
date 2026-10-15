@@ -93,6 +93,17 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('the agent list shows each board by its label, told apart by a short id',
             !!hA && !!hB && hA.startsWith(`${NAME} (${idA.slice(0, 6)})`) && hB.startsWith(`${NAME} (${idB.slice(0, 6)})`) && !hA.includes(idA) && !hB.includes(idB), JSON.stringify({ hA, hB }));
 
+        console.log('3a. A board page opened directly shows its label in the header, not its id');
+        for (const id of [idA, idB]) {
+            const l2 = Page.loadEventFired();
+            await Page.navigate({ url: `${BASE}/board/${id}` });
+            await l2;
+            await coralReady();
+            await until(`((document.getElementById('messageboard-project-badge') || {}).textContent || '').startsWith(${JSON.stringify(NAME)})`, 'the header label');
+            const badge = await ev(`(document.getElementById('messageboard-project-badge') || {}).textContent || ''`);
+            check(`/board/<${id.slice(0, 6)}…>: the header shows the label (with its short id), never the bare id`, badge.startsWith(NAME) && badge !== id && badge.includes(`(${id.slice(0, 6)})`), badge);
+        }
+
         console.log("3b. The operator's case: a second board next to an older one whose id is its name");
         const LEGACY = 'ids-legacy-3538';
         boards.add(LEGACY);

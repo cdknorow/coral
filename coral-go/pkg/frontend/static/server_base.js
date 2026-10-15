@@ -152,26 +152,48 @@ export function splitKey(key) {
 const _boardLabels = new Map();   // identity key -> label
 const _labelKeys = new Map();     // label (lower-case) -> Set of identity keys carrying it
 
+const _labelListeners = new Set();
+
+/** Call fn() whenever a known board label changes (a view that showed a key before its label
+ *  arrived shows the label then). */
+export function onBoardLabelsChanged(fn) { _labelListeners.add(fn); }
+
+function _labelsChanged() {
+    for (const fn of _labelListeners) { try { fn(); } catch (e) { console.error('board labels', e); } }
+}
+
 /** Note the label a payload gave for a board key on server. A row without one (an older
  *  Coral, a board with no label) leaves what is known. */
 export function noteBoardLabel(server, key, label) {
-    if (!key || typeof label !== 'string' || !label) return;
+    if (_setBoardLabel(server, key, label)) _labelsChanged();
+}
+
+function _setBoardLabel(server, key, label) {
+    if (!key || typeof label !== 'string' || !label) return false;
     const k = identityKey(server, key);
     const prev = _boardLabels.get(k);
-    if (prev === label) return;
+    if (prev === label) return false;
     if (prev !== undefined) _labelKeys.get(prev.toLowerCase())?.delete(k);
     _boardLabels.set(k, label);
     const lk = label.toLowerCase();
     if (!_labelKeys.has(lk)) _labelKeys.set(lk, new Set());
     _labelKeys.get(lk).add(k);
+    return true;
 }
 
 /** Note the labels of a list of rows: keyField holds the board key, board_label its label,
  *  and the row's server (or `server`) the server it is on. */
 export function noteBoardLabels(rows, keyField = 'board_project', server = null) {
+    let changed = false;
     for (const r of Array.isArray(rows) ? rows : []) {
-        if (r && r[keyField]) noteBoardLabel(server ?? r.server, splitKey(r[keyField]).name, r.board_label);
+        if (r && r[keyField] && _setBoardLabel(server ?? r.server, splitKey(r[keyField]).name, r.board_label)) changed = true;
     }
+    if (changed) _labelsChanged();
+}
+
+/** Whether a label is known for this key. */
+export function hasBoardLabel(key) {
+    return _boardLabels.has(String(key ?? ''));
 }
 
 /** A board's key as data (the name part of an identity key): for comparing with another key,
