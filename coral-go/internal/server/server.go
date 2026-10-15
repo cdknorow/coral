@@ -643,6 +643,9 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/folder-tags/{folderName}", sysHandler.GetFolderTags)
 	r.Post("/api/folder-tags/{folderName}", sysHandler.AddFolderTag)
 	r.Delete("/api/folder-tags/{folderName}/{tagID}", sysHandler.RemoveFolderTag)
+	r.Get("/api/pinned-folders", sysHandler.ListPinnedFolders)
+	r.Post("/api/pinned-folders", sysHandler.PinFolder)
+	r.Delete("/api/pinned-folders", sysHandler.UnpinFolder)
 
 	// History
 	r.Get("/api/sessions/history", histHandler.ListSessions)

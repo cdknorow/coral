@@ -31,6 +31,7 @@ GET /api/folder-tags redact
 GET /api/folder-tags/{name} redact
 GET /api/goals/metrics redact
 GET /api/health exempt: fixed fields (status, version): no free text
+GET /api/pinned-folders redact
 GET /api/scheduled/jobs redact
 GET /api/scheduled/jobs/{id} redact
 GET /api/scheduled/jobs/{id}/runs redact

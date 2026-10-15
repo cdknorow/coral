@@ -216,6 +216,7 @@ function _showLaunchStep(step) {
         content.classList.toggle("modal-content-agent-wide", step === "agent");
         content.classList.toggle("modal-content-extra-wide", step === "team");
         content.classList.toggle("modal-content-wide", step !== "team" && step !== "agent");
+        content.classList.toggle("launch-choosing", step === "chooser"); // four choices in a row (#3630)
     }
     _syncMobileLaunchSections(step);
 }

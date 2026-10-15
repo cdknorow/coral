@@ -52,6 +52,7 @@ import {
 import { initLiveJobs, renderLiveJobs, selectLiveJobRun } from './live_jobs.js';
 import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, toggleBoardSleep, deleteBoardMessage, showExportBoardModal, doExportBoard, toggleSelectMode, toggleMessageSelect, selectAllMessages, selectNoneMessages, cancelSelectMode, exportSelectedAsMarkdown, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
 import { loadAllFolderTags, showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
+import { loadPinnedFolders, pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder } from './pinned_folders.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
 import { platform } from './platform/detect.js';
 import { initNative } from './platform/native.js';
@@ -181,6 +182,8 @@ Object.assign(window, {
     showServersModal, hideServersModal,
     // update_check
     checkForUpdates, dismissUpdateToast,
+    // pinned folders (#3630)
+    pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder,
     // message_board
     selectBoardProject, showMessageBoardProjects, postBoardMessage,
     deleteMessageBoardProject, confirmDeleteBoard: deleteMessageBoardProject,
@@ -969,6 +972,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         dashboardSessionsLoaded(ok);
     }).finally(() => { _startListLoadSettled(); _liveListLoaded(); });
     loadAllFolderTags();
+    if (!popout) loadPinnedFolders();
     loadCustomViews();
     initAgentUI();
     connectCoralWs();

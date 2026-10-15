@@ -201,7 +201,7 @@ var routeTable = cat(
 		"/api/token-usage", "/api/token-usage/summary", "/api/token-usage/timeseries",
 		"/api/token-usage/by-team", "/api/token-usage/by-branch", "/api/token-usage/session/{id}/turns",
 		"/api/goals/metrics", "/api/call-metrics/summary",
-		"/api/tags", "/api/folder-tags", "/api/folder-tags/{name}",
+		"/api/tags", "/api/folder-tags", "/api/folder-tags/{name}", "/api/pinned-folders",
 		"/api/scheduled/jobs", "/api/scheduled/jobs/{id}", "/api/scheduled/jobs/{id}/runs", "/api/scheduled/runs/recent",
 		"/api/workflows", "/api/workflows/runs/recent", "/api/workflows/by-name/{name}", "/api/workflows/{id}",
 		"/api/workflows/{id}/runs", "/api/workflows/runs/{id}",
@@ -334,6 +334,10 @@ var routeTable = cat(
 		"/api/workflows/by-name/{name}/trigger",
 	),
 	rules(http.MethodGet, TierLaunch, "/api/filesystem/list", "/api/filesystem/is-git"),
+	// Pinning a folder to the Agents list names a folder to launch into (#3630): Launch, like
+	// browsing for one. Reading the pins is View (above).
+	rules(http.MethodPost, TierLaunch, "/api/pinned-folders"),
+	rules(http.MethodDelete, TierLaunch, "/api/pinned-folders"),
 	// File writes on the host are launch-tier (operator decision): they change what
 	// runs next on that machine as surely as starting an agent does.
 	rules(http.MethodPut, TierLaunch, "/api/sessions/live/{name}/file-content"),

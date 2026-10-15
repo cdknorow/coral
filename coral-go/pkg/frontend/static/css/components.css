@@ -2121,9 +2121,27 @@ button.subscriber-history-link {
 
 .launch-type-cards {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 8px;
+}
+
+/* The chooser's four choices in a row (#3630). */
+.modal-content-wide.launch-choosing {
+    width: 640px;
+    max-width: 95vw;
+}
+
+/* Open folder (#3630) */
+.open-folder-help {
+    margin: 0 0 var(--space-lg);
+    color: var(--text-secondary);
+    font-size: var(--fs-md);
+}
+.open-folder-error {
+    margin-top: var(--space-md);
+    color: var(--color-error, #f85149);
+    font-size: var(--fs-md);
 }
 
 .launch-type-card {

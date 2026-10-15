@@ -357,6 +357,12 @@ CREATE TABLE IF NOT EXISTS folder_tags (
 	FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
 
+-- Folders the Operator pinned to the Agents list (#3630): shown even with no agents in them.
+CREATE TABLE IF NOT EXISTS pinned_folders (
+	path      TEXT PRIMARY KEY,
+	pinned_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS session_index (
 	session_id      TEXT PRIMARY KEY,
 	source_type     TEXT NOT NULL,

@@ -10,6 +10,7 @@ DELETE /api/board/{project}/subscribe interact
 DELETE /api/board/{project}/tasks/{taskID}/reminder interact
 DELETE /api/board/{project}/waits interact
 DELETE /api/folder-tags/{folderName}/{tagID} never
+DELETE /api/pinned-folders launch
 DELETE /api/scheduled/jobs/{jobID} never
 DELETE /api/sessions/history/{sessionID}/tags/{tagID} never
 DELETE /api/sessions/live/{name}/events never
@@ -72,6 +73,7 @@ GET /api/folder-tags view
 GET /api/folder-tags/{folderName} view
 GET /api/goals/metrics view
 GET /api/health view
+GET /api/pinned-folders view
 GET /api/scheduled/jobs view
 GET /api/scheduled/jobs/{jobID} view
 GET /api/scheduled/jobs/{jobID}/runs view
@@ -231,6 +233,7 @@ POST /api/cloud/redeem never
 POST /api/folder-tags/{folderName} never
 POST /api/indexer/refresh never
 POST /api/notifications never
+POST /api/pinned-folders launch
 POST /api/scheduled/jobs never
 POST /api/scheduled/jobs/{jobID}/toggle never
 POST /api/scheduled/validate-cron never

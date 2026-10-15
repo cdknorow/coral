@@ -22,6 +22,8 @@ import { morphHtml } from './dom_morph.js';
 import { autoAcceptChip, autoAcceptMenuItem } from './auto_accept.js';
 import { terminalGoneChip } from './terminal_gone.js';
 import { pollEvery } from './overload.js';
+import { isPinnedDir, emptyPins, notePinKeys, pinPathForKey, pinnedFolders } from './pinned_folders.js';
+import { LOCAL_SERVER } from './server_base.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -2144,6 +2146,14 @@ export function toggleGroupByServer() {
 
 // A folder icon on folder groups, as teams have the people icon (#3507 v4, the operator's
 // request): same size and spacing as the team icon, and named for screen readers.
+// A folder entry's Pin / Unpin item (#3630): this Coral's folders only.
+const PIN_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v6"/></svg>';
+function _pinMenuItem(groupName, dir) {
+    if (!dir || splitKey(groupName).server !== LOCAL_SERVER) return '';
+    const pinned = isPinnedDir(dir);
+    return `<button class="overflow-menu-item" data-pin-action="${pinned ? 'unpin' : 'pin'}" onclick="event.stopPropagation(); closeSidebarKebabs(); ${pinned ? 'unpinFolder' : 'pinFolder'}('${jsStr(dir)}')">${PIN_ICON}${pinned ? 'Unpin folder' : 'Pin folder'}</button>`;
+}
+
 const FOLDER_GROUP_ICON = '<svg class="team-group-icon folder-group-icon" role="img" aria-label="Folder" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
     + ' stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
 
@@ -2339,6 +2349,11 @@ let _agentFilter = '';
 let _filteredMatches = [];
 
 // Matches the agent's name only (what the row label shows), not its team, folder or goal.
+// While the list is filtered, an empty pinned folder shows only when its name matches.
+function _pinMatchesFilter(p) {
+    return !_agentFilter || _agentFilter.split(/\s+/).every(term => String(p.name || '').toLowerCase().includes(term));
+}
+
 function _agentMatches(s, q) {
     const names = [resolveSessionIdentity(s), s.display_name, s.auto_name, s.board_job_title]
         .filter(Boolean).join(' ').toLowerCase();
@@ -2436,9 +2451,11 @@ function _renderLiveSessions(sessions) {
     _wireListKeyboard(list);
     _wireListKeyboard(document.getElementById('mobile-agent-list'));
 
-    updateSectionVisibility('live-sessions', unfilteredCount);
+    // Pinned folders count too: the list shows them with no agents (#3630).
+    const pinsShown = pinnedFolders().filter(p => _pinMatchesFilter(p)).length;
+    updateSectionVisibility('live-sessions', unfilteredCount + pinnedFolders().length);
 
-    if (!sessions.length && !archived.length) {
+    if (!sessions.length && !archived.length && !pinsShown) {
         renderServerSwitcher();
         list.innerHTML = `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
         return;
@@ -2460,7 +2477,7 @@ function _renderLiveSessions(sessions) {
     // The servers UI (#3085): a compact button in the search row; with two or
     // more servers the groups below are wrapped in collapsible server headers.
     renderServerSwitcher();
-    const renderGroups = (sessions) => {
+    const renderGroups = (sessions, withPins = true) => {
     let html = '';
 
     if (groupByTeam) {
@@ -2484,6 +2501,12 @@ function _renderLiveSessions(sessions) {
             if (!standaloneByFolder[key]) standaloneByFolder[key] = [];
             standaloneByFolder[key].push(s);
         }
+    }
+    // Pinned folders with no agent here are listed as empty folder entries (#3630).
+    if (withPins) {
+        const empty = emptyPins(sessions.filter(s => !s.board_project && !s.workflow_name), new Set(Object.keys(standaloneByFolder)));
+        notePinKeys(empty);
+        for (const p of empty) if (_pinMatchesFilter(p)) standaloneByFolder[p.key] = [];
     }
 
     // Step 2: Render team groups at top level
@@ -2632,7 +2655,8 @@ function _renderLiveSessions(sessions) {
         const isMulti = sorted.length > 1;
         const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
         const collapsed = _isGroupCollapsed(groupName);
-        const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
+        const groupDirRaw = sorted[0]?.working_directory || pinPathForKey(groupName);
+        const groupWorkDirEsc = escapeAttr(groupDirRaw);
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
@@ -2649,6 +2673,7 @@ function _renderLiveSessions(sessions) {
                     Add Terminal
                 </button>
                 <hr class="overflow-menu-divider">
+                ${_pinMenuItem(groupName, groupDirRaw)}
                 <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showFolderTagDropdown('${jsStr(groupName)}', this.closest('.session-group-header'))">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5V3a1 1 0 0 1 1-1h5.5l5.5 5.5-5.5 5.5L2 8.5z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/></svg>
                     Manage Tags
@@ -2661,10 +2686,10 @@ function _renderLiveSessions(sessions) {
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3"/><path d="M4 9l4 4 4-4"/></svg>
                     Move Down
                 </button>
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${jsStr(groupName)}')">
+                ${sorted.length ? `<button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${jsStr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                     Kill All
-                </button>
+                </button>` : ''}
             </div>
         </div>`;
         const groupBranchSession = sorted.find(s => s.branch);
@@ -2672,13 +2697,13 @@ function _renderLiveSessions(sessions) {
         const groupBranchLine = groupBranch ? `<div class="group-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg> ${escapeHtml(groupBranch)}</div>` : "";
         const fTags = getFolderTags(groupName);
         const tagDots = renderFolderTagPills(fTags);
-        const groupWorkDir = sorted[0]?.working_directory || '';
+        const groupWorkDir = groupDirRaw;
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')"${_collapseAttrs(collapsed)}>
             <div class="group-header-text"><div class="group-name-line">${FOLDER_GROUP_ICON}${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
-        if (!collapsed) {
+        if (!collapsed && sorted.length) {
             html += _renderAgentListWithSubgroups(sorted, groupWorkDir, false, groupName);
         }
     }
@@ -2693,6 +2718,11 @@ function _renderLiveSessions(sessions) {
         if (!groups[key]) groups[key] = [];
         groups[key].push(s);
     }
+    if (withPins) {
+        const empty = emptyPins(sessions, new Set(Object.keys(groups)));
+        notePinKeys(empty);
+        for (const p of empty) if (_pinMatchesFilter(p)) groups[p.key] = [];
+    }
 
     const sortedGroups = localFirst(_sortGroups(Object.entries(groups)));
     for (const [groupName, groupSessions] of sortedGroups) {
@@ -2700,7 +2730,8 @@ function _renderLiveSessions(sessions) {
         const isMulti = sorted.length > 1;
         const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
         const collapsed = _isGroupCollapsed(groupName);
-        const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
+        const groupDirRaw = sorted[0]?.working_directory || pinPathForKey(groupName);
+        const groupWorkDirEsc = escapeAttr(groupDirRaw);
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
@@ -2717,6 +2748,7 @@ function _renderLiveSessions(sessions) {
                     Add Terminal
                 </button>
                 <hr class="overflow-menu-divider">
+                ${_pinMenuItem(groupName, groupDirRaw)}
                 <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showFolderTagDropdown('${jsStr(groupName)}', this.closest('.session-group-header'))">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5V3a1 1 0 0 1 1-1h5.5l5.5 5.5-5.5 5.5L2 8.5z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/></svg>
                     Manage Tags
@@ -2729,10 +2761,10 @@ function _renderLiveSessions(sessions) {
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3"/><path d="M4 9l4 4 4-4"/></svg>
                     Move Down
                 </button>
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${jsStr(groupName)}')">
+                ${sorted.length ? `<button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${jsStr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                     Kill All
-                </button>
+                </button>` : ''}
             </div>
         </div>`;
         const groupBranchSession = sorted.find(s => s.branch);
@@ -2740,14 +2772,14 @@ function _renderLiveSessions(sessions) {
         const groupBranchLine = groupBranch ? `<div class="group-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg> ${escapeHtml(groupBranch)}</div>` : "";
         const fTags = getFolderTags(groupName);
         const tagDots = renderFolderTagPills(fTags);
-        const groupWorkDir = sorted[0]?.working_directory || '';
+        const groupWorkDir = groupDirRaw;
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')"${_collapseAttrs(collapsed)}>
             <div class="group-header-text"><div class="group-name-line">${FOLDER_GROUP_ICON}${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
-        if (collapsed) {
-            // Skip rendering items when collapsed
+        if (collapsed || !sorted.length) {
+            // Skip rendering items when collapsed (or a pinned folder with no agents, #3630)
         } else {
             // Sub-group by board within this folder
             const boardSubs = {};
@@ -2858,7 +2890,7 @@ function _renderLiveSessions(sessions) {
             const own = sessions.filter(x => sessionServer(x) === e.id);
             const collapsed = _isServerCollapsed(e.id);
             html += serverGroupHeaderHtml(e, own.length, collapsed, _openServerDetails.has(e.id));
-            if (!collapsed) html += renderGroups(own);
+            if (!collapsed) html += renderGroups(own, e.id === LOCAL_SERVER);
         }
     } else {
         html += renderGroups(sessions);

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -374,6 +375,56 @@ func (s *SessionStore) RemoveFolderTag(ctx context.Context, folderName string, t
 		"DELETE FROM folder_tags WHERE folder_name = ? AND tag_id = ?",
 		folderName, tagID)
 	return err
+}
+
+// ── Pinned folders (#3630) ─────────────────────────────────────────────
+
+// PinnedFolder is a folder the Operator pinned to the Agents list.
+type PinnedFolder struct {
+	Path     string `db:"path" json:"path"`
+	PinnedAt string `db:"pinned_at" json:"pinned_at"`
+}
+
+// MaxPinnedFolders caps how many folders can be pinned.
+const MaxPinnedFolders = 100
+
+// ErrTooManyPinnedFolders is PinFolder's error when MaxPinnedFolders are already pinned.
+var ErrTooManyPinnedFolders = errors.New("too many pinned folders")
+
+// ListPinnedFolders returns the pinned folders, oldest pin first.
+func (s *SessionStore) ListPinnedFolders(ctx context.Context) ([]PinnedFolder, error) {
+	out := []PinnedFolder{}
+	err := s.reader().SelectContext(ctx, &out, "SELECT path, pinned_at FROM pinned_folders ORDER BY pinned_at, path")
+	return out, err
+}
+
+// PinFolder pins path (already checked by the caller). Pinning a pinned folder changes nothing.
+func (s *SessionStore) PinFolder(ctx context.Context, path string) error {
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO pinned_folders (path, pinned_at)
+		 SELECT ?, ? WHERE (SELECT COUNT(*) FROM pinned_folders) < ? OR EXISTS (SELECT 1 FROM pinned_folders WHERE path = ?)
+		 ON CONFLICT(path) DO NOTHING`,
+		path, time.Now().UTC().Format(time.RFC3339Nano), MaxPinnedFolders, path)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var exists int
+		if err := s.db.GetContext(ctx, &exists, "SELECT COUNT(*) FROM pinned_folders WHERE path = ?", path); err == nil && exists == 0 {
+			return ErrTooManyPinnedFolders
+		}
+	}
+	return nil
+}
+
+// UnpinFolder removes a pin; it reports whether path was pinned.
+func (s *SessionStore) UnpinFolder(ctx context.Context, path string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, "DELETE FROM pinned_folders WHERE path = ?", path)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // GetAllFolderTags returns all folder-tag associations grouped by folder.

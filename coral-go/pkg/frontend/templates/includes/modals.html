@@ -47,6 +47,18 @@
                         <div class="launch-type-label">Terminal</div>
                         <div class="launch-type-desc">Open a shell session you can use alongside your agents</div>
                     </button>
+                    <!-- #3630: pin a folder to the Agents list, ready to launch into -->
+                    <button class="launch-type-card" id="launch-type-open-folder" onclick="showOpenFolderModal()">
+                        <div class="launch-type-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                                <line x1="12" y1="10" x2="12" y2="16"></line>
+                                <line x1="9" y1="13" x2="15" y2="13"></line>
+                            </svg>
+                        </div>
+                        <div class="launch-type-label">Open Folder</div>
+                        <div class="launch-type-desc">Pin a folder to your Agents list, ready to launch into</div>
+                    </button>
                     <!-- Scheduled Job hidden until thoroughly tested
                     <button class="launch-type-card" onclick="hideLaunchModal(); showJobModal()">
                         <div class="launch-type-icon">
@@ -299,6 +311,33 @@
                     <button class="btn" onclick="hideLaunchModal()">Cancel</button>
                     <button class="btn btn-primary" onclick="window.launchTeam()">Launch Team</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Open folder (#3630): pins a folder to the Agents list (empty is fine), ready to launch into. -->
+    <div id="open-folder-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="open-folder-title" style="display:none" onclick="if (event.target === this) hideOpenFolderModal()">
+        <div class="modal-content modal-content-wide">
+            <h3 id="open-folder-title">Open folder</h3>
+            <p class="open-folder-help">The folder is pinned to the Agents list, ready to launch agents into. It stays there with no agents until you unpin it.</p>
+            <label for="open-folder-dir">Folder:</label>
+            <div class="dir-input-row">
+                <input type="text" id="open-folder-dir" placeholder="/path/to/project" autocomplete="off" onkeydown="if (event.key === 'Enter') { event.preventDefault(); submitOpenFolder(); }">
+                <button class="btn" type="button" id="open-folder-browse" onclick="toggleBrowser('open-folder-dir','open-folder-browser','open-folder-browser-list','open-folder-browser-path')">Browse</button>
+            </div>
+            <div id="open-folder-browser" class="dir-browser" style="display:none">
+                <div class="dir-browser-header">
+                    <button class="btn btn-small dir-browser-up" type="button" onclick="browserNavigateUp()" title="Go up">..</button>
+                    <span class="dir-browser-path" id="open-folder-browser-path">~</span>
+                </div>
+                <ul class="dir-browser-list" id="open-folder-browser-list">
+                    <li class="empty-state">Loading...</li>
+                </ul>
+            </div>
+            <div id="open-folder-error" class="open-folder-error" role="alert" hidden></div>
+            <div class="modal-actions">
+                <button class="btn" type="button" onclick="hideOpenFolderModal()">Cancel</button>
+                <button class="btn btn-primary" type="button" id="open-folder-submit" onclick="submitOpenFolder()">Open folder</button>
             </div>
         </div>
     </div>
