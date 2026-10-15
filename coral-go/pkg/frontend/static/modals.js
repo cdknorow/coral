@@ -3451,7 +3451,8 @@ export async function applySettings() {
     const fileSearchLimit = document.getElementById("settings-file-search-limit")?.value || "500";
     const gitDiffMode = document.getElementById("settings-git-diff-mode")?.value || "branch_point";
     const gitPollIntervalS = document.getElementById("settings-git-poll-interval")?.value ?? "120";
-    const agentPriority = document.getElementById("settings-agent-priority")?.value ?? (state.settings?.agent_priority || "low");
+    // The server takes only "low" or "normal" (#3470): a value stored before that check is sent as low.
+    const agentPriority = document.getElementById("settings-agent-priority")?.value ?? (state.settings?.agent_priority === "normal" ? "normal" : "low");
     const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
     // When CORAL_DEBUG_INPUT/--debug-input force the log on, the checkbox is shown checked and
     // disabled: keep the saved setting rather than saving that forced state (#3256).

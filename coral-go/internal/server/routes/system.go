@@ -190,6 +190,17 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, HubModeSetting+" is set with PUT /api/system/hub-mode")
 		return
 	}
+	// agent_priority is "low" or "normal" (#3437); anything else was stored and silently
+	// taken as low (#3470). Checked before anything is saved; the stored value is normalised.
+	if v, ok := body[agentprio.SettingKey]; ok {
+		s, isString := v.(string)
+		lvl, valid := agentprio.Parse(s)
+		if !isString || !valid {
+			errBadRequest(w, agentprio.SettingKey+" must be \""+agentprio.Low+"\" or \""+agentprio.Normal+"\"")
+			return
+		}
+		body[agentprio.SettingKey] = lvl
+	}
 	var current map[string]string
 	for k, v := range body {
 		agentType, isCLIPath := agent.IsCLIPathSetting(k)
