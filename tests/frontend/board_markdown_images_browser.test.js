@@ -56,7 +56,7 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
             box.innerHTML = '<div class="mb-message-body">' + u.renderMarkdown(${JSON.stringify(md)}) + '</div>';
             document.body.appendChild(box);
             b.resolveBoardArtifacts(box, 'local');
-            await new Promise(res => setTimeout(res, 800));
+            await new Promise(res => setTimeout(res, 800)); // sleep-ok: proves a negative, a blocked image gets this long to be requested
             const links = [...box.querySelectorAll('a')].map(a => ({ text: a.textContent, href: a.getAttribute('href'), rel: a.rel, target: a.target, cls: a.className }));
             const out = {
                 imgs: [...box.querySelectorAll('img')].map(i => i.getAttribute('src')),
@@ -116,7 +116,7 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
                     d.remove();
                 }
             }
-            await new Promise(res => setTimeout(res, 500));
+            await new Promise(res => setTimeout(res, 500)); // sleep-ok: proves a negative, a surviving handler gets this long to run
             return { out, mx: window.__mx };
         })()`);
         assert.equal(mx.mx, 0, 'no handler ran');
@@ -135,7 +135,7 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 
         // The sanitized content never even tried; the one <img> that skipped the sanitizer was
         // stopped by the CSP before it left the browser.
-        await new Promise(res => setTimeout(res, 300));
+        await new Promise(res => setTimeout(res, 300)); // sleep-ok: proves a negative, late requests get this long to show up in CDP
         const tried = [...requested].filter(([, u]) => u.includes('x.test'));
         assert.deepEqual(tried.map(([, u]) => u), ['https://x.test/csp.png?d=SECRET4'], 'only the unsanitized <img> was attempted');
         assert.ok(tried.every(([id]) => cspBlocked.has(id)), 'and the CSP blocked it');
