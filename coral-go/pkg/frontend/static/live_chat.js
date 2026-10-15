@@ -1536,7 +1536,7 @@ function agentIsWorking(session) {
     const key = deriveSessionState(row);
     if (key === "working") return true;
     // Awaiting the user, stuck, asleep or ended: nothing is in flight
-    if (key !== "idle" && key !== "your_turn") return false;
+    if (key !== "idle" && key !== "your_turn" && key !== "waiting_on") return false;
     const sent = lastSendAt.get(session.session_id);
     return !!sent && Date.now() - sent < SEND_GRACE_MS;
 }

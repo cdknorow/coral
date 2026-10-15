@@ -19,14 +19,22 @@ const AVAILABILITY_MIN_INTERVAL_MS = 5000;
 
 export function getCachedAgentAvailability(session) {
     if (!session) return null;
-    const matches = agents => agents?.find(a => a.session_id === session.session_id || a.name === session.name || a.subscriber_id === session.name);
+    // The session id first, on any board: an agent's name repeats across boards (Lead Developer on
+    // several teams), so a name match could show another team's state (#3473). Live-session refreshes
+    // can briefly omit board_project, which the global id match covers.
+    const byId = agents => session.session_id ? agents?.find(a => a.session_id === session.session_id) : undefined;
+    const byName = agents => agents?.find(a => a.name === session.name || a.subscriber_id === session.name);
     const snapshot = availabilityCache.get(sessionTeamKey(session));
-    const direct = matches(snapshot?.agents);
+    const direct = byId(snapshot?.agents);
     if (direct) return direct;
-    // Live-session refreshes can briefly omit board_project. Preserve status
-    // indicators by matching the stable session/subscriber identity globally.
     for (const cached of availabilityCache.values()) {
-        const found = matches(cached.agents);
+        const found = byId(cached.agents);
+        if (found) return found;
+    }
+    // No row has this session id: its own team's row by name, else (no team known for it) any board's.
+    if (snapshot) return byName(snapshot.agents) || null;
+    for (const cached of availabilityCache.values()) {
+        const found = byName(cached.agents);
         if (found) return found;
     }
     return null;

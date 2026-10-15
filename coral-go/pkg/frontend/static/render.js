@@ -201,6 +201,9 @@ export const SESSION_STATES = {
     working:        { label: 'Working',        dot: 'working',   pill: null,             pillClass: '',          chip: 'running',     attention: false },
     // Not urgent: a muted ring + neutral pill, never the yellow of Needs input (#3227).
     task_idle:      { label: 'Task assigned · idle', dot: 'task-idle', pill: 'Idle · task', pillClass: 'neutral', chip: 'idle', attention: false },
+    // Waiting on a teammate's reply, a task or a commit (coral-board wait): calm, like
+    // task_idle; nobody's input is needed (#3471). The label names what it waits on.
+    waiting_on:     { label: 'Waiting on the board', dot: 'task-idle', pill: 'Waiting', pillClass: 'neutral', chip: 'idle', attention: false },
     idle:           { label: 'Idle',           dot: 'stale',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
 };
 
@@ -221,10 +224,24 @@ export function deriveSessionState(s, opts = {}) {
     if (s.stuck) return 'stuck';
     if (s.waiting_for_input) return 'needs_input';
     if (s.not_started) return 'check_terminal';
-    if (getCachedAgentAvailability(s)?.availability === 'task_idle') return 'task_idle';
+    const availability = getCachedAgentAvailability(s)?.availability;
+    if (availability === 'waiting' && !s.working) return 'waiting_on';
+    if (availability === 'task_idle') return 'task_idle';
     if (_isAwaitingUser(s)) return 'your_turn';
     if (s.working) return 'working';
     return 'idle';
+}
+
+/** "Waiting on Lead Developer", "Waiting on task #12", from a registered board wait. */
+function waitingOnLabel(w) {
+    if (!w) return '';
+    const id = String(w.target_id || '').trim();
+    switch (w.wait_type) {
+        case 'message': return id ? `Waiting on ${id}` : 'Waiting on a board message';
+        case 'task': return id ? `Waiting on task #${id}` : 'Waiting on a task update';
+        case 'commit': return id ? `Waiting on commit ${id.slice(0, 12)}` : 'Waiting on a commit';
+        default: return id ? `Waiting on ${id}` : '';
+    }
 }
 
 export function sessionStateInfo(s, opts) {
@@ -233,6 +250,7 @@ export function sessionStateInfo(s, opts) {
     // Asleep because its terminal session is gone, not because anyone asked (#3344): the
     // same state, said plainly. The row's "Terminal gone" chip restarts it.
     if (key === 'sleeping' && isGoneAsleep(s)) info.label = 'Terminal gone';
+    if (key === 'waiting_on') info.label = waitingOnLabel(getCachedAgentAvailability(s)?.waiting_on) || info.label;
     return info;
 }
 

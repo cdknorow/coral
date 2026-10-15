@@ -24,7 +24,7 @@ function check(label, cond, detail) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const U = () => require('crypto').randomUUID();
 
-const ID = { working: U(), idle: U(), needs: U(), check: U(), stuck: U(), turnSolo: U(), sleeping: U(), turnMember: U(), turnOrch: U(), kill: U(), taskIdle: U() };
+const ID = { working: U(), idle: U(), needs: U(), check: U(), stuck: U(), turnSolo: U(), sleeping: U(), turnMember: U(), turnOrch: U(), kill: U(), taskIdle: U(), waiter: U(), waiterAsks: U(), twinHere: U(), twinThere: U() };
 const base = (o) => Object.assign({ name: 'coral-go', display_name: '', agent_type: 'claude', summary: 'Goal text', context_pct: 10, working: false, waiting_for_input: false, not_started: false, stuck: false, sleeping: false, awaiting_user: false, done: false, board_unread: 0, working_directory: '/repo/coral-go' }, o);
 const SESSIONS = [
     base({ session_id: ID.working, display_name: 'Worker', working: true }),
@@ -40,6 +40,13 @@ const SESSIONS = [
     base({ session_id: ID.turnOrch, name: 'team-dir', working_directory: '/repo/team', display_name: 'Orch Turn', awaiting_user: true, done: true, board_project: 'qa-team', board_is_orchestrator: true }),
     // team member with an assigned task but idle (board /status says task_idle): not urgent (#3227)
     base({ session_id: ID.taskIdle, name: 'team-dir', working_directory: '/repo/team', display_name: 'Tasked', board_project: 'qa-team', board_is_orchestrator: false }),
+    // #3471: members that ran coral-board wait and ended their turn (board /status says waiting): calm,
+    // never Needs input; a real prompt raised during the wait still is.
+    base({ session_id: ID.waiter, name: 'team-dir', working_directory: '/repo/team', display_name: 'Waiter', awaiting_user: true, done: true, board_project: 'qa-team', board_is_orchestrator: false }),
+    base({ session_id: ID.waiterAsks, name: 'team-dir', working_directory: '/repo/team', display_name: 'Waiter Asks', waiting_for_input: true, board_project: 'qa-team', board_is_orchestrator: false }),
+    // Same name on two boards (#3473 v2): only the other board's agent waits; this one must not show its wait.
+    base({ session_id: ID.twinHere, name: 'twin-dir', working_directory: '/repo/twin', display_name: 'Twin Here', awaiting_user: true, done: true, board_project: 'qa-team', board_is_orchestrator: false }),
+    base({ session_id: ID.twinThere, name: 'twin-dir', working_directory: '/repo/twin', display_name: 'Twin There', awaiting_user: true, done: true, board_project: 'other-team', board_is_orchestrator: false }),
 ];
 const ORDER = SESSIONS.map(s => s.session_id).join(',');
 // Payload order, except that a group lists its sleeping agents after the awake ones (the killed row,
@@ -57,7 +64,11 @@ const STUB = `
     const json=(b)=>Promise.resolve(new Response(JSON.stringify(b),{status:200,headers:{'Content-Type':'application/json'}}));
     if (path==='/api/sessions/live' && m==='GET') return json(window.__fixture);
     if (path==='/api/board/qa-team/status' && m==='GET') return json({ summary: { task_idle: 1 }, observed_at: new Date().toISOString(), unassigned_tasks: [], health_report: [],
-      agents: [{ name: 'Tasked', session_id: '${ID.taskIdle}', availability: 'task_idle', available: false, reason: 'Assigned task, idle', tasks: [{ scope: 'board', id: 7, status: 'in_progress', title: 'T' }] }] });
+      agents: [{ name: 'Tasked', session_id: '${ID.taskIdle}', availability: 'task_idle', available: false, reason: 'Assigned task, idle', tasks: [{ scope: 'board', id: 7, status: 'in_progress', title: 'T' }] },
+        { name: 'Waiter', session_id: '${ID.waiter}', availability: 'waiting', available: false, reason: "Waiting for message from 'Lead Developer'", waiting_on: { wait_type: 'message', target_id: 'Lead Developer', status: 'active' } },
+        { name: 'Waiter Asks', session_id: '${ID.waiterAsks}', availability: 'waiting', available: false, reason: 'Waiting for task #9', waiting_on: { wait_type: 'task', target_id: '9', status: 'active' } }] });
+    if (path==='/api/board/other-team/status' && m==='GET') return json({ summary: { waiting: 1 }, observed_at: new Date().toISOString(), unassigned_tasks: [], health_report: [],
+      agents: [{ name: 'twin-dir', subscriber_id: 'twin-dir', session_id: '${ID.twinThere}', availability: 'waiting', available: false, reason: 'Waiting for task #5', waiting_on: { wait_type: 'task', target_id: '5', status: 'active' } }] });
     if (m!=='GET') { window.__posts.push(path); return json({ok:true}); }
     if (/\\/(tasks|notes|events)(\\?|$)/.test(path)) return json([]);
     if (/\\/files(\\?|$)/.test(path)) return json({ files: [] }); if (/\\/git(\\?|$)/.test(path)) return json({ snapshots: [] }); if (/\\/chat(\\?|$)/.test(path)) return json({ messages: [] });
@@ -76,6 +87,10 @@ const EXPECT = {
     [ID.turnMember]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },
     [ID.turnOrch]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },
     [ID.taskIdle]: { state: 'task_idle', label: 'Task assigned · idle', dot: 'task-idle', pill: 'Idle · task', attention: false },
+    [ID.waiter]: { state: 'waiting_on', label: 'Waiting on Lead Developer', dot: 'task-idle', pill: 'Waiting', attention: false },
+    [ID.waiterAsks]: { state: 'needs_input', label: 'Needs input', dot: 'waiting', pill: 'Needs input', attention: true },
+    [ID.twinHere]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },
+    [ID.twinThere]: { state: 'waiting_on', label: 'Waiting on task #5', dot: 'task-idle', pill: 'Waiting', attention: false },
 };
 
 async function run() {
@@ -119,6 +134,8 @@ async function run() {
         await boot(1440, 900, false, false);
         // task_idle comes from the team's board /status, fetched after the first render.
         await until(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.taskIdle}"]')?.getAttribute('data-state') === 'task_idle'`, 'the task_idle row');
+        await until(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.waiter}"]')?.getAttribute('data-state') === 'waiting_on'`, 'the waiting_on row (#3471)');
+        await until(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.twinThere}"]')?.getAttribute('data-state') === 'waiting_on'`, "the other board's waiting row (#3473)");
         let rows = await ev(ROWS('live-sessions-list'));
 
         // ── E/D: one vocabulary per state on row attr, dot, pill, aria, tooltip ──
