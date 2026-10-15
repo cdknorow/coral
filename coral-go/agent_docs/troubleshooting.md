@@ -296,6 +296,10 @@ programs and textconv, and the clean, smudge and process commands of filter driv
 - Agents' own git commands are unchanged: they run in the agent's terminal, under the agent
   CLI's permission prompts.
 
+### A team's worktree is still there after Coral restarted
+
+When Coral starts and finds a team that was running but has no live agents (its server stopped mid-work), it marks the team stopped and removes the team's git worktree only if git can remove it without losing anything: a clean worktree. A worktree with uncommitted or untracked changes, or one git can't place (git missing, a timeout, a broken `.git` file), is left where it is, and `coral.log` says why (`left the orphaned worktree … in place`). Commit or copy what you need, then remove it yourself with `git worktree remove <path>` (add `--force` to discard the changes).
+
 ### A scheduled job ends in `killed` / `timeout` instead of `completed`
 
 Expected with an interactive agent. `scheduler.go:611-620` records `completed` only when the

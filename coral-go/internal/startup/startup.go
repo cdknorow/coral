@@ -640,22 +640,23 @@ func reconcileOrphanedTeams(ctx context.Context, db *store.DB) {
 			log.Printf("[startup] failed to stop team %s: %v", team.Name, err)
 		}
 
-		// Clean up worktree if applicable
+		// Clean up the team's worktree, but never its work (#3595): an orphaned team is usually
+		// one whose server stopped mid-work, so its worktree may hold uncommitted changes. Git
+		// removes it only when it's clean (no --force), and when git can't say (a timeout, git
+		// missing, a broken .git file), the folder is left where it is and logged.
 		if team.IsWorktree == 1 && team.WorkingDir != "" {
-			// Find the parent repo via git rev-parse from the worktree itself
 			cleanCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			repoOut, repoErr := gitutil.Command(cleanCtx, team.WorkingDir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
 			if repoErr == nil {
 				repoPath := filepath.Dir(strings.TrimSpace(string(repoOut)))
-				cmd := gitutil.Command(cleanCtx, repoPath, "worktree", "remove", "--force", team.WorkingDir)
+				cmd := gitutil.Command(cleanCtx, repoPath, "worktree", "remove", team.WorkingDir)
 				if out, err := cmd.CombinedOutput(); err != nil {
-					log.Printf("[startup] failed to remove orphaned worktree %s: %s", team.WorkingDir, string(out))
+					log.Printf("[startup] left the orphaned worktree %s in place (git won't remove it, e.g. it has uncommitted work): %s", team.WorkingDir, strings.TrimSpace(string(out)))
 				} else {
 					log.Printf("[startup] cleaned up orphaned worktree: %s", team.WorkingDir)
 				}
 			} else {
-				log.Printf("[startup] cannot find parent repo for worktree %s, removing directory", team.WorkingDir)
-				os.RemoveAll(team.WorkingDir)
+				log.Printf("[startup] left the orphaned worktree %s in place: git can't find its repository (%v)", team.WorkingDir, repoErr)
 			}
 			cancel()
 		}
