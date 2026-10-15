@@ -11,6 +11,11 @@ import (
 // could interrupt a connection after returning it to our single-connection pool,
 // permanently breaking subsequent requests. This is a bounded race stress test,
 // not a guarantee that every run will reproduce the old driver defect.
+//
+// The driver discards an interrupted connection, so about one cancelled query in six makes
+// the pool open a new one, which re-reads the schema. That is under a millisecond normally
+// but slow under -race, where 20000 rounds ran past the package timeout (#3557). The loop is
+// bounded by time as well, and must still cancel enough queries to mean something.
 func TestCancellationLeavesPoolUsable(t *testing.T) {
 	db := openTestDB(t)
 	if _, err := db.Exec(`CREATE TABLE cancellation_probe(v TEXT)`); err != nil {
@@ -20,11 +25,16 @@ func TestCancellationLeavesPoolUsable(t *testing.T) {
 		t.Fatal(err)
 	}
 	rng := rand.New(rand.NewSource(1))
-	for i := 0; i < 20000; i++ {
+	deadline := time.Now().Add(15 * time.Second)
+	cancelled, rounds := 0, 0
+	for i := 0; i < 20000 && time.Now().Before(deadline); i++ {
+		rounds++
 		ctx, cancel := context.WithCancel(context.Background())
 		timer := time.AfterFunc(time.Duration(rng.Intn(60))*time.Microsecond, cancel)
 		var count int
-		_ = db.QueryRowContext(ctx, `SELECT count(*) FROM cancellation_probe WHERE v LIKE '%1%'`).Scan(&count)
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM cancellation_probe WHERE v LIKE '%1%'`).Scan(&count); err != nil {
+			cancelled++
+		}
 		timer.Stop()
 		cancel()
 		// A fresh request must still see the persisted data, even if the pool
@@ -35,6 +45,10 @@ func TestCancellationLeavesPoolUsable(t *testing.T) {
 		if count != 200 {
 			t.Fatalf("persisted rows after cancellation %d: got %d", i, count)
 		}
+	}
+	t.Logf("%d rounds, %d queries cancelled", rounds, cancelled)
+	if cancelled < 20 {
+		t.Fatalf("only %d queries were cancelled; the test exercised too little", cancelled)
 	}
 	if _, err := db.Exec(`INSERT INTO cancellation_probe VALUES ('still writable')`); err != nil {
 		t.Fatal(err)
