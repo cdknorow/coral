@@ -296,11 +296,13 @@ func appendPermissionMode(parts []string, params LaunchParams) []string {
 // settings a launch gets (hooks, permissions, tools, MCP), as real argv, not a shell line:
 // no session id, and no prompt, which the caller sends on stdin (#3521). A workflow step
 // used to split BuildLaunchCommand's shell line on spaces, so Claude got env-var names and
-// a "$(cat ...)" fragment instead of the prompt and settings.
-func (a *ClaudeAgent) PrintArgs(params LaunchParams) []string {
-	args := []string{"--print", "--no-session-persistence", "--settings", claudeSettingsFile(params, params.SessionID)}
+// a "$(cat ...)" fragment instead of the prompt and settings. settingsFile is the temp file
+// the args name: the caller removes it once the command has exited.
+func (a *ClaudeAgent) PrintArgs(params LaunchParams) (args []string, settingsFile string) {
+	settingsFile = claudeSettingsFile(params, params.SessionID)
+	args = []string{"--print", "--no-session-persistence", "--settings", settingsFile}
 	args = append(args, params.Flags...)
-	return appendPermissionMode(args, params)
+	return appendPermissionMode(args, params), settingsFile
 }
 
 func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {

@@ -61,8 +61,10 @@ func TestClaudePromptsGoOnStdinNotArgv(t *testing.T) {
 func TestWorkflowClaudeStepPromptOnStdin(t *testing.T) {
 	db, path := fakeClaude(t)
 	dir := t.TempDir()
-	argsFile, stdinFile := filepath.Join(dir, "args"), filepath.Join(dir, "stdin")
-	require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 9.9.9; exit 0; fi\nprintf '%s\\n' \"$@\" > '"+argsFile+"'\ncat > '"+stdinFile+"'\n"), 0o755))
+	argsFile, stdinFile, settingsCopy := filepath.Join(dir, "args"), filepath.Join(dir, "stdin"), filepath.Join(dir, "settings")
+	// The fake keeps a copy of the --settings file it was given: Coral removes it afterwards.
+	require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 9.9.9; exit 0; fi\nprintf '%s\\n' \"$@\" > '"+argsFile+"'\n"+
+		"prev=; for a in \"$@\"; do if [ \"$prev\" = --settings ]; then cp \"$a\" '"+settingsCopy+"'; fi; prev=$a; done\ncat > '"+stdinFile+"'\n"), 0o755))
 	runner := NewWorkflowRunner(store.NewWorkflowStore(db), nil, nil, nil, nil, t.TempDir(), "localhost", 8420)
 	prompt := "STEP-SECRET-3521 summarize the board"
 	for _, cfg := range []*AgentStepConfig{{AgentType: at.Claude}, {AgentType: at.Claude, Tools: []string{"Read"}, Model: "haiku"}} {
@@ -81,9 +83,11 @@ func TestWorkflowClaudeStepPromptOnStdin(t *testing.T) {
 		if len(cfg.Tools) > 0 {
 			i := indexOf(a, "--settings")
 			require.True(t, i >= 0 && i+1 < len(a), "a --settings file (%v)", a)
-			data, err := os.ReadFile(a[i+1])
+			data, err := os.ReadFile(settingsCopy)
 			require.NoError(t, err)
 			assert.Contains(t, string(data), `"allowedTools"`, "the tools are in the settings")
+			_, err = os.Stat(a[i+1])
+			assert.True(t, os.IsNotExist(err), "the step's settings temp file is removed once it has run")
 			assert.Equal(t, "haiku", a[indexOf(a, "--model")+1])
 		}
 		os.Remove(argsFile)

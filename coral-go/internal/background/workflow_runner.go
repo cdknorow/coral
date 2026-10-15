@@ -590,7 +590,10 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 				json.Unmarshal(agentCfg.MCPServers, &servers)
 				params.MCPServers = servers
 			}
-			args = (&agent.ClaudeAgent{}).PrintArgs(params)
+			var settingsFile string
+			args, settingsFile = (&agent.ClaudeAgent{}).PrintArgs(params)
+			// The step's settings temp file goes once the step has run (Security's review).
+			defer os.Remove(settingsFile)
 		} else {
 			args = append([]string{"--print", "--no-session-persistence"}, agentCfg.Flags...)
 		}
