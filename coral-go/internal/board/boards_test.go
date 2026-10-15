@@ -240,6 +240,7 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 	_, err = s.db.Exec(`CREATE TRIGGER block_rekey BEFORE UPDATE ON boards BEGIN SELECT RAISE(ABORT, 'blocked'); END`)
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
+	require.NoError(t, os.Chmod(path, 0o600))
 	s, err = NewStore(path)
 	require.NoError(t, err, "a failed re-key never stops the store from opening")
 	_, err = s.GetBoard(ctx, "..")
@@ -248,7 +249,10 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, rekeys)
 	_, err = os.Stat(path + ".pre-rekey")
-	assert.NoError(t, err, "the copy was saved before the attempt")
+	require.NoError(t, err, "the copy was saved before the attempt")
+	bfi, err := os.Stat(path + ".pre-rekey")
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), bfi.Mode().Perm(), "the copy has the database file's mode")
 
 	// Unblocked: the next start re-keys it, and the copy isn't replaced.
 	before, _ := os.Stat(path + ".pre-rekey")

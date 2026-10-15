@@ -367,6 +367,10 @@ func (s *Store) backupBeforeRekey(ctx context.Context) {
 		slog.Warn("[boards] backup before re-keying failed; re-keying anyway", "error", err)
 		return
 	}
+	// The copy holds the same data: give it the database file's own mode.
+	if fi, err := os.Stat(file); err == nil {
+		_ = os.Chmod(dst, fi.Mode().Perm())
+	}
 	slog.Info("[boards] saved a copy of the board database before re-keying", "copy", filepath.Base(dst))
 }
 
