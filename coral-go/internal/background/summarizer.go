@@ -144,12 +144,13 @@ func callClaude(ctx context.Context, settings map[string]string, transcript stri
 
 	prompt := summarizerPrompt + "\n\nPlease summarize this coding session:\n\n" + transcript
 
+	// The transcript goes on stdin, not argv, where it would show in the process list (#3519).
 	cmd := executil.Command(ctx, claudePath,
 		"--print",
 		"--model", "haiku",
 		"--no-session-persistence",
-		prompt,
 	)
+	cmd.Stdin = strings.NewReader(prompt)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("claude CLI failed: %w", err)

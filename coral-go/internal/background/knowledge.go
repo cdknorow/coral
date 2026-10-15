@@ -515,12 +515,14 @@ func callClaudeForKnowledge(ctx context.Context, claudePath string, timeout time
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// The prompt and the transcript go on stdin, never in argv, where any local user
+	// could read them in the process list while the call runs (#3519).
 	cmd := executil.Command(callCtx, claudePath,
 		"--print",
 		"--model", "sonnet",
 		"--no-session-persistence",
-		input,
 	)
+	cmd.Stdin = strings.NewReader(input)
 	setSysProcAttr(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

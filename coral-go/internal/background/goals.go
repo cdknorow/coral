@@ -658,8 +658,10 @@ func runGoalCLI(ctx context.Context, bin, prompt string) (goalCLIResult, error) 
 		// settings are not read (the call runs in the temp dir anyway).
 		"--setting-sources", "user",
 		"--settings", `{"disableAllHooks":true}`,
-		prompt,
 	)
+	// The prompt (built from the session's own messages) goes on stdin, not argv, where it
+	// would show in the process list (#3519).
+	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Dir = os.TempDir()
 	for _, kv := range os.Environ() {
 		if strings.HasPrefix(kv, "TMUX") || strings.HasPrefix(kv, "CORAL_") {
