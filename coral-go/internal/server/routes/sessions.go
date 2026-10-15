@@ -5400,6 +5400,9 @@ func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config
 	}
 
 	data, _ := json.Marshal(state)
+	if !plainFileName(sessionName) {
+		return // only a plain name can be part of a file name (#3602 W25)
+	}
 	statePath := filepath.Join(stateDir, fmt.Sprintf("board_state_%s.json", sessionName))
 	// 0600: it names the agent's board and server (#3581).
 	if err := os.WriteFile(statePath, data, 0o600); err != nil {
@@ -5415,8 +5418,18 @@ func removeBoardStateFile(sessionName string, cfg *config.Config) {
 	if cfg == nil || cfg.CoralDir() == "" {
 		return // no data dir: nothing was written (see writeBoardStateFile)
 	}
+	if !plainFileName(sessionName) {
+		return // nothing was written for it (writeBoardStateFile)
+	}
 	statePath := filepath.Join(cfg.CoralDir(), fmt.Sprintf("board_state_%s.json", sessionName))
 	os.Remove(statePath) // Ignore error — file may not exist
+}
+
+// plainFileName reports whether name can be part of one file name on every platform: not empty,
+// not "." or "..", and no '/', '\\' or ':' (the session name in a board state file's name comes
+// from the URL on kill; coral-board and the hooks look it up as it is, so it isn't rewritten).
+func plainFileName(name string) bool {
+	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, "/\\:")
 }
 
 func (h *SessionsHandler) protocolPath() string {

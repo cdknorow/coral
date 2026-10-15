@@ -127,7 +127,9 @@ func TestUsableBoardKey(t *testing.T) {
 	for _, ok := range []string{"sprint", "Coral Go-To-Market Team", "b-7k3m9q2x4p", "team.v2"} {
 		assert.True(t, UsableBoardKey(ok), ok)
 	}
-	for _, bad := range []string{"", ".", "..", "a/b", "x\x00", "x\ny", "evil‮txt", "a⁦b", "a‏b"} {
+	// #3602 W25: '\\' and ':' too (a key names a worktree folder and files; on Windows they are
+	// separators or a drive).
+	for _, bad := range []string{"", ".", "..", "a/b", `a\b`, `..\x`, "C:", "team:x", "x\x00", "x\ny", "evil‮txt", "a⁦b", "a‏b"} {
 		assert.False(t, UsableBoardKey(bad), "%q", bad)
 	}
 }

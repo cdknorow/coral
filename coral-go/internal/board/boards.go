@@ -89,10 +89,11 @@ func (s *Store) LabelProblem(label string) string {
 }
 
 // UsableBoardKey reports whether key can be a board id in a URL path: not empty, not "." or
-// "..", no '/', and no control or bidi-formatting character. A legacy board whose name fails
-// this is reachable only from lists (its id is not usable in a URL).
+// "..", no '/', '\\' or ':' (a key also names a worktree folder and files; on Windows those are
+// separators or a drive, #3602 W25), and no control or bidi-formatting character. A legacy
+// board whose name fails this is reachable only from lists (its id is not usable in a URL).
 func UsableBoardKey(key string) bool {
-	if key == "" || key == "." || key == ".." || strings.ContainsRune(key, '/') || len(key) > 256 {
+	if key == "" || key == "." || key == ".." || strings.ContainsAny(key, "/\\:") || len(key) > 256 {
 		return false
 	}
 	for _, r := range key {

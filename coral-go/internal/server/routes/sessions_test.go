@@ -3210,3 +3210,28 @@ func TestSessionsKill_ChangesArtifactOutsideGitAndOnFailure(t *testing.T) {
 	assert.Equal(t, changesArtifactProblem, result["changes_artifact_error"])
 	assert.NotContains(t, result["changes_artifact_error"], "exit status")
 }
+
+// #3602 W25: a session name that isn't a plain file-name part (a separator, ':' or "..") gets
+// no board state file, and removing one touches nothing.
+func TestBoardStateFileNeedsAPlainName(t *testing.T) {
+	cfg := config.Load(t.TempDir())
+	outside := filepath.Join(filepath.Dir(cfg.CoralDir()), "board_state_x.json")
+	require.NoError(t, os.WriteFile(outside, []byte("keep"), 0o600))
+	names := []string{"../x", `..\x`, "a:b", "a/b", "..", ""}
+	for _, name := range names {
+		writeBoardStateFile(name, "board", "Dev", cfg)
+	}
+	entries, err := os.ReadDir(cfg.CoralDir())
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.False(t, strings.HasPrefix(e.Name(), "board_state_"), "a state file was written: %s", e.Name())
+	}
+	for _, name := range names {
+		removeBoardStateFile(name, cfg)
+	}
+	b, _ := os.ReadFile(outside)
+	assert.Equal(t, "keep", string(b), "nothing outside the data folder was removed or written")
+	writeBoardStateFile("claude-0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11", "board", "Dev", cfg)
+	_, err = os.Stat(filepath.Join(cfg.CoralDir(), "board_state_claude-0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11.json"))
+	assert.NoError(t, err, "a normal session name still gets its state file")
+}
