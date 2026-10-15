@@ -16,6 +16,7 @@ import (
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -66,6 +67,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 
 	// Field-level diffs (#3281): opt-in, and never on a hub's machine feed.
 	fieldDiff := r.URL.Query().Get("diff") == "fields" && r.URL.Query().Get("feed") != "hub"
+	// Through Coral Hub, the frames' paths are in display form and log paths left out
+	// (#3559); the rows are shared with other connections, so each frame is rewritten on a copy.
+	forHub := func(msg any) any { return msg }
+	if cloud.Tunneled(r) {
+		forHub = hubFrame
+	}
 
 	// Per-connection state for diff calculation
 	prevSessions := make(map[string]string)      // session key -> json string
@@ -221,7 +228,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if hasRemotes {
 				msg["servers"] = remoteServers
 			}
-			if err := wsjson.Write(ctx, conn, msg); err != nil {
+			if err := wsjson.Write(ctx, conn, forHub(msg)); err != nil {
 				return
 			}
 			sent()
@@ -286,7 +293,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if hasNotifications {
 				payload["notifications"] = pending
 			}
-			if err := wsjson.Write(ctx, conn, payload); err != nil {
+			if err := wsjson.Write(ctx, conn, forHub(payload)); err != nil {
 				return
 			}
 			sent()

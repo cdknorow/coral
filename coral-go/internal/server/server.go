@@ -299,6 +299,8 @@ func (s *Server) buildRouter() chi.Router {
 	// Requests that came through the Cloud Hub tunnel (marked by the connector) are
 	// re-checked against the connector's route policy before anything else sees them.
 	r.Use(cloud.Guard(routes.MaxModeFromSettings(store.NewSessionStore(s.db))))
+	// Through Coral Hub, no path under the home directory and no hidden file names (#3559).
+	r.Use(routes.HubPaths)
 	// Outbound webhooks may reach private networks only when the user says so (#3363).
 	httputil.SetWebhookAllowPrivate(webhookAllowPrivateFromSettings(store.NewSessionStore(s.db)))
 	// NOTE: middleware.RealIP was intentionally removed. It rewrites r.RemoteAddr

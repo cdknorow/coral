@@ -1842,7 +1842,7 @@ func (h *SessionsHandler) Files(w http.ResponseWriter, r *http.Request) {
 
 	files, found, err := h.gs.GetChangedFiles(r.Context(), name, sidPtr, diffMode)
 	if err == nil && found && filesCacheFresh(files, h.filesCacheMaxAge(r.Context(), diffMode), time.Now()) {
-		writeJSON(w, http.StatusOK, map[string]any{"agent_name": name, "files": files, "diff_mode": diffMode})
+		writeJSON(w, http.StatusOK, map[string]any{"agent_name": name, "files": hubVisibleFiles(r, files), "diff_mode": diffMode})
 		return
 	}
 
@@ -2040,7 +2040,7 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 	}
 	h.gs.ReplaceChangedFiles(r.Context(), name, workdir, files, sidPtr, diffMode)
 
-	writeJSON(w, http.StatusOK, map[string]any{"agent_name": name, "files": files, "diff_mode": diffMode})
+	writeJSON(w, http.StatusOK, map[string]any{"agent_name": name, "files": hubVisibleFiles(r, files), "diff_mode": diffMode})
 }
 
 // Diff returns the unified diff for a single file.

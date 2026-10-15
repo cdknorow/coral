@@ -521,7 +521,7 @@ func (h *HistoryHandler) GetSessionFiles(w http.ResponseWriter, r *http.Request)
 		return files[i].Filepath < files[j].Filepath
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{"session_id": sid, "files": files})
+	writeJSON(w, http.StatusOK, map[string]any{"session_id": sid, "files": hubVisibleFiles(r, files)})
 }
 
 // GetResumeInfo returns metadata needed to resume a historical session.
