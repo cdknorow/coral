@@ -34,15 +34,6 @@ func TestRequireAuthOnLoopbackIsStrictLocal(t *testing.T) {
 
 func requireAuthStrictLocalCase(t *testing.T, strictLocal bool) {
 	srv, ts, dir := strictServer(t, strictLocal)
-	// The direct-local requests below come from this test process -- which is Coral's own
-	// user, as a real same-machine caller is. Pin the same-user check to that truth, the way
-	// the sibling e2e tests do (cloud_cli_require_auth_test.go, hub_e2e_test.go): the real
-	// peercred check reads the OS uid behind the loopback TCP socket, and for an in-process
-	// httptest client that reads back as another user on some hosts (Linux CI), refusing these
-	// requests with other_user. That is a host quirk, not what this test exercises; the
-	// other-user refusal itself is covered by cloud_gate_test.go. Production peercred.SameUser
-	// is unchanged (#3585).
-	srv.cloudHandler.SetPeerCheck(func(*http.Request) (bool, bool) { return true, true })
 	auth.SetRequireAuthOnLoopback(true)
 	t.Cleanup(func() { auth.SetRequireAuthOnLoopback(false) })
 
@@ -112,7 +103,7 @@ func requireAuthStrictLocalCase(t *testing.T, strictLocal bool) {
 	assert.NotEqual(t, http.StatusOK, code, "a forged X-Coral-Via-Tunnel is not trusted")
 
 	// A signed cloud-connect redeem passes refuseCloud (the earlier handshake question).
-	sig := cliSign(t, srv.Router(), tok, "POST", "/api/cloud/redeem", `{"check":true}`)
+	sig := cliSignServer(t, ts.URL, tok, "POST", "/api/cloud/redeem", `{"check":true}`)
 	code, _ = post("/api/cloud/redeem", `{"check":true}`, http.Header{cloud.CLIAuthHeader: {sig}})
 	assert.NotEqual(t, http.StatusForbidden, code, "coral cloud connect redeem passes refuseCloud with the setting on")
 	assert.NotEqual(t, http.StatusUnauthorized, code)
