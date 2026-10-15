@@ -548,15 +548,18 @@ func webpSize(d []byte) (int, int, bool) {
 }
 
 // stripImageMetadata removes location and camera metadata without re-encoding:
-//   - JPEG: every APP1 (EXIF, GPS, XMP), APP13 (IPTC) and COM segment before the image data;
-//   - PNG: every chunk but the critical ones and those that only affect display (pngKeep);
+//   - JPEG: only whitelisted segments (jpegKeep), cut at the EOI;
+//   - PNG: every chunk but the critical ones and those that only affect display (pngKeep),
+//     cut at IEND;
 //   - WebP: an EXIF or XMP chunk is refused rather than rewritten (the container's
 //     flags would need editing);
-//   - GIF: kept as is (no EXIF; comment extensions are kept).
+//   - GIF: comment, plain-text and application extensions dropped, cut at the trailer.
 func stripImageMetadata(data []byte, mediaType string) ([]byte, error) {
 	switch mediaType {
 	case "image/jpeg":
-		return stripJPEGApp1(data)
+		return stripJPEG(data)
+	case "image/gif":
+		return stripGIF(data)
 	case "image/png":
 		return stripPNGText(data)
 	case "image/webp":
@@ -575,29 +578,81 @@ func stripImageMetadata(data []byte, mediaType string) ([]byte, error) {
 	return data, nil
 }
 
-func stripJPEGApp1(d []byte) ([]byte, error) {
+// jpegKeep reports whether a JPEG marker segment is kept: APP0 (JFIF), APP2 only with an
+// ICC profile, APP14 (Adobe colour transform), and the table, frame, restart-interval and
+// scan segments. Everything else (APP1 EXIF/XMP, APP3-13 incl. IPTC, MPF thumbnails in
+// APP2, APP11 C2PA, APP15, COM, ...) is dropped.
+func jpegKeep(marker byte, payload []byte) bool {
+	switch {
+	case marker == 0xE0, marker == 0xEE: // APP0, APP14
+		return true
+	case marker == 0xE2: // APP2: only an ICC profile
+		return bytes.HasPrefix(payload, []byte("ICC_PROFILE\x00"))
+	case marker == 0xDB, marker == 0xC4, marker == 0xCC, marker == 0xDD, marker == 0xDA: // DQT, DHT, DAC, DRI, SOS
+		return true
+	case marker >= 0xC0 && marker <= 0xCF: // SOFn (C4, C8, CC handled above or reserved)
+		return marker != 0xC8
+	}
+	return false
+}
+
+// stripJPEG keeps only the whitelisted segments (jpegKeep) and the entropy-coded scan data,
+// and ends the output at the EOI that ends the image: anything appended after it (another
+// file, a polyglot, trailing data) is dropped. Nothing is re-encoded.
+func stripJPEG(d []byte) ([]byte, error) {
 	if len(d) < 4 || d[0] != 0xFF || d[1] != 0xD8 {
 		return nil, errAttach("bad_image")
 	}
 	out := make([]byte, 0, len(d))
 	out = append(out, 0xFF, 0xD8)
 	i := 2
-	for i+4 <= len(d) {
+	scanned := false
+	for i+2 <= len(d) {
 		if d[i] != 0xFF {
 			return nil, errAttach("bad_image")
 		}
 		marker := d[i+1]
-		if marker == 0xDA { // start of scan: the rest is image data
-			return append(out, d[i:]...), nil
+		switch {
+		case marker == 0xFF: // fill byte
+			i++
+			continue
+		case marker == 0xD9: // EOI: the end of the image
+			if !scanned {
+				return nil, errAttach("bad_image")
+			}
+			return append(out, 0xFF, 0xD9), nil
+		case marker >= 0xD0 && marker <= 0xD7, marker == 0x01: // no length
+			return nil, errAttach("bad_image")
+		}
+		if i+4 > len(d) {
+			return nil, errAttach("bad_image")
 		}
 		n := int(binary.BigEndian.Uint16(d[i+2 : i+4]))
 		if n < 2 || i+2+n > len(d) {
 			return nil, errAttach("bad_image")
 		}
-		if marker != 0xE1 && marker != 0xED && marker != 0xFE { // APP1 EXIF/XMP, APP13 IPTC, COM
-			out = append(out, d[i:i+2+n]...)
+		seg := d[i : i+2+n]
+		if jpegKeep(marker, d[i+4:i+2+n]) {
+			out = append(out, seg...)
 		}
 		i += 2 + n
+		if marker != 0xDA {
+			continue
+		}
+		// Entropy-coded data after SOS runs to the next marker that isn't a stuffed 0x00 or
+		// a restart marker.
+		start := i
+		for i+1 < len(d) {
+			if d[i] == 0xFF && d[i+1] != 0x00 && !(d[i+1] >= 0xD0 && d[i+1] <= 0xD7) {
+				break
+			}
+			i++
+		}
+		if i+1 >= len(d) {
+			return nil, errAttach("bad_image") // no EOI
+		}
+		out = append(out, d[start:i]...)
+		scanned = true
 	}
 	return nil, errAttach("bad_image")
 }
@@ -624,12 +679,81 @@ func stripPNGText(d []byte) ([]byte, error) {
 		if n < 0 || i+12+n > len(d) {
 			return nil, errAttach("bad_image")
 		}
-		if pngKeep[string(d[i+4:i+8])] {
+		typ := string(d[i+4 : i+8])
+		if pngKeep[typ] {
 			out = append(out, d[i:i+12+n]...)
 		}
 		i += 12 + n
+		if typ == "IEND" {
+			return out, nil // nothing after IEND is kept
+		}
 	}
-	return out, nil
+	return nil, errAttach("bad_image") // no IEND
+}
+
+// stripGIF drops comment, plain-text and application extensions (NETSCAPE looping
+// included, so an animation plays once) and ends the output at the trailer: anything
+// appended after it is dropped. Image data and graphic control extensions are kept as is.
+func stripGIF(d []byte) ([]byte, error) {
+	if len(d) < 13 || (string(d[:6]) != "GIF87a" && string(d[:6]) != "GIF89a") {
+		return nil, errAttach("bad_image")
+	}
+	i := 13
+	if d[10]&0x80 != 0 { // global colour table
+		i += 3 << (d[10]&0x07 + 1)
+	}
+	if i > len(d) {
+		return nil, errAttach("bad_image")
+	}
+	out := append(make([]byte, 0, len(d)), d[:i]...)
+	// subBlocks returns the end of the data sub-blocks starting at j.
+	subBlocks := func(j int) (int, bool) {
+		for j < len(d) {
+			n := int(d[j])
+			j++
+			if n == 0 {
+				return j, true
+			}
+			j += n
+		}
+		return 0, false
+	}
+	for i < len(d) {
+		switch d[i] {
+		case 0x3B: // trailer
+			return append(out, 0x3B), nil
+		case 0x21: // extension
+			if i+2 > len(d) {
+				return nil, errAttach("bad_image")
+			}
+			end, ok := subBlocks(i + 2)
+			if !ok {
+				return nil, errAttach("bad_image")
+			}
+			if d[i+1] == 0xF9 { // graphic control: timing and transparency
+				out = append(out, d[i:end]...)
+			}
+			i = end
+		case 0x2C: // image descriptor
+			j := i + 10
+			if j > len(d) {
+				return nil, errAttach("bad_image")
+			}
+			if d[i+9]&0x80 != 0 { // local colour table
+				j += 3 << (d[i+9]&0x07 + 1)
+			}
+			j++ // LZW minimum code size
+			end, ok := subBlocks(j)
+			if !ok || j > len(d) {
+				return nil, errAttach("bad_image")
+			}
+			out = append(out, d[i:end]...)
+			i = end
+		default:
+			return nil, errAttach("bad_image")
+		}
+	}
+	return nil, errAttach("bad_image") // no trailer
 }
 
 // attachName is the artifact's stored name: letters, digits, dot, dash, underscore and

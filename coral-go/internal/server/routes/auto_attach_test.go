@@ -414,3 +414,70 @@ func TestAutoAttachForgetsEndedWindows(t *testing.T) {
 	rig.a.admit("d")
 	assert.Len(t, rig.a.windows, 1, "ended windows are forgotten")
 }
+
+// coral-hub Security's #3515 v2 SHOULDs: JPEG keeps a whitelist of segments and ends at
+// the EOI; PNG ends at IEND; GIF drops comment and application extensions and ends at the
+// trailer. Each output still decodes in full.
+func TestAutoAttachImageWhitelists(t *testing.T) {
+	rig := newAttachRig(t)
+	seg := func(marker byte, payload string) []byte {
+		b := []byte{0xFF, marker, 0, 0}
+		binary.BigEndian.PutUint16(b[2:], uint16(len(payload)+2))
+		return append(b, payload...)
+	}
+	j := jpegBytes(t)
+	var withAll []byte
+	withAll = append(withAll, 0xFF, 0xD8)
+	withAll = append(withAll, seg(0xE2, "ICC_PROFILE\x00\x01\x01ICC-KEPT")...)
+	withAll = append(withAll, seg(0xE2, "MPF\x00MPF-THUMB")...)
+	withAll = append(withAll, seg(0xEB, "JP\x00\x00C2PA-MANIFEST")...)
+	withAll = append(withAll, seg(0xEF, "APP15-DATA")...)
+	withAll = append(withAll, j[2:]...)
+	withAll = append(withAll, "APPENDED-ZIP-AFTER-EOI"...)
+	rig.write("w.jpg", withAll)
+	data, _ := rig.stored(rig.post("![x](w.jpg)"))
+	for _, gone := range []string{"MPF-THUMB", "C2PA-MANIFEST", "APP15-DATA", "APPENDED-ZIP"} {
+		assert.NotContains(t, string(data), gone)
+	}
+	assert.Contains(t, string(data), "ICC-KEPT", "an ICC profile is kept")
+	assert.Equal(t, []byte{0xFF, 0xD9}, data[len(data)-2:], "ends at the EOI")
+	_, err := jpeg.Decode(bytes.NewReader(data))
+	assert.NoError(t, err)
+
+	// A well-formed chunk after IEND (an IDAT, which the allow-list would otherwise keep).
+	after := []byte{0, 0, 0, 0}
+	binary.BigEndian.PutUint32(after, uint32(len("AFTER-IEND-PAYLOAD")))
+	after = append(append(append(after, "IDAT"...), "AFTER-IEND-PAYLOAD"...), 0, 0, 0, 0)
+	p := append(pngBytes(t, 4, 4), after...)
+	rig.write("after.png", p)
+	data, _ = rig.stored(rig.post("![x](after.png)"))
+	assert.NotContains(t, string(data), "AFTER-IEND")
+	_, err = png.Decode(bytes.NewReader(data))
+	assert.NoError(t, err)
+
+	var g bytes.Buffer
+	pal := image.NewPaletted(image.Rect(0, 0, 2, 2), color.Palette{color.Black, color.White})
+	require.NoError(t, gif.EncodeAll(&g, &gif.GIF{Image: []*image.Paletted{pal, pal}, Delay: []int{1, 1}, LoopCount: 0}))
+	gb := g.Bytes()
+	require.Contains(t, string(gb), "NETSCAPE2.0", "the encoder wrote an application extension")
+	comment := []byte("\x21\xFE\x0bGIF-COMMENT\x00")
+	withC := append(append(append([]byte{}, gb[:len(gb)-1]...), comment...), 0x3B)
+	withC = append(withC, "GIF-TRAILING"...)
+	rig.write("anim.gif", withC)
+	data, _ = rig.stored(rig.post("![x](anim.gif)"))
+	for _, gone := range []string{"GIF-COMMENT", "NETSCAPE2.0", "GIF-TRAILING"} {
+		assert.NotContains(t, string(data), gone)
+	}
+	out, err := gif.DecodeAll(bytes.NewReader(data))
+	require.NoError(t, err)
+	assert.Len(t, out.Image, 2, "both frames kept")
+
+	// No EOI, no IEND, no trailer: refused.
+	rig.write("cut.jpg", j[:len(j)-2])
+	unchanged(t, rig, "![x](cut.jpg)", "a JPEG without its EOI")
+	pp := pngBytes(t, 4, 4)
+	rig.write("cut.png", pp[:len(pp)-12])
+	unchanged(t, rig, "![x](cut.png)", "a PNG without IEND")
+	rig.write("cut.gif", gb[:len(gb)-1])
+	unchanged(t, rig, "![x](cut.gif)", "a GIF without its trailer")
+}

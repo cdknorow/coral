@@ -61,9 +61,11 @@ below isn't met, the link stays as you wrote it and nothing is uploaded:
 - changed in the last 24 hours (fresh screenshots and reports, not old documents);
 - at most 8 files a post, 25 MB a post, 50 links and 100 MB an hour per agent.
 
-JPEG location, camera and caption data (EXIF, XMP, IPTC, comments) and every PNG chunk that
-doesn't affect how the image looks are removed; a WebP with EXIF or XMP data isn't attached; a
-GIF is stored as is (it has no EXIF, but its comment blocks are kept). Linking a fresh file uploads it, so link only what the team should
+Only what draws the image is kept: a JPEG keeps its JFIF header, colour profile and image
+data (EXIF, GPS, XMP, IPTC, thumbnails, C2PA and comments are removed); a PNG keeps the chunks
+that affect how it looks; a GIF loses its comments and application blocks (so an animation
+plays once); anything after the end of the image is cut. A WebP with EXIF or XMP data isn't
+attached. Linking a fresh file uploads it, so link only what the team should
 see. The Operator can turn this off in Settings ("Attach files agents link on the board").
 
 ## What the user sees
