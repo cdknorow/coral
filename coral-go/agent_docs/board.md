@@ -783,6 +783,15 @@ When a claimed task is completed or skipped, Coral captures the claiming agent's
 
 The response uses `Content-Type: text/x-diff` and downloads as `changes.diff`.
 
+**What a stored or Coral Hub diff leaves out (#3555):** a diff Coral stores (a task's or a
+session's `changes.diff`) and any diff sent through Coral Hub never carries a sensitive file
+(the sensitive-path list: keys, `.env*`, credentials and the like), a dot-file or dot-folder,
+a binary file, or a file whose section is over 256 KiB; each is replaced by a line such as
+`# Coral: new file shot.png, 412000 bytes, not stored` (lines `git apply` skips). The whole
+is cut at 8 MiB, with a note. Identical diffs are stored once. Through Coral Hub a diff has
+no `X-Coral-Working-Directory` header, and a diff stored before this release is filtered the
+same way when served. The live diff on this computer is unchanged.
+
 ```bash
 curl -fsS \
   http://localhost:PORT/api/board/eval-team/tasks/42/changes.diff \

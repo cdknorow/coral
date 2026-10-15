@@ -576,6 +576,15 @@ serves only the artifact captured at termination. For a live session,
 `GET /api/sessions/live/{name}/changes.diff?session_id={sessionID}` generates the
 current checkout diff.
 
+**What a stored or Coral Hub diff leaves out (#3555):** a diff Coral stores (a task's or a
+session's `changes.diff`) and any diff sent through Coral Hub never carries a sensitive file
+(the sensitive-path list: keys, `.env*`, credentials and the like), a dot-file or dot-folder,
+a binary file, or a file whose section is over 256 KiB; each is replaced by a line such as
+`# Coral: new file shot.png, 412000 bytes, not stored` (lines `git apply` skips). The whole
+is cut at 8 MiB, with a note. Identical diffs are stored once. Through Coral Hub a diff has
+no `X-Coral-Working-Directory` header, and a diff stored before this release is filtered the
+same way when served. The live diff on this computer is unchanged.
+
 For a live session, Coral generates the diff from its registered working directory. After termination or worktree cleanup, it serves the captured artifact instead. The response uses `Content-Type: text/x-diff`. Team kill snapshots every non-terminal member before removing the shared worktree.
 
 Terminate a session.

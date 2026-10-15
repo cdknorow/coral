@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,6 +36,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
@@ -2116,7 +2119,13 @@ func (h *SessionsHandler) ChangesDiff(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	diff, err := h.generateChangesDiff(ctx, workdir)
+	// Through Coral Hub: filtered and capped, and no local path (#3555).
+	tunneled := cloud.Tunneled(r)
+	gen := h.generateChangesDiff
+	if tunneled {
+		gen = h.generatePersistedDiff
+	}
+	diff, err := gen(ctx, workdir)
 	if err != nil {
 		slog.Warn("git changes diff failed", "agent_name", name, "workdir", workdir, "error", err)
 		errInternalServer(w, "Could not generate changes.diff")
@@ -2125,7 +2134,9 @@ func (h *SessionsHandler) ChangesDiff(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
-	w.Header().Set("X-Coral-Working-Directory", workdir)
+	if !tunneled {
+		w.Header().Set("X-Coral-Working-Directory", workdir)
+	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(diff)
 }
@@ -2177,8 +2188,12 @@ func (h *SessionsHandler) SessionChanges(w http.ResponseWriter, r *http.Request)
 	if workdir != "" {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		if diff, err := h.generateChangesDiff(ctx, workdir); err == nil {
-			writeSessionChanges(w, diff, workdir)
+		gen := h.generateChangesDiff
+		if cloud.Tunneled(r) {
+			gen = h.generatePersistedDiff // through Coral Hub: filtered and capped (#3555)
+		}
+		if diff, err := gen(ctx, workdir); err == nil {
+			writeSessionChanges(w, r, diff, workdir)
 			return
 		} else {
 			slog.Warn("git session changes failed", "session_id", sessionID, "workdir", workdir, "error", err)
@@ -2194,13 +2209,16 @@ func (h *SessionsHandler) SessionChanges(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, err.Error())
 		return
 	}
-	writeSessionChanges(w, data, "")
+	if cloud.Tunneled(r) {
+		data = safeDiff(data) // a stored diff (also one from before #3555) through Coral Hub
+	}
+	writeSessionChanges(w, r, data, "")
 }
 
-func writeSessionChanges(w http.ResponseWriter, diff []byte, workdir string) {
+func writeSessionChanges(w http.ResponseWriter, r *http.Request, diff []byte, workdir string) {
 	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
-	if workdir != "" {
+	if workdir != "" && !cloud.Tunneled(r) { // no local path through Coral Hub (#3555)
 		w.Header().Set("X-Coral-Working-Directory", workdir)
 	}
 	w.WriteHeader(http.StatusOK)
@@ -2217,7 +2235,7 @@ func (h *SessionsHandler) PersistTaskChanges(ctx context.Context, task *board.Ta
 	if workdir == "" {
 		return fmt.Errorf("could not determine working directory")
 	}
-	diff, err := h.generateChangesDiff(ctx, workdir)
+	diff, err := h.generatePersistedDiff(ctx, workdir) // filtered and capped (#3555)
 	if err != nil {
 		return err
 	}
@@ -2228,6 +2246,21 @@ func writeChangesArtifact(artifactPath string, diff []byte) error {
 	if err := os.MkdirAll(filepath.Dir(artifactPath), 0o700); err != nil {
 		return err
 	}
+	// Identical diffs are stored once (#3555): the content goes to
+	// artifacts/diff-objects/<sha256> and the task's or session's changes.diff is a hard link
+	// to it, so the same unchanged checkout doesn't take its full size again for every task,
+	// and removing one task's diff never touches another's.
+	if obj, err := storeDiffObject(artifactPath, diff); err == nil {
+		tmp := artifactPath + ".link-tmp"
+		os.Remove(tmp)
+		if os.Link(obj, tmp) == nil {
+			if err := os.Rename(tmp, artifactPath); err == nil {
+				return nil
+			}
+			os.Remove(tmp)
+		}
+	}
+	// No hard links here: a plain copy.
 	tmp, err := os.CreateTemp(filepath.Dir(artifactPath), ".changes-*.diff")
 	if err != nil {
 		return err
@@ -2245,6 +2278,28 @@ func writeChangesArtifact(artifactPath string, diff []byte) error {
 		return err
 	}
 	return os.Rename(tmpPath, artifactPath)
+}
+
+// storeDiffObject stores diff once under <coral>/artifacts/diff-objects/<sha256> (found from
+// artifactPath: .../artifacts/{tasks,sessions}/<id>/changes.diff) and returns its path.
+func storeDiffObject(artifactPath string, diff []byte) (string, error) {
+	root := filepath.Dir(filepath.Dir(filepath.Dir(artifactPath))) // .../artifacts
+	if filepath.Base(root) != "artifacts" {
+		return "", fmt.Errorf("not under artifacts/")
+	}
+	sum := sha256.Sum256(diff)
+	dir := filepath.Join(root, "diff-objects")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	obj := filepath.Join(dir, hex.EncodeToString(sum[:]))
+	if _, err := os.Stat(obj); err == nil {
+		return obj, nil
+	}
+	if err := writeFileAtomic(obj, diff, 0o600); err != nil {
+		return "", err
+	}
+	return obj, nil
 }
 
 func (h *SessionsHandler) sessionChangesArtifactPath(sessionID string) string {
@@ -2266,7 +2321,7 @@ func (h *SessionsHandler) persistSessionChanges(ctx context.Context, sessionID, 
 	if !gitutil.IsWorkTree(ctx, workdir) {
 		return "", errNoGitCheckout
 	}
-	diff, err := h.generateChangesDiff(ctx, workdir)
+	diff, err := h.generatePersistedDiff(ctx, workdir)
 	if err != nil {
 		return "", err
 	}
@@ -2302,6 +2357,9 @@ func (h *SessionsHandler) SessionChangesArtifact(w http.ResponseWriter, r *http.
 		}
 		errInternalServer(w, err.Error())
 		return
+	}
+	if cloud.Tunneled(r) {
+		data = safeDiff(data) // through Coral Hub: filtered and capped, old diffs too (#3555)
 	}
 	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)

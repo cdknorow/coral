@@ -1916,6 +1916,9 @@ func (h *BoardHandler) TaskChangesDiff(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
+	if cloud.Tunneled(r) {
+		data = safeDiff(data) // through Coral Hub: filtered and capped, old diffs too (#3555)
+	}
 	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
 	w.WriteHeader(http.StatusOK)
