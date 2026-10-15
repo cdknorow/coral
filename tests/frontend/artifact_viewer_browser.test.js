@@ -188,6 +188,15 @@ const MD = [
         await ev(`document.querySelector('#artifact-viewer .artifact-viewer-close').click()`);
         check('Close hides it', await ev(`document.querySelector('#artifact-viewer').hidden`), 'still open');
 
+        console.log('Back or Forward closes the viewer (the page under it changes; Lead, with #3532)');
+        await ev(`history.pushState(history.state, '', location.href); true`); // an entry to go Back from, same page
+        await ev(`document.querySelector('#qa-3540 img.board-artifact-image').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))`);
+        for (let i = 0; i < 50 && !(await ev(`!document.querySelector('#artifact-viewer').hidden`)); i++) await new Promise(r => setTimeout(r, 20));
+        await ev('history.back(); true');
+        let gone = false;
+        for (let i = 0; i < 50 && !gone; i++) { await new Promise(r => setTimeout(r, 20)); gone = await ev(`document.querySelector('#artifact-viewer').hidden`); }
+        check('history navigation closes the viewer', gone, 'still open after Back');
+
         console.log('The strict renderer on its own');
         const strict = await ev(`(async () => { const u = await import(${S}+'utils.js'); const box = document.createElement('div'); box.innerHTML = u.renderMarkdownStrict('<script>x()</script>\\n\\n<iframe src="https://x.test"></iframe>\\n\\n[js](javascript:alert(1))'); return { scripts: box.querySelectorAll('script, iframe').length, text: box.textContent, js: /javascript:/i.test(box.innerHTML) }; })()`);
         check('script and iframe are text; javascript: links are dropped', strict.scripts === 0 && strict.text.includes('<script>x()</script>') && strict.text.includes('<iframe') && !strict.js, JSON.stringify(strict));

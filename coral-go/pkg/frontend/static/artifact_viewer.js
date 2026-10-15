@@ -59,6 +59,8 @@ function _build() {
         else if (e.key === 'Tab') _trapTab(d, e);
     });
     keepFragmentsInside(d.querySelector('.artifact-viewer-body'));
+    // Back or Forward changes the page under the viewer (#3532 routes): close it with the page.
+    window.addEventListener('popstate', closeArtifactViewer);
     document.body.appendChild(d);
     return d;
 }
