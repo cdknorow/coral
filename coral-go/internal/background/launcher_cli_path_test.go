@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -59,4 +61,23 @@ func TestLaunchAgentValidatesAgentType(t *testing.T) {
 			t.Errorf("LaunchAgent accepted agent type %q", bad)
 		}
 	}
+}
+
+// Security's #3602 question: an empty agent type (an older scheduled job, a workflow agent step)
+// is Claude, defaulted before the log path is built, so the launch still gets its log under the
+// log folder (naming.LogFile refuses an empty type).
+func TestLaunchAgentWithNoTypeStillGetsItsLog(t *testing.T) {
+	logs := t.TempDir()
+	naming.SetDefaultLogDir(logs)
+	t.Cleanup(func() { naming.SetDefaultLogDir("") })
+	rt := &spawnRecorder{}
+	l := NewAgentLauncher(rt, store.NewSessionStore(setupTestDB(t)), 8450)
+	_, err := l.LaunchAgent(context.Background(), t.TempDir(), "", "job", "", nil, true, "p", "", "")
+	require.NoError(t, err)
+	matches, _ := filepath.Glob(filepath.Join(logs, "claude_coral_*.log"))
+	assert.Len(t, matches, 1, "the log was made under the log folder, as Claude's")
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	require.Len(t, rt.commands, 1)
+	assert.Contains(t, rt.commands[0], "claude", "launched as Claude")
 }

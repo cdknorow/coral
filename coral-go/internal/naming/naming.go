@@ -5,12 +5,13 @@ package naming
 
 import (
 	"fmt"
-	"github.com/cdknorow/coral/internal/safefs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 // SessionName returns the canonical tmux/pty session name for an agent.

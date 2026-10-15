@@ -5371,6 +5371,9 @@ func (h *SessionsHandler) setupBoardAndPrompt(sessionID, sessionName, agentType,
 // writeBoardStateFile writes the local board state file that coral-board CLI
 // reads to determine which board a session is subscribed to.
 func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config) {
+	if !plainFileName(sessionName) {
+		return // only a plain name can be part of a file name (#3602 W25)
+	}
 	stateDir := ""
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		stateDir = filepath.Join(home, ".coral")
@@ -5400,9 +5403,6 @@ func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config
 	}
 
 	data, _ := json.Marshal(state)
-	if !plainFileName(sessionName) {
-		return // only a plain name can be part of a file name (#3602 W25)
-	}
 	statePath := filepath.Join(stateDir, fmt.Sprintf("board_state_%s.json", sessionName))
 	// 0600: it names the agent's board and server (#3581).
 	if err := os.WriteFile(statePath, data, 0o600); err != nil {

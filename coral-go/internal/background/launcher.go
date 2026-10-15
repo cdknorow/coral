@@ -57,6 +57,12 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	if err := agent.ValidateAgentType(agentType); err != nil {
 		return nil, err
 	}
+	// Not given (an older scheduled job, a workflow agent step): Claude, as GetAgent("") and the
+	// dashboard's launch path do. Defaulted before any name or log path is built, so the log
+	// path (naming.LogFile refuses an empty type) is always made (Security's #3602 question).
+	if agentType == "" {
+		agentType = at.Claude
+	}
 	workingDir, err := filepath.Abs(workingDir)
 	if err != nil {
 		return nil, fmt.Errorf("abs path: %w", err)

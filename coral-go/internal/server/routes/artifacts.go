@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cdknorow/coral/internal/safefs"
 	"io"
 	"log/slog"
 	"math"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/mediatype"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/go-chi/chi/v5"
 )
 
