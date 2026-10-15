@@ -96,7 +96,7 @@ To spin up a test server for manual verification, use `0.0.0.0` (not `127.0.0.1`
 ```bash
 cd coral-go && go build -tags dev -o coral ./cmd/coral/ && CORAL_DATA_DIR=/tmp/coral-test ./coral --host 0.0.0.0 --port 8450 --cloud-url off
 ```
-`--cloud-url off` keeps a test server away from the real Coral Hub (a release build connects to app.coralai.ai by default, and a `CORAL_CLOUD_URL` in the shell would point it there).
+`--cloud-url off` keeps a test server away from the real Coral Hub (a release build connects to app.coralhub.dev by default, and a `CORAL_CLOUD_URL` in the shell would point it there).
 Build the agent tools with the server (`go build -tags dev -o <dir>/ ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-*`, which `make dev` does), or set `CORAL_HOOK_DIR`: a dev or test server never uses the installed app's hooks, and its startup log names where its agents' hooks come from.
 
 ### Database
@@ -119,7 +119,7 @@ Pushing a tag triggers the GitHub Actions release workflow. Tag suffixes control
 
 #### Build Tiers
 
-Tiers are selected via **compile-time build tags** (not ldflags). Coral has no licence and no usage limits in any tier. Tiers differ only in the EULA and the default Coral Hub (`TierDefaultCloudURL`: https://app.coralai.ai for prod, beta and staging; none for dev and dropboxers):
+Tiers are selected via **compile-time build tags** (not ldflags). Coral has no licence and no usage limits in any tier. Tiers differ only in the EULA and the default Coral Hub (`TierDefaultCloudURL`: https://app.coralhub.dev for prod, beta and staging; none for dev and dropboxers):
 
 | Tier | Build Tag | EULA |
 |------|-----------|------|

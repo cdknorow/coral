@@ -166,7 +166,7 @@ It talks to the same server over your network, so nothing runs on the phone and 
 
 ### Coral Hub (beta)
 
-Coral Hub (app.coralai.ai, invite-only beta) lets you reach your Coral servers from any browser without opening a port. A fresh install never connects, or asks you to, on its own: connect a server from the home screen or **Settings › Coral Hub**, or run `coral cloud connect` on it. Coral offers it at first launch (the dashboard's Connect screen and a prompt in the terminal) only when you pass a hub URL (`--cloud-url https://app.coralai.ai` or `CORAL_CLOUD_URL`) or start it with `--cloud-connect prompt` (`CORAL_CLOUD_CONNECT=prompt`); `--cloud-connect off` turns that off. See [Coral Hub](coral-go/agent_docs/hub.md#connecting-a-server-to-coral-hub).
+Coral Hub (app.coralhub.dev, invite-only beta) lets you reach your Coral servers from any browser without opening a port. A fresh install never connects, or asks you to, on its own: connect a server from the home screen or **Settings › Coral Hub**, or run `coral cloud connect` on it. Coral offers it at first launch (the dashboard's Connect screen and a prompt in the terminal) only when you pass a hub URL (`--cloud-url https://app.coralhub.dev` or `CORAL_CLOUD_URL`) or start it with `--cloud-connect prompt` (`CORAL_CLOUD_CONNECT=prompt`); `--cloud-connect off` turns that off. See [Coral Hub](coral-go/agent_docs/hub.md#connecting-a-server-to-coral-hub).
 
 ## How It Works
 
