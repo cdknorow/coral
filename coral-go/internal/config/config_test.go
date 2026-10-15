@@ -28,7 +28,7 @@ func TestLoadDefaults(t *testing.T) {
 	dataDir := isolateConfigEnv(t)
 	cfg := Load()
 
-	assert.Equal(t, 8420, cfg.Port)
+	assert.Equal(t, DefaultPort, cfg.Port) // 8420, or 8450 on Windows (defaults_windows.go)
 	assert.Equal(t, "0.0.0.0", cfg.Host)
 	assert.Equal(t, 5000, cfg.DBBusyTimeoutMS)
 	assert.Equal(t, 120, cfg.IndexerIntervalS)
@@ -56,5 +56,5 @@ func TestEnvIntInvalid(t *testing.T) {
 	t.Setenv("CORAL_PORT", "notanumber")
 
 	cfg := Load()
-	assert.Equal(t, 8420, cfg.Port) // fallback to default
+	assert.Equal(t, DefaultPort, cfg.Port) // fallback to the platform default
 }
