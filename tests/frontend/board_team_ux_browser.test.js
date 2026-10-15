@@ -71,6 +71,26 @@ const BASE = require('./test_base').BASE;
         assert.ok(r.nextAvatarHidden, `${where}: a grouped post shares the avatar`);
         assert.ok(r.nextNameHidden, `${where}: a grouped post shares the name`);
     };
+    // Security's NITs on #3590: a sender named 'constructor' gets a palette colour (an object
+    // cache handed back Object.prototype.constructor and broke the whole feed), and an icon
+    // avatar is at most two characters.
+    const senderCheck = async (feedId, where) => {
+        const r = await ev(`(async () => {
+            const { AGENT_NAME_PALETTE } = await import((window.__coralStatic||'/static/')+'utils.js');
+            const toRgb = h => { const d = document.createElement('div'); d.style.color = h; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; };
+            const palette = AGENT_NAME_PALETTE.map(toRgb);
+            const feed = document.getElementById(${JSON.stringify(feedId)});
+            const find = t => [...feed.querySelectorAll('.mb-message')].find(m => m.textContent.includes(t));
+            const ctor = find('from constructor'), icon = find('with an icon');
+            return { ctor: !!ctor, ctorColor: ctor && getComputedStyle(ctor.querySelector('.mb-avatar')).color, palette,
+                ctorInitials: ctor && ctor.querySelector('.mb-avatar').textContent,
+                iconText: icon && icon.querySelector('.mb-avatar').textContent };
+        })()`);
+        assert.ok(r.ctor, `${where}: a post from 'constructor' renders`);
+        assert.ok(r.palette.includes(r.ctorColor), `${where}: 'constructor' gets a palette colour, not ${r.ctorColor}`);
+        assert.equal(r.ctorInitials, 'CO', `${where}: its initials`);
+        assert.equal(r.iconText, 'AB', `${where}: an icon avatar is at most two characters`);
+    };
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -86,6 +106,8 @@ const BASE = require('./test_base').BASE;
             msgs.push({ id: 62, project: 'alpha', subscriber_id: 'Lead Developer', job_title: 'Lead Developer', content: 'A block:\\n\\n\\u0060\\u0060\\u0060go\\nfunc main() {}\\n\\u0060\\u0060\\u0060\\n', created_at: '2026-10-13T10:01:02Z' });
             msgs.push({ id: 63, project: 'alpha', subscriber_id: 'QA Engineer', job_title: 'QA Engineer', content: 'first line\\nsecond line\\n\\n- one\\n- two', created_at: '2026-10-13T10:01:03Z' });
             msgs.push({ id: 64, project: 'alpha', subscriber_id: 'QA Engineer', job_title: 'QA Engineer', content: 'a follow-up', created_at: '2026-10-13T10:01:04Z' });
+            msgs.push({ id: 65, project: 'alpha', subscriber_id: 'constructor', job_title: 'constructor', content: 'from constructor', created_at: '2026-10-13T10:01:05Z' });
+            msgs.push({ id: 66, project: 'alpha', subscriber_id: 'Icon Bot', job_title: 'Icon Bot', icon: 'ABCDEF', content: 'with an icon', created_at: '2026-10-13T10:01:06Z' });
             window.__boardMsgs = msgs;
             window.fetch = async (url, opts) => {
                 const u = String(url);
@@ -160,6 +182,7 @@ const BASE = require('./test_base').BASE;
 
         console.log('#3590 Team chat: avatar rows, a single newline is a line break');
         await rowCheck('board-panel-msgs', 'team chat');
+        await senderCheck('board-panel-msgs', 'team chat');
         console.log('   ✓ initials in the palette colour, no box, <br> between lines, a run shares the avatar');
 
         console.log('#4 Closing the team view from its Tasks tab leaves only Tasks in the sidebar');
@@ -267,6 +290,7 @@ const BASE = require('./test_base').BASE;
         await ev(`window.selectBoardProject('alpha'); true`);
         await waitFor(`[...document.querySelectorAll('#mb-messages .mb-message')].some(m => m.textContent.includes('first line'))`, 'the board view');
         await rowCheck('mb-messages', 'board view');
+        await senderCheck('mb-messages', 'board view');
         console.log('   ✓ initials in the palette colour, no box, <br> between lines, a run shares the avatar');
 
         console.log('PASS board_team_ux_browser');

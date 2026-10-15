@@ -820,10 +820,11 @@ export function renderBoardMessageBody(m) {
     return renderMarkdown(boardMessageText(boardMessageDisplayText(m)), BOARD_MARKDOWN, 'board');
 }
 
-/** A board sender's avatar (#3590): their icon, else up to two initials ("QA Engineer" is QE,
- *  "Orchestrator (coral-hub)" is OR), escaped as text. Coloured by the message's --mb-color. */
+/** A board sender's avatar (#3590): their icon (at most two characters), else up to two initials
+ *  ("QA Engineer" is QE, "Orchestrator (coral-hub)" is OR), escaped as text. Coloured by the
+ *  message's --mb-color. */
 export function boardAvatar(m, name) {
-    const icon = m && m.icon ? String(m.icon) : '';
+    const icon = m && m.icon ? Array.from(String(m.icon)).slice(0, 2).join('') : '';
     const words = String(name || '?').replace(/\(.*?\)/g, ' ').trim().split(/\s+/).filter(Boolean);
     const initials = icon || (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
     return `<span class="mb-avatar" aria-hidden="true">${escapeHtml(initials)}</span>`;
@@ -847,7 +848,9 @@ const _agentColorPalette = [
     '#81a1c1', '#a3be8c', '#b48ead', '#d08770',
     '#bf616a', '#88c0d0', '#ebcb8b', '#8fbcbb',
 ];
-const _agentColorCache = {};
+// A Map, not an object: a sender named 'constructor' or '__proto__' must get a palette colour,
+// not Object.prototype's (#3590, Security's NIT).
+const _agentColorCache = new Map();
 
 /** The palette offered for agent name colours (same hues as avatars). */
 export const AGENT_NAME_PALETTE = _agentColorPalette;
@@ -863,10 +866,11 @@ export function agentNameColor(s) {
 
 export function getAgentColor(name) {
     if (!name) return _agentColorPalette[0];
-    if (_agentColorCache[name]) return _agentColorCache[name];
-    const idx = Object.keys(_agentColorCache).length % _agentColorPalette.length;
-    _agentColorCache[name] = _agentColorPalette[idx];
-    return _agentColorCache[name];
+    const known = _agentColorCache.get(name);
+    if (known) return known;
+    const color = _agentColorPalette[_agentColorCache.size % _agentColorPalette.length];
+    _agentColorCache.set(name, color);
+    return color;
 }
 
 export function hexToRgba(hex, alpha) {
