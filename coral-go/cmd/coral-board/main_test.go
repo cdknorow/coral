@@ -377,7 +377,7 @@ func TestApiCall_GET(t *testing.T) {
 	serverURL = ts.URL
 	defer func() { serverURL = oldURL }()
 
-	result, err := apiCall("GET", "/test-project/subscribers", nil)
+	result, _, err := apiCall("GET", "/test-project/subscribers", nil)
 	if err != nil {
 		t.Fatalf("apiCall failed: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestApiCall_POST_WithBody(t *testing.T) {
 	serverURL = ts.URL
 	defer func() { serverURL = oldURL }()
 
-	result, err := apiCall("POST", "/my-board/messages", map[string]string{
+	result, _, err := apiCall("POST", "/my-board/messages", map[string]string{
 		"session_id": "test-session",
 		"content":    "hello",
 	})
@@ -424,7 +424,7 @@ func TestApiCall_ServerDown(t *testing.T) {
 	serverURL = "http://localhost:1" // nothing listens here
 	defer func() { serverURL = oldURL }()
 
-	_, err := apiCall("GET", "/projects", nil)
+	_, _, err := apiCall("GET", "/projects", nil)
 	if err == nil {
 		t.Error("expected error when server is down")
 	}

@@ -273,7 +273,7 @@ func getParentPID(pid int) int {
 	return ppid
 }
 
-func apiCall(method, path string, body any) (map[string]any, error) {
+func apiCall(method, path string, body any) (map[string]any, int, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, _ := json.Marshal(body)
@@ -282,7 +282,7 @@ func apiCall(method, path string, body any) (map[string]any, error) {
 
 	req, err := http.NewRequest(method, serverURL+"/api/board"+path, bodyReader)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -291,14 +291,83 @@ func apiCall(method, path string, body any) (map[string]any, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
+		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
 	}
 	defer resp.Body.Close()
 
 	respData, _ := readServer(resp.Body)
 	var result map[string]any
 	json.Unmarshal(respData, &result)
-	return result, nil
+	return result, resp.StatusCode, nil
+}
+
+// serverError turns a non-2xx reply into an error naming the status and the server's error code
+// or message (never the token), or nil for 2xx (#3589). A silent 401 on a key-protected Coral
+// otherwise looks like success and loses the message. For a 401 from a non-loopback CORAL_URL it
+// adds a hint, since an agent should reach its own Coral on the loopback address.
+func serverError(status int, result map[string]any) error {
+	if status >= 200 && status < 300 {
+		return nil
+	}
+	detail, _ := result["message"].(string)
+	if detail == "" {
+		if code, _ := result["code"].(string); code != "" {
+			detail = code
+		} else if e, _ := result["error"].(string); e != "" {
+			detail = e
+		} else {
+			detail = http.StatusText(status)
+		}
+	}
+	out := fmt.Sprintf("Error: Coral at %s answered %d: %s", redactedServerURL(), status, detail)
+	if status == http.StatusUnauthorized && !isLoopbackServer() {
+		out += "\nthis Coral needs auth from non-local addresses; agents should use the loopback address"
+	}
+	return errors.New(out)
+}
+
+// redactedServerURL is serverURL with any userinfo (user:password@) hidden, so an error message
+// never carries a credential embedded in CORAL_URL (#3589).
+func redactedServerURL() string {
+	u, err := url.Parse(serverURL)
+	if err != nil || u.User == nil {
+		return serverURL
+	}
+	u.User = url.User("redacted")
+	return u.String()
+}
+
+// isLoopbackServer reports whether serverURL points at this machine's loopback interface. It uses
+// net.ParseIP so a hostname like "127.0.0.1.example.com" (a real DNS name, not an IP) is not
+// treated as loopback (#3589).
+func isLoopbackServer() bool {
+	u, err := url.Parse(serverURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// getBoard does a GET to a /api/board path and returns the cleaned body, erroring on a transport
+// failure or a non-2xx status (#3589), so a refused read is never printed as "no messages".
+func getBoard(path string) ([]byte, error) {
+	resp, err := http.Get(serverURL + "/api/board" + path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
+	}
+	defer resp.Body.Close()
+	data, _ := readServer(resp.Body)
+	var result map[string]any
+	json.Unmarshal(data, &result) // a list reply leaves result empty, but then the status is 2xx
+	if e := serverError(resp.StatusCode, result); e != nil {
+		return nil, e
+	}
+	return data, nil
 }
 
 func main() {
@@ -577,7 +646,7 @@ func cmdJoin() {
 
 	subscriberID := resolveSubscriberID()
 	sessionName := resolveSessionName()
-	result, err := apiCall("POST", "/"+url.PathEscape(project)+"/subscribe", map[string]string{
+	result, status, err := apiCall("POST", "/"+url.PathEscape(project)+"/subscribe", map[string]string{
 		"subscriber_id": subscriberID,
 		"session_name":  sessionName,
 		"job_title":     jobTitle,
@@ -586,8 +655,14 @@ func cmdJoin() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if msg := joinProblem(project, result); msg != "" {
-		fmt.Fprint(os.Stderr, msg)
+	// Any non-2xx exits non-zero and names the status (a 401 from a key-protected Coral, a 500),
+	// never a silent success; a refusal that has extra guidance (an ambiguous board name, a
+	// client error) prints that too (#3589).
+	if e := serverError(status, result); e != nil {
+		fmt.Fprintln(os.Stderr, e)
+		if msg := joinProblem(project, result); msg != "" {
+			fmt.Fprint(os.Stderr, msg)
+		}
 		os.Exit(1)
 	}
 	// The server answers with the board's id (#3536): a name that is a board's label joins
@@ -608,6 +683,9 @@ func cmdJoin() {
 // joinProblem is what join prints when the server refused it ("" when it didn't): a name
 // several boards share lists them by id (#3536), and a new name that breaks the naming
 // rule says why (#3534).
+// joinProblem is the extra guidance join prints for a refusal that has it (an ambiguous board
+// name, or a client error with a message); "" when the result carries no error code. It is shown
+// in addition to the status line (#3589).
 func joinProblem(project string, result map[string]any) string {
 	code, _ := result["error"].(string)
 	if code == "" {
@@ -677,7 +755,7 @@ func cmdPost() {
 
 	subscriberID := resolveSubscriberID()
 
-	result, err := apiCall("POST", "/"+st.Project+"/messages", map[string]string{
+	result, status, err := apiCall("POST", "/"+st.Project+"/messages", map[string]string{
 		"subscriber_id": subscriberID,
 		"content":       message,
 	})
@@ -685,8 +763,15 @@ func cmdPost() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	if e := serverError(status, result); e != nil {
+		fmt.Fprintln(os.Stderr, e)
+		os.Exit(1)
+	}
 	if id, ok := result["id"]; ok {
 		fmt.Printf("Message #%.0f posted to '%s'\n", id, st.Project)
+	} else {
+		fmt.Fprintln(os.Stderr, "Error: Coral accepted the request but returned no message id")
+		os.Exit(1)
 	}
 }
 
@@ -738,14 +823,11 @@ func cmdRead() {
 		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50", st.Project, url.QueryEscape(subscriberID))
 	}
 
-	resp, err := http.Get(serverURL + "/api/board" + path)
+	data, err := getBoard(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
-
-	data, _ := readServer(resp.Body)
 	var messages []map[string]any
 	json.Unmarshal(data, &messages)
 
@@ -794,7 +876,7 @@ func cmdRead() {
 				throughID = id
 			}
 		}
-		result, err := apiCall("POST", "/"+st.Project+"/messages/mark-read", map[string]any{
+		result, _, err := apiCall("POST", "/"+st.Project+"/messages/mark-read", map[string]any{
 			"subscriber_id": subscriberID,
 			"through_id":    int64(throughID),
 			"from_id":       int64(fromID),
@@ -876,9 +958,13 @@ func cmdCheck() {
 		os.Exit(1)
 	}
 	subscriberID := resolveSubscriberID()
-	result, err := apiCall("GET", fmt.Sprintf("/%s/messages/check?subscriber_id=%s", st.Project, url.QueryEscape(subscriberID)), nil)
+	result, status, err := apiCall("GET", fmt.Sprintf("/%s/messages/check?subscriber_id=%s", st.Project, url.QueryEscape(subscriberID)), nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if e := serverError(status, result); e != nil {
+		fmt.Fprintln(os.Stderr, e)
 		os.Exit(1)
 	}
 	unread, _ := result["unread"].(float64)
@@ -897,14 +983,11 @@ func cmdCheck() {
 }
 
 func cmdProjects() {
-	resp, err := http.Get(serverURL + "/api/board/projects")
+	data, err := getBoard("/projects")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
-
-	data, _ := readServer(resp.Body)
 	var projects []map[string]any
 	json.Unmarshal(data, &projects)
 
@@ -928,14 +1011,11 @@ func cmdSubscribers() {
 		os.Exit(1)
 	}
 
-	resp, err := http.Get(serverURL + "/api/board/" + st.Project + "/subscribers")
+	data, err := getBoard("/" + st.Project + "/subscribers")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
-
-	data, _ := readServer(resp.Body)
 	var subs []map[string]any
 	json.Unmarshal(data, &subs)
 
@@ -958,9 +1038,17 @@ func cmdLeave() {
 		os.Exit(1)
 	}
 	subscriberID := resolveSubscriberID()
-	apiCall("DELETE", "/"+st.Project+"/subscribe", map[string]string{
+	result, status, err := apiCall("DELETE", "/"+st.Project+"/subscribe", map[string]string{
 		"subscriber_id": subscriberID,
 	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if e := serverError(status, result); e != nil {
+		fmt.Fprintln(os.Stderr, e)
+		os.Exit(1)
+	}
 	deleteState()
 	fmt.Printf("Left '%s'\n", st.Project)
 }
@@ -971,7 +1059,15 @@ func cmdDelete() {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
 		os.Exit(1)
 	}
-	apiCall("DELETE", "/"+st.Project, nil)
+	result, status, err := apiCall("DELETE", "/"+st.Project, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if e := serverError(status, result); e != nil {
+		fmt.Fprintln(os.Stderr, e)
+		os.Exit(1)
+	}
 	deleteState()
 	fmt.Printf("Deleted board '%s'\n", st.Project)
 }
@@ -1092,14 +1188,11 @@ func cmdExport() {
 	}
 
 	// Fetch all messages
-	resp, err := http.Get(serverURL + "/api/board/" + st.Project + "/messages/all?limit=10000")
+	data, err := getBoard("/" + st.Project + "/messages/all?limit=10000")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
-
-	data, _ := readServer(resp.Body)
 	var messages []map[string]any
 	json.Unmarshal(data, &messages)
 
@@ -1142,12 +1235,9 @@ func cmdExport() {
 		os.Exit(0)
 	}
 
-	// Get subscribers for context
-	subsResp, _ := http.Get(serverURL + "/api/board/" + st.Project + "/subscribers")
+	// Get subscribers for context (best-effort: the export still goes out without them)
 	var rawSubs []map[string]any
-	if subsResp != nil {
-		subsData, _ := readServer(subsResp.Body)
-		subsResp.Body.Close()
+	if subsData, err := getBoard("/" + st.Project + "/subscribers"); err == nil {
 		json.Unmarshal(subsData, &rawSubs)
 	}
 	var subs []exportSubscriber
@@ -2702,12 +2792,17 @@ func cmdWait() {
 				os.Exit(1)
 			}
 			respBytes, _ := readServer(resp.Body)
+			status := resp.StatusCode
 			resp.Body.Close()
-			var pollResult struct {
-				Status string `json:"status"`
-			}
+			// A non-2xx (a key-protected Coral answering 401, a 500) makes the 30 s long-poll
+			// return at once; exit instead of spinning against the server with no delay (#3589).
+			var pollResult map[string]any
 			json.Unmarshal(respBytes, &pollResult)
-			if pollResult.Status == "resolved" {
+			if e := serverError(status, pollResult); e != nil {
+				fmt.Fprintln(os.Stderr, e)
+				os.Exit(1)
+			}
+			if s, _ := pollResult["status"].(string); s == "resolved" {
 				fmt.Println("Wait resolved.")
 				return
 			}
