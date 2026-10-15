@@ -158,7 +158,7 @@ func isInputBoxLine(line string) bool {
 // open (a box Coral can't recognise would hold it forever).
 func InputBoxKnown(agentType string) bool {
 	switch agentType {
-	case at.Claude, at.Codex, at.Gemini:
+	case at.Claude, at.Codex, at.Gemini, at.Agy, at.Antigravity:
 		return true
 	}
 	return false

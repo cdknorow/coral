@@ -389,11 +389,13 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 			return true, nil, true
 		}
 	}
-	if in.pasteRetry == 0 && rendered && InputBoxKnown(agentType) {
+	if in.pasteRetry == 0 && rendered {
 		// Before the first paste (#3457 v3): a box holding someone else's text (a
 		// person's draft, or their own paste) is never added to, so it is never
 		// submitted with ours; the send waits. Our text already there (an earlier
-		// attempt): only its Enter.
+		// attempt): only its Enter. Checked for every agent type (#3478: agy's
+		// drafts were skipped because its box wasn't listed as known): an input
+		// line holding other text holds the send whatever the agent.
 		if screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID); serr == nil {
 			in.hadPlaceholder = hasPlaceholder(screen)
 			switch in.boxState(ctx, screen, agentType, sessionID) {

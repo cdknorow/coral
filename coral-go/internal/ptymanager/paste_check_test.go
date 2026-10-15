@@ -3,8 +3,12 @@ package ptymanager
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -144,4 +148,93 @@ func TestSuggestionOnly(t *testing.T) {
 	// A wrapped box: a faint first line and a normal one under it is someone's text.
 	wrapped := rule + "❯\u00a0\x1b[2mcoral-board\x1b[0m\n  read the board\n" + rule
 	assert.False(t, suggestionOnly(wrapped), "a normal wrapped line")
+}
+
+// fixtureTerm serves a fixed screen captured with capture-pane -e (AgentScreen gets it
+// without the escape sequences, as the plain capture is) and records what is pasted
+// or Entered.
+type fixtureTerm struct {
+	mu     sync.Mutex
+	styled string
+	pasted []string
+	enters int
+}
+
+var sgrSeq = regexp.MustCompile(`\x1b\[[0-9;:?]*[A-Za-z]`)
+
+func (f *fixtureTerm) AgentScreen(context.Context, string, string, string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return sgrSeq.ReplaceAllString(f.styled, ""), nil
+}
+func (f *fixtureTerm) AgentScreenStyled(context.Context, string, string, string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.styled, nil
+}
+func (f *fixtureTerm) RenderedScreen() bool { return true }
+func (f *fixtureTerm) SendPrompt(_ context.Context, _, text, _, _ string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pasted = append(f.pasted, text)
+	return nil
+}
+func (f *fixtureTerm) SendEnter(context.Context, string, string, string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.enters++
+	return nil
+}
+func (f *fixtureTerm) got() ([]string, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.pasted...), f.enters
+}
+
+// #3478 (QA's real agy 1.3.5 captures, testdata/agy_*.ansi): agy draws its box as a
+// bright-blue ">" between grey rules. A person's draft there is held, never joined
+// by Coral's paste; the empty box takes the paste.
+func TestAnAgyDraftIsNeverAddedTo(t *testing.T) {
+	fastGate(t)
+	read := func(f string) string {
+		b, err := os.ReadFile(filepath.Join("testdata", f))
+		require.NoError(t, err)
+		return string(b)
+	}
+	const nudge = "You have 1 unread message on the message board. Run 'coral-board read' to see them."
+	draft, idle := read("agy_draft.ansi"), read("agy_idle_empty.ansi")
+	plain := func(s string) string { return sgrSeq.ReplaceAllString(s, "") }
+	assert.True(t, InputBoxKnown("agy"))
+	assert.True(t, InputBoxOnScreen(plain(idle)), "agy's box is recognised")
+	assert.Equal(t, boxOther, inputBoxState(plain(draft), nudge, false), "the draft is someone else's text")
+	assert.Equal(t, boxEmpty, inputBoxState(plain(idle), nudge, false))
+	assert.False(t, suggestionOnly(draft), "typed text is normal intensity")
+
+	send := func(term *fixtureTerm, name, agentType string) Delivery {
+		d, err := DeliverAutomated(context.Background(), AutomatedInput{Term: term, Name: name, AgentType: agentType,
+			SessionID: "s-" + name, Text: nudge, What: "board nudge", Paste: true,
+			Send: func(context.Context) error { t.Error("typed instead of pasted"); return nil }})
+		require.NoError(t, err)
+		return d
+	}
+	drafted := &fixtureTerm{styled: draft}
+	assert.Equal(t, Held, send(drafted, "agy-draft", "agy"))
+	time.Sleep(200 * time.Millisecond) // several of the gate's turns
+	pasted, enters := drafted.got()
+	assert.Empty(t, pasted, "nothing pasted onto the draft")
+	assert.Zero(t, enters, "and nothing submitted")
+	DropHeld("agy-draft", "test done")
+
+	empty := &fixtureTerm{styled: idle}
+	assert.Equal(t, Sent, send(empty, "agy-idle", "agy"))
+	pasted, _ = empty.got()
+	assert.Equal(t, []string{nudge}, pasted, "the empty box takes the paste")
+
+	// Fail closed for an agent type whose box isn't listed: an input line holding
+	// other text still holds the send.
+	other := &fixtureTerm{styled: strings.Replace(draft, "my agy draft QA1", "half-typed question", 1)}
+	assert.Equal(t, Held, send(other, "pi-draft", "pi"))
+	pasted, _ = other.got()
+	assert.Empty(t, pasted)
+	DropHeld("pi-draft", "test done")
 }
