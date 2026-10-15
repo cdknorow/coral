@@ -1,5 +1,22 @@
 # Release Notes
 
+## v1.4.38 — Tokens are hidden in the live terminal and live updates too
+
+### Security
+
+- **The live streams are redacted.** What the live terminal (`/ws/terminal`) and the live session updates (`/ws/coral`) send to Coral Hub now goes through the same token scanner as every other View reply (v1.4.37). The terminal's output is scanned as one stream, so a token split across two pieces of output is still caught. A partly typed token that goes quiet is redacted after a second rather than shown. The same "Hide tokens from Coral Hub viewers" switch controls it.
+- **Coloured tokens are caught.** A token right after a terminal colour code (for example a highlighted line in a shell or a log) is now found, in the live terminal and in captured output alike. This also fixes a gap in v1.4.37's terminal capture and polling.
+- **Still not caught:** a token broken up inside the terminal's output (an escape code or cursor movement in the middle of it, a program's own line wrap, a partial redraw) passes as it is. View access still shows a whole session; redaction is a safety net, not a guarantee.
+- **Home folder paths through Coral Hub, follow-ups:**
+  - a path inside a command (a workflow step like `cd ~/proj && make test`, its arguments, a script) is shown from `~`;
+  - so is any other field whose value is a path under your home folder, and a `file:///…` link in an error message;
+  - killing an agent no longer returns the local file path of its stored diff;
+  - a missing task's or board's cost answers 404 without internal error text.
+
+### Fixes
+
+- A store test that could run for minutes under `-race` is now bounded (the connection pool itself was correct).
+
 ## v1.4.37 — Tokens are hidden from Coral Hub viewers
 
 ### Security
