@@ -2391,6 +2391,10 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	if cfg.LogDir == "" {
 		cfg.LogDir = t.TempDir()
 	}
+	if cfg.CoralDir() == "" {
+		// Its own data folder (artifacts, diffs, upload windows), never the package folder (#3566).
+		cfg.UseCoralDir(t.TempDir())
+	}
 
 	dbPath := t.TempDir() + "/test.db"
 	db, err := storetest.Open(t, dbPath)

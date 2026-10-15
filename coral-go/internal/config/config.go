@@ -209,6 +209,13 @@ func (c *Config) CoralDir() string {
 	return c.coralDir
 }
 
+// UseCoralDir sets the data directory of a Config built by hand (Load sets it otherwise), so
+// tests that make a Config{} get their own folder instead of "" (paths relative to wherever the
+// test runs, shared by every test in the process: #3566).
+func (c *Config) UseCoralDir(dir string) {
+	c.coralDir = dir
+}
+
 // IsLoopbackHost reports whether a bind host only accepts local connections.
 // Wildcard and empty hosts are not loopback: they listen on every interface.
 func IsLoopbackHost(host string) bool {

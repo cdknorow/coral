@@ -56,5 +56,3 @@ icons/main_loop.mp4
 *.pem
 coral-go/Users*.coral/*
 
-# Generated route-test checkout snapshots
-coral-go/internal/server/routes/artifacts/
