@@ -4,7 +4,7 @@
  * the preview pane's renderArtifact (images, media, sandboxed HTML, a download for binaries),
  * and Markdown by the strict renderer (raw HTML shown as text, then the sanitizer). The
  * Download button keeps the original bytes one click away, through Coral Hub too. */
-import { escapeHtml, renderMarkdownStrict, highlightCodeIn } from './utils.js';
+import { escapeHtml, renderMarkdownStrict, highlightCodeIn, keepFragmentsInside } from './utils.js';
 import { serverUrl, artifactPath, isCloud } from './server_base.js';
 import { renderArtifact } from './artifact_preview.js';
 import { downloadArtifact, sanitizeDownloadName } from './artifact_download.js';
@@ -14,6 +14,7 @@ let _dialog = null;
 let _abort = null;
 let _gen = 0;
 let _returnFocus = null;
+let _server = undefined; // the server of the artifact on show, for the artifacts it links
 
 /** Render an artifact's text: Markdown through the strict renderer, anything else as plain text. */
 export function renderArtifactText(el, content, path) {
@@ -43,10 +44,21 @@ function _build() {
     </div>`;
     d.addEventListener('click', (e) => { if (e.target === d) closeArtifactViewer(); });
     d.querySelector('.artifact-viewer-close').addEventListener('click', closeArtifactViewer);
+    // A Coral artifact linked inside the shown file opens here too (the strict renderer keeps
+    // only web, mailto and coral://artifacts links, #3540).
+    d.querySelector('.artifact-viewer-body').addEventListener('click', (e) => {
+        const a = e.target.closest && e.target.closest('a[href^="coral://artifacts/"]');
+        const m = a && /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(a.getAttribute('href'));
+        if (!m) return;
+        e.preventDefault();
+        openArtifactViewer(m[1], { server: _server, filename: a.textContent.trim() });
+    });
     d.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); closeArtifactViewer(); }
+        // Stop here: the page-wide Escape handler (modal_chrome) would also close a modal under the viewer.
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeArtifactViewer(); }
         else if (e.key === 'Tab') _trapTab(d, e);
     });
+    keepFragmentsInside(d.querySelector('.artifact-viewer-body'));
     document.body.appendChild(d);
     return d;
 }
@@ -68,6 +80,7 @@ export function openArtifactViewer(hex, opts = {}) {
     _abort?.abort();
     _abort = new AbortController();
     const gen = ++_gen;
+    _server = opts.server;
     const url = serverUrl(artifactPath(hex), opts.server);
     const title = d.querySelector('.artifact-viewer-title');
     title.textContent = opts.filename || 'Artifact';

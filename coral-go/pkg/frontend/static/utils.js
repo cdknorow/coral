@@ -303,15 +303,55 @@ function unblockAsLinks(frag) {
     }
 }
 
+/** In a file an agent wrote (#3540, Security's review): a link may only leave the page. A web
+ *  link (http, https, already a new tab), a mailto: link or a Coral artifact link stays a link;
+ *  anything else (a root-relative /api/... address, ../x.md, a #fragment the dashboard would read
+ *  as its own route, another scheme) becomes text with its target shown, so a click can never
+ *  move the dashboard tab. Done on DOMPurify's own DOM, like unblockAsLinks. */
+function restrictLinks(frag) {
+    for (const a of frag.querySelectorAll('a[href]')) {
+        const href = a.getAttribute('href') || '';
+        if (/^https?:\/\//i.test(href)) {
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            continue;
+        }
+        if (/^mailto:/i.test(href) || /^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(href)) continue;
+        // A #fragment stays a link inside the shown file; keepFragmentsInside scrolls to it there.
+        if (/^#[^#\s]+$/.test(href)) { a.setAttribute('data-fragment', href.slice(1)); continue; }
+        const span = document.createElement('span');
+        span.className = 'blocked-link';
+        span.title = `Link not opened: ${href}`;
+        span.textContent = a.textContent === href ? href : `${a.textContent} (${href})`;
+        a.replaceWith(span);
+    }
+}
+
+/** A #fragment link in a file shown by the strict renderer scrolls inside `root` and never
+ *  changes the dashboard's URL (which the router reads, #3540). Bound once per root. */
+export function keepFragmentsInside(root) {
+    if (!root || root.dataset.fragmentsBound) return;
+    root.dataset.fragmentsBound = '1';
+    root.addEventListener('click', (e) => {
+        const a = e.target.closest && e.target.closest('a[data-fragment]');
+        if (!a || !root.contains(a)) return;
+        e.preventDefault();
+        const id = a.getAttribute('data-fragment');
+        const target = [...root.querySelectorAll('[id], [name]')].find(el => el.id === id || el.getAttribute('name') === id);
+        target?.scrollIntoView({ block: 'start' });
+    });
+}
+
 /**
  * Sanitize untrusted HTML. Fails CLOSED: if DOMPurify did not load, the markup is shown as
  * text instead of being inserted as HTML (it used to fall back to the raw string).
  */
-export function sanitizeHtml(html, config) {
+export function sanitizeHtml(html, config, opts) {
     if (typeof DOMPurify === 'undefined') return escapeHtml(html);
     installSanitizerHooks();
     const frag = DOMPurify.sanitize(html, { ...(config || {}), RETURN_DOM_FRAGMENT: true });
     unblockAsLinks(frag);
+    if (opts && opts.strictLinks) restrictLinks(frag);
     const box = document.createElement('div');
     box.appendChild(frag);
     return box.innerHTML;
@@ -373,7 +413,7 @@ export function renderMarkdownStrict(md) {
     if (!md) return '';
     if (!m) return escapeHtml(md);
     try {
-        return sanitizeHtml(m.parse(String(md)), DOMPURIFY_CONFIG);
+        return sanitizeHtml(m.parse(String(md)), DOMPURIFY_CONFIG, { strictLinks: true });
     } catch {
         return escapeHtml(md);
     }

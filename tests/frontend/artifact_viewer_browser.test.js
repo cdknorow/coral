@@ -31,6 +31,8 @@ const MD = [
     '<img src="x" onerror="window.__pwned = 2">',
     '',
     'Inline <b>raw</b> html.',
+    '',
+    '[k](/api/system/api-key) [r](../x.md) [f](#sec) [m](mailto:a@b.test) [w](https://example.test/p) [img](coral://artifacts/' + 'c'.repeat(64) + ')',
 ].join('\n');
 
 (async () => {
@@ -135,10 +137,45 @@ const MD = [
         check('no script ran', (await ev('window.__pwned === undefined')), String(await ev('window.__pwned')));
         check('the remote image was never requested', !requested.some(u => u.includes('x.test')), JSON.stringify(requested.filter(u => u.includes('x.test'))));
 
+        console.log('Links in the file: only web, mailto and artifact links stay links, and none moves the page');
+        const links = await ev(`(() => {
+            const b = document.querySelector('#artifact-viewer .artifact-viewer-body');
+            return {
+                anchors: [...b.querySelectorAll('a')].map(a => ({ href: a.getAttribute('href'), target: a.target, frag: a.getAttribute('data-fragment') })).filter(x => !String(x.href).startsWith('https://x.test')),
+                blocked: [...b.querySelectorAll('.blocked-link')].map(s => s.textContent),
+            };
+        })()`);
+        check('root-relative and relative links are text with their target shown', links.blocked.includes('k (/api/system/api-key)') && links.blocked.includes('r (../x.md)'), JSON.stringify(links));
+        check('mailto, web (new tab), #fragment and artifact links stay links', ['mailto:a@b.test', 'https://example.test/p', '#sec', 'coral://artifacts/' + 'c'.repeat(64)].every(h => links.anchors.some(a => a.href === h)) && links.anchors.find(a => a.href === 'https://example.test/p').target === '_blank', JSON.stringify(links.anchors));
+        const before = await ev('location.href');
+        const moved = await ev(`(async () => {
+            const b = document.querySelector('#artifact-viewer .artifact-viewer-body');
+            const click = el => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+            for (const s of b.querySelectorAll('.blocked-link')) click(s);
+            click(b.querySelector('a[data-fragment]'));
+            await new Promise(r => setTimeout(r, 300)); // sleep-ok: proves a negative, a navigation would start within this
+            return location.href;
+        })()`);
+        check('clicking them leaves the page URL unchanged', moved === before, before + ' -> ' + moved);
+
+        console.log('Escape over another dialog closes only the viewer');
+        await ev(`(() => { const m = document.createElement('div'); m.id = 'qa-under'; m.className = 'modal'; m.style.display = 'flex'; m.innerHTML = '<div class="modal-content">under</div>'; document.body.insertBefore(m, document.getElementById('artifact-viewer')); return true; })()`);
+
         console.log('Escape closes the viewer and focus returns to the link');
         await ev(`document.querySelector('#artifact-viewer').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
         const closed = await ev(`({ hidden: document.querySelector('#artifact-viewer').hidden, empty: !document.querySelector('#artifact-viewer .artifact-viewer-body').childElementCount, back: document.activeElement === document.querySelector('#qa-3540 a.board-artifact-link') })`);
         check('closed, emptied, focus back on the link', closed.hidden && closed.empty && closed.back, JSON.stringify(closed));
+        const under = await ev(`(() => { const m = document.getElementById('qa-under'); const open = !!m && m.style.display !== 'none' && !m.hidden && m.isConnected; m?.remove(); return open; })()`);
+        check('the dialog under it is still open (Escape stopped at the viewer)', under, 'it was closed too');
+
+        console.log('An artifact link inside the file opens that artifact in the viewer');
+        await ev(`(() => { const a = [...document.querySelectorAll('#qa-3540 a.board-artifact-link')][0]; a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })); return true; })()`);
+        for (let i = 0; i < 50 && !(await ev(`!!document.querySelector('#artifact-viewer:not([hidden]) .artifact-viewer-body a[href^="coral://artifacts/"]')`)); i++) await new Promise(r => setTimeout(r, 100)); // sleep-ok: polls for the render
+        await ev(`document.querySelector('#artifact-viewer .artifact-viewer-body a[href^="coral://artifacts/"]').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))`);
+        let inner = null;
+        for (let i = 0; i < 50 && !(inner && inner.img); i++) { await new Promise(r => setTimeout(r, 100)); inner = await ev(`(() => { const i = document.querySelector('#artifact-viewer:not([hidden]) .artifact-viewer-body img'); return { img: !!(i && i.naturalWidth), title: document.querySelector('#artifact-viewer .artifact-viewer-title').textContent, url: location.href }; })()`); } // sleep-ok: polls for the render
+        check('it shows the linked image, the page URL unchanged', inner && inner.img && inner.title === 'img' && inner.url === before, JSON.stringify(inner));
+        await ev(`document.querySelector('#artifact-viewer .artifact-viewer-close').click()`);
 
         console.log('An artifact image in a post opens the same viewer, as an image');
         await ev(`document.querySelector('#qa-3540 img.board-artifact-image').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))`);
