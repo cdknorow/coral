@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
@@ -26,16 +27,15 @@ func applyBoardRekeys(ctx context.Context, bs *board.Store, db *store.DB, coralD
 	}
 	for old, id := range rekeys {
 		if db != nil {
-			for _, q := range []string{
-				`UPDATE live_sessions SET board_name = ? WHERE board_name = ?`,
-				`UPDATE teams SET name = ? WHERE name = ?`,
-				`UPDATE token_usage SET board_name = ? WHERE board_name = ?`,
-				`UPDATE call_metrics SET board_name = ? WHERE board_name = ?`,
+			for _, tc := range [][2]string{
+				{"live_sessions", "board_name"}, {"teams", "name"},
+				{"token_usage", "board_name"}, {"call_metrics", "board_name"},
 			} {
+				q := `UPDATE ` + tc[0] + ` SET ` + tc[1] + ` = ? WHERE ` + tc[1] + ` = ?`
 				if res, err := db.ExecContext(ctx, q, id, old); err != nil {
-					log.Printf("[boards] re-key %s in the sessions database: %v", id, err)
+					log.Printf("[boards] re-key %s in %s: %v", id, tc[0], err)
 				} else if n, _ := res.RowsAffected(); n > 0 {
-					log.Printf("[boards] a board whose name can't be an id is now %s (%d rows in the sessions database)", id, n)
+					log.Printf("[boards] a board whose name can't be an id is now %s: %s in %s", id, rowCount(n), tc[0])
 				}
 			}
 		}
@@ -88,4 +88,12 @@ func readNoFollow(path string) ([]byte, error) {
 	}
 	defer fh.Close()
 	return io.ReadAll(io.LimitReader(fh, 1<<20))
+}
+
+// rowCount is "1 row" or "N rows".
+func rowCount(n int64) string {
+	if n == 1 {
+		return "1 row"
+	}
+	return strconv.FormatInt(n, 10) + " rows"
 }

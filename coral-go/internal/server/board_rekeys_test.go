@@ -81,3 +81,8 @@ func TestApplyBoardRekeys(t *testing.T) {
 	data, _ = os.ReadFile(other)
 	assert.JSONEq(t, `{"project":"fine","job_title":"Dev"}`, string(data), "another board's state file is untouched")
 }
+
+func TestRowCount(t *testing.T) {
+	assert.Equal(t, "1 row", rowCount(1))
+	assert.Equal(t, "2 rows", rowCount(2))
+}
