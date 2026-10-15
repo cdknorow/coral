@@ -483,8 +483,8 @@ Every package in this release is built and signed by Coral's release workflow on
 gh attestation verify coral-linux-amd64-1.4.15.tar.gz --repo cdknorow/coral \
   --signer-workflow cdknorow/coral/.github/workflows/release.yml
 
-# Offline, with cosign v2.4 or later
-cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json \
+# Offline, with cosign v2.4 or later (cosign 2.x needs --new-bundle-format)
+cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json --new-bundle-format \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github\.com/cdknorow/coral/\.github/workflows/release\.yml@refs/tags/v'
 sha256sum --check --ignore-missing SHA256SUMS.txt

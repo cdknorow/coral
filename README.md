@@ -110,13 +110,13 @@ gh attestation verify coral-linux-amd64-<version>.tar.gz --repo cdknorow/coral \
 Offline, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v2.4 or later: download `SHA256SUMS.txt` and `SHA256SUMS.txt.sigstore.json` from the same release, then:
 
 ```bash
-cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json \
+cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json --new-bundle-format \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github\.com/cdknorow/coral/\.github/workflows/release\.yml@refs/tags/v'
 sha256sum --check --ignore-missing SHA256SUMS.txt   # macOS: shasum -a 256 --check --ignore-missing
 ```
 
-Each Linux tarball also has its own bundle (`coral-linux-<amd64|arm64>-<version>.tar.gz.sigstore.json`), verified the same way. Either check failing means the file is not an official build: don't run it.
+Each Linux tarball also has its own bundle (`coral-linux-<amd64|arm64>-<version>.tar.gz.sigstore.json`), verified the same way. The bundles are in Sigstore's current bundle format: cosign 2.x reads them only with `--new-bundle-format` (without it, it fails with "bundle does not contain cert for verification"); cosign 3 reads them either way. Either check failing means the file is not an official build: don't run it.
 
 ### Build from source
 
