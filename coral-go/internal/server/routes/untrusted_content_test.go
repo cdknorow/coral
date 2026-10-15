@@ -193,10 +193,12 @@ func wantCSP(mediaType string) string {
 func TestPreviewCSPAllowsOnlyInlineStyle(t *testing.T) {
 	p := hubproxy.PreviewCSP
 	require.True(t, strings.HasPrefix(p, "sandbox;"), "a sandbox with no allow- tokens: %s", p)
+	// 'self' appears once, as the frame-ancestors source: never as a source the document loads from.
+	loads := strings.Replace(p, "frame-ancestors 'self'", "", 1)
 	for _, forbidden := range []string{"allow-", "script-src", "connect-src", "frame-src", "http", "*", "'self'", "unsafe-eval", "blob:"} {
-		require.NotContains(t, p, forbidden, p)
+		require.NotContains(t, loads, forbidden, p)
 	}
-	for _, want := range []string{"default-src 'none'", "style-src 'unsafe-inline'", "font-src data:", "img-src data:"} {
+	for _, want := range []string{"default-src 'none'", "style-src 'unsafe-inline'", "font-src data:", "img-src data:", "frame-ancestors 'self'"} {
 		require.Contains(t, p, want, p)
 	}
 }
