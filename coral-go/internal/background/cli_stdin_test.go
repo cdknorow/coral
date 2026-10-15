@@ -103,3 +103,16 @@ func indexOf(list []string, s string) int {
 	}
 	return -1
 }
+
+// #3522: a print step on a CLI not verified for it, from a workflow saved before the save
+// check, fails at once with the same clear message instead of running with Claude's flags.
+func TestWorkflowPrintStepOnUnverifiedCLIFailsClearly(t *testing.T) {
+	db, _ := fakeClaude(t)
+	runner := NewWorkflowRunner(store.NewWorkflowStore(db), nil, nil, nil, nil, t.TempDir(), "localhost", 8420)
+	err := runner.executeAgentStep(context.Background(), 1, StepDef{Name: "s", Prompt: "do it"}, t.TempDir(), t.TempDir(), os.Environ(),
+		&AgentStepConfig{AgentType: at.Codex}, &StepResult{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "aren't supported for codex yet")
+	assert.Equal(t, "", PrintStepError(at.Claude))
+	assert.Contains(t, PrintStepError("nope"), "unknown agent_type")
+}

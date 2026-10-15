@@ -695,6 +695,7 @@ func validateSteps(steps []json.RawMessage, defaultAgent json.RawMessage) string
 			Agent             json.RawMessage `json:"agent"`
 			Hooks             json.RawMessage `json:"hooks"`
 			OutputArtifact    string          `json:"output_artifact"`
+			Interactive       bool            `json:"interactive"`
 		}
 		if err := json.Unmarshal(stepRaw, &step); err != nil {
 			return fmt.Sprintf("step %d: invalid JSON", i)
@@ -723,24 +724,34 @@ func validateSteps(steps []json.RawMessage, defaultAgent json.RawMessage) string
 			if step.Prompt == "" {
 				return "agent step missing prompt"
 			}
-			// Check agent_type is resolvable
-			hasAgentType := false
+			// Check agent_type is resolvable: the step's own, else the workflow's default.
+			agentType := ""
 			if step.Agent != nil {
 				var agentCfg struct {
 					AgentType string `json:"agent_type"`
 				}
 				json.Unmarshal(step.Agent, &agentCfg)
-				hasAgentType = agentCfg.AgentType != ""
+				agentType = agentCfg.AgentType
 			}
-			if !hasAgentType && defaultAgent != nil {
+			if agentType == "" && defaultAgent != nil {
 				var daCfg struct {
 					AgentType string `json:"agent_type"`
 				}
 				json.Unmarshal(defaultAgent, &daCfg)
-				hasAgentType = daCfg.AgentType != ""
+				agentType = daCfg.AgentType
 			}
-			if !hasAgentType {
+			if agentType == "" {
 				return "agent step missing agent_type"
+			}
+			// An unknown CLI is refused, and so is a print step on a CLI not verified for
+			// it yet (#3522): a clear error now, not a silent failure or a guessed sandbox.
+			if !background.KnownStepAgentType(agentType) {
+				return fmt.Sprintf("step %d: unknown agent_type %q", i, agentType)
+			}
+			if !step.Interactive {
+				if msg := background.PrintStepError(agentType); msg != "" {
+					return fmt.Sprintf("step %d: %s", i, msg)
+				}
 			}
 		default:
 			return fmt.Sprintf("step %d: type must be 'shell' or 'agent'", i)

@@ -21,6 +21,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/agentenv"
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -528,6 +529,12 @@ func (wr *WorkflowRunner) executeAgentStep(ctx context.Context, runID int64, ste
 	stepHooks := parseStepHooks(step.Hooks)
 
 	var stepErr error
+	if !step.Interactive {
+		// A workflow saved before #3522 can still name a CLI print steps don't support.
+		if msg := PrintStepError(agentCfg.AgentType); msg != "" {
+			return fmt.Errorf("step %q: %s", step.Name, msg)
+		}
+	}
 	if step.Interactive {
 		stepErr = wr.executeAgentInteractive(stepCtx, runID, step, stepDir, repoPath, env, agentCfg, prompt, result)
 	} else {
@@ -549,6 +556,39 @@ func (wr *WorkflowRunner) settings(ctx context.Context) map[string]string {
 	}
 	s, _ := store.NewSessionStore(wr.store.DB()).GetSettings(ctx)
 	return s
+}
+
+// printStepCLIs lists the agent CLIs a non-interactive ("print") workflow step may use, and
+// what verifying each remaining one takes (#3522). A CLI is enabled only after a real run
+// shows how it reads the prompt (stdin, never argv) AND its headless permission defaults,
+// with the permission flags then pinned explicitly: a guessed headless mode could run with a
+// different sandbox or approval default than the workflow's author expects, unnoticed.
+// Until then such a step is refused at save and at run with a clear message.
+var printStepCLIs = map[string]bool{
+	at.Claude: true,  // verified: --print with the prompt on stdin (#3519, #3521)
+	at.Codex:  false, // to verify: "codex exec" reads stdin with no prompt argument; pin --sandbox and the approval policy
+	at.Gemini: false, // to verify: "gemini -p" appends to stdin input; pin --approval-mode (headless can auto-approve)
+	at.Agy:    false, // to verify: "agy --print" takes the prompt as its value (stdin only with stream-json); pin --mode
+	at.Pi:     false, // to verify: not installed on the test machines yet
+}
+
+// PrintStepError says why a non-interactive step can't run on agentType, or "" when it can:
+// an unknown agent type, or a CLI not verified for print steps yet (#3522).
+func PrintStepError(agentType string) string {
+	supported, known := printStepCLIs[agentType]
+	if !known {
+		return fmt.Sprintf("unknown agent_type %q", agentType)
+	}
+	if !supported {
+		return fmt.Sprintf("print (non-interactive) steps aren't supported for %s yet; use claude, or make the step interactive", agentType)
+	}
+	return ""
+}
+
+// KnownStepAgentType reports whether agentType can run a workflow agent step at all.
+func KnownStepAgentType(agentType string) bool {
+	_, known := printStepCLIs[agentType]
+	return known
 }
 
 // executeAgentPrint runs an agent in non-interactive --print mode.
