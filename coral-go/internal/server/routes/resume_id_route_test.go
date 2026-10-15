@@ -61,4 +61,10 @@ func TestResumeIDsThatEscapePathsAreRejected(t *testing.T) {
 	code, _ = postRaw(t, server.URL+"/api/sessions/launch",
 		map[string]any{"working_dir": t.TempDir(), "agent_type": "claude", "resume_session_id": codexID})
 	assert.Equal(t, http.StatusBadRequest, code, "claude must reject a non-UUID resume id")
+
+	// No agent_type and no default setting launches Claude, so a non-UUID resume id is rejected
+	// with the UUID rule, not the loose one (Backend's MUST 2 on #3582).
+	code, body = postRaw(t, server.URL+"/api/sessions/launch",
+		map[string]any{"working_dir": t.TempDir(), "resume_session_id": codexID})
+	assert.Equal(t, http.StatusBadRequest, code, "an unset agent type launches claude and must reject a non-UUID resume id: %s", body)
 }

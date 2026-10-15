@@ -16,15 +16,14 @@ func TestIsResumeID(t *testing.T) {
 	for _, at := range []string{"claude", "agy", "gemini", "terminal", "pi", "codex", "", "unknown"} {
 		assert.True(t, IsResumeID(at, uuidV), "type %q must accept a canonical UUID", at)
 	}
-	// A non-UUID that fits the safe charset: rejected for the UUID types, accepted for codex and
-	// the unclassified types (their native ids aren't UUIDs). Codex's real ids run to 64 chars.
+	// A non-UUID that fits the safe charset is accepted only for codex (its native thread ids
+	// aren't UUIDs; they run to 64 chars). Every other type — including an empty or unknown type,
+	// which launches Claude, and antigravity, which resolves to agy — gets the UUID rule.
 	codexID := "0199c3d2-6f3a-7bb1-codex-rollout-01HZX8Y3QK7-session-abcdef0123456789"[:64]
-	for _, at := range []string{"claude", "agy", "gemini", "terminal", "pi"} {
+	assert.True(t, IsResumeID("codex", codexID), "codex must accept a safe non-UUID id")
+	assert.True(t, IsResumeID("codex", "codex_thread-42"), "codex safe charset")
+	for _, at := range []string{"claude", "agy", "gemini", "terminal", "pi", "antigravity", "", "unknown"} {
 		assert.False(t, IsResumeID(at, codexID), "type %q must reject a non-UUID id", at)
-	}
-	for _, at := range []string{"codex", "antigravity", "", "unknown"} {
-		assert.True(t, IsResumeID(at, codexID), "type %q must accept a safe non-UUID id", at)
-		assert.True(t, IsResumeID(at, "codex_thread-42"), "type %q safe charset", at)
 	}
 	// The anti-traversal boundary holds for EVERY type, UUID or not.
 	for _, at := range []string{"claude", "codex", "", "pi", "unknown"} {

@@ -23,11 +23,14 @@ func IsResumeID(agentType, id string) bool {
 	if !safeResumeCharset(id) {
 		return false
 	}
-	switch agentType {
-	case at.Claude, at.Agy, at.Gemini, at.Terminal, at.Pi:
-		return isCanonicalUUID(id)
-	default: // codex, antigravity, unknown or unset: native or unclassified ids
+	// Resolve through GetAgent so the rule matches the agent that actually launches: an empty or
+	// unknown type is Claude there, so it gets the UUID rule, not the loose one (Backend's MUST 2
+	// on #3582). Only Codex keys resume on non-UUID native ids.
+	switch GetAgent(agentType).AgentType() {
+	case at.Codex:
 		return true
+	default: // claude (incl. "" and unknown), agy, gemini, terminal, pi: always UUIDs
+		return isCanonicalUUID(id)
 	}
 }
 
