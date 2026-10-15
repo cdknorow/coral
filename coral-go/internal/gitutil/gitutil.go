@@ -56,7 +56,7 @@ func ResolveGitRoot(ctx context.Context, workdir string) string {
 		return workdir
 	}
 	if root, err := git(ctx, workdir, "rev-parse", "--show-toplevel"); err == nil {
-		return root
+		return nativePath(root)
 	}
 	// workdir isn't a repo — check one level of subdirectories
 	entries, _ := os.ReadDir(workdir)
@@ -74,11 +74,16 @@ func ResolveGitRoot(ctx context.Context, workdir string) string {
 			continue
 		}
 		if root, err := git(ctx, sub, "rev-parse", "--show-toplevel"); err == nil {
-			return root
+			return nativePath(root)
 		}
 	}
 	return workdir
 }
+
+// nativePath turns a path git printed into this system's form: on Windows git prints
+// C:/Users/x/repo, which compared or joined with Windows paths (C:\Users\x\repo) never
+// matches (#3631).
+func nativePath(p string) string { return filepath.Clean(filepath.FromSlash(p)) }
 
 // GetDiffBase returns the base ref for diffing.
 //
