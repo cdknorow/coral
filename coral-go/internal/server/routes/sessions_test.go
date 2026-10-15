@@ -2396,6 +2396,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/pending-tool", handler.GetPendingTool)
 	r.Post("/api/sessions/live/{name}/pending-tool", handler.SetPendingTool)
 	r.Post("/api/sessions/live/{name}/events", handler.CreateEvent)
+	r.Post("/api/sessions/live/{name}/turn-end", handler.TurnEndHandoff)
 	r.Get("/api/sessions/live/{name}/prompt-options", handler.PromptOptions)
 	r.Post("/api/sessions/live/{name}/answer-prompt", handler.AnswerPrompt)
 	r.Post("/api/sessions/live/{name}/auto-accept/enable", handler.EnableAutoAccept)

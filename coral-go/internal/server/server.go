@@ -505,6 +505,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Agent events
 	r.Get("/api/sessions/live/{name}/events", sessHandler.ListEvents)
 	r.Post("/api/sessions/live/{name}/events", sessHandler.CreateEvent)
+	r.Post("/api/sessions/live/{name}/turn-end", sessHandler.TurnEndHandoff)
 	r.Get("/api/sessions/live/{name}/pending-tool", sessHandler.GetPendingTool)
 	r.Post("/api/sessions/live/{name}/pending-tool", sessHandler.SetPendingTool)
 	r.Get("/api/sessions/live/{name}/prompt-options", sessHandler.PromptOptions)

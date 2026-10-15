@@ -105,6 +105,18 @@ func main() {
 		return
 	}
 
+	// Claude's turn ended: if the agent has unread board messages, Coral hands them over
+	// here and the agent goes on (#3481, #3475 3A); its turn didn't end, so no stop is
+	// recorded. Any failure means no hand-off: the stop is recorded as usual.
+	if hookType == "Stop" && agyEvent == "" && strings.HasPrefix(os.Getenv("CORAL_SESSION_NAME"), "claude-") {
+		active, _ := d["stop_hook_active"].(bool)
+		if out := turnEndHandoff(base, agentName, active); out != nil {
+			os.Stdout.Write(out)
+			hooks.DebugLog(fmt.Sprintf("TURN_END_HANDOFF: agent=%s", agentName))
+			return
+		}
+	}
+
 	event := parseAgenticEvent(d, hookType, sessionID)
 	if event == nil {
 		hooks.DebugLog(fmt.Sprintf("DROPPED (parse returned nil): hook_type=%s agent=%s", hookType, agentName))
@@ -129,6 +141,41 @@ func main() {
 	}
 
 	hooks.DebugLog(fmt.Sprintf("DONE: agent=%s event_type=%s", agentName, event["event_type"]))
+}
+
+// turnEndHandoff asks Coral whether to keep the agent going with its board messages,
+// and returns the Stop hook output that does, or nil. Claude shows a blocking reason as
+// "Stop hook error: <reason>" whatever it says, so the reason is short and the
+// instruction is the additionalContext ("Stop hook feedback"); verified on 2.1.300.
+func turnEndHandoff(base, agentName string, stopHookActive bool) []byte {
+	if stopHookActive {
+		return nil // Claude's own loop guard: hand off at most once per stop chain
+	}
+	raw, err := hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/turn-end", agentName), map[string]any{"stop_hook_active": false})
+	if err != nil {
+		hooks.DebugLog(fmt.Sprintf("TURN_END_FAILED: %v", err))
+		return nil
+	}
+	var r struct {
+		Handoff bool   `json:"handoff"`
+		Reason  string `json:"reason"`
+		Context string `json:"context"`
+	}
+	if json.Unmarshal(raw, &r) != nil || !r.Handoff || r.Reason == "" {
+		return nil
+	}
+	out, err := json.Marshal(map[string]any{
+		"decision": "block",
+		"reason":   r.Reason,
+		"hookSpecificOutput": map[string]any{
+			"hookEventName":     "Stop",
+			"additionalContext": r.Context,
+		},
+	})
+	if err != nil {
+		return nil
+	}
+	return out
 }
 
 // parsePendingTool builds the pending-tool payload for a PreToolUse hook.
