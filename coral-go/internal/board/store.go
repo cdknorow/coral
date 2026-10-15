@@ -1379,21 +1379,19 @@ func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, job
 	if newest {
 		query += " ORDER BY m.id DESC"
 	}
+	// The numbered names are read before the candidates' cursor is opened, so this never holds
+	// two reader connections at once (Security's #3549 review).
+	numbered := s.numberedNames(ctx, s.reader(), project)
 	rows, err := s.reader().QueryxContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
 	defer rows.Close()
-	var numbered map[string]bool
-	loaded := false // the board's numbered names, read at the first candidate (most ticks have none)
 	for rows.Next() {
 		var id int64
 		var content string
 		if err := rows.Scan(&id, &content); err != nil {
 			return 0, err
-		}
-		if !loaded {
-			numbered, loaded = s.numberedNames(ctx, s.reader(), project), true
 		}
 		if containsExplicitTag(content, subscriberID, jobTitle, numbered) {
 			return id, nil
