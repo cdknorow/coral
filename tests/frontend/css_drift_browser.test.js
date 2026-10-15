@@ -24,6 +24,18 @@ const PROPS = ['fontSize', 'fontWeight', 'color', 'backgroundColor',
     'marginTop', 'marginRight', 'marginBottom', 'marginLeft'];
 const THEMES = ['dark', 'light'];
 
+// Two computed values match if equal, or both pixel lengths within 0.5px. A layout-derived value
+// (an auto margin that centres content) differs by a sub-pixel between the snapshot machine and
+// epoch's headless Linux Chrome, which isn't a real style change; a real token change -- font-size,
+// padding, a margin token -- is at least 1px, so 0.5px tolerates the noise without masking drift
+// (#3626, found by the epoch run: nav-tabs marginRight 863.5px vs 863.422px).
+const PX_RE = /^(-?\d+(?:\.\d+)?)px$/;
+function sameComputed(a, b) {
+    if (String(a) === String(b)) return true;
+    const ma = PX_RE.exec(String(a)), mb = PX_RE.exec(String(b));
+    return !!(ma && mb && Math.abs(parseFloat(ma[1]) - parseFloat(mb[1])) < 0.5);
+}
+
 // Each element: a stable selector reached in one of a few ways. 'root' = the agents page; 'board' =
 // /board; 'settings' = the Settings modal open; 'health-ok'/'health-unknown' = a card from the real
 // healthCard() export (the #3607 element); 'make' = a representative node built from the class, for a
@@ -158,7 +170,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
                     const got = captured[e.name]?.[theme];
                     if (!want) { check(`${e.name} [${theme}]: in the baseline`, false, 'missing from baseline — update it'); continue; }
                     if (!got) { check(`${e.name} [${theme}]: element found`, false, `selector ${e.selector} not found`); continue; }
-                    const diffs = PROPS.filter(p => String(want[p]) !== String(got[p]))
+                    const diffs = PROPS.filter(p => !sameComputed(want[p], got[p]))
                         .map(p => `${p}: ${JSON.stringify(want[p])} -> ${JSON.stringify(got[p])}`);
                     check(`${e.name} [${theme}]: computed styles unchanged`, diffs.length === 0, diffs.length ? diffs.join('; ') : undefined);
                 }
