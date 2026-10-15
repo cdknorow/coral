@@ -186,6 +186,16 @@
     background: var(--bg-hover);
 }
 
+/* The sender's colour, in the theme's AA shade (boardMessageColorStyle). */
+.mb-message {
+    --mb-color: var(--mb-color-dark);
+    --mb-tint: var(--mb-tint-dark);
+}
+[data-theme="light"] .mb-message {
+    --mb-color: var(--mb-color-light);
+    --mb-tint: var(--mb-tint-light);
+}
+
 .mb-avatar {
     display: flex;
     grid-row: 1 / span 2;
@@ -267,6 +277,7 @@
 .mb-agent-name {
     font-weight: 700;
     font-size: 13px;
+    color: var(--mb-color);
 }
 
 .mb-message-time {

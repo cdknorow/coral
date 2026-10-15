@@ -830,10 +830,32 @@ export function boardAvatar(m, name) {
     return `<span class="mb-avatar" aria-hidden="true">${escapeHtml(initials)}</span>`;
 }
 
-/** The sender's palette colour as CSS variables on a board message: the avatar's text and its
- *  tinted square (#3590). color is a getAgentColor palette hex. */
+// A sender's name and avatar initials on the board in shades of the palette that meet WCAG AA
+// (#3590): the palette is pastel, so the light theme takes darker shades and a few hues take
+// lighter ones in the dark theme. Each holds at least 4.6:1 against the default themes' page,
+// their hover highlight, and its own 18% tint (the avatar square). Same hue, HSL lightness only.
+const BOARD_TEXT_SHADES = new Map([
+    ['#81a1c1', { dark: '#99b3cd', light: '#344f6a' }],
+    ['#a3be8c', { dark: '#a3be8c', light: '#40542f' }],
+    ['#b48ead', { dark: '#c5a8c0', light: '#66435f' }],
+    ['#d08770', { dark: '#dba493', light: '#7a3c28' }],
+    ['#bf616a', { dark: '#d9a2a8', light: '#81343b' }],
+    ['#88c0d0', { dark: '#88c0d0', light: '#265461' }],
+    ['#ebcb8b', { dark: '#ebcb8b', light: '#654911' }],
+    ['#8fbcbb', { dark: '#8fbcbb', light: '#325453' }],
+]);
+
+/** The board text shade of a palette colour for a theme ('dark' or 'light'). */
+export function boardTextColor(color, theme) {
+    const shades = BOARD_TEXT_SHADES.get(color);
+    return shades ? shades[theme === 'light' ? 'light' : 'dark'] : color;
+}
+
+/** A board message's colours as CSS variables, both themes' shades; the stylesheet picks one by
+ *  data-theme for the sender's name and avatar (#3590). color is a getAgentColor palette hex. */
 export function boardMessageColorStyle(color) {
-    return `--mb-color:${color};--mb-tint:${hexToRgba(color, 0.18)}`;
+    const dark = boardTextColor(color, 'dark'), light = boardTextColor(color, 'light');
+    return `--mb-color-dark:${dark};--mb-tint-dark:${hexToRgba(dark, 0.18)};--mb-color-light:${light};--mb-tint-light:${hexToRgba(light, 0.18)}`;
 }
 
 export function labelCodeBlocks(root) {

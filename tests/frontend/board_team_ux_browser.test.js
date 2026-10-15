@@ -33,7 +33,7 @@ const BASE = require('./test_base').BASE;
     // bar), a single newline in it is a line break, and a second post in a row shares the avatar.
     const rowCheck = async (feedId, where) => {
         const r = await ev(`(async () => {
-            const { getAgentColor, hexToRgba } = await import((window.__coralStatic||'/static/')+'utils.js');
+            const { getAgentColor, hexToRgba, boardTextColor } = await import((window.__coralStatic||'/static/')+'utils.js');
             const feed = document.getElementById(${JSON.stringify(feedId)});
             const msgs = [...feed.querySelectorAll('.mb-message')];
             const i = msgs.findIndex(m => m.textContent.includes('first line'));
@@ -42,7 +42,7 @@ const BASE = require('./test_base').BASE;
             const body = msg.querySelector('.mb-message-body');
             const p = body.querySelector('p');
             const av = msg.querySelector('.mb-avatar');
-            const probe = document.createElement('div'); probe.style.color = getAgentColor('QA Engineer'); probe.style.background = hexToRgba(getAgentColor('QA Engineer'), 0.18); document.body.appendChild(probe);
+            const probe = document.createElement('div'); const shade = boardTextColor(getAgentColor('QA Engineer'), document.documentElement.dataset.theme); probe.style.color = shade; probe.style.background = hexToRgba(shade, 0.18); document.body.appendChild(probe);
             const want = { color: getComputedStyle(probe).color, bg: getComputedStyle(probe).backgroundColor }; probe.remove();
             const cs = getComputedStyle(msg), acs = av && getComputedStyle(av);
             const ar = av && av.getBoundingClientRect(), br = body.getBoundingClientRect();
@@ -64,7 +64,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(r.bg, 'rgba(0, 0, 0, 0)', `${where}: no box (the page's background)`);
         assert.equal(r.initials, 'QE', `${where}: the avatar shows the initials`);
         assert.equal(r.avChildren, 0, `${where}: the avatar is text only`);
-        assert.equal(r.avColor, r.want.color, `${where}: the initials are in the sender's palette colour`);
+        assert.equal(r.avColor, r.want.color, `${where}: the initials are in the theme's shade of the sender's palette colour`);
         assert.equal(r.avBg, r.want.bg, `${where}: the avatar's tint is that colour`);
         assert.ok(r.bodyRightOfAvatar, `${where}: the body sits right of the avatar`);
         assert.ok(r.nextGrouped, `${where}: the next post from the same sender is grouped`);
@@ -76,9 +76,9 @@ const BASE = require('./test_base').BASE;
     // avatar is at most two characters.
     const senderCheck = async (feedId, where) => {
         const r = await ev(`(async () => {
-            const { AGENT_NAME_PALETTE } = await import((window.__coralStatic||'/static/')+'utils.js');
+            const { AGENT_NAME_PALETTE, boardTextColor } = await import((window.__coralStatic||'/static/')+'utils.js');
             const toRgb = h => { const d = document.createElement('div'); d.style.color = h; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; };
-            const palette = AGENT_NAME_PALETTE.map(toRgb);
+            const palette = AGENT_NAME_PALETTE.map(c => toRgb(boardTextColor(c, document.documentElement.dataset.theme)));
             const feed = document.getElementById(${JSON.stringify(feedId)});
             const find = t => [...feed.querySelectorAll('.mb-message')].find(m => m.textContent.includes(t));
             const ctor = find('from constructor'), icon = find('with an icon');
@@ -90,6 +90,33 @@ const BASE = require('./test_base').BASE;
         assert.ok(r.palette.includes(r.ctorColor), `${where}: 'constructor' gets a palette colour, not ${r.ctorColor}`);
         assert.equal(r.ctorInitials, 'CO', `${where}: its initials`);
         assert.equal(r.iconText, 'AB', `${where}: an icon avatar is at most two characters`);
+    };
+    // #3590: every sender's name and initials meet WCAG AA (4.5:1) on the page and on the avatar's
+    // tint, in the dark and the light theme (the palette's own pastels don't on light).
+    const contrastCheck = async (feedId, where) => {
+        const S = `(window.__coralStatic||'/static/')`;
+        for (const theme of ['light', 'dark']) {
+            const r = await ev(`(async () => {
+                const sc = await import(${S}+'settings_core.js'); sc.clearCustomThemeVars(); sc.applyTheme(${JSON.stringify(theme)});
+                await new Promise(requestAnimationFrame);
+                const parse = c => { const m = c.match(/[\\d.]+/g).map(Number); return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 }; };
+                const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+                const lum = c => { const l = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * l(c.r) + 0.7152 * l(c.g) + 0.0722 * l(c.b); };
+                const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+                const pageBg = el => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c.a > 0) return c; } return { r: 255, g: 255, b: 255, a: 1 }; };
+                const feed = document.getElementById(${JSON.stringify(feedId)});
+                let worst = { ratio: 99 };
+                for (const m of feed.querySelectorAll('.mb-message:not(.mb-message-grouped)')) {
+                    const bg = pageBg(m.parentElement);
+                    const name = m.querySelector('.mb-agent-name'), av = m.querySelector('.mb-avatar');
+                    const nr = ratio(parse(getComputedStyle(name).color), bg);
+                    const ar = ratio(parse(getComputedStyle(av).color), over(parse(getComputedStyle(av).backgroundColor), bg));
+                    for (const [what, v] of [['name', nr], ['initials', ar]]) if (v < worst.ratio) worst = { ratio: Math.round(v * 100) / 100, what, who: name.textContent };
+                }
+                return worst;
+            })()`);
+            assert.ok(r.ratio >= 4.5, `${where}, ${theme} theme: every name and initials meet AA (worst ${JSON.stringify(r)})`);
+        }
     };
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
@@ -183,6 +210,7 @@ const BASE = require('./test_base').BASE;
         console.log('#3590 Team chat: avatar rows, a single newline is a line break');
         await rowCheck('board-panel-msgs', 'team chat');
         await senderCheck('board-panel-msgs', 'team chat');
+        await contrastCheck('board-panel-msgs', 'team chat');
         console.log('   ✓ initials in the palette colour, no box, <br> between lines, a run shares the avatar');
 
         console.log('#4 Closing the team view from its Tasks tab leaves only Tasks in the sidebar');
@@ -291,6 +319,7 @@ const BASE = require('./test_base').BASE;
         await waitFor(`[...document.querySelectorAll('#mb-messages .mb-message')].some(m => m.textContent.includes('first line'))`, 'the board view');
         await rowCheck('mb-messages', 'board view');
         await senderCheck('mb-messages', 'board view');
+        await contrastCheck('mb-messages', 'board view');
         console.log('   ✓ initials in the palette colour, no box, <br> between lines, a run shares the avatar');
 
         console.log('PASS board_team_ux_browser');
