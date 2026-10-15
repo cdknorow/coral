@@ -7,6 +7,8 @@
             <span class="badge" id="messageboard-project-badge" style="display:none"></span>
         </div>
         <div class="mb-header-actions" style="margin-left:auto">
+            <!-- At phone width the Subscribers column is hidden: this opens the same list as a sheet (#3610). -->
+            <button type="button" class="mb-action-btn mb-subscribers-btn" id="mb-subscribers-btn" onclick="openBoardSubscribers()" aria-haspopup="dialog" aria-controls="mb-subscribers-sheet" aria-expanded="false">Subscribers</button>
             <button class="mb-action-btn" id="mb-select-btn" style="display:none" onclick="toggleSelectMode()" title="Select messages to export">Select</button>
             <button class="mb-action-btn" id="mb-export-btn" style="display:none" onclick="showExportBoardModal()" title="Export — download board messages as Markdown">Export</button>
             <button class="mb-action-btn" id="mb-pause-btn" style="display:none" onclick="toggleBoardPause()" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
@@ -44,6 +46,19 @@
         <div id="mb-subscribers-panel" class="mb-subscribers-panel" style="display:none">
             <h3 class="mb-subscribers-title">Subscribers</h3>
             <ul id="mb-subscribers-list" class="mb-subscribers-list"></ul>
+        </div>
+    </div>
+
+    <!-- The Subscribers sheet (phone width, #3610): a modal, so modal_chrome.js closes it on Escape and
+         keeps Tab inside, and focus goes back to the Subscribers button. Inside this view, so it hides
+         with it. -->
+    <div id="mb-subscribers-sheet" class="modal mb-subscribers-sheet" role="dialog" aria-modal="true" aria-labelledby="mb-subscribers-sheet-title" style="display:none" onclick="if (event.target === this) hideBoardSubscribers()">
+        <div class="modal-content mb-subscribers-sheet-content">
+            <div class="mb-subscribers-sheet-header">
+                <h3 class="mb-subscribers-title" id="mb-subscribers-sheet-title">Subscribers</h3>
+                <button type="button" class="mb-action-btn" onclick="hideBoardSubscribers()">Close</button>
+            </div>
+            <ul id="mb-subscribers-sheet-list" class="mb-subscribers-list"></ul>
         </div>
     </div>
 </div>

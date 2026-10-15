@@ -3963,5 +3963,26 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 }
 .artifact-viewer-text { white-space: pre-wrap; }
 .board-artifact-image { cursor: zoom-in; }
+/* The Subscribers button and sheet: only at phone width, where the column is hidden (#3610). */
+.mb-subscribers-btn { display: none; }
+.mb-subscribers-sheet { align-items: flex-end; }
+.mb-subscribers-sheet-content {
+    width: 100%;
+    max-width: 100%;
+    max-height: 70vh;
+    padding: var(--space-xl);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-sizing: border-box;
+}
+.mb-subscribers-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-md);
+}
+.mb-subscribers-sheet-header .mb-subscribers-title { margin: 0; }
+.mb-subscribers-sheet .mb-subscribers-list { overflow-y: auto; min-height: 0; }
+
 /* An image in a post fits its column; it never makes the feed scroll sideways (#3607). */
 .mb-message-body img { max-width: 100%; height: auto; }

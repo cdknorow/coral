@@ -564,9 +564,20 @@
         display: flex !important;
     }
 
-    /* Message board adjustments */
+    /* Message board adjustments: the Subscribers column is hidden; its button opens the same list
+       as a sheet (#3610). */
     #mb-subscribers-panel {
         display: none !important;
+    }
+    #messageboard-view.mb-has-board .mb-subscribers-btn {
+        display: inline-flex;
+    }
+    /* Five actions don't fit one row at phone width: they wrap, right-aligned, inside the gutter. */
+    #messageboard-view .mb-header-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        min-width: 0;
+        max-width: 100%;
     }
 
     #mb-board {

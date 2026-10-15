@@ -11,6 +11,7 @@ import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { note } from './nav.js';
 import { keyRoute } from './routes.js';
+import { attachDialogFocus } from './dialog_focus.js';
 
 let currentProject = null;
 let pollTimer = null;
@@ -135,6 +136,8 @@ export function selectBoardProject(project, messageId = null) {
     const board = document.getElementById('mb-board');
     board.style.display = 'flex';
     document.getElementById('mb-subscribers-panel').style.display = 'block';
+    hideBoardSubscribers();
+    document.getElementById('messageboard-view').classList.add('mb-has-board');
     const backBtn = document.getElementById('mb-back-btn');
     if (backBtn) backBtn.style.display = '';
     document.getElementById('mb-pause-btn').style.display = '';
@@ -182,6 +185,8 @@ export function showMessageBoardProjects() {
     document.getElementById('mb-project-list').style.display = '';
     document.getElementById('mb-board').style.display = 'none';
     document.getElementById('mb-subscribers-panel').style.display = 'none';
+    hideBoardSubscribers();
+    document.getElementById('messageboard-view').classList.remove('mb-has-board');
     const backBtn2 = document.getElementById('mb-back-btn');
     if (backBtn2) backBtn2.style.display = 'none';
     document.getElementById('mb-pause-btn').style.display = 'none';
@@ -419,12 +424,13 @@ async function navigateToAgentHistoryByName(displayName) {
 async function loadBoardSubscribers(project) {
     try {
         const subs = await fetchSubscribers(project);
-        const list = document.getElementById('mb-subscribers-list');
+        // The column and the phone sheet (#3610) show the same list.
+        const lists = ['mb-subscribers-list', 'mb-subscribers-sheet-list'].map(id => document.getElementById(id)).filter(Boolean);
         if (!subs.length) {
-            list.innerHTML = '<li class="mb-project-meta">No subscribers</li>';
+            for (const list of lists) list.innerHTML = '<li class="mb-project-meta">No subscribers</li>';
             return;
         }
-        list.innerHTML = subs.map(s => {
+        const html = subs.map(s => {
             const displayName = escapeAttr(s.job_title || s.subscriber_id);
             const sessionName = escapeAttr(s.session_name || '');
             const icon = s.icon ? `<span class="agent-icon">${escapeHtml(s.icon)}</span> ` : '';
@@ -433,9 +439,34 @@ async function loadBoardSubscribers(project) {
                 <div class="mb-subscriber-id">${escapeHtml(s.subscriber_id)}</div>
             </li>`;
         }).join('');
+        for (const list of lists) list.innerHTML = html;
     } catch (e) {
         console.error('Failed to load subscribers:', e);
     }
+}
+
+// ── Subscribers sheet (phone width, #3610) ───────────────────────────────
+
+export function openBoardSubscribers() {
+    const sheet = document.getElementById('mb-subscribers-sheet');
+    if (!sheet || !currentProject) return;
+    if (!sheet._wired) {
+        sheet._wired = true;
+        // Opening a subscriber's history leaves the board: the sheet closes first.
+        sheet.addEventListener('click', e => { if (e.target.closest('.subscriber-history-link')) hideBoardSubscribers(); });
+        // Escape (modal_chrome.js) and the other closes all hide it: the button follows.
+        new MutationObserver(() => {
+            const btn = document.getElementById('mb-subscribers-btn');
+            if (btn) btn.setAttribute('aria-expanded', String(sheet.style.display !== 'none'));
+        }).observe(sheet, { attributes: true, attributeFilter: ['style'] });
+    }
+    attachDialogFocus(sheet);
+    sheet.style.display = 'flex';
+}
+
+export function hideBoardSubscribers() {
+    const sheet = document.getElementById('mb-subscribers-sheet');
+    if (sheet && sheet.style.display !== 'none') sheet.style.display = 'none';
 }
 
 // ── Dashboard subscription ───────────────────────────────────────────────
