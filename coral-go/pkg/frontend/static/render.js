@@ -1017,6 +1017,21 @@ function _isGroupCollapsed(groupName) {
     return _getCollapsedGroups().includes(groupName);
 }
 
+/** A team or folder header collapses its group when clicked; without a chevron (#3507 v4),
+ *  it says so to keyboard and screen-reader users: a button with aria-expanded, toggled with
+ *  Enter or Space. */
+function _collapseAttrs(collapsed) {
+    return ` role="button" tabindex="0" aria-expanded="${collapsed ? 'false' : 'true'}" onkeydown="groupHeaderKey(event)"`;
+}
+
+/** Enter or Space on a focused team or folder header toggles its group (not a key meant for a
+ *  button inside the header). */
+export function groupHeaderKey(event) {
+    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    toggleGroupCollapse(event.currentTarget.dataset.groupName);
+}
+
 export function toggleGroupCollapse(groupName) {
     const groups = _getCollapsedGroups();
     const idx = groups.indexOf(groupName);
@@ -2119,6 +2134,11 @@ export function toggleGroupByServer() {
     renderLiveSessions(state.liveSessions);
 }
 
+// A folder icon on folder groups, as teams have the people icon (#3507 v4, the operator's
+// request): same size and spacing as the team icon, and named for screen readers.
+const FOLDER_GROUP_ICON = '<svg class="team-group-icon folder-group-icon" role="img" aria-label="Folder" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+    + ' stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+
 /** The server before a team/folder name ("pro-coral-hub", the server part in italics), when
  *  'Show server' is on and not grouped (#3507: replaces the green-dot chip after the name). An
  *  offline or stale server is dimmed, and its state is in the tooltip and for screen readers. */
@@ -2541,8 +2561,8 @@ function _renderLiveSessions(sessions) {
         const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents<span class="team-token-usage" data-board="${escapeAttr(boardName)}"></span></div>`;
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}"${accentStyle}>
-            <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
-                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+            <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${jsStr(boardName)}')"${_collapseAttrs(boardCollapsed)}>
+                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -2562,7 +2582,6 @@ function _renderLiveSessions(sessions) {
     // Step 2b: Render workflow agent groups
     for (const [wfName, wfSessions] of Object.entries(workflowGroups)) {
         const wfCollapsed = _isGroupCollapsed('wf:' + wfName);
-        const wfChevron = wfCollapsed ? '&#x25B8;' : '&#x25BE;';
         const wfRunId = wfSessions[0]?.workflow_run_id || '';
         const wfSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg> Workflow · ${wfSessions.length} agent${wfSessions.length !== 1 ? 's' : ''}${wfRunId ? ' · Run #' + wfRunId : ''}</div>`;
         const wfKebab = `<div class="sidebar-kebab-wrapper group-kebab">
@@ -2580,7 +2599,7 @@ function _renderLiveSessions(sessions) {
         </div>`;
 
         html += `<li class="session-board-card session-board-card-toplevel session-wf-card" style="border-left-color: var(--color-tool-agent)">
-            <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" onclick="toggleGroupCollapse('wf:${jsStr(wfName)}')">
+            <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" onclick="toggleGroupCollapse('wf:${jsStr(wfName)}')"${_collapseAttrs(wfCollapsed)}>
                 <div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:14px;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
             </div>
             <ul class="board-card-agents${wfCollapsed ? ' board-card-collapsed' : ''}">`;
@@ -2598,7 +2617,6 @@ function _renderLiveSessions(sessions) {
         const isMulti = sorted.length > 1;
         const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
         const collapsed = _isGroupCollapsed(groupName);
-        const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
         const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
@@ -2642,8 +2660,8 @@ function _renderLiveSessions(sessions) {
         const groupWorkDir = sorted[0]?.working_directory || '';
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
-        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')">
-            <div class="group-header-text"><div class="group-name-line">${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')"${_collapseAttrs(collapsed)}>
+            <div class="group-header-text"><div class="group-name-line">${FOLDER_GROUP_ICON}${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (!collapsed) {
             html += _renderAgentListWithSubgroups(sorted, groupWorkDir, false, groupName);
@@ -2667,7 +2685,6 @@ function _renderLiveSessions(sessions) {
         const isMulti = sorted.length > 1;
         const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
         const collapsed = _isGroupCollapsed(groupName);
-        const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
         const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
@@ -2711,8 +2728,8 @@ function _renderLiveSessions(sessions) {
         const groupWorkDir = sorted[0]?.working_directory || '';
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
-        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')">
-            <div class="group-header-text"><div class="group-name-line">${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')"${_collapseAttrs(collapsed)}>
+            <div class="group-header-text"><div class="group-name-line">${FOLDER_GROUP_ICON}${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (collapsed) {
             // Skip rendering items when collapsed
@@ -2794,8 +2811,8 @@ function _renderLiveSessions(sessions) {
                 const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
                 html += `<li class="session-board-card session-team-group"${accentStyle}>
-                    <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
-                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                    <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${jsStr(boardName)}')"${_collapseAttrs(boardCollapsed)}>
+                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
                 const orderedBoardNested = _sortByOrder(boardSessions);

@@ -145,6 +145,7 @@ export const SHAPES = new Set([
     "id:focusAgentSearch()",
     "id:generateSummary()",
     "id:generateThemeFromDescription()",
+    "id:groupHeaderKey(id:event)",
     "id:hideAddAgentBoardModal()",
     "id:hideConfirmModal()",
     "id:hideDefaultPromptsModal()",

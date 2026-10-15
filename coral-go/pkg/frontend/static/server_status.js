@@ -248,7 +248,8 @@ export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) 
     const name = shortServerName(e);
     // Not checked yet ('unknown') isn't shown as offline (QA's review of #3507).
     const off = e.status !== 'online' && e.status !== 'unknown' && normServer(e.id) !== LOCAL_SERVER;
-    // The outermost level of the list, flush left: the icon and name first, the chevron last.
+    // The outermost level of the list, flush left: the icon and name first. No chevron (#3507 v4):
+    // the row itself collapses, and aria-expanded says so.
     // An offline server is dimmed (no colored dot), and its state is in the tooltip and the label.
     return `<li class="server-group-header server-${m.cls}${off ? ' is-down' : ''}" data-server-group="${escHtml(e.id)}">`
         + `<button type="button" class="server-group-toggle" data-server-toggle="${escHtml(e.id)}" aria-expanded="${collapsed ? 'false' : 'true'}"`
@@ -257,8 +258,7 @@ export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) 
         + SERVER_ICON + `<span class="server-group-name">${escHtml(name)}</span>`
         + (off ? `<span class="server-group-state">${escHtml(m.label.toLowerCase())}</span>` : '')
         + ((n => n ? `<span class="server-update-marker server-update-${n.level}">${n.level === 'required' ? 'Update required' : 'Update'}</span>` : '')(normServer(e.id) === LOCAL_SERVER ? null : updateNotice(e)))
-        + `<span class="session-group-count">${count}</span>`
-        + `<span class="server-group-chevron" aria-hidden="true">${collapsed ? '▸' : '▾'}</span></button>`
+        + `<span class="session-group-count">${count}</span></button>`
         + `<details class="server-group-more" data-server-details="${escHtml(e.id)}"${detailsOpen ? ' open' : ''}>`
         + `<summary class="server-group-more-btn" aria-label="${escHtml(`Details for ${e.label || e.id}`)}" title="${escHtml(serverHoverText(e.id))}">⋮</summary>`
         + `<div class="server-switcher-panel">${serverDetailsHtml(e)}`

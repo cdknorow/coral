@@ -557,8 +557,8 @@
     box-shadow: none;
 }
 .session-team-group > .board-card-header .group-name-line {
-    /* One neutral color for every team unless the user picked one (#3507). */
-    color: var(--team-accent, var(--text-primary));
+    /* Team rows: the same step as folders unless the user picked a colour (#3507). */
+    color: var(--team-accent, color-mix(in srgb, var(--text-primary) 82%, transparent));
 }
 .team-group-icon {
     flex-shrink: 0;
@@ -1845,20 +1845,27 @@
 .terminal-header-actions > .terminal-folder { flex: 0 1 auto; min-width: 0; }
 .terminal-header-actions > .terminal-folder .terminal-folder-text { max-width: 100%; }
 
-/* ── Sidebar colour: project headers in the accent, agent names in their colour ── */
+/* ── Sidebar colour (#3507, the operator's variant A): one palette that varies only in
+   brightness and weight, from the server header (brightest, boldest) through team and
+   folder rows (a step down) to agent names (muted). Only the agent state dots keep their
+   meaning colours, and a colour the user set explicitly (a team's colour menu, an agent's
+   Rename) still wins. ── */
 
 .session-group-header .group-name-line {
-    color: var(--accent);
+    /* Team and folder rows: a step down from the server header. */
+    color: color-mix(in srgb, var(--text-primary) 82%, transparent);
+    font-weight: 600;
 }
 
-/* Agents default to the theme's secondary accent, terminals to light grey;
-   a per-agent override (set from Rename) wins over both. */
+/* Agents and terminals in the secondary text colour; a per-agent override (set from
+   Rename) wins. */
 .session-label-name {
-    color: var(--agent-name-color, var(--accent-secondary));
+    color: var(--agent-name-color, var(--text-secondary));
+    font-weight: 500;
 }
 
 .session-label-name.is-terminal {
-    color: var(--agent-name-color, var(--terminal-name-color));
+    color: var(--agent-name-color, var(--text-secondary));
 }
 
 /* Palette hues are tuned for dark backgrounds; deepen overrides on light themes */
@@ -2224,19 +2231,21 @@
 .server-group-toggle {
     display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
     padding: 4px 6px 4px 2px; border: 0; border-radius: var(--radius-md);
-    background: none; color: var(--text-primary); font: inherit; font-weight: 600; cursor: pointer; text-align: left;
+    background: none; color: var(--text-primary); font: inherit; font-size: 1.05em; font-weight: 700; cursor: pointer; text-align: left;
 }
 .server-group-toggle:hover { background: var(--bg-hover); }
-.server-group-icon { flex: none; color: var(--text-secondary); }
+.server-group-icon { flex: none; color: var(--text-primary); }
 .server-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .server-group-state { color: var(--text-secondary); font-weight: 400; font-style: italic; white-space: nowrap; }
 .server-group-header.is-down .server-group-icon,
 .server-group-header.is-down .server-group-name { opacity: 0.5; }
-.server-group-chevron { width: 1em; margin-left: auto; color: var(--text-secondary); text-align: center; }
+/* A team or folder header is the button that collapses its group (no chevron, #3507 v4). */
+.session-group-header[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-md); }
+.server-group-toggle .session-group-count { margin-left: auto; }
 .server-group-more-btn { padding: 2px 8px; border-radius: var(--radius-md); color: var(--text-secondary); }
 /* 'Show server': the server before a team/folder name, "pro-coral-hub", server in italics (#3507). */
 .row-name-with-server { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-server-prefix { font-style: italic; font-weight: 500; opacity: 0.8; white-space: nowrap; }
+.row-server-prefix { font-style: italic; font-weight: 500; opacity: 0.7; white-space: nowrap; }
 .row-server-prefix .row-server-sep { font-style: normal; }
 .row-server-prefix.is-down { opacity: 0.45; }
 @media (pointer: coarse) {

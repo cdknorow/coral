@@ -282,21 +282,75 @@ const SETTINGS_PRELOAD = `(() => {
         await ev(`localStorage.setItem('coral-group-by-server', 'false'); localStorage.setItem('coral-board-colors', JSON.stringify({ '@m2/team-m2': '#c678dd' })); true`);
         await scene([THREE[0], THREE[1], { ...THREE[2], status: 'unknown' }], `T.state.settings = { ...T.state.settings, show_session_server: 'True' };`);
         const col = await ev(`(() => {
-            const probe = document.createElement('span'); probe.style.color = 'var(--text-primary)'; document.body.appendChild(probe);
+            const probe = document.createElement('span'); probe.style.color = 'color-mix(in srgb, var(--text-primary) 82%, transparent)'; document.body.appendChild(probe);
             const neutral = getComputedStyle(probe).color; probe.remove();
             const team = id => { const l = [...document.querySelectorAll('#live-sessions-list li.session-team-group')].find(x => x.textContent.includes(id)); return l && getComputedStyle(l.querySelector('.group-name-line')).color; };
             const pre = id => [...document.querySelectorAll('#live-sessions-list .row-server-prefix')].find(p => p.closest('li').textContent.includes(id));
             return { neutral, m1: team('team-m1'), m2: team('team-m2'), m3: team('team-m3'), m3down: pre('team-m3')?.classList.contains('is-down'), m3sr: pre('team-m3')?.querySelector('.sr-only').textContent.trim() };
         })()`);
-        assert.equal(col.m1, col.neutral, `a team with no color of its own is neutral (${JSON.stringify(col)})`);
+        assert.equal(col.m1, col.neutral, `a team with no color of its own is the neutral group color (${JSON.stringify(col)})`);
         assert.equal(col.m3, col.neutral, 'every such team: the same neutral color');
         assert.equal(col.m2, 'rgb(198, 120, 221)', 'a color the user picked is kept');
         assert.equal(col.m3down, false, "an 'unknown' server (not checked yet) isn't dimmed"); assert.equal(col.m3sr, '(server)');
         await ev(`localStorage.setItem('coral-group-by-server', 'true'); T.render.renderLiveSessions(T.state.liveSessions); true`);
         const unk = await ev(`(() => { const h = document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m3"]'); return { down: h.classList.contains('is-down'), state: h.querySelector('.server-group-state')?.textContent || null }; })()`);
         assert.deepEqual(unk, { down: false, state: null }, "nor is its group header");
+        // #3507 v4, the operator's variant A: one palette, brightness and weight step down from the
+        // server header to team and folder rows to agent names; folders match teams.
+        await ev(`localStorage.setItem('coral-group-by-server', 'true'); T.render.renderLiveSessions(T.state.liveSessions); true`);
+        const hier = await ev(`(() => {
+            const L = document.getElementById('live-sessions-list'), cs = el => el && getComputedStyle(el);
+            const probe = c => { const p = document.createElement('span'); p.style.color = c; document.body.appendChild(p); const v = getComputedStyle(p).color; p.remove(); return v; };
+            const server = cs(L.querySelector('li.server-group-header .server-group-toggle'));
+            const team = cs([...L.querySelectorAll('li.session-team-group .group-name-line')].find(n => !n.closest('li[style]')));
+            const folder = cs([...L.querySelectorAll('.group-name-line')].find(n => !n.closest('li.session-team-group')));
+            const agent = cs([...L.querySelectorAll('.session-label-name')].find(n => !n.getAttribute('style')));
+            return { w: [server.fontWeight, team.fontWeight, folder.fontWeight, agent.fontWeight].map(Number), serverColor: server.color, primary: probe('var(--text-primary)'),
+                team: team.color, folder: folder.color, agent: agent.color, secondary: probe('var(--text-secondary)') };
+        })()`);
+        assert.deepEqual(hier.w, [700, 600, 600, 500], `weights: server, team, folder, agent (${JSON.stringify(hier)})`);
+        assert.equal(hier.serverColor, hier.primary, 'the server header is the brightest text');
+        assert.equal(hier.folder, hier.team, 'folders match teams (no accent blue)'); assert.equal(hier.team, col.neutral);
+        assert.equal(hier.agent, hier.secondary, 'agent names are muted (no light blue)');
+        // #3507 v4: folder groups have a folder icon, named for screen readers and aligned with the
+        // team rows' people icon, in both views.
+        const icons = () => ev(`(() => {
+            const L = document.getElementById('live-sessions-list');
+            const folders = [...L.querySelectorAll('.group-name-line')].filter(n => !n.closest('li.session-team-group') && n.getBoundingClientRect().width > 0);
+            const teamX = [...L.querySelectorAll('li.session-team-group .team-group-icon:not(.folder-group-icon)')].map(i => Math.round(i.getBoundingClientRect().left));
+            return { n: folders.length, withIcon: folders.filter(f => { const i = f.querySelector('svg.folder-group-icon'); return i && i.getAttribute('role') === 'img' && i.getAttribute('aria-label') === 'Folder'; }).length,
+                folderX: folders.map(f => Math.round(f.querySelector('svg.folder-group-icon')?.getBoundingClientRect().left)), teamX };
+        })()`);
+        for (const grouped of [true, false]) {
+            await ev(`localStorage.setItem('coral-group-by-server', '${grouped}'); T.render.renderLiveSessions(T.state.liveSessions); true`);
+            const ic = await icons();
+            assert.ok(ic.n >= 3 && ic.withIcon === ic.n, `${grouped ? 'grouped' : 'ungrouped'}: every folder group has the named folder icon (${JSON.stringify(ic)})`);
+            assert.ok(ic.teamX.length > 0 && ic.folderX.every(x => Math.abs(x - ic.teamX[0]) <= 1), `${grouped ? 'grouped' : 'ungrouped'}: aligned with the team icons (${JSON.stringify(ic)})`);
+        }
+        // #3507 v4: no collapse chevrons; the header row is the button (aria-expanded, Enter or Space).
+        await ev(`localStorage.setItem('coral-group-by-server', 'true'); T.render.renderLiveSessions(T.state.liveSessions); true`);
+        const chev = await ev(`(() => { const L = document.getElementById('live-sessions-list');
+            const heads = [...L.querySelectorAll('.session-group-header[data-group-name]')];
+            return { chevrons: L.querySelectorAll('.server-group-chevron').length + [...L.querySelectorAll('.server-group-header, .session-group-header')].filter(h => /[▸▾]/.test(h.textContent)).length,
+                heads: heads.length, buttons: heads.filter(h => h.getAttribute('role') === 'button' && h.tabIndex === 0 && ['true', 'false'].includes(h.getAttribute('aria-expanded'))).length,
+                servers: [...L.querySelectorAll('.server-group-toggle')].every(b => ['true', 'false'].includes(b.getAttribute('aria-expanded'))) }; })()`);
+        assert.equal(chev.chevrons, 0, 'no collapse chevron in the sidebar groups');
+        assert.ok(chev.heads >= 5 && chev.buttons === chev.heads, `every team and folder header is a button with aria-expanded (${JSON.stringify(chev)})`);
+        assert.ok(chev.servers, 'server headers keep aria-expanded');
+        const kb = await ev(`(async () => { const name = [...document.querySelectorAll('#live-sessions-list li.session-group-header[data-group-name]')][0].dataset.groupName;
+            const h = () => document.querySelector('#live-sessions-list .session-group-header[data-group-name="' + CSS.escape(name) + '"]');
+            const press = k => { const el = h(); el.focus(); el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })); };
+            const before = h().getAttribute('aria-expanded'); press('Enter'); const after = h().getAttribute('aria-expanded'); press(' '); const back = h().getAttribute('aria-expanded');
+            return { before, after, back }; })()`);
+        assert.deepEqual(kb, { before: 'true', after: 'false', back: 'true' }, 'Enter collapses a focused folder header and Space expands it');
+        // #3507 v4: the team row's right-hand button shows what it does (the team view): an info icon.
+        const tb = await ev(`(() => { const b = document.querySelector('#live-sessions-list .team-open-btn'); const svg = b.querySelector('svg');
+            return { title: b.title, aria: b.getAttribute('aria-label'), info: !!svg.querySelector('circle[r="9"]') && svg.querySelectorAll('circle').length === 1 }; })()`);
+        assert.equal(tb.info, true, 'an info icon, not a second people icon');
+        assert.equal(tb.title, 'Team view: members, availability and knowledge'); assert.match(tb.aria, /^Open team view for team-m/);
         await ev(`localStorage.setItem('coral-group-by-server', 'false'); localStorage.removeItem('coral-board-colors'); true`);
-        console.log('   ✓ neutral teams, the picked color kept, unknown servers not dimmed');
+        console.log('   ✓ no chevrons; team, folder and workflow headers are buttons with aria-expanded (Enter/Space); the team button has an info icon');
+        console.log('   ✓ variant A hierarchy (700/600/600/500, server brightest, agents muted), neutral teams, the picked color kept, unknown not dimmed, folder icons named and aligned');
 
         console.log('7. Top tabs in the operator\'s order (#3507): Agents, Servers, then the local tabs, Docs last');
         // The scene fakes a hub with servers, so let the page recompute the Servers tab as a live update would.
