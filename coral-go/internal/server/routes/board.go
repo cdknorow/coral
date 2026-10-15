@@ -2236,8 +2236,12 @@ func (h *BoardHandler) TaskLiveCost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cost, err := h.bs.GetTaskLiveCost(r.Context(), project, taskID)
+	if errors.Is(err, board.ErrTaskNotFound) {
+		errNotFound(w, "task not found") // a missing board or task is a 404, not a server error (#3561)
+		return
+	}
 	if err != nil {
-		errInternalServer(w, err.Error())
+		errInternalServer(w, "could not read the task's cost")
 		return
 	}
 	if cost == nil {

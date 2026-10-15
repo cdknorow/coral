@@ -213,6 +213,11 @@ func TestHubDisplayTextInMessages(t *testing.T) {
 		"two: " + home + "/a and " + real + "/b": "two: ~/a and ~/b",
 		"sibling " + home + "x/y stays":          "sibling " + home + "x/y stays",
 		"nothing here":                           "nothing here",
+		// #3561 (b): a file:// URL, and a URL in general, before the home.
+		"see file://" + real + "/notes.md":   "see file://~/notes.md",
+		"<a href=\"file://" + home + "/x\">": "<a href=\"file://~/x\">",
+		"vscode://file" + home + "/a":        "vscode://file" + home + "/a", // not a path start
+		home + "/a" + home + "/b":            "~/a" + home + "/b",           // the second follows a path character
 	} {
 		assert.Equal(t, want, hubDisplayText(in), in)
 	}

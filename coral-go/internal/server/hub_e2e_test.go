@@ -1546,6 +1546,11 @@ func (t *fakeTerminal) ListSessions(context.Context) ([]ptymanager.PaneInfo, err
 
 func (t *fakeTerminal) HasSession(_ context.Context, name string) bool { return t.f.IsRunning(name) }
 
+// CaptureOutput: like the PTY terminal for a session it doesn't hold, nothing (a board peek).
+func (t *fakeTerminal) CaptureOutput(context.Context, string, int, string, string) (string, error) {
+	return "", nil
+}
+
 func (t *fakeTerminal) FindSession(ctx context.Context, name, agentType, sessionID string) (*ptymanager.PaneInfo, error) {
 	panes, _ := t.ListSessions(ctx)
 	for i := range panes {

@@ -86,7 +86,8 @@ func hubDisplayPath(p string) string {
 }
 
 // hubDisplayText shows each home directory inside s as "~" where it is a whole path prefix:
-// not preceded by a path character and followed by a separator or the end of a path.
+// at the start, after a byte that can't continue a path, or right after "://" (a file:// URL,
+// Security's #3559 note), and followed by a separator or the end of a path.
 func hubDisplayText(s string) string {
 	homes := hubHomes()
 	// The longer form first, so a resolved home that contains the given one is matched whole.
@@ -94,24 +95,23 @@ func hubDisplayText(s string) string {
 	sort.Slice(order, func(i, j int) bool { return len(order[i]) > len(order[j]) })
 	for _, home := range order {
 		var b strings.Builder
-		rest := s
-		for {
-			i := strings.Index(rest, home)
-			if i < 0 {
-				b.WriteString(rest)
+		last := 0 // s[:last] is written
+		for from := 0; ; {
+			j := strings.Index(s[from:], home)
+			if j < 0 {
 				break
 			}
-			end := i + len(home)
-			before := i == 0 || !hubPathChar(rest[i-1])
-			after := end == len(rest) || rest[end] == '/' || rest[end] == '\\' || !hubPathChar(rest[end])
-			b.WriteString(rest[:i])
+			i, end := from+j, from+j+len(home)
+			before := i == 0 || !hubPathChar(s[i-1]) || (i >= 3 && s[i-3:i] == "://")
+			after := end == len(s) || s[end] == '/' || s[end] == '\\' || !hubPathChar(s[end])
 			if before && after {
+				b.WriteString(s[last:i])
 				b.WriteString("~")
-			} else {
-				b.WriteString(home)
+				last = end
 			}
-			rest = rest[end:]
+			from = end
 		}
+		b.WriteString(s[last:])
 		s = b.String()
 	}
 	return s

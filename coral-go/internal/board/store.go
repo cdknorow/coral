@@ -2962,9 +2962,12 @@ type TaskLiveCost struct {
 	RequestCount     int     `json:"request_count"`
 }
 
+// ErrTaskNotFound: no task with that id on that board (or no such board).
+var ErrTaskNotFound = errors.New("task not found")
+
 // GetTaskLiveCost computes the current cost for a task by querying
 // token_usage from claimed_at to now. Returns nil if the task has no session_id
-// or the sessions DB is not available.
+// or the sessions DB is not available, and ErrTaskNotFound for a missing task.
 func (s *Store) GetTaskLiveCost(ctx context.Context, project string, taskID int64) (*TaskLiveCost, error) {
 	if s.sessionsDB == nil {
 		return nil, nil
@@ -2977,7 +2980,10 @@ func (s *Store) GetTaskLiveCost(ctx context.Context, project string, taskID int6
 	if err := s.reader().GetContext(ctx, &task,
 		`SELECT session_id, claimed_at FROM board_tasks WHERE id = ? AND board_id = ?`,
 		taskID, project); err != nil {
-		return nil, fmt.Errorf("task #%d not found", taskID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, fmt.Errorf("task #%d: %w", taskID, err)
 	}
 	if task.SessionID == nil || task.ClaimedAt == nil {
 		return nil, nil

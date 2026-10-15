@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -44,7 +46,8 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	h := r.srv.Router()
 	js := map[string]string{"Content-Type": "application/json"}
 	// A board with a message and a task, so the board and task routes answer too.
-	require.Equal(t, 200, call(h, "POST", "/api/board/team/subscribe", `{"subscriber_id":"Dev","job_title":"Dev"}`, js).Code)
+	// Dev is the launched terminal, so a board peek at Dev has a terminal to read.
+	require.Equal(t, 200, call(h, "POST", "/api/board/team/subscribe", `{"subscriber_id":"Dev","job_title":"Dev","session_name":"`+name+`"}`, js).Code)
 	require.Equal(t, 200, call(h, "POST", "/api/board/team/messages", `{"subscriber_id":"Dev","content":"working on it"}`, js).Code)
 	rec := call(h, "POST", "/api/board/team/tasks", `{"subscriber_id":"Operator","created_by":"Operator","title":"a task","assigned_to":"Dev"}`, js)
 	require.Equal(t, 201, rec.Code, rec.Body.String())
@@ -52,6 +55,47 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		ID int64 `json:"id"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &task))
+	// #3561 (d): one of everything a View route reads, so all of them answer (each created on
+	// this computer, the cheapest way: a local call, a store row, or the file Coral would write).
+	ctx := context.Background()
+	rec = call(h, "PUT", "/api/agent/ui/1?session_id="+sid, `{"title":"p","html":"<p>x</p>"}`, js)
+	require.Equal(t, 200, rec.Code, "agent UI panel: %s", rec.Body.String())
+	rec = call(h, "POST", "/api/agent/artifacts?session_id="+sid, "an artifact", map[string]string{"X-Artifact-Name": "a.txt"})
+	require.Equal(t, 201, rec.Code, "artifact: %s", rec.Body.String())
+	var art struct {
+		Digest string `json:"digest"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &art))
+	artifactHex := strings.TrimPrefix(art.Digest, "sha256:")
+	rec = call(h, "POST", "/api/board/team/tasks/"+strconv.FormatInt(task.ID, 10)+"/complete",
+		`{"subscriber_id":"Operator","artifacts":[{"name":"notes.txt","content":"done"}]}`, js)
+	require.Equal(t, 200, rec.Code, "task result: %s", rec.Body.String())
+	diff := []byte("diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1,2 @@\n hi\n+changed\n")
+	for _, p := range []string{
+		filepath.Join(r.dir, "artifacts", "tasks", strconv.FormatInt(task.ID, 10), "changes.diff"),
+		filepath.Join(r.dir, "artifacts", "sessions", sid, "changes.diff"),
+	} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o700))
+		require.NoError(t, os.WriteFile(p, diff, 0o600))
+	}
+	transcript := filepath.Join(r.dir, ".claude", "projects", "x", sid+".jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(transcript), 0o700))
+	require.NoError(t, os.WriteFile(transcript, []byte(`{"type":"user","message":{"role":"user","content":"hi"},"timestamp":"2026-10-15T00:00:00.000Z"}`+"\n"), 0o600))
+	require.NoError(t, store.NewSubagentStore(r.db).UpsertSubagent(ctx, &store.Subagent{SessionID: sid, SubagentID: "x"}))
+	require.NoError(t, store.NewSessionStore(r.db).UpdateSessionPID(ctx, sid, 1))
+	teamConfig, _ := json.Marshal(map[string]any{"working_dir": r.work, "agents": []map[string]any{{"name": "Dev", "working_dir": r.work}}})
+	_, err := store.NewTeamStore(r.db).CreateTeam(ctx, &store.Team{Name: name, WorkingDir: r.work, ConfigJSON: string(teamConfig)})
+	require.NoError(t, err)
+	require.Equal(t, 200, call(h, "PUT", "/api/themes/"+name, `{"description":"d","base":"dark","variables":{}}`, js).Code, "theme")
+	require.Equal(t, 201, call(h, "POST", "/api/views", `{"name":"v","html":"<p>x</p>"}`, js).Code, "view")
+	wf, err := store.NewWorkflowStore(r.db).CreateWorkflow(ctx, &store.Workflow{Name: name, StepsJSON: `[{"name":"s","type":"shell","command":"true"}]`})
+	require.NoError(t, err)
+	_, err = store.NewWorkflowStore(r.db).CreateWorkflowRun(ctx, wf.ID, "manual", nil)
+	require.NoError(t, err)
+
+	// #3561 (e): a missing task's (or board's) cost is a 404, not a 500.
+	require.Equal(t, 404, call(h, "GET", "/api/board/team/tasks/999999/cost", "", nil).Code)
+	require.Equal(t, 404, call(h, "GET", "/api/board/b-nosuchboard00/tasks/1/cost", "", nil).Code)
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"view"}`, js).Code)
 	hub := map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}
 
@@ -72,9 +116,15 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 			continue
 		}
 		path := repl.Replace(f[1])
+		if f[1] == "/api/artifacts/{id}" {
+			path = "/api/artifacts/" + artifactHex
+		}
 		q := hubSweepQuery(f[1], sid)
 		rec := call(h, "GET", path+q, "", hub)
 		tried = append(tried, f[1]+" "+strconv.Itoa(rec.Code))
+		if rec.Code != 200 && os.Getenv("SWEEP_DEBUG") == "1" {
+			t.Logf("NON200 %s%s -> %d %.160s", path, q, rec.Code, rec.Body.String())
+		}
 		if rec.Code == 200 {
 			answered++
 		}
@@ -92,7 +142,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	}
 	// The sweep only guards what answers: if the rig or the stamp broke, every route would be
 	// refused and nothing checked.
-	require.GreaterOrEqual(t, answered, 95, "View routes that answered 200 through the tunnel")
+	require.Equal(t, len(tried), answered, "every View route answers 200 through the tunnel (#3561 (d)): %s", strings.Join(tried, ", "))
 }
 
 var hubSweepQueries = func() map[string]string {
@@ -110,7 +160,7 @@ func hubSweepQuery(route, sid string) string {
 	if !ok {
 		return ""
 	}
-	vals := map[string]string{"session_id": sid, "filepath": "README.md", "agent_type": "terminal", "q": "hi", "query": "hi",
+	vals := map[string]string{"target": "Dev", "session_id": sid, "filepath": "README.md", "agent_type": "terminal", "q": "hi", "query": "hi",
 		"dir": ".", "message_index": "0", "window": "5", "pids": "1", "page": "1", "limit": "5", "subscriber_id": "x", "timeout": "1"}
 	var parts []string
 	for _, k := range strings.Split(allowed, ",") {
