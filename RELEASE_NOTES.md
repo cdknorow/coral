@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.4.39 — Free space from stored diffs and artifacts
+
+Nothing is removed unless you ask: a dry run always comes first, and automatic cleanup is off by default.
+
+### Changes
+
+- **Settings › Storage** shows the artifact store by age and by board, and lets you free space:
+  - **Shrink** rewrites closed tasks' and stopped sessions' stored diffs through v1.4.35's filter, leaving out binaries, dot-files and oversized sections. **Recommended first for a large store**: it keeps every diff, just smaller.
+  - **Prune** removes closed tasks' and stopped sessions' diffs, and artifacts nothing links to, older than the age you choose.
+  - **Keep** marks an artifact so it's never pruned. An explicit Delete clears the mark.
+  - **Automatic cleanup** (off by default) prunes on a schedule you set (`artifact_retention_days`), at most 2 GiB a run. It starts only after you review a dry run ("Review and start") or 24 hours after you turn it on, and logs each removal.
+
+  Shrink and Prune show a dry run first, then ask you to confirm.
+- **`coral artifacts prune --older-than 14d`** does the same from the command line (`--kind diffs|objects|diff-objects|all`, `--shrink`). It shows a dry run first and asks you to confirm; `--yes` confirms without asking (needed when there is no terminal). The shortest age is 1 day. Only you can run it: the dashboard or the signed command line, never an agent's token, a script, an API key or Coral Hub.
+- **What is never removed:**
+  - an open task's diff, or a running or sleeping session's;
+  - an artifact that anything still links to: board posts, tasks, notes, chat transcripts, launch prompts or team knowledge. Coral checks every column of both databases and the knowledge files, and if that check fails, nothing is removed;
+  - a kept artifact.
+- **Auto-attach is now off by default.** Turn it on in Settings; an existing saved setting is kept. While it's off, a link to a local file in an agent's board post stays as written, and agents share files with `coral-agent artifact upload`. If you ever pressed Save in Settings before this release, check Settings › Board › Attach files agents link: older versions stored it as on.
+- **Auto-attach's limit** is now 2 GiB in any rolling 7 days, instead of 2 GiB ever.
+
 ## v1.4.38 — Tokens are hidden in the live terminal and live updates too
 
 ### Security
