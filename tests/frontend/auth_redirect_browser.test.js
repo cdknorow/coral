@@ -25,7 +25,7 @@ const BASE = require('./test_base').BASE;
             window.fetch = (u, o) => String(u).includes('/api/qa-locked')
                 ? Promise.resolve(new Response('{"error":"sign in","code":"dashboard_auth_required"}', { status: 401, headers: { 'Content-Type': 'application/json' } }))
                 : real(u, o); })();` });
-        await Page.navigate({ url: BASE + '/?view=team#chat/abc' }); await Page.loadEventFired();
+        await Page.navigate({ url: BASE + '/chats?q=battle' }); await Page.loadEventFired(); // a page with a path and query (#3532)
         await coralReady();
         await ev(`sessionStorage.removeItem('coral-auth-redirect-at'); true`);
 
@@ -35,7 +35,7 @@ const BASE = require('./test_base').BASE;
         await waitFor(`location.pathname === '/auth'`, 'the /auth page', { timeout: 8000 });
         const url = await ev(`location.pathname + location.search`);
         assert.equal(url, '/auth?return_to=' + encodeURIComponent(here), 'return_to is this page, as it was');
-        assert.match(here, /#chat\/abc$/, 'including the hash');
+        assert.equal(here, '/chats?q=battle', 'the page\'s path and query');
         console.log('   ✓ ' + url);
 
         console.log('2. Refused again within 30 s: no second bounce; it says how to get in');
@@ -43,13 +43,13 @@ const BASE = require('./test_base').BASE;
         await coralReady();
         await ev(`fetch('/api/qa-locked'); true`);
         await waitFor(`[...document.querySelectorAll('.toast .toast-message')].some(t => /Coral is locked/.test(t.textContent))`, 'the locked toast');
-        assert.equal(await ev(`location.pathname`), '/', 'stayed on the dashboard');
+        assert.equal(await ev(`location.pathname`), '/agents', 'stayed on the dashboard');
         console.log('   ✓ stayed; "Coral is locked: … coral open" shown');
 
         console.log("3. A 401 from elsewhere is not Coral's session");
         await ev(`sessionStorage.removeItem('coral-auth-redirect-at'); true`);
         await ev(`(async () => { const real = window.fetch; await window.fetch('https://example.invalid/api/x').catch(() => {}); return true; })()`);
-        assert.equal(await ev(`location.pathname`), '/', 'no redirect for another origin');
+        assert.equal(await ev(`location.pathname`), '/agents', 'no redirect for another origin');
         console.log('   ✓ unchanged');
         console.log('PASS auth_redirect_browser');
     } finally { await client.close(); }

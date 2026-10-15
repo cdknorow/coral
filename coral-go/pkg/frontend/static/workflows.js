@@ -4,6 +4,7 @@ import { escapeHtml as esc, escapeAttr as escAttr, showView, showToast, jsStr } 
 import { apiFetch, loadLiveSessions } from './api.js';
 import { selectLiveSession } from './sessions.js';
 import { pollEvery } from './overload.js';
+import { note, currentRoute } from './nav.js';
 
 let workflows = [];
 let selectedWorkflowId = null;
@@ -229,12 +230,18 @@ function renderWorkflowList() {
 
 // ── Workflow detail ────────────────────────────────────────────────────
 
+/** A workflow's or run's page (#3532), unless the user has left Workflows while it loaded. */
+function noteWorkflows(route) {
+    if (currentRoute()?.view === 'workflows') note(route);
+}
+
 export async function selectWorkflow(id) {
     selectedWorkflowId = id;
     stopRunPolling();
 
     const wf = await fetchWorkflowDetail(id);
     if (!wf) return;
+    noteWorkflows({ view: 'workflows', id: Number(id) });
 
     // Show detail, hide list
     document.getElementById('wf-list-container').style.display = 'none';
@@ -319,11 +326,13 @@ function renderWorkflowDetail(wf, runs) {
 
 // ── Run detail ─────────────────────────────────────────────────────────
 
-export async function selectWorkflowRun(runId) {
+export async function selectWorkflowRun(runId, { workflowId } = {}) {
     stopRunPolling();
 
     const run = await fetchRunDetail(runId);
     if (!run) return;
+    const wfId = Number(run.workflow_id || workflowId || selectedWorkflowId);
+    if (wfId) noteWorkflows({ view: 'workflows', id: wfId, run: Number(runId) });
 
     document.getElementById('wf-list-container').style.display = 'none';
     document.getElementById('wf-detail-container').style.display = 'none';
@@ -671,6 +680,7 @@ export async function saveWorkflow() {
 // ── Navigation ─────────────────────────────────────────────────────────
 
 export function workflowsBackToList() {
+    noteWorkflows({ view: 'workflows' });
     stopRunPolling();
     selectedWorkflowId = null;
     document.getElementById('wf-list-container').style.display = '';

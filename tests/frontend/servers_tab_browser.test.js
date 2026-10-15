@@ -74,7 +74,7 @@ const contrast = (a, b) => {
         await Fetch.disable();
         if (!on) return;
         await Fetch.enable({ patterns: [
-            { urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' },
+            { urlPattern: `${BASE}/*`, resourceType: 'Document', requestStage: 'Response' }, // every dashboard page (#3532)
             { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' },
         ] });
     };
@@ -89,7 +89,7 @@ const contrast = (a, b) => {
         const headers = (e.responseHeaders || []).filter(h => !/^content-(length|encoding)$/i.test(h.name));
         return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
     });
-    const open = async (hash = '') => {
+    const open = async (where = '') => { // a path ("servers/m2") or an old hash link ("#servers")
         // A fresh load every time: since #3529 the dashboard URL has no query, so going from
         // /#a to /#b is a same-document hash change that fires no load event. Each wait is
         // registered before its navigation, or about:blank's quick load could be missed.
@@ -97,7 +97,7 @@ const contrast = (a, b) => {
         await Page.navigate({ url: 'about:blank' });
         await blank;
         const loaded = Page.loadEventFired();
-        await Page.navigate({ url: BASE + '/' + hash });
+        await Page.navigate({ url: BASE + '/' + where });
         await loaded;
         await install();
         await ev(`(() => { T.state.servers = ${JSON.stringify(LIVE)}; return true; })()`);
@@ -343,13 +343,16 @@ const contrast = (a, b) => {
         assert.ok(lratio >= 4.5, `light theme: Revoke contrast ${lratio.toFixed(2)}:1 (${lt.color} on ${lt.bg})`);
         console.log(`   ✓ Revoke dark ${rv.color} on ${rv.bg}: ${ratio.toFixed(2)}:1; light ${lt.color} on ${lt.bg}: ${lratio.toFixed(2)}:1`);
 
-        console.log('4. Deep links: #servers/<id>, #servers, and the agent list server chip');
-        await open('#servers/m2');
-        await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m2'`, '#servers/m2 focuses its row', 6000);
+        console.log('4. Deep links: /servers/<id>, /servers, the old #servers/<id>, and the agent list server chip');
+        await open('servers/m2');
+        await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m2'`, '/servers/m2 focuses its row', 6000);
         assert.ok((await rows()).find(x => x.id === 'server-row-m2').target, 'the linked row is highlighted');
         assert.equal((await tabState()).current, 'page');
-        await open('#servers');
-        await waitFor(`document.activeElement && document.activeElement.id === 'servers-tab-title'`, '#servers focuses the heading', 6000);
+        await open('servers');
+        await waitFor(`document.activeElement && document.activeElement.id === 'servers-tab-title'`, '/servers focuses the heading', 6000);
+        await open('#servers/m2');
+        await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m2'`, 'the old #servers/m2 link focuses its row', 6000);
+        assert.equal(await ev('location.pathname + location.hash'), '/servers/m2', 'and its URL becomes the path');
         await ev(`window.switchNavTab('agents'); window.__m.add('chip-agent', 'C', 3, { sleeping: false, server: 'm3' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
         // #3085: the search-row server button's panel lists every server as a button that opens its row.
         await ev(`document.querySelector('[data-server-switcher-host] details[data-server-switcher]').open = true; true`);
@@ -358,11 +361,12 @@ const contrast = (a, b) => {
         assert.match(item.aria, /^Box Three: .+ agents?\. Open in Servers$/, 'its accessible name says what it opens');
         await ev(`document.querySelector('[data-server-switcher-host] button.server-switcher-item[data-server-open="m3"]').click(); true`);
         await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m3'`, 'the server button item opens the tab at m3', 6000);
-        console.log('   ✓ #servers/m2 → row focused + highlighted; #servers → heading; server button item → row m3');
+        assert.equal(await ev('location.pathname'), '/servers/m3', 'the server button item writes its row\'s path');
+        console.log('   ✓ /servers/m2 → row focused + highlighted; /servers → heading; #servers/m2 → /servers/m2; server button item → row m3');
 
         console.log('5. Phone 375 px: no overflow, actions stacked under the details');
         await Emulation.setDeviceMetricsOverride({ width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
-        await open('#servers');
+        await open('servers');
         await waitFor(`document.querySelectorAll('#servers-view .cs-row').length === ${SERVERS.length}`, 'rows at 375', 6000);
         await sleep(200);
         const phone = await ev(`(() => {
@@ -388,6 +392,7 @@ const contrast = (a, b) => {
         t = await tabState();
         assert.equal(t.tabShown, false, 'a local Coral with no remotes has no Servers tab');
         assert.equal(t.viewShown, false, '#servers is a no-op there');
+        assert.equal(await ev('location.pathname + location.hash'), '/agents', 'and the URL goes home');
         await ev(`(async () => {
             const real = window.fetch;
             window.fetch = (u, o) => (new URL(String(u), location.origin).pathname === '/api/servers' && (!o || !o.method || o.method === 'GET'))
@@ -411,9 +416,9 @@ const contrast = (a, b) => {
 
         console.log('7. Enroll page points new machines at Servers');
         const enroll = fs.readFileSync(path.join(__dirname, '../../coral-go/pkg/frontend/templates/cloud/enroll.html'), 'utf8');
-        assert.match(enroll, /New machines start in View: you can raise access later in <a href="\/#servers">Servers<\/a>\./);
-        assert.match(enroll, /<a class="cloud-btn" href="\/#servers">Open Servers<\/a>/);
-        console.log('   ✓ review note + done-step Open Servers link to /#servers');
+        assert.match(enroll, /New machines start in View: you can raise access later in <a href="\/servers">Servers<\/a>\./);
+        assert.match(enroll, /<a class="cloud-btn" href="\/servers">Open Servers<\/a>/);
+        console.log('   ✓ review note + done-step Open Servers link to /servers');
 
         console.log('\nAll Servers tab checks passed');
     } finally {

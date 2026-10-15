@@ -3,7 +3,7 @@
  * (cloud_servers.js); on a self-hosted hub, the registered remotes (servers.js).
  * The tab shows when there is something to manage: always on the Cloud Hub,
  * and on a local Coral once a remote server is configured. Deep links go to a
- * row: #servers/<id>, the server chips in the agent list, and the "Open
+ * row: /servers/<id>, the server chips in the agent list, and the "Open
  * Servers" action of a refused send. */
 
 import { importOnce } from './import_once.js';

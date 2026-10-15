@@ -9,6 +9,8 @@ import { platform } from './platform/detect.js';
 import { identityKey, keyLabel, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
 import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
+import { note } from './nav.js';
+import { keyRoute } from './routes.js';
 
 let currentProject = null;
 let pollTimer = null;
@@ -114,6 +116,7 @@ export function selectBoardProject(project, messageId = null) {
     currentProject = project;
     state.currentBoardServer = splitKey(project).server;
     pendingMessageId = messageId != null ? String(messageId) : null;
+    note(keyRoute('board', project)); // the board's page (#3532)
 
     // Hide other views, show messageboard
     showView("messageboard-view");

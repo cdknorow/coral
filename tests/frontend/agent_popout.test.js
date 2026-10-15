@@ -14,7 +14,7 @@
 //      /agent/<uuid> route: not-found, history-only, identity chain/pill/title,
 //      rename, sleeping, own-session toasts, restart not followed, mobile,
 //      aria, no destructive controls, storage isolation.
-//   D. Main-app regression: kebab/header anchors, #chat/<sid> restore, null
+//   D. Main-app regression: kebab/header anchors, #chat/<sid> restore (to /agents/<sid>), null
 //      DOM targets.
 //
 // Expects CORAL_TEST_URL + CDP_PORT from tests/frontend/run.sh (isolated server,
@@ -470,7 +470,7 @@ async function run() {
     s1 = await t1.ev(SHELL_PROBE);
     check('21 kill from outside -> Ended state within a tick (overlay + pill)', ended, JSON.stringify({ ended: s1.overlays.ended, pill: s1.pill }));
     check('21 input disabled and title marks ended', s1.inputDisabled && /^✕ /.test(s1.title) && !s1.title.includes(sid), JSON.stringify({ disabled: s1.inputDisabled, title: s1.title }));
-    check('20 ended state offers #popout-open-history as a noopener anchor to /#session/<uuid>', !!s1.history && s1.history.tag === 'A' && s1.history.visible && s1.history.href === `/#session/${sid}` && s1.history.target === '_blank' && /noopener/.test(s1.history.rel || '') && /noreferrer/.test(s1.history.rel || ''), JSON.stringify(s1.history));
+    check('20 ended state offers #popout-open-history as a noopener anchor to /chats/<uuid>', !!s1.history && s1.history.tag === 'A' && s1.history.visible && s1.history.href === `/chats/${sid}` && s1.history.target === '_blank' && /noopener/.test(s1.history.rel || '') && /noreferrer/.test(s1.history.rel || ''), JSON.stringify(s1.history));
     const leakEnded = await t1.ev(LEAK_PROBE(sid));
     check('9 ended state: id only in boot attr and allowed hrefs', leakEnded.text.length === 0 && !leakEnded.title && leakEnded.attrs.length === 0, JSON.stringify(leakEnded));
     await sleep(3500); // sleep-ok: proves a negative, no reconnect attempt after the session ended
@@ -509,7 +509,7 @@ async function run() {
     const sh = await th.ev(SHELL_PROBE); const ch = await th.ev(`({ ws: window.__wsAttempts, calls: window.__calls })`);
     check('20 history-only id -> Ended, input disabled, identity from history, no attach', sh.overlays.ended === 'visible' && sh.pill === 'ended' && sh.inputDisabled && /Finished One/.test(sh.identity) && ch.ws.filter(u => /\/ws\/terminal/.test(u)).length === 0, JSON.stringify({ ended: sh.overlays.ended, pill: sh.pill, disabled: sh.inputDisabled, identity: sh.identity.trim(), ws: ch.ws }));
     check('20 ended title uses the ✕ glyph and no id', /^✕ .*Finished One · Coral$/.test(sh.title) && !sh.title.includes(H), sh.title);
-    check('20 history-only state shows #popout-open-history -> /#session/<uuid>', !!sh.history && sh.history.visible && sh.history.href === `/#session/${H}` && /noopener/.test(sh.history.rel || ''), JSON.stringify(sh.history));
+    check('20 history-only state shows #popout-open-history -> /chats/<uuid>', !!sh.history && sh.history.visible && sh.history.href === `/chats/${H}` && /noopener/.test(sh.history.rel || ''), JSON.stringify(sh.history));
     const leakH = await th.ev(LEAK_PROBE(H));
     check('9 history-only: id only in boot attr and allowed hrefs', leakH.text.length === 0 && !leakH.title && leakH.attrs.length === 0, JSON.stringify(leakH));
     await th.close();
@@ -556,7 +556,7 @@ async function run() {
     await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, session_id: B, tmux_session: `claude-${B}`, display_name: 'Renamed Bot', sleeping: false, working: true })}], removed: [${JSON.stringify(A)}] }); true`); await ta.nextFrame();
     sa = await ta.ev(SHELL_PROBE);
     check('22 target removed while a same-name session appears -> Ended, restart link offered, target unchanged', sa.overlays.ended === 'visible' && sa.pill === 'ended' && sa.restartedHref === `/agent/${B}` && sa.targetId === A && sa.inputDisabled, JSON.stringify({ ended: sa.overlays.ended, pill: sa.pill, href: sa.restartedHref, target: sa.targetId, disabled: sa.inputDisabled }));
-    check('22 ended-after-restart also offers the history link for the ORIGINAL id', !!sa.history && sa.history.visible && sa.history.href === `/agent/${A}`.replace('/agent/', '/#session/'), JSON.stringify(sa.history));
+    check('22 ended-after-restart also offers the history link for the ORIGINAL id', !!sa.history && sa.history.visible && sa.history.href === `/agent/${A}`.replace('/agent/', '/chats/'), JSON.stringify(sa.history));
     check('22 no attach to the restarted session\'s tmux name', (await ta.ev(`window.__wsAttempts.filter(u => u.includes('claude-' + ${JSON.stringify(B)})).length`)) === 0);
     const leakA = await ta.ev(LEAK_PROBE(A)); const leakB = await ta.ev(LEAK_PROBE(B));
     check('9 leak scan after transitions: ids only in URL/boot attr/hrefs', leakA.text.length === 0 && !leakA.title && leakA.attrs.length === 0 && leakB.text.length === 0 && !leakB.title && leakB.attrs.length === 0, JSON.stringify({ A: leakA, B: leakB }));
@@ -642,6 +642,8 @@ async function run() {
     await require('./helpers/wait').waitStable(td.ev, `(document.getElementById('session-name') || {}).textContent || ''`, 'the header', 300).catch(() => {});
     const dm = await td.ev(`(() => { const lv = document.getElementById('live-session-view'); const active = document.querySelector('#live-sessions-list .session-group-item.active'); return { liveShown: lv ? getComputedStyle(lv).display !== 'none' : false, activeSid: active ? active.dataset.sessionId : null, header: (document.getElementById('session-name') || {}).textContent, mode: document.body.getAttribute('data-entry-mode') }; })()`);
     check('34 main app: #chat/<sid> restores the live session on load', dm.liveShown && dm.activeSid === A && /Auto Bot/.test(dm.header || ''), JSON.stringify(dm));
+    const mainUrl = await td.ev(`location.pathname + location.hash`);
+    check('34 main app: and the old #chat/<sid> link becomes /agents/<sid>', mainUrl === `/agents/${A}`, mainUrl);
     check('1 main app: dashboard boot attr is empty (not agent mode)', dm.mode === '' || dm.mode === null, String(dm.mode));
     const anchors = await td.ev(`(() => {
         const rows = Array.from(document.querySelectorAll('#live-sessions-list .session-group-item'));

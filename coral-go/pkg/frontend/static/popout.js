@@ -339,7 +339,7 @@ function _renderCards(next) {
     const hist = document.getElementById('popout-open-history');
     if (hist) {
         // History lives in each server's own database; the hub has no copy of a remote's.
-        if (next === 'ended' && _targetId && isLocalServer(_targetServer)) { hist.href = `/#session/${_targetId}`; hist.hidden = false; }
+        if (next === 'ended' && _targetId && isLocalServer(_targetServer)) { hist.href = `/chats/${encodeURIComponent(_targetId)}`; hist.hidden = false; }
         else { hist.hidden = true; hist.removeAttribute('href'); }
     }
 }

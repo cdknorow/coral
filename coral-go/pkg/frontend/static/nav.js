@@ -33,8 +33,11 @@ export function go(route, { replace = false } = {}) {
 }
 
 /** Record the route of a view that is already on screen (no show): a view the user opened by
- *  clicking calls this, so the click and Back stay in step without showing it twice. */
+ *  clicking calls this, so the click and Back stay in step without showing it twice. Nothing is
+ *  written before startNav(): the pop-out (/agent/<id>) never starts it, and its URL is its
+ *  identity, so the views it shares with the dashboard can't rewrite it. */
 export function note(route, { replace = false } = {}) {
+    if (!started) return;
     route = normalize(route);
     if (!route) return;
     const same = current && build(current) === build(route);
@@ -51,7 +54,10 @@ async function show(route, opts) {
  *  older Coral, become their path; anything else is parsed; an invalid path is home. */
 export function startRoute(loc = location) {
     if (loc.hash && loc.hash !== '#') {
-        const legacy = normalize(fromLegacyHash(loc.hash));
+        const old = fromLegacyHash(loc.hash);
+        // "/?q=x#history": the Chats list with the filters an older Coral kept in the query.
+        if (old && old.view === 'chats' && !old.id) old.query = chatsQuery(loc.search);
+        const legacy = normalize(old);
         if (legacy) return legacy;
     }
     if ((loc.pathname === '/' || loc.pathname === '') && chatsQuery(loc.search)) {

@@ -3019,7 +3019,7 @@ export async function showResumeModal() {
 
     const sessionId = state.currentSession.name;
     const historyEntry = state.historySessionsList.find(s => s.session_id === sessionId);
-    // The list entry, else the loaded transcript (a #session/<id> link that is not
+    // The list entry, else the loaded transcript (a /chats/<id> link that is not
     // in the list); /resume-info below overrides both. Never guess a type.
     let agentType = historyEntry?.source_type || state.currentSession.agent_type || "";
 

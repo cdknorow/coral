@@ -184,7 +184,7 @@ const BASE = require('./test_base').BASE;
             window.switchNavTab = (...a) => { if (a[1] && a[1].fromHistory) window.__reopenCalls.push(JSON.stringify(a)); return real(...a); };
             return true;
         })()`);
-        assert.equal(await ev(`location.hash`), '#servers');
+        assert.equal(await ev(`location.pathname`), '/servers');
         await waitFor(`window.__feedFull === true`, "the feed's first full update applied");
         await Fetch.fulfillRequest({ requestId: holdList, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
             body: Buffer.from(JSON.stringify({ sessions: [], servers: [{ id: 'r1', label: 'Remote', status: 'online' }] })).toString('base64') });

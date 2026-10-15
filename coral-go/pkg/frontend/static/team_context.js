@@ -15,8 +15,9 @@ import { showTeamWorkingMode, hasUnsavedTeamSettings, confirmTeamWorkspaceChange
 import { syncFilesSourceTeam } from './team_artifacts.js';
 import { setPreviewSession } from './preview_pane.js';
 import { renderLiveSessions, showBoardChatTab, hideBoardChatTab, getActiveBoardChat } from './render.js';
+import { note, currentRoute } from './nav.js';
+import { keyRoute, liveRoute } from './routes.js';
 
-let _historyBound = false;
 let _boardTeam = null;   // team whose group chat is mounted in the center
 
 export function getSelectedTeam() {
@@ -81,26 +82,16 @@ function unmountGroupChat() {
     else hideBoardChatTab();
 }
 
-function bindHistory() {
-    if (_historyBound) return;
-    _historyBound = true;
-    window.addEventListener('popstate', () => {
-        const h = history.state;
-        if (h?.coralTeamContext) enterTeamContext(h.team, { tab: h.tab, restore: true, silent: true });
-        else if (getSelectedTeam()) exitTeamContext({ goBack: false });
-    });
-}
-
 /**
  * Select a team. opts.tab picks the sidebar tab (default: Board chat);
- * opts.restore replaces the history entry instead of pushing one.
+ * opts.restore replaces the history entry instead of pushing one; opts.silent writes none (the
+ * router is showing the team's page). Back and Forward are nav.js's (#3532).
  * Returns false if the user declined to discard unsaved team settings.
  */
 export async function enterTeamContext(team, opts = {}) {
     if (!team) return false;
     const current = getSelectedTeam();
     if (current && current !== team && !confirmTeamWorkspaceChange()) return false;
-    bindHistory();
 
     state.selectedTeam = team;
     state.currentBoardServer = splitKey(team).server;
@@ -115,12 +106,7 @@ export async function enterTeamContext(team, opts = {}) {
     document.getElementById('agentic-collapse-btn')?.classList.remove('collapsed');
 
     const tab = opts.tab || (activeTabName() && document.querySelector(`#agentic-tab-${activeTabName()}[data-scope="team"]`) ? activeTabName() : 'team-view');
-    const hash = tab === 'team-settings' ? `#team-settings=${encodeURIComponent(team)}` : `#team-view=${encodeURIComponent(team)}`;
-    if (!opts.silent) {
-        const entry = { coralTeamContext: true, team, tab };
-        if (opts.restore || (history.state?.coralTeamContext && current === team)) history.replaceState(entry, '', hash);
-        else history.pushState(entry, '', hash);
-    }
+    if (!opts.silent) note(keyRoute('team', team, tab === 'team-settings' ? 'settings' : null), { replace: !!opts.restore || current === team });
 
     showTeamAvailability(team, { workspace: true });
     mountGroupChat(team);
@@ -153,7 +139,11 @@ export function exitTeamContext({ goBack = true, force = false } = {}) {
     }
     syncFilesSourceTeam();
     refreshSessionList();
-    if (goBack && history.state?.coralTeamContext) history.back();
+    // Closing the team (×) goes to the agent underneath: its page, or the Agents page.
+    if (goBack && currentRoute()?.view === 'team') {
+        const s = state.currentSession;
+        note(s?.type === 'live' && s.session_id ? liveRoute(s.server, s.session_id) : { view: 'agents' });
+    }
     return true;
 }
 

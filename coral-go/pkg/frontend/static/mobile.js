@@ -2,6 +2,7 @@
 
 import { state } from './state.js';
 import { showView } from './utils.js';
+import { note } from './nav.js';
 
 const MOBILE_BREAKPOINT = 767;
 
@@ -112,8 +113,8 @@ function mobileBack() {
         t.classList.toggle('active', t.dataset.tab === 'agents');
     });
 
-    // Push agents view to history
-    if (window._pushView) window._pushView('agents');
+    // The agent list is the Agents page (#3532).
+    note({ view: 'agents' });
 }
 window.mobileBack = mobileBack;
 

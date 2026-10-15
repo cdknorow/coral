@@ -34,8 +34,23 @@ let nav = await import('../../coral-go/pkg/frontend/static/nav.js?' + Math.rando
 assert.deepEqual(nav.startRoute({ pathname: '/', search: '', hash: `#chat/${S}` }), { view: 'agents', server: null, id: S, sub: null });
 assert.deepEqual(nav.startRoute({ pathname: '/', search: '', hash: '#team-settings=qa' }), { view: 'team', server: null, id: 'qa', sub: 'settings' });
 assert.deepEqual(nav.startRoute({ pathname: '/', search: '?q=battle&page=2&page_size=50', hash: '' }), { view: 'chats', query: 'page=2&q=battle' });
+assert.deepEqual(nav.startRoute({ pathname: '/', search: '?view=x&q=battle&type=agent&page=2&page_size=50', hash: '#history' }), { view: 'chats', query: 'page=2&type=agent&q=battle' }, 'a legacy Chats hash keeps its filters');
+assert.deepEqual(nav.startRoute({ pathname: '/', search: '?q=battle', hash: '#session/abc' }), { view: 'chats', id: 'abc' }, 'a chat link has no list filters');
+assert.deepEqual(nav.startRoute({ pathname: '/', search: '', hash: '#board/..' }), { view: 'agents' }, 'a dot-named board link goes home');
 assert.deepEqual(nav.startRoute({ pathname: '/nope', search: '', hash: '' }), { view: 'agents' });
 assert.deepEqual(nav.startRoute({ pathname: '/', search: '', hash: '#chat/..%2F..%2Fapi' }), { view: 'agents' }, 'a bad legacy id goes home');
+
+// Before startNav() nothing is written: the pop-out (/agent/<id>) never starts it, and the views
+// it shares with the dashboard (a history chat, the filters) must not rewrite its URL.
+{
+    const pop = fakeBrowser(`/agent/${S}`);
+    const navPop = await import('../../coral-go/pkg/frontend/static/nav.js?' + Math.random());
+    navPop.note({ view: 'chats', id: S });
+    navPop.note({ view: 'chats', query: 'q=x' }, { replace: true });
+    assert.equal(pop.url(), `/agent/${S}`, 'the pop-out URL is untouched');
+    assert.equal(pop.length, 1);
+    assert.equal(navPop.currentRoute(), null);
+}
 
 // A page opened with an old hash: the URL becomes the path and history.state is the route.
 let b = fakeBrowser(`/#chat/${S}`);

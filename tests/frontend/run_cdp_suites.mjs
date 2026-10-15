@@ -218,6 +218,10 @@ process.on('SIGINT', () => process.exit(130));
 process.on('SIGTERM', () => process.exit(143));
 
 console.log('building coral (dev) and its tools ...');
+// The Docs tab's documents are embedded from static/agent_docs, which only the Makefile and the
+// release scripts fill: sync them, or a fresh checkout's build has none (routes_browser opens /docs/<name>).
+const sd = spawnSync('bash', [path.resolve(goDir, '../tools/sync-agent-docs.sh')], { stdio: 'inherit' });
+if (sd.status !== 0) process.exit(2);
 const bin = path.join(tmp, 'coral');
 // This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
 // installed app's (#3492), so without them its agents would send no status events.

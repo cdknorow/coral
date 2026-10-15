@@ -18,6 +18,8 @@ import { loadAgentNotes } from './agent_notes.js';
 import { loadAgentEvents, switchAgenticTab } from './agentic_state.js';
 import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './history_tabs.js';
 import { loadHistoryChanges } from './history_changes.js';
+import { note, currentRoute } from './nav.js';
+import { liveRoute } from './routes.js';
 import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode } from './live_chat.js';
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
@@ -95,9 +97,14 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     // Show live view, hide others
     showView("live-session-view");
 
-    // Push view to history for back navigation
-    // Popout mode never mutates the hash: the URL is the identity.
-    if (window._pushView && !isPopout()) window._pushView('chat', { sessionId, server: srv });
+    // The agent's page (#3532): a new history entry, or the same one when it is already this
+    // agent's (a link, Back, a re-select), keeping its sub-tab. The popout's URL is its identity.
+    if (!isPopout()) {
+        const route = liveRoute(srv, sessionId);
+        const cur = currentRoute();
+        if (cur && cur.view === 'agents' && cur.id === String(sessionId || '').toLowerCase() && cur.server === route.server) route.sub = cur.sub;
+        note(route);
+    }
 
     // Show loading skeleton
     const captureWrapper = document.getElementById("capture-wrapper");
@@ -315,8 +322,8 @@ export async function selectHistorySession(sessionId, locator = null) {
     state.currentSession = { type: "history", name: sessionId };
     refreshAgentUI();
 
-    // Update URL hash for bookmarking
-    window.location.hash = '#session/' + sessionId;
+    // The chat's page (#3532).
+    note({ view: 'chats', id: sessionId });
 
     // Restore input text for the new session
     const newKey = sessionKey(state.currentSession);
@@ -381,7 +388,7 @@ export async function selectHistorySession(sessionId, locator = null) {
         // Resume reads the type from here when the history list has no entry.
         if (data.agent_type) state.currentSession.agent_type = data.agent_type;
         renderHistoryChat(data.messages, data.agent_type || historyEntry?.source_type || "claude", messageBaseIndex, locator?.message_index);
-        // A session opened before the history list has it (a #session/<id> link,
+        // A session opened before the history list has it (a /chats/<id> link,
         // or one beyond the loaded page) still gets Resume from its own record.
         if (!historyEntry && (data.agent_type === "claude" || data.agent_type === "codex")) {
             const resumeBtn = document.getElementById("btn-resume-session");

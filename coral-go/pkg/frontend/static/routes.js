@@ -21,7 +21,8 @@ export const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 // A history chat id: the agent's own session id (a UUID for most agents). No "/", "?", "#",
 // "%" or "..", so it can't steer an API path.
 export const HISTORY_ID_RE = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-export const DOC_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+// An agent doc's name: its file name without .md (README, coral-board, ...).
+export const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 export const INT_RE = /^[1-9][0-9]{0,15}$/;
 // An agent's own tabs (live_session.html #agentic-tab-<id>); the team-scoped ones belong to /team.
 export const AGENT_SUBTABS = ['board', 'tasks', 'notes', 'files', 'browse', 'artifacts', 'activity', 'agent-ui'];
@@ -35,10 +36,12 @@ export const CHATS_QUERY_KEYS = ['page', 'type', 'q', 'fts_mode', 'tag_ids', 'ta
 const BAD_NAME_RE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/;
 
 /** A board or team name from a URL segment: decoded once, no control or formatting
- *  characters, at most NAME_MAX characters, at least one visible character. */
+ *  characters, at most NAME_MAX characters, at least one visible character, and not "." or
+ *  "..": the views put the name in an /api path (boardFetch), where a dot segment would climb
+ *  out of /api/board/ (coral-hub Security). New names like these are refused at creation (#3534). */
 function name(raw) {
     const v = decode(raw);
-    if (v === null || !v.trim() || BAD_NAME_RE.test(v) || [...v].length > NAME_MAX) return null;
+    if (v === null || !v.trim() || v === '.' || v === '..' || BAD_NAME_RE.test(v) || [...v].length > NAME_MAX) return null;
     return v;
 }
 
@@ -132,12 +135,6 @@ function seg(v) {
 
 const srvSeg = server => (server ? `@${encodeURIComponent(server)}/` : '');
 
-// A board or team literally named "." or "..": no path can carry it (a browser resolves "/team/.."
-// and even "/team/%2E%2E" as a dot segment), so it is linked by its legacy hash, which the router
-// still reads. New names like these are refused at creation (QA).
-const DOT_NAME = new Set(['.', '..']);
-const dotKey = r => encodeURIComponent(r.server ? `@${r.server}/${r.id}` : r.id);
-
 /** build(route) returns the path (and query) for a route. */
 export function build(r) {
     switch (r && r.view) {
@@ -146,10 +143,8 @@ export function build(r) {
         case 'chats':
             return r.id ? `/chats/${seg(r.id)}` : `/chats${r.query ? '?' + r.query : ''}`;
         case 'team':
-            if (DOT_NAME.has(r.id)) return `/#team-${r.sub === 'settings' ? 'settings' : 'view'}=${dotKey(r)}`;
             return `/team/${srvSeg(r.server)}${seg(r.id)}${r.sub === 'settings' ? '/settings' : ''}`;
         case 'board':
-            if (DOT_NAME.has(r.id) && !r.server) return `/#board/${encodeURIComponent(r.id)}`;
             return `/board/${srvSeg(r.server)}${seg(r.id)}`;
         case 'workflows':
             return r.id ? `/workflows/${r.id}${r.run ? '/runs/' + r.run : ''}` : '/workflows';
@@ -205,16 +200,43 @@ export function fromLegacyHash(hash) {
  *  tampered history.state is checked like a typed URL (Security's review of 1b part 1). */
 export function normalize(route) {
     if (!route || typeof route !== 'object') return null;
+    const built = build(route);
     let url;
-    try { url = new URL(build(route), 'http://x'); } catch { return null; }
-    const back = url.hash ? fromLegacyHash(url.hash) : parse(url.pathname, url.search);
-    if (!back || back.view !== route.view) return null;
-    if (url.hash) { // a dot name: the legacy reading has no null fields; give it the parse shape
-        if (back.view === 'team') return { view: 'team', server: back.server || null, id: back.id, sub: back.sub || null };
-        if (back.view === 'board') return { view: 'board', server: null, id: back.id };
-    }
-    return back;
+    try { url = new URL(built, 'http://x'); } catch { return null; }
+    // A path the URL parser rewrote (a dot segment: "/team/./settings" is "/team/settings") is not
+    // the route that was asked for.
+    if (url.pathname !== built.split('?')[0]) return null;
+    const back = parse(url.pathname, url.search);
+    return back && back.view === route.view ? back : null;
 }
 
 /** Is this route valid? */
 export function valid(route) { return normalize(route) !== null; }
+
+// ── Routes from the dashboard's own keys ────────────────────────────────
+// The views name a team or board by its identity key (server_base.js identityKey: "name" on this
+// Coral, "@<server>/name" on another), and the local server is "local"; a route has server null.
+
+const LOCAL = 'local';
+const routeServer = s => (!s || s === LOCAL ? null : String(s));
+
+/** The route of a live agent: its server ("local" or empty for this Coral) and session id. */
+export function liveRoute(server, sessionId, sub = null) {
+    return { view: 'agents', server: routeServer(server), id: sessionId, sub: sub || null };
+}
+
+/** The route of a team or board from its identity key. */
+export function keyRoute(view, key, sub = null) {
+    const k = String(key ?? '');
+    // As splitKey reads it: "@<server>/name" only when <server> is a server id ("@x!/y" is a name).
+    const m = /^@([^/]+)\/(.+)$/.exec(k);
+    const remote = m && SERVER_RE.test(m[1]);
+    const r = { view, server: remote ? routeServer(m[1]) : null, id: remote ? m[2] : k };
+    if (view === 'team') r.sub = sub === 'settings' ? 'settings' : null;
+    return r;
+}
+
+/** The identity key a team or board route names (the inverse of keyRoute). */
+export function routeKey(route) {
+    return route.server ? `@${route.server}/${route.id}` : route.id;
+}

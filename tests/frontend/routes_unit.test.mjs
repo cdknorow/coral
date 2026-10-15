@@ -31,6 +31,7 @@ rt('/workflows/7/runs/3', { view: 'workflows', id: 7, run: 3 });
 rt('/jobs', { view: 'jobs' });
 rt('/analytics', { view: 'analytics' });
 rt('/docs/board', { view: 'docs', id: 'board' });
+rt('/docs/README', { view: 'docs', id: 'README' });
 rt('/servers/m2', { view: 'servers', id: 'm2' });
 assert.deepEqual(parse('/'), { view: 'agents' }, '/ is home');
 
@@ -75,10 +76,35 @@ assert.equal(valid(fromLegacyHash('#chat/..%2F..%2Fapi')), false, 'a bad legacy 
 assert.equal(valid(fromLegacyHash(`#chat/${S}`)), true);
 // An uppercase server marker reads lower-case (QA).
 assert.deepEqual(parse(`/agents/@M2/${S}`), { view: 'agents', server: 'm2', id: S, sub: null });
-// A board or team literally named "." or "..": linked by its legacy hash, and it opens.
-assert.equal(build({ view: 'team', server: null, id: '..', sub: null }), '/#team-view=..');
-assert.equal(build({ view: 'team', server: null, id: '.', sub: 'settings' }), '/#team-settings=.');
-assert.equal(build({ view: 'board', server: null, id: '..' }), '/#board/..');
-assert.deepEqual(normalize({ view: 'team', id: '..' }), { view: 'team', server: null, id: '..', sub: null });
-assert.deepEqual(fromLegacyHash('#team-view=..'), { view: 'team', server: null, id: '..', sub: null });
+// A board or team named "." or ".." is never a route, from a path, a legacy hash or a view's own
+// key: its name would climb out of /api/board/ in boardFetch (coral-hub Security). #3534 refuses
+// such names at creation.
+for (const n of ['.', '..']) {
+    for (const v of ['team', 'board']) {
+        assert.equal(normalize({ view: v, server: null, id: n, sub: null }), null, `${v} ${n}`);
+        assert.equal(normalize({ view: v, server: 'm2', id: n, sub: null }), null, `${v} @m2/${n}`);
+    }
+    for (const p of [`/board/${n}`, '/board/%2E%2E', '/board/%2e', `/team/@m2/${n}`, '/team/%2E%2E/settings']) assert.equal(parse(p), null, p);
+}
+for (const h of ['#board/..', '#board/%2E%2E', '#team-view=..', '#team-settings=.', '#team-view=%40m2%2F..']) {
+    assert.equal(normalize(fromLegacyHash(h)), null, h);
+}
+assert.equal(normalize(fromLegacyHash('#board/...')).id, '...', 'three dots is an ordinary name');
 console.log('routes_unit: ok');
+
+// The views' own keys (#3532 part 2).
+{
+    const { liveRoute, keyRoute, routeKey } = await import('../../coral-go/pkg/frontend/static/routes.js');
+    const u = '0b5e2f2a-1c3d-4e5f-8a9b-0c1d2e3f4a5b';
+    assert.equal(build(liveRoute('local', u)), `/agents/${u}`);
+    assert.equal(build(liveRoute(null, u, 'files')), `/agents/${u}/files`);
+    assert.equal(build(liveRoute('m2', u)), `/agents/@m2/${u}`);
+    assert.equal(build(keyRoute('team', '@m2/qa', 'settings')), '/team/@m2/qa/settings');
+    assert.equal(build(keyRoute('board', '@odd')), '/board/%40odd');
+    assert.equal(build(keyRoute('team', 'a/b')), '/team/a%2Fb');
+    for (const k of ['qa', '@m2/qa', '@odd', 'a/b', '@m2/@x', '@x!/y']) {
+        assert.equal(routeKey(normalize(keyRoute('board', k))), k, k);
+        assert.equal(routeKey(normalize(keyRoute('team', k))), k, k);
+    }
+    assert.equal(normalize(liveRoute('local', 'not-a-uuid')), null);
+}

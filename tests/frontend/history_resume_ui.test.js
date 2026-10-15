@@ -309,7 +309,7 @@ const BASE = require('./test_base').BASE;
             launchPayloadValidated: true,
         }));
         // ---------------------------------------------------------------------
-        // Test 4: a session the history list does not have yet (#session/<id> link,
+        // Test 4: a session the history list does not have yet (a /chats/<id> link,
         // or beyond the loaded page): Resume comes from the session's own record.
         // ---------------------------------------------------------------------
         console.log('Testing Resume for a session missing from the history list...');

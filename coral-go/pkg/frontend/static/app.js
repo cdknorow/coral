@@ -9,7 +9,7 @@ import { enterTeamContext, exitTeamContext, renderTeamSettingsTab } from './team
 
 import { state, sessionKey, saveSessionDraft } from './state.js';
 import { loadLiveSessions, loadHistorySessions, loadHistorySessionsPaged } from './api.js';
-import { filterState, deserializeFromUrl, serializeToUrl,
+import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
          hasActiveFilters, countActiveFilters, resetFilters }
     from './search_filters.js';
 import { connectCoralWs, handleCoralMessage, _resetWaitingSeedForTests } from './websocket.js';
@@ -33,7 +33,8 @@ import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
 import { loadCustomViews, activateCustomView } from './custom_views.js';
-import { initRouter, pushView, restoreChatFromHash } from './router.js';
+import { startNav, go, note, onRoute, currentRoute } from './nav.js';
+import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS } from './routes.js';
 import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
 import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize } from './live_chat.js';
@@ -59,7 +60,7 @@ import { initBrowser } from './platform/browser.js';
 import { initChatFind } from './chat_find.js';
 
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
-import { teamFetch } from './server_base.js';
+import { teamFetch, sessionServer } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './csp_compat.js';   // runs inline handlers without eval on the Coral Hub (inert elsewhere)
@@ -199,7 +200,7 @@ Object.assign(window, {
     // utils
     copyBranchName,
     // router
-    _activateCustomView: activateCustomView, _pushView: pushView,
+    _activateCustomView: activateCustomView, _noteRoute: note,
     // render (pagination)
     loadHistoryPage,
     // top nav
@@ -238,6 +239,14 @@ function switchNavTab(tab, opts = {}) {
     // Clean up any active cost dashboard timer when leaving tokens tab
     stopCostDashboard();
     if (tab !== 'servers') importOnce('./servers_tab.js').then(m => m.leaveServersTab());
+    // The URL follows the tab (#3532): a tab the user chose is a history entry. Servers writes its
+    // own (it can carry a server); the board tab names no board, so it keeps the URL.
+    const TAB_ROUTE = { agents: 'agents', history: 'chats', workflows: 'workflows', jobs: 'jobs', tokens: 'analytics', docs: 'docs' };
+    if (!opts.fromHistory && TAB_ROUTE[tab]) {
+        const cur = currentRoute();
+        const route = tabRoute(tab, TAB_ROUTE[tab]);
+        if (!cur || cur.view !== route.view || cur.id !== route.id) note(route);
+    }
 
     // Toggle sidebar visibility — full-width views hide the sidebar
     const fullWidthTabs = new Set(['tokens', 'workflows', 'servers']);
@@ -275,7 +284,7 @@ function switchNavTab(tab, opts = {}) {
         showWhenLoaded(loadDocs, 'showDocsTab');
     } else if (tab === 'servers') {
         showView('servers-view');
-        if (window._pushView && !opts.fromHistory) window._pushView('servers', opts.focusId ? { serverId: opts.focusId } : {});
+        if (!opts.fromHistory) note(opts.focusId ? { view: 'servers', id: opts.focusId } : { view: 'servers' });
         importOnce('./servers_tab.js').then(m => m.showServersTabContent(opts.focusId));
     } else if (tab === 'tokens') {
         showWhenLoaded(loadCostDashboard, 'showCostDashboard');
@@ -300,6 +309,16 @@ function switchNavTab(tab, opts = {}) {
             showView('welcome-screen');
         }
     }
+}
+
+/** The route a top tab shows: the Agents tab its open team or selected agent (on a desktop, where
+ *  the tab shows it), the Chats tab its open chat or its filtered list. */
+function tabRoute(tab, view) {
+    const cur = state.currentSession;
+    if (tab === 'agents' && state.selectedTeam) return keyRoute('team', state.selectedTeam);
+    if (tab === 'agents' && cur && cur.type === 'live' && window.innerWidth > 767) return liveRoute(sessionServer(cur), cur.session_id);
+    if (tab === 'history') return cur && cur.type === 'history' ? { view: 'chats', id: cur.name } : { view: 'chats', query: currentChatsQuery() };
+    return { view };
 }
 
 // ── Import team from folder ───────────────────────────────────────────
@@ -723,15 +742,136 @@ function pollStartupStatus() {
     check();
 }
 
+// ── Routes (#3532) ───────────────────────────────────────────────────────
+// nav.js owns history; these show a route the page was opened at or the user went Back or
+// Forward to. Each view writes its own route when the user opens something (note()), so a handler
+// calling the same function writes nothing new. A route's ids were checked by routes.js before it
+// gets here.
+
+// Settles once the first live list has loaded (or failed): an agent link needs the list.
+let _liveListLoaded;
+const liveListReady = new Promise(r => { _liveListLoaded = r; });
+
+/** The Chats list's query for its current filters and page (no "?"). */
+function currentChatsQuery() {
+    return urlSearchFor(historyPage, '').replace(/^\?/, '');
+}
+
+function registerRouteHandlers() {
+    // Any view but a team leaves the team workspace (Back from a team to where the user was).
+    const route = (view, fn) => onRoute(view, async (r, opts) => {
+        if (state.selectedTeam && exitTeamContext({ goBack: false }) === false) {
+            note(keyRoute('team', state.selectedTeam), { replace: true }); // kept: unsaved team settings
+            return;
+        }
+        await fn(r, opts);
+    });
+
+    route('agents', async (r, opts) => {
+        if (!r.id) {
+            switchNavTab('agents', { fromHistory: true });
+            if (!opts.startup) showHome();
+            return;
+        }
+        await liveListReady;
+        const s = (state.liveSessions || []).find(x => String(x.session_id || '').toLowerCase() === r.id
+            && liveRoute(sessionServer(x), x.session_id).server === r.server);
+        if (!s) {
+            showToast('That agent is not running here any more', true);
+            go({ view: 'agents' }, { replace: true });
+            return;
+        }
+        switchNavTab('agents', { fromHistory: true });
+        const cur = state.currentSession;
+        const shown = cur && cur.type === 'live' && cur.session_id === s.session_id && sessionServer(cur) === sessionServer(s);
+        if (!shown) await window.selectLiveSession(s.name, s.agent_type, s.session_id, sessionServer(s));
+        if (r.sub) switchAgenticTab(r.sub, 'top');
+    });
+
+    route('chats', async (r, opts) => {
+        if (r.id) {
+            switchNavTab('history', { fromHistory: true });
+            const cur = state.currentSession;
+            if (!(cur && cur.type === 'history' && cur.name === r.id)) await selectHistorySession(r.id);
+            return;
+        }
+        // The list: its filters are the URL's (startup already read them).
+        if (!opts.startup) {
+            historyPage = deserializeFromUrl().page;
+            syncFilterDomToState();
+        }
+        if (state.currentSession && state.currentSession.type === 'history') state.currentSession = null; // Back closed the chat
+        switchNavTab('history', { fromHistory: true });
+    });
+
+    onRoute('team', async r => {
+        await liveListReady;
+        switchNavTab('agents', { fromHistory: true });
+        const tab = r.sub === 'settings' ? 'team-settings' : 'team-view';
+        const ok = await enterTeamContext(routeKey(r), { tab, restore: true, silent: true });
+        if (ok === false && state.selectedTeam) note(keyRoute('team', state.selectedTeam), { replace: true });
+    });
+
+    route('board', r => {
+        switchNavTab('board', { fromHistory: true });
+        selectBoardProject(routeKey(r));
+    });
+
+    route('workflows', async r => {
+        switchNavTab('workflows', { fromHistory: true });
+        const m = await loadWorkflows();
+        if (r.run) await m.selectWorkflowRun(r.run, { workflowId: r.id });
+        else if (r.id) await m.selectWorkflow(r.id);
+        else m.workflowsBackToList();
+    });
+
+    route('jobs', () => switchNavTab('jobs', { fromHistory: true }));
+    route('analytics', () => switchNavTab('tokens', { fromHistory: true }));
+
+    route('docs', async r => {
+        switchNavTab('docs', { fromHistory: true });
+        (await loadDocs()).openDoc(r.id || null);
+    });
+
+    // Servers is the hub's tab (known once the list has loaded); a Coral without one goes home.
+    route('servers', async r => {
+        await liveListReady;
+        const m = await importOnce('./servers_tab.js');
+        if (!(await m.openServersTab(r.id || undefined, { fromHistory: true }))) go({ view: 'agents' }, { replace: true });
+    });
+
+    // A sidebar tab the user picks is part of the page (a replace): an agent's tab, or a team's
+    // view or settings. Tabs switched by code (restoring the last one) leave the URL alone.
+    document.addEventListener('click', e => {
+        const btn = e.target.closest && e.target.closest('#agentic-block-top .agentic-tab');
+        if (!btn) return;
+        const tab = btn.id.replace('agentic-tab-', '');
+        const cur = currentRoute();
+        if (cur && cur.view === 'team' && state.selectedTeam) {
+            if (tab === 'team-view' || tab === 'team-settings') note(keyRoute('team', state.selectedTeam, tab === 'team-settings' ? 'settings' : null), { replace: true });
+            return;
+        }
+        const s = state.currentSession;
+        if (cur && cur.view === 'agents' && cur.id && s && s.type === 'live' && AGENT_SUBTABS.includes(tab)) {
+            note(liveRoute(sessionServer(s), s.session_id, tab), { replace: true });
+        }
+    });
+}
+
 // ── Home Navigation ──────────────────────────────────────────────────────
 window._goHome = function() {
-    window.location.hash = '';
+    note({ view: 'agents' });
+    showHome();
+};
+
+/** The Agents home: the welcome screen (the agent list on a phone), no agent highlighted. */
+function showHome() {
     showView(window.innerWidth <= 767 ? "mobile-agent-list" : "welcome-screen");
     // Deselect sidebar items
     document.querySelectorAll('.sidebar .session-item.active, .sidebar .session-item.selected').forEach(el => {
         el.classList.remove('active', 'selected');
     });
-};
+}
 
 // ── Initialization ────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -777,17 +917,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     // The hash the page was opened with: a deep link to restore. A hash the user
     // sets while the list loads (e.g. opening Servers) is not restored again,
     // which would re-open that view a second time (#3152).
-    const startupHash = window.location.hash;
     loadLiveSessions(dashboardFailed).then(ok => {
         markReady('liveList'); // already marked by the render; this covers a failed first load
         dashboardSessionsLoaded(ok);
-        // Dashboard deep link: #chat/<sessionId> restores the live session once the list is loaded.
-        if (!popout && window.location.hash === startupHash) restoreChatFromHash();
-    }).finally(_startListLoadSettled);
+    }).finally(() => { _startListLoadSettled(); _liveListLoaded(); });
     loadAllFolderTags();
     loadCustomViews();
     initAgentUI();
-    if (!popout) initRouter();
     connectCoralWs();
     if (!popout) checkForUpdates();
     pollStartupStatus();
@@ -1092,25 +1228,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         setTimeout(() => { fitTerminal(); syncPaneWidth(); }, 50);
     });
 
-    // Restore session from URL hash
-    const hash = window.location.hash;
-    if (!popout && hash.startsWith('#session/')) {
-        const sessionId = hash.substring('#session/'.length);
-        if (sessionId) {
-            // Delay slightly to allow history list to populate first
-            setTimeout(() => selectHistorySession(sessionId), 500);
-        }
-    }
+    // The page's route (#3532): its path, or an old hash link, shown once the handlers are in place.
     if (!popout) {
-        const workspaceMatch = hash.match(/^#team-(settings|view)=(.+)$/);
-        if (workspaceMatch) {
-            const workspaceTeam = decodeURIComponent(workspaceMatch[2]);
-            const restoreWorkspace = () => {
-                if (!document.getElementById('agentic-state')) return setTimeout(restoreWorkspace, 250);
-                enterTeamContext(workspaceTeam, { tab: workspaceMatch[1] === 'settings' ? 'team-settings' : undefined, restore: true });
-            };
-            setTimeout(restoreWorkspace, 250);
-        }
+        registerRouteHandlers();
+        startNav();
     }
     dashboardInitialized();
     } catch (error) {

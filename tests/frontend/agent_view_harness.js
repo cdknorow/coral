@@ -172,8 +172,8 @@ async function connect() {
         const liveChat = await import((window.__coralStatic||'/static/')+'live_chat.js');
         const ws = await import((window.__coralStatic||'/static/')+'websocket.js');
         // Let the page's own first live-list load finish (and the deep-link restore that follows it)
-        // before a test selects anything: a late restore would re-select whatever #chat/<id> the hash
-        // holds by then. Popout pages restore through their resolver instead.
+        // before a test selects anything: a late restore would re-select whatever agent the page's
+        // path (/agents/<id>) names by then. Popout pages restore through their resolver instead.
         if (!location.pathname.startsWith('/agent/')) {
             for (let i = 0; i < 500 && !window.__liveListServed; i++) await new Promise(r => setTimeout(r, 10));
             await new Promise(r => setTimeout(r, 100));

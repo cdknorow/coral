@@ -1,6 +1,7 @@
 // The dashboard's URL carries only real state (#3529): a plain load, and switching views, leave
 // no ?page=1&page_size=50; an old URL with them is cleaned; a filtered history search keeps its
-// filters and page in the URL (without page_size), and they survive a reload.
+// filters and page in the URL (without page_size), and they survive a reload. Since #3532 the
+// view is the path (/agents, /chats), and old hash links become paths.
 'use strict';
 
 const CDP = require('chrome-remote-interface');
@@ -25,7 +26,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const settled = async () => {
         let last = null;
         for (const end = Date.now() + 5000; Date.now() < end; await sleep(100)) {
-            const now = await ev('location.search + location.hash');
+            const now = await ev('location.pathname + location.search + location.hash');
             if (now === last) return now;
             last = now;
         }
@@ -34,27 +35,31 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     try {
         await open(BASE + '/');
         await settled();
-        check('a plain dashboard load has no query', (await ev('location.search')) === '', await ev('location.href'));
+        const here = () => ev('location.pathname + location.search + location.hash');
+        check('a plain dashboard load is /agents, with no query', (await here()) === '/agents', await here());
         await ev(`switchNavTab('history'); true`);
         await settled();
-        check('switching to Chats adds no ?page=1&page_size=50', (await ev('location.search')) === '', await ev('location.href'));
+        check('switching to Chats is /chats, with no ?page=1&page_size=50', (await here()) === '/chats', await here());
         await ev(`switchNavTab('agents'); true`);
+        check('and back to Agents is /agents', (await here()) === '/agents', await here());
 
         await open(BASE + '/?page=1&page_size=50#agents');
         await settled();
-        check('an old URL with page=1&page_size=50 is cleaned (the hash kept)', (await ev('location.search')) === '' && (await ev('location.hash')) === '#agents', await ev('location.href'));
+        check('an old URL with page=1&page_size=50#agents is cleaned to /agents', (await here()) === '/agents', await here());
 
         await open(BASE + '/?view=x&q=battle&type=agent&page=2&page_size=50#history');
         await settled();
         const p = await ev(`Object.fromEntries(new URLSearchParams(location.search))`);
-        check('a filtered search keeps its filters and page, not page_size, nor drops other keys',
-            p.q === 'battle' && p.type === 'agent' && p.page === '2' && !('page_size' in p) && p.view === 'x', JSON.stringify(p));
+        check('an old filtered Chats link is /chats with its filters and page, not page_size or other keys',
+            (await ev('location.pathname')) === '/chats' && p.q === 'battle' && p.type === 'agent' && p.page === '2' && !('page_size' in p) && !('view' in p) && (await ev('location.hash')) === '',
+            await here());
         const loaded = Page.loadEventFired();
         await Page.reload({});
         await loaded;
         await settled();
         const r = await ev(`Object.fromEntries(new URLSearchParams(location.search))`);
-        check('and survives a reload', r.q === 'battle' && r.type === 'agent' && r.page === '2', JSON.stringify(r));
+        check('and survives a reload', (await ev('location.pathname')) === '/chats' && r.q === 'battle' && r.type === 'agent' && r.page === '2', JSON.stringify(r));
+        check('the search box shows the filter after the reload', (await ev(`(document.getElementById('history-search') || {}).value`)) === 'battle');
     } catch (e) {
         check('no error', false, e.message);
     } finally {

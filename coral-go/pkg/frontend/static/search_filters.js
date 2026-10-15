@@ -1,5 +1,7 @@
 /* Advanced search filter state and URL serialization */
 
+import { note, currentRoute } from './nav.js';
+
 export const filterState = {
     q: '',
     ftsMode: 'or',        // 'phrase' | 'and' | 'or'; broad matches are ranked by relevance
@@ -56,12 +58,12 @@ export function urlSearchFor(page, existingSearch) {
     return qs ? '?' + qs : '';
 }
 
+/** Write the search to the Chats list's URL (a replace: filters refine the page, they are not a
+ *  new one). Only while the Chats list is the page: elsewhere the query is not the view's (#3532). */
 export function serializeToUrl(page) {
-    const url = new URL(window.location.href);
-    const search = urlSearchFor(page, url.search);
-    if (search === url.search) return;
-    url.search = search;
-    window.history.replaceState(window.history.state, '', url.toString());
+    const r = currentRoute();
+    if (!r || r.view !== 'chats' || r.id) return;
+    note({ view: 'chats', query: urlSearchFor(page, '').replace(/^\?/, '') }, { replace: true });
 }
 
 export function deserializeFromUrl() {
