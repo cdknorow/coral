@@ -145,7 +145,7 @@ const (
 	notConfigured = `{"configured":false,"state":"off","max_mode":"view"}`
 	idle          = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"idle","max_mode":"view"}`
 	enrolling     = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"enrolling","user_code":"ABCD-EFGH","verification_url":"https://app.coralai.ai/enroll?code=ABCD-EFGH","max_mode":"view"}`
-	expired       = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"idle","last_error":"The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralai.ai/hub.html","last_error_code":"code_expired","max_mode":"view"}`
+	expired       = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"idle","last_error":"The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html","last_error_code":"code_expired","max_mode":"view"}`
 	connected     = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"connected","label":"build-box","max_mode":"view"}`
 )
 
@@ -441,7 +441,7 @@ func TestCloudConnectFlowAsksAndRetries(t *testing.T) {
 	assert.Equal(t, 2, f.connects, "a new code after the expiry")
 	o := out.String()
 	// coral-hub's text, printed as it is: the link is not followed by a period.
-	assert.Contains(t, o, "Not connected. The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralai.ai/hub.html\n")
+	assert.Contains(t, o, "Not connected. The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html\n")
 	assert.Contains(t, o, "Waiting for you to approve")
 	assert.Contains(t, o, "Coral Hub access: launch.")
 	calls := strings.Join(f.callList(), "\n")

@@ -523,7 +523,7 @@ func TestEnrollmentExpiredSaysClosedBeta(t *testing.T) {
 	waitState(t, m, StateIdle)
 	st := m.Status()
 	require.Equal(t, ErrCodeExpired, st.LastErrorCode)
-	require.Equal(t, "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralai.ai/hub.html", st.LastError)
+	require.Equal(t, "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html", st.LastError)
 
 	// Right after an expiry a new code waits for the per-machine gap (#3285 follow-up)…
 	var rl *RateLimitedError

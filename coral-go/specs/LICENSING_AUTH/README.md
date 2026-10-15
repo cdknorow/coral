@@ -413,7 +413,7 @@ self-contained activation page (`server.go` `activationPage` const) that shows:
 1. **Pricing cards:** 14-Day Pro Trial (free, LS checkout link) and Pro
    (~~$99/yr~~ $49/yr, LS checkout link with promo code)
 2. **License key input form** for users who already have a key
-3. **Link back to coralai.ai**
+3. **Link back to coralhub.dev**
 
 The page is gated — all routes redirect to it until a valid license is activated.
 

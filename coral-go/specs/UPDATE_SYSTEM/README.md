@@ -68,7 +68,7 @@ Replace the stub with a real implementation:
   "latest_version": "0.10.15",
   "release_notes": ["Fix cursor rendering", "Add file search", "..."],
   "download_url": "https://github.com/cdknorow/coral/releases/latest",
-  "upgrade_command": "Download latest DMG from coralai.ai",
+  "upgrade_command": "Download latest DMG from GitHub releases",
   "release_url": "https://github.com/cdknorow/coral/releases/tag/v0.10.15"
 }
 ```
@@ -100,15 +100,15 @@ The `upgrade_command` field should be platform-aware (detected via `runtime.GOOS
 
 | Platform | Upgrade Instruction |
 |----------|-------------------|
-| macOS    | `Download latest DMG from coralai.ai` |
-| Linux    | `curl -fsSL https://coralai.ai/install.sh \| sh` or download tar.gz |
-| Windows  | `Download latest MSI from coralai.ai` |
+| macOS    | `Download latest DMG from GitHub releases` |
+| Linux    | download the tar.gz from GitHub releases, or run `installers/install-cli.sh` (there is no hosted install script) |
+| Windows  | `Download latest MSI from GitHub releases` |
 
 ## Upgrade Paths Per Platform
 
 ### macOS (DMG)
 1. User sees update notification (toast or tray notification)
-2. Downloads new DMG from GitHub releases or coralai.ai
+2. Downloads new DMG from GitHub releases
 3. Drags new Coral.app to /Applications (replaces old version)
 4. Relaunches — new version runs, database migrations apply automatically
 5. Future: consider Sparkle framework for auto-update (not for initial release)
@@ -122,7 +122,7 @@ The `upgrade_command` field should be platform-aware (detected via `runtime.GOOS
 
 ### Windows (MSI)
 1. User sees update notification (toast or tray notification)
-2. Downloads new MSI from GitHub releases or coralai.ai
+2. Downloads new MSI from GitHub releases
 3. Runs MSI installer — overwrites existing installation
 4. Relaunches — new version runs with migrations
 

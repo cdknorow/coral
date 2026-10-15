@@ -90,7 +90,7 @@ const (
 // codeExpiredMessage is coral-hub's required text for a code that expired. A user outside
 // Coral Hub's closed beta can't sign in, so their code just expires: the hub gives no
 // distinct answer for that, by design (it would leak who is on the allowlist).
-const codeExpiredMessage = "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralai.ai/hub.html"
+const codeExpiredMessage = "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html"
 
 // Manager owns the enrollment and the tunnel.
 type Manager struct {

@@ -254,7 +254,7 @@ async function run() {
             await put({ welcome_choice: 'own-hub', welcome_pending: 'False' });
 
             // ── The code expired before it was approved (#3285): say why it may have, link to access ──
-            for (const [how, st] of [['last_error_code', { state: 'idle', last_error_code: 'code_expired', last_error: "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralai.ai/hub.html" }],
+            for (const [how, st] of [['last_error_code', { state: 'idle', last_error_code: 'code_expired', last_error: "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html" }],
                                      ['an older server', { state: 'idle', last_error: 'the code expired; start again' }]]) {
                 await put({ welcome_pending: 'True', welcome_choice: '' });
                 await load(st);
@@ -262,8 +262,8 @@ async function run() {
                 const ex = await ev(`(() => { const m = document.getElementById('editions-modal'); const s = m.querySelector('[data-cloud="status"]'); const a = s.querySelector('a');
                     return { text: s.textContent, href: a && a.getAttribute('href'), target: a && a.target, rel: a && a.rel, connect: !m.querySelector('[data-cloud="connect"]').hidden }; })()`);
                 check(`${label}: code expired (${how}): the closed-beta text with a real link to request access, and Connect to retry`,
-                    /^The code expired before it was approved\. If you couldn't sign in at app\.coralai\.ai, Coral Hub is in closed beta: request access at https:\/\/coralai\.ai\/hub\.html$/.test(ex.text)
-                    && ex.href === 'https://coralai.ai/hub.html' && ex.target === '_blank' && /noopener/.test(ex.rel) && ex.connect, JSON.stringify(ex));
+                    /^The code expired before it was approved\. If you couldn't sign in at app\.coralai\.ai, Coral Hub is in closed beta: request access at https:\/\/coralhub\.dev\/hub\.html$/.test(ex.text)
+                    && ex.href === 'https://coralhub.dev/hub.html' && ex.target === '_blank' && /noopener/.test(ex.rel) && ex.connect, JSON.stringify(ex));
                 await click('#editions-modal [data-editions="skip"]');
                 await until(savedIs('welcome_choice', 'skipped'), 'skipped saved');
             }

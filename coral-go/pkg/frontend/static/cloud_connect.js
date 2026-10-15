@@ -75,7 +75,7 @@ export function describe(st) {
 
 // Coral Hub never says why a code went unapproved (that would leak who is in the beta), so an
 // expired code may mean the user could not sign in at all: say so, with where to ask for access.
-export const HUB_ACCESS_URL = 'https://coralai.ai/hub.html';
+export const HUB_ACCESS_URL = 'https://coralhub.dev/hub.html';
 export const EXPIRED_TEXT = "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at ";
 
 /** An idle status after a code expired (last_error_code from #3285; older servers only say it in last_error). */
