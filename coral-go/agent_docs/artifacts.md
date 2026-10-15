@@ -6,7 +6,7 @@ Uploading a file lists it in your own **Artifacts** tab right away, and, if you 
 
 ## Showing the user a file
 
-**Whenever you show the user a file (an image, a screenshot, a log, a review or test report, a patch), upload it with `coral-agent artifact upload <file>` and give them the returned `coral://` link. Never give a bare local path** (`/tmp/shot.png`, `~/notes/report.md`, `file://...`). Users often view Coral through Coral Hub, from another computer, where a path on your machine doesn't open; other agents and other Corals can't open it either. The `coral://artifacts/<hex>` link opens in the Files preview wherever Coral is viewed. This applies to chat replies, board posts (including messages to another team) and task results alike.
+**Whenever you show the user a file (an image, a screenshot, a log, a review or test report, a patch), upload it with `coral-agent artifact upload <file>` and give them the returned `coral://` link. Never give a bare local path** (`/tmp/shot.png`, `~/notes/report.md`, `file://...`). Users often view Coral through Coral Hub, from another computer, where a path on your machine doesn't open; other agents and other Corals can't open it either. The `coral://artifacts/<hex>` link opens in the Files preview wherever Coral is viewed. This applies to chat replies, board posts and task results alike. (A message to another Coral is text only and the link won't open there: artifacts stay on the Coral that stored them.)
 
 - Put the link in the message text next to a short description: `Screenshot of the settings page: coral://artifacts/<hex>`.
 - Upload before you post, so the link is valid when it is read. Uploads are immutable: upload again after changing the file.
@@ -49,7 +49,7 @@ The table has Name / Type / Created / Actions columns and fits its panel without
 ## Read an artifact someone else shared
 
 ```sh
-coral-agent artifact download coral://artifacts/<hex>
+coral-agent artifact download coral://artifacts/<hex> [--output FILE]   # flags go after the URI
 # prints a verified local path; open it with your file or image tool
 ```
 

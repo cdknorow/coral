@@ -61,7 +61,7 @@ Use the output names required by the task's workflow. Small reports can use an i
 
 ## Showing a file to the user
 
-Whenever an agent shows you a file (an image, a screenshot, a log or a review report), it uploads the file with `coral-agent artifact upload` and gives you the returned `coral://` link, not a local path. You may be viewing Coral through Coral Hub, from another computer, where a path on the agent's machine does not open. The `coral://` link opens in the Files preview wherever you view Coral. The same goes for files an agent shares in a board message or sends to another team.
+Whenever an agent shows you a file (an image, a screenshot, a log or a review report), it uploads the file with `coral-agent artifact upload` and gives you the returned `coral://` link, not a local path. You may be viewing Coral through Coral Hub, from another computer, where a path on the agent's machine does not open. The `coral://` link opens in the Files preview wherever you view Coral. The same goes for files an agent shares in a board message. A message sent to another Coral is text only, and artifacts stay on the Coral that stored them, so a link in it will not open there.
 
 Without a task, the returned URI/browser link can still open the uploaded file. Plain text, images, JSON and audio/video open in the browser; HTML, SVG, XML, JavaScript, PDF, Markdown and other types download instead, and no artifact can run script on the dashboard. Use **Preview** in Coral to view HTML and Markdown. It will not appear in **Artifacts** or **Team Artifacts** until attached to a task result. External URLs can be included as references, but Coral does not host their contents.
 
