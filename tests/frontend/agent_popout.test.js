@@ -439,6 +439,8 @@ async function run() {
     await httpJson('PUT', '/api/settings', { cli_path_claude: stubCLI });
     // Always undone, even if a step throws: the suites after this one share the shard (QA's review).
     let agentLaunch = null;
+    // Section C reuses the real resolver record from 33, so it is declared outside the try.
+    let realIdleResolve = {};
     try {
         agentLaunch = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'claude', display_name: 'Popout QA Agent' });
         const asid = agentLaunch.data && agentLaunch.data.session_id; const asname = agentLaunch.data && agentLaunch.data.session_name;
@@ -456,7 +458,7 @@ async function run() {
         // Denied: no tool event follows, the turn just ends, then the idle reminder.
         await postEvent('stop', 'Agent stopped: unknown');
         await postEvent('notification', 'Notification: Claude is waiting for your input');
-        const realIdleResolve = (await httpJson('GET', `/api/sessions/${asid}/resolve`)).data || {};
+        realIdleResolve = (await httpJson('GET', `/api/sessions/${asid}/resolve`)).data || {};
         const idleRow = await listRow();
         const idleStatus = (await httpJson('GET', `/api/sessions/${asid}/status`)).data || {};
         check('33 real server: turn ended + idle reminder is Ready for input in the resolver, never Needs input', realIdleResolve.waiting_for_input === false && realIdleResolve.awaiting_user === true && realIdleResolve.waiting_reason === null && realIdleResolve.waiting_summary === null && realIdleResolve.done === false, JSON.stringify(stateOf(realIdleResolve)));
