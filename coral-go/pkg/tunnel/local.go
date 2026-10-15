@@ -279,12 +279,31 @@ type LocalHandler struct {
 	lim    limiterOnce
 	once   sync.Once
 	client *http.Client
-	base   *url.URL
-	err    error
+	// timed is client with the hub request deadline as its ResponseHeaderTimeout, for every
+	// route but the long-lived ones (#3624).
+	timed *http.Client
+	base  *url.URL
+	err   error
 }
 
 func (l *LocalHandler) init() error {
-	l.once.Do(func() { l.client, l.base, l.err = NewLoopbackClient(l.BaseURL) })
+	l.once.Do(func() {
+		l.client, l.base, l.err = NewLoopbackClient(l.BaseURL)
+		if l.err != nil {
+			return
+		}
+		// The deadline is the transport's ResponseHeaderTimeout: it starts once the whole
+		// request, body included, has been written, so a slow upload through the hub isn't cut,
+		// and it can't fire after the headers are in (Security's SHOULD 1 and NIT on #3624).
+		l.timed = l.client
+		if tr, ok := l.client.Transport.(*http.Transport); ok {
+			t := tr.Clone()
+			t.ResponseHeaderTimeout = l.lim.get(l.HubLimits).deadline
+			c := *l.client
+			c.Transport = t
+			l.timed = &c
+		}
+	})
 	return l.err
 }
 
@@ -312,9 +331,6 @@ var forwardRequestHeaders = map[string]bool{
 	// POST /api/board/{project}/hub-notice, trusted only on a request this connector stamped.
 	"X-Coral-Hub-Notice": true,
 }
-
-// deadlineTimerKey carries a request's header deadline timer to the point its headers arrive.
-type deadlineTimerKey struct{}
 
 // HubUserHeader names the Coral Hub user behind a tunnel board write: the sender of a
 // chat post (#3377), and who acted when Coral Hub acts as the Operator (#3404).
@@ -505,15 +521,12 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		return
 	}
 	defer release()
-	if class != classLong {
-		// A stalled handler can't hold its slot: no response headers within the deadline
-		// cancels the request (the body, once it flows, isn't timed).
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithCancel(ctx)
-		defer cancel()
-		timer := time.AfterFunc(lm.deadline, cancel)
-		defer timer.Stop()
-		ctx = context.WithValue(ctx, deadlineTimerKey{}, timer)
+	// A stalled handler can't hold its slot: no response headers within the deadline after the
+	// whole request was sent cancels it (the reply body, once it flows, isn't timed). Long-lived
+	// routes keep their own timeouts.
+	client := l.timed
+	if class == classLong {
+		client = l.client
 	}
 	max := l.MaxRequestBody
 	if max <= 0 {
@@ -544,9 +557,9 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	if l.Authorize != nil {
 		l.Authorize(req.Header)
 	}
-	resp, err := l.client.Do(req)
-	timer, _ := ctx.Value(deadlineTimerKey{}).(*time.Timer)
-	if timer != nil && !timer.Stop() && err != nil {
+	resp, err := client.Do(req)
+	var ne net.Error
+	if err != nil && class != classLong && errors.As(err, &ne) && ne.Timeout() {
 		s.Reject(CodeUpstream, "local request took too long", 0)
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -196,4 +197,53 @@ func TestClassify(t *testing.T) {
 		assert.Equal(t, want, classify(KindHTTP, p), p)
 	}
 	assert.Equal(t, classLong, classify(KindWS, "/ws/terminal/x"))
+}
+
+// Security's SHOULD 1 on #3624: the deadline starts once the whole request has been sent, so a
+// slow upload through the hub is never cut; a handler that stalls AFTER the whole body arrived is
+// still cancelled at the deadline.
+func TestHubDeadlineStartsAfterTheBodyIsSent(t *testing.T) {
+	hub := newHub(t, fastCfg())
+	var stalled atomic.Int32
+	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if r.URL.Path == "/api/stall" {
+			stalled.Add(1)
+			<-r.Context().Done()
+			return
+		}
+		w.Write([]byte("got " + strconv.Itoa(len(b))))
+	}), func(l *LocalHandler) {
+		l.HubLimits = HubLimits{RequestDeadline: 300 * time.Millisecond}
+	})
+
+	// A body that takes over three deadlines to arrive, answered at once.
+	pr, pw := io.Pipe()
+	go func() {
+		for i := 0; i < 10; i++ {
+			pw.Write([]byte(strings.Repeat("x", 100)))
+			time.Sleep(100 * time.Millisecond)
+		}
+		pw.Close()
+	}()
+	req, _ := http.NewRequest("POST", "http://x/api/upload", pr)
+	req.ContentLength = 1000 // as the hub sends an upload: its length known, its bytes slow
+	start := time.Now()
+	resp, err := sess.RoundTrip(req)
+	require.NoError(t, err, "a slow upload is not cut by the deadline")
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, "got 1000", string(b))
+	assert.Greater(t, time.Since(start), 900*time.Millisecond, "the body really took longer than the deadline")
+
+	// The whole body arrives at once, then the handler stalls: cancelled at the deadline.
+	req, _ = http.NewRequest("POST", "http://x/api/stall", strings.NewReader("body"))
+	start = time.Now()
+	_, err = sess.RoundTrip(req)
+	var se *StreamError
+	require.ErrorAs(t, err, &se)
+	assert.Contains(t, se.Error(), "took too long")
+	assert.Less(t, time.Since(start), 3*time.Second)
+	assert.Equal(t, int32(1), stalled.Load())
 }
