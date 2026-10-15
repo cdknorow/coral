@@ -13,6 +13,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/cdknorow/coral/internal/loginlink"
 )
 
 // canOpenBrowser reports whether this machine can show a browser: false on a Linux
@@ -43,8 +44,13 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	printOnly := fs.Bool("print", false, "print the link instead of opening a browser")
 	base := fs.String("url", hooks.CoralBase(), "the running Coral server, on this computer")
 	home := fs.String("home", "", "Coral's data folder, if the server was started with --home")
+	page := fs.String("path", "/", "the dashboard page to open, e.g. /chats or /team/<board>")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: coral open [--print] [--url http://localhost:8420] [--home DIR]")
+		fmt.Fprintln(stderr, "usage: coral open [--print] [--path /page] [--url http://localhost:8420] [--home DIR]")
+		return 2
+	}
+	if !loginlink.ValidPage(*page) {
+		fmt.Fprintln(stderr, "coral open: --path must be a page of the dashboard, like /chats or /team/<board>")
 		return 2
 	}
 	c, code := newCloudClient(*base, *home, "open", stderr)
@@ -59,6 +65,6 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	if code := c.call(ctx, http.MethodPost, "/api/system/login-token", map[string]any{}, nil, 10*time.Second, &reply); code >= 0 {
 		return code
 	}
-	openDashboard(stdout, c.server+reply.Path, !*printOnly)
+	openDashboard(stdout, loginlink.OnPage(c.server+reply.Path, *page), !*printOnly)
 	return 0
 }

@@ -326,11 +326,12 @@ func main() {
 	// The session ended (or the server restarted with a new one) and the dashboard shows its
 	// sign-in page: ask Coral for a fresh link and sign in again, without a prompt. Only for
 	// this Coral's own sign-in page, and at most once every 30 s, so a page that keeps
-	// answering 403 can't loop. The link never reaches the page's script.
+	// answering 403 can't loop. The link never reaches the page's script. It lands on the page
+	// the sign-in page was asked for (its return_to), when that is a page of this dashboard (#3532).
 	baseOrigin := originOf(*url)
 	var lastSignIn time.Time
 	var signInMu sync.Mutex
-	w.Bind("_coralAppSignIn", func() {
+	w.Bind("_coralAppSignIn", func(page string) {
 		signInMu.Lock()
 		if time.Since(lastSignIn) < 30*time.Second {
 			signInMu.Unlock()
@@ -346,11 +347,12 @@ func main() {
 				log.Printf("[WEBVIEW] sign-in page shown; no new sign-in link: %v", err)
 				return
 			}
+			link = loginlink.OnPage(link, page)
 			log.Printf("[WEBVIEW] sign-in page shown; signing in again at %s", loginlink.Redact(link))
 			w.Dispatch(func() { w.Navigate(link) })
 		}()
 	})
-	w.Init(fmt.Sprintf(`(function(){ if (location.origin === %q && location.pathname === '/auth' && window._coralAppSignIn) window._coralAppSignIn(); })();`, baseOrigin))
+	w.Init(fmt.Sprintf(`(function(){ if (location.origin === %q && location.pathname === '/auth' && window._coralAppSignIn) window._coralAppSignIn(new URLSearchParams(location.search).get('return_to') || '/'); })();`, baseOrigin))
 
 	log.Printf("[WEBVIEW] navigating to %s", loginlink.Redact(startURL))
 	w.Navigate(startURL)

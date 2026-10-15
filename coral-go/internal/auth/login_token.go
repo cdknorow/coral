@@ -129,10 +129,12 @@ func (ks *KeyStore) handleLoginToken(w http.ResponseWriter, r *http.Request) boo
 		Name: cookieName, Value: session, Path: "/", MaxAge: int(sessionMaxAge.Seconds()),
 		HttpOnly: true, Secure: ks.overHTTPS(r), SameSite: http.SameSiteStrictMode,
 	})
-	// The same page without the token (a relative URL: never another host).
+	// The same page without the token (a relative URL: never another host), its path exactly as
+	// sent: the dashboard's pages carry names in the path, and a decoded one would change what the
+	// link means (%40 would read as the @server marker, %2F as a segment; #3532).
 	q := r.URL.Query()
 	q.Del(LoginTokenParam)
-	target := (&url.URL{Path: r.URL.Path, RawQuery: q.Encode()}).String()
+	target := (&url.URL{Path: r.URL.Path, RawPath: r.URL.RawPath, RawQuery: q.Encode()}).String()
 	if r.URL.Path == "" {
 		target = "/" + target
 	}

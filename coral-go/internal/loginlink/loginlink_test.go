@@ -37,3 +37,35 @@ func TestFromCLIOnlyAsksThisComputer(t *testing.T) {
 		assert.True(t, local(base), base)
 	}
 }
+
+// #3532: a sign-in link can land on a dashboard page; only a page of this dashboard is
+// accepted, and the token moves onto its query.
+func TestOnPage(t *testing.T) {
+	for _, ok := range []string{"/", "/chats", "/chats?q=x", "/team/@m2/qa/settings", "/board/%40odd", "/agents/6f9a3c1e-0000-4000-8000-000000000001/notes"} {
+		if !ValidPage(ok) {
+			t.Errorf("ValidPage(%q) = false", ok)
+		}
+	}
+	for _, bad := range []string{"", "chats", "//evil.example/x", "/\\evil.example", "https://evil.example/", "/chats#x",
+		"/x\r\nSet-Cookie: a=b", "/chats?login_token=abc", "/a\x00b"} {
+		if ValidPage(bad) {
+			t.Errorf("ValidPage(%q) = true", bad)
+		}
+	}
+	link := "http://127.0.0.1:8420/?login_token=t%2Bk"
+	for page, want := range map[string]string{
+		"/":                    link,
+		"/team/@m2/qa":         "http://127.0.0.1:8420/team/@m2/qa?login_token=t%2Bk",
+		"/board/%40odd":        "http://127.0.0.1:8420/board/%40odd?login_token=t%2Bk",
+		"/chats?q=x":           "http://127.0.0.1:8420/chats?q=x&login_token=t%2Bk",
+		"//evil.example/x":     link,
+		"https://evil.example": link,
+	} {
+		if got := OnPage(link, page); got != want {
+			t.Errorf("OnPage(%q) = %q, want %q", page, got, want)
+		}
+	}
+	if got := OnPage("http://127.0.0.1:8420/", "/chats"); got != "http://127.0.0.1:8420/" {
+		t.Errorf("a link without a token is unchanged, got %q", got)
+	}
+}

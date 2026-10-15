@@ -134,3 +134,32 @@ func HasToken(link string) bool {
 	u, err := url.Parse(link)
 	return err == nil && u.Query().Get(Param) != ""
 }
+
+// ValidPage reports whether page is a page of the dashboard: a path from its root ("/team/qa",
+// "/chats?q=x"), never another host ("//evil.example", "https://…"), a fragment or a token.
+// Coral serves the page or sends it home, so only the shape is checked (#3532).
+func ValidPage(page string) bool {
+	if !strings.HasPrefix(page, "/") || strings.HasPrefix(page, "//") || strings.ContainsAny(page, "\\#\x00\r\n") {
+		return false
+	}
+	u, err := url.Parse(page)
+	return err == nil && u.Scheme == "" && u.Host == "" && !u.Query().Has(Param)
+}
+
+// OnPage returns link with its token moved onto page of the same dashboard: opening it signs
+// in and lands on page (the server strips the token and keeps the path exactly as written).
+// link is returned unchanged when page is not a valid page or link has no token.
+func OnPage(link, page string) string {
+	if page == "" || page == "/" || !ValidPage(page) {
+		return link
+	}
+	u, err := url.Parse(link)
+	if err != nil || u.Query().Get(Param) == "" {
+		return link
+	}
+	sep := "?"
+	if strings.Contains(page, "?") {
+		sep = "&"
+	}
+	return u.Scheme + "://" + u.Host + page + sep + Param + "=" + url.QueryEscape(u.Query().Get(Param))
+}

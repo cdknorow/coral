@@ -53,6 +53,19 @@ func TestLoginToken(t *testing.T) {
 	assert.True(t, ks.ValidateSession(c[0].Value))
 
 	assert.Equal(t, http.StatusForbidden, get("/?login_token="+token, "127.0.0.1:1").Code, "single use")
+
+	// A dashboard page (#3532): the path comes back exactly as sent, escapes and all.
+	for _, page := range []string{"/team/@m2/qa/settings", "/board/%40odd", "/team/a%2Fb", "/chats?q=x"} {
+		tok, err := ks.MintLoginToken()
+		require.NoError(t, err)
+		sep := "?"
+		if strings.Contains(page, "?") {
+			sep = "&"
+		}
+		rec := get(page+sep+"login_token="+tok, "203.0.113.5:1234")
+		require.Equal(t, http.StatusFound, rec.Code, page)
+		assert.Equal(t, page, rec.Header().Get("Location"), page)
+	}
 	assert.Equal(t, http.StatusForbidden, get("/?login_token=made-up", "127.0.0.1:1").Code)
 
 	t2, err := ks.MintLoginToken()
