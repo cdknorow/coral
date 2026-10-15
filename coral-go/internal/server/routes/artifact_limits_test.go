@@ -370,3 +370,69 @@ func TestArtifactStreamedUploadFirstWriterWins(t *testing.T) {
 		require.Equal(t, os.FileMode(0o600), info.Mode().Perm(), p)
 	}
 }
+
+// tiffWith builds a little-endian TIFF whose IFDs hold the given tags (one SHORT value each).
+func tiffWith(ifds ...[]uint16) []byte {
+	out := []byte("II*\x00\x08\x00\x00\x00")
+	for i, tags := range ifds {
+		out = binary.LittleEndian.AppendUint16(out, uint16(len(tags)))
+		for _, tag := range tags {
+			out = binary.LittleEndian.AppendUint16(out, tag)
+			out = append(out, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0) // SHORT, count 1, value 1
+		}
+		next := uint32(0)
+		if i < len(ifds)-1 {
+			next = uint32(len(out) + 4)
+		}
+		out = binary.LittleEndian.AppendUint32(out, next)
+	}
+	return out
+}
+
+// Security's #3553 review (SHOULD 1): a TIFF with any tag beyond the pixel data is refused, in
+// any IFD of the chain; one with only pixel tags is stored.
+func TestTIFFOnlyPixelTags(t *testing.T) {
+	pixels := []uint16{0x0100, 0x0101, 0x0102, 0x0103, 0x0106, 0x0111, 0x0115, 0x0116, 0x0117, 0x011A, 0x011B, 0x0128}
+	assert.False(t, tiffHasMetadata(tiffWith(pixels)), "pixel tags only")
+	assert.False(t, tiffHasMetadata(tiffWith(pixels, pixels)), "two pages, pixel tags only")
+	for _, tag := range []uint16{0x010E, 0x010F, 0x0110, 0x0131, 0x0132, 0x013B, 0x013C, 0x8298, 0x83BB, 0x8649, 0x8769, 0x8825, 0x02BC} {
+		assert.True(t, tiffHasMetadata(tiffWith(append(append([]uint16{}, pixels...), tag))), "tag 0x%04X in the first IFD", tag)
+		assert.True(t, tiffHasMetadata(tiffWith(pixels, []uint16{0x0100, tag})), "tag 0x%04X in the second IFD", tag)
+	}
+	loop := tiffWith(pixels)
+	binary.LittleEndian.PutUint32(loop[len(loop)-4:], 8) // the next IFD points back at the first
+	assert.True(t, tiffHasMetadata(loop), "an IFD loop is unreadable")
+
+	rig := newArtifactRig(t)
+	code, out := rig.upload("s1", "clean.tif", "", bytes.NewReader(tiffWith(pixels)))
+	require.Equal(t, http.StatusCreated, code, out)
+	code, out = rig.upload("s1", "artist.tif", "", bytes.NewReader(tiffWith(append(append([]uint16{}, pixels...), 0x013B))))
+	require.Equal(t, http.StatusBadRequest, code, out)
+	require.Equal(t, "image_metadata", out["code"])
+}
+
+// Security's #3553 review (SHOULD 2): when the sidecar can't be created, the object just added is
+// removed again, so nothing unservable stays behind or counts against the store.
+func TestArtifactSidecarFailureLeavesNoObject(t *testing.T) {
+	rig := newArtifactRig(t)
+	body := []byte("no sidecar for these bytes " + t.Name())
+	id := sha(body)
+	require.NoError(t, os.MkdirAll(rig.object(id)+".json", 0o700)) // a folder where the sidecar goes
+	before, objects, _ := storeFor(rig.coralDir).size()
+	code, _ := rig.upload("s1", "x.txt", "text/plain", bytes.NewReader(body))
+	require.Equal(t, http.StatusInternalServerError, code)
+	_, err := os.Stat(rig.object(id))
+	require.True(t, os.IsNotExist(err), "the object is removed")
+	after, objectsAfter, _ := storeFor(rig.coralDir).size()
+	require.Equal(t, before, after)
+	require.Equal(t, objects, objectsAfter)
+}
+
+// QA's #3553 nit: sizes are rounded down and shown in bytes under 1 KiB, so "500 B of 600 B",
+// not "1 KiB of 1 KiB".
+func TestHumanBytes(t *testing.T) {
+	for n, want := range map[int64]string{0: "0 B", 500: "500 B", 1023: "1023 B", 1024: "1.0 KiB", 1535: "1.4 KiB",
+		(10 << 30) - 1: "9.9 GiB", 10 << 30: "10.0 GiB", 3 << 20: "3.0 MiB"} {
+		assert.Equal(t, want, humanBytes(n), n)
+	}
+}

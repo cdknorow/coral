@@ -232,8 +232,8 @@ type errImageMetadata string
 func (e errImageMetadata) Error() string { return string(e) }
 
 // cleanUploadedImage strips or refuses an image's metadata (finding 5): JPEG, PNG and GIF are
-// stripped without re-encoding (#3515's strippers); WebP, HEIF/AVIF and TIFF that carry EXIF or
-// XMP are refused (they can't be rewritten safely here). It returns the bytes to store and
+// stripped without re-encoding (#3515's strippers); WebP and HEIF/AVIF that carry EXIF or XMP,
+// and TIFF with any tag beyond the pixel data, are refused (they can't be rewritten safely here). It returns the bytes to store and
 // whether they changed. Anything that isn't an image is returned as is.
 func cleanUploadedImage(data []byte) ([]byte, bool, error) {
 	switch family := sniffImageFamily(data); family {
@@ -253,14 +253,31 @@ func cleanUploadedImage(data []byte) ([]byte, bool, error) {
 		}
 	case "image/tiff":
 		if tiffHasMetadata(data) {
-			return nil, false, errImageMetadata("this TIFF image carries EXIF, GPS or XMP metadata; export it as PNG or without metadata, and upload it again")
+			return nil, false, errImageMetadata("this TIFF image carries metadata (EXIF, GPS, XMP, or tags such as Artist, Make, Model, Software or a description); export it as PNG or without metadata, and upload it again")
 		}
 	}
 	return data, false, nil
 }
 
-// tiffHasMetadata reports whether a TIFF's first IFD points at an EXIF or GPS IFD or holds XMP
-// (tags 0x8769, 0x8825, 0x02BC). An IFD it can't read counts as carrying metadata.
+// tiffPixelTags are the TIFF tags that only describe the pixels (their layout, encoding,
+// colour and resolution). Any other tag (EXIF, GPS, XMP, IPTC, Photoshop, Artist, Copyright,
+// ImageDescription, Make, Model, Software, DateTime, HostComputer, ...) can hold names,
+// places or machine names, so a TIFF carrying one is refused (Security's #3553 review).
+var tiffPixelTags = map[uint16]bool{
+	0x00FE: true, 0x00FF: true, // NewSubfileType, SubfileType
+	0x0100: true, 0x0101: true, 0x0102: true, 0x0103: true, // width, height, bits per sample, compression
+	0x0106: true, 0x0107: true, 0x0108: true, 0x0109: true, 0x010A: true, // photometric, thresholding, cell size, fill order
+	0x0111: true, 0x0112: true, 0x0115: true, 0x0116: true, 0x0117: true, // strip offsets, orientation, samples per pixel, rows per strip, strip byte counts
+	0x0118: true, 0x0119: true, 0x011A: true, 0x011B: true, 0x011C: true, // min/max sample value, x/y resolution, planar configuration
+	0x0128: true, 0x013D: true, 0x013E: true, 0x013F: true, 0x0140: true, // resolution unit, predictor, white point, primaries, colour map
+	0x0142: true, 0x0143: true, 0x0144: true, 0x0145: true, // tile width, length, offsets, byte counts
+	0x0152: true, 0x0153: true, 0x0154: true, 0x0155: true, // extra samples, sample format, s min/max sample value
+	0x0156: true, 0x015B: true, // transfer range, JPEG tables
+	0x0211: true, 0x0212: true, 0x0213: true, 0x0214: true, // YCbCr coefficients, subsampling, positioning, reference black/white
+}
+
+// tiffHasMetadata reports whether any IFD of a TIFF (the chain from the header, bounded) has a
+// tag outside tiffPixelTags. A structure it can't read counts as carrying metadata.
 func tiffHasMetadata(data []byte) bool {
 	if len(data) < 8 {
 		return true
@@ -270,18 +287,21 @@ func tiffHasMetadata(data []byte) bool {
 		bo = binary.BigEndian
 	}
 	off := int(bo.Uint32(data[4:8]))
-	if off < 8 || off+2 > len(data) {
-		return true
-	}
-	n := int(bo.Uint16(data[off : off+2]))
-	if off+2+n*12 > len(data) {
-		return true
-	}
-	for i := 0; i < n; i++ {
-		switch bo.Uint16(data[off+2+i*12:]) {
-		case 0x8769, 0x8825, 0x02BC:
+	for ifds := 0; off != 0; ifds++ {
+		if ifds >= 64 || off < 8 || off+2 > len(data) {
 			return true
 		}
+		n := int(bo.Uint16(data[off : off+2]))
+		end := off + 2 + n*12
+		if end+4 > len(data) {
+			return true
+		}
+		for i := 0; i < n; i++ {
+			if !tiffPixelTags[bo.Uint16(data[off+2+i*12:])] {
+				return true
+			}
+		}
+		off = int(bo.Uint32(data[end : end+4]))
 	}
 	return false
 }

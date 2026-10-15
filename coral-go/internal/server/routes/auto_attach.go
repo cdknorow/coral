@@ -199,9 +199,17 @@ func (a *AutoAttacher) Rewrite(ctx context.Context, project, sessionID, sessionN
 						res = result{prev}
 						break
 					}
-					if !storeFor(a.coralDir).fits(int64(len(data))) {
-						// The store is at its cap (artifact_store_max_bytes, #3553): leave the link
-						// as written (nothing charged), say so once, and never fail the agent's turn.
+					err = a.charge(sessionID, int64(len(data)))
+				}
+				if err == nil {
+					var hexID string
+					hexID, _, err = storeArtifact(a.coralDir, sessionID, attachName(filepath.Base(real)), mediaType, data)
+					switch {
+					case errors.Is(err, errStoreFull):
+						// The store is at its cap (artifact_store_max_bytes, #3553; storeArtifact
+						// decides, and a duplicate is never refused): leave the link as written, give
+						// the charge back, say so once, and never fail the agent's turn.
+						a.refund(sessionID, int64(len(data)))
 						a.mu.Lock()
 						first := !a.storeFullLogged
 						a.storeFullLogged = true
@@ -210,14 +218,7 @@ func (a *AutoAttacher) Rewrite(ctx context.Context, project, sessionID, sessionN
 							slog.Warn("[auto-attach] the artifact store is at its cap (artifact_store_max_bytes); files are left as written until the Operator deletes artifacts or raises the cap")
 						}
 						err = errAttach("store_full")
-					} else {
-						err = a.charge(sessionID, int64(len(data)))
-					}
-				}
-				if err == nil {
-					var hexID string
-					hexID, _, err = storeArtifact(a.coralDir, sessionID, attachName(filepath.Base(real)), mediaType, data)
-					if err == nil {
+					case err == nil:
 						res = result{hexID}
 						byReal[real] = hexID
 						files++
@@ -302,6 +303,19 @@ func (a *AutoAttacher) charge(sessionID string, n int64) error {
 		_ = os.WriteFile(a.totalFile(), []byte(strconv.FormatInt(a.total, 10)), 0o600)
 	}
 	return nil
+}
+
+// refund gives back a charge for a file that wasn't stored after all (the store's cap).
+func (a *AutoAttacher) refund(sessionID string, n int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if u := a.windows[sessionID]; u != nil {
+		u.bytes = max(u.bytes-n, 0)
+	}
+	a.total = max(a.total-n, 0)
+	if err := os.MkdirAll(filepath.Dir(a.totalFile()), 0o700); err == nil {
+		_ = os.WriteFile(a.totalFile(), []byte(strconv.FormatInt(a.total, 10)), 0o600)
+	}
 }
 
 func (a *AutoAttacher) usage(sessionID string) *attachUsage {

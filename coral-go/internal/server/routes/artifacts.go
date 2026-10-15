@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -158,10 +159,16 @@ func storeArtifact(coralDir, sessionID, name, mediaType string, data []byte) (st
 	}
 	objectPath := filepath.Join(dir, hexID)
 	if _, err := os.Stat(objectPath); os.IsNotExist(err) {
+		// The store's cap (#3553) is decided here, for new objects only: bytes already stored
+		// are never refused.
+		st := storeFor(coralDir)
+		if !st.fits(int64(len(data))) {
+			return "", mine, errStoreFull
+		}
 		if err := writeFileAtomic(objectPath, data, 0o600); err != nil {
 			return "", mine, err
 		}
-		storeFor(coralDir).added(int64(len(data)))
+		st.added(int64(len(data)))
 	}
 	stored, err := createSidecarOnce(objectPath+".json", mine)
 	if err != nil {
@@ -415,7 +422,12 @@ func storeArtifactFile(coralDir, sessionID, name, mediaType, tmpPath, hexID stri
 	// in its own upload record.
 	stored, err := createSidecarOnce(objectPath+".json", mine)
 	if err != nil {
-		return mine, fresh, err
+		// An object without a sidecar can't be served (GET is 404) but would still count
+		// against the store: remove the one just added (Security's #3553 review).
+		if fresh && os.Remove(objectPath) == nil {
+			st.removed(size)
+		}
+		return mine, false, err
 	}
 	if up := uploadsDir(coralDir, sessionID); up != "" {
 		if os.MkdirAll(up, 0o700) == nil {
@@ -451,14 +463,21 @@ func artifactRefusal(w http.ResponseWriter, status int, code, limit, msg string)
 	writeJSON(w, status, body)
 }
 
+// humanBytes shows a size rounded down (so a store just under its cap never reads as full):
+// bytes under 1 KiB, else KiB, MiB or GiB to one decimal.
 func humanBytes(n int64) string {
+	unit := func(div float64, name string) string {
+		return fmt.Sprintf("%.1f %s", math.Floor(float64(n)/div*10)/10, name)
+	}
 	switch {
 	case n >= 1<<30:
-		return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
+		return unit(1<<30, "GiB")
 	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+		return unit(1<<20, "MiB")
+	case n >= 1<<10:
+		return unit(1<<10, "KiB")
 	}
-	return fmt.Sprintf("%d KiB", (n+1023)>>10)
+	return fmt.Sprintf("%d B", n)
 }
 
 // deleteArtifactFiles removes an artifact's object, its sidecar and every upload record of it,
