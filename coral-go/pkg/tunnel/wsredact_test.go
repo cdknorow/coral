@@ -297,7 +297,13 @@ func TestWSRedactThroughTheTunnel(t *testing.T) {
 	tok := fake("ghp_", 36, alnum)
 	feed, _ := json.Marshal(map[string]string{"type": "coral_update", "output": "export GITHUB_TOKEN=" + tok})
 	inputs := make(chan string, 4)
+	capture, _ := json.Marshal(map[string]string{"output": "$ gh auth token\r\n\x1b[1;32m" + tok + "\x1b[0m\r\n$ "})
 	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/sessions/live/a/capture" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(capture)
+			return
+		}
 		c, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return
@@ -362,7 +368,115 @@ func TestWSRedactThroughTheTunnel(t *testing.T) {
 	assert.Contains(t, text, RedactMarker)
 	assert.True(t, json.Valid([]byte(text)))
 
+	// #3560's capture, already shipped: a token in colour is redacted too (QA's #3562 finding).
+	resp := do(t, sess, "GET", "/api/sessions/live/a/capture", "", strings.NewReader(""), nil)
+	var cap map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&cap))
+	resp.Body.Close()
+	assert.Equal(t, "$ gh auth token\r\n\x1b[1;32m"+RedactMarker+"\x1b[0m\r\n$ ", cap["output"])
+
 	redactOn.Store(false)
 	_, text = readAll("/ws/coral", 1)
 	assert.Contains(t, text, tok, "the setting off: unchanged")
+}
+
+// QA's and Security's #3562 finding: a token right after a terminal colour code was missed
+// (the code's final 'm' read as a word character before the prefix). Every colour form, before
+// and after every kind of token, is redacted: as raw terminal bytes, as JSON writes them
+// (capture and poll, "\u001b[..."), whole and split at every byte, and through the terminal
+// stream's frames.
+func TestRedactAfterColourCodes(t *testing.T) {
+	forms := []string{
+		"\x1b[1;32m", "\x1b[32m", "\x1b[38;5;208m", "\x1b[38;2;255;100;0m", "\x1b[1m", "\x1b[0m\x1b[1m",
+		"\x1b[2K\r", "\x1b]0;a title\x07", "\x1b]8;;https://example.test\x1b\\", "\x1b[4:3m", "\x1b[?25l",
+	}
+	val := fake("", 40, alnum)
+	jwt := fake("eyJ", 60, alnum+".")
+	type tc struct{ in, want string }
+	var cases []tc
+	for _, f := range forms {
+		for _, tok := range []string{fake("ghp_", 36, alnum), fake("github_pat_", 30, alnum), fake("sk-", 30, alnum), fake("AKIA", 16, upper), fake("xoxb-", 20, alnum)} {
+			cases = append(cases, tc{"key: " + f + tok + "\x1b[0m end", "key: " + f + RedactMarker + "\x1b[0m end"})
+		}
+		cases = append(cases, tc{"x " + f + pemKey("RSA ", 2, "\r\n") + "\x1b[0m y", "x " + f + RedactMarker + "\x1b[0m y"})
+		if strings.HasPrefix(f, "\x1b[") && strings.Count(f, "\x1b") == len(f)-len(strings.ReplaceAll(f, "\x1b", "")) && !strings.ContainsAny(f, "\r\a]") {
+			// Colour codes between a scheme and its value (the glue takes spaces and CSI codes).
+			cases = append(cases,
+				tc{"Authorization: " + f + "Bearer" + f + " " + jwt + "\x1b[0m", "Authorization: " + f + "Bearer" + f + " " + RedactMarker + "\x1b[0m"},
+				tc{"curl -H " + f + "Bearer " + f + val + "\x1b[0m", "curl -H " + f + "Bearer " + f + RedactMarker + "\x1b[0m"},
+				// Only the Authorization glue can catch these (no Bearer).
+				tc{"Authorization:" + f + " " + val + "\x1b[0m", "Authorization:" + f + " " + RedactMarker + "\x1b[0m"},
+				tc{"Authorization: " + f + "Basic" + f + " " + val + "\x1b[0m", "Authorization: " + f + "Basic" + f + " " + RedactMarker + "\x1b[0m"},
+			)
+		}
+	}
+	for _, c := range cases {
+		// Raw terminal bytes, whole and split at every byte.
+		require.Equal(t, c.want, string(RedactTokens([]byte(c.in))), "%q", c.in)
+		in := []byte(c.in)
+		for split := 0; split <= len(in); split++ {
+			var out bytes.Buffer
+			r := NewRedactor(&out)
+			_, _ = r.Write(in[:split])
+			_, _ = r.Write(in[split:])
+			require.NoError(t, r.Close())
+			require.Equal(t, c.want, out.String(), "%q split at %d", c.in, split)
+		}
+		// As JSON writes it (capture, poll): ESC is "\u001b".
+		j, _ := json.Marshal(map[string]string{"output": c.in})
+		var back map[string]string
+		got := RedactTokens(j)
+		require.True(t, json.Valid(got), "%s", got)
+		require.NoError(t, json.Unmarshal(got, &back))
+		require.Equal(t, c.want, back["output"], "JSON %s", j)
+		for split := 0; split <= len(j); split += 3 {
+			var out bytes.Buffer
+			r := NewRedactor(&out)
+			_, _ = r.Write(j[:split])
+			_, _ = r.Write(j[split:])
+			require.NoError(t, r.Close())
+			require.Equal(t, string(got), out.String(), "JSON %s split at %d", j, split)
+		}
+	}
+	// Through the terminal stream, a frame boundary at every byte.
+	for _, c := range cases[:12] {
+		in := []byte(c.in)
+		for split := 1; split < len(in); split++ {
+			dst := &wsRecorder{}
+			w := newWSRedact(context.Background(), dst, func() bool { return true }, true)
+			require.NoError(t, w.write(websocket.MessageBinary, in[:split]))
+			require.NoError(t, w.write(websocket.MessageBinary, in[split:]))
+			w.close()
+			require.Equal(t, c.want, dst.binary(), "%q frames split at %d", c.in, split)
+		}
+	}
+	// Still not caught, as the docs say: an escape code inside a token.
+	tok := fake("ghp_", 36, alnum)
+	inside := "key: " + tok[:10] + "\x1b[1m" + tok[10:]
+	assert.Equal(t, inside, string(RedactTokens([]byte(inside))))
+}
+
+// Security's #3562 SHOULD 1: a prefix's first letters are held only where a token could start,
+// so typing through the hub echoes letters in the middle of a word at once.
+func TestRedactHoldsOnlyWordStarts(t *testing.T) {
+	held := func(typed string) string {
+		var out bytes.Buffer
+		r := NewRedactor(&out)
+		var h strings.Builder
+		for i := 0; i < len(typed); i++ {
+			_, _ = r.Write([]byte{typed[i]})
+			if out.Len() <= i {
+				h.WriteByte(typed[i])
+			} else {
+				h.WriteByte('.')
+			}
+		}
+		require.NoError(t, r.Close())
+		require.Equal(t, typed, out.String())
+		return h.String()
+	}
+	// Each '.' echoed at once; a letter is held while it could start a token.
+	assert.Equal(t, "......b....a.", held("class bash ax"), "only word-initial b (bearer) and a (authorization) wait; mid-word s, a, h and x echo at once")
+	assert.Equal(t, "g.", held("go"), "a word-initial 'g' could start ghp_")
+	assert.Equal(t, ".....s", held("\x1b[32ms"), "after a colour code a letter starts a word")
 }

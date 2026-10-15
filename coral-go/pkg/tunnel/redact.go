@@ -48,16 +48,17 @@ func isCredValue(c byte) bool {
 }
 
 // authGlue measures what follows "authorization" up to its value: an optional closing quote,
-// spaces, ':' or '=', spaces, an optional opening quote, and an optional scheme word and one
-// space. -1: not an Authorization value; -2: the buffer ended before that could be told. scheme
-// reports whether a scheme word came before the value.
+// spaces, ':' or '=', spaces, an optional opening quote, and an optional scheme word and a
+// space. Terminal escape codes (colour) may sit anywhere a space may (#3562). -1: not an
+// Authorization value; -2: the buffer ended before that could be told. scheme reports whether
+// a scheme word came before the value.
 func authGlue(b []byte) (n int, scheme bool) {
 	i := 0
 	if i < len(b) && (b[i] == '"' || b[i] == '\'') {
 		i++
 	}
-	for i < len(b) && b[i] == ' ' {
-		i++
+	if i = skipGap(b, i); i < 0 {
+		return i, false
 	}
 	if i >= len(b) {
 		return -2, false
@@ -65,9 +66,8 @@ func authGlue(b []byte) (n int, scheme bool) {
 	if b[i] != ':' && b[i] != '=' {
 		return -1, false
 	}
-	i++
-	for i < len(b) && b[i] == ' ' {
-		i++
+	if i = skipGap(b, i+1); i < 0 {
+		return i, false
 	}
 	if i < len(b) && (b[i] == '"' || b[i] == '\'') {
 		i++
@@ -79,13 +79,113 @@ func authGlue(b []byte) (n int, scheme bool) {
 	if j == len(b) {
 		return -2, false
 	}
-	if j > i && j-i <= 16 && b[j] == ' ' {
-		i, scheme = j+1, true
+	if j > i && j-i <= 16 {
+		if k := skipGap(b, j); k == -2 || k == len(b) {
+			return -2, false // the gap after the scheme word may go on in the next chunk
+		} else if k > j && hasSpace(b[j:k]) {
+			i, scheme = k, true
+		}
 	}
 	if i >= len(b) {
 		return -2, false
 	}
 	return i, scheme
+}
+
+// bearerGlue: after "Bearer", spaces (at least one) and any escape codes, up to the value.
+func bearerGlue(b []byte) (n int, scheme bool) {
+	i := skipGap(b, 0)
+	switch {
+	case i < 0:
+		return i, false
+	case i >= len(b):
+		return -2, false
+	case !hasSpace(b[:i]):
+		return -1, false
+	}
+	return i, true
+}
+
+// maxGap bounds the spaces and escape codes skipped between a scheme and its value.
+const maxGap = 64
+
+// skipGap skips spaces and terminal escape codes from b[i]: the index after them, -2 when b
+// ends inside an escape code, or -1 when the gap runs past maxGap.
+func skipGap(b []byte, i int) int {
+	start := i
+	for i < len(b) {
+		if i-start > maxGap {
+			return -1
+		}
+		if b[i] == ' ' {
+			i++
+			continue
+		}
+		n := escLen(b[i:])
+		if n == -2 {
+			return -2
+		}
+		if n == 0 {
+			break
+		}
+		i += n
+	}
+	return i
+}
+
+func hasSpace(b []byte) bool {
+	for k := 0; k < len(b); k++ {
+		if b[k] == ' ' {
+			return true
+		}
+		if n := escLen(b[k:]); n > 0 {
+			k += n - 1
+		}
+	}
+	return false
+}
+
+// escLen is the length of the terminal escape code (a CSI: ESC '[' parameters intermediates
+// final) at the start of b, raw or as JSON writes it ("\u001b[..."); 0 when b doesn't start
+// one, -2 when b ends inside one.
+func escLen(b []byte) int {
+	i := 0
+	switch {
+	case len(b) > 0 && b[0] == 0x1b:
+		i = 1
+	case len(b) > 0 && b[0] == '\\':
+		const esc = "\\u001b"
+		for k := 1; k < len(esc); k++ {
+			if k >= len(b) {
+				return -2
+			}
+			if c := b[k] | 0x20; c != esc[k]|0x20 {
+				return 0
+			}
+		}
+		i = len(esc)
+	default:
+		return 0
+	}
+	if i >= len(b) {
+		return -2
+	}
+	if b[i] != '[' {
+		return 0
+	}
+	for i++; i < len(b) && i < maxGap; i++ {
+		c := b[i]
+		if c >= 0x40 && c <= 0x7e {
+			return i + 1
+		}
+		if c < 0x20 || c > 0x3f {
+			return 0
+		}
+	}
+	if i >= len(b) {
+		return -2
+	}
+	return 0
 }
 
 var tokenRules = []tokenRule{
@@ -94,7 +194,7 @@ var tokenRules = []tokenRule{
 	{prefixes: []string{"sk-"}, class: isB64URL, min: 20, max: 255, notAfter: isB64URL},
 	{prefixes: []string{"AKIA", "ASIA"}, class: isUpperDigit, min: 16, max: 16, exact: true, notAfter: isAlnum},
 	{prefixes: []string{"xoxa-", "xoxb-", "xoxp-", "xoxr-", "xoxs-"}, class: isAlnumDash, min: 10, max: 255, notAfter: isWord},
-	{prefixes: []string{"Bearer ", "bearer ", "BEARER "}, class: isCredValue, min: 20, max: 512, keep: true, notAfter: isWord},
+	{prefixes: []string{"Bearer", "bearer", "BEARER"}, glue: bearerGlue, class: isCredValue, min: 20, max: 512, keep: true, notAfter: isWord},
 	{prefixes: []string{"Authorization", "authorization", "AUTHORIZATION"}, glue: authGlue, class: isCredValue, min: 8, max: 512, keep: true, notAfter: isWord},
 }
 
@@ -324,7 +424,7 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 			if final {
 				return append(out, data[i:]...), len(data)
 			}
-			cut := len(data) - partialPrefixTail(data[i:])
+			cut := len(data) - st.partialTail(i)
 			return append(out, data[i:cut]...), cut
 		}
 		out = append(out, data[i:start]...)
@@ -375,8 +475,9 @@ type starts struct {
 	lits []startLit
 }
 
-// escapeContext is how many bytes before a token the boundary rule looks at (a \uXXXX escape).
-const escapeContext = 6
+// escapeContext is how many bytes before a token the boundary rule looks at: a \uXXXX
+// escape, or a terminal escape code ending right before it (a 24-bit colour is ~20 bytes).
+const escapeContext = 40
 
 type startLit struct {
 	anchor []byte
@@ -409,8 +510,8 @@ var startAnchors = func() []startLit {
 	add("AKIA", 0, &tokenRules[3])
 	add("ASIA", 0, &tokenRules[3])
 	add("xox", 0, &tokenRules[4])
-	add("earer ", 1, &tokenRules[5])
-	add("EARER ", 1, &tokenRules[5])
+	add("earer", 1, &tokenRules[5])
+	add("EARER", 1, &tokenRules[5])
 	add("uthorization", 1, &tokenRules[6])
 	add("UTHORIZATION", 1, &tokenRules[6])
 	add("-----BEGIN ", 0, nil)
@@ -498,7 +599,37 @@ func (s *starts) boundaryOK(at int, ru *tokenRule) bool {
 			return hex
 		}
 	}
-	return false
+	return s.escapeEndsBefore(at)
+}
+
+// escapeEndsBefore: the bytes right before data[at] end a terminal escape code (a CSI: ESC '['
+// parameters intermediates final, raw or as JSON writes it, "\u001b[1;32m"), so in the text
+// a token starting there starts a word (#3562: coloured output is the normal case).
+func (s *starts) escapeEndsBefore(at int) bool {
+	c, ok := s.byteBefore(at, 1)
+	if !ok || c < 0x40 || c > 0x7e {
+		return false
+	}
+	k := 2
+	for ; k <= escapeContext; k++ {
+		if c, ok = s.byteBefore(at, k); !ok || c < 0x20 || c > 0x3f {
+			break
+		}
+	}
+	if !ok || c != '[' {
+		return false
+	}
+	if e, _ := s.byteBefore(at, k+1); e == 0x1b {
+		return true
+	}
+	const esc = "\\u001b"
+	for j := 0; j < len(esc); j++ {
+		e, ok := s.byteBefore(at, k+len(esc)-j)
+		if !ok || e|0x20 != esc[j]|0x20 {
+			return false
+		}
+	}
+	return true
 }
 
 // match reports the token at b, which starts with one of the rule's prefixes: its length so far,
@@ -620,12 +751,22 @@ func pemClose(b []byte, final bool) (end int, found bool, hold int) {
 	return 0, false, partialSuffix(b, pemEnd)
 }
 
-// partialPrefixTail is how many trailing bytes of b might begin a prefix or a PEM BEGIN.
-func partialPrefixTail(b []byte) int {
+// partialTail is how many trailing bytes of data (from i on) might begin a prefix or a PEM
+// BEGIN, and so are held back. A prefix's first letters are held only where its boundary
+// holds (Security's #3562 SHOULD 1): letters in the middle of a word can't start a token, so
+// they go out at once, which keeps a terminal's echo prompt.
+func (s *starts) partialTail(i int) int {
+	b := s.data[i:]
 	n := partialSuffix(b, pemBegin)
-	for _, ru := range tokenRules {
+	for k := range tokenRules {
+		ru := &tokenRules[k]
 		for _, pre := range ru.prefixes {
-			n = max(n, partialSuffix(b, []byte(pre)))
+			for m := min(len(pre)-1, len(b)); m > n; m-- {
+				if bytes.HasSuffix(b, []byte(pre[:m])) && s.boundaryOK(len(s.data)-m, ru) {
+					n = m
+					break
+				}
+			}
 		}
 	}
 	return n
