@@ -21,6 +21,10 @@
 // fail the suites after it. The attempt is reported as TIMEOUT. A shard whose Chrome or server died
 // between suites is replaced the same way.
 //
+// Linux: the whole run is in a private network namespace with only loopback when the user may create
+// one (unshare), so the host's address changes can't cancel Chrome's requests (#3466); CDP_NETNS=0 turns
+// that off. CDP_NETLOG=1 has each shard's Chrome write its network log to <shard>/netlog.json.
+//
 // --retries N (default 1): a failed or timed-out suite is run again, up to N more times, each time on a
 // fresh Coral server and Chrome (its shard is replaced first). A suite that
 // passes only on a retry is FLAKY: it is listed separately in the summary and is NOT counted as passed.
@@ -67,6 +71,31 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifySuites, problems } from './suites.mjs';
+
+// Linux: the run goes in a private network namespace with only loopback (#3466). Chrome cancels
+// every request in flight, even to 127.0.0.1, when the host's addresses change (ERR_NETWORK_CHANGED;
+// on epoch, IPv6 temporary-address renewals every few minutes), so a page loading its modules then
+// failed with "Failed to fetch dynamically imported module". In its own namespace no change reaches
+// Chrome. The runner runs itself again under unshare (same user, no root: --map-current-user), brings
+// loopback up, and drops the namespace's capabilities before node starts. Where namespaces aren't
+// allowed (CI's Ubuntu 24.04 restricts them) it says so and runs as before. CDP_NETNS=0 turns it off.
+if (process.platform === 'linux' && !process.env.CDP_NETNS_INNER && process.env.CDP_NETNS !== '0') {
+  const ns = ['--net', '--map-current-user', '--keep-caps'];
+  const probe = spawnSync('unshare', [...ns, 'ip', 'link', 'set', 'lo', 'up'], { stdio: 'ignore' });
+  if (probe.status === 0) {
+    // The namespace has no network, and the run builds Coral inside it: fetch the Go modules first
+    // (nothing to do when they're already in the module cache).
+    spawnSync('go', ['mod', 'download'], { cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../coral-go'), stdio: 'inherit' });
+    const inner = spawn('unshare', [...ns, 'sh', '-c', 'ip link set lo up && exec setpriv --inh-caps=-all --ambient-caps=-all -- "$@"',
+      'sh', process.execPath, ...process.argv.slice(1)], { stdio: 'inherit', env: { ...process.env, CDP_NETNS_INNER: '1' } });
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => inner.kill(sig));
+    const code = await new Promise(resolve => inner.on('exit', (c, sig) => resolve(c ?? 128 + (os.constants.signals[sig] || 0))));
+    process.exit(code);
+  }
+  console.log('note: no private network namespace (unshare --net --map-current-user failed); a change of the host\'s ' +
+    'addresses can fail page loads (ERR_NETWORK_CHANGED, #3466). CDP_NETNS=0 hides this note.');
+}
+if (process.env.CDP_NETNS_INNER) console.log('network: a private namespace with only loopback (#3466; CDP_NETNS=0 turns it off)');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const goDir = path.resolve(here, '../../coral-go');
@@ -256,7 +285,9 @@ async function startShard(n, gen = 0) {
   const profile = path.join(dir, 'profile');
   const chromeArgs = ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
     '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1400,900',
-    ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []), 'about:blank'];
+    ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
+    // CDP_NETLOG=1: Chrome writes its network log to <shard>/netlog.json, to see why a request failed.
+    ...(process.env.CDP_NETLOG ? [`--log-net-log=${path.join(dir, 'netlog.json')}`] : []), 'about:blank'];
   const chrome = spawn(chromePath, chromeArgs, { stdio: ['ignore', 'ignore', 'pipe'], detached: true });
   track(chrome);
   let chromeErr = '';

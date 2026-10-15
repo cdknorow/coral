@@ -7,10 +7,25 @@ const CDP = require('chrome-remote-interface');
 
 async function connect() {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
-    const { Page, Runtime, Emulation } = client;
+    const { Page, Runtime, Emulation, Network } = client;
+    // Static files that failed to load (#3466): a module the page couldn't fetch fails every later
+    // import() of it too, so a "Failed to fetch dynamically imported module" says nothing about why.
+    // Record each /static/ request that failed or answered >= 400, and add them to that error.
+    const staticFailures = [];
+    const staticUrls = new Map();
+    try {
+        await Network.enable();
+        Network.requestWillBeSent(e => { if (e.request.url.includes('/static/')) staticUrls.set(e.requestId, e.request.url); });
+        Network.responseReceived(e => { if (e.response.status >= 400 && staticUrls.has(e.requestId)) staticFailures.push(`${e.response.status} ${staticUrls.get(e.requestId)}`); });
+        Network.loadingFailed(e => { if (staticUrls.has(e.requestId)) staticFailures.push(`${e.errorText}${e.canceled ? ' (canceled)' : ''}${e.blockedReason ? ' blocked:' + e.blockedReason : ''} ${staticUrls.get(e.requestId)}`); });
+    } catch { /* diagnostics only */ }
     const ev = async expression => {
         const result = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true });
-        if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+        if (result.exceptionDetails) {
+            const text = JSON.stringify(result.exceptionDetails);
+            const why = /dynamically imported module/.test(text) && staticFailures.length ? `\nstatic files that failed to load: ${staticFailures.slice(-8).join(' | ')}` : '';
+            throw new Error(text + why);
+        }
         return result.result.value;
     };
     const waitFor = async (expression, what, timeoutMs = 5000, diag = null) => {
