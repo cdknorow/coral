@@ -120,4 +120,26 @@ assert.equal(nav.backIs({ view: 'agents' }), true, 'a replace keeps where the en
 assert.equal(nav.backIs({ view: 'chats' }), false);
 assert.equal(nav.backIs({ view: 'team', id: '..' }), false, 'an invalid route is never Back');
 
+// After the first load a hash is a fragment, never a route (Security, #3532): a #team-view=x link
+// clicked in a post (a same-document entry) drives nothing, on Forward or Back.
+{
+    const fb = fakeBrowser('/chats');
+    const n2 = await import('../../coral-go/pkg/frontend/static/nav.js?' + Math.random());
+    const seen = [];
+    for (const v of ['agents', 'chats', 'team']) n2.onRoute(v, r => seen.push(r.view));
+    n2.startNav();
+    seen.length = 0;
+    history.pushState(null, '', '/chats#team-view=evil'); // what clicking the link adds
+    fb.back();
+    fb.forward();
+    assert.deepEqual(seen, [], 'the fragment entry showed nothing');
+    assert.deepEqual(n2.currentRoute(), { view: 'chats', query: '' }, 'still the Chats list');
+    history.pushState(null, '', '/agents#team-view=evil');
+    fb.back();
+    fb.forward();
+    assert.deepEqual(seen, ['agents'], 'Back to the /chats fragment entry shows nothing; Forward to a different PATH shows it, hash ignored');
+    assert.equal(n2.currentRoute().view, 'agents');
+    assert.deepEqual(n2.startRoute({ pathname: '/', search: '', hash: '#team-view=qa' }).view, 'team', 'the first load still reads an old link');
+}
+
 console.log('nav_unit: ok');

@@ -204,6 +204,19 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await open(`/board/${board}`);
         await until(`(document.getElementById('messageboard-project-badge') || {}).textContent === ${JSON.stringify(board)}`, 'the board');
         check('/board/<name> opens the board', (await ev(shown('messageboard-view'))) && (await url()) === `/board/${board}`, await url());
+        // A #team-view=x link in a post is a fragment, never a route (Security, #3532): clicking it
+        // leaves the board's page and view as they are.
+        await api('POST', `/api/board/${board}/subscribe`, { subscriber_id: 'Routes QA', job_title: 'QA' });
+        await api('POST', `/api/board/${board}/messages`, { subscriber_id: 'Routes QA', content: 'see [the team](#team-view=evil) here' });
+        await open(`/board/${board}`);
+        const frag = `[...document.querySelectorAll('#messageboard-view .mb-message-body a')].find(a => (a.getAttribute('href') || '').includes('team-view'))`;
+        await until(`!!(${frag})`, 'the posted link');
+        await ev(`(${frag}).click(); true`);
+        await until(`location.hash === '#team-view=evil'`, 'the fragment applied', 3000);
+        await new Promise(r => setTimeout(r, 300)); // sleep-ok: a negative check, the router must NOT react
+        const after = await ev(`({ path: location.pathname, board: ${shown('messageboard-view')}, team: !!(document.getElementById('team-center-view') && !document.getElementById('team-center-view').hidden) })`);
+        check('a #team-view= link in a post drives nothing', after.path === `/board/${board}` && after.board && !after.team, JSON.stringify(after));
+
         // "../../api" is a legal name: encoded, it stays one segment under /api/board/.
         const climb = '../../api';
         boards.push(climb);

@@ -89,7 +89,12 @@ export function startNav() {
         // The URL is the truth: the route is parsed from the location every time, never taken
         // from history.state, which may come from an older Coral, a restored session or a
         // tampered entry (Security; an old-shape state would otherwise read as a different view).
-        const r = startRoute();
+        // Old hash links are read only at the first load (startRoute): after that a hash is a
+        // fragment, never a route, so a #team-view=x link clicked in a post can't drive the
+        // dashboard (Security, #3532). Only the path and query are read here, and a change that
+        // leaves them as they are (a fragment click) shows nothing new.
+        const r = parse(location.pathname, location.search) || { view: 'agents' };
+        if (current && build(r) === build(current)) return;
         current = r;
         show(r, { fromHistory: true });
     });
