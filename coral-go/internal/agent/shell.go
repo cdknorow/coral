@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 )
 
 // ShellType identifies the type of shell being used for agent sessions.
@@ -87,31 +88,61 @@ func appBundleBinDir() string {
 	return ""
 }
 
-// CoralToolsDir returns the directory containing coral-board and other Coral
-// CLI tools. Tries appBundleBinDir() first, then checks known install locations.
-func CoralToolsDir() string {
-	if dir := appBundleBinDir(); dir != "" {
-		return dir
-	}
+// HookDirEnv names the folder agents get Coral's tools from (coral-board and the
+// coral-hook-* binaries), overriding the search below (#3492).
+const HookDirEnv = "CORAL_HOOK_DIR"
 
-	// Fallback: check known locations for coral-board
-	candidates := []string{
-		"/Applications/Coral.app/Contents/MacOS",
+// installedToolsDir is the installed app's tools folder, the last resort.
+var installedToolsDir = "/Applications/Coral.app/Contents/MacOS"
+
+// installedFallback says whether CoralToolsDir may fall back to the installed app.
+// Startup turns it off for a dev build or a server on a non-default data folder (a
+// test server): those must run their own build's hooks, never an older installed copy
+// against themselves without saying so (#3492).
+var installedFallback atomic.Bool
+
+func init() { installedFallback.Store(true) }
+
+// SetInstalledToolsFallback allows or forbids falling back to the installed app.
+func SetInstalledToolsFallback(allow bool) { installedFallback.Store(allow) }
+
+// InstalledToolsFallback reports whether falling back to the installed app is allowed.
+func InstalledToolsFallback() bool { return installedFallback.Load() }
+
+// CoralToolsDir returns the directory containing coral-board and the coral-hook-*
+// binaries that agents launched by this server get on their PATH: see CoralToolsSource.
+func CoralToolsDir() string {
+	dir, _ := CoralToolsSource()
+	return dir
+}
+
+// CoralToolsSource returns CoralToolsDir and where it was found, for the startup log:
+//  1. CORAL_HOOK_DIR, when set;
+//  2. the app bundle, or hooks next to this executable (appBundleBinDir);
+//  3. coral-board next to this executable;
+//  4. the installed app, unless a dev or test server forbade it (SetInstalledToolsFallback).
+//
+// "" means none: agents then run whatever coral-board and coral-hook-* is on their PATH.
+func CoralToolsSource() (dir, source string) {
+	if d := strings.TrimSpace(os.Getenv(HookDirEnv)); d != "" {
+		return d, HookDirEnv
 	}
-	// Also check next to the current executable
+	if d := appBundleBinDir(); d != "" {
+		return d, "this build"
+	}
 	if exe, err := os.Executable(); err == nil {
 		if exe, err = filepath.EvalSymlinks(exe); err == nil {
-			candidates = append([]string{filepath.Dir(exe)}, candidates...)
+			if _, err := os.Stat(filepath.Join(filepath.Dir(exe), "coral-board")); err == nil {
+				return filepath.Dir(exe), "this build (coral-board only)"
+			}
 		}
 	}
-
-	for _, dir := range candidates {
-		boardPath := filepath.Join(dir, "coral-board")
-		if _, err := os.Stat(boardPath); err == nil {
-			return dir
+	if installedFallback.Load() {
+		if _, err := os.Stat(filepath.Join(installedToolsDir, "coral-board")); err == nil {
+			return installedToolsDir, "the installed Coral app"
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // singleQuote wraps s in single quotes unconditionally, escaping any embedded

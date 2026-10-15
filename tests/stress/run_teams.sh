@@ -80,7 +80,9 @@ mkdir -p "$CORAL_DATA_DIR"
 
 log "Building coral (dev mode) and mock-agent..."
 cd "$CORAL_DIR"
-go build -tags "dev fts5" -o "$TMPDIR_TEAMS/coral" ./cmd/coral/
+# This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
+# installed app's (#3492), so without them its agents would send no status events.
+go build -tags "dev fts5" -o "$TMPDIR_TEAMS/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync
 go build -o "$TMPDIR_TEAMS/mock-agent" ./cmd/mock-agent/
 
 # Create a temp git repo with an initial commit

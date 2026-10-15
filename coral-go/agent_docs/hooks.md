@@ -226,6 +226,8 @@ curl -X POST http://localhost:8420/api/sessions/launch \
 
 Coral automatically injects these hooks into every Claude session. They cannot be removed or overridden by user-defined hooks.
 
+The hook programs come from the folder Coral puts first on the agent's PATH: `CORAL_HOOK_DIR` when set, else next to the `coral` binary (the installed app's own folder for a release install). A dev or test server never falls back to the installed app's; its startup log names the folder (see Troubleshooting).
+
 | Hook | Event | Purpose |
 |------|-------|---------|
 | `coral-hook-task-sync` | PostToolUse (TaskCreate\|TaskUpdate) | Syncs task changes to Coral |

@@ -132,9 +132,10 @@ mkdir -p "$CORAL_DATA_DIR"
 
 log "Building coral (dev mode), mock-agent and coral-agent..."
 cd "$CORAL_DIR"
-go build -p 1 -tags "dev fts5" -o "$TMPDIR_AT/coral" ./cmd/coral/
+# This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
+# installed app's (#3492), so without them its agents would send no status events.
+go build -p 1 -tags "dev fts5" -o "$TMPDIR_AT/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync
 go build -p 1 -o "$TMPDIR_AT/mock-agent" ./cmd/mock-agent/
-go build -p 1 -o "$TMPDIR_AT/coral-agent" ./cmd/coral-agent/
 go build -p 1 -o "$TMPDIR_AT/coral-board" ./cmd/coral-board/
 
 log "Starting coral server on port $PORT..."

@@ -208,9 +208,13 @@ process.on('exit', cleanup);
 process.on('SIGINT', () => process.exit(130));
 process.on('SIGTERM', () => process.exit(143));
 
-console.log('building coral (dev) ...');
+console.log('building coral (dev) and its tools ...');
 const bin = path.join(tmp, 'coral');
-const b = spawnSync('go', ['build', '-tags', 'dev fts5', '-o', bin, './cmd/coral'], { cwd: goDir, stdio: 'inherit' });
+// This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
+// installed app's (#3492), so without them its agents would send no status events.
+const toolPackages = ['./cmd/coral', './cmd/coral-board', './cmd/coral-agent', './cmd/coral-hook-agentic-state',
+  './cmd/coral-hook-session-start', './cmd/coral-hook-message-check', './cmd/coral-hook-task-sync'];
+const b = spawnSync('go', ['build', '-tags', 'dev fts5', '-o', tmp + path.sep, ...toolPackages], { cwd: goDir, stdio: 'inherit' });
 if (b.status !== 0) process.exit(2);
 
 // Same isolation as run.sh: no inherited production pointers, isolated Codex home, no telemetry.

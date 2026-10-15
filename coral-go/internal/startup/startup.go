@@ -338,6 +338,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	applyHubModeSetting(ctx, db, cfg)
 	// Per-session agent tokens, before anything can launch an agent (#3387).
 	setupSessionTokens(db, cfg.CoralDir())
+	setupAgentTools(cfg.CoralDir())
 
 	// Native TLS (#3355): load the pair before binding, so a bad pair stops startup.
 	tlsConfig, err := loadTLSConfig(opts.TLSCert, opts.TLSKey)

@@ -135,6 +135,30 @@ curl -s -X POST http://localhost:<port>/api/board/<project>/messages \
 
 The field is `content`, not `message` — empty content is rejected.
 
+### Agents on a dev or test server never show Working or Needs input
+
+An agent's status comes from Coral's hook programs (`coral-hook-agentic-state` and the other
+`coral-hook-*`) and `coral-board`, which agents find on the PATH Coral gives them. Coral looks
+for them in `CORAL_HOOK_DIR` when it is set, then next to the `coral` binary. Only the installed
+app (release build, `~/.coral`) falls back to `/Applications/Coral.app`; a dev build or a server on
+another data folder never does, so a test server can't silently run an older app's hooks
+against itself. The server's log says where the tools come from at startup:
+`[tools] agents get coral-board and the Coral hooks from <dir> (...)`, or a WARNING that it found
+none.
+
+Start a test server with its own build's tools next to it:
+
+```bash
+cd coral-go && make dev            # builds coral and every tool into bin/
+CORAL_DATA_DIR=/tmp/coral-test ./bin/coral --host 127.0.0.1 --port 8450 --cloud-url off
+# or, by hand:
+go build -tags "dev fts5" -o /tmp/coral-test-bin/ ./cmd/coral ./cmd/coral-board ./cmd/coral-agent \
+  ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync
+```
+
+or point `CORAL_HOOK_DIR` at a folder that holds them. The CDP runner and the test rigs under
+`tests/` build them next to `coral`.
+
 ### A whole team stalled and produced nothing
 
 Agents told to coordinate over an unreachable board will troubleshoot it and then wait

@@ -59,10 +59,14 @@ export CORAL_NO_WELCOME=1
 mkdir -p "$CODEX_HOME/sessions"
 
 CORAL_BIN="${CORAL_BIN:-}"
+BUILT_BIN_DIR=""
 if [ -z "$CORAL_BIN" ]; then
-    CORAL_BIN="$(mktemp -u /tmp/coral-frontend-test-bin.XXXXXX)"
-    echo "Building dev coral binary at $CORAL_BIN..."
-    (cd "$ROOT/coral-go" && go build -tags "dev fts5" -o "$CORAL_BIN" ./cmd/coral/)
+    BUILT_BIN_DIR="$(mktemp -d /tmp/coral-frontend-test-bin.XXXXXX)"
+    CORAL_BIN="$BUILT_BIN_DIR/coral"
+    echo "Building dev coral and its tools at $(dirname "$CORAL_BIN")..."
+    # This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
+    # installed app's (#3492), so without them its agents would send no status events.
+    (cd "$ROOT/coral-go" && go build -tags "dev fts5" -o "$(dirname "$CORAL_BIN")/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync)
 fi
 
 # Pick a Chrome binary (macOS path, then PATH fallback).
@@ -87,6 +91,8 @@ cleanup() {
     # Give Chrome a moment to flush its profile before we try to remove it.
     sleep 0.5
     rm -rf "$CORAL_HOME" "$CHROME_PROFILE" 2>/dev/null || true
+    # The binaries this run built (not a CORAL_BIN it was given).
+    [ -n "$BUILT_BIN_DIR" ] && rm -rf "$BUILT_BIN_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 

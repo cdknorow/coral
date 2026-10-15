@@ -102,8 +102,10 @@ sessions_ready() { local n sid; while read -r n sid; do [[ -n "$sid" ]] && grep 
 wait_sessions_ready() { local end=$((SECONDS + 30)); while [[ -z "$(sessions_ready | head -1)" ]]; do (( SECONDS >= end )) && return 1; sleep 0.5; done; }
 
 log "Building coral, coral-board and the stand-in agent..."
-(cd "$CORAL_DIR" && go build -tags "dev fts5" -o "$BIN/coral" ./cmd/coral/ && go build -o "$BIN/coral-board" ./cmd/coral-board/ \
-    && go build -o "$BIN/mock-agent" ./cmd/mock-agent/ && go build -o "$BIN/coral-hook-message-check" ./cmd/coral-hook-message-check/)
+# This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
+# installed app's (#3492), so without them its agents would send no status events.
+(cd "$CORAL_DIR" && go build -tags "dev fts5" -o "$BIN/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync \
+    && go build -o "$BIN/mock-agent" ./cmd/mock-agent/)
 
 log "Starting an isolated server on $PORT (data $DATA)..."
 # #3421: the server is started from a HOSTILE parent environment, like a test server started

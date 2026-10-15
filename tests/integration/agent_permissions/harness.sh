@@ -49,7 +49,8 @@ start_coral() {
     BINARY="$TEST_DATA_DIR/coral"
 
     echo "Building coral (dev mode)..."
-    (cd "$CORAL_GO" && go build -tags dev -o "$BINARY" ./cmd/coral/) || {
+    # This build's tools next to coral (#3492): a dev server never uses the installed app's hooks.
+    (cd "$CORAL_GO" && go build -tags dev -o "$(dirname "$BINARY")/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync) || {
         echo "FATAL: build failed"
         exit 1
     }
