@@ -51,6 +51,7 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	roleRes           roleReservations                          // #3543: numbered names picked for launches not yet subscribed
 	agentOperatorGate func(r *http.Request, action string) bool // #3536: Operator-only choices in a request body
 	// wsHeartbeat overrides wsHeartbeatInterval when set (nanoseconds; tests).
 	wsHeartbeat  atomic.Int64
@@ -4844,7 +4845,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		picked := naming.SubscriberID(displayName, agentType)
 		defer func() {
 			if retErr != nil {
-				releaseRoleReservation(boardName, picked) // the launch failed: the name is free again
+				h.releaseRoleReservation(boardName, picked) // the launch failed: the name is free again
 			}
 		}()
 	}
@@ -5199,7 +5200,7 @@ func (h *SessionsHandler) setupBoardAndPrompt(sessionID, sessionName, agentType,
 			log.Printf("Failed to subscribe session %s to board %s: %v", sessionID[:8], boardName, err)
 		}
 		// The subscription now holds the name; the reservation that covered the launch goes.
-		releaseRoleReservation(boardName, subscriberID)
+		h.releaseRoleReservation(boardName, subscriberID)
 	}
 
 	// Write local board state file so coral-board CLI can find its subscription
@@ -6947,13 +6948,16 @@ func (h *SessionsHandler) uniqueBoardRole(ctx context.Context, boardName, displa
 	if h.bs == nil {
 		return displayName
 	}
-	roleReservations.mu.Lock()
-	defer roleReservations.mu.Unlock()
+	h.roleRes.mu.Lock()
+	defer h.roleRes.mu.Unlock()
+	if h.roleRes.at == nil {
+		h.roleRes.at = map[string]time.Time{}
+	}
 	now := time.Now()
 	taken := map[string]bool{}
-	for key, at := range roleReservations.at {
+	for key, at := range h.roleRes.at {
 		if now.Sub(at) > roleReservationTTL {
-			delete(roleReservations.at, key)
+			delete(h.roleRes.at, key)
 			continue
 		}
 		if b, name, ok := strings.Cut(key, "\x00"); ok && b == boardName {
@@ -6978,24 +6982,25 @@ func (h *SessionsHandler) uniqueBoardRole(ctx context.Context, boardName, displa
 			}
 		}
 	}
-	roleReservations.at[boardName+"\x00"+strings.ToLower(naming.SubscriberID(pick, agentType))] = now
+	h.roleRes.at[boardName+"\x00"+strings.ToLower(naming.SubscriberID(pick, agentType))] = now
 	return pick
 }
 
-// roleReservations holds the names uniqueBoardRole picked recently, per board.
-var roleReservations = struct {
+// roleReservations holds the names uniqueBoardRole picked recently, per board; one per
+// handler (QA's #3543 review: a package-level map leaked between tests).
+type roleReservations struct {
 	mu sync.Mutex
 	at map[string]time.Time
-}{at: map[string]time.Time{}}
+}
 
 const roleReservationTTL = 2 * time.Minute
 
 // releaseRoleReservation drops a name's reservation: its subscription now holds it, or its
 // launch failed.
-func releaseRoleReservation(boardName, role string) {
-	roleReservations.mu.Lock()
-	delete(roleReservations.at, boardName+"\x00"+strings.ToLower(role))
-	roleReservations.mu.Unlock()
+func (h *SessionsHandler) releaseRoleReservation(boardName, role string) {
+	h.roleRes.mu.Lock()
+	delete(h.roleRes.at, boardName+"\x00"+strings.ToLower(role))
+	h.roleRes.mu.Unlock()
 }
 
 // liveAgentsOn counts the board's subscribers whose session is live.
