@@ -6787,6 +6787,8 @@ func (h *SessionsHandler) boardLabel(key string) string {
 	return h.bs.BoardLabel(context.Background(), key)
 }
 
+var launchBoardMu sync.Mutex
+
 // launchBoard decides the board a launch uses (#3536, the operator's decision): board_id
 // joins that board; board_name starts a NEW board (a fresh b- id, that label) unless a board
 // with that id or label already exists, which is answered 409 board_name_exists with the
@@ -6810,6 +6812,10 @@ func (h *SessionsHandler) launchBoard(w http.ResponseWriter, r *http.Request, bo
 		return b.ID, true
 	}
 	boardName = strings.TrimSpace(boardName)
+	// One check-then-create at a time, so two launches of the same new name can't both see
+	// it free and start two boards with one label.
+	launchBoardMu.Lock()
+	defer launchBoardMu.Unlock()
 	var existing []board.Board
 	if b, err := h.bs.GetBoard(ctx, boardName); err == nil {
 		if inUse, _ := h.bs.BoardExists(ctx, b.ID); inUse {
@@ -6818,7 +6824,7 @@ func (h *SessionsHandler) launchBoard(w http.ResponseWriter, r *http.Request, bo
 	} else if inUse, _ := h.bs.BoardExists(ctx, boardName); inUse {
 		existing = append(existing, board.Board{ID: boardName, Label: boardName})
 	}
-	if named, err := h.bs.BoardsLabelled(ctx, boardName); err == nil {
+	if named, err := h.bs.BoardsLabelledForLaunch(ctx, boardName); err == nil {
 		for _, b := range named {
 			if b.ID != boardName {
 				existing = append(existing, b)

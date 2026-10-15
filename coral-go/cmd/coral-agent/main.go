@@ -44,9 +44,10 @@ Commands:
   ui <publish|list|events|remove>  Publish interactive sidebar panels
   artifact upload <file>           Store a durable Coral artifact
   artifact download <uri> [--output FILE] Download and verify an artifact; prints local path
-  launch [dir] [--type T] [--name N] [--model M] [--prompt P]
+  launch [dir] [--type T] [--name N] [--model M] [--prompt P] [--board ID]
                                  Launch an agent in dir (default: current
-                                 directory) with your default settings
+                                 directory) with your default settings;
+                                 --board joins it to that board (its id)
   task add "title" [--body "details"] [--priority P]  Create a task
   task list                      List all tasks
   task detail <id>               Read requirements, dependencies and results
@@ -264,8 +265,9 @@ func cmdLaunch(args []string) {
 	name := fs.String("name", "", "Display name")
 	model := fs.String("model", "", "Model (default: your Coral setting for the agent type)")
 	prompt := fs.String("prompt", "", "Initial prompt")
+	boardID := fs.String("board", "", "Join this board: its id (coral-board's state, or GET /api/board/projects)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, `Usage: coral-agent launch [dir] [--type T] [--name N] [--model M] [--prompt P]`)
+		fmt.Fprintln(os.Stderr, `Usage: coral-agent launch [dir] [--type T] [--name N] [--model M] [--prompt P] [--board ID]`)
 		fs.PrintDefaults()
 	}
 	fs.Parse(flagArgs)
@@ -286,6 +288,7 @@ func cmdLaunch(args []string) {
 	body := map[string]any{"working_dir": absDir}
 	for key, val := range map[string]string{
 		"agent_type": *agentType, "display_name": *name, "model": *model, "prompt": *prompt,
+		"board_id": *boardID, // joins that existing board (#3536); never starts one
 	} {
 		if val != "" {
 			body[key] = val
@@ -302,7 +305,10 @@ func cmdLaunch(args []string) {
 	var result map[string]any
 	json.Unmarshal(data, &result)
 	if status != http.StatusOK {
-		msg, _ := result["error"].(string)
+		msg, _ := result["message"].(string)
+		if msg == "" {
+			msg, _ = result["error"].(string)
+		}
 		if msg == "" {
 			msg = string(data)
 		}

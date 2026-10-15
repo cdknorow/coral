@@ -130,3 +130,23 @@ func TestUsableBoardKey(t *testing.T) {
 		assert.False(t, UsableBoardKey(bad), "%q", bad)
 	}
 }
+
+// A launch's name check counts a board started in the last 10 minutes even while it is
+// still empty (its launch is subscribing the agents), but not an older empty row.
+func TestBoardsLabelledForLaunch(t *testing.T) {
+	ctx := context.Background()
+	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	fresh, err := s.CreateBoard(ctx, "team", "Operator")
+	require.NoError(t, err)
+	got, err := s.BoardsLabelledForLaunch(ctx, "team")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, fresh.ID, got[0].ID)
+	_, err = s.db.Exec(`UPDATE boards SET created_at = '2026-01-01T00:00:00Z' WHERE id = ?`, fresh.ID)
+	require.NoError(t, err)
+	got, err = s.BoardsLabelledForLaunch(ctx, "team")
+	require.NoError(t, err)
+	assert.Empty(t, got, "an old empty row (a failed launch) doesn't take the name")
+}

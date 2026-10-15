@@ -435,7 +435,7 @@ Launch a new agent session.
   "display_name": "My Agent",
   "flags": ["--flag1"],
   "prompt": "System prompt for the agent",
-  "board_name": "my-board",
+  "board_id": "b-7k3m9q2x4p",
   "board_server": "http://remote:PORT",
   "backend": "pty",
   "board_type": "default",
@@ -447,6 +447,14 @@ Launch a new agent session.
 ```
 
 Required: `working_dir`. All other fields are optional.
+
+**Boards (#3536):** `board_id` joins that existing board (the non-interactive way for scripts
+and agents; `coral-agent launch --board <id>` sends it). `board_name` starts a **new** board
+with that name; if a board with that id or name already exists, the answer is 409
+`board_name_exists` with `candidates` (`board_id`, `board_label`, `created_at`, `members`).
+Retry with `board_id` to join one, or add `"new_board": true` to start another with the same
+name. A new name follows the board name rule (400 `invalid_board_name`); an unknown
+`board_id` is 404 `board_not_found`. The answer includes `board_id` and `board_label`.
 
 **Response:**
 ```json
@@ -460,7 +468,9 @@ Required: `working_dir`. All other fields are optional.
 
 ### POST `/api/sessions/launch-team`
 
-Launch a team of agents sharing a message board.
+Launch a team of agents sharing a message board. `board_name` starts a new board for the
+team, `board_id` relaunches onto an existing one, and the same 409 `board_name_exists` choice
+as `/api/sessions/launch` applies (see above).
 
 **Request Body:**
 ```json
@@ -493,7 +503,9 @@ Launch a team of agents sharing a message board.
 ```json
 {
   "ok": true,
-  "board": "my-team",
+  "board": "b-7k3m9q2x4p",
+  "board_id": "b-7k3m9q2x4p",
+  "board_label": "my-team",
   "agents": [
     {"name": "architect", "session_id": "abc123", "session_name": "coral_claude_abc123"},
     {"name": "developer", "session_id": "def456", "session_name": "coral_claude_def456", "error": null}

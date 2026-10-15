@@ -112,3 +112,39 @@ func TestLaunchBoardChoice(t *testing.T) {
 	code, out = call(handler.LaunchTeam, team(map[string]any{"board_id": "legacy-team"}))
 	assert.Equal(t, http.StatusOK, code, out)
 }
+
+// Security's race: concurrent launches of one new name start one board, and the rest get
+// the choice (409), never a second board with the same label.
+func TestConcurrentLaunchesOfANewNameMakeOneBoard(t *testing.T) {
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	handler := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, newMockTerminal(), bs)
+	codes := make(chan int, 8)
+	for i := 0; i < 8; i++ {
+		go func() {
+			b, _ := json.Marshal(map[string]any{"board_name": "race", "working_dir": t.TempDir(), "agents": []map[string]any{{"name": "Dev", "prompt": "x"}}})
+			req := httptest.NewRequest(http.MethodPost, "/x", bytes.NewReader(b))
+			rec := httptest.NewRecorder()
+			handler.LaunchTeam(rec, req)
+			codes <- rec.Code
+		}()
+	}
+	ok := 0
+	for i := 0; i < 8; i++ {
+		switch <-codes {
+		case http.StatusOK:
+			ok++
+		case http.StatusConflict:
+		default:
+			t.Fatal("unexpected status")
+		}
+	}
+	assert.Equal(t, 1, ok, "one launch starts the board")
+	named, err := bs.BoardsLabelled(context.Background(), "race")
+	require.NoError(t, err)
+	assert.Len(t, named, 1)
+}

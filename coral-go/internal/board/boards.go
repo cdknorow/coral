@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/jmoiron/sqlx"
@@ -104,6 +105,22 @@ func (s *Store) BoardsLabelled(ctx context.Context, label string) ([]Board, erro
 		  OR EXISTS (SELECT 1 FROM board_messages WHERE project = b.id)
 		  OR EXISTS (SELECT 1 FROM board_tasks WHERE board_id = b.id))
 		ORDER BY b.created_at, b.id`, label)
+	return out, err
+}
+
+// BoardsLabelledForLaunch is BoardsLabelled for a launch's name check: a board started in
+// the last 10 minutes counts too while it is still empty, since a launch that just created
+// it hasn't subscribed its agents yet. An older empty row (a launch that failed) still never
+// makes a name taken.
+func (s *Store) BoardsLabelledForLaunch(ctx context.Context, label string) ([]Board, error) {
+	since := time.Now().UTC().Add(-10 * time.Minute).Format(time.RFC3339)
+	var out []Board
+	err := s.db.SelectContext(ctx, &out, `SELECT b.id, b.label, b.created_at, b.created_by FROM boards b WHERE b.label = ?
+		AND (b.created_at >= ?
+		  OR EXISTS (SELECT 1 FROM board_subscribers WHERE project = b.id)
+		  OR EXISTS (SELECT 1 FROM board_messages WHERE project = b.id)
+		  OR EXISTS (SELECT 1 FROM board_tasks WHERE board_id = b.id))
+		ORDER BY b.created_at, b.id`, label, since)
 	return out, err
 }
 
