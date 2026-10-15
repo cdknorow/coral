@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -112,6 +114,9 @@ func TestDuplicateRolesGetNumberedNames(t *testing.T) {
 	}
 	assert.Len(t, got, 4, "four concurrent picks, four names: %v", got)
 
+	// An explicit numbered name that's taken is renumbered from its base role.
+	assert.Equal(t, "Backend Dev 4", handler.uniqueBoardRole(ctx, id, "Backend Dev 2", "claude"), "not 'Backend Dev 2 2'")
+
 	// A role whose holder isn't running keeps its name (a relaunch or resurrect).
 	_, err = bs.Subscribe(ctx, "beta", "QA", "QA", "claude-gone-session", nil, nil, "all")
 	require.NoError(t, err)
@@ -141,4 +146,53 @@ func TestRoleReservationReleased(t *testing.T) {
 	handler.setupBoardAndPrompt("11111111-aaaa-bbbb-cccc-000000000001", "claude-x1", "claude", "release-board", "Dev")
 	// The subscription's session isn't live (the agent was killed): the name is free again.
 	assert.Equal(t, "Dev", handler.uniqueBoardRole(ctx, "release-board", "Dev", "claude"))
+}
+
+// #3549 (QA's #3543 follow-up): a reset that relaunches an agent under a numbered name
+// answers with that name (not the one asked for) and advances that name's read cursor.
+func TestResetTeamAnswersLaunchedNames(t *testing.T) {
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	handler := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, newMockTerminal(), bs)
+	ctx := context.Background()
+
+	b, _ := json.Marshal(map[string]any{"board_name": "reset-alpha", "working_dir": t.TempDir(),
+		"agents": []map[string]any{{"name": "Orchestrator", "prompt": "lead"}, {"name": "Backend Dev", "prompt": "build"}}})
+	rec := httptest.NewRecorder()
+	handler.LaunchTeam(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewReader(b)))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	id := out["board_id"].(string)
+
+	// Another launch has just picked "Backend Dev" on this board, so the reset's relaunch
+	// gets "Backend Dev 2".
+	handler.roleRes.mu.Lock()
+	handler.roleRes.at[id+"\x00backend dev"] = time.Now()
+	handler.roleRes.mu.Unlock()
+	_, err = bs.PostMessage(ctx, id, "Orchestrator", "@all before the reset", nil)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("boardName", id)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec = httptest.NewRecorder()
+	handler.ResetTeam(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	out = nil
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	var got []string
+	for _, a := range out["agents"].([]any) {
+		got = append(got, a.(map[string]any)["name"].(string))
+	}
+	sort.Strings(got)
+	assert.Equal(t, []string{"Backend Dev 2", "Orchestrator"}, got, "the answer names the agents as launched")
+	n, err := bs.CheckUnread(ctx, id, "Backend Dev 2")
+	require.NoError(t, err)
+	assert.Equal(t, 0, n, "the relaunched agent's cursor (its numbered name) is advanced")
 }

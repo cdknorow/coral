@@ -1352,20 +1352,54 @@ func (s *Store) LatestUnreadMessageID(ctx context.Context, project, subscriberID
 	args := []interface{}{project, sub.LastReadID, subscriberID}
 	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue'"
 	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
-		terms := mentionTerms(subscriberID, sub.JobTitle)
-		parts := make([]string, 0, len(terms))
-		for _, term := range terms {
-			parts = append(parts, "m.content LIKE ? COLLATE NOCASE")
-			args = append(args, "%"+term+"%")
-		}
-		if len(parts) == 0 {
-			return 0, nil
-		}
-		where += " AND (" + strings.Join(parts, " OR ") + ")"
+		return s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, true)
 	}
 	var latest int64
 	err := s.reader().GetContext(ctx, &latest, "SELECT COALESCE(MAX(m.id),0) FROM board_messages m WHERE "+where, args...)
 	return latest, err
+}
+
+// confirmedMention returns a message matching where (and args) that tags subscriberID, or 0:
+// the newest one when newest is set, else any (a cheaper plan, for a yes/no). The SQL LIKE only finds candidates; each is confirmed with the rule
+// ReadMessages and CheckUnread use (containsExplicitTag with the board's numbered names: word
+// boundaries, and "@Backend Dev 2" isn't "@Backend Dev" on a board that has a "Backend Dev 2"),
+// so the notifier never nudges an agent for a message its read wouldn't show it (#3549).
+func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, jobTitle, where string, args []interface{}, newest bool) (int64, error) {
+	terms := mentionTerms(subscriberID, jobTitle)
+	if len(terms) == 0 {
+		return 0, nil
+	}
+	parts := make([]string, len(terms))
+	args = append([]interface{}{}, args...)
+	for i, term := range terms {
+		parts[i] = "m.content LIKE ? COLLATE NOCASE"
+		args = append(args, "%"+term+"%")
+	}
+	query := "SELECT m.id, m.content FROM board_messages m WHERE " + where + " AND (" + strings.Join(parts, " OR ") + ")"
+	if newest {
+		query += " ORDER BY m.id DESC"
+	}
+	rows, err := s.reader().QueryxContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var numbered map[string]bool
+	loaded := false // the board's numbered names, read at the first candidate (most ticks have none)
+	for rows.Next() {
+		var id int64
+		var content string
+		if err := rows.Scan(&id, &content); err != nil {
+			return 0, err
+		}
+		if !loaded {
+			numbered, loaded = s.numberedNames(ctx, s.reader(), project), true
+		}
+		if containsExplicitTag(content, subscriberID, jobTitle, numbered) {
+			return id, nil
+		}
+	}
+	return 0, rows.Err()
 }
 
 // HasUnreadHealthMessage reports whether the subscriber has an unread message
@@ -1403,16 +1437,8 @@ func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberI
 	}
 	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue' AND " + senderClause
 	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
-		terms := mentionTerms(subscriberID, sub.JobTitle)
-		if len(terms) == 0 {
-			return false, nil
-		}
-		parts := make([]string, len(terms))
-		for i, term := range terms {
-			parts[i] = "m.content LIKE ? COLLATE NOCASE"
-			args = append(args, "%"+term+"%")
-		}
-		where += " AND (" + strings.Join(parts, " OR ") + ")"
+		id, err := s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, false)
+		return id > 0, err
 	}
 	var found int
 	err := s.reader().GetContext(ctx, &found, "SELECT 1 FROM board_messages m WHERE "+where+" LIMIT 1", args...)

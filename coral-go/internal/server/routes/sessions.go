@@ -4066,6 +4066,7 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 
 	// Re-launch each agent with original config
 	var launched []map[string]any
+	var relaunched []string // the names the agents were launched under
 	for _, cfg := range configs {
 		var flags []string
 		if cfg.Flags != nil && *cfg.Flags != "" {
@@ -4118,8 +4119,12 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		h.setupBoardAndPrompt(result["session_id"].(string), result["session_name"].(string),
 			cfg.AgentType, boardName, launchedName(result, displayName))
 
+		name := launchedName(result, displayName)
+		if name != "" {
+			relaunched = append(relaunched, name)
+		}
 		launched = append(launched, map[string]any{
-			"name":         displayName,
+			"name":         name,
 			"session_id":   result["session_id"],
 			"session_name": result["session_name"],
 		})
@@ -4127,13 +4132,12 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 
 	// Advance read cursors for ALL agents AFTER all launches complete.
 	// This ensures no agent has a stale cursor from messages posted by
-	// other agents during the sequential re-launch process.
+	// other agents during the sequential re-launch process. By the name each was launched
+	// under: a numbered one ("Backend Dev 2", #3543) has its own subscription (#3549).
 	if h.bs != nil {
-		for _, cfg := range configs {
-			if cfg.DisplayName != nil && *cfg.DisplayName != "" {
-				if err := h.bs.AdvanceReadCursor(bgCtx, boardName, *cfg.DisplayName); err != nil {
-					log.Printf("[reset-team] failed to advance read cursor for %s: %v", *cfg.DisplayName, err)
-				}
+		for _, name := range relaunched {
+			if err := h.bs.AdvanceReadCursor(bgCtx, boardName, name); err != nil {
+				log.Printf("[reset-team] failed to advance read cursor for %s: %v", name, err)
 			}
 		}
 	}
@@ -6142,7 +6146,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			agentType, team.Name, launchedName(result, m.AgentName))
 
 		launched = append(launched, map[string]any{
-			"name": m.AgentName, "session_id": sessionID, "session_name": result["session_name"],
+			"name": launchedName(result, m.AgentName), "session_id": sessionID, "session_name": result["session_name"],
 		})
 	}
 
@@ -6975,8 +6979,16 @@ func (h *SessionsHandler) uniqueBoardRole(ctx context.Context, boardName, displa
 	role := naming.SubscriberID(displayName, agentType)
 	pick := displayName
 	if taken[strings.ToLower(role)] {
+		// A taken numbered name is renumbered from its base role: "Backend Dev 2" becomes
+		// "Backend Dev 3", not "Backend Dev 2 2" (QA's #3543 review).
+		base := role
+		if i := strings.LastIndexByte(role, ' '); i > 0 {
+			if _, err := strconv.Atoi(role[i+1:]); err == nil {
+				base = role[:i]
+			}
+		}
 		for n := 2; n < 1000; n++ {
-			if candidate := fmt.Sprintf("%s %d", role, n); !taken[strings.ToLower(candidate)] {
+			if candidate := fmt.Sprintf("%s %d", base, n); !taken[strings.ToLower(candidate)] {
 				pick = candidate
 				break
 			}
