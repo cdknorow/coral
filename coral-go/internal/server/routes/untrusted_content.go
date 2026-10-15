@@ -36,7 +36,11 @@ func setUntrustedContentHeaders(h http.Header, contentType, filename string) {
 		h.Set("Content-Disposition", hubproxy.Disposition("attachment", filename))
 	}
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Content-Security-Policy", hubproxy.SandboxCSP)
+	if mt == "text/html" || mt == "application/xhtml+xml" {
+		h.Set("Content-Security-Policy", hubproxy.PreviewCSP) // its inline styles apply (#3593)
+	} else {
+		h.Set("Content-Security-Policy", hubproxy.SandboxCSP)
+	}
 }
 
 // artifactURL is the dashboard path for a managed artifact. The ?v=2 form is new in v1.4.12:

@@ -2,7 +2,7 @@
  * same-origin access, no forms, popups, downloads or top-level navigation (an empty `sandbox`), plus a content
  * security policy for the embedded document (`csp` attribute where supported, and a <meta> in the document itself). */
 
-export const FRAME_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'";
+export const FRAME_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"; // #3593: data: fonts too
 const DOC_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'";
 
 /** Make `frame` a sandbox with no capabilities. */

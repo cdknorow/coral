@@ -52,6 +52,13 @@ func isTunnel(t Target) bool {
 // and runs no script.
 const SandboxCSP = "sandbox; default-src 'none'"
 
+// PreviewCSP is SandboxCSP for an HTML document Coral shows as a preview (#3593): still a
+// sandbox with no scripts and nothing fetched from anywhere, but its own inline <style> and
+// data: fonts and images apply, so a self-contained page isn't shown unstyled. A url() or
+// @import in that CSS can't load anything: default-src 'none' leaves no host source, and
+// font-src and img-src allow data: only.
+const PreviewCSP = "sandbox; default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:; base-uri 'none'; form-action 'none'"
+
 // InlineSafe reports whether content of this media type (no parameters,
 // lower case) may be shown inline on a Coral origin. Anything else that
 // untrusted code can influence is sent as a download.

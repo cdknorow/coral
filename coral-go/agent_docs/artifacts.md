@@ -36,7 +36,8 @@ Uploading a file lists it in your own **Artifacts** tab right away, and, if you 
 
    Do not create a task just to share a file; the upload alone is listed.
 
-3. Tell the user the name. They open it from the Artifacts tab, which previews it (HTML in a sandbox that runs no script). The link (`url`) opens plain text, images, JSON and audio/video in the browser; HTML, SVG, XML, JavaScript, PDF, Markdown and any other type download instead. Every artifact response is sandboxed (`Content-Security-Policy: sandbox; default-src 'none'`, `nosniff`), so an artifact never runs script on the dashboard.
+3. Tell the user the name. They open it from the Artifacts tab, which previews it (HTML in a sandbox that runs no script). The link (`url`) opens plain text, images, JSON and audio/video in the browser; HTML, SVG, XML, JavaScript, PDF, Markdown and any other type download instead. Every artifact response is sandboxed (`Content-Security-Policy: sandbox; default-src 'none'`, `nosniff`; an HTML one also lets its own inline `<style>` and `data:` fonts and images apply), so an artifact never runs script on the dashboard and loads nothing from anywhere.
+   - On the dashboard, an HTML preview shows the page's own `<style>` blocks. **Through Coral Hub it doesn't:** the hub page's policy blocks `<style>` blocks inside the preview, so a self-contained page shows unstyled there (inline `style="..."` attributes still work). Download it to see it fully. An HTML artifact is never shown inline on the hub's own origin.
 
 Local paths such as `/tmp/report.md` are not reachable by the user (especially through Coral Hub) or other agents. Always upload first and give the `coral://` link, never the path. For small reports you can put the text inline as `content` in the manifest instead of uploading.
 

@@ -82,14 +82,14 @@ func TestAgentArtifactsNeverRunOnTheDashboardOrigin(t *testing.T) {
 			resp.Body.Close()
 			require.Equal(t, http.StatusOK, resp.StatusCode)
 			require.Equal(t, c.body, string(data), "the bytes are served unchanged")
-			require.Equal(t, hubproxy.SandboxCSP, resp.Header.Get("Content-Security-Policy"))
+			require.Equal(t, wantCSP(c.wantType), resp.Header.Get("Content-Security-Policy"))
 			require.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
 			// The pre-1.4.12 bare link still works, with the same protection.
 			bare, err := http.Get(server.URL + strings.SplitN(url, "?", 2)[0])
 			require.NoError(t, err)
 			bare.Body.Close()
 			require.Equal(t, http.StatusOK, bare.StatusCode)
-			require.Equal(t, hubproxy.SandboxCSP, bare.Header.Get("Content-Security-Policy"))
+			require.Equal(t, wantCSP(c.wantType), bare.Header.Get("Content-Security-Policy"))
 			require.Equal(t, resp.Header.Get("Content-Disposition"), bare.Header.Get("Content-Disposition"))
 			ct := strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]
 			require.Equal(t, c.wantType, ct)
@@ -165,7 +165,7 @@ func TestWorkflowStepFilesNeverRunOnTheDashboardOrigin(t *testing.T) {
 			resp.Body.Close()
 			require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 			require.Equal(t, files[c.name], string(data))
-			require.Equal(t, hubproxy.SandboxCSP, resp.Header.Get("Content-Security-Policy"))
+			require.Equal(t, wantCSP(c.wantType), resp.Header.Get("Content-Security-Policy"))
 			require.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
 			require.Equal(t, c.wantType, strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
 			cd := resp.Header.Get("Content-Disposition")
@@ -175,5 +175,28 @@ func TestWorkflowStepFilesNeverRunOnTheDashboardOrigin(t *testing.T) {
 				require.True(t, strings.HasPrefix(cd, "attachment"), cd)
 			}
 		})
+	}
+}
+
+// wantCSP: an HTML document gets the preview policy (its inline styles apply, #3593);
+// everything else the plain sandbox.
+func wantCSP(mediaType string) string {
+	if mediaType == "text/html" || mediaType == "application/xhtml+xml" {
+		return hubproxy.PreviewCSP
+	}
+	return hubproxy.SandboxCSP
+}
+
+// #3593: the preview policy still loads nothing and runs nothing: no script source, no
+// connect, frame or other host source, data: only for fonts and images, and a sandbox
+// without allow-scripts.
+func TestPreviewCSPAllowsOnlyInlineStyle(t *testing.T) {
+	p := hubproxy.PreviewCSP
+	require.True(t, strings.HasPrefix(p, "sandbox;"), "a sandbox with no allow- tokens: %s", p)
+	for _, forbidden := range []string{"allow-", "script-src", "connect-src", "frame-src", "http", "*", "'self'", "unsafe-eval", "blob:"} {
+		require.NotContains(t, p, forbidden, p)
+	}
+	for _, want := range []string{"default-src 'none'", "style-src 'unsafe-inline'", "font-src data:", "img-src data:"} {
+		require.Contains(t, p, want, p)
 	}
 }
