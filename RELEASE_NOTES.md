@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.4.46 — Phone navigation
+
+### Dashboard
+
+- **The current tab stays in view on a phone.** At phone width the navigation strip scrolls so the tab you're on is always visible: when you open a page such as Docs or Analytics directly, switch tabs, or move through the tabs with the keyboard. In a narrow desktop window, the mouse wheel scrolls the strip sideways.
+
 ## v1.4.45 — Message board fixes, and subscribers on a phone
 
 ### Message board
