@@ -86,10 +86,13 @@ type WorkflowRunner struct {
 	host     string // Server host for CORAL_HOST env var
 	port     int    // Server port for CORAL_PORT env var
 
-	// mu protects activeChildren, runCancels and running
+	// mu protects activeChildren, runCancels, killed and running
 	mu             sync.Mutex
 	activeChildren map[int64]*activeChild       // runID -> active child
 	runCancels     map[int64]context.CancelFunc // runID -> cancel func
+	// killed: runs KillRun was called for, set before it kills the step's process, so
+	// the step's failure (its process killed) is never recorded over "killed" (#3474).
+	killed map[int64]bool
 	// running counts runs in progress; at maxRuns a new trigger is refused (#3424, MED-02).
 	running int
 	maxRuns int
@@ -111,6 +114,7 @@ func NewWorkflowRunner(wfStore *store.WorkflowStore, launcher *AgentLauncher, ru
 		maxRuns:        maxConcurrentWorkflowRuns,
 		activeChildren: make(map[int64]*activeChild),
 		runCancels:     make(map[int64]context.CancelFunc),
+		killed:         make(map[int64]bool),
 	}
 }
 
@@ -187,6 +191,9 @@ func (wr *WorkflowRunner) KillRun(ctx context.Context, runID int64) bool {
 	wr.mu.Lock()
 	child := wr.activeChildren[runID]
 	cancel := wr.runCancels[runID]
+	if cancel != nil {
+		wr.killed[runID] = true
+	}
 	wr.mu.Unlock()
 
 	// Kill the active child based on step type
@@ -208,10 +215,22 @@ func (wr *WorkflowRunner) KillRun(ctx context.Context, runID int64) bool {
 		cancel()
 	}
 
+	if killRunPause != nil {
+		killRunPause()
+	}
 	// Mark remaining steps as skipped and run as killed
 	wr.markRunKilled(runID)
 	return true
 }
+
+// killRunPause and afterKillCheck, for tests: the first runs in KillRun after the
+// step's process is killed and before the run is marked killed, the second in the run
+// loop between its killed check and its "failed" write. Together they force the
+// order seen under -race (#3474): checked, then marked killed, then written failed.
+var (
+	killRunPause   func()
+	afterKillCheck func(runID int64)
+)
 
 // executeRun is the main execution loop for a workflow run.
 func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
@@ -226,6 +245,7 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 		wr.mu.Lock()
 		delete(wr.runCancels, runID)
 		delete(wr.activeChildren, runID)
+		delete(wr.killed, runID)
 		wr.mu.Unlock()
 	}()
 
@@ -366,7 +386,11 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 				}
 				wr.persistResults(context.Background(), runID, i, results)
 				// Only set failed if not already killed by KillRun
-				if !wr.isRunKilled(runID) {
+				killed := wr.isRunKilled(runID)
+				if afterKillCheck != nil {
+					afterKillCheck(runID)
+				}
+				if !killed {
 					errMsg := fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, stepErr)
 					wr.store.SetRunStatus(context.Background(), runID, "failed", &errMsg)
 				}
@@ -1065,7 +1089,13 @@ func stepStatusStr(err error) string {
 func (wr *WorkflowRunner) isRunKilled(runID int64) bool {
 	wr.mu.Lock()
 	cancel, exists := wr.runCancels[runID]
+	killed := wr.killed[runID]
 	wr.mu.Unlock()
+	if killed {
+		// KillRun marks it before killing the step's process: the database may not
+		// say "killed" yet when the step's failure gets here.
+		return true
+	}
 	// If cancel doesn't exist, the run was already cleaned up (killed)
 	if !exists {
 		return true

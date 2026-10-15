@@ -640,9 +640,76 @@ func TestKillRun(t *testing.T) {
 		t.Error("expected kill to return true")
 	}
 
-	// Wait a bit for cleanup
-	time.Sleep(500 * time.Millisecond)
+	// Wait for the run to finish (its last status write), not a fixed time: under
+	// -race the step's failure used to land after KillRun's "killed" (#3474).
+	deadline := time.Now().Add(10 * time.Second)
+	for runner.IsRunActive(run.ID) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if runner.IsRunActive(run.ID) {
+		t.Fatal("the run never finished after KillRun")
+	}
 
+	finalRun, _ := wfStore.GetWorkflowRunDirect(context.Background(), run.ID)
+	if finalRun.Status != "killed" {
+		t.Errorf("expected killed, got %s", finalRun.Status)
+	}
+}
+
+// #3474: KillRun kills the step's process before it marks the run killed, so the
+// step's failure reaches the run loop first (always, under -race on epoch). It must
+// not be recorded over the kill: the run ends "killed", not "failed".
+func TestKillRunIsNotOverwrittenByTheStepsFailure(t *testing.T) {
+	db := setupTestDB(t)
+	wfStore := store.NewWorkflowStore(db)
+	rt := newWfMockRuntime()
+	runner := NewWorkflowRunner(wfStore, &AgentLauncher{runtime: rt}, rt, nil, nil, t.TempDir(), "localhost", 8420)
+	stepsJSON, _ := json.Marshal([]StepDef{{Name: "slow", Type: "shell", Command: "sleep 60"}})
+	wf := createTestWorkflow(t, wfStore, t.TempDir(), string(stepsJSON))
+	run, err := runner.TriggerWorkflow(context.Background(), wf, "api", nil)
+	if err != nil {
+		t.Fatalf("trigger: %v", err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		runner.mu.Lock()
+		started := runner.activeChildren[run.ID] != nil
+		runner.mu.Unlock()
+		if started {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// KillRun waits until the loop has checked; the loop writes only after KillRun has
+	// marked the run killed.
+	checked := make(chan struct{})
+	killRunPause = func() {
+		select {
+		case <-checked:
+		case <-time.After(10 * time.Second):
+		}
+	}
+	afterKillCheck = func(id int64) {
+		if id != run.ID {
+			return
+		}
+		close(checked)
+		for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+			if r, _ := wfStore.GetWorkflowRunDirect(context.Background(), id); r != nil && r.Status == "killed" {
+				return
+			}
+		}
+	}
+	t.Cleanup(func() { killRunPause, afterKillCheck = nil, nil })
+	if !runner.KillRun(context.Background(), run.ID) {
+		t.Fatal("expected kill to return true")
+	}
+	for end := time.Now().Add(10 * time.Second); runner.IsRunActive(run.ID) && time.Now().Before(end); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if runner.IsRunActive(run.ID) {
+		t.Fatal("the run never finished after its step was killed")
+	}
 	finalRun, _ := wfStore.GetWorkflowRunDirect(context.Background(), run.ID)
 	if finalRun.Status != "killed" {
 		t.Errorf("expected killed, got %s", finalRun.Status)

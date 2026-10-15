@@ -309,7 +309,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			prevSessions = currSessions
 			prevByKey = sessionByKey
 			prevRunsJSON = currRunsStr
-		} else if time.Since(lastSent) >= wsHeartbeatInterval {
+		} else if time.Since(lastSent) >= h.heartbeatInterval() {
 			// Nothing changed for a while. Say so, so a hub holding this feed
 			// can tell an idle server from one whose tick loop is stuck (it
 			// falls back to polling the list when the feed goes quiet).
@@ -324,7 +324,17 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 
 // wsHeartbeatInterval is how long /ws/coral may stay silent before it sends a
 // coral_heartbeat. It is half the hub's default FeedQuietRefresh (30s).
-var wsHeartbeatInterval = 15 * time.Second
+const wsHeartbeatInterval = 15 * time.Second
+
+// heartbeatInterval is wsHeartbeatInterval, or the handler's own (tests; a field,
+// not the package value, so a test changing it can't race another test's handler
+// still running: #3474).
+func (h *SessionsHandler) heartbeatInterval() time.Duration {
+	if d := time.Duration(h.wsHeartbeat.Load()); d > 0 {
+		return d
+	}
+	return wsHeartbeatInterval
+}
 
 // buildSessionListForWS builds the enriched session list (same fields as List handler).
 func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]any, error) {

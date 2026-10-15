@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -50,6 +51,8 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	// wsHeartbeat overrides wsHeartbeatInterval when set (nanoseconds; tests).
+	wsHeartbeat  atomic.Int64
 	remoteAgents background.RemoteAgentSource
 	db           *store.DB
 	ss           *store.SessionStore
