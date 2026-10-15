@@ -1,5 +1,28 @@
 # Release Notes
 
+## v1.4.28 — Message your other Corals; an agent's token decides who it is
+
+**Upgrade note:** cross-Coral sending needs the matching Coral Hub release (v1.4.28 is the oldest Coral it relays for). An agent's tools now must present its own session token on the routes only an agent calls; an agent still running from **before v1.4.19** loses `coral-agent task`, `artifact upload` and `ui` until you restart it.
+
+### Changes
+
+- **Message a team on your other Coral.** An Orchestrator can send a cross-team message to a board on another Coral of the same Coral Hub account, relayed by Coral Hub: `coral-board send --address <server>/<team> "..."` (with `--reply-to` to answer one). `coral-board targets` lists the teams your account owner linked this board to. Sending is off unless the board opts in, the Operator sends only as a person (the dashboard or the signed coral CLI, not an anonymous script), and the receiving board must still list your server in its `cross_team_servers` setting. Messages carry a hop count (at most 3) and a message id, so a retried send is delivered once.
+- **Coral Hub tells a board when a link changes.** When the account owner links or unlinks a team, both boards get a short notice from **Coral Hub** ("You can now message …", "… can no longer message you"). It is Coral's own fixed wording, never text from the hub, and repeats are dropped.
+- **coral-shadow-report** adds an agreement-by-state table (agent type, signal state, open request kind).
+
+### Security
+
+- **A presented session token decides the identity, in every mode.** A board request that claims another subscriber or the Operator, or a `session_id` naming another session on the routes an agent's tools call (personal tasks, artifacts, agent UI panels, clearing events, token-usage and model reports), is refused with 403 `identity_mismatch`.
+- **Agent-only routes need the agent's token** in every mode (401 `session_token_required`): `coral-agent task` (except finishing a task), `artifact upload`, writing a UI panel, and the hooks' token-usage and model reports. Terminal sessions (plain shells, no token) keep these for themselves in default mode; strict mode refuses them.
+- **Relay streams are bounded.** The tunnel's relay request has a fixed shape and size, a 5-second read deadline and a per-tunnel in-flight cap; Coral Hub re-checks the account, link and target mode on every message.
+- The auth doc now states what default mode still allows (a local process acting as a terminal session, or as the Operator with a browser's same-origin headers) and that strict mode closes both.
+
+### For integrators
+
+- Tunnel protocol version 2: `Welcome.Capabilities` (the hub advertises `relay`); connectors open `relay` streams to `/relay/v1/message` and `/relay/v1/targets`. Version 1 peers still connect.
+- New routes: `POST /api/board/{project}/relay-messages`, `GET /api/board/{project}/relay-targets`, and `POST /api/board/{project}/hub-notice` (Coral Hub only, via `X-Coral-Hub-Notice`).
+- A sent message's mirror on your board carries `relay_message_id`; a failed send prints its client message id so a retry de-duplicates.
+
 ## v1.4.27 — Needs input when an agent asks, and only then; agents' status events are secured
 
 **Upgrade note:** agents' status events (from their hooks) are now accepted only from the agent itself. An agent that is still running from **before v1.4.19** stops updating its status in the dashboard until you restart it.
