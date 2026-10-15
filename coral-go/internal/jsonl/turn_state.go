@@ -16,7 +16,7 @@ import (
 // can emit more than 1 MiB of tool/output records before task_complete. It
 // never infers idle from silence, assistant text, or file age.
 func CodexTurnEvent(path string) (event string, at time.Time) {
-	f, err := os.Open(path)
+	f, err := openTranscriptFile(path)
 	if err != nil {
 		return
 	}

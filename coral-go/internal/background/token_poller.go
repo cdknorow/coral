@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/subagent"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // TokenPoller periodically reads Codex (and future non-Claude) agent transcripts
@@ -251,7 +253,12 @@ type codexUsageData struct {
 // extractCodexUsage reads a Codex rollout JSONL file and extracts ALL
 // cumulative token_count entries. The caller computes deltas using tracked state.
 func extractCodexUsage(path string) *codexUsageData {
-	data, err := os.ReadFile(path)
+	f, err := transcriptlink.OpenRollout(path) // never through a symlink (#3599)
+	if err != nil {
+		return nil
+	}
+	data, err := io.ReadAll(f)
+	f.Close()
 	if err != nil {
 		return nil
 	}

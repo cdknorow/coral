@@ -46,7 +46,7 @@ func scanTranscriptAppend(path string, state *transcriptReadState, reset func(),
 	if sameTranscriptSnapshot(state.info, info) {
 		return
 	}
-	f, err := os.Open(path)
+	f, err := openTranscriptFile(path)
 	if err != nil {
 		return
 	}

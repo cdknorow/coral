@@ -157,7 +157,7 @@ func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workin
 	}
 
 	// Read new data from file
-	f, err := os.Open(c.path)
+	f, err := openTranscript(c.path, agentType)
 	if err != nil {
 		return nil, len(c.messages)
 	}
@@ -299,7 +299,7 @@ func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType s
 	if sameTranscriptSnapshot(c.info, info) {
 		return c.prompt
 	}
-	f, err := os.Open(c.path)
+	f, err := openTranscript(c.path, agentType)
 	if err != nil {
 		return ""
 	}
@@ -389,7 +389,7 @@ func (r *SessionReader) ClearSession(sessionID string) {
 // being written is read on the next call. An offset past the end of the
 // file (it was truncated or replaced) starts over from the top.
 func ReadFrom(path, agentType string, offset int64) ([]map[string]any, int64, error) {
-	f, err := os.Open(path)
+	f, err := openTranscript(path, agentType)
 	if err != nil {
 		return nil, offset, err
 	}
@@ -646,6 +646,26 @@ func resolveGeminiTranscript(sessionID string, workingDirectory ...string) strin
 	return resolveAgyTranscript(sessionID, workingDirectory...)
 }
 
+// openTranscript opens an agent's transcript for reading. Codex's rollout files sit in a folder
+// the agent can write, so they are opened through a root on that folder, never following a
+// symlink (#3599): a Codex session's transcript always, and any path inside that folder.
+// The other agents' transcripts are opened by path.
+func openTranscript(path, agentType string) (*os.File, error) {
+	if agentType == at.Codex {
+		return transcriptlink.OpenRollout(path)
+	}
+	return openTranscriptFile(path)
+}
+
+// openTranscriptFile opens path, through transcriptlink.OpenRollout when it is inside Codex's
+// sessions folder.
+func openTranscriptFile(path string) (*os.File, error) {
+	if transcriptlink.InCodexSessions(path) {
+		return transcriptlink.OpenRollout(path)
+	}
+	return os.Open(path)
+}
+
 func resolveCodexTranscript(sessionID string) string {
 	if link := transcriptlink.Codex(sessionID); link.Path != "" {
 		return link.Path
@@ -721,7 +741,7 @@ func resolveCodexTranscriptByMarker(basePath, sessionID string) string {
 }
 
 func codexTranscriptCoralSessionID(path string) string {
-	f, err := os.Open(path)
+	f, err := openTranscriptFile(path)
 	if err != nil {
 		return ""
 	}
@@ -812,7 +832,7 @@ func codexTranscriptCoralSessionIDCached(path string, seen os.FileInfo) string {
 			return prev.id
 		}
 	}
-	f, err := os.Open(path)
+	f, err := openTranscriptFile(path)
 	if err != nil {
 		return ""
 	}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/cdknorow/coral/internal/safefs"
 )
@@ -57,6 +58,48 @@ func Codex(sessionID string) CodexLink {
 	}
 	link.Path = rolloutPath(link.Path, link.ThreadID)
 	return link
+}
+
+// InCodexSessions reports whether path is inside <CODEX_HOME>/sessions (as written, or under the
+// folder's resolved path): where Codex writes its rollout files, a folder the agent can write.
+func InCodexSessions(path string) bool {
+	_, ok := sessionsRel(path)
+	return ok
+}
+
+func sessionsRel(path string) (string, bool) {
+	sessions := filepath.Join(codexHome(), "sessions")
+	bases := []string{filepath.Clean(sessions)}
+	if real, err := safefs.Resolve(sessions); err == nil {
+		bases = append([]string{real}, bases...)
+	}
+	clean := filepath.Clean(path)
+	for _, base := range bases {
+		r, err := filepath.Rel(base, clean)
+		if err == nil && r != "." && r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator)) && !filepath.IsAbs(r) {
+			return r, true
+		}
+	}
+	return "", false
+}
+
+// OpenRollout opens a Codex rollout file, a path inside <CODEX_HOME>/sessions, through a root
+// held on that folder (#3599, Security's SHOULD on #3597): the Codex agent can write there, so a
+// file checked by Codex() and then swapped for a symlink, or a symlinked folder on the way, is
+// refused at open time instead of followed. A regular file only, opened non-blocking. A path
+// outside the sessions folder is refused.
+func OpenRollout(path string) (*os.File, error) {
+	rel, ok := sessionsRel(path)
+	if !ok {
+		return nil, safefs.ErrOutside
+	}
+	root, err := safefs.OpenRoot(filepath.Join(codexHome(), "sessions"))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close() // the file stays open
+	f, _, err := root.Open(rel)
+	return f, err
 }
 
 // rolloutPath returns p resolved when it is threadID's rollout file inside
