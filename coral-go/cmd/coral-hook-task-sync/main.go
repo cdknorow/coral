@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
-	"path/filepath"
 	"runtime/debug"
 
 	"github.com/cdknorow/coral/internal/hooks"
@@ -27,9 +27,12 @@ func main() {
 	if err != nil {
 		return
 	}
+	run(raw)
+}
 
-	hooks.DebugLog(fmt.Sprintf("TASK_SYNC INPUT: %s", hooks.Truncate(string(raw), 500)))
-
+// run handles one hook event. The debug log names events and IDs only: never the
+// payload, a subject or a title (#3571).
+func run(raw []byte) {
 	var d map[string]any
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return
@@ -44,6 +47,7 @@ func main() {
 
 	tool, _ := d["tool_name"].(string)
 	inp := hooks.GetToolInput(d)
+	hooks.DebugLog(fmt.Sprintf("TASK_SYNC INPUT: tool=%s", hooks.LogID(tool)))
 
 	switch tool {
 	case "TaskCreate":
@@ -56,17 +60,15 @@ func main() {
 		if sessionID != "" {
 			payload["session_id"] = sessionID
 		}
-		hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/tasks", agentName), payload)
+		hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/tasks"), payload)
 
 		// Cache task ID for later TaskUpdate lookups
 		taskID := parseTaskIDFromResponse(d)
 		if taskID == "" {
 			taskID = fmt.Sprintf("%v", inp["taskId"])
 		}
-		hooks.DebugLog(fmt.Sprintf("TaskCreate: cache_id=%s subject=%s", taskID, subject))
-		if taskID != "" && taskID != "<nil>" {
-			cacheWrite(taskID, subject)
-		}
+		hooks.DebugLog(fmt.Sprintf("TaskCreate: cache_id=%s", hooks.LogID(taskID)))
+		cacheWrite(taskID, subject)
 
 	case "TaskUpdate":
 		taskID := fmt.Sprintf("%v", inp["taskId"])
@@ -74,7 +76,7 @@ func main() {
 		status, _ := inp["status"].(string)
 
 		// Cache subject if provided
-		if taskID != "" && taskID != "<nil>" && subject != "" {
+		if subject != "" {
 			cacheWrite(taskID, subject)
 		}
 
@@ -84,11 +86,11 @@ func main() {
 
 		// Resolve title from event or cache
 		title := subject
-		if title == "" && taskID != "" && taskID != "<nil>" {
-			title = cacheRead(taskID)
+		if title == "" {
+			title = hooks.TaskCacheRead(taskID)
 		}
 
-		hooks.DebugLog(fmt.Sprintf("TaskUpdate %s: task_id=%s resolved_title=%s", status, taskID, title))
+		hooks.DebugLog(fmt.Sprintf("TaskUpdate %s: task_id=%s resolved=%t", status, hooks.LogID(taskID), title != ""))
 
 		if title == "" {
 			return
@@ -102,9 +104,9 @@ func main() {
 		// Find the dashboard task by title and update it
 		qs := ""
 		if sessionID != "" {
-			qs = "?session_id=" + sessionID
+			qs = "?session_id=" + url.QueryEscape(sessionID)
 		}
-		resp, err := hooks.CoralAPI(base, "GET", fmt.Sprintf("/api/sessions/live/%s/tasks%s", agentName, qs), nil)
+		resp, err := hooks.CoralAPI(base, "GET", hooks.LivePath(agentName, "/tasks"+qs), nil)
 		if err != nil {
 			return
 		}
@@ -121,7 +123,7 @@ func main() {
 			if tTitle == title && int(tCompleted) != 1 {
 				hooks.DebugLog(fmt.Sprintf("Setting %s: dashboard_id=%d", status, int(tID)))
 				hooks.CoralAPI(base, "PATCH",
-					fmt.Sprintf("/api/sessions/live/%s/tasks/%d", agentName, int(tID)),
+					hooks.LivePath(agentName, fmt.Sprintf("/tasks/%d", int(tID))),
 					map[string]any{"completed": completedValue})
 				break
 			}
@@ -145,16 +147,9 @@ func parseTaskIDFromResponse(d map[string]any) string {
 	return ""
 }
 
+// cacheWrite caches a task's subject under the sha256 of its ID (hooks.TaskCacheWrite).
 func cacheWrite(taskID, subject string) {
-	path := filepath.Join(hooks.CacheDir(), "task_"+taskID)
-	os.WriteFile(path, []byte(subject), 0644)
-}
-
-func cacheRead(taskID string) string {
-	path := filepath.Join(hooks.CacheDir(), "task_"+taskID)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
+	if err := hooks.TaskCacheWrite(taskID, subject); err != nil {
+		hooks.DebugLog(fmt.Sprintf("TASK_CACHE_SKIPPED: task_id=%s", hooks.LogID(taskID)))
 	}
-	return string(data)
 }

@@ -159,6 +159,12 @@ go build -tags "dev fts5" -o /tmp/coral-test-bin/ ./cmd/coral ./cmd/coral-board 
 or point `CORAL_HOOK_DIR` at a folder that holds them. The CDP runner and the test rigs under
 `tests/` build them next to `coral`.
 
+The hooks log what they did to `<data dir>/hook_cache/debug.log`: event names and IDs only,
+never a payload, a task's subject or a title. The folder is readable only by you (0700, its
+files 0600). Builds before v1.4.40 kept this log and the task cache in the shared temp folder
+(`$TMPDIR/coral_task_cache` or `/tmp/coral_task_cache`); that folder is no longer used, and you
+can delete it.
+
 ### A whole team stalled and produced nothing
 
 Agents told to coordinate over an unreachable board will troubleshoot it and then wait

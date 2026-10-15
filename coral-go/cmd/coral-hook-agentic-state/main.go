@@ -30,11 +30,11 @@ func main() {
 		return
 	}
 
-	hooks.DebugLog(fmt.Sprintf("AGENTIC_STATE RAW(%d): %s", len(raw), hooks.Truncate(string(raw), 300)))
+	hooks.DebugLog(fmt.Sprintf("AGENTIC_STATE RAW(%d)", len(raw))) // the size only: never the payload (#3571)
 
 	var d map[string]any
 	if err := json.Unmarshal(raw, &d); err != nil {
-		hooks.DebugLog(fmt.Sprintf("AGENTIC_STATE JSON_ERROR: %v", err))
+		hooks.DebugLog("AGENTIC_STATE JSON_ERROR")
 		return
 	}
 
@@ -70,7 +70,7 @@ func main() {
 	if hookType == "" {
 		hookType, _ = d["event_name"].(string)
 	}
-	hooks.DebugLog(fmt.Sprintf("AGENTIC_STATE INPUT: hook_type=%s argv=%v", hookType, os.Args[1:]))
+	hooks.DebugLog(fmt.Sprintf("AGENTIC_STATE INPUT: hook_type=%s argv=%v", hooks.LogID(hookType), os.Args[1:]))
 
 	base := hooks.CoralBase()
 	sessionID := hooks.ResolveSessionID(hooks.StrVal(d, "session_id"))
@@ -99,7 +99,7 @@ func main() {
 		if pending == nil {
 			return
 		}
-		if _, err := hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/pending-tool", agentName), pending); err != nil {
+		if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/pending-tool"), pending); err != nil {
 			hooks.DebugLog(fmt.Sprintf("PENDING_POST_FAILED: agent=%s tool=%v err=%v", agentName, pending["tool_name"], err))
 		}
 		return
@@ -123,7 +123,7 @@ func main() {
 		return
 	}
 
-	if _, err := hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/events", agentName), event); err != nil {
+	if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/events"), event); err != nil {
 		hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", base, agentName, event["event_type"], err))
 		return
 	}
@@ -137,7 +137,7 @@ func main() {
 			"cost_usd":      d["total_cost_usd"],
 			"num_turns":     d["num_turns"],
 		}
-		hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/token-usage", agentName), tokenData)
+		hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/token-usage"), tokenData)
 	}
 
 	hooks.DebugLog(fmt.Sprintf("DONE: agent=%s event_type=%s", agentName, event["event_type"]))
@@ -151,7 +151,7 @@ func turnEndHandoff(base, agentName string, stopHookActive bool) []byte {
 	if stopHookActive {
 		return nil // Claude's own loop guard: hand off at most once per stop chain
 	}
-	raw, err := hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/turn-end", agentName), map[string]any{"stop_hook_active": false})
+	raw, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/turn-end"), map[string]any{"stop_hook_active": false})
 	if err != nil {
 		hooks.DebugLog(fmt.Sprintf("TURN_END_FAILED: %v", err))
 		return nil

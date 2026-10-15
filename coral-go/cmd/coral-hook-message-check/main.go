@@ -6,7 +6,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cdknorow/coral/internal/testguard"
 	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"log"
@@ -74,7 +73,7 @@ func main() {
 	}
 
 	count, _ := result["unread"].(float64)
-	hooks.DebugLog(fmt.Sprintf("message_check: project=%s unread=%d", project, int(count)))
+	hooks.DebugLog(fmt.Sprintf("message_check: project=%s unread=%d", hooks.LogID(project), int(count)))
 
 	if int(count) > 0 {
 		plural := "s"
@@ -106,7 +105,7 @@ func loadBoardState() map[string]any {
 	// Must match coral-board's stateFilePath: the CLI writes this file into the
 	// launching server's data directory, so reading ~/.coral unconditionally
 	// would look in the wrong place for any server started with --home.
-	statePath := filepath.Join(coralDir(), fmt.Sprintf("board_state_%s.json", safeName))
+	statePath := filepath.Join(hooks.CoralDir(), fmt.Sprintf("board_state_%s.json", safeName))
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		return nil
@@ -127,23 +126,4 @@ func exec(name string, args ...string) (string, error) {
 	cmd := osexec.Command(name, args...)
 	out, err := cmd.Output()
 	return string(out), err
-}
-
-// coralDir returns the data directory of the Coral server that launched this
-// agent, falling back to ~/.coral. Coral sets CORAL_DATA_DIR in every agent's
-// environment; see agent.CoralEnv.
-func coralDir() string {
-	dir := resolveCoralDir()
-	testguard.CheckDataPath(dir)
-	return dir
-}
-
-func resolveCoralDir() string {
-	for _, k := range []string{"CORAL_DATA_DIR", "CORAL_DIR"} {
-		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
-			return v
-		}
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".coral")
 }

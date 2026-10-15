@@ -10,11 +10,11 @@ import (
 	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -77,7 +77,18 @@ func ResolveAgentName(hookData map[string]any) string {
 	if cwd == "" {
 		return ""
 	}
-	return filepath.Base(strings.TrimRight(cwd, "/\\"))
+	name := filepath.Base(strings.TrimRight(cwd, "/\\"))
+	if name == "." || name == ".." || name == string(filepath.Separator) {
+		return "" // not a name: in a URL path it would climb out of /api/sessions/live/ (#3571)
+	}
+	return name
+}
+
+// LivePath is the API path of one of the agent's live-session routes, with the agent's
+// name escaped: the name comes from the hook payload's cwd, so a "?", "#" or "/" in it
+// must not change which route is called (#3571).
+func LivePath(agentName, route string) string {
+	return "/api/sessions/live/" + url.PathEscape(agentName) + route
 }
 
 // CoralAPI sends a request to the Coral dashboard API.
@@ -119,41 +130,6 @@ func Truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
-}
-
-// DebugLog appends a timestamped line to the hook debug log.
-func DebugLog(msg string) {
-	dir := CacheDir()
-	logPath := filepath.Join(dir, "debug.log")
-
-	// Rotate if over 500KB
-	if info, err := os.Stat(logPath); err == nil && info.Size() > 512000 {
-		os.WriteFile(logPath, []byte("--- log rotated ---\n"), 0644)
-	}
-
-	ts := time.Now().UTC().Format("15:04:05.000")
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	fmt.Fprintf(f, "[%s] %s\n", ts, msg)
-}
-
-// CacheDir returns the Coral hook cache directory.
-func CacheDir() string {
-	var base string
-	if runtime.GOOS == "windows" {
-		base = os.TempDir()
-	} else {
-		base = os.Getenv("TMPDIR")
-		if base == "" {
-			base = "/tmp"
-		}
-	}
-	d := filepath.Join(base, "coral_task_cache")
-	os.MkdirAll(d, 0755)
-	return d
 }
 
 // StrVal extracts a string value from a map by key, returning "" if missing or wrong type.

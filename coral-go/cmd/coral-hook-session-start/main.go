@@ -28,11 +28,11 @@ func main() {
 		return
 	}
 
-	hooks.DebugLog(fmt.Sprintf("SESSION_START RAW(%d): %s", len(raw), hooks.Truncate(string(raw), 300)))
+	hooks.DebugLog(fmt.Sprintf("SESSION_START RAW(%d)", len(raw))) // the size only: never the payload (#3571)
 
 	var d map[string]any
 	if err := json.Unmarshal(raw, &d); err != nil {
-		hooks.DebugLog(fmt.Sprintf("SESSION_START JSON_ERROR: %v", err))
+		hooks.DebugLog("SESSION_START JSON_ERROR")
 		return
 	}
 
@@ -55,6 +55,6 @@ func main() {
 		"model":      model,
 	}
 
-	hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/context-window", agentName), payload)
-	hooks.DebugLog(fmt.Sprintf("SESSION_START DONE: agent=%s model=%s", agentName, model))
+	hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/context-window"), payload)
+	hooks.DebugLog(fmt.Sprintf("SESSION_START DONE: agent=%s model=%s", hooks.LogID(agentName), hooks.LogID(model)))
 }
