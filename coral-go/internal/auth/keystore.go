@@ -5,12 +5,16 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -67,7 +71,10 @@ func NewKeyStore(coralDir string) (*KeyStore, error) {
 }
 
 func (ks *KeyStore) loadOrGenerate() error {
-	data, err := os.ReadFile(ks.keyPath)
+	data, err := readKeyFile(ks.keyPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	if err == nil {
 		key := strings.TrimSpace(string(data))
 		if len(key) >= keyLength {
@@ -80,12 +87,78 @@ func (ks *KeyStore) loadOrGenerate() error {
 		return fmt.Errorf("generate API key: %w", err)
 	}
 	ks.key = key
-	if err := os.MkdirAll(filepath.Dir(ks.keyPath), 0755); err != nil {
-		log.Printf("[auth] warning: failed to create key directory: %v", err)
-	}
-	if err := os.WriteFile(ks.keyPath, []byte(ks.key+"\n"), 0600); err != nil {
+	if err := writeKeyFile(ks.keyPath, ks.key); err != nil {
 		log.Printf("[auth] warning: failed to persist API key to disk: %v", err)
 	}
+	return nil
+}
+
+// readKeyFile reads the API key file: a regular file (never through a symlink or another kind
+// of file, refused with an error to fix by hand), at most 1 KiB. One readable by group or others
+// is tightened to 0600 first, as it should always have been (#3627 F2; Windows has no mode bits:
+// the data folder's ACL protects it).
+func readKeyFile(path string) ([]byte, error) {
+	li, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !li.Mode().IsRegular() {
+		return nil, fmt.Errorf("API key file %s is not a regular file (a link or something else); remove it and Coral makes a new key", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || !os.SameFile(li, fi) {
+		return nil, fmt.Errorf("API key file %s changed while it was opened", path)
+	}
+	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+		if err := f.Chmod(0o600); err != nil {
+			return nil, fmt.Errorf("API key file %s is readable by others and can't be made private: %w", path, err)
+		}
+		log.Printf("[auth] the API key file was readable by others; it is now private (0600)")
+	}
+	return io.ReadAll(io.LimitReader(f, 1024))
+}
+
+// writeKeyFile replaces the key file atomically: a private temp file in the same folder,
+// written, synced and renamed over it. A rename replaces a link at path, never follows it, and
+// an existing looser mode isn't kept (#3627 F2).
+func writeKeyFile(path, key string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".api_key-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	done := false
+	defer func() {
+		if !done {
+			f.Close()
+			os.Remove(tmp)
+		}
+	}()
+	if err := f.Chmod(0o600); err != nil && runtime.GOOS != "windows" {
+		return err
+	}
+	if _, err := f.WriteString(key + "\n"); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	done = true
 	return nil
 }
 
@@ -97,7 +170,9 @@ func (ks *KeyStore) Key() string {
 }
 
 // RegenerateKey generates a new API key and persists it. Every session signed in with the
-// old key ends too (#3356): a new key is how a user locks out whoever had the old one.
+// old key ends too (#3356): a new key is how a user locks out whoever had the old one. The new
+// key is written first: if it can't be persisted, the call fails and nothing changes, since a
+// key that only lived in memory would bring the OLD key back at the next start (#3627 F2).
 func (ks *KeyStore) RegenerateKey() (string, error) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
@@ -105,12 +180,12 @@ func (ks *KeyStore) RegenerateKey() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("regenerate API key: %w", err)
 	}
+	if err := writeKeyFile(ks.keyPath, key); err != nil {
+		return "", fmt.Errorf("regenerate API key: can't save it: %w", err)
+	}
 	ks.key = key
 	ks.sessions = make(map[string]*Session)
 	ks.order = nil
-	if err := os.WriteFile(ks.keyPath, []byte(ks.key+"\n"), 0600); err != nil {
-		log.Printf("[auth] warning: failed to persist regenerated key to disk: %v", err)
-	}
 	return ks.key, nil
 }
 
