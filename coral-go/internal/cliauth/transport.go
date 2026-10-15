@@ -79,6 +79,11 @@ func ReadToken(dir string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
+	// One name only: a hard link is another name for a file elsewhere; the count is read
+	// from the handle, so on Windows too (#3633).
+	if n, ok := safefs.LinkCount(f, fi); !ok || n != 1 {
+		return "", fmt.Errorf("%s is not a private regular file of this user", p)
+	}
 	if !privateMode(fi) || fi.Size() > 256 || !ownedByMe(fi) {
 		return "", fmt.Errorf("%s is not a private regular file of this user", p)
 	}

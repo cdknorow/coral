@@ -96,6 +96,17 @@ func TestReadToken(t *testing.T) {
 	got, err := ReadToken(dir)
 	require.NoError(t, err)
 	assert.Equal(t, "tok", got)
+	// A hard link (another name for the token file) is refused, and so is the original while
+	// it has two names; on every OS, the count read from the handle (#3633).
+	hard := filepath.Join(t.TempDir(), TokenFile)
+	require.NoError(t, os.Link(p, hard))
+	_, err = ReadToken(filepath.Dir(hard))
+	assert.Error(t, err, "a hard link")
+	_, err = ReadToken(dir)
+	assert.Error(t, err, "the original, with two names")
+	require.NoError(t, os.Remove(hard))
+	_, err = ReadToken(dir)
+	require.NoError(t, err, "one name again")
 	if runtime.GOOS == "windows" {
 		return
 	}
