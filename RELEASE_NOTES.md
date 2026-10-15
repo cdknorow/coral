@@ -1,5 +1,12 @@
 # Release Notes
 
+## v1.4.45 — Message board fixes, and subscribers on a phone
+
+### Message board
+
+- **The board view has a page margin.** The "Message Board" heading no longer touches the sidebar, and Delete, the Subscribers column and attachments no longer run past the window's right edge. Long subscriber names wrap instead of being cut off, and a wide image in a post no longer makes the board scroll sideways.
+- **See a board's subscribers on a phone.** At phone width, where the Subscribers column is hidden, the board header has a Subscribers button that opens the list as a sheet. From it you can see who is on the board and open a subscriber's chat history.
+
 ## v1.4.44 — Private agent logs, safe base branches, and the last file-access fixes
 
 **Please upgrade.** This release adds the last file-access fixes from this round of Security's audit. One cleanup step is recommended on shared Linux machines (below); nothing else needs any action.
