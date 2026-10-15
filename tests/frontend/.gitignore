@@ -1,2 +1,4 @@
-node_modules/
+# No trailing slash: it also matches a node_modules SYMLINK (a worktree linking a shared
+# install), which "node_modules/" (directories only) let a broad git add commit (#3546).
+node_modules
 package-lock.json
