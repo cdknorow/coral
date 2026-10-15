@@ -334,7 +334,7 @@ function renderMessages(messages) {
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
                 <button class="mb-delete-msg-btn" onclick="deleteBoardMessage(${Number(m.id)})" title="Delete message">&times;</button>
             </div>
-            <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)))}</div>
+            <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)), undefined, 'board')}</div>
         </div>`;
     }).join('');
     resolveBoardArtifacts(container, state.currentBoardServer);
@@ -933,7 +933,7 @@ function renderExportHTML(d) {
     <span class="msg-time">${escapeHtml(e.timestamp)}</span>
     ${tag}
   </div>
-  <div class="msg-content">${renderMarkdown(e.content)}</div>
+  <div class="msg-content">${renderMarkdown(e.content, undefined, 'board')}</div>
 </div>`;
     }).join('\n');
 

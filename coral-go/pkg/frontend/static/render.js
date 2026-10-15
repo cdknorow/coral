@@ -631,7 +631,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
                 ${externalMessageBadge(m)}${hubUserBadge(m)}
                 <span class="mb-message-time">${_formatTime(m.created_at)}</span>
             </div>
-            <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)))}</div>
+            <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)), undefined, 'board')}</div>
         </div>`;
     }).join('');
     resolveBoardArtifacts(msgsEl, _activeBoardChat ? splitKey(_activeBoardChat).server : undefined);

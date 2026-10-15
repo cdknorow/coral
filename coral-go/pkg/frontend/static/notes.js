@@ -126,7 +126,7 @@ function renderNotes(data) {
 
     try {
         const html = marked.parse(content);
-        container.innerHTML = label + sanitizeHtml(html);
+        container.innerHTML = label + sanitizeHtml(html, undefined, { links: 'board' }); // an auto summary is agent-derived (#3542)
     } catch (e) {
         // Fallback if marked.js didn't load
         container.innerHTML = label + '<pre>' + content.replace(/</g, '&lt;') + '</pre>';

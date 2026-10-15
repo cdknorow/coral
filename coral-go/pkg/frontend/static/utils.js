@@ -1,3 +1,4 @@
+import { parse, normalize, build as buildRoute } from './routes.js';
 import { importOnce } from './import_once.js';
 import { loadHighlight } from './vendor_loader.js';
 /* Utility functions: HTML escaping and toast notifications */
@@ -303,27 +304,80 @@ function unblockAsLinks(frag) {
     }
 }
 
-/** In a file an agent wrote (#3540, Security's review): a link may only leave the page. A web
- *  link (http, https, already a new tab), a mailto: link or a Coral artifact link stays a link;
- *  anything else (a root-relative /api/... address, ../x.md, a #fragment the dashboard would read
- *  as its own route, another scheme) becomes text with its target shown, so a click can never
- *  move the dashboard tab. Done on DOMPurify's own DOM, like unblockAsLinks. */
-function restrictLinks(frag) {
-    for (const a of frag.querySelectorAll('a[href]')) {
-        const href = a.getAttribute('href') || '';
+/* Links in agent-written Markdown (#3540 files, #3542 board posts, chat, tasks and notes).
+ * A link may never move the dashboard tab somewhere the Operator didn't choose: an agent's text
+ * is steerable (prompt injection), and a same-tab link to /api/system/api-key or to a hash route
+ * would act as if the Operator had gone there. One pass on DOMPurify's own DOM (no second
+ * parse), by mode:
+ *   'file'  (a file shown in the viewer or the pane): web links (a new tab), mailto, Coral
+ *           artifact links; a #fragment stays and scrolls inside the file (keepFragmentsInside).
+ *   'board' (board posts, tasks, notes): the same, plus a root-relative link the dashboard's
+ *           router accepts (routes.parse), rebuilt from the parsed route (only its own query
+ *           keys, no hash), so [team](/team/qa) works through the same check as a typed URL.
+ *   'chat'  (live chat): as 'board', and a relative path or file: link becomes a file-reference
+ *           CANDIDATE with no href (live_chat's linkifyRefs turns it into a file reference, or
+ *           text), so no click, middle click or "open in new tab" can navigate to the raw path.
+ * Everything else becomes text with its target shown: /api/..., ../x, a #fragment or hash
+ * route on a board or in chat, file:, data:, javascript:, vbscript:, a coral: link that isn't an
+ * exact artifact link, and any other scheme. */
+const LINK_MODES = new Set(['file', 'board', 'chat']);
+
+function linkAsText(a, href) {
+    const span = document.createElement('span');
+    span.className = 'blocked-link';
+    span.title = `Link not opened: ${href}`;
+    span.textContent = a.textContent === href ? href : `${a.textContent} (${href})`;
+    a.replaceWith(span);
+}
+
+/** A root-relative link's dashboard route, rebuilt from the parse (null when it isn't one). */
+function routeHref(href) {
+    if (!href.startsWith('/') || href.startsWith('//') || href.includes('\\')) return null;
+    let url;
+    try { url = new URL(href, 'http://x'); } catch { return null; }
+    if (url.origin !== 'http://x') return null;
+    const route = normalize(parse(url.pathname, url.search));
+    return route ? buildRoute(route) : null;
+}
+
+function applyLinkPolicy(frag, mode) {
+    for (const a of frag.querySelectorAll('a')) {
+        // The team knowledge view's own links between agents (data-knowledge-link, href "#")
+        // are handled by its click listener; leave them be.
+        if (a.hasAttribute('data-knowledge-link') && (a.getAttribute('href') || '#') === '#') continue;
+        if (!a.hasAttribute('href')) {
+            // DOMPurify dropped the target (javascript:, data:, vbscript:): plain text, nothing link-like left.
+            if (!a.hasAttribute('data-file-ref-raw')) { const span = document.createElement('span'); span.className = 'blocked-link'; span.textContent = a.textContent; a.replaceWith(span); }
+            continue;
+        }
+        const href = (a.getAttribute('href') || '').trim();
         if (/^https?:\/\//i.test(href)) {
             a.target = '_blank';
             a.rel = 'noopener noreferrer';
             continue;
         }
         if (/^mailto:/i.test(href) || /^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(href)) continue;
-        // A #fragment stays a link inside the shown file; keepFragmentsInside scrolls to it there.
-        if (/^#[^#\s]+$/.test(href)) { a.setAttribute('data-fragment', href.slice(1)); continue; }
-        const span = document.createElement('span');
-        span.className = 'blocked-link';
-        span.title = `Link not opened: ${href}`;
-        span.textContent = a.textContent === href ? href : `${a.textContent} (${href})`;
-        a.replaceWith(span);
+        if (mode === 'file') {
+            // A #fragment stays a link inside the shown file; keepFragmentsInside scrolls to it there.
+            if (/^#[^#\s]+$/.test(href)) { a.setAttribute('data-fragment', href.slice(1)); continue; }
+            linkAsText(a, href);
+            continue;
+        }
+        const route = routeHref(href);
+        if (route !== null) {
+            a.setAttribute('href', route);
+            a.setAttribute('data-route', '');
+            a.removeAttribute('target');
+            continue;
+        }
+        const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href);
+        if (mode === 'chat' && !href.startsWith('#') && (!scheme || scheme[1].toLowerCase() === 'file')) {
+            // A file reference candidate: no href, so nothing can navigate to the raw path.
+            a.removeAttribute('href');
+            a.setAttribute('data-file-ref-raw', href);
+            continue;
+        }
+        linkAsText(a, href);
     }
 }
 
@@ -351,20 +405,24 @@ export function sanitizeHtml(html, config, opts) {
     installSanitizerHooks();
     const frag = DOMPurify.sanitize(html, { ...(config || {}), RETURN_DOM_FRAGMENT: true });
     unblockAsLinks(frag);
-    if (opts && opts.strictLinks) restrictLinks(frag);
+    // opts.links: 'file', 'board' or 'chat' (applyLinkPolicy); strictLinks is the 'file' mode (#3540).
+    const linkMode = opts && (opts.links || (opts.strictLinks && 'file'));
+    if (linkMode && LINK_MODES.has(linkMode)) applyLinkPolicy(frag, linkMode);
     const box = document.createElement('div');
     box.appendChild(frag);
     return box.innerHTML;
 }
 
-/** Markdown to sanitized HTML; text when marked or DOMPurify is missing. */
-export function sanitizeMarkdown(md, config) {
+/** Markdown to sanitized HTML; text when marked or DOMPurify is missing. links: the link
+ *  policy for agent-written text ('board', 'chat' or 'file'; see applyLinkPolicy). */
+export function sanitizeMarkdown(md, config, links) {
     if (typeof marked === 'undefined') return escapeHtml(md);
-    return sanitizeHtml(marked.parse(md), config);
+    return sanitizeHtml(marked.parse(md), config, links ? { links } : undefined);
 }
 
-// { breaks: true } to keep single newlines as line breaks.
-export function renderMarkdown(content, options) {
+// { breaks: true } to keep single newlines as line breaks. links: the link policy for
+// agent-written text, 'board' or 'chat' (applyLinkPolicy, #3542); omit it only for Coral's own text.
+export function renderMarkdown(content, options, links) {
     if (!content) return '';
     if (typeof marked !== 'undefined') {
         try {
@@ -389,7 +447,7 @@ export function renderMarkdown(content, options) {
                 marked._hljsConfigured = true;
             }
             const html = options ? marked.parse(content, options) : marked.parse(content);
-            return sanitizeHtml(html, DOMPURIFY_CONFIG);
+            return sanitizeHtml(html, DOMPURIFY_CONFIG, links ? { links } : undefined);
         } catch { /* fall through */ }
     }
     return escapeHtml(content);
@@ -413,7 +471,7 @@ export function renderMarkdownStrict(md) {
     if (!md) return '';
     if (!m) return escapeHtml(md);
     try {
-        return sanitizeHtml(m.parse(String(md)), DOMPURIFY_CONFIG, { strictLinks: true });
+        return sanitizeHtml(m.parse(String(md)), DOMPURIFY_CONFIG, { links: 'file' });
     } catch {
         return escapeHtml(md);
     }

@@ -272,7 +272,7 @@ function renderHistoryAgentNotes() {
 
     const md = historyAgentNotes.map(n => n.content).join('\n\n');
     if (typeof marked !== 'undefined') {
-        container.innerHTML = sanitizeMarkdown(md);
+        container.innerHTML = sanitizeMarkdown(md, undefined, 'board');
     } else {
         container.textContent = md;
     }

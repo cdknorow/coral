@@ -239,8 +239,29 @@ const BARE_FILE_REF_RE = /(?<![\w\/:.@~-])(?:~?\.{0,2}\/)?(?:[\w@.+-]+\/)+[\w@.+
 // Web links open in a new tab; links to relative paths, path-looking inline
 // code and bare paths in prose become file references (in the live Chat
 // view, clicking one offers to open it in the Files panel).
-function linkifyRefs(root) {
+export function linkifyRefs(root) {
+    // A relative link in chat Markdown arrives with no href (utils.applyLinkPolicy, #3542): it
+    // becomes a file reference when it looks like one, else plain text. It never navigates.
+    for (const a of root.querySelectorAll("a[data-file-ref-raw]")) {
+        const raw0 = a.getAttribute("data-file-ref-raw");
+        a.removeAttribute("data-file-ref-raw");
+        let raw = raw0;
+        try { raw = decodeURIComponent(raw0); } catch {}
+        if (/^file:/i.test(raw) || looksLikeFileRef(raw)) {
+            a.dataset.fileRef = normalizeFileRef(raw);
+            a.classList.add("chat-file-ref");
+            a.setAttribute("role", "link");
+            a.tabIndex = 0;
+        } else {
+            const span = document.createElement("span");
+            span.className = "blocked-link";
+            span.title = `Link not opened: ${raw0}`;
+            span.textContent = a.textContent === raw0 ? raw0 : `${a.textContent} (${raw0})`;
+            a.replaceWith(span);
+        }
+    }
     for (const a of root.querySelectorAll("a[href]")) {
+        if (a.hasAttribute("data-route")) continue; // a dashboard page link the router accepted
         const href = a.getAttribute("href");
         const artifactHref = /^\/api\/artifacts\/([a-f0-9]{64})$/i.exec(href || '');
         if (/^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(href || '') || artifactHref) {
@@ -597,11 +618,11 @@ function renderMessage(msg, container, agentType = "claude") {
 		appendCoralNotice(container, normalizeNudgeText(msg.content), isCoralHealthNudge(msg.content));
     } else if (msg.type === "user") {
         appendContent(container, makeBubble("chat-bubble human",
-            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content)}</div>`));
+            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content, undefined, 'chat')}</div>`));
     } else if (msg.type === "assistant") {
         if (msg.text) {
             const bubble = makeBubble(`chat-bubble assistant${msg.phase === "commentary" ? " commentary" : ""}`,
-                `<div class="message-text">${renderMarkdown(msg.text)}</div>${COPY_BUTTON}`);
+                `<div class="message-text">${renderMarkdown(msg.text, undefined, 'chat')}</div>${COPY_BUTTON}`);
             bubbleSource.set(bubble, msg.text);
             if (adapter.assistantPlacement(msg) === "work") appendWork(container, bubble);
             else appendTurnFinal(container, bubble);
@@ -1487,7 +1508,7 @@ function syncPendingGroup(container, cls, items, label) {
         const summary = coralNoticeSummary(normalizeNudgeText(p.text));
         const el = coral
             ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label" role="status">${label}</span>`)
-            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(p.text)}</div><div class="pending-label" role="status">${label}</div>`);
+            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(p.text, undefined, 'chat')}</div><div class="pending-label" role="status">${label}</div>`);
         el.dataset.pendingId = String(p.id);
         // Keep send order even when a message moves between groups
         const next = Array.from(wrap.children).find(c => Number(c.dataset.pendingId) > p.id);
@@ -1759,7 +1780,7 @@ function needsInputHtml(info, session) {
         }
     } else if (info.kind === "plan") {
         question = screenQuestion ? "Ready to proceed with this plan?" : `${name} has a plan ready`;
-        if (inp.plan) context = `<div class="cni-plan message-text">${renderMarkdown(inp.plan)}</div>`;
+        if (inp.plan) context = `<div class="cni-plan message-text">${renderMarkdown(inp.plan, undefined, 'chat')}</div>`;
     } else if (info.kind === "permission") {
         const tool = info.tool && info.tool.tool_name;
         if (tool) kicker = `Permission needed · ${escapeHtml(tool)}`;

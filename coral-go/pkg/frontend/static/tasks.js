@@ -218,7 +218,7 @@ function _subagentMarkdown(text) {
     // steered by whatever the subagent read, and an <img> with a remote URL
     // makes the browser call out the moment the modal opens: a silent way to
     // leak data through the URL. A report has no need for images.
-    const html = DOMPurify.sanitize(renderMarkdown(text, { breaks: true, gfm: true }), {
+    const html = DOMPurify.sanitize(renderMarkdown(text, { breaks: true, gfm: true }, 'board'), {
         ALLOWED_URI_REGEXP: DOMPURIFY_CONFIG.ALLOWED_URI_REGEXP,
         FORBID_TAGS: ['img', 'picture', 'source', 'video', 'audio', 'track', 'svg', 'math', 'style', 'link', 'form', 'input', 'button', 'textarea', 'select'],
         FORBID_ATTR: ['style', 'srcset', 'background', 'poster'],
