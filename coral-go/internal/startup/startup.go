@@ -391,9 +391,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	agentprio.Setup(forcedPriority)
 
 	// Select terminal backend and agent runtime
-	if cfg.LogDir != "" {
-		os.MkdirAll(cfg.LogDir, 0o755)
-	}
+	prepareLogDir(cfg.LogDir)
 	naming.SetDefaultLogDir(cfg.LogDir)
 	backend, agentRT, terminal := selectBackend(opts.BackendType, cfg.LogDir, cfg.CoralDir())
 
@@ -1054,4 +1052,14 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		mgr.Bootstrap(ctx, ss, hostname, src)
 		mgr.Run(ctx)
 	})
+}
+
+// prepareLogDir makes the agents' pipe log folder, readable by this user only (#3601, weak site
+// W17): an older install made it 0755, so an existing folder is tightened too.
+func prepareLogDir(dir string) {
+	if dir == "" {
+		return
+	}
+	os.MkdirAll(dir, 0o700)
+	os.Chmod(dir, 0o700)
 }

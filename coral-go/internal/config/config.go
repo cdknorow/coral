@@ -116,7 +116,7 @@ type Config struct {
 // (CORAL_DATA_DIR, CORAL_DIR, ~/.coral). Pass "" to use the default.
 func Load(dataDir ...string) *Config {
 	homeDir, _ := os.UserHomeDir()
-	logDir := os.TempDir()
+	var logDir string
 	var override string
 	if len(dataDir) > 0 {
 		override = dataDir[0]
@@ -127,12 +127,11 @@ func Load(dataDir ...string) *Config {
 	testguard.CheckDataPath(coralDir)
 	os.MkdirAll(coralDir, 0o700)
 
-	// A server on an explicit data directory (tests, a second instance) keeps its agent
-	// pipe logs there too, not in the shared system temp dir (#3259). The default
-	// ~/.coral install keeps using the temp dir, so running agents' logs stay found.
-	if (len(dataDir) > 0 && dataDir[0] != "") || os.Getenv("CORAL_DATA_DIR") != "" || os.Getenv("CORAL_DIR") != "" {
-		logDir = filepath.Join(coralDir, "logs") // created by startup, once it is going to run
-	}
+	// Agent pipe logs (everything an agent's terminal shows) live in the data folder, never in
+	// the shared system temp dir, where other users of the computer could read them (#3259 for
+	// a second instance; #3601, weak site W17, for every install). Startup creates the folder
+	// at 0700 and re-points a running agent's pipe there when it reattaches.
+	logDir = filepath.Join(coralDir, "logs")
 
 	envURL, envURLSet := os.LookupEnv("CORAL_CLOUD_URL")
 	hubEnv := truthy(os.Getenv("CORAL_HUB"))

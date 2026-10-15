@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -186,4 +187,18 @@ func TestBothListenersAreKeyedToThePeer(t *testing.T) {
 	assert.Equal(t, 401, status(ip, "localhost"+p, nil), "a loopback Host doesn't make a network peer local")
 	assert.Equal(t, 401, status(ip, "", forged))
 	assert.Equal(t, 200, status(ip, "", key))
+}
+
+// #3601 (weak site W17): the pipe log folder is this user's only, and an existing 0755 one (an
+// older install) is tightened.
+func TestPrepareLogDirIsPrivate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	prepareLogDir(dir)
+	fi, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm())
+	require.NoError(t, os.Chmod(dir, 0o755))
+	prepareLogDir(dir)
+	fi, _ = os.Stat(dir)
+	assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm(), "an older 0755 folder is tightened")
 }

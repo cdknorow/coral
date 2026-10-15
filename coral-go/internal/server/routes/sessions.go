@@ -3132,7 +3132,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		} else {
-			os.WriteFile(newLogPath, []byte{}, 0644)
+			ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
 			if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
 				errInternalServer(w, err.Error())
 				return
@@ -3168,7 +3168,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 
 		// Clear scrollback, create log, setup pipe-pane
 		h.terminal.ClearHistory(ctx, target)
-		os.WriteFile(newLogPath, []byte{}, 0644)
+		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
 		h.terminal.StartLogging(ctx, target, newLogPath)
 	}
 
@@ -3506,7 +3506,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	target := fmt.Sprintf("%s:0.0", newSessionName)
 	if pane == nil {
-		os.WriteFile(newLogPath, []byte{}, 0644)
+		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
 		if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
 			errInternalServer(w, err.Error())
 			return
@@ -3519,7 +3519,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		h.terminal.RenameSession(ctx, pane.SessionName, newSessionName)
 		time.Sleep(500 * time.Millisecond)
 		h.terminal.ClearHistory(ctx, target)
-		os.WriteFile(newLogPath, []byte{}, 0644)
+		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
 		h.terminal.StartLogging(ctx, target, newLogPath)
 	}
 
@@ -5139,7 +5139,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		}
 
 		// Create empty log file
-		os.WriteFile(logFile, []byte{}, 0644)
+		ptymanager.ResetAgentLog(logFile) // 0600, never through a link (#3601, W17)
 
 		slog.Info("launch creating tmux session",
 			"session_name", sessionName,
@@ -6516,7 +6516,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 			}
 		} else {
 			// tmux backend: create session with the EXISTING session name
-			os.WriteFile(logFile, []byte{}, 0644)
+			ptymanager.ResetAgentLog(logFile) // 0600, never through a link (#3601, W17)
 			if err := h.terminal.CreateSession(ctx, sessionName, ls.WorkingDir); err != nil {
 				return fmt.Errorf("create session: %w", err)
 			}

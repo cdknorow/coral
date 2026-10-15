@@ -59,8 +59,8 @@ func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string,
 	tmuxName := naming.SessionName(agentType, sessionID)
 	logPath := naming.LogFile(b.logDir, agentType, sessionID)
 
-	// Create empty log file
-	os.WriteFile(logPath, []byte{}, 0644)
+	// Create (or empty) the log: this user only, never through a link (#3601, W17)
+	resetLog(logPath)
 
 	// Create tmux session
 	if err := b.client.NewSession(ctx, tmuxName, workDir); err != nil {
@@ -307,8 +307,8 @@ func (b *TmuxBackend) recoverSession(name string) *tmuxSession {
 		logPath := naming.LogFile(b.logDir, agentType, sessionID)
 
 		// Ensure log file exists
-		if _, err := os.Stat(logPath); os.IsNotExist(err) {
-			os.WriteFile(logPath, []byte{}, 0644)
+		if _, err := os.Lstat(logPath); os.IsNotExist(err) {
+			createLog(logPath)
 		}
 
 		// Reset pipe-pane: close any stale pipe from a previous server
@@ -359,8 +359,8 @@ func (b *TmuxBackend) Attach(name, subscriberID string) (<-chan []byte, error) {
 	logPath := sess.logPath
 
 	// Self-heal: if the log file is missing, recreate and restart pipe-pane
-	if _, err := os.Stat(logPath); os.IsNotExist(err) {
-		os.WriteFile(logPath, []byte{}, 0644)
+	if _, err := os.Lstat(logPath); os.IsNotExist(err) {
+		createLog(logPath)
 		ctx := context.Background()
 		tmuxName := naming.SessionName(sess.info.AgentType, sess.info.SessionID)
 		b.client.PipePane(ctx, tmuxName, logPath)

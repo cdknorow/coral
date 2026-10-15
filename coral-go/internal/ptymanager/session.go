@@ -74,7 +74,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 
 	// Set up log file (the default log dir is the temp dir unless startup moved it)
 	logPath := naming.LogFile(naming.DefaultLogDir(), agentType, sessionID)
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := openLogAppend(logPath)
 	if err != nil {
 		log.Printf("Warning: could not open log file %s: %v", logPath, err)
 	}
