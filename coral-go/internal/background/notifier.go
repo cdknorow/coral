@@ -203,6 +203,12 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		// the same unread count before the next pass. Worker subscriptions use
 		// mention-based coalescing and retain their one-nudge-per-batch policy.
 		newBatch := sub.ReceiveMode == "all" && last.latestID > 0 && latestID > last.latestID
+		// Any mode: the agent has read past the batch it was nudged for, so every unread
+		// message is newer than that nudge. Without this a new mention that arrived before
+		// a pass saw unread == 0 waited for the reminder, up to remindAfter (#3480).
+		if last.latestID > 0 && sub.LastReadID >= last.latestID && latestID > last.latestID {
+			newBatch = true
+		}
 		if notified && !newBatch && (unread <= last.count || sub.ReceiveMode != "all") && n.now().Sub(last.at) < n.remindAfter {
 			n.logger.Debug("already notified", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "notified_unread", last.count)
 			continue

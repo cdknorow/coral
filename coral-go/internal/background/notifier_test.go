@@ -466,6 +466,57 @@ func TestBoardNotifier_NewMessageAfterReadWithSameUnreadCount(t *testing.T) {
 	require.Len(t, rt.sent, 2, "new message ID must re-notify after the prior batch was read")
 }
 
+// TestBoardNotifier_MentionAfterReadBeforeNextPass: a worker (mentions mode) reads the
+// batch it was nudged for, and a new mention arrives before a notifier pass sees
+// unread == 0. The new mention is a new batch: it is nudged at once, not after the
+// reminder (#3480). Mentions arriving before that read still share one nudge.
+func TestBoardNotifier_MentionAfterReadBeforeNextPass(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+
+	clock := time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC)
+	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
+	notifier.now = func() time.Time { return clock }
+	notifier.SetIsPausedFn(func(_ string) bool { return false })
+	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentName: "worker", AgentType: "agy", SessionID: "ffff-0001", DisplayName: "Worker"}}, nil
+	})
+	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "agy-ffff-0001", nil, nil, "mentions")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "proj", "Operator", "Operator", "", nil, nil, "")
+	require.NoError(t, err)
+	mention := func(text string) {
+		_, err := bs.PostMessage(ctx, "proj", "Operator", "@Worker "+text, nil)
+		require.NoError(t, err)
+	}
+
+	mention("first")
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+
+	// A second mention before the agent reads: covered by the first nudge.
+	clock = clock.Add(time.Minute)
+	mention("second")
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 1, "mentions before a read share one nudge")
+
+	// The agent reads both; a third mention arrives before the next pass.
+	_, err = bs.ReadMessages(ctx, "proj", "Worker", 50)
+	require.NoError(t, err)
+	clock = clock.Add(time.Minute)
+	mention("third")
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 2, "a mention after the read is nudged at once, not after remindAfter")
+	assert.Contains(t, rt.sent[1].text, "1 unread message")
+
+	// And it is not repeated on the next passes.
+	clock = clock.Add(time.Minute)
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.NoError(t, notifier.RunOnce(ctx))
+	assert.Len(t, rt.sent, 2, "one nudge for the new batch")
+}
+
 // TestBoardNotifier_OneNudgePerBatch verifies more messages arriving before
 // the agent reads do not stack up nudges, a reminder goes out once they have
 // sat unread for remindAfter, and reading resets it.
