@@ -87,7 +87,7 @@ const STATES = {
         check('enrolled but disconnected: warning tint and why', !l.hidden && l.state === 'disconnected' && l.color === rgb(l.warning) && /disconnected from app\.coralai\.ai \(/.test(l.aria), JSON.stringify(l));
         for (const name of ['idle', 'enrolling', 'off']) {
             await show(name); l = await look();
-            check(`not enrolled (${name}): hidden`, l && l.hidden, JSON.stringify(l));
+            check(`not enrolled (${name}): hidden, with no state, title or name left`, l && l.hidden && !l.state && !l.title && l.aria === null, JSON.stringify(l));
         }
 
         console.log('3. Reduced motion stops the pulse');
@@ -137,7 +137,7 @@ const STATES = {
         // One poll step, as the 15 s interval runs it, answered 403 (a dashboard that isn't this computer's).
         const before = await ev(`(async () => { window.__hubStatus = 403; const m = await ${mod}; await m.refresh(); return window.__hubCalls; })()`);
         l = await look();
-        check('a 403 hides it', l && l.hidden, JSON.stringify(l));
+        check('a 403 hides it, with no state, title or name left', l && l.hidden && !l.state && !l.title && l.aria === null, JSON.stringify(l));
         const after = await ev(`(async () => { window.__hubStatus = ${JSON.stringify(STATES.connected)}; const m = await ${mod}; await m.refresh(); return window.__hubCalls; })()`);
         check('and it stops asking (no further status request)', after === before && (await look()).hidden, `${before} -> ${after}`);
     } catch (e) {

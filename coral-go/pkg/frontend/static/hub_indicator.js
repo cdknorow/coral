@@ -60,6 +60,14 @@ export function indicatorLabel(st, state, now = new Date(), locale) {
 }
 
 let _btn = null;
+
+/** Hide the indicator, leaving no state, title or name behind (QA). */
+function hide(b) {
+    b.hidden = true;
+    b.removeAttribute('data-state');
+    b.removeAttribute('title');
+    b.removeAttribute('aria-label');
+}
 let _timer = null;
 let _stopped = false;
 
@@ -85,7 +93,7 @@ export function renderIndicator(st, now = new Date()) {
     const b = button();
     if (!b) return;
     const state = indicatorState(st);
-    if (!state) { b.hidden = true; b.removeAttribute('data-state'); return; }
+    if (!state) { hide(b); return; }
     const label = indicatorLabel(st, state, now);
     b.dataset.state = state;
     b.title = label;
@@ -128,5 +136,5 @@ export function initHubIndicator() {
 export function stopHubIndicator() {
     _stopped = true;
     if (_timer) { clearInterval(_timer); _timer = null; }
-    if (_btn) _btn.hidden = true;
+    if (_btn) hide(_btn);
 }
