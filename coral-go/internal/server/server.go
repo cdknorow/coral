@@ -89,6 +89,7 @@ func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, t
 // NewWithKey constructs the server and opens its separate board database with
 // the same optional SQLCipher key used by the primary store.
 func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, dbKey string) *Server {
+	tightenDataPermissions(cfg.CoralDir()) // #3552
 	// Initialize upload directory from config
 	routes.InitUploadDir(cfg.CoralDir())
 	if db != nil {

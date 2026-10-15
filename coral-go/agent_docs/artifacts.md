@@ -68,6 +68,15 @@ plays once); anything after the end of the image is cut. A WebP with EXIF or XMP
 attached. Linking a fresh file uploads it, so link only what the team should
 see. The Operator can turn this off in Settings ("Attach files agents link on the board").
 
+## Storage
+
+Artifacts are stored by their content: the same bytes are one artifact. The **first** upload
+names it: uploading the same bytes again under another name or type returns the same
+`coral://artifacts/<id>` with the first upload's name and type (the answer says which); your
+own upload is still listed under your name in your Artifacts tab. Coral's data folder is
+readable by your user only: folders are `0700`, and the databases, the log and every
+artifact file are `0600`. A data folder from an older Coral is tightened once at startup.
+
 ## What the user sees
 
 Team Artifacts (`GET /api/board/{project}/artifacts?limit=&offset=`, limit 1-200, default 100) lists task-result artifacts plus untasked uploads by the team's agents, newest first; `limit`, `offset` and `has_more` cover both. An untasked upload has `source: "upload"`, `task_id: 0`, `session_id`, and `produced_by` (the team member). The same object attached to a task appears once, as the task row. A name that is only a digest shows as "Uploaded artifact".

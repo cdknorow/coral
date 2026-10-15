@@ -282,8 +282,8 @@ func (a *AutoAttacher) charge(sessionID string, n int64) error {
 	}
 	u.bytes += n
 	a.total += n
-	if err := os.MkdirAll(filepath.Dir(a.totalFile()), 0o755); err == nil {
-		_ = os.WriteFile(a.totalFile(), []byte(strconv.FormatInt(a.total, 10)), 0o644)
+	if err := os.MkdirAll(filepath.Dir(a.totalFile()), 0o700); err == nil {
+		_ = os.WriteFile(a.totalFile(), []byte(strconv.FormatInt(a.total, 10)), 0o600)
 	}
 	return nil
 }

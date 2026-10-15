@@ -117,9 +117,9 @@ func Load(dataDir ...string) *Config {
 	}
 	coralDir := ResolveCoralDir(override)
 
-	// Ensure data directory exists
+	// Ensure data directory exists: only this user may read it (#3552, Security's #3551 audit)
 	testguard.CheckDataPath(coralDir)
-	os.MkdirAll(coralDir, 0755)
+	os.MkdirAll(coralDir, 0o700)
 
 	// A server on an explicit data directory (tests, a second instance) keeps its agent
 	// pipe logs there too, not in the shared system temp dir (#3259). The default

@@ -2225,7 +2225,7 @@ func (h *SessionsHandler) PersistTaskChanges(ctx context.Context, task *board.Ta
 }
 
 func writeChangesArtifact(artifactPath string, diff []byte) error {
-	if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(artifactPath), 0o700); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(artifactPath), ".changes-*.diff")
@@ -2241,7 +2241,7 @@ func writeChangesArtifact(artifactPath string, diff []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmpPath, 0644); err != nil {
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmpPath, artifactPath)

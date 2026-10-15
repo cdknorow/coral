@@ -56,33 +56,101 @@ func (h *SessionsHandler) artifactDir() string {
 
 // storeArtifact writes data as a content-addressed artifact object under coralDir (the
 // object, its metadata sidecar, and the session's upload record, so the agent's
-// Artifacts tab lists it) and returns its hex id. Shared by coral-agent artifact upload
-// and the board's auto-attach (#3515).
+// Artifacts tab lists it) and returns its hex id and the artifact's stored metadata. Shared
+// by coral-agent artifact upload and the board's auto-attach (#3515).
+//
+// #3552 (Security's #3551 audit): the first writer's name and type stay. The sidecar is
+// created once (an exclusive hard link from a temp file) and never rewritten, so uploading
+// the same bytes again can't relabel someone else's artifact; each uploader's own name is
+// kept in its uploads/<session>/<hex>.json record. The object is written to a temp file and
+// renamed into place before the sidecar exists, so a sidecar never points at a partial
+// object. Folders are 0700 and files 0600.
 func storeArtifact(coralDir, sessionID, name, mediaType string, data []byte) (string, agentArtifactMeta, error) {
 	digestBytes := sha256.Sum256(data)
 	hexID := hex.EncodeToString(digestBytes[:])
-	meta := agentArtifactMeta{Name: name, MediaType: mediaType, Size: int64(len(data)), Digest: "sha256:" + hexID}
+	mine := agentArtifactMeta{Name: name, MediaType: mediaType, Size: int64(len(data)), Digest: "sha256:" + hexID}
 	dir := filepath.Join(coralDir, "artifacts", "objects")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", meta, err
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", mine, err
 	}
 	objectPath := filepath.Join(dir, hexID)
 	if _, err := os.Stat(objectPath); os.IsNotExist(err) {
-		if err := os.WriteFile(objectPath, data, 0o644); err != nil {
-			return "", meta, err
+		if err := writeFileAtomic(objectPath, data, 0o600); err != nil {
+			return "", mine, err
 		}
 	}
-	metaData, _ := json.Marshal(meta)
-	if err := os.WriteFile(objectPath+".json", metaData, 0o644); err != nil {
-		return "", meta, err
+	stored, err := createSidecarOnce(objectPath+".json", mine)
+	if err != nil {
+		return "", mine, err
 	}
 	if up := uploadsDir(coralDir, sessionID); up != "" {
-		if os.MkdirAll(up, 0o755) == nil {
-			rec, _ := json.Marshal(agentUploadRecord{meta, time.Now().UTC().Format(time.RFC3339)})
-			_ = os.WriteFile(filepath.Join(up, hexID+".json"), rec, 0o644)
+		if os.MkdirAll(up, 0o700) == nil {
+			rec, _ := json.Marshal(agentUploadRecord{mine, time.Now().UTC().Format(time.RFC3339)})
+			_ = writeFileAtomic(filepath.Join(up, hexID+".json"), rec, 0o600)
 		}
 	}
-	return hexID, meta, nil
+	return hexID, stored, nil
+}
+
+// writeFileAtomic writes data to a temp file in path's folder and renames it into place.
+func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), mode); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// createSidecarOnce stores meta as the artifact's sidecar unless one exists, and returns
+// the sidecar's metadata (the first writer's). The sidecar appears whole or not at all: a
+// complete temp file is hard-linked to the name, which fails if the name exists.
+func createSidecarOnce(path string, meta agentArtifactMeta) (agentArtifactMeta, error) {
+	if existing, ok := readSidecar(path); ok {
+		return existing, nil
+	}
+	data, _ := json.Marshal(meta)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return meta, err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return meta, err
+	}
+	if err := tmp.Close(); err != nil {
+		return meta, err
+	}
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		return meta, err
+	}
+	if err := os.Link(tmp.Name(), path); err != nil {
+		if existing, ok := readSidecar(path); ok { // another upload of the same bytes won
+			return existing, nil
+		}
+		return meta, err
+	}
+	return meta, nil
+}
+
+func readSidecar(path string) (agentArtifactMeta, bool) {
+	var m agentArtifactMeta
+	data, err := os.ReadFile(path)
+	if err != nil || json.Unmarshal(data, &m) != nil || m.Digest == "" {
+		return m, false
+	}
+	return m, true
 }
 
 func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Request) {
@@ -114,11 +182,12 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 		errInternalServer(w, err.Error())
 		return
 	}
+	// The name and type viewers get: the first upload's, when these bytes were stored before.
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"uri":        "coral://artifacts/" + hexID,
 		"url":        artifactURL(hexID),
-		"name":       name,
-		"media_type": mediaType,
+		"name":       meta.Name,
+		"media_type": meta.MediaType,
 		"size":       len(data),
 		"digest":     meta.Digest,
 	})
