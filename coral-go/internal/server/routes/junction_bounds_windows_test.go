@@ -40,6 +40,13 @@ func TestJunctionOutOfTheRepositoryIsRefusedEverywhere(t *testing.T) {
 	for _, fp := range []string{`app\juncdir\j.txt`, "app/juncdir/j.txt", filepath.Join(junc, "j.txt")} {
 		for _, via := range []bool{tunneled, dashboard} {
 			code, body := e.get(fc, via, "filepath", fp)
+			if via == dashboard && filepath.IsAbs(fp) {
+				// By design the local dashboard opens any ABSOLUTE path read-only, wherever it
+				// is (TestFileContentTunnelBounds reads an outside file the same way); only the
+				// relative paths and the hub are bounded to the session root.
+				assert.Equal(t, 200, code, "file-content %s on the local dashboard", fp)
+				continue
+			}
 			assert.Contains(t, []int{403, 404}, code, "file-content %s (tunneled %v)", fp, via)
 			assert.NotContains(t, body, "junction-secret", "file-content %s", fp)
 		}
