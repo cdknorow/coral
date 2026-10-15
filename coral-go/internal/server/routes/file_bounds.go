@@ -275,8 +275,9 @@ func rootAllowed(realRoot string) bool {
 }
 
 // trustedGitRoot is the git root of workdir that Coral may use as a root for files: what git
-// reports, but only when it is workdir itself, one of its parents (workdir is inside the
-// repository) or a repository inside workdir (git's one-level child fallback). Anything else
+// reports, but only when it is workdir itself, or one of its parents (workdir is inside the
+// repository) or a repository inside workdir (git's one-level child fallback) that holds its
+// own .git. Anything else
 // came from the repository's own config (core.worktree in an agent-writable .git/config can
 // name any folder), so workdir is used instead (#3596 W6). Every root derivation (the file
 // routes' resolveGitRoot, auto-attach's SessionDirs) goes through it.
@@ -290,10 +291,17 @@ func trustedGitRoot(ctx context.Context, workdir string) string {
 	if err1 != nil || err2 != nil {
 		return workdir
 	}
-	if within(realR, realW) || within(realW, realR) {
-		return root
+	if !within(realR, realW) && !within(realW, realR) {
+		return workdir
 	}
-	return workdir
+	// A real repository's top level holds its own .git: a folder, or a gitdir file (worktrees,
+	// submodules). A forged core.worktree naming a parent folder that isn't a repository (one
+	// that holds other projects) doesn't, and isn't trusted (Security's W6 SHOULD).
+	fi, err := os.Lstat(filepath.Join(realR, ".git"))
+	if err != nil || !(fi.IsDir() || fi.Mode().IsRegular()) {
+		return workdir
+	}
+	return root
 }
 
 // listingVisible reports whether a directory entry may be shown to a strict caller.

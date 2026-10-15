@@ -641,3 +641,42 @@ func TestCoreWorktreeCannotWidenTheRoot(t *testing.T) {
 	realRoot, _ := filepath.EvalSymlinks(trustedGitRoot(context.Background(), workdir))
 	assert.Equal(t, realRepo, realRoot, "the repository workdir is in")
 }
+
+// Security's W6 SHOULD: a forged core.worktree naming a real PARENT folder that isn't a
+// repository (one holding other projects) isn't trusted; a real parent repository and a
+// gitdir-file repository (a worktree) still are.
+func TestTrustedGitRootNeedsARealRepository(t *testing.T) {
+	e := newBoundsEnv(t)
+	workdir := filepath.Join(e.repo, "app")
+	// e.base holds the repository and other folders, and has no .git of its own.
+	require.NoError(t, exec.Command("git", "-C", e.repo, "config", "core.worktree", e.base).Run())
+	realBase, _ := filepath.EvalSymlinks(e.base)
+	gotGit, _ := filepath.EvalSymlinks(gitutil.ResolveGitRoot(context.Background(), workdir))
+	require.Equal(t, realBase, gotGit, "git reports the forged parent")
+	assert.Equal(t, workdir, trustedGitRoot(context.Background(), workdir), "a parent that isn't a repository falls back to the workdir")
+	require.NoError(t, exec.Command("git", "-C", e.repo, "config", "--unset", "core.worktree").Run())
+
+	// A real parent repository (its own .git folder) still counts.
+	realRepo, _ := filepath.EvalSymlinks(e.repo)
+	got, _ := filepath.EvalSymlinks(trustedGitRoot(context.Background(), workdir))
+	assert.Equal(t, realRepo, got)
+
+	// A worktree, whose .git is a gitdir FILE, still counts.
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", e.repo}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+e.home, "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	run("add", "app/main.go")
+	run("commit", "-qm", "init")
+	wt := filepath.Join(e.base, "wt")
+	run("worktree", "add", "-q", "-b", "w", wt)
+	fi, err := os.Lstat(filepath.Join(wt, ".git"))
+	require.NoError(t, err)
+	require.True(t, fi.Mode().IsRegular(), "a worktree's .git is a file")
+	realWT, _ := filepath.EvalSymlinks(wt)
+	got, _ = filepath.EvalSymlinks(trustedGitRoot(context.Background(), filepath.Join(wt, "app")))
+	assert.Equal(t, realWT, got)
+}
