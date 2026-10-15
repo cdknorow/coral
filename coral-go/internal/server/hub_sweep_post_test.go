@@ -27,6 +27,18 @@ func TestHubSweepNoHomeInAnyWriteAnswer(t *testing.T) {
 	}
 	r := newE2ERemote(t, "hub-sweep-write", nil)
 	t.Setenv("HOME", r.dir)
+	// A checkout with a change, so stopping the agent stores a diff and says where (QA's kill finding).
+	git := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.test"}, args...)...)
+		cmd.Dir = r.work
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	git("init", "-q")
+	require.NoError(t, os.WriteFile(filepath.Join(r.work, "a.txt"), []byte("a\n"), 0o600))
+	git("add", "-A")
+	git("commit", "-qm", "x")
+	require.NoError(t, os.WriteFile(filepath.Join(r.work, "a.txt"), []byte("a\nb\n"), 0o600))
 	sid := r.launchDirectTerminal(t, r.work)
 	name := r.sessionNameFor(sid)
 	h := r.srv.Router()
@@ -78,13 +90,6 @@ func TestHubSweepNoHomeInAnyWriteAnswer(t *testing.T) {
 		"/api/board/{project}/hub-notice":                   "set by the hub itself",
 		"/api/sessions/live/{name}/files/refresh":           "runs git in the checkout (read-only, but slow under -race)",
 		"/api/sessions/live/{name}/goal":                    "types into the agent",
-		"/api/sessions/live/{sessionID}/archive":            "archives the agent the others need",
-		"/api/sessions/live/{sessionID}/sleep":              "stops the agent the others need",
-		"/api/sessions/live/{name}/kill":                    "stops the agent the others need",
-		"/api/sessions/live/team/{boardName}/kill":          "stops the agents",
-		"/api/sessions/live/team/{boardName}/sleep":         "stops the agents",
-		"/api/sessions/live/sleep-all":                      "stops the agents",
-		"/api/board/{project}":                              "deletes the board the others need",
 		"/api/upload":                                       "a multipart upload, not JSON",
 		"/api/sessions/live/{sessionID}/unarchive":          "nothing archived",
 		"/api/board/{project}/tasks/{taskID}/cancel":        "ends the task the others need",
@@ -102,13 +107,27 @@ func TestHubSweepNoHomeInAnyWriteAnswer(t *testing.T) {
 	if real, err := filepath.EvalSymlinks(r.dir); err == nil && real != r.dir {
 		homes = append(homes, real)
 	}
-	var leaks, tried []string
+	// These end what the others need, so they run last, in this order (covered, not skipped).
+	last := []string{
+		"/api/sessions/live/{sessionID}/archive", "/api/sessions/live/{sessionID}/sleep",
+		"/api/sessions/live/{name}/kill", "/api/sessions/live/team/{boardName}/sleep",
+		"/api/sessions/live/team/{boardName}/kill", "/api/sessions/live/sleep-all", "/api/board/{project}",
+	}
+	lastOK := map[string]bool{}
+	for _, p := range last {
+		lastOK[p] = true
+	}
+	var leaks, tried, deferred []string
 	for _, line := range strings.Split(string(golden), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 3 || f[0] == "GET" || (f[2] != "interact" && f[2] != "launch") {
 			continue
 		}
 		if _, ok := skip[f[1]]; ok {
+			continue
+		}
+		if lastOK[f[1]] {
+			deferred = append(deferred, line)
 			continue
 		}
 		rec := call(h, f[0], repl.Replace(f[1]), string(payload), hub)
@@ -120,6 +139,23 @@ func TestHubSweepNoHomeInAnyWriteAnswer(t *testing.T) {
 			if strings.Contains(rec.Body.String(), home) {
 				leaks = append(leaks, f[0]+" "+f[1]+": "+rec.Body.String())
 				break
+			}
+		}
+	}
+	// The deferred ones, in the order of last.
+	for _, p := range last {
+		for _, line := range deferred {
+			f := strings.Fields(line)
+			if f[1] != p {
+				continue
+			}
+			rec := call(h, f[0], repl.Replace(f[1]), string(payload), hub)
+			tried = append(tried, f[0]+" "+f[1]+" "+strconv.Itoa(rec.Code))
+			for _, home := range homes {
+				if strings.Contains(rec.Body.String(), home) {
+					leaks = append(leaks, f[0]+" "+f[1]+": "+rec.Body.String())
+					break
+				}
 			}
 		}
 	}

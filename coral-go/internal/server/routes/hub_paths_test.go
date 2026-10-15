@@ -228,5 +228,35 @@ func TestHubDisplayTextInMessages(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	assert.Equal(t, "open ~/nope: no such file", m["error"])
 	assert.Equal(t, "~", m["detail"])
-	assert.Equal(t, home+"/x", m["hint"], "a field outside the three lists is left as it is")
+	assert.Equal(t, "~/x", m["hint"], "a value that is itself a home path is shown as ~ in any field (#3561)")
+}
+
+// #3561 delta (Security's value-based rule, QA's kill finding): a value that is itself a home
+// path is shown as "~/..." in any field (so a new field name can't carry it out), in lists
+// too; free text and multi-line values are left alone; changes_artifact is dropped.
+func TestHubPathsAnyFieldHoldingAHomePath(t *testing.T) {
+	home, real := hubTestHome(t)
+	h := hubTestRouter(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"stored_at":        real + "/.coral/artifacts/x",
+			"changes_artifact": home + "/.coral/artifacts/sessions/s/changes.diff",
+			"dirs":             []any{home + "/a", "/opt/b", "plain"},
+			"content":          home + "/notes: written by the agent",
+			"note":             home + "/a\nsecond line",
+			"label":            "my " + home + "/a", // not a path from its start
+			"nested":           map[string]any{"backup_path": home + "/b", "count": 3},
+		})
+	})
+	_, m := hubDo(t, h, "GET", "/api/x", "", true)
+	assert.Equal(t, "~/.coral/artifacts/x", m["stored_at"])
+	assert.NotContains(t, m, "changes_artifact")
+	assert.Equal(t, []any{"~/a", "/opt/b", "plain"}, m["dirs"])
+	assert.Equal(t, home+"/notes: written by the agent", m["content"], "free text is left as written")
+	assert.Equal(t, home+"/a\nsecond line", m["note"], "a multi-line value isn't a path")
+	assert.Equal(t, "my "+home+"/a", m["label"])
+	assert.Equal(t, "~/b", m["nested"].(map[string]any)["backup_path"])
+
+	_, m = hubDo(t, h, "GET", "/api/x", "", false)
+	assert.Equal(t, real+"/.coral/artifacts/x", m["stored_at"], "this computer's answer is unchanged")
+	assert.Contains(t, m, "changes_artifact")
 }

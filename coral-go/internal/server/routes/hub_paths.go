@@ -44,6 +44,25 @@ var hubTextFields = map[string]bool{"error": true, "detail": true, "message": tr
 // hubDroppedFields name files on this computer the hub has no use for.
 var hubDroppedFields = map[string]bool{
 	"log_path": true, "log_file": true, "tmux_command": true, "source_file": true,
+	"changes_artifact": true, // the stored diff's local file; the hub reads it at /api/sessions/{id}/changes.diff (QA's #3561 finding)
+}
+
+// hubLongText are fields of free text (what people and agents wrote, output, markup): a value
+// there is left as it is even when it begins with a path, since it isn't a path field.
+var hubLongText = map[string]bool{
+	"content": true, "text": true, "output": true, "body": true, "html": true, "prompt": true,
+	"summary": true, "description": true, "title": true, "output_tail": true, "error_tail": true,
+	"diff": true, "capture": true, "instructions": true, "custom_instructions": true,
+}
+
+// hubWholePath shows a value that is itself a path under the home directory (one line,
+// starting at the home at a path boundary) as "~/..."; any other value is unchanged.
+// Security's value-based rule (#3561): it covers path fields whatever their names.
+func hubWholePath(s string) string {
+	if strings.ContainsAny(s, "\n\r") {
+		return s
+	}
+	return hubDisplayPath(s)
 }
 
 // hubHome caches the home directory's forms, for the $HOME it was worked out from.
@@ -138,7 +157,9 @@ func hubExpandPath(p string) string {
 }
 
 // hubRewrite edits a decoded JSON value in place: path fields through f, and, when drop is
-// set, the fields the hub doesn't need removed.
+// set (an answer to the hub), the fields the hub doesn't need removed, home paths inside
+// messages shown as "~", and any other value that is itself a home path (in any field but free
+// text, and in lists) shown as "~/...".
 func hubRewrite(v any, f func(string) string, drop bool) {
 	switch x := v.(type) {
 	case map[string]any:
@@ -148,17 +169,27 @@ func hubRewrite(v any, f func(string) string, drop bool) {
 				continue
 			}
 			if s, ok := val.(string); ok {
-				if hubPathFields[k] {
+				switch {
+				case hubPathFields[k]:
 					x[k] = f(s)
-				} else if drop && hubTextFields[k] {
+				case !drop:
+				case hubTextFields[k]:
 					x[k] = hubDisplayText(s)
+				case !hubLongText[k]:
+					x[k] = hubWholePath(s)
 				}
 				continue
 			}
 			hubRewrite(val, f, drop)
 		}
 	case []any:
-		for _, val := range x {
+		for i, val := range x {
+			if s, ok := val.(string); ok {
+				if drop {
+					x[i] = hubWholePath(s)
+				}
+				continue
+			}
 			hubRewrite(val, f, drop)
 		}
 	}
