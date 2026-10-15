@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.4.31 — Workflow steps get their tools; the sidebar groups by server; prompts stay out of the process list
+
+**Behaviour changes — please check your workflows.**
+- Workflow steps that declare tools, capabilities, MCP servers or a permission mode now apply them (they were silently ignored before), so re-check your workflow definitions.
+- Workflow steps run on Claude only for now: a non-interactive (print) step on Codex, Gemini, Antigravity or Pi is refused with a clear error, when it is saved and when it runs, until each CLI is verified. Interactive steps on those CLIs still work.
+
+### Changes
+
+- **Sidebar, grouped by server.** "Group by server" puts each server at the top level with a computer icon (an offline server is dimmed, with its state in the tooltip); "Show server" shows teams as "server-team". Teams share one neutral color unless you picked one, the palette varies only in brightness, folder groups get a folder icon, and a header row is itself the expand button (Enter or Space works). The top tabs read Agents, Servers, ..., Docs. A server that hasn't been checked yet is no longer shown as offline.
+- **Distilling a team's knowledge works through Coral Hub** (start it from Launch, see its status in View). One run per team at a time and at most one a minute; through Coral Hub an error reads "distillation failed; see the dashboard on this machine", and the status never carries file paths or email addresses.
+- **The dashboard no longer signs you out over an unrelated refusal.** Only a 401 that means "signed out" sends a tab to the sign-in page.
+- **Smaller fixes:** a message released from a hold says what ended the hold; `coral-board targets` reports failures the way `send` does; "awaiting review" shows only for a task under review; killing an agent outside a git checkout no longer reports a changes-artifact error.
+- **Docs:** files shown to you are `coral://` artifact links rather than local paths, and a `coral://` link only opens on the Coral that stored it.
+
+### Security
+
+- **Prompts stay out of the process list.** The prompts Coral passes to `claude --print` (knowledge distilling, session summaries, the goal check, and Claude workflow steps, which can carry earlier steps' output or board content) now go on stdin instead of the command line, where any local user could read them. A workflow step's settings file is removed after the step runs.
+- **An agent's token can't read the API key or delete a board.** Both are the Operator's (403 `forbidden_for_agent` with strict local auth, recorded in the identity report otherwise). Leaving a board is still allowed.
+- **Reverse proxies.** Behind a proxy that rewrites `Host`, the dashboard's own changes pass v1.4.30's cross-site check again: `X-Forwarded-Host` counts as Coral's own host when it comes from loopback or from an address in `CORAL_TRUSTED_PROXIES`. The proxy must set `X-Forwarded-Host` itself (e.g. `proxy_set_header X-Forwarded-Host $host`), not pass a client's value through, or set `proxy_set_header Host`.
+- A board peek from another site's page no longer counts as activity on a task, and DNS rebinding to `127.0.0.1` is pinned as refused by a test.
+
 ## v1.4.30 — Security hotfix: other web pages can no longer change your Coral
 
 **v1.4.30 replaces v1.4.29**, which was never fully published (its macOS build couldn't run); the code is the same.
