@@ -90,8 +90,15 @@ const contrast = (a, b) => {
         return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
     });
     const open = async (hash = '') => {
+        // A fresh load every time: since #3529 the dashboard URL has no query, so going from
+        // /#a to /#b is a same-document hash change that fires no load event. Each wait is
+        // registered before its navigation, or about:blank's quick load could be missed.
+        const blank = Page.loadEventFired();
+        await Page.navigate({ url: 'about:blank' });
+        await blank;
+        const loaded = Page.loadEventFired();
         await Page.navigate({ url: BASE + '/' + hash });
-        await Page.loadEventFired();
+        await loaded;
         await install();
         await ev(`(() => { T.state.servers = ${JSON.stringify(LIVE)}; return true; })()`);
     };
