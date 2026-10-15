@@ -1,5 +1,27 @@
 # Release Notes
 
+## v1.4.30 — Security hotfix: other web pages can no longer change your Coral
+
+**v1.4.30 replaces v1.4.29**, which was never fully published (its macOS build couldn't run); the code is the same.
+
+**Security advisory — please upgrade now.** Fixed: another web page could change Coral's settings (including the Claude CLI path) or post as the Operator through your browser; Coral now accepts changes only from its own page. This affected every v1.4.x release, in the default mode and with strict local auth.
+
+- Open Coral with one host name (`localhost` or `127.0.0.1`) and use it consistently: a change made from a page opened under the other name is refused.
+- Installs behind a proxy that rewrites the `Host` header: check that changes from the dashboard still work; a fix for that setup follows.
+
+### Security
+
+- **Changes only from Coral's own page.** A request that changes something (POST, PUT, PATCH or DELETE) and carries a browser's origin must come from Coral's own page (the same scheme, host and port), in every mode, before any other check; anything else gets 403 `foreign_origin`. This includes pages on another `localhost` port. Tools that send no browser origin (the command line, the agents' tools, coral-tray) and Coral Hub's connector work as before. Coral's CORS and its terminal WebSockets accept only Coral's own origin as well.
+- **An agent's task and note list is its own.** Creating, editing, reordering or deleting a live session's tasks and notes now acts only on the caller's own list: an agent works on its own (by its session token), the Operator (the dashboard, the verified CLI, Coral Hub) on any agent's, and anyone else without a credential gets 401 `session_token_required` (a terminal session still manages its own list in default mode). Before, one agent could change another agent's tasks and notes, and a task's notify could type into that agent's terminal.
+- **An agent that hasn't joined a board can't act as the Operator.** It can join under a new name, but never post or change board settings as the Operator, or act as a name another session holds. A board request's `session_name` must be the agent's own session, and a board database error never lets a request skip these checks.
+
+### Fixes
+
+- **A board message posted while a Claude agent is mid-turn is delivered once.** With the default screen rule, the turn-end hand-off no longer repeats a nudge that was already typed during the turn.
+- **`coral --version`** prints `coral <version>` and exits before anything a server does (also `-v` and `version`, and after other flags). `--help` and a bad flag no longer log a server startup line, and a stray argument after the flags is refused with the usage.
+- **`coral-board send --address`** on a Coral Hub that doesn't relay messages (`relay_unsupported`) no longer suggests retrying.
+- Work started by a relayed cross-team message (webhooks, message waits) finishes before Coral closes its board store.
+
 ## v1.4.29 — Security hotfix: other web pages can no longer change your Coral
 
 **Security advisory — please upgrade now.** Fixed: another web page could change Coral's settings (including the Claude CLI path) or post as the Operator through your browser; Coral now accepts changes only from its own page. This affected every v1.4.x release, in the default mode and with strict local auth.
