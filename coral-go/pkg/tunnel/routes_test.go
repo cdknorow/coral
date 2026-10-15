@@ -136,6 +136,8 @@ func TestFileRefsAreNormalisedAndPerRoute(t *testing.T) {
 	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/list", "path=/Users/me/code"))
 	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/is-git", url.Values{"path": {"/Users/me/my code"}}.Encode()))
 	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/list", "path=%2FUsers%2Fme"), "an encoded absolute path decodes to the same safe path")
+	// A remote Browse starts with an empty path (the machine's home), never "~" (#3491).
+	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/list", "path="), "an empty path is the machine's home")
 	for _, v := range []string{"/Users/me/../../etc", "file:///etc", "~/code", "/a%252F..%252Fb", "/a\\b"} {
 		assert.Equal(t, TierNever, Classify("GET", "/api/filesystem/list", url.Values{"path": {v}}.Encode()), v)
 	}
