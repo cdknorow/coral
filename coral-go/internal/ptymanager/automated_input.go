@@ -95,6 +95,9 @@ type AutomatedInput struct {
 	heldSince    time.Time
 	heldWhy      string
 	heldReported bool
+	// heldReportedPrompt: it was reported as held by a prompt (prompt=true). A send
+	// first reported as an input-box hold is reported again once a prompt holds it.
+	heldReportedPrompt bool
 	// gen is the session's DropHeld generation when the send reached the gate: a send
 	// in flight while DropHeld ran (a turn that takes it off the queue and holds it
 	// again) is never held again for the new process (#3468 v2).
@@ -508,7 +511,7 @@ func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted, prompt bool
 	in.heldSince = heldAt
 	again := in.heldWhy == why
 	in.heldWhy = why
-	g.held[in.Name] = append([]*heldInput{{in: in, heldAt: heldAt, why: why, prompt: prompt, reported: in.heldReported}}, g.held[in.Name]...)
+	g.held[in.Name] = append([]*heldInput{{in: in, heldAt: heldAt, why: why, prompt: prompt, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
 	start := !g.running
 	g.running = true
 	g.mu.Unlock()
@@ -542,8 +545,8 @@ func (g *inputGate) holdEnter(in AutomatedInput, prompt bool) {
 	if heldAt.IsZero() {
 		heldAt = g.now()
 	}
-	enter.heldSince, enter.heldReported = heldAt, in.heldReported
-	g.held[in.Name] = append([]*heldInput{{in: enter, heldAt: heldAt, why: "a prompt opened before its Enter", prompt: prompt, reported: in.heldReported}}, g.held[in.Name]...)
+	enter.heldSince, enter.heldReported, enter.heldReportedPrompt = heldAt, in.heldReported, in.heldReportedPrompt
+	g.held[in.Name] = append([]*heldInput{{in: enter, heldAt: heldAt, why: "a prompt opened before its Enter", prompt: prompt, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
 	start := !g.running
 	g.running = true
 	g.mu.Unlock()
@@ -568,6 +571,9 @@ type heldInput struct {
 	why      string
 	prompt   bool // held by an open prompt, not by the input box (HeldTooLongFunc)
 	reported bool
+	// reportedPrompt: reported with prompt=true (a calm report is followed by a
+	// prompt one if a prompt holds it later).
+	reportedPrompt bool
 }
 
 type inputGate struct {
@@ -616,7 +622,7 @@ func (g *inputGate) hold(in AutomatedInput, why string, prompt bool) {
 	for i, h := range q {
 		if h.in.Key == in.Key {
 			// Superseded: the newer send replaces it, in its place.
-			q[i] = &heldInput{in: in, heldAt: h.heldAt, why: why, prompt: prompt, reported: h.reported}
+			q[i] = &heldInput{in: in, heldAt: h.heldAt, why: why, prompt: prompt, reported: h.reported, reportedPrompt: h.reportedPrompt}
 			g.held[in.Name] = q
 			g.logHeld(in, why, "replaced a held send")
 			return
@@ -701,7 +707,16 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 			in.RequireInputBox = false
 		}
 		g.mu.Unlock()
-		if waiting, _, _ := in.waiting(ctx); waiting {
+		if waiting, why, prompt := in.waiting(ctx); waiting {
+			// Keep the current reason: a send held for a busy footer or a draft
+			// that a real prompt now holds must say so (QA, after #3478).
+			g.mu.Lock()
+			changed := h.why != why
+			h.why, h.prompt = why, prompt
+			g.mu.Unlock()
+			if changed {
+				g.logHeld(h.in, why, "still held")
+			}
 			return true
 		}
 		g.mu.Lock()
@@ -713,7 +728,7 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 			continue // replaced meanwhile: look again
 		}
 		send := h.in
-		send.heldSince, send.heldWhy, send.heldReported = h.heldAt, h.why, h.reported
+		send.heldSince, send.heldWhy, send.heldReported, send.heldReportedPrompt = h.heldAt, h.why, h.reported, h.reportedPrompt
 		g.mu.Unlock()
 		if enterHeld, err := g.sendChecked(ctx, send); enterHeld {
 			return true
@@ -767,8 +782,9 @@ func (g *inputGate) expireAndReportLocked() {
 				slog.Warn("automated input: dropping a send held too long", "session", name, "sender", h.in.What)
 				continue
 			}
-			if !h.reported && now.Sub(h.heldAt) > g.timings.tooLong && report != nil {
+			if (!h.reported || (h.prompt && !h.reportedPrompt)) && now.Sub(h.heldAt) > g.timings.tooLong && report != nil {
 				h.reported = true
+				h.reportedPrompt = h.reportedPrompt || h.prompt
 				g.reportedFor[name] = h.in
 				in, prompt := h.in, h.prompt
 				g.notes.post(func() { report(in.Name, in.AgentType, in.SessionID, in.What, prompt) })

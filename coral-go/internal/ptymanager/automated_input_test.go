@@ -410,3 +410,32 @@ func TestASendInFlightDuringDropHeldIsNotHeldAgain(t *testing.T) {
 	assert.Equal(t, 1, HeldCount(name), "the new process's send is held")
 	DropHeld(name, "test done")
 }
+
+// QA (after #3478): a send first held for a calm reason (only a footer on screen,
+// agy working) that a real prompt then holds must say so. Its reason is refreshed on
+// every turn, and a send reported as calm is reported again, once, as a prompt.
+func TestAHeldSendsReasonFollowsTheScreen(t *testing.T) {
+	fastGate(t)
+	gate.setTimings(gateTimings{tooLong: 50 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
+	var mu sync.Mutex
+	var prompts []bool
+	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) {
+		if name == "agy-reason" {
+			mu.Lock()
+			prompts = append(prompts, prompt)
+			mu.Unlock()
+		}
+	})
+	got := func() []bool { mu.Lock(); defer mu.Unlock(); return append([]bool(nil), prompts...) }
+	a := &fakeAgent{screen: "esc to cancel      Gemini 3.8 Flash · high\n"}
+	_, _ = DeliverAutomated(context.Background(), a.input("agy-reason", "", "nudge", false))
+	require.Eventually(t, func() bool { return len(got()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []bool{false}, got(), "a footer alone: calm")
+
+	a.show(permissionMenu) // agy opens its permission menu
+	require.Eventually(t, func() bool { return len(got()) == 2 }, 5*time.Second, 10*time.Millisecond, "reported again once a prompt holds it")
+	time.Sleep(150 * time.Millisecond) // more turns: no repeat
+	assert.Equal(t, []bool{false, true}, got())
+	assert.Empty(t, a.sent(), "still held")
+	DropHeld("agy-reason", "test done")
+}
