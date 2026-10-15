@@ -71,6 +71,10 @@ func newBoundsEnv(t *testing.T) *boundsEnv {
 	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
 	r.Get("/api/sessions/live/{name}/search-files", handler.SearchFiles)
 	r.Get("/api/sessions/live/{name}/diff", handler.Diff)
+	r.Get("/api/sessions/live/{name}/file-original", handler.GetFileOriginal)
+	r.Get("/api/sessions/live/{name}/changes.diff", handler.ChangesDiff)
+	r.Get("/api/sessions/{sessionID}/changes", handler.SessionChanges)
+	r.Get("/api/sessions/{sessionID}/changes.diff", handler.SessionChangesArtifact)
 	sys := &SystemHandler{}
 	r.Get("/api/filesystem/list", sys.ListFilesystem)
 	r.Get("/api/filesystem/is-git", sys.IsGitDir)
@@ -549,4 +553,61 @@ func TestSaveFileContentStaysInTheTree(t *testing.T) {
 	assert.Equal(t, 200, put("claude-fb", "fb-1", "README.md", kindDashboard))
 	got, _ := os.ReadFile(filepath.Join(e.repo, "app", "new", "dir", "file.go"))
 	assert.Equal(t, "PWNED", string(got))
+}
+
+// #3596 W2, W3, W4: the base file, the changes diff and a stored diff get the same bounds for
+// every caller that isn't this computer's own dashboard (the tunnel, a Bearer-key proxy, curl),
+// and a session id in their path is one safe path element.
+func TestDiffRoutesBoundEveryNonDashboardCaller(t *testing.T) {
+	e := newBoundsEnv(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", e.repo}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+e.home)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	git("config", "user.email", "t@example.invalid")
+	git("config", "user.name", "t")
+	git("add", "-A")
+	git("commit", "-qm", "init")
+	// The committed .env is no longer in the working tree: only the diff base still has it.
+	require.NoError(t, os.Remove(filepath.Join(e.repo, ".env")))
+	require.NoError(t, os.WriteFile(filepath.Join(e.repo, "README.md"), []byte("changed"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(e.repo, ".env.new"), []byte("TOKEN=untracked-secret"), 0o644))
+
+	strictKinds := map[string]kind{"tunnel": kindTunnel, "bearer": kindBearer, "curl": kindCurl}
+	original := url.Values{"filepath": {".env"}, "session_id": {"fb-1"}}
+
+	// W2: the base file.
+	code, body := e.doAs("GET", "/api/sessions/live/claude-fb/file-original", original, "", kindDashboard)
+	assert.Equal(t, 200, code)
+	assert.Contains(t, body, "TOKEN=abc", "the local dashboard still sees it")
+	for name, k := range strictKinds {
+		code, body := e.doAs("GET", "/api/sessions/live/claude-fb/file-original", original, "", k)
+		assert.Equal(t, 404, code, name)
+		assert.NotContains(t, body, "TOKEN=abc", name)
+	}
+
+	// W3: the changes diff, live and by session id.
+	for _, path := range []string{"/api/sessions/live/claude-fb/changes.diff", "/api/sessions/fb-1/changes"} {
+		q := url.Values{"session_id": {"fb-1"}}
+		for name, k := range strictKinds {
+			code, body := e.doAs("GET", path, q, "", k)
+			assert.Equal(t, 200, code, "%s %s", name, path)
+			assert.NotContains(t, body, "untracked-secret", "%s %s: filtered", name, path)
+			assert.NotContains(t, body, "TOKEN=abc", "%s %s: filtered", name, path)
+		}
+		code, body := e.doAs("GET", path, q, "", kindDashboard)
+		assert.Equal(t, 200, code, path)
+		assert.Contains(t, body, "untracked-secret", "the local dashboard gets the whole diff: %s", path)
+	}
+
+	// W4: a session id in the stored diff's path is one safe element.
+	for _, sid := range []string{"..", ".", "-x", "a.b"} {
+		for _, path := range []string{"/api/sessions/" + sid + "/changes", "/api/sessions/" + sid + "/changes.diff"} {
+			code, _ := e.doAs("GET", path, url.Values{}, "", kindDashboard)
+			assert.Equal(t, 400, code, path)
+		}
+	}
 }

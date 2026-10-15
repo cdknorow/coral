@@ -36,7 +36,6 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
@@ -2084,22 +2083,9 @@ func (h *SessionsHandler) Diff(w http.ResponseWriter, r *http.Request) {
 	// isn't the filesystem or the home folder, no sensitive path, no dot-file or dot-folder
 	// (.env.local, .git/config), a size cap, a filtered patch and no local path. Refused
 	// files look exactly like missing ones.
-	if strict {
-		real := realOrSelf(fullPath)
-		if !rootAllowed(realPath(workdir)) || diffPathHidden(fp) || sensitivePath(real) ||
-			!isPathWithinDir(realOrSelf(workdir), real) {
-			errNotFound(w, "File not found")
-			return
-		}
-		if rel, err := filepath.Rel(realOrSelf(workdir), real); err != nil || diffPathHidden(rel) {
-			errNotFound(w, "File not found")
-			return
-		}
-		// One file, not a folder's worth (QA's #3558 review).
-		if fi, err := os.Stat(real); err == nil && fi.IsDir() {
-			errNotFound(w, "File not found")
-			return
-		}
+	if strict && diffPathRefused(workdir, fp, fullPath) {
+		errNotFound(w, "File not found")
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -2165,8 +2151,14 @@ func (h *SessionsHandler) ChangesDiff(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Through Coral Hub: filtered and capped, and no local path (#3555).
-	tunneled := cloud.Tunneled(r)
+	// Anything but this computer's own dashboard (Coral Hub, a Bearer-key proxy, curl): filtered
+	// and capped, no local path (#3555), and only for a working tree that isn't the home folder
+	// or the filesystem root (#3596 W3).
+	tunneled := strictBounds(r)
+	if tunneled && !rootAllowed(realPath(workdir)) {
+		errNotFound(w, "Could not generate changes.diff")
+		return
+	}
 	gen := h.generateChangesDiff
 	if tunneled {
 		gen = h.generatePersistedDiff
@@ -2225,18 +2217,19 @@ func (h *SessionsHandler) generateChangesDiff(ctx context.Context, workdir strin
 // GET /api/sessions/{sessionID}/changes
 func (h *SessionsHandler) SessionChanges(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionID")
-	if sessionID == "" || strings.ContainsAny(sessionID, "/\\\x00") {
+	if !safefs.IsSafeID(sessionID) { // one path element: never ".", ".." or a separator (#3596 W4)
 		errBadRequest(w, "invalid session_id")
 		return
 	}
 
+	strict := strictBounds(r)
 	workdir := h.resolveGitRoot(r.Context(), "", "", sessionID)
-	if workdir != "" {
+	if workdir != "" && (!strict || rootAllowed(realPath(workdir))) {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		gen := h.generateChangesDiff
-		if cloud.Tunneled(r) {
-			gen = h.generatePersistedDiff // through Coral Hub: filtered and capped (#3555)
+		if strict {
+			gen = h.generatePersistedDiff // not this computer's dashboard: filtered and capped (#3555, #3596 W3)
 		}
 		if diff, err := gen(ctx, workdir); err == nil {
 			writeSessionChanges(w, r, diff, workdir)
@@ -2255,8 +2248,8 @@ func (h *SessionsHandler) SessionChanges(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, err.Error())
 		return
 	}
-	if cloud.Tunneled(r) {
-		data = safeDiff(data) // a stored diff (also one from before #3555) through Coral Hub
+	if strict {
+		data = safeDiff(data) // a stored diff (also one from before #3555), filtered (#3596 W3)
 	}
 	writeSessionChanges(w, r, data, "")
 }
@@ -2264,7 +2257,7 @@ func (h *SessionsHandler) SessionChanges(w http.ResponseWriter, r *http.Request)
 func writeSessionChanges(w http.ResponseWriter, r *http.Request, diff []byte, workdir string) {
 	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
-	if workdir != "" && !cloud.Tunneled(r) { // no local path through Coral Hub (#3555)
+	if workdir != "" && !strictBounds(r) { // a local path only for this computer's dashboard (#3555, #3596 W3)
 		w.Header().Set("X-Coral-Working-Directory", workdir)
 	}
 	w.WriteHeader(http.StatusOK)
@@ -2391,7 +2384,7 @@ const changesArtifactProblem = "git couldn't produce the diff (details in coral.
 // GET /api/sessions/{sessionID}/changes.diff
 func (h *SessionsHandler) SessionChangesArtifact(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionID")
-	if sessionID == "" || strings.ContainsAny(sessionID, "/\\\x00") {
+	if !safefs.IsSafeID(sessionID) { // one path element: never ".", ".." or a separator (#3596 W4)
 		errBadRequest(w, "invalid session_id")
 		return
 	}
@@ -2404,8 +2397,8 @@ func (h *SessionsHandler) SessionChangesArtifact(w http.ResponseWriter, r *http.
 		errInternalServer(w, err.Error())
 		return
 	}
-	if cloud.Tunneled(r) {
-		data = safeDiff(data) // through Coral Hub: filtered and capped, old diffs too (#3555)
+	if strictBounds(r) {
+		data = safeDiff(data) // not this computer's dashboard: filtered and capped, old diffs too (#3555, #3596 W3)
 	}
 	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
@@ -5826,6 +5819,12 @@ func (h *SessionsHandler) GetFileOriginal(w http.ResponseWriter, r *http.Request
 		errForbidden(w, "path traversal not allowed")
 		return
 	}
+	// The same bounds as Diff for anything but this computer's own dashboard (#3596 W2): the
+	// file at the diff base can hold what the working tree no longer shows (a committed .env).
+	if strictBounds(r) && diffPathRefused(workdir, fp, fullPath) {
+		errNotFound(w, "File not found")
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -7207,4 +7206,25 @@ func launchedName(result map[string]any, asked string) string {
 		return n
 	}
 	return asked
+}
+
+// diffPathRefused applies, for anything but this computer's own dashboard (Coral Hub, an API
+// key, a remote client), the same bounds as file-content to a file a diff or its base shows
+// (#3558, Security's #3556 finding 1; #3596 W2): a root that isn't the filesystem or the home
+// folder, no sensitive path, no dot-file or dot-folder (.env.local, .git/config), inside the
+// working tree once resolved, and one file, not a folder's worth (QA's #3558 review). Refused
+// files look exactly like missing ones.
+func diffPathRefused(workdir, fp, fullPath string) bool {
+	real := realOrSelf(fullPath)
+	if !rootAllowed(realPath(workdir)) || diffPathHidden(fp) || sensitivePath(real) ||
+		!isPathWithinDir(realOrSelf(workdir), real) {
+		return true
+	}
+	if rel, err := filepath.Rel(realOrSelf(workdir), real); err != nil || diffPathHidden(rel) {
+		return true
+	}
+	if fi, err := os.Stat(real); err == nil && fi.IsDir() {
+		return true
+	}
+	return false
 }
