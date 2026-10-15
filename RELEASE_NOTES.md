@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.4.40 — Security hotfix: the task hook's cache stays in its own folder
+
+**Security advisory — please upgrade.** Delete the old `/tmp/coral_task_cache` (or `$TMPDIR/coral_task_cache`) folder: older versions stored task subjects and pieces of hook payloads (prompts, commands) there, readable by other users on a shared machine.
+
+### Security
+
+- **An agent's task id can no longer reach files outside the hook cache.** The task hook (`coral-hook-task-sync`) built its cache file's path from the task id the agent sent, so a crafted id could write to or read files elsewhere, outside the agent CLI's permission prompts. This is fixed, and nothing is needed beyond upgrading. The cache file is now named by a hash of the id, and the cache lives in your Coral data folder (readable only by you), not in the shared `/tmp`. Its debug log records event names and ids only. The hooks also escape the agent's folder name in the addresses they call, so an unusual folder name can't redirect a request.
+
+### Coral Hub
+
+- **An oversize panel gets a clean error.** When a redacted reply's full length is known, Coral tells the hub that length, so the hub can refuse an artifact or agent UI panel that's too large with its clear "panel too large" message instead of a cut-off page. Content-Length itself is still removed, and a streamed reply of unknown length sends no length.
+
+### Install
+
+- **Homebrew:** `brew install --cask cdknorow/coral/coral` installs Coral again. If you installed Coral with `brew install cdknorow/coral/coral` before (the old Python formula), run `brew uninstall coral`, then `brew install --cask cdknorow/coral/coral`.
+
 ## v1.4.39 — Free space from stored diffs and artifacts
 
 Nothing is removed unless you ask: a dry run always comes first, and automatic cleanup is off by default.
