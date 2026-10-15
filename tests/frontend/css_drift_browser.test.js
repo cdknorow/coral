@@ -5,7 +5,11 @@
 // element/theme/property/expected/actual. The machine-health card is rendered from the real
 // healthCard() export, so this guard would have caught #3607.
 //
-// Update the baseline after an INTENDED style change (review the diff!):
+// Update the baseline after an INTENDED style change, then REVIEW the JSON diff: it is written
+// from the tree under test, so an unintended change there would be baked in. Canonical runner
+// (its own isolated server + Chrome; the env var reaches the suite):
+//   CSS_DRIFT_UPDATE=1 node run_cdp_suites.mjs --only css_drift_browser --shards 1
+// or via run.sh:
 //   CSS_DRIFT_UPDATE=1 CORAL_TEST_PORT=8488 CDP_PORT=9248 ONLY=css_drift_browser.test.js ./run.sh
 'use strict';
 
@@ -127,6 +131,16 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         }
 
         if (process.env.CSS_DRIFT_UPDATE) {
+            // Refuse to bake a null into the baseline: a selector broken at update time would make
+            // that element fail forever with an unhelpful message (Lead's SHOULD, #3626).
+            const missing = [];
+            for (const e of ELEMENTS) for (const theme of THEMES) if (!captured[e.name]?.[theme]) missing.push(`${e.name} [${theme}]`);
+            if (missing.length) {
+                check('every element was captured before writing the baseline', false, `not found: ${missing.join(', ')} — fix the selector(s), don't bake a null`);
+                console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
+                await client.close();
+                process.exit(1);
+            }
             fs.writeFileSync(BASELINE, JSON.stringify(captured, null, 2) + '\n');
             check(`baseline updated (${ELEMENTS.length} elements x ${THEMES.length} themes)`, true, BASELINE);
             console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
