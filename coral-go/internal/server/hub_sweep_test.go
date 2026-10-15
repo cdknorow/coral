@@ -88,10 +88,21 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, call(h, "PUT", "/api/themes/"+name, `{"description":"d","base":"dark","variables":{}}`, js).Code, "theme")
 	require.Equal(t, 201, call(h, "POST", "/api/views", `{"name":"v","html":"<p>x</p>"}`, js).Code, "view")
-	wf, err := store.NewWorkflowStore(r.db).CreateWorkflow(ctx, &store.Workflow{Name: name, StepsJSON: `[{"name":"s","type":"shell","command":"true"}]`})
+	// A step whose command names a folder under home (QA's #3561 case): through the hub it reads
+	// "cd ~/work/proj && make test".
+	steps, _ := json.Marshal([]map[string]any{{"name": "s", "type": "shell", "command": "cd " + r.work + " && make test", "args": []string{"--dir", r.work}}})
+	wf, err := store.NewWorkflowStore(r.db).CreateWorkflow(ctx, &store.Workflow{Name: name, StepsJSON: string(steps)})
+	require.NoError(t, err)
+	_, err = store.NewScheduleStore(r.db).CreateScheduledJob(ctx, &store.ScheduledJob{Name: "nightly", CronExpr: "0 3 * * *",
+		Timezone: "UTC", AgentType: "claude", RepoPath: r.work, Prompt: "run the checks", JobType: "workflow", WorkflowID: &wf.ID, Enabled: 1})
 	require.NoError(t, err)
 	_, err = store.NewWorkflowStore(r.db).CreateWorkflowRun(ctx, wf.ID, "manual", nil)
 	require.NoError(t, err)
+
+	// The step's command and args through the hub: the home shown as "~", the rest as written.
+	wfHub := call(h, "GET", "/api/workflows/by-name/"+name, "", map[string]string{tunnel.ViaHeader: cloud.ViaSecret()})
+	require.Equal(t, 200, wfHub.Code, wfHub.Body.String())
+	require.Contains(t, wfHub.Body.String(), "cd ~/work/proj \u0026\u0026 make test")
 
 	// #3561 (e): a missing task's (or board's) cost is a 404, not a 500.
 	require.Equal(t, 404, call(h, "GET", "/api/board/team/tasks/999999/cost", "", nil).Code)

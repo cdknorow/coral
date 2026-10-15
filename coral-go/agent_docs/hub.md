@@ -102,6 +102,8 @@ Archive needs v1.4.2 on the machine: the dashboard offers **Archive** only for r
 
 **Tokens are hidden by default.** Before a View reply leaves this computer, the connector replaces well-known credential formats with `[redacted token]`: GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), OpenAI and Anthropic keys (`sk-`), AWS access key ids (`AKIA`, `ASIA`), Slack tokens (`xoxa-`, `xoxb-`, `xoxp-`, `xoxr-`, `xoxs-`), `Bearer` and `Authorization` values (the scheme word stays), and PEM and PGP private-key blocks (from `BEGIN` to `END`, or to the end of the reply when it is cut off), however long the token. Every View reply is scanned except artifact downloads (byte-exact, their id is their hash: a token in an uploaded `.txt`, `.md`, `.log` or `.env` artifact is shown whole, so redact before you upload) and health, and binary types (images, audio, video, fonts, PDF, archives). On this computer nothing is hidden. Turn it off in **Settings > Coral Hub** ("Hide tokens from Coral Hub viewers"); only someone at this computer can.
 
+**Paths are shown from the home folder.** Through Coral Hub a folder under this computer's home is shown as `~/...` in paths, in error messages and in commands (a workflow step's command and arguments, a script); logs and other local files' paths are left out. Prompts, chat and terminal output are shown as written.
+
 What it doesn't cover:
 - **Live streams:** the live terminal (`/ws/terminal`) and the live session list (`/ws/coral`) aren't redacted yet (planned for v1.4.38). Their capture and history replies are.
 - **Other formats:** a token in a format not listed above, or a token split across terminal lines or by colour codes, passes as it is.

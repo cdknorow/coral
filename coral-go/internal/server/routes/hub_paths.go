@@ -41,6 +41,12 @@ var hubPathFields = map[string]bool{
 // A fixed list of three, not a rewrite of every string (Security's #3559 review).
 var hubTextFields = map[string]bool{"error": true, "detail": true, "message": true}
 
+// hubCommandFields hold commands (a workflow step's or a scheduled job's command, its args, a
+// script, step definitions): a home directory where a path starts inside them is shown as "~"
+// ("cd ~/proj && make test"), in a string or a list of strings (QA's #3561 case, Security's
+// named list). Prompts and other free text are shown as written.
+var hubCommandFields = map[string]bool{"command": true, "cmd": true, "args": true, "script": true, "steps": true}
+
 // hubDroppedFields name files on this computer the hub has no use for.
 var hubDroppedFields = map[string]bool{
 	"log_path": true, "log_file": true, "tmux_command": true, "source_file": true,
@@ -173,12 +179,19 @@ func hubRewrite(v any, f func(string) string, drop bool) {
 				case hubPathFields[k]:
 					x[k] = f(s)
 				case !drop:
-				case hubTextFields[k]:
+				case hubTextFields[k], hubCommandFields[k]:
 					x[k] = hubDisplayText(s)
 				case !hubLongText[k]:
 					x[k] = hubWholePath(s)
 				}
 				continue
+			}
+			if list, ok := val.([]any); ok && drop && hubCommandFields[k] {
+				for i, el := range list {
+					if s, ok := el.(string); ok {
+						list[i] = hubDisplayText(s)
+					}
+				}
 			}
 			hubRewrite(val, f, drop)
 		}

@@ -260,3 +260,24 @@ func TestHubPathsAnyFieldHoldingAHomePath(t *testing.T) {
 	assert.Equal(t, real+"/.coral/artifacts/x", m["stored_at"], "this computer's answer is unchanged")
 	assert.Contains(t, m, "changes_artifact")
 }
+
+// QA's #3561 case: a home folder inside a command (a workflow step, its args, a script) is
+// shown as "~" through the hub; a prompt is free text and is shown as written.
+func TestHubPathsInCommands(t *testing.T) {
+	home, real := hubTestHome(t)
+	h := hubTestRouter(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"steps":  []any{map[string]any{"command": "cd " + real + "/proj && make test", "args": []any{"--dir", home + "/x"}}},
+			"script": "export P=" + home + "/bin:$PATH",
+			"cmd":    "ls " + home + "x/y", // a sibling folder that only starts with the same letters
+			"prompt": "check " + home + "/proj",
+		})
+	})
+	_, m := hubDo(t, h, "GET", "/api/x", "", true)
+	step := m["steps"].([]any)[0].(map[string]any)
+	assert.Equal(t, "cd ~/proj && make test", step["command"])
+	assert.Equal(t, []any{"--dir", "~/x"}, step["args"])
+	assert.Equal(t, "export P=~/bin:$PATH", m["script"])
+	assert.Equal(t, "ls "+home+"x/y", m["cmd"])
+	assert.Equal(t, "check "+home+"/proj", m["prompt"], "prompts are shown as written")
+}
