@@ -55,7 +55,9 @@ feature is enabled, `report`, `test_evidence`, and
 `landed_revision` validate supplied artifacts; they are evidence contracts, not
 independent execution proof. For independent server-owned checks, use a
 registered `registered_check` with `check_id: go_test` or `git_ancestry` and a
-candidate revision. Coral executes only those reviewed IDs in the configured
+candidate revision (`go_test` takes `packages`: up to 32 patterns inside the repository,
+each `.` or starting with `./`, such as `./...` or `./internal/board`; never a flag, an
+absolute path or `..`). Coral executes only those reviewed IDs in the configured
 check workdir, stores the command/result/log digest, and rejects unavailable,
 failed, stale, or unmerged checks. A caller cannot submit a passing check
 result in the completion JSON. The local runner is bounded and secret-minimal;
