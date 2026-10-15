@@ -92,3 +92,66 @@ func TestRequestEventsFromDocumentedPayloads(t *testing.T) {
 		}
 	}
 }
+
+// The agy corpus (#3481): real agy 1.3.5 hook payloads (paths and ids replaced). Its
+// hooks are run as "coral-hook-agentic-state --agy <Event>" (the payload doesn't name the
+// event); each must map to Coral's event, or be dropped.
+func TestAgyHookCorpus(t *testing.T) {
+	want := map[string]struct {
+		hook, eventType, pendingTool string
+	}{
+		"SessionStart":    {"SessionStart", "session_reset", ""},
+		"PreInvocation-0": {"PreInvocation", "prompt_submit", ""},
+		"PreInvocation-1": {"PreInvocation", "", ""}, // a later model call of the same turn: dropped
+		"PreToolUse":      {"PreToolUse", "", "run_command"},
+		"PostToolUse":     {"PostToolUse", "tool_use", ""},
+		"PostInvocation":  {"PostInvocation", "", ""},
+		"Stop":            {"Stop", "stop", ""},
+	}
+	files, _ := filepath.Glob("testdata/agy-1.3.5/*.json")
+	if len(files) != len(want) {
+		t.Fatalf("%d corpus files, want %d", len(files), len(want))
+	}
+	for _, f := range files {
+		name := strings.TrimSuffix(filepath.Base(f), ".json")
+		exp := want[name]
+		raw, _ := os.ReadFile(f)
+		var d map[string]any
+		if err := json.Unmarshal(raw, &d); err != nil {
+			t.Fatal(err)
+		}
+		c, ok := fromAgy(d, exp.hook)
+		if exp.eventType == "" && exp.pendingTool == "" {
+			if ok {
+				t.Errorf("%s: should be dropped, got %v", name, c)
+			}
+			continue
+		}
+		if !ok {
+			t.Fatalf("%s: dropped", name)
+		}
+		if exp.pendingTool != "" {
+			p := parsePendingTool(c, "sid")
+			if p == nil || p["tool_name"] != exp.pendingTool || p["tool_use_id"] == "" {
+				t.Errorf("%s: pending tool %v", name, p)
+			}
+			continue
+		}
+		event := parseAgenticEvent(c, c["hook_event_name"].(string), "sid")
+		if event == nil || event["event_type"] != exp.eventType {
+			t.Errorf("%s: got %v, want %s", name, event, exp.eventType)
+			continue
+		}
+		if name == "PostToolUse" && (event["tool_name"] != "run_command" || strings.HasPrefix(event["summary"].(string), "Failed")) {
+			t.Errorf("PostToolUse: %v (an empty error is not a failure)", event)
+		}
+		if name == "Stop" && event["summary"] != "Agent stopped: no_tool_call" {
+			t.Errorf("Stop: %v", event["summary"])
+		}
+	}
+	// A failed tool call (agy reports error text) is a failure.
+	c, _ := fromAgy(map[string]any{"toolCall": map[string]any{"name": "run_command"}, "error": "declined", "stepIdx": 2.0}, "PostToolUse")
+	if e := parseAgenticEvent(c, "PostToolUse", "sid"); !strings.HasPrefix(e["summary"].(string), "Failed") {
+		t.Errorf("failed tool: %v", e)
+	}
+}

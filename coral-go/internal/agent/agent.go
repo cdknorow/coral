@@ -476,6 +476,10 @@ func CleanupTempFiles(sessionID string) {
 		return
 	}
 	for _, path := range matches {
+		if strings.HasPrefix(filepath.Base(path), "coral_agyhooks_") {
+			os.RemoveAll(path) // agy's hooks folder (#3481)
+			continue
+		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			slog.Debug("failed to remove temp file", "path", path, "error", err)
 		}

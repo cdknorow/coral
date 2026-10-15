@@ -282,6 +282,15 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	parts = append(parts, bin)
 
+	// Coral's hooks, in a folder of this session's own added to agy's workspace
+	// (#3481): agy reads <dir>/.agents/hooks.json from an --add-dir folder (verified
+	// on agy 1.3.5), so nothing is written into the user's repo or ~/.gemini.
+	if params.SessionID == "" {
+		// no session (a preview or test line): no hooks
+	} else if dir := agyHooksDir(params.SessionID); dir != "" {
+		parts = append(parts, "--add-dir", dir)
+	}
+
 	// Resume previous conversation
 	if params.ResumeSessionID != "" {
 		parts = append(parts, "--conversation", params.ResumeSessionID)
@@ -363,6 +372,45 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	parts, raw = withSessionToken(parts, raw, params, a.AgentType())
 	return ShellJoin(parts, raw...)
+}
+
+// agyHookEvents are the agy hooks Coral installs; coral-hook-agentic-state turns each
+// into Coral's event (or drops it): see its fromAgy.
+var agyHookEvents = []string{"SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"}
+
+// agyHooksDir writes this session's hooks.json into a new private temp folder,
+// <tmp>/coral_agyhooks_<session>_*/.agents/hooks.json, and returns the folder ("" on
+// error: the agent then runs without Coral's hooks, as before). CleanupTempFiles
+// removes it with the session's other temp files.
+func agyHooksDir(sessionID string) string {
+	dir, err := os.MkdirTemp("", "coral_agyhooks_"+safeFileID(sessionID)+"_*")
+	if err != nil {
+		slog.Warn("agy hooks: could not create the hooks folder", "error", err)
+		return ""
+	}
+	spec := map[string]any{}
+	for _, event := range agyHookEvents {
+		handler := map[string]any{"type": "command", "command": "coral-hook-agentic-state --agy " + event, "timeout": 10}
+		switch event {
+		case "PreToolUse", "PostToolUse":
+			spec[event] = []any{map[string]any{"matcher": ".*", "hooks": []any{handler}}}
+		default:
+			spec[event] = []any{handler}
+		}
+	}
+	b, _ := json.MarshalIndent(map[string]any{"coral": spec}, "", "  ")
+	agents := filepath.Join(dir, ".agents")
+	if err := os.Mkdir(agents, 0o700); err != nil {
+		slog.Warn("agy hooks: could not create the hooks folder", "error", err)
+		os.RemoveAll(dir)
+		return ""
+	}
+	if err := os.WriteFile(filepath.Join(agents, "hooks.json"), b, 0o600); err != nil {
+		slog.Warn("agy hooks: could not write hooks.json", "error", err)
+		os.RemoveAll(dir)
+		return ""
+	}
+	return dir
 }
 
 func appendAgyPermissionMode(parts []string, mode string) []string {

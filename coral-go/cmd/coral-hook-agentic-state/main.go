@@ -39,9 +39,24 @@ func main() {
 	}
 
 	// --session-clear flag injects marker for /clear detection
-	for _, arg := range os.Args[1:] {
+	agyEvent := ""
+	args := os.Args[1:]
+	for i, arg := range args {
 		if arg == "--session-clear" {
 			d["_coral_session_clear"] = true
+		}
+		if arg == "--agy" && i+1 < len(args) {
+			agyEvent = args[i+1]
+		}
+	}
+	if agyEvent != "" {
+		// Antigravity CLI (agy) hooks (#3481): its payload names neither the event nor
+		// the tool the way Claude's does; it is translated, and an event Coral doesn't
+		// record is dropped here.
+		var ok bool
+		if d, ok = fromAgy(d, agyEvent); !ok {
+			hooks.DebugLog(fmt.Sprintf("AGENTIC_STATE AGY_SKIPPED: %s", agyEvent))
+			return
 		}
 	}
 
@@ -231,6 +246,48 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 	}
 
 	return nil
+}
+
+// fromAgy translates an agy (Antigravity CLI 1.3.5) hook payload into the Claude shape
+// parseAgenticEvent reads. agy's hooks (installed per session through --add-dir) are
+// SessionStart, PreInvocation, PreToolUse, PostToolUse, PostInvocation and Stop; its
+// payload is camelCase: toolCall{name,args}, error, terminationReason, invocationNum.
+//   - PreInvocation 0 (the model's first call of a turn) starts a turn, as a prompt;
+//     later PreInvocations and every PostInvocation record nothing.
+//   - PreToolUse goes to the pending tool, like Claude's: while it is pending a
+//     permission prompt can be open (agy signals no prompt itself).
+//   - An empty error is not a failure.
+func fromAgy(d map[string]any, event string) (map[string]any, bool) {
+	out := map[string]any{"hook_event_name": event}
+	if call, _ := d["toolCall"].(map[string]any); call != nil {
+		out["tool_name"], _ = call["name"].(string)
+		if args, _ := call["args"].(map[string]any); args != nil {
+			out["tool_input"] = args
+		}
+	}
+	if step, ok := d["stepIdx"].(float64); ok {
+		out["tool_use_id"] = fmt.Sprintf("agy-step-%d", int64(step))
+	}
+	if errMsg, _ := d["error"].(string); errMsg != "" && event == "PostToolUse" {
+		out["error"] = errMsg
+	}
+	switch event {
+	case "SessionStart", "PreToolUse", "PostToolUse":
+	case "PreInvocation":
+		if n, _ := d["invocationNum"].(float64); n != 0 {
+			return nil, false
+		}
+		out["hook_event_name"] = "UserPromptSubmit"
+	case "Stop":
+		reason, _ := d["terminationReason"].(string)
+		if reason == "" {
+			reason = "unknown"
+		}
+		out["reason"] = strings.ToLower(reason)
+	default:
+		return nil, false
+	}
+	return out, true
 }
 
 // requestKinds maps the tool a Claude PermissionRequest is for to what the user is

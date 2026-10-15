@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -1959,5 +1960,38 @@ func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
 		if !strings.Contains(string(b), `"command":"coral-hook-agentic-state"`) {
 			t.Errorf("%s: %s", event, b)
 		}
+	}
+}
+
+// #3481: an agy launch adds a folder of its own with Coral's hooks (agy reads
+// .agents/hooks.json from an --add-dir folder), and the session's cleanup removes it.
+func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
+	sid := "agy-hooks-0000-0000-0000-000000003481"
+	line := (&AgyAgent{}).BuildLaunchCommand(LaunchParams{SessionID: sid, WorkingDir: t.TempDir()})
+	m := regexp.MustCompile(`--add-dir '?([^' ]+)'?`).FindStringSubmatch(line)
+	if m == nil {
+		t.Fatalf("no --add-dir in %q", line)
+	}
+	dir := m[1]
+	raw, err := os.ReadFile(filepath.Join(dir, ".agents", "hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec map[string]map[string][]map[string]any
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []string{"SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"} {
+		b, _ := json.Marshal(spec["coral"][event])
+		if !strings.Contains(string(b), `coral-hook-agentic-state --agy `+event) {
+			t.Errorf("%s: %s", event, b)
+		}
+	}
+	if info, _ := os.Stat(dir); info == nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("hooks folder must be private: %v", info)
+	}
+	CleanupTempFiles(sid)
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("cleanup left %s", dir)
 	}
 }

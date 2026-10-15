@@ -1,0 +1,12 @@
+{
+ "artifactDirectoryPath": "/HOME/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000",
+ "conversationId": "00000000-0000-4000-8000-000000000000",
+ "initialNumSteps": 4,
+ "invocationNum": 0,
+ "modelName": "gemini-3.8-flash-high",
+ "transcriptPath": "/HOME/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000/.system_generated/logs/transcript_full.jsonl",
+ "workspacePaths": [
+  "/WORK",
+  "/SCRATCH/agyhooks"
+ ]
+}
