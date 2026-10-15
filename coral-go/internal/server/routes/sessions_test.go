@@ -3049,6 +3049,7 @@ func TestWriteBoardStateFile_HostsAndPorts(t *testing.T) {
 	tests := []struct {
 		name        string
 		host        string
+		noAuto      bool
 		port        int
 		nilCfg      bool
 		wantURL     string
@@ -3089,16 +3090,41 @@ func TestWriteBoardStateFile_HostsAndPorts(t *testing.T) {
 			wantURL:     "http://127.0.0.1:9100",
 			hasURLField: true,
 		},
+		// A network address alone: Coral also listens on 127.0.0.1, and agents use it (#3594).
 		{
 			name:        "explicit_ipv4_nondefault_port",
 			host:        "192.168.1.50",
 			port:        9200,
-			wantURL:     "http://192.168.1.50:9200",
+			wantURL:     "http://127.0.0.1:9200",
 			hasURLField: true,
 		},
 		{
 			name:        "explicit_ipv6_host",
 			host:        "2001:db8::1",
+			port:        8420,
+			wantURL:     "http://127.0.0.1:8420",
+			hasURLField: true,
+		},
+		{
+			name:        "host_list",
+			host:        "127.0.0.1,100.101.102.103",
+			port:        8420,
+			wantURL:     "http://127.0.0.1:8420",
+			hasURLField: true,
+		},
+		// --no-auto-loopback: only the network address listens, so agents dial it.
+		{
+			name:        "explicit_ipv4_no_auto_loopback",
+			host:        "192.168.1.50",
+			noAuto:      true,
+			port:        9200,
+			wantURL:     "http://192.168.1.50:9200",
+			hasURLField: true,
+		},
+		{
+			name:        "explicit_ipv6_no_auto_loopback",
+			host:        "2001:db8::1",
+			noAuto:      true,
 			port:        8420,
 			wantURL:     "http://[2001:db8::1]:8420",
 			hasURLField: true,
@@ -3110,6 +3136,7 @@ func TestWriteBoardStateFile_HostsAndPorts(t *testing.T) {
 			tempDir := t.TempDir()
 			cfg := config.Load(tempDir)
 			cfg.Host = tc.host
+			cfg.NoAutoLoopback = tc.noAuto
 			cfg.Port = tc.port
 
 			session := "session-" + tc.name

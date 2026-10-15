@@ -94,9 +94,7 @@ func (h *SessionsHandler) uiRequestServerURL() string {
 	host, port := "127.0.0.1", 8420
 	if h.cfg != nil {
 		port = h.cfg.Port
-		if h.cfg.Host != "" && h.cfg.Host != "0.0.0.0" && h.cfg.Host != "::" && h.cfg.Host != "localhost" {
-			host = h.cfg.Host
-		}
+		host = h.cfg.AgentHost()
 	}
 	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
 }

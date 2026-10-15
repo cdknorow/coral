@@ -3269,7 +3269,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		MCPServers:      storedMCPServers,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
-		CoralHost:       h.cfg.Host,
+		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
 	}))
 	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
@@ -3527,7 +3527,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		MCPServers:      storedMCPServers,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
-		CoralHost:       h.cfg.Host,
+		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
 	}))
 	if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
@@ -5054,7 +5054,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
-		CoralHost:       h.cfg.Host,
+		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
 	}
 	if cliPath != "" {
@@ -5349,10 +5349,7 @@ func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config
 	// this persisted value coral-board falls back to localhost, which may
 	// resolve to IPv6 ::1 and be denied while IPv4 loopback is available.
 	if cfg != nil {
-		host := cfg.Host
-		if host == "" || host == "0.0.0.0" || host == "::" || host == "localhost" {
-			host = "127.0.0.1"
-		}
+		host := cfg.AgentHost() // the loopback listener whenever there is one (#3594)
 		state["server_url"] = fmt.Sprintf("http://%s", net.JoinHostPort(host, strconv.Itoa(cfg.Port)))
 	}
 
@@ -6440,7 +6437,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
-		CoralHost:       h.cfg.Host,
+		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
 	}
 

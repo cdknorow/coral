@@ -349,24 +349,24 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	cfg.TLS = tlsConfig != nil
 	cfg.StrictLocalAuth = opts.StrictLocalAuth
 
-	// Bind the port now and keep the listener open to avoid a TOCTOU race
-	// (another process grabbing the port between check and serve).
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	ln, err := net.Listen("tcp", addr)
+	// Bind the port now and keep the listeners open to avoid a TOCTOU race
+	// (another process grabbing the port between check and serve). One listener per --host
+	// address, all on one port, plus 127.0.0.1 when the list names only network addresses
+	// (#3594).
+	lns, boundPort, err := listenAll(cfg)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("port %d is already in use: %w", cfg.Port, err)
+		return nil, err
 	}
 	if tlsConfig != nil {
-		ln = newSniffListener(ln, tlsConfig)
+		for i := range lns {
+			lns[i] = newSniffListener(lns[i], tlsConfig)
+		}
 	}
 	// Everything this server starts (the tmux server, agents, workflow steps) inherits this
-	// process's environment: make it say THIS server, never whatever started it (#3421).
-	boundPort := cfg.Port
-	if tcp, ok := ln.Addr().(*net.TCPAddr); ok {
-		boundPort = tcp.Port
-	}
-	agentenv.UseServerEnv(cfg.Host, boundPort, cfg.CoralDir())
+	// process's environment: make it say THIS server, never whatever started it (#3421), and
+	// always its loopback listener when it has one (#3594).
+	agentenv.UseServerEnv(cfg.AgentHost(), boundPort, cfg.CoralDir())
 
 	// Apply terminal_replay_bytes setting from user_settings before any
 	// backend touches the replay buffer size.
@@ -447,7 +447,14 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		if w := remoteAccessWarning(cfg.Host, cfg.TLS); w != "" {
 			log.Print(w)
 		}
-		if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
+		for _, ln := range lns[1:] {
+			go func(ln net.Listener) {
+				if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
+					onErr(err)
+				}
+			}(ln)
+		}
+		if err := httpServer.Serve(lns[0]); err != nil && err != http.ErrServerClosed {
 			onErr(err)
 		}
 	}()
@@ -518,6 +525,48 @@ func applyHubModeSetting(ctx context.Context, db *store.DB, cfg *config.Config) 
 		cfg.HubMode = true
 		log.Printf("[startup] hub mode is on (Settings > Run as a hub)")
 	}
+}
+
+// listenAll opens one listener per address in cfg.ListenHosts(), all on one port: the first
+// binds cfg.Port (0 picks a free one) and the rest bind the port it got. The automatic
+// 127.0.0.1 listener is logged once. On any failure every listener opened so far is closed.
+func listenAll(cfg *config.Config) ([]net.Listener, int, error) {
+	hosts := cfg.ListenHosts()
+	port := cfg.Port
+	var lns []net.Listener
+	for _, h := range hosts {
+		ln, err := net.Listen("tcp", net.JoinHostPort(strings.Trim(h, "[]"), strconv.Itoa(port)))
+		if err != nil {
+			for _, open := range lns {
+				open.Close()
+			}
+			return nil, 0, fmt.Errorf("can't listen on %s port %d (in use?): %w", displayHost(h), port, err)
+		}
+		if port == 0 {
+			if tcp, ok := ln.Addr().(*net.TCPAddr); ok {
+				port = tcp.Port
+			}
+		}
+		lns = append(lns, ln)
+	}
+	if cfg.AutoLoopback() {
+		log.Printf("[startup] --host %q names only network addresses: also listening on 127.0.0.1:%d for this computer's agents, command line and dashboard (--no-auto-loopback turns it off)", cfg.Host, port)
+	}
+	if len(hosts) > 1 {
+		shown := make([]string, len(hosts))
+		for i, h := range hosts {
+			shown[i] = displayHost(h)
+		}
+		log.Printf("[startup] listening on %s, port %d", strings.Join(shown, ", "), port)
+	}
+	return lns, port, nil
+}
+
+func displayHost(h string) string {
+	if config.IsWildcardHost(h) {
+		return "every interface"
+	}
+	return h
 }
 
 // restrictToLoopback forces a local-only bind. When the requested host would
@@ -939,7 +988,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 
 	// Workflow runner — executes multi-step workflows (shell + agent)
 	wfStore := store.NewWorkflowStore(db)
-	wfRunner := background.NewWorkflowRunner(wfStore, launcher, agentRT, nil, nil, cfg.CoralDir(), cfg.Host, cfg.Port)
+	wfRunner := background.NewWorkflowRunner(wfStore, launcher, agentRT, nil, nil, cfg.CoralDir(), cfg.AgentHost(), cfg.Port)
 	srv.SetWorkflowRunner(wfRunner)
 	scheduler.SetWorkflowRunner(wfRunner, wfStore)
 

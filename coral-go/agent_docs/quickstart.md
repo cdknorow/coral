@@ -96,7 +96,8 @@ Press Ctrl+C to stop
 ```
 
 Useful flags: `--home <dir>` (data directory, default `~/.coral`), `--port` (default
-8420), `--host`, `--backend pty|tmux`, `--no-browser`. Coral listens on `127.0.0.1` unless
+8420), `--host` (one address or a comma list, see [below](#listening-on-a-tailnet-address)),
+`--backend pty|tmux`, `--no-browser`. Coral listens on `127.0.0.1` unless
 [remote access](#remote-access) is enabled and restarted.
 
 > There is no `--version` flag. `coral --version` fails with
@@ -130,6 +131,24 @@ coral --home /tmp/coral-t1 --port 8452 --no-browser
 Remote (LAN/mobile) access is **off by default**. Enabling it saves a preference and
 takes effect only after Coral restarts; the dashboard reports the saved and effective
 state separately. Details: `PRIVACY_CONTROLS.md` and `/api/system/privacy`.
+
+### Listening on a tailnet address
+
+To reach Coral from your other devices on a tailnet (Tailscale) without a proxy, listen on
+loopback **and** the tailnet address, with remote access on, and sign in with the API key:
+
+```console
+$ coral --remote --host 127.0.0.1,100.101.102.103
+```
+
+`--host` (or `CORAL_HOST`) takes a comma list; Coral opens one listener per address, all on
+one port. Requests to the tailnet address need the API key or a dashboard sign-in, like any
+remote caller. If the list names only network addresses (`--host 100.101.102.103`), Coral
+also listens on `127.0.0.1` and says so in the startup log, so this computer's agents, the
+command line and the dashboard keep using loopback; `--no-auto-loopback` (or
+`CORAL_NO_AUTO_LOOPBACK=1`) turns that off. Agents always get the loopback address in
+`CORAL_URL` when Coral listens on one. With remote access off, Coral listens on
+`127.0.0.1` only, whatever `--host` says.
 
 ### Remote access securely
 

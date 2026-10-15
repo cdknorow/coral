@@ -67,7 +67,8 @@ func main() {
 
 	// Parse --home early so config.Load() can use it
 	homeDir := flag.String("home", "", "Data directory (default: ~/.coral)")
-	host := flag.String("host", "", "Host to bind to")
+	host := flag.String("host", "", "Address to listen on, or a comma list of them (e.g. 127.0.0.1,100.101.102.103)")
+	noAutoLoopback := flag.Bool("no-auto-loopback", envTrue(os.Getenv("CORAL_NO_AUTO_LOOPBACK")), "When --host names only network addresses, don't also listen on 127.0.0.1 (also CORAL_NO_AUTO_LOOPBACK=1)")
 	port := flag.Int("port", 0, "Port to bind to")
 	noBrowser := flag.Bool("no-browser", false, "Don't open the browser on startup")
 	defaultBackend := "tmux"
@@ -162,6 +163,7 @@ func main() {
 	if *host != "" {
 		cfg.Host = *host
 	}
+	cfg.NoAutoLoopback = *noAutoLoopback
 	if *port != 0 {
 		cfg.Port = *port
 	}

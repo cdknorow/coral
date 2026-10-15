@@ -5,7 +5,6 @@ package config
 import (
 	"github.com/cdknorow/coral/internal/testguard"
 	"log"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,8 +33,12 @@ type Config struct {
 	DBBusyTimeoutMS int
 
 	// Server
+	// Host is the --host value: one address or a comma list (Hosts, ListenHosts; #3594).
 	Host string
 	Port int
+	// NoAutoLoopback (--no-auto-loopback or CORAL_NO_AUTO_LOOPBACK=1): don't add the 127.0.0.1
+	// listener Coral otherwise opens when Host names only network addresses (#3594).
+	NoAutoLoopback bool
 	// TLS is true when the server also speaks HTTPS on its port (--tls-cert/--tls-key,
 	// #3355); set at startup once the certificate has loaded.
 	TLS bool
@@ -217,17 +220,6 @@ func (c *Config) CoralDir() string {
 // test runs, shared by every test in the process: #3566).
 func (c *Config) UseCoralDir(dir string) {
 	c.coralDir = dir
-}
-
-// IsLoopbackHost reports whether a bind host only accepts local connections.
-// Wildcard and empty hosts are not loopback: they listen on every interface.
-func IsLoopbackHost(host string) bool {
-	host = strings.TrimSpace(strings.Trim(host, "[]"))
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func envOrDefault(key, fallback string) string {
