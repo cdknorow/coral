@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -1585,9 +1586,17 @@ func TestSessionsRestartInfersStoredAgentTypeWhenOmitted(t *testing.T) {
 	sent := term.sent[body.SessionName+".0"]
 	term.mu.Unlock()
 	require.Len(t, sent, 1)
-	assert.Contains(t, sent[0], "codex")
+	// The agent is the command word, not any substring: the temp folder's path in the command
+	// (the data dir, the prompt file) can hold "claude" on a machine whose TMPDIR does.
+	assert.Regexp(t, launchedAs("codex"), sent[0])
 	assert.Contains(t, sent[0], "--model gpt-6-sol")
-	assert.NotContains(t, sent[0], "claude")
+	assert.NotRegexp(t, launchedAs("claude"), sent[0])
+}
+
+// launchedAs matches a launch line that runs the named CLI as a command: at the start or after
+// a shell separator, followed by a space or the end.
+func launchedAs(cli string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[;&|]\s*|\s)` + regexp.QuoteMeta(cli) + `(\s|$)`)
 }
 
 func TestValidateAgentModelRejectsKnownCrossProviderOnly(t *testing.T) {
