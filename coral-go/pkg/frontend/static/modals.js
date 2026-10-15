@@ -3199,6 +3199,8 @@ export async function showSettingsModal() {
     if (!isCloud()) {
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
+        const autoAttach = document.getElementById('settings-board-auto-attach');
+        if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach, true);
         const debugInput = document.getElementById('settings-debug-input-log');
         if (debugInput) debugInput.checked = settingBool(s.debug_input_log, false);
         const remote = document.getElementById('settings-remote-access-enabled');
@@ -3454,6 +3456,7 @@ export async function applySettings() {
     // The server takes only "low" or "normal" (#3470): a value stored before that check is sent as low.
     const agentPriority = document.getElementById("settings-agent-priority")?.value ?? (state.settings?.agent_priority === "normal" ? "normal" : "low");
     const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
+    const boardAutoAttach = document.getElementById("settings-board-auto-attach")?.checked ?? settingBool(state.settings?.board_auto_attach, true);
     // When CORAL_DEBUG_INPUT/--debug-input force the log on, the checkbox is shown checked and
     // disabled: keep the saved setting rather than saving that forced state (#3256).
     const debugInputBox = document.getElementById("settings-debug-input-log");
@@ -3498,6 +3501,7 @@ export async function applySettings() {
         git_poll_interval_s: gitPollIntervalS,
         agent_priority: agentPriority,
         telemetry_enabled: telemetryEnabled,
+        board_auto_attach: boardAutoAttach,
         debug_input_log: debugInputLog,
         remote_access_enabled: remoteAccessEnabled,
     };

@@ -10,6 +10,7 @@ import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeH
 import { renderTranscript } from './live_chat.js';
 import { isGoneAsleep } from './terminal_gone.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
+import { resolveBoardArtifacts } from './board_artifacts.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -633,6 +634,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
             <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)))}</div>
         </div>`;
     }).join('');
+    resolveBoardArtifacts(msgsEl, _activeBoardChat ? splitKey(_activeBoardChat).server : undefined);
     if (wasAtBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
     // Update select bar if in select mode
     if (_boardChatSelectMode) _updateBoardChatSelectBar();

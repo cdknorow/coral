@@ -727,6 +727,8 @@ func (s *Server) buildRouter() chi.Router {
 	})
 	boardHandler.SetArchivedSessionLookup(routes.ArchivedSessionLookup(store.NewSessionStore(s.db)))
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
+	sessStore := store.NewSessionStore(s.db)
+	boardHandler.SetAutoAttacher(routes.NewAutoAttacher(s.cfg.CoralDir(), routes.AutoAttachEnabled(sessStore), routes.SessionDirs(sessStore)))
 	go boardHandler.RecoverTaskNotifications(context.Background())
 	go func() {
 		if err := boardHandler.RestoreSubscriberReminders(context.Background()); err != nil {
@@ -900,8 +902,21 @@ func (s *Server) staticBase() string {
 	return "/static/b/" + s.staticVersion + "/"
 }
 
+// dashboardCSP for the dashboard pages (#3515):
+//   - img-src: images only from this server, data: and blob:. A remote image in an agent's
+//     post or chat is never fetched (the sanitizer already turns it into a link; this is the
+//     second layer). Nothing on these pages needs a remote image (avatars are emoji; icons
+//     and the logo are served from /static; external previews are sandboxed iframes).
+//   - base-uri 'self' and object-src 'none': no injected <base> or plugin content.
+//   - frame-ancestors 'self': no other site can frame the dashboard or the terminal view
+//     (clickjacking). Nothing frames these pages but Coral itself: the native app shows them
+//     top-level, Coral Hub serves its own copy (its proxy drops this header), and the
+//     dashboard's own iframes load agent panels, previews and views, never these pages.
+const dashboardCSP = "img-src 'self' data: blob:; base-uri 'self'; object-src 'none'; frame-ancestors 'self'"
+
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", dashboardCSP)
 	purgePreSandboxCache(w, r)
 
 	if s.indexTmpl == nil {
@@ -937,6 +952,7 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", dashboardCSP)
 	if s.indexTmpl == nil {
 		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))
 		return

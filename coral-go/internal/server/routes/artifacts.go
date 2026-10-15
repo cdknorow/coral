@@ -54,6 +54,37 @@ func (h *SessionsHandler) artifactDir() string {
 	return filepath.Join(h.cfg.CoralDir(), "artifacts", "objects")
 }
 
+// storeArtifact writes data as a content-addressed artifact object under coralDir (the
+// object, its metadata sidecar, and the session's upload record, so the agent's
+// Artifacts tab lists it) and returns its hex id. Shared by coral-agent artifact upload
+// and the board's auto-attach (#3515).
+func storeArtifact(coralDir, sessionID, name, mediaType string, data []byte) (string, agentArtifactMeta, error) {
+	digestBytes := sha256.Sum256(data)
+	hexID := hex.EncodeToString(digestBytes[:])
+	meta := agentArtifactMeta{Name: name, MediaType: mediaType, Size: int64(len(data)), Digest: "sha256:" + hexID}
+	dir := filepath.Join(coralDir, "artifacts", "objects")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", meta, err
+	}
+	objectPath := filepath.Join(dir, hexID)
+	if _, err := os.Stat(objectPath); os.IsNotExist(err) {
+		if err := os.WriteFile(objectPath, data, 0o644); err != nil {
+			return "", meta, err
+		}
+	}
+	metaData, _ := json.Marshal(meta)
+	if err := os.WriteFile(objectPath+".json", metaData, 0o644); err != nil {
+		return "", meta, err
+	}
+	if up := uploadsDir(coralDir, sessionID); up != "" {
+		if os.MkdirAll(up, 0o755) == nil {
+			rec, _ := json.Marshal(agentUploadRecord{meta, time.Now().UTC().Format(time.RFC3339)})
+			_ = os.WriteFile(filepath.Join(up, hexID+".json"), rec, 0o644)
+		}
+	}
+	return hexID, meta, nil
+}
+
 func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Request) {
 	sid := r.URL.Query().Get("session_id")
 	if _, ok := h.agentFromRequest(w, r, &sid, false); !ok {
@@ -78,38 +109,18 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 		errBadRequest(w, "artifact exceeds 64 MiB")
 		return
 	}
-	digestBytes := sha256.Sum256(data)
-	digest := "sha256:" + hex.EncodeToString(digestBytes[:])
-	if err := os.MkdirAll(h.artifactDir(), 0o755); err != nil {
+	hexID, meta, err := storeArtifact(h.cfg.CoralDir(), sid, name, mediaType, data)
+	if err != nil {
 		errInternalServer(w, err.Error())
 		return
-	}
-	objectPath := filepath.Join(h.artifactDir(), hex.EncodeToString(digestBytes[:]))
-	if _, err := os.Stat(objectPath); os.IsNotExist(err) {
-		if err := os.WriteFile(objectPath, data, 0o644); err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-	}
-	meta := agentArtifactMeta{Name: name, MediaType: mediaType, Size: int64(len(data)), Digest: digest}
-	metaData, _ := json.Marshal(meta)
-	if err := os.WriteFile(objectPath+".json", metaData, 0o644); err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	if dir := uploadsDir(h.cfg.CoralDir(), sid); dir != "" {
-		if os.MkdirAll(dir, 0o755) == nil {
-			rec, _ := json.Marshal(agentUploadRecord{meta, time.Now().UTC().Format(time.RFC3339)})
-			_ = os.WriteFile(filepath.Join(dir, hex.EncodeToString(digestBytes[:])+".json"), rec, 0o644)
-		}
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"uri":        "coral://artifacts/" + hex.EncodeToString(digestBytes[:]),
-		"url":        artifactURL(hex.EncodeToString(digestBytes[:])),
+		"uri":        "coral://artifacts/" + hexID,
+		"url":        artifactURL(hexID),
 		"name":       name,
 		"media_type": mediaType,
 		"size":       len(data),
-		"digest":     digest,
+		"digest":     meta.Digest,
 	})
 }
 

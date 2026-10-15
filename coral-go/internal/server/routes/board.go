@@ -42,6 +42,7 @@ type BoardHandler struct {
 	paused                        map[string]bool // in-memory set of paused project names
 	notifyFn                      func()          // triggers immediate board notification pass
 	coralDir                      string
+	autoAttach                    *AutoAttacher // #3515: an agent's linked images and Markdown
 	writeTaskArtifact             func(context.Context, *board.Task, string) error
 	reminderMu                    sync.Mutex
 	reminders                     map[string]context.CancelFunc
@@ -115,6 +116,9 @@ func (h *BoardHandler) refuseArchivedAssignee(w http.ResponseWriter, ctx context
 }
 
 // SetTaskArtifactWriter configures persistence of task patches under .coral.
+// SetAutoAttacher turns on auto-attach for agents' own posts (#3515).
+func (h *BoardHandler) SetAutoAttacher(a *AutoAttacher) { h.autoAttach = a }
+
 func (h *BoardHandler) SetTaskArtifactWriter(coralDir string, fn func(context.Context, *board.Task, string) error) {
 	h.coralDir = coralDir
 	h.writeTaskArtifact = fn
@@ -874,6 +878,13 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			h.bs.Subscribe(r.Context(), project, subscriberID, body.As, "", nil, nil, mode)
 		}
+	}
+
+	// An agent's own post (its verified token, already bound to subscriber_id by the
+	// identity middleware) may link fresh local images and Markdown: they are stored as
+	// artifacts and the links point at them (#3515). Never through the tunnel.
+	if owner, ok := VerifiedSession(r.Context()); ok && owner != nil && !cloud.Tunneled(r) && h.autoAttach != nil {
+		body.Content = h.autoAttach.Rewrite(r.Context(), project, owner.SessionID, owner.SessionName, body.Content)
 	}
 
 	var msg *board.Message

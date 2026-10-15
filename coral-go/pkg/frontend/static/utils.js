@@ -243,13 +243,78 @@ export const DOMPURIFY_CONFIG = {
     ADD_ATTR: ['target', 'rel', 'data-file-ref', 'data-action', 'data-pending-id'],
 };
 
+/** A Coral artifact reference (coral://artifacts/<hex> or /api/artifacts/<hex>[?v=2]): its hex, else ''. */
+export function artifactRefHex(url) {
+    const m = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})(?:\?v=2)?$/i.exec(String(url || '').trim());
+    return m ? m[1].toLowerCase() : '';
+}
+
+// Images in agent, board and chat content never load from elsewhere (#3515): a remote image
+// in a post is a tracking or exfiltration beacon the moment the post is shown. An <img> keeps
+// its source only for a Coral artifact (pointed at this server's /api/artifacts) or a data:
+// or blob: image; any other (remote or relative) becomes a plain link to it. Every link gets
+// rel="noopener noreferrer", and web links open in a new tab.
+let _sanitizerHooks = false;
+function installSanitizerHooks() {
+    if (_sanitizerHooks || typeof DOMPurify === 'undefined' || typeof DOMPurify.addHook !== 'function') return;
+    _sanitizerHooks = true;
+    DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+        if (node.nodeName === 'IMG') {
+            const src = node.getAttribute('src') || '';
+            const hex = artifactRefHex(src);
+            if (hex) {
+                node.setAttribute('src', `/api/artifacts/${hex}?v=2`);
+                node.setAttribute('data-artifact', hex);
+            } else if (!/^(?:data:image\/|blob:)/i.test(src)) {
+                node.removeAttribute('src');
+                node.setAttribute('data-blocked-src', src);
+            }
+            node.setAttribute('referrerpolicy', 'no-referrer');
+        } else if (node.nodeName === 'A' && node.hasAttribute('href')) {
+            node.setAttribute('rel', 'noopener noreferrer');
+            if (/^https?:/i.test(node.getAttribute('href'))) node.setAttribute('target', '_blank');
+        }
+    });
+}
+installSanitizerHooks();
+
+/** Replace, inside the sanitized fragment, each <img> whose source was refused with a plain
+ *  link to that source (text when it isn't a web address). Done on DOMPurify's own DOM, so the
+ *  sanitized markup is never parsed a second time (no sanitize, reparse, reserialize). */
+function unblockAsLinks(frag) {
+    for (const img of frag.querySelectorAll('img[data-blocked-src]')) {
+        const src = img.getAttribute('data-blocked-src') || '';
+        const label = img.getAttribute('alt') || src || 'image';
+        let node;
+        if (/^https?:\/\//i.test(src)) {
+            node = document.createElement('a');
+            node.href = src;
+            node.target = '_blank';
+            node.rel = 'noopener noreferrer';
+            node.className = 'blocked-remote-image';
+            node.title = `Image not loaded: ${src}`;
+            node.textContent = `🖼 ${label}`;
+        } else {
+            node = document.createElement('span');
+            node.className = 'blocked-remote-image';
+            node.textContent = `🖼 ${label}${src && label !== src ? ` (${src})` : ''}`;
+        }
+        img.replaceWith(node);
+    }
+}
+
 /**
  * Sanitize untrusted HTML. Fails CLOSED: if DOMPurify did not load, the markup is shown as
  * text instead of being inserted as HTML (it used to fall back to the raw string).
  */
 export function sanitizeHtml(html, config) {
     if (typeof DOMPurify === 'undefined') return escapeHtml(html);
-    return config ? DOMPurify.sanitize(html, config) : DOMPurify.sanitize(html);
+    installSanitizerHooks();
+    const frag = DOMPurify.sanitize(html, { ...(config || {}), RETURN_DOM_FRAGMENT: true });
+    unblockAsLinks(frag);
+    const box = document.createElement('div');
+    box.appendChild(frag);
+    return box.innerHTML;
 }
 
 /** Markdown to sanitized HTML; text when marked or DOMPurify is missing. */

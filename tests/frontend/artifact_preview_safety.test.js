@@ -108,7 +108,9 @@ const BASE = require('./test_base').BASE;
       iso = await ev(`(async()=>{
         const wait=ms=>new Promise(r=>setTimeout(r,ms)); const sink=${JSON.stringify(sinkUrl)};
         // Positive control: the counting server really does see a request the page itself makes.
-        await new Promise(res=>{const i=new Image();i.onload=i.onerror=res;i.src=sink+'/control';});
+        // An XHR, not an image (the dashboard's CSP, img-src 'self' data: blob:, blocks remote images: #3515)
+        // and not fetch (earlier sections stub it). A cross-origin GET is still sent; only its answer is withheld.
+        await new Promise(res=>{const x=new XMLHttpRequest();x.onloadend=res;x.open('GET',sink+'/control');x.send();});
         window.__closePreview(); window.__messages=0; window.__canary='intact';
         window.addEventListener('message',()=>{window.__messages++});
         const hostileHtml='<h1>probe</h1>'

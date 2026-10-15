@@ -2,6 +2,7 @@
 
 import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast, jsStr, externalMessageBadge, hubUserBadge, boardMessageDisplayText } from './utils.js';
 import { state } from './state.js';
+import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
@@ -331,6 +332,7 @@ function renderMessages(messages) {
             <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)))}</div>
         </div>`;
     }).join('');
+    resolveBoardArtifacts(container, state.currentBoardServer);
     if (pendingMessageId) {
         const target = container.querySelector(`[data-message-id="${CSS.escape(pendingMessageId)}"]`);
         if (target) {
