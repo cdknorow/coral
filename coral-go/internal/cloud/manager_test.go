@@ -215,7 +215,7 @@ func TestOffMakesNoOutboundConnection(t *testing.T) {
 	require.Zero(t, e.hub.hits.Load(), "an off connector must never dial")
 }
 
-// Release builds configure https://app.coralai.ai by default (#3221). A configured hub is
+// Release builds configure https://app.coralhub.dev by default (#3221). A configured hub is
 // only an address: a server that has never been connected sends nothing to it, however
 // long it runs, until the user clicks Connect.
 func TestConfiguredButNeverConnectedNeverDials(t *testing.T) {
@@ -393,6 +393,9 @@ func TestEnrollmentMismatchedHubIsNotDialed(t *testing.T) {
 	start(t, m)
 	require.Equal(t, StateIdle, m.Status().State)
 	require.Contains(t, m.Status().LastError, "different hub")
+	// It says which host it was enrolled with and how to move (#3546: the hub moved hosts).
+	require.Contains(t, m.Status().LastError, other.srv.URL)
+	require.Contains(t, m.Status().LastError, "coral cloud connect --force")
 	time.Sleep(150 * time.Millisecond)
 	require.Zero(t, other.hits.Load())
 	require.Zero(t, e.hub.hits.Load())
@@ -523,7 +526,7 @@ func TestEnrollmentExpiredSaysClosedBeta(t *testing.T) {
 	waitState(t, m, StateIdle)
 	st := m.Status()
 	require.Equal(t, ErrCodeExpired, st.LastErrorCode)
-	require.Equal(t, "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html", st.LastError)
+	require.Equal(t, "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html", st.LastError)
 
 	// Right after an expiry a new code waits for the per-machine gap (#3285 follow-up)…
 	var rl *RateLimitedError

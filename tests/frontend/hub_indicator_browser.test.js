@@ -16,13 +16,13 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
 const SECRET_ID = 'srv_9f2e7c_secret';
 const SECRET_CODE = 'WXYZ-1234';
-const base = { configured: true, hub_url: 'https://app.coralai.ai', server_id: SECRET_ID, user_code: SECRET_CODE, label: 'Work Mac', max_mode: 'interact' };
+const base = { configured: true, hub_url: 'https://app.coralhub.dev', server_id: SECRET_ID, user_code: SECRET_CODE, label: 'Work Mac', max_mode: 'interact' };
 const STATES = {
     connected: { ...base, state: 'connected', connected_at: new Date(Date.now() - 3600e3).toISOString() },
     connecting: { ...base, state: 'connecting' },
     retrying: { ...base, state: 'retrying', last_error: 'the hub is unreachable; retrying' },
     revoked: { ...base, state: 'revoked', last_error: 'the hub rejected the token' },
-    idle: { configured: true, hub_url: 'https://app.coralai.ai', state: 'idle', max_mode: 'interact' },
+    idle: { configured: true, hub_url: 'https://app.coralhub.dev', state: 'idle', max_mode: 'interact' },
     enrolling: { ...base, state: 'enrolling' },
     off: { configured: false, state: 'off', max_mode: 'interact' },
 };
@@ -75,16 +75,16 @@ const STATES = {
         await until(`!!document.getElementById('hub-indicator') && document.getElementById('hub-indicator').dataset.state === 'connected'`, 'the indicator');
         let l = await look();
         check('connected: shown in the header, success colour (green)', l && !l.hidden && l.inBar && l.state === 'connected' && l.color === rgb(l.success), JSON.stringify(l));
-        check('its name: the state, the hub host and since when', l && /^Coral Hub: connected to app\.coralai\.ai since /.test(l.aria) && l.title === l.aria, l && l.aria);
+        check('its name: the state, the hub host and since when', l && /^Coral Hub: connected to app\.coralhub\.dev since /.test(l.aria) && l.title === l.aria, l && l.aria);
         check('no id or code anywhere in the page', l && !l.dom);
 
         console.log('2. Each state');
         await show('connecting'); l = await look();
-        check('connecting: muted, pulsing', !l.hidden && l.state === 'connecting' && l.anim === 'hub-indicator-pulse' && l.aria === 'Coral Hub: connecting to app.coralai.ai', JSON.stringify(l));
+        check('connecting: muted, pulsing', !l.hidden && l.state === 'connecting' && l.anim === 'hub-indicator-pulse' && l.aria === 'Coral Hub: connecting to app.coralhub.dev', JSON.stringify(l));
         await show('retrying'); l = await look();
-        check('retrying: the same look, says reconnecting', !l.hidden && l.state === 'connecting' && l.aria === 'Coral Hub: reconnecting to app.coralai.ai', JSON.stringify(l));
+        check('retrying: the same look, says reconnecting', !l.hidden && l.state === 'connecting' && l.aria === 'Coral Hub: reconnecting to app.coralhub.dev', JSON.stringify(l));
         await show('revoked'); l = await look();
-        check('enrolled but disconnected: warning tint and why', !l.hidden && l.state === 'disconnected' && l.color === rgb(l.warning) && /disconnected from app\.coralai\.ai \(/.test(l.aria), JSON.stringify(l));
+        check('enrolled but disconnected: warning tint and why', !l.hidden && l.state === 'disconnected' && l.color === rgb(l.warning) && /disconnected from app\.coralhub\.dev \(/.test(l.aria), JSON.stringify(l));
         for (const name of ['idle', 'enrolling', 'off']) {
             await show(name); l = await look();
             check(`not enrolled (${name}): hidden, with no state, title or name left`, l && l.hidden && !l.state && !l.title && l.aria === null, JSON.stringify(l));

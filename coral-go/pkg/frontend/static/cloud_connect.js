@@ -26,7 +26,7 @@ export const MODE_HELP = {
 export const ELSEWHERE_TEXT = 'Connecting has to happen on the computer running Coral. On that computer, run: coral cloud connect';
 export const CONNECT_COMMAND = 'coral cloud connect';
 // Said when this server has no hub (a dev build, or --cloud-url off); the CLI says the same (#3285).
-export const OFF_TEXT = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralai.ai (or CORAL_CLOUD_URL=https://app.coralai.ai), then run: coral cloud connect";
+export const OFF_TEXT = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralhub.dev (or CORAL_CLOUD_URL=https://app.coralhub.dev), then run: coral cloud connect";
 
 const ENROLLED = ['connecting', 'connected', 'retrying', 'revoked', 'key_unreadable', 'upgrade_required'];
 const LIVE = ['enrolling', 'connecting', 'retrying'];
@@ -76,7 +76,7 @@ export function describe(st) {
 // Coral Hub never says why a code went unapproved (that would leak who is in the beta), so an
 // expired code may mean the user could not sign in at all: say so, with where to ask for access.
 export const HUB_ACCESS_URL = 'https://coralhub.dev/hub.html';
-export const EXPIRED_TEXT = "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at ";
+export const EXPIRED_TEXT = "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at ";
 
 /** An idle status after a code expired (last_error_code from #3285; older servers only say it in last_error). */
 export function codeExpired(st) {

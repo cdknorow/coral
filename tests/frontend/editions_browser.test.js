@@ -34,7 +34,7 @@ function check(label, cond, detail) {
 
 const settings = async () => (await (await fetch(BASE + '/api/settings')).json()).settings || {};
 const put = body => fetch(BASE + '/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-const VERIFY = 'https://app.coralai.ai/enroll?code=ABCD-EFGH';
+const VERIFY = 'https://app.coralhub.dev/enroll?code=ABCD-EFGH';
 
 // A scripted connector: window.__cloud is the status (window.__cloudStart seeds it before the
 // app runs); window.__cloudCalls records actions.
@@ -42,7 +42,7 @@ const STUB = `
   window.__cloudForbidden = !!window.__cloudStartForbidden; window.__cloudCalls = [];
   window.__cloudForbiddenBody = window.__cloudStartForbiddenBody || { error: 'Cloud connector settings are only available from the Coral dashboard on this computer' };
   window.__cloudCancel = 'ok'; // 'ok' (a server with #3285) or '404' (an older one)
-  window.__cloud = Object.assign({ state: 'idle', hub_url: 'https://app.coralai.ai', configured: true, max_mode: 'view', allow_hub_auto_accept: true, offer_at_launch: true }, window.__cloudStart || {});
+  window.__cloud = Object.assign({ state: 'idle', hub_url: 'https://app.coralhub.dev', configured: true, max_mode: 'view', allow_hub_auto_accept: true, offer_at_launch: true }, window.__cloudStart || {});
   const realFetch = window.fetch.bind(window);
   const json = (b, status = 200) => Promise.resolve(new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } }));
   window.fetch = (url, opts = {}) => {
@@ -114,7 +114,7 @@ async function run() {
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
 
             // ── Without the flag (#3459): no popup on a fresh prod-tier or dev install ──
-            const PROD = { state: 'idle', hub_url: 'https://app.coralai.ai', configured: true };
+            const PROD = { state: 'idle', hub_url: 'https://app.coralhub.dev', configured: true };
             const DEV = { state: 'off', hub_url: '', configured: false };
             for (const [tier, cloud] of [['prod tier', PROD], ['dev', DEV]]) {
                 await put({ welcome_pending: 'True', welcome_choice: '', home_editions_hidden: 'False' });
@@ -254,7 +254,7 @@ async function run() {
             await put({ welcome_choice: 'own-hub', welcome_pending: 'False' });
 
             // ── The code expired before it was approved (#3285): say why it may have, link to access ──
-            for (const [how, st] of [['last_error_code', { state: 'idle', last_error_code: 'code_expired', last_error: "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html" }],
+            for (const [how, st] of [['last_error_code', { state: 'idle', last_error_code: 'code_expired', last_error: "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html" }],
                                      ['an older server', { state: 'idle', last_error: 'the code expired; start again' }]]) {
                 await put({ welcome_pending: 'True', welcome_choice: '' });
                 await load(st);
@@ -262,7 +262,7 @@ async function run() {
                 const ex = await ev(`(() => { const m = document.getElementById('editions-modal'); const s = m.querySelector('[data-cloud="status"]'); const a = s.querySelector('a');
                     return { text: s.textContent, href: a && a.getAttribute('href'), target: a && a.target, rel: a && a.rel, connect: !m.querySelector('[data-cloud="connect"]').hidden }; })()`);
                 check(`${label}: code expired (${how}): the closed-beta text with a real link to request access, and Connect to retry`,
-                    /^The code expired before it was approved\. If you couldn't sign in at app\.coralai\.ai, Coral Hub is in closed beta: request access at https:\/\/coralhub\.dev\/hub\.html$/.test(ex.text)
+                    /^The code expired before it was approved\. If you couldn't sign in at app\.coralhub\.dev, Coral Hub is in closed beta: request access at https:\/\/coralhub\.dev\/hub\.html$/.test(ex.text)
                     && ex.href === 'https://coralhub.dev/hub.html' && ex.target === '_blank' && /noopener/.test(ex.rel) && ex.connect, JSON.stringify(ex));
                 await click('#editions-modal [data-editions="skip"]');
                 await until(savedIs('welcome_choice', 'skipped'), 'skipped saved');
@@ -274,7 +274,7 @@ async function run() {
             await load({ state: 'off', configured: false });
             check(`${label}: a build with no hub configured does not open it`, !(await open()) && (await settings()).welcome_pending === 'True');
             const offText = await ev(`(async () => (await import((window.__coralStatic||'/static/')+'cloud_connect.js')).describe({ state: 'off' }))()`);
-            check(`${label}: not configured: says how to configure it (same text as the CLI)`, /^Coral Hub isn't configured on this server\. Start Coral with --cloud-url https:\/\/app\.coralai\.ai .*then run: coral cloud connect$/.test(offText), offText);
+            check(`${label}: not configured: says how to configure it (same text as the CLI)`, /^Coral Hub isn't configured on this server\. Start Coral with --cloud-url https:\/\/app\.coralhub\.dev .*then run: coral cloud connect$/.test(offText), offText);
             await put({ welcome_pending: 'False' });
             await load({}, true);
             await ev(`(async () => (await import((window.__coralStatic||'/static/')+'editions.js')).showHubSetup())()`);

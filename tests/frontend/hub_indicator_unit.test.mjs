@@ -11,16 +11,16 @@ for (const [state, want] of [['connected', 'connected'], ['connecting', 'connect
 assert.equal(indicatorState({ state: 'connected', loading: true }), null, 'loading: not final yet');
 assert.equal(indicatorState(null), null);
 
-assert.equal(hubHost('https://app.coralai.ai'), 'app.coralai.ai');
+assert.equal(hubHost('https://app.coralhub.dev'), 'app.coralhub.dev');
 assert.equal(hubHost('http://127.0.0.1:9000/x'), '127.0.0.1:9000');
 assert.equal(hubHost('javascript:alert(1)'), '');
 assert.equal(hubHost(''), '');
 
 const now = new Date('2026-10-15T09:00:00Z');
-const st = { state: 'connected', hub_url: 'https://app.coralai.ai', connected_at: '2026-10-15T07:42:00Z',
+const st = { state: 'connected', hub_url: 'https://app.coralhub.dev', connected_at: '2026-10-15T07:42:00Z',
     server_id: 'srv_secret_id', user_code: 'ABCD-EFGH', label: 'Work Mac' };
 const l = indicatorLabel(st, 'connected', now, 'en-US');
-assert.match(l, /^Coral Hub: connected to app\.coralai\.ai since \d{1,2}:42/);
+assert.match(l, /^Coral Hub: connected to app\.coralhub\.dev since \d{1,2}:42/);
 for (const secret of ['srv_secret_id', 'ABCD-EFGH']) assert.ok(!l.includes(secret), 'no id or code in the label');
 assert.match(indicatorLabel({ ...st, connected_at: '2026-10-12T07:42:00Z' }, 'connected', now, 'en-US'), /since Oct 12, /, 'another day: the date too');
 assert.equal(indicatorLabel({ state: 'connected', hub_url: 'https://h.test' }, 'connected', now), 'Coral Hub: connected to h.test');

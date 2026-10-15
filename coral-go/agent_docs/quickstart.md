@@ -163,7 +163,7 @@ HTTP …`) and **Settings › Privacy › Remote access** all say so. Pick one o
 
 Go to **http://localhost:8420**.
 
-> **The first time, Coral offers to connect to Coral Hub** (app.coralai.ai, invite-only
+> **The first time, Coral offers to connect to Coral Hub** (app.coralhub.dev, invite-only
 > beta), so you can use your agents from any browser or your phone. **Connect** shows a
 > link with your code filled in; once you approve it, choose how much the hub may do on
 > this computer (View, Interact or Launch) and click **Done**. **Skip for now** keeps

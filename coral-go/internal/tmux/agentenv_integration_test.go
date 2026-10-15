@@ -32,7 +32,7 @@ func paneEnv(t *testing.T, c *Client, session string) string {
 func TestAgentPanesFromANewServerHaveNoServerSettings(t *testing.T) {
 	c := newTestClient(t)
 	t.Setenv("CORAL_SECRET_KEY", "leak-3389")
-	t.Setenv("CORAL_CLOUD_URL", "https://app.coralai.ai")
+	t.Setenv("CORAL_CLOUD_URL", "https://app.coralhub.dev")
 	t.Setenv("CORAL_URL", "http://127.0.0.1:9999")
 	t.Setenv("CORAL_SESSION_TOKEN", "tok-3389")   // #3387: only ever exported inside a pane's own shell
 	t.Setenv("CORAL_SESSION_NAME", "parent-3421") // #3421: nor another session's identity

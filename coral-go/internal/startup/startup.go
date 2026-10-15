@@ -807,7 +807,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		return agents, nil
 	}
 
-	// Coral Hub connector. Release builds offer https://app.coralai.ai unless --cloud-url /
+	// Coral Hub connector. Release builds offer https://app.coralhub.dev unless --cloud-url /
 	// CORAL_CLOUD_URL say otherwise (off disables it). Nothing is sent to the hub until the
 	// user connects; when off it opens no outbound connection and starts no goroutine.
 	startCloudConnector(ctx, db, cfg, srv, sessStore)

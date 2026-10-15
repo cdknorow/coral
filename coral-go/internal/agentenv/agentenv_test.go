@@ -11,7 +11,7 @@ import (
 func TestFilter(t *testing.T) {
 	in := []string{
 		"PATH=/usr/bin", "HOME=/home/u", "ANTHROPIC_API_KEY=sk-x", "TERM=xterm",
-		"CORAL_SECRET_KEY=master", "CORAL_CLOUD_URL=https://app.coralai.ai", "CORAL_TLS_KEY=/k.pem",
+		"CORAL_SECRET_KEY=master", "CORAL_CLOUD_URL=https://app.coralhub.dev", "CORAL_TLS_KEY=/k.pem",
 		"CORAL_DEBUG_INPUT=1", "CORAL_TRUSTED_PROXIES=10.0.0.0/8", "CORAL_WEBHOOK_ALLOW_PRIVATE=1",
 		"CORAL_SOME_FUTURE_SETTING=x",
 		"CORAL_URL=http://127.0.0.1:8420", "CORAL_PORT=8420", "CORAL_DATA_DIR=/d", "CORAL_SESSION_NAME=a",

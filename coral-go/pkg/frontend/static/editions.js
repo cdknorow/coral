@@ -1,6 +1,6 @@
 /* Coral Hub on first launch and on the home screen (#3221).
 
-   - First launch: after the EULA, the dashboard opens "Connect to Coral Hub" (app.coralai.ai)
+   - First launch: after the EULA, the dashboard opens "Connect to Coral Hub" (app.coralhub.dev)
      with the real connect flow inline (cloud_connect.js, the same code as Settings > Coral
      Hub): Connect → link and code → live status → once connected, how much the hub may do
      → Done. "Skip for now" keeps Coral local. "Run your own hub" (coral --hub) is the
@@ -118,7 +118,7 @@ export function showHubSetup(step = 'connect') {
 function _connectHtml() {
     return `<div class="modal-content editions-content">
         <h2 id="editions-title" class="editions-title">Connect to Coral Hub</h2>
-        <p class="editions-sub">Use your agents from any browser, including your phone, at app.coralai.ai. Coral Hub is in an invite-only beta. Nothing is sent until you connect.</p>
+        <p class="editions-sub">Use your agents from any browser, including your phone, at app.coralhub.dev. Coral Hub is in an invite-only beta. Nothing is sent until you connect.</p>
         <div class="editions-cloud">
             <div class="editions-status" data-cloud="status" role="status" aria-live="polite">Loading…</div>
             <div class="editions-code" data-cloud="code" hidden>

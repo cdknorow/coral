@@ -31,7 +31,7 @@ export function indicatorState(st) {
     }
 }
 
-/** The hub's host for display ("app.coralai.ai"), or '' for anything that isn't an http(s) URL. */
+/** The hub's host for display ("app.coralhub.dev"), or '' for anything that isn't an http(s) URL. */
 export function hubHost(url) {
     try {
         const u = new URL(String(url || ''));

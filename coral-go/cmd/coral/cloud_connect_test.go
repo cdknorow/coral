@@ -143,10 +143,10 @@ const (
 	enrolled = `{"status":"enrolled","detail":"enrolled as server srv_1","exit_code":0}`
 
 	notConfigured = `{"configured":false,"state":"off","max_mode":"view"}`
-	idle          = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"idle","max_mode":"view"}`
-	enrolling     = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"enrolling","user_code":"ABCD-EFGH","verification_url":"https://app.coralai.ai/enroll?code=ABCD-EFGH","max_mode":"view"}`
-	expired       = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"idle","last_error":"The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html","last_error_code":"code_expired","max_mode":"view"}`
-	connected     = `{"configured":true,"hub_url":"https://app.coralai.ai","state":"connected","label":"build-box","max_mode":"view"}`
+	idle          = `{"configured":true,"hub_url":"https://app.coralhub.dev","state":"idle","max_mode":"view"}`
+	enrolling     = `{"configured":true,"hub_url":"https://app.coralhub.dev","state":"enrolling","user_code":"ABCD-EFGH","verification_url":"https://app.coralhub.dev/enroll?code=ABCD-EFGH","max_mode":"view"}`
+	expired       = `{"configured":true,"hub_url":"https://app.coralhub.dev","state":"idle","last_error":"The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html","last_error_code":"code_expired","max_mode":"view"}`
+	connected     = `{"configured":true,"hub_url":"https://app.coralhub.dev","state":"connected","label":"build-box","max_mode":"view"}`
 )
 
 func secretFile(t *testing.T, name, content string) string {
@@ -418,7 +418,7 @@ func TestCloudConnectInteractive(t *testing.T) {
 	assert.Equal(t, 0, code, errb.String())
 	o := out.String()
 	// No terminal: one line a script or a log can use.
-	assert.Contains(t, o, "To connect this server to Coral Hub, open https://app.coralai.ai/enroll?code=ABCD-EFGH and enter code ABCD-EFGH\n")
+	assert.Contains(t, o, "To connect this server to Coral Hub, open https://app.coralhub.dev/enroll?code=ABCD-EFGH and enter code ABCD-EFGH\n")
 	assert.Contains(t, o, "Connected to Coral Hub as build-box.")
 	assert.Contains(t, o, "Coral Hub can view this server")
 	assert.Equal(t, 1, f.connects)
@@ -441,7 +441,7 @@ func TestCloudConnectFlowAsksAndRetries(t *testing.T) {
 	assert.Equal(t, 2, f.connects, "a new code after the expiry")
 	o := out.String()
 	// coral-hub's text, printed as it is: the link is not followed by a period.
-	assert.Contains(t, o, "Not connected. The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html\n")
+	assert.Contains(t, o, "Not connected. The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html\n")
 	assert.Contains(t, o, "Waiting for you to approve")
 	assert.Contains(t, o, "Coral Hub access: launch.")
 	calls := strings.Join(f.callList(), "\n")
@@ -493,7 +493,7 @@ func TestCloudConnectNotConfigured(t *testing.T) {
 	var out, errb bytes.Buffer
 	assert.Equal(t, 2, runCloud([]string{"connect", "--url", f.srv.URL}, strings.NewReader(""), &out, &errb))
 	assert.Contains(t, out.String(), "Coral Hub isn't configured on this server")
-	assert.Contains(t, out.String(), "CORAL_CLOUD_URL=https://app.coralai.ai")
+	assert.Contains(t, out.String(), "CORAL_CLOUD_URL=https://app.coralhub.dev")
 	assert.Zero(t, f.connects)
 
 	out.Reset()
@@ -538,7 +538,7 @@ func TestCloudConnectForce(t *testing.T) {
 	assert.Equal(t, 1, f.connects)
 
 	// A revoked server: refused without --force too.
-	f.statuses = []string{`{"configured":true,"hub_url":"https://app.coralai.ai","state":"revoked","max_mode":"view"}`}
+	f.statuses = []string{`{"configured":true,"hub_url":"https://app.coralhub.dev","state":"revoked","max_mode":"view"}`}
 	out.Reset()
 	assert.Equal(t, 5, runCloud([]string{"connect", "--url", f.srv.URL}, strings.NewReader(""), &out, &errb))
 	assert.Contains(t, out.String(), "'coral cloud connect --force'")

@@ -105,7 +105,7 @@ const (
 // codeExpiredMessage is coral-hub's required text for a code that expired. A user outside
 // Coral Hub's closed beta can't sign in, so their code just expires: the hub gives no
 // distinct answer for that, by design (it would leak who is on the allowlist).
-const codeExpiredMessage = "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html"
+const codeExpiredMessage = "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html"
 
 // Manager owns the enrollment and the tunnel.
 type Manager struct {
@@ -179,7 +179,10 @@ func (m *Manager) Run(ctx context.Context) {
 	case err != nil:
 		m.setError(StateIdle, "could not read the stored enrollment")
 	case conn.HubURL != m.o.HubURL:
-		m.setError(StateIdle, "this server is enrolled with a different hub; disconnect before enrolling with this one")
+		// Coral Hub moved to app.coralhub.dev (#3546): a server enrolled with the old host stops
+		// here, says which host, and is re-enrolled; a token is never sent to a host it wasn't
+		// enrolled with.
+		m.setError(StateIdle, "this server is enrolled with a different hub ("+conn.HubURL+"); run 'coral cloud connect --force' to enroll with "+m.o.HubURL)
 	case conn.State == store.CloudStateRevoked:
 		m.mu.Lock()
 		m.st.State, m.st.Label, m.st.ServerID = StateRevoked, conn.Label, conn.ServerID

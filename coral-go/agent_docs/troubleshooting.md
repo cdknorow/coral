@@ -51,13 +51,24 @@ happen on the computer running Coral: run `coral cloud connect` there.
 
 ### Which hub Coral connects to, and how to turn it off
 
-Release builds offer **https://app.coralai.ai**; dev builds offer none. `--cloud-url
+Release builds offer **https://app.coralhub.dev**; dev builds offer none. `--cloud-url
 <origin>` or `CORAL_CLOUD_URL` choose another; `--cloud-url ""` or `CORAL_CLOUD_URL=off`
 (also `none`, `0`, `false`) turn the connector off. Precedence: `--cloud-url`, then
 `CORAL_CLOUD_URL`, then the build's default. A configured hub is only an address: Coral
 makes no connection to it until you click **Connect** (or run `coral cloud connect`). The
-startup log says which hub it is: `[CLOUD] Coral Hub: https://app.coralai.ai (nothing is
+startup log says which hub it is: `[CLOUD] Coral Hub: https://app.coralhub.dev (nothing is
 sent until this server is connected: Settings > Coral Hub)`.
+
+### "This server is enrolled with a different hub" (Coral Hub moved to app.coralhub.dev)
+
+Coral Hub moved from app.coralai.ai to **app.coralhub.dev**. A server enrolled with the old
+host stops connecting after the upgrade and says so in Settings > Coral Hub (Coral never
+sends its token to a host it wasn't enrolled with, and never follows a redirect to a hub).
+Connect it again, then remove the old entry:
+
+1. On the computer running Coral: `coral cloud connect --force` (it forgets the old
+   enrollment here and enrolls with app.coralhub.dev; approve the code in your browser).
+2. In Coral Hub, revoke the server's old entry.
 
 Coral has no licence, no supporter reminder and no usage limits in any build (#3221).
 
@@ -329,7 +340,7 @@ tmux-backed sessions.
 
 Never point a test server at `~/.coral`; that is the live instance's database. Give a manual
 test server its own data directory and port, and turn Coral Hub off so it can never start a
-real enrollment with app.coralai.ai (a release build connects to it by default):
+real enrollment with app.coralhub.dev (a release build connects to it by default):
 
 ```bash
 CORAL_DATA_DIR=$(mktemp -d) ./coral --host 127.0.0.1 --port PORT --cloud-url off

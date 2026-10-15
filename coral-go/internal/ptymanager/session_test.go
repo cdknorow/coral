@@ -329,7 +329,7 @@ func TestSession_LogFileContainsOutput(t *testing.T) {
 func TestNewSession_AgentEnvHasNoServerSettings(t *testing.T) {
 	canFork(t)
 	t.Setenv("CORAL_SECRET_KEY", "leak-3389")
-	t.Setenv("CORAL_CLOUD_URL", "https://app.coralai.ai")
+	t.Setenv("CORAL_CLOUD_URL", "https://app.coralhub.dev")
 	t.Setenv("CORAL_URL", "http://127.0.0.1:9999")
 	s, err := newSession("env-3389", "test", t.TempDir(), "sid-env-3389", "env", 80, 24)
 	if err != nil {

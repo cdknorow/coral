@@ -168,7 +168,7 @@ func Load(dataDir ...string) *Config {
 }
 
 // CloudURLSetting resolves the Coral Hub origin from a --cloud-url / CORAL_CLOUD_URL value:
-// unset means the build tier's default (https://app.coralai.ai in release builds, none in
+// unset means the build tier's default (https://app.coralhub.dev in release builds, none in
 // dev); "", "off", "none", "0" or "false" turn the connector off. A configured hub is only
 // an address: nothing is sent to it until the user connects (#3221).
 func CloudURLSetting(v string, set bool) string {

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// The Coral Hub origin (#3221): unset means the tier's default (app.coralai.ai in release
+// The Coral Hub origin (#3221): unset means the tier's default (app.coralhub.dev in release
 // builds, none in dev); an explicit empty value or "off" turns the connector off.
 func TestCloudURLSetting(t *testing.T) {
 	assert.Equal(t, TierDefaultCloudURL, CloudURLSetting("", false), "unset: the tier default")
@@ -19,7 +19,7 @@ func TestCloudURLSetting(t *testing.T) {
 func TestTierDefaultCloudURL(t *testing.T) {
 	switch TierName {
 	case "prod", "staging", "beta":
-		assert.Equal(t, "https://app.coralai.ai", TierDefaultCloudURL)
+		assert.Equal(t, "https://app.coralhub.dev", TierDefaultCloudURL)
 	case "dev", "dropboxers":
 		assert.Equal(t, "", TierDefaultCloudURL)
 	}

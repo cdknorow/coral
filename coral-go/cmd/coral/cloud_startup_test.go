@@ -53,13 +53,13 @@ func TestCloudConnectSetting(t *testing.T) {
 	}
 	// The built-in default only (a release build, nothing passed).
 	cfg := config.Load(t.TempDir())
-	cfg.CloudURL, cfg.CloudURLExplicit, cfg.CloudConnect = "https://app.coralai.ai", false, ""
+	cfg.CloudURL, cfg.CloudURLExplicit, cfg.CloudConnect = "https://app.coralhub.dev", false, ""
 	assert.False(t, cfg.OffersCloudConnect(), "the default URL alone offers nothing")
 	assert.Equal(t, "off", mode(cfg))
 
 	// An explicit URL: like --cloud-connect prompt.
 	t.Setenv("CORAL_CLOUD_CONNECT", "")
-	t.Setenv("CORAL_CLOUD_URL", "https://app.coralai.ai")
+	t.Setenv("CORAL_CLOUD_URL", "https://app.coralhub.dev")
 	cfg = config.Load(t.TempDir())
 	assert.True(t, cfg.CloudURLExplicit)
 	assert.True(t, cfg.OffersCloudConnect(), "CORAL_CLOUD_URL given: offered")
@@ -75,7 +75,7 @@ func TestCloudConnectSetting(t *testing.T) {
 	cfg = config.Load(t.TempDir())
 	assert.False(t, cfg.CloudURLExplicit, "CORAL_CLOUD_URL=off is no URL")
 	assert.False(t, cfg.OffersCloudConnect())
-	t.Setenv("CORAL_CLOUD_URL", "https://app.coralai.ai")
+	t.Setenv("CORAL_CLOUD_URL", "https://app.coralhub.dev")
 	// Switch words: 1, true, yes, on are prompt; 0, false, no are off; anything else is a
 	// warning and off, never a refusal to start (Backend, #3459).
 	for v, want := range map[string]string{"1": "prompt", "true": "prompt", "Yes": "prompt", "on": "prompt",
@@ -143,7 +143,7 @@ func TestCloudStartupStepPrompt(t *testing.T) {
 	ir := &interruptRouter{shutdown: func() { t.Error("the step must not stop the server") }}
 	runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, ir, strings.NewReader("\n2\n"), &out)
 	o := out.String()
-	assert.Contains(t, o, "Connect this server to Coral Hub (https://app.coralai.ai) now?")
+	assert.Contains(t, o, "Connect this server to Coral Hub (https://app.coralhub.dev) now?")
 	assert.Contains(t, o, "Your code ABCD-EFGH should already be filled in")
 	assert.Contains(t, o, "Connected to Coral Hub as build-box.")
 	assert.Contains(t, o, "Coral Hub access: interact.")
@@ -195,7 +195,7 @@ func TestCloudStartupStepLogsWithoutATerminal(t *testing.T) {
 	runCloudStartupStep(context.Background(), cfg, "log", &interruptRouter{}, nil, nil)
 	assert.Less(t, time.Since(start), 2*time.Second, "returns at once")
 	require.Eventually(t, func() bool { return strings.Contains(logs.String(), "Connected to Coral Hub as build-box") }, 5*time.Second, 10*time.Millisecond, logs.String())
-	assert.Contains(t, logs.String(), "[CLOUD] To connect this server to Coral Hub, open https://app.coralai.ai/enroll?code=ABCD-EFGH and enter code ABCD-EFGH")
+	assert.Contains(t, logs.String(), "[CLOUD] To connect this server to Coral Hub, open https://app.coralhub.dev/enroll?code=ABCD-EFGH and enter code ABCD-EFGH")
 	assert.Equal(t, 1, f.connects)
 	for _, c := range f.callList() {
 		assert.NotContains(t, c, "max-mode", "nothing asked or changed without a terminal")
@@ -205,7 +205,7 @@ func TestCloudStartupStepLogsWithoutATerminal(t *testing.T) {
 // A server already connected (or still loading its enrollment) is left alone:
 // the step waits for the connector to load and starts no enrollment.
 func TestCloudStartupStepLeavesAConnectedServerAlone(t *testing.T) {
-	loading := `{"configured":true,"hub_url":"https://app.coralai.ai","state":"idle","loading":true,"max_mode":"view"}`
+	loading := `{"configured":true,"hub_url":"https://app.coralhub.dev","state":"idle","loading":true,"max_mode":"view"}`
 	f, cfg, logs := stepEnv(t, loading, loading, connected)
 	var out bytes.Buffer
 	runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, &interruptRouter{}, strings.NewReader("\n"), &out)

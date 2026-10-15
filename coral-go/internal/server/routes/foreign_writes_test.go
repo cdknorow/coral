@@ -57,7 +57,7 @@ func TestRefuseForeignBrowserWrites(t *testing.T) {
 		"Origin with userinfo":              {"PUT", map[string]string{"Origin": "http://x@localhost:8420"}, 403},
 		"foreign Origin, no fetch metadata": {"PUT", map[string]string{"Origin": "https://evil.example"}, 403},
 		"Coral's host in another case":      {"PUT", map[string]string{"Origin": "http://LOCALHOST:8420", "Sec-Fetch-Site": "same-origin"}, 200},
-		"the Coral Hub connector":           {"PUT", map[string]string{"Origin": "https://app.coralai.ai", tunnel.ViaHeader: cloud.ViaSecret()}, 200},
+		"the Coral Hub connector":           {"PUT", map[string]string{"Origin": "https://app.coralhub.dev", tunnel.ViaHeader: cloud.ViaSecret()}, 200},
 		"a read from another port":          {"GET", map[string]string{"Origin": "http://localhost:3000", "Sec-Fetch-Site": "same-site"}, 200},
 	} {
 		reached = 0

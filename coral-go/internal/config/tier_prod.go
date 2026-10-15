@@ -11,5 +11,5 @@ var (
 	TierChecksForUpdates = true
 	TierName             = "prod"
 	// The Coral Hub this build offers to connect to (#3221); nothing is sent until the user connects.
-	TierDefaultCloudURL = "https://app.coralai.ai"
+	TierDefaultCloudURL = "https://app.coralhub.dev"
 )

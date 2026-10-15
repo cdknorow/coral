@@ -235,12 +235,12 @@ func TestCloudStatusOffersAtLaunchOnlyWithTheFlag(t *testing.T) {
 		name, url, connect string
 		explicit, want     bool
 	}{
-		{"prod tier default URL, no flag", "https://app.coralai.ai", "", false, false},
-		{"prod tier, off", "https://app.coralai.ai", "off", false, false},
-		{"prod tier, prompt", "https://app.coralai.ai", "prompt", false, true},
-		{"prod tier, auto", "https://app.coralai.ai", "auto", false, true},
-		{"explicit URL, no flag", "https://app.coralai.ai", "", true, true},
-		{"explicit URL, off", "https://app.coralai.ai", "off", true, false},
+		{"prod tier default URL, no flag", "https://app.coralhub.dev", "", false, false},
+		{"prod tier, off", "https://app.coralhub.dev", "off", false, false},
+		{"prod tier, prompt", "https://app.coralhub.dev", "prompt", false, true},
+		{"prod tier, auto", "https://app.coralhub.dev", "auto", false, true},
+		{"explicit URL, no flag", "https://app.coralhub.dev", "", true, true},
+		{"explicit URL, off", "https://app.coralhub.dev", "off", true, false},
 		{"dev, prompt", "", "prompt", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

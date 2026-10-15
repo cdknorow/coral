@@ -186,7 +186,7 @@ func (c *cloudClient) status(ctx context.Context) (cloudStatusReply, int) {
 }
 
 // notConfiguredHelp is what to do when the server has no Coral Hub URL.
-const notConfiguredHelp = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralai.ai (or CORAL_CLOUD_URL=https://app.coralai.ai), then run: coral cloud connect"
+const notConfiguredHelp = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralhub.dev (or CORAL_CLOUD_URL=https://app.coralhub.dev), then run: coral cloud connect"
 
 func (c *cloudClient) printStatus(ctx context.Context, out io.Writer) int {
 	st, code := c.status(ctx)
