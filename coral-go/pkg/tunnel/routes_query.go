@@ -8,6 +8,8 @@ package tunnel
 var routeQueries = map[string]string{
 	"DELETE /api/board/{}/waits":                        "subscriber_id",
 	"DELETE /api/sessions/live/{}/events":               "session_id",
+	"DELETE /api/sessions/live/{}/notes/{}":             "session_id",
+	"DELETE /api/sessions/live/{}/tasks/{}":             "session_id",
 	"GET /api/agent/history/context":                    "message_index,session_id,target_session_id,window",
 	"GET /api/agent/history/search":                     "include_ancestors,limit,max_excerpt_chars,offset,q,query,roles,session_id,target_session_id",
 	"GET /api/agent/tasks":                              "session_id",
@@ -82,7 +84,10 @@ var routeQueries = map[string]string{
 	"GET /api/workflows/{}/runs":                        "limit,offset,status",
 	"GET /ws/coral":                                     "agent_type,diff=fields,feed=hub,session_id",
 	"GET /ws/terminal/{}":                               "agent_type,session_id",
+	"PATCH /api/sessions/live/{}/notes/{}":              "session_id",
+	"PATCH /api/sessions/live/{}/tasks/{}":              "session_id",
 	"POST /api/agent/ui-request":                        "session_id",
 	"POST /api/agent/ui/{}/events":                      "session_id",
+	"POST /api/sessions/live/{}/tasks/reorder":          "session_id",
 	"PUT /api/sessions/live/{}/file-content":            "filepath*,session_id",
 }

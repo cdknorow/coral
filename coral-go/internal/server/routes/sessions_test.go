@@ -2177,6 +2177,8 @@ func TestSessionsTasks_SameTitleReusesOpenTask(t *testing.T) {
 	// Once completed, the same title starts a new task
 	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/%v", base, first["id"]), bytes.NewBufferString(`{"completed": 1}`)) // the test router maps UpdateTask to PUT
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", server.URL) // the operator, from the dashboard (#3498)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
@@ -2453,10 +2455,13 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Put("/api/sessions/live/{name}/tasks/{taskID}", handler.UpdateTask)
 	r.Patch("/api/sessions/live/{name}/tasks/{taskID}", handler.UpdateTask)
 	r.Delete("/api/sessions/live/{name}/tasks/{taskID}", handler.DeleteTask)
+	r.Post("/api/sessions/live/{name}/tasks/reorder", handler.ReorderTasks)
 
 	// Note routes
 	r.Get("/api/sessions/live/{name}/notes", handler.ListNotes)
 	r.Post("/api/sessions/live/{name}/notes", handler.CreateNote)
+	r.Patch("/api/sessions/live/{name}/notes/{noteID}", handler.UpdateNote)
+	r.Delete("/api/sessions/live/{name}/notes/{noteID}", handler.DeleteNote)
 
 	// Event routes
 	r.Get("/api/sessions/live/{name}/events", handler.ListEvents)

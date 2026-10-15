@@ -44,7 +44,7 @@ func TestPersonalWorkflowAPI(t *testing.T) {
 	call("POST", base+"/claim", map[string]any{"session_id": "one"}, 409)
 	call("POST", fmt.Sprintf("%s/%d/complete", base, bid), map[string]any{"session_id": "one"}, 400)
 	// The older dashboard route cannot bypass the required artifact either.
-	call("PATCH", fmt.Sprintf("/api/sessions/live/same-name/tasks/%d", bid), map[string]any{"completed": 1}, 400)
+	call("PATCH", fmt.Sprintf("/api/sessions/live/same-name/tasks/%d?session_id=one", bid), map[string]any{"completed": 1}, 400)
 	call("POST", fmt.Sprintf("%s/%d/complete", base, bid), map[string]any{"session_id": "one", "artifacts": []map[string]string{{"name": "build", "content": "candidate", "revision": "rev-7"}}}, 200)
 	ready := call("GET", fmt.Sprintf("%s/%d?session_id=one", base, cid), nil, 200)
 	require.Equal(t, "pending", ready["status"])

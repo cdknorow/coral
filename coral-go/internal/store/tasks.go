@@ -426,6 +426,20 @@ func (s *TaskStore) CreateAgentNote(ctx context.Context, agentName, content stri
 }
 
 // UpdateAgentNote updates note content.
+// GetAgentNote returns a note, or nil when there is none with that id.
+func (s *TaskStore) GetAgentNote(ctx context.Context, noteID int64) (*AgentNote, error) {
+	var n AgentNote
+	err := s.reader().GetContext(ctx, &n,
+		"SELECT id, agent_name, session_id, content, created_at, updated_at FROM agent_notes WHERE id = ?", noteID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+
 func (s *TaskStore) UpdateAgentNote(ctx context.Context, noteID int64, content string) error {
 	now := nowUTC()
 	_, err := s.db.ExecContext(ctx,

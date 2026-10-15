@@ -4185,8 +4185,90 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// itemScope is whose tasks and notes a live-session route may change (#3498, security
+// sweep item 9). An agent, by its session token, acts only on its own: its agent name
+// and session come from the token, whatever the path says (the path's name comes from
+// the hook's working folder, which can drift: #3495's rule). The Operator (the
+// dashboard, the verified CLI) acts on the path's {name}, and its ?session_id= when
+// given. Anyone else is refused (callerSession).
+type itemScope struct {
+	name  string
+	sid   *string
+	agent bool
+}
+
+func (h *SessionsHandler) itemScope(w http.ResponseWriter, r *http.Request) (itemScope, bool) {
+	claimed := ""
+	if q := querySessionID(r); q != nil {
+		claimed = *q
+	}
+	sid, ok := callerSession(w, r, claimed, true, nil)
+	if !ok {
+		return itemScope{}, false
+	}
+	if owner, isAgent := VerifiedSession(r.Context()); isAgent {
+		name := owner.SessionName
+		if ls, err := h.ss.GetLiveSession(r.Context(), owner.SessionID); err == nil && ls != nil {
+			name = ls.AgentName
+		}
+		return itemScope{name: name, sid: &sid, agent: true}, true
+	}
+	return itemScope{name: chi.URLParam(r, "name"), sid: querySessionID(r)}, true
+}
+
+// owns reports whether an item of agent itemName and session itemSID is in scope: the
+// same agent, and the same session when one is known (the list routes' rule). An item
+// with no session (from before sessions were recorded) is its agent's.
+func (s itemScope) owns(itemName string, itemSID *string) bool {
+	if itemName != s.name {
+		return false
+	}
+	if s.sid == nil {
+		return true
+	}
+	if itemSID == nil {
+		return s.agent
+	}
+	return *itemSID == *s.sid
+}
+
+// ownTask returns the task, or answers 404 when it isn't in scope.
+func (h *SessionsHandler) ownTask(w http.ResponseWriter, r *http.Request, scope itemScope, taskID int64) (*store.AgentTask, bool) {
+	t, err := h.ts.GetAgentTask(r.Context(), taskID)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return nil, false
+	}
+	if t == nil || !scope.owns(t.AgentName, t.SessionID) {
+		errNotFound(w, "task not found")
+		return nil, false
+	}
+	return t, true
+}
+
+// ownNote reports whether the note is in scope, answering 404 when it isn't.
+func (h *SessionsHandler) ownNote(w http.ResponseWriter, r *http.Request, scope itemScope, noteID int64) bool {
+	n, err := h.ts.GetAgentNote(r.Context(), noteID)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return false
+	}
+	if n == nil || !scope.owns(n.AgentName, n.SessionID) {
+		errNotFound(w, "note not found")
+		return false
+	}
+	return true
+}
+
 func (h *SessionsHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	taskID, _ := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	scope, ok := h.itemScope(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := h.ownTask(w, r, scope, taskID); !ok {
+		return
+	}
 	var body struct {
 		Title     *string `json:"title"`
 		Completed *int    `json:"completed"`
@@ -4206,6 +4288,13 @@ func (h *SessionsHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionsHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	taskID, _ := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	scope, ok := h.itemScope(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := h.ownTask(w, r, scope, taskID); !ok {
+		return
+	}
 	if err := h.ts.DeleteAgentTask(r.Context(), taskID); err != nil {
 		errBadRequest(w, err.Error())
 		return
@@ -4214,7 +4303,6 @@ func (h *SessionsHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SessionsHandler) ReorderTasks(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
 	var body struct {
 		TaskIDs []int64 `json:"task_ids"`
 	}
@@ -4222,7 +4310,16 @@ func (h *SessionsHandler) ReorderTasks(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "task_ids required")
 		return
 	}
-	if err := h.ts.ReorderAgentTasks(r.Context(), name, body.TaskIDs); err != nil {
+	scope, ok := h.itemScope(w, r)
+	if !ok {
+		return
+	}
+	for _, id := range body.TaskIDs {
+		if _, ok := h.ownTask(w, r, scope, id); !ok {
+			return // nothing reordered: every id must be in scope
+		}
+	}
+	if err := h.ts.ReorderAgentTasks(r.Context(), scope.name, body.TaskIDs); err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
@@ -4261,6 +4358,13 @@ func (h *SessionsHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionsHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 	noteID, _ := strconv.ParseInt(chi.URLParam(r, "noteID"), 10, 64)
+	scope, ok := h.itemScope(w, r)
+	if !ok {
+		return
+	}
+	if !h.ownNote(w, r, scope, noteID) {
+		return
+	}
 	var body struct {
 		Content string `json:"content"`
 	}
@@ -4277,6 +4381,13 @@ func (h *SessionsHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionsHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 	noteID, _ := strconv.ParseInt(chi.URLParam(r, "noteID"), 10, 64)
+	scope, ok := h.itemScope(w, r)
+	if !ok {
+		return
+	}
+	if !h.ownNote(w, r, scope, noteID) {
+		return
+	}
 	if err := h.ts.DeleteAgentNote(r.Context(), noteID); err != nil {
 		errInternalServer(w, err.Error())
 		return
