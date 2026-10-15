@@ -138,3 +138,50 @@ func TestMentionChecksOnOneConnectionStore(t *testing.T) {
 		t.Fatal("the mention checks hung on a one-connection store")
 	}
 }
+
+// #3578: HasUnreadMention is the gate's mention check, by the board's own rule, whatever the
+// subscriber's receive mode.
+func TestHasUnreadMention(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for _, id := range []string{"Backend Dev", "Backend Dev 2", "Lead"} {
+		if _, err := s.Subscribe(ctx, "team", id, id, "", nil, nil, "all"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	has := func(sub string) bool {
+		t.Helper()
+		ok, err := s.HasUnreadMention(ctx, "team", sub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if _, err := s.PostMessage(ctx, "team", "Lead", "general chatter, nobody tagged", nil); err != nil {
+		t.Fatal(err)
+	}
+	if has("Backend Dev") || has("Backend Dev 2") {
+		t.Fatal("chatter tags nobody")
+	}
+	if _, err := s.PostMessage(ctx, "team", "Lead", "@Backend Dev 2 take #7", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !has("Backend Dev 2") {
+		t.Error("Backend Dev 2 is tagged")
+	}
+	if has("Backend Dev") {
+		t.Error("'@Backend Dev 2' doesn't tag Backend Dev on a board that has a Backend Dev 2")
+	}
+	if _, err := s.PostMessage(ctx, "team", "Lead", "@all standup in five", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !has("Backend Dev") {
+		t.Error("@all tags everyone")
+	}
+	if has("Lead") {
+		t.Error("an agent's own posts never tag it")
+	}
+	if ok, err := s.HasUnreadMention(ctx, "team", "Nobody"); err != nil || ok {
+		t.Errorf("an unknown subscriber: %v %v", ok, err)
+	}
+}

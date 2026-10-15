@@ -202,7 +202,7 @@ func (l *AgentLauncher) SendPrompt(ctx context.Context, sessionID, sessionName, 
 	// its normal input box: a freshly started CLI may be on its trust-this-folder
 	// screen or a login or model picker, and the prompt plus Enter would answer
 	// it. Held until the user deals with that screen.
-	if _, err := deliverAutomated(ctx, l.runtime, l.logger, sessionName, agentType, sessionID, "initial-prompt", prompt, "initial prompt", ptymanager.InputBoxKnown(agentType)); err != nil {
+	if _, err := deliverAutomated(ctx, l.runtime, l.logger, sessionName, agentType, sessionID, "initial-prompt", prompt, "initial prompt", ptymanager.InputBoxKnown(agentType), false); err != nil {
 		l.logger.Warn("prompt send failed", "session", sessionID[:8], "error", err)
 	}
 

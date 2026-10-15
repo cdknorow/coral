@@ -1415,6 +1415,28 @@ func (s *Store) HasUnreadHealthMessage(ctx context.Context, project, subscriberI
 // posted by anyone other than the health monitor. It lets worker sessions with
 // receive-all mode retain ordinary notifications without being nudged solely
 // for an Orchestrator health backlog.
+// HasUnreadMention reports whether an unread message (from someone else, not the task queue)
+// tags the subscriber: its id or job title, a numbered name of its own, @all or @notify-all,
+// by containsExplicitTag, the rule the notifier and the reads use (#3578: the gate types a
+// mention in mid-turn and holds a routine nudge until the turn ends). Its receive mode doesn't
+// matter: an agent that receives everything is still mentioned by a message that tags it.
+func (s *Store) HasUnreadMention(ctx context.Context, project, subscriberID string) (bool, error) {
+	var sub struct {
+		LastReadID int64  `db:"last_read_id"`
+		JobTitle   string `db:"job_title"`
+	}
+	if err := s.reader().GetContext(ctx, &sub, "SELECT last_read_id, job_title FROM board_subscribers WHERE project=? AND subscriber_id=?", project, subscriberID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	id, err := s.confirmedMention(ctx, project, subscriberID, sub.JobTitle,
+		"m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue'",
+		[]interface{}{project, sub.LastReadID, subscriberID}, false)
+	return id > 0, err
+}
+
 func (s *Store) HasUnreadNonHealthMessage(ctx context.Context, project, subscriberID string) (bool, error) {
 	return s.hasUnreadSenderMessage(ctx, project, subscriberID, "Coral Health Monitor", true)
 }

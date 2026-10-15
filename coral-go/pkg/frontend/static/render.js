@@ -322,6 +322,12 @@ export function buildSessionTooltip(s) {
         rows.push(`<tr><td class="tt-label">Board</td><td class="tt-value">${escapeHtml(keyLabel(sessionTeamKey(s)))}${unreadBadge}</td></tr>`);
         rows.push(`<tr><td class="tt-label">Role</td><td class="tt-value">${escapeHtml(s.board_job_title)}</td></tr>`);
     }
+    // Automated messages Coral holds for this agent: board nudges and messages wait for its
+    // turn to end, and any send waits while a prompt or menu is open (#3578).
+    const held = sessionHeldCount(s);
+    if (held > 0) {
+        rows.push(`<tr><td class="tt-label">Waiting</td><td class="tt-value tt-held">${held} automated message${held === 1 ? '' : 's'} held until the agent is free</td></tr>`);
+    }
     return `<table class="session-tooltip-table">${rows.join("")}</table>`;
 }
 
@@ -2208,6 +2214,12 @@ function _isSleepingExpanded(groupName) {
  *  that need the operator at the terminal. */
 export function sessionNeedsAttention(s) {
     return !!(s && SESSION_STATES[deriveSessionState(s)].attention);
+}
+
+/** held_inputs (automated sends the gate holds, #3578) as a safe non-negative integer. */
+export function sessionHeldCount(s) {
+    const n = Number(s && s.held_inputs);
+    return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 999) : 0;
 }
 
 /** board_unread as a safe, finite, non-negative integer (payloads are untrusted input to markup). */

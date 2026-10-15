@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/cdknorow/coral/internal/logparse"
@@ -30,6 +31,31 @@ func (h *SessionsHandler) InstallAutomatedInputHooks() {
 	ptymanager.SetStateFunc(h.gateState)
 	ptymanager.SetHeldTooLongFunc(h.recordHeldTooLong)
 	ptymanager.SetHeldEndedFunc(h.recordHeldEnded)
+	ptymanager.SetSignalsSettingFunc(gateSignalsFromSettings(h.ss))
+}
+
+// GateSignalsClaudeSetting turns on gate phase 2 for Claude agents (#3578): automated input
+// follows the agent's own signals, so a routine board nudge or message waits for the turn to end
+// and a mention is typed in at once. Off unless "true" (the default goes on after the shadow
+// week). Set only on this computer: PUT /api/settings is Operator-only and never reachable
+// through Coral Hub. CORAL_GATE_MODE=screen overrides it (the kill switch).
+const GateSignalsClaudeSetting = "gate_signals_claude"
+
+// gateSignalsFromSettings reads the setting at most once a second.
+func gateSignalsFromSettings(ss *store.SessionStore) func() bool {
+	var mu sync.Mutex
+	var at time.Time
+	on := false
+	return func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(at) < time.Second {
+			return on
+		}
+		s, err := ss.GetSettings(context.Background())
+		on, at = err == nil && s[GateSignalsClaudeSetting] == "true", time.Now()
+		return on
+	}
 }
 
 // gateNeedsInput tells the gate whether the agent's state says it waits on the

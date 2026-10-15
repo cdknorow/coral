@@ -67,6 +67,11 @@ type AutomatedInput struct {
 	What string
 	// Send types the text. It runs only when nothing is waiting on the user.
 	Send func(ctx context.Context) error
+	// Mention: the send is about a board message that @-mentions this agent (by the board's
+	// own rule, numbered names included). In signals mode it is typed in mid-turn, as with the
+	// screen rule; a routine nudge or message waits for the turn to end (#3578, the Operator's
+	// decision on #3494). A prompt or a menu on screen still holds it.
+	Mention bool
 	// RequireInputBox holds the send until the agent's normal input box is on
 	// screen, not just until no prompt is: a launch's first prompt, which a
 	// still-drawing trust or login screen could otherwise take as its answer.
@@ -218,6 +223,9 @@ type gateTimings struct {
 // heldPerSession bounds the held sends kept for one agent.
 const heldPerSession = 50
 
+// heldBytesPerSession caps the text of a session's held sends (#3578).
+const heldBytesPerSession = 256 << 10
+
 // WaitingOnUser reports whether the agent is waiting on a prompt from the user,
 // and why. An open prompt on its screen always counts. Its state (hook and
 // transcript events, NeedsInputFunc) counts too, unless the screen positively
@@ -248,16 +256,34 @@ func WaitingOnUser(ctx context.Context, term any, name, agentType, sessionID str
 
 // waiting reports whether this send must wait, why, and whether it is a request to
 // the user. It runs the screen rule and, where the session has signals, the signal
-// rule (#3482): the decision follows the screen rule and the signal rule is logged
-// next to it (shadow mode), unless CORAL_GATE_MODE=signals.
+// rule (#3482). The decision follows the screen rule, with the signal rule logged next to
+// it (shadow mode), unless the gate follows the signals for this agent type
+// (gateFollowsSignals, #3578). Then the signal rule decides, except that a send it would
+// hold only for the turn goes by the screen rule (today's behaviour) when it is a mention,
+// or when the turn has run for inTurnFallback: a mention isn't kept from a working agent,
+// and nothing waits on a turn for ever. The screen rule still holds either for a prompt
+// or a menu.
 func (in AutomatedInput) waiting(ctx context.Context) (waiting bool, why, kind string) {
 	waiting, why, kind = in.screenWaiting(ctx)
 	sWait, sWhy, sKind, st, ok := in.signalDecision(ctx)
 	if !ok {
 		return waiting, why, kind
 	}
-	gate.shadowLog(in, waiting, why, sWait, sWhy, sKind, st)
-	if signalsMode() {
+	agentType, _ := in.identity()
+	decided := "screen"
+	if gateFollowsSignals(agentType) {
+		inTurnHold := sWait && st.State == StateInTurn
+		switch {
+		case inTurnHold && in.Mention:
+			decided = "screen: a mention goes mid-turn"
+		case inTurnHold && !st.Since.IsZero() && gate.now().Sub(st.Since) >= inTurnFallback:
+			decided = "screen: in turn over " + inTurnFallback.String()
+		default:
+			decided = "signals"
+		}
+	}
+	gate.shadowLog(in, waiting, why, sWait, sWhy, sKind, st, decided)
+	if decided == "signals" {
 		return sWait, sWhy, sKind
 	}
 	return waiting, why, kind
@@ -681,6 +707,17 @@ func (g *inputGate) hold(in AutomatedInput, why, kind string) {
 	}
 	if len(q) >= heldPerSession {
 		slog.Warn("automated input: too many held sends; dropping the oldest", "session", in.Name, "dropped", q[0].in.What)
+		q = q[1:]
+	}
+	// And at most heldBytesPerSession of text (#3578: in signals mode a long turn holds every
+	// routine send for it). Never the new one; the log names the sender, never the text.
+	total := len(in.Text)
+	for _, h := range q {
+		total += len(h.in.Text)
+	}
+	for len(q) > 0 && total > heldBytesPerSession {
+		slog.Warn("automated input: held sends over the size limit; dropping the oldest", "session", in.Name, "dropped", q[0].in.What)
+		total -= len(q[0].in.Text)
 		q = q[1:]
 	}
 	g.held[in.Name] = append(q, &heldInput{in: in, heldAt: g.now(), why: why, kind: kind})

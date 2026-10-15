@@ -539,6 +539,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"board_project":         boardProject(boardSubs, liveBoardNames, agent.TmuxSession, sid),
 			"board_job_title":       boardJobTitle(boardSubs, liveBoardNames, agent.TmuxSession, sid),
 			"board_unread":          boardUnread,
+			"held_inputs":           ptymanager.HeldCount(tmuxName), // automated sends the gate holds (#3578)
 			"board_is_orchestrator": boardSubscriberFlag(boardSubs[tmuxName]),
 			"log_path":              agent.LogPath,
 			"sleeping":              state.Sleeping,

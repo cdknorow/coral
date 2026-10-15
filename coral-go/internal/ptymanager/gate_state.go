@@ -81,9 +81,44 @@ func SetStateFunc(fn func(ctx context.Context, name, agentType, sessionID string
 	stateFunc.Unlock()
 }
 
-// signalsMode reports whether the gate follows the signal rule (CORAL_GATE_MODE=
-// signals); otherwise it follows the screen rule and logs the signal rule's decision.
-func signalsMode() bool { return os.Getenv("CORAL_GATE_MODE") == "signals" }
+// gateFollowsSignals reports whether the gate decides by the signal rule for an agent type
+// (phase 2, #3578); otherwise it follows the screen rule and logs the signal rule's decision
+// (shadow mode). CORAL_GATE_MODE=screen never (the kill switch); =signals always, for every CLI
+// (trials); otherwise Claude, when the Operator's gate_signals_claude setting is on (off by
+// default). Codex, Gemini and the others keep the screen rule until their signals are in (#3497).
+func gateFollowsSignals(agentType string) bool {
+	switch os.Getenv("CORAL_GATE_MODE") {
+	case "screen":
+		return false
+	case "signals":
+		return true
+	}
+	if agentType != at.Claude {
+		return false
+	}
+	signalsSetting.RLock()
+	fn := signalsSetting.fn
+	signalsSetting.RUnlock()
+	return fn != nil && fn()
+}
+
+// signalsSetting reads the Operator's gate_signals_claude setting (installed by the server).
+var signalsSetting struct {
+	sync.RWMutex
+	fn func() bool
+}
+
+// SetSignalsSettingFunc installs the reader of the gate_signals_claude setting.
+func SetSignalsSettingFunc(fn func() bool) {
+	signalsSetting.Lock()
+	signalsSetting.fn = fn
+	signalsSetting.Unlock()
+}
+
+// inTurnFallback: after this long in one turn, a send the signal rule would hold for the turn
+// follows the screen rule instead, so nothing waits on a turn for ever (#3578; the longest real
+// turn in the shadow week's first day was 36.5 min).
+var inTurnFallback = 30 * time.Minute
 
 // staleInTurn: an InTurn state with no event for this long is stale (2.2.4).
 var staleInTurn = 2 * time.Minute
@@ -230,7 +265,7 @@ func (in AutomatedInput) staleRelaxation(st AgentState, agentType, screen string
 
 // shadowLog records one decision's screen rule and signal rule, once per change for a
 // send (shadow mode, phase 1).
-func (g *inputGate) shadowLog(in AutomatedInput, oldWait bool, oldWhy string, newWait bool, newWhy, kind string, st AgentState) {
+func (g *inputGate) shadowLog(in AutomatedInput, oldWait bool, oldWhy string, newWait bool, newWhy, kind string, st AgentState, decided string) {
 	decision := func(wait bool, why string) string {
 		if wait {
 			return "hold: " + why
@@ -240,20 +275,22 @@ func (g *inputGate) shadowLog(in AutomatedInput, oldWait bool, oldWhy string, ne
 	old, nw := decision(oldWait, oldWhy), decision(newWait, newWhy)
 	k := in.Name + "\x00" + in.Key
 	g.mu.Lock()
-	if g.shadowLast[k] == old+"\x00"+nw {
+	if g.shadowLast[k] == old+"\x00"+nw+"\x00"+decided {
 		g.mu.Unlock()
 		return
 	}
-	g.shadowLast[k] = old + "\x00" + nw
+	g.shadowLast[k] = old + "\x00" + nw + "\x00" + decided
 	g.mu.Unlock()
+	agentType, _ := in.identity()
 	mode := "screen"
-	if signalsMode() {
+	if gateFollowsSignals(agentType) {
 		mode = "signals"
 	}
-	agentType, _ := in.identity()
+	// mode is the rule configured for the agent; decided is the one that decided this send (a
+	// mention or a long turn goes by the screen rule even in signals mode).
 	slog.Info("automated input decision", "session", in.Name, "sender", in.What, "key", logKey(in),
-		"old", old, "new", nw, "agree", oldWait == newWait, "mode", mode,
-		"agent_type", agentType, "cli_version", st.CLIVersion, "state", st.State.String(), "kind", kind)
+		"old", old, "new", nw, "agree", oldWait == newWait, "mode", mode, "decided", decided,
+		"agent_type", agentType, "cli_version", st.CLIVersion, "state", st.State.String(), "kind", kind, "mention", in.Mention)
 }
 
 // logKey is a send's Key for a log line, never its text: a send without a key of its

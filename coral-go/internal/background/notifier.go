@@ -248,10 +248,21 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		if health {
 			nudge = fmt.Sprintf("[Coral health check] Team health check for %s: %d unread message%s include a health-monitor summary. Review team status, assignments, progress, and blockers, then run 'coral-board read' to see the authoritative full content.", sub.Project, unread, plural)
 		}
-		n.logger.Info("sending nudge", "subscriber_id", subscriberID, "session", sessName, "unread", unread)
+		// A nudge about a message that tags the agent is a mention: typed in mid-turn when the
+		// gate follows the signals; a routine one waits for the turn to end (#3578). A
+		// subscriber that receives mentions only is nudged for nothing else.
+		mention := sub.ReceiveMode == "" || sub.ReceiveMode == "mentions"
+		if !mention {
+			var mErr error
+			if mention, mErr = n.boardStore.HasUnreadMention(ctx, sub.Project, subscriberID); mErr != nil {
+				n.logger.Warn("mention check failed; the nudge goes as a mention", "subscriber_id", subscriberID, "error", mErr)
+				mention = true
+			}
+		}
+		n.logger.Info("sending nudge", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "mention", mention)
 		// One line (#3376), through the automated-input gate (#3431): a newer
 		// unread count for this board replaces a held one.
-		skipped, err := deliverAutomated(ctx, n.runtime, n.logger, sessName, "", "", "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false)
+		skipped, err := deliverAutomated(ctx, n.runtime, n.logger, sessName, "", "", "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention)
 		if skipped {
 			continue
 		}
