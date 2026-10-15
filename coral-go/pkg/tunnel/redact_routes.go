@@ -17,11 +17,9 @@ var redactExempt = map[string]string{
 	"GET /api/health":            "fixed fields (status, version): no free text",
 }
 
-// redactLater: View streams not redacted yet (phase 2, v1.4.38); the docs say so.
-var redactLater = map[string]string{
-	"GET /ws/coral":           "phase 2 (v1.4.38): per-frame redaction of the session feed",
-	"GET /ws/terminal/{name}": "phase 2 (v1.4.38): a rolling window over terminal frames",
-}
+// redactLater: View routes not redacted yet, each with when; the docs say so. Empty since
+// #3562 redacts the two live streams (/ws/coral per frame, /ws/terminal as one stream).
+var redactLater = map[string]string{}
 
 // RedactionClass names how the connector treats a View route's replies: "redact",
 // "exempt: <reason>" or "later: <reason>". It is "" for a route that isn't View.

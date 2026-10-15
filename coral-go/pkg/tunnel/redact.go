@@ -13,6 +13,9 @@ package tunnel
 // or the few bytes that could start a key's END line), so memory stays flat whatever the
 // reply's size. A body redacted in one Write comes out byte for byte the same as any split of
 // it (tested).
+//
+// A live stream that goes quiet (a terminal, #3562) calls Flush, which settles the held tail
+// without ending the stream: see Flush.
 
 import (
 	"bytes"
@@ -113,6 +116,7 @@ type Redactor struct {
 	prev    []byte          // the last few bytes of the original stream before pending (for the boundary)
 	inPEM   bool            // inside a private key: dropped until its END line or the closing quote
 	inToken func(byte) bool // inside a token longer than its rule's ceiling: its class is dropped
+	shown   int             // the leading bytes of pending that Flush already emitted as they are
 	err     error
 	buf     []byte // pending + the new bytes (reused)
 	out     []byte // the redacted output of one Write (reused; dst must not keep it)
@@ -138,6 +142,7 @@ func (r *Redactor) Write(p []byte) (int, error) {
 		r.prev = r.prev[:copy(r.prev, r.prev[max(0, len(r.prev)-escapeContext):])]
 	}
 	r.pending = append(r.pending[:0], data[consumed:]...)
+	out = r.skipShown(out, data, consumed)
 	if len(out) > 0 {
 		if _, err := r.dst.Write(out); err != nil {
 			r.err = err
@@ -147,12 +152,117 @@ func (r *Redactor) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// skipShown drops from out what Flush already emitted: the leading bytes of data, shown as
+// they were. Where a token turned out to start inside them, out differs from data from there
+// on, and the viewer, having seen its first characters, gets the marker after them.
+func (r *Redactor) skipShown(out, data []byte, consumed int) []byte {
+	if r.shown == 0 {
+		return out
+	}
+	k := 0
+	for k < r.shown && k < len(out) && out[k] == data[k] {
+		k++
+	}
+	r.shown = max(0, r.shown-consumed)
+	return out[k:]
+}
+
+// Flush settles the held tail of a stream that has gone quiet, without ending it (#3562: a
+// terminal must not sit on its last characters). No character of a token's value is ever
+// shown:
+//   - A tail with no value character in it yet (the first letters of a prefix, a whole prefix,
+//     "Authorization: Bearer" before its value, a key's BEGIN line still arriving) is shown as
+//     it is but kept as context, so a token it turns out to start is still caught: the viewer
+//     sees those words, then the marker.
+//   - A tail holding a prefix and the start of its value is held while force is false. With
+//     force, its value is replaced by the marker now, whatever its length (the prefix and
+//     scheme stay when the rule keeps them), and the rest of the run is dropped if more
+//     arrives.
+//   - Inside a private key nothing is shown, so Flush waits for its END line.
+func (r *Redactor) Flush(force bool) error {
+	if r.err != nil {
+		return r.err
+	}
+	if r.inPEM || len(r.pending) <= r.shown {
+		return nil
+	}
+	var out []byte
+	if rule, valueAt := heldValue(r.pending); rule != nil {
+		if !force {
+			return nil
+		}
+		keep := 0
+		if rule.keep {
+			keep = valueAt
+		}
+		out = append(r.out[:0], r.pending[min(r.shown, keep):keep]...)
+		if r.shown > keep {
+			out = out[:0] // a token began inside what was shown: the marker follows it
+		}
+		out = append(out, RedactMarker...)
+		r.inToken = rule.class
+		r.settleAll()
+	} else {
+		// No value in it: it redacts to itself (checked, so a tail this misjudged is settled
+		// redacted instead of shown).
+		out, _ = r.process(r.pending, true)
+		if r.inToken == nil && !r.inPEM && bytes.Equal(out, r.pending) {
+			out = out[r.shown:]
+			r.shown = len(r.pending)
+		} else {
+			out = r.skipShown(out, r.pending, len(r.pending))
+			r.settleAll()
+		}
+	}
+	if len(out) > 0 {
+		if _, err := r.dst.Write(out); err != nil {
+			r.err = err
+			return err
+		}
+	}
+	return nil
+}
+
+// settleAll counts everything held back as consumed (Flush).
+func (r *Redactor) settleAll() {
+	r.prev = append(r.prev, r.pending[max(0, len(r.pending)-escapeContext):]...)
+	r.prev = r.prev[:copy(r.prev, r.prev[max(0, len(r.prev)-escapeContext):])]
+	r.pending, r.shown = r.pending[:0], 0
+}
+
+// heldValue: when a held tail starts with a rule's whole prefix (and glue) and at least one
+// character of its value, the rule and where the value starts; else nil (no value held yet).
+func heldValue(b []byte) (*tokenRule, int) {
+	for k := range tokenRules {
+		ru := &tokenRules[k]
+		for _, pre := range ru.prefixes {
+			if !bytes.HasPrefix(b, []byte(pre)) {
+				continue
+			}
+			at := len(pre)
+			if ru.glue != nil {
+				g, _ := ru.glue(b[at:])
+				if g < 0 {
+					return nil, 0 // the glue is still arriving (or isn't one): no value yet
+				}
+				at += g
+			}
+			if at < len(b) && ru.class(b[at]) {
+				return ru, at
+			}
+			return nil, 0
+		}
+	}
+	return nil, 0
+}
+
 // Close redacts and emits what was held back; a private key still open is dropped.
 func (r *Redactor) Close() error {
 	if r.err != nil {
 		return r.err
 	}
 	out, _ := r.process(r.pending, true)
+	out = r.skipShown(out, r.pending, len(r.pending))
 	r.pending = nil
 	if len(out) > 0 {
 		if _, err := r.dst.Write(out); err != nil {

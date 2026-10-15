@@ -112,5 +112,5 @@ GET /api/workflows/runs/recent redact
 GET /api/workflows/runs/{id} redact
 GET /api/workflows/{id} redact
 GET /api/workflows/{id}/runs redact
-GET /ws/coral later: phase 2 (v1.4.38): per-frame redaction of the session feed
-GET /ws/terminal/{name} later: phase 2 (v1.4.38): a rolling window over terminal frames
+GET /ws/coral redact
+GET /ws/terminal/{name} redact

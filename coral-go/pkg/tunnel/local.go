@@ -760,7 +760,12 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 	// Always gated: an unset MaxMode means view, so a LocalHandler built without one
 	// never forwards terminal input.
 	gate := func(data []byte) bool { return FrameTier(dec, data) <= currentMode(l.MaxMode) }
-	pumpWS(ctx, up, down, gate)
+	var toHub *wsRedact
+	if redactsRoute(http.MethodGet, dec) {
+		// What a View stream sends to the hub is redacted (#3562); the setting is read per frame.
+		toHub = newWSRedact(ctx, down, l.redacting, strings.HasPrefix(dec, "/ws/terminal/"))
+	}
+	pumpWS(ctx, up, down, gate, toHub)
 }
 
 type wsEnd interface {
@@ -770,22 +775,26 @@ type wsEnd interface {
 }
 
 // pumpWS copies frames both ways. gate, when non-nil, vets frames travelling from b
-// (the hub side) to a (the local server); a refused frame closes both ends.
-func pumpWS(ctx context.Context, a, b wsEnd, gate func([]byte) bool) {
+// (the hub side) to a (the local server); a refused frame closes both ends. toHub, when
+// non-nil, redacts the frames travelling from a to b (#3562).
+func pumpWS(ctx context.Context, a, b wsEnd, gate func([]byte) bool, toHub *wsRedact) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); pump(ctx, cancel, a, b, nil) }()
-	go func() { defer wg.Done(); pump(ctx, cancel, b, a, gate) }()
+	go func() { defer wg.Done(); pump(ctx, cancel, a, b, nil, toHub) }()
+	go func() { defer wg.Done(); pump(ctx, cancel, b, a, gate, nil) }()
 	wg.Wait()
 }
 
-func pump(ctx context.Context, cancel context.CancelFunc, src, dst wsEnd, gate func([]byte) bool) {
+func pump(ctx context.Context, cancel context.CancelFunc, src, dst wsEnd, gate func([]byte) bool, red *wsRedact) {
 	defer cancel()
 	for {
 		typ, data, err := src.Read(ctx)
 		if err != nil {
+			if red != nil {
+				red.close() // what the stream still holds goes out before the close
+			}
 			code := websocket.CloseStatus(err)
 			switch {
 			case code == -1 || code == websocket.StatusNoStatusRcvd || code == websocket.StatusAbnormalClosure:
@@ -804,6 +813,12 @@ func pump(ctx context.Context, cancel context.CancelFunc, src, dst wsEnd, gate f
 			src.Close(websocket.StatusPolicyViolation, "not allowed in this access mode")
 			dst.Close(websocket.StatusPolicyViolation, "not allowed in this access mode")
 			return
+		}
+		if red != nil {
+			if err := red.write(typ, data); err != nil {
+				return
+			}
+			continue
 		}
 		if err := dst.Write(ctx, typ, data); err != nil {
 			return

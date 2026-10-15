@@ -104,9 +104,11 @@ Archive needs v1.4.2 on the machine: the dashboard offers **Archive** only for r
 
 **Paths are shown from the home folder.** Through Coral Hub a folder under this computer's home is shown as `~/...` in paths, in error messages and in commands (a workflow step's command and arguments, a script); logs and other local files' paths are left out. Prompts, chat and terminal output are shown as written.
 
+**Live streams too.** The live session list (`/ws/coral`) is redacted message by message. The live terminal (`/ws/terminal`) is redacted as one stream, so a token split across two pieces of output is still caught. A piece of output that ends with what could be the start of a token waits for the next piece. The first letters of a prefix (`gh`, `Bea`) or a whole prefix with no value yet (`ghp_`, `Authorization: Bearer`) show after at most 0.1 s. Part of a value never shows: if no more output comes for a second, it becomes `[redacted token]`. The rest of the live terminal is sent at once.
+
 What it doesn't cover:
-- **Live streams:** the live terminal (`/ws/terminal`) and the live session list (`/ws/coral`) aren't redacted yet (planned for v1.4.38). Their capture and history replies are.
-- **Other formats:** a token in a format not listed above, or a token split across terminal lines or by colour codes, passes as it is.
+- **Tokens broken up in the terminal's output:** a token passes as it is when a colour code or cursor movement sits inside it, when a program wraps it onto a second line itself (a full-screen app drawing it in a box), or when the screen is redrawn a few characters at a time. A token the terminal window wraps at its edge is caught. A private key whose `END` line is broken up the same way hides that terminal's output on the hub after it until a `"` is printed or the terminal is reopened (it fails closed).
+- **Other formats:** a token in a format not listed above passes as it is.
 - A false match (a word that looks like a token, such as a package name starting with `sk-` and 20 or more characters long, like `sk-learn-contrib-…`) shows `[redacted token]` on the hub only. Turning redaction off or on applies within a second.
 
 ## Connecting a server to Coral Hub
