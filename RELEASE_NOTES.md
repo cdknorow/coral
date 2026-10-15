@@ -1,5 +1,30 @@
 # Release Notes
 
+## v1.4.43 — Safer local access behind a reverse proxy, several listen addresses, and file-access hardening
+
+**Please upgrade.** This release closes more of Security's audit findings on file access and tightens how Coral trusts same-machine requests. Read the two behaviour changes below if you put Coral behind a reverse proxy or use strict local auth.
+
+### Security
+
+- **A reverse proxy on the same machine can't lend its clients local trust.** Tailscale Serve, Caddy or nginx reach Coral from 127.0.0.1, so a proxy that rewrote Host to localhost used to give every client it proxied, remote ones included, the no-credentials local pass. A request that carries a proxy header (X-Forwarded-For, Forwarded, Via, X-Real-IP, Tailscale headers and similar) is now treated as remote: it needs your key or a dashboard login.
+- **New setting: `require_auth_on_loopback`** (off by default, Operator-only, never through Coral Hub). For setups where the proxy strips its headers, turn it on and every direct local request must carry a credential: an agent's session token, a dashboard login, the signed command line, an API key or a Coral Hub stamp. `CORAL_REQUIRE_AUTH_ON_LOOPBACK=off` turns it off without the dashboard.
+- **Files reached through paths someone else chose are opened safely.** Saving a file from the dashboard, diffs, the changed-files list, Codex transcripts, the git poller and auto-attach now open files without following symlinks, refuse hard-linked files, FIFOs and devices, and stay inside the session's own folders. For a strict caller, nothing git runs or obeys (`.git`, `.husky`, the repository's hooks folder) can be written.
+- **Diffs are bounded for every caller but this computer's dashboard,** not only through Coral Hub: a committed `.env` at the diff base is no longer returned, a home folder or the filesystem root is refused as a working tree, and a repository's `core.worktree` can't point Coral at an unrelated folder.
+- **A session's teardown removes only its own temporary files,** and auto-attach refuses network (UNC) and device paths on Windows.
+- **Codex's link file can only name its own transcript,** inside Codex's sessions folder, and every transcript read stays in that folder.
+
+### Behaviour changes
+
+- **A dashboard behind a TLS reverse proxy now logs in** instead of riding the local pass.
+- **With `require_auth_on_loopback` on, a terminal or `curl` without a token no longer reaches Coral** from the same machine. Agents, `coral open` and `coral cloud connect` keep working, because they carry their own credentials.
+
+### Listening on several addresses
+
+- **`--host` takes a comma list,** for example `--host 127.0.0.1,100.101.102.103`, with one listener per address on the same port. A list of only network addresses also listens on 127.0.0.1 so this computer's agents keep a loopback address (logged at startup); `--no-auto-loopback` or `CORAL_NO_AUTO_LOOPBACK=1` turns that off. Agents always use the loopback listener.
+- **Every-interface together with another address is refused** before anything binds, with a clear message.
+- **A local request's Host must name this server** (localhost, a loopback address or an address Coral listens on), which closes DNS rebinding through a listened network address.
+- The quickstart explains these, including the advice for computers other people log in to: keep the loopback listener and turn on strict local auth.
+
 ## v1.4.42 — Security hardening, a safer team cleanup, and an easier-to-read board
 
 **Please upgrade.** This release closes a set of findings from Security's audit of the agent-facing CLIs, hooks and routes. None needs any action beyond upgrading.
