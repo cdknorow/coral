@@ -108,7 +108,7 @@ const { JSDOM } = require('jsdom');
     f.lockFrame(fr);
     assert.strictEqual(fr.getAttribute('sandbox'), '');
     for (const bad of ['allow-scripts', 'allow-same-origin', 'allow-top-navigation', 'allow-forms', 'allow-popups']) assert.ok(!fr.getAttribute('sandbox').includes(bad));
-    assert.strictEqual(fr.getAttribute('csp'), "default-src 'none'; img-src data:; style-src 'unsafe-inline'");
+    assert.strictEqual(fr.getAttribute('csp'), "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"); // #3593
     const doc = f.sandboxedDoc('<h1>x</h1><script>alert(1)</script>');
     assert.ok(doc.startsWith('<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\''));
     assert.ok(doc.includes("form-action 'none'") && doc.includes("base-uri 'none'"));
