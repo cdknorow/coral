@@ -442,3 +442,49 @@ func TestAHeldSendsReasonFollowsTheScreen(t *testing.T) {
 	assert.Empty(t, a.sent(), "still held")
 	DropHeld("agy-reason", "test done")
 }
+
+// #3510: LastDelivered is when a send with a key was actually typed into the session:
+// set by a send typed at once and by a held send's later turn; not by a hold, a
+// hand-off (TakeHeld) or a drop; forgotten when the session's held sends are dropped.
+func TestLastDeliveredIsOnlyWhenTyped(t *testing.T) {
+	fastGate(t)
+	ctx := context.Background()
+	const key = "board-unread:team"
+	name := "claude-last-delivered"
+	t.Cleanup(func() { DropHeld(name, "test done") })
+	assert.True(t, LastDelivered(name, key).IsZero(), "never")
+
+	a := &fakeAgent{screen: idleInputBox}
+	before := time.Now()
+	d, err := DeliverAutomated(ctx, a.input(name, key, "You have 1 unread message", false))
+	require.NoError(t, err)
+	require.Equal(t, Sent, d)
+	typed := LastDelivered(name, key)
+	assert.False(t, typed.Before(before), "typed at once: recorded")
+	assert.True(t, LastDelivered(name, "other").IsZero(), "per key")
+
+	a.show(permissionMenu)
+	d, _ = DeliverAutomated(ctx, a.input(name, key, "You have 2 unread messages", false))
+	require.Equal(t, Held, d)
+	time.Sleep(60 * time.Millisecond) // several of the gate's turns, still held
+	assert.Equal(t, typed, LastDelivered(name, key), "a hold doesn't change it")
+
+	taken, ok := TakeHeld(ctx, name, "handed off", func(k string) bool { return k == key })
+	require.True(t, ok)
+	require.Len(t, taken, 1)
+	assert.Equal(t, typed, LastDelivered(name, key), "a hand-off doesn't change it")
+
+	_, _ = DeliverAutomated(ctx, a.input(name, key, "You have 3 unread messages", false))
+	afterHold := time.Now()
+	a.show(idleInputBox)
+	require.Eventually(t, func() bool { return len(a.sent()) == 2 }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return LastDelivered(name, key).After(afterHold) }, 5*time.Second, 10*time.Millisecond,
+		"a held send typed on a later turn: recorded")
+
+	a.show(permissionMenu)
+	_, _ = DeliverAutomated(ctx, a.input(name, key, "You have 4 unread messages", false))
+	last := LastDelivered(name, key)
+	DropHeld(name, "agent restarted")
+	assert.True(t, LastDelivered(name, key).IsZero(), "a drop (session ended) forgets it, and never records the dropped send")
+	_ = last
+}

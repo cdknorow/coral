@@ -313,6 +313,9 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 		return Held, nil
 	}
 	gate.shadowForget(in.Name, in.Key)
+	if err == nil {
+		gate.noteDelivered(in.Name, in.Key)
+	}
 	return Sent, err
 }
 
@@ -617,9 +620,11 @@ type inputGate struct {
 	// shadowLast: each held send's last logged screen and signal decisions (shadow
 	// mode logs a send's decisions only when they change).
 	shadowLast map[string]string
+	// delivered: when each session's sends were last typed, by Key (LastDelivered).
+	delivered map[string]map[string]time.Time
 }
 
-var gate = &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, shadowLast: map[string]string{}, now: time.Now,
+var gate = &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, shadowLast: map[string]string{}, delivered: map[string]map[string]time.Time{}, now: time.Now,
 	timings: gateTimings{tooLong: 2 * time.Minute, expiry: time.Hour, every: 2 * time.Second}}
 
 // setTimings replaces the gate's intervals and returns the previous ones (tests).
@@ -762,6 +767,7 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 			slog.Warn("automated input: a held send failed", "session", name, "sender", h.in.What, "error", err)
 		} else {
 			g.shadowForget(name, h.in.Key)
+			g.noteDelivered(name, h.in.Key)
 			slog.Info("automated input delivered after the prompt closed", "session", name, "sender", h.in.What, "held_for", g.now().Sub(h.heldAt).Round(time.Second).String())
 		}
 	}
@@ -838,6 +844,7 @@ func DropHeld(name, why string) {
 	delete(gate.held, name)
 	gate.gens[name]++
 	gate.shadowForgetSessionLocked(name)
+	delete(gate.delivered, name)
 	gate.mu.Unlock()
 	gate.checkEnded(name)
 	if n > 0 {
@@ -861,4 +868,41 @@ func HeldCount(name string) int {
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
 	return len(gate.held[name])
+}
+
+// deliveredKeysPerSession bounds LastDelivered's record for one session.
+const deliveredKeysPerSession = 64
+
+// noteDelivered records that a send with key was just typed into name (LastDelivered).
+func (g *inputGate) noteDelivered(name, key string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	m := g.delivered[name]
+	if m == nil {
+		m = map[string]time.Time{}
+		g.delivered[name] = m
+	}
+	if _, ok := m[key]; !ok && len(m) >= deliveredKeysPerSession {
+		oldest, at := "", time.Time{}
+		for k, t := range m {
+			if oldest == "" || t.Before(at) {
+				oldest, at = k, t
+			}
+		}
+		delete(m, oldest)
+	}
+	m[key] = g.now()
+}
+
+// LastDelivered returns when a send with key was last typed into the session name, or
+// the zero time if never: recorded when the gate actually writes it (at once, or on a
+// held send's turn), never for a send that is held, handed off (TakeHeld) or dropped;
+// DropHeld (the session ended or restarted) forgets it. The turn-end hand-off uses it
+// to stand down when a nudge was typed during the turn, so it is already queued in the
+// agent's input (#3510).
+func LastDelivered(name, key string) time.Time {
+	name = sessionOfTarget(name)
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	return gate.delivered[name][key]
 }
