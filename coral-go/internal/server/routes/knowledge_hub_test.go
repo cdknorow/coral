@@ -91,7 +91,7 @@ func TestKnowledgeStatusHasFixedBoundedFields(t *testing.T) {
 		Error:              "knowledge distilled but failed to write: mkdir ~/notes/k:\npermission denied and/or " + long,
 		Progress:           background.DistillProgress{Phase: "agents", Agent: strings.Repeat("a", 100), Error: "see /tmp/transcript.jsonl"},
 		FailedAgents:       failed,
-		CollaborationError: "read './rel/path.md' failed"}
+		CollaborationError: `read './rel/path.md' failed; signed in as someone.else@example.test, see C:\Users\someone\x.log or \\server\share\y`}
 	knowledgeJobsMu.Unlock()
 	t.Cleanup(func() { knowledgeJobsMu.Lock(); delete(knowledgeJobs, "bounded-3518"); knowledgeJobsMu.Unlock() })
 
@@ -102,7 +102,7 @@ func TestKnowledgeStatusHasFixedBoundedFields(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{"status", "progress", "error", "failed_agents", "collaboration_error"}, keys, "fixed keys only (no team_name)")
 	raw, _ := json.Marshal(m)
-	for _, leak := range []string{"/home/someone", "/tmp/transcript", "~/notes", "./rel/path"} {
+	for _, leak := range []string{"/home/someone", "/tmp/transcript", "~/notes", "./rel/path", "someone.else@example.test", `C:\\Users`, `\\\\server`, "Users", "share"} {
 		assert.NotContains(t, string(raw), leak, "no file paths")
 	}
 	errText := m["error"].(string)

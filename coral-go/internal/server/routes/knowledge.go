@@ -60,11 +60,19 @@ const (
 	knowledgeMaxFailed = 20
 )
 
-// A file path: starts the text or follows a space, quote, bracket or '=' ("and/or" is not one).
-var knowledgePathRe = regexp.MustCompile(`(^|[\s('"=])(?:~|\.{1,2})?/[^\s:'"),]+`)
+// A file path: starts the text or follows a space, quote, bracket or '=' ("and/or" is not
+// one); a Windows drive or UNC path (C:\Users\..., \\server\share); and an email address,
+// which the CLI's login and usage messages can carry (Security's review of #3518).
+var (
+	knowledgePathRe    = regexp.MustCompile(`(^|[\s('"=])(?:~|\.{1,2})?/[^\s:'"),]+`)
+	knowledgeWinPathRe = regexp.MustCompile(`(?i)(^|[\s('"=])(?:[a-z]:[\\/]|\\\\)[^\s'"),]*`)
+	knowledgeEmailRe   = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+)
 
 // knowledgeText makes an error or name safe to show: one line, no file paths, bounded.
 func knowledgeText(s string, max int) string {
+	s = knowledgeEmailRe.ReplaceAllString(s, "<email>")
+	s = knowledgeWinPathRe.ReplaceAllString(s, "${1}<path>")
 	s = knowledgePathRe.ReplaceAllString(s, "${1}<path>")
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > max {

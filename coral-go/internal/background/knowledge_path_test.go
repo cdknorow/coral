@@ -15,7 +15,7 @@ func TestKnowledgeTeamNamesStayInsideTheFolder(t *testing.T) {
 		}
 	}
 	dir := t.TempDir()
-	for _, bad := range []string{"", ".", "..", "../x", "a/b", `a\b`, "a\x00b"} {
+	for _, bad := range []string{"", ".", "..", "../x", "a/b", `a\b`, "a\x00b", "x:stream"} {
 		if ValidKnowledgeTeam(bad) {
 			t.Errorf("%q should be refused", bad)
 		}

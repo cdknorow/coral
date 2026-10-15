@@ -359,10 +359,11 @@ func distillAgents(bundle *KnowledgeBundle, agents []agentMeta, call func(prompt
 var ErrBadKnowledgeTeam = errors.New("invalid team name for knowledge")
 
 // ValidKnowledgeTeam reports whether name can name a team's knowledge folder: one plain path
-// component, so every read and write stays inside <coral>/agent_knowledge (#3518).
+// component, so every read and write stays inside <coral>/agent_knowledge (#3518); no ':'
+// either (a Windows alternate data stream).
 func ValidKnowledgeTeam(name string) bool {
 	return name != "" && len(name) <= 128 && name != "." && name != ".." &&
-		!strings.ContainsAny(name, "/\\\x00") && filepath.Base(name) == name
+		!strings.ContainsAny(name, "/\\:\x00") && filepath.Base(name) == name
 }
 
 // knowledgeTeamDir is a team's knowledge folder, or ErrBadKnowledgeTeam.
