@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.4.44 — Private agent logs, safe base branches, and the last file-access fixes
+
+**Please upgrade.** This release adds the last file-access fixes from this round of Security's audit. One cleanup step is recommended on shared Linux machines (below); nothing else needs any action.
+
+**On a shared Linux machine, delete old `/tmp/*_coral_*.log` files.** Agents' terminal logs now live in your Coral data folder, readable only by you, and a running agent's log moves there when Coral reattaches to it. Logs left by agents that ended before the upgrade stay in `/tmp`, where other users could read them.
+
+### Security
+
+- **Agents' terminal logs are private.** Every install keeps agents' logs in `<data dir>/logs` (the folder readable only by you, each log readable only by you), never in the shared temp folder, and never writes a log through a link. Coral moves an older agent's log only when you own it.
+- **A base branch can't reach git as an option.** A base branch starting with `-`, or containing whitespace, a control character or a backslash, is refused (400 naming `base_branch`) when you launch a team with a worktree, create or edit a scheduled job or a workflow, or run a task, including a Launch-tier request through Coral Hub. It's checked again before git runs, and a job whose stored branch is refused fails with a clear message.
+- **PROTOCOL.md comes only from Coral itself.** A release build takes the PROTOCOL.md next to the Coral executable, never one in the folder the server was started from or in your home folder (unless you set `CORAL_ROOT`), so a repository or an agent can't plant every later agent's system prompt.
+- **Upload listings stay on the board.** A board's artifact list shows a session's uploads only when that session is on the board, and an agent's token lists only its own uploads or its board's.
+- **No guessable temp files for agent launches.** If Coral can't create an agent's prompt, settings or instructions file safely, the launch fails with a clear error instead of falling back to a name another user could guess. Restart and resume build the new launch before touching the old terminal, so a failure leaves the agent as it was.
+- **More files are opened safely:** agents' history indexes (Claude, Codex, pi, agy, Gemini), auto-attached files and the command-line token are opened as regular files only, never through a symlink, and the token's checks apply to the file actually read.
+- **Agent types and board names are checked where they enter,** so a crafted agent type, session id or board name can't make Coral write a log, a state file or an upload folder outside its own folders. The uploads folder is readable only by you.
+
+### Behaviour changes
+
+- **A board whose id contains `:` or `\` gets a fresh `b-` id** the next time Coral starts; its name is kept as the label.
+- **An agent launch now fails with an error** when its temporary files can't be written, instead of starting without them.
+
 ## v1.4.43 — Safer local access behind a reverse proxy, several listen addresses, and file-access hardening
 
 **Please upgrade.** This release closes more of Security's audit findings on file access and tightens how Coral trusts same-machine requests. Read the two behaviour changes below if you put Coral behind a reverse proxy or use strict local auth.
@@ -8,7 +29,7 @@
 
 - **A reverse proxy on the same machine can't lend its clients local trust.** Tailscale Serve, Caddy or nginx reach Coral from 127.0.0.1, so a proxy that rewrote Host to localhost used to give every client it proxied, remote ones included, the no-credentials local pass. A request that carries a proxy header (X-Forwarded-For, Forwarded, Via, X-Real-IP, Tailscale headers and similar) is now treated as remote: it needs your key or a dashboard login.
 - **New setting: `require_auth_on_loopback`** (off by default, Operator-only, never through Coral Hub). For setups where the proxy strips its headers, turn it on and every direct local request must carry a credential: an agent's session token, a dashboard login, the signed command line, an API key or a Coral Hub stamp. `CORAL_REQUIRE_AUTH_ON_LOOPBACK=off` turns it off without the dashboard.
-- **Files reached through paths someone else chose are opened safely.** Saving a file from the dashboard, diffs, the changed-files list, Codex transcripts, the git poller and auto-attach now open files without following symlinks, refuse hard-linked files, FIFOs and devices, and stay inside the session's own folders. For a strict caller, nothing git runs or obeys (`.git`, `.husky`, the repository's hooks folder) can be written.
+- **Files reached through paths someone else chose are opened safely.** Saving a file from the dashboard, diffs, the changed-files list, Codex transcripts and the git poller now open files without following symlinks, refuse hard-linked files, FIFOs and devices, and stay inside the session's own folders. For a strict caller, nothing git runs or obeys (`.git`, `.husky`, the repository's hooks folder) can be written.
 - **Diffs are bounded for every caller but this computer's dashboard,** not only through Coral Hub: a committed `.env` at the diff base is no longer returned, a home folder or the filesystem root is refused as a working tree, and a repository's `core.worktree` can't point Coral at an unrelated folder.
 - **A session's teardown removes only its own temporary files,** and auto-attach refuses network (UNC) and device paths on Windows.
 - **Codex's link file can only name its own transcript,** inside Codex's sessions folder, and every transcript read stays in that folder.
