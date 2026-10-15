@@ -111,7 +111,11 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 	}
 	items := collectTeamArtifacts(project, tasks, subscribers, sessionFilter)
 	if sessionFilter != "" {
-		items = h.uploads.merge(items, h.coralDir, map[string]string{sessionFilter: ""})
+		// Only a session of this board: the filter used to list ANY session's uploads under
+		// this board's name (#3601, weak site W27).
+		if _, onBoard := teamUploadSessions(tasks, subscribers)[sessionFilter]; onBoard {
+			items = h.uploads.merge(items, h.coralDir, map[string]string{sessionFilter: ""})
+		}
 	} else {
 		items = h.uploads.merge(items, h.coralDir, teamUploadSessions(tasks, subscribers))
 	}
@@ -324,6 +328,33 @@ func (h *BoardHandler) TeamArtifactContent(w http.ResponseWriter, r *http.Reques
 // subscriber it belongs to: every subscriber's stored session, and the session
 // recorded when a team task was claimed (an agent that has since left or been
 // replaced). Only these sessions' uploads appear in the team view.
+// mayListSessionUploads ties a session's upload listing to the caller (#3601, weak site W27): an
+// agent's token lists only its own session's uploads or those of a session on its board. The
+// dashboard, the API key and Coral Hub see every session already and may list any.
+func (h *BoardHandler) mayListSessionUploads(r *http.Request, sessionID string) bool {
+	owner, ok := VerifiedSession(r.Context())
+	if !ok || owner == nil {
+		return true
+	}
+	if owner.SessionID != "" && owner.SessionID == sessionID {
+		return true
+	}
+	sub, err := h.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
+	if err != nil || sub == nil || sub.Project == "" {
+		return false
+	}
+	sessions, err := h.bs.TeamSubscriberSessions(r.Context(), sub.Project)
+	if err != nil {
+		return false
+	}
+	for _, sid := range sessions {
+		if sid == sessionID {
+			return true
+		}
+	}
+	return false
+}
+
 func teamUploadSessions(tasks []board.TeamArtifactTask, subscribers map[string]string) map[string]string {
 	out := make(map[string]string, len(subscribers))
 	for _, t := range tasks {
@@ -475,6 +506,10 @@ func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Reque
 	offset, ok2 := parseBoundedInt(r.URL.Query().Get("offset"), 0, 0, maxTeamArtifactOffset)
 	if !ok || !ok2 {
 		errBadRequest(w, "invalid limit or offset")
+		return
+	}
+	if !h.mayListSessionUploads(r, sessionID) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "an agent can list only its own uploads or those of its board's agents", "code": "forbidden_for_agent"})
 		return
 	}
 	items := h.uploads.merge(nil, h.coralDir, map[string]string{sessionID: ""})

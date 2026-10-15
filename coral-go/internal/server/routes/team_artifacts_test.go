@@ -19,6 +19,7 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -385,22 +386,28 @@ func completeWithArtifactsAs(t *testing.T, h *BoardHandler, project, actor, titl
 // An upload that no task references yet still shows in that agent's tab, and
 // only in that agent's tab.
 func TestTeamArtifactsListsSessionUploads(t *testing.T) {
-	srv, _, coralDir := teamArtifactServer(t)
+	srv, h, coralDir := teamArtifactServer(t)
+	subscribeSession(t, h, "alpha", "Alice", sessAlice)
 	id := storeManagedArtifact(t, coralDir, "# draft\n", true, true)
-	dir := uploadsDir(coralDir, "sess-1")
+	dir := uploadsDir(coralDir, sessAlice)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "draft.md", MediaType: "text/markdown", Size: 8, Digest: "sha256:" + id}, "2026-10-09T10:00:00Z"})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 
-	mine := getTeamArtifacts(t, srv, "/api/board/alpha/artifacts?session_id=sess-1", http.StatusOK)
+	mine := getTeamArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessAlice, http.StatusOK)
 	require.Len(t, mine.Artifacts, 1)
 	require.Equal(t, "draft.md", mine.Artifacts[0].Name)
 	require.True(t, mine.Artifacts[0].Available)
 	require.Equal(t, "/api/artifacts/"+id+"?v=2", mine.Artifacts[0].PreviewURL)
 
 	require.Empty(t, getTeamArtifacts(t, srv, "/api/board/alpha/artifacts?session_id=sess-2", http.StatusOK).Artifacts)
-	require.Empty(t, getTeamArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK).Artifacts, "team view lists task results only")
+	require.Len(t, getTeamArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK).Artifacts, 1, "the team view lists its members' uploads")
 	require.Empty(t, uploadsDir(coralDir, "../x"))
+
+	// A session that isn't on this board: its uploads never list under this board's name
+	// (#3601, weak site W27; the filter used to list any session's uploads).
+	writeUpload(t, coralDir, sessBob, "# other team\n", "other.md", "2026-10-09T11:00:00Z")
+	require.Empty(t, getTeamArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessBob, http.StatusOK).Artifacts)
 }
 
 func TestSessionArtifactsForStandaloneAgent(t *testing.T) {
@@ -606,4 +613,35 @@ func BenchmarkTeamArtifactUploads(b *testing.B) {
 			}
 		}
 	})
+}
+
+// #3601 (weak site W27): an agent's token lists only its own session's uploads or those of a
+// session on its board; another board's session is refused. The dashboard, the API key and
+// Coral Hub (no agent token) still list any session, as they see every session already.
+func TestSessionArtifactsAreTiedToTheCallingAgent(t *testing.T) {
+	_, h, coralDir := teamArtifactServer(t)
+	sessCarol := "33333333-cccc-0000-0000-000000000003"
+	subscribeSession(t, h, "alpha", "Alice", sessAlice)
+	subscribeSession(t, h, "alpha", "Bob", sessBob)
+	subscribeSession(t, h, "beta", "Carol", sessCarol)
+	for _, sid := range []string{sessAlice, sessBob, sessCarol} {
+		writeUpload(t, coralDir, sid, "# "+sid+"\n", sid[:8]+".md", "2026-10-09T10:00:00Z")
+	}
+	list := func(owner *store.SessionTokenOwner, sid string) int {
+		req := httptest.NewRequest(http.MethodGet, "/api/session-artifacts?session_id="+sid, nil)
+		if owner != nil {
+			req = req.WithContext(context.WithValue(req.Context(), verifiedSessionKey{}, owner))
+		}
+		rec := httptest.NewRecorder()
+		h.ListSessionArtifacts(rec, req)
+		return rec.Code
+	}
+	alice := &store.SessionTokenOwner{SessionID: sessAlice, SessionName: "claude-" + sessAlice}
+	assert.Equal(t, http.StatusOK, list(alice, sessAlice), "its own uploads")
+	assert.Equal(t, http.StatusOK, list(alice, sessBob), "a session on its board")
+	assert.Equal(t, http.StatusForbidden, list(alice, sessCarol), "another board's session")
+	assert.Equal(t, http.StatusForbidden, list(alice, "44444444-dddd-0000-0000-000000000004"), "a session on no board")
+	stranger := &store.SessionTokenOwner{SessionID: "55555555-eeee-0000-0000-000000000005", SessionName: "claude-55555555-eeee-0000-0000-000000000005"}
+	assert.Equal(t, http.StatusForbidden, list(stranger, sessAlice), "an agent on no board sees only its own")
+	assert.Equal(t, http.StatusOK, list(nil, sessCarol), "the dashboard or the hub (no agent token) lists any session")
 }
