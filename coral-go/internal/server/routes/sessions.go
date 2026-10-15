@@ -3121,27 +3121,18 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	newSessionName := naming.SessionName(agentType, newSessionID)
 	newLogPath := naming.LogFile(h.cfg.LogDir, agentType, newSessionID)
 
+	// Find the terminal and build the launch command before anything is touched: when the
+	// command can't be built (its prompt or settings files can't be written, #3601 W12), the
+	// restart fails with the old agent still running.
 	var workdir, target string
 	usePTY := false
+	var pane *ptymanager.PaneInfo
 	if fresh != nil {
 		workdir = fresh.WorkingDir
 		usePTY = fresh.Backend != nil && *fresh.Backend == "pty" && h.backend != nil
-		if usePTY {
-			if err := h.backend.Spawn(newSessionName, agentType, workdir, newSessionID, "", 200, 50); err != nil {
-				errInternalServer(w, fmt.Sprintf("pty spawn failed: %v", err))
-				return
-			}
-		} else {
-			ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
-			if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
-				errInternalServer(w, err.Error())
-				return
-			}
-			h.terminal.StartLogging(ctx, newSessionName, newLogPath)
-		}
-		target = newSessionName + ".0"
 	} else {
-		pane, err := h.terminal.FindSession(ctx, name, agentType, body.SessionID)
+		var err error
+		pane, err = h.terminal.FindSession(ctx, name, agentType, body.SessionID)
 		if err == nil && pane == nil && body.SessionID != "" {
 			writeTerminalError(w, ptymanager.ErrTerminalGone)
 			return
@@ -3151,31 +3142,6 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		workdir = pane.CurrentPath
-
-		// Close old pipe-pane, respawn, rename
-		h.terminal.StopLogging(ctx, pane.Target)
-		if err := h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath); err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-		if err := h.terminal.RenameSession(ctx, pane.SessionName, newSessionName); err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-
-		target = fmt.Sprintf("%s:0.0", newSessionName)
-		time.Sleep(500 * time.Millisecond)
-
-		// Clear scrollback, create log, setup pipe-pane
-		h.terminal.ClearHistory(ctx, target)
-		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
-		h.terminal.StartLogging(ctx, target, newLogPath)
-	}
-
-	// Set pane title using native tmux command (avoids shell echo)
-	folderName := filepath.Base(strings.TrimRight(workdir, "/"))
-	if !usePTY {
-		h.terminal.SetPaneTitle(ctx, target, fmt.Sprintf("%s — %s", folderName, agentType))
 	}
 
 	// Load stored config from the DB
@@ -3289,6 +3255,50 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, fmt.Sprintf("launch command failed: %v", err))
 		return
 	}
+
+	// Now the terminal: a fresh one, or the old pane respawned and renamed.
+	if fresh != nil {
+		if usePTY {
+			if err := h.backend.Spawn(newSessionName, agentType, workdir, newSessionID, "", 200, 50); err != nil {
+				errInternalServer(w, fmt.Sprintf("pty spawn failed: %v", err))
+				return
+			}
+		} else {
+			ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
+			if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
+				errInternalServer(w, err.Error())
+				return
+			}
+			h.terminal.StartLogging(ctx, newSessionName, newLogPath)
+		}
+		target = newSessionName + ".0"
+	} else {
+		// Close old pipe-pane, respawn, rename
+		h.terminal.StopLogging(ctx, pane.Target)
+		if err := h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if err := h.terminal.RenameSession(ctx, pane.SessionName, newSessionName); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+
+		target = fmt.Sprintf("%s:0.0", newSessionName)
+		time.Sleep(500 * time.Millisecond)
+
+		// Clear scrollback, create log, setup pipe-pane
+		h.terminal.ClearHistory(ctx, target)
+		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
+		h.terminal.StartLogging(ctx, target, newLogPath)
+	}
+
+	// Set pane title using native tmux command (avoids shell echo)
+	folderName := filepath.Base(strings.TrimRight(workdir, "/"))
+	if !usePTY {
+		h.terminal.SetPaneTitle(ctx, target, fmt.Sprintf("%s — %s", folderName, agentType))
+	}
+
 	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
 	if usePTY {
 		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
@@ -3508,25 +3518,8 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	userSettings, _ := h.ss.GetSettings(ctx)
 
-	target := fmt.Sprintf("%s:0.0", newSessionName)
-	if pane == nil {
-		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
-		if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-		target = newSessionName + ".0"
-		h.terminal.StartLogging(ctx, newSessionName, newLogPath)
-	} else {
-		h.terminal.StopLogging(ctx, pane.Target)
-		h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath)
-		h.terminal.RenameSession(ctx, pane.SessionName, newSessionName)
-		time.Sleep(500 * time.Millisecond)
-		h.terminal.ClearHistory(ctx, target)
-		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
-		h.terminal.StartLogging(ctx, target, newLogPath)
-	}
-
+	// The launch command is built before the terminal is touched: when it can't be built
+	// (#3601 W12), the resume fails with the old agent still running.
 	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
 		SessionID:       newSessionID,
 		SessionName:     newSessionName,
@@ -3550,6 +3543,25 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
+	}
+
+	target := fmt.Sprintf("%s:0.0", newSessionName)
+	if pane == nil {
+		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
+		if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		target = newSessionName + ".0"
+		h.terminal.StartLogging(ctx, newSessionName, newLogPath)
+	} else {
+		h.terminal.StopLogging(ctx, pane.Target)
+		h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath)
+		h.terminal.RenameSession(ctx, pane.SessionName, newSessionName)
+		time.Sleep(500 * time.Millisecond)
+		h.terminal.ClearHistory(ctx, target)
+		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
+		h.terminal.StartLogging(ctx, target, newLogPath)
 	}
 	if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
 		errInternalServer(w, err.Error())
