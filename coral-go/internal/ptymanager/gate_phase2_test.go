@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -98,6 +99,35 @@ func TestPhase2LongTurnFallsBackToTheScreen(t *testing.T) {
 	mu.Unlock()
 	assert.Contains(t, out, `decided="screen: in turn over 30m0s"`)
 	assert.Contains(t, out, "mode=signals")
+}
+
+// Signals without the turn's start (a zero Since) still let the 30-minute fallback run: it counts
+// from the send's first hold, so a routine send is held, then goes once that hold is older than
+// inTurnFallback (Backend's NIT 2 on #3578). The turn's events stay fresh, so the stale-turn
+// relaxation (real clock) isn't what releases it.
+func TestPhase2ZeroSinceFallsBackFromTheFirstHold(t *testing.T) {
+	fastGate(t)
+	phase2(t, true)
+	var offset atomic.Int64
+	gate.mu.Lock()
+	prevNow := gate.now
+	gate.now = func() time.Time { return time.Now().Add(time.Duration(offset.Load())) }
+	gate.mu.Unlock()
+	t.Cleanup(func() { gate.mu.Lock(); gate.now = prevNow; gate.mu.Unlock() })
+	withState(t, AgentState{State: StateInTurn, LastEvent: time.Now()}, true)
+
+	a := &fakeAgent{screen: idleInputBox}
+	name := "claude-p2-nosince"
+	t.Cleanup(func() { DropHeld(name, "test done") })
+	d, err := DeliverAutomated(context.Background(), a.input(name, "k", "nudge", false))
+	require.NoError(t, err)
+	assert.Equal(t, Held, d, "no turn start known: held for the turn")
+	time.Sleep(100 * time.Millisecond) // sleep-ok: several retry passes, all still within the fallback
+	assert.Empty(t, a.sent())
+
+	offset.Store(int64(inTurnFallback + time.Minute))
+	require.Eventually(t, func() bool { return len(a.sent()) == 1 }, 3*time.Second, 10*time.Millisecond,
+		"once the first hold is older than the fallback, the screen rule decides and it goes")
 }
 
 // The setting off (the default), the kill switch, and other CLIs: the screen rule decides,

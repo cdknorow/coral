@@ -273,10 +273,17 @@ func (in AutomatedInput) waiting(ctx context.Context) (waiting bool, why, kind s
 	decided := "screen"
 	if gateFollowsSignals(agentType) {
 		inTurnHold := sWait && st.State == StateInTurn
+		// The fallback counts from the turn's start; when the signals don't carry it, from
+		// this send's first hold, so a missing Since never holds a send for ever (Backend's
+		// NIT). A send not yet held has nothing to count from and is held now.
+		since := st.Since
+		if since.IsZero() {
+			since = in.heldSince
+		}
 		switch {
 		case inTurnHold && in.Mention:
 			decided = "screen: a mention goes mid-turn"
-		case inTurnHold && !st.Since.IsZero() && gate.now().Sub(st.Since) >= inTurnFallback:
+		case inTurnHold && !since.IsZero() && gate.now().Sub(since) >= inTurnFallback:
 			decided = "screen: in turn over " + inTurnFallback.String()
 		default:
 			decided = "signals"
@@ -791,6 +798,9 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		// Checked again just before each send: the prompt may come back.
 		in := h.in
 		g.mu.Lock()
+		if in.heldSince.IsZero() {
+			in.heldSince = h.heldAt // waiting's in-turn fallback counts from it when the turn's start is unknown
+		}
 		if in.RequireInputBox && g.now().Sub(h.heldAt) > g.timings.tooLong {
 			in.RequireInputBox = false
 		}
