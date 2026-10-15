@@ -1,12 +1,35 @@
 # Release Notes
 
-## v1.4.47 — Security fix: agent content can never answer a prompt
+## v1.4.48 — Pinned folders, a terminal backend setting, and more hardening
 
-**Security fix — please upgrade.** A button inside an agent's message could answer a pending permission prompt when clicked; agent content can no longer contain controls, and only Coral's own prompt card answers a prompt.
+### New
+
+- **Pinned folders.** Pin a folder to keep it in the Agents list even when no agent is running there; an empty pinned folder stays until you unpin it. Its menu launches an agent, a custom agent or a terminal into it. **Open folder** on the home page and in the **+New** chooser pins a folder you pick by path or with Browse.
+- **Terminal backend setting.** Settings › Terminal backend explains the choice between **tmux** (agents keep running through restarts, upgrades and crashes, but any program running as you can reach their terminals through the socket) and **pty** (better isolation; agents sleep when Coral stops and wake resumes them). A change applies when Coral restarts, and switching from tmux to pty first puts your agents to sleep. Under pty, a banner offers to end agents left in Coral's old tmux server. `--backend` still wins over the setting.
 
 ### Security
 
-- **Agent content is never live UI.** Everything an agent writes (messages, notes, history, summaries, team knowledge, docs) is rendered without buttons, form controls, dialogs or other interactive elements, and without ids, roles or data attributes that could pass for Coral's own. A task-list checkbox is still shown, as a disabled one.
+- **Tighter dashboard policy.** The dashboard now loads script files, audio and video only from Coral itself, and its forms can post only to Coral. Agent content can no longer contain video, audio, picture, svg or math elements, so it can't make your browser fetch remote media.
+- **A notification's link shows where it goes.** A web link in a notification shows its host next to the label (a look-alike name shows as `xn--…`), and marks plain `http` links "not encrypted".
+- **Every list is bounded.** A list request through Coral Hub or the dashboard (history, runs, board messages, events, deliveries) can't ask for an unbounded number of rows; a negative or oversized limit falls back to the route's default or maximum.
+- **Coral Hub can't hold this computer's connections open without limit.** Requests from the hub share a bounded pool and time out once fully sent, and a busy hub gets a clear 429.
+- **Secrets at rest.** Regenerating the API key fails if the key can't be saved (the key file is written atomically and checked on load). A webhook's delivery errors never store its URL, and webhook lists show URLs masked with a fingerprint. A live session's saved state names its MCP servers and nothing more.
+- **Windows: junctions can't lead out of a session's folder.** Every path check resolves Windows junctions, so the file viewer, diffs and file content can't read outside the session through one, and a path that fails to resolve (for a reason other than not existing yet) is never treated as inside.
+- **Windows: the data folder is private.** A new Coral data folder on Windows is readable only by you and SYSTEM. If an existing folder can be read by Everyone, Authenticated Users or Users, Coral warns at startup and on the dashboard; it doesn't change the folder itself.
+- **The command-line token** is refused if its file has more than one name (a hard link).
+
+### Fixes
+
+- **Workflows on Windows:** path templates in shell steps now work (they expand with forward slashes, which Git's shell reads correctly).
+- **Pending command-line sign-ins are dropped oldest-first on every OS** (Windows' coarse clock could drop a newer one).
+
+## v1.4.47 — Security fix: agent content can never answer a prompt
+
+**Security fix — please upgrade.** A button inside an agent's message could answer a pending permission prompt when the operator clicked it; agent content can no longer contain controls, and only Coral's own prompt card answers a prompt.
+
+### Security
+
+- **Agent content is never live UI.** Everything an agent writes (messages, notes, history, summaries, team knowledge) is rendered without buttons, form controls, dialogs or other interactive elements, and without ids, roles or data attributes that could pass for Coral's own. A task-list checkbox is still shown, as a disabled one.
 - **Only Coral's own prompt card answers a prompt.** Clicking an answer or submitting a text answer works only inside a prompt card Coral created, never inside an agent-written plan or a card-shaped message.
 - **Notification links go only where they should.** A notification's link may be a Coral doc, a page in the dashboard, or an `http(s)` address (opened in a new tab). Anything else is shown as plain text, and the server refuses it when the notification is posted.
 - **Docs links stay inside Coral.** A link from one doc to another opens it in the Docs tab, and the docs view follows the same link rules as the message board.
