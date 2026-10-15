@@ -23,9 +23,12 @@ const json = async (method, p, body) => { const r = await fetch(BASE + p, { meth
 
 // Run coral-agent as the test agent: its identity comes from CORAL_SESSION_NAME
 // (TMUX unset so the caller's own tmux session is not picked up).
-function agent(sessionName, ...args) {
+// No session token unless one is given (a terminal session has none).
+function agent(sessionName, ...args) { return agentWith(sessionName, '', ...args); }
+function agentWith(sessionName, token, ...args) {
   const env = { ...process.env, CORAL_URL: BASE, CORAL_SESSION_NAME: sessionName };
-  delete env.TMUX; delete env.CORAL_PORT;
+  delete env.TMUX; delete env.CORAL_PORT; delete env.CORAL_SESSION_TOKEN;
+  if (token) env.CORAL_SESSION_TOKEN = token;
   try { return { code: 0, out: execFileSync(BIN, args, { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }; }
   catch (e) { return { code: e.status, out: (e.stdout || '') + (e.stderr || '') }; }
 }
@@ -70,7 +73,32 @@ function agent(sessionName, ...args) {
   const done = (api.data && api.data.tasks || []).find(t => t.id === t1.data.id) || {};
   check('the agent API reports board-style status and the completion message', done.status === 'completed' && done.completion_message === 'Logged in battle_log.go', JSON.stringify(done));
   r = agent('terminal-00000000-0000-0000-0000-000000000000', 'task', 'claim');
-  check('an unknown session is refused', r.code !== 0 && /Unknown session/.test(r.out), r.out.trim());
+  // Not a terminal session Coral knows, and no token: refused before the lookup (#3495).
+  check('an unknown session is refused', r.code !== 0 && /Unknown session|session_token_required/.test(r.out), r.out.trim());
+
+  // A token decides the session (#3495): a stand-in Claude agent (its CLI path is a
+  // script that keeps the token Coral launched it with) can't act as the terminal session.
+  const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-agent-stub-'));
+  const tokenFile = path.join(stubDir, 'token');
+  const stubCLI = path.join(stubDir, 'claude');
+  fs.writeFileSync(stubCLI, `#!/bin/sh\nprintf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}'\nexec sleep 600\n`, { mode: 0o755 });
+  const prevCLI = ((await json('GET', '/api/settings')).data?.settings || {}).cli_path_claude || '';
+  await json('PUT', '/api/settings', { cli_path_claude: stubCLI });
+  let stand = null;
+  try {
+    stand = await json('POST', '/api/sessions/launch', { working_dir: work, agent_type: 'claude', display_name: 'E2E Stand-in' });
+    let token = '';
+    for (let i = 0; i < 100 && !token; i++) { try { token = fs.readFileSync(tokenFile, 'utf8').trim(); } catch { /* not yet */ } if (!token) await new Promise(res => setTimeout(res, 100)); }
+    check('a stand-in Claude agent is launched with its own session token', stand.status === 200 && !!token, JSON.stringify({ status: stand.status, token: !!token }));
+    r = agentWith(stand.data.session_name, token, 'task', 'list');
+    check('with its own token, the stand-in lists its own tasks', r.code === 0, r.out.trim());
+    r = agentWith(sessionName, token, 'task', 'list');
+    check('a token naming another session is refused (403 identity_mismatch)', r.code !== 0 && /identity_mismatch|only for its own session/.test(r.out), r.out.trim());
+  } finally {
+    if (stand && stand.data && stand.data.session_name) await json('POST', `/api/sessions/live/${encodeURIComponent(stand.data.session_name)}/kill`, { agent_type: 'claude', session_id: stand.data.session_id });
+    await json('PUT', '/api/settings', { cli_path_claude: prevCLI });
+    fs.rmSync(stubDir, { recursive: true, force: true });
+  }
 
   await json('POST', `/api/sessions/live/${encodeURIComponent(name)}/kill`, { agent_type: 'terminal', session_id: sid });
   const failed = results.filter(x => x === 'FAIL').length;

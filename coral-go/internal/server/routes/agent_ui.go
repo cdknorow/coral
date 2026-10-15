@@ -31,7 +31,9 @@ func (h *SessionsHandler) RegisterAgentUI(r chi.Router) {
 }
 func (h *SessionsHandler) agentUI(w http.ResponseWriter, r *http.Request) {
 	sid := r.URL.Query().Get("session_id")
-	if _, ok := h.agentFromRequest(w, r, sid); !ok {
+	// The dashboard reads the panels, removes them and sends their events; only the
+	// agent's own CLI writes one (PUT) (#3495).
+	if _, ok := h.agentFromRequest(w, r, &sid, r.Method != http.MethodPut); !ok {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")

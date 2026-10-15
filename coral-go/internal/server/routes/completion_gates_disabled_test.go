@@ -102,7 +102,7 @@ func TestPersonalTaskCompletionGatesDisabledByDefault(t *testing.T) {
 	post := func(path string, body any) (int, map[string]any) {
 		t.Helper()
 		b, _ := json.Marshal(body)
-		resp, err := http.Post(server.URL+path, "application/json", bytes.NewReader(b))
+		resp, err := agentClient.Post(server.URL+path, "application/json", bytes.NewReader(b))
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		var out map[string]any

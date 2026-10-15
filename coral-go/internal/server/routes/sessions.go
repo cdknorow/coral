@@ -4490,6 +4490,23 @@ func (h *SessionsHandler) EventCounts(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) ClearEvents(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	sidPtr := querySessionID(r)
+	claimed := ""
+	if sidPtr != nil {
+		claimed = *sidPtr
+	}
+	// Only an agent's own token (for its own session) or the Operator clears an
+	// agent's events (#3495).
+	sid, ok := callerSession(w, r, claimed, true, nil)
+	if !ok {
+		return
+	}
+	if owner, isAgent := VerifiedSession(r.Context()); isAgent {
+		sidPtr = &sid
+		name = owner.SessionName
+		if ls, err := h.ss.GetLiveSession(r.Context(), sid); err == nil && ls != nil {
+			name = ls.AgentName
+		}
+	}
 	if err := h.ts.ClearAgentEvents(r.Context(), name, sidPtr); err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -4523,6 +4540,13 @@ func (h *SessionsHandler) RecordTokenUsage(w http.ResponseWriter, r *http.Reques
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	// Only the agent's own hook reports its usage (#3495): the token decides the
+	// session, and its agent name is the session's, not the path's.
+	sid, ok := callerSession(w, r, body.SessionID, false, nil)
+	if !ok {
+		return
+	}
+	body.SessionID = sid
 
 	ctx := r.Context()
 
@@ -4539,6 +4563,7 @@ func (h *SessionsHandler) RecordTokenUsage(w http.ResponseWriter, r *http.Reques
 				boardName = ls.BoardName
 			}
 			agentType = ls.AgentType
+			name = ls.AgentName
 		}
 	}
 	if agentType == "" {
@@ -5675,6 +5700,12 @@ func (h *SessionsHandler) UpdateContextWindow(w http.ResponseWriter, r *http.Req
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	// Only the agent's own SessionStart hook reports its model (#3495).
+	sid, ok := callerSession(w, r, body.SessionID, false, nil)
+	if !ok {
+		return
+	}
+	body.SessionID = sid
 	if body.SessionID == "" || body.Model == "" {
 		errBadRequest(w, "session_id and model are required")
 		return

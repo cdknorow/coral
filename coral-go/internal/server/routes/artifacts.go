@@ -56,7 +56,7 @@ func (h *SessionsHandler) artifactDir() string {
 
 func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Request) {
 	sid := r.URL.Query().Get("session_id")
-	if _, ok := h.agentFromRequest(w, r, sid); !ok {
+	if _, ok := h.agentFromRequest(w, r, &sid, false); !ok {
 		return
 	}
 	name := strings.TrimSpace(r.Header.Get("X-Artifact-Name"))

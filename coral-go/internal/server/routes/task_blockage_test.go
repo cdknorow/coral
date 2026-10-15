@@ -50,7 +50,7 @@ func TestPersonalClaimAPIExplainsMissingArtifact(t *testing.T) {
 		t.Helper()
 		body["session_id"] = "blockage-agent"
 		data, _ := json.Marshal(body)
-		resp, err := http.Post(server.URL+"/api/agent/tasks"+path, "application/json", bytes.NewReader(data))
+		resp, err := agentClient.Post(server.URL+"/api/agent/tasks"+path, "application/json", bytes.NewReader(data))
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		var result map[string]any

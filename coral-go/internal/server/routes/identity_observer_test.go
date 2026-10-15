@@ -59,10 +59,12 @@ func TestIdentityObserver(t *testing.T) {
 	rec := do("POST", "/api/board/p/messages", `{"subscriber_id":"Dev","content":"hi"}`, tok)
 	assert.Equal(t, "claude-dev", rec.Header().Get("X-Verified"), "the request is attributed to its session")
 	assert.Equal(t, `{"subscriber_id":"Dev","content":"hi"}`, seenBody, "the body is untouched")
-	do("POST", "/api/board/p/messages", `{"subscriber_id":"Lead","content":"x"}`, tok)
-	do("POST", "/api/board/p/tasks", `{"created_by":"Operator","title":"x"}`, tok)
-	do("POST", "/api/board/q/messages", `{"subscriber_id":"Dev","content":"x"}`, tok)
-	do("GET", "/api/board/p/messages?subscriber_id=Lead", ``, tok)
+	// A presented token decides who the caller is, in every mode (#3495): acting as another
+	// subscriber or as the Operator is refused; another board stays log-only here.
+	assert.Equal(t, http.StatusForbidden, do("POST", "/api/board/p/messages", `{"subscriber_id":"Lead","content":"x"}`, tok).Code)
+	assert.Equal(t, http.StatusForbidden, do("POST", "/api/board/p/tasks", `{"created_by":"Operator","title":"x"}`, tok).Code)
+	assert.Equal(t, http.StatusOK, do("POST", "/api/board/q/messages", `{"subscriber_id":"Dev","content":"x"}`, tok).Code)
+	assert.Equal(t, http.StatusForbidden, do("GET", "/api/board/p/messages?subscriber_id=Lead", ``, tok).Code)
 	do("POST", "/api/board/p/messages", `{"subscriber_id":"Dev","as":"Developer","content":"x"}`, tok)
 
 	do("GET", "/api/board/p/messages", ``, map[string]string{store.SessionTokenHeader: "made-up"})
@@ -72,7 +74,7 @@ func TestIdentityObserver(t *testing.T) {
 	do("GET", "/api/sessions/live", ``, nil)
 	cookie = true
 	do("GET", "/api/sessions/live", ``, nil)
-	assert.Equal(t, 12, reached, "phase 1 never refuses")
+	assert.Equal(t, 9, reached, "outside strict mode only the three identity mismatches are refused")
 
 	rep := o.Report()
 	callers := rep["callers"].(map[string]int64)

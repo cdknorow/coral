@@ -171,6 +171,11 @@ func (h *NotificationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "title or message is required")
 		return
 	}
+	// An agent (coral-agent notify, with its token) or the Operator; no anonymous
+	// local process puts a toast or an alert on every open dashboard (#3495).
+	if _, ok := callerSession(w, r, "", true, nil); !ok {
+		return
+	}
 
 	n := h.store.Push(Notification{
 		Title:   body.Title,

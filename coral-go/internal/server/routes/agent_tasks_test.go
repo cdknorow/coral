@@ -25,7 +25,7 @@ func TestAgentTasks_MirrorBoardTaskAPI(t *testing.T) {
 
 	post := func(path string, body any) (int, map[string]any) {
 		b, _ := json.Marshal(body)
-		resp, err := http.Post(server.URL+path, "application/json", bytes.NewReader(b))
+		resp, err := agentClient.Post(server.URL+path, "application/json", bytes.NewReader(b))
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		var out map[string]any
@@ -33,7 +33,7 @@ func TestAgentTasks_MirrorBoardTaskAPI(t *testing.T) {
 		return resp.StatusCode, out
 	}
 	list := func(sid string) []map[string]any {
-		resp, err := http.Get(server.URL + "/api/agent/tasks?session_id=" + sid)
+		resp, err := agentClient.Get(server.URL + "/api/agent/tasks?session_id=" + sid)
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		var out struct {

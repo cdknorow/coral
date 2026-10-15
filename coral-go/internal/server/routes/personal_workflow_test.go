@@ -20,7 +20,7 @@ func TestPersonalWorkflowAPI(t *testing.T) {
 		raw, _ := json.Marshal(body)
 		req, _ := http.NewRequest(method, server.URL+path, bytes.NewReader(raw))
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := agentClient.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		var got map[string]any

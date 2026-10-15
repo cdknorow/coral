@@ -2320,7 +2320,10 @@ func testIdentity(db *store.DB) func(http.Handler) http.Handler {
 	o := NewIdentityObserver(db, nil, nil)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if tok := r.Header.Get(store.SessionTokenHeader); tok != "" {
+			if sid := r.Header.Get(testAgentHeader); sid != "" {
+				// A test acting as that session's agent, as its token would (#3495).
+				r = r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: sid, SessionName: "agent-" + sid}))
+			} else if tok := r.Header.Get(store.SessionTokenHeader); tok != "" {
 				if owner, err := db.SessionTokenOwnerOf(r.Context(), tok); err == nil {
 					r = r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, owner))
 				}
@@ -2330,6 +2333,34 @@ func testIdentity(db *store.DB) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// testAgentHeader makes a request act as that session's agent, as its token does
+// (testIdentity only; tests).
+const testAgentHeader = "X-Test-Agent-Session"
+
+// agentClient sends each request as the agent of the session it names (session_id in
+// the query or the JSON body), as Coral's agent tools do with their token (#3495).
+var agentClient = &http.Client{Transport: asNamedAgent{}}
+
+type asNamedAgent struct{}
+
+func (asNamedAgent) RoundTrip(r *http.Request) (*http.Response, error) {
+	sid := r.URL.Query().Get("session_id")
+	if sid == "" && r.Body != nil {
+		raw, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		var body struct {
+			SessionID string `json:"session_id"`
+		}
+		_ = json.Unmarshal(raw, &body)
+		sid = body.SessionID
+	}
+	if sid != "" {
+		r.Header.Set(testAgentHeader, sid)
+	}
+	return http.DefaultTransport.RoundTrip(r)
 }
 
 // agentToken mints the session token an agent's hooks send with every event (#3479).

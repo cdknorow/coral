@@ -185,7 +185,10 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 					return
 				}
 			}
-			if m := o.checkBoard(r, owner); m != nil && o.strict {
+			// A presented token decides who the caller is on the board, in every mode
+			// (#3495): an agent can't post or act as another subscriber or as the Operator.
+			// Acting on another board stays log-only outside strict mode.
+			if m := o.checkBoard(r, owner); m != nil && (o.strict || m.Kind != mismatchCrossBoard) {
 				o.refuse(w, http.StatusForbidden, "identity_mismatch",
 					"This agent can't act as "+strconv.Quote(m.Claimed)+" ("+m.Field+"): its session is "+strconv.Quote(m.Expected)+" ("+m.Kind+")")
 				return
@@ -538,8 +541,10 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 	if err != nil || sub == nil {
 		return nil // not on a board yet (it may be subscribing now)
 	}
+	// The mismatch returned is the one that decides: an impersonation or Operator claim
+	// before a cross-board one (only the first two are refused outside strict mode).
 	note := func(m IdentityMismatch) {
-		if first == nil {
+		if first == nil || (first.Kind == mismatchCrossBoard && m.Kind != mismatchCrossBoard) {
 			first = &m
 		}
 	}
@@ -591,9 +596,9 @@ func (o *IdentityObserver) mismatch(r *http.Request, owner *store.SessionTokenOw
 		o.recent = o.recent[len(o.recent)-identityRecentMax:]
 	}
 	o.mu.Unlock()
-	msg := "[identity] mismatch (log only)"
-	if o.strict {
-		msg = "[identity] mismatch refused (strict local auth)"
+	msg := "[identity] mismatch refused"
+	if kind == mismatchCrossBoard && !o.strict {
+		msg = "[identity] mismatch (log only)"
 	}
 	o.logOnce("mismatch:"+owner.SessionName+":"+kind, msg,
 		"kind", kind, "session", owner.SessionName, "expected", expected, "claimed", claimed, "field", field, "request", m.Request)

@@ -28,6 +28,7 @@ func TestAgentArtifactsNeverRunOnTheDashboardOrigin(t *testing.T) {
 	_, h, _, ss := setupSessionsTestServer(t)
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "artifact-session", AgentName: "artifact-agent", AgentType: "codex", WorkingDir: t.TempDir()}))
 	r := chi.NewRouter()
+	r.Use(testIdentity(h.db))
 	h.RegisterAgentArtifacts(r)
 	server := httptest.NewServer(r)
 	defer server.Close()
@@ -39,7 +40,7 @@ func TestAgentArtifactsNeverRunOnTheDashboardOrigin(t *testing.T) {
 		if declared != "" {
 			req.Header.Set("X-Artifact-Media-Type", declared)
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := agentClient.Do(req)
 		require.NoError(t, err)
 		data, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()

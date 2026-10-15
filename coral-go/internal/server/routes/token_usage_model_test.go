@@ -27,9 +27,12 @@ func postTokenUsage(t *testing.T, body string) *string {
 		SessionID: usageModelSID, AgentType: "claude", AgentName: "coral-go", WorkingDir: "/repo", Model: &model}))
 
 	r := chi.NewRouter()
+	r.Use(testIdentity(h.db))
 	r.Post("/api/sessions/live/{name}/token-usage", h.RecordTokenUsage)
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/live/coral-go/token-usage", strings.NewReader(body)))
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/coral-go/token-usage", strings.NewReader(body))
+	req.Header.Set(testAgentHeader, usageModelSID) // the agent's own hook (#3495)
+	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	var stored *string

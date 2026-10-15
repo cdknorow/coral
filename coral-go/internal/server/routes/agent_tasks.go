@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -39,6 +40,15 @@ func (h *SessionsHandler) sessionAgentName(ctx context.Context, sessionID string
 		return "", false
 	}
 	return ls.AgentName, true
+}
+
+// isTerminalSession reports whether a live session is a terminal session, which is
+// never given a session token (callerSession).
+func (h *SessionsHandler) isTerminalSession(ctx context.Context) func(string) bool {
+	return func(sessionID string) bool {
+		ls, err := h.ss.GetLiveSession(ctx, sessionID)
+		return err == nil && ls != nil && ls.AgentType == at.Terminal
+	}
 }
 
 // agentTaskView is an agent task in the board task JSON shape.
@@ -89,10 +99,17 @@ func viewAgentTask(t *store.AgentTask) agentTaskView {
 	}
 }
 
-// agentFromRequest resolves the calling agent from a session ID, writing the
-// error response when it is unknown.
-func (h *SessionsHandler) agentFromRequest(w http.ResponseWriter, r *http.Request, sessionID string) (string, bool) {
-	name, ok := h.sessionAgentName(r.Context(), sessionID)
+// agentFromRequest resolves the calling agent, binding *sessionID to the caller
+// (callerSession, #3495), and writes the error response when it can't. operatorOK:
+// the dashboard uses the route too, so a token-less Operator request is accepted.
+// A terminal session holds no token, so its own requests need none (default mode only).
+func (h *SessionsHandler) agentFromRequest(w http.ResponseWriter, r *http.Request, sessionID *string, operatorOK bool) (string, bool) {
+	sid, ok := callerSession(w, r, *sessionID, operatorOK, h.isTerminalSession(r.Context()))
+	if !ok {
+		return "", false
+	}
+	*sessionID = sid
+	name, ok := h.sessionAgentName(r.Context(), sid)
 	if !ok {
 		errNotFound(w, "Unknown session; run this from inside a Coral agent")
 	}
@@ -127,7 +144,7 @@ func decodeAgentTaskRequest(w http.ResponseWriter, r *http.Request) (agentTaskRe
 // GET /api/agent/tasks?session_id=...
 func (h *SessionsHandler) ListAgentTasksForAgent(w http.ResponseWriter, r *http.Request) {
 	sid := r.URL.Query().Get("session_id")
-	name, ok := h.agentFromRequest(w, r, sid)
+	name, ok := h.agentFromRequest(w, r, &sid, false)
 	if !ok {
 		return
 	}
@@ -159,7 +176,7 @@ func (h *SessionsHandler) AddAgentTaskForAgent(w http.ResponseWriter, r *http.Re
 		errBadRequest(w, "title is required")
 		return
 	}
-	name, ok := h.agentFromRequest(w, r, body.SessionID)
+	name, ok := h.agentFromRequest(w, r, &body.SessionID, false)
 	if !ok {
 		return
 	}
@@ -188,7 +205,7 @@ func (h *SessionsHandler) ClaimAgentTaskForAgent(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	name, ok := h.agentFromRequest(w, r, body.SessionID)
+	name, ok := h.agentFromRequest(w, r, &body.SessionID, false)
 	if !ok {
 		return
 	}
@@ -243,7 +260,7 @@ func (h *SessionsHandler) CurrentAgentTaskForAgent(w http.ResponseWriter, r *htt
 	if !ok {
 		return
 	}
-	name, ok := h.agentFromRequest(w, r, body.SessionID)
+	name, ok := h.agentFromRequest(w, r, &body.SessionID, false)
 	if !ok {
 		return
 	}
@@ -281,7 +298,8 @@ func (h *SessionsHandler) finishAgentTask(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	name, ok := h.agentFromRequest(w, r, body.SessionID)
+	// The dashboard finishes a personal task too (the Operator).
+	name, ok := h.agentFromRequest(w, r, &body.SessionID, true)
 	if !ok {
 		return
 	}
@@ -322,7 +340,7 @@ func (h *SessionsHandler) RecoverPersonalTaskNotifications(ctx context.Context) 
 }
 
 func (h *SessionsHandler) personalTaskForRequest(w http.ResponseWriter, r *http.Request, sid string) (*store.AgentTask, bool) {
-	name, ok := h.agentFromRequest(w, r, sid)
+	name, ok := h.agentFromRequest(w, r, &sid, false)
 	if !ok {
 		return nil, false
 	}
