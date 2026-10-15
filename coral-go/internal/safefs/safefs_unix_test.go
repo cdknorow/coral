@@ -14,23 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// outside makes a folder outside the root with a file whose content must not change.
-func outside(t *testing.T) (dir, secret string) {
-	t.Helper()
-	dir = t.TempDir()
-	secret = filepath.Join(dir, "secret.txt")
-	require.NoError(t, os.WriteFile(secret, []byte("SECRET"), 0o600))
-	return dir, secret
-}
-
-func secretIntact(t *testing.T, dir, secret string) {
-	t.Helper()
-	b, _ := os.ReadFile(secret)
-	assert.Equal(t, "SECRET", string(b), "the outside file is unchanged")
-	entries, _ := os.ReadDir(dir)
-	assert.Len(t, entries, 1, "nothing new outside")
-}
-
 func TestWithinSeesSymlinkedAncestors(t *testing.T) {
 	root := t.TempDir()
 	out, _ := outside(t)

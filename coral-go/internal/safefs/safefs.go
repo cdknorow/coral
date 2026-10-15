@@ -15,8 +15,10 @@
 //   - ids that end up in paths have one checking function per shape.
 //
 // On Windows (no O_NOFOLLOW, and older Go versions don't report every reparse point as
-// ModeIrregular) write protection rests on the root plus the regular-file check on the handle;
-// the package is vetted there, and a Windows-run test is still to come.
+// ModeIrregular) write protection rests on the root plus the regular-file check on the handle,
+// and the link count comes from the handle (GetFileInformationByHandle). os.Root refuses a
+// name with a colon (a drive or a stream), a rooted name and a reserved device name there;
+// safefs_windows_test.go runs these on Windows (#3615).
 package safefs
 
 import (
@@ -250,7 +252,7 @@ func (r *Root) WriteFileUnless(rel string, data []byte, perm os.FileMode, deny f
 	if err != nil || !fi.Mode().IsRegular() {
 		return refuse(ErrNotRegular)
 	}
-	if fileLinks(fi) > 1 {
+	if n, ok := LinkCount(f, fi); !ok || n > 1 {
 		return refuse(ErrLinked)
 	}
 	fresh, err := Within(r.dir, filepath.Join(r.dir, rel))

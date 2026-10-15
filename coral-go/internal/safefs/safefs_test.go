@@ -24,7 +24,9 @@ func TestWithin(t *testing.T) {
 		require.NoError(t, err, p)
 		assert.Equal(t, want, got, p)
 	}
-	for _, p := range []string{"../x", "a/../../x", "/etc/passwd", "a/new/../../../x"} {
+	// An absolute path elsewhere (on Windows, /etc/passwd is rooted on the current drive, not
+	// absolute, so another temp folder stands in for it on every OS).
+	for _, p := range []string{"../x", "a/../../x", filepath.Join(t.TempDir(), "passwd"), "a/new/../../../x"} {
 		_, err := Within(root, p)
 		assert.ErrorIs(t, err, ErrOutside, p)
 	}
@@ -84,4 +86,21 @@ func TestRootReadWrite(t *testing.T) {
 	assert.Error(t, err, "CreateNew refuses an existing name")
 	_, err = r.ReadFile("d", 10)
 	assert.ErrorIs(t, err, ErrNotRegular, "a folder isn't a file")
+}
+
+// outside makes a folder outside the root with a file whose content must not change.
+func outside(t *testing.T) (dir, secret string) {
+	t.Helper()
+	dir = t.TempDir()
+	secret = filepath.Join(dir, "secret.txt")
+	require.NoError(t, os.WriteFile(secret, []byte("SECRET"), 0o600))
+	return dir, secret
+}
+
+func secretIntact(t *testing.T, dir, secret string) {
+	t.Helper()
+	b, _ := os.ReadFile(secret)
+	assert.Equal(t, "SECRET", string(b), "the outside file is unchanged")
+	entries, _ := os.ReadDir(dir)
+	assert.Len(t, entries, 1, "nothing new outside")
 }

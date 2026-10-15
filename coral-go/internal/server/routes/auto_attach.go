@@ -466,6 +466,11 @@ func (a *AutoAttacher) load(workdir, gitRoot, target string, isImage bool, budge
 		return "", nil, "", errAttach("no_root")
 	}
 	p := filepath.FromSlash(target)
+	// On Windows, \x.png is on the current drive's root and C:x.png on drive C's current folder:
+	// neither is relative to the working directory (#3615).
+	if !filepath.IsAbs(p) && (filepath.VolumeName(p) != "" || (p != "" && os.IsPathSeparator(p[0]))) {
+		return "", nil, "", errAttach("outside_roots")
+	}
 	if !filepath.IsAbs(p) {
 		if workdir == "" {
 			return "", nil, "", errAttach("no_root")
@@ -581,7 +586,7 @@ func readAttachable(root, rel, real string, limit int64, now time.Time) ([]byte,
 		return nil, errAttach("open_failed")
 	}
 	defer f.Close()
-	if n, ok := linkCount(f, fi); ok && n != 1 {
+	if n, ok := safefs.LinkCount(f, fi); !ok || n != 1 {
 		return nil, errAttach("hardlink")
 	}
 	if li, err := os.Lstat(real); err != nil || !os.SameFile(fi, li) {
