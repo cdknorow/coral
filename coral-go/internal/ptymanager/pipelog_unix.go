@@ -18,3 +18,9 @@ func linkCount(fi os.FileInfo) uint64 {
 	}
 	return 1
 }
+
+// ownedByMe reports whether this process's user owns the file (an old log in the shared temp dir).
+func ownedByMe(fi os.FileInfo) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == os.Getuid()
+}

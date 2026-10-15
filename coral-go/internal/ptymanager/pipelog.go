@@ -99,6 +99,12 @@ func migrateTempLog(newPath string) bool {
 	if err != nil {
 		return false
 	}
+	// The temp dir is shared: a log of this name planted by another user isn't adopted as this
+	// agent's scrollback (Security's NIT on #3601; the session id is visible in ps).
+	if !ownedByMe(fi) {
+		f.Close()
+		return false
+	}
 	start := fi.Size() - maxMigratedLog
 	if start < 0 {
 		start = 0
@@ -117,8 +123,12 @@ func migrateTempLog(newPath string) bool {
 	if err := root.WriteFile(name, data[:n], 0o600); err != nil {
 		return false
 	}
+	// Removed through a root on the temp dir, and only while the name is still the file read.
 	if at, err := old.Lstat(name); err == nil && os.SameFile(fi, at) {
-		os.Remove(filepath.Join(tmp, name))
+		if r, err := os.OpenRoot(old.Dir()); err == nil {
+			r.Remove(name)
+			r.Close()
+		}
 	}
 	return true
 }

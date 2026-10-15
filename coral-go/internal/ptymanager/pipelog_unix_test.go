@@ -110,3 +110,34 @@ func TestAgentLogHelpersRefuseAnEmptyPath(t *testing.T) {
 	assert.ErrorIs(t, err, errNoLogPath)
 	assert.False(t, migrateTempLog(""))
 }
+
+// The migration skips a FIFO at the old name without blocking, and adopts only a log this user
+// owns (a stub with another uid stands in for another user's file).
+func TestReattachMigrationSkipsFIFOsAndOtherUsersFiles(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	logs := t.TempDir()
+	name := "claude_coral_5c1e0a7d-2b3c-4d5e-8f60-718293a4b5c6.log"
+	require.NoError(t, syscall.Mkfifo(filepath.Join(tmp, name), 0o600))
+	done := make(chan bool, 1)
+	go func() { done <- migrateTempLog(filepath.Join(logs, name)) }()
+	select {
+	case moved := <-done:
+		assert.False(t, moved, "a FIFO isn't migrated")
+	case <-time.After(3 * time.Second):
+		t.Fatal("the migration blocked on a FIFO")
+	}
+
+	mine, err := os.Stat(tmp)
+	require.NoError(t, err)
+	assert.True(t, ownedByMe(mine))
+	assert.False(t, ownedByMe(otherUserInfo{mine}), "a file another uid owns")
+}
+
+type otherUserInfo struct{ os.FileInfo }
+
+func (o otherUserInfo) Sys() any {
+	st := *o.FileInfo.Sys().(*syscall.Stat_t)
+	st.Uid = uint32(os.Getuid() + 1)
+	return &st
+}
