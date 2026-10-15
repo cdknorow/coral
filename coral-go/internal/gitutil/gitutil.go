@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/cdknorow/coral/internal/executil"
 )
 
 var (
@@ -35,8 +33,7 @@ func git(ctx context.Context, workdir string, args ...string) (string, error) {
 	if !Available() {
 		return "", exec.ErrNotFound
 	}
-	fullArgs := append([]string{"--no-optional-locks", "-C", workdir}, args...)
-	out, err := executil.Command(ctx, "git", fullArgs...).Output()
+	out, err := Command(ctx, workdir, args...).Output()
 	if err != nil {
 		return "", err
 	}

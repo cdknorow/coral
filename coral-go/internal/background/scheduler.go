@@ -15,7 +15,7 @@ import (
 	"time"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -859,8 +859,7 @@ var runWebhookClient = httputil.WebhookClient(10 * time.Second)
 
 // createWorktree creates a git worktree for an isolated job run.
 func runGitCmd(ctx context.Context, repoPath string, args ...string) error {
-	cmdArgs := append([]string{"-C", repoPath}, args...)
-	cmd := executil.Command(ctx, "git", cmdArgs...)
+	cmd := gitutil.Command(ctx, repoPath, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, string(out))
@@ -902,7 +901,7 @@ func (s *JobScheduler) cleanupWorktree(repoPath, worktreePath, runBranch, baseBr
 // On any error it answers true, so an unreadable repository leaves the branch
 // alone rather than risking the deletion of real work.
 func branchHasCommits(ctx context.Context, repoPath, base, branch string) bool {
-	out, err := executil.Command(ctx, "git", "-C", repoPath,
+	out, err := gitutil.Command(ctx, repoPath,
 		"rev-list", "--count", base+".."+branch).Output()
 	if err != nil {
 		return true

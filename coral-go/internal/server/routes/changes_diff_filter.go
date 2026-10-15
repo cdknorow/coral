@@ -223,7 +223,7 @@ func (h *SessionsHandler) generatePersistedDiff(ctx context.Context, workdir str
 			diff = append(diff, diffNote("new file %q, %d bytes, not stored (binary)", rel, fi.Size())...)
 			continue
 		}
-		fileDiff, ferr := exec.CommandContext(ctx, "git", "-C", workdir, "diff", "--no-index", "--", os.DevNull, rel).Output()
+		fileDiff, ferr := gitutil.Command(ctx, workdir, "diff", "--no-index", "--", os.DevNull, rel).Output()
 		if ferr != nil {
 			if exitErr, ok := ferr.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
 				return nil, fmt.Errorf("diff untracked file %q: %w", rel, ferr)
@@ -251,7 +251,7 @@ func isBinaryFile(path string) bool {
 
 // gitOutput runs git in workdir; a failure carries git's own message.
 func gitOutput(ctx context.Context, workdir string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", workdir}, args...)...)
+	cmd := gitutil.Command(ctx, workdir, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

@@ -11,7 +11,7 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -414,7 +414,7 @@ func jobRepoError(ctx context.Context, dir string) string {
 	}
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	out, err := executil.Command(cctx, "git", "-C", resolved, "rev-parse", "--is-inside-work-tree").Output()
+	out, err := gitutil.Command(cctx, resolved, "rev-parse", "--is-inside-work-tree").Output()
 	if err != nil || strings.TrimSpace(string(out)) != "true" {
 		return "repo_path is not a git repository: " + dir
 	}

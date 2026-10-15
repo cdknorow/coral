@@ -277,6 +277,22 @@ checked-out base branch is fine. If a run still records `git worktree add failed
 message from Git is shown with the run; check that `base_branch` exists. *Not re-run
 end-to-end in this review.*
 
+### A repository's git hooks or filters don't run in Coral's worktrees
+
+Coral runs git itself in folders that agents can change: the changed-files list, diffs, and
+the worktrees it makes for teams and scheduled jobs. A repository's config could name
+commands for that git to run, and an agent can edit that config. So every git Coral runs
+has them turned off: hooks (`post-checkout` included), `core.fsmonitor`, external diff
+programs and textconv, and the clean, smudge and process commands of filter drivers.
+
+- Git LFS's standard driver, exactly as `git lfs install` writes it, still runs, so LFS files
+  are checked out in Coral's worktrees.
+- Any other filter isn't run. For example, a worktree Coral makes of a `git-crypt` repository
+  holds its files as they're stored (encrypted). Run `git checkout -- .` in the worktree
+  yourself if you need them filtered.
+- Agents' own git commands are unchanged: they run in the agent's terminal, under the agent
+  CLI's permission prompts.
+
 ### A scheduled job ends in `killed` / `timeout` instead of `completed`
 
 Expected with an interactive agent. `scheduler.go:611-620` records `completed` only when the

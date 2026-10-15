@@ -11,12 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/cdknorow/coral/internal/gitutil"
 	"log"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -644,10 +644,10 @@ func reconcileOrphanedTeams(ctx context.Context, db *store.DB) {
 		if team.IsWorktree == 1 && team.WorkingDir != "" {
 			// Find the parent repo via git rev-parse from the worktree itself
 			cleanCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			repoOut, repoErr := exec.CommandContext(cleanCtx, "git", "-C", team.WorkingDir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
+			repoOut, repoErr := gitutil.Command(cleanCtx, team.WorkingDir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
 			if repoErr == nil {
 				repoPath := filepath.Dir(strings.TrimSpace(string(repoOut)))
-				cmd := exec.CommandContext(cleanCtx, "git", "-C", repoPath, "worktree", "remove", "--force", team.WorkingDir)
+				cmd := gitutil.Command(cleanCtx, repoPath, "worktree", "remove", "--force", team.WorkingDir)
 				if out, err := cmd.CombinedOutput(); err != nil {
 					log.Printf("[startup] failed to remove orphaned worktree %s: %s", team.WorkingDir, string(out))
 				} else {

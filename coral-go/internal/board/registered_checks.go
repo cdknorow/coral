@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/gitutil"
 )
 
 const (
@@ -60,7 +62,8 @@ func NewLocalRegisteredCheckRunner(workdir string) *LocalRegisteredCheckRunner {
 	return &LocalRegisteredCheckRunner{Workdir: filepath.Clean(workdir)}
 }
 
-var safeRevision = regexp.MustCompile(`^[A-Za-z0-9._/@:-]{1,256}$`)
+// safeRevision: a revision, remote or branch name; never an option (no leading "-").
+var safeRevision = regexp.MustCompile(`^[A-Za-z0-9._/@:][A-Za-z0-9._/@:-]{0,255}$`)
 var safePackage = regexp.MustCompile(`^[A-Za-z0-9_./-]+$`)
 
 func (r *LocalRegisteredCheckRunner) Run(ctx context.Context, checkID, candidateRevision string, parameters map[string]string) RegisteredCheckEvidence {
@@ -154,11 +157,18 @@ type boundedCommandResult struct {
 }
 
 func runBoundedCommand(ctx context.Context, workdir string, args ...string) boundedCommandResult {
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	name, rest := args[0], args[1:]
+	if name == "git" {
+		rest = gitutil.Args(ctx, workdir, rest...) // the repository's config runs nothing (#3579)
+	}
+	cmd := exec.CommandContext(ctx, name, rest...)
 	cmd.Dir = workdir
 	// The runner receives only a minimal controlled environment. In particular,
 	// no provider keys or arbitrary task environment are inherited.
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir(), "GOWORK=off", "GOPROXY=off", "GOTOOLCHAIN=local"}
+	if name == "git" {
+		cmd.Env = append(cmd.Env, gitutil.Env()...)
+	}
 	var stdout, stderr boundedBuffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

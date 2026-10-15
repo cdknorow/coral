@@ -360,7 +360,7 @@ func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
 
 	// Get branch name
 	t0 := time.Now()
-	out, err := executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	out, err := gitutil.Command(ctx, workdir, "rev-parse", "--abbrev-ref", "HEAD").Output()
 	logger.Debug("git rev-parse", "duration_ms", time.Since(t0).Milliseconds())
 	if err != nil {
 		return nil, err
@@ -369,7 +369,7 @@ func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
 
 	// Get latest commit
 	t1 := time.Now()
-	out, err = executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "log", "-1", "--format=%H|%s|%aI").Output()
+	out, err = gitutil.Command(ctx, workdir, "log", "-1", "--format=%H|%s|%aI").Output()
 	logger.Debug("git log", "duration_ms", time.Since(t1).Milliseconds())
 	if err != nil {
 		return nil, err
@@ -382,7 +382,7 @@ func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
 	// Get remote URL (best-effort)
 	t2 := time.Now()
 	var remoteURL *string
-	out, err = executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "remote", "get-url", "origin").Output()
+	out, err = gitutil.Command(ctx, workdir, "remote", "get-url", "origin").Output()
 	logger.Debug("git remote", "duration_ms", time.Since(t2).Milliseconds())
 	if err == nil {
 		// Never record a credential embedded in the remote URL (#3558).
@@ -423,7 +423,7 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 	// -z: NUL-terminated records with raw paths. Without it git quotes names
 	// containing non-ASCII bytes (e.g. macOS screenshots' U+202F) with octal
 	// escapes, which then never match a file on disk.
-	out, err := executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "diff", base, "--numstat", "-z").Output()
+	out, err := gitutil.Command(ctx, workdir, "diff", base, "--numstat", "-z").Output()
 	if err != nil {
 		// A timeout or git failure: the list would be incomplete.
 		return nil, fmt.Errorf("git diff %s --numstat: %w", base, err)
@@ -462,7 +462,7 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 	// git status --porcelain for untracked files
 	lineCounts := 0
 	t3 := time.Now()
-	out, err = executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "status", "--porcelain", "-z", "--untracked-files=normal").Output()
+	out, err = gitutil.Command(ctx, workdir, "status", "--porcelain", "-z", "--untracked-files=normal").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git status --porcelain: %w", err)
 	}
@@ -528,7 +528,7 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 }
 
 func getBaseTimestamp(ctx context.Context, workdir, baseRef string) float64 {
-	out, err := executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "log", "-1", "--format=%ct", baseRef).Output()
+	out, err := gitutil.Command(ctx, workdir, "log", "-1", "--format=%ct", baseRef).Output()
 	if err != nil {
 		return 0
 	}
@@ -594,7 +594,7 @@ func queryPRNumber(ctx context.Context, branch, workdir string, logger *slog.Log
 }
 
 func getRepoFromWorkdir(ctx context.Context, workdir string) string {
-	out, err := executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "remote", "get-url", "origin").Output()
+	out, err := gitutil.Command(ctx, workdir, "remote", "get-url", "origin").Output()
 	if err != nil {
 		return ""
 	}
@@ -621,7 +621,7 @@ func getRepoFromWorkdir(ctx context.Context, workdir string) string {
 // uncommitted. Every probe is best-effort: a failure leaves the zero value.
 func queryWorktreeState(ctx context.Context, workdir string, info *gitInfo) {
 	run := func(args ...string) (string, bool) {
-		out, err := executil.Command(ctx, "git", append([]string{"--no-optional-locks", "-C", workdir}, args...)...).Output()
+		out, err := gitutil.Command(ctx, workdir, args...).Output()
 		if err != nil {
 			return "", false
 		}

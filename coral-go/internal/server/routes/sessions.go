@@ -1897,8 +1897,7 @@ func trackedPaths(ctx context.Context, workdir string, paths []string) map[strin
 // keeps a read-only query from refreshing and rewriting the index, which on a
 // large repo means disk writes and lock contention on every poll.
 func gitCmd(ctx context.Context, workdir string, args ...string) *exec.Cmd {
-	full := append([]string{"--no-optional-locks", "-C", workdir}, args...)
-	return exec.CommandContext(ctx, "git", full...)
+	return gitutil.Command(ctx, workdir, args...)
 }
 
 // refreshFilesInner contains the shared logic for computing fresh changed files.
@@ -2105,13 +2104,13 @@ func (h *SessionsHandler) Diff(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	base := gitutil.GetDiffBase(ctx, workdir, h.getDiffMode(r.Context()))
-	gitArgs := []string{"-C", workdir, "diff", base, "--", fp}
+	gitArgs := []string{"diff", base, "--", fp}
 	if strict {
 		// The filepath is a name, never a pathspec: '*' or ':(glob)**' would diff the whole
 		// tree (QA's #3558 review).
 		gitArgs = append([]string{"--literal-pathspecs"}, gitArgs...)
 	}
-	out, err := exec.CommandContext(ctx, "git", gitArgs...).Output()
+	out, err := gitutil.Command(ctx, workdir, gitArgs...).Output()
 	diffText := ""
 	if err != nil {
 		slog.Warn("git diff failed", "agent_name", name, "filepath", fp, "error", err)
@@ -2188,13 +2187,13 @@ func (h *SessionsHandler) ChangesDiff(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionsHandler) generateChangesDiff(ctx context.Context, workdir string) ([]byte, error) {
 	base := gitutil.GetDiffBase(ctx, workdir, h.getDiffMode(ctx))
-	diff, err := exec.CommandContext(ctx, "git", "-C", workdir, "diff", "--binary", base, "--").Output()
+	diff, err := gitutil.Command(ctx, workdir, "diff", "--binary", base, "--").Output()
 	if err != nil {
 		return nil, err
 	}
 
 	// A normal git diff omits untracked files. Render each as a new-file patch.
-	untracked, err := exec.CommandContext(ctx, "git", "-C", workdir, "ls-files", "--others", "--exclude-standard", "-z").Output()
+	untracked, err := gitutil.Command(ctx, workdir, "ls-files", "--others", "--exclude-standard", "-z").Output()
 	if err != nil {
 		return nil, err
 	}
@@ -2202,7 +2201,7 @@ func (h *SessionsHandler) generateChangesDiff(ctx context.Context, workdir strin
 		if len(rawPath) == 0 {
 			continue
 		}
-		cmd := exec.CommandContext(ctx, "git", "-C", workdir, "diff", "--no-index", "--binary", "--", os.DevNull, string(rawPath))
+		cmd := gitutil.Command(ctx, workdir, "diff", "--no-index", "--binary", "--", os.DevNull, string(rawPath))
 		fileDiff, fileErr := cmd.Output()
 		// git diff --no-index returns 1 when differences were found.
 		if fileErr != nil {
@@ -2459,7 +2458,7 @@ func (h *SessionsHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := exec.CommandContext(ctx, "git", "-C", workdir, "ls-files", "--cached", "--others", "--exclude-standard").Output()
+	out, err := gitutil.Command(ctx, workdir, "ls-files", "--cached", "--others", "--exclude-standard").Output()
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"files": []string{}})
 		return
@@ -2984,7 +2983,7 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
-				cmd := exec.CommandContext(ctx, "git", "-C", worktreeRepoForCleanup, "worktree", "remove", "--force", worktreePathForCleanup)
+				cmd := gitutil.Command(ctx, worktreeRepoForCleanup, "worktree", "remove", "--force", worktreePathForCleanup)
 				if out, err := cmd.CombinedOutput(); err != nil {
 					log.Printf("[kill] failed to remove worktree %s: %s", worktreePathForCleanup, string(out))
 				} else {
@@ -3922,10 +3921,10 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		os.MkdirAll(worktreeDir, 0755)
 		worktreePath = filepath.Join(worktreeDir, body.BoardName)
 		worktreeBranch := fmt.Sprintf("coral-team/%s", body.BoardName)
-		cmd := exec.CommandContext(ctx, "git", "-C", body.WorkingDir, "worktree", "add", "-b", worktreeBranch, worktreePath, branch)
+		cmd := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "-b", worktreeBranch, worktreePath, branch)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			// Branch may already exist from a previous run — try without -b
-			cmd2 := exec.CommandContext(ctx, "git", "-C", body.WorkingDir, "worktree", "add", worktreePath, worktreeBranch)
+			cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", worktreePath, worktreeBranch)
 			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
 				attempt.Finish(tracking.OutcomeFailure, tracking.FailWorktreeFailed, 0, len(body.Agents))
 				errBadRequest(w, fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2)))
@@ -5825,7 +5824,7 @@ func (h *SessionsHandler) GetFileOriginal(w http.ResponseWriter, r *http.Request
 	prefix := gitutil.ShowPrefix(ctx, workdir)
 
 	raw := r.URL.Query().Get("raw") == "1"
-	out, err := exec.CommandContext(ctx, "git", "-C", workdir, "show", base+":"+prefix+fp).Output()
+	out, err := gitutil.Command(ctx, workdir, "show", base+":"+prefix+fp).Output()
 	if err != nil {
 		if raw {
 			errNotFound(w, "File is new since the diff base")
@@ -6120,7 +6119,7 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 			wtCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			parentDir := filepath.Dir(teamWorktree)
-			cmd := exec.CommandContext(wtCtx, "git", "-C", parentDir, "worktree", "remove", "--force", teamWorktree)
+			cmd := gitutil.Command(wtCtx, parentDir, "worktree", "remove", "--force", teamWorktree)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				log.Printf("[kill-team] failed to remove worktree %s: %s", teamWorktree, string(out))
 			} else {
@@ -6194,7 +6193,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			repoDir = filepath.Dir(team.WorkingDir)
 		}
 
-		cmd := exec.CommandContext(ctx, "git", "-C", repoDir, "worktree", "add", team.WorkingDir, branch)
+		cmd := gitutil.Command(ctx, repoDir, "worktree", "add", team.WorkingDir, branch)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			errBadRequest(w, fmt.Sprintf("failed to recreate worktree: %s", string(out)))
 			return
