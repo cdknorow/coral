@@ -497,8 +497,8 @@ func (h *WorkflowHandler) ListWorkflowRuns(w http.ResponseWriter, r *http.Reques
 		errBadRequest(w, "invalid workflow ID")
 		return
 	}
-	limit := queryInt(r, "limit", 20)
-	offset := queryInt(r, "offset", 0)
+	limit := clampLimit(queryInt(r, "limit", 20), 20, 200)
+	offset := clampOffset(queryInt(r, "offset", 0))
 	status := strPtr(r.URL.Query().Get("status"))
 
 	runs, err := h.ws.ListRunsForWorkflow(r.Context(), workflowID, limit, offset, status)
@@ -512,8 +512,8 @@ func (h *WorkflowHandler) ListWorkflowRuns(w http.ResponseWriter, r *http.Reques
 // ListRecentRuns returns recent runs across all workflows.
 // GET /api/workflows/runs/recent
 func (h *WorkflowHandler) ListRecentRuns(w http.ResponseWriter, r *http.Request) {
-	limit := queryInt(r, "limit", 20)
-	offset := queryInt(r, "offset", 0)
+	limit := clampLimit(queryInt(r, "limit", 20), 20, 200)
+	offset := clampOffset(queryInt(r, "offset", 0))
 	status := strPtr(r.URL.Query().Get("status"))
 
 	runs, err := h.ws.ListRecentRuns(r.Context(), limit, offset, status)

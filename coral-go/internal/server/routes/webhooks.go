@@ -193,10 +193,7 @@ func (h *WebhooksHandler) deliverTestWebhook(cfg *store.WebhookConfig, delivery 
 // GET /api/webhooks/{webhookID}/deliveries
 func (h *WebhooksHandler) ListDeliveries(w http.ResponseWriter, r *http.Request) {
 	whID, _ := strconv.ParseInt(chi.URLParam(r, "webhookID"), 10, 64)
-	limit := queryInt(r, "limit", 50)
-	if limit > 200 {
-		limit = 200
-	}
+	limit := clampLimit(queryInt(r, "limit", 50), 50, 200)
 	deliveries, err := h.ws.ListWebhookDeliveries(r.Context(), whID, limit)
 	if err != nil {
 		errInternalServer(w, err.Error())

@@ -259,10 +259,7 @@ func (h *TasksHandler) KillTask(w http.ResponseWriter, r *http.Request) {
 // ListTasks returns recent one-shot runs.
 // GET /api/tasks/runs
 func (h *TasksHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
-	limit := queryInt(r, "limit", 50)
-	if limit > 200 {
-		limit = 200
-	}
+	limit := clampLimit(queryInt(r, "limit", 50), 50, 200)
 	status := r.URL.Query().Get("status")
 	var statusPtr *string
 	if status != "" {

@@ -323,7 +323,7 @@ func (h *ScheduleHandler) ToggleJob(w http.ResponseWriter, r *http.Request) {
 // GET /api/scheduled/jobs/{jobID}/runs
 func (h *ScheduleHandler) GetJobRuns(w http.ResponseWriter, r *http.Request) {
 	jobID, _ := strconv.ParseInt(chi.URLParam(r, "jobID"), 10, 64)
-	limit := queryInt(r, "limit", 20)
+	limit := clampLimit(queryInt(r, "limit", 20), 20, 200)
 	runs, err := h.sched.GetRunsForJob(r.Context(), jobID, limit)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -335,7 +335,7 @@ func (h *ScheduleHandler) GetJobRuns(w http.ResponseWriter, r *http.Request) {
 // GetRecentRuns returns recent runs across all jobs.
 // GET /api/scheduled/runs/recent
 func (h *ScheduleHandler) GetRecentRuns(w http.ResponseWriter, r *http.Request) {
-	limit := queryInt(r, "limit", 50)
+	limit := clampLimit(queryInt(r, "limit", 50), 50, 200)
 	runs, err := h.sched.ListAllRecentRuns(r.Context(), limit)
 	if err != nil {
 		errInternalServer(w, err.Error())

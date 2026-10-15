@@ -110,17 +110,8 @@ func (h *SessionsHandler) SearchAgentHistory(w http.ResponseWriter, r *http.Requ
 
 	targetSessionID := strings.TrimSpace(q.Get("target_session_id"))
 
-	limit := queryInt(r, "limit", 20)
-	if limit < 1 {
-		limit = 20
-	} else if limit > 100 {
-		limit = 100
-	}
-
-	offset := queryInt(r, "offset", 0)
-	if offset < 0 {
-		offset = 0
-	}
+	limit := clampLimit(queryInt(r, "limit", 20), 20, 100)
+	offset := clampOffset(queryInt(r, "offset", 0))
 
 	maxExcerptChars := queryInt(r, "max_excerpt_chars", 300)
 	if maxExcerptChars < 50 {

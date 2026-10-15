@@ -71,6 +71,29 @@ func queryInt(r *http.Request, key string, fallback int) int {
 	return n
 }
 
+// clampLimit bounds a list size a caller asked for (#3620, hub audit H3): a missing, junk, zero or
+// negative value is the route's default (a negative SQLite LIMIT means no limit at all), and
+// anything above the route's maximum is the maximum. Every list route a viewer can call, locally
+// or through Coral Hub, goes through it.
+func clampLimit(n, def, max int) int {
+	if n < 1 {
+		return def
+	}
+	if n > max {
+		return max
+	}
+	return n
+}
+
+// clampOffset keeps a list offset at zero or above (a negative OFFSET is an SQLite error or, for
+// some queries, a full scan).
+func clampOffset(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
 func nilIfEmpty(s string) any {
 	if s == "" {
 		return nil

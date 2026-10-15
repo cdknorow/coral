@@ -1326,10 +1326,7 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	trace.end("target_check")
-	eventsLimit := queryInt(r, "events_limit", 50)
-	if eventsLimit > 200 {
-		eventsLimit = 200
-	}
+	eventsLimit := clampLimit(queryInt(r, "events_limit", 50), 50, 200)
 
 	ctx := r.Context()
 
@@ -2732,10 +2729,7 @@ func isTextFile(name string) bool {
 func (h *SessionsHandler) Git(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	sessionID := r.URL.Query().Get("session_id")
-	limit := queryInt(r, "limit", 20)
-	if limit > 100 {
-		limit = 100
-	}
+	limit := clampLimit(queryInt(r, "limit", 20), 20, 100)
 
 	var snapshots []store.GitSnapshot
 	var err error
@@ -4647,10 +4641,7 @@ func (h *SessionsHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	sidPtr := querySessionID(r)
-	limit := queryInt(r, "limit", 50)
-	if limit > 200 {
-		limit = 200
-	}
+	limit := clampLimit(queryInt(r, "limit", 50), 50, 200)
 	events, err := h.ts.ListAgentEvents(r.Context(), name, limit, sidPtr)
 	if err != nil || events == nil {
 		events = []store.AgentEvent{}

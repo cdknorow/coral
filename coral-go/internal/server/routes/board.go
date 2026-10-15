@@ -1077,10 +1077,7 @@ func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
 		// A read through Coral Hub never moves a member's read position (#3428): whoever
 		// the request names, it is served as the board's latest messages, with no cursor
 		// (only the limit is read, so the tunnel's allowlist of query parameters is unchanged).
-		tunnelLimit := queryInt(r, "limit", 50)
-		if tunnelLimit > 500 {
-			tunnelLimit = 500
-		}
+		tunnelLimit := clampLimit(queryInt(r, "limit", 50), 50, 500)
 		messages, err := h.bs.ListMessages(r.Context(), project, tunnelLimit, 0, 0)
 		if err != nil {
 			errInternalServer(w, err.Error())
@@ -1093,7 +1090,7 @@ func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
 	if subscriberID == "" {
 		subscriberID = r.URL.Query().Get("session_id") // legacy compat
 	}
-	limit := queryInt(r, "limit", 50)
+	limit := clampLimit(queryInt(r, "limit", 50), 50, 500)
 	allParam := r.URL.Query().Get("all")
 	readAll := allParam == "true" || allParam == "1"
 	messages, err := h.bs.ReadMessages(r.Context(), project, subscriberID, limit, readAll)
@@ -1125,11 +1122,8 @@ func (h *BoardHandler) ListAllMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	project := urlParam(r, "project")
-	limit := queryInt(r, "limit", 200)
-	if limit > 500 {
-		limit = 500
-	}
-	offset := queryInt(r, "offset", 0)
+	limit := clampLimit(queryInt(r, "limit", 200), 200, 500)
+	offset := clampOffset(queryInt(r, "offset", 0))
 	beforeID := int64(queryInt(r, "before_id", 0))
 	format := r.URL.Query().Get("format")
 	// Keyset paging: before_id returns the page just before that message and

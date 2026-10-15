@@ -376,7 +376,7 @@ func (h *HistoryHandler) GetSessionTags(w http.ResponseWriter, r *http.Request) 
 // GET /api/sessions/history/{sessionID}/git
 func (h *HistoryHandler) GetSessionGit(w http.ResponseWriter, r *http.Request) {
 	sid := chi.URLParam(r, "sessionID")
-	limit := queryInt(r, "limit", 20)
+	limit := clampLimit(queryInt(r, "limit", 20), 20, 200)
 	snaps, err := h.gs.GetGitSnapshotsForSession(r.Context(), sid, limit)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -389,7 +389,7 @@ func (h *HistoryHandler) GetSessionGit(w http.ResponseWriter, r *http.Request) {
 // GET /api/sessions/history/{sessionID}/events
 func (h *HistoryHandler) GetSessionEvents(w http.ResponseWriter, r *http.Request) {
 	sid := chi.URLParam(r, "sessionID")
-	limit := queryInt(r, "limit", 200)
+	limit := clampLimit(queryInt(r, "limit", 200), 200, 200)
 	events, err := h.ts.ListAgentEvents(r.Context(), "", limit, &sid)
 	if err != nil {
 		errInternalServer(w, err.Error())
