@@ -72,6 +72,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifySuites, problems } from './suites.mjs';
+import { failingOutput } from './failing_output.mjs';
 
 // Linux: the run goes in a private network namespace with only loopback (#3466). Chrome cancels
 // every request in flight, even to 127.0.0.1, when the host's addresses change (ERR_NETWORK_CHANGED;
@@ -533,10 +534,10 @@ async function runOnce(run) {
       results.push(res);
       const word = { pass: 'PASS', flaky: 'FLAKY', fail: 'FAIL', timeout: 'TIMEOUT' }[status];
       console.log(`${word.padEnd(7)} ${phase}${t}  (${final.secs}s${attempts.length > 1 ? `, ${attempts.length} attempts` : ''})${shards > 1 ? `  [shard ${final.shard}]` : ''}${label}${status === 'fail' ? `  exit=${final.code}` : ''}`);
-      // CDP_FULL=1 prints a failing attempt's whole output (the default shows its last 30 lines, which can hide
-      // the failing check); results.json always has it in full.
+      // CDP_FULL=1 prints a failing attempt's whole output. The default shows its last 30 lines, plus every
+      // [FAIL] line above them, so no failing check leaves the console (#3609); results.json has it in full.
       for (const x of attempts.filter(x => x.status !== 'pass')) {
-        console.log(x.out.trim().split('\n').slice(process.env.CDP_FULL ? 0 : -30).map(l => '      ' + l).join('\n'));
+        console.log(failingOutput(x.out, { keep: 30, full: !!process.env.CDP_FULL }).map(l => '      ' + l).join('\n'));
       }
     }
   }));
@@ -558,7 +559,7 @@ async function runSequences() {
     if (failed) { res.output = `${failed.t} failed after ${group.slice(0, group.indexOf(failed.t)).join(', ')}:\n${failed.r.out}`; res.tail = lastLines(failed.r.out, 6); }
     results.push(res);
     console.log(`${(status === 'pass' ? 'PASS' : status.toUpperCase()).padEnd(7)} ${name}  (${secs.toFixed(1)}s)${failed ? `  ${failed.t} exit=${failed.r.code}` : ''}`);
-    if (failed) console.log(failed.r.out.trim().split('\n').slice(process.env.CDP_FULL ? 0 : -30).map(l => '      ' + l).join('\n'));
+    if (failed) console.log(failingOutput(failed.r.out, { keep: 30, full: !!process.env.CDP_FULL }).map(l => '      ' + l).join('\n'));
   }
 }
 
