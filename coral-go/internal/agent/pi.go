@@ -169,15 +169,22 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 			coralDir = filepath.Join(home, ".coral")
 		}
 	}
+	// A resume id from the request is joined into the session-dir path, so it must be a
+	// canonical session id; an invalid one is ignored, starting a fresh session rather than
+	// reaching outside pi-sessions (#3582). params.SessionID is server-generated.
+	resumeID := params.ResumeSessionID
+	if resumeID != "" && !IsResumeID(resumeID) {
+		resumeID = ""
+	}
 	if coralDir != "" {
 		effectiveID := params.SessionID
-		if params.ResumeSessionID != "" {
-			effectiveID = params.ResumeSessionID
+		if resumeID != "" {
+			effectiveID = resumeID
 		}
 		sessionDir := filepath.Join(coralDir, "pi-sessions", effectiveID)
 		os.MkdirAll(sessionDir, 0755)
 		parts = append(parts, "--session-dir", sessionDir)
-		if params.ResumeSessionID != "" {
+		if resumeID != "" {
 			parts = append(parts, "--continue")
 		}
 	}

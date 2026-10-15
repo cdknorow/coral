@@ -3385,6 +3385,10 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "session_id is required")
 		return
 	}
+	if !agent.IsResumeID(body.SessionID) {
+		errBadRequest(w, "session_id must be a session UUID") // #3582: it goes into file paths
+		return
+	}
 
 	agentType := body.AgentType
 	if agentType == "" {
@@ -3674,6 +3678,10 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if body.ResumeSessionID != "" && !agent.IsResumeID(body.ResumeSessionID) {
+		errBadRequest(w, "resume_session_id must be a session UUID") // #3582: it goes into file paths
 		return
 	}
 	// No agent_type (e.g. `coral-agent launch`) means the operator's default,

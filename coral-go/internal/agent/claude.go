@@ -307,6 +307,9 @@ func (a *ClaudeAgent) PrintArgs(params LaunchParams) (args []string, settingsFil
 }
 
 func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {
+	if !IsResumeID(sessionID) {
+		return // not a canonical session id: never touch the filesystem with it (#3582)
+	}
 	basePath := a.HistoryBasePath()
 	encoded := strings.ReplaceAll(strings.ReplaceAll(workingDir, "/", "-"), "_", "-")
 	targetProject := filepath.Join(basePath, encoded)
@@ -328,9 +331,8 @@ func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {
 		source := filepath.Join(basePath, entry.Name(), sessionID+".jsonl")
 		if _, err := os.Stat(source); err == nil {
 			os.MkdirAll(targetProject, 0755)
-			data, err := os.ReadFile(source)
-			if err == nil {
-				os.WriteFile(targetJSONL, data, 0644)
+			if data, err := os.ReadFile(source); err == nil {
+				writeNoFollow(targetJSONL, data)
 			}
 			// Copy session directory if it exists
 			sourceDir := filepath.Join(basePath, entry.Name(), sessionID)
@@ -541,15 +543,35 @@ func copyDir(src, dst string) {
 		dstPath := filepath.Join(dst, entry.Name())
 		if entry.IsDir() {
 			copyDir(srcPath, dstPath)
-		} else {
-			data, err := os.ReadFile(srcPath)
-			if err != nil {
-				slog.Warn("copyDir: failed to read file", "src", srcPath, "error", err)
-				continue
-			}
-			if err := os.WriteFile(dstPath, data, 0644); err != nil {
-				slog.Warn("copyDir: failed to write file", "dst", dstPath, "error", err)
-			}
+			continue
+		}
+		// Only real files are copied (#3582): a symlink in the source session dir would
+		// otherwise be read through, and O_NOFOLLOW stops a planted symlink at the target.
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			slog.Warn("copyDir: failed to read file", "src", srcPath, "error", err)
+			continue
+		}
+		if err := writeNoFollow(dstPath, data); err != nil {
+			slog.Warn("copyDir: failed to write file", "dst", dstPath, "error", err)
 		}
 	}
+}
+
+// writeNoFollow writes data to a new file, failing if it exists or is a symlink (O_EXCL and, on
+// unix, O_NOFOLLOW), so copying a resumed session never follows or overwrites a planted path
+// (#3582).
+func writeNoFollow(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|oNoFollow, 0644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
