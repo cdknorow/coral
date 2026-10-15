@@ -159,3 +159,35 @@ func TestIdentityBindingTerminalSessionStrict(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// #3512: a board store that can't be read is never a bypass. The subscription lookup
+// failing checks the agent as unsubscribed (the Operator is still refused), and a name
+// that can't be checked against the board's subscribers is refused with 503.
+func TestIdentityBindingBoardStoreErrorFailsClosed(t *testing.T) {
+	srv, ts, _ := strictServer(t, false)
+	ctx := context.Background()
+	sid := "dddddddd-3512-0000-0000-00000000000d"
+	require.NoError(t, store.NewSessionStore(srv.db).RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "agent-dddd", WorkingDir: "/tmp/dddd"}))
+	tok, err := srv.db.MintSessionToken(ctx, sid, "claude-"+sid)
+	require.NoError(t, err)
+	_, err = srv.boardStore.Subscribe(ctx, "b3512", "Delta", "Delta", "claude-"+sid, nil, nil, "all")
+	require.NoError(t, err)
+	require.NoError(t, srv.boardStore.Close()) // every read fails from here on
+	post := func(body string) (int, map[string]any) {
+		req, _ := http.NewRequest("POST", ts.URL+"/api/board/b3512/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(store.SessionTokenHeader, tok)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out
+	}
+	code, out := post(`{"subscriber_id":"Operator","content":"x"}`)
+	assert.Equal(t, http.StatusForbidden, code, out)
+	assert.Equal(t, "identity_mismatch", out["code"])
+	code, out = post(`{"subscriber_id":"Delta","content":"x"}`)
+	assert.Equal(t, http.StatusServiceUnavailable, code, out)
+	assert.Equal(t, "identity_unavailable", out["code"])
+}

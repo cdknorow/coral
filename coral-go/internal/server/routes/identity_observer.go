@@ -188,7 +188,17 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			// A presented token decides who the caller is on the board, in every mode
 			// (#3495): an agent can't post or act as another subscriber or as the Operator.
 			// Acting on another board stays log-only outside strict mode.
-			if m := o.checkBoard(r, owner); m != nil && (o.strict || m.Kind != mismatchCrossBoard) {
+			m, err := o.checkBoard(r, owner)
+			if err != nil {
+				// The board's subscribers couldn't be read, so a name the request claims can't be
+				// told apart from one another session holds: refused, not let through (#3512).
+				o.logOnce("board-lookup:"+owner.SessionName, "[identity] board lookup failed, request refused",
+					"session", owner.SessionName, "request", r.Method+" "+r.URL.Path, "error", err)
+				o.refuse(w, http.StatusServiceUnavailable, "identity_unavailable",
+					"Coral couldn't check this agent's board identity just now; try again")
+				return
+			}
+			if m != nil && (o.strict || m.Kind != mismatchCrossBoard) {
 				o.refuse(w, http.StatusForbidden, "identity_mismatch",
 					"This agent can't act as "+strconv.Quote(m.Claimed)+" ("+m.Field+"): its session is "+strconv.Quote(m.Expected)+" ("+m.Kind+")")
 				return
@@ -526,20 +536,26 @@ func (o *IdentityObserver) logOnce(key, msg string, args ...any) {
 }
 
 // checkBoard compares a board request's claimed identity with the token's session, and
-// returns the first mismatch (nil when there is none). Every mismatch is recorded.
-func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionTokenOwner) (first *IdentityMismatch) {
+// returns the first mismatch (nil when there is none). Every mismatch is recorded. An
+// error means a claimed name couldn't be checked (the board's subscribers couldn't be
+// read), and the caller refuses the request.
+func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionTokenOwner) (first *IdentityMismatch, err error) {
 	rest, ok := strings.CutPrefix(r.URL.Path, "/api/board/")
 	if !ok || o.bs == nil {
-		return nil
+		return nil, nil
 	}
 	project, _, _ := strings.Cut(rest, "/")
 	switch project {
 	case "", "projects", "tasks", "remotes":
-		return nil
+		return nil, nil
 	}
-	sub, err := o.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
-	if err != nil {
-		return nil
+	sub, lookupErr := o.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
+	if lookupErr != nil {
+		// Never a bypass: checked as an agent with no subscription (the Operator and
+		// names other sessions hold are still refused; Security's #3512 review).
+		o.logOnce("board-lookup:"+owner.SessionName, "[identity] subscription lookup failed; checked as unsubscribed",
+			"session", owner.SessionName, "error", lookupErr)
+		sub = nil
 	}
 	// The mismatch returned is the one that decides: an impersonation or Operator claim
 	// before a cross-board one (only the first two are refused outside strict mode).
@@ -573,7 +589,9 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 					note(o.mismatch(r, owner, mismatchOperator, notSubscribed, v, f))
 				default:
 					if !listed {
-						held, _ = o.bs.ListSubscribers(r.Context(), project)
+						if held, err = o.bs.ListSubscribers(r.Context(), project); err != nil {
+							return nil, err
+						}
 						listed = true
 					}
 					for _, s := range held {
@@ -585,7 +603,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 				}
 			}
 		}
-		return first
+		return first, nil
 	}
 	if !strings.EqualFold(project, sub.Project) {
 		note(o.mismatch(r, owner, mismatchCrossBoard, sub.Project, project, "project"))
@@ -604,7 +622,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 			}
 		}
 	}
-	return first
+	return first, nil
 }
 
 // notSubscribed is the expected identity logged for an agent that holds a token but
