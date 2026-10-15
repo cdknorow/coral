@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -364,10 +365,12 @@ func TestArtifactStreamedUploadFirstWriterWins(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(raw, &side))
 	require.Equal(t, "first.txt", side.Name)
-	for _, p := range []string{rig.object(id), rig.object(id) + ".json"} {
-		info, err := os.Stat(p)
-		require.NoError(t, err)
-		require.Equal(t, os.FileMode(0o600), info.Mode().Perm(), p)
+	if runtime.GOOS != "windows" { // Windows reports 0666; folder privacy there is the data-dir ACL (#3637), not the mode.
+		for _, p := range []string{rig.object(id), rig.object(id) + ".json"} {
+			info, err := os.Stat(p)
+			require.NoError(t, err)
+			require.Equal(t, os.FileMode(0o600), info.Mode().Perm(), p)
+		}
 	}
 }
 
