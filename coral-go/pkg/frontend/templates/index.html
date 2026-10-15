@@ -169,6 +169,14 @@
                 <button class="btn btn-primary" type="button" id="leftover-tmux-end" onclick="endLeftoverTmux()">End them</button>
             </div>
 
+            <!-- #3636: more agents were running when a pty Coral stopped than it wakes by itself -->
+            <div id="auto-wake-banner" class="leftover-tmux-banner" role="alert" hidden>
+                <span class="material-icons" aria-hidden="true">bedtime</span>
+                <div class="leftover-tmux-text"><b id="auto-wake-count"></b> <span id="auto-wake-detail">Wake them? Coral wakes them one at a time and they resume their conversation.</span></div>
+                <button class="btn" type="button" id="auto-wake-dismiss" onclick="dismissAutoWake()">Not now</button>
+                <button class="btn btn-primary" type="button" id="auto-wake-go" onclick="wakePendingAgents()">Wake them</button>
+            </div>
+
             <div id="welcome-screen" class="welcome">
                 <div class="welcome-shell">
                     <header class="welcome-header">

@@ -1292,10 +1292,13 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 	systemFilter := " AND subscriber_id NOT IN ('Coral Task Queue')"
 
 	if receiveMode == "all" {
+		// Coral's own notice to one agent (CoralSender, #3636) counts only for the agent it
+		// names: never a fan-out to every subscriber that reads everything.
 		var count int
 		err := s.reader().GetContext(ctx, &count,
-			`SELECT COUNT(*) FROM board_messages WHERE project = ? AND id > ? AND subscriber_id != ?`+systemFilter,
-			project, sub.LastReadID, subscriberID)
+			`SELECT COUNT(*) FROM board_messages WHERE project = ? AND id > ? AND subscriber_id != ?`+systemFilter+
+				` AND (subscriber_id != '`+CoralSender+`' OR instr(content, ?) > 0)`,
+			project, sub.LastReadID, subscriberID, "@"+sub.JobTitle)
 		return count, err
 	}
 
@@ -3048,3 +3051,8 @@ func (s *Store) GetTaskLiveCost(ctx context.Context, project string, taskID int6
 		RequestCount:     costs.RequestCount,
 	}, nil
 }
+
+// CoralSender is the system sender of Coral's notices to one agent (#3636: "Coral restarted").
+// Such a notice @-names its agent; a subscriber reading everything counts it only when it is the
+// one named.
+const CoralSender = "Coral"

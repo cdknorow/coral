@@ -9,8 +9,10 @@
 import { showToast } from './utils.js';
 import { isCloud } from './server_base.js';
 import { showConfirmModal } from './render.js';
+import { state } from './state.js';
 
 let _status = null; // GET /api/system/terminal-backend
+let _autoWakeShown = null; // the auto-wake values as the dialog opened (#3636)
 
 const OS_NOTE = {
     mac: "macOS: with pty, other programs normally cannot reach Coral's terminals; with tmux they can, through the socket. Neither backend separates Coral from programs running with your full user rights; for that, run agents under a separate account.",
@@ -74,6 +76,17 @@ export async function loadTerminalBackendRow() {
     $('tb-now').append('Running now: ', Object.assign(document.createElement('b'), { textContent: _status.running }));
     $('tb-choice').hidden = !_status.choice;
     $('tb-fixed').hidden = !!_status.choice;
+    // Waking the agents that were running when Coral stopped (#3636): a pty Coral only.
+    const aw = $('tb-autowake');
+    if (aw) {
+        aw.hidden = _status.running !== 'pty';
+        const st = state.settings || {};
+        const on = String(st.auto_wake_after_restart ?? 'true') !== 'false';
+        const cap = Number.parseInt(st.auto_wake_cap, 10);
+        $('tb-autowake-on').checked = on;
+        $('tb-autowake-cap').value = cap >= 1 && cap <= 50 ? cap : 8;
+        _autoWakeShown = aw.hidden ? null : { on, cap: Number($('tb-autowake-cap').value) };
+    }
     if (_status.choice) {
         const next = nextBackend(_status);
         for (const r of document.querySelectorAll('input[name="terminal-backend"]')) {
@@ -123,7 +136,30 @@ function confirmWith(title, message, yesLabel) {
 
 /** Apply a changed backend choice (after the rest of Settings is saved). Resolves to true when
  *  nothing changed or the change went through, false when the user cancelled or it failed. */
+async function saveAutoWake() {
+    if (!_autoWakeShown) return true;
+    const on = $('tb-autowake-on').checked;
+    const cap = Number($('tb-autowake-cap').value);
+    if (on === _autoWakeShown.on && cap === _autoWakeShown.cap) return true;
+    if (!Number.isInteger(cap) || cap < 1 || cap > 50) {
+        showToast('Wake up to: a whole number from 1 to 50', true);
+        return false;
+    }
+    const resp = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_wake_after_restart: on, auto_wake_cap: cap }) });
+    if (!resp.ok) {
+        let body = {};
+        try { body = await resp.json(); } catch { /* not JSON */ }
+        showToast(body.error || 'Could not save the wake setting', true);
+        return false;
+    }
+    state.settings = { ...(state.settings || {}), auto_wake_after_restart: String(on), auto_wake_cap: String(cap) };
+    _autoWakeShown = { on, cap };
+    return true;
+}
+
 export async function applyTerminalBackendChange() {
+    if (!(await saveAutoWake())) return false;
     const st = _status;
     if (!st || !st.choice || st.forced || isCloud()) return true;
     const want = picked();
@@ -175,4 +211,63 @@ export async function endLeftoverTmux() {
     if (!r.ok) { showToast(r.body.error || 'Could not end them', true); return; }
     showToast(`Ended ${r.body.ended} agent${r.body.ended === 1 ? '' : 's'}: wake them from the list`);
     checkLeftoverTmux();
+}
+
+// ── More agents to wake than Coral wakes by itself (#3636) ───────────────
+
+async function autoWakeStatus() {
+    const resp = await fetch('/api/system/auto-wake');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+}
+
+function showAutoWakeBanner(st) {
+    const banner = $('auto-wake-banner');
+    if (!banner) return;
+    const n = (st && st.state === 'pending') ? st.pending.length : 0;
+    banner.hidden = n === 0;
+    if (n) $('auto-wake-count').textContent = `${n} agents were running when Coral stopped.`;
+}
+
+/** After a start, look for the over-the-cap question (the pass runs a few seconds in). */
+export function watchAutoWake() {
+    if (isCloud()) return;
+    let tries = 0;
+    const look = async () => {
+        tries++;
+        let st;
+        try { st = await autoWakeStatus(); } catch { return; }
+        showAutoWakeBanner(st);
+        if ((st.state === '' || st.state === 'waking') && tries < 6) setTimeout(look, 5000); // sleep-ok: the pass starts 5 s after Coral
+    };
+    setTimeout(look, 6000); // sleep-ok: the pass starts 5 s after Coral
+}
+
+/** Wake them: each through the per-agent wake route, 2 s plus up to 1 s apart. */
+export async function wakePendingAgents() {
+    let st;
+    try { st = await autoWakeStatus(); } catch { return; }
+    const pending = (st.pending || []).slice();
+    const detail = $('auto-wake-detail');
+    for (const btn of [$('auto-wake-go'), $('auto-wake-dismiss')]) if (btn) btn.disabled = true;
+    let woken = 0;
+    for (let i = 0; i < pending.length; i++) {
+        if (i) await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000)); // sleep-ok: the stagger between wakes
+        if (detail) detail.textContent = `Waking ${i + 1} of ${pending.length}…`;
+        try {
+            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(pending[i].session_id)}/wake`, { method: 'POST' });
+            const data = await resp.json().catch(() => ({}));
+            if (data.ok) woken++;
+        } catch { /* the next one */ }
+    }
+    for (const btn of [$('auto-wake-go'), $('auto-wake-dismiss')]) if (btn) btn.disabled = false;
+    showToast(`Woke ${woken} of ${pending.length} agents`);
+    try { showAutoWakeBanner(await autoWakeStatus()); } catch { /* keep it */ }
+}
+
+/** Not now: they stay asleep, and can be woken from the list. */
+export async function dismissAutoWake() {
+    const resp = await fetch('/api/system/auto-wake/dismiss', { method: 'POST' });
+    if (!resp.ok) { showToast('Could not dismiss this', true); return; }
+    showAutoWakeBanner(await resp.json());
 }

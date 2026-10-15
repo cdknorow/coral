@@ -201,6 +201,11 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, HubModeSetting+" is set with PUT /api/system/hub-mode")
 		return
 	}
+	// The auto-wake setting and cap (#3636): a boolean, and a whole number from 1 to 50.
+	if err := validateAutoWakeSettings(body); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	// agent_priority is "low" or "normal" (#3437); anything else was stored and silently
 	// taken as low (#3470). Checked before anything is saved; the stored value is normalised.
 	if v, ok := body[agentprio.SettingKey]; ok {

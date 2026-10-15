@@ -263,6 +263,14 @@ func (s *Server) MintLoginToken() (string, error) {
 // StartMachineHealth samples this machine's health every 15 s for the feeds (#3444): Coral's own
 // process, the agents' process trees (the backend's agent processes), the host, the data folder's
 // disk, and the stall watchdog's probe latencies (wd may be nil: the watchdog is off).
+// AutoWakeAfterRestart wakes the agents that were running when this pty Coral last stopped
+// (#3636); startup calls it once, on pty.
+func (s *Server) AutoWakeAfterRestart(ctx context.Context) {
+	if s.sessHandler != nil {
+		s.sessHandler.AutoWakeAfterRestart(ctx)
+	}
+}
+
 // RunArtifactRetention runs #3554's artifact retention job (off unless the Operator sets
 // artifact_retention_days) until ctx ends.
 func (s *Server) RunArtifactRetention(ctx context.Context) {
@@ -499,6 +507,9 @@ func (s *Server) buildRouter() chi.Router {
 	// Individual session sleep/wake
 	r.Post("/api/sessions/live/{sessionID}/sleep", sessHandler.SleepSession)
 	r.Post("/api/sessions/live/{sessionID}/wake", sessHandler.WakeSession)
+	// #3636: the start's wake of the agents running when a pty Coral stopped.
+	r.Get("/api/system/auto-wake", sessHandler.AutoWakeStatus)
+	r.Post("/api/system/auto-wake/dismiss", sessHandler.DismissAutoWake)
 	r.Post("/api/sessions/live/{sessionID}/archive", sessHandler.ArchiveSession)
 	r.Post("/api/sessions/live/{sessionID}/unarchive", sessHandler.UnarchiveSession)
 

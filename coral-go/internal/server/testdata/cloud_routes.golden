@@ -128,6 +128,7 @@ GET /api/system/api-key never
 GET /api/system/artifact-store never
 GET /api/system/artifact-store/kept never
 GET /api/system/auth-status never
+GET /api/system/auto-wake never
 GET /api/system/cli-check never
 GET /api/system/database-security never
 GET /api/system/editors never
@@ -275,6 +276,7 @@ POST /api/sessions/live/{sessionID}/sleep interact
 POST /api/sessions/live/{sessionID}/unarchive interact
 POST /api/sessions/live/{sessionID}/wake launch
 POST /api/system/api-key/regenerate never
+POST /api/system/auto-wake/dismiss never
 POST /api/system/login-token never
 POST /api/system/restart never
 POST /api/system/telemetry/acknowledge never

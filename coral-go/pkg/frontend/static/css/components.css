@@ -4049,3 +4049,9 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 .leftover-tmux-banner .material-icons { color: var(--color-warning, #d29922); }
 .leftover-tmux-text { flex: 1; min-width: 0; }
 @media (max-width: 767px) { .leftover-tmux-banner { flex-wrap: wrap; } }
+
+/* Auto-wake on pty (#3636) */
+.tb-autowake { border-top: 1px solid var(--border); margin-top: var(--space-md); padding-top: var(--space-md); display: flex; flex-direction: column; gap: var(--space-sm); }
+#settings-modal .tb-autowake label { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-base); color: var(--text-primary); }
+#settings-modal .tb-autowake input[type="checkbox"] { flex: none; width: 16px; height: 16px; min-height: 0; margin: 0; }
+#settings-modal .tb-autowake input[type="number"] { width: 4.5em; min-height: 0; padding: 2px 6px; }

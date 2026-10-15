@@ -186,6 +186,9 @@ Object.assign(window, {
     pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder,
     // terminal backend (#3634): the banner's End them, loaded on first use
     endLeftoverTmux: () => importOnce('./terminal_backend.js').then(m => m.endLeftoverTmux()),
+    // auto-wake (#3636): the over-the-cap banner's two buttons
+    wakePendingAgents: () => importOnce('./terminal_backend.js').then(m => m.wakePendingAgents()),
+    dismissAutoWake: () => importOnce('./terminal_backend.js').then(m => m.dismissAutoWake()),
     // message_board
     selectBoardProject, showMessageBoardProjects, postBoardMessage,
     deleteMessageBoardProject, confirmDeleteBoard: deleteMessageBoardProject,
@@ -976,7 +979,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }).finally(() => { _startListLoadSettled(); _liveListLoaded(); });
     loadAllFolderTags();
     if (!popout) loadPinnedFolders();
-    if (!popout) importOnce('./terminal_backend.js').then(m => m.checkLeftoverTmux()).catch(() => {}); // #3634
+    if (!popout) importOnce('./terminal_backend.js').then(m => { m.checkLeftoverTmux(); m.watchAutoWake(); }).catch(() => {}); // #3634, #3636
     loadCustomViews();
     initAgentUI();
     connectCoralWs();

@@ -143,7 +143,8 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 			sleeping := 0
 			for _, ls := range liveSessions {
 				if ls.IsSleeping == 0 {
-					if err := ss.SetSessionSleeping(ctx, ls.SessionID, true); err == nil {
+					// Running when Coral stopped: the next start may wake it again (#3636).
+					if err := ss.SetSessionSleepingFor(ctx, ls.SessionID, store.SleepReasonCoralStopped); err == nil {
 						sleeping++
 					}
 				}
@@ -410,7 +411,11 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// mark them as sleeping so the user can wake them. Also wakes
 	// sessions that are marked sleeping but still running (e.g. tmux
 	// survived a server restart).
-	reconcileOrphanedSessions(ctx, db, agentRT)
+	_, ptyRun := backend.(*ptymanager.PTYBackend)
+	if ptyRun {
+		cfg.TerminalBackend = "pty" // also when startup fell back to pty (a long socket path)
+	}
+	reconcileOrphanedSessions(ctx, db, agentRT, ptyRun)
 	reconcileOrphanedTeams(ctx, db)
 
 	// Restore board pause state AFTER reconciliation so it reflects
@@ -593,7 +598,9 @@ func restrictToLoopback(cfg *config.Config, reason string) {
 // the runtime to see if their processes are actually running. Any session
 // that exists in the DB but has no running process is marked as sleeping
 // so the user can wake it from the UI.
-func reconcileOrphanedSessions(ctx context.Context, db *store.DB, agentRT background.AgentRuntime) {
+// ptyRun: on pty, an awake row with no running agent was running when Coral last stopped
+// without its shutdown (a crash), so it is marked coral_stopped for the auto-wake (#3636).
+func reconcileOrphanedSessions(ctx context.Context, db *store.DB, agentRT background.AgentRuntime, ptyRun bool) {
 	ss := store.NewSessionStore(db)
 
 	liveSessions, err := ss.GetAllLiveSessions(ctx)
@@ -632,7 +639,11 @@ func reconcileOrphanedSessions(ctx context.Context, db *store.DB, agentRT backgr
 			continue
 		}
 		slog.Warn("detected crashed agent, marking as sleeping", "session_id", ls.SessionID, "agent_name", ls.AgentName)
-		if err := ss.SetSessionSleeping(ctx, ls.SessionID, true); err != nil {
+		reason := ""
+		if ptyRun {
+			reason = store.SleepReasonCoralStopped
+		}
+		if err := ss.SetSessionSleepingFor(ctx, ls.SessionID, reason); err != nil {
 			log.Printf("[startup] failed to mark orphaned session %s as sleeping: %v", ls.SessionID[:8], err)
 			continue
 		}
@@ -981,6 +992,11 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// (call_metrics_retention_days, 14 days by default) in short batches (#3261).
 	metricsRetention := background.NewCallMetricsRetention(db)
 	safeGo(ctx, "call_metrics_retention", func() { metricsRetention.Run(ctx) })
+
+	// A pty Coral wakes the agents that were running when it last stopped (#3636).
+	if cfg.TerminalBackend == "pty" {
+		safeGo(ctx, "auto_wake", func() { srv.AutoWakeAfterRestart(ctx) })
+	}
 
 	// Uploads retention: pasted/dropped images expire after uploads_retention_days
 	// (30 by default) and the folder stays under uploads_max_mb (#3364).

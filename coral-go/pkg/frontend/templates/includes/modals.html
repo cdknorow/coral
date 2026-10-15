@@ -600,6 +600,12 @@
                         <p class="tb-note" id="tb-note"></p>
                         <p class="tb-pending" id="tb-pending" role="status" hidden></p>
                     </div>
+                    <!-- #3636: on pty, wake the agents that were running when Coral stopped -->
+                    <div class="tb-autowake" id="tb-autowake" hidden>
+                        <label class="tb-autowake-on"><input type="checkbox" id="tb-autowake-on"> Wake agents that were running when Coral stopped</label>
+                        <label class="tb-autowake-cap">Wake up to <input type="number" id="tb-autowake-cap" min="1" max="50" step="1" inputmode="numeric"> without asking</label>
+                        <p class="tb-note">Coral wakes them one at a time when it starts, and they resume their conversation with the permissions they ran with, including an agent that bypassed permissions. More than this many: Coral asks first. Agents you put to sleep stay asleep.</p>
+                    </div>
                     <p class="tb-fixed" id="tb-fixed" hidden>This Coral runs agents in its own terminals (pty), the only backend here (no tmux on this system). Agents end when Coral restarts or upgrades; wake them from the dashboard and they resume their conversation.</p>
                 </div>
                 <dt id="settings-permission-mode-label">Default Permission Mode</dt>

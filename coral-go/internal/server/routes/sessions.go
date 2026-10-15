@@ -57,6 +57,8 @@ type SessionsHandler struct {
 	// inOldTmux reports an agent session still running in Coral's private tmux server, for a
 	// pty Coral's wake (#3634). Tests replace it.
 	inOldTmux func(ctx context.Context, sessionName string) bool
+	// autoWake is the start's wake of the agents running when a pty Coral stopped (#3636).
+	autoWake autoWaker
 	// cliVersionOf finds a CLI's version (agent.CLIVersion; tests replace it), and
 	// cliVersionTried the sessions a missing version was already looked up for (#3573).
 	cliVersionOf      func(settings map[string]string, agentType string) string
@@ -272,6 +274,7 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 // NewSessionsHandler creates a SessionsHandler with the given dependencies.
 func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, bs *board.Store) *SessionsHandler {
 	return &SessionsHandler{
+		autoWake: autoWaker{sleep: defaultSleep, now: time.Now},
 		inOldTmux: func(ctx context.Context, name string) bool {
 			return tmux.HasPrivateAgentSession(ctx, tmux.PrivateSocketPath(cfg.CoralDir()), name)
 		},
@@ -6659,6 +6662,10 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Failed to relaunch session"})
 		return
+	}
+	// One the Operator chose to wake from the over-the-cap list (#3636) gets Coral's notice.
+	if h.takePendingAutoWake(sess.SessionID) {
+		h.sendAutoWakeNotice(ctx, *sess)
 	}
 
 	// Unpause the board if this agent was on one
