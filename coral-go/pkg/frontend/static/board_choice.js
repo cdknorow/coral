@@ -11,13 +11,15 @@ export function retryPayload(payload, pick) {
     return null;
 }
 
-/** "created Oct 12, 4 members" for a candidate. */
+/** "created Oct 12, 4 members, 2 running" for a candidate (live_agents since #3543). */
 export function candidateDetail(c, locale) {
     const parts = [];
     const d = c && c.created_at ? new Date(c.created_at) : null;
     if (d && !isNaN(d)) parts.push(`created ${d.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })}`);
     const n = Number(c && c.members);
     if (Number.isFinite(n) && n >= 0) parts.push(`${n} member${n === 1 ? '' : 's'}`);
+    const live = Number(c && c.live_agents);
+    if (c && c.live_agents !== undefined && Number.isFinite(live) && live >= 0) parts.push(`${live} running`);
     return parts.join(', ');
 }
 

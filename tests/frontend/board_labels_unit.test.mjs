@@ -47,6 +47,9 @@ assert.deepEqual(JSON.parse(JSON.stringify(retryPayload(body, { new_board: true 
 assert.equal(retryPayload(body, null), null, 'cancel: no launch');
 assert.match(candidateDetail(res409.data.candidates[0], 'en-US'), /^created Oct 1[12](, 2026)?, 4 members$/);
 assert.equal(candidateDetail({ members: 1 }, 'en-US'), '1 member');
+assert.equal(candidateDetail({ members: 4, live_agents: 2 }, 'en-US'), '4 members, 2 running', 'running agents beside members (#3543)');
+assert.equal(candidateDetail({ members: 3, live_agents: 0 }, 'en-US'), '3 members, 0 running');
+assert.equal(candidateDetail({ members: 3, live_agents: 'x' }, 'en-US'), '3 members', 'a bad count is left out');
 assert.equal(candidateDetail({ created_at: 'nonsense' }, 'en-US'), '');
 
 console.log('board_labels_unit: ok');
