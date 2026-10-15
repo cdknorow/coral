@@ -93,6 +93,29 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('the agent list shows each board by its label, told apart by a short id',
             !!hA && !!hB && hA.startsWith(`${NAME} (${idA.slice(0, 6)})`) && hB.startsWith(`${NAME} (${idB.slice(0, 6)})`) && !hA.includes(idA) && !hB.includes(idB), JSON.stringify({ hA, hB }));
 
+        console.log("3b. The operator's case: a second board next to an older one whose id is its name");
+        const LEGACY = 'ids-legacy-3538';
+        boards.add(LEGACY);
+        await api('POST', `/api/board/${LEGACY}/subscribe`, { subscriber_id: 'Ids QA', job_title: 'QA' }); // a board keyed by its name
+        const legacyLaunch = await ev(`(async () => {
+            const m = await import((window.__coralStatic || '/static/') + 'modals.js');
+            window.__launchDone = false;
+            window.__launch = m._launchOn('local', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'Ids QA', board_name: ${JSON.stringify(LEGACY)} })
+                .then(r => { window.__launchResult = r; window.__launchDone = true; return r; });
+            return true; })()`);
+        await until(`!!document.getElementById('board-choice-modal')`, 'the choice for the older board');
+        const offers = await ev(`({ join: [...document.querySelectorAll('#board-choice-modal [data-board-id]')].map(b => b.dataset.boardId), another: !!document.querySelector('#board-choice-modal [data-action="new"]') })`);
+        check('the older board is offered to join, and another can be made', legacyLaunch && offers.join[0] === LEGACY && offers.another, JSON.stringify(offers));
+        await ev(`document.querySelector('#board-choice-modal [data-action="new"]').click(); true`);
+        const second = await record(await result());
+        check('"Create another" next to the older board starts a b- board with that label', !!second && /^b-/.test(second.board_project) && second.board_label === LEGACY, JSON.stringify(second && { board: second.board_project, label: second.board_label }));
+        if (second) {
+            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'api.js'); await m.loadLiveSessions(); return true; })()`);
+            await until(`(${headerText(second.board_project)} || '').length > 0`, 'the new group');
+            const label2 = await ev(headerText(second.board_project));
+            check("the new board shows its label with a short id (the older one has none)", (label2 || '').startsWith(`${LEGACY} (${second.board_project.slice(0, 6)})`), label2);
+        }
+
         console.log('4. Cancel and Escape launch nothing');
         const before = sessions.length;
         await launch();
