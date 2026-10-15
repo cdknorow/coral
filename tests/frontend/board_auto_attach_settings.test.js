@@ -69,21 +69,30 @@ const BASE = require('./test_base').BASE;
       assert.equal(await ev(`window.__settingsPut[0].board_auto_attach`), want, `saved without the switch: ${JSON.stringify(settings)}`);
     }
 
-    // Opening the real Settings dialog (showSettingsModal) shows the same state.
+    // Opening the real Settings dialog (showSettingsModal) shows the same state. The stub is
+    // installed BEFORE any page script runs, so the dashboard's own boot-time settings load gets
+    // the same answer: before, that load (the real server, where the setting is off) could land
+    // after the stubbed one and turn the switch back off (a flake on a loaded runner).
     for (const [settings, want] of [[{}, false], [{ board_auto_attach: '' }, false], [{ board_auto_attach: 'True' }, true]]) {
-      await Page.navigate({ url: BASE }); await Page.loadEventFired();
-      const got = await ev(`(async () => {
+      const { identifier } = await Page.addScriptToEvaluateOnNewDocument({ source: `(() => {
         const real = window.fetch;
-        window.fetch = async (url, opts = {}) => String(url).endsWith('/api/settings') && (opts.method || 'GET') === 'GET'
-          ? new Response(JSON.stringify({ settings: ${JSON.stringify(settings)} }), { headers: { 'Content-Type': 'application/json' } })
+        window.fetch = (url, opts = {}) => String(url && url.url || url).endsWith('/api/settings') && ((opts && opts.method) || 'GET') === 'GET'
+          ? Promise.resolve(new Response(JSON.stringify({ settings: ${JSON.stringify(settings)} }), { headers: { 'Content-Type': 'application/json' } }))
           : real(url, opts);
-        const m = await import(${MOD}+'modals.js');
-        await m.loadSettings();
-        await m.showSettingsModal();
-        const box = document.getElementById('settings-board-auto-attach');
-        return box ? box.checked : 'missing';
-      })()`);
-      assert.equal(got, want, `the Settings dialog: ${JSON.stringify(settings)}`);
+      })()` });
+      try {
+        await Page.navigate({ url: BASE }); await Page.loadEventFired();
+        const got = await ev(`(async () => {
+          const m = await import(${MOD}+'modals.js');
+          await m.loadSettings();
+          await m.showSettingsModal();
+          const box = document.getElementById('settings-board-auto-attach');
+          return box ? box.checked : 'missing';
+        })()`);
+        assert.equal(got, want, `the Settings dialog: ${JSON.stringify(settings)}`);
+      } finally {
+        await Page.removeScriptToEvaluateOnNewDocument({ identifier });
+      }
     }
 
     console.log('PASS board auto-attach setting: off by default, shown as saved, saved from the dashboard');
