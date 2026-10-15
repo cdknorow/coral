@@ -95,6 +95,10 @@ func TestIdentityBindingOnAgentRoutes(t *testing.T) {
 	expect(401, "POST", "/api/notifications", `{"title":"hi"}`, nil, "anonymous")
 	expect(200, "POST", "/api/notifications", `{"title":"hi"}`, asA, "an agent")
 	expect(200, "POST", "/api/notifications", `{"title":"hi"}`, dashboard, "the Operator")
+	// #3622 F2: a link outside docs://, http(s) and dashboard paths is refused, for anyone.
+	expect(400, "POST", "/api/notifications", `{"title":"hi","link":{"label":"Open","url":"javascript:alert(1)"}}`, asA, "a javascript: link")
+	expect(400, "POST", "/api/notifications", `{"title":"hi","link":{"label":"Open","url":"data:text/html,x"}}`, dashboard, "a data: link, even from the Operator")
+	expect(200, "POST", "/api/notifications", `{"title":"hi","link":{"label":"Docs","url":"docs://workflow-quickstart"}}`, asA, "a docs:// link")
 
 	// A terminal session is a plain shell, never given a token: coral-agent run in it
 	// works without one in default mode, for that session only. An agent session

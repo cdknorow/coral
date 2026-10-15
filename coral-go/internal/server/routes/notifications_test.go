@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -189,4 +190,24 @@ func TestWSCoral_HubFeedDoesNotConsumeNotifications(t *testing.T) {
 			return
 		}
 	}
+}
+
+// #3622 F2: an agent's notification link can only go to docs://, a web address, or a dashboard path.
+func TestCheckNotificationLink(t *testing.T) {
+	for _, u := range []string{
+		"docs://workflow-quickstart", "https://example.test/a?b=1#c", "http://localhost:3000/", "HTTPS://Example.test",
+		"/agents", "/board/my-team", "/docs/auth", "  /jobs  ",
+	} {
+		assert.NoError(t, checkNotificationLink(&NotificationLink{Label: "x", URL: u}), u)
+	}
+	for _, u := range []string{
+		"", "javascript:alert(1)", "JavaScript:alert(1)", " javascript:alert(1)", "data:text/html,x", "vbscript:x", "file:///etc/passwd",
+		"//evil.test/x", "/\\evil.test", "\\\\host\\share", "/api/system/api-key", "/api", "https://", "https://user:pw@example.test/",
+		"ftp://example.test", "docs://", "docs://../x", "docs://a/b", "/a\nb", "/a\tb", "relative/path", "#hash",
+		"https://" + strings.Repeat("a", 2100) + ".test",
+	} {
+		assert.Error(t, checkNotificationLink(&NotificationLink{Label: "x", URL: u}), "%q", u)
+	}
+	assert.Error(t, checkNotificationLink(&NotificationLink{Label: strings.Repeat("é", 201), URL: "/agents"}), "label over 200 characters")
+	assert.NoError(t, checkNotificationLink(&NotificationLink{Label: strings.Repeat("é", 200), URL: "/agents"}))
 }

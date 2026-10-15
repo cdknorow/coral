@@ -14,14 +14,12 @@ const MODES = new Set(['board', 'chat', 'file']);
 // mode to the sanitizeHtml that follows.
 const MARKED_PARSE = {
     'utils.js': 'the renderers themselves',
-    'docs.js': "Coral's own docs (trusted; their cross-links must keep working)",
     'notes.js': 'links', // session notes, which can be an agent-derived auto summary
     'preview_pane.js': 'links', // a workspace file, which can be agent-written
     'team_artifacts.js': 'links', // knowledge distilled from agents' text
 };
 const DOMPURIFY_SANITIZE = {
     'utils.js': 'sanitizeHtml itself',
-    'docs.js': "Coral's own docs",
     'tasks.js': 'a second pass over renderMarkdown(..., "board") output',
 };
 

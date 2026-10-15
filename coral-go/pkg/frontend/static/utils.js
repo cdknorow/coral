@@ -120,14 +120,36 @@ export function showWorkflowNotification(title, message, level = 'info', duratio
     setTimeout(() => toast.remove(), duration);
 }
 
+/** Where a notification's link may go (#3622 F2): an agent writes it (coral-agent notify), so it
+ *  is one of docs://<name> (the Docs tab), an http(s) address (a new tab, no opener), or a
+ *  dashboard route the router accepts (rebuilt from the parse). Anything else, javascript:,
+ *  data:, file:, //host, /api/..., is refused (null) and the label is shown as text. The server
+ *  refuses the same links (routes/notifications.go). */
+export function notificationLinkTarget(url) {
+    const u = String(url || '').trim();
+    if (!u || u.length > 2048 || /[\u0000-\u001f\u007f\\]/.test(u)) return null;
+    const doc = /^docs:\/\/([A-Za-z0-9][A-Za-z0-9_-]{0,127})$/.exec(u);
+    if (doc) return { kind: 'docs', name: doc[1] };
+    if (/^https?:\/\//i.test(u)) {
+        let parsed;
+        try { parsed = new URL(u); } catch { return null; }
+        if (!/^https?:$/.test(parsed.protocol) || !parsed.hostname || parsed.username || parsed.password) return null;
+        return { kind: 'web', href: parsed.href };
+    }
+    const route = routeHref(u);
+    return route !== null ? { kind: 'route', href: route } : null;
+}
+
 export function showAlertNotification(title, message, level = 'info', link = null) {
     const icons = { success: '✅', warning: '⚠️', error: '❌', info: '💬' };
     const icon = icons[level] || icons.info;
     const overlay = document.createElement("div");
     overlay.className = "alert-notification-overlay";
-    const linkHtml = link
-        ? `<a href="#" class="alert-notification-link">${escapeHtml(link.label)}</a>`
-        : '';
+    const target = link ? notificationLinkTarget(link.url) : null;
+    const label = link ? String(link.label || link.url || '') : '';
+    const linkHtml = !link ? ''
+        : target ? `<a href="#" class="alert-notification-link">${escapeHtml(label)}</a>`
+        : `<span class="alert-notification-link blocked-link" title="Link not opened">${escapeHtml(label)}</span>`;
     overlay.innerHTML = `<div class="alert-notification">
             <div class="alert-notification-icon">${icon}</div>
             <div class="alert-notification-title">${title ? escapeHtml(title) : 'Notification'}</div>
@@ -137,19 +159,18 @@ export function showAlertNotification(title, message, level = 'info', link = nul
         </div>`;
     overlay.querySelector(".alert-notification-ok").addEventListener("click", () => overlay.remove());
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
-    if (link) {
-        overlay.querySelector(".alert-notification-link").addEventListener("click", (e) => {
+    if (target) {
+        overlay.querySelector("a.alert-notification-link").addEventListener("click", (e) => {
             e.preventDefault();
             overlay.remove();
-            // docs:// links navigate to the Docs tab (e.g. "docs://workflow-quickstart")
-            if (link.url.startsWith('docs://')) {
-                const docName = link.url.replace('docs://', '');
+            if (target.kind === 'docs') {
+                // docs:// links navigate to the Docs tab (e.g. "docs://workflow-quickstart")
                 if (window.switchNavTab) window.switchNavTab('docs');
-                importOnce('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(docName)).catch(() => {});
-            } else if (link.url.startsWith('http')) {
-                window.open(link.url, '_blank');
+                importOnce('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(target.name)).catch(() => {});
+            } else if (target.kind === 'web') {
+                window.open(target.href, '_blank', 'noopener,noreferrer');
             } else {
-                window.location.href = link.url;
+                window.location.assign(target.href);
             }
         });
     }
@@ -241,8 +262,66 @@ export const DOMPURIFY_CONFIG = {
     FORBID_ATTR: ['style', 'srcset', 'formaction'],
     FORBID_TAGS: ['style', 'form', 'textarea', 'select', 'iframe', 'object', 'embed', 'link', 'meta', 'base'],
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|file|coral):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-    ADD_ATTR: ['target', 'rel', 'data-file-ref', 'data-action', 'data-pending-id'],
+    ADD_ATTR: ['target', 'rel'],
 };
+
+/* Content an agent, a board post, a chat, a note or a file wrote is never live UI (#3622 F1):
+ * sanitizeHtml applies these rules whatever config its caller passes. No form controls or
+ * disclosure widgets (a lookalike button could act on Coral's own handlers, a fake password field
+ * could collect a secret); a task-list checkbox survives as a disabled checkbox Coral makes itself.
+ * Attributes come from an allowlist: no id, name, for, role, data-* or event wiring that could
+ * shadow the dashboard's own elements or pick up its handlers. A class is kept only for code
+ * highlighting (language-*, hljs*). Ids are kept only for a file shown in the viewer ('file'
+ * links), where #fragments need them, and are prefixed there (user-content-<id>). */
+const CONTENT_FORBID_TAGS = ['button', 'label', 'fieldset', 'legend', 'dialog', 'details', 'summary', 'progress', 'meter', 'option', 'optgroup', 'datalist', 'output', 'menu'];
+const CONTENT_ATTRS = new Set(['href', 'title', 'alt', 'src', 'width', 'height', 'colspan', 'rowspan', 'align', 'start', 'reversed',
+    'type', 'value', 'lang', 'dir', 'datetime', 'cite', 'abbr', 'scope', 'target', 'rel', 'referrerpolicy',
+    // Set by Coral's own sanitizer hook on images (artifact and blocked-image markers).
+    'data-artifact', 'data-blocked-src']);
+const CODE_CLASS = /^(?:language-[\w+#.-]+|hljs(?:-[\w-]+)?)$/;
+const KNOWLEDGE_CLASSES = new Set(['knowledge-link', 'knowledge-link-dead']);
+export const CONTENT_ID_PREFIX = 'user-content-';
+
+function contentConfig(config, knowledgeLinks) {
+    const c = { ...(config || {}) };
+    c.FORBID_TAGS = [...new Set([...(c.FORBID_TAGS || []), ...DOMPURIFY_CONFIG.FORBID_TAGS, ...CONTENT_FORBID_TAGS])];
+    c.FORBID_ATTR = [...new Set([...(c.FORBID_ATTR || []), ...DOMPURIFY_CONFIG.FORBID_ATTR])];
+    c.ALLOW_DATA_ATTR = false;
+    c.ADD_ATTR = (c.ADD_ATTR || []).filter(a => !/^data-/i.test(a) || (knowledgeLinks && a === 'data-knowledge-link'));
+    if (!c.ALLOWED_URI_REGEXP) c.ALLOWED_URI_REGEXP = DOMPURIFY_CONFIG.ALLOWED_URI_REGEXP;
+    return c;
+}
+
+/** The attribute allowlist and the form-control rule, on DOMPurify's own DOM (see above). */
+function scrubContent(frag, linkMode, knowledgeLinks) {
+    for (const el of [...frag.querySelectorAll('*')]) {
+        if (el.nodeName === 'INPUT') {
+            // Only a Markdown task-list checkbox survives, as a fresh disabled one.
+            if ((el.getAttribute('type') || '').toLowerCase() === 'checkbox') {
+                const box = document.createElement('input');
+                box.setAttribute('type', 'checkbox');
+                box.setAttribute('disabled', '');
+                if (el.hasAttribute('checked')) box.setAttribute('checked', '');
+                el.replaceWith(box);
+            } else {
+                el.remove();
+            }
+            continue;
+        }
+        for (const { name } of [...el.attributes]) {
+            const n = name.toLowerCase();
+            if (n === 'class') {
+                const keep = [...el.classList].filter(t => CODE_CLASS.test(t) || (knowledgeLinks && KNOWLEDGE_CLASSES.has(t)));
+                if (keep.length) el.setAttribute('class', keep.join(' ')); else el.removeAttribute('class');
+            } else if (n === 'id') {
+                const id = el.getAttribute('id');
+                if (linkMode === 'file' && id) el.setAttribute('id', CONTENT_ID_PREFIX + id); else el.removeAttribute('id');
+            } else if (!(CONTENT_ATTRS.has(n) || (knowledgeLinks && n === 'data-knowledge-link'))) {
+                el.removeAttribute(name);
+            }
+        }
+    }
+}
 
 /** A Coral artifact reference (coral://artifacts/<hex> or /api/artifacts/<hex>[?v=2]): its hex, else ''. */
 export function artifactRefHex(url) {
@@ -405,8 +484,9 @@ export function keepFragmentsInside(root) {
         const a = e.target.closest && e.target.closest('a[data-fragment]');
         if (!a || !root.contains(a)) return;
         e.preventDefault();
-        const id = a.getAttribute('data-fragment');
-        const target = [...root.querySelectorAll('[id], [name]')].find(el => el.id === id || el.getAttribute('name') === id);
+        // The file's own ids carry a prefix (#3622), so a fragment never reaches a dashboard element.
+        const id = CONTENT_ID_PREFIX + a.getAttribute('data-fragment');
+        const target = [...root.querySelectorAll('[id]')].find(el => el.id === id);
         target?.scrollIntoView({ block: 'start' });
     });
 }
@@ -418,11 +498,13 @@ export function keepFragmentsInside(root) {
 export function sanitizeHtml(html, config, opts) {
     if (typeof DOMPurify === 'undefined') return escapeHtml(html);
     installSanitizerHooks();
-    const frag = DOMPurify.sanitize(html, { ...(config || {}), RETURN_DOM_FRAGMENT: true });
-    unblockAsLinks(frag);
     // opts.links: 'file', 'board' or 'chat' (applyLinkPolicy); strictLinks is the 'file' mode (#3540).
     const linkMode = opts && (opts.links || (opts.strictLinks && 'file'));
-    if (linkMode && LINK_MODES.has(linkMode)) applyLinkPolicy(frag, linkMode, !!(opts && opts.knowledgeLinks));
+    const knowledgeLinks = !!(opts && opts.knowledgeLinks);
+    const frag = DOMPurify.sanitize(html, { ...contentConfig(config, knowledgeLinks), RETURN_DOM_FRAGMENT: true });
+    scrubContent(frag, linkMode, knowledgeLinks);
+    unblockAsLinks(frag);
+    if (linkMode && LINK_MODES.has(linkMode)) applyLinkPolicy(frag, linkMode, knowledgeLinks);
     const box = document.createElement('div');
     box.appendChild(frag);
     return box.innerHTML;
@@ -490,6 +572,27 @@ export function renderMarkdownStrict(md) {
     } catch {
         return escapeHtml(md);
     }
+}
+
+// The Docs tab (#3622 F4): Coral's bundled docs through the same sanitizer and link policy as
+// everything else. A link from one doc to another ("auth.md", "board.md#tasks") becomes that doc's
+// dashboard page (/docs/<name>), which the 'board' link policy keeps as a router link. Its own
+// marked instance, so chat and board rendering keep their options. null when marked is missing.
+const DOC_LINK = /^([A-Za-z0-9][A-Za-z0-9_-]*)\.md(?:#\S*)?$/;
+let _docsMarked = null;
+export function renderDocsMarkdown(md) {
+    if (!_docsMarked && typeof marked !== 'undefined' && typeof marked.Marked === 'function') {
+        _docsMarked = new marked.Marked({ gfm: true });
+        _docsMarked.use({
+            walkTokens(token) {
+                if (token.type !== 'link') return;
+                const m = DOC_LINK.exec(token.href || '');
+                if (m) token.href = `/docs/${m[1]}`;
+            },
+        });
+    }
+    if (!_docsMarked) return null;
+    return sanitizeHtml(_docsMarked.parse(String(md || '')), DOMPURIFY_CONFIG, { links: 'board' });
 }
 
 // A fenced code block that names a language (```js, ~~~ python).

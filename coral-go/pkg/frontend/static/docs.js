@@ -1,6 +1,6 @@
 /* Documentation: browsable agent_docs viewer */
 
-import { escapeHtml as esc, showView, jsStr, showToast } from './utils.js';
+import { escapeHtml as esc, showView, jsStr, showToast, renderDocsMarkdown } from './utils.js';
 import { apiFetch } from './api.js';
 import { loadHighlight } from './vendor_loader.js';
 import { note, currentRoute } from './nav.js';
@@ -126,9 +126,11 @@ export async function selectDoc(name, { noteRoute = true } = {}) {
         return;
     }
 
-    // Render markdown using marked.js (already loaded globally)
-    if (window.marked) {
-        content.innerHTML = DOMPurify.sanitize(marked.parse(doc.content));
+    // Markdown through the dashboard's shared sanitizer and link policy (#3622 F4): a doc link is a
+    // router link, a web link opens a new tab, anything else is text.
+    const html = renderDocsMarkdown(doc.content);
+    if (html !== null) {
+        content.innerHTML = html;
     } else {
         // Fallback: pre-formatted text
         content.innerHTML = '<pre style="white-space:pre-wrap">' + esc(doc.content) + '</pre>';
@@ -139,15 +141,6 @@ export async function selectDoc(name, { noteRoute = true } = {}) {
     const blocks = content.querySelectorAll('pre code');
     if (blocks.length) loadHighlight().then(h => blocks.forEach(b => { if (b.isConnected) h.highlightElement(b); }), () => {});
 
-    // Intercept internal doc links (e.g. "auth.md" → selectDoc("auth"))
-    content.querySelectorAll('a').forEach(a => {
-        const href = a.getAttribute('href') || '';
-        if (href.endsWith('.md') && !href.includes('://')) {
-            const docName = href.replace(/\.md$/, '');
-            a.href = 'javascript:void(0)';
-            a.onclick = (e) => { e.preventDefault(); selectDoc(docName); };
-        }
-    });
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────

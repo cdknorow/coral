@@ -2,15 +2,60 @@ package routes
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // NotificationLink is an optional link shown in the notification.
 type NotificationLink struct {
 	Label string `json:"label"`
 	URL   string `json:"url"`
+}
+
+// A notification's link is written by an agent (coral-agent notify), so it may only go where the
+// dashboard allows (#3622 F2, the same rule as utils.js notificationLinkTarget): docs://<name>,
+// an http(s) address with a host and no credentials (opened in a new tab), or a root-relative
+// dashboard path (the dashboard checks it against its router). javascript:, data:, file:,
+// //host, \ and control characters, and /api/... are refused.
+const (
+	maxNotificationLinkLabel = 200
+	maxNotificationLinkURL   = 2048
+)
+
+var docsLinkRE = regexp.MustCompile(`^docs://[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+
+func checkNotificationLink(l *NotificationLink) error {
+	if utf8.RuneCountInString(l.Label) > maxNotificationLinkLabel {
+		return errors.New("link.label is too long")
+	}
+	u := strings.TrimSpace(l.URL)
+	switch {
+	case u == "":
+		return errors.New("link.url is required")
+	case len(u) > maxNotificationLinkURL:
+		return errors.New("link.url is too long")
+	case strings.ContainsAny(u, "\\") || strings.IndexFunc(u, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0:
+		return errors.New("link.url has characters a link can't have")
+	case docsLinkRE.MatchString(u):
+		return nil
+	}
+	if lower := strings.ToLower(u); strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		p, err := url.Parse(u)
+		if err == nil && (p.Scheme == "http" || p.Scheme == "https") && p.Hostname() != "" && p.User == nil {
+			return nil
+		}
+		return errors.New("link.url is not a valid web address")
+	}
+	if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, "//") && u != "/api" && !strings.HasPrefix(u, "/api/") {
+		return nil
+	}
+	return errors.New("link.url must be docs://<name>, an http(s) address, or a dashboard path")
 }
 
 // Notification represents a UI notification pushed via the API.
@@ -175,6 +220,16 @@ func (h *NotificationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// local process puts a toast or an alert on every open dashboard (#3495).
 	if _, ok := callerSession(w, r, "", true, nil); !ok {
 		return
+	}
+	if body.Link != nil {
+		if body.Link.Label == "" && body.Link.URL == "" {
+			body.Link = nil
+		} else if err := checkNotificationLink(body.Link); err != nil {
+			errBadRequest(w, err.Error())
+			return
+		} else {
+			body.Link.URL = strings.TrimSpace(body.Link.URL)
+		}
 	}
 
 	n := h.store.Push(Notification{

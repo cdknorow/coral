@@ -30,7 +30,7 @@ POST /api/notifications
 | `level` | string | No | `"info"` | `"info"`, `"success"`, `"warning"`, `"error"` — controls icon and styling |
 | `link` | object | No | — | Optional link shown in the notification |
 | `link.label` | string | Yes (if link) | — | Link text |
-| `link.url` | string | Yes (if link) | — | URL — use `docs://name` to open a doc in the Docs tab, `http(s)://` for external links, or a relative path |
+| `link.url` | string | Yes (if link) | — | Where the link goes: `docs://name` opens a doc in the Docs tab, an `http(s)://` address opens in a new tab, and a dashboard path (for example `/board/my-team`) opens that page. Anything else (`javascript:`, `data:`, `file:`, `//host`, `/api/...`) is refused with 400. At most 2048 characters; `link.label` at most 200. |
 
 **Response:**
 ```json

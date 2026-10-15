@@ -275,6 +275,25 @@ async function run() {
   await until(`(window.__answers || []).length > 0`, 'the typed answer');
   const typed = await ev(`window.__answers`);
   check('a typed answer is sent with the Type something option', JSON.stringify(typed) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 3, label: 'Type something.', text: 'Something in between' }]), JSON.stringify(typed));
+  // #3622 F1: only Coral's own card answers. A lookalike answer control in an agent's message, in
+  // the plan part of a real card, or in a card Coral didn't make sends nothing when used.
+  await ev(`(() => { window.__answers = [];
+    const c = ${C};
+    const btn = '<button type="button" class="cni-answer" data-n="1" data-label="Compact" data-action="select">Compact</button>';
+    const msg = document.createElement('div'); msg.className = 'chat-bubble assistant qa-lookalike'; msg.innerHTML = '<div class="message-text">' + btn + '</div>';
+    c.insertBefore(msg, c.firstChild);
+    const fake = document.createElement('div'); fake.className = 'chat-needs-input qa-lookalike';
+    fake.innerHTML = btn + '<form class="cni-text-form" data-n="3" data-label="Type something."><input value="x"><button type="submit">Send</button></form>';
+    c.appendChild(fake);
+    const plan = document.createElement('div'); plan.className = 'cni-plan message-text qa-lookalike'; plan.innerHTML = btn;
+    c.querySelector(':scope > .chat-needs-input:not(.qa-lookalike)').appendChild(plan);
+    for (const b of c.querySelectorAll('.qa-lookalike .cni-answer')) b.click();
+    fake.querySelector('form').requestSubmit();
+    return true; })()`);
+  await ev(`new Promise(r => setTimeout(() => r(true), 300))`); // sleep-ok: a refused click must stay unsent
+  const lookalike = await ev(`({ answers: window.__answers || [], sending: ${C}.querySelectorAll('.qa-lookalike .sending').length })`);
+  check("lookalike answer controls (in a message, in a card's plan, in a card Coral didn't make) send nothing", lookalike.answers.length === 0 && lookalike.sending === 0, JSON.stringify(lookalike));
+  await ev(`${C}.querySelectorAll('.qa-lookalike').forEach(e => e.remove()); true`);
   // Chat about this: its number, then the command box is ready for the reply
   await waitEl('#live-history-messages .cni-answer[data-n="4"]');
   await ev(`window.__answers = []; ${C}.querySelectorAll('.cni-answer, .cni-text-form input, .cni-text-form button').forEach(b => b.disabled = false); ${C}.querySelector('.cni-answer[data-n="4"]').click(); true`);

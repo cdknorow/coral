@@ -1805,6 +1805,19 @@ function needsInputHtml(info, session) {
         + `<div class="cni-foot"><button type="button" class="cni-link" onclick="window.showTerminalView()">Open terminal</button>${hint}<span class="cni-foot-spacer"></span>${controls.foot}</div>`;
 }
 
+// The prompt cards Coral itself made (#3622 F1). Only a control inside one of these, and outside
+// any agent-written part of it (a plan is the agent's Markdown), can answer a prompt: rendered
+// content can never answer for the Operator, whatever it looks like.
+const ownPromptCards = new WeakSet();
+
+/** The Coral prompt card that owns this answer control, or null when the control isn't Coral's. */
+function ownPromptCard(control) {
+    const card = control.closest(".chat-needs-input");
+    if (!card || !ownPromptCards.has(card) || card.parentElement?.id !== "live-history-messages") return null;
+    if (control.closest(".message-text, .cni-plan")) return null;
+    return card;
+}
+
 function syncNeedsInputCard(container, session) {
     const info = needsInputInfo(session);
     let el = container.querySelector(":scope > .chat-needs-input");
@@ -1817,6 +1830,7 @@ function syncNeedsInputCard(container, session) {
         el = document.createElement("div");
         el.className = "chat-needs-input";
         el.setAttribute("role", "alert");
+        ownPromptCards.add(el);
     }
     if (el.dataset.key !== key) {
         // Keep an answer being typed if the card re-renders
@@ -1895,8 +1909,9 @@ async function sendPromptAnswer(card, n, label, action, text) {
 
 document.addEventListener("click", (e) => {
     const btn = e.target.closest && e.target.closest("#live-history-messages .cni-answer");
-    if (!btn || btn.disabled) return;
-    const card = btn.closest(".chat-needs-input");
+    if (!btn || btn.disabled || btn.nodeName !== "BUTTON") return;
+    const card = ownPromptCard(btn);
+    if (!card) return;
     btn.classList.add("sending");
     sendPromptAnswer(card, Number(btn.dataset.n), btn.dataset.label, btn.dataset.action).then(ok => {
         if (!ok) btn.classList.remove("sending");
@@ -1907,11 +1922,12 @@ document.addEventListener("submit", (e) => {
     const form = e.target.closest && e.target.closest("#live-history-messages .cni-text-form");
     if (!form) return;
     e.preventDefault();
+    if (!ownPromptCard(form)) return;
     const input = form.querySelector("input");
     const text = input.value.trim();
     if (!text) {
         input.focus();
         return;
     }
-    sendPromptAnswer(form.closest(".chat-needs-input"), Number(form.dataset.n), form.dataset.label, "text", text);
+    sendPromptAnswer(ownPromptCard(form), Number(form.dataset.n), form.dataset.label, "text", text);
 });

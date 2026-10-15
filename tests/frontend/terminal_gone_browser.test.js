@@ -28,6 +28,8 @@ const MESSAGE = "The agent's terminal is gone. Restart it to continue.";
         window.__writeHits = [];
         window.fetch = (url, opts = {}) => {
             const u = String(url);
+            // The prompt bar's options (#3622: only a card Coral itself shows can answer).
+            if (/\\/prompt-options(?:\\?|$)/.test(u)) return Promise.resolve(new Response(JSON.stringify(window.__promptScreen || { question: '', options: [] }), { status: 200, headers: { 'content-type': 'application/json' } }));
             const m = u.match(/\\/api\\/sessions\\/live\\/[^/?]+\\/(send|keys|answer-prompt)(?:\\?|$)/);
             if (!m) return inner(url, opts);
             window.__writeHits.push(m[1]);
@@ -47,15 +49,20 @@ const MESSAGE = "The agent's terminal is gone. Restart it to continue.";
     const restartModalOpen = () => ev(`(() => { const m = document.getElementById('restart-modal'); return !!m && getComputedStyle(m).display !== 'none'; })()`);
     const closeRestartModal = () => ev(`window.hideRestartModal(); true`);
     const type = text => ev(`(() => { const i = document.getElementById('command-input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-    const answerCard = () => ev(`(() => {
-        const c = document.getElementById('live-history-messages');
-        c.querySelectorAll('.qa-gone-card').forEach(e => e.remove());
-        const card = document.createElement('div');
-        card.className = 'chat-needs-input qa-gone-card';
-        card.innerHTML = '<button class="cni-answer" data-n="1" data-label="Yes" data-action="option">Yes</button>';
-        c.appendChild(card);
-        card.querySelector('.cni-answer').click();
-    })()`);
+    // The prompt bar: the agent waits on a permission prompt, so Coral shows its own card with the
+    // terminal's options, and its Yes is clicked (a hand-made card no longer answers, #3622).
+    const WAITING = { waiting_for_input: true, waiting_summary: 'Notification: Claude needs your permission to use Bash' };
+    const SCREEN = { question: 'Allow Bash?', options: [{ n: 1, label: 'Yes', action: 'select' }, { n: 2, label: 'No', action: 'select' }] };
+    const setWaiting = on => ev(`import((window.__coralStatic || '/static/') + 'state.js').then(st => {
+        const row = st.state.liveSessions.find(s => s.session_id === 'qa-gone-id');
+        Object.assign(row, ${JSON.stringify(on ? WAITING : { waiting_for_input: false, waiting_summary: null })});
+        window.__promptScreen = ${JSON.stringify(on ? SCREEN : null)};
+        return true; })`);
+    const answerCard = async () => {
+        await setWaiting(true);
+        await waitFor(`!!document.querySelector('#live-history-messages > .chat-needs-input .cni-answer[data-n="1"]:not([disabled])')`, 'the prompt card with Yes');
+        await ev(`document.querySelector('#live-history-messages > .chat-needs-input .cni-answer[data-n="1"]').click(); true`);
+    };
 
     try {
         await Page.enable();
