@@ -531,6 +531,9 @@ func applyHubModeSetting(ctx context.Context, db *store.DB, cfg *config.Config) 
 // binds cfg.Port (0 picks a free one) and the rest bind the port it got. The automatic
 // 127.0.0.1 listener is logged once. On any failure every listener opened so far is closed.
 func listenAll(cfg *config.Config) ([]net.Listener, int, error) {
+	if err := config.HostsError(cfg.Host); err != nil {
+		return nil, 0, err
+	}
 	hosts := cfg.ListenHosts()
 	port := cfg.Port
 	var lns []net.Listener
@@ -551,6 +554,8 @@ func listenAll(cfg *config.Config) ([]net.Listener, int, error) {
 	}
 	if cfg.AutoLoopback() {
 		log.Printf("[startup] --host %q names only network addresses: also listening on 127.0.0.1:%d for this computer's agents, command line and dashboard (--no-auto-loopback turns it off)", cfg.Host, port)
+	} else if cfg.NoAutoLoopback && !config.IsLoopbackHost(cfg.AgentHost()) {
+		log.Printf("[startup] WARNING: --no-auto-loopback with only network addresses: agents started here reach Coral at %s, where only the API key or a dashboard sign-in is accepted, so their board and task calls will be refused. Leave the loopback listener on (and use --strict-local-auth on a shared computer) if Coral runs agents here.", cfg.AgentHost())
 	}
 	if len(hosts) > 1 {
 		shown := make([]string, len(hosts))

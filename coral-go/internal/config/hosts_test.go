@@ -17,13 +17,27 @@ func TestHosts(t *testing.T) {
 	assert.Equal(t, []string{"127.0.0.1", "100.101.102.103"}, Hosts(" 127.0.0.1 , 100.101.102.103,"))
 	assert.Equal(t, []string{"100.64.0.1"}, Hosts("100.64.0.1,100.64.0.1"), "duplicates go")
 	assert.Equal(t, []string{"::1", "fd7a::1"}, Hosts("::1,fd7a::1"))
+	assert.Equal(t, []string{"myhost.local", "localhost"}, Hosts("myhost.local, localhost"))
+}
+
+// A wildcard already covers every other address: with anything else in the list it's refused up
+// front with a clear error, not a bare "address already in use" (Security's NIT 2).
+func TestHostsError(t *testing.T) {
+	for _, h := range []string{"", "0.0.0.0", "::", "127.0.0.1", "127.0.0.1,100.64.0.1", "myhost.local,localhost"} {
+		assert.NoError(t, HostsError(h), h)
+	}
+	for _, h := range []string{"0.0.0.0,127.0.0.1", "127.0.0.1,::", "100.64.0.1, 0.0.0.0", "0.0.0.0,::"} {
+		err := HostsError(h)
+		assert.Error(t, err, h)
+		assert.Contains(t, err.Error(), "already includes every other address", h)
+	}
 }
 
 func TestIsLoopbackHostWithAList(t *testing.T) {
 	for _, h := range []string{"127.0.0.1", "localhost", "::1", "[::1]", "127.0.0.1,::1", "127.0.0.2"} {
 		assert.True(t, IsLoopbackHost(h), h)
 	}
-	for _, h := range []string{"0.0.0.0", "", "::", "100.64.0.1", "127.0.0.1,100.64.0.1", "192.168.1.5,localhost"} {
+	for _, h := range []string{"0.0.0.0", "", "::", "100.64.0.1", "127.0.0.1,100.64.0.1", "192.168.1.5,localhost", "myhost.local"} {
 		assert.False(t, IsLoopbackHost(h), h)
 	}
 }
@@ -42,6 +56,10 @@ func TestListenHostsAndAgentHost(t *testing.T) {
 		{"127.0.0.1", false, []string{"127.0.0.1"}, "127.0.0.1", false},
 		{"localhost", false, []string{"localhost"}, "127.0.0.1", false},
 		{"::1", false, []string{"::1"}, "::1", false},
+		// Hostnames: localhost is loopback; any other name is a network address.
+		{"myhost.local", false, []string{"127.0.0.1", "myhost.local"}, "127.0.0.1", true},
+		{"myhost.local,localhost", false, []string{"myhost.local", "localhost"}, "127.0.0.1", false},
+		{"myhost.local", true, []string{"myhost.local"}, "myhost.local", false},
 		{"127.0.0.2", false, []string{"127.0.0.2"}, "127.0.0.2", false},
 		// Only network addresses: Coral adds 127.0.0.1, and agents use it.
 		{"100.101.102.103", false, []string{"127.0.0.1", "100.101.102.103"}, "127.0.0.1", true},

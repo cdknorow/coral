@@ -120,3 +120,11 @@ func agentenvURL(t *testing.T) string {
 	t.Helper()
 	return os.Getenv("CORAL_URL")
 }
+
+// A wildcard with another address is refused before anything binds (Security's NIT 2).
+func TestListenAllRefusesAWildcardInAList(t *testing.T) {
+	lns, _, err := listenAll(&config.Config{Host: "0.0.0.0,127.0.0.1", Port: 0})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already includes every other address")
+	assert.Empty(t, lns)
+}

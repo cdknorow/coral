@@ -1,12 +1,15 @@
 package config
 
 import (
+	"fmt"
 	"net"
 	"strings"
 )
 
 // Coral's listeners (#3594): --host (or CORAL_HOST) may name several addresses as a comma list,
-// for example "127.0.0.1,100.101.102.103" to serve this computer and a tailnet address.
+// for example "127.0.0.1,100.101.102.103" to serve this computer and a tailnet address. A hostname
+// is listened on at the first address it resolves to; "localhost" counts as loopback, any other
+// name (myhost.local) as a network address.
 
 // Hosts splits a --host value into its addresses: trimmed, without empty entries or duplicates.
 // A value with no address at all (""), like a single empty --host, is one entry: every interface.
@@ -25,6 +28,29 @@ func Hosts(host string) []string {
 		return []string{""}
 	}
 	return out
+}
+
+// HostsError says why a --host list can't be used, or nil: every interface ("0.0.0.0", "::" or
+// an empty entry) together with another address would bind that address twice, which fails on
+// most systems with a bare "address already in use".
+func HostsError(host string) error {
+	hosts := Hosts(host)
+	if len(hosts) < 2 {
+		return nil
+	}
+	for _, h := range hosts {
+		if IsWildcardHost(h) {
+			return fmt.Errorf("--host %q: %s already includes every other address; give either it alone or a list of specific addresses", host, displayWildcard(h))
+		}
+	}
+	return nil
+}
+
+func displayWildcard(h string) string {
+	if h == "" {
+		return "every interface"
+	}
+	return h + " (every interface)"
 }
 
 // IsWildcardHost reports whether a bind address means every interface.

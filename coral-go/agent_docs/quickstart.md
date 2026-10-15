@@ -150,6 +150,22 @@ command line and the dashboard keep using loopback; `--no-auto-loopback` (or
 `CORAL_URL` when Coral listens on one. With remote access off, Coral listens on
 `127.0.0.1` only, whatever `--host` says.
 
+A hostname in the list is listened on at the first address it resolves to: `localhost`
+counts as loopback, any other name (`myhost.local`) as a network address. Every interface
+(`0.0.0.0`, `::`) can't be combined with other addresses, since it already includes them:
+Coral stops at startup and says so.
+
+> **On a computer other people log in to:** a loopback listener lets any local user reach
+> Coral, and in the default mode a request from this computer needs no credential. For the
+> stricter setup, keep the loopback listener and turn on
+> [strict local auth](auth.md#strict-local-auth-opt-in) (`--strict-local-auth`): every
+> request from this computer then needs an agent's session token, the dashboard sign-in or
+> the command line's signature, which your agents and the `coral` command already send.
+> `--no-auto-loopback` is not the stricter setup where Coral runs agents: they would reach it
+> through the network address, where only the API key or a dashboard sign-in is accepted, and
+> their board and task calls would be refused. Use it only on a computer where Coral runs no
+> agents (Coral logs a warning when it starts that way).
+
 ### Remote access securely
 
 Remote access on its own is **plain HTTP**: the API key, the login cookie and everything
