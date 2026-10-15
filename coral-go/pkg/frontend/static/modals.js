@@ -441,11 +441,14 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
     let res = await postLaunch(server, path, payload);
     // A board of that name exists (#3536): the person chooses to join it or start another.
     if (!res.ok && isBoardNameExists(res)) {
+        // The boards of that name are known now: the list can tell them apart (keyLabel's short id).
+        noteBoardLabels(res.data.candidates, 'board_id', server);
         const pick = await chooseBoard(res.data, payload.board_name || '');
         const retry = retryPayload(payload, pick);
         if (!retry) return null; // cancelled: nothing launched
         res = await postLaunch(server, path, retry);
     }
+    if (res.ok && res.data && res.data.board_id) noteBoardLabels([res.data], 'board_id', server); // the board it joined or started
     if (!res.ok) {
         if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server);
         else showToast(res.error, true);
