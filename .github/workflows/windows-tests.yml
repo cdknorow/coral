@@ -55,6 +55,7 @@ jobs:
           ./internal/safefs/... ./internal/agent/... ./internal/cliauth/...
           ./internal/gitutil/... ./internal/background/... ./internal/ptymanager/...
       - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
+        if: ${{ !cancelled() }} # report the routes results even when the packages step failed
         env:
           ROUTES_RUN: "AutoAttach|Attach|UNC|Device|HardLink|Symlink|NeverFollow|SaveFileContent|PathInside|SearchFilesDir|ImportTeam|Upload"
         run: |
