@@ -1,6 +1,9 @@
 // Servers in the agent list (#3085): short display names, one search-row server button instead of the
-// strip and per-row chips; with 2+ servers 'N servers', an optional 'Show server' chip on group headers and
-// optional 'Group by server' headers that collapse (persisted). Keyboard, phone width, 44 px touch.
+// strip and per-row chips; with 2+ servers 'N servers', an optional 'Show server' prefix on group headers
+// ("pro-coral-hub", the server in italics, #3507) and optional 'Group by server' headers that collapse
+// (persisted): the outermost, flush-left level, with a computer icon and no status dot (#3507).
+// Keyboard, phone width, 44 px touch; agent state dots kept under server headers; team view from a
+// prefixed row; the top tabs in the operator's order (Agents, Servers, ..., Docs).
 //
 // Drives Chrome over CDP (chrome-remote-interface) through agent_view_harness.js; run_cdp_suites.mjs
 // finds CDP suites by that name.
@@ -50,7 +53,7 @@ const SETTINGS_PRELOAD = `(() => {
         return {
             button: sw ? { label: sum.querySelector('.server-switcher-label').textContent, cls: sw.className, aria: sum.getAttribute('aria-label'), title: sum.getAttribute('title'), open: sw.open } : null,
             strip: document.querySelectorAll('#live-sessions-list .server-strip-row, #live-sessions-list .server-strip-item').length,
-            chips: [...document.querySelectorAll('#live-sessions-list .row-server-chip')].map(c => c.textContent.trim()),
+            chips: [...document.querySelectorAll('#live-sessions-list .row-server-prefix .row-server-name')].map(c => c.textContent.trim()),
             headers: [...document.querySelectorAll('#live-sessions-list li.server-group-header')].map(h => ({ id: h.dataset.serverGroup, name: h.querySelector('.server-group-name').textContent, state: h.querySelector('.server-group-state')?.textContent || null, expanded: h.querySelector('.server-group-toggle').getAttribute('aria-expanded') })),
             rows: [...document.querySelectorAll('#live-sessions-list li[data-session-id]')].map(li => li.dataset.sessionId),
             showServerRow: (r => r ? !r.hidden && getComputedStyle(r).display !== 'none' : null)(document.getElementById('display-show-server-row')),
@@ -117,7 +120,7 @@ const SETTINGS_PRELOAD = `(() => {
         await waitFor(`window.__settingsPuts.some(p => p && p.show_session_server === true)`, 'PUT /api/settings {show_session_server: true}', 3000);
         const stored = await ev(`fetch('/api/settings').then(r => r.json()).then(d => String((d.settings || d).show_session_server))`);
         assert.equal(stored.toLowerCase(), 'true', `the server keeps the setting (${stored})`);
-        await waitFor(`document.querySelectorAll('#live-sessions-list .row-server-chip').length > 0`, 'chips after Show server', 3000);
+        await waitFor(`document.querySelectorAll('#live-sessions-list .row-server-prefix').length > 0`, 'server prefixes after Show server', 3000);
         v = await view();
         assert.ok(v.chips.every(c => /^Christophoers-MacBook-Pro/.test(c)), `chips use the short name (${JSON.stringify(v.chips)})`);
         await ev(`document.getElementById('display-show-server').click(); true`);
@@ -140,13 +143,57 @@ const SETTINGS_PRELOAD = `(() => {
         assert.deepEqual(items.map(i => i.name), ['Christophoers-MacBook-Pro', 'workstation', 'Old Laptop']);
         assert.match(items[2].meta, /^Unreachable · 2$/i, `offline item shows its state and count (${items[2].meta})`);
         await ev(`document.querySelector('[data-server-switcher-host] details[data-server-switcher]').open = false; true`);
+        // #3507 ungrouped: the server BEFORE the team name, in italics, with no dot; an offline one is dimmed.
+        const pre = await ev(`(() => {
+            const li = id => [...document.querySelectorAll('#live-sessions-list li')].find(l => l.querySelector('.row-server-prefix') && l.textContent.includes(id));
+            const one = (id) => { const l = li(id); const p = l && l.querySelector('.row-server-prefix'); const w = l && l.querySelector('.row-name-with-server');
+                return p && { text: w.textContent.replace(p.querySelector('.sr-only').textContent, ''), italic: getComputedStyle(p.querySelector('.row-server-name')).fontStyle,
+                    down: p.classList.contains('is-down'), title: p.getAttribute('title'), sr: p.querySelector('.sr-only').textContent.trim(), op: Number(getComputedStyle(p).opacity),
+                    first: w.firstElementChild === p }; };
+            return { m2: one('team-m2'), m3: one('team-m3'), dots: document.querySelectorAll('#live-sessions-list .row-server-prefix .server-dot, #live-sessions-list .row-server-chip').length };
+        })()`);
+        assert.equal(pre.m2.text, 'workstation-team-m2', `"server-team" (${JSON.stringify(pre.m2)})`);
+        assert.ok(pre.m2.first, 'the server comes before the team name');
+        assert.equal(pre.m2.italic, 'italic', 'the server part is in italics');
+        assert.equal(pre.m2.down, false); assert.equal(pre.m2.title, 'workstation.lan: Online'); assert.equal(pre.m2.sr, '(server)');
+        assert.equal(pre.m3.down, true, 'an offline server is marked'); assert.ok(pre.m3.op < pre.m2.op, `and dimmed (${pre.m3.op} < ${pre.m2.op})`);
+        assert.equal(pre.m3.title, 'Old Laptop: Unreachable', 'its state is in the tooltip'); assert.equal(pre.m3.sr, '(server, unreachable)', 'and for screen readers');
+        assert.equal(pre.dots, 0, 'no status dot or chip on a row');
+        // Team view from a prefixed row opens that server's team.
+        await ev(`[...document.querySelectorAll('#live-sessions-list li')].find(l => l.querySelector('.row-server-prefix') && l.textContent.includes('team-m2')).querySelector('.team-open-btn').click(); true`);
+        await waitFor(`T.state.selectedTeam === '@m2/team-m2'`, 'team view of @m2/team-m2', 3000, `T.state.selectedTeam`);
+        await ev(`window.exitTeamContext({ goBack: false, force: true }); true`);
+        console.log('   ✓ ungrouped: "workstation-team-m2", server in italics first, offline dimmed with tooltip + sr text, no dots; team view opens @m2/team-m2');
         // Group by server.
         await ev(`document.getElementById('display-group-by-server').click(); true`);
         await waitFor(`document.querySelectorAll('#live-sessions-list li.server-group-header').length === 3`, 'server headers', 3000);
         assert.equal(await ev(`localStorage.getItem('coral-group-by-server')`), 'true', 'grouping persisted');
         v = await view();
-        assert.deepEqual(v.headers.map(h => [h.id, h.name, h.state]), [['m1', 'Christophoers-MacBook-Pro', null], ['m2', 'workstation', null], ['m3', 'Old Laptop', '(unreachable)']]);
+        assert.deepEqual(v.headers.map(h => [h.id, h.name, h.state]), [['m1', 'Christophoers-MacBook-Pro', null], ['m2', 'workstation', null], ['m3', 'Old Laptop', 'unreachable']]);
         assert.deepEqual(v.chips, [], 'no row chips while grouped');
+        // #3507 grouped: the header is the outermost level (left of its teams' rows), with a computer
+        // icon and no status dot; the offline one is dimmed with its state in the tooltip and label.
+        const lay = await ev(`(() => {
+            const L = document.getElementById('live-sessions-list');
+            const hs = [...L.querySelectorAll('li.server-group-header')];
+            const icon = h => h.querySelector('.server-group-icon');
+            const rowLefts = [...L.querySelectorAll('li.session-board-card, li.session-group-header, li[data-session-id]')].filter(r => r.getBoundingClientRect().width > 0)
+                .map(r => Math.round((r.querySelector('.team-group-icon, .group-name-line, .session-label') || r).getBoundingClientRect().left));
+            const m3 = L.querySelector('li.server-group-header[data-server-group="m3"]'), m2 = L.querySelector('li.server-group-header[data-server-group="m2"]');
+            return { dots: L.querySelectorAll('li.server-group-header .server-dot').length, icons: hs.filter(icon).length, n: hs.length,
+                headerLeft: Math.max(...hs.map(h => Math.round(icon(h).getBoundingClientRect().left))), rowMin: Math.min(...rowLefts),
+                m3: { down: m3.classList.contains('is-down'), title: m3.querySelector('.server-group-toggle').title, aria: m3.querySelector('.server-group-toggle').getAttribute('aria-label'),
+                    op: Number(getComputedStyle(icon(m3)).opacity), opName: Number(getComputedStyle(m3.querySelector('.server-group-name')).opacity) },
+                m2op: Number(getComputedStyle(icon(m2)).opacity),
+                // Agent state is untouched: every agent row still has its state dot, with a tooltip.
+                agents: [...L.querySelectorAll('li[data-session-id]')].filter(r => r.getBoundingClientRect().width > 0).map(r => ({ id: r.dataset.sessionId, dot: !!r.querySelector('.session-dot'), title: r.querySelector('.session-dot')?.getAttribute('title') || '' })) };
+        })()`);
+        assert.equal(lay.dots, 0, 'no status dot on a server header'); assert.equal(lay.icons, lay.n, 'every server header has the computer icon');
+        assert.ok(lay.headerLeft < lay.rowMin, `server headers sit left of every team and agent row (icon ${lay.headerLeft} < rows ${lay.rowMin})`);
+        assert.ok(lay.m3.down && lay.m3.op < lay.m2op && lay.m3.opName < 1, `the offline server is dimmed (${JSON.stringify(lay.m3)})`);
+        assert.equal(lay.m3.title, 'Old Laptop: Unreachable'); assert.match(lay.m3.aria, /^Server Old Laptop: Unreachable, 2 agents\. Collapse$/);
+        assert.ok(lay.agents.length >= 4 && lay.agents.every(a => a.dot && a.title), `agent state dots kept under server headers (${JSON.stringify(lay.agents)})`);
+        console.log(`   ✓ grouped: headers outermost (icon at ${lay.headerLeft}px, rows from ${lay.rowMin}px), computer icon, no dots, offline dimmed + tooltip + aria; ${lay.agents.length} agent rows keep their state dot`);
         const m2rows = ['solo-m2-id', 'team-m2-id'];
         assert.ok(m2rows.every(id => v.rows.includes(id)), 'm2 agents listed while expanded');
         await ev(`document.querySelector('li.server-group-header[data-server-group="m2"] .server-group-toggle').click(); true`);
@@ -230,6 +277,16 @@ const SETTINGS_PRELOAD = `(() => {
         await Emulation.setTouchEmulationEnabled({ enabled: false });
         await Emulation.clearDeviceMetricsOverride();
         console.log(`   ✓ ${phone.count} controls ≥ 44 px, overflow 0`);
+
+        console.log('6. Top tabs in the operator\'s order (#3507): Agents, Servers, then the local tabs, Docs last');
+        // The scene fakes a hub with servers, so let the page recompute the Servers tab as a live update would.
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'servers_tab.js'); m.updateServersTabVisibility(); return true; })()`);
+        const tabs = await ev(`(() => { const b = [...document.querySelectorAll('.top-nav-tabs .top-nav-tab')]; return { dom: b.map(x => x.id),
+            shown: b.filter(x => !x.hidden && getComputedStyle(x).display !== 'none').map(x => x.textContent.trim()) }; })()`);
+        assert.deepEqual(tabs.dom.slice(0, 2), ['nav-tab-agents', 'nav-tab-servers'], `Servers right after Agents (${tabs.dom})`);
+        assert.ok(tabs.dom.indexOf('nav-tab-docs') > tabs.dom.indexOf('nav-tab-tokens'), 'Docs after the local tabs');
+        assert.deepEqual(tabs.shown.filter(t => ['Agents', 'Servers', 'Docs'].includes(t)), ['Agents', 'Servers', 'Docs'], `shown in that order (${tabs.shown})`);
+        console.log(`   ✓ ${tabs.shown.join(', ')}`);
 
         console.log('\nAll server switcher checks passed');
     } finally {

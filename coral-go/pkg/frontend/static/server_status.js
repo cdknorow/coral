@@ -239,18 +239,25 @@ export function serverSwitcherHtml(open = false) {
 }
 
 /** A collapsible server group header for the agent list (2+ servers). */
+// A computer (monitor) icon for a server header (#3507: replaces the status dot).
+const SERVER_ICON = '<svg class="server-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+    + ' stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>';
+
 export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) {
     const m = statusMeta(e.status);
     const name = shortServerName(e);
     const off = e.status !== 'online' && normServer(e.id) !== LOCAL_SERVER;
-    return `<li class="server-group-header server-${m.cls}" data-server-group="${escHtml(e.id)}">`
+    // The outermost level of the list, flush left: the icon and name first, the chevron last.
+    // An offline server is dimmed (no colored dot), and its state is in the tooltip and the label.
+    return `<li class="server-group-header server-${m.cls}${off ? ' is-down' : ''}" data-server-group="${escHtml(e.id)}">`
         + `<button type="button" class="server-group-toggle" data-server-toggle="${escHtml(e.id)}" aria-expanded="${collapsed ? 'false' : 'true'}"`
-        + ` aria-label="${escHtml(`${e.label || e.id}: ${m.label}, ${count} agents. ${collapsed ? 'Expand' : 'Collapse'}`)}">`
-        + `<span class="server-group-chevron" aria-hidden="true">${collapsed ? '▸' : '▾'}</span>`
-        + `<span class="server-dot" aria-hidden="true"></span><span class="server-group-name">${escHtml(name)}</span>`
-        + (off ? `<span class="server-group-state">(${escHtml(m.label.toLowerCase())})</span>` : '')
+        + ` title="${escHtml(`${e.label || e.id}: ${m.label}`)}"`
+        + ` aria-label="${escHtml(`Server ${e.label || e.id}: ${m.label}, ${count} agents. ${collapsed ? 'Expand' : 'Collapse'}`)}">`
+        + SERVER_ICON + `<span class="server-group-name">${escHtml(name)}</span>`
+        + (off ? `<span class="server-group-state">${escHtml(m.label.toLowerCase())}</span>` : '')
         + ((n => n ? `<span class="server-update-marker server-update-${n.level}">${n.level === 'required' ? 'Update required' : 'Update'}</span>` : '')(normServer(e.id) === LOCAL_SERVER ? null : updateNotice(e)))
-        + `<span class="session-group-count">${count}</span></button>`
+        + `<span class="session-group-count">${count}</span>`
+        + `<span class="server-group-chevron" aria-hidden="true">${collapsed ? '▸' : '▾'}</span></button>`
         + `<details class="server-group-more" data-server-details="${escHtml(e.id)}"${detailsOpen ? ' open' : ''}>`
         + `<summary class="server-group-more-btn" aria-label="${escHtml(`Details for ${e.label || e.id}`)}" title="${escHtml(serverHoverText(e.id))}">⋮</summary>`
         + `<div class="server-switcher-panel">${serverDetailsHtml(e)}`
