@@ -824,3 +824,42 @@ func TestParseReassignAssigneeRejectsBareName(t *testing.T) {
 		}
 	}
 }
+
+// read --id N --json prints the message as the server returned it, one JSON object per
+// line, so a script can check subscriber_id (#3487); the text form shows the job title.
+func TestCmdRead_IDAsJSON(t *testing.T) {
+	isolateBoardEnv(t)
+	saveState(&boardState{Project: "test-proj", JobTitle: "Dev"})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[{"id":42,"subscriber_id":"Operator","job_title":"Operator","content":"PRELAND-CHECK ref=main id=a1"}]`))
+	}))
+	defer ts.Close()
+	oldURL := serverURL
+	serverURL = ts.URL
+	defer func() { serverURL = oldURL }()
+	oldArgs := os.Args
+	os.Args = []string{"coral-board", "read", "--id", "42", "--json"}
+	defer func() { os.Args = oldArgs }()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldOut := os.Stdout
+	os.Stdout = w
+	done := make(chan string)
+	go func() { b, _ := io.ReadAll(r); done <- string(b) }()
+	cmdRead()
+	w.Close()
+	os.Stdout = oldOut
+	out := strings.TrimSpace(<-done)
+
+	var m map[string]any
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatalf("not one JSON object: %q (%v)", out, err)
+	}
+	if m["subscriber_id"] != "Operator" || m["content"] != "PRELAND-CHECK ref=main id=a1" || m["id"] != float64(42) {
+		t.Errorf("unexpected message: %v", m)
+	}
+}

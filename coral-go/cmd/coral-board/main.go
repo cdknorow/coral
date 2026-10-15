@@ -353,9 +353,11 @@ Commands:
   join <project> --as <role>   Subscribe to a board
   post "<message>" [--to "a,b"] Post a message (optionally @mention agents);
                                use -- before text that starts with '-'
-  read [--all] [--last N] [--id N]     Read new messages (tagged only by default; --all
+  read [--all] [--last N] [--id N] [--json]
+                               Read new messages (tagged only by default; --all
                                for all), the newest N (marks older unread
-                               as read), or a specific message by ID
+                               as read), or a specific message by ID; --json
+                               prints each message as one JSON object per line
   check [--quiet]              Check unread count
   projects                     List all boards
   subscribers                  List board subscribers
@@ -634,11 +636,14 @@ func cmdRead() {
 		}
 	}
 
-	// Check for --all
-	readAll := false
+	// Check for --all and --json
+	readAll, asJSON := false, false
 	for _, arg := range os.Args {
 		if arg == "--all" || arg == "-a" {
 			readAll = true
+		}
+		if arg == "--json" {
+			asJSON = true
 		}
 	}
 
@@ -674,6 +679,15 @@ func cmdRead() {
 		return
 	}
 
+	// --json: one message object per line, exactly as the server returned it (scripts read
+	// subscriber_id from it, which the text form doesn't show; #3487).
+	if asJSON {
+		for _, m := range messages {
+			line, _ := json.Marshal(m)
+			fmt.Println(string(line))
+		}
+		return
+	}
 	for _, m := range messages {
 		ts, _ := m["created_at"].(string)
 		if len(ts) > 16 {
