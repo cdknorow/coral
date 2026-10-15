@@ -14,6 +14,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
@@ -275,7 +276,12 @@ func findProtocolMD() string {
 		}
 	}
 
-	// Check common source locations
+	// The current folder only in a dev build (running from the source tree): a release server
+	// started from a repository would otherwise give every agent that repository's
+	// PROTOCOL.md as its system prompt (#3601, weak site W16).
+	if config.TierName != "dev" {
+		return ""
+	}
 	for _, rel := range []string{
 		"src/coral/PROTOCOL.md",
 		"PROTOCOL.md",
