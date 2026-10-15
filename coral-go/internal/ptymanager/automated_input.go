@@ -252,11 +252,11 @@ func WaitingOnUser(ctx context.Context, term any, name, agentType, sessionID str
 // next to it (shadow mode), unless CORAL_GATE_MODE=signals.
 func (in AutomatedInput) waiting(ctx context.Context) (waiting bool, why, kind string) {
 	waiting, why, kind = in.screenWaiting(ctx)
-	sWait, sWhy, sKind, ok := in.signalWaiting(ctx)
+	sWait, sWhy, sKind, st, ok := in.signalDecision(ctx)
 	if !ok {
 		return waiting, why, kind
 	}
-	gate.shadowLog(in, waiting, why, sWait, sWhy)
+	gate.shadowLog(in, waiting, why, sWait, sWhy, sKind, st)
 	if signalsMode() {
 		return sWait, sWhy, sKind
 	}

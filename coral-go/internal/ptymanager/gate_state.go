@@ -2,6 +2,8 @@ package ptymanager
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"os"
 	"regexp"
@@ -99,16 +101,23 @@ var claudeBusyRe = regexp.MustCompile(`(?i)esc to interrupt`)
 // why, and what it waits on when it is a request to the user (holdKind). ok is false when the session has no
 // signals, and the screen rule decides alone.
 func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why, kind string, ok bool) {
+	waiting, why, kind, _, ok = in.signalDecision(ctx)
+	return waiting, why, kind, ok
+}
+
+// signalDecision is signalWaiting, also returning the state it decided on (for the
+// shadow log).
+func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why, kind string, st AgentState, ok bool) {
 	stateFunc.RLock()
 	fn := stateFunc.fn
 	stateFunc.RUnlock()
 	if fn == nil {
-		return false, "", "", false
+		return false, "", "", st, false
 	}
 	agentType, sessionID := in.identity()
-	st, ok := fn(ctx, in.Name, agentType, sessionID)
+	st, ok = fn(ctx, in.Name, agentType, sessionID)
 	if !ok {
-		return false, "", "", false
+		return false, "", "", st, false
 	}
 	var screen string
 	haveScreen := false
@@ -119,24 +128,24 @@ func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why, 
 	}
 	switch st.State {
 	case StateGone:
-		return true, "signals: the agent's session ended", "", true
+		return true, "signals: the agent's session ended", "", st, true
 	case StateStarting:
 		// No hooks run before a trust screen is answered: the screen says whether
 		// the launch waits on the user (Blocked{trust} in the design; #3484's corpus).
 		if haveScreen {
 			if open, why := PromptOnScreen(screen); open && isPromptHold(why) {
-				return true, "signals: starting, screen: " + why, kindTrust, true
+				return true, "signals: starting, screen: " + why, kindTrust, st, true
 			}
 		}
-		return true, "signals: starting", "", true
+		return true, "signals: starting", "", st, true
 	case StateBlocked:
-		return true, "signals: blocked (" + st.Kind + ")", blockedKind(st.Kind), true
+		return true, "signals: blocked (" + st.Kind + ")", blockedKind(st.Kind), st, true
 	case StateInTurn:
 		// agy and pi signal no prompt: the screen is read for one only while a tool
 		// call is pending (2.2.3), so a busy footer is never a prompt.
 		if haveScreen && st.ToolPending && !hasPromptSignal(agentType) {
 			if open, why := PromptOnScreen(screen); open && isPromptHold(why) {
-				return true, "signals: in turn, tool pending, screen: " + why, kindPrompt, true
+				return true, "signals: in turn, tool pending, screen: " + why, kindPrompt, st, true
 			}
 		}
 		if in.staleRelaxation(st, agentType, screen, haveScreen) {
@@ -144,10 +153,10 @@ func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why, 
 				"session", in.Name, "last_event", st.LastEvent.Format(time.RFC3339), "cli_version", st.CLIVersion)
 			break
 		}
-		return true, "signals: in turn", "", true
+		return true, "signals: in turn", "", st, true
 	case StateIdle:
 	default:
-		return true, "signals: unknown state", "", true
+		return true, "signals: unknown state", "", st, true
 	}
 	// Idle by signals: the screen may still hold more.
 	if haveScreen {
@@ -156,18 +165,18 @@ func (in AutomatedInput) signalWaiting(ctx context.Context) (waiting bool, why, 
 				slog.Warn("automated input: state_disagreement: the signals say idle but the screen shows a prompt",
 					"session", in.Name, "why", why, "cli_version", st.CLIVersion)
 			}
-			return true, "signals: idle, screen: " + why, promptKind(why), true
+			return true, "signals: idle, screen: " + why, promptKind(why), st, true
 		}
 	}
 	if in.RequireInputBox && (agentType == at.Claude || agentType == at.Codex) && (!haveScreen || !InputBoxOnScreen(screen)) {
-		return true, "signals: idle, the agent's input box isn't on screen yet", "", true
+		return true, "signals: idle, the agent's input box isn't on screen yet", "", st, true
 	}
 	if hr, isPTY := in.Term.(HumanInputReader); isPTY && !st.LastStop.IsZero() && hr.HumanInputSince(in.Name, st.LastStop) {
 		// The PTY's box can't be read; a person who typed since the turn ended has a
 		// draft by definition (2.2.6, P3).
-		return true, whyDraft, "", true
+		return true, whyDraft, "", st, true
 	}
-	return false, "", "", true
+	return false, "", "", st, true
 }
 
 // Hold kinds (HeldTooLongFunc): what a request to the user is. "" is a hold for the
@@ -221,7 +230,7 @@ func (in AutomatedInput) staleRelaxation(st AgentState, agentType, screen string
 
 // shadowLog records one decision's screen rule and signal rule, once per change for a
 // send (shadow mode, phase 1).
-func (g *inputGate) shadowLog(in AutomatedInput, oldWait bool, oldWhy string, newWait bool, newWhy string) {
+func (g *inputGate) shadowLog(in AutomatedInput, oldWait bool, oldWhy string, newWait bool, newWhy, kind string, st AgentState) {
 	decision := func(wait bool, why string) string {
 		if wait {
 			return "hold: " + why
@@ -241,8 +250,20 @@ func (g *inputGate) shadowLog(in AutomatedInput, oldWait bool, oldWhy string, ne
 	if signalsMode() {
 		mode = "signals"
 	}
-	slog.Info("automated input decision", "session", in.Name, "sender", in.What, "key", in.Key,
-		"old", old, "new", nw, "agree", oldWait == newWait, "mode", mode)
+	agentType, _ := in.identity()
+	slog.Info("automated input decision", "session", in.Name, "sender", in.What, "key", logKey(in),
+		"old", old, "new", nw, "agree", oldWait == newWait, "mode", mode,
+		"agent_type", agentType, "cli_version", st.CLIVersion, "state", st.State.String(), "kind", kind)
+}
+
+// logKey is a send's Key for a log line, never its text: a send without a key of its
+// own is keyed by its text (a board message), which stays out of the server log.
+func logKey(in AutomatedInput) string {
+	if in.Key == "" || in.Key == in.Text {
+		sum := sha256.Sum256([]byte(in.Key))
+		return "text:" + hex.EncodeToString(sum[:4])
+	}
+	return in.Key
 }
 
 // shadowForget drops a send's shadow record once it is delivered, handed off or dropped.
@@ -299,7 +320,7 @@ func TakeHeld(ctx context.Context, name, why string, match func(key string) bool
 	gate.mu.Unlock()
 	gate.checkEnded(name)
 	for _, t := range taken {
-		slog.Info("automated input retired", "session", name, "sender", t.What, "key", t.Key, "why", why)
+		slog.Info("automated input retired", "session", name, "sender", t.What, "key", logKey(AutomatedInput{Key: t.Key, Text: t.Text}), "why", why)
 	}
 	return taken, true
 }

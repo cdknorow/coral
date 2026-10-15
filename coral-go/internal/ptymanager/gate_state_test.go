@@ -105,7 +105,7 @@ func TestShadowModeLogsBothDecisions(t *testing.T) {
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(syncWriter{w: &buf, mu: &mu}, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
-	st := withState(t, AgentState{State: StateInTurn, LastEvent: time.Now()}, true)
+	st := withState(t, AgentState{State: StateInTurn, LastEvent: time.Now(), CLIVersion: "2.1.300"}, true)
 	_ = st
 
 	a := &fakeAgent{screen: idleInputBox}
@@ -119,6 +119,19 @@ func TestShadowModeLogsBothDecisions(t *testing.T) {
 	assert.Contains(t, out, "agree=false")
 	assert.Contains(t, out, `new="hold: signals: in turn"`)
 	assert.Equal(t, 1, strings.Count(out, "automated input decision"))
+	for _, f := range []string{"agent_type=claude", "state=in_turn", "cli_version=2.1.300", "kind=\"\""} {
+		assert.Contains(t, out, f, "the report's fields (#3494)")
+	}
+
+	// A send keyed by its own text (a route's board message) logs a hash, never the text.
+	c := &fakeAgent{screen: idleInputBox}
+	_, err = DeliverAutomated(context.Background(), c.input("claude-shadow-text", "", "a private board message", false))
+	require.NoError(t, err)
+	mu.Lock()
+	out = buf.String()
+	mu.Unlock()
+	assert.NotContains(t, out, "a private board message")
+	assert.Contains(t, out, "key=text:")
 
 	t.Setenv("CORAL_GATE_MODE", "signals")
 	b := &fakeAgent{screen: idleInputBox}
