@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.35 — Task diffs stop filling the disk; the artifact store gets caps, a Delete button and private files
+
+**Upgrade note:** at startup Coral makes its data folder private to your user: folders become 0700, and the databases, `coral.log` and artifact files 0600. Coral's hooks and CLIs run as the same user and keep working.
+
+### Changes
+
+- **Task and session diffs stay small.** A stored diff (a task's or session's `changes.diff`) leaves out sensitive paths and dot-files (also when renamed or copied), binary files and any file section over 256 KiB, each replaced by a one-line note; a hidden file's note doesn't name it. It is cut at 8 MiB, and identical diffs are stored once. Before this, every task done in a shared checkout stored the whole working tree's untracked files again, about 4.5 GiB a day on a busy machine. Existing diffs aren't removed. The live diff on this computer is unchanged.
+- **Delete an artifact.** The dashboard's artifact lists have a Delete button for you (not in Coral Hub or the pop-out). It asks first, and other tabs drop the deleted row. Links to a deleted artifact show it as unavailable; a copy a browser already cached may remain. Settings shows the artifact store's size, with task and session diffs on their own lines.
+- **Upload caps.** Each agent session can upload 100 artifacts and 512 MiB an hour (413 `artifact_quota`); 64 MiB stays the limit for one file. An optional `artifact_store_max_bytes` caps the store's total (off by default). Uploads are streamed, never read whole into memory.
+- **Image metadata.** Uploaded JPEG, PNG and GIF images have their metadata removed, as auto-attached ones already did. WebP, HEIC/AVIF and TIFF files that carry metadata are refused; **a TIFF saved by macOS (for example from Preview) usually won't upload; export it as PNG**.
+- **The first upload names an artifact.** Uploading the same file again doesn't change the name or type others see, and an object is never visible half-written.
+- **Numbered agents, follow-ups.** Launching an explicit numbered name that's taken picks the next free number ("Backend Dev 3", not "Backend Dev 2 2"). Resetting or resurrecting a team reports each agent's real name. A nudge for "@Backend Dev 2" no longer reaches "Backend Dev", and "@Backend Developers" doesn't either.
+- Saving several settings at once is one change, so a later save can't interleave with it.
+
+### Security
+
+- **Diffs through Coral Hub are filtered.** Through Coral Hub, old stored diffs are filtered when served (sensitive paths, dot-files and binaries left out), and the working-directory header is dropped. Untracked files in a checkout can hold personal data, such as screenshots.
+- **Deleting an artifact is the Operator's.** `DELETE /api/artifacts/{id}` needs a person (the dashboard or the signed CLI) and never works through Coral Hub; an upload and a delete of one file can't race.
+
 ## v1.4.34 — Two agents in one role get their own names; a Coral Hub status light in the header
 
 ### Changes
