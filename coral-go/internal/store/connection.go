@@ -661,6 +661,12 @@ CREATE TABLE IF NOT EXISTS cloud_enrollment (
     failures         INTEGER NOT NULL DEFAULT 0
 );
 
+-- Artifacts the Operator keeps (#3554): never pruned, whatever their age or references.
+CREATE TABLE IF NOT EXISTS artifact_keep (
+    hex     TEXT PRIMARY KEY,
+    kept_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS custom_views (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	name       TEXT NOT NULL,

@@ -1,5 +1,6 @@
 DELETE /api/agent/ui/{id} never
 DELETE /api/artifacts/{id} never
+DELETE /api/artifacts/{id}/keep never
 DELETE /api/board/remotes never
 DELETE /api/board/{project} launch
 DELETE /api/board/{project}/groups/{groupID}/members/{sessionID} interact
@@ -123,6 +124,7 @@ GET /api/settings/prompt-inspection never
 GET /api/spec.json never
 GET /api/system/api-key never
 GET /api/system/artifact-store never
+GET /api/system/artifact-store/kept never
 GET /api/system/auth-status never
 GET /api/system/cli-check never
 GET /api/system/database-security never
@@ -191,6 +193,8 @@ POST /api/agent/tasks/{taskID}/complete never
 POST /api/agent/tasks/{taskID}/publish never
 POST /api/agent/ui-request interact
 POST /api/agent/ui/{id}/events interact
+POST /api/artifacts/prune never
+POST /api/artifacts/retention/ack never
 POST /api/auto-accept/disable-all interact
 POST /api/board/remotes never
 POST /api/board/{project}/external-messages interact
@@ -288,6 +292,7 @@ POST /api/workflows/by-name/{name}/trigger launch
 POST /api/workflows/runs/{runID}/kill interact
 POST /api/workflows/{workflowID}/trigger launch
 PUT /api/agent/ui/{id} never
+PUT /api/artifacts/{id}/keep never
 PUT /api/board/{project}/settings never
 PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} interact

@@ -599,6 +599,36 @@
                 <dd>
                     <input type="number" id="settings-artifact-store-max" min="0" step="1" inputmode="numeric" aria-describedby="settings-artifact-store-size">
                     <div id="settings-artifact-store-size" class="settings-hint" role="status">Loading…</div>
+                    <div id="settings-storage-detail" class="settings-hint"></div>
+                </dd>
+                <dt class="toggle-dt">
+                    <label for="settings-prune-days">Free space</label>
+                    <span class="toggle-desc">Shrink rewrites saved diffs of finished tasks without secrets, dot-files, binaries and big files (the code changes stay). Prune deletes saved diffs of finished tasks and stopped sessions, and artifacts nothing links, older than the days you choose. Kept artifacts and anything still linked are never touched. Each shows what it would do first.</span>
+                </dt>
+                <dd>
+                    <label class="settings-inline">Older than <input type="number" id="settings-prune-days" min="1" max="3650" step="1" value="14" inputmode="numeric"> days</label>
+                    <select id="settings-prune-kind" aria-label="What to prune">
+                        <option value="diffs">Saved diffs</option>
+                        <option value="objects">Unlinked artifacts</option>
+                        <option value="all">Both</option>
+                    </select>
+                    <button class="btn btn-small" type="button" id="settings-storage-shrink">Shrink…</button>
+                    <button class="btn btn-small" type="button" id="settings-storage-prune">Prune…</button>
+                    <div id="settings-storage-result" class="settings-hint" role="status"></div>
+                </dd>
+                <dt class="toggle-dt">
+                    <label for="settings-retention-days">Automatic cleanup (days)</label>
+                    <span class="toggle-desc">Prune what is older than this every hour. 0 means off (the default). After you turn it on, nothing is removed until you review what it would do, or 24 hours later; each run frees at most 2 GiB.</span>
+                </dt>
+                <dd>
+                    <input type="number" id="settings-retention-days" min="0" max="3650" step="1" inputmode="numeric" aria-describedby="settings-retention-status">
+                    <select id="settings-retention-kind" aria-label="What automatic cleanup prunes">
+                        <option value="diffs">Saved diffs</option>
+                        <option value="objects">Unlinked artifacts</option>
+                        <option value="all">Both</option>
+                    </select>
+                    <div id="settings-retention-status" class="settings-hint" role="status"></div>
+                    <button class="btn btn-small" type="button" id="settings-retention-review" hidden>Review and start…</button>
                 </dd>
                 <dt class="toggle-dt">
                     <label for="settings-debug-input-log">Log terminal input (debug)</label>

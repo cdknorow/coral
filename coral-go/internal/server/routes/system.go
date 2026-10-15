@@ -201,6 +201,39 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		body[agentprio.SettingKey] = lvl
 	}
+	// Artifact retention (#3554): whole days from 0 (off) to 3650, and a list of kinds. Its
+	// bookkeeping keys are Coral's own.
+	for _, k := range []string{retentionEnabledAtKey, retentionSeenDaysKey, RetentionAckAtKey, RetentionLastKey} {
+		if _, ok := body[k]; ok {
+			errBadRequest(w, k+" is set by Coral (acknowledge a dry run with POST /api/artifacts/retention/ack)")
+			return
+		}
+	}
+	if v, ok := body[RetentionDaysSetting]; ok {
+		s, valid := validRetentionDays(v)
+		if !valid {
+			errBadRequest(w, RetentionDaysSetting+" must be a whole number of days from 0 (off) to 3650")
+			return
+		}
+		body[RetentionDaysSetting] = s
+		// A changed value starts its wait now, so Settings can offer the review at once (an
+		// acknowledgement has to come after this moment to count).
+		if cur, _ := h.ss.GetSettings(r.Context()); cur == nil || cur[RetentionDaysSetting] != s {
+			if s == "0" {
+				body[retentionEnabledAtKey], body[retentionSeenDaysKey] = "", ""
+			} else {
+				body[retentionEnabledAtKey], body[retentionSeenDaysKey] = time.Now().UTC().Format(time.RFC3339), s
+			}
+		}
+	}
+	if v, ok := body[RetentionKindsSetting]; ok {
+		s, valid := validRetentionKinds(v)
+		if !valid {
+			errBadRequest(w, RetentionKindsSetting+" must list diffs, objects, diff-objects or all")
+			return
+		}
+		body[RetentionKindsSetting] = s
+	}
 	var current map[string]string
 	for k, v := range body {
 		agentType, isCLIPath := agent.IsCLIPathSetting(k)

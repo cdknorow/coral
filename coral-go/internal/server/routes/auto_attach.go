@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"image"
 	_ "image/gif" // DecodeConfig for the dimension cap
@@ -20,7 +21,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -56,7 +56,8 @@ const (
 	attachWindow          = time.Hour
 	attachWindowAttempts  = 50 // per agent per hour, refused attempts included
 	attachWindowBytes     = 100 << 20
-	attachTotalBytes      = 2 << 30 // per Coral, ever (auto-attach only)
+	attachTotalBytes      = 2 << 30 // per Coral, in any rolling 7 days (auto-attach only; #3554)
+	attachTotalDays       = 7
 )
 
 // attachLinkRe matches a Markdown image or link whose target is a local path ending in an
@@ -80,7 +81,10 @@ type AutoAttacher struct {
 
 	mu      sync.Mutex
 	windows map[string]*attachUsage
-	total   int64 // bytes auto-attached by this Coral (persisted)
+	// days: bytes auto-attached per UTC day, the last attachTotalDays kept (persisted). Once
+	// artifacts can be deleted and pruned a lifetime total stops making sense: it would block
+	// auto-attach for good after 2 GiB over time (#3554, Security's review).
+	days map[string]int64
 	// storeFullLogged: the artifact store's cap was hit (#3553); logged once, then files are
 	// left as written without failing the agent's turn.
 	storeFullLogged bool
@@ -99,8 +103,14 @@ func NewAutoAttacher(coralDir string, enabled func(context.Context) bool, dirs f
 	secret := make([]byte, 32)
 	_, _ = rand.Read(secret)
 	a := &AutoAttacher{coralDir: coralDir, enabled: enabled, dirs: dirs, now: time.Now, secret: secret, windows: map[string]*attachUsage{}}
+	a.days = map[string]int64{}
 	if b, err := os.ReadFile(a.totalFile()); err == nil {
-		a.total, _ = strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+		var saved struct {
+			Days map[string]int64 `json:"days"`
+		}
+		if json.Unmarshal(b, &saved) == nil && saved.Days != nil {
+			a.days = saved.Days
+		} // else the old lifetime number (before #3554): the window starts empty
 	}
 	return a
 }
@@ -294,15 +304,48 @@ func (a *AutoAttacher) charge(sessionID string, n int64) error {
 	if u.bytes+n > attachWindowBytes {
 		return errAttach("agent_hourly_bytes")
 	}
-	if a.total+n > attachTotalBytes {
+	if a.windowTotalLocked()+n > attachTotalBytes {
 		return errAttach("coral_total_cap")
 	}
 	u.bytes += n
-	a.total += n
-	if err := os.MkdirAll(filepath.Dir(a.totalFile()), 0o700); err == nil {
-		_ = os.WriteFile(a.totalFile(), []byte(strconv.FormatInt(a.total, 10)), 0o600)
-	}
+	a.addTodayLocked(n)
 	return nil
+}
+
+// windowTotalLocked is what auto-attach stored in the last attachTotalDays UTC days.
+func (a *AutoAttacher) windowTotalLocked() int64 {
+	var sum int64
+	for day, n := range a.days {
+		if a.inWindow(day) {
+			sum += n
+		}
+	}
+	return sum
+}
+
+func (a *AutoAttacher) inWindow(day string) bool {
+	t, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		return false
+	}
+	today := a.now().UTC().Truncate(24 * time.Hour)
+	return !t.Before(today.AddDate(0, 0, -(attachTotalDays - 1)))
+}
+
+// addTodayLocked adds n (negative: a refund) to today's bucket, drops days that left the
+// window, and saves the window.
+func (a *AutoAttacher) addTodayLocked(n int64) {
+	today := a.now().UTC().Format("2006-01-02")
+	a.days[today] = max(a.days[today]+n, 0)
+	for day := range a.days {
+		if !a.inWindow(day) {
+			delete(a.days, day)
+		}
+	}
+	b, _ := json.Marshal(map[string]any{"days": a.days})
+	if err := os.MkdirAll(filepath.Dir(a.totalFile()), 0o700); err == nil {
+		_ = writeFileAtomic(a.totalFile(), b, 0o600)
+	}
 }
 
 // refund gives back a charge for a file that wasn't stored after all (the store's cap).
@@ -312,10 +355,7 @@ func (a *AutoAttacher) refund(sessionID string, n int64) {
 	if u := a.windows[sessionID]; u != nil {
 		u.bytes = max(u.bytes-n, 0)
 	}
-	a.total = max(a.total-n, 0)
-	if err := os.MkdirAll(filepath.Dir(a.totalFile()), 0o700); err == nil {
-		_ = os.WriteFile(a.totalFile(), []byte(strconv.FormatInt(a.total, 10)), 0o600)
-	}
+	a.addTodayLocked(-n)
 }
 
 func (a *AutoAttacher) usage(sessionID string) *attachUsage {

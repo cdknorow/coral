@@ -16,3 +16,11 @@ func fileIdentity(fi os.FileInfo) (string, bool) {
 	}
 	return fmt.Sprintf("%d:%d", st.Dev, st.Ino), true
 }
+
+// fileLinks is a file's hard-link count (#3554: a shared diff object nothing links has 1).
+func fileLinks(fi os.FileInfo) uint64 {
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
+		return uint64(st.Nlink)
+	}
+	return 1
+}

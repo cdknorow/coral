@@ -23,6 +23,24 @@ function canDelete(link) {
         && !isCloud() && !document.body.classList.contains('popout-mode');
 }
 
+// ── Keep (#3554): an artifact the Operator keeps is never pruned ────────────
+let kept = null; // Set of kept ids, read once per render pass
+async function loadKept() {
+    if (isCloud() || document.body.classList.contains('popout-mode')) return new Set();
+    try {
+        const r = await fetch('/api/system/artifact-store/kept');
+        return new Set(r.ok ? (await r.json()).kept || [] : []);
+    } catch { return new Set(); }
+}
+async function toggleKeep(hex, name, btn) {
+    const on = btn.getAttribute('aria-pressed') !== 'true';
+    const r = await fetch(`/api/artifacts/${hex}/keep`, { method: on ? 'PUT' : 'DELETE' }).catch(() => null);
+    if (!r?.ok) { notice = `Couldn't ${on ? 'keep' : 'release'} ${name}.`; render(); return; }
+    if (on) kept?.add(hex); else kept?.delete(hex);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.title = on ? 'Kept: never pruned (click to release)' : 'Keep: never prune this';
+}
+
 // Other tabs of this dashboard drop a row deleted here.
 const deletions = typeof BroadcastChannel === 'function' ? new BroadcastChannel('coral-artifact-deletions') : null;
 deletions?.addEventListener('message', e => { if (/^[a-f0-9]{64}$/.test(String(e.data))) forget(e.data); });
@@ -275,7 +293,15 @@ function render() {
                 del.title = 'Delete';
                 del.setAttribute('aria-label', `Delete ${name}`);
                 del.addEventListener('click', () => deleteArtifact(hex, name, sizeLabel(item.size)));
-                actions.append(del);
+                const keep = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-keep');
+                keep.type = 'button';
+                keep.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
+                const isKept = !!kept?.has(hex);
+                keep.setAttribute('aria-pressed', String(isKept));
+                keep.setAttribute('aria-label', `Keep ${name}`);
+                keep.title = isKept ? 'Kept: never pruned (click to release)' : 'Keep: never prune this';
+                keep.addEventListener('click', () => toggleKeep(hex, name, keep));
+                actions.append(keep, del);
             }
             actionCell.append(actions);
         } else actionCell.append(el('span', 'team-artifact-missing', item.available === false ? 'Missing' : 'Unavailable'));
@@ -315,6 +341,7 @@ async function load(append = false) {
         if ((!standalone && data.project !== splitKey(requestedTeam).name) || !Array.isArray(data.artifacts) || (scope === 'artifacts' && data.session_id !== requestedSession)) throw new Error('Unable to load artifacts: unexpected response scope.');
         cache.items = append ? [...cache.items,...data.artifacts] : data.artifacts;
         cache.hasMore=!!data.has_more; cache.truncated=!!data.truncated; cache.loaded=true;
+        if (!append) kept = await loadKept(); // the Keep toggles' state (#3554)
     } catch (error) {
         if (gen !== cache.generation || caches[scope] !== cache || error.name === 'AbortError') return;
         cache.error=error.message || 'Unable to load artifacts.';

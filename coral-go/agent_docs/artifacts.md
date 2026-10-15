@@ -101,6 +101,36 @@ The Operator, on this computer's own dashboard, also has **Delete** in both list
 - **Deleting:** only the Operator deletes an artifact, from the dashboard on this computer (or the signed command line). The route is `DELETE /api/artifacts/<hex>`; an agent's token, a script, an API key and Coral Hub get 403. It removes the stored file and every upload record of it. Links to it in posts and task results stay, and show "unavailable". A copy a browser already cached may remain.
 - **Who can read an artifact:** anyone who can reach this Coral and has its id. That includes any agent, the dashboard, an API-key client, and Coral Hub viewers at View tier. Reads aren't scoped to a board or team. The id is the SHA-256 of the content, so whoever already holds a file can check whether it is stored. Treat an artifact link as a capability: share it only where its readers may see the file.
 
+## Freeing space (the Operator)
+
+Coral never removes stored data on its own unless the Operator asks. Two tools, both the
+Operator's only (the dashboard on this computer or the signed command line; an agent's token, a
+script, an API key and Coral Hub get 403):
+
+- **Prune** removes, older than a number of days you choose:
+  - saved diffs (`changes.diff`) of tasks that are completed or skipped, and of sessions that are stopped. Never an open task's or a running or sleeping session's;
+  - artifacts nothing links. Nothing means no post on a board that still exists, no task, its results or evidence, no note, panel, view or workflow, and no team knowledge file. A link anywhere keeps it, and so does the Operator's **Keep** mark.
+  - Identical diffs are stored once and shared. The shared copy goes when nothing links it any more.
+- **Shrink** rewrites saved diffs of finished tasks without secrets, dot-files, binaries and files over 256 KiB (each becomes a one-line note). The code changes stay.
+
+From the command line:
+
+```sh
+coral artifacts prune --older-than 14d [--kind diffs|objects|diff-objects|all] [--dry-run] [--yes]
+coral artifacts prune --shrink [--dry-run] [--yes]
+```
+
+Each shows what it would do first, and asks (or needs `--yes` without a terminal). If the check for
+links fails, nothing is removed. In the dashboard, Settings has Shrink and Prune, and an
+artifact's row has Keep (never pruned) next to Delete.
+
+**Automatic cleanup** (Settings, or `artifact_retention_days`; 0, the default, is off) prunes every
+hour what is older than that many days. After it's turned on, nothing is removed until the Operator
+reviews what it would do ("Review and start"), or 24 hours later. Each run frees at most 2 GiB, and
+each removal is logged (id and size only).
+
+Auto-attach's own limit is 2 GiB in any 7 days (it was 2 GiB in total before).
+
 ## Read an artifact someone else shared
 
 ```sh

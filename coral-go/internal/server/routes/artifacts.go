@@ -61,6 +61,11 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	r.Post("/api/agent/artifacts", h.uploadAgentArtifact)
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
 	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
+	r.Get("/api/system/artifact-store/kept", h.keptListRoute) // #3554
+	r.Post("/api/artifacts/prune", h.pruneArtifactsRoute)
+	r.Post("/api/artifacts/retention/ack", h.retentionAckRoute) // #3554     // #3554
+	r.Put("/api/artifacts/{id}/keep", h.keepArtifactRoute)      // #3554
+	r.Delete("/api/artifacts/{id}/keep", h.keepArtifactRoute)   // #3554
 	r.Get("/api/system/artifact-store", h.getArtifactStore)
 }
 
@@ -90,11 +95,20 @@ func (h *SessionsHandler) getArtifactStore(w http.ResponseWriter, r *http.Reques
 	coralDir := h.cfg.CoralDir()
 	b, n, max := storeFor(coralDir).size()
 	tb, tn, sb, sn := diffStoreSizes(coralDir)
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"bytes": b, "objects": n, "max_bytes": max,
 		"task_diffs":    map[string]int64{"bytes": tb, "files": tn},
 		"session_diffs": map[string]int64{"bytes": sb, "files": sn},
-	})
+	}
+	// ?detail=1 (#3554): by age, by board, kept and retention, for Settings > Storage.
+	if r.URL.Query().Get("detail") == "1" {
+		if detail, err := h.storageDetail(r.Context()); err == nil {
+			out["detail"] = detail
+		} else {
+			out["detail_error"] = "could not read the store's details"
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 var diffSizes struct {
@@ -499,6 +513,12 @@ func deleteArtifactFiles(coralDir, id string) (freed int64, records int, found b
 		return 0, 0, false, nil
 	}
 	defer lockArtifact(id)()
+	return deleteArtifactFilesLocked(coralDir, id)
+}
+
+// deleteArtifactFilesLocked is deleteArtifactFiles for a caller that already holds id's lock
+// (#3554's prune re-checks a candidate under the lock, then deletes it).
+func deleteArtifactFilesLocked(coralDir, id string) (freed int64, records int, found bool, err error) {
 	objectPath := filepath.Join(coralDir, "artifacts", "objects", id)
 	info, statErr := os.Stat(objectPath)
 	_, sideErr := os.Stat(objectPath + ".json")
@@ -548,6 +568,9 @@ func (h *SessionsHandler) deleteAgentArtifact(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		errInternalServer(w, "could not delete the artifact")
 		return
+	}
+	if h.db != nil { // an explicit delete also drops the Operator's keep mark (#3554)
+		_, _ = h.db.ExecContext(r.Context(), "DELETE FROM artifact_keep WHERE hex = ?", id)
 	}
 	slog.Info("[artifacts] deleted by the Operator", "digest", id, "bytes", freed, "upload_records", removed)
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "bytes": freed})

@@ -244,6 +244,14 @@ func (s *Server) MintLoginToken() (string, error) {
 // StartMachineHealth samples this machine's health every 15 s for the feeds (#3444): Coral's own
 // process, the agents' process trees (the backend's agent processes), the host, the data folder's
 // disk, and the stall watchdog's probe latencies (wd may be nil: the watchdog is off).
+// RunArtifactRetention runs #3554's artifact retention job (off unless the Operator sets
+// artifact_retention_days) until ctx ends.
+func (s *Server) RunArtifactRetention(ctx context.Context) {
+	if s.sessHandler != nil {
+		s.sessHandler.RunArtifactRetention(ctx)
+	}
+}
+
 func (s *Server) StartMachineHealth(ctx context.Context, wd *stallwatch.Watchdog) {
 	src := machinehealth.Source{DataDir: s.cfg.CoralDir()}
 	if ap, ok := s.backend.(ptymanager.AgentProcesses); ok {

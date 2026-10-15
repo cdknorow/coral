@@ -927,6 +927,10 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	uploadsRetention := background.NewUploadsRetention(db, cfg.CoralDir())
 	safeGo(ctx, "uploads_retention", func() { uploadsRetention.Run(ctx) })
 
+	// Artifact retention (#3554): off unless the Operator sets artifact_retention_days; the
+	// first run waits for an acknowledged dry run (or 24 hours), and each run is capped.
+	safeGo(ctx, "artifact_retention", func() { srv.RunArtifactRetention(ctx) })
+
 	// Thinking tracker — no hook fires for model thinking, so thinking turns
 	// and their durations are read from Claude transcripts into the activity stream
 	thinkingTracker := background.NewThinkingTracker(sessStore, taskStore, 2*time.Second)

@@ -333,12 +333,33 @@ func TestAutoAttachCapsAndSwitch(t *testing.T) {
 	// The per-Coral total, persisted.
 	rig3 := newAttachRig(t)
 	rig3.write("ok.png", pngBytes(t, 4, 4))
-	rig3.a.total = attachTotalBytes - 10
+	today := time.Now().UTC().Format("2006-01-02")
+	rig3.a.days = map[string]int64{today: attachTotalBytes - 10}
 	unchanged(t, rig3, "![x](ok.png)", "the Coral-wide cap")
-	rig3.a.total = 0
+	rig3.a.days = map[string]int64{}
 	assert.Regexp(t, coralLinkRe, rig3.post("![x](ok.png)"))
 	again := NewAutoAttacher(rig3.coralDir, nil, nil)
-	assert.Greater(t, again.total, int64(0), "the total survives a restart")
+	again.mu.Lock()
+	assert.Greater(t, again.windowTotalLocked(), int64(0), "the window survives a restart")
+	again.mu.Unlock()
+
+	// A rolling 7 days, not a lifetime (#3554): what was attached 8 days ago no longer counts.
+	rig5 := newAttachRig(t)
+	rig5.write("ok.png", pngBytes(t, 5, 5))
+	rig5.a.days = map[string]int64{time.Now().UTC().AddDate(0, 0, -8).Format("2006-01-02"): attachTotalBytes}
+	assert.Regexp(t, coralLinkRe, rig5.post("![x](ok.png)"), "the full cap 8 days ago is out of the window")
+	rig5.a.days = map[string]int64{time.Now().UTC().AddDate(0, 0, -6).Format("2006-01-02"): attachTotalBytes}
+	rig5.write("ok2.png", pngBytes(t, 6, 6))
+	unchanged(t, rig5, "![x](ok2.png)", "6 days ago is still in the window")
+
+	// The file from before #3554 (a lifetime number) starts an empty window.
+	rig6 := newAttachRig(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(rig6.coralDir, "artifacts"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(rig6.coralDir, "artifacts", "auto-attach-bytes"), []byte("2147483648"), 0o600))
+	old := NewAutoAttacher(rig6.coralDir, nil, nil)
+	old.mu.Lock()
+	assert.Zero(t, old.windowTotalLocked())
+	old.mu.Unlock()
 
 	// Storage fails: the link is left as written.
 	rig4 := newAttachRig(t)

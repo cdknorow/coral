@@ -3252,6 +3252,157 @@ async function loadArtifactStoreSize() {
     } catch {
         out.textContent = "Couldn't read the store's size.";
     }
+    loadStorageDetail();
+}
+
+// ── Free space and automatic cleanup (#3554) ──────────────────────────
+const PRUNE_KINDS = { diffs: ['diffs'], objects: ['objects'], all: ['all'] };
+
+function _lines(el, lines) {
+    el.replaceChildren(...lines.flatMap((l, i) => (i ? [document.createElement('br'), l] : [l])));
+}
+
+/** The store's breakdown (by age, by board, kept) and automatic cleanup's state. */
+async function loadStorageDetail() {
+    const out = document.getElementById('settings-storage-detail');
+    const days = document.getElementById('settings-retention-days');
+    const kind = document.getElementById('settings-retention-kind');
+    if (!out || !days) return;
+    try {
+        const r = await fetch('/api/system/artifact-store?detail=1');
+        if (!r.ok) throw new Error(String(r.status));
+        const d = (await r.json()).detail;
+        if (!d) throw new Error('no detail');
+        const age = (k) => ['<1d', '1-7d', '7-30d', '>30d'].map(b => `${b} ${_gib(d.by_age?.[k]?.[b]?.bytes || 0)}`).join(' · ');
+        const lines = [
+            `By age: artifacts ${age('objects')}`,
+            `task diffs ${age('task_diffs')}`,
+        ];
+        const boards = (d.by_board || []).slice(0, 5).map(b => `${b.label || b.board} ${_gib(b.bytes)}`);
+        if (boards.length) lines.push(`Largest boards: ${boards.join(' · ')}`);
+        if (d.kept?.count) lines.push(`Kept: ${d.kept.count} artifact${d.kept.count === 1 ? '' : 's'}, ${_gib(d.kept.bytes)}`);
+        _lines(out, lines);
+        const ret = d.retention || {};
+        days.value = String(Number(ret.days) || 0);
+        days.dataset.loaded = '1';
+        kind.value = ['diffs', 'objects', 'all'].includes(ret.kinds) ? ret.kinds : 'diffs';
+        showRetentionStatus(ret);
+    } catch {
+        out.textContent = '';
+    }
+}
+
+function showRetentionStatus(ret) {
+    const status = document.getElementById('settings-retention-status');
+    const review = document.getElementById('settings-retention-review');
+    if (!status || !review) return;
+    const days = Number(ret.days) || 0;
+    const enabled = ret.enabled_at ? new Date(ret.enabled_at) : null;
+    const acked = ret.acknowledged_at ? new Date(ret.acknowledged_at) : null;
+    const waiting = days > 0 && enabled && !(acked && acked >= enabled) && Date.now() - enabled < 24 * 3600e3;
+    review.hidden = !waiting;
+    const lines = [];
+    if (!days) lines.push('Off.');
+    else if (waiting) lines.push(`On (${days} days), waiting: review what it would do to start now, or it starts on ${new Date(enabled.getTime() + 24 * 3600e3).toLocaleString()}.`);
+    else if (days && !enabled) lines.push(`On (${days} days): its first check is within the hour; it then waits for your review.`);
+    else lines.push(`On (${days} days).`);
+    if (ret.last?.at) lines.push(`Last run ${new Date(ret.last.at).toLocaleString()}: freed ${_gib(ret.last.freed)}${ret.last.capped ? ' (stopped at the 2 GiB cap)' : ''}.`);
+    _lines(status, lines);
+}
+
+/** Settings' value for automatic cleanup ({} when not read from Coral). */
+function retentionSettings() {
+    const days = document.getElementById('settings-retention-days');
+    const kind = document.getElementById('settings-retention-kind');
+    if (!days || isCloud() || days.dataset.loaded !== '1') return {};
+    const n = Math.max(0, Math.min(3650, Math.floor(Number(days.value) || 0)));
+    return { artifact_retention_days: String(n), artifact_retention_kinds: kind?.value || 'diffs' };
+}
+
+async function pruneRequest(body) {
+    const r = await fetch('/api/artifacts/prune', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    return d;
+}
+
+function pruneSummary(rep) {
+    const n = Object.values(rep.kinds || {}).reduce((a, k) => a + (k.count || 0), 0);
+    return { n, text: Object.entries(rep.kinds || {}).map(([k, v]) => `${v.count} ${k} (${_gib(v.bytes)})`).join(', ') };
+}
+
+/** A dry run, a confirmation (focus on Cancel), then the real run. */
+async function previewAndRun(body, verb) {
+    const result = document.getElementById('settings-storage-result');
+    result.removeAttribute('data-state');
+    result.textContent = 'Checking…';
+    let dry;
+    try {
+        dry = await pruneRequest({ ...body, dry_run: true });
+    } catch (e) {
+        result.dataset.state = 'error';
+        result.textContent = `Couldn't check: ${e.message}`;
+        return;
+    }
+    const s = pruneSummary(dry);
+    if (!s.n) {
+        result.textContent = 'Nothing to do.';
+        return;
+    }
+    result.textContent = '';
+    const what = verb === 'Shrink' ? `saving about ${_gib(dry.freed)}. The code changes in them stay.` : `freeing about ${_gib(dry.freed)}. This can't be undone.`;
+    window.showConfirmModal?.(`${verb} saved data`, `${verb} ${s.text}, ${what}`, async () => {
+        result.textContent = `${verb === 'Shrink' ? 'Shrinking' : 'Pruning'}…`;
+        try {
+            const done = await pruneRequest({ ...body, dry_run: false });
+            result.textContent = `${verb === 'Shrink' ? 'Saved' : 'Freed'} ${_gib(done.freed)}: ${done.removed} done${done.skipped ? `, ${done.skipped} left alone because they changed` : ''}${done.errors ? `, ${done.errors} errors` : ''}.`;
+            loadArtifactStoreSize();
+        } catch (e) {
+            result.dataset.state = 'error';
+            result.textContent = `Couldn't finish: ${e.message}`;
+        }
+    });
+    // No default: focus starts on Cancel.
+    requestAnimationFrame(() => document.querySelector('#confirm-modal .modal-actions .btn:not(#confirm-modal-yes)')?.focus());
+}
+
+function wireStorageActions() {
+    const shrink = document.getElementById('settings-storage-shrink');
+    if (!shrink || shrink.dataset.wired) return;
+    shrink.dataset.wired = '1';
+    shrink.addEventListener('click', () => previewAndRun({ shrink: true }, 'Shrink'));
+    document.getElementById('settings-storage-prune')?.addEventListener('click', () => {
+        const days = Math.max(1, Math.floor(Number(document.getElementById('settings-prune-days').value) || 14));
+        const kind = document.getElementById('settings-prune-kind').value;
+        previewAndRun({ older_than_seconds: days * 86400, kinds: PRUNE_KINDS[kind] || ['diffs'] }, 'Prune');
+    });
+    document.getElementById('settings-retention-review')?.addEventListener('click', async () => {
+        const status = document.getElementById('settings-retention-status');
+        const days = Number(document.getElementById('settings-retention-days').value) || 0;
+        const kind = document.getElementById('settings-retention-kind').value;
+        if (!days) return;
+        let dry;
+        try {
+            dry = await pruneRequest({ older_than_seconds: days * 86400, kinds: PRUNE_KINDS[kind] || ['diffs'], dry_run: true });
+        } catch (e) {
+            status.dataset.state = 'error';
+            status.textContent = `Couldn't check: ${e.message}`;
+            return;
+        }
+        const s = pruneSummary(dry);
+        window.showConfirmModal?.('Start automatic cleanup',
+            `Its first run would remove ${s.n ? `${s.text}, about ${_gib(dry.freed)}` : 'nothing right now'} (at most 2 GiB a run), then check every hour. Start it?`,
+            async () => {
+                const r = await fetch('/api/artifacts/retention/ack', { method: 'POST' });
+                if (!r.ok) {
+                    status.dataset.state = 'error';
+                    status.textContent = "Couldn't start it: save the setting first.";
+                    return;
+                }
+                loadStorageDetail();
+            });
+        requestAnimationFrame(() => document.querySelector('#confirm-modal .modal-actions .btn:not(#confirm-modal-yes)')?.focus());
+    });
 }
 
 /** The limit to save, in bytes ({} when the field isn't on this page). */
@@ -3273,6 +3424,7 @@ export async function showSettingsModal() {
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
         loadArtifactStoreSize(); // the store's size next to its limit (#3553)
+        wireStorageActions(); // free space and automatic cleanup (#3554)
         const autoAttach = document.getElementById('settings-board-auto-attach');
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach, true);
         const debugInput = document.getElementById('settings-debug-input-log');
@@ -3577,6 +3729,7 @@ export async function applySettings() {
         telemetry_enabled: telemetryEnabled,
         board_auto_attach: boardAutoAttach,
         ...artifactStoreMaxSetting(),
+        ...retentionSettings(),
         debug_input_log: debugInputLog,
         remote_access_enabled: remoteAccessEnabled,
     };
