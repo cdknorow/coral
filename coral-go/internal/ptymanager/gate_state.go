@@ -268,19 +268,20 @@ type TakenSend struct {
 	HeldSince       time.Time
 }
 
-// TakeHeld retires the held sends of a session whose Key matches, for a channel that
-// delivers them another way (the turn-end hand-off, 3A): exactly once across
-// channels, none of them is typed afterwards. It waits for a send in progress to the
-// session (the gate's per-session lock) until ctx is done, and then takes nothing.
-func TakeHeld(ctx context.Context, name string, match func(key string) bool) []TakenSend {
+// TakeHeld retires the held sends of a session whose Key matches: for a channel that
+// delivers them another way (the turn-end hand-off, 3A), exactly once across
+// channels, or because they are stale (the notifier: the agent already read what a
+// held nudge announces). None of them is typed afterwards; why goes into the log. It
+// waits for a send in progress to the session (the gate's per-session lock) until ctx
+// is done; ok is false then and nothing is taken.
+func TakeHeld(ctx context.Context, name, why string, match func(key string) bool) (taken []TakenSend, ok bool) {
 	name = sessionOfTarget(name)
-	unlock, ok := gate.lockSessionCtx(ctx, name)
-	if !ok {
-		return nil
+	unlock, locked := gate.lockSessionCtx(ctx, name)
+	if !locked {
+		return nil, false
 	}
 	defer unlock()
 	gate.mu.Lock()
-	var taken []TakenSend
 	var kept []*heldInput
 	for _, h := range gate.held[name] {
 		if match(h.in.Key) {
@@ -298,9 +299,9 @@ func TakeHeld(ctx context.Context, name string, match func(key string) bool) []T
 	gate.mu.Unlock()
 	gate.checkEnded(name)
 	for _, t := range taken {
-		slog.Info("automated input handed off", "session", name, "sender", t.What, "key", t.Key)
+		slog.Info("automated input retired", "session", name, "sender", t.What, "key", t.Key, "why", why)
 	}
-	return taken
+	return taken, true
 }
 
 func (g *inputGate) shadowForgetLocked(name, key string) {

@@ -139,7 +139,8 @@ func TestTakeHeldRetiresMatchingSends(t *testing.T) {
 	_, _ = DeliverAutomated(ctx, a.input("claude-take", "agent-ui", "ui notice", false))
 	require.Equal(t, 2, HeldCount("claude-take"))
 
-	taken := TakeHeld(ctx, "claude-take", func(k string) bool { return strings.HasPrefix(k, "board-unread:") })
+	taken, ok := TakeHeld(ctx, "claude-take", "handed off", func(k string) bool { return strings.HasPrefix(k, "board-unread:") })
+	require.True(t, ok)
 	require.Len(t, taken, 1)
 	assert.Equal(t, "board-unread:team", taken[0].Key)
 	assert.Equal(t, 1, HeldCount("claude-take"), "the UI notice stays held")
@@ -159,7 +160,9 @@ func TestTakeHeldGivesUpWhenASendIsInProgress(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	assert.Nil(t, TakeHeld(ctx, "claude-busy-take", func(string) bool { return true }))
+	taken, ok := TakeHeld(ctx, "claude-busy-take", "handed off", func(string) bool { return true })
+	assert.Nil(t, taken)
+	assert.False(t, ok, "a send in progress: nothing taken, and the caller knows")
 	assert.Less(t, time.Since(start), time.Second)
 }
 

@@ -81,3 +81,51 @@ func TestTurnEndHandoff(t *testing.T) {
 	_, out = ask(`{}`, agentToken(t, h, sid2, "claude-"+sid2))
 	assert.Equal(t, false, out["handoff"], "no board")
 }
+
+// idleBox is an agent at its empty input box: the gate types into it.
+type idleBox struct{}
+
+func (idleBox) AgentScreen(context.Context, string, string, string) (string, error) {
+	return "⏺ Done.\n\n╭────────╮\n│ >      │\n╰────────╯\n  ? for shortcuts\n", nil
+}
+
+// #3481 1B with #3482's TakeHeld (taken, ok): when a send to the agent is in progress
+// and doesn't finish within the hand-off's wait, nothing is handed off. That send is
+// about to reach the agent; a hand-off too would be a second copy.
+func TestTurnEndHandoffSkipsWhileASendIsInProgress(t *testing.T) {
+	server, h, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "eeeeeeee-3481-1b00-0000-000000000007"
+	name := "claude-" + sid
+	board := "team-3481b"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "foxtrot", WorkingDir: "/w", BoardName: &board}))
+	tok := agentToken(t, h, sid, name)
+	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.PostMessage(ctx, board, "Lead", "@Worker news", nil)
+	require.NoError(t, err)
+
+	// A send that is being typed holds the agent's send lock until it finishes.
+	started, release := make(chan struct{}), make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = ptymanager.DeliverAutomated(ctx, ptymanager.AutomatedInput{Term: idleBox{}, Name: name, AgentType: "claude", SessionID: sid,
+			Key: "board-unread:" + board, Text: "You have 1 unread message", What: "test",
+			Send: func(context.Context) error { close(started); <-release; return nil }})
+	}()
+	<-started
+	defer func() { close(release); <-done }()
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/foxtrot/turn-end", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(store.SessionTokenHeader, tok)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var out map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	assert.Equal(t, false, out["handoff"], "a send in progress: no second copy through the hand-off")
+}

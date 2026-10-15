@@ -10,6 +10,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptymanager"
 )
 
 // BoardNotifier nudges agents when they have unread board messages.
@@ -182,6 +183,13 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 			n.notifiedMu.Lock()
 			delete(n.notified, sessName)
 			n.notifiedMu.Unlock()
+			// The agent read what a held nudge for this board announces (a nudge that
+			// arrives mid-turn waits for the turn's end): retire it, so it is never
+			// typed into an agent with nothing to read (#3482).
+			rctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+			key := "board-unread:" + sub.Project
+			ptymanager.TakeHeld(rctx, sessName, "read already", func(k string) bool { return k == key })
+			cancel()
 			continue
 		}
 		latestID, err := n.boardStore.LatestUnreadMessageID(ctx, sub.Project, subscriberID)

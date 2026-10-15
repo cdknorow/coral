@@ -68,7 +68,13 @@ func (h *SessionsHandler) TurnEndHandoff(w http.ResponseWriter, r *http.Request)
 	waitCtx, cancel := context.WithTimeout(ctx, turnEndHandoffWait)
 	defer cancel()
 	nudgeKey := "board-unread:" + board
-	taken := ptymanager.TakeHeld(waitCtx, owner.SessionName, func(key string) bool { return key == nudgeKey })
+	taken, ok := ptymanager.TakeHeld(waitCtx, owner.SessionName, "handed off", func(key string) bool { return key == nudgeKey })
+	if !ok {
+		// A send to the agent was in progress and didn't finish in time: the nudge is
+		// about to be typed anyway, so no hand-off (it would be a second copy).
+		writeJSON(w, http.StatusOK, none)
+		return
+	}
 	plural := "s"
 	if unread == 1 {
 		plural = ""
