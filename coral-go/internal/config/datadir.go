@@ -42,6 +42,6 @@ func DataDirWarning(dir string) string {
 	if len(groups) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("WARNING: Coral's data folder %s can be read by %s. It holds the API key, the command-line token and the databases. Remove those groups from the folder's permissions (Properties > Security), or move the data folder (CORAL_DATA_DIR) to one only you can read.",
+	return fmt.Sprintf("WARNING: Coral's data folder %s can be read by %s. It holds the API key, the command-line token and the databases. Move the folder (CORAL_DATA_DIR) to one only you can read, or remove those groups from its permissions (Properties > Security).",
 		dir, strings.Join(groups, ", "))
 }

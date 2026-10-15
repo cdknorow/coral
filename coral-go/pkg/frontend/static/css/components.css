@@ -1309,6 +1309,21 @@ button.subscriber-history-link {
     animation: slideInFromTop 0.3s ease;
 }
 
+/* The data folder security warning (#3637): the update notice's look, in the warning colour,
+   below it so both can show. */
+.security-warning-toast {
+    top: auto;
+    bottom: 20px;
+    border-color: rgba(var(--warning-rgb), 0.5);
+    border-left-color: var(--warning);
+}
+
+.security-warning-text {
+    margin: 0;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
 .update-toast-body {
     display: flex;
     flex-direction: column;

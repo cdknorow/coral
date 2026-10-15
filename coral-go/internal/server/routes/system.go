@@ -592,8 +592,15 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"tmux_required":        h.effectiveBackend() == "tmux",
 		"tmux_path":            tmuxPath,
 		"tmux_install_command": tmuxInstallCommand(),
+		// A data folder other people on this computer can read (Windows; #3637): shown on the
+		// dashboard's first page, not only in the log. "" when there is nothing to say.
+		"security_warning": dataDirWarning(h.cfg.CoralDir()),
 	})
 }
+
+// dataDirWarning is config.DataDirWarning (a variable so a test can stand in for a Windows
+// folder with a broad access list).
+var dataDirWarning = config.DataDirWarning
 
 // tmuxInstallCommand returns the platform-appropriate install command for tmux.
 func tmuxInstallCommand() string {

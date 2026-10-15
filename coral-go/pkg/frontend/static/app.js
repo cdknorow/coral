@@ -61,7 +61,7 @@ import { initWindows } from './platform/windows.js';
 import { initBrowser } from './platform/browser.js';
 import { initChatFind } from './chat_find.js';
 
-import { checkForUpdates, dismissUpdateToast } from './update_check.js';
+import { checkForUpdates, dismissUpdateToast, showSecurityWarning } from './update_check.js';
 import { teamFetch, sessionServer, keyLabel } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import { initHubIndicator } from './hub_indicator.js';
@@ -758,6 +758,7 @@ function pollStartupStatus() {
             if (!data || typeof data.startup_complete !== 'boolean') throw new SyntaxError('Invalid startup status');
             if (data.startup_complete) {
                 el.classList.add('hidden');
+                if (data.security_warning) showSecurityWarning(data.security_warning); // #3637
                 dashboardStartupComplete();
                 loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded).finally(_settlePollListLoad);
                 return;

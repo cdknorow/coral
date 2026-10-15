@@ -83,3 +83,35 @@ function showUpdateToast(data) {
 
     document.body.appendChild(toast);
 }
+
+/**
+ * Show the server's security warning (a data folder other people on this computer can read,
+ * #3637) where the update notice appears. It stays until closed and comes back on the next load
+ * while the folder is still open to others. Text only, never HTML.
+ */
+export function showSecurityWarning(message) {
+    if (!message || document.getElementById("security-warning-toast")) return;
+    const toast = document.createElement("div");
+    toast.id = "security-warning-toast";
+    toast.className = "update-toast security-warning-toast";
+    toast.setAttribute("role", "alert");
+    const body = document.createElement("div");
+    body.className = "update-toast-body";
+    const header = document.createElement("div");
+    header.className = "update-toast-header";
+    const title = document.createElement("span");
+    title.className = "update-toast-title";
+    title.textContent = "Security warning";
+    const close = document.createElement("button");
+    close.className = "update-toast-close";
+    close.title = "Dismiss";
+    close.textContent = "\u00d7";
+    close.addEventListener("click", () => toast.remove());
+    header.append(title, close);
+    const text = document.createElement("p");
+    text.className = "security-warning-text";
+    text.textContent = message;
+    body.append(header, text);
+    toast.append(body);
+    document.body.appendChild(toast);
+}
