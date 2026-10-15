@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// #3558: a remote URL recorded with its credentials (or a ?query or #fragment) before this
-// release is cleaned at startup; other rows are untouched. The scrub runs once: after it, a
-// store_meta row marks it done and a later call scans nothing (Security's NIT 3).
+// #3558, #3561: a remote URL recorded with its credentials (a ?query or #fragment, or an
+// scp-style user:pass@) before this release is cleaned at startup; other rows are untouched.
+// The scrub runs once per marker: after it, a store_meta row marks it done and a later call
+// scans nothing (Security's NIT 3).
 func TestScrubRemoteURLCredentials(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -26,11 +27,14 @@ func TestScrubRemoteURLCredentials(t *testing.T) {
 	// The test template was opened (and so scrubbed) already; start as a pre-#3558 store.
 	_, err := db.ExecContext(ctx, `DELETE FROM store_meta WHERE key = ?`, remoteURLScrubKey)
 	require.NoError(t, err)
-	for _, u := range []string{"https://user:ghp_SECRET3558@github.com/o/r.git", "git@github.com:o/r.git", "https://github.com/o/clean.git", "https://host/o/q.git?access_token=X"} {
+	// A store already scrubbed by the first pass (#3558) still gets the second (#3561).
+	_, err = db.ExecContext(ctx, `INSERT INTO store_meta (key, value) VALUES ('remote_url_credentials_scrubbed', 'x')`)
+	require.NoError(t, err)
+	for _, u := range []string{"https://user:ghp_SECRET3558@github.com/o/r.git", "git@github.com:o/r.git", "https://github.com/o/clean.git", "https://host/o/q.git?access_token=X", "user:SCP3561@host:o/r.git"} {
 		insert(u)
 	}
 	scrubRemoteURLCredentials(ctx, db)
-	assert.Equal(t, []string{"https://github.com/o/r.git", "git@github.com:o/r.git", "https://github.com/o/clean.git", "https://host/o/q.git"}, urls())
+	assert.Equal(t, []string{"https://github.com/o/r.git", "git@github.com:o/r.git", "https://github.com/o/clean.git", "https://host/o/q.git", "host:o/r.git"}, urls())
 	var marks int
 	require.NoError(t, db.GetContext(ctx, &marks, `SELECT COUNT(*) FROM store_meta WHERE key = ?`, remoteURLScrubKey))
 	assert.Equal(t, 1, marks)
@@ -38,5 +42,5 @@ func TestScrubRemoteURLCredentials(t *testing.T) {
 	// Once done, a later start doesn't scan again.
 	insert("https://user:LATER@host/o/r.git")
 	scrubRemoteURLCredentials(ctx, db)
-	assert.Equal(t, "https://user:LATER@host/o/r.git", urls()[4])
+	assert.Equal(t, "https://user:LATER@host/o/r.git", urls()[5])
 }

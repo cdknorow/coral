@@ -862,7 +862,9 @@ func reportForeignKeyOrphans(ctx context.Context, dbPath, key string) {
 var fkCheckBudget = 5 * time.Second
 
 // remoteURLScrubKey marks, in store_meta, that remote URLs recorded before #3558 were cleaned.
-const remoteURLScrubKey = "remote_url_credentials_scrubbed"
+// A new key makes the scrub run once more when it learns a new form: "_2" adds scp-style
+// user:pass@host:path rows (#3561 (a)).
+const remoteURLScrubKey = "remote_url_credentials_scrubbed_2"
 
 // scrubRemoteURLCredentials removes credentials (and any ?query or #fragment) from remote URLs
 // recorded before #3558 (https://user:TOKEN@host/...). Rows recorded now are stored without
@@ -881,7 +883,7 @@ func scrubRemoteURLCredentials(ctx context.Context, d *DB) {
 		ID  int64  `db:"id"`
 		URL string `db:"remote_url"`
 	}
-	if err := d.SelectContext(ctx, &rows, `SELECT id, remote_url FROM git_snapshots WHERE remote_url LIKE '%://%'`); err != nil {
+	if err := d.SelectContext(ctx, &rows, `SELECT id, remote_url FROM git_snapshots WHERE remote_url LIKE '%://%' OR remote_url LIKE '%@%'`); err != nil {
 		slog.Warn("[store] removing credentials from stored git remote URLs: read rows", "error", err)
 		return
 	}
