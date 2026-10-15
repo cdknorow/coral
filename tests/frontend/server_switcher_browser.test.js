@@ -12,9 +12,9 @@ const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
 
-const ONE = [{ id: 'm1', label: 'Christophoers-MacBook-Pro.local', status: 'online', version: '1.4.6', last_seen: new Date().toISOString() }];
+const ONE = [{ id: 'm1', label: 'studio-mac.local', status: 'online', version: '1.4.6', last_seen: new Date().toISOString() }];
 const THREE = [
-    { id: 'm1', label: 'Christophoers-MacBook-Pro.local', status: 'online', version: '1.4.6', last_seen: new Date().toISOString() },
+    { id: 'm1', label: 'studio-mac.local', status: 'online', version: '1.4.6', last_seen: new Date().toISOString() },
     { id: 'm2', label: 'workstation.lan', status: 'online', version: '1.4.6', last_seen: new Date().toISOString() },
     { id: 'm3', label: 'Old Laptop', status: 'unreachable', version: '1.3.9', last_seen: '2026-10-01T00:00:00Z', last_error: 'dial tcp: timeout' },
 ];
@@ -74,11 +74,11 @@ const SETTINGS_PRELOAD = `(() => {
         console.log('1. Short names');
         const names = await ev(`(async () => {
             const { shortServerName } = await import((window.__coralStatic || '/static/') + 'server_status.js');
-            const cases = ['Christophoers-MacBook-Pro.local', 'workstation.lan', 'nas.home', 'box.example.com', '10.0.0.5', 'fe80::1', 'Old Laptop', 'build-01', 'My Server v1.2'];
+            const cases = ['studio-mac.local', 'workstation.lan', 'nas.home', 'box.example.com', '10.0.0.5', 'fe80::1', 'Old Laptop', 'build-01', 'My Server v1.2'];
             return Object.fromEntries(cases.map(c => [c, shortServerName({ id: 'x', label: c })]));
         })()`);
         assert.deepEqual(names, {
-            'Christophoers-MacBook-Pro.local': 'Christophoers-MacBook-Pro', 'workstation.lan': 'workstation', 'nas.home': 'nas',
+            'studio-mac.local': 'studio-mac', 'workstation.lan': 'workstation', 'nas.home': 'nas',
             'box.example.com': 'box', '10.0.0.5': '10.0.0.5', 'fe80::1': 'fe80::1', 'Old Laptop': 'Old Laptop', 'build-01': 'build-01',
             'My Server v1.2': 'My Server v1.2',
         });
@@ -88,8 +88,8 @@ const SETTINGS_PRELOAD = `(() => {
         await scene(ONE);
         let v = await view();
         assert.ok(v.button, 'the server button is shown');
-        assert.equal(v.button.label, 'Christophoers-MacBook-Pro', 'short name on the button');
-        assert.match(v.button.aria, /^Server Christophoers-MacBook-Pro\.local: Online$/, `accessible name has the full name and status (${v.button.aria})`);
+        assert.equal(v.button.label, 'studio-mac', 'short name on the button');
+        assert.match(v.button.aria, /^Server studio-mac\.local: Online$/, `accessible name has the full name and status (${v.button.aria})`);
         assert.equal(v.strip, 0, 'no strip'); assert.deepEqual(v.chips, [], 'no row chips with one server');
         assert.deepEqual(v.headers, [], 'no server headers with one server');
         assert.equal(v.groupRow, false, "'Group by server' is not offered with one server");
@@ -100,7 +100,7 @@ const SETTINGS_PRELOAD = `(() => {
             const open = p.querySelector('button.server-open-btn');
             return { dl, open: open && { text: open.textContent, id: open.dataset.serverOpen } };
         })()`);
-        assert.equal(panel1.dl.Status, 'Online'); assert.equal(panel1.dl.Name, 'Christophoers-MacBook-Pro.local');
+        assert.equal(panel1.dl.Status, 'Online'); assert.equal(panel1.dl.Name, 'studio-mac.local');
         assert.equal(panel1.dl.Agents, '2'); assert.equal(panel1.dl.Version, '1.4.6'); assert.ok('Last contact' in panel1.dl);
         assert.deepEqual(panel1.open, { text: 'Open in Servers', id: 'm1' });
         // Keyboard: Escape closes and returns focus to the button.
@@ -122,10 +122,10 @@ const SETTINGS_PRELOAD = `(() => {
         assert.equal(stored.toLowerCase(), 'true', `the server keeps the setting (${stored})`);
         await waitFor(`document.querySelectorAll('#live-sessions-list .row-server-prefix').length > 0`, 'server prefixes after Show server', 3000);
         v = await view();
-        assert.ok(v.chips.every(c => /^Christophoers-MacBook-Pro/.test(c)), `chips use the short name (${JSON.stringify(v.chips)})`);
+        assert.ok(v.chips.every(c => /^studio-mac/.test(c)), `chips use the short name (${JSON.stringify(v.chips)})`);
         await ev(`document.getElementById('display-show-server').click(); true`);
         await waitFor(`window.__settingsPuts.some(p => p && p.show_session_server === false)`, 'PUT {show_session_server: false}', 3000);
-        console.log('   ✓ button "Christophoers-MacBook-Pro", panel details + Open in Servers, Escape, Show server saves + chips');
+        console.log('   ✓ button "studio-mac", panel details + Open in Servers, Escape, Show server saves + chips');
 
         console.log('3. Three servers (one offline): N servers, chips by default, Group by server, collapse persisted');
         await ev(`window.__settingsPuts.length = 0; (async () => { const s = await import((window.__coralStatic || '/static/') + 'state.js'); if (s.state.settings) delete s.state.settings.show_session_server; })(); true`);
@@ -140,7 +140,7 @@ const SETTINGS_PRELOAD = `(() => {
         assert.equal(v.groupRow, true, "'Group by server' is offered with 2+ servers");
         await openSwitcher();
         const items = await ev(`[...document.querySelectorAll('[data-server-switcher-host] button.server-switcher-item')].map(b => ({ id: b.dataset.serverOpen, name: b.querySelector('.server-switcher-name').textContent, meta: b.querySelector('.server-switcher-meta').textContent }))`);
-        assert.deepEqual(items.map(i => i.name), ['Christophoers-MacBook-Pro', 'workstation', 'Old Laptop']);
+        assert.deepEqual(items.map(i => i.name), ['studio-mac', 'workstation', 'Old Laptop']);
         assert.match(items[2].meta, /^Unreachable · 2$/i, `offline item shows its state and count (${items[2].meta})`);
         await ev(`document.querySelector('[data-server-switcher-host] details[data-server-switcher]').open = false; true`);
         // #3507 ungrouped: the server BEFORE the team name, in italics, with no dot; an offline one is dimmed.
@@ -169,7 +169,7 @@ const SETTINGS_PRELOAD = `(() => {
         await waitFor(`document.querySelectorAll('#live-sessions-list li.server-group-header').length === 3`, 'server headers', 3000);
         assert.equal(await ev(`localStorage.getItem('coral-group-by-server')`), 'true', 'grouping persisted');
         v = await view();
-        assert.deepEqual(v.headers.map(h => [h.id, h.name, h.state]), [['m1', 'Christophoers-MacBook-Pro', null], ['m2', 'workstation', null], ['m3', 'Old Laptop', 'unreachable']]);
+        assert.deepEqual(v.headers.map(h => [h.id, h.name, h.state]), [['m1', 'studio-mac', null], ['m2', 'workstation', null], ['m3', 'Old Laptop', 'unreachable']]);
         assert.deepEqual(v.chips, [], 'no row chips while grouped');
         // #3507 grouped: the header is the outermost level (left of its teams' rows), with a computer
         // icon and no status dot; the offline one is dimmed with its state in the tooltip and label.
