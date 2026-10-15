@@ -261,6 +261,12 @@ func (h *WorkflowHandler) UpdateWorkflow(w http.ResponseWriter, r *http.Request)
 			fields[key] = s
 		}
 	}
+	if b, ok := fields["base_branch"].(string); ok && b != "" {
+		if err := gitutil.ValidRef(b); err != nil { // the same check as create (#3601, W24; Security's SHOULD)
+			errBadRequest(w, "base_branch: "+err.Error())
+			return
+		}
+	}
 
 	// Handle repo_path validation and canonicalization
 	if rp, ok := fields["repo_path"]; ok {

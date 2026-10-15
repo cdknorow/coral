@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -86,4 +87,30 @@ func TestLaunchTeamRefusesAnOptionAsBaseBranch(t *testing.T) {
 		assert.Contains(t, rec.Body.String(), "base_branch", base)
 		assert.NoDirExists(t, filepath.Join(cfg.CoralDir(), "worktrees", "w24team"), base)
 	}
+}
+
+// Editing a workflow checks base_branch as creating one does (Security's SHOULD on #3601), and a
+// refused edit leaves the stored value unchanged.
+func TestWorkflowUpdateRefusesAnOptionAsBaseBranch(t *testing.T) {
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "wf.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	h := NewWorkflowHandler(db, &config.Config{})
+	r := chi.NewRouter()
+	r.Post("/api/workflows", h.CreateWorkflow)
+	r.Put("/api/workflows/{workflowID}", h.UpdateWorkflow)
+	r.Get("/api/workflows/{workflowID}", h.GetWorkflow)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	code, body := sendJSON(t, http.MethodPost, srv.URL+"/api/workflows", map[string]any{"name": "wf", "base_branch": "main",
+		"steps": []map[string]any{{"name": "one", "type": "shell", "command": "true"}}})
+	require.Equal(t, http.StatusCreated, code, body)
+	id := strconv.FormatInt(int64(body["id"].(float64)), 10)
+
+	code, body = sendJSON(t, http.MethodPut, srv.URL+"/api/workflows/"+id, map[string]any{"base_branch": "--upload-pack=x"})
+	assert.Equal(t, http.StatusBadRequest, code, body)
+	assert.Contains(t, body["error"], "base_branch")
+	_, got := sendJSON(t, http.MethodGet, srv.URL+"/api/workflows/"+id, nil)
+	assert.Equal(t, "main", got["base_branch"], "the stored value is unchanged")
 }

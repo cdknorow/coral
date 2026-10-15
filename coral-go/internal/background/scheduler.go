@@ -659,11 +659,13 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		// way and each run stays isolated from every other.
 		runBranch = fmt.Sprintf("coral/job-run-%d", runID)
 		err := gitutil.ValidRef(baseBranch) // a stored job is checked again (#3601, weak site W24)
-		if err == nil {
-			err = runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", runBranch, "--", worktreeDir, baseBranch)
+		errMsg := ""
+		if err != nil {
+			errMsg = fmt.Sprintf("base_branch refused: %v", err)
+		} else if err = runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", runBranch, "--", worktreeDir, baseBranch); err != nil {
+			errMsg = fmt.Sprintf("git worktree add failed: %v", err)
 		}
 		if err != nil {
-			errMsg := fmt.Sprintf("git worktree add failed: %v", err)
 			s.logger.Error(errMsg, "run_id", runID)
 			now := time.Now().UTC().Format(store.ISOFormat)
 			s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{

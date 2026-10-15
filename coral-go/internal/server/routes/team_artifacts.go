@@ -324,10 +324,6 @@ func (h *BoardHandler) TeamArtifactContent(w http.ResponseWriter, r *http.Reques
 	_, _ = w.Write([]byte(refs[index].Content))
 }
 
-// teamUploadSessions maps each Coral session that belongs to the team to the
-// subscriber it belongs to: every subscriber's stored session, and the session
-// recorded when a team task was claimed (an agent that has since left or been
-// replaced). Only these sessions' uploads appear in the team view.
 // mayListSessionUploads ties a session's upload listing to the caller (#3601, weak site W27): an
 // agent's token lists only its own session's uploads or those of a session on its board. The
 // dashboard, the API key and Coral Hub see every session already and may list any.
@@ -355,6 +351,10 @@ func (h *BoardHandler) mayListSessionUploads(r *http.Request, sessionID string) 
 	return false
 }
 
+// teamUploadSessions maps each Coral session that belongs to the team to the
+// subscriber it belongs to: every subscriber's stored session, and the session
+// recorded when a team task was claimed (an agent that has since left or been
+// replaced). Only these sessions' uploads appear in the team view.
 func teamUploadSessions(tasks []board.TeamArtifactTask, subscribers map[string]string) map[string]string {
 	out := make(map[string]string, len(subscribers))
 	for _, t := range tasks {
