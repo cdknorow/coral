@@ -48,6 +48,7 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		r.Put("/api/settings/git-diff-mode", ok)
 		r.Get("/api/system/api-key", ok)
 		r.Delete("/api/board/{project}", ok)
+		r.Patch("/api/board/{project}", ok)
 		r.Delete("/api/board/{project}/subscribe", ok)
 		r.Get("/api/workflows", ok)
 		do := func(method, path string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -73,6 +74,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 			{"PUT", "/api/system/hub-mode"}, {"POST", "/api/system/restart"},
 			// #3513: the API key (the Operator's credential), and deleting a board
 			{"GET", "/api/system/api-key"}, {"DELETE", "/api/board/coral-go-team"},
+			// #3536: renaming a board
+			{"PATCH", "/api/board/coral-go-team"},
 		}
 		for _, wr := range writes {
 			rec := do(wr.method, wr.path, agent)

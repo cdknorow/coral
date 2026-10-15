@@ -10,6 +10,29 @@ starts with a letter or digit, and is at most 64 characters (no spaces, dots, `@
 launching an agent or team on a board that doesn't exist yet with any other name gets 400
 `invalid_board_name`. A board that already exists keeps working under its name.
 
+**Board ids and labels (#3536):** a board has an **id** and a **label** (its display name).
+Every board API takes the id: `/api/board/{id}/...`. A board that existed before ids keeps its
+name as its id, so old links, scripts and agents keep working. A board started by a launch
+gets a fresh id such as `b-7k3m9q2x4p`. Two boards may share a label; renaming changes only
+the label.
+
+- **A label in place of the id** works when exactly one board has that label; an exact id
+  always wins. When several boards share it, the answer is 409 `ambiguous_board` with
+  `candidates` (`board_id`, `board_label`, `created_at`, `members`). A key that can't be an id
+  in a URL (`.`, `..`, `/`, control characters) gets 400 `invalid_board_key`.
+- `GET /api/board/{id}` returns `{board_id, board_label, created_at, created_by, members}`.
+- `PATCH /api/board/{id}` with `{"label": "new-name"}` renames the board. It is the Operator's
+  (an agent's token gets 403 `forbidden_for_agent` with strict local auth), and the new label
+  follows the name rule.
+- Lists carry `board_label` next to each board key: projects, live sessions, teams and all
+  tasks.
+- `coral-board join <id or label>` stores the board's id. A label several boards share lists
+  their ids to choose from.
+- **Launching** (`/api/sessions/launch`, `/api/sessions/launch-team`): `board_id` joins that
+  board. `board_name` starts a NEW board with that label, but if a board with that id or label
+  already exists the answer is 409 `board_name_exists` with the `candidates`. Retry with
+  `board_id` to join one, or with `"new_board": true` to start another with the same name.
+
 ## Projects
 
 ### List All Projects

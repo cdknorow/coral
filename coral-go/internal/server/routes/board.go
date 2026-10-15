@@ -1651,6 +1651,14 @@ func (h *BoardHandler) ListAllTasks(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
+	ids := make([]string, len(tasks))
+	for i := range tasks {
+		ids[i] = tasks[i].BoardID
+	}
+	labels := h.bs.BoardLabels(r.Context(), ids)
+	for i := range tasks {
+		tasks[i].BoardLabel = labels[tasks[i].BoardID]
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"tasks": emptyIfNil(tasks)})
 }
 
@@ -2491,4 +2499,46 @@ func refuseNewBoardName(w http.ResponseWriter, r *http.Request, bs *board.Store,
 	}
 	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_board_name", "code": "invalid_board_name", "message": problem})
 	return true
+}
+
+// GET /api/board/{project}: the board's id, label and creation (#3536).
+func (h *BoardHandler) GetBoardInfo(w http.ResponseWriter, r *http.Request) {
+	b, err := h.bs.GetBoard(r.Context(), urlParam(r, "project"))
+	if errors.Is(err, board.ErrBoardNotFound) {
+		errNotFound(w, "no such board")
+		return
+	}
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"board_id": b.ID, "board_label": b.Label, "created_at": b.CreatedAt,
+		"created_by": b.CreatedBy, "members": h.bs.BoardMembers(r.Context(), b.ID)})
+}
+
+// PATCH /api/board/{project} {"label": "..."}: rename a board (#3536). Only its label
+// changes; its id, and everything keyed by it, stays. The new label follows the name rule.
+// The Operator's (operatorOnlyRoutes).
+func (h *BoardHandler) RenameBoard(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Label string `json:"label"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	label := strings.TrimSpace(body.Label)
+	if problem := board.NewNameProblem(label); problem != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_board_name", "code": "invalid_board_name", "message": problem})
+		return
+	}
+	id := urlParam(r, "project")
+	if err := h.bs.RenameBoard(r.Context(), id, label); errors.Is(err, board.ErrBoardNotFound) {
+		errNotFound(w, "no such board")
+		return
+	} else if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"board_id": id, "board_label": label})
 }

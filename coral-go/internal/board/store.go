@@ -52,6 +52,7 @@ type Task struct {
 	ID                int64        `db:"id" json:"id"`
 	Revision          int          `db:"revision" json:"revision"`
 	BoardID           string       `db:"board_id" json:"board_id"`
+	BoardLabel        string       `db:"-" json:"board_label,omitempty"` // filled where a list spans boards (#3536)
 	Title             string       `db:"title" json:"title"`
 	Body              *string      `db:"body" json:"body,omitempty"`
 	Status            string       `db:"status" json:"status"`
@@ -118,6 +119,7 @@ type Message struct {
 // ProjectInfo holds project summary info.
 type ProjectInfo struct {
 	Project         string `db:"project" json:"project"`
+	BoardLabel      string `db:"-" json:"board_label"` // the board's display name (#3536)
 	SubscriberCount int    `db:"subscriber_count" json:"subscriber_count"`
 	MessageCount    int    `db:"message_count" json:"message_count"`
 }
@@ -532,7 +534,10 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		return err
 	}
 
-	return s.initTaskWorkflows(ctx)
+	if err := s.initTaskWorkflows(ctx); err != nil {
+		return err
+	}
+	return s.ensureBoardsSchema(ctx)
 }
 
 // Rebuild from the existing schema so all columns, indexes, and personal-task
@@ -635,6 +640,9 @@ func (s *Store) Subscribe(ctx context.Context, project, subscriberID, jobTitle, 
 		     is_active = 1,
 		     can_peek = excluded.can_peek`,
 		project, subscriberID, subscriberID, sessionName, jobTitle, webhookURL, originServer, receiveMode, carryForwardCursor, now, peekFlag)
+	if err == nil {
+		s.ensureBoardRow(ctx, project)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -810,6 +818,7 @@ func (s *Store) postMessage(ctx context.Context, project, subscriberID, content 
 		return nil, err
 	}
 	id, _ := result.LastInsertId()
+	s.ensureBoardRow(ctx, project)
 	msg := &Message{ID: id, Project: project, SubscriberID: subscriberID, Content: content, CreatedAt: now, Origin: originVal, HubUser: hubUserVal, IsSystem: system}
 	if targetGroupID != nil {
 		msg.TargetGroupID = targetGroupID
@@ -1647,12 +1656,23 @@ func (s *Store) ListProjects(ctx context.Context) ([]ProjectInfo, error) {
 		     UNION
 		     SELECT DISTINCT project FROM board_messages
 		 ) p ORDER BY project`)
+	if err == nil {
+		ids := make([]string, len(projects))
+		for i := range projects {
+			ids[i] = projects[i].Project
+		}
+		labels := s.BoardLabels(ctx, ids)
+		for i := range projects {
+			projects[i].BoardLabel = labels[projects[i].Project]
+		}
+	}
 	return projects, err
 }
 
 // EnrichedProject holds project info with timestamps and participant names.
 type EnrichedProject struct {
 	Project          string  `db:"project" json:"project"`
+	BoardLabel       string  `db:"-" json:"board_label"` // the board's display name (#3536)
 	SubscriberCount  int     `db:"subscriber_count" json:"subscriber_count"`
 	MessageCount     int     `db:"message_count" json:"message_count"`
 	FirstMessageAt   *string `db:"first_message_at" json:"first_message_at"`
@@ -1682,6 +1702,16 @@ func (s *Store) ListProjectsEnriched(ctx context.Context) ([]EnrichedProject, er
 		     SELECT DISTINCT project FROM board_messages
 		 ) p
 		 ORDER BY last_message_at DESC`)
+	if err == nil {
+		ids := make([]string, len(projects))
+		for i := range projects {
+			ids[i] = projects[i].Project
+		}
+		labels := s.BoardLabels(ctx, ids)
+		for i := range projects {
+			projects[i].BoardLabel = labels[projects[i].Project]
+		}
+	}
 	return projects, err
 }
 
@@ -1792,6 +1822,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 		return nil, err
 	}
 	taskID, _ := result.LastInsertId()
+	s.ensureBoardRow(ctx, project)
 	// Keep new tasks unclaimable until configuration and dependencies are stored.
 	if err := saveWorkflow(ctx, s.db, taskID, w); err != nil {
 		return nil, err

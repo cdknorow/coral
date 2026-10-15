@@ -181,7 +181,7 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// Pass the prompt as a CLI positional argument so the agent starts immediately
 	// without relying on fragile tmux send-keys delivery.
-	cliPrompt := BuildBoardActionPrompt(params.BoardName, params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
+	cliPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if cliPrompt != "" {
 		promptFile := writeTempFile("prompt", effectiveID, "txt", []byte(cliPrompt))
 		arg := FormatPromptFileArg(promptFile)

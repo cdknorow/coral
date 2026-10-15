@@ -40,6 +40,7 @@ GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/all never
 GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/check never
 GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers never
 GET /api/board/tasks view
+GET /api/board/{project} view
 GET /api/board/{project}/artifacts view
 GET /api/board/{project}/groups view
 GET /api/board/{project}/groups/{groupID}/members view
@@ -173,6 +174,7 @@ GET /api/workflows/{workflowID}/runs view
 GET /ws/coral view
 GET /ws/terminal/{name} view
 PATCH /api/agent/tasks/{taskID} never
+PATCH /api/board/{project} never
 PATCH /api/board/{project}/tasks/{taskID} interact
 PATCH /api/board/{project}/tasks/{taskID}/amend interact
 PATCH /api/sessions/live/{name}/notes/{noteID} interact

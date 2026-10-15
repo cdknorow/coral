@@ -546,7 +546,7 @@ func cmdJoin() {
 
 	subscriberID := resolveSubscriberID()
 	sessionName := resolveSessionName()
-	_, err := apiCall("POST", "/"+project+"/subscribe", map[string]string{
+	result, err := apiCall("POST", "/"+url.PathEscape(project)+"/subscribe", map[string]string{
 		"subscriber_id": subscriberID,
 		"session_name":  sessionName,
 		"job_title":     jobTitle,
@@ -555,9 +555,51 @@ func cmdJoin() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-
-	saveState(&boardState{Project: project, JobTitle: jobTitle, ServerURL: serverURL})
+	if msg := joinProblem(project, result); msg != "" {
+		fmt.Fprint(os.Stderr, msg)
+		os.Exit(1)
+	}
+	// The server answers with the board's id (#3536): a name that is a board's label joins
+	// that board, and the state file keeps its id, so a later rename or another board taking
+	// the same name never moves this agent.
+	boardID := project
+	if id, _ := result["project"].(string); id != "" {
+		boardID = id
+	}
+	saveState(&boardState{Project: boardID, JobTitle: jobTitle, ServerURL: serverURL})
+	if boardID != project {
+		fmt.Printf("Joined '%s' (board %s) as '%s' (subscriber: %s)\n", project, boardID, jobTitle, subscriberID)
+		return
+	}
 	fmt.Printf("Joined '%s' as '%s' (subscriber: %s)\n", project, jobTitle, subscriberID)
+}
+
+// joinProblem is what join prints when the server refused it ("" when it didn't): a name
+// several boards share lists them by id (#3536), and a new name that breaks the naming
+// rule says why (#3534).
+func joinProblem(project string, result map[string]any) string {
+	code, _ := result["error"].(string)
+	if code == "" {
+		return ""
+	}
+	var b strings.Builder
+	switch code {
+	case "ambiguous_board":
+		fmt.Fprintf(&b, "More than one board is named '%s'. Join one by its id:\n", project)
+		cands, _ := result["candidates"].([]any)
+		for _, c := range cands {
+			m, _ := c.(map[string]any)
+			members, _ := m["members"].(float64)
+			fmt.Fprintf(&b, "  coral-board join %v   (%v, created %v, %d members)\n", m["board_id"], m["board_label"], m["created_at"], int(members))
+		}
+	default:
+		msg, _ := result["message"].(string)
+		if msg == "" {
+			msg = code
+		}
+		fmt.Fprintf(&b, "Error: %s\n", msg)
+	}
+	return b.String()
 }
 
 func cmdPost() {

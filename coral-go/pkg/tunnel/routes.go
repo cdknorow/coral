@@ -168,6 +168,8 @@ var routeTable = cat(
 		// Whether Coral Hub may act as the Operator on this computer (#3404): read only, so
 		// the Hub can show it. Changing it (PUT) stays local (never).
 		"/api/system/hub-operator",
+		// A board's id, label and creation (#3536), so the Hub can label boards.
+		"/api/board/{project}",
 		"/api/board/{project}/messages",
 		"/api/board/{project}/messages/all",
 		"/api/board/{project}/messages/check",

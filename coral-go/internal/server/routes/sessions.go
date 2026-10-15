@@ -987,6 +987,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	h.addBoardLabels(r.Context(), sessions)
 	sessions = archivedLast(sessions)
 	// Polled by every open dashboard: an unchanged list is a 304 with no body (#3439).
 	if snap := h.remoteSnapshot(); snap.Configured() {
@@ -1102,6 +1103,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"display_name":      ls.DisplayName,
 		"auto_name":         nil,
 		"board_project":     ls.BoardName,
+		"board_label":       h.boardLabel(derefStrPtr(ls.BoardName)),
 		"board_job_title":   ls.DisplayName,
 		"icon":              ls.Icon,
 		"name_color":        ls.NameColor,
@@ -3146,6 +3148,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		WorkingDir:      workdir,
 		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
 		BoardName:       storedBoard,
+		BoardLabel:      h.boardLabel(storedBoard),
 		Role:            role,
 		Prompt:          storedPrompt,
 		PromptOverrides: promptOverrides(userSettings),
@@ -3400,6 +3403,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		WorkingDir:      workdir,
 		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
 		BoardName:       storedBoard,
+		BoardLabel:      h.boardLabel(storedBoard),
 		Role:            role,
 		Prompt:          storedPrompt,
 		PromptOverrides: promptOverrides(userSettings),
@@ -3545,6 +3549,8 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		Flags           []string               `json:"flags"`
 		Prompt          string                 `json:"prompt"`
 		BoardName       string                 `json:"board_name"`
+		BoardID         string                 `json:"board_id"`  // join this board (#3536)
+		NewBoard        bool                   `json:"new_board"` // create another board even if the name exists
 		BoardServer     string                 `json:"board_server"`
 		Backend         string                 `json:"backend"`
 		BoardType       string                 `json:"board_type"`
@@ -3574,10 +3580,14 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "working_dir is required")
 		return
 	}
-	// A new board on this Coral takes a name by the #3534 rule (a remote board's Coral checks its own).
-	if body.BoardName != "" && (body.BoardServer == "" || body.BoardServer == "local") && refuseNewBoardName(w, r, h.bs, body.BoardName) {
-		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
-		return
+	// Which board on this Coral the agent joins or starts (#3536); a remote board's Coral decides its own.
+	if (body.BoardName != "" || body.BoardID != "") && (body.BoardServer == "" || body.BoardServer == "local") {
+		key, ok := h.launchBoard(w, r, body.BoardID, body.BoardName, body.NewBoard)
+		if !ok {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+			return
+		}
+		body.BoardName = key
 	}
 	// An unknown agent_type used to fall through to Claude and return 200
 	// ok:true, silently starting an agent the caller never asked for.
@@ -3641,6 +3651,10 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 
 	tracking.TrackEvent(tracking.EventSessionLaunched, nil)
 	tracking.TrackOnce(tracking.EventFirstAgentLaunched, nil)
+	if body.BoardName != "" && (body.BoardServer == "" || body.BoardServer == "local") {
+		result["board_id"] = body.BoardName
+		result["board_label"] = h.boardLabel(body.BoardName)
+	}
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -3650,6 +3664,8 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	var body struct {
 		BoardName   string   `json:"board_name"`
+		BoardID     string   `json:"board_id"`  // relaunch on this board (#3536)
+		NewBoard    bool     `json:"new_board"` // create another board even if the name exists
 		WorkingDir  string   `json:"working_dir"`
 		AgentType   string   `json:"agent_type"`
 		Flags       []string `json:"flags"`
@@ -3687,11 +3703,15 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	// A new team's board takes a name by the #3534 rule, checked before anything is written
-	// (knowledge files, working mode, presets, worktrees, the teams row); relaunching an
-	// existing team keeps its name.
-	if body.BoardName != "" && refuseNewBoardName(w, r, h.bs, body.BoardName) {
-		return
+	// Which board the team joins or starts (#3536), decided before anything is written
+	// (knowledge files, working mode, presets, worktrees, the teams row). From here on
+	// body.BoardName is the board's id.
+	if body.BoardName != "" || body.BoardID != "" {
+		key, ok := h.launchBoard(w, r, body.BoardID, body.BoardName, body.NewBoard)
+		if !ok {
+			return
+		}
+		body.BoardName = key
 	}
 
 	// Write any bundled knowledge files from the template
@@ -3912,7 +3932,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		launched = append(launched, launchResult)
 	}
 
-	resp := map[string]any{"ok": true, "board": body.BoardName, "agents": launched}
+	resp := map[string]any{"ok": true, "board": body.BoardName, "board_id": body.BoardName, "board_label": h.boardLabel(body.BoardName), "agents": launched}
 	if teamID > 0 {
 		resp["team_id"] = teamID
 	}
@@ -4887,6 +4907,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		Flags:           flags,
 		WorkingDir:      absDir,
 		BoardName:       boardName,
+		BoardLabel:      h.boardLabel(boardName),
 		Role:            role,
 		Prompt:          prompt,
 		PromptOverrides: promptOverrides(userSettings),
@@ -6267,6 +6288,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		Flags:           flags,
 		WorkingDir:      ls.WorkingDir,
 		BoardName:       boardName,
+		BoardLabel:      h.boardLabel(boardName),
 		Role:            role,
 		Prompt:          prompt,
 		PromptOverrides: promptOverrides(userSettings),
@@ -6755,4 +6777,103 @@ func (h *SessionsHandler) recordCLIVersion(sessionID, agentType string, settings
 			slog.Warn("could not record the agent's CLI version", "session_id", sessionID, "error", err)
 		}
 	}
+}
+
+// boardLabel is a board's display name for an agent's prompt (#3536); "" if unknown.
+func (h *SessionsHandler) boardLabel(key string) string {
+	if h.bs == nil || key == "" {
+		return ""
+	}
+	return h.bs.BoardLabel(context.Background(), key)
+}
+
+// launchBoard decides the board a launch uses (#3536, the operator's decision): board_id
+// joins that board; board_name starts a NEW board (a fresh b- id, that label) unless a board
+// with that id or label already exists, which is answered 409 board_name_exists with the
+// candidates (join one by its board_id, or send new_board to start another with the same
+// name). A new board's name follows the #3534 rule. It returns the board's id, or false
+// after answering.
+func (h *SessionsHandler) launchBoard(w http.ResponseWriter, r *http.Request, boardID, boardName string, newBoard bool) (string, bool) {
+	ctx := r.Context()
+	if h.bs == nil {
+		if boardID != "" {
+			return boardID, true
+		}
+		return boardName, true
+	}
+	if boardID != "" {
+		b, err := h.bs.GetBoard(ctx, boardID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "board_not_found", "code": "board_not_found", "message": "No board has that id"})
+			return "", false
+		}
+		return b.ID, true
+	}
+	boardName = strings.TrimSpace(boardName)
+	var existing []board.Board
+	if b, err := h.bs.GetBoard(ctx, boardName); err == nil {
+		if inUse, _ := h.bs.BoardExists(ctx, b.ID); inUse {
+			existing = append(existing, *b)
+		}
+	} else if inUse, _ := h.bs.BoardExists(ctx, boardName); inUse {
+		existing = append(existing, board.Board{ID: boardName, Label: boardName})
+	}
+	if named, err := h.bs.BoardsLabelled(ctx, boardName); err == nil {
+		for _, b := range named {
+			if b.ID != boardName {
+				existing = append(existing, b)
+			}
+		}
+	}
+	if len(existing) > 0 && !newBoard {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "board_name_exists", "code": "board_name_exists",
+			"message":    "A board named \"" + boardName + "\" already exists: join it (board_id) or start another (new_board)",
+			"candidates": boardCandidates(r, h.bs, existing)})
+		return "", false
+	}
+	if problem := board.NewNameProblem(boardName); problem != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_board_name", "code": "invalid_board_name", "message": problem})
+		return "", false
+	}
+	b, err := h.bs.CreateBoard(ctx, boardName, "Operator")
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return "", false
+	}
+	return b.ID, true
+}
+
+// addBoardLabels gives every session row with a board ("board_project") its board's display
+// name as "board_label" (#3536), with one lookup for the whole list.
+func (h *SessionsHandler) addBoardLabels(ctx context.Context, rows []map[string]any) {
+	if h.bs == nil {
+		return
+	}
+	var ids []string
+	for _, row := range rows {
+		if id := boardKeyOf(row["board_project"]); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	labels := h.bs.BoardLabels(ctx, ids)
+	for _, row := range rows {
+		if id := boardKeyOf(row["board_project"]); id != "" {
+			row["board_label"] = labels[id]
+		}
+	}
+}
+
+func boardKeyOf(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case *string:
+		if t != nil {
+			return *t
+		}
+	}
+	return ""
 }

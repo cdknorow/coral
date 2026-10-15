@@ -141,7 +141,9 @@ Brings a stopped team back to life by relaunching the agents that were active wh
 ```json
 {
   "ok": true,
-  "board": "api-team",
+  "board": "b-7k3m9q2x4p",
+  "board_id": "b-7k3m9q2x4p",
+  "board_label": "api-team",
   "agents": [
     {
       "name": "Backend Lead",
@@ -230,26 +232,30 @@ curl -X POST http://localhost:PORT/api/sessions/launch-team \
     ]
   }'
 
-# 2. List running teams
+# The answer's board_id (e.g. "b-7k3m9q2x4p") is the team's key from here on; "api-team" is
+# its label (#3536). Launching "api-team" again answers 409 board_name_exists: send
+# "board_id" to relaunch onto that board, or "new_board": true to start another one.
+
+# 2. List running teams (each has board_label)
 curl http://localhost:PORT/api/teams/all?status=running
 
-# 3. Get team detail
-curl http://localhost:PORT/api/teams/detail/api-team
+# 3. Get team detail (by its board id)
+curl http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p
 
 # 4. Sleep the team (pause without losing state)
-curl -X POST http://localhost:PORT/api/sessions/live/team/api-team/sleep
+curl -X POST http://localhost:PORT/api/sessions/live/team/b-7k3m9q2x4p/sleep
 
 # 5. Wake it back up
-curl -X POST http://localhost:PORT/api/sessions/live/team/api-team/wake
+curl -X POST http://localhost:PORT/api/sessions/live/team/b-7k3m9q2x4p/wake
 
 # 6. Stop the team (terminate)
 # (done via killing all sessions on the board)
 
 # 7. Resurrect — bring back the agents that were running
-curl -X POST http://localhost:PORT/api/teams/detail/api-team/resurrect
+curl -X POST http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p/resurrect
 
 # 8. Or delete the stopped team
-curl -X DELETE http://localhost:PORT/api/teams/detail/api-team
+curl -X DELETE http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p
 ```
 
 

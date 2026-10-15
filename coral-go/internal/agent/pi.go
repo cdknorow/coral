@@ -213,7 +213,7 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	}
 
 	// Action prompt as positional argument
-	cliPrompt := BuildBoardActionPrompt(params.BoardName, params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
+	cliPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if cliPrompt == "" {
 		cliPrompt = params.Prompt
 	}

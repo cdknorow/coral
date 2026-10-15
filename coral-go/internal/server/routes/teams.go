@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/cdknorow/coral/internal/board"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -11,6 +12,22 @@ import (
 // TeamsHandler provides HTTP handlers for the teams API.
 type TeamsHandler struct {
 	ts *store.TeamStore
+	bs *board.Store // board labels (#3536)
+}
+
+// SetBoardStore lets the team answers carry each team's board label (#3536).
+func (h *TeamsHandler) SetBoardStore(bs *board.Store) { h.bs = bs }
+
+// teamBoardLabels maps team names (board ids) to their board labels.
+func (h *TeamsHandler) teamBoardLabels(r *http.Request, names []string) map[string]string {
+	if h.bs == nil {
+		out := make(map[string]string, len(names))
+		for _, n := range names {
+			out[n] = n
+		}
+		return out
+	}
+	return h.bs.BoardLabels(r.Context(), names)
 }
 
 // NewTeamsHandler creates a new TeamsHandler.
@@ -39,6 +56,7 @@ func (h *TeamsHandler) ListTeams(w http.ResponseWriter, r *http.Request) {
 	type teamSummary struct {
 		ID          int64   `json:"id"`
 		Name        string  `json:"name"`
+		BoardLabel  string  `json:"board_label"`
 		Status      string  `json:"status"`
 		WorkingDir  string  `json:"working_dir"`
 		IsWorktree  int     `json:"is_worktree"`
@@ -49,6 +67,11 @@ func (h *TeamsHandler) ListTeams(w http.ResponseWriter, r *http.Request) {
 		StoppedAt   *string `json:"stopped_at,omitempty"`
 	}
 
+	names := make([]string, len(teams))
+	for i, t := range teams {
+		names[i] = t.Name
+	}
+	labels := h.teamBoardLabels(r, names)
 	results := make([]teamSummary, 0, len(teams))
 	for _, t := range teams {
 		// Count members
@@ -63,6 +86,7 @@ func (h *TeamsHandler) ListTeams(w http.ResponseWriter, r *http.Request) {
 		results = append(results, teamSummary{
 			ID:          t.ID,
 			Name:        t.Name,
+			BoardLabel:  labels[t.Name],
 			Status:      t.Status,
 			WorkingDir:  t.WorkingDir,
 			IsWorktree:  t.IsWorktree,
@@ -96,7 +120,10 @@ func (h *TeamsHandler) GetTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, team)
+	writeJSON(w, http.StatusOK, struct {
+		*store.Team
+		BoardLabel string `json:"board_label"`
+	}{team, h.teamBoardLabels(r, []string{team.Name})[team.Name]})
 }
 
 // DeleteTeam deletes a stopped team.

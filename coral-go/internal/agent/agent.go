@@ -39,6 +39,7 @@ type LaunchParams struct {
 	Flags           []string
 	WorkingDir      string
 	BoardName       string
+	BoardLabel      string // the board's display name (#3536); the prompt shows it, BoardName (the id) stays the key
 	Role            string
 	Prompt          string
 	PromptOverrides map[string]string // user overrides for orchestrator/worker prompts
@@ -643,4 +644,13 @@ func BuildBoardActionPrompt(boardName, role, basePrompt string, promptOverrides 
 		return basePrompt + "\n\n" + actionText
 	}
 	return actionText
+}
+
+// boardPromptName is the name an agent's prompt shows for its board: the label when known,
+// else the board key (#3536).
+func (p LaunchParams) boardPromptName() string {
+	if p.BoardLabel != "" {
+		return p.BoardLabel
+	}
+	return p.BoardName
 }

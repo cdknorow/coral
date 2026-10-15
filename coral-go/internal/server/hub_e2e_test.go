@@ -991,7 +991,8 @@ func TestHubE2E_LaunchOnRemoteOnly(t *testing.T) {
 	require.Equal(t, 200, hub.getJSON("/api/board/projects", &hBoards))
 	has := func(l []map[string]any) bool {
 		for _, p := range l {
-			if p["project"] == "e2e-team" || p["name"] == "e2e-team" {
+			// A launched team's board has its own id (#3536); the name is its label.
+			if p["project"] == "e2e-team" || p["name"] == "e2e-team" || p["board_label"] == "e2e-team" {
 				return true
 			}
 		}

@@ -349,7 +349,7 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 	}
 
 	// Action prompt via temp file for robustness
-	cliPrompt := BuildBoardActionPrompt(params.BoardName, params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
+	cliPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if cliPrompt == "" {
 		cliPrompt = params.Prompt
 	}

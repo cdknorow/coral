@@ -354,6 +354,9 @@ func (s *Server) buildRouter() chi.Router {
 		s.identity.SetStrict()
 	}
 	r.Use(s.identity.Middleware)
+	// A board's name in /api/board/<key>/... resolves to its id (#3536), after the identity
+	// checks so only an authenticated caller sees an ambiguity's candidates.
+	r.Use(routes.BoardKeyResolver(s.boardStore))
 
 	// Health check — the native app polls this every 5s to detect crashes.
 	// Auth middleware bypasses localhost.
@@ -573,6 +576,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Team persistence
 	teamsHandler := routes.NewTeamsHandler(s.db)
+	teamsHandler.SetBoardStore(s.boardStore)
 	r.Get("/api/teams/all", teamsHandler.ListTeams)
 	r.Get("/api/teams/detail/{name}/availability", sessHandler.TeamAvailability)
 	r.Get("/api/teams/detail/{name}", teamsHandler.GetTeam)
@@ -770,6 +774,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/board/{project}/relay-targets", boardHandler.ListRelayTargets)
 	r.Post("/api/board/{project}/hub-notice", boardHandler.PostHubNotice)
 	r.Delete("/api/board/{project}", boardHandler.DeleteBoard)
+	r.Get("/api/board/{project}", boardHandler.GetBoardInfo)
+	r.Patch("/api/board/{project}", boardHandler.RenameBoard)
 	r.Get("/api/board/{project}/groups", boardHandler.ListGroups)
 	r.Get("/api/board/{project}/groups/{groupID}/members", boardHandler.ListGroupMembers)
 	r.Post("/api/board/{project}/groups/{groupID}/members", boardHandler.AddGroupMember)

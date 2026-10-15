@@ -374,7 +374,7 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	}
 
 	// Action prompt as separate positional argument
-	actionPrompt := BuildBoardActionPrompt(params.BoardName, params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
+	actionPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if actionPrompt == "" {
 		actionPrompt = params.Prompt
 	}

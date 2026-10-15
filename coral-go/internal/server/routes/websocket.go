@@ -604,6 +604,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		}
 	}
 
+	h.addBoardLabels(r.Context(), sessions)
 	return archivedLast(sessions), nil
 }
 

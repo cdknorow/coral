@@ -303,6 +303,7 @@ var operatorOnlyRoutes = map[string]string{
 	// deletes the team's whole history.
 	"GET /api/system/api-key":     "read the API key",
 	"DELETE /api/board/{project}": "delete a board",
+	"PATCH /api/board/{project}":  "rename a board",
 }
 
 // recordedAgentRoutes are allowed to an agent in every mode (an agent launches the agents of
@@ -327,8 +328,9 @@ func guardedRoute(r *http.Request) (route string, only, ok bool) {
 			break
 		}
 	}
-	// Board traffic is the busiest: only its DELETEs can be a guarded route (delete a board).
-	if !hit && !(r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/board/")) {
+	// Board traffic is the busiest: only its DELETEs and PATCHes can be a guarded route
+	// (delete or rename a board).
+	if !hit && !((r.Method == http.MethodDelete || r.Method == http.MethodPatch) && strings.HasPrefix(r.URL.Path, "/api/board/")) {
 		return "", false, false
 	}
 	rc := chi.RouteContext(r.Context())
