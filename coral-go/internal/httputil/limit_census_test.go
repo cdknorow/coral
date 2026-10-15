@@ -30,6 +30,7 @@ var tooManyRequestsSites = map[string]struct {
 	"cmd/coral/cloud_connect.go":                {1, "client side: the CLI reads Coral Hub's 429"},
 	"cmd/coral-board/send.go":                   {1, "client side: coral-board reads a relayed send's 429 to suggest a retry (#3489)"},
 	"pkg/tunnel/relay.go":                       {1, "relay protocol, not HTTP to the dashboard: the hub's per-tunnel in-flight cap answer to a connector, which Coral passes on marked (#3489)"},
+	"pkg/tunnel/limit.go":                       {1, "the connector's hub-wide in-flight cap (#3624): a load limit, not a per-action one, so it is marked X-Coral-Limit: connector and the dashboard backs off on it"},
 	"internal/server/routes/cross_team_send.go": {2, "a relayed send's per-sender limit, and Coral Hub's 429 passed on: relayError writes every 429 with WriteActionLimitBody (marked), the other mention is that check (#3489)"},
 }
 
