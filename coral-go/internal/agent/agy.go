@@ -109,7 +109,7 @@ func (a *AgyAgent) ExtractSessions(basePath string, knownMtimes map[string]float
 
 // parseAgyTranscriptSession parses an Antigravity JSONL transcript file.
 func parseAgyTranscriptSession(convID, fpath string, mtime float64) (*IndexedSession, error) {
-	f, err := os.Open(fpath)
+	f, err := openHistoryFile(fpath) // regular file, never a link or FIFO (#3601, W21)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func parseAgyTranscriptSession(convID, fpath string, mtime float64) (*IndexedSes
 
 // parseGeminiSession parses a legacy Gemini JSON session file.
 func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
-	data, err := os.ReadFile(fpath)
+	data, err := readHistoryFile(fpath)
 	if err != nil {
 		return nil, err
 	}

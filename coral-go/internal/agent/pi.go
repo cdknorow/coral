@@ -64,7 +64,7 @@ func (a *PiAgent) ExtractSessions(basePath string, knownMtimes map[string]float6
 }
 
 func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
-	f, err := os.Open(fpath)
+	f, err := openHistoryFile(fpath) // regular file, never a link or FIFO (#3601, W21)
 	if err != nil {
 		return nil, err
 	}
