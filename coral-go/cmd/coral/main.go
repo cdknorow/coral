@@ -87,7 +87,20 @@ func main() {
 	strictLocalAuth := flag.Bool("strict-local-auth", envTrue(os.Getenv("CORAL_STRICT_LOCAL_AUTH")), "Require a credential for every request from this computer: an agent's session token, the dashboard's sign-in (run 'coral open' to sign in) or a command-line signature; refuse an agent acting as someone else (also CORAL_STRICT_LOCAL_AUTH=1)")
 	tlsKey := flag.String("tls-key", os.Getenv("CORAL_TLS_KEY"), "PEM private key file for --tls-cert (also CORAL_TLS_KEY)")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
+	showVersion := flag.Bool("version", false, "Print the version and exit (also -v, or coral version)")
+	flag.BoolVar(showVersion, "v", false, "Print the version and exit")
 	flag.Parse()
+	if *showVersion {
+		printVersion(os.Stdout)
+		os.Exit(0)
+	}
+	if flag.NArg() > 0 {
+		// A stray word is never a server option: "coral --port 1 version" used to start
+		// a server and ignore it (#3506).
+		fmt.Fprintf(os.Stderr, "coral: unexpected argument %q\n", flag.Arg(0))
+		flag.Usage()
+		os.Exit(2)
+	}
 	if *selfTest {
 		if err := runEncryptionSelfTest(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
