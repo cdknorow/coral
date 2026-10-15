@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { showView } from './utils.js';
-import { note } from './nav.js';
+import { note, backIs } from './nav.js';
 
 const MOBILE_BREAKPOINT = 767;
 
@@ -113,8 +113,10 @@ function mobileBack() {
         t.classList.toggle('active', t.dataset.tab === 'agents');
     });
 
-    // The agent list is the Agents page (#3532).
-    note({ view: 'agents' });
+    // The agent list is the Agents page (#3532): Back when that is the entry before, so the phone's
+    // back button and the browser's agree; otherwise a new entry.
+    if (backIs({ view: 'agents' })) history.back();
+    else note({ view: 'agents' });
 }
 window.mobileBack = mobileBack;
 

@@ -61,7 +61,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         }
         await open('/');
         check('/ is the Agents page', (await url()) === '/agents' && (await tab()) === 'nav-tab-agents', await url());
-        check('history.state is the route', JSON.stringify(await ev('history.state')) === JSON.stringify({ coralRoute: { view: 'agents' } }), JSON.stringify(await ev('history.state')));
+        check('history.state is the route', JSON.stringify(await ev('history.state.coralRoute')) === JSON.stringify({ view: 'agents' }), JSON.stringify(await ev('history.state')));
 
         console.log('2. Tabs are history entries: Back and Forward');
         await open('/agents');
@@ -152,9 +152,20 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await open(`/#chat/${sid}`);
         await until(`${activeRow} === ${JSON.stringify(sid)}`, 'the agent from the old link');
         check('an old #chat/<id> link opens the agent at /agents/<id>', (await url()) === `/agents/${sid}` && (await ev(activeRow)) === sid, await url());
-        await open('/agents/00000000-0000-4000-8000-000000000000');
-        await atUrl('/agents');
-        check('an agent that is not running goes to /agents', (await url()) === '/agents', await url());
+        console.log('7b. Pages whose object does not exist: a visible "not found", then the list (design 4.1)');
+        const toast = re => `[...document.querySelectorAll('.toast')].some(t => ${re}.test(t.textContent))`;
+        for (const [path, list, re] of [
+            ['/agents/00000000-0000-4000-8000-000000000000', '/agents', '/not running here/'],
+            ['/chats/no-such-chat-3532', '/chats', '/chat was not found/'],
+            ['/workflows/987654321', '/workflows', '/workflow was not found/'],
+            ['/workflows/987654321/runs/987654321', '/workflows', '/workflow run was not found/'],
+            ['/docs/no-such-doc', '/docs', '/document was not found/'],
+        ]) {
+            await open(path);
+            await atUrl(list);
+            await until(toast(re), `the toast for ${path}`);
+            check(`${path}: "not found", then ${list}`, (await url()) === list && (await ev(toast(re))), `${await url()} ${JSON.stringify(await ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent.trim())`))}`);
+        }
 
         console.log('8. Phone: the agent page, and Back to the list');
         await Emulation.setDeviceMetricsOverride({ width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
@@ -164,6 +175,27 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await ev('window.mobileBack(); true');
         await atUrl('/agents');
         check('the phone back button is the Agents page', (await url()) === '/agents' && (await ev(shown('mobile-agent-list'))), await url());
+        // From the list: choose the agent, Back, Forward (QA's 390 px bug: Forward left the list on screen).
+        await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
+        await open('/agents');
+        await until(shown('mobile-agent-list'), 'the phone list');
+        const lenP = await ev('history.length');
+        await ev(`document.querySelector('#mobile-agent-list [data-session-id="${sid}"], #live-sessions-list [data-session-id="${sid}"]').click(); true`);
+        await atUrl(`/agents/${sid}`);
+        await until(shown('live-session-view'), 'the agent at 390');
+        check('choosing the agent on a phone is its page', (await url()) === `/agents/${sid}` && (await ev(shown('live-session-view'))), await url());
+        await ev('history.back(); true');
+        await atUrl('/agents');
+        await until(shown('mobile-agent-list'), 'the list after Back');
+        check('Back shows the list', (await ev(shown('mobile-agent-list'))) && !(await ev(shown('live-session-view'))), await url());
+        await ev('history.forward(); true');
+        await atUrl(`/agents/${sid}`);
+        await until(shown('live-session-view'), 'the agent after Forward');
+        check('Forward shows the agent again, not the list', (await ev(shown('live-session-view'))) && !(await ev(shown('mobile-agent-list'))), await url());
+        await ev('window.mobileBack(); true');
+        await atUrl('/agents');
+        check('the phone back button goes back (no new entry)', (await url()) === '/agents' && (await ev('history.length')) === lenP + 1 && (await ev(shown('mobile-agent-list'))),
+            `${await url()} length ${lenP} -> ${await ev('history.length')}`);
         await Emulation.clearDeviceMetricsOverride();
 
         console.log('9. A board: its page; a name from the URL is text, never markup');

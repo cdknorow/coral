@@ -1,6 +1,6 @@
 /* Documentation: browsable agent_docs viewer */
 
-import { escapeHtml as esc, showView, jsStr } from './utils.js';
+import { escapeHtml as esc, showView, jsStr, showToast } from './utils.js';
 import { apiFetch } from './api.js';
 import { loadHighlight } from './vendor_loader.js';
 import { note, currentRoute } from './nav.js';
@@ -29,6 +29,7 @@ async function loadDocsList() {
     }
     // The doc the page names, else README, else the first document; an empty list says so.
     const first = startDoc(wantedDoc);
+    if (wantedDoc && first && first.name !== wantedDoc) docNotFound();
     wantedDoc = null;
     if (first) selectDoc(first.name, { noteRoute: false });
     else if (content) content.innerHTML = '<div class="docs-empty"><p>No documentation found.</p></div>';
@@ -90,6 +91,12 @@ function renderDocNav() {
 
 // ── Content rendering ──────────────────────────────────────────────────
 
+/** A /docs/<name> page for a doc there isn't: say so, and the page is /docs (#3532, design 4.1). */
+function docNotFound() {
+    showToast('That document was not found', true);
+    if (currentRoute()?.view === 'docs') note({ view: 'docs' }, { replace: true });
+}
+
 /** The doc to show: the named one if the list has it, else README, else the first. */
 function startDoc(name) {
     return (name && docsList.find(d => d.name === name)) || docsList.find(d => d.name === 'README') || docsList[0];
@@ -99,6 +106,7 @@ function startDoc(name) {
 export function openDoc(name) {
     if (!docsList.length) { wantedDoc = name; return; } // loading (showDocsTab): it opens this one
     const doc = startDoc(name);
+    if (name && doc && doc.name !== name) docNotFound();
     if (doc && doc.name !== selectedDoc) selectDoc(doc.name, { noteRoute: false });
 }
 

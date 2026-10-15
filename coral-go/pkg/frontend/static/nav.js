@@ -16,12 +16,24 @@ export function onRoute(view, fn) { handlers.set(view, fn); }
 /** The route on screen. */
 export function currentRoute() { return current; }
 
+// Each entry also records the URL of the entry it was pushed from (prev), so a "back" control
+// can go back in history when that is where it leads, instead of pushing a copy of it.
 function write(route, replace) {
     const url = build(route);
-    const st = { coralRoute: route };
-    if (replace || url === location.pathname + location.search) history.replaceState(st, '', url);
-    else history.pushState(st, '', url);
+    const here = location.pathname + location.search;
+    if (replace || url === here) {
+        const prev = history.state && typeof history.state.prev === 'string' ? history.state.prev : null;
+        history.replaceState({ coralRoute: route, prev }, '', url);
+    } else {
+        history.pushState({ coralRoute: route, prev: here }, '', url);
+    }
     current = route;
+}
+
+/** Whether the entry before this one (the one Back returns to) is this route's page. */
+export function backIs(route) {
+    const r = normalize(route);
+    return !!r && !!history.state && history.state.prev === build(r);
 }
 
 /** Go to a route: write it to history (a push unless replace) and show it. An invalid route

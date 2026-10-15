@@ -748,6 +748,13 @@ function pollStartupStatus() {
 // calling the same function writes nothing new. A route's ids were checked by routes.js before it
 // gets here.
 
+/** A page whose object doesn't exist (design 4.1): say so, and show its list instead (a replace,
+ *  so Back doesn't return to the missing page). */
+function notFound(message, listRoute) {
+    showToast(message, true);
+    return go(listRoute, { replace: true });
+}
+
 // Settles once the first live list has loaded (or failed): an agent link needs the list.
 let _liveListLoaded;
 const liveListReady = new Promise(r => { _liveListLoaded = r; });
@@ -776,15 +783,12 @@ function registerRouteHandlers() {
         await liveListReady;
         const s = (state.liveSessions || []).find(x => String(x.session_id || '').toLowerCase() === r.id
             && liveRoute(sessionServer(x), x.session_id).server === r.server);
-        if (!s) {
-            showToast('That agent is not running here any more', true);
-            go({ view: 'agents' }, { replace: true });
-            return;
-        }
+        if (!s) return notFound('That agent is not running here', { view: 'agents' });
         switchNavTab('agents', { fromHistory: true });
         const cur = state.currentSession;
         const shown = cur && cur.type === 'live' && cur.session_id === s.session_id && sessionServer(cur) === sessionServer(s);
         if (!shown) await window.selectLiveSession(s.name, s.agent_type, s.session_id, sessionServer(s));
+        else if (window.innerWidth <= 767) showView('live-session-view'); // the phone's Agents tab showed the list
         if (r.sub) switchAgenticTab(r.sub, 'top');
     });
 
@@ -792,7 +796,10 @@ function registerRouteHandlers() {
         if (r.id) {
             switchNavTab('history', { fromHistory: true });
             const cur = state.currentSession;
-            if (!(cur && cur.type === 'history' && cur.name === r.id)) await selectHistorySession(r.id);
+            if (!(cur && cur.type === 'history' && cur.name === r.id) && (await selectHistorySession(r.id)) === false) {
+                state.currentSession = null;
+                notFound('That chat was not found', { view: 'chats', query: currentChatsQuery() });
+            }
             return;
         }
         // The list: its filters are the URL's (startup already read them).
@@ -820,9 +827,11 @@ function registerRouteHandlers() {
     route('workflows', async r => {
         switchNavTab('workflows', { fromHistory: true });
         const m = await loadWorkflows();
-        if (r.run) await m.selectWorkflowRun(r.run, { workflowId: r.id });
-        else if (r.id) await m.selectWorkflow(r.id);
-        else m.workflowsBackToList();
+        const found = r.run ? await m.selectWorkflowRun(r.run, { workflowId: r.id }) : r.id ? await m.selectWorkflow(r.id) : m.workflowsBackToList();
+        if (found === false) {
+            m.workflowsBackToList();
+            notFound(r.run ? 'That workflow run was not found' : 'That workflow was not found', { view: 'workflows' });
+        }
     });
 
     route('jobs', () => switchNavTab('jobs', { fromHistory: true }));

@@ -240,7 +240,7 @@ export async function selectWorkflow(id) {
     stopRunPolling();
 
     const wf = await fetchWorkflowDetail(id);
-    if (!wf) return;
+    if (!wf) return false;
     noteWorkflows({ view: 'workflows', id: Number(id) });
 
     // Show detail, hide list
@@ -330,7 +330,7 @@ export async function selectWorkflowRun(runId, { workflowId } = {}) {
     stopRunPolling();
 
     const run = await fetchRunDetail(runId);
-    if (!run) return;
+    if (!run) return false;
     const wfId = Number(run.workflow_id || workflowId || selectedWorkflowId);
     if (wfId) noteWorkflows({ view: 'workflows', id: wfId, run: Number(runId) });
 

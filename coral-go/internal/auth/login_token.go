@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
@@ -135,9 +136,9 @@ func (ks *KeyStore) handleLoginToken(w http.ResponseWriter, r *http.Request) boo
 	q := r.URL.Query()
 	q.Del(LoginTokenParam)
 	target := (&url.URL{Path: r.URL.Path, RawPath: r.URL.RawPath, RawQuery: q.Encode()}).String()
-	if r.URL.Path == "" {
-		target = "/" + target
-	}
+	// One leading "/": "//host/..." (or "/\host", which browsers read the same) would be
+	// another host (Security, #3532).
+	target = "/" + strings.TrimLeft(target, "/\\")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	http.Redirect(w, r, target, http.StatusFound)

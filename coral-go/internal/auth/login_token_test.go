@@ -54,6 +54,20 @@ func TestLoginToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, get("/?login_token="+token, "127.0.0.1:1").Code, "single use")
 
+	// Never another host: a path starting "//" (or "/\") comes back with one "/" (Security, #3532).
+	// A backslash is escaped (%5C), which no browser reads as a slash.
+	for page, want := range map[string]string{"//evil.example/x": "/evil.example/x", "/\\evil.example/x": "/%5Cevil.example/x", "///a": "/a"} {
+		tok, err := ks.MintLoginToken()
+		require.NoError(t, err)
+		r := httptest.NewRequest("GET", "/?login_token="+tok, nil)
+		r.URL.Path, r.URL.RawPath = page, ""
+		r.RemoteAddr, r.Host = "203.0.113.5:1234", "localhost:8420"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		require.Equal(t, http.StatusFound, rec.Code, page)
+		assert.Equal(t, want, rec.Header().Get("Location"), page)
+	}
+
 	// A dashboard page (#3532): the path comes back exactly as sent, escapes and all.
 	for _, page := range []string{"/team/@m2/qa/settings", "/board/%40odd", "/team/a%2Fb", "/chats?q=x"} {
 		tok, err := ks.MintLoginToken()

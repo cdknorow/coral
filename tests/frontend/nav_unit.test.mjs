@@ -59,7 +59,7 @@ const shown = [];
 for (const v of ['agents', 'chats', 'team', 'workflows', 'docs']) nav.onRoute(v, (r, o) => shown.push([r.view, r.id || null, !!o.fromHistory]));
 nav.startNav();
 assert.equal(b.url(), `/agents/${S}`, 'the legacy hash is replaced with the path');
-assert.deepEqual(history.state, { coralRoute: { view: 'agents', server: null, id: S, sub: null } }, 'history.state set on a hash load');
+assert.deepEqual(history.state, { coralRoute: { view: 'agents', server: null, id: S, sub: null }, prev: null }, 'history.state set on a hash load');
 assert.equal(b.length, 1, 'replaced, not pushed');
 
 // Tabs and objects push; a refinement replaces; note() records without showing.
@@ -111,4 +111,13 @@ history.replaceState({ coralRoute: { view: 'agents', sessionId: S } }, '', `/age
 await nav.go({ view: 'workflows' });
 b.back();
 assert.deepEqual(nav.currentRoute(), { view: 'agents', server: null, id: S, sub: null }, 'an old-shape state is read from the location');
+// backIs: the entry Back returns to (the phone's back button goes back instead of pushing a copy).
+await nav.go({ view: 'agents' });
+nav.note({ view: 'agents', id: S });
+assert.equal(nav.backIs({ view: 'agents' }), true, 'pushed from /agents');
+nav.note({ view: 'agents', id: S, sub: 'notes' }, { replace: true });
+assert.equal(nav.backIs({ view: 'agents' }), true, 'a replace keeps where the entry came from');
+assert.equal(nav.backIs({ view: 'chats' }), false);
+assert.equal(nav.backIs({ view: 'team', id: '..' }), false, 'an invalid route is never Back');
+
 console.log('nav_unit: ok');

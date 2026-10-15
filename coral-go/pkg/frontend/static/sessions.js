@@ -405,6 +405,7 @@ export async function selectHistorySession(sessionId, locator = null) {
     loadHistoryAgentNotes(sessionId);
     loadHistoryChanges(sessionId);
     updateHistoryTokenUsage(sessionId);
+    return data !== null; // false: Coral has no such chat (404) or it could not be loaded
 }
 
 export function renameAgent(name, agentType, sessionId) {
