@@ -13,6 +13,7 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/store"
@@ -131,6 +132,10 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.BaseBranch == "" {
 		body.BaseBranch = "main"
+	}
+	if err := gitutil.ValidRef(body.BaseBranch); err != nil { // #3601, weak site W24
+		errBadRequest(w, "base_branch: "+err.Error())
+		return
 	}
 	if body.MaxDurationS == 0 {
 		body.MaxDurationS = 3600

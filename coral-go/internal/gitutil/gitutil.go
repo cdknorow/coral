@@ -6,6 +6,7 @@ package gitutil
 import (
 	"bytes"
 	"context"
+	"errors"
 	"github.com/cdknorow/coral/internal/safefs"
 	"os"
 	"os/exec"
@@ -260,4 +261,25 @@ func stripSCPCredentials(raw string) string {
 		return raw[at+1:]
 	}
 	return raw
+}
+
+// ValidRef says why ref can't be given to git as a branch or revision, or nil (#3601, weak site
+// W24): never one starting with '-', which git would read as an option, nor one with
+// whitespace, a control character or a backslash, or longer than 255 bytes. A name like
+// "main", "origin/main", "release-1.2" or a commit hash passes.
+func ValidRef(ref string) error {
+	switch {
+	case ref == "":
+		return errors.New("the branch is empty")
+	case len(ref) > 255:
+		return errors.New("the branch name is longer than 255 characters")
+	case strings.HasPrefix(ref, "-"):
+		return errors.New("a branch name can't start with '-'")
+	}
+	for _, c := range ref {
+		if c <= ' ' || c == 0x7f || c == '\\' {
+			return errors.New("a branch name can't contain spaces, control characters or a backslash")
+		}
+	}
+	return nil
 }

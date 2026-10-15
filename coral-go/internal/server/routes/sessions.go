@@ -3838,6 +3838,14 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	// Which board the team joins or starts (#3536), decided before anything is written
 	// (knowledge files, working mode, presets, worktrees, the teams row). From here on
 	// body.BoardName is the board's id.
+	// The base branch reaches git: never an option, and checked before anything is created
+	// (#3601, weak site W24).
+	if body.Worktree && body.BaseBranch != "" {
+		if err := gitutil.ValidRef(body.BaseBranch); err != nil {
+			errBadRequest(w, "base_branch: "+err.Error())
+			return
+		}
+	}
 	if body.BoardName != "" || body.BoardID != "" {
 		key, ok := h.launchBoard(w, r, body.BoardID, body.BoardName, body.NewBoard)
 		if !ok {
@@ -3943,10 +3951,10 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		os.MkdirAll(worktreeDir, 0755)
 		worktreePath = filepath.Join(worktreeDir, body.BoardName)
 		worktreeBranch := fmt.Sprintf("coral-team/%s", body.BoardName)
-		cmd := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "-b", worktreeBranch, worktreePath, branch)
+		cmd := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "-b", worktreeBranch, "--", worktreePath, branch)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			// Branch may already exist from a previous run — try without -b
-			cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", worktreePath, worktreeBranch)
+			cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "--", worktreePath, worktreeBranch)
 			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
 				attempt.Finish(tracking.OutcomeFailure, tracking.FailWorktreeFailed, 0, len(body.Agents))
 				errBadRequest(w, fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2)))
@@ -6207,12 +6215,16 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 		if branch == "" {
 			branch = "main"
 		}
+		if err := gitutil.ValidRef(branch); err != nil { // a stored config is checked again (#3601, W24)
+			errBadRequest(w, "the team's base_branch: "+err.Error())
+			return
+		}
 		repoDir := cfg.WorkingDir
 		if repoDir == "" {
 			repoDir = filepath.Dir(team.WorkingDir)
 		}
 
-		cmd := gitutil.Command(ctx, repoDir, "worktree", "add", team.WorkingDir, branch)
+		cmd := gitutil.Command(ctx, repoDir, "worktree", "add", "--", team.WorkingDir, branch)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			errBadRequest(w, fmt.Sprintf("failed to recreate worktree: %s", string(out)))
 			return

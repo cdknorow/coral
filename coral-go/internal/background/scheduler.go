@@ -658,7 +658,10 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		// worktreeDir is already keyed on runID, so the branch keys the same
 		// way and each run stays isolated from every other.
 		runBranch = fmt.Sprintf("coral/job-run-%d", runID)
-		err := runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", runBranch, worktreeDir, baseBranch)
+		err := gitutil.ValidRef(baseBranch) // a stored job is checked again (#3601, weak site W24)
+		if err == nil {
+			err = runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", runBranch, "--", worktreeDir, baseBranch)
+		}
 		if err != nil {
 			errMsg := fmt.Sprintf("git worktree add failed: %v", err)
 			s.logger.Error(errMsg, "run_id", runID)
@@ -901,8 +904,11 @@ func (s *JobScheduler) cleanupWorktree(repoPath, worktreePath, runBranch, baseBr
 // On any error it answers true, so an unreadable repository leaves the branch
 // alone rather than risking the deletion of real work.
 func branchHasCommits(ctx context.Context, repoPath, base, branch string) bool {
+	if gitutil.ValidRef(base) != nil || gitutil.ValidRef(branch) != nil {
+		return true // never pass git an option; an unreadable answer keeps the branch
+	}
 	out, err := gitutil.Command(ctx, repoPath,
-		"rev-list", "--count", base+".."+branch).Output()
+		"rev-list", "--count", base+".."+branch, "--").Output()
 	if err != nil {
 		return true
 	}

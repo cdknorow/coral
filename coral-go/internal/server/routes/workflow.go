@@ -17,6 +17,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/cdknorow/coral/internal/store"
@@ -177,6 +178,12 @@ func (h *WorkflowHandler) CreateWorkflow(w http.ResponseWriter, r *http.Request)
 		defaultAgentJSON = string(body.DefaultAgent)
 	}
 
+	if body.BaseBranch != "" {
+		if err := gitutil.ValidRef(body.BaseBranch); err != nil { // #3601, weak site W24
+			errBadRequest(w, "base_branch: "+err.Error())
+			return
+		}
+	}
 	wf := &store.Workflow{
 		Name:             body.Name,
 		Description:      body.Description,

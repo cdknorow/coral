@@ -191,6 +191,10 @@ func (h *ScheduleHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	if job.BaseBranch == "" {
 		job.BaseBranch = "main"
 	}
+	if err := gitutil.ValidRef(job.BaseBranch); err != nil { // #3601, weak site W24
+		errBadRequest(w, "base_branch: "+err.Error())
+		return
+	}
 
 	created, err := h.sched.CreateScheduledJob(r.Context(), &job)
 	if err != nil {
@@ -235,6 +239,19 @@ func (h *ScheduleHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 		if msg := jobRepoError(r.Context(), repo); msg != "" {
 			errBadRequest(w, msg)
 			return
+		}
+	}
+	if v, ok := fields["base_branch"]; ok {
+		b, isStr := v.(string)
+		if !isStr {
+			errBadRequest(w, "base_branch must be a string")
+			return
+		}
+		if b != "" {
+			if err := gitutil.ValidRef(b); err != nil { // #3601, weak site W24
+				errBadRequest(w, "base_branch: "+err.Error())
+				return
+			}
 		}
 	}
 
