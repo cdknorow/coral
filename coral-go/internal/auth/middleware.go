@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cdknorow/coral/internal/httputil"
 )
@@ -135,25 +136,65 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
-// isValidLocalhostHost checks that a localhost request's Host header
-// is actually localhost or an IP, not an external domain (DNS rebinding defense).
+// isValidLocalhostHost checks that a localhost request's Host header names this server, not
+// an external domain (the DNS-rebinding defence). An empty Host passes (HTTP/1.0).
 func isValidLocalhostHost(host string) bool {
-	if host == "" {
-		return true
+	return host == "" || AcceptedLocalHost(host)
+}
+
+// acceptedHosts are the names a request from this computer may give as its Host (#3594): the
+// loopback names, and the addresses Coral listens on. Set once at startup (SetListenHosts);
+// until then, and when Coral listens on every interface, any IP address is accepted.
+var acceptedHosts atomic.Pointer[hostSet]
+
+type hostSet struct {
+	anyIP bool
+	names map[string]bool
+}
+
+// SetListenHosts records the addresses Coral listens on (config.ListenHosts): with them, a
+// Host naming another IP is refused like an external domain. An empty entry, 0.0.0.0 or ::
+// (every interface) keeps any IP address acceptable.
+func SetListenHosts(hosts []string) {
+	set := &hostSet{names: map[string]bool{}}
+	for _, h := range hosts {
+		h = strings.ToLower(strings.Trim(strings.TrimSpace(h), "[]"))
+		switch h {
+		case "", "0.0.0.0", "::":
+			set.anyIP = true
+		default:
+			set.names[h] = true
+		}
 	}
+	acceptedHosts.Store(set)
+}
+
+// AcceptedLocalHost reports whether host (a Host header, with or without a port) names this
+// server: localhost, a loopback address, or an address Coral listens on.
+func AcceptedLocalHost(host string) bool {
 	h, _, err := net.SplitHostPort(host)
 	if err != nil {
 		h = host
 	}
-	if h == "" || h == "localhost" || h == "127.0.0.1" || h == "::1" {
+	h = strings.ToLower(strings.Trim(h, "[]"))
+	if h == "" {
+		return false
+	}
+	if h == "localhost" {
 		return true
 	}
-	// Allow any IP address (handles 0.0.0.0 binding)
-	if net.ParseIP(h) != nil {
+	ip := net.ParseIP(h)
+	if ip != nil && ip.IsLoopback() {
 		return true
 	}
-	// Reject external domain names
-	return false
+	set := acceptedHosts.Load()
+	if set == nil || set.anyIP {
+		return ip != nil // every interface: any address may be this server's
+	}
+	if set.names[h] {
+		return true
+	}
+	return ip != nil && set.names[ip.String()]
 }
 
 // SafeReturnTo returns p when it is a path on this origin, else "/" (#3418): it must

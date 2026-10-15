@@ -26,6 +26,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/agentenv"
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
@@ -358,6 +359,8 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		db.Close()
 		return nil, err
 	}
+	// The DNS-rebinding check accepts exactly the names Coral listens on (#3594).
+	auth.SetListenHosts(cfg.ListenHosts())
 	if tlsConfig != nil {
 		for i := range lns {
 			lns[i] = newSniffListener(lns[i], tlsConfig)
@@ -576,11 +579,14 @@ func displayHost(h string) string {
 
 // restrictToLoopback forces a local-only bind. When the requested host would
 // have been reachable from the network it logs how to opt in, so an operator
-// who passed --host or CORAL_HOST is told why the bind is local.
+// who passed --host or CORAL_HOST is told why the bind is local. A --host list
+// that is already loopback only (127.0.0.1,::1) is kept as given (#3594, QA's
+// observation): it was being collapsed to 127.0.0.1 without a word.
 func restrictToLoopback(cfg *config.Config, reason string) {
-	if !config.IsLoopbackHost(cfg.Host) {
-		log.Printf("[startup] remote access is off (%s): binding 127.0.0.1 instead of %q. Enable it in Settings > Privacy (remote_access_enabled=true) and restart Coral to accept network connections.", reason, cfg.Host)
+	if config.IsLoopbackHost(cfg.Host) {
+		return
 	}
+	log.Printf("[startup] remote access is off (%s): binding 127.0.0.1 instead of %q. Enable it in Settings > Privacy (remote_access_enabled=true) and restart Coral to accept network connections.", reason, cfg.Host)
 	cfg.Host = "127.0.0.1"
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/agentenv"
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/config"
 )
 
@@ -127,4 +128,62 @@ func TestListenAllRefusesAWildcardInAList(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already includes every other address")
 	assert.Empty(t, lns)
+}
+
+// #3594 (d, e): both listeners get the same treatment, keyed to the peer address (#3585's
+// direct-local test), never to which listener a request arrived on: on the loopback listener a
+// direct request passes without a key, and its Host must name this server (localhost, loopback
+// or a listened address; an unlisted IP or a domain is refused as DNS rebinding); on the network
+// listener the peer isn't loopback, so the key is needed whatever the Host says. A forged tunnel
+// stamp changes nothing on either.
+func TestBothListenersAreKeyedToThePeer(t *testing.T) {
+	ip := localNetworkIPv4(t)
+	if ip == "" {
+		t.Skip("this machine has no non-loopback IPv4 address")
+	}
+	cfg := &config.Config{Host: ip, Port: 0}
+	lns, port, err := listenAll(cfg)
+	require.NoError(t, err)
+	auth.SetListenHosts(cfg.ListenHosts())
+	t.Cleanup(func() { auth.SetListenHosts([]string{""}) })
+	ks, err := auth.NewKeyStore(t.TempDir())
+	require.NoError(t, err)
+	srv := &http.Server{Handler: auth.Middleware(ks)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") }))}
+	for _, ln := range lns {
+		go srv.Serve(ln)
+	}
+	t.Cleanup(func() { srv.Close() })
+
+	status := func(addr, host string, hdr map[string]string) int {
+		req, err := http.NewRequest(http.MethodGet, "http://"+net.JoinHostPort(addr, strconv.Itoa(port))+"/api/x", nil)
+		require.NoError(t, err)
+		if host != "" {
+			req.Host = host
+		}
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	p := ":" + strconv.Itoa(port)
+	key := map[string]string{"Authorization": "Bearer " + ks.Key()}
+	forged := map[string]string{"X-Coral-Via-Tunnel": "1"}
+
+	// The loopback listener: a direct local request passes, with a Host naming this server.
+	assert.Equal(t, 200, status("127.0.0.1", "", nil))
+	assert.Equal(t, 200, status("127.0.0.1", "localhost"+p, nil))
+	assert.Equal(t, 200, status("127.0.0.1", ip+p, nil), "the listened network address is this server too")
+	assert.Equal(t, 403, status("127.0.0.1", "10.255.255.254"+p, nil), "an IP Coral doesn't listen on is DNS rebinding")
+	assert.Equal(t, 403, status("127.0.0.1", "evil.example"+p, nil))
+	assert.Equal(t, 200, status("127.0.0.1", "", forged), "a forged tunnel stamp changes nothing")
+	assert.Equal(t, 401, status("127.0.0.1", "", map[string]string{"X-Forwarded-For": "1.2.3.4"}), "a proxied request isn't direct")
+
+	// The network listener: the peer isn't loopback, so only the key passes, whatever the Host.
+	assert.Equal(t, 401, status(ip, "", nil))
+	assert.Equal(t, 401, status(ip, "localhost"+p, nil), "a loopback Host doesn't make a network peer local")
+	assert.Equal(t, 401, status(ip, "", forged))
+	assert.Equal(t, 200, status(ip, "", key))
 }

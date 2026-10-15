@@ -148,7 +148,13 @@ also listens on `127.0.0.1` and says so in the startup log, so this computer's a
 command line and the dashboard keep using loopback; `--no-auto-loopback` (or
 `CORAL_NO_AUTO_LOOPBACK=1`) turns that off. Agents always get the loopback address in
 `CORAL_URL` when Coral listens on one. With remote access off, Coral listens on
-`127.0.0.1` only, whatever `--host` says.
+`127.0.0.1` only, whatever `--host` says (a list of only loopback addresses is kept).
+
+Whichever address a request arrives on, what it may do depends on where it comes from, never
+on the listener: a program on this computer reaching the loopback listener is local, and anyone
+reaching the tailnet address needs the key. A local request must also name this server in its
+`Host` header (`localhost`, a loopback address, or an address in `--host`); any other name or
+IP is refused as a DNS-rebinding attempt, unless Coral listens on every interface.
 
 A hostname in the list is listened on at the first address it resolves to: `localhost`
 counts as loopback, any other name (`myhost.local`) as a network address. Every interface

@@ -50,8 +50,12 @@ func TestVerification_ApplyPrivacySettings_RemoteAccess_OptIn(t *testing.T) {
 
 	// New install / no saved setting: local-only, whatever host was requested.
 	db := open(t)
-	for _, requested := range []string{"0.0.0.0", "::", "", "192.168.1.20"} {
+	for _, requested := range []string{"0.0.0.0", "::", "", "192.168.1.20", "127.0.0.1,192.168.1.20"} {
 		assert.Equal(t, "127.0.0.1", hostFor(t, db, requested), "unset remote access must bind local-only (requested %q)", requested)
+	}
+	// A list that is loopback only already is local-only: kept as given, not collapsed (#3594).
+	for _, requested := range []string{"127.0.0.1", "127.0.0.1,::1", "localhost"} {
+		assert.Equal(t, requested, hostFor(t, db, requested), "a loopback-only host is kept (requested %q)", requested)
 	}
 
 	// Explicit opt-in is preserved exactly as configured.

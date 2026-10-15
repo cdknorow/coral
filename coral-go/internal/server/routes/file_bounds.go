@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -82,15 +81,7 @@ func strictBounds(r *http.Request) bool { return !localDashboard(r) }
 // localHostOK accepts localhost and IP-literal hosts (DNS rebinding defence: a request for
 // an external name is never the local dashboard).
 func localHostOK(host string) bool {
-	if host == "" {
-		return false
-	}
-	h, _, err := net.SplitHostPort(host)
-	if err != nil {
-		h = host
-	}
-	h = strings.Trim(h, "[]")
-	return strings.EqualFold(h, "localhost") || net.ParseIP(h) != nil
+	return host != "" && auth.AcceptedLocalHost(host) // localhost, loopback or a listened address (#3594)
 }
 
 const defaultMaxFileBytes = 5 << 20
