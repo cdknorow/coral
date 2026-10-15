@@ -176,12 +176,16 @@ func RemoveRunDirs(dataDir string, ids []int64) {
 		if id <= 0 {
 			continue
 		}
-		dir := filepath.Join(dataDir, "workflows", "runs", strconv.FormatInt(id, 10))
-		_ = os.RemoveAll(dir)
-		// And any folder an earlier database left for the same id, moved aside (#3587).
-		stale, _ := filepath.Glob(dir + ".stale-*")
-		for _, d := range stale {
-			_ = os.RemoveAll(d)
+		runs := filepath.Join(dataDir, "workflows", "runs")
+		name := strconv.FormatInt(id, 10)
+		_ = os.RemoveAll(filepath.Join(runs, name))
+		// And any folder an earlier database left for the same id, moved aside (#3587). Listed
+		// and matched by prefix, not globbed: the data folder's path may hold '[' or '*'.
+		entries, _ := os.ReadDir(runs)
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), name+".stale-") {
+				_ = os.RemoveAll(filepath.Join(runs, e.Name()))
+			}
 		}
 	}
 }

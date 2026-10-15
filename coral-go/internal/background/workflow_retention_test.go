@@ -69,7 +69,8 @@ func TestTriggerKeepsTheNewestRunsAndTheirDirectories(t *testing.T) {
 // #3587: a run's folder moved aside (left by an earlier database with the same id) is pruned
 // with the run; another id's is left alone.
 func TestRemoveRunDirsIncludesStaleFolders(t *testing.T) {
-	data := t.TempDir()
+	// A '[' and a '*' in the data folder's path: no pattern matching on it.
+	data := filepath.Join(t.TempDir(), "data [x] *")
 	runs := filepath.Join(data, "workflows", "runs")
 	for _, d := range []string{"7", "7.stale-1", "7.stale-2", "70", "70.stale-1", "8.stale-1"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(runs, d), 0o700))
