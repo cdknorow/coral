@@ -2,7 +2,9 @@ package board
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 )
 
 // #3549 (QA's #3543 follow-up): the notifier's LatestUnreadMessageID and HasUnread*Message
@@ -91,5 +93,48 @@ func TestNotifierConfirmsMentions(t *testing.T) {
 	}
 	if has, _ := s.HasUnreadNonHealthMessage(ctx, "solo", "Backend Dev"); has {
 		t.Error("'@Backend Developers' counted as a mention of Backend Dev")
+	}
+}
+
+// QA's #3549 review: on a store with one connection (":memory:", or a board on sessions.db via
+// UseDatabase, where the reader is the writer's only connection) the mention checks must not
+// need a second connection while their candidates' cursor is open; that waited forever.
+func TestMentionChecksOnOneConnectionStore(t *testing.T) {
+	s, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	for _, id := range []string{"Backend Dev", "Backend Dev 2", "Lead"} {
+		if _, err := s.Subscribe(ctx, "team", id, id, "", nil, nil, "mentions"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.PostMessage(ctx, "team", "Lead", "@Backend Dev 2 please take #7", nil); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		latest, err := s.LatestUnreadMessageID(ctx, "team", "Backend Dev")
+		if err == nil && latest != 0 {
+			err = fmt.Errorf("latest %d, want 0", latest)
+		}
+		if err == nil {
+			var has bool
+			if has, err = s.HasUnreadNonHealthMessage(ctx, "team", "Backend Dev"); err == nil && has {
+				err = fmt.Errorf("a mention of Backend Dev 2 counted for Backend Dev")
+			}
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("the mention checks hung on a one-connection store")
 	}
 }
