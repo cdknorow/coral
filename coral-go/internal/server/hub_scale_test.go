@@ -19,7 +19,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -707,14 +706,6 @@ func byteSize(n int) string {
 		return fmt.Sprintf("%.1fKB", float64(n)/(1<<10))
 	}
 	return fmt.Sprintf("%dB", n)
-}
-
-func processCPU() time.Duration {
-	var ru syscall.Rusage
-	if syscall.Getrusage(syscall.RUSAGE_SELF, &ru) != nil {
-		return 0
-	}
-	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
 }
 
 // logHubProfileTop prints the hub-only (role=hub) top functions by cumulative
