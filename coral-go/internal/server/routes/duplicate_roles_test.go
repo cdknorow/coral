@@ -93,6 +93,25 @@ func TestDuplicateRolesGetNumberedNames(t *testing.T) {
 	assert.Equal(t, 1, n1)
 	assert.Equal(t, 1, n2, "reading as Backend Dev 2 left Backend Dev's state alone, and vice versa")
 
+	// A number that isn't a numbered agent on this board doesn't take the mention away.
+	before, _ := bs.CheckUnread(ctx, id, "Backend Dev")
+	_, err = bs.PostMessage(ctx, id, "Orchestrator", "@Backend Dev 9 files changed", nil)
+	require.NoError(t, err)
+	n1, _ = bs.CheckUnread(ctx, id, "Backend Dev")
+	assert.Equal(t, before+1, n1, "no 'Backend Dev 9' on the board: Backend Dev is tagged")
+
+	// Concurrent launches of one role get distinct names (the reservation covers the gap
+	// before the subscription is written).
+	results := make(chan string, 4)
+	for i := 0; i < 4; i++ {
+		go func() { results <- handler.uniqueBoardRole(ctx, id, "QA", "claude") }()
+	}
+	got := map[string]bool{}
+	for i := 0; i < 4; i++ {
+		got[<-results] = true
+	}
+	assert.Len(t, got, 4, "four concurrent picks, four names: %v", got)
+
 	// A role whose holder isn't running keeps its name (a relaunch or resurrect).
 	_, err = bs.Subscribe(ctx, "beta", "QA", "QA", "claude-gone-session", nil, nil, "all")
 	require.NoError(t, err)
@@ -105,4 +124,21 @@ func TestDuplicateRolesGetNumberedNames(t *testing.T) {
 	assert.EqualValues(t, 6, cand["members"])
 	assert.EqualValues(t, 6, cand["live_agents"])
 	_ = store.NewSessionStore
+}
+
+// A name's reservation goes once its subscription is written, so a team killed and launched
+// again on its board right away keeps its names (no stale "2").
+func TestRoleReservationReleased(t *testing.T) {
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	handler := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, newMockTerminal(), bs)
+	ctx := context.Background()
+	assert.Equal(t, "Dev", handler.uniqueBoardRole(ctx, "release-board", "Dev", "claude"))
+	handler.setupBoardAndPrompt("11111111-aaaa-bbbb-cccc-000000000001", "claude-x1", "claude", "release-board", "Dev")
+	// The subscription's session isn't live (the agent was killed): the name is free again.
+	assert.Equal(t, "Dev", handler.uniqueBoardRole(ctx, "release-board", "Dev", "claude"))
 }

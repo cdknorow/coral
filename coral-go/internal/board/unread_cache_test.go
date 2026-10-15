@@ -37,8 +37,9 @@ func uncachedMentionsUnread(t *testing.T, s *Store, project, subscriberID string
 	require.NoError(t, s.db.Select(&contents, `SELECT content FROM board_messages
 	 WHERE project = ? AND id > ? AND subscriber_id != ? AND subscriber_id NOT IN ('Coral Task Queue') AND (`+strings.Join(clauses, " OR ")+`)`, args...))
 	count := 0
+	numbered := s.numberedNames(context.Background(), s.db, project)
 	for _, c := range contents {
-		if containsExplicitTag(c, subscriberID, sub.JobTitle) {
+		if containsExplicitTag(c, subscriberID, sub.JobTitle, numbered) {
 			count++
 		}
 	}

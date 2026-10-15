@@ -142,8 +142,9 @@ func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, 
 				`SELECT content FROM board_messages WHERE `+filter+` AND project = ? AND id > ? AND id <= ?`, args...); err != nil {
 				return err
 			}
+			numbered := s.numberedNames(ctx, tx, project)
 			for _, c := range contents {
-				if containsExplicitTag(c, subscriberID, jobTitle) {
+				if containsExplicitTag(c, subscriberID, jobTitle, numbered) {
 					row.N++
 				}
 			}

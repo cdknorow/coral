@@ -887,8 +887,9 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 			return nil, err
 		}
 
+		numbered := s.numberedNames(ctx, s.reader(), project)
 		for _, msg := range candidates {
-			if containsExplicitTag(msg.Content, subscriberID, sub.JobTitle) {
+			if containsExplicitTag(msg.Content, subscriberID, sub.JobTitle, numbered) {
 				messages = append(messages, msg)
 				if len(messages) >= limit {
 					break
@@ -1148,17 +1149,40 @@ func mentionTerms(subscriberID, jobTitle string) []string {
 	return terms
 }
 
-// numberedSuffixAt reports whether s continues at i with " <digits>" and then a word
-// boundary: the number of a numbered agent's name ("Backend Dev 2").
-func numberedSuffixAt(s string, i int) bool {
+// numberedSuffix returns " <digits>" when s continues at i with that and then a word
+// boundary (the number of a numbered agent's name, "Backend Dev 2"), else "".
+func numberedSuffix(s string, i int) string {
 	if i >= len(s) || s[i] != ' ' {
-		return false
+		return ""
 	}
 	j := i + 1
 	for j < len(s) && s[j] >= '0' && s[j] <= '9' {
 		j++
 	}
-	return j > i+1 && (j == len(s) || !isAlphaNum(s[j]))
+	if j > i+1 && (j == len(s) || !isAlphaNum(s[j])) {
+		return s[i:j]
+	}
+	return ""
+}
+
+// numberedNames is the set of a board's active subscriber ids that end in " <digits>"
+// (numbered agents, #3543), lowercased, for containsExplicitTag.
+func (s *Store) numberedNames(ctx context.Context, q sqlx.QueryerContext, project string) map[string]bool {
+	var ids []string
+	if err := sqlx.SelectContext(ctx, q, &ids, `SELECT subscriber_id FROM board_subscribers WHERE project = ? AND is_active = 1`, project); err != nil {
+		return nil
+	}
+	var out map[string]bool
+	for _, id := range ids {
+		lower := strings.ToLower(id)
+		if i := strings.LastIndexByte(lower, ' '); i > 0 && numberedSuffix(lower, i) != "" && i+len(numberedSuffix(lower, i)) == len(lower) {
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[lower] = true
+		}
+	}
+	return out
 }
 
 func isAlphaNum(b byte) bool {
@@ -1167,7 +1191,16 @@ func isAlphaNum(b byte) bool {
 
 // containsExplicitTag returns true if content explicitly mentions or tags subscriberID/jobTitle,
 // or includes broadcast tags like @all, @notify-all.
-func containsExplicitTag(content, subscriberID, jobTitle string) bool {
+//
+// numbered (optional) is the board's numbered agent names, lowercased (numberedNames):
+// "@Backend Dev 2" skips "Backend Dev" only when "backend dev 2" is one of them, so
+// "@Orchestrator 3 tasks are ready" still tags the Orchestrator on a board without an
+// "Orchestrator 3" (Security's #3543 review).
+func containsExplicitTag(content, subscriberID, jobTitle string, numbered ...map[string]bool) bool {
+	var names map[string]bool
+	if len(numbered) > 0 {
+		names = numbered[0]
+	}
 	contentLower := strings.ToLower(content)
 	terms := mentionTerms(subscriberID, jobTitle)
 	for _, term := range terms {
@@ -1193,8 +1226,8 @@ func containsExplicitTag(content, subscriberID, jobTitle string) bool {
 					continue
 				}
 				// "@Backend Dev 2" names the numbered agent "Backend Dev 2", not "Backend Dev"
-				// (#3543: a role taken on the board gets a numbered name).
-				if numberedSuffixAt(contentLower, endPos) {
+				// (#3543), when the board has that agent.
+				if num := numberedSuffix(contentLower, endPos); num != "" && names[tLower[1:]+num] {
 					continue
 				}
 			}
@@ -1501,6 +1534,7 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 			}
 		}
 
+		numbered := s.numberedNames(ctx, s.reader(), project)
 		// Stream messages instead of retaining every unread body in memory.
 		rows, err := s.reader().QueryxContext(ctx,
 			"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
@@ -1526,7 +1560,7 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 				case "all":
 					eligible = true
 				case "mentions":
-					eligible = containsExplicitTag(content, sub.SubscriberID, sub.JobTitle)
+					eligible = containsExplicitTag(content, sub.SubscriberID, sub.JobTitle, numbered)
 				default:
 					eligible = groupsByKey[groupKey{project, sub.ReceiveMode}][sender]
 				}

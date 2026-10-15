@@ -4826,7 +4826,7 @@ func generateUUID() string {
 // launchSession creates a new agent session using the specified backend (tmux or pty).
 func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType, displayName, resumeSessionID string,
 	flags []string, prompt, boardName, boardServer, backend, boardType, model string, capabilities *agent.Capabilities,
-	tools []string, mcpServers map[string]any, hooks map[string]interface{}) (map[string]any, error) {
+	tools []string, mcpServers map[string]any, hooks map[string]interface{}) (_ map[string]any, retErr error) {
 
 	if msg := launchDirError(workDir); msg != "" {
 		return nil, errors.New(msg)
@@ -4841,6 +4841,12 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	// (#3543). On this Coral's boards only; a remote board's Coral decides its own.
 	if boardName != "" && (boardServer == "" || boardServer == "local") {
 		displayName = h.uniqueBoardRole(ctx, boardName, displayName, agentType)
+		picked := naming.SubscriberID(displayName, agentType)
+		defer func() {
+			if retErr != nil {
+				releaseRoleReservation(boardName, picked) // the launch failed: the name is free again
+			}
+		}()
 	}
 	if err := validateAgentModel(agentType, model); err != nil {
 		return nil, err
@@ -5192,6 +5198,8 @@ func (h *SessionsHandler) setupBoardAndPrompt(sessionID, sessionName, agentType,
 		if _, err := h.bs.Subscribe(ctx, boardName, subscriberID, role, sessionName, nil, nil, receiveMode, isOrchestrator); err != nil {
 			log.Printf("Failed to subscribe session %s to board %s: %v", sessionID[:8], boardName, err)
 		}
+		// The subscription now holds the name; the reservation that covered the launch goes.
+		releaseRoleReservation(boardName, subscriberID)
 	}
 
 	// Write local board state file so coral-board CLI can find its subscription
@@ -6931,31 +6939,63 @@ func (h *SessionsHandler) liveSessionNames(ctx context.Context) map[string]bool 
 // uniqueBoardRole returns displayName, or "<role> N" (the lowest N from 2) when another
 // live agent already holds that role on the board (#3543). A subscription left by an agent
 // that is no longer running doesn't count: a relaunched or resurrected member keeps its name.
+//
+// Names picked in the last two minutes count as taken too (roleReservations): the board
+// subscription is written only after the launch, so two launches of one role close together
+// (two tabs, a double click) would otherwise both see the role free.
 func (h *SessionsHandler) uniqueBoardRole(ctx context.Context, boardName, displayName, agentType string) string {
 	if h.bs == nil {
 		return displayName
 	}
-	subs, err := h.bs.ListSubscribers(ctx, boardName)
-	if err != nil || len(subs) == 0 {
-		return displayName
-	}
-	live := h.liveSessionNames(ctx)
+	roleReservations.mu.Lock()
+	defer roleReservations.mu.Unlock()
+	now := time.Now()
 	taken := map[string]bool{}
-	for _, s := range subs {
-		if s.SessionName != "" && live[s.SessionName] {
-			taken[strings.ToLower(s.SubscriberID)] = true
+	for key, at := range roleReservations.at {
+		if now.Sub(at) > roleReservationTTL {
+			delete(roleReservations.at, key)
+			continue
+		}
+		if b, name, ok := strings.Cut(key, "\x00"); ok && b == boardName {
+			taken[name] = true
+		}
+	}
+	if subs, err := h.bs.ListSubscribers(ctx, boardName); err == nil && len(subs) > 0 {
+		live := h.liveSessionNames(ctx)
+		for _, s := range subs {
+			if s.SessionName != "" && live[s.SessionName] {
+				taken[strings.ToLower(s.SubscriberID)] = true
+			}
 		}
 	}
 	role := naming.SubscriberID(displayName, agentType)
-	if !taken[strings.ToLower(role)] {
-		return displayName
-	}
-	for n := 2; n < 1000; n++ {
-		if candidate := fmt.Sprintf("%s %d", role, n); !taken[strings.ToLower(candidate)] {
-			return candidate
+	pick := displayName
+	if taken[strings.ToLower(role)] {
+		for n := 2; n < 1000; n++ {
+			if candidate := fmt.Sprintf("%s %d", role, n); !taken[strings.ToLower(candidate)] {
+				pick = candidate
+				break
+			}
 		}
 	}
-	return displayName
+	roleReservations.at[boardName+"\x00"+strings.ToLower(naming.SubscriberID(pick, agentType))] = now
+	return pick
+}
+
+// roleReservations holds the names uniqueBoardRole picked recently, per board.
+var roleReservations = struct {
+	mu sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
+
+const roleReservationTTL = 2 * time.Minute
+
+// releaseRoleReservation drops a name's reservation: its subscription now holds it, or its
+// launch failed.
+func releaseRoleReservation(boardName, role string) {
+	roleReservations.mu.Lock()
+	delete(roleReservations.at, boardName+"\x00"+strings.ToLower(role))
+	roleReservations.mu.Unlock()
 }
 
 // liveAgentsOn counts the board's subscribers whose session is live.

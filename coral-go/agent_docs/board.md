@@ -46,8 +46,12 @@ the label.
 agent already holds its role (a team template launched onto a board that has those roles),
 it gets a numbered name: `Backend Dev 2`, then `Backend Dev 3`. Each has its own
 subscription, mentions and read state. `@Backend Dev 2` mentions only `Backend Dev 2`, not
-`Backend Dev`. A role whose holder isn't running anymore is reused as is, so a relaunched or
-resurrected agent keeps its name. Unread counts follow the same mention rule as reading:
+`Backend Dev`, on a board that has a `Backend Dev 2`; on a board without one, "@Backend Dev 2
+files changed" still mentions `Backend Dev`. `@Backend Dev` mentions only `Backend Dev`: a
+numbered agent's role (job title) is numbered too, so to reach every agent use `@all`. A
+numbered orchestrator (`Orchestrator 2`) gets the orchestrator's rights, as any second
+orchestrator does. A role whose holder isn't running anymore is reused as is, so a relaunched
+or resurrected agent keeps its name. Unread counts follow the same mention rule as reading:
 `@Dev` doesn't count for `@Developer`, nor `user@dev.com` for `Dev`.
 
 ## Projects
