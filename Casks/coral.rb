@@ -1,16 +1,17 @@
 cask "coral" do
-  version "1.3.0"
-  sha256 "8b9e1ccd6e434c392600deadd78b7bc41ce9f6491f8b858a041ca5fdb30eb14a"
+  version "1.4.39"
+  sha256 "8bdc6036da9df34b863458d1db3b9f50fa7c5477e9ec2098dd8b245c6372c7fc"
 
-  url "https://github.com/cdknorow/coral/releases/download/v#{version}/Coral.v#{version}.dmg",
-      verified: "github.com/cdknorow/coral/"
+  url "https://github.com/cdknorow/coral/releases/download/v#{version}/Coral.v#{version}.dmg"
   name "Coral"
   desc "Multi-agent orchestration system for AI coding agents"
   homepage "https://github.com/cdknorow/coral"
 
-  # The tmux backend is the default on macOS. Coral also ships a native PTY
-  # backend (--backend pty), but tmux is what an unflagged launch uses.
-  depends_on formula: "tmux"
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
   depends_on macos: :ventura
 
   app "Coral.app"
@@ -18,8 +19,7 @@ cask "coral" do
   zap trash: "~/.coral"
 
   caveats <<~EOS
-    Coral requires tmux for agent management.
-    tmux has been installed as a dependency.
+    Coral bundles its own tmux; nothing else needs to be installed.
 
     Launch Coral from your Applications folder or Spotlight.
     The dashboard runs at http://localhost:8420.
