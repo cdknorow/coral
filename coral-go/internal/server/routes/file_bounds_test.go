@@ -68,6 +68,7 @@ func newBoundsEnv(t *testing.T) *boundsEnv {
 	r.Put("/api/sessions/live/{name}/file-content", handler.SaveFileContent)
 	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
 	r.Get("/api/sessions/live/{name}/search-files", handler.SearchFiles)
+	r.Get("/api/sessions/live/{name}/diff", handler.Diff)
 	sys := &SystemHandler{}
 	r.Get("/api/filesystem/list", sys.ListFilesystem)
 	r.Get("/api/filesystem/is-git", sys.IsGitDir)

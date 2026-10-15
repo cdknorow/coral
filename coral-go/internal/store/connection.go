@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/testguard"
 	"log/slog"
 	"os"
@@ -118,6 +119,7 @@ func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("ensure schema: %w", err)
 	}
+	scrubRemoteURLCredentials(ctx, d)
 	if err := d.initAgentTaskEngine(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("initialize personal task workflows: %w", err)
@@ -853,3 +855,27 @@ func reportForeignKeyOrphans(ctx context.Context, dbPath, key string) {
 
 // fkCheckBudget bounds the startup foreign key check (a test seam).
 var fkCheckBudget = 5 * time.Second
+
+// scrubRemoteURLCredentials removes credentials from remote URLs recorded before #3558
+// (https://user:TOKEN@host/...). Rows recorded now are stored without them; this cleans the
+// older ones once (each later start finds none).
+func scrubRemoteURLCredentials(ctx context.Context, d *DB) {
+	var rows []struct {
+		ID  int64  `db:"id"`
+		URL string `db:"remote_url"`
+	}
+	if err := d.SelectContext(ctx, &rows, `SELECT id, remote_url FROM git_snapshots WHERE remote_url LIKE '%://%@%'`); err != nil {
+		return
+	}
+	n := 0
+	for _, r := range rows {
+		if clean := gitutil.StripURLCredentials(r.URL); clean != r.URL {
+			if _, err := d.ExecContext(ctx, `UPDATE git_snapshots SET remote_url = ? WHERE id = ?`, clean, r.ID); err == nil {
+				n++
+			}
+		}
+	}
+	if n > 0 {
+		slog.Info("[store] removed credentials from stored git remote URLs", "rows", n)
+	}
+}

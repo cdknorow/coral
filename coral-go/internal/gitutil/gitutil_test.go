@@ -185,3 +185,22 @@ func TestParseRepoName(t *testing.T) {
 		assert.Equal(t, tt.want, ParseRepoName(tt.input), "ParseRepoName(%q)", tt.input)
 	}
 }
+
+// #3558: credentials in a remote URL are never kept.
+func TestStripURLCredentials(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://user:ghp_TOKEN@github.com/org/repo.git":  "https://github.com/org/repo.git",
+		"https://x-access-token:abc@github.com/org/r":     "https://github.com/org/r",
+		"https://oauth2:glpat-xyz@gitlab.example/g/p.git": "https://gitlab.example/g/p.git",
+		"ssh://git:pw@host:22/r.git":                      "ssh://host:22/r.git",
+		"https://github.com/org/repo.git":                 "https://github.com/org/repo.git",
+		"git@github.com:org/repo.git":                     "git@github.com:org/repo.git",
+		"https://host/path/with@at":                       "https://host/path/with@at",
+		"https://a:b@c@host/r":                            "https://host/r",
+		"":                                                "",
+	} {
+		if got := StripURLCredentials(in); got != want {
+			t.Errorf("StripURLCredentials(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

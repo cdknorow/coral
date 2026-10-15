@@ -210,3 +210,23 @@ func isBinary(data []byte) bool {
 	}
 	return bytes.IndexByte(data, 0) >= 0
 }
+
+// StripURLCredentials removes the userinfo (user:password@ or token@) from a URL with a
+// scheme ("https://user:TOKEN@host/repo.git" becomes "https://host/repo.git"), so a stored or
+// served remote URL never carries a credential (#3558, Security's #3556 finding 2). An
+// scp-style remote ("git@host:org/repo") has no credential and is returned as is.
+func StripURLCredentials(raw string) string {
+	i := strings.Index(raw, "://")
+	if i < 0 {
+		return raw
+	}
+	rest := raw[i+3:]
+	end := len(rest)
+	if j := strings.IndexAny(rest, "/?#"); j >= 0 {
+		end = j
+	}
+	if at := strings.LastIndex(rest[:end], "@"); at >= 0 {
+		return raw[:i+3] + rest[at+1:]
+	}
+	return raw
+}

@@ -2061,11 +2061,35 @@ func (h *SessionsHandler) Diff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	strict := strictBounds(r)
+
 	// Path traversal protection
 	fullPath, _ := filepath.Abs(filepath.Join(workdir, fp))
 	if !isPathWithinDir(workdir, fullPath) {
-		errForbidden(w, "path traversal not allowed")
+		if strict {
+			errNotFound(w, "File not found")
+		} else {
+			errForbidden(w, "path traversal not allowed")
+		}
 		return
+	}
+
+	// Anything but this computer's own dashboard (Coral Hub, an API key, a remote client)
+	// gets the same bounds as file-content (#3558, Security's #3556 finding 1): a root that
+	// isn't the filesystem or the home folder, no sensitive path, no dot-file or dot-folder
+	// (.env.local, .git/config), a size cap, a filtered patch and no local path. Refused
+	// files look exactly like missing ones.
+	if strict {
+		real := realOrSelf(fullPath)
+		if !rootAllowed(realPath(workdir)) || diffPathHidden(fp) || sensitivePath(real) ||
+			!isPathWithinDir(realOrSelf(workdir), real) {
+			errNotFound(w, "File not found")
+			return
+		}
+		if rel, err := filepath.Rel(realOrSelf(workdir), real); err != nil || diffPathHidden(rel) {
+			errNotFound(w, "File not found")
+			return
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -2087,8 +2111,9 @@ func (h *SessionsHandler) Diff(w http.ResponseWriter, r *http.Request) {
 		realWork, _ := filepath.EvalSymlinks(workdir)
 		if err == nil && strings.HasPrefix(realFull, realWork+string(os.PathSeparator)) {
 			if info, err := os.Stat(realFull); err == nil && !info.IsDir() {
-				data, err := os.ReadFile(realFull)
-				if err == nil {
+				if strict && (info.Size() > maxFileBytes() || isBinaryFile(realFull)) {
+					diffText = string(diffNote("new file %q, %d bytes, not shown", fp, info.Size()))
+				} else if data, err := os.ReadFile(realFull); err == nil {
 					lines := strings.Split(string(data), "\n")
 					diffText = fmt.Sprintf("diff --git a/%s b/%s\nnew file mode 100644\n--- /dev/null\n+++ b/%s\n@@ -0,0 +1,%d @@\n",
 						fp, fp, fp, len(lines))
@@ -2100,6 +2125,11 @@ func (h *SessionsHandler) Diff(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if strict {
+		diffText = string(capDiff(filterPatch([]byte(diffText)), int(maxFileBytes())))
+		writeJSON(w, http.StatusOK, map[string]any{"filepath": fp, "diff": diffText})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"filepath": fp, "diff": diffText, "working_directory": workdir})
 }
 

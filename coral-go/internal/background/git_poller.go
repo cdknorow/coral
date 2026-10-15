@@ -385,7 +385,8 @@ func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
 	out, err = executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "remote", "get-url", "origin").Output()
 	logger.Debug("git remote", "duration_ms", time.Since(t2).Milliseconds())
 	if err == nil {
-		s := strings.TrimSpace(string(out))
+		// Never record a credential embedded in the remote URL (#3558).
+		s := gitutil.StripURLCredentials(strings.TrimSpace(string(out)))
 		if s != "" {
 			remoteURL = &s
 		}
