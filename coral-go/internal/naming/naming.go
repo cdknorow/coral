@@ -5,8 +5,10 @@ package naming
 
 import (
 	"fmt"
+	"github.com/cdknorow/coral/internal/safefs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -65,6 +67,16 @@ func DefaultLogDir() string {
 
 // LogFile returns the canonical log file path for an agent session.
 // Format: "{logDir}/{agentType}_coral_{sessionID}.log".
+//
+// Both parts come from callers that may pass a request's or a scheduled job's values, so the
+// path is built only from an agent type of [A-Za-z0-9_] and a session id that is one safe path
+// element (safefs.IsSafeID); anything else gives "" (#3602 W14, W15): no file is opened, made
+// or removed outside logDir.
 func LogFile(logDir, agentType, sessionID string) string {
+	if !wordRe.MatchString(agentType) || !safefs.IsSafeID(sessionID) {
+		return ""
+	}
 	return filepath.Join(logDir, fmt.Sprintf("%s_coral_%s.log", agentType, sessionID))
 }
+
+var wordRe = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)

@@ -53,6 +53,10 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	resumeSessionID string, flags []string, isJob bool,
 	prompt, boardName, boardServer string) (*LaunchResult, error) {
 
+	// A scheduled job's or a caller's agent type names the log file and the CLI (#3602 W13).
+	if err := agent.ValidateAgentType(agentType); err != nil {
+		return nil, err
+	}
 	workingDir, err := filepath.Abs(workingDir)
 	if err != nil {
 		return nil, fmt.Errorf("abs path: %w", err)

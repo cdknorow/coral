@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/robfig/cron/v3"
 
+	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/store"
@@ -153,7 +154,11 @@ func (h *ScheduleHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A job that could never run is refused when it is saved, not on its first
-	// slot (#3171).
+	// slot (#3171). Its agent type goes into a log path and the launch (#3602 W13).
+	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	if msg := jobTimezoneError(body.Timezone); msg != "" {
 		errBadRequest(w, msg)
 		return
@@ -228,6 +233,13 @@ func (h *ScheduleHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	delete(fields, "paused_reason") // the scheduler's to set, not the client's
 	if en, ok := fields["enabled"]; ok && (en == true || en == float64(1)) {
 		fields["paused_reason"] = "" // enabled again: clear the scheduler's pause reason
+	}
+	if v, ok := fields["agent_type"]; ok {
+		typ, isString := v.(string)
+		if err := agent.ValidateAgentType(typ); !isString || err != nil {
+			errBadRequest(w, "unsupported agent_type") // #3602 W13
+			return
+		}
 	}
 	if tz, ok := fields["timezone"].(string); ok {
 		if msg := jobTimezoneError(tz); msg != "" {

@@ -186,3 +186,26 @@ func TestToggleAndUpdateOfAnUnknownJobAnswer404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code, "update of an unknown job")
 	assert.Equal(t, "job not found", body["error"])
 }
+
+// #3602 W13: a scheduled job's agent_type names its log file and CLI, so it is validated when
+// the job is saved and when it is edited.
+func TestScheduledJobValidatesAgentType(t *testing.T) {
+	srv, _ := scheduleTestServer(t)
+	repo := gitRepo(t)
+	job := func(agentType any) map[string]any {
+		return map[string]any{"name": "nightly", "cron_expr": "0 9 * * 1-5", "repo_path": repo, "prompt": "do it", "agent_type": agentType}
+	}
+	for _, bad := range []any{"../../x", "claude/../x", "no-such-agent", "-x"} {
+		code, _ := sendJSON(t, http.MethodPost, srv.URL+"/api/scheduled/jobs", job(bad))
+		assert.Equal(t, http.StatusBadRequest, code, "%v", bad)
+	}
+	code, created := sendJSON(t, http.MethodPost, srv.URL+"/api/scheduled/jobs", job("claude"))
+	require.Equal(t, http.StatusOK, code)
+	id := strconv.Itoa(int(created["id"].(float64)))
+	for _, bad := range []any{"../x", 7, "no-such-agent"} {
+		code, _ := sendJSON(t, http.MethodPut, srv.URL+"/api/scheduled/jobs/"+id, map[string]any{"agent_type": bad})
+		assert.Equal(t, http.StatusBadRequest, code, "%v", bad)
+	}
+	code, _ = sendJSON(t, http.MethodPut, srv.URL+"/api/scheduled/jobs/"+id, map[string]any{"agent_type": "codex"})
+	assert.Equal(t, http.StatusOK, code)
+}

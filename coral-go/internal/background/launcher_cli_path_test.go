@@ -50,3 +50,13 @@ func TestJobRunsUseTheConfiguredCLIPath(t *testing.T) {
 	assert.False(t, strings.Contains(rt.commands[0], "/opt/custom/bin/claude"), "no setting: the default lookup")
 	assert.Contains(t, rt.commands[1], "/opt/custom/bin/claude", "the configured CLI path: %s", rt.commands[1])
 }
+
+// #3602 W13: LaunchAgent refuses an agent type it doesn't know before it touches anything.
+func TestLaunchAgentValidatesAgentType(t *testing.T) {
+	l := &AgentLauncher{}
+	for _, bad := range []string{"../../x", "no-such-agent"} {
+		if _, err := l.LaunchAgent(context.Background(), t.TempDir(), bad, "n", "", nil, true, "p", "", ""); err == nil {
+			t.Errorf("LaunchAgent accepted agent type %q", bad)
+		}
+	}
+}
