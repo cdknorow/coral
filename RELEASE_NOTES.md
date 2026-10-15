@@ -1,5 +1,32 @@
 # Release Notes
 
+## v1.4.27 — Needs input when an agent asks, and only then; agents' status events are secured
+
+**Upgrade note:** agents' status events (from their hooks) are now accepted only from the agent itself. An agent that is still running from **before v1.4.19** stops updating its status in the dashboard until you restart it.
+
+### Changes
+
+- **Needs input as soon as an agent asks.** When Claude asks for a tool permission, asks you a question or wants a plan approved, the agent shows **Needs input** at once, and the dashboard says which: **Permission**, **Question**, **Plan** or **Input**. The flag clears when the request is answered, denied or interrupted.
+- **Trust screens count as a question.** Claude's and Antigravity's "trust this folder" screens now raise Needs input.
+- **A held message reports what's holding it.** If a question opens while Coral's message is waiting (for example behind a draft), the agent raises Needs input after two minutes instead of staying calm.
+- **Board messages at the end of a turn (Claude team agents).** When a Claude agent on a team finishes a turn with unread board messages, it is told to read them before it stops, instead of getting a typed nudge afterwards, and a held nudge is dropped once the agent has read the board. This is on by default for Claude team agents and off for sessions a person drives; set `turn_end_handoff` to `off` to turn it off.
+- **Antigravity status from its own hooks.** Antigravity agents report their status through per-session hooks, and Coral writes nothing to your repository or `~/.gemini` for them.
+- **Browse on a remote server.** In Coral Hub, **Launch Agent › Browse** on a connected server now starts at that machine's home folder (it used to fail with "not found").
+- **Messages from your other Corals (receiving side).** A board can accept cross-team messages from an Orchestrator on another Coral of the same Coral Hub account, relayed by Coral Hub. It is off unless the Operator lists that server in the board's `cross_team_servers` setting (and cross-team messaging is on). Sending them needs a Coral Hub update that isn't out yet.
+- **Fix:** a workflow run you kill is no longer recorded as failed.
+
+### Security
+
+- **Agent status events are bound to the agent.** `POST /api/sessions/live/{name}/events` and the pending-tool endpoint accept an agent's events only with its own session token (401 without one, 403 `identity_mismatch` for another session), only known event types, and a capped size. Auto-accept acts only on a verified request.
+- **Hub-relayed messages are trusted only from Coral Hub.** The source server is named by a header that Coral accepts only on a request its own Coral Hub connector carried; anything else gets 403.
+
+### For integrators
+
+- `PUT /api/board/{project}/settings` takes `cross_team_servers` (Operator only; Coral Hub server ids, up to 20; `[]` clears).
+- A relayed cross-team message's `external` envelope carries the sending Coral's `server_id`, plus `relay_message_id` and `hops`.
+- `coral-board read --id N --json` prints the message as JSON (one object per line), including its `subscriber_id`.
+- A dev or test server never uses the installed app's hooks; `CORAL_HOOK_DIR` overrides, and the startup log names the hook source.
+
 ## v1.4.26 — Antigravity drafts are protected; "Waiting on" instead of "Ready for input"
 
 **Please upgrade if you use Antigravity (agy) agents.** In v1.4.25 and earlier, a message from Coral could be added to text you were typing in an Antigravity agent's input box and submitted with it. Coral now holds its message until you send or clear your draft, as it already does for Claude, Codex and Gemini.
