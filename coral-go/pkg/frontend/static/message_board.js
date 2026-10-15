@@ -428,9 +428,9 @@ async function loadBoardSubscribers(project) {
             const displayName = escapeAttr(s.job_title || s.subscriber_id);
             const sessionName = escapeAttr(s.session_name || '');
             const icon = s.icon ? `<span class="agent-icon">${escapeHtml(s.icon)}</span> ` : '';
-            return `<li style="padding:6px 0;border-bottom:1px solid var(--border)">
-                <div style="font-weight:600;font-size:12px">${icon}<button type="button" class="subscriber-history-link" onclick="navigateToAgentSession('${jsStr(sessionName)}', '${jsStr(displayName)}')" title="View chat history">${escapeHtml(s.job_title)}</button></div>
-                <div style="font-size:10px;color:var(--text-muted)">${escapeHtml(s.subscriber_id)}</div>
+            return `<li class="mb-subscriber">
+                <div class="mb-subscriber-name">${icon}<button type="button" class="subscriber-history-link" onclick="navigateToAgentSession('${jsStr(sessionName)}', '${jsStr(displayName)}')" title="View chat history">${escapeHtml(s.job_title)}</button></div>
+                <div class="mb-subscriber-id">${escapeHtml(s.subscriber_id)}</div>
             </li>`;
         }).join('');
     } catch (e) {

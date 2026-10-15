@@ -578,8 +578,13 @@
         flex-direction: column;
     }
 
+    #messageboard-view {
+        padding-inline: var(--space-xl);
+    }
+
     #messageboard-view .session-header {
         flex-wrap: wrap;
+        padding-inline: 0 !important;
     }
 
     #messageboard-view .view-body {

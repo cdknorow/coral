@@ -3409,12 +3409,20 @@ button.subscriber-history-link {
 
 /* ── Message Board Layout ──────────────────────────────────── */
 
+/* The page gutter (#3607): the heading keeps clear of the sidebar, and Delete and the Subscribers
+   column keep clear of the window's right edge, as the Jobs and Workflows views do. */
+#messageboard-view {
+    padding-inline: var(--space-2xl);
+    min-width: 0;
+}
+
 .mb-view-header.mb-view-header {
     display: flex;
     align-items: center;
-    padding: 12px 0;
+    gap: var(--space-lg);
+    padding: var(--space-lg) 0;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 8px;
+    margin-bottom: var(--space-md);
 }
 
 .mb-view-header-left {
@@ -3425,8 +3433,9 @@ button.subscriber-history-link {
 
 .mb-view-body {
     display: flex;
-    gap: 20px;
+    gap: var(--space-2xl);
     overflow: hidden;
+    min-width: 0;
 }
 
 .mb-project-list {
@@ -3438,6 +3447,7 @@ button.subscriber-history-link {
     flex: 1;
     flex-direction: column;
     overflow: hidden;
+    min-width: 0;
 }
 
 .mb-messages-scroll {
@@ -3474,9 +3484,10 @@ button.subscriber-history-link {
 }
 
 .mb-subscribers-panel {
+    flex: none;
     width: 220px;
     border-left: 1px solid var(--border);
-    padding-left: 16px;
+    padding-left: var(--space-xl);
     overflow-y: auto;
 }
 
@@ -3490,6 +3501,29 @@ button.subscriber-history-link {
     list-style: none;
     padding: 0;
     margin: 0;
+}
+
+/* A long title or id wraps inside the column instead of being cut off (#3607). */
+.mb-subscriber {
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.mb-subscriber-name {
+    font-weight: 600;
+    font-size: var(--fs-base);
+}
+
+.mb-subscriber-name .subscriber-history-link {
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+
+.mb-subscriber-id {
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
 }
 
 /* ── Modal Width Variants ──────────────────────────────────── */
@@ -3929,3 +3963,5 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 }
 .artifact-viewer-text { white-space: pre-wrap; }
 .board-artifact-image { cursor: zoom-in; }
+/* An image in a post fits its column; it never makes the feed scroll sideways (#3607). */
+.mb-message-body img { max-width: 100%; height: auto; }
