@@ -18,6 +18,9 @@ func ResetAgentLog(path string) error { return resetLog(path) }
 
 // resetLog creates the log, or empties an existing one (a session spawned again).
 func resetLog(path string) error {
+	if path == "" {
+		return errNoLogPath
+	}
 	root, err := safefs.OpenRoot(filepath.Dir(path))
 	if err != nil {
 		return err
@@ -28,6 +31,9 @@ func resetLog(path string) error {
 
 // createLog makes a missing log (the self-heal after it was deleted): only if nothing is there.
 func createLog(path string) error {
+	if path == "" {
+		return errNoLogPath
+	}
 	root, err := safefs.OpenRoot(filepath.Dir(path))
 	if err != nil {
 		return err
@@ -43,6 +49,9 @@ func createLog(path string) error {
 // openLogAppend opens the log for the pty backend to append to: created 0600 if missing,
 // never through a symlink, and a regular file with one name.
 func openLogAppend(path string) (*os.File, error) {
+	if path == "" {
+		return nil, errNoLogPath
+	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND|oNoFollowLog, 0o600)
 	if err != nil {
 		return nil, err
@@ -57,6 +66,9 @@ func openLogAppend(path string) (*os.File, error) {
 
 var errNotRegularLog = errors.New("the agent log is not a regular file with one name")
 
+// errNoLogPath: no log path (naming.LogFile refuses an unsafe agent type or session id).
+var errNoLogPath = errors.New("no agent log path")
+
 // maxMigratedLog caps how much of an old log is carried over on upgrade: the end of it, which
 // is what the terminal replay shows.
 const maxMigratedLog = 16 << 20
@@ -67,6 +79,9 @@ const maxMigratedLog = 16 << 20
 // log (0600, through the safe writer), and the old file is removed if it is still the one read.
 // It reports whether a log was moved.
 func migrateTempLog(newPath string) bool {
+	if newPath == "" {
+		return false
+	}
 	dir, name := filepath.Dir(newPath), filepath.Base(newPath)
 	tmp := os.TempDir()
 	if sameFolder(dir, tmp) {

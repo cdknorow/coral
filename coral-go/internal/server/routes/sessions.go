@@ -5395,14 +5395,18 @@ func removeBoardStateFile(sessionName string, cfg *config.Config) {
 }
 
 func (h *SessionsHandler) protocolPath() string {
-	// Look for PROTOCOL.md relative to the binary or in known locations
-	candidates := []string{
-		filepath.Join(h.cfg.CoralRoot, "PROTOCOL.md"),
-		filepath.Join(h.cfg.CoralRoot, "src", "coral", "PROTOCOL.md"),
-	}
-	// Also check near the executable
+	// The copy next to the executable. CoralRoot only when CORAL_ROOT names it explicitly, or in
+	// a dev build: it defaults to the home folder, and ~/PROTOCOL.md, which any agent running as
+	// this user can write, would otherwise become every later agent's system prompt (#3601,
+	// weak site W16, Backend's third site).
+	var candidates []string
 	if ex, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(ex), "PROTOCOL.md"))
+	}
+	if h.cfg.CoralRoot != "" && (os.Getenv("CORAL_ROOT") != "" || config.TierName == "dev") {
+		candidates = append(candidates,
+			filepath.Join(h.cfg.CoralRoot, "PROTOCOL.md"),
+			filepath.Join(h.cfg.CoralRoot, "src", "coral", "PROTOCOL.md"))
 	}
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {

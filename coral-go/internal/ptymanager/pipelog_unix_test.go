@@ -100,3 +100,13 @@ func TestReattachMovesAnOldTempLog(t *testing.T) {
 	assert.False(t, migrateTempLog(filepath.Join(logs, name2)))
 	assert.NoFileExists(t, filepath.Join(logs, name2))
 }
+
+// An empty log path (naming.LogFile refusing an unsafe name) is an error, never '.' (Backend's
+// note on #3601).
+func TestAgentLogHelpersRefuseAnEmptyPath(t *testing.T) {
+	assert.ErrorIs(t, resetLog(""), errNoLogPath)
+	assert.ErrorIs(t, createLog(""), errNoLogPath)
+	_, err := openLogAppend("")
+	assert.ErrorIs(t, err, errNoLogPath)
+	assert.False(t, migrateTempLog(""))
+}
