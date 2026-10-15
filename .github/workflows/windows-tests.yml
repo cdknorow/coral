@@ -57,7 +57,7 @@ jobs:
       - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
         if: ${{ !cancelled() }} # report the routes results even when the packages step failed
         env:
-          ROUTES_RUN: "AutoAttach|Attach|UNC|Device|HardLink|Symlink|NeverFollow|SaveFileContent|PathInside|SearchFilesDir|ImportTeam|Upload"
+          ROUTES_RUN: "AutoAttach|Attach|UNC|Device|HardLink|Symlink|Junction|EvalSymlinks|NeverFollow|SaveFileContent|PathInside|SearchFilesDir|ImportTeam|Upload"
         run: |
           # A -run pattern that matches no test passes silently, so a rename could hide this coverage:
           # require at least 40 matching tests (51 when this was written).
