@@ -2128,7 +2128,8 @@ function _rowServerPrefix(key) {
     const e = serversShown().find(x => x.id === id) || { id, label: serverLabel(id), status: 'unknown' };
     const name = serverLabel(id);
     const st = statusMeta(e.status);
-    const down = e.status !== 'online';
+    // Not checked yet ('unknown') isn't a failure: shown like an online server (QA's review).
+    const down = e.status !== 'online' && e.status !== 'unknown';
     return `<span class="row-server-prefix server-${st.cls}${down ? ' is-down' : ''}" title="${escapeAttr(`${e.label || e.id}: ${st.label}`)}">`
         + `<span class="row-server-name">${escapeHtml(name)}</span><span class="row-server-sep" aria-hidden="true">-</span>`
         + `<span class="sr-only"> (server${down ? ', ' + escapeHtml(st.label.toLowerCase()) : ''}) </span></span>`;
@@ -2413,16 +2414,12 @@ function _renderLiveSessions(sessions) {
     const check = document.getElementById('group-by-team-check-top');
     if (check) check.style.opacity = groupByTeam ? '1' : '0.2';
 
-    // Helper to generate a deterministic accent color from a string
-    function _boardAccentColor(name) {
-        // Check for user-set accent color first
+    // A team's color: the one the user picked for it (the team's color menu, kept per viewer),
+    // else none, so every team shows in the same neutral color (#3507, the operator's request;
+    // teams used to get a color hashed from their name).
+    function _boardAccentStyle(name) {
         const custom = _getBoardColor(name);
-        if (custom) return custom;
-        // Default: hash-based color
-        let hash = 0;
-        for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-        const hue = ((hash % 360) + 360) % 360;
-        return `hsl(${hue}, 60%, 55%)`;
+        return custom ? ` style="--team-accent: ${escapeAttr(custom)}"` : '';
     }
 
     // The servers UI (#3085): a compact button in the search row; with two or
@@ -2469,7 +2466,7 @@ function _renderLiveSessions(sessions) {
     }
 
     for (const [boardName, boardSessions] of teamEntries) {
-        const accentColor = _boardAccentColor(boardName);
+        const accentStyle = _boardAccentStyle(boardName);
         const boardCollapsed = _isGroupCollapsed(boardName);
         const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
         const boardLink = '';
@@ -2543,7 +2540,7 @@ function _renderLiveSessions(sessions) {
         const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
         const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents<span class="team-token-usage" data-board="${escapeAttr(boardName)}"></span></div>`;
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
-        html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}" style="--team-accent: ${accentColor}">
+        html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}"${accentStyle}>
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
                 <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
             </div>
@@ -2735,7 +2732,7 @@ function _renderLiveSessions(sessions) {
 
             // Render board sub-groups as cards within the folder
             for (const [boardName, boardSessions] of Object.entries(boardSubs)) {
-                const accentColor = _boardAccentColor(boardName);
+                const accentStyle = _boardAccentStyle(boardName);
                 const boardCollapsed = _isGroupCollapsed(boardName);
                 const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
                 const boardLink = '';
@@ -2796,7 +2793,7 @@ function _renderLiveSessions(sessions) {
                 const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${jsStr(boardBranch)}'); this.textContent='✓'; setTimeout(() => this.innerHTML='<svg width=\\'10\\' height=\\'10\\' viewBox=\\'0 0 16 16\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' stroke-linecap=\\'round\\'><rect x=\\'4\\' y=\\'4\\' width=\\'9\\' height=\\'9\\' rx=\\'1\\'/><path d=\\'M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1\\'/></svg>', 1000)" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
                 const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
-                html += `<li class="session-board-card session-team-group" style="--team-accent: ${accentColor}">
+                html += `<li class="session-board-card session-team-group"${accentStyle}>
                     <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
                         <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
                     </div>

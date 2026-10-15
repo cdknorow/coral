@@ -278,7 +278,27 @@ const SETTINGS_PRELOAD = `(() => {
         await Emulation.clearDeviceMetricsOverride();
         console.log(`   ✓ ${phone.count} controls ≥ 44 px, overflow 0`);
 
-        console.log('6. Top tabs in the operator\'s order (#3507): Agents, Servers, then the local tabs, Docs last');
+        console.log('6. One neutral team color unless the user picked one; an unchecked server is not shown as offline (#3507 v3)');
+        await ev(`localStorage.setItem('coral-group-by-server', 'false'); localStorage.setItem('coral-board-colors', JSON.stringify({ '@m2/team-m2': '#c678dd' })); true`);
+        await scene([THREE[0], THREE[1], { ...THREE[2], status: 'unknown' }], `T.state.settings = { ...T.state.settings, show_session_server: 'True' };`);
+        const col = await ev(`(() => {
+            const probe = document.createElement('span'); probe.style.color = 'var(--text-primary)'; document.body.appendChild(probe);
+            const neutral = getComputedStyle(probe).color; probe.remove();
+            const team = id => { const l = [...document.querySelectorAll('#live-sessions-list li.session-team-group')].find(x => x.textContent.includes(id)); return l && getComputedStyle(l.querySelector('.group-name-line')).color; };
+            const pre = id => [...document.querySelectorAll('#live-sessions-list .row-server-prefix')].find(p => p.closest('li').textContent.includes(id));
+            return { neutral, m1: team('team-m1'), m2: team('team-m2'), m3: team('team-m3'), m3down: pre('team-m3')?.classList.contains('is-down'), m3sr: pre('team-m3')?.querySelector('.sr-only').textContent.trim() };
+        })()`);
+        assert.equal(col.m1, col.neutral, `a team with no color of its own is neutral (${JSON.stringify(col)})`);
+        assert.equal(col.m3, col.neutral, 'every such team: the same neutral color');
+        assert.equal(col.m2, 'rgb(198, 120, 221)', 'a color the user picked is kept');
+        assert.equal(col.m3down, false, "an 'unknown' server (not checked yet) isn't dimmed"); assert.equal(col.m3sr, '(server)');
+        await ev(`localStorage.setItem('coral-group-by-server', 'true'); T.render.renderLiveSessions(T.state.liveSessions); true`);
+        const unk = await ev(`(() => { const h = document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m3"]'); return { down: h.classList.contains('is-down'), state: h.querySelector('.server-group-state')?.textContent || null }; })()`);
+        assert.deepEqual(unk, { down: false, state: null }, "nor is its group header");
+        await ev(`localStorage.setItem('coral-group-by-server', 'false'); localStorage.removeItem('coral-board-colors'); true`);
+        console.log('   ✓ neutral teams, the picked color kept, unknown servers not dimmed');
+
+        console.log('7. Top tabs in the operator\'s order (#3507): Agents, Servers, then the local tabs, Docs last');
         // The scene fakes a hub with servers, so let the page recompute the Servers tab as a live update would.
         await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'servers_tab.js'); m.updateServersTabVisibility(); return true; })()`);
         const tabs = await ev(`(() => { const b = [...document.querySelectorAll('.top-nav-tabs .top-nav-tab')]; return { dom: b.map(x => x.id),

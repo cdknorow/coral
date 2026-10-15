@@ -246,7 +246,8 @@ const SERVER_ICON = '<svg class="server-group-icon" aria-hidden="true" width="15
 export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) {
     const m = statusMeta(e.status);
     const name = shortServerName(e);
-    const off = e.status !== 'online' && normServer(e.id) !== LOCAL_SERVER;
+    // Not checked yet ('unknown') isn't shown as offline (QA's review of #3507).
+    const off = e.status !== 'online' && e.status !== 'unknown' && normServer(e.id) !== LOCAL_SERVER;
     // The outermost level of the list, flush left: the icon and name first, the chevron last.
     // An offline server is dimmed (no colored dot), and its state is in the tooltip and the label.
     return `<li class="server-group-header server-${m.cls}${off ? ' is-down' : ''}" data-server-group="${escHtml(e.id)}">`

@@ -557,7 +557,8 @@
     box-shadow: none;
 }
 .session-team-group > .board-card-header .group-name-line {
-    color: var(--team-accent, var(--accent));
+    /* One neutral color for every team unless the user picked one (#3507). */
+    color: var(--team-accent, var(--text-primary));
 }
 .team-group-icon {
     flex-shrink: 0;
