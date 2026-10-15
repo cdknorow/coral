@@ -31,7 +31,8 @@
 // --retries 0 disables retries.
 //
 // Exit status: 0 when every suite passed on its first attempt, 1 when any suite failed every attempt,
-// 3 when the only problems are FLAKY suites (--allow-flaky turns that 3 into 0), 2 on a setup error.
+// 3 when the only problems are FLAKY suites (--allow-flaky turns that 3 into 0), 2 on a setup error,
+// 4 when everything else passed but a shard's tmux server outlived the run (#3550; it is killed and listed).
 //
 // SEQUENCES (#3464) are groups of suites whose order matters: one can leave state behind that breaks
 // the next (terminal_scroll right after terminal_pane_size once did). A full run (no --only) also runs
@@ -165,6 +166,17 @@ const killTree = (p, sig = 'SIGKILL') => {
   try { process.kill(-p.pid, sig); } catch { try { p.kill(sig); } catch { /* gone */ } }
 };
 
+// Each shard's Coral runs its agents in its own tmux server (-S <shard>/data/tmux.sock). tmux
+// daemonizes out of Coral's process group, so killing the group leaves it running (#3550: orphans
+// alive for hours on epoch). It is stopped through its own socket, with TMUX unset: never bare
+// 'tmux', which from an agent shell means production Coral's server.
+const tmuxEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'TMUX' && k !== 'TMUX_PANE'));
+const killTmux = sock => {
+  if (!sock || !fs.existsSync(sock)) return;
+  spawnSync('tmux', ['-S', sock, 'kill-server'], { env: tmuxEnv, stdio: 'ignore', timeout: 5000 });
+};
+const tmuxSocks = new Set(); // the sockets of the shards this run started
+
 // Kill what a previous runner that was SIGKILLed left behind (see "Leftovers" above).
 const pidDir = os.tmpdir();
 const pidFile = path.join(pidDir, `coral-cdp-runner-${process.pid}.json`);
@@ -176,7 +188,9 @@ function sweepLeftovers() {
     if (!m || Number(m[1]) === process.pid || isAlive(Number(m[1]))) continue; // ours, or a runner still running
     let groups = [];
     try { groups = JSON.parse(fs.readFileSync(path.join(pidDir, f), 'utf8')); } catch { /* unreadable: just remove it */ }
-    for (const { pid, tmp: t } of groups) {
+    for (const { pid, tmux: sock, tmp: t } of groups) {
+      // A recorded tmux socket: only one under that runner's own folder.
+      if (sock) { if (t && sock.startsWith(t + path.sep)) { killTmux(sock); n++; } continue; }
       const r = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
       if (r.status !== 0 || !t || !r.stdout.includes(t)) continue; // gone, or the pid now belongs to something else
       try { process.kill(-pid, 'SIGKILL'); n++; } catch { /* already gone */ }
@@ -190,7 +204,10 @@ sweepLeftovers();
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-cdp-'));
 const procs = new Set(); // every process group we started, killed on exit
 const recordPids = () => {
-  try { fs.writeFileSync(pidFile, JSON.stringify([...procs].filter(p => p.pid).map(p => ({ pid: p.pid, tmp })))); } catch { /* best effort */ }
+  try {
+    fs.writeFileSync(pidFile, JSON.stringify([...procs].filter(p => p.pid).map(p => ({ pid: p.pid, tmp }))
+      .concat([...tmuxSocks].map(sock => ({ tmux: sock, tmp })))));
+  } catch { /* best effort */ }
 };
 const track = p => { procs.add(p); recordPids(); return p; };
 const untrack = p => { procs.delete(p); recordPids(); };
@@ -212,7 +229,21 @@ const pruneTmp = () => {
     prune(tmp);
   } catch { /* best effort */ }
 };
-const cleanup = () => { for (const p of procs) killTree(p); try { fs.rmSync(pidFile); } catch { /* fine */ } pruneTmp(); };
+const cleanup = () => {
+  for (const p of procs) killTree(p);
+  for (const sock of tmuxSocks) killTmux(sock);
+  try { fs.rmSync(pidFile); } catch { /* fine */ }
+  pruneTmp();
+};
+
+// The tmux servers still alive whose socket is under this run's folder: { pid, command }.
+function leakedTmux() {
+  const r = spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
+  if (r.status !== 0) return [];
+  return r.stdout.split('\n').map(l => /^\s*(\d+)\s+(.*)$/.exec(l)).filter(Boolean)
+    .filter(([, , cmd]) => /(^|\/)tmux\b/.test(cmd) && cmd.includes(tmp + path.sep))
+    .map(([, pid, command]) => ({ pid: Number(pid), command }));
+}
 process.on('exit', cleanup);
 process.on('SIGINT', () => process.exit(130));
 process.on('SIGTERM', () => process.exit(143));
@@ -272,6 +303,9 @@ async function startShard(n, gen = 0, strict = false) {
   fs.mkdirSync(dir, { recursive: true });
   const port = await freePort();
   const data = path.join(dir, 'data'); fs.mkdirSync(data);
+  const tmuxSock = path.join(data, 'tmux.sock');
+  tmuxSocks.add(tmuxSock);
+  recordPids();
   const codexHome = path.join(dir, 'codex'); fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true });
   // CORAL_NO_WELCOME: no first-launch 'ways to run Coral' screen over every suite's page (#3221).
   // CORAL_NO_DEMO_SEED: no demo workflow or scheduled job, which would run a real agent and pop an alert
@@ -329,13 +363,16 @@ async function startShard(n, gen = 0, strict = false) {
   // CORAL_TEST_TMUX_SOCKET: this shard's own tmux socket (<data>/tmux.sock), for suites that compare
   // the pane with the dashboard (#3422). CORAL_TEST_LOG: this shard's Coral log, which a suite reads
   // only to explain its own failure (helpers/stand_in_agent.js, #3502).
-  return { n, gen, log, coral, chrome, throttler, strict, data, serverEnv, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
+  return { n, gen, log, coral, chrome, throttler, strict, data, tmuxSock, serverEnv, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
     CORAL_TEST_TMUX_SOCKET: path.join(data, 'tmux.sock'), CORAL_TEST_LOG: log, ...(strict ? { CORAL_TEST_STRICT: '1' } : {}) } };
 }
 
 async function stopShard(shard) {
   try { if (shard.throttler) await shard.throttler.close(); } catch { /* already closed */ }
   for (const p of [shard.chrome, shard.coral]) { killTree(p); untrack(p); }
+  killTmux(shard.tmuxSock); // after Coral, so it can't start the server again
+  tmuxSocks.delete(shard.tmuxSock);
+  recordPids();
 }
 
 // Shards start one after another: freePort() releases the port before coral binds it, so two shards
@@ -565,6 +602,17 @@ if (stress) {
   if (failed.length) console.log(`FAILED: ${failed.join(', ')}`);
   exitCode = failed.length ? 1 : flaky.length ? (allowFlaky ? 0 : 3) : 0;
 }
-allPassed = results.every(r => r.status === 'pass');
+// Nothing this run started may outlive it (#3550): stop the shards, then look for tmux servers whose
+// socket is under the run's folder. Any found are listed, killed (by the PID just read, whose command
+// names this run's folder), and fail the run with 4.
+for (const sh of shardsUp) await stopShard(sh);
+let leaks = leakedTmux();
+for (let i = 0; i < 20 && leaks.length; i++) { await sleep(100); leaks = leakedTmux(); } // kill-server is quick, not instant
+if (leaks.length) {
+  console.log(`LEAK: ${leaks.length} tmux server(s) outlived the run; killing them:`);
+  for (const l of leaks) { console.log(`  ${l.pid} ${l.command}`); try { process.kill(l.pid, 'SIGKILL'); } catch { /* gone */ } }
+  if (!exitCode) exitCode = 4;
+}
+allPassed = results.every(r => r.status === 'pass') && !leaks.length;
 console.log(allPassed && !keep ? 'all passed: the run folder is removed on exit (--keep keeps it)' : where);
 process.exit(exitCode);
