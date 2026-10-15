@@ -223,8 +223,14 @@ func TestCloudStartupStepLeavesAConnectedServerAlone(t *testing.T) {
 // step logs why and starts no enrollment, so nothing reaches either hub and the message stays.
 func TestCloudStartupStepLeavesAMovedHubAlone(t *testing.T) {
 	moved := `{"configured":true,"hub_url":"https://app.coralhub.dev","state":"idle","last_error_code":"hub_moved","last_error":"this server is enrolled with a different hub (https://app.coralai.ai); run 'coral cloud connect --force' to enroll with https://app.coralhub.dev","max_mode":"view"}`
-	for _, mode := range []string{cloudConnectPrompt, "log"} {
+	// After a failed attempt to enroll again the code is that failure's, and hub_moved still says it.
+	afterFailure := `{"configured":true,"hub_url":"https://app.coralhub.dev","state":"idle","hub_moved":true,"last_error_code":"rate_limited","last_error":"this server is enrolled with a different hub (https://app.coralai.ai); run 'coral cloud connect --force' to enroll with https://app.coralhub.dev","max_mode":"view"}`
+	for _, mode := range []string{cloudConnectPrompt, "log", cloudConnectPrompt + " after a failure"} {
 		f, cfg, logs := stepEnv(t, moved, moved, moved)
+		if strings.HasSuffix(mode, " after a failure") {
+			mode = cloudConnectPrompt
+			f, cfg, logs = stepEnv(t, afterFailure, afterFailure, afterFailure)
+		}
 		var out bytes.Buffer
 		runCloudStartupStep(context.Background(), cfg, mode, &interruptRouter{}, strings.NewReader("\n"), &out)
 		time.Sleep(200 * time.Millisecond) // log mode would start its flow in a goroutine

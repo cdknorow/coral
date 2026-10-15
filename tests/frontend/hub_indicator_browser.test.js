@@ -25,6 +25,8 @@ const STATES = {
     idle: { configured: true, hub_url: 'https://app.coralhub.dev', state: 'idle', max_mode: 'interact' },
     enrolling: { ...base, state: 'enrolling' },
     off: { configured: false, state: 'off', max_mode: 'interact' },
+    movedFailed: { configured: true, hub_url: 'https://app.coralhub.dev', state: 'idle', hub_moved: true, last_error_code: 'rate_limited', max_mode: 'interact',
+        last_error: 'Coral Hub is busy: try again in 1m30s' },
     moved: { configured: true, hub_url: 'https://app.coralhub.dev', state: 'idle', last_error_code: 'hub_moved', max_mode: 'interact',
         last_error: "this server is enrolled with a different hub (https://app.coralai.ai); run 'coral cloud connect --force' to enroll with https://app.coralhub.dev" },
 };
@@ -94,6 +96,9 @@ const STATES = {
             && l.aria === 'Coral Hub moved to app.coralhub.dev: run coral cloud connect --force', JSON.stringify(l));
         const movedHome = await ev(homeHub);
         check('the home section says to connect again, not the never-enrolled offer', /^Coral Hub moved Connect this server again at app\.coralhub\.dev: run coral cloud connect --force/.test(movedHome) && movedHome !== offer, movedHome);
+        await show('movedFailed'); l = await look();
+        check('after a failed attempt to enroll again (its own code): still amber, still "connect again"', !l.hidden && l.state === 'disconnected'
+            && l.aria === 'Coral Hub moved to app.coralhub.dev: run coral cloud connect --force' && (await ev(homeHub)) === movedHome, JSON.stringify(l));
         await show('connected');
         check('and the offer comes back with any other status', (await ev(homeHub)) === offer, await ev(homeHub));
         for (const name of ['idle', 'enrolling', 'off']) {

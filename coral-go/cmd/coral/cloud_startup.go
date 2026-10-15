@@ -152,7 +152,7 @@ func runCloudStartupStep(ctx context.Context, cfg *config.Config, mode string, i
 	case st.State == cloud.StateRevoked:
 		log.Printf("[CLOUD] Coral Hub revoked this server. To connect it again, run: coral cloud connect --force")
 		return
-	case st.LastErrorCode == cloud.ErrCodeHubMoved:
+	case st.HubMoved || st.LastErrorCode == cloud.ErrCodeHubMoved:
 		// Enrolled with the hub's old host (#3546): say so, and start nothing. No request goes to
 		// either hub until the operator enrolls again, and the message stays as it is.
 		log.Printf("[CLOUD] Coral Hub: %s", st.LastError)

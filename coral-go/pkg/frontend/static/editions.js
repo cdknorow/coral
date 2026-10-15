@@ -224,7 +224,7 @@ document.addEventListener('coral:cloud-status', e => {
     const copy = document.querySelector('#editions-home [data-editions="home-hub"] .editions-home-copy');
     if (!copy) return;
     const st = e.detail || {};
-    const moved = st.state === 'idle' && st.last_error_code === 'hub_moved';
+    const moved = st.state === 'idle' && (st.hub_moved || st.last_error_code === 'hub_moved');
     if (copy.dataset.offer === undefined) copy.dataset.offer = copy.innerHTML; // the template's own offer
     if (!moved) {
         if (copy.dataset.moved) { copy.innerHTML = copy.dataset.offer; delete copy.dataset.moved; }

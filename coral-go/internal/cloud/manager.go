@@ -82,6 +82,10 @@ type Status struct {
 	// ConnectedAt is when the tunnel came up, while State is connected (the dashboard's hub
 	// indicator says "connected since", #3544); zero in every other state.
 	ConnectedAt time.Time `json:"connected_at,omitzero"`
+	// HubMoved: the stored enrollment is for another hub than the configured one (Coral Hub
+	// moved, #3546). It stays set through any failed attempt to enroll again (their errors show
+	// in LastError and LastErrorCode) until an enrollment succeeds or the operator disconnects.
+	HubMoved bool `json:"hub_moved,omitempty"`
 }
 
 // applyTunnelState records a tunnel state change: ConnectedAt is set when the tunnel comes
@@ -121,7 +125,8 @@ type Manager struct {
 	root     context.Context
 	cancel   context.CancelFunc // current enrollment or tunnel goroutine
 	st       Status
-	gen      int // bumped on every start/stop so stale goroutines cannot write state
+	hubMoved bool // Status.HubMoved: enrolled with another hub than the configured one (#3546)
+	gen      int  // bumped on every start/stop so stale goroutines cannot write state
 	// loaded is closed once Run has read the stored enrollment (at once with no
 	// hub): until then an enrolled server still looks idle.
 	loaded     chan struct{}
@@ -187,6 +192,7 @@ func (m *Manager) Run(ctx context.Context) {
 		// here, says which host, and is re-enrolled; a token is never sent to a host it wasn't
 		// enrolled with.
 		m.mu.Lock()
+		m.hubMoved = true
 		m.st.State, m.st.LastErrorCode = StateIdle, ErrCodeHubMoved
 		m.st.LastError = "this server is enrolled with a different hub (" + conn.HubURL + "); run 'coral cloud connect --force' to enroll with " + m.o.HubURL
 		m.mu.Unlock()
@@ -240,6 +246,7 @@ func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.st
+	s.HubMoved = m.hubMoved
 	s.MaxMode = m.currentMode().String()
 	s.Loading = !m.isLoaded()
 	return s
@@ -487,6 +494,7 @@ func (m *Manager) startTunnel(conn *store.CloudConnection) {
 	gen := m.gen
 	tctx, cancel := context.WithCancel(m.root)
 	m.cancel = cancel
+	m.hubMoved = false // enrolled with the configured hub: it's where the tunnel goes
 	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateConnecting, Label: conn.Label, ServerID: conn.ServerID}
 	m.mu.Unlock()
 	go m.runTunnel(tctx, gen)
@@ -557,6 +565,7 @@ func (m *Manager) Disconnect(ctx context.Context) error {
 	m.mu.Lock()
 	m.stopLocked()
 	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateIdle}
+	m.hubMoved = false // the old enrollment is forgotten
 	m.mu.Unlock()
 	m.linkLost(ctx)
 	_ = m.o.Store.ClearEnrollment(ctx)

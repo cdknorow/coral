@@ -24,7 +24,9 @@ const POLL_MS = 15000;
  *  null (hidden). Pure, for the unit test. */
 export function indicatorState(st) {
     if (!st || typeof st !== 'object' || st.loading) return null;
-    if (st.state === 'idle' && st.last_error_code === 'hub_moved') return 'disconnected';
+    // Enrolled with the hub's old host (#3546): hub_moved stays set through a failed attempt to
+    // enroll again (that failure has its own error), so the signal stays until one succeeds.
+    if (st.state === 'idle' && (st.hub_moved || st.last_error_code === 'hub_moved')) return 'disconnected';
     switch (st.state) {
         case 'connected': return 'connected';
         case 'connecting': case 'retrying': return 'connecting';
@@ -57,7 +59,7 @@ export function indicatorLabel(st, state, now = new Date(), locale) {
     if (state === 'connecting') {
         return st && st.state === 'retrying' ? `Coral Hub: reconnecting${at}` : `Coral Hub: connecting${at}`;
     }
-    if (st && st.last_error_code === 'hub_moved') {
+    if (st && (st.hub_moved || st.last_error_code === 'hub_moved')) {
         // A fixed message with the new host only (Security): what to run, nothing else.
         return `Coral Hub moved to ${host || 'a new host'}: run coral cloud connect --force`;
     }

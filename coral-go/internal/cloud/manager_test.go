@@ -613,3 +613,40 @@ func TestEnrollBackoffIsCapped(t *testing.T) {
 		assert.Equal(t, want, enrollBackoff(n), "failure %d", n)
 	}
 }
+
+// #3546: a server enrolled with the hub's old host keeps HubMoved through a failed attempt to
+// enroll with the new one (that attempt's own error and code show), and the old hub is never
+// contacted; an enrollment that succeeds clears it.
+func TestHubMovedSurvivesAFailedConnect(t *testing.T) {
+	e := newEnv(t)
+	old := newFakeHub(t)
+	require.NoError(t, e.cs.Save(context.Background(), old.srv.URL, "srv_1", "x", fakeToken))
+	e.hub.busy.Store(90) // the new hub refuses to start an enrollment
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	require.True(t, m.Status().HubMoved)
+	require.Equal(t, ErrCodeHubMoved, m.Status().LastErrorCode)
+
+	var rl *RateLimitedError
+	require.ErrorAs(t, m.Connect(context.Background()), &rl)
+	st := m.Status()
+	require.True(t, st.HubMoved, "still moved after a failed attempt")
+	require.Equal(t, StateIdle, st.State)
+	require.Equal(t, ErrCodeRateLimited, st.LastErrorCode, "the failure shows its own code")
+	require.Equal(t, "Coral Hub is busy: try again in 1m30s", st.LastError)
+	require.Zero(t, old.hits.Load(), "the old hub is never contacted")
+
+	// Enrolling with the new hub (here a fresh connector, so no local wait after the failure) clears it.
+	e2 := newEnv(t)
+	old2 := newFakeHub(t)
+	require.NoError(t, e2.cs.Save(context.Background(), old2.srv.URL, "srv_1", "x", fakeToken))
+	m2 := e2.manager(e2.hub.srv.URL)
+	start(t, m2)
+	require.True(t, m2.Status().HubMoved)
+	require.NoError(t, m2.Connect(context.Background()))
+	require.True(t, m2.Status().HubMoved, "enrolling, not yet enrolled")
+	waitState(t, m2, StateConnected)
+	require.False(t, m2.Status().HubMoved, "enrolled with the new hub")
+	require.Zero(t, old2.hits.Load())
+	require.NotContains(t, mustJSON(m2.Status()), "hub_moved")
+}
