@@ -2,6 +2,8 @@ package routes
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -136,9 +138,11 @@ func isPathWithinDir(workdir, fullPath string) bool {
 	if realWorkdir == "" {
 		return false // an unresolvable root contains nothing (the old prefix test passed everything)
 	}
-	realFull, _ := safefs.Resolve(fullPath)
-	if realFull == "" {
-		return true // file doesn't exist yet; caller handles separately if needed
+	realFull, err := safefs.Resolve(fullPath)
+	if err != nil {
+		// A file that doesn't exist yet: the caller handles it. Any other failure to resolve
+		// is outside: a path that can't be resolved is never taken as inside (#3633).
+		return errors.Is(err, fs.ErrNotExist)
 	}
 	return strings.HasPrefix(realFull, realWorkdir+string(os.PathSeparator))
 }

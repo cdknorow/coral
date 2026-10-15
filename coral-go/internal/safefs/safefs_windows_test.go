@@ -3,6 +3,7 @@
 package safefs
 
 import (
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,6 +68,13 @@ func TestWindowsJunctionOutIsRefused(t *testing.T) {
 	got, err := Resolve(filepath.Join(root, "junc"))
 	require.NoError(t, err)
 	assert.Equal(t, realOut, got, "Resolve follows the junction")
+	// A FILE under the junction too: filepath.EvalSymlinks fails on a junction on the way
+	// (ENOTDIR), and the routes took that failure as inside (#3633).
+	got, err = Resolve(filepath.Join(root, "junc", "secret.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(realOut, "secret.txt"), got, "Resolve follows the junction to a file")
+	_, err = Resolve(filepath.Join(root, "junc", "missing.txt"))
+	assert.ErrorIs(t, err, fs.ErrNotExist, "a missing file under it is ErrNotExist")
 }
 
 // A junction that stays inside the root is resolved to where it leads, inside: no false

@@ -28,6 +28,9 @@ func TestJunctionOutOfTheRepositoryIsRefusedEverywhere(t *testing.T) {
 	require.NoError(t, err, "mklink /J: %s", out)
 
 	// The helpers every route uses.
+	if _, err := safefs.Resolve(filepath.Join(junc, "j.txt")); err != nil {
+		t.Errorf("safefs.Resolve of a file under the junction: %v", err)
+	}
 	realOut, err := safefs.Resolve(outdir)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(realOut, "j.txt"), realPath(filepath.Join(junc, "j.txt")), "realPath follows the junction")

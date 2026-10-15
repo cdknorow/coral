@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"errors"
+	"io/fs"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -596,6 +598,9 @@ func pathInside(p, workDir string) bool {
 		p = filepath.Join(workDir, p)
 	}
 	wd, target := resolvePath(workDir), resolvePath(p)
+	if wd == "" || target == "" {
+		return false
+	}
 	rel, err := filepath.Rel(wd, target)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
@@ -605,8 +610,12 @@ func resolvePath(p string) string {
 	p = filepath.Clean(p)
 	rest := ""
 	for cur := p; ; {
-		if r, err := safefs.Resolve(cur); err == nil {
+		r, err := safefs.Resolve(cur)
+		if err == nil {
 			return filepath.Join(r, rest)
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "" // can't be resolved: never taken as inside (#3633)
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {

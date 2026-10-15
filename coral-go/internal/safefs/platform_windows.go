@@ -27,16 +27,14 @@ func LinkCount(f *os.File, _ os.FileInfo) (n uint64, ok bool) {
 	return uint64(info.NumberOfLinks), true
 }
 
-// realPath is where p really is. filepath.EvalSymlinks resolves symlinks but not junctions
-// (mount points) in current Go, so a junction leading out of a root looked inside it to
-// Within (#3615, found by the Windows CI run). So the resolved path is opened (attributes
-// only, a folder too) and the handle's final path is the answer: every symlink and junction on
-// the way resolved by the system itself.
+// realPath is where p really is. filepath.EvalSymlinks doesn't follow junctions (mount
+// points) in current Go: a junction as the last name comes back unresolved, and one on the way
+// to a file fails the whole walk (ENOTDIR), so a junction leading out of a root looked inside
+// it (#3615, #3633, found by the Windows CI runs). So p is opened as it is (attributes only, a
+// folder too) and the handle's final path is the answer: every symlink and junction on the way
+// resolved by the system itself. A missing p is fs.ErrNotExist, as from EvalSymlinks.
 func realPath(p string) (string, error) {
-	r, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return "", err
-	}
+	r := filepath.Clean(p)
 	name, err := windows.UTF16PtrFromString(r)
 	if err != nil {
 		return "", err
