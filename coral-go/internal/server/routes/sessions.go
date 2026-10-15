@@ -4834,6 +4834,9 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		MCPServers:    store.MarshalCapabilities(mcpServers),
 		PID:           shellPID,
 	})
+	if agentType != at.Terminal {
+		go h.recordCLIVersion(sessionID, agentType, userSettings) // #3481
+	}
 
 	if displayName != "" {
 		h.ss.SetDisplayName(ctx, sessionID, displayName)
@@ -6522,4 +6525,14 @@ func runBounded(limit int, fns []func()) {
 		}(fn)
 	}
 	wg.Wait()
+}
+
+// recordCLIVersion records which CLI version a launched agent runs (#3481). It asks the
+// CLI (--version, cached per binary), so it runs after the launch, not before.
+func (h *SessionsHandler) recordCLIVersion(sessionID, agentType string, settings map[string]string) {
+	if v := agent.CLIVersion(settings, agentType); v != "" {
+		if err := h.ss.SetCLIVersion(context.Background(), sessionID, v); err != nil {
+			slog.Warn("could not record the agent's CLI version", "session_id", sessionID, "error", err)
+		}
+	}
 }

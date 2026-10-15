@@ -507,3 +507,17 @@ func TestGetIndexedMtimesExcludesSessionsMissingTheirFullTextRow(t *testing.T) {
 		t.Error("after backfilling, the file should be skipped on mtime again")
 	}
 }
+
+// #3481: the CLI version a session's agent runs is recorded after launch and read back.
+func TestCLIVersions(t *testing.T) {
+	db := openTestDB(t)
+	s := NewSessionStore(db)
+	ctx := context.Background()
+	require.NoError(t, s.RegisterLiveSession(ctx, &LiveSession{SessionID: "v-1", AgentType: "claude", AgentName: "a", WorkingDir: "/tmp/a"}))
+	require.NoError(t, s.RegisterLiveSession(ctx, &LiveSession{SessionID: "v-2", AgentType: "agy", AgentName: "b", WorkingDir: "/tmp/b"}))
+	require.NoError(t, s.SetCLIVersion(ctx, "v-1", "2.1.300"))
+	require.NoError(t, s.SetCLIVersion(ctx, "v-2", ""))
+	got, err := s.CLIVersions(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"v-1": "2.1.300"}, got, "an unknown version stays NULL")
+}

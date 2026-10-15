@@ -149,6 +149,9 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 			l.sessDB.SetDisplayName(ctx, sessionID, displayName)
 		}
 		l.sessDB.RegisterLiveSession(ctx, ls)
+		if !isTerminal {
+			go recordCLIVersion(l.sessDB, sessionID, agentType)
+		}
 	}
 
 	l.logger.Info("launched agent",
@@ -284,4 +287,16 @@ func findProtocolMD() string {
 	}
 
 	return ""
+}
+
+// recordCLIVersion records which CLI version a launched agent runs (#3481). It asks
+// the CLI (--version, cached per binary), so it runs after the launch, not before.
+func recordCLIVersion(ss *store.SessionStore, sessionID, agentType string) {
+	ctx := context.Background()
+	settings, _ := ss.GetSettings(ctx)
+	if v := agent.CLIVersion(settings, agentType); v != "" {
+		if err := ss.SetCLIVersion(ctx, sessionID, v); err != nil {
+			slog.Warn("could not record the agent's CLI version", "session_id", sessionID, "error", err)
+		}
+	}
 }

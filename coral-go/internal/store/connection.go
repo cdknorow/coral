@@ -267,6 +267,8 @@ var columnMigrations = []struct {
 	{"live_sessions", "auto_accept_until", "INTEGER"},    // unix seconds; NULL = no time limit
 	{"live_sessions", "auto_accept_source", "TEXT"},      // 'local' (dashboard) or 'hub' (Coral Hub)
 	{"live_sessions", "auto_accept_paused_code", "TEXT"}, // why Coral turned it off (see store/auto_accept.go)
+	// The version of the CLI the agent was launched with (#3481), e.g. "2.1.300"; NULL = unknown.
+	{"live_sessions", "cli_version", "TEXT"},
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},
 	{"token_usage", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},

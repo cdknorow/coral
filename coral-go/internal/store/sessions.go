@@ -894,6 +894,28 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 // ── Live Sessions ─────────────────────────────────────────────────────
 
 // RegisterLiveSession registers a new live session.
+// SetCLIVersion records the version of the CLI a session's agent runs (#3481).
+func (s *SessionStore) SetCLIVersion(ctx context.Context, sessionID, version string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET cli_version = NULLIF(?, '') WHERE session_id = ?", version, sessionID)
+	return err
+}
+
+// CLIVersions returns the recorded CLI version of each live session that has one.
+func (s *SessionStore) CLIVersions(ctx context.Context) (map[string]string, error) {
+	var rows []struct {
+		SessionID string `db:"session_id"`
+		Version   string `db:"cli_version"`
+	}
+	if err := s.db.Reader().SelectContext(ctx, &rows, "SELECT session_id, cli_version FROM live_sessions WHERE cli_version IS NOT NULL"); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.SessionID] = r.Version
+	}
+	return out, nil
+}
+
 func (s *SessionStore) RegisterLiveSession(ctx context.Context, ls *LiveSession) error {
 	if ls.CreatedAt == "" {
 		ls.CreatedAt = nowUTC()
