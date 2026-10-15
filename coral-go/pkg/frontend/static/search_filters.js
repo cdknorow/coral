@@ -38,11 +38,30 @@ export function buildApiParams(page, pageSize) {
     return p;
 }
 
+// The query keys the history search owns in the page's URL (#3529).
+const URL_FILTER_KEYS = ['page', 'page_size', 'type', 'q', 'fts_mode', 'tag_ids', 'tag_logic', 'source_types',
+    'date_from', 'date_to', 'min_duration_sec', 'max_duration_sec'];
+
+/** The page's query string for this search state: only what differs from the defaults (no
+ *  page 1, never page_size, no empty filter), the page's other query keys kept, and '' when
+ *  nothing is left, so a plain dashboard URL has no ?page=1&page_size=50 (#3529). */
+export function urlSearchFor(page, existingSearch) {
+    const out = new URLSearchParams(existingSearch || '');
+    for (const k of URL_FILTER_KEYS) out.delete(k);
+    const state = buildApiParams(page, 50);
+    state.delete('page_size');
+    if (!(Number(page) > 1)) state.delete('page');
+    for (const [k, v] of state) out.set(k, v);
+    const qs = out.toString();
+    return qs ? '?' + qs : '';
+}
+
 export function serializeToUrl(page) {
-    const params = buildApiParams(page, 50);
     const url = new URL(window.location.href);
-    url.search = params.toString();
-    window.history.replaceState(null, '', url.toString());
+    const search = urlSearchFor(page, url.search);
+    if (search === url.search) return;
+    url.search = search;
+    window.history.replaceState(window.history.state, '', url.toString());
 }
 
 export function deserializeFromUrl() {
