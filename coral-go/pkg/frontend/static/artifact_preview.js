@@ -175,7 +175,8 @@ export function resolveArtifactSource(uri, options = {}) {
         if (parsed.protocol === 'https:' || parsed.protocol === 'http:') externalURL = parsed.href;
     } catch { /* Only explicit HTTP(S) links can be embedded. */ }
     if (!match && !inlineURL && !externalURL) return null;
-    return { url: externalURL || inlineURL || artifactPath(match[1]), externalURL, server: contextServer() };
+    // A board post's artifact lives on the board's server (#3540), which the caller names.
+    return { url: externalURL || inlineURL || artifactPath(match[1]), externalURL, server: options.server || contextServer() };
 }
 
 /**
@@ -194,8 +195,11 @@ export async function renderArtifact(body, uri, options, ctx) {
     }
     try {
         // Managed/inline artifact paths live on the viewed server; external URLs are absolute.
-        const resp = await fetch(externalURL ? url : serverUrl(url, source.server), { signal: ctx.signal });
+        const requestURL = externalURL ? url : serverUrl(url, source.server);
+        const resp = await fetch(requestURL, { signal: ctx.signal });
         if (!resp.ok) throw new Error(`Artifact unavailable (${resp.status})`);
+        // The URL the bytes came from; a response built in the page (a test, a cache) has none of its own.
+        const bytesURL = resp.url || requestURL;
         const type = (resp.headers.get('Content-Type') || 'application/octet-stream').split(';')[0].toLowerCase();
         // Scoped inline content is deliberately served as text/plain. Its
         // declared artifact media type still selects HTML or Markdown rendering.
@@ -217,7 +221,7 @@ export async function renderArtifact(body, uri, options, ctx) {
         const isSvgArtifact = isCloud() && (isSvg(type) || isSvg(declaredType) || filenameHints.some(isSvg));
         if (isSvgArtifact) {
             if (size > MAX_ARTIFACT_PREVIEW_BYTES) {
-                _renderFallback(body, { filename, type, size, url: resp.url, reason: `Preview is limited to ${_sizeLabel(MAX_ARTIFACT_PREVIEW_BYTES)}.` });
+                _renderFallback(body, { filename, type, size, url: bytesURL, reason: `Preview is limited to ${_sizeLabel(MAX_ARTIFACT_PREVIEW_BYTES)}.` });
             } else {
                 const svgText = await _readText(resp, MAX_ARTIFACT_PREVIEW_BYTES, ctx.signal);
                 if (ctx.isStale()) return;
@@ -226,14 +230,14 @@ export async function renderArtifact(body, uri, options, ctx) {
         } else if (type.startsWith('audio/') || type.startsWith('video/')) {
             const media = document.createElement(type.startsWith('video/') ? 'video' : 'audio');
             media.controls = true; media.autoplay = false; media.preload = 'metadata';
-            media.src = resp.url; media.className = 'artifact-preview-media';
+            media.src = bytesURL; media.className = 'artifact-preview-media';
             body.replaceChildren(media);
         } else if (type.startsWith('image/')) {
-            renderImagePanes(body, [{ url: resp.url, missing: 'Artifact unavailable' }]);
+            renderImagePanes(body, [{ url: bytesURL, missing: 'Artifact unavailable' }]);
         } else if (!isHTML && !isMarkdown && !isJSON && !type.startsWith('text/') && !type.includes('json') && !type.includes('xml') && !filenameHints.some(name => /\.(?:md|markdown|txt|log|json|xml|csv|ya?ml|toml|ini|conf|sh|js|ts|go|py|rs|css|html?)$/i.test(name))) {
-            _renderFallback(body, { filename, type, size, url: resp.url, reason: 'This binary artifact is not rendered inline.' });
+            _renderFallback(body, { filename, type, size, url: bytesURL, reason: 'This binary artifact is not rendered inline.' });
         } else if (size > MAX_ARTIFACT_PREVIEW_BYTES) {
-            _renderFallback(body, { filename, type, size, url: resp.url, reason: `Preview is limited to ${_sizeLabel(MAX_ARTIFACT_PREVIEW_BYTES)}.` });
+            _renderFallback(body, { filename, type, size, url: bytesURL, reason: `Preview is limited to ${_sizeLabel(MAX_ARTIFACT_PREVIEW_BYTES)}.` });
         } else {
             const content = await _readText(resp, MAX_ARTIFACT_PREVIEW_BYTES, ctx.signal);
             if (ctx.isStale()) return;

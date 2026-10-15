@@ -355,6 +355,30 @@ export function renderMarkdown(content, options) {
     return escapeHtml(content);
 }
 
+// The strict renderer for a whole Markdown file an agent wrote (#3540): raw HTML in it is
+// shown as text, never parsed as markup, and what marked produces then goes through the
+// same sanitizer (one DOMPurify parse, the image and link hooks above). A separate marked
+// instance, so the dashboard's chat and board rendering keep their own options.
+let _strictMarked = null;
+function strictMarked() {
+    if (_strictMarked || typeof marked === 'undefined' || typeof marked.Marked !== 'function') return _strictMarked;
+    _strictMarked = new marked.Marked({ gfm: true });
+    _strictMarked.use({ renderer: { html({ text }) { return escapeHtml(text); } } });
+    return _strictMarked;
+}
+
+/** Markdown to sanitized HTML with raw HTML escaped; text when marked or DOMPurify is missing. */
+export function renderMarkdownStrict(md) {
+    const m = strictMarked();
+    if (!md) return '';
+    if (!m) return escapeHtml(md);
+    try {
+        return sanitizeHtml(m.parse(String(md)), DOMPURIFY_CONFIG);
+    } catch {
+        return escapeHtml(md);
+    }
+}
+
 // A fenced code block that names a language (```js, ~~~ python).
 const FENCED_WITH_LANG = /^ {0,3}(?:```|~~~)[ \t]*[^\s`~]/m;
 let _highlightLoad = null;

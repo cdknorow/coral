@@ -3824,3 +3824,35 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
     color: var(--text-secondary);
 }
 .cs-title .machine-health-dot { margin-left: 6px; }
+
+/* ── Artifact viewer (#3540): a board, chat or team artifact opens here ── */
+.artifact-viewer[hidden] { display: none; }
+.artifact-viewer-content {
+    width: min(900px, 94vw);
+    max-height: 88vh;
+    padding: 0;
+    overflow: hidden;
+}
+.artifact-viewer-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--border);
+}
+.artifact-viewer-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: var(--fs-lg, 16px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.artifact-viewer-body {
+    overflow: auto;
+    padding: var(--space-lg);
+    min-height: 120px;
+}
+.artifact-viewer-text { white-space: pre-wrap; }
+.board-artifact-image { cursor: zoom-in; }

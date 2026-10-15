@@ -1,7 +1,7 @@
 /* Bottom preview pane — tabbed file/artifact viewer below the terminal/chat area */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG, sanitizeHtml } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG, sanitizeHtml, renderMarkdownStrict } from './utils.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
 import { loadCodeMirror, loadHighlight, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
 import { makeDraggable } from './draggable.js';
@@ -454,7 +454,10 @@ async function _render(tab) {
         await renderArtifact(body, tab.filepath, tab.options, {
             signal: tab.abort.signal,
             isStale: () => !current(),
-            renderContent: (el, content, path) => _renderContentView(el, content, path, 0, false),
+            // An artifact is a file an agent wrote: its Markdown uses the strict renderer (raw HTML shown as text, #3540).
+            renderContent: (el, content, path) => (getLangFromPath(path) === 'markdown'
+                ? (el.innerHTML = `<div class="preview-pane-markdown">${renderMarkdownStrict(content)}</div>`)
+                : _renderContentView(el, content, path, 0, false)),
             openEntry: (entry) => openArtifactTab(entry.uri, { filename: entry.name, mediaType: entry.media_type }),
             setMeta: ({ title }) => { tab.title = title; _renderTabs(); },
         });
