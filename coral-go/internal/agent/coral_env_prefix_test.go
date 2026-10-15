@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -15,6 +16,12 @@ import (
 // agent's shell gave its tmux server, and so its panes, that agent's name, role, token,
 // port and data folder), the launch line gives the agent CLI this server's own.
 func TestLaunchLineOverridesAnInheritedCoralEnvironment(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// This runs the built launch line through /bin/sh with a #!/bin/sh stub CLI; the Windows
+		// launch path uses PowerShell and would need a PowerShell harness. The env-override logic
+		// is exercised on unix (#3629).
+		t.Skip("executes the launch line via /bin/sh + a shell-script stub; unix-only harness (#3629)")
+	}
 	dir := t.TempDir()
 	out := filepath.Join(dir, "env.txt")
 	stub := filepath.Join(dir, "cli")

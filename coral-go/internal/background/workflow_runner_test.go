@@ -369,7 +369,7 @@ func TestBuildStepEnv(t *testing.T) {
 	if envMap["CORAL_WORKFLOW_STEP"] != "2" {
 		t.Error("bad CORAL_WORKFLOW_STEP")
 	}
-	if envMap["CORAL_PREV_DIR"] != "/repo/.coral/workflows/runs/1/step_1" {
+	if envMap["CORAL_PREV_DIR"] != filepath.FromSlash("/repo/.coral/workflows/runs/1/step_1") {
 		t.Error("bad CORAL_PREV_DIR")
 	}
 	if _, ok := envMap["CORAL_STEP_0_DIR"]; !ok {
@@ -408,7 +408,7 @@ func TestListStepFiles(t *testing.T) {
 	for _, f := range files {
 		has[f] = true
 	}
-	for _, expected := range []string{"stdout.txt", "stderr.txt", "artifacts/report.json"} {
+	for _, expected := range []string{"stdout.txt", "stderr.txt", filepath.FromSlash("artifacts/report.json")} {
 		if !has[expected] {
 			t.Errorf("missing expected file %s in %v", expected, files)
 		}
@@ -756,7 +756,7 @@ func TestArtifactDirectoryCreation(t *testing.T) {
 
 	has := false
 	for _, f := range results[0].Files {
-		if f == "artifacts/report.txt" {
+		if f == filepath.FromSlash("artifacts/report.txt") {
 			has = true
 		}
 	}

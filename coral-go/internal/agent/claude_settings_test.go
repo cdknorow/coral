@@ -17,7 +17,7 @@ import (
 // settings and Coral's hooks do.
 func TestRepoSettingsNeverReachTheSettingsFlag(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	repo := t.TempDir()
 	writeSettingsFile(t, filepath.Join(home, ".claude"), "settings.json", map[string]interface{}{
 		"permissions": map[string]interface{}{"deny": []string{"Bash(rm -rf:*)"}, "allow": []string{"Read"}},

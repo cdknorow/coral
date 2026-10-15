@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -69,6 +70,11 @@ func TestTriggerKeepsTheNewestRunsAndTheirDirectories(t *testing.T) {
 // #3587: a run's folder moved aside (left by an earlier database with the same id) is pruned
 // with the run; another id's is left alone.
 func TestRemoveRunDirsIncludesStaleFolders(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// The point is a glob metacharacter in the data path; '[', ']' and '*' are illegal in
+		// Windows filenames, so such a path can't exist there and the no-glob concern is unix-only (#3629).
+		t.Skip("glob metacharacters are illegal in Windows filenames (#3629)")
+	}
 	// A '[' and a '*' in the data folder's path: no pattern matching on it.
 	data := filepath.Join(t.TempDir(), "data [x] *")
 	runs := filepath.Join(data, "workflows", "runs")

@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,11 @@ import (
 func TestCleanupTempFilesRemovesOnlyThatSession(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
+	if runtime.GOOS == "windows" {
+		// os.TempDir() reads TMP/TEMP on Windows, not TMPDIR (#3629).
+		t.Setenv("TMP", tmp)
+		t.Setenv("TEMP", tmp)
+	}
 	require.Equal(t, filepath.Clean(tmp), filepath.Clean(os.TempDir()))
 
 	a := "0b2f6c1e-3d4a-4b5c-8d6e-7f8091a2b3c4"

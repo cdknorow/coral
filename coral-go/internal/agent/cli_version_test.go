@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -10,6 +11,11 @@ import (
 // #3481: a session records the version its CLI reports; an update of the binary is
 // noticed, an unchanged one is asked once.
 func TestCLIVersion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// The fake CLI is a #!/bin/sh script, which Windows can't execute; version detection
+		// over a real CLI exec is exercised on unix (#3629).
+		t.Skip("fake CLI is a shell script; not executable on Windows (#3629)")
+	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "claude")
 	counter := filepath.Join(dir, "calls")

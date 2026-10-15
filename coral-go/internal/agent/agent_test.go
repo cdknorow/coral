@@ -6,9 +6,20 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// setTestHome points os.UserHomeDir at dir on every OS: it reads HOME on unix and USERPROFILE on
+// Windows, so a test that seeds a fake ~/.claude must set the one the running OS uses (#3629).
+func setTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", dir)
+	}
+}
 
 // findTempFile finds a Coral temp file matching the given prefix and session ID.
 // Since writeTempFile now uses os.CreateTemp with random suffixes, we glob for matches.
@@ -1403,7 +1414,7 @@ func writeSettingsFile(t *testing.T, dir, filename string, content map[string]in
 func TestBuildMergedSettings_EnvDeepMerge_EmptyEnvDoesNotWipe(t *testing.T) {
 	tmpDir := t.TempDir()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	writeSettingsFile(t, filepath.Join(home, ".claude"), "settings.json", map[string]interface{}{
 		"env": map[string]interface{}{
@@ -1746,7 +1757,7 @@ func TestPublishArtifactDocsStateTheDefault(t *testing.T) {
 func launchBody(line string) string {
 	for {
 		trimmed := false
-		for _, kw := range []string{"unset ", "export CORAL_"} {
+		for _, kw := range []string{"unset ", "export CORAL_", "Remove-Item Env:", "$env:CORAL_"} {
 			if strings.HasPrefix(line, kw) {
 				if i := strings.Index(line, "; "); i >= 0 {
 					line, trimmed = line[i+2:], true
@@ -1802,8 +1813,12 @@ func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
 			t.Errorf("%s: %s", event, b)
 		}
 	}
-	if info, _ := os.Stat(dir); info == nil || info.Mode().Perm() != 0o700 {
-		t.Errorf("hooks folder must be private: %v", info)
+	// Windows file permissions are ACL-based, not POSIX mode bits (Go reports 0777), so the
+	// 0700 private-folder check is unix-only (#3629).
+	if runtime.GOOS != "windows" {
+		if info, _ := os.Stat(dir); info == nil || info.Mode().Perm() != 0o700 {
+			t.Errorf("hooks folder must be private: %v", info)
+		}
 	}
 	CleanupTempFiles(sid)
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {

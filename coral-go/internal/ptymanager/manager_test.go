@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"fmt"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,9 @@ import (
 
 func canFork(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY backend test harness uses creack/pty + sh (unix); Windows uses ConPTY, covered separately (#3629)")
+	}
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not available")
 	}
@@ -568,7 +572,7 @@ func TestParseCommand(t *testing.T) {
 	}{
 		{"echo hello", []string{"echo", "hello"}},
 		{"sh -c 'echo test'", []string{"sh", "-c", "'echo", "test'"}}, // no metachar, fields split
-		{"ls | grep foo", []string{"sh", "-c", "ls | grep foo"}},
+		{"ls | grep foo", shellWrap("ls | grep foo")},                 // a metachar wraps via the platform shell (sh -c / powershell)
 		{"claude --session-id abc", []string{"claude", "--session-id", "abc"}},
 		{"", nil},
 	}

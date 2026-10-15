@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,7 +32,11 @@ func TestJobRunLogIsPrivate(t *testing.T) {
 	require.Len(t, matches, 1)
 	fi, err := os.Stat(matches[0])
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	// Windows file permissions are ACL-based, not POSIX mode bits (Go reports 0666), so the 0600
+	// check is unix-only (#3629); the log is still created through the same safe writer.
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	}
 }
 
 // No writer outside ptymanager creates an agent log by path: the job launcher and launch-coral
