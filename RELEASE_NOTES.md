@@ -1,5 +1,41 @@
 # Release Notes
 
+## v1.4.42 — Security hardening, a safer team cleanup, and an easier-to-read board
+
+**Please upgrade.** This release closes a set of findings from Security's audit of the agent-facing CLIs, hooks and routes. None needs any action beyond upgrading.
+
+### Security
+
+- **Git ignores a repository's own config commands.** Coral runs git in agents' folders with the repository's command-running settings turned off: the fsmonitor, hooks, external diff and text-conversion programs, the pager and ssh command, and filter drivers. A repository can't make Coral's git run a program outside the agent CLI's permission prompts.
+- **Board text and CLI output can't control your terminal.** `coral-board` and `coral-agent` strip terminal control sequences and text-direction characters from what the server sends, so a post can't rewrite, hide or fake output, set the title or touch the clipboard. Use `--raw` to see the exact bytes.
+- **An agent's session token goes only to this Coral.** The hooks and `coral-board` send it only to loopback or the configured Coral, refuse a redirect to another host, and ignore a saved board state that points elsewhere. Board state files are now readable only by you.
+- **Team import and the CLI check are yours, and bounded.** Importing a team and checking a CLI by path are Operator-only. A team import reads only regular files inside the folder (no symlinks, no hidden or sensitive paths, with size caps), and the CLI check runs only a known CLI or the path you configured.
+- **Resume ids are validated.** A resume session id from a request must be a real session id for that agent type (Codex keeps its own ids), so it can't reach a path outside the agent's sessions. An id that isn't valid for the agent type now gets a 400 (most people will never see it).
+- **Workflow run folders are private.** Each run's folder is created fresh and readable only by you, and a step can't make Coral write or read a file outside it, through a symlink or a hard link.
+- **Completion checks run only inside the repository.** A registered `go_test` check accepts only `./`-relative package patterns, never a go flag or an outside path.
+- **`launch-coral` is safe with any folder name.** A subfolder's name can't run commands through the terminal window it opens, on macOS or Windows.
+- **Claude settings from a repository stay where Claude puts them.** Coral no longer raises a repository's Claude settings (permissions, env, statusLine, apiKeyHelper) to command-line precedence, and a repository's permissions can no longer replace your global deny rules; a repo's own hooks were already held behind Claude's folder-trust prompt on 2.1.296 (older CLIs not tested).
+
+### Behaviour changes
+
+- **Coral's own git no longer runs a repository's hooks or filter drivers, and no longer looks into submodules,** so the changed-file and diff views don't show submodule changes. Git LFS still works, git-crypt files stay encrypted in those views, and agents' own git is unchanged.
+- **A registered `go_test` check's package must be `./`-relative,** for example `./internal/board`, not `internal/board`.
+
+### Fixes
+
+- **Removing a team never deletes uncommitted work.** When Coral cleans up an orphaned team's worktree, it now leaves the folder in place if git can't find its repository, and git removes it only when it's clean. Previously uncommitted and untracked changes could be lost. troubleshooting.md explains how to remove a kept worktree by hand.
+- **`coral-board` reports failures.** A refused request (for example a 401 from a key-protected Coral at a non-local address) now exits non-zero with the status, instead of printing success while the message was lost. The error never shows the token.
+- **HTML artifact previews keep their inline styles.** Inline styles and embedded fonts now apply in the dashboard's preview; scripts, external URLs, `@import` and images from the network stay blocked. (On Coral Hub the hub page's own policy still blocks an HTML artifact's style blocks in the preview; style attributes work, and downloading shows the page fully. Nothing about what the hub serves changed.)
+
+### Message board and chat
+
+- **An easier-to-read board.** In the board view and the team chat, each post shows the sender's initials in their colour at the left, the name and time on one line, and the body beneath, with no boxes or bars. Posts in a row from one sender share the avatar. A single line break in a post now shows as a line break, and sender names meet WCAG AA contrast in both themes.
+- **Chat notices line up.** Coral's notices in the chat view (board and task nudges, health checks, "Interrupted") start at the left edge of the message column.
+
+### Coming next
+
+- **Gate phase 2 for Claude (off by default).** Built in, but not turned on: with the setting `gate_signals_claude` on, routine board nudges to a Claude agent wait until its turn ends, while a message that @-mentions it still goes at once. It stays off until a week of shadow results is clean. When it's turned on, a script's unsigned send to an agent in the middle of a turn waits instead of typing at once. `CORAL_GATE_MODE=screen` is the kill switch.
+
 ## v1.4.41 — Coral Hub moved to app.coralhub.dev
 
 **Coral Hub moved to app.coralhub.dev; run `coral cloud connect --force` to reconnect.** The old address, app.coralai.ai, no longer serves Coral Hub, so a Coral connected there is disconnected until you connect it again.
