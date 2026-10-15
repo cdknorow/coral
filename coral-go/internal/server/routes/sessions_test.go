@@ -2075,13 +2075,17 @@ func TestIsLocalClient(t *testing.T) {
 }
 
 func TestSessionsPendingTool(t *testing.T) {
-	server, _, _, ss := setupSessionsTestServer(t)
+	server, handler, _, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "claude-pending", AgentType: "claude", WorkingDir: "/tmp/test", SessionID: "pend-1"})
 	base := server.URL + "/api/sessions/live/claude-pending"
+	token := agentToken(t, handler, "pend-1", "claude-pending")
 
 	post := func(path, body string) int {
-		resp, err := http.Post(base+path, "application/json", bytes.NewBufferString(body))
+		req, _ := http.NewRequest("POST", base+path, bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(store.SessionTokenHeader, token)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		resp.Body.Close()
 		return resp.StatusCode
@@ -2203,7 +2207,10 @@ func TestSessionsEvents_CreateAndList(t *testing.T) {
 
 	// Create event
 	body := bytes.NewBufferString(`{"event_type": "tool_use", "summary": "Read file", "session_id": "test-evt-123", "tool_use_id": "tool-1"}`)
-	resp, err := http.Post(server.URL+"/api/sessions/live/claude-test-events/events", "application/json", body)
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/claude-test-events/events", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(store.SessionTokenHeader, agentToken(t, handler, "test-evt-123", "claude-test-events"))
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	var created store.AgentEvent
@@ -2304,6 +2311,33 @@ func TestSessionsSendKeys_RequireExactLiveTarget(t *testing.T) {
 }
 
 // setupSessionsTestServerWithConfig creates a test server with custom config and all session routes.
+// testIdentity tags requests the way the server's identity middleware does, without
+// refusing any: a valid agent session token becomes the verified session, and a
+// token-less request gets its caller kind (POST .../events needs them, #3479).
+func testIdentity(db *store.DB) func(http.Handler) http.Handler {
+	o := NewIdentityObserver(db, nil, nil)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if tok := r.Header.Get(store.SessionTokenHeader); tok != "" {
+				if owner, err := db.SessionTokenOwnerOf(r.Context(), tok); err == nil {
+					r = r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, owner))
+				}
+			} else {
+				r = r.WithContext(context.WithValue(r.Context(), callerKindKey{}, o.classify(r)))
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// agentToken mints the session token an agent's hooks send with every event (#3479).
+func agentToken(t *testing.T, h *SessionsHandler, sid, name string) string {
+	t.Helper()
+	tok, err := h.db.MintSessionToken(context.Background(), sid, name)
+	require.NoError(t, err)
+	return tok
+}
+
 func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httptest.Server, *SessionsHandler, *mockSessionTerminal, *store.SessionStore) {
 	t.Helper()
 
@@ -2326,6 +2360,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	ss := store.NewSessionStore(db)
 
 	r := chi.NewRouter()
+	r.Use(testIdentity(db))
 
 	// Session routes
 	r.Get("/api/sessions/live", handler.List)
@@ -2777,8 +2812,14 @@ func TestRequestGoal_AsksTheGeneratorAndNeverTypesIntoTheAgent(t *testing.T) {
 func TestCreateEvent_TypedGoalIsMarkedAsTheOperators(t *testing.T) {
 	server, handler, _, _ := setupSessionsTestServer(t)
 	sid := "33333333-3333-4333-8444-555555555552"
-	resp, err := http.Post(server.URL+"/api/sessions/live/coral-go/events", "application/json",
+	// As the dashboard sends it (#3479: the Operator's goal edit is the one event accepted
+	// without the agent's token).
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/coral-go/events",
 		strings.NewReader(`{"event_type":"goal","summary":"My goal","session_id":"`+sid+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", server.URL)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)

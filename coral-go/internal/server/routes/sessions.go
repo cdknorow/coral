@@ -4314,6 +4314,42 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "event_type and summary required")
 		return
 	}
+	// Who may post (#3479, Security): these events decide an agent's state, and from it
+	// when Coral types into the agent (#3475), so an event is accepted only from that
+	// agent's own hooks, identified by its session token, in every mode. The token alone
+	// decides the session: a session_id naming another one is refused, a missing one is
+	// filled in. The path's name is not checked; it comes from the hook's working folder
+	// and can name another agent in the same folder, so the session's own name is used.
+	// The one event the dashboard posts, a goal edited by the Operator, is also accepted
+	// from the Operator. Coral Hub can't reach this route (TierNever).
+	owner, hasToken := VerifiedSession(r.Context())
+	switch {
+	case hasToken:
+		if body.SessionID != "" && body.SessionID != owner.SessionID {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "identity_mismatch",
+				"message": "An agent can post events only for its own session"})
+			return
+		}
+		body.SessionID = owner.SessionID
+	case body.EventType == "goal" && humanInputCaller(r):
+	default:
+		// Logged once per claimed session (an agent's hooks post several events a
+		// minute), so an agent that predates session tokens is easy to spot.
+		if claimed := body.SessionID + "|" + name; refusedEventSenders.add(claimed) {
+			slog.Warn("agent events refused: no session token (restart the agent from Coral to restore its status)",
+				"session", name, "session_id", body.SessionID, "event_type", body.EventType, "tool", r.UserAgent())
+		}
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session_token_required",
+			"message": "Agent events come from the agent's own hooks, with its session token. Restart the agent from Coral if it predates session tokens."})
+		return
+	}
+	if !postableEventTypes[body.EventType] {
+		errBadRequest(w, "unknown event_type "+strconv.Quote(body.EventType))
+		return
+	}
+	if len(body.Summary) > maxEventSummaryBytes {
+		body.Summary = truncateUTF8(body.Summary, maxEventSummaryBytes)
+	}
 	if body.EventType == "tool_use" && body.DurationMs == nil && body.SessionID != "" {
 		if ms, ok := h.pending.durationMs(body.SessionID, body.ToolUseID, time.Now()); ok {
 			body.DurationMs = &ms
@@ -4356,6 +4392,9 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		djBytes, err := json.Marshal(body.DetailJSON)
 		if err != nil {
 			slog.Warn("failed to marshal detail_json", "error", err)
+		} else if len(djBytes) > maxEventDetailBytes {
+			errBadRequest(w, "detail_json is too large")
+			return
 		} else {
 			s := string(djBytes)
 			event.DetailJSON = &s
@@ -4368,11 +4407,52 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.notePendingToolEvent(body.SessionID, body.EventType, body.ToolUseID)
-	if sessionstate.Classify(body.Summary) == sessionstate.NotificationNeedsInput {
+	// Only the agent's own (token-verified) notification wakes auto-accept early; the sweep
+	// itself acts only on the state derived from such events.
+	if hasToken && sessionstate.Classify(body.Summary) == sessionstate.NotificationNeedsInput {
 		h.autoAccept.Kick() // an auto-accept session's permission prompt is answered now, not on the next sweep
 	}
 	writeJSON(w, http.StatusOK, created)
 }
+
+// refusedEventSenders remembers which claimed sessions were already logged as refused
+// (bounded: a flood of made-up names can't grow it without limit).
+var refusedEventSenders = &onceSet{max: 1000}
+
+type onceSet struct {
+	mu   sync.Mutex
+	seen map[string]bool
+	max  int
+}
+
+// add reports whether key is new. Once max keys are remembered it reports false for
+// every other key too, so the log stays quiet.
+func (s *onceSet) add(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.seen[key] || len(s.seen) >= s.max {
+		return false
+	}
+	if s.seen == nil {
+		s.seen = map[string]bool{}
+	}
+	s.seen[key] = true
+	return true
+}
+
+// postableEventTypes are the event types POST /api/sessions/live/{name}/events accepts
+// (#3479): the ones Coral's hooks send, and the dashboard's goal edit. Others are refused,
+// never mapped. Coral records its own events (auto_accept, retry, ...) directly.
+var postableEventTypes = map[string]bool{
+	"session_reset": true, "prompt_submit": true, "tool_use": true, "stop": true, "notification": true, "goal": true,
+}
+
+// Limits on a posted event: a hook's summary is short and its detail a small JSON object
+// (tool input previews, truncated responses).
+const (
+	maxEventSummaryBytes = 2000
+	maxEventDetailBytes  = 64 << 10
+)
 
 func (h *SessionsHandler) EventCounts(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")

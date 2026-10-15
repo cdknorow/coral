@@ -727,8 +727,9 @@ func TestAutoAcceptFieldsAlwaysPresent(t *testing.T) {
 func TestAutoAcceptKickedByPermissionNotification(t *testing.T) {
 	r := newAutoAcceptRig(t)
 	sid := r.agent(at.Claude, "dev", "")
+	token := agentToken(t, r.h, sid, "dev")
 	post := func(eventType, summary string) {
-		code, _ := r.post("/api/sessions/live/dev/events", map[string]any{"event_type": eventType, "summary": summary, "session_id": sid}, nil)
+		code, _ := r.post("/api/sessions/live/dev/events", map[string]any{"event_type": eventType, "summary": summary, "session_id": sid}, map[string]string{store.SessionTokenHeader: token})
 		require.Equal(t, http.StatusOK, code)
 	}
 	kicked := func() bool {
