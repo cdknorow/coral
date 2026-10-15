@@ -86,6 +86,11 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
+	underReview, err := h.bs.TasksUnderReview(ctx, name)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
 	trace.endPool("db_board_snapshot", h.db, "subscribers", len(subs), "tasks", len(tasks))
 	trace.begin("terminal_discovery")
 	runtime, err := h.discoverAgents(r)
@@ -172,17 +177,21 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 			activeWait = waitsBySubscriber[a.SubscriberID]
 		}
 		for _, task := range a.Tasks {
-			if task.Status == "in_progress" {
+			if task.Status == "in_progress" && !(task.Scope == "board" && underReview[task.ID] != "") {
 				a.TaskState = "active"
 			} else if a.TaskState == "" && task.Status == "blocked" {
 				a.TaskState = "blocked"
 			}
 		}
-		if activeWait != nil {
+		// "awaiting-review" only when one of its tasks really is under review (#3520, QA's bug
+		// bash F5): a registered wait alone (on a teammate's reply, say) isn't a review.
+		if a.TaskState != "active" && a.TaskState != "blocked" && hasTaskUnderReview(a.SubscriberID, personal, underReview) {
 			a.TaskState = "awaiting-review"
 		}
 		classifyAvailability(&a, s, live[s.SessionID], subscribed && sub.IsActive != 0, DeriveSessionState(input), len(input.Events) > 0, activeWait)
-		if a.TaskState == "active" {
+		// An agent parked on a wait while its task is in progress isn't idle: it said what it
+		// waits for.
+		if a.TaskState == "active" && activeWait == nil {
 			state := DeriveSessionState(input)
 			if !state.Working {
 				a.TaskState = "idle"
@@ -313,6 +322,22 @@ func availabilityHealthReport(tasks []board.Task) []string {
 		return []string{"No queue health issues detected."}
 	}
 	return report
+}
+
+// hasTaskUnderReview reports whether one of the agent's personal tasks, or a board task
+// assigned to its subscriber, is waiting for its completion review (#3520).
+func hasTaskUnderReview(subscriberID string, personal []store.AgentTask, underReview map[int64]string) bool {
+	for _, t := range personal {
+		if t.Status == "review_pending" {
+			return true
+		}
+	}
+	for _, assignee := range underReview {
+		if subscriberID != "" && assignee == subscriberID {
+			return true
+		}
+	}
+	return false
 }
 
 func openAvailabilityTask(status string) bool {

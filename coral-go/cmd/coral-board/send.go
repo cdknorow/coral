@@ -222,7 +222,12 @@ func runTargets(board, subscriberID, sessionName string, out io.Writer) error {
 		if result.Error == "" {
 			result.Error = strings.TrimSpace(string(data))
 		}
-		return fmt.Errorf("listing targets failed (%d): %s %s", status, result.Error, result.Message)
+		// The same shape as send's failure: "<code>: <message>" (#3520, QA's bug bash F4).
+		msg := fmt.Sprintf("listing targets failed (%d): %s", status, result.Error)
+		if result.Message != "" {
+			msg += ": " + result.Message
+		}
+		return fmt.Errorf("%s", msg)
 	}
 	if len(result.Targets) == 0 {
 		fmt.Fprintln(out, "No targets: the Coral Hub account owner hasn't linked this team to another Coral's team.")

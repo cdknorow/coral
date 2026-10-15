@@ -490,6 +490,26 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 // whyDraft: a paste send held because the input box holds text that isn't Coral's.
 const whyDraft = "a draft is in the input box (someone else's text); not adding to it"
 
+// releasedBecause says what ended a hold, from its last reason, for the delivery's log
+// line: a draft hold ends when the draft is cleared, not when a prompt closes (#3520).
+func releasedBecause(why string) string {
+	switch {
+	case why == whyDraft:
+		return "the draft cleared"
+	case strings.Contains(why, "input box"):
+		return "the input box was ready"
+	case why == "earlier sends still held":
+		return "the earlier sends were typed"
+	case strings.HasPrefix(why, "signals: starting"):
+		return "the agent started"
+	case why == "signals: in turn":
+		return "the turn ended"
+	case strings.HasPrefix(why, busyWhy):
+		return "the agent stopped working"
+	}
+	return "the prompt closed"
+}
+
 // boxState is inputBoxState for this send, where a box that seems to hold someone
 // else's text is checked once more on the styled screen: Claude's faint prompt
 // suggestion is an empty box (#3468). A "[Pasted" placeholder is never one.
@@ -768,7 +788,7 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		} else {
 			g.shadowForget(name, h.in.Key)
 			g.noteDelivered(name, h.in.Key)
-			slog.Info("automated input delivered after the prompt closed", "session", name, "sender", h.in.What, "held_for", g.now().Sub(h.heldAt).Round(time.Second).String())
+			slog.Info("automated input delivered after the hold ended", "session", name, "sender", h.in.What, "held_for", g.now().Sub(h.heldAt).Round(time.Second).String(), "released", releasedBecause(h.why))
 		}
 	}
 }

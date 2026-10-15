@@ -43,6 +43,12 @@ func git(ctx context.Context, workdir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// IsWorkTree reports whether dir is inside a git working tree (and git is installed).
+func IsWorkTree(ctx context.Context, dir string) bool {
+	out, err := git(ctx, dir, "rev-parse", "--is-inside-work-tree")
+	return err == nil && out == "true"
+}
+
 // ResolveGitRoot finds the git toplevel for a directory.
 // If the directory itself isn't a git repo, checks one level of subdirectories.
 // Returns the original workdir if no git repo is found.

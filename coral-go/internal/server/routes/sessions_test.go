@@ -3112,3 +3112,41 @@ func TestWriteBoardStateFile_HostsAndPorts(t *testing.T) {
 		})
 	}
 }
+
+// #3520 (QA's bug bash F6): killing an agent whose folder isn't a git checkout answered
+// changes_artifact_error "exit status 129", which the dashboard showed as a failure. No
+// checkout means no snapshot and no error; a snapshot that does fail says so plainly,
+// never with git's raw error.
+func TestSessionsKill_ChangesArtifactOutsideGitAndOnFailure(t *testing.T) {
+	coralDir := t.TempDir()
+	server, _, terminal, ss := setupSessionsTestServerWithConfig(t, config.Load(coralDir))
+	kill := func(dir, sessionID string) map[string]any {
+		t.Helper()
+		name := "codex-" + sessionID
+		terminal.addSession(name, dir)
+		require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{
+			SessionID: sessionID, AgentType: "codex", AgentName: name, WorkingDir: dir,
+		}))
+		resp := postJSON(t, server.URL+"/api/sessions/live/"+name+"/kill", map[string]string{"agent_type": "codex", "session_id": sessionID})
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var result map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		assert.False(t, terminal.HasSession(context.Background(), name), "killed either way")
+		return result
+	}
+
+	plain := t.TempDir() // no repository anywhere above it
+	result := kill(plain, "00000000-0000-0000-0000-000000000351")
+	assert.Empty(t, result["changes_artifact"])
+	assert.Empty(t, result["changes_artifact_error"], "a folder that isn't a checkout is not an error")
+
+	broken := t.TempDir()
+	out, err := exec.Command("git", "-C", broken, "init").CombinedOutput()
+	require.NoError(t, err, "%s", out)
+	require.NoError(t, os.WriteFile(filepath.Join(broken, ".git", "index"), []byte("not an index"), 0644))
+	result = kill(broken, "00000000-0000-0000-0000-000000000352")
+	assert.Empty(t, result["changes_artifact"])
+	assert.Equal(t, changesArtifactProblem, result["changes_artifact_error"])
+	assert.NotContains(t, result["changes_artifact_error"], "exit status")
+}

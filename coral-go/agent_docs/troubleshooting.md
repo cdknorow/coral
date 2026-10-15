@@ -446,7 +446,8 @@ first prompt waits as long as the agent runs. Killing, restarting or resuming an
 what was held for it, so nothing meant for the old process reaches the new one. If a prompt opens
 in the moment between a message's text and its Enter, the Enter is held too and pressed after
 you answer. `coral.log` logs each hold and delivery ("automated input held",
-"automated input delivered after the prompt closed").
+"automated input delivered after the hold ended", with what ended it: the prompt closed,
+the draft cleared, the turn ended, ...).
 
 ## Performance
 

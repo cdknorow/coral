@@ -2253,6 +2253,9 @@ func (h *SessionsHandler) persistSessionChanges(ctx context.Context, sessionID, 
 	if workdir == "" {
 		return "", fmt.Errorf("could not determine working directory")
 	}
+	if !gitutil.IsWorkTree(ctx, workdir) {
+		return "", errNoGitCheckout
+	}
 	diff, err := h.generateChangesDiff(ctx, workdir)
 	if err != nil {
 		return "", err
@@ -2263,6 +2266,15 @@ func (h *SessionsHandler) persistSessionChanges(ctx context.Context, sessionID, 
 	}
 	return path, nil
 }
+
+// errNoGitCheckout: the session's folder isn't a git checkout, so there are no changes
+// to snapshot. Not a failure: the kill answers with no artifact and no error (#3520).
+var errNoGitCheckout = errors.New("not a git checkout")
+
+// changesArtifactProblem is what the kill answer (and the dashboard's toast) says when
+// the snapshot failed: a plain sentence, never git's raw error, which goes to the log
+// (#3520, QA's bug bash F6: "exit status 129").
+const changesArtifactProblem = "git couldn't produce the diff (details in coral.log)"
 
 // SessionChangesArtifact serves a patch captured before a session was killed.
 // GET /api/sessions/{sessionID}/changes.diff
@@ -2775,8 +2787,10 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 	artifactError := ""
 	if body.SessionID != "" && body.AgentType != at.Terminal {
 		artifactCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
-		if path, err := h.persistSessionChanges(artifactCtx, body.SessionID, sessionWorkdir); err != nil {
-			artifactError = err.Error()
+		if path, err := h.persistSessionChanges(artifactCtx, body.SessionID, sessionWorkdir); errors.Is(err, errNoGitCheckout) {
+			slog.Info("no changes artifact: the session's folder isn't a git checkout", "session_id", body.SessionID)
+		} else if err != nil {
+			artifactError = changesArtifactProblem
 			slog.Warn("persist session changes artifact failed", "session_id", body.SessionID, "error", err)
 		} else {
 			changesArtifact = path
@@ -5925,7 +5939,7 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	for _, ls := range sessions {
 		if ls.AgentType != at.Terminal {
 			artifactCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
-			if _, err := h.persistSessionChanges(artifactCtx, ls.SessionID, ls.WorkingDir); err != nil {
+			if _, err := h.persistSessionChanges(artifactCtx, ls.SessionID, ls.WorkingDir); err != nil && !errors.Is(err, errNoGitCheckout) {
 				slog.Warn("persist team session changes artifact failed", "session_id", ls.SessionID, "error", err)
 			}
 			cancel()

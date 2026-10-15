@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -335,4 +336,52 @@ func TestTeamAvailabilityWithActiveWait(t *testing.T) {
 	require.Equal(t, "Orchestrator", result.Agents[0].WaitingOn.TargetID)
 	require.Equal(t, "Waiting for message from 'Orchestrator' (waiting for review)", result.Agents[0].Reason)
 	require.Equal(t, 1, result.Summary["waiting"])
+	// #3520 (QA's bug bash F5): a wait alone is not a review. The task is in progress.
+	require.Equal(t, "active", result.Agents[0].TaskState)
+}
+
+// #3520 (QA's bug bash F5): "awaiting-review" only when one of the agent's tasks is
+// waiting for its completion review; a registered wait with no task says nothing.
+func TestTeamAvailabilityAwaitingReviewNeedsATaskUnderReview(t *testing.T) {
+	_, h, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	team := "review-state-team"
+	sid := uuid.NewString()
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "Worker", AgentType: "claude", BoardName: &team, WorkingDir: "/tmp"}))
+	terminal.addSession("claude-"+sid, "/tmp")
+	_, err := h.bs.Subscribe(ctx, team, "Lead", "Orchestrator", "lead-session", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.Subscribe(ctx, team, "Worker", "Developer", "claude-"+sid, nil, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.RegisterWait(ctx, team, "Worker", "claude-"+sid, "message", "Lead", "", 10*time.Minute)
+	require.NoError(t, err)
+
+	router := chi.NewRouter()
+	router.Get("/api/teams/detail/{name}/availability", h.TeamAvailability)
+	state := func() string {
+		t.Helper()
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", "/api/teams/detail/"+team+"/availability", nil))
+		require.Equal(t, 200, w.Code)
+		var result struct {
+			Agents []availableAgent `json:"agents"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+		for _, a := range result.Agents {
+			if a.SubscriberID == "Worker" {
+				return a.TaskState
+			}
+		}
+		t.Fatal("no Worker in the answer")
+		return ""
+	}
+	assert.Empty(t, state(), "a wait with no task under review is not awaiting-review")
+
+	task, err := h.bs.CreateTask(ctx, team, "Build", "", "medium", "Lead", "Worker")
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, team, "Worker", task.ID)
+	require.NoError(t, err)
+	_, err = h.bs.SubmitCompletionReview(ctx, team, task.ID, "Worker", "done", "success", "review pending", []board.TaskArtifact{{Name: "build", Content: "candidate"}})
+	require.NoError(t, err)
+	assert.Equal(t, "awaiting-review", state(), "its task is under review")
 }

@@ -1862,6 +1862,29 @@ func (s *Store) ListOpenTasks(ctx context.Context, project string) ([]Task, erro
 	return tasks, nil
 }
 
+// TasksUnderReview returns a board's tasks waiting for their completion review, by id,
+// with their assignees: a candidate submitted for review (still in_progress, or
+// review_pending once the worker's slot is released). The team status says
+// "awaiting-review" only for these (#3520).
+func (s *Store) TasksUnderReview(ctx context.Context, project string) (map[int64]string, error) {
+	var rows []struct {
+		ID         int64  `db:"id"`
+		AssignedTo string `db:"assigned_to"`
+	}
+	err := s.reader().SelectContext(ctx, &rows,
+		`SELECT t.id, COALESCE(t.assigned_to, '') AS assigned_to FROM board_tasks t
+		 WHERE t.board_id = ? AND (t.status = 'review_pending' OR (t.status = 'in_progress' AND EXISTS (
+		   SELECT 1 FROM task_workflows w WHERE w.task_id = t.id AND json_extract(w.data, '$.completion_review') IS NOT NULL)))`, project)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]string, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.AssignedTo
+	}
+	return out, nil
+}
+
 // ListAllTasks returns the most recent tasks across all boards.
 func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 	if limit <= 0 {

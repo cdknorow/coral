@@ -159,3 +159,30 @@ func TestSendAddressDoesNotSuggestARetryWhenTheHubDoesNotRelay(t *testing.T) {
 		t.Fatalf("a 503 keeps the retry hint: %v", err)
 	}
 }
+
+// #3520 (QA's bug bash F4): targets' failure reads "<code>: <message>", as send's does,
+// and an answer with no message has no trailing separator.
+func TestTargetsFailureFormat(t *testing.T) {
+	isolateBoardEnv(t)
+	reply := `{"ok":false,"error":"not_linked","message":"this Coral isn't connected to Coral Hub"}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(reply))
+	}))
+	defer ts.Close()
+	oldURL := serverURL
+	serverURL = ts.URL
+	defer func() { serverURL = oldURL }()
+
+	err := runTargets("alpha", "Orchestrator", "s", &bytes.Buffer{})
+	want := "listing targets failed (503): not_linked: this Coral isn't connected to Coral Hub"
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %q", err, want)
+	}
+	reply = `{"ok":false,"error":"not_orchestrator"}`
+	err = runTargets("alpha", "Worker", "s", &bytes.Buffer{})
+	if want = "listing targets failed (503): not_orchestrator"; err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %q", err, want)
+	}
+}
