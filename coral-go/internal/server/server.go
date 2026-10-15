@@ -877,7 +877,27 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/agent/{sessionID}", s.serveAgentPopout)
 	r.Get("/agent/{server}/{sessionID}", s.serveAgentPopout)
 	r.Get("/", s.serveIndex)
+	for _, p := range DashboardPagePaths {
+		r.Get(p, s.serveIndex)
+	}
 	return r
+}
+
+// DashboardPagePaths are the dashboard's page routes (#3532): each serves the same shell as
+// "/", GET only, behind the same middleware. The client router reads the view from the path
+// and validates its segments; the server doesn't. An explicit list, never a NotFound
+// catch-all, so a miss under /api, /ws, /auth or /static stays a 404 that isn't HTML.
+// Coral Hub's webui serves the same families (the contract in #3532's hub spec).
+var DashboardPagePaths = []string{
+	"/agents", "/agents/*",
+	"/chats", "/chats/{id}",
+	"/team/*",
+	"/board/*",
+	"/workflows", "/workflows/*",
+	"/jobs",
+	"/analytics",
+	"/docs", "/docs/{name}",
+	"/servers", "/servers/{id}",
 }
 
 // noCacheHandler wraps an http.Handler to set Cache-Control headers that force
@@ -917,6 +937,9 @@ const dashboardCSP = "img-src 'self' data: blob:; base-uri 'self'; object-src 'n
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", dashboardCSP)
+	// Team, board and session names are in the page path now (#3532): a link out of the
+	// dashboard never carries them in Referer.
+	w.Header().Set("Referrer-Policy", "same-origin")
 	purgePreSandboxCache(w, r)
 
 	if s.indexTmpl == nil {
@@ -953,6 +976,7 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", dashboardCSP)
+	w.Header().Set("Referrer-Policy", "same-origin") // as the dashboard shell (#3532)
 	if s.indexTmpl == nil {
 		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))
 		return
