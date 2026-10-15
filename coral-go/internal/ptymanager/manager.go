@@ -14,6 +14,9 @@ import (
 type PTYBackend struct {
 	mu       sync.RWMutex
 	sessions map[string]*session
+	// humanAt: when a person last typed in each session's terminal (SendHumanInput),
+	// for the gate's PTY rule: the box can't be read from raw output (#3482, P3).
+	humanAt map[string]time.Time
 }
 
 // NewPTYBackend creates a new PTY-based terminal backend.
@@ -77,6 +80,30 @@ func (m *PTYBackend) Restart(name, command string) error {
 
 	// Spawn new session with default terminal size
 	return m.Spawn(name, agentType, workDir, sessionID, command, 200, 50)
+}
+
+// HumanInputSender is implemented by backends that tell a person's keystrokes (the
+// dashboard's terminal) from Coral's own input.
+type HumanInputSender interface {
+	SendHumanInput(name string, data []byte) error
+}
+
+// SendHumanInput writes a person's keystrokes, recording when they typed.
+func (m *PTYBackend) SendHumanInput(name string, data []byte) error {
+	m.mu.Lock()
+	if m.humanAt == nil {
+		m.humanAt = map[string]time.Time{}
+	}
+	m.humanAt[name] = time.Now()
+	m.mu.Unlock()
+	return m.SendInput(name, data)
+}
+
+// HumanInputSince reports whether a person typed in the session's terminal after t.
+func (m *PTYBackend) HumanInputSince(name string, t time.Time) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.humanAt[name].After(t)
 }
 
 func (m *PTYBackend) SendInput(name string, data []byte) error {

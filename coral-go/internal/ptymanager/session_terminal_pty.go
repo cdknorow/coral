@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
@@ -174,6 +175,12 @@ func (p *PTYSessionTerminal) SendToTarget(_ context.Context, target, command str
 
 func (p *PTYSessionTerminal) SendTerminalInput(_ context.Context, target, data string) error {
 	return p.backend.SendInput(p.resolveSessionKey(target), []byte(data))
+}
+
+// HumanInputSince implements HumanInputReader: whether a person typed in the agent's
+// terminal after t (the gate's PTY rule, #3482).
+func (p *PTYSessionTerminal) HumanInputSince(name string, t time.Time) bool {
+	return p.backend.HumanInputSince(p.resolveSessionKey(name), t)
 }
 
 func (p *PTYSessionTerminal) CreateSession(_ context.Context, name, workDir string) error {

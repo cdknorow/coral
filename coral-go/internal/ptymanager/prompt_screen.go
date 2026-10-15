@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/logparse"
@@ -29,6 +30,81 @@ var (
 	// Footers drawn under an open menu or approval prompt.
 	promptFooterRe = regexp.MustCompile(`(?i)(enter to (select|confirm|submit)|esc to (cancel|go back|reject|interrupt and reject)|↑/↓ to (navigate|select)|press enter to (confirm|continue))`)
 )
+
+// markedOptionRe: a line starting with a selection marker and text ("❯ No, exit",
+// "> Yes, I trust this folder"); its text column is the end of group 1.
+var markedOptionRe = regexp.MustCompile(`^(\s*[❯›>]\s+)\S`)
+
+// menuNavRe: a menu footer menuFooter doesn't cover (agy: "↑/↓ Navigate · enter Confirm").
+var menuNavRe = regexp.MustCompile(`(?i)↑/↓ navigate|enter confirm`)
+
+// unnumberedMenu reports a menu whose options carry no numbers (Claude's and agy's
+// trust screens, #3484's corpus): the last marked line, unnumbered, with no input
+// box drawn below it, an unmarked option aligned with its text just above or below
+// it, and a menu footer under it with no rule in between. An input box (even a
+// wrapped draft) is closed by a rule before its footer, so it never matches.
+func unnumberedMenu(lines []string) bool {
+	for i := len(lines) - 1; i >= 0; i-- {
+		m := markedOptionRe.FindStringSubmatchIndex(lines[i])
+		if m == nil {
+			continue
+		}
+		if menuOptionRe.MatchString(lines[i]) {
+			return false // numbered: PromptOnScreen's own menu rule
+		}
+		for _, l := range lines[i+1:] {
+			if isInputBoxLine(l) {
+				return false // an input box drawn below: the menu was answered
+			}
+		}
+		col := utf8.RuneCountInString(lines[i][:m[3]])
+		sibling := false
+		for _, j := range []int{i - 1, i + 1} {
+			if j < 0 || j >= len(lines) {
+				continue
+			}
+			l := lines[j]
+			t := strings.TrimSpace(l)
+			if t == "" || isRuleLine(t) || markedOptionRe.MatchString(l) {
+				continue
+			}
+			if indent(l) == col {
+				sibling = true
+			}
+		}
+		if !sibling {
+			return false
+		}
+		for _, l := range lines[i+1:] {
+			t := strings.TrimSpace(l)
+			if isRuleLine(t) {
+				return false
+			}
+			if promptFooterRe.MatchString(t) || menuNavRe.MatchString(t) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// isRuleLine: a horizontal rule drawn around an input box.
+func isRuleLine(t string) bool {
+	return strings.HasPrefix(t, "─") || strings.HasPrefix(t, "━") || strings.HasPrefix(t, "╰") || strings.HasPrefix(t, "╭")
+}
+
+// sgrStyleRe: a Select Graphic Rendition sequence (colour, bold, faint...).
+var sgrStyleRe = regexp.MustCompile(`\x1b\[[0-9;:]*m`)
+
+// screenText is a screen's text for the detectors. Styling (SGR) is removed with no
+// trace: a PTY's raw output styles single characters (agy's shimmer draws
+// "⣷  Running command..." one coloured letter at a time), and a space for each would
+// break the words the detectors read (#3484, QA). Other escapes, cursor moves among
+// them, still count as a space, as logparse.StripANSI has them.
+func screenText(screen string) string {
+	return logparse.StripANSI(sgrStyleRe.ReplaceAllString(screen, ""))
+}
 
 // footerWhy starts PromptOnScreen's reason when only a prompt's footer was seen.
 const footerWhy = "prompt footer: "
@@ -68,8 +144,11 @@ func isPromptHold(why string) bool {
 // A numbered list in an agent's reply is not a prompt: a menu has at least two
 // options, one of them marked as selected, at the bottom of the screen.
 func PromptOnScreen(screen string) (bool, string) {
-	lines := tailLines(logparse.StripANSI(screen), promptScreenLines)
+	lines := tailLines(screenText(screen), promptScreenLines)
 	all := lines
+	if unnumberedMenu(all) {
+		return true, "selection menu"
+	}
 	// An open menu or approval replaces the agent's input box. One drawn below
 	// a menu means the menu was answered (a terminal that didn't clear it still
 	// shows it above): only what is below the last input box counts.
@@ -139,7 +218,7 @@ func InputBoxOnScreen(screen string) bool {
 	if open, _ := PromptOnScreen(screen); open {
 		return false
 	}
-	for _, line := range tailLines(logparse.StripANSI(screen), 8) {
+	for _, line := range tailLines(screenText(screen), 8) {
 		if isInputBoxLine(line) {
 			return true
 		}

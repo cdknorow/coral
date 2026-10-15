@@ -810,7 +810,13 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 			switch msg.Type {
 			case "terminal_input":
 				if msg.Data != "" {
-					sendErr = h.backend.SendInput(name, []byte(msg.Data))
+					// A person's keystrokes: the PTY backend records them for the gate
+					// (no automated text joins a draft it can't read, #3482).
+					if hs, ok := h.backend.(ptymanager.HumanInputSender); ok {
+						sendErr = hs.SendHumanInput(name, []byte(msg.Data))
+					} else {
+						sendErr = h.backend.SendInput(name, []byte(msg.Data))
+					}
 				}
 			case "terminal_resize":
 				if msg.Cols >= 10 {

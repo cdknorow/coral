@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -196,4 +197,32 @@ func TestAntigravityBusyFooterIsBusyNotAPrompt(t *testing.T) {
 		assert.True(t, open, f)
 		assert.True(t, isPromptHold(why), "%s: %s", f, why)
 	}
+}
+
+// #3484's findings, closed in #3482: the unnumbered menus of the trust screens are
+// prompts (TestScreenCorpus covers the real captures); input boxes with a wrapped
+// draft above a footer are not; and a PTY's per-character styling doesn't break the
+// words the detectors read.
+func TestUnnumberedMenusAndStyledText(t *testing.T) {
+	rule := strings.Repeat("─", 40)
+	for name, screen := range map[string]string{
+		"claude wrapped draft":       rule + "\n❯ a long draft that wraps\n  onto a second line\n" + rule + "\n  ⏵⏵ auto mode on (shift+tab to cycle)\n",
+		"agy wrapped draft, working": "⣷  Working...\n" + rule + "\n> a draft that\n  wraps\n" + rule + "\nesc to cancel      Gemini 3.8 Flash · high\n",
+		"a quoted reply, no footer":  "⏺ The screen said:\n  > Yes, I trust this folder\n    No, exit\n\n" + rule + "\n❯ \n" + rule + "\n",
+	} {
+		open, why := PromptOnScreen(screen)
+		if open {
+			assert.False(t, isPromptHold(why), "%s: %s", name, why)
+		}
+	}
+
+	// agy's shimmer in a PTY's raw output: one colour per character.
+	var b strings.Builder
+	for _, r := range "Running command..." {
+		b.WriteString("\x1b[38;5;" + strconv.Itoa(240+int(r)%10) + "m" + string(r))
+	}
+	raw := "⣷  " + b.String() + "\x1b[0m\n" + rule + "\n>\n" + rule + "\nesc to cancel      Gemini 3.8 Flash · high\n"
+	open, why := PromptOnScreen(raw)
+	assert.True(t, open)
+	assert.True(t, strings.HasPrefix(why, busyWhy), "styled per character, still busy: %s", why)
 }

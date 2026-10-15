@@ -245,9 +245,26 @@ func WaitingOnUser(ctx context.Context, term any, name, agentType, sessionID str
 	return false, ""
 }
 
-// waiting reports whether this send must wait: the agent is waiting on the
-// user (prompt), or (RequireInputBox) its input box isn't on screen yet.
+// waiting reports whether this send must wait, why, and whether it is a request to
+// the user. It runs the screen rule and, where the session has signals, the signal
+// rule (#3482): the decision follows the screen rule and the signal rule is logged
+// next to it (shadow mode), unless CORAL_GATE_MODE=signals.
 func (in AutomatedInput) waiting(ctx context.Context) (waiting bool, why string, prompt bool) {
+	waiting, why, prompt = in.screenWaiting(ctx)
+	sWait, sWhy, sPrompt, ok := in.signalWaiting(ctx)
+	if !ok {
+		return waiting, why, prompt
+	}
+	gate.shadowLog(in, waiting, why, sWait, sWhy)
+	if signalsMode() {
+		return sWait, sWhy, sPrompt
+	}
+	return waiting, why, prompt
+}
+
+// screenWaiting is the screen rule: the agent is waiting on the user (prompt), or
+// (RequireInputBox) its input box isn't on screen yet.
+func (in AutomatedInput) screenWaiting(ctx context.Context) (waiting bool, why string, prompt bool) {
 	if waiting, why := WaitingOnUser(ctx, in.Term, in.Name, in.AgentType, in.SessionID); waiting {
 		return true, why, isPromptHold(why)
 	}
@@ -294,6 +311,7 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 	if enterHeld {
 		return Held, nil
 	}
+	gate.shadowForget(in.Name, in.Key)
 	return Sent, err
 }
 
@@ -591,9 +609,12 @@ type inputGate struct {
 	notes       notifier
 	// gens counts DropHeld calls per session (AutomatedInput.gen).
 	gens map[string]uint64
+	// shadowLast: each held send's last logged screen and signal decisions (shadow
+	// mode logs a send's decisions only when they change).
+	shadowLast map[string]string
 }
 
-var gate = &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, now: time.Now,
+var gate = &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, shadowLast: map[string]string{}, now: time.Now,
 	timings: gateTimings{tooLong: 2 * time.Minute, expiry: time.Hour, every: 2 * time.Second}}
 
 // setTimings replaces the gate's intervals and returns the previous ones (tests).
@@ -735,6 +756,7 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		} else if err != nil {
 			slog.Warn("automated input: a held send failed", "session", name, "sender", h.in.What, "error", err)
 		} else {
+			g.shadowForget(name, h.in.Key)
 			slog.Info("automated input delivered after the prompt closed", "session", name, "sender", h.in.What, "held_for", g.now().Sub(h.heldAt).Round(time.Second).String())
 		}
 	}
@@ -810,6 +832,7 @@ func DropHeld(name, why string) {
 	n := len(gate.held[name])
 	delete(gate.held, name)
 	gate.gens[name]++
+	gate.shadowForgetSessionLocked(name)
 	gate.mu.Unlock()
 	gate.checkEnded(name)
 	if n > 0 {

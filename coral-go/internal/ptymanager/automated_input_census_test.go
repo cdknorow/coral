@@ -53,6 +53,7 @@ var allowedSenders = map[string]string{
 	"internal/background/runtime_pty.go\tPTYRuntime.SendInput\tSendLine":                                             "primitive",
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendInput\tSendKeys":                                           "primitive",
 	"internal/ptymanager/manager.go\tPTYBackend.SendLine\tSendInput":                                                 "primitive",
+	"internal/ptymanager/manager.go\tPTYBackend.SendHumanInput\tSendInput":                                           "a person's keystrokes (the dashboard terminal), recorded for the gate's PTY rule (#3482)",
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendInput\tSendLine":                            "primitive",
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendPrompt\tSendPrompt":                         "primitive",
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendRawInput\tSendInput":                        "primitive",

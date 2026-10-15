@@ -8,7 +8,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
 )
 
@@ -51,7 +50,7 @@ func inputBoxText(screen string) (text string, ok bool) {
 	if open, _ := PromptOnScreen(screen); open {
 		return "", false
 	}
-	lines := tailLines(logparse.StripANSI(screen), 12)
+	lines := tailLines(screenText(screen), 12)
 	start := -1
 	for i := len(lines) - 1; i >= 0; i-- {
 		if isInputBoxLine(lines[i]) {

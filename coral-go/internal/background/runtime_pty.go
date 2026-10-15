@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"time"
 
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -11,6 +12,12 @@ import (
 // Used on Windows (ConPTY) or macOS App Store (no tmux available).
 type PTYRuntime struct {
 	backend *ptymanager.PTYBackend
+}
+
+// HumanInputSince implements ptymanager.HumanInputReader: whether a person typed in
+// the agent's terminal after t (the gate's PTY rule, #3482).
+func (r *PTYRuntime) HumanInputSince(name string, t time.Time) bool {
+	return r.backend.HumanInputSince(name, t)
 }
 
 // NewPTYRuntime creates a PTYRuntime wrapping the given PTY backend.
