@@ -57,7 +57,12 @@ func openLogAppend(path string) (*os.File, error) {
 		return nil, err
 	}
 	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() || linkCount(fi) > 1 {
+	if err != nil || !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, errNotRegularLog
+	}
+	// The count comes from the handle (Windows's FileInfo has none, #3615); unknown is refused.
+	if n, ok := safefs.LinkCount(f, fi); !ok || n > 1 {
 		f.Close()
 		return nil, errNotRegularLog
 	}

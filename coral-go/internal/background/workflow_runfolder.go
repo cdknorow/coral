@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 // A workflow run's folder (#3587). Every step gets the run folder's path in its
@@ -160,8 +162,11 @@ func (sf stepFiles) appendNote(name, line string) {
 	defer f.Close()
 	// Never a file with another name somewhere else: a step could have replaced stderr.txt
 	// with a hard link to an outside file it owns (#3587, Security's SHOULD 1).
-	if fi, err := f.Stat(); err == nil && fi.Mode().IsRegular() && fileLinks(fi) == 1 {
-		fmt.Fprintln(f, line)
+	// The count comes from the handle (Windows's FileInfo has none, #3615); unknown is refused.
+	if fi, err := f.Stat(); err == nil && fi.Mode().IsRegular() {
+		if n, ok := safefs.LinkCount(f, fi); ok && n == 1 {
+			fmt.Fprintln(f, line)
+		}
 	}
 }
 
