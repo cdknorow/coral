@@ -170,6 +170,32 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, "--session-id", params.SessionID)
 	}
 
+	settingsFile := claudeSettingsFile(params, effectiveID)
+	parts = append(parts, "--settings", settingsFile)
+
+	if len(params.Flags) > 0 {
+		parts = append(parts, params.Flags...)
+	}
+
+	parts = appendPermissionMode(parts, params)
+
+	// Pass the prompt as a CLI positional argument so the agent starts immediately
+	// without relying on fragile tmux send-keys delivery.
+	cliPrompt := BuildBoardActionPrompt(params.BoardName, params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
+	if cliPrompt != "" {
+		promptFile := writeTempFile("prompt", effectiveID, "txt", []byte(cliPrompt))
+		arg := FormatPromptFileArg(promptFile)
+		raw = append(raw, arg)
+		parts = append(parts, arg)
+	}
+
+	parts, raw = withSessionToken(parts, raw, params, "claude")
+	return ShellJoin(parts, raw...)
+}
+
+// claudeSettingsFile writes the agent's merged settings (hooks, system prompt, permissions,
+// tools, MCP servers, Coral's environment) to a temp file and returns its path.
+func claudeSettingsFile(params LaunchParams, effectiveID string) string {
 	// Build merged settings with hooks and system prompt
 	merged := buildMergedSettings(params.WorkingDir, params.Hooks)
 
@@ -245,14 +271,11 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// Write settings to temp file using writeTempFile for safe creation
 	data, _ := json.MarshalIndent(merged, "", "  ")
-	settingsFile := writeTempFile("settings", effectiveID, "json", append(data, '\n'))
-	parts = append(parts, "--settings", settingsFile)
+	return writeTempFile("settings", effectiveID, "json", append(data, '\n'))
+}
 
-	if len(params.Flags) > 0 {
-		parts = append(parts, params.Flags...)
-	}
-
-	// Add --permission-mode from settings only if Flags didn't already include it
+// appendPermissionMode adds --permission-mode from the settings unless Flags already has it.
+func appendPermissionMode(parts []string, params LaunchParams) []string {
 	if params.PermissionMode != "" && params.PermissionMode != "default" {
 		hasPermMode := false
 		for _, f := range params.Flags {
@@ -266,18 +289,18 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 		}
 	}
 
-	// Pass the prompt as a CLI positional argument so the agent starts immediately
-	// without relying on fragile tmux send-keys delivery.
-	cliPrompt := BuildBoardActionPrompt(params.BoardName, params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
-	if cliPrompt != "" {
-		promptFile := writeTempFile("prompt", effectiveID, "txt", []byte(cliPrompt))
-		arg := FormatPromptFileArg(promptFile)
-		raw = append(raw, arg)
-		parts = append(parts, arg)
-	}
+	return parts
+}
 
-	parts, raw = withSessionToken(parts, raw, params, "claude")
-	return ShellJoin(parts, raw...)
+// PrintArgs is the argument list for a non-interactive "claude --print" run with the same
+// settings a launch gets (hooks, permissions, tools, MCP), as real argv, not a shell line:
+// no session id, and no prompt, which the caller sends on stdin (#3521). A workflow step
+// used to split BuildLaunchCommand's shell line on spaces, so Claude got env-var names and
+// a "$(cat ...)" fragment instead of the prompt and settings.
+func (a *ClaudeAgent) PrintArgs(params LaunchParams) []string {
+	args := []string{"--print", "--no-session-persistence", "--settings", claudeSettingsFile(params, params.SessionID)}
+	args = append(args, params.Flags...)
+	return appendPermissionMode(args, params)
 }
 
 func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {

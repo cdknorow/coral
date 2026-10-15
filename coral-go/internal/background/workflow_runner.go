@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -560,58 +561,46 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
-	// Build the full launch command via the agent package when tools/capabilities
-	// are present, so settings (permissions, tools, MCP) are properly translated.
+	// Claude gets the step's prompt on stdin, never in argv, where any local user could
+	// read it in the process list: it can carry earlier steps' output or board content
+	// (#3521). With tools, capabilities or MCP servers, the settings come from the agent
+	// package as real argv (ClaudeAgent.PrintArgs); splitting the launch command's shell
+	// line on spaces gave Claude env-var names and a "$(cat ...)" fragment instead.
 	hasCfg := len(agentCfg.Tools) > 0 || agentCfg.Capabilities != nil || agentCfg.MCPServers != nil
 	var args []string
+	var stdin io.Reader
 
-	if hasCfg && agentCfg.AgentType == "claude" {
-		// Use BuildLaunchCommand for full settings support, then inject --print
-		ag := agent.GetAgent(agentCfg.AgentType)
-		params := agent.LaunchParams{
-			WorkingDir: repoPath,
-			Flags:      agentCfg.Flags,
-			Prompt:     prompt,
-			Hooks:      filterHooksForClaude(stepHooks),
-		}
-		if agentCfg.Capabilities != nil {
-			var caps agent.Capabilities
-			json.Unmarshal(agentCfg.Capabilities, &caps)
-			params.Capabilities = &caps
-		}
-		if len(agentCfg.Tools) > 0 {
-			params.Tools = agentCfg.Tools
-		}
-		if agentCfg.MCPServers != nil {
-			var servers map[string]any
-			json.Unmarshal(agentCfg.MCPServers, &servers)
-			params.MCPServers = servers
-		}
-		// BuildLaunchCommand returns a full command string; parse it to extract args
-		fullCmd := ag.BuildLaunchCommand(params)
-		parts := strings.Fields(fullCmd)
-		if len(parts) > 1 {
-			// Filter out --session-id and its value (not valid for --print mode)
-			var filtered []string
-			for i := 1; i < len(parts); i++ {
-				if parts[i] == "--session-id" || parts[i] == "-s" {
-					i++ // skip the value too
-					continue
-				}
-				if strings.HasPrefix(parts[i], "--session-id=") {
-					continue
-				}
-				filtered = append(filtered, parts[i])
+	if agentCfg.AgentType == "claude" {
+		if hasCfg {
+			params := agent.LaunchParams{
+				WorkingDir: repoPath,
+				Flags:      agentCfg.Flags,
+				Hooks:      filterHooksForClaude(stepHooks),
 			}
-			args = filtered
+			if agentCfg.Capabilities != nil {
+				var caps agent.Capabilities
+				json.Unmarshal(agentCfg.Capabilities, &caps)
+				params.Capabilities = &caps
+			}
+			if len(agentCfg.Tools) > 0 {
+				params.Tools = agentCfg.Tools
+			}
+			if agentCfg.MCPServers != nil {
+				var servers map[string]any
+				json.Unmarshal(agentCfg.MCPServers, &servers)
+				params.MCPServers = servers
+			}
+			args = (&agent.ClaudeAgent{}).PrintArgs(params)
+		} else {
+			args = append([]string{"--print", "--no-session-persistence"}, agentCfg.Flags...)
 		}
-		// Insert --print --no-session-persistence at the beginning
-		args = append([]string{"--print", "--no-session-persistence"}, args...)
 		if agentCfg.Model != "" {
-			args = append([]string{"--model", agentCfg.Model}, args...)
+			args = append(args, "--model", agentCfg.Model)
 		}
+		stdin = strings.NewReader(prompt)
 	} else {
-		// Simple --print mode (no tools needed)
+		// Other CLIs: the prompt stays an argument until each one's stdin handling is
+		// verified against the real CLI (#3521 follow-up). These flags are Claude's.
 		args = []string{"--print", "--no-session-persistence"}
 		if agentCfg.Model != "" {
 			args = append(args, "--model", agentCfg.Model)
@@ -621,6 +610,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	}
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
+	cmd.Stdin = stdin
 	cmd.Dir = repoPath
 	cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
 	configureChildProcess(cmd)
