@@ -352,8 +352,15 @@ var operatorOnlyRoutes = map[string]string{
 	"GET /api/auth/sessions":                  "list the signed-in browsers",
 	"GET /api/auth/setup-code":                "read the password setup code",
 	"POST /api/auth/sessions/sign-out-others": "sign out other browsers",
-	"DELETE /api/board/{project}":             "delete a board",
-	"PATCH /api/board/{project}":              "rename a board",
+	"DELETE /api/auth/sessions/{id}":          "sign one browser out",
+	// Sign in with Coral Hub (#3966): its local settings.
+	"GET /api/auth/hub-signin":          "read the Sign in with Coral Hub setting",
+	"PUT /api/auth/hub-signin":          "turn Sign in with Coral Hub on or off",
+	"POST /api/auth/hub-signin/dismiss": "dismiss the Sign in with Coral Hub notice",
+	"GET /api/auth/hub-origins":         "read the Coral Hub sign-in addresses",
+	"PUT /api/auth/hub-origins":         "change the Coral Hub sign-in addresses",
+	"DELETE /api/board/{project}":       "delete a board",
+	"PATCH /api/board/{project}":        "rename a board",
 	// #3583 (Security's sweep item 4): a team import reads files from a folder the request names.
 	"POST /api/teams/import": "import a team from a folder",
 	// #3685 (Security's #3670 follow-up): the hub's server registry (each entry holds a remote

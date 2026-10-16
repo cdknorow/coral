@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -51,6 +52,8 @@ var staticFS = frontend.Static
 // Server holds dependencies and exposes the HTTP router.
 type Server struct {
 	cloudHandler    *routes.CloudHandler
+	cloudMgr        atomic.Pointer[cloud.Manager] // the connector, once SetCloud runs (#3966)
+	hubSignin       *auth.HubSignin               // Sign in with Coral Hub (#3966)
 	cfg             *config.Config
 	db              *store.DB
 	boardStore      *board.Store
@@ -263,6 +266,7 @@ func (s *Server) CloseCloud() {
 }
 
 func (s *Server) SetCloud(m *cloud.Manager) {
+	s.cloudMgr.Store(m)
 	if s.cloudHandler != nil {
 		s.cloudHandler.SetManager(m)
 	}
@@ -452,8 +456,13 @@ func (s *Server) buildRouter() chi.Router {
 
 	// API key auth — gates remote access behind an auto-generated key.
 	// Localhost connections bypass auth entirely.
+	// The auth routes are made here: Sign in with Coral Hub's guard (#3966) runs right after the
+	// sign-in middleware, on every route.
+	authRoutes := auth.NewRoutes(s.keyStore)
 	if s.keyStore != nil {
 		r.Use(auth.Middleware(s.keyStore))
+		s.hubSignin = s.newHubSignin(authRoutes)
+		r.Use(s.hubSignin.HubSessionGuard)
 	}
 
 	// Debug request logger (session/ws calls only, when CORAL_DEBUG=1)
@@ -498,7 +507,6 @@ func (s *Server) buildRouter() chi.Router {
 	})
 
 	// Auth endpoints
-	authRoutes := auth.NewRoutes(s.keyStore)
 	authRoutes.SetStrictLocal(s.cfg.StrictLocalAuth) // /auth here shows the locked page (#3418)
 	r.Get("/auth", authRoutes.AuthPage)
 	r.Post("/auth/key", authRoutes.ValidateKey)
@@ -525,6 +533,20 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/auth/password/reset", authRoutes.ResetPassword)
 	r.Get("/api/auth/sessions", authRoutes.Sessions)
 	r.Post("/api/auth/sessions/sign-out-others", authRoutes.SignOutOthers)
+	r.Delete("/api/auth/sessions/{id}", authRoutes.RevokeSessionByID)
+	// Sign in with Coral Hub (#3966): never in the tunnel's table; agent tokens are refused.
+	if hs := s.hubSignin; hs != nil {
+		r.Post("/auth/hub/start", hs.Start)
+		r.Get("/auth/hub/callback", hs.Callback)
+		r.Post("/auth/hub/link", hs.Link)
+		r.Get("/auth/hub/link/status", hs.LinkStatus)
+		r.Get("/api/auth/hub-signin", hs.Settings)
+		r.Put("/api/auth/hub-signin", hs.SetSettings)
+		r.Post("/api/auth/hub-signin/dismiss", hs.DismissOffer)
+		r.Get("/api/auth/hub-origins", hs.GetOrigins)
+		r.Put("/api/auth/hub-origins", hs.SetOrigins)
+		s.goBackground(hs.Run)
+	}
 
 	// ── API Routes ──────────────────────────────────────────────
 	sessHandler := routes.NewSessionsHandler(s.db, s.cfg, s.backend, s.terminal, s.boardStore)

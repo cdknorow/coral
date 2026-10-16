@@ -1066,7 +1066,13 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 // startCloudConnector wires the optional Cloud Hub connector. A bad --cloud-url is
 // logged and ignored: the connector stays off and the server starts normally.
 // cloudAttacher is the part of *server.Server the connector needs.
-type cloudAttacher interface{ SetCloud(*cloud.Manager) }
+type cloudAttacher interface {
+	SetCloud(*cloud.Manager)
+	// Sign in with Coral Hub (#3966).
+	HubSigninOrigins() []string
+	HubSigninEvent(ctx context.Context, ev cloud.SigninEvent)
+	EndHubSessions(ctx context.Context, why string)
+}
 
 func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, srv cloudAttacher, ss *store.SessionStore) {
 	hubURL := ""
@@ -1088,7 +1094,12 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		HubLimits:    routes.HubLimitsFromSettings(ss),
 		CoralVersion: config.ReportedVersion(),
 		Logger:       slog.Default(),
+		// Sign in with Coral Hub (#3966): the return origins, the owner-pin events, and the
+		// sessions a lost link ends.
+		SigninOrigins: srv.HubSigninOrigins,
+		OnSigninEvent: srv.HubSigninEvent,
 		OnLinkLost: func(ctx context.Context) {
+			srv.EndHubSessions(ctx, "this computer is no longer linked to Coral Hub")
 			if n, err := ss.ClearHubAutoAccept(ctx, store.AutoAcceptLinkRemoved); err != nil {
 				log.Printf("[CLOUD] turning off Coral Hub auto-accept: %v", err)
 			} else if n > 0 {
