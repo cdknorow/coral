@@ -41,8 +41,8 @@ var allowedSenders = map[string]string{
 	"internal/server/routes/websocket.go\tSessionsHandler.WSTerminal\tSendInput":          "human: terminal typing",
 	"internal/server/routes/prompt_answer.go\tSessionsHandler.AnswerPrompt\tSendInput":    "human: picks an option",
 	"internal/server/routes/prompt_answer.go\tSessionsHandler.AnswerPrompt\tSendRawInput": "human: picks an option",
-	"internal/server/routes/sessions.go\tSessionsHandler.Send\tSendInput":                 "human, else gated",
-	"internal/server/routes/sessions.go\tSessionsHandler.Keys\tSendRawInput":              "human, else gated",
+	"internal/server/routes/sessions_input.go\tSessionsHandler.Send\tSendInput":           "human, else gated",
+	"internal/server/routes/sessions_input.go\tSessionsHandler.Keys\tSendRawInput":        "human, else gated",
 	// Launch commands typed into a fresh shell, before any agent CLI runs.
 	"internal/server/routes/sessions.go\tsendLaunchCommand\tSendToTarget":           "launch command",
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SpawnAgent\tSendKeysToTarget": "launch command",
