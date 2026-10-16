@@ -48,7 +48,7 @@ func (ar *Routes) AuthPage(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("Referrer-Policy", "no-referrer")
 	set, local, strict := ar.PageState(r)
-	w.Write([]byte(AuthPage(PageState{PasswordSet: set, Local: local, Strict: strict, HubSignin: ar.hub.PageState(r)})))
+	w.Write([]byte(AuthPage(PageState{PasswordSet: set, Local: local, Strict: strict, HubSignin: ar.hub.PageState(r), HubURL: ar.hub.HubURL()})))
 }
 
 // authPageCSP: scripts only from this server (the page has no inline script), never framed;
