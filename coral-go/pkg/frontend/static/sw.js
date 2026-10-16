@@ -1,19 +1,13 @@
 /* Coral Service Worker — caches app shell for fast loads */
 
-// v4: build-versioned /static/b/<build>/ files are no longer cached here (see
-// fetch); bumping the name drops what v3 accumulated.
-const CACHE_NAME = 'coral-v4';
-const SHELL_ASSETS = [
-    '/',
-    '/static/style.css',
-    '/static/favicon.png',
-    '/static/coral.png',
-];
+// v5: nothing is precached at install (#3973). The install step used to fetch the page again (30 KB), a 37 KB icon and a legacy
+// style.css stub on every first visit, in the background of the load that was already fetching its own files. The offline fallback
+// page is now the last good answer for "/" (cached by the fetch handler below on the first navigation the worker sees). Images and
+// fonts come from the browser's HTTP cache: the handler below only answers from this cache when it already holds the file. Build-versioned /static/b/<build>/ files are not cached here (see fetch). Bumping the name drops
+// what v4 accumulated.
+const CACHE_NAME = 'coral-v5';
 
-self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS))
-    );
+self.addEventListener('install', () => {
     self.skipWaiting();
 });
 

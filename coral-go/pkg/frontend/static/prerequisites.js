@@ -1,5 +1,6 @@
 /* Read-only setup checks. Installation commands are displayed, never executed. */
 import { serverFetch, normServer } from './server_base.js';
+import { fetchSystemStatus } from './system_status.js';
 const cache = new Map();
 const requests = new WeakMap();
 
@@ -66,7 +67,7 @@ export async function checkTmux(force = false) {
     const button = document.getElementById('tmux-check-again');
     button.disabled = true; button.textContent = 'Checking…';
     try {
-        const response = await fetch('/api/system/status',{signal:controller.signal,cache:force?'no-store':'default'});
+        const response = await fetchSystemStatus({fresh:force});
         if (!response.ok) throw new Error(`Could not check tmux (HTTP ${response.status}).`);
         const data = await response.json();
         if (!data || typeof data.tmux_available !== 'boolean') throw new Error('Could not check tmux: unexpected response.');

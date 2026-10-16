@@ -5,6 +5,7 @@
  * opens. */
 
 import { state } from './state.js';
+import { fetchSystemStatus } from './system_status.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
 
 export function settingBool(value, fallback = true) {
@@ -179,7 +180,7 @@ export async function loadSettings() {
     const badge = document.getElementById('tier-badge');
     if (!badge) return;
     try {
-        const resp = await fetch('/api/system/status');
+        const resp = await fetchSystemStatus();
         if (!resp.ok) return;
         const data = await resp.json();
         if (data.tier_name === 'dropboxers') {
