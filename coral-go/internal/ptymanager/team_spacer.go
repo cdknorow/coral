@@ -27,6 +27,10 @@ const (
 	TeamGap     = 2 * time.Second
 	TeamJitter  = time.Second
 	MaxTeamWait = 30 * time.Second
+	// MaxStartWait: an agent's start is never typed more than this after its launch or wake;
+	// beyond it the start goes now (Security's NIT: a flood of launches can't hold agents in an
+	// idle shell for minutes).
+	MaxStartWait = 60 * time.Second
 )
 
 // ErrTeamBusy: the team's next send slot is more than MaxTeamWait away; not now.
@@ -102,13 +106,16 @@ func SpaceTeam(ctx context.Context, team string) error {
 
 // ReserveTeamStart takes team's next slot for an agent's start and returns how long from now
 // it comes; the caller types the start command then, in the background. Never refused: a
-// launched agent must start. team "": 0.
+// launched agent must start. A slot over MaxStartWait away isn't taken and the start goes now
+// (0). team "": 0.
 func ReserveTeamStart(team string) time.Duration {
 	if team == "" {
 		return 0
 	}
-	d, _ := spacer.reserve(team, 0)
-	return d
+	if d, ok := spacer.reserve(team, MaxStartWait); ok {
+		return d
+	}
+	return 0
 }
 
 // The team an agent session belongs to, for spacing automated sends (the server registers it:

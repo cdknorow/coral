@@ -90,9 +90,28 @@ func TestSpacerWaitIsCapped(t *testing.T) {
 	s.sleep = func(context.Context, time.Duration) bool { slept++; return true }
 	assert.ErrorIs(t, SpaceTeam(context.Background(), "team"), ErrTeamBusy)
 	assert.Zero(t, slept, "refused without waiting")
-	// An agent's start is never refused: it takes the next slot, however far.
+	// An agent's start is never refused: it takes the next slot, up to MaxStartWait away.
 	assert.Equal(t, 32500*time.Millisecond, ReserveTeamStart("team"))
 	assert.Zero(t, ReserveTeamStart(""), "no team: at once")
+}
+
+// Security's NIT on #3647 v2: a flood of launches can't push a start minutes out. Starts take
+// slots up to MaxStartWait away; beyond it a start goes now and takes no slot.
+func TestAgentStartsWaitAtMostMaxStartWait(t *testing.T) {
+	s, _ := fakeSpacer(2500 * time.Millisecond)
+	useSpacer(t, s)
+	var waits []time.Duration
+	for i := 0; i < 40; i++ {
+		waits = append(waits, ReserveTeamStart("team"))
+	}
+	for i, d := range waits {
+		assert.LessOrEqual(t, d, MaxStartWait, "start %d", i)
+	}
+	assert.Equal(t, 60*time.Second, waits[24], "slots at 0, 2.5 ... 60 s")
+	for i, d := range waits[25:] {
+		assert.Zero(t, d, "start %d past the cap goes now", i+25)
+	}
+	assert.Equal(t, 62500*time.Millisecond, s.next["team"].Sub(s.now()), "a start past the cap takes no slot")
 }
 
 func TestSpacerGapIsWithinBounds(t *testing.T) {
