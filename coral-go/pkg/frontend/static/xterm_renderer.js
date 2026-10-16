@@ -5,6 +5,7 @@ import { isInteractiveOwner, claimOwnership, ownershipSessionId } from './owners
 import { dbg, showToast } from './utils.js';
 import { normServer, serverWsBase, sessionServer } from './server_base.js';
 import { hubBlocksKeystrokes, applyHubReadOnlyFrame } from './hub_access.js';
+import { feedRetryDelay } from './feed_pacing.js';
 
 let terminal = null;
 let fitAddon = null;
@@ -267,6 +268,12 @@ export function updateTerminalTheme() {
 let _connectedSessionId = null;
 let _connectedServer = 'local';
 let _wsGeneration = 0;
+// Reconnect pacing (#3944): a dropped terminal socket retries with the live feed's backoff and jitter, so every open
+// terminal does not knock in the same second after a server restart, and a refused socket does not retry every 3 s
+// forever. The count resets when a socket opens, and when a different agent's terminal starts failing.
+let _termFailures = 0;
+let _termFailureSession = null;
+export const terminalHooks = { schedule: (fn, ms) => setTimeout(fn, ms) };
 let _paneClosed = false;  // true when server reports pane is gone
 let _restarting = false;  // true when a restart is in progress
 let _needsScrollToBottom = false;  // set on connect, cleared after settling
@@ -621,6 +628,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
         // different agent. Never resize it or flush input into that old agent.
         if (myGeneration !== _wsGeneration) return;
         dbg('terminalWs OPEN', { sessionId, url: terminalWs.url });
+        _termFailures = 0;
         _setDisconnectedBadge(false);
         document.dispatchEvent(new CustomEvent('coral:terminal-reconnected'));
         if (terminal && !_following && mayResizePane()) _sendResize(terminal.cols, terminal.rows);
@@ -728,7 +736,10 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             }
             _setDisconnectedBadge(true);
             document.dispatchEvent(new CustomEvent('coral:terminal-disconnected'));
-            setTimeout(() => {
+            if (_termFailureSession !== sessionId) { _termFailureSession = sessionId; _termFailures = 0; }
+            _termFailures++;
+            const delay = busy ? TERMINAL_BUSY_RETRY_MS : feedRetryDelay(_termFailures);
+            terminalHooks.schedule(() => {
                 // Re-check: generation still current AND session still matches
                 if (myGeneration === _wsGeneration
                     && state.currentSession
@@ -740,7 +751,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
                         sessionServer(state.currentSession),
                     );
                 }
-            }, busy ? TERMINAL_BUSY_RETRY_MS : 3000);
+            }, delay);
         }
     };
 }
