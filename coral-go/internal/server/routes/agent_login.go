@@ -23,6 +23,11 @@ import (
 // the chat poll all ask; the screen is read at most once per agent per TTL.
 const loginScreenTTL = 3 * time.Second
 
+// loginScreenStampMax: how long a screen read stays good while the agent's terminal has written
+// nothing since (its output stamp is unchanged, #4028): an agent that waits on a screen costs no
+// capture-pane at all, not one every loginScreenTTL. Still bounded, in case a stamp misses a change.
+const loginScreenStampMax = time.Minute
+
 // loginScreenTimeout bounds one screen read.
 const loginScreenTimeout = 2 * time.Second
 
@@ -33,16 +38,24 @@ type loginScreens struct {
 }
 
 type loginScreenRead struct {
-	at  time.Time
-	on  bool
-	why string
+	at    time.Time
+	stamp string // the output stamp read before the screen was ("" without one)
+	on    bool
+	why   string
 }
 
-func (l *loginScreens) read(key string, now time.Time, fn func() (bool, string)) (bool, string) {
+// read returns the reading for key: the last one while it is younger than loginScreenTTL, or
+// while stamp (the agent's output stamp, read before calling) is the one it was taken with and
+// it is younger than loginScreenStampMax; else fn's, kept with stamp. An empty stamp is never
+// matched.
+func (l *loginScreens) read(key, stamp string, now time.Time, fn func() (bool, string)) (bool, string) {
 	l.mu.Lock()
-	if r, ok := l.m[key]; ok && now.Sub(r.at) < loginScreenTTL {
-		l.mu.Unlock()
-		return r.on, r.why
+	if r, ok := l.m[key]; ok {
+		age := now.Sub(r.at)
+		if age < loginScreenTTL || (stamp != "" && r.stamp == stamp && age < loginScreenStampMax) {
+			l.mu.Unlock()
+			return r.on, r.why
+		}
 	}
 	l.mu.Unlock()
 	on, why := fn()
@@ -53,12 +66,12 @@ func (l *loginScreens) read(key string, now time.Time, fn func() (bool, string))
 	}
 	if len(l.m) >= 256 {
 		for k, r := range l.m {
-			if now.Sub(r.at) >= loginScreenTTL {
+			if now.Sub(r.at) >= loginScreenStampMax {
 				delete(l.m, k)
 			}
 		}
 	}
-	l.m[key] = loginScreenRead{at: now, on: on, why: why}
+	l.m[key] = loginScreenRead{at: now, stamp: stamp, on: on, why: why}
 	return on, why
 }
 
@@ -80,7 +93,14 @@ func (h *SessionsHandler) claudeLoginState(name, sessionID, workingDir string, e
 	if !ok || name == "" {
 		return false, ""
 	}
-	on, _ := h.loginScreens.read(promptReadKey(sessionID, name, at.Claude), time.Now(), func() (bool, string) {
+	// The output stamp, read before the screen: a read is reused while nothing was written since.
+	stamp := ""
+	if stamper, _ := h.backend.(ptymanager.OutputStamper); stamper != nil {
+		if st, ok := stamper.OutputStamp(at.Claude, sessionID); ok {
+			stamp = st
+		}
+	}
+	on, _ := h.loginScreens.read(promptReadKey(sessionID, name, at.Claude), stamp, time.Now(), func() (bool, string) {
 		ctx, cancel := context.WithTimeout(context.Background(), loginScreenTimeout)
 		defer cancel()
 		screen, err := reader.AgentScreen(ctx, name, at.Claude, sessionID)
