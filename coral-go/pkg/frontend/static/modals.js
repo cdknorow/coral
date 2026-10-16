@@ -28,6 +28,7 @@ import { launch } from './launch_state.js';
 import { _acfServer, _effectiveServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _invalidateDefaultModels, _loadServerSettings, _serverSettings, _settingsFor } from './launch_models.js';
 import { AGENT_PRESETS, ALL_CAPABILITIES } from './agent_presets.js';
 import { PERMISSION_MODE_DESCRIPTIONS, _getPermissionFlagsForAgentMode, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions, _updatePermModeDescription } from './permission_flags.js';
+import { CLI_INSTALL_INSTRUCTIONS, _checkAgentCLI } from './cli_check.js';
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
 
@@ -802,23 +803,6 @@ function saveTeamAgentFromModal() {
 }
 window.saveTeamAgentFromModal = saveTeamAgentFromModal;
 
-// ── CLI Availability Check ────────────────────────────────────────────────
-
-const CLI_INSTALL_INSTRUCTIONS = {
-    claude: { name: 'claude', cmd: 'npm install -g @anthropic-ai/claude-code' },
-    agy: { name: 'agy', cmd: 'curl -fsSL https://antigravity.google/install.sh | bash' },
-    antigravity: { name: 'agy', cmd: 'curl -fsSL https://antigravity.google/install.sh | bash' },
-    gemini: { name: 'agy', cmd: 'curl -fsSL https://antigravity.google/install.sh | bash' },
-    codex: { name: 'codex', cmd: 'npm install -g @openai/codex' },
-    pi: { name: 'pi', cmd: 'npm install -g @mariozechner/pi-coding-agent' },
-};
-
-function _checkAgentCLI(agentType, warning = document.getElementById('cli-check-warning'), force = false) {
-    // The CLI must exist on the server the agent will run on.
-    const server = _acfServer(warning && warning.closest ? warning.closest('[data-acf-uid]') : null);
-    return checkAgentCLI(agentType, warning, {force,command:CLI_INSTALL_INSTRUCTIONS[agentType]?.cmd || '',server});
-}
-(window.__coral ||= {})._checkAgentCLI = _checkAgentCLI;
 
 /** Verify a CLI path by calling the backend check endpoint. */
 async function _checkOneCLI(inputId, resultId) {
