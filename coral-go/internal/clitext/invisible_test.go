@@ -32,11 +32,11 @@ func TestCleanDropsMeaninglessInvisibles(t *testing.T) {
 
 func TestCleanKeepsTextThatNeedsJoiners(t *testing.T) {
 	for name, s := range map[string]string{
-		"emoji family (ZWJ)":     "family: \U0001F468‍\U0001F469‍\U0001F467",
-		"emoji profession (ZWJ)": "\U0001F469‍\U0001F4BB on it",
-		"Persian word (ZWNJ)":    "می‌خواهم",
+		"emoji family (ZWJ)":     "family: \U0001F468\u200d\U0001F469\u200d\U0001F467",
+		"emoji profession (ZWJ)": "\U0001F469\u200d\U0001F4BB on it",
+		"Persian word (ZWNJ)":    "می\u200cخواهم",
 		"flag (regional pair)":   "\U0001F1EB\U0001F1F7",
-		"soft hyphen in a word":  "hyphen­ation",
+		"soft hyphen in a word":  "hyphen\u00adation",
 		"multi-line post":        "line one\n\tline two",
 	} {
 		assert.Equal(t, s, Clean(s), name)
@@ -46,13 +46,13 @@ func TestCleanKeepsTextThatNeedsJoiners(t *testing.T) {
 // Names and titles go further: no format character at all (joiners, soft hyphen), one line.
 func TestCleanName(t *testing.T) {
 	for in, want := range map[string]string{
-		"Dev‍One":              "DevOne",
-		"Dev‌One":              "DevOne",
-		"Dev­One":              "DevOne",
-		"Dev​One\U000E0061":    "DevOne",
-		"Dev‮One":              "DevOne",
+		"Dev\u200dOne":             "DevOne",
+		"Dev\u200cOne":             "DevOne",
+		"Dev\u00adOne":             "DevOne",
+		"Dev\u200bOne\U000E0061":   "DevOne",
+		"Dev\u202eOne":             "DevOne",
 		"  Dev\n\tOne \x1b[31mx  ": "Dev One x",
-		"Plain Name":                "Plain Name",
+		"Plain Name":               "Plain Name",
 	} {
 		assert.Equal(t, want, CleanName(in), "%q", in)
 	}
