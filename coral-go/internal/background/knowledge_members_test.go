@@ -85,7 +85,7 @@ func TestDistillCoversEveryCurrentTeamMember(t *testing.T) {
 	f := newKnowledgeTeamFixture(t, "team-4074")
 	f.launch("s-lead", "Lead", true)
 	f.launch("s-qa", "QA", true)
-	f.launch("s-ux", "UX", false)     // launched onto the board later: no roster row
+	f.launch("s-ux", "UX", false)    // launched onto the board later: no roster row
 	f.launch("s-gone", "Gone", true) // killed below: has left the team
 
 	require.NoError(t, f.ss.SetSessionSleepingFor(f.ctx, "s-qa", ""))
