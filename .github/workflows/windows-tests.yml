@@ -51,48 +51,13 @@ jobs:
         with:
           go-version-file: coral-go/go.mod
           cache-dependency-path: coral-go/go.sum
-      - name: vet (the whole module, natively on Windows)
-        run: go vet -tags fts5 ./...
-      # Every package runs on Windows (go list ./...), so a new package or a new Windows test can't be skipped by a
-      # hand-kept list (internal/psquote's Windows test was, #3904). internal/server/routes runs in the next step with
-      # its filter. The packages below fail on Windows today, none of them because of Windows code we ship, and they
-      # had never been run there before 2026-10-16 (probe run 38909914965). Each runs only the tests in its
-      # Windows-only test files (or is compiled, when there are none) until its task (#3914 or #3920) makes it pass whole; take it off
-      # this list in the commit that makes it pass. The step fails if an entry here no longer exists, so the list can't go stale.
-      - name: every package (routes in the next step), with the known Windows failures run by their Windows-only tests
+      - name: "#4011 loop (ci/ branch only, never landed): the two flaky tests, 50 times each"
         run: |
-          set -euo pipefail
-          root=$(go list -m)
-          excluded=(
-            # none: #3914 and #3920 made every package pass on Windows
-          )
-          all=(); while IFS= read -r p; do all+=("${p#"$root"/}"); done < <(go list -tags fts5 ./...)
-          for e in "${excluded[@]}"; do
-            printf '%s\n' "${all[@]}" | grep -qxF "$e" || { echo "::error::excluded package $e no longer exists: drop it from windows-tests.yml"; exit 1; }
-          done
-          pkgs=(); for p in "${all[@]}"; do
-            [ "$p" = internal/server/routes ] && continue
-            printf '%s\n' "${excluded[@]}" | grep -qxF "$p" && continue
-            pkgs+=("./$p")
-          done
-          echo "go test on Windows: ${#pkgs[@]} packages (all but routes and ${#excluded[@]} known failures)"
-          go test -count=1 -timeout 40m -tags fts5 "${pkgs[@]}"
-          while IFS=$'\t' read -r pkg names; do
-            printf '%s\n' "${excluded[@]}" | grep -qxF "${pkg#./}" || continue
-            if [ -n "$names" ]; then run="^($names)\$"; else run='^$'; fi
-            echo "known Windows failure $pkg: only its Windows-only tests, -run '$run'"
-            go test -count=1 -timeout 30m -tags fts5 -run "$run" "$pkg"
-          done < <(bash ../tests/windows/windows_only_tests.sh --tests)
-      - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
-        if: ${{ !cancelled() }} # report the routes results even when the packages step failed
-        env:
-          ROUTES_RUN: "AutoAttach|Attach|UNC|Device|HardLink|Symlink|Junction|EvalSymlinks|NeverFollow|SaveFileContent|PathInside|SearchFilesDir|ImportTeam|Upload"
-        run: |
-          # Every Windows-only test in routes must match the filter (a new one outside it would never run here).
-          bash ../tests/windows/windows_only_tests.sh --check-routes "$ROUTES_RUN"
-          # A -run pattern that matches no test passes silently, so a rename could hide this coverage:
-          # require at least 40 matching tests (51 when this was written).
-          n=$(go test -tags fts5 -list "$ROUTES_RUN" ./internal/server/routes | grep -c '^Test' || true)
-          echo "routes tests matched: $n"
-          if [ "$n" -lt 40 ]; then echo "::error::only $n routes tests match the Windows filter (expected at least 40)"; exit 1; fi
-          go test -count=1 -timeout 30m -tags fts5 -run "$ROUTES_RUN" ./internal/server/routes
+          rc=0
+          go test -tags fts5 -count=50 -run '^TestDescendantsFindsGrandchildren$' ./internal/machinehealth > mh.log 2>&1 || rc=1
+          tail -40 mh.log
+          go test -tags fts5 -count=50 -run '^TestManyConcurrentStreams$' ./pkg/tunnel > tun.log 2>&1 || rc=1
+          grep -E "first failures|^(ok|FAIL|---)" tun.log | head -40
+          go test -tags fts5 -count=10 -v -run '^TestBurstProbe4011$' ./pkg/tunnel 2>&1 | grep -E "results:|not all ok|^(ok|FAIL|---)" | cut -c1-1500 | head -40
+          go test -tags fts5 -count=1 -v -run '^TestBurstProbeRawError4011$' ./pkg/tunnel 2>&1 | grep -E "raw results" | cut -c1-2000
+          exit $rc
