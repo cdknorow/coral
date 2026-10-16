@@ -215,6 +215,7 @@ type Redactor struct {
 	pending []byte          // held back: it could still start or continue a token
 	prev    []byte          // the last few bytes of the original stream before pending (for the boundary)
 	inPEM   bool            // inside a private key: dropped until its END line or the closing quote
+	pemEsc  bool            // inside a private key: the last byte dropped was an unpaired backslash
 	inToken func(byte) bool // inside a token longer than its rule's ceiling: its class is dropped
 	shown   int             // the leading bytes of pending that Flush already emitted as they are
 	err     error
@@ -408,14 +409,15 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 			continue
 		}
 		if r.inPEM {
-			end, found, hold := pemClose(data[i:], final)
+			end, found, hold, esc := pemClose(data[i:], final, r.pemEsc)
 			if !found {
 				if final {
 					return out, len(data)
 				}
+				r.pemEsc = esc
 				return out, len(data) - hold // the key so far is dropped; a possible END start is held
 			}
-			r.inPEM = false
+			r.inPEM, r.pemEsc = false, false
 			i += end
 			continue
 		}
@@ -438,7 +440,7 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 				i = start + 1
 			default:
 				out = append(out, RedactMarker...)
-				r.inPEM = true
+				r.inPEM, r.pemEsc = true, false
 				i = start + n
 			}
 			continue
@@ -727,17 +729,22 @@ func pemLabel(b []byte) (n int, ok, need bool) {
 }
 
 // pemClose finds where an open private key ends in b: after its "-----END <LABEL>-----"
-// marker, or at (not after) the first '"', the end of the JSON string holding it. When it isn't
-// found, hold is how many trailing bytes might begin the END marker.
-func pemClose(b []byte, final bool) (end int, found bool, hold int) {
-	q := bytes.IndexByte(b, '"')
+// marker, or at (not after) the first unescaped '"', the end of the JSON string holding it.
+// Inside a JSON string a quote is written \" (#3694): that '"' is part of the key's text, and
+// stopping at it dropped the backslash and closed the string early, which left the rest of the
+// string as bare JSON. esc says whether the byte dropped just before b was an unpaired
+// backslash (a chunk boundary can fall between a backslash and what it escapes). When the end
+// isn't found, hold is how many trailing bytes might begin the END marker, and escAfter is the
+// escape state after the bytes consumed (all but hold).
+func pemClose(b []byte, final, esc bool) (end int, found bool, hold int, escAfter bool) {
+	q := unescapedQuote(b, esc)
 	for e := bytes.Index(b, pemEnd); e >= 0 && (q < 0 || e < q); {
 		rest := b[e+len(pemEnd):]
 		if k := bytes.Index(rest[:min(len(rest), maxPEMLabel)], pemDashes); k >= 0 {
-			return e + len(pemEnd) + k + len(pemDashes), true, 0
+			return e + len(pemEnd) + k + len(pemDashes), true, 0, false
 		}
 		if len(rest) < maxPEMLabel && q < 0 && !final {
-			return 0, false, len(b) - e // the END line may finish in the next chunk
+			return 0, false, len(b) - e, escapeAfter(b[:e], esc) // the END line may finish in the next chunk
 		}
 		next := bytes.Index(b[e+1:], pemEnd)
 		if next < 0 {
@@ -746,9 +753,39 @@ func pemClose(b []byte, final bool) (end int, found bool, hold int) {
 		e += 1 + next
 	}
 	if q >= 0 {
-		return q, true, 0
+		return q, true, 0, false
 	}
-	return 0, false, partialSuffix(b, pemEnd)
+	hold = partialSuffix(b, pemEnd)
+	return 0, false, hold, escapeAfter(b[:len(b)-hold], esc)
+}
+
+// unescapedQuote is the index of the first '"' in b that no backslash escapes (a run of
+// backslashes escapes the next byte when it is odd), counting esc as a backslash just before b;
+// -1 if there is none.
+func unescapedQuote(b []byte, esc bool) int {
+	for k, c := range b {
+		switch {
+		case esc:
+			esc = false
+		case c == '\\':
+			esc = true
+		case c == '"':
+			return k
+		}
+	}
+	return -1
+}
+
+// escapeAfter is whether b, read after a backslash state esc, ends with an unpaired backslash.
+func escapeAfter(b []byte, esc bool) bool {
+	for _, c := range b {
+		if esc {
+			esc = false
+		} else if c == '\\' {
+			esc = true
+		}
+	}
+	return esc
 }
 
 // partialTail is how many trailing bytes of data (from i on) might begin a prefix or a PEM

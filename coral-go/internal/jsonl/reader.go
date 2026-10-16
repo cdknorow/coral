@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
@@ -1219,7 +1220,7 @@ func summarizeToolInput(name string, input map[string]any) string {
 
 func truncate(s string, n int) string {
 	if len(s) > n {
-		return s[:n] + "..."
+		return s[:runeCut(s, n)] + "..."
 	}
 	return s
 }
@@ -1227,9 +1228,24 @@ func truncate(s string, n int) string {
 // truncateContent truncates large content blocks (tool results, file writes) to 10KB.
 func truncateContent(s string) string {
 	if len(s) > 10000 {
-		return s[:10000] + "\n... (truncated)"
+		return s[:runeCut(s, 10000)] + "\n... (truncated)"
 	}
 	return s
+}
+
+// runeCut is the largest index <= n where s can be cut without splitting a UTF-8 sequence
+// (#3694): a byte cut inside one left bytes the JSON encoder could only show as U+FFFD. The text
+// is cut decoded, before it is encoded, so a cut never falls inside a JSON escape.
+func runeCut(s string, n int) int {
+	if n >= len(s) {
+		return len(s)
+	}
+	for k := n; k > 0 && n-k < utf8.UTFMax; k-- {
+		if utf8.RuneStart(s[k]) {
+			return k
+		}
+	}
+	return n
 }
 
 var (

@@ -611,7 +611,18 @@ document.addEventListener("click", async (e) => {
     flashCopied(btn);
 });
 
+// One message that can't be drawn must not cost the rest of the history (#3694): it gets a note
+// in its place, and the messages around it are drawn as usual.
 function renderMessage(msg, container, agentType = "claude") {
+    try {
+        renderOneMessage(msg, container, agentType);
+    } catch (e) {
+        console.warn("[coral] a chat message could not be shown", e);
+        appendContent(container, makeBubble("chat-note chat-message-unrendered", "This message could not be shown."));
+    }
+}
+
+function renderOneMessage(msg, container, agentType) {
     const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
         appendContent(container, makeBubble("chat-note", "Interrupted"));
@@ -768,7 +779,13 @@ export async function refreshLiveHistory() {
             throw new Error(errorText);
         }
 
-        const data = await resp.json();
+        let data;
+        try {
+            data = await resp.json();
+        } catch (err) {
+            // A reply that isn't JSON says so, rather than only a parser's position (#3694).
+            throw new Error(`the reply from the server could not be read: ${err.message}`);
+        }
         if (generation !== historyGeneration) return;
 
         if (data.messages && data.messages.length > 0) {

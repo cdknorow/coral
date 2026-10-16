@@ -3,10 +3,12 @@ package tunnel
 import (
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -697,18 +699,56 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 			return
 		}
 		out, ok := redactWhole(raw)
-		if !ok {
+		if !ok || !redactedJSONOK(resp.Header, raw, out) {
 			l.respondRedactFailed(s)
 			return
 		}
 		_ = s.RespondWhole(ResponseHeader{Status: resp.StatusCode, Headers: hdr}, out)
 		return
 	}
+	var head []byte // what was read ahead of the stream (a JSON reply over jsonWholeMax)
+	if jsonReply(resp.Header) {
+		// A JSON reply is held whole (up to jsonWholeMax), redacted and checked before any of it
+		// is sent (#3694): one that parsed before redaction and doesn't after is never passed on,
+		// it becomes the could-not-be-checked answer. A JSON reply is never a live stream, so
+		// holding it costs only the wait for its last byte.
+		raw, err := io.ReadAll(io.LimitReader(body, jsonWholeMax+1))
+		if err != nil {
+			s.Reject(CodeUpstream, "local response ended early", 0)
+			return
+		}
+		progress()
+		if len(raw) <= jsonWholeMax {
+			out, ok := redactWhole(raw)
+			if !ok || !redactedJSONOK(resp.Header, raw, out) {
+				l.respondRedactFailed(s)
+				return
+			}
+			w, err := s.Respond(ResponseHeader{Status: resp.StatusCode, Headers: hdr})
+			if err != nil {
+				return
+			}
+			for len(out) > 0 {
+				n := min(len(out), maxChunk)
+				if _, err := w.Write(out[:n]); err != nil {
+					return
+				}
+				out = out[n:]
+				progress()
+			}
+			_ = w.Close()
+			return
+		}
+		head = raw // bigger than anything Coral answers in JSON: streamed through the Redactor below
+	}
 	w, err := s.Respond(ResponseHeader{Status: resp.StatusCode, Headers: hdr})
 	if err != nil {
 		return
 	}
 	red := NewRedactor(w)
+	if len(head) > 0 && !redactWrite(red, head) {
+		return
+	}
 	buf := make([]byte, maxChunk)
 	for {
 		n, rerr := body.Read(buf)
@@ -725,6 +765,22 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 			return
 		}
 	}
+}
+
+// jsonWholeMax bounds how much of a JSON reply serveRedacted holds to check it after redaction.
+const jsonWholeMax = 64 << 20
+
+// jsonReply reports whether a reply's Content-Type is JSON (application/json or a +json type).
+func jsonReply(hdr http.Header) bool {
+	mt, _, err := mime.ParseMediaType(hdr.Get("Content-Type"))
+	return err == nil && (mt == "application/json" || strings.HasSuffix(mt, "+json"))
+}
+
+// redactedJSONOK is false when a JSON reply that parsed before redaction doesn't after it (#3694:
+// the redactor must never be what breaks a reply). A reply that didn't parse to begin with is
+// the upstream's own, and is passed redacted as it is.
+func redactedJSONOK(hdr http.Header, raw, out []byte) bool {
+	return !jsonReply(hdr) || !json.Valid(raw) || json.Valid(out)
 }
 
 func (l *LocalHandler) respondRedactFailed(s *Stream) {
