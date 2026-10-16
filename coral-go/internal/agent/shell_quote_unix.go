@@ -12,6 +12,11 @@ func shellQuote(s string) string {
 	if s == "" {
 		return s
 	}
+	// Safe inside a word, not at its start: in zsh "=curl" expands to curl's path (EQUALS),
+	// and "%1" or "@x" can be read specially (#3930, Security's #3927 finding 3).
+	if leadingSpecial(s) {
+		return singleQuote(s)
+	}
 	for i := 0; i < len(s); i++ {
 		if !shellSafeByte(s[i]) {
 			return singleQuote(s)
@@ -19,6 +24,10 @@ func shellQuote(s string) string {
 	}
 	return s
 }
+
+// leadingSpecial: s starts with a byte the safe set allows elsewhere but a shell may read at the
+// start of a word.
+func leadingSpecial(s string) bool { return s != "" && strings.IndexByte("=%@", s[0]) >= 0 }
 
 func shellSafeByte(c byte) bool {
 	switch {

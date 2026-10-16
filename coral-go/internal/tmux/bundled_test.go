@@ -396,6 +396,10 @@ func TestQuoteIfNeededQuotesEverythingThatIsNotAPlainWord(t *testing.T) {
 		"a;b":              "'a;b'",
 		"":                 "''",
 		"~/x":              "'~/x'",
+		"=curl":            "'=curl'", // #3930: zsh EQUALS
+		"%1":               "'%1'",
+		"@x":               "'@x'",
+		"a=b@c%d":          "a=b@c%d",
 	} {
 		assert.Equal(t, want, quoteIfNeeded(in), "%q", in)
 	}

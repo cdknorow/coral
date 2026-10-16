@@ -1174,7 +1174,9 @@ var safeShellWord = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
 // read the same) and passes everything else, including spaces, quotes, newlines
 // and any other shell metacharacter, through the always-quoting shellQuote.
 func quoteIfNeeded(v string) string {
-	if safeShellWord.MatchString(v) {
+	// "=", "%" and "@" are plain inside a word, not at its start ("=curl" is curl's path in zsh;
+	// #3930, Security's #3927 finding 3).
+	if safeShellWord.MatchString(v) && strings.IndexByte("=%@", v[0]) < 0 {
 		return v
 	}
 	return shellQuote(v)
