@@ -750,6 +750,19 @@ CREATE TABLE IF NOT EXISTS session_tokens (
     revoked_at   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_session_tokens_session ON session_tokens(session_id);
+
+-- Browser sign-ins (#3949): a sign-in link, the API-key form or the password. Only the
+-- SHA-256 of the cookie value is kept; times are unix seconds; expires_at is absolute.
+CREATE TABLE IF NOT EXISTS browser_sessions (
+    id_hash     TEXT PRIMARY KEY,
+    label       TEXT NOT NULL DEFAULT '',
+    method      TEXT NOT NULL DEFAULT '',
+    persistent  INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    last_seen   INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_browser_sessions_expires ON browser_sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_goal_generations_session ON goal_generations(session_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_git_snap_session ON git_snapshots(session_id);

@@ -559,6 +559,10 @@ func (h *CloudHandler) VerifyCLI(r *http.Request) (*http.Request, bool) {
 	return cliauth.WithVerified(r), true
 }
 
+// SameUser is the peer-user check (#3949): whether a loopback request comes from Coral's own OS
+// user, and whether the system can tell at all.
+func (h *CloudHandler) SameUser(r *http.Request) (same, supported bool) { return h.sameUser(r) }
+
 // OtherUser reports whether a loopback request comes from another OS user (where the
 // system can tell, peercred): such a caller is refused with code other_user.
 func (h *CloudHandler) OtherUser(r *http.Request) bool {

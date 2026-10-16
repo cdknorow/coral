@@ -27,7 +27,7 @@ func TestSessionCookieIsPerServer(t *testing.T) {
 	sa, err := a.CreateSession("127.0.0.1", "test")
 	require.NoError(t, err)
 	rec := httptest.NewRecorder()
-	a.setSessionCookie(rec, plain, sa)
+	a.setSessionCookie(rec, plain, sa, false)
 	c := rec.Result().Cookies()[0]
 	assert.Equal(t, a.SessionCookieName(plain), c.Name)
 	assert.False(t, c.Secure)
@@ -35,7 +35,7 @@ func TestSessionCookieIsPerServer(t *testing.T) {
 	secure := httptest.NewRequest("GET", "https://coral.example/", nil)
 	secure.TLS = &tls.ConnectionState{}
 	rec = httptest.NewRecorder()
-	a.setSessionCookie(rec, secure, sa)
+	a.setSessionCookie(rec, secure, sa, false)
 	c = rec.Result().Cookies()[0]
 	assert.Equal(t, "__Host-"+a.SessionCookieName(plain), c.Name)
 	assert.True(t, c.Secure)

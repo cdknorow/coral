@@ -64,8 +64,9 @@ func TestTunnelStampIsNeverLocal(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 		return out
 	}
-	assert.Equal(t, map[string]any{"authenticated": false, "method": "none"}, status(req("GET", "/api/system/auth-status", false)),
-		"strict: locality is not a credential")
+	st := status(req("GET", "/api/system/auth-status", false))
+	assert.Equal(t, false, st["authenticated"], "strict: locality is not a credential")
+	assert.Equal(t, "none", st["method"])
 	r := req("GET", "/api/system/auth-status", false)
 	r.Header.Set("X-API-Key", ks.Key())
 	assert.Equal(t, "key", status(r)["method"])

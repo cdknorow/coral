@@ -26,6 +26,7 @@ import (
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/logexit"
@@ -138,6 +139,15 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	}
 	// Never log any part of the key (#3356): Settings > Remote Access shows it on this machine.
 	log.Printf("API key loaded (Settings > Remote Access shows it on this computer)")
+	// Browser sign-ins live in sessions.db, so they survive a restart (#3949).
+	if db != nil {
+		keyStore.SetSessionBackend(store.NewBrowserSessions(db))
+		keyStore.ApplyRevokeMarker()
+	}
+	if p := os.Getenv("CORAL_INITIAL_PASSWORD_FILE"); p != "" {
+		keyStore.ApplyInitialPasswordFile(p)
+	}
+	keyStore.SetupCode() // no password yet: the setup code goes to the console (never coral.log)
 	if err := keyStore.SetTrustedProxies(os.Getenv("CORAL_TRUSTED_PROXIES")); err != nil {
 		log.Printf("[auth] CORAL_TRUSTED_PROXIES ignored: %v", err)
 	}
@@ -496,6 +506,23 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/system/api-key", authRoutes.GetAPIKey)
 	r.Post("/api/system/api-key/regenerate", authRoutes.RegenerateKey)
 	r.Get("/api/system/auth-status", authRoutes.AuthStatus)
+	// The password (#3949): never in Coral Hub's tunnel table; an agent's token gets none of
+	// them (operatorOnlyRoutes).
+	authRoutes.SetCLIVerified(cliauth.Verified)
+	authRoutes.SetPeerUser(func(r *http.Request) (bool, bool) {
+		if s.cloudHandler == nil {
+			return false, false
+		}
+		return s.cloudHandler.SameUser(r)
+	})
+	r.Post("/auth/password", authRoutes.SignInWithPassword)
+	r.Post("/auth/password/create", authRoutes.CreatePassword)
+	r.Get("/api/auth/setup-code", authRoutes.GetSetupCode)
+	r.Post("/api/auth/password/set", authRoutes.SetPassword)
+	r.Post("/api/auth/password/change", authRoutes.ChangePassword)
+	r.Post("/api/auth/password/reset", authRoutes.ResetPassword)
+	r.Get("/api/auth/sessions", authRoutes.Sessions)
+	r.Post("/api/auth/sessions/sign-out-others", authRoutes.SignOutOthers)
 
 	// ── API Routes ──────────────────────────────────────────────
 	sessHandler := routes.NewSessionsHandler(s.db, s.cfg, s.backend, s.terminal, s.boardStore)

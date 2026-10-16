@@ -78,7 +78,12 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			// Allow the auth page, sign-out (it only ends the caller's own session, so an
 			// expired one can still clear its cookie), static assets and the manifest.
 			path := r.URL.Path
-			if path == "/auth" || path == "/auth/logout" || strings.HasPrefix(path, "/static/") ||
+			// The two sign-in forms (the API key, the password #3949) check their own credential and
+			// are throttled; before #3949 /auth/key was missing here, so the key form never worked
+			// from another computer (it was redirected to /auth).
+			if path == "/auth" || path == "/auth/logout" || path == "/auth/key" || path == "/auth/password" ||
+				path == "/auth/password/create" ||
+				strings.HasPrefix(path, "/static/") ||
 				path == "/manifest.json" || path == "/favicon.ico" {
 				next.ServeHTTP(w, r)
 				return
@@ -99,11 +104,11 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 				if ks.ValidateKey(key) {
 					// Auto-create session for API key auth via query param
 					if r.URL.Query().Get("api_key") != "" {
-						token, err := ks.CreateSession(clientIP(r), r.UserAgent())
+						token, err := ks.NewSession(r, SessionByKey, false)
 						if err != nil {
 							log.Printf("[auth] failed to create session: %v", err)
 						} else {
-							ks.setSessionCookie(w, r, token)
+							ks.setSessionCookie(w, r, token, false)
 						}
 					}
 					next.ServeHTTP(w, withMethod(r, MethodAPIKey))

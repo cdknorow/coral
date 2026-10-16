@@ -35,6 +35,8 @@ GET /api/agent/ui view
 GET /api/agent/ui/{id}/content view
 GET /api/agent/ui/{id}/events view
 GET /api/artifacts/{id} view
+GET /api/auth/sessions never
+GET /api/auth/setup-code never
 GET /api/board/projects view
 GET /api/board/remotes never
 GET /api/board/remotes/proxy/{remoteServer}/projects never
@@ -194,6 +196,10 @@ POST /api/agent/ui-request interact
 POST /api/agent/ui/{id}/events interact
 POST /api/artifacts/prune never
 POST /api/artifacts/retention/ack never
+POST /api/auth/password/change never
+POST /api/auth/password/reset never
+POST /api/auth/password/set never
+POST /api/auth/sessions/sign-out-others never
 POST /api/auto-accept/disable-all interact
 POST /api/board/remotes never
 POST /api/board/{project}/external-messages interact

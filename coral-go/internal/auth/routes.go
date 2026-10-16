@@ -16,6 +16,12 @@ type Routes struct {
 	// strictLocal: strict local auth is on (#3418), so /auth on this computer shows the
 	// locked page instead of the API-key form.
 	strictLocal bool
+	// The password (#3949): its throttle, the recent attempts, and how a handler knows the
+	// command line's signature was verified (cliauth sits above this package).
+	throttle    *passwordThrottle
+	audit       *signInAudit
+	cliVerified func(*http.Request) bool
+	peerUser    func(*http.Request) (same, supported bool)
 }
 
 // SetStrictLocal makes /auth show LockedPageHTML to a browser on this computer that isn't
@@ -24,7 +30,7 @@ func (ar *Routes) SetStrictLocal(on bool) { ar.strictLocal = on }
 
 // NewRoutes creates auth route handlers.
 func NewRoutes(ks *KeyStore) *Routes {
-	return &Routes{ks: ks}
+	return &Routes{ks: ks, throttle: newPasswordThrottle(), audit: &signInAudit{}, cliVerified: func(*http.Request) bool { return false }, peerUser: func(*http.Request) (bool, bool) { return false, false }}
 }
 
 // AuthPage serves the authentication page.
@@ -66,13 +72,13 @@ func (ar *Routes) ValidateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := ar.ks.CreateSession(ip, r.UserAgent())
+	token, err := ar.ks.NewSession(r, SessionByKey, false)
 	if err != nil {
 		log.Printf("[auth] failed to create session: %v", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create session"})
 		return
 	}
-	ar.ks.setSessionCookie(w, r, token)
+	ar.ks.setSessionCookie(w, r, token, false)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -136,8 +142,12 @@ func (ar *Routes) AuthStatus(w http.ResponseWriter, r *http.Request) {
 		authenticated = true
 	}
 
+	// password_set and local (#3949): the dashboard asks for a password, or says "Not now" for
+	// good, from these; local is the server's own check, never the page's hostname.
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"authenticated": authenticated,
 		"method":        method,
+		"password_set":  ar.ks.PasswordSet(),
+		"local":         localOperator(r),
 	})
 }
