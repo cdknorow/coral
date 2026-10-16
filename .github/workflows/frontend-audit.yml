@@ -1,0 +1,38 @@
+name: frontend-audit
+# Known-vulnerability check of the front end (#4093), the other half of govulncheck.yml (#4088):
+# the vendored libraries (their versions in coral-go/pkg/frontend/static/vendor/README.md, looked up
+# in OSV) and the npm locks (tests/vendor-build/codemirror builds the CodeMirror bundle,
+# tests/frontend is test tooling). A high or critical advisory in something that ships, or one with no
+# stated severity, fails the job; dev-only and lower ones are listed. See tools/audit-frontend-deps.py.
+# Runs when a library or lock changes, every Monday (advisories appear without any change here), and on demand.
+on:
+  push:
+    branches: [main, "ci/**"]
+    paths:
+      - "coral-go/pkg/frontend/static/vendor/**"
+      - "tests/frontend/package-lock.json"
+      - "tests/vendor-build/**"
+      - "tools/audit-frontend-deps.py"
+      - ".github/workflows/frontend-audit.yml"
+  pull_request:
+    paths:
+      - "coral-go/pkg/frontend/static/vendor/**"
+      - "tests/frontend/package-lock.json"
+      - "tests/vendor-build/**"
+      - "tools/audit-frontend-deps.py"
+      - ".github/workflows/frontend-audit.yml"
+  schedule:
+    - cron: "47 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Audit the vendored libraries and the npm locks
+        run: python3 -I tools/audit-frontend-deps.py
