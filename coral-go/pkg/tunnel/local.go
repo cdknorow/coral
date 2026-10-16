@@ -698,7 +698,7 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 			s.Reject(CodeUpstream, "local response ended early", 0)
 			return
 		}
-		out, ok := redactWhole(raw)
+		out, ok := redactReply(resp.Header, raw)
 		if !ok || !redactedJSONOK(resp.Header, raw, out) {
 			l.respondRedactFailed(s)
 			return
@@ -726,7 +726,7 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 			s.Reject(CodeUpstream, "local response ended early", 0)
 			return
 		}
-		out, ok := redactWhole(raw)
+		out, ok := redactReply(resp.Header, raw)
 		if !ok || !redactedJSONOK(resp.Header, raw, out) {
 			l.respondRedactFailed(s)
 			return

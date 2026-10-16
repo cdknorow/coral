@@ -168,7 +168,9 @@ func TestRedactedChatReplyParsesThroughTheTunnel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.True(t, json.Valid(got), "the chat reply parses after redaction")
-	assert.Equal(t, string(RedactTokens(body)), string(got))
+	want, ok := redactReply(http.Header{"Content-Type": {"application/json"}}, body)
+	require.True(t, ok)
+	assert.Equal(t, string(want), string(got))
 	assert.NotContains(t, string(got), "b3BlbnNzaC1rZXktdjEAAAAA")
 	var parsed struct{ Messages []map[string]any }
 	require.NoError(t, json.Unmarshal(got, &parsed))
@@ -240,7 +242,9 @@ func TestRedactedJSONUnderTheCapIsChecked(t *testing.T) {
 	resp.Body.Close()
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	assert.Equal(t, string(RedactTokens(body)), string(got))
+	want, ok := redactReply(http.Header{"Content-Type": {"application/json"}}, body)
+	require.True(t, ok)
+	assert.Equal(t, string(want), string(got))
 	assert.NotContains(t, string(got), tok)
 	assert.Zero(t, jsonBudget.inUse())
 }
