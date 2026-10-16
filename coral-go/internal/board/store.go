@@ -1058,7 +1058,17 @@ const (
 	 WHERE m.project = ? AND m.id > ?
 	 ORDER BY m.id ASC LIMIT ?`
 	countMessagesBeforeSQL = "SELECT COUNT(*) FROM board_messages WHERE project = ? AND id < ?"
+	// A board's total, counted from where its cached total stopped (messageTotal).
+	messageTotalHighSQL  = "SELECT COALESCE(MAX(id), ?) FROM board_messages WHERE project = ? AND id > ?"
+	messageTotalCountSQL = "SELECT COUNT(*) FROM board_messages WHERE project = ? AND id > ? AND id <= ?"
+	// The messages from an id up to the counted high, at most a limit of them.
+	countMessagesTailSQL = "SELECT COUNT(*) FROM (SELECT 1 FROM board_messages WHERE project = ? AND id >= ? AND id <= ? LIMIT ?)"
 )
+
+// beforeCountTail: CountMessagesBefore subtracts the messages from beforeID on from the
+// board's total when there are at most this many (a dashboard poll or the latest page: none
+// to a page's worth), and counts the older ones directly when paging deep into the history.
+const beforeCountTail = 5000
 
 // ListMessagesBefore returns the newest limit messages with id < beforeID,
 // oldest first: the page just before a loaded one. Unlike OFFSET paging it
@@ -1079,8 +1089,22 @@ func (s *Store) ListMessagesAfter(ctx context.Context, project string, afterID i
 
 // CountMessagesBefore counts the project's messages with id < beforeID.
 func (s *Store) CountMessagesBefore(ctx context.Context, project string, beforeID int64) (int, error) {
+	total, hi, err := s.messageTotal(ctx, project)
+	if err != nil {
+		return 0, err
+	}
+	if beforeID > hi {
+		return total, nil
+	}
+	var tail int
+	if err := s.reader().GetContext(ctx, &tail, countMessagesTailSQL, project, beforeID, hi, beforeCountTail+1); err != nil {
+		return 0, err
+	}
+	if tail <= beforeCountTail {
+		return max(total-tail, 0), nil
+	}
 	var count int
-	err := s.reader().GetContext(ctx, &count, countMessagesBeforeSQL, project, beforeID)
+	err = s.reader().GetContext(ctx, &count, countMessagesBeforeSQL, project, beforeID)
 	return count, err
 }
 
@@ -1125,10 +1149,8 @@ func (s *Store) SearchMessageHits(ctx context.Context, query string, limit int) 
 
 // CountMessages returns the total message count for a project.
 func (s *Store) CountMessages(ctx context.Context, project string) (int, error) {
-	var count int
-	err := s.reader().GetContext(ctx, &count,
-		"SELECT COUNT(*) FROM board_messages WHERE project = ?", project)
-	return count, err
+	total, _, err := s.messageTotal(ctx, project)
+	return total, err
 }
 
 // CheckUnread returns the count of unread messages based on the subscriber's receive_mode.
@@ -1681,12 +1703,29 @@ func (s *Store) GetAllUnreadStates(ctx context.Context) (map[string]UnreadState,
 		Project      string `db:"project"`
 		SubscriberID string `db:"subscriber_id"`
 		SessionName  string `db:"session_name"`
+		ReceiveMode  string `db:"receive_mode"`
+		JobTitle     string `db:"job_title"`
+		CanPeek      int    `db:"can_peek"`
 	}
 	if err := s.reader().SelectContext(ctx, &subs,
-		"SELECT project, subscriber_id, session_name FROM board_subscribers WHERE is_active = 1"); err != nil {
+		`SELECT project, subscriber_id, session_name, COALESCE(receive_mode, '') AS receive_mode,
+		        COALESCE(job_title, '') AS job_title, COALESCE(can_peek, 0) AS can_peek
+		 FROM board_subscribers WHERE is_active = 1`); err != nil {
 		return nil, err
 	}
 	for _, sub := range subs {
+		// A mentions-mode subscriber with nothing unread has no unread message that tags it:
+		// the count above and LatestUnreadMessageID's search confirm mentions by the same
+		// rule over the same messages. The search would read every message after its cursor
+		// and find none, which for a subscriber that never read is the board's whole history
+		// (#3845: 40 such subscribers kept a start with 300,000 messages from serving for
+		// minutes). A group-mode count is by sender, not mention, and an orchestrator's latest
+		// is any message's, so those still search.
+		if counts[sub.SessionName] == 0 && (sub.ReceiveMode == "" || sub.ReceiveMode == "mentions") &&
+			!isOrchestrator(sub.SubscriberID, sub.JobTitle, sub.CanPeek) {
+			states[sub.SessionName] = UnreadState{}
+			continue
+		}
 		latest, err := s.LatestUnreadMessageID(ctx, sub.Project, sub.SubscriberID)
 		if err != nil {
 			return nil, err

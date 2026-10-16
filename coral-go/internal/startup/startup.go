@@ -971,8 +971,13 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		boardNotifier.SetIsPausedFn(bh.IsPaused)
 		bh.SetNotifyFn(boardNotifier.NotifyNow)
 	}
-	boardNotifier.SeedFromDB(ctx)
-	safeGo(ctx, "board_notifier", func() { boardNotifier.Run(ctx) })
+	// Seeded before its first pass, but not before the server serves: on a long board
+	// history seeding takes seconds (#3845, perf pass #3833 item 4). A NotifyNow meanwhile
+	// waits in its channel for Run.
+	safeGo(ctx, "board_notifier", func() {
+		boardNotifier.SeedFromDB(ctx)
+		boardNotifier.Run(ctx)
+	})
 	// Board health scanning — enabled by default; disable with
 	// `board_health_monitor` user setting set to `false`.
 	boardSettings, _ := sessStore.GetSettings(ctx)
