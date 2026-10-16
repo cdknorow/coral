@@ -13,6 +13,12 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 
 async function hubSigninState() {
     try {
+        // The Hub sign-in settings are for a browser signed in with a session (a link, the app, the tray or the password). A
+        // dashboard reached with no cookie (strict off) or an API key is answered 401 dashboard_auth_required, which the page
+        // treats as "signed out": so ask only when auth-status says this browser has a session.
+        const a = await fetch('/api/system/auth-status', { credentials: 'same-origin', cache: 'no-store' });
+        const st = a.ok ? await a.json() : null;
+        if (!st || st.method !== 'session') return null;
         const r = await fetch('/api/auth/hub-signin', { credentials: 'same-origin', cache: 'no-store' });
         return r.ok ? await r.json() : null;
     } catch { return null; }

@@ -42,7 +42,7 @@ export async function loadSecurityRow() {
     if (st.password_set) { try { sessions = await getSessions(); } catch { /* the list is optional */ } }
     render(root, st, sessions);
     root.hidden = false;
-    appendHub(root, sessions);   // only where this computer is linked to Coral Hub (#3966)
+    if (st.method === 'session') appendHub(root, sessions);   // only for a browser session, and only where this computer is linked to Coral Hub (#3966)
 }
 
 function render(root, st, sessions) {

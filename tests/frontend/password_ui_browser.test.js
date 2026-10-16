@@ -27,6 +27,7 @@ const BASE = require('./test_base').BASE;
                 const url = String(u);
                 if (url.startsWith('/api/system/auth-status')) return new Response(JSON.stringify(status), { status: 200 });
                 if (url.startsWith('/api/auth/sessions') && !o.method) return window.__needSignIn ? new Response(JSON.stringify({ error: 'Sign in in this browser first', code: 'password_session_required' }), { status: 403 }) : new Response(JSON.stringify(sessions), { status: 200 });
+                if (url === '/api/auth/hub-signin' && !o.method) return new Response(JSON.stringify({ enabled: false, linked: false, offer: false, owner_known: true }), { status: 200 });   // the app's own Hub notice check
                 if (url.startsWith('/api/auth/')) {
                     calls.push({ url, body: o.body ? JSON.parse(o.body) : null });
                     const r = reply[url] || { status: 200, body: { ok: true } };
