@@ -144,8 +144,6 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/notes",
 		"/api/sessions/live/{name}/events",
 		"/api/sessions/live/{name}/events/counts",
-		"/api/sessions/live/{name}/pending-tool",
-		"/api/sessions/live/{name}/prompt-options",
 		"/api/sessions/live/team/{board}/sleep-status",
 		"/api/sessions/resolve",
 		"/api/sessions/{id}/resolve",

@@ -222,12 +222,15 @@ func TestAnswerPrompt(t *testing.T) {
 
 	// Options are read from the screen
 	setScreen(screenPermission)
-	resp, err := http.Get(base + "/prompt-options?" + url.Values{"session_id": {sid}, "agent_type": {"claude"}}.Encode())
+	// (read from the chat poll's reply: no hook event has been seen for this session, so a prompt may be open)
+	resp, err := http.Get(base + "/chat?" + url.Values{"session_id": {sid}, "agent_type": {"claude"}, "after": {"1"}}.Encode())
 	require.NoError(t, err)
-	var screen promptScreen
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&screen))
+	var reply struct {
+		PromptOptions promptScreen `json:"prompt_options"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&reply))
 	resp.Body.Close()
-	assert.Len(t, screen.Options, 4)
+	assert.Len(t, reply.PromptOptions.Options, 4)
 
 	// Answering sends the digit, but only for the option the screen shows
 	code, _ := answer(4, "No")

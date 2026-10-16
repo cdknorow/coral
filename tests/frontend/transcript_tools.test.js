@@ -50,9 +50,9 @@ const STUB = `
     if (path==='/api/sessions/live') return json(window.__sessions);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path) && qs.get('limit')) window.__chatLimits = (window.__chatLimits||[]).concat([qs.get('limit')]);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) { const after=parseInt(qs.get('after')||'0',10);
-      const body={messages: window.__msgs.slice(after), total: window.__msgs.length, has_more: false}; return new Promise(r => setTimeout(r, window.__chatDelay ?? 400)).then(() => json(body)); }
-    if (/\\/pending-tool$/.test(path)) { window.__pendingFetches = (window.__pendingFetches || 0) + 1; return json({ pending: window.__pendingTool || null }); }
-    if (/\\/prompt-options$/.test(path)) return json(window.__promptScreen || { question: '', options: [] });
+      // The pending tool and the open prompt's options ride on the chat reply, as the real server sends them (#3720).
+      return new Promise(r => setTimeout(r, window.__chatDelay ?? 400)).then(() => { window.__chatReplies = (window.__chatReplies || 0) + 1;
+        const body={messages: window.__msgs.slice(after), total: window.__msgs.length, has_more: false, pending: window.__pendingTool || null}; if (window.__promptScreen) body.prompt_options = window.__promptScreen; return json(body); }); }
     if (/\\/resolve-path$/.test(path)) { window.__resolves = (window.__resolves||[]).concat([qs.get('filepath')]); return json({ filepath: 'resolved/' + qs.get('filepath').replace(/:.*$/, ''), line: 0 }); }
     if (/^\\/api\\/board\\//.test(path)) return json({});
     return window.__origFetch(url, opts); };`;
@@ -73,10 +73,10 @@ async function run() {
   };
   // Run n history-poll cycles now (the same refreshLiveHistory the 1 s timer calls, which keeps running as in
   // production) instead of sleeping until the timer has done them, then let the async parts render.
-  // A refresh that overlaps the timer's can be cut short, so count COMPLETED refreshes (each one ends by fetching
-  // /pending-tool) and keep refreshing until n have completed.
+  // A refresh that overlaps the timer's can be cut short, so count the chat replies the stub has answered and keep
+  // refreshing until n have.
   const refreshOnce = () => ev(`import((window.__coralStatic||'/static/')+'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
-  const cycles = async (n) => { const start = await ev(`window.__pendingFetches || 0`); for (let i = 0; i < n * 10 && (await ev(`window.__pendingFetches || 0`)) < start + n; i++) { await refreshOnce(); await sleep(30); } await nextFrame(); };
+  const cycles = async (n) => { const start = await ev(`window.__chatReplies || 0`); for (let i = 0; i < n * 10 && (await ev(`window.__chatReplies || 0`)) < start + n; i++) { await refreshOnce(); await sleep(30); } await nextFrame(); };
   // For a state the poll converges to: refresh until cond holds (up to 40 cycles), so a loaded machine only waits longer.
   // The card re-renders when a poll lands; wait for the element a step is about to use (up to 3 s).
   const waitEl = async (sel) => { for (let i = 0; i < 60 && !(await ev(`!!document.querySelector(${JSON.stringify(sel)})`)); i++) await sleep(50); };

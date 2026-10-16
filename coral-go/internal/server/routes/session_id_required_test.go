@@ -24,7 +24,6 @@ func TestBareNameRoutesRequireSessionID(t *testing.T) {
 		{"GET", "/capture", ""},
 		{"GET", "/poll", ""},
 		{"GET", "/info", ""},
-		{"GET", "/prompt-options", ""},
 		{"GET", "/capture?agent_type=claude", ""},
 		{"POST", "/kill", `{}`},
 		{"POST", "/kill", `{"agent_type":"claude"}`},

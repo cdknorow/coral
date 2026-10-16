@@ -44,9 +44,9 @@ func TestRoutesAnswerTerminalGone(t *testing.T) {
 	assert.Empty(t, terminal.sent, "nothing was typed anywhere")
 	assert.Empty(t, terminal.raw, "no keys were sent anywhere")
 
-	// prompt-options is a read: an empty prompt, not an error.
+	// The chat poll reads the prompt too: a gone terminal is an empty prompt, not an error.
 	terminal.mu.Unlock()
-	resp, err := http.Get(server.URL + "/api/sessions/live/team/prompt-options?agent_type=claude&session_id=" + sid)
+	resp, err := http.Get(server.URL + "/api/sessions/live/team/chat?agent_type=claude&after=1&session_id=" + sid)
 	terminal.mu.Lock()
 	require.NoError(t, err)
 	defer resp.Body.Close()

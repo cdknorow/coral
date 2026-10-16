@@ -1,11 +1,10 @@
 // #3720 (from the #3714 audit): what an agent switch and the chat poll request.
-//  - The pending tool and the options of an open prompt ride on the chat poll's reply, so GET /pending-tool and
-//    GET /prompt-options are not polled; the options are only in the reply while a prompt may be open.
-//  - A reply without "pending" (an older server) makes the dashboard ask the two routes as before.
+//  - The pending tool and the options of an open prompt ride on the chat poll's reply (the GET /pending-tool and
+//    GET /prompt-options routes are gone); the options are only in the reply while a prompt may be open.
 //  - A switch no longer fetches the session detail (a hidden pane's capture), /tasks or /events: the first
 //    GET /poll carries the tasks and events.
 // Network counts come from a fetch wrapper installed in the page before the app loads; it also notes the keys
-// of the latest chat reply and can strip the new keys to play an older server.
+// of the latest chat reply.
 'use strict';
 
 const CDP = require('chrome-remote-interface');
@@ -31,7 +30,6 @@ async function httpJson(method, path, body, headers = {}) {
     };
     const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
     const until = (expr, what, ms = 8000) => waitFor(expr, what, { timeout: ms, soft: true });
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
     let standIn = null;
     try {
         standIn = await launchStandIn(httpJson, { displayName: 'Switch Requests QA' });
@@ -39,7 +37,7 @@ async function httpJson(method, path, body, headers = {}) {
         const sid = standIn.sid, name = standIn.name, tok = { 'X-Coral-Session-Token': standIn.token };
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: `(() => {
-            window.__net = []; window.__chatKeys = []; window.__stripNeedsInput = false;
+            window.__net = []; window.__chatKeys = [];
             const realFetch = window.fetch;
             window.fetch = async function (u, o) {
                 const url = String((u && u.url) || u);
@@ -48,10 +46,6 @@ async function httpJson(method, path, body, headers = {}) {
                 if (/\\/api\\/sessions\\/live\\/[^/]+\\/chat\\?/.test(url) && resp.ok) {
                     const data = await resp.clone().json().catch(() => null);
                     if (data) window.__chatKeys = Object.keys(data);
-                    if (data && window.__stripNeedsInput) {
-                        delete data.pending; delete data.prompt_options;
-                        return new Response(JSON.stringify(data), { status: resp.status, headers: { 'Content-Type': 'application/json' } });
-                    }
                 }
                 return resp;
             };
@@ -75,8 +69,7 @@ async function httpJson(method, path, body, headers = {}) {
         await until(`window.__net.filter(r => r.t >= ${t0} && /\\/chat\\?/.test(r.url) && /after=/.test(r.url)).length >= 3`, 'the chat poll running');
         check('the chat reply carries "pending"', (await chatKeys()).includes('pending'), JSON.stringify(await chatKeys()));
         check('a poll with no hook event yet may have a prompt open, so the reply has prompt_options', (await chatKeys()).includes('prompt_options'));
-        check('GET /pending-tool is not polled', (await count(live + '/pending-tool', t0)) === 0, String(await count(live + '/pending-tool', t0)));
-        check('GET /prompt-options is not polled', (await count(live + '/prompt-options', t0)) === 0, String(await count(live + '/prompt-options', t0)));
+        check('no request goes to /pending-tool or /prompt-options', (await count(live + '/(pending-tool|prompt-options)', t0)) === 0, String(await count(live + '/(pending-tool|prompt-options)', t0)));
         check('the switch fetches no session detail (the hidden pane\'s capture)', (await count(live + '(\\?|$)', t0)) === 0, String(await count(live + '(\\?|$)', t0)));
         check('...no /tasks and no /events', (await count(live + '/(tasks|events)\\?', t0)) === 0, String(await count(live + '/(tasks|events)\\?', t0)));
         check('...and the first /poll did come (it carries the tasks and events)', (await count(live + '/poll\\?', t0)) >= 1);
@@ -101,17 +94,6 @@ async function httpJson(method, path, body, headers = {}) {
         await until(`!!document.querySelector('#live-history-messages .chat-needs-input')`, 'the needs-input card', 6000);
         check('a pending question shows its card', await ev(`!!document.querySelector('#live-history-messages .chat-needs-input')`));
         check('...with no GET /pending-tool at all', (await count(live + '/pending-tool', t1)) === 0, String(await count(live + '/pending-tool', t1)));
-
-        // ── An older server: no "pending" in the reply, so the two routes are asked ──
-        const t2 = await now();
-        await ev(`window.__stripNeedsInput = true; true`);
-        await until(`window.__net.filter(r => r.t >= ${t2} && /\\/pending-tool\\?/.test(r.url)).length >= 2`, 'the old pending-tool poll', 6000);
-        check('an older server (no "pending" key): /pending-tool is polled as before', (await count(live + '/pending-tool', t2)) >= 2, String(await count(live + '/pending-tool', t2)));
-        await ev(`window.__stripNeedsInput = false; true`);
-        await sleep(1500); // sleep-ok: the stripped polls already in flight settle (no event to wait for)
-        const t3 = await now();
-        await sleep(3500); // sleep-ok: shows that the old routes are not polled again (no condition to wait for)
-        check('the server answers with the keys again: /pending-tool stops', (await count(live + '/pending-tool', t3)) === 0, String(await count(live + '/pending-tool', t3)));
     } catch (e) {
         check('the test ran', false, e.stack || String(e));
     } finally {

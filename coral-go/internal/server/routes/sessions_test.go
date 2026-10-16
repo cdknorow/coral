@@ -2098,8 +2098,9 @@ func TestSessionsPendingTool(t *testing.T) {
 		resp.Body.Close()
 		return resp.StatusCode
 	}
+	// The pending tool is read from the chat poll's reply (#3720), which is what the dashboard reads.
 	get := func() map[string]any {
-		resp, err := http.Get(base + "/pending-tool?session_id=pend-1")
+		resp, err := http.Get(base + "/chat?session_id=pend-1&agent_type=claude&after=1")
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		var body map[string]any
@@ -2450,11 +2451,9 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/file-content", handler.GetFileContent)
 	r.Get("/api/sessions/live/{name}/file-original", handler.GetFileOriginal)
 	r.Get("/api/system/editors", handler.ListEditors)
-	r.Get("/api/sessions/live/{name}/pending-tool", handler.GetPendingTool)
 	r.Post("/api/sessions/live/{name}/pending-tool", handler.SetPendingTool)
 	r.Post("/api/sessions/live/{name}/events", handler.CreateEvent)
 	r.Post("/api/sessions/live/{name}/turn-end", handler.TurnEndHandoff)
-	r.Get("/api/sessions/live/{name}/prompt-options", handler.PromptOptions)
 	r.Post("/api/sessions/live/{name}/answer-prompt", handler.AnswerPrompt)
 	r.Post("/api/sessions/live/{name}/auto-accept/enable", handler.EnableAutoAccept)
 	r.Post("/api/sessions/live/{name}/auto-accept/disable", handler.DisableAutoAccept)

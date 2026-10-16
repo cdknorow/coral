@@ -28,8 +28,13 @@ const MESSAGE = "The agent's terminal is gone. Restart it to continue.";
         window.__writeHits = [];
         window.fetch = (url, opts = {}) => {
             const u = String(url);
-            // The prompt bar's options (#3622: only a card Coral itself shows can answer).
-            if (/\\/prompt-options(?:\\?|$)/.test(u)) return Promise.resolve(new Response(JSON.stringify(window.__promptScreen || { question: '', options: [] }), { status: 200, headers: { 'content-type': 'application/json' } }));
+            // The prompt bar's options (#3622: only a card Coral itself shows can answer) come with the chat reply (#3720).
+            if (window.__promptScreen && /\\/api\\/sessions\\/live\\/[^/?]+\\/chat\\?/.test(u)) return inner(url, opts).then(async r => {
+                const d = await r.clone().json().catch(() => null);
+                if (!d) return r;
+                d.prompt_options = window.__promptScreen;
+                return new Response(JSON.stringify(d), { status: r.status, headers: { 'content-type': 'application/json' } });
+            });
             const m = u.match(/\\/api\\/sessions\\/live\\/[^/?]+\\/(send|keys|answer-prompt)(?:\\?|$)/);
             if (!m) return inner(url, opts);
             window.__writeHits.push(m[1]);

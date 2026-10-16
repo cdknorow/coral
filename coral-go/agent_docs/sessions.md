@@ -135,7 +135,7 @@ Resolve session info by process IDs (used by CLI integrations).
 
 ## Session Metadata & Monitoring
 
-**Every per-agent route that reaches its terminal names the session.** `GET live/{name}`, `/capture`, `/poll`, `/info`, `/prompt-options`, `/ws/terminal/{name}` (query `session_id`) and `/kill`, `/restart`, `/attach` (body `session_id`), `/resume` (body `current_session_id`) answer 400 `{"error": "session_id is required", "code": "session_id_required"}` without one (the WebSocket closes with 1008), unless `{name}` is the agent's exact terminal name (`claude-<uuid>`). A bare agent or folder name is shared by teammates and would reach whichever terminal matched it. Take `name` and `session_id` from `GET /api/sessions/live`.
+**Every per-agent route that reaches its terminal names the session.** `GET live/{name}`, `/capture`, `/poll`, `/info`, `/ws/terminal/{name}` (query `session_id`) and `/kill`, `/restart`, `/attach` (body `session_id`), `/resume` (body `current_session_id`) answer 400 `{"error": "session_id is required", "code": "session_id_required"}` without one (the WebSocket closes with 1008), unless `{name}` is the agent's exact terminal name (`claude-<uuid>`). A bare agent or folder name is shared by teammates and would reach whichever terminal matched it. Take `name` and `session_id` from `GET /api/sessions/live`.
 
 ### GET `/api/sessions/live/{name}/capture`
 
@@ -201,6 +201,13 @@ Read the agent's JSONL conversation log with pagination. Works for sleeping and 
 ```
 
 `start` is the absolute index of the first message returned; pass it as the next `before` to get the page above. History pages are gzip-compressed when the request sends `Accept-Encoding: gzip`. A poll (`after>0`) returns `{messages, total, limit_notice}`.
+
+**Needs-input fields (a request that has a session id, not an older-page `before` request).** Both a poll and a history page also carry what the dashboard shows for an open prompt, so it needs no separate poll:
+
+| Field | Description |
+|-------|-------------|
+| `pending` | The tool call the agent started and has not finished (`tool_use_id`, `tool_name`, `input`, `at`), or `null`. Always present. |
+| `prompt_options` | The prompt open on the terminal as `{"question", "options": [{"n", "label", "action"}], "review"}`, read from a pane capture. Present only when a prompt may be open: a tool is pending, the agent is Codex, Agy, Antigravity or Gemini (their prompts have no hook), the session's latest request-changing hook event is `permission_request` or `notification`, or no such event has been seen since the server started. It is read for the exact target only (a `session_id` that is not that terminal's gets none). |
 
 ---
 

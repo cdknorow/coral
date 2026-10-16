@@ -106,9 +106,7 @@ GET /api/sessions/live/{name}/history/context view
 GET /api/sessions/live/{name}/history/search view
 GET /api/sessions/live/{name}/info view
 GET /api/sessions/live/{name}/notes view
-GET /api/sessions/live/{name}/pending-tool view
 GET /api/sessions/live/{name}/poll view
-GET /api/sessions/live/{name}/prompt-options view
 GET /api/sessions/live/{name}/resolve-path view
 GET /api/sessions/live/{name}/search-files view
 GET /api/sessions/live/{name}/subagents view

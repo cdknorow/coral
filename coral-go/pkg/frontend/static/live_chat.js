@@ -880,15 +880,11 @@ export async function refreshLiveHistory() {
         if (generation !== historyGeneration) return;
 
         // What the server says about an open prompt rides on this reply (#3720): the pending tool call, and the options
-        // of a prompt that may be open on the terminal. A reply without "pending" is from a server that predates
-        // this: the two routes are then asked as before (below).
-        const needsInputInReply = Object.hasOwn(data, "pending");
-        if (needsInputInReply) {
-            pendingToolBySession.set(session.session_id, data.pending || null);
-            const po = data.prompt_options;
-            if (po) promptOptionsBySession.set(session.session_id, { question: po.question || "", options: po.options || [], review: po.review || [] });
-            else promptOptionsBySession.delete(session.session_id);
-        }
+        // of a prompt that may be open on the terminal.
+        pendingToolBySession.set(session.session_id, data.pending || null);
+        const po = data.prompt_options;
+        if (po) promptOptionsBySession.set(session.session_id, { question: po.question || "", options: po.options || [], review: po.review || [] });
+        else promptOptionsBySession.delete(session.session_id);
 
         if (data.messages && data.messages.length > 0) {
             if (!initialLoadDone) {
@@ -931,11 +927,6 @@ export async function refreshLiveHistory() {
         syncNeedsInputCard(container, session);
         syncWorkingIndicator(container, session);
         syncEmptyState(container);
-        if (!needsInputInReply) {
-            refreshPendingTool(session);
-            if (container.querySelector(":scope > .chat-needs-input") || readsPromptsFromScreen(session)) refreshPromptOptions(session);
-            else promptOptionsBySession.delete(session.session_id);
-        }
         if (state.autoScroll) {
             container.scrollTop = container.scrollHeight;
         }
@@ -1720,46 +1711,13 @@ function syncWorkingIndicator(container, session) {
 // Claude Code writes a tool call to the transcript only once it completes, so
 // an open permission prompt, AskUserQuestion or plan approval never shows in
 // the chat on its own. The PreToolUse hook reports the call as it starts
-// (GET /pending-tool); the Notification hook sets waiting_for_input. Together
+// (it arrives with the chat poll's reply as `pending`); the Notification hook sets waiting_for_input. Together
 // they drive a card at the bottom of the chat saying what is being asked.
 
 const pendingToolBySession = new Map(); // session_id -> pending tool or null
-let pendingToolInFlight = false;
-
-async function refreshPendingTool(session) {
-    if (pendingToolInFlight || !session || !session.session_id) return;
-    pendingToolInFlight = true;
-    try {
-        const qs = new URLSearchParams({ session_id: session.session_id });
-        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/pending-tool?${qs}`);
-        if (resp.ok) {
-            const data = await resp.json();
-            pendingToolBySession.set(session.session_id, data.pending || null);
-        }
-    } catch { /* keep the last known value */ } finally {
-        pendingToolInFlight = false;
-    }
-}
-
 // The prompt's options as the terminal shows them right now (numbered, with
 // the digit that answers each), read by the server from a pane capture.
 const promptOptionsBySession = new Map(); // session_id -> { question, options: [{ n, label, action }], review }
-let promptOptionsInFlight = false;
-
-async function refreshPromptOptions(session) {
-    if (promptOptionsInFlight || !session || !session.session_id) return;
-    promptOptionsInFlight = true;
-    try {
-        const qs = new URLSearchParams({ session_id: session.session_id, agent_type: session.agent_type || "" });
-        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/prompt-options?${qs}`);
-        if (resp.ok) {
-            const data = await resp.json();
-            promptOptionsBySession.set(session.session_id, { question: data.question || "", options: data.options || [], review: data.review || [] });
-        }
-    } catch { /* keep the last known value */ } finally {
-        promptOptionsInFlight = false;
-    }
-}
 
 // Tools whose whole purpose is to wait for the user
 const BLOCKING_TOOLS = {

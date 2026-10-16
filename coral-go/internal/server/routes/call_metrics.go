@@ -115,18 +115,17 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 }
 
 // dashboardPollOperations are the routes the dashboard polls on its own while
-// an agent is open (chat, poll, prompt options, events, the board's message
+// an agent is open (chat, poll, events, the board's message
 // list). A GET from the dashboard carries no agent identity and is not a call
 // anyone made; the same routes called by an agent's CLI (X-Coral-Agent,
 // X-Coral-Subscriber-ID or subscriber_id) still count. pending-tool is kept: the
 // PreToolUse hook posts it once per tool call, which is the tool-call signal
 // (#3261, the operator's choice).
 var dashboardPollOperations = map[string]bool{
-	"/api/sessions/live/{name}/chat":           true,
-	"/api/sessions/live/{name}/poll":           true,
-	"/api/sessions/live/{name}/prompt-options": true,
-	"/api/sessions/live/{name}/events":         true,
-	"/api/board/{project}/messages/all":        true,
+	"/api/sessions/live/{name}/chat":    true,
+	"/api/sessions/live/{name}/poll":    true,
+	"/api/sessions/live/{name}/events":  true,
+	"/api/board/{project}/messages/all": true,
 }
 
 type requestMetricIdentityData struct {

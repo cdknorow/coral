@@ -28,7 +28,7 @@ func TestRequestMetricsSkipsDashboardPolls(t *testing.T) {
 	r.Use(RequestMetrics(db))
 	ok := func(w http.ResponseWriter, r *http.Request) {}
 	for _, p := range []string{"/api/sessions/live/{name}/chat", "/api/sessions/live/{name}/poll",
-		"/api/sessions/live/{name}/prompt-options", "/api/sessions/live/{name}/events",
+		"/api/sessions/live/{name}/events",
 		"/api/board/{project}/messages/all", "/api/sessions/live/{name}/pending-tool"} {
 		r.Get(p, ok)
 		r.Post(p, ok)
@@ -42,14 +42,14 @@ func TestRequestMetricsSkipsDashboardPolls(t *testing.T) {
 	}
 	// The dashboard: session_id in the query, no agent identity.
 	for _, u := range []string{"/api/sessions/live/a/chat?session_id=s1", "/api/sessions/live/a/poll?session_id=s1",
-		"/api/sessions/live/a/prompt-options", "/api/sessions/live/a/events?limit=50", "/api/board/team/messages/all?limit=100"} {
+		"/api/sessions/live/a/events?limit=50", "/api/board/team/messages/all?limit=100"} {
 		do("GET", u, nil)
 	}
 	// Kept: an agent's tooling, a POST, and pending-tool.
 	do("GET", "/api/sessions/live/a/chat", map[string]string{"X-Coral-Agent": "Backend Dev"})
 	do("GET", "/api/board/team/messages/all?subscriber_id=Backend+Dev", nil)
 	do("POST", "/api/sessions/live/a/events", nil)
-	do("GET", "/api/sessions/live/a/pending-tool", nil)
+	do("POST", "/api/sessions/live/a/pending-tool", nil)
 
 	rows, err := db.CallMetricSummary(context.Background(), time.Now().Add(-time.Hour))
 	require.NoError(t, err)

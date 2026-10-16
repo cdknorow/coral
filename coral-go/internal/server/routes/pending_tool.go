@@ -168,22 +168,6 @@ func (h *SessionsHandler) SetPendingTool(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// GetPendingTool returns the tool call a session has started but not
-// finished, or {"pending": null}.
-// GET /api/sessions/live/{name}/pending-tool?session_id=...
-func (h *SessionsHandler) GetPendingTool(w http.ResponseWriter, r *http.Request) {
-	sid := r.URL.Query().Get("session_id")
-	if sid == "" {
-		errBadRequest(w, "session_id is required")
-		return
-	}
-	if t, ok := h.pending.get(sid, time.Now()); ok {
-		writeJSON(w, http.StatusOK, map[string]any{"pending": t})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"pending": nil})
-}
-
 // notePendingToolEvent clears the pending tool when the event log shows it
 // finished, or that the turn moved on.
 func (h *SessionsHandler) notePendingToolEvent(sessionID, eventType, toolUseID string) {

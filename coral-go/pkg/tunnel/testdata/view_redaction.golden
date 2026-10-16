@@ -65,9 +65,7 @@ GET /api/sessions/live/{name}/history/context redact
 GET /api/sessions/live/{name}/history/search redact
 GET /api/sessions/live/{name}/info redact
 GET /api/sessions/live/{name}/notes redact
-GET /api/sessions/live/{name}/pending-tool redact
 GET /api/sessions/live/{name}/poll redact
-GET /api/sessions/live/{name}/prompt-options redact
 GET /api/sessions/live/{name}/resolve-path redact
 GET /api/sessions/live/{name}/search-files redact
 GET /api/sessions/live/{name}/subagents redact

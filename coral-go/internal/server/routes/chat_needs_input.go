@@ -11,8 +11,7 @@ import (
 // What the dashboard needs to know about an open prompt rides on the chat poll's reply (#3720): the pending
 // tool call, always, and the options of a prompt open on the terminal, only when one may be open. They used to
 // be two more requests a second per open agent (GET /pending-tool and GET /prompt-options, the second reading a
-// pane capture, 11 to 26 ms), and both routes stay for dashboards that still ask. A reply without a
-// "pending" key is from a server that predates this; the client then asks the old routes.
+// pane capture, 11 to 26 ms). Those two routes are gone: the dashboard and the server ship together.
 
 // promptHints holds, per session, whether its latest state-changing hook event leaves a prompt open. A session
 // with no such event since this server started is unknown, and unknown means "may be open": the options are
@@ -85,7 +84,7 @@ func (h *SessionsHandler) addNeedsInput(r *http.Request, reply map[string]any, n
 	if !hasPending && !readsPromptsFromScreen(agentType) && !h.hints.mayBeOpen(sessionID) {
 		return
 	}
-	// The same check GET /prompt-options makes: the pane read is the exact target's, never another agent's.
+	// The check GET /prompt-options used to make: the pane read is the exact target's, never another agent's.
 	if shouldValidateExactTarget(agentType, sessionID) {
 		if _, status, _ := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
 			return

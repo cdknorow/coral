@@ -15,7 +15,7 @@ import (
 )
 
 // #3720: the chat poll's reply carries the pending tool (always) and the options of an open prompt (only when
-// one may be open), so the dashboard stops polling GET /pending-tool and GET /prompt-options every second.
+// one may be open), so the dashboard needs no separate poll for them.
 
 func chatReply(t *testing.T, base string, q url.Values) map[string]any {
 	t.Helper()
@@ -37,7 +37,7 @@ func TestChatReplyCarriesThePendingTool(t *testing.T) {
 
 	r := chatReply(t, base, q)
 	v, has := r["pending"]
-	assert.True(t, has, "the key is there even when nothing is pending: that is how a client tells a new server from an old one")
+	assert.True(t, has, "the key is there even when nothing is pending")
 	assert.Nil(t, v)
 
 	handler.pending.set(sid, pendingTool{ToolUseID: "toolu_1", ToolName: "AskUserQuestion", Input: map[string]any{"q": "which?"}, At: time.Now()})
@@ -55,7 +55,7 @@ func TestChatReplyCarriesThePendingTool(t *testing.T) {
 	byName := chatReply(t, base, url.Values{"after": {"3"}})
 	_, has = byName["pending"]
 	assert.True(t, has, "a name the server can resolve to a session")
-	// A name that is no session at all has nothing to look up: no pending key, so a client asks the old route.
+	// A name that is no session at all has nothing to look up: no pending key.
 	unknown := chatReply(t, server.URL+"/api/sessions/live/claude-nobody", url.Values{"after": {"3"}})
 	_, has = unknown["pending"]
 	assert.False(t, has)
@@ -131,7 +131,7 @@ func TestChatReplyAlwaysReadsTheScreenOfAgentsWithoutPromptHooks(t *testing.T) {
 }
 
 func TestChatReplyNeverReadsAnotherAgentsPane(t *testing.T) {
-	// The same exact-target check GET /prompt-options makes: a session id that does not belong to the named
+	// The exact-target check GET /prompt-options used to make: a session id that does not belong to the named
 	// terminal gets no screen from it.
 	server, _, terminal, ss := setupSessionsTestServer(t)
 	const sid = "00000000-0000-0000-0000-00000000c4aa"
