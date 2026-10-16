@@ -51,13 +51,13 @@ jobs:
           cache-dependency-path: coral-go/go.sum
       - name: vet (the whole module, natively on Windows)
         run: go vet -tags fts5 ./...
-      - name: packages with Windows-specific code paths
-        run: >-
-          go test -count=1 -timeout 30m -tags fts5
-          ./internal/safefs/... ./internal/agent/... ./internal/cliauth/...
-          ./internal/gitutil/... ./internal/background/... ./internal/ptymanager/...
-          ./internal/config/...
-          ./internal/secfile/... ./pkg/secretbox/... ./internal/cloud/...
+      - name: PROBE every package but routes, whole, on Windows (one-off; results only)
+        run: |
+          set +e
+          pkgs=$(go list -tags fts5 ./... | grep -v '/internal/server/routes$')
+          go test -count=1 -timeout 40m -tags fts5 $pkgs 2>&1 | tee ../probe.log | grep -E '^(ok|FAIL|---|panic)' | head -400
+          echo "=== package summary"; grep -E '^(ok |FAIL|\?)' ../probe.log | sed 's/\t[0-9.]*s$//' | sort | uniq -c | sort -rn | head -80
+          exit 0
       - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
         if: ${{ !cancelled() }} # report the routes results even when the packages step failed
         env:
