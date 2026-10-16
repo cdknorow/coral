@@ -57,6 +57,8 @@ const authPageHTML = `<!DOCTYPE html>
   }
   button:hover { background: #2ea043; }
   button:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+  .help { color: #8b949e; font-size: 13px; line-height: 1.5; }
+  .help code { background: #21262d; padding: 1px 5px; border-radius: 4px; color: #e6edf3; }
   .error { color: #f85149; font-size: 13px; margin-top: 12px; display: none; }
   .success { color: #3fb950; font-size: 13px; margin-top: 12px; display: none; }
 </style>
@@ -65,6 +67,7 @@ const authPageHTML = `<!DOCTYPE html>
 <div class="card">
   <h1>Coral</h1>
   <p>Enter your API key to access the dashboard.</p>
+  <p class="help">Coral now asks every browser to sign in: this is a one-time step for this browser. Your API key is the file <code>api_key</code> in Coral's data folder on the computer running Coral (usually <code>~/.coral/api_key</code>). On that computer, <code>coral open</code> opens the dashboard already signed in.</p>
   <form id="auth-form" method="post" action="/auth/key">
     <div class="input-group">
       <input type="text" id="api-key" placeholder="API Key" autocomplete="off" spellcheck="false" required>

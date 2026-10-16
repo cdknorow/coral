@@ -13,6 +13,7 @@ func TestLockedPage(t *testing.T) {
 	assert.Contains(t, p, "Coral is locked")
 	assert.Contains(t, p, "coral open", "tells how to get in from a terminal")
 	assert.Contains(t, p, "tray", "and from the app or tray")
+	assert.Contains(t, p, "one-time change", "explains why an old tab or bookmark lands here (#3939)")
 	assert.Contains(t, p, `name="viewport"`, "works on phones")
 	assert.Contains(t, p, "prefers-color-scheme: dark", "light and dark")
 	assert.Contains(t, p, `name="coral-locked"`, "machine-detectable")

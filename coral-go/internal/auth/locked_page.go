@@ -70,6 +70,7 @@ const LockedPageHTML = `<!DOCTYPE html>
 <main role="main" aria-labelledby="locked-title">
   <h1 id="locked-title"><span class="lock" aria-hidden="true">🔒</span> Coral is locked</h1>
   <p>This Coral only opens for you, from this computer. This page has no sign-in session, so it can't show the dashboard.</p>
+  <p class="note">This is a one-time change: Coral now asks every browser tab to sign in. A tab or bookmark from before the change lands here once; after you sign in it works as before.</p>
   <ol>
     <li>Open Coral from the <strong>Coral app</strong> or the <strong>tray menu</strong> (Open in App or Open in Browser). They sign you in by themselves.</li>
     <li>Or, in a terminal on this computer, run <code>coral open</code>. It opens a one-time sign-in link in your browser.</li>

@@ -3868,3 +3868,13 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 #settings-modal .tb-autowake label { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-base); color: var(--text-primary); }
 #settings-modal .tb-autowake input[type="checkbox"] { flex: none; width: 16px; height: 16px; min-height: 0; margin: 0; }
 #settings-modal .tb-autowake input[type="number"] { width: 4.5em; min-height: 0; padding: 2px 6px; }
+
+/* "Coral now requires sign-in" (#3939): the modal shown when the page has no sign-in session */
+dialog.signed-out-panel { margin: auto; /* the base reset's margin:0 would pin it top-left */ width: min(460px, calc(100vw - 32px)); box-sizing: border-box; padding: 22px 24px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); }
+dialog.signed-out-panel::backdrop { background: rgba(0, 0, 0, .6); }
+dialog.signed-out-panel h2 { margin: 0 0 10px; font-size: var(--fs-lg, 17px); }
+dialog.signed-out-panel p { margin: 0 0 12px; color: var(--text-secondary); font-size: var(--fs-sm, 13px); line-height: 1.5; }
+dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; color: var(--text-primary); }
+.signed-out-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+.signed-out-actions .btn { text-decoration: none; }
+.signed-out-status { min-height: 1.2em; margin: 0; }
