@@ -96,13 +96,22 @@ func TestWindowsStreamsAndDeviceNamesAreRefusedThroughARoot(t *testing.T) {
 		f.Close()
 		t.Errorf("a stream was created through the root")
 	}
-	for _, name := range []string{"nul.json", "CON", "com1.md"} {
+	// The root refuses a device name, with or without an extension, in any case, whatever this
+	// Windows build does with it (#3671, Security's ruling: older builds map "nul.json" to NUL).
+	for _, name := range []string{"nul.json", "CON", "com1.md", "NuL.Json"} {
 		if f, err := r.CreateNew(name, 0o600); err == nil {
 			f.Close()
 			t.Errorf("%s was created through the root", name)
+		} else {
+			assert.ErrorIs(t, err, ErrReservedName, name)
 		}
 		assert.ErrorIs(t, CheckName(name), ErrReservedName, name)
 	}
+	// A device name as a folder on the way is the same trap.
+	assert.ErrorIs(t, r.MkdirAll(filepath.Join("ok", "nul.d"), 0o700), ErrReservedName)
+	assert.ErrorIs(t, r.WriteFile(filepath.Join("ok", "com1.d", "x.txt"), []byte("x"), 0o600), ErrReservedName)
+	_, _, err = r.Open("com1.md")
+	assert.ErrorIs(t, err, ErrReservedName, "a read of a device name is refused before it can block")
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "only f.txt")

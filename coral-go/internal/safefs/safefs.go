@@ -28,6 +28,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -193,10 +194,36 @@ func (r *Root) Dir() string { return r.dir }
 
 func (r *Root) Close() error { return r.root.Close() }
 
+// deviceNamesRefused: on Windows the root refuses a path with a component CheckName refuses (a
+// device name, with or without an extension, or a trailing dot or space), whatever that
+// Windows build does with it: older builds still map "nul.json" to the NUL device, and a read or
+// a create on COM1 can block (#3671, Security's ruling). Elsewhere such a name is an ordinary
+// file ("aux.go"), so it is left alone. A var so tests run the rule on every system.
+var deviceNamesRefused = runtime.GOOS == "windows"
+
+// checkNames refuses rel if any of its components is a name CheckName refuses (on Windows).
+func checkNames(rel string) error {
+	if !deviceNamesRefused {
+		return nil
+	}
+	for _, c := range strings.FieldsFunc(rel, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if c == "." {
+			continue
+		}
+		if err := CheckName(c); err != nil {
+			return fmt.Errorf("%w: %q", ErrReservedName, c)
+		}
+	}
+	return nil
+}
+
 // MkdirAll makes rel and its parents inside the root.
 func (r *Root) MkdirAll(rel string, perm os.FileMode) error {
 	if rel == "." || rel == "" {
 		return nil
+	}
+	if err := checkNames(rel); err != nil {
+		return err
 	}
 	return r.root.MkdirAll(rel, perm)
 }
@@ -224,6 +251,9 @@ var ErrDenied = errors.New("safefs: the path is not allowed")
 // Open opens rel for reading: a regular file (on the handle), non-blocking, never through a
 // symlink as its last name.
 func (r *Root) Open(rel string) (*os.File, fs.FileInfo, error) {
+	if err := checkNames(rel); err != nil {
+		return nil, nil, err
+	}
 	pre, err := r.final(rel)
 	if err != nil {
 		return nil, nil, err
@@ -298,6 +328,9 @@ func (r *Root) WriteFile(rel string, data []byte, perm os.FileMode) error {
 // leads (and is refused there); a swap after the open can't move the handle. Nothing is written
 // before these pass; a file the open itself created is removed again.
 func (r *Root) WriteFileUnless(rel string, data []byte, perm os.FileMode, deny func(freshRel string) bool) error {
+	if err := checkNames(rel); err != nil {
+		return err
+	}
 	if _, err := r.final(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -357,6 +390,9 @@ func (r *Root) WriteFileUnless(rel string, data []byte, perm os.FileMode, deny f
 
 // CreateNew makes a new file rel (it must not exist, under any kind of name).
 func (r *Root) CreateNew(rel string, perm os.FileMode) (*os.File, error) {
+	if err := checkNames(rel); err != nil {
+		return nil, err
+	}
 	return r.root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL|oNoFollow, perm)
 }
 
