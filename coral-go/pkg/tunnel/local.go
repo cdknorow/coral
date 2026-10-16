@@ -105,6 +105,13 @@ func validQuery(q string) bool {
 
 // ── Loopback-only client ────────────────────────────────────────────
 
+// loopbackDials caps the connector's dials to the local server in progress at once, and a dial
+// the local server refused is tried loopbackDialRetries more times (10, 20 and 40 ms apart).
+const (
+	loopbackDials       = 32
+	loopbackDialRetries = 3
+)
+
 // NewLoopbackClient returns an http.Client and base URL for the local Coral
 // API. base must be http(s) on a loopback host. The host is resolved once and
 // every connection goes to that pinned loopback IP, whatever the request
@@ -151,10 +158,31 @@ func NewLoopbackClient(base string) (*http.Client, *url.URL, error) {
 			return nil
 		},
 	}
+	// A burst through the hub (up to the hub limits, 1024 when raised) dialed the local server
+	// all at once, and on Windows the listener's accept queue overflowed: some dials were
+	// refused and those requests failed ("local request failed", #4011). Dials now wait for one
+	// of loopbackDials slots, and a refused dial (nothing was sent yet) is tried again shortly.
+	slots := make(chan struct{}, loopbackDials)
 	tr := &http.Transport{
 		Proxy: nil,
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return d.DialContext(ctx, network, addr)
+			select {
+			case slots <- struct{}{}:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			defer func() { <-slots }()
+			for attempt := 0; ; attempt++ {
+				c, err := d.DialContext(ctx, network, addr)
+				if err == nil || attempt == loopbackDialRetries || !connRefused(err) {
+					return c, err
+				}
+				select {
+				case <-time.After(time.Duration(10<<attempt) * time.Millisecond):
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
 		},
 		DisableCompression:  true,
 		MaxIdleConnsPerHost: 8,
