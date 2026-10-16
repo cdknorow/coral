@@ -88,6 +88,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hub"}}
   .btnrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .btn.wide { flex: 1; padding: 10px 14px; font-size: 15px; justify-content: center; }
   .link { color: var(--accent); font-size: 13px; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
+  [data-theme="light"] .link { color: var(--accent-dim); }   /* the light theme's accent is 4.4:1 on the card: the dim accent passes AA */
   .linkrow { margin-top: 16px; font-size: 13px; color: var(--text-secondary); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .check { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; margin: 4px 0 18px; }
   .check input { margin-top: 3px; width: 16px; height: 16px; flex: none; padding: 0; appearance: auto; -webkit-appearance: checkbox; background: none; accent-color: var(--accent); }
