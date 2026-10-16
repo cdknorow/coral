@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.4.51 — Fairer hub limits, and tidier tmux
+
+### Security
+
+- **Agent CLIs no longer inherit Coral's tmux socket.** New Claude, Codex and similar agents start without `TMUX` and `TMUX_PANE`, so a plain tmux command run by an agent no longer lands on Coral's tmux server, and the hooks identify an agent by its own session name first. For real isolation, choose the pty terminal backend.
+- **Fairer Coral Hub limits.** When Coral Hub names the viewer, one user can hold only a share of each of this computer's connection pools, so one busy viewer can't use them all. A reply that stops moving for 60 seconds frees its slot (event streams and long polls are never cut), and the pool sizes are now settings.
+
+### Behaviour changes
+
+- **Coral's own tmux server no longer loads `~/.tmux.conf`.** It starts with an empty config (a server already running keeps its settings until it restarts). Set `CORAL_TMUX_CONF` to a config file to keep settings like mouse mode.
+
 ## v1.4.50 — Fewer rate-limit cascades, and steadier history
 
 ### New
