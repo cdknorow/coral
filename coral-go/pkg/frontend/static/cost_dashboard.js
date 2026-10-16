@@ -1,6 +1,7 @@
 /* Token Usage Dashboard — token usage and cost UI */
 
-import { showView, escapeHtml, escapeAttr, jsStr } from './utils.js';
+import { showView, escapeHtml, escapeAttr } from './utils.js';
+import { registerActions } from './actions.js';
 import { state } from './state.js';
 import { pollEvery } from './overload.js';
 import { keyLabel } from './server_base.js';
@@ -172,9 +173,9 @@ function _sortHeader(table, field, label, extraClass, filterable, valueExtractor
     let filterIcon = '';
     if (filterable) {
         const active = _hasActiveFilter(table, field) ? ' cost-filter-active' : '';
-        filterIcon = `<span class="cost-col-filter${active}" onclick="event.stopPropagation(); _costOpenFilter('${jsStr(table)}','${jsStr(field)}', this)" title="Filter"><span class="material-icons" style="font-size:13px">filter_list</span></span>`;
+        filterIcon = `<span class="cost-col-filter${active}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter"><span class="material-icons" style="font-size:13px">filter_list</span></span>`;
     }
-    return `<th class="${cls}" onclick="_costToggleSort('${jsStr(table)}','${jsStr(field)}')">${label}${arrow}${filterIcon}</th>`;
+    return `<th class="${cls}" data-on-click="cost-sort" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}">${label}${arrow}${filterIcon}</th>`;
 }
 
 // Open/close the column filter dropdown
@@ -307,8 +308,22 @@ function _getFilterExtractor(table, field) {
 }
 
 // Expose to window for onclick handlers
-window._costToggleSort = _toggleSort;
-window._costOpenFilter = _openFilter;
+// The table's actions (#3645): its markup carries data-on-click names, never code.
+registerActions({
+    'cost-sort': el => _toggleSort(el.dataset.table, el.dataset.field),
+    'cost-filter': (el, event) => { event.stopPropagation(); _openFilter(el.dataset.table, el.dataset.field, el); },
+    'cost-open-live': (el, event) => {
+        event.preventDefault();
+        window.switchNavTab('agents');
+        window.selectLiveSession(el.dataset.name, el.dataset.agentType, el.dataset.sessionId);
+    },
+    'cost-open-history': (el, event) => {
+        event.preventDefault();
+        window.switchNavTab('history');
+        window.selectHistorySession(el.dataset.sessionId);
+    },
+    'cost-task': el => _showCostTaskDetail(Number(el.dataset.taskId)),
+});
 
 export async function showCostDashboard() {
     showView('cost-dashboard-view');
@@ -533,10 +548,10 @@ function _renderAgentTable(rows) {
         const displayName = r.display_name || (session && session.display_name) || r.agent_name || r.session_id || '\u2014';
         let nameHtml;
         if (session) {
-            nameHtml = `<a href="#" class="cost-agent-link" onclick="event.preventDefault(); switchNavTab('agents'); selectLiveSession('${jsStr(session.name)}', '${jsStr(session.agent_type)}', '${jsStr(session.session_id)}')">${escapeHtml(displayName)}</a>`;
+            nameHtml = `<a href="#" class="cost-agent-link" data-on-click="cost-open-live" data-name="${escapeAttr(session.name)}" data-agent-type="${escapeAttr(session.agent_type)}" data-session-id="${escapeAttr(session.session_id)}">${escapeHtml(displayName)}</a>`;
         } else if (r.session_id) {
             const endedSuffix = r.is_live === false ? ' <span class="cost-agent-ended">(ended)</span>' : '';
-            nameHtml = `<a href="#" class="cost-agent-link cost-agent-terminated" onclick="event.preventDefault(); switchNavTab('history'); selectHistorySession('${jsStr(r.session_id)}')">${escapeHtml(displayName)}</a>${endedSuffix}`;
+            nameHtml = `<a href="#" class="cost-agent-link cost-agent-terminated" data-on-click="cost-open-history" data-session-id="${escapeAttr(r.session_id)}">${escapeHtml(displayName)}</a>${endedSuffix}`;
         } else {
             nameHtml = escapeHtml(displayName);
         }
@@ -666,7 +681,6 @@ function _showCostTaskDetail(taskId) {
     }
     window.showTaskDetailModal(taskId);
 }
-window._showCostTaskDetail = _showCostTaskDetail;
 
 function _renderTaskTable(tasks) {
     const container = document.getElementById('cost-by-task');
@@ -723,7 +737,7 @@ function _renderTaskTable(tasks) {
         const priorityClass = 'board-task-priority-' + (t.priority || 'medium');
         const startTime = t.claimed_at ? _formatTime(t.claimed_at) : '\u2014';
         const duration = _formatDuration(t.claimed_at, t.completed_at);
-        html += `<tr onclick="_showCostTaskDetail(${Number(t.id)})" style="cursor:pointer">
+        html += `<tr data-on-click="cost-task" data-task-id="${Number(t.id)}" style="cursor:pointer">
             <td>${statusIcon(t.status)}</td>
             <td class="cost-task-id">#${t.id}</td>
             <td>${escapeHtml(t.title || '')}</td>

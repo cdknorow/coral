@@ -62,6 +62,7 @@ import { showServersModal, hideServersModal, initServersUi } from './servers.js'
 import { initHubIndicator } from './hub_indicator.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './csp_compat.js';   // runs inline handlers without eval on the Coral Hub (inert elsewhere)
+import { registerActions } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
 import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals } from './lazy_panels.js';
 
@@ -75,6 +76,11 @@ const {
     'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent']);
 const { showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } =
     lazyFns(loadCostDashboard, ['showCostDashboard', '_refreshCostDashboard', '_costTimeRangeChanged']);
+// The Cost view's own controls (#3645); the table's actions register with its module.
+registerActions({
+    'cost-time-range': () => _costTimeRangeChanged(),
+    'cost-refresh': () => _refreshCostDashboard(),
+});
 // Runs on every tab switch: there is nothing to stop until the dashboard has loaded.
 const stopCostDashboard = () => { loadCostDashboard.module?.stopCostDashboard(); };
 const { showDocsTab, selectDoc } = lazyFns(loadDocs, ['showDocsTab', 'selectDoc']);
