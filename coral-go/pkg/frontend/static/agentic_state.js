@@ -5,7 +5,8 @@ import { state } from './state.js';
 import { loadChangedFiles } from './changed_files.js';
 import { selectFilesSource } from './team_artifacts.js';
 import { startBoardTaskPoll, stopBoardTaskPoll } from './tasks.js';
-import { escapeHtml, escapeAttr, jsStr, jsIdent } from './utils.js';
+import { escapeHtml, escapeAttr } from './utils.js';
+import { registerActions } from './actions.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 import { serverFetch, serverForSession } from './server_base.js';
 
@@ -137,7 +138,7 @@ export function renderEventFilters() {
     const activeCount = FILTER_GROUPS.length - hidden.size;
     const badge = hidden.size > 0 ? `<span class="filter-btn-badge">${activeCount}/${FILTER_GROUPS.length}</span>` : '';
 
-    container.innerHTML = `<button class="filter-dropdown-btn" onclick="toggleFilterDropdown('live')">
+    container.innerHTML = `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="live">
         <span class="event-filter-char">&#xe152;</span>
         <span class="filter-btn-label">Filter</span>
         ${badge}
@@ -174,8 +175,7 @@ function _openFilterDropdown(mode) {
         const checked = !isHidden;
         const count = events ? events.filter(group.match).length : '';
         const countHtml = count !== '' ? `<span class="filter-item-count">${count}</span>` : '';
-        const toggleFn = isLive ? 'toggleEventFilter' : 'toggleHistoryEventFilter';
-        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); ${jsIdent(toggleFn)}('${jsStr(group.key)}')">
+        return `<div class="filter-dropdown-item ${escapeAttr(group.cls)}" data-on-click="filter-toggle" data-mode="${escapeAttr(mode)}" data-key="${escapeAttr(group.key)}">
             <span class="filter-item-icon event-filter-char">${group.label}</span>
             <span class="filter-item-label">${group.title}</span>
             ${countHtml}
@@ -183,11 +183,10 @@ function _openFilterDropdown(mode) {
         </div>`;
     }).join('');
 
-    const toggleAllFn = isLive ? 'toggleAllEventFilters' : 'toggleAllHistoryEventFilters';
     dropdown.innerHTML = `
         <div class="filter-dropdown-header">
             <span class="filter-dropdown-title">Filter Events</span>
-            <button class="filter-dropdown-toggle" onclick="event.stopPropagation(); ${jsIdent(toggleAllFn)}()">Toggle All</button>
+            <button class="filter-dropdown-toggle" data-on-click="filter-toggle-all" data-mode="${escapeAttr(mode)}">Toggle All</button>
         </div>
         <div class="filter-dropdown-list">${items}</div>
     `;
@@ -214,6 +213,7 @@ function _openFilterDropdown(mode) {
 }
 
 export function toggleEventFilter(key) {
+    if (!FILTER_GROUPS.some(g => g.key === key)) return; // only a filter this list has
     const hidden = getHiddenFilters();
     if (hidden.has(key)) {
         hidden.delete(key);
@@ -250,8 +250,7 @@ function _refreshFilterDropdown(mode) {
         const checked = !isHidden;
         const count = events ? events.filter(group.match).length : '';
         const countHtml = count !== '' ? `<span class="filter-item-count">${count}</span>` : '';
-        const toggleFn = isLive ? 'toggleEventFilter' : 'toggleHistoryEventFilter';
-        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); ${jsIdent(toggleFn)}('${jsStr(group.key)}')">
+        return `<div class="filter-dropdown-item ${escapeAttr(group.cls)}" data-on-click="filter-toggle" data-mode="${escapeAttr(mode)}" data-key="${escapeAttr(group.key)}">
             <span class="filter-item-icon event-filter-char">${group.label}</span>
             <span class="filter-item-label">${group.title}</span>
             ${countHtml}
@@ -435,3 +434,19 @@ export function restoreAgenticTabs() {
     // Clean up stale bottom block preference
     localStorage.removeItem('coral-agentic-tab-bottom');
 }
+
+// The activity filter's dropdown, for the live view and history alike (#3645): data-on-* names,
+// never code. mode is "live" or "history"; each toggle function checks the key itself.
+registerActions({
+    'filter-dropdown': el => { if (el.dataset.mode === 'live' || el.dataset.mode === 'history') toggleFilterDropdown(el.dataset.mode); },
+    'filter-toggle': (el, event) => {
+        event.stopPropagation();
+        if (el.dataset.mode === 'live') toggleEventFilter(el.dataset.key);
+        else if (el.dataset.mode === 'history') window.toggleHistoryEventFilter(el.dataset.key);
+    },
+    'filter-toggle-all': (el, event) => {
+        event.stopPropagation();
+        if (el.dataset.mode === 'live') toggleAllEventFilters();
+        else if (el.dataset.mode === 'history') window.toggleAllHistoryEventFilters();
+    },
+});

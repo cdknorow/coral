@@ -76,6 +76,20 @@ const {
     'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent']);
 const { showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } =
     lazyFns(loadCostDashboard, ['showCostDashboard', '_refreshCostDashboard', '_costTimeRangeChanged']);
+// The history view's header, tabs and summary editor (#3645). A tab must be one the view has.
+const HISTORY_TABS = new Set(['notes', 'chat', 'activity', 'tasks', 'agent-notes', 'commits', 'changes']);
+registerActions({
+    'copy-branch': el => copyBranchName(el),
+    'tag-dropdown-show': () => showTagDropdown(),
+    'tag-dropdown-hide': () => hideTagDropdown(),
+    'tag-create': () => createTag(),
+    'summary-generate': () => generateSummary(),
+    'resume-show': () => showResumeModal(),
+    'history-tab': el => { if (HISTORY_TABS.has(el.dataset.tab)) switchHistoryTab(el.dataset.tab); },
+    'notes-edit': () => toggleNotesEdit(),
+    'notes-cancel': () => cancelNotesEdit(),
+    'notes-save': () => saveNotes(),
+});
 // The Workflows view's own buttons and create dialog (#3645); its generated markup's actions
 // register with its module.
 registerActions({

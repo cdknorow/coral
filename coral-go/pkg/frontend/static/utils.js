@@ -1021,7 +1021,11 @@ export function hexToRgba(hex, alpha) {
 }
 
 export function copyBranchName(btn) {
-    const branchText = btn.closest(".branch-chip").querySelector(".branch-text").textContent;
+    // The live header's chip is .branch-chip; the history header's is .title-branch (its copy
+    // button threw before #3645's test found it).
+    const chip = btn.closest(".branch-chip, .title-branch");
+    const branchText = chip ? chip.querySelector(".branch-text").textContent : "";
+    if (!branchText) return;
     navigator.clipboard.writeText(branchText).then(() => {
         showToast("Copied branch name");
     }).catch(() => {

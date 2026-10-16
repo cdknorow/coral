@@ -1,7 +1,7 @@
 /* History tabs — read-only rendering of Activity, Tasks, and Agent Notes for historical sessions */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, jsStr, sanitizeMarkdown } from './utils.js';
+import { escapeHtml, escapeAttr, sanitizeMarkdown } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 
 // Re-use tool icon/filter definitions from agentic_state.js
@@ -119,7 +119,7 @@ function renderHistoryEventFilters() {
     const activeCount = FILTER_GROUPS.length - historyFilterHidden.size;
     const badge = historyFilterHidden.size > 0 ? `<span class="filter-btn-badge">${activeCount}/${FILTER_GROUPS.length}</span>` : '';
 
-    container.innerHTML = `<button class="filter-dropdown-btn" onclick="toggleFilterDropdown('history')">
+    container.innerHTML = `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="history">
         <span class="event-filter-char">&#xe152;</span>
         <span class="filter-btn-label">Filter</span>
         ${badge}
@@ -130,6 +130,7 @@ function renderHistoryEventFilters() {
 window.historyFilterHiddenRef = historyFilterHidden;
 
 export function toggleHistoryEventFilter(key) {
+    if (!FILTER_GROUPS.some(g => g.key === key)) return; // only a filter this list has
     if (historyFilterHidden.has(key)) {
         historyFilterHidden.delete(key);
     } else {
@@ -160,7 +161,7 @@ function _refreshHistoryFilterDropdown() {
         const checked = !isHidden;
         const count = historyEvents.filter(group.match).length;
         const countHtml = `<span class="filter-item-count">${count}</span>`;
-        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); toggleHistoryEventFilter('${jsStr(group.key)}')">
+        return `<div class="filter-dropdown-item ${escapeAttr(group.cls)}" data-on-click="filter-toggle" data-mode="history" data-key="${escapeAttr(group.key)}">
             <span class="filter-item-icon event-filter-char">${group.label}</span>
             <span class="filter-item-label">${group.title}</span>
             ${countHtml}

@@ -15,7 +15,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Visible, on-screen interactive elements smaller than 44px in either dimension.
 const UNDERSIZED = `(() => {
     const out = [];
-    for (const el of document.querySelectorAll('button, a[href], [role=button], input:not([type=hidden]), select, summary, [onclick]')) {
+    for (const el of document.querySelectorAll('button, a[href], [role=button], input:not([type=hidden]), select, summary, [onclick], [data-on-click]')) {
         // A checkbox or radio inside its label is tapped through the label.
         const hit = el.matches('input[type=checkbox], input[type=radio]') && el.closest('label') ? el.closest('label') : el;
         const r = hit.getBoundingClientRect(); const cs = getComputedStyle(el);
