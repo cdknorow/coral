@@ -168,35 +168,38 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// launchTeamAgent is one member of a team launch.
+type launchTeamAgent struct {
+	Name         string                 `json:"name"`
+	Prompt       string                 `json:"prompt"`
+	Capabilities *agent.Capabilities    `json:"capabilities"`
+	AgentType    string                 `json:"agent_type"`
+	Model        string                 `json:"model"`
+	Flags        []string               `json:"flags"`
+	Tools        []string               `json:"tools"`
+	MCPServers   json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
+	Hooks        map[string]interface{} `json:"hooks"`
+	Knowledge    string                 `json:"knowledge"`
+}
+
 // LaunchTeam launches multiple agents on a shared message board.
 // POST /api/sessions/launch-team
 func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	var body struct {
-		BoardName   string   `json:"board_name"`
-		BoardID     string   `json:"board_id"`  // relaunch on this board (#3536)
-		NewBoard    bool     `json:"new_board"` // create another board even if the name exists
-		WorkingDir  string   `json:"working_dir"`
-		AgentType   string   `json:"agent_type"`
-		Flags       []string `json:"flags"`
-		BoardServer string   `json:"board_server"`
-		Backend     string   `json:"backend"`
-		BoardType   string   `json:"board_type"`
-		Worktree    bool     `json:"worktree"`
-		BaseBranch  string   `json:"base_branch"`
-		Agents      []struct {
-			Name         string                 `json:"name"`
-			Prompt       string                 `json:"prompt"`
-			Capabilities *agent.Capabilities    `json:"capabilities"`
-			AgentType    string                 `json:"agent_type"`
-			Model        string                 `json:"model"`
-			Flags        []string               `json:"flags"`
-			Tools        []string               `json:"tools"`
-			MCPServers   json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
-			Hooks        map[string]interface{} `json:"hooks"`
-			Knowledge    string                 `json:"knowledge"`
-		} `json:"agents"`
-		TeamKnowledgeIndex string `json:"team_knowledge_index"`
+		BoardName          string            `json:"board_name"`
+		BoardID            string            `json:"board_id"`  // relaunch on this board (#3536)
+		NewBoard           bool              `json:"new_board"` // create another board even if the name exists
+		WorkingDir         string            `json:"working_dir"`
+		AgentType          string            `json:"agent_type"`
+		Flags              []string          `json:"flags"`
+		BoardServer        string            `json:"board_server"`
+		Backend            string            `json:"backend"`
+		BoardType          string            `json:"board_type"`
+		Worktree           bool              `json:"worktree"`
+		BaseBranch         string            `json:"base_branch"`
+		Agents             []launchTeamAgent `json:"agents"`
+		TeamKnowledgeIndex string            `json:"team_knowledge_index"`
 		WorkingMode        *struct {
 			Mode               string `json:"mode"`
 			DependencyGuidance bool   `json:"dependency_guidance"`
@@ -377,12 +380,18 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	// Load settings once so we can fall back to per-type default_model_<type>.
 	userSettings, _ := h.ss.GetSettings(ctx)
 
+	// An agent never starts a less-restricted agent (#4032): the team's own flags and each
+	// member's choices are limited, except a member that is exactly an entry of a team template
+	// the Operator saved (saved_team_templates, which an agent's token can't write).
 	fromAgent := agentCaller(r)
+	if fromAgent {
+		body.Flags = keepAgentLaunchFlags(body.Flags)
+	}
 	for _, agentDef := range body.Agents {
 		if agentDef.Name == "" {
 			continue
 		}
-		if fromAgent { // an agent never starts a less-restricted agent (#4032)
+		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef) {
 			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
 		}
 
@@ -1150,15 +1159,15 @@ func agentCaller(r *http.Request) bool {
 
 // limitAgentLaunch is what an agent may ask for when it starts another agent (#4032, Security's
 // #4031 finding 1): users govern agents through their CLI's permissions, so an agent must not
-// start one with fewer. The permission flags (--dangerously-skip-permissions, --yolo, ...) are
-// removed, as for a team launch's own flags; so are allowed tools, capability "allow" rules and
-// custom hooks (commands the agent's CLI would run itself). Deny rules, which only narrow, stay.
+// start one with fewer. Only the flags in agentLaunchFlags are kept (an allowlist, so a spelling
+// nobody listed is removed too); allowed tools, capability "allow" rules and custom hooks
+// (commands the agent's CLI would run itself) are removed. Deny rules, which only narrow, stay.
 // The Operator (the dashboard, the command line, the API key) keeps every choice.
 func limitAgentLaunch(route string, flags []string, caps *agent.Capabilities, tools []string, hooks map[string]interface{}) ([]string, *agent.Capabilities, []string, map[string]interface{}) {
-	clean := dropWideningFlags(stripAgentPermissionFlags(flags))
+	clean := keepAgentLaunchFlags(flags)
 	var dropped []string
 	if len(clean) != len(flags) {
-		dropped = append(dropped, "permission flags")
+		dropped = append(dropped, "flags")
 	}
 	if caps != nil && len(caps.Allow) > 0 {
 		dropped = append(dropped, "capability allow rules")
@@ -1178,31 +1187,103 @@ func limitAgentLaunch(route string, flags []string, caps *agent.Capabilities, to
 	return clean, caps, tools, hooks
 }
 
-// wideningFlags widen what an agent's CLI may do without asking (value: the flag takes the next
-// word when written without "="). An agent's launch never carries them, in any spelling.
-var wideningFlags = map[string]bool{
-	"--dangerously-skip-permissions": false, "--dangerously-bypass-approvals-and-sandbox": false,
-	"--yolo": false, "--full-auto": false, "-y": false,
-	"--sandbox": true, "-s": true, "--approval-mode": true, "-a": true, "--permission-mode": true,
-	"--allowedTools": true, "--allowed-tools": true, "--settings": true, "--mcp-config": true,
-	"--add-dir": true, "--permission-prompt-tool": true,
-}
+// agentLaunchFlags are the only flags an agent's launch keeps (value: the flag takes the next
+// word when written without "="). coral-agent launch passes nothing else (--model is its only
+// CLI option); everything a CLI could be widened with, in any spelling, is not here.
+var agentLaunchFlags = map[string]bool{"--model": true}
 
-// dropWideningFlags removes wideningFlags, as "--flag", "--flag=value" or "--flag value".
-func dropWideningFlags(flags []string) []string {
+// keepAgentLaunchFlags keeps agentLaunchFlags, as "--flag", "--flag=value" or "--flag value",
+// and drops every other word. A value that looks like a flag is refused with its flag.
+func keepAgentLaunchFlags(flags []string) []string {
 	var out []string
 	for i := 0; i < len(flags); i++ {
-		name, _, hasValue := strings.Cut(flags[i], "=")
-		takesValue, widening := wideningFlags[name]
-		if !widening {
+		name, value, hasValue := strings.Cut(flags[i], "=")
+		takesValue, ok := agentLaunchFlags[name]
+		if !ok {
+			continue
+		}
+		if !takesValue {
 			out = append(out, flags[i])
 			continue
 		}
-		if takesValue && !hasValue {
-			i++ // its value
+		if !hasValue {
+			if i+1 >= len(flags) {
+				continue
+			}
+			i++
+			value = flags[i]
 		}
+		if value == "" || strings.HasPrefix(value, "-") {
+			continue
+		}
+		out = append(out, name, value)
 	}
 	return out
+}
+
+// inSavedTeamTemplate reports whether a team member's definition is exactly an agent entry of
+// a team template the Operator saved, after normalising (flags as words, JSON key order), so
+// an agent launching that template gets what the Operator chose (#4032).
+func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent) bool {
+	var templates []struct {
+		Agents []struct {
+			Name         string                 `json:"name"`
+			Role         string                 `json:"role"`
+			Prompt       string                 `json:"prompt"`
+			Description  string                 `json:"description"`
+			Capabilities *agent.Capabilities    `json:"capabilities"`
+			AgentType    string                 `json:"agent_type"`
+			Model        string                 `json:"model"`
+			Flags        json.RawMessage        `json:"flags"`
+			Tools        []string               `json:"tools"`
+			Hooks        map[string]interface{} `json:"hooks"`
+		} `json:"agents"`
+	}
+	if json.Unmarshal([]byte(settings["saved_team_templates"]), &templates) != nil {
+		return false
+	}
+	want := teamAgentKey(def.Name, def.Prompt, def.AgentType, def.Model, def.Flags, def.Capabilities, def.Tools, def.Hooks)
+	for _, t := range templates {
+		for _, a := range t.Agents {
+			name, prompt := a.Name, a.Prompt
+			if name == "" {
+				name = a.Role // the dashboard's older template fields
+			}
+			if prompt == "" {
+				prompt = a.Description
+			}
+			var flags []string
+			var asText string
+			if json.Unmarshal(a.Flags, &asText) == nil {
+				flags = strings.Fields(asText)
+			} else if json.Unmarshal(a.Flags, &flags) != nil {
+				continue
+			}
+			if teamAgentKey(name, prompt, a.AgentType, a.Model, flags, a.Capabilities, a.Tools, a.Hooks) == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// teamAgentKey is a team member's definition in one canonical JSON form.
+func teamAgentKey(name, prompt, agentType, model string, flags []string, caps *agent.Capabilities, tools []string, hooks map[string]interface{}) string {
+	var words []string
+	for _, f := range flags {
+		words = append(words, strings.Fields(f)...)
+	}
+	if caps.IsEmpty() {
+		caps = nil
+	}
+	if len(tools) == 0 {
+		tools = nil
+	}
+	if len(hooks) == 0 {
+		hooks = nil
+	}
+	b, _ := json.Marshal([]any{name, prompt, agentType, model, words, caps, tools, hooks}) // maps marshal with sorted keys
+	return string(b)
 }
 
 func stripAgentPermissionFlags(flags []string) []string {
