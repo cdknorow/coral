@@ -21,7 +21,12 @@ Quick safety check: Is this a project you created or one you trust?
 Codex asks an equivalent question. Coral may not show this as "waiting for input" (not verified
 for every provider), so the agent can appear alive and idle.
 
-Open the agent's terminal in the dashboard and answer it, or over the API:
+Open the agent's terminal in the dashboard and answer it, or over the API.
+
+> **Operator only** (#3929): run it yourself, never from an agent (an agent's token gets 403
+> `forbidden_for_agent`). Keys sent with the API key count as a script's input, and a script's
+> input is held while a permission prompt is open. So to answer a prompt, use the dashboard (or a
+> browser signed in with `coral open`); the API key only works once no prompt is open.
 
 ```bash
 # NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live;
@@ -181,7 +186,12 @@ can delete it.
 Agents told to coordinate over an unreachable board will troubleshoot it and then wait
 indefinitely for an orchestrator that cannot reach them. They stay "running", consume
 tokens, and produce no work, with no error anywhere in the UI. Check board reachability
-first (above), then send a direct instruction:
+first (above), then send a direct instruction.
+
+> **Operator only** (#3929): run it yourself with the API key
+> (`-H "Authorization: Bearer $(coral api-key)"`), or use the dashboard; an agent's token gets 403
+> `forbidden_for_agent`. Text sent with the key counts as a script's input: it is held while the
+> agent shows a permission prompt, and typed once none is open.
 
 ```bash
 # NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live.
