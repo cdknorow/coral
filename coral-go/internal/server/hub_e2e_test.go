@@ -98,6 +98,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		RegistryRefresh: 150 * time.Millisecond,
 		MinBackoff:      50 * time.Millisecond,
 		MaxBackoff:      200 * time.Millisecond,
+		OfflineGrace:    -1, // each failure's status at once; the grace is tested in background (#3649)
 	}
 	t.Cleanup(func() { remoteAgentHubConfig = prev })
 

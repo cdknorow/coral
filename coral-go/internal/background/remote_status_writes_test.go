@@ -41,7 +41,7 @@ func newWriteTestHub(t *testing.T, every time.Duration) (*RemoteAgentHub, *count
 	t.Cleanup(func() { remoteSeenWriteEvery = old })
 	reg := &countingRegistry{fakeRegistry: newFakeRegistry()}
 	reg.put("a", "http://127.0.0.1:1")
-	h := NewRemoteAgentHub(reg, regResolver{reg.fakeRegistry}, RemoteAgentHubConfig{})
+	h := NewRemoteAgentHub(reg, regResolver{reg.fakeRegistry}, RemoteAgentHubConfig{OfflineGrace: -1}) // each failure at once (#3649)
 	h.remotes["a"] = &remoteState{srv: store.RemoteServer{ID: "a"}, status: "unknown"}
 	return h, reg
 }

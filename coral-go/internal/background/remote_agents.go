@@ -24,9 +24,11 @@ package background
 // is ~1 KB per agent and costs the remote a full build; health is ~40 bytes and
 // static). The full list is fetched again when the feed drops, or when it has
 // been quiet for FeedQuietRefresh (a remote whose handlers hang keeps a silent
-// socket). The feed socket is pinged every PollInterval and dropped when a ping
-// goes unanswered for RequestTimeout. When the feed cannot be established the
-// poll data is used.
+// socket). The feed socket is pinged every FeedPingInterval (a keepalive, 30s)
+// and dropped when two pings in a row go unanswered. A server shown online is
+// shown unreachable only after its probes have failed for OfflineGrace, so a
+// brief reconnect never flashes "offline" (#3649). When the feed cannot be
+// established the poll data is used.
 
 import (
 	"context"
@@ -120,6 +122,17 @@ type RemoteAgentHubConfig struct {
 	// FeedQuietRefresh: while the feed is live the list is not polled, unless
 	// no feed message arrived for this long. Default 30s.
 	FeedQuietRefresh time.Duration
+	// FeedPingInterval: how often the upstream feed socket is pinged; it is
+	// dropped after two pings in a row go unanswered. Default 30s: a keepalive,
+	// not the liveness check (the polls and the status grace are). The agent
+	// list and status probes keep PollInterval (#3649).
+	FeedPingInterval time.Duration
+	// OfflineGrace: a server shown online is shown unreachable only after its
+	// probes have failed for this long, so a connection that drops and comes
+	// back (an SSH port forward, a slow link) never flashes "offline" (#3649).
+	// A rejected key, a refused host or an unreadable key shows at once.
+	// Default 20s; negative means none (every failure shows at once).
+	OfflineGrace time.Duration
 }
 
 func (c *RemoteAgentHubConfig) fill() {
@@ -141,6 +154,12 @@ func (c *RemoteAgentHubConfig) fill() {
 	if c.FeedQuietRefresh <= 0 {
 		c.FeedQuietRefresh = 30 * time.Second
 	}
+	if c.FeedPingInterval <= 0 {
+		c.FeedPingInterval = 30 * time.Second
+	}
+	if c.OfflineGrace == 0 {
+		c.OfflineGrace = 20 * time.Second
+	}
 }
 
 type remoteState struct {
@@ -154,8 +173,12 @@ type remoteState struct {
 	lastDB    time.Time // last SetStatus write (online or failure)
 	lastErr   string    // error message of the last failure write
 	lastSig   string
-	version   string    // remote's reported version (best effort)
-	versionAt time.Time // when it was last fetched
+	version   string // remote's reported version (best effort)
+	// failingSince is when the current run of unreachable probes began while the
+	// server was shown online (zero when none): within OfflineGrace it stays
+	// online (#3649).
+	failingSince time.Time
+	versionAt    time.Time // when it was last fetched
 	// wake asks the poll loop to probe now instead of after its wait, e.g.
 	// after a proxied request to this remote failed (#3202).
 	wake chan struct{}
@@ -562,6 +585,7 @@ func (h *RemoteAgentHub) recordAlive(ctx context.Context, id string) {
 		h.logTransition(id, st.status, store.RemoteStatusOnline, "")
 	}
 	st.status = store.RemoteStatusOnline
+	st.failingSince = time.Time{}
 	writeDB := st.rowNeedsWrite(changed, store.RemoteStatusOnline)
 	if writeDB {
 		st.lastDB, st.srv.Status = time.Now(), store.RemoteStatusOnline
@@ -685,6 +709,7 @@ func (h *RemoteAgentHub) recordOnline(ctx context.Context, id string, sessions [
 		h.logTransition(id, st.status, store.RemoteStatusOnline, "")
 	}
 	st.status = store.RemoteStatusOnline
+	st.failingSince = time.Time{}
 	if !st.feedLive {
 		if sig := sessionsSig(sessions); sig != st.lastSig || changed {
 			changed = changed || sig != st.lastSig
@@ -721,6 +746,11 @@ func (h *RemoteAgentHub) recordFailure(ctx context.Context, id string, err error
 	st, ok := h.current(id)
 	if !ok {
 		h.mu.Unlock()
+		return
+	}
+	if h.withinOfflineGrace(st, status) {
+		h.mu.Unlock()
+		h.logger.Debug("remote probe failed; still within the offline grace", "server", id, "error", err)
 		return
 	}
 	msg := err.Error()
@@ -773,6 +803,21 @@ func (h *RemoteAgentHub) Refresh(id, status string) {
 	}
 }
 
+// withinOfflineGrace reports whether an unreachable result is kept from a server
+// shown online because its failures haven't lasted OfflineGrace yet (#3649). It
+// starts the run on the first failure. Any other status (a rejected key, a
+// refused host, an unreadable key) is never held back. Called with h.mu held.
+func (h *RemoteAgentHub) withinOfflineGrace(st *remoteState, status string) bool {
+	if h.cfg.OfflineGrace < 0 || status != store.RemoteStatusUnreachable || st.status != store.RemoteStatusOnline {
+		return false
+	}
+	now := time.Now()
+	if st.failingSince.IsZero() {
+		st.failingSince = now
+	}
+	return now.Sub(st.failingSince) < h.cfg.OfflineGrace
+}
+
 // ReportFailure records a failure seen outside the worker, i.e. a proxied
 // dashboard request to the remote (#3202). The worker's own status changes with
 // the registry row, so the two never disagree, and the worker probes again at
@@ -786,6 +831,11 @@ func (h *RemoteAgentHub) ReportFailure(ctx context.Context, id, status, msg stri
 	if !ok || st.cancel == nil {
 		h.mu.Unlock()
 		return false
+	}
+	if h.withinOfflineGrace(st, status) {
+		st.kick() // the worker's probe decides once the grace is over
+		h.mu.Unlock()
+		return true
 	}
 	changed := st.status != status
 	if changed {
@@ -981,12 +1031,14 @@ type feedPinger interface {
 	Ping(ctx context.Context) error
 }
 
-// pingFeed pings the upstream feed every PollInterval and drops the socket when
-// a ping is not answered within RequestTimeout (a half-open connection or a
-// remote that stopped reading). Dropping it only ends feedLive: the poll goes
+// pingFeed pings the upstream feed every FeedPingInterval and drops the socket when
+// two pings in a row are not answered within RequestTimeout (a half-open
+// connection or a remote that stopped reading; one slow answer over a port
+// forward is tolerated, #3649). Dropping it only ends feedLive: the poll goes
 // back to fetching the list, which decides the remote's status.
 func (h *RemoteAgentHub) pingFeed(ctx context.Context, conn proxy.WSConn, p feedPinger) {
-	t := time.NewTicker(h.cfg.PollInterval)
+	missed := 0
+	t := time.NewTicker(h.cfg.FeedPingInterval)
 	defer t.Stop()
 	for {
 		select {
@@ -997,13 +1049,18 @@ func (h *RemoteAgentHub) pingFeed(ctx context.Context, conn proxy.WSConn, p feed
 		pctx, cancel := context.WithTimeout(ctx, h.cfg.RequestTimeout)
 		err := p.Ping(pctx)
 		cancel()
-		if err != nil {
-			if ctx.Err() == nil {
-				h.logger.Debug("remote feed ping failed; dropping feed", "error", err)
-			}
-			conn.CloseNow()
-			return
+		if err == nil {
+			missed = 0
+			continue
 		}
+		if missed++; missed < 2 && ctx.Err() == nil {
+			continue
+		}
+		if ctx.Err() == nil {
+			h.logger.Debug("remote feed ping failed twice; dropping feed", "error", err)
+		}
+		conn.CloseNow()
+		return
 	}
 }
 

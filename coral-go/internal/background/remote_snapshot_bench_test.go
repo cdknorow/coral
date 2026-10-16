@@ -14,7 +14,7 @@ import (
 // loadedHub returns a hub holding k online remotes with n ~1 KB sessions each,
 // without running any pollers.
 func loadedHub(k, n int) *RemoteAgentHub {
-	h := NewRemoteAgentHub(newFakeRegistry(), nil, RemoteAgentHubConfig{})
+	h := NewRemoteAgentHub(newFakeRegistry(), nil, RemoteAgentHubConfig{OfflineGrace: -1}) // each failure at once (#3649)
 	for r := 0; r < k; r++ {
 		id := fmt.Sprintf("r%02d", r)
 		st := &remoteState{srv: store.RemoteServer{ID: id, Label: id, URL: "http://" + id}, status: store.RemoteStatusOnline}

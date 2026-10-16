@@ -84,6 +84,7 @@ func syncHub(reg *rowRegistry, pollEvery time.Duration) *RemoteAgentHub {
 	return NewRemoteAgentHub(reg, rowResolver{reg}, RemoteAgentHubConfig{
 		PollInterval: pollEvery, RequestTimeout: 300 * time.Millisecond,
 		RegistryRefresh: 50 * time.Millisecond, MinBackoff: 20 * time.Millisecond, MaxBackoff: 100 * time.Millisecond,
+		OfflineGrace: -1, // each failure's status at once (#3649 tests the grace on its own)
 	})
 }
 

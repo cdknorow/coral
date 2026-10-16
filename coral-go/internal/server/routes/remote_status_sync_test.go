@@ -81,6 +81,7 @@ func TestRemoteStatus_ProxyBlipRecoversWithoutTest(t *testing.T) {
 	hub := background.NewRemoteAgentHub(e.h.Store(), resolver, background.RemoteAgentHubConfig{
 		PollInterval: pollEvery, RequestTimeout: time.Second,
 		RegistryRefresh: 50 * time.Millisecond, MinBackoff: 20 * time.Millisecond, MaxBackoff: 100 * time.Millisecond,
+		OfflineGrace: -1, // each failure's status at once (#3649 tests the grace in background)
 	})
 	resolver.SetFailureSink(hub)
 	MountRemoteProxy(e.router, resolver)

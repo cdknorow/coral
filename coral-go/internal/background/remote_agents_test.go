@@ -189,6 +189,7 @@ func fastHub(reg *fakeRegistry) *RemoteAgentHub {
 	return NewRemoteAgentHub(reg, regResolver{reg}, RemoteAgentHubConfig{
 		PollInterval: 80 * time.Millisecond, RequestTimeout: 300 * time.Millisecond,
 		RegistryRefresh: 50 * time.Millisecond, MinBackoff: 20 * time.Millisecond, MaxBackoff: 100 * time.Millisecond,
+		OfflineGrace: -1, // these tests check each failure's status; the grace has its own (#3649)
 	})
 }
 
@@ -387,6 +388,8 @@ func feedHub(reg *fakeRegistry, quiet time.Duration) *RemoteAgentHub {
 		PollInterval: 80 * time.Millisecond, RequestTimeout: 300 * time.Millisecond,
 		RegistryRefresh: 50 * time.Millisecond, MinBackoff: 20 * time.Millisecond, MaxBackoff: 100 * time.Millisecond,
 		FeedQuietRefresh: quiet,
+		FeedPingInterval: 80 * time.Millisecond,
+		OfflineGrace:     -1, // each failure's status at once (#3649 tests the grace on its own)
 	})
 }
 
