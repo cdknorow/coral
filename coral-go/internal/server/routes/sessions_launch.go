@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/testguard"
 	"log"
 	"log/slog"
@@ -923,7 +924,10 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	})
 	h.noteLaunchedHooks(ctx, sessionID, agentType) // #3665
 	if agentType != at.Terminal {
-		go h.recordCLIVersion(sessionID, agentType, userSettings) // #3481
+		go func() {
+			defer safego.Recover("server/routes/sessions_launch:h.recordCLIVersion")
+			h.recordCLIVersion(sessionID, agentType, userSettings)
+		}() // #3481
 	}
 
 	if displayName != "" {

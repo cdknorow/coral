@@ -16,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -334,7 +335,7 @@ func (m *Manager) SigninOriginsChanged() {
 	gen := m.gen
 	m.mu.Unlock()
 	if cs := m.session.Load(); cs != nil && cs.CanSignin() {
-		go m.pushOrigins(gen, cs)
+		go func() { defer safego.Recover("cloud/signin:m.pushOrigins"); m.pushOrigins(gen, cs) }()
 	}
 }
 

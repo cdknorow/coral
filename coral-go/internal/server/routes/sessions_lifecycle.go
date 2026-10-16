@@ -25,6 +25,7 @@ import (
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -162,6 +163,7 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 		remaining, _ := h.ss.CountSessionsWithWorktree(bgCtx, worktreePathForCleanup)
 		if remaining == 0 {
 			go func() {
+				defer safego.Recover("server/routes/sessions_lifecycle:164")
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				cmd := gitutil.Command(ctx, worktreeRepoForCleanup, "worktree", "remove", "--force", worktreePathForCleanup)
@@ -838,6 +840,7 @@ func (h *SessionsHandler) Attach(w http.ResponseWriter, r *http.Request) {
 	// Open Terminal.app attached to the tmux session (macOS)
 	attachCmd := h.terminal.AttachCommand(pane.SessionName)
 	go func() {
+		defer safego.Recover("server/routes/sessions_lifecycle:840")
 		exec.Command("osascript", terminalAttachArgs(attachCmd)...).Run()
 	}()
 
@@ -899,6 +902,7 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	// Artifact snapshots above must finish before an owned worktree is removed.
 	if teamWorktree != "" {
 		go func() {
+			defer safego.Recover("server/routes/sessions_lifecycle:901")
 			wtCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			parentDir := filepath.Dir(teamWorktree)

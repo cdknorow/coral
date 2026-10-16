@@ -668,7 +668,7 @@ func (m *Manager) setSession(gen int, cs *tunnel.ClientSession) {
 		m.session.Store(cs)
 		m.originsAccepted, m.originsSession = nil, nil
 		if cs != nil && cs.CanSignin() {
-			go m.pushOrigins(gen, cs) // takes m.mu itself
+			go func() { defer safego.Recover("cloud/manager:m.pushOrigins"); m.pushOrigins(gen, cs) }() // takes m.mu itself
 		}
 	}
 }
