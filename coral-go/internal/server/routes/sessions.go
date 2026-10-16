@@ -59,6 +59,8 @@ type SessionsHandler struct {
 	inOldTmux func(ctx context.Context, sessionName string) bool
 	// autoWake is the start's wake of the agents running when a pty Coral stopped (#3636).
 	autoWake autoWaker
+	// exits is the notice and auto-resume for agents that died on their own (#3613).
+	exits exitWatch
 	// cliVersionOf finds a CLI's version (agent.CLIVersion; tests replace it), and
 	// cliVersionTried the sessions a missing version was already looked up for (#3573).
 	cliVersionOf      func(settings map[string]string, agentType string) string
@@ -275,6 +277,7 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, bs *board.Store) *SessionsHandler {
 	return &SessionsHandler{
 		autoWake: autoWaker{sleep: defaultSleep, now: time.Now},
+		exits:    exitWatch{after: defaultAfter},
 		inOldTmux: func(ctx context.Context, name string) bool {
 			return tmux.HasPrivateAgentSession(ctx, tmux.PrivateSocketPath(cfg.CoralDir()), name)
 		},
@@ -4053,6 +4056,8 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		// Inject distilled knowledge if available
 		agentPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, agentDef.Name, agentDef.Prompt)
 
+		// A team's launches are 2-3 s apart (#3613): each starts an API turn at once.
+		ptymanager.SpaceTeam(ctx, body.BoardName)
 		result, err := h.launchSession(ctx, workingDir, agentType, agentDef.Name,
 			"", agentFlags, agentPrompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, agentDef.Capabilities,
 			agentDef.Tools, agentDef.Hooks)
@@ -4263,6 +4268,7 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		}
 		tools := store.UnmarshalFlags(cfg.Tools)
 		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, displayName, prompt)
+		ptymanager.SpaceTeam(bgCtx, boardName) // #3613: spaced relaunches
 		result, err := h.launchSession(bgCtx, cfg.WorkingDir, cfg.AgentType, displayName,
 			"", flags, prompt, boardName, boardServer, "", boardType, modelStr, caps,
 			tools, nil)
@@ -6300,6 +6306,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 		// Inject distilled knowledge if available
 		resurrectPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), team.Name, m.AgentName, agentCfg.Prompt)
 
+		ptymanager.SpaceTeam(ctx, team.Name) // #3613: spaced relaunches
 		result, err := h.launchSession(ctx, workingDir, agentType, m.AgentName,
 			"", nil, resurrectPrompt, team.Name, "", "", "", agentCfg.Model, agentCfg.Capabilities,
 			agentCfg.Tools, agentCfg.Hooks)
@@ -6411,11 +6418,13 @@ func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 			continue // archived agents stay asleep on team wake; they wake only one at a time
 		}
 
-		// Relaunch the session
+		// Relaunch the session, 2-3 s after the team's last one (#3613)
+		ptymanager.SpaceTeam(ctx, boardName)
 		if err := h.wakeExistingSession(ctx, &ls); err != nil {
 			log.Printf("Failed to wake session %s — keeping asleep: %v", ls.SessionID[:8], err)
 			continue
 		}
+		h.resetAutoResume(ls.SessionID)
 		relaunched++
 	}
 
@@ -6658,6 +6667,7 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Failed to relaunch session"})
 		return
 	}
+	h.resetAutoResume(sess.SessionID) // the Operator's wake: Coral may auto-resume it again (#3613)
 	// One the Operator chose to wake from the over-the-cap list (#3636) gets Coral's notice.
 	if h.takePendingAutoWake(sess.SessionID) {
 		h.sendAutoWakeNotice(ctx, *sess)
@@ -6792,10 +6802,12 @@ func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
 	boards := map[string]bool{}
 	relaunched := 0
 	for _, ls := range sleeping {
+		ptymanager.SpaceTeam(ctx, derefStrPtr(ls.BoardName)) // per team, 2-3 s apart (#3613)
 		if err := h.wakeExistingSession(ctx, &ls); err != nil {
 			log.Printf("Failed to wake session %s — keeping asleep: %v", ls.SessionID[:8], err)
 			continue
 		}
+		h.resetAutoResume(ls.SessionID)
 		relaunched++
 		if bn := derefStrPtr(ls.BoardName); bn != "" {
 			boards[bn] = true

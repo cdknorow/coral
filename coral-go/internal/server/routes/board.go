@@ -323,12 +323,20 @@ func (h *BoardHandler) startSubscriberReminder(project, subscriber, message stri
 	h.subscriberReminderIntervals[key] = int(interval / time.Second)
 	h.reminderMu.Unlock()
 	go func() {
-		ticker := time.NewTicker(interval)
+		// The first reminder comes 0.8-1.2 intervals in, the same for this subscriber (#3613):
+		// reminders restored together at start don't all fire in the same second. Then every
+		// interval.
+		ticker := time.NewTicker(ptymanager.JitterAround(interval, key))
 		defer ticker.Stop()
 		defer h.finishSubscriberReminder(project, subscriber, generation)
+		first := true
 		for {
 			select {
 			case <-ticker.C:
+				if first {
+					ticker.Reset(interval)
+					first = false
+				}
 				// Cancellation and a ready ticker can be selected in either
 				// order. Under the fire mutex, re-check cancellation and send:
 				// stop cancels first and then takes the same mutex, so a

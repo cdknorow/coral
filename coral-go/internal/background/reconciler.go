@@ -37,6 +37,15 @@ type SessionReconciler struct {
 	misses       map[string]int // session_id -> consecutive passes not found
 	exited       map[string]int // session_id -> consecutive passes its terminal showed a plain shell
 	now          func() time.Time
+	// onSlept hears the sessions one pass marked sleeping (an exited CLI or a gone terminal),
+	// for the exit notice (#3613). Unset: nothing is told.
+	onSlept func(ctx context.Context, sessionIDs []string)
+	slept   []string // this pass's
+}
+
+// SetOnSlept registers f to hear, once per pass, the agents that pass found dead.
+func (r *SessionReconciler) SetOnSlept(f func(ctx context.Context, sessionIDs []string)) {
+	r.onSlept = f
 }
 
 // exitedLaunchGrace is how long after launch a pane showing a shell is not yet
@@ -88,6 +97,13 @@ func (r *SessionReconciler) reconcileOnce(ctx context.Context) {
 		alive[strings.ToLower(a.SessionID)] = true
 	}
 
+	r.slept = r.slept[:0]
+	defer func() {
+		if len(r.slept) > 0 && r.onSlept != nil {
+			r.onSlept(ctx, append([]string(nil), r.slept...))
+		}
+	}()
+
 	seen := make(map[string]bool, len(liveSessions))
 	for _, ls := range liveSessions {
 		if ls.IsSleeping == 1 {
@@ -128,6 +144,7 @@ func (r *SessionReconciler) reconcileOnce(ctx context.Context) {
 				"session_id", ls.SessionID, "agent_name", ls.AgentName, "error", err)
 			continue
 		}
+		r.slept = append(r.slept, ls.SessionID)
 		r.logger.Warn("detected crashed agent, marking as sleeping",
 			"session_id", ls.SessionID, "agent_name", ls.AgentName)
 	}
@@ -212,6 +229,7 @@ func (r *SessionReconciler) checkExited(ctx context.Context, ls store.LiveSessio
 		r.logger.Error("failed to mark exited agent as sleeping", "session_id", ls.SessionID, "error", err)
 		return
 	}
+	r.slept = append(r.slept, ls.SessionID)
 	r.logger.Warn("agent CLI has exited, marking as sleeping (Wake resumes it)",
 		"session_id", ls.SessionID, "agent_name", ls.AgentName, "foreground", fg)
 }

@@ -246,3 +246,20 @@ func TestReconciler_GoneTerminalSleepsWithItsReason(t *testing.T) {
 		t.Fatalf("a sleep the user asks for has no reason, got %v", ls.SleepReason)
 	}
 }
+
+// The exit notice hears each death once (#3613): the pass that marks the agent asleep tells
+// the hook, and later passes skip an agent already asleep, so it isn't told again.
+func TestReconciler_TellsEachDeathOnce(t *testing.T) {
+	ss, rt, r := newReconcilerFixture(t)
+	ctx := context.Background()
+	registerAwake(t, ss, "codex", testUUID)
+	rt.listed = nil
+	var heard [][]string
+	r.SetOnSlept(func(_ context.Context, ids []string) { heard = append(heard, ids) })
+	for i := 0; i < reconcileMissThreshold+3; i++ {
+		r.reconcileOnce(ctx)
+	}
+	if len(heard) != 1 || len(heard[0]) != 1 || heard[0][0] != testUUID {
+		t.Fatalf("want one call with the agent, got %v", heard)
+	}
+}

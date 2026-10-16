@@ -726,6 +726,31 @@ func (s *TaskStore) GetLatestGoalEvent(ctx context.Context, sessionID string) (*
 	return &ev, nil
 }
 
+// LatestStopFailure returns the error text of a session's newest turn end when that turn
+// ended in an API error (the StopFailure hook: event "stop" with detail failed). ok is false when
+// the newest turn end was a normal one, or there is none (#3613). The text is the CLI's own and
+// stays on the server: callers map it to a fixed label.
+func (s *TaskStore) LatestStopFailure(ctx context.Context, sessionID string) (text string, ok bool, err error) {
+	var detail sql.NullString
+	err = s.reader().GetContext(ctx, &detail,
+		`SELECT detail_json FROM agent_events WHERE session_id = ? AND event_type = 'stop'
+		 ORDER BY created_at DESC, id DESC LIMIT 1`, sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil || !detail.Valid {
+		return "", false, err
+	}
+	var d struct {
+		Failed bool   `json:"failed"`
+		Error  string `json:"error"`
+	}
+	if json.Unmarshal([]byte(detail.String), &d) != nil || !d.Failed {
+		return "", false, nil
+	}
+	return d.Error, true, nil
+}
+
 // GetLatestGoals returns the latest goal summary per session.
 func (s *TaskStore) GetLatestGoals(ctx context.Context, sessionIDs []string) (map[string]string, error) {
 	if len(sessionIDs) == 0 {

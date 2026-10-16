@@ -206,6 +206,11 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, err.Error())
 		return
 	}
+	// Resume agents stopped by an API error (#3613): a boolean.
+	if err := validateAutoResumeSetting(body); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	// agent_priority is "low" or "normal" (#3437); anything else was stored and silently
 	// taken as low (#3470). Checked before anything is saved; the stored value is normalised.
 	if v, ok := body[agentprio.SettingKey]; ok {

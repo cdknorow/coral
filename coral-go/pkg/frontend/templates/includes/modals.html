@@ -650,6 +650,13 @@
                     <input type="checkbox" id="settings-board-auto-attach">
                 </dd>
                 <dt class="toggle-dt">
+                    <label for="settings-auto-resume">Resume agents stopped by an API error</label>
+                    <span class="toggle-desc">Off by default. When an agent's CLI stops on a rate limit, an overload or another API error, Coral wakes it again after about 2, then 5, then 15 minutes, and stops trying after the third. Waking the agent yourself starts the count again.</span>
+                </dt>
+                <dd>
+                    <input type="checkbox" id="settings-auto-resume">
+                </dd>
+                <dt class="toggle-dt">
                     <label for="settings-artifact-store-max">Artifact store limit (GiB)</label>
                     <span class="toggle-desc">The most space stored artifacts may take. Above it, agents' new uploads are refused until you delete some (Team Artifacts &gt; Delete). 0 means no limit. Saved task and session diffs aren't counted.</span>
                 </dt>

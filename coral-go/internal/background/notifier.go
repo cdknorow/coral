@@ -217,7 +217,9 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		if last.latestID > 0 && sub.LastReadID >= last.latestID && latestID > last.latestID {
 			newBatch = true
 		}
-		if notified && !newBatch && (unread <= last.count || sub.ReceiveMode != "all") && n.now().Sub(last.at) < n.remindAfter {
+		// The reminder window is spread per agent (#3613), so reminders set in one pass, or
+		// seeded at one start, don't all come due together.
+		if notified && !newBatch && (unread <= last.count || sub.ReceiveMode != "all") && n.now().Sub(last.at) < ptymanager.JitterAround(n.remindAfter, sessName) {
 			n.logger.Debug("already notified", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "notified_unread", last.count)
 			continue
 		}

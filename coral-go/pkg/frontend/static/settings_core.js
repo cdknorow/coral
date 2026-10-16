@@ -137,6 +137,9 @@ export async function loadSettings() {
         const autoAttach = document.getElementById('settings-board-auto-attach');
         // Off unless the Operator turned it on (#3563); an empty value is unset.
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach || undefined, false);
+        const autoResume = document.getElementById('settings-auto-resume');
+        // Off unless the Operator turned it on (#3613).
+        if (autoResume) autoResume.checked = settingBool(s.auto_resume_after_api_error || undefined, false);
         const debugInput = document.getElementById('settings-debug-input-log');
         if (debugInput) debugInput.checked = settingBool(s.debug_input_log, false);
         try {

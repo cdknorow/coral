@@ -3436,6 +3436,9 @@ export async function showSettingsModal() {
         const autoAttach = document.getElementById('settings-board-auto-attach');
         // Off unless the Operator turned it on (#3563); an empty value is unset.
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach || undefined, false);
+        const autoResume = document.getElementById('settings-auto-resume');
+        // Off unless the Operator turned it on (#3613).
+        if (autoResume) autoResume.checked = settingBool(s.auto_resume_after_api_error || undefined, false);
         const debugInput = document.getElementById('settings-debug-input-log');
         if (debugInput) debugInput.checked = settingBool(s.debug_input_log, false);
         const remote = document.getElementById('settings-remote-access-enabled');
@@ -3692,6 +3695,7 @@ export async function applySettings() {
     const agentPriority = document.getElementById("settings-agent-priority")?.value ?? (state.settings?.agent_priority === "normal" ? "normal" : "low");
     const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
     const boardAutoAttach = document.getElementById("settings-board-auto-attach")?.checked ?? settingBool(state.settings?.board_auto_attach || undefined, false);
+    const autoResume = document.getElementById("settings-auto-resume")?.checked ?? settingBool(state.settings?.auto_resume_after_api_error || undefined, false);
     // When CORAL_DEBUG_INPUT/--debug-input force the log on, the checkbox is shown checked and
     // disabled: keep the saved setting rather than saving that forced state (#3256).
     const debugInputBox = document.getElementById("settings-debug-input-log");
@@ -3737,6 +3741,7 @@ export async function applySettings() {
         agent_priority: agentPriority,
         telemetry_enabled: telemetryEnabled,
         board_auto_attach: boardAutoAttach,
+        auto_resume_after_api_error: autoResume,
         ...artifactStoreMaxSetting(),
         ...retentionSettings(),
         debug_input_log: debugInputLog,

@@ -357,6 +357,11 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 // held on its own, ahead of anything else held for the agent; it reports true
 // then. Any other error is returned.
 func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHeld bool, err error) {
+	// Coral's automated sends to one team are spaced (#3613): the first goes at once, the next
+	// 2-3 s after. Only here, where a send really goes: a held send waits nothing until it's due.
+	if !SpaceTeam(ctx, teamFor(in.Name)) {
+		return false, ctx.Err()
+	}
 	if in.Paste {
 		if held, err, done := g.pasteChecked(ctx, in); done {
 			return held, err

@@ -964,6 +964,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 
 	// Session reconciler — periodically detects crashed agents and marks them sleeping
 	reconciler := background.NewSessionReconciler(sessStore, agentRT, 30*time.Second)
+	reconciler.SetOnSlept(srv.AgentsSlept) // the exit notice and auto-resume (#3613)
 	safeGo(ctx, "session_reconciler", func() { reconciler.Run(ctx) })
 
 	// Token poller — extracts token usage from Codex/Claude transcripts for cost tracking

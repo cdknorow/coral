@@ -16,6 +16,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -287,6 +289,14 @@ func (s *Server) MintLoginToken() (string, error) {
 func (s *Server) AutoWakeAfterRestart(ctx context.Context) {
 	if s.sessHandler != nil {
 		s.sessHandler.AutoWakeAfterRestart(ctx)
+	}
+}
+
+// AgentsSlept hears the agents the session reconciler found dead, for the exit notice and
+// auto-resume (#3613).
+func (s *Server) AgentsSlept(ctx context.Context, sessionIDs []string) {
+	if s.sessHandler != nil {
+		s.sessHandler.AgentsSlept(ctx, sessionIDs)
 	}
 }
 
@@ -805,6 +815,8 @@ func (s *Server) buildRouter() chi.Router {
 	sessHandler.SetTeamStore(teamsHandler.Store())
 	sessHandler.SetAgentOperatorGate(s.identity.AgentOperatorAction)
 	sessHandler.SetTokenStore(store.NewTokenUsageStore(s.db))
+	// Automated sends are spaced per team (#3613): a session's team is the board it is on.
+	ptymanager.SetTeamResolver(newTeamResolver(s.boardStore))
 	notifStore := routes.NewNotificationStore()
 	sessHandler.SetNotificationStore(notifStore)
 	autoAccept := routes.NewAutoAcceptor(sessHandler)
@@ -1191,5 +1203,35 @@ func loopbackHost(hostport string) bool {
 func (s *Server) SetRestarter(fn func() error) {
 	if s.cloudHandler != nil {
 		s.cloudHandler.Restart = fn
+	}
+}
+
+// newTeamResolver maps an agent session to its board, for spacing automated sends (#3613),
+// cached for 30 s so a notifier pass doesn't query the board database for every send.
+func newTeamResolver(bs *board.Store) func(string) string {
+	type entry struct {
+		team string
+		at   time.Time
+	}
+	var mu sync.Mutex
+	cache := map[string]entry{}
+	return func(sessionName string) string {
+		if bs == nil || sessionName == "" {
+			return ""
+		}
+		mu.Lock()
+		if e, ok := cache[sessionName]; ok && time.Since(e.at) < 30*time.Second {
+			mu.Unlock()
+			return e.team
+		}
+		mu.Unlock()
+		team := ""
+		if sub, err := bs.GetSubscriptionBySessionName(context.Background(), sessionName); err == nil && sub != nil {
+			team = sub.Project
+		}
+		mu.Lock()
+		cache[sessionName] = entry{team: team, at: time.Now()}
+		mu.Unlock()
+		return team
 	}
 }

@@ -681,3 +681,36 @@ func TestBoardNotifier_RetiresAHeldNudgeOnceRead(t *testing.T) {
 	require.NoError(t, notifier.RunOnce(ctx)) // nothing unread
 	assert.Equal(t, 1, ptymanager.HeldCount(name), "the board's stale nudge is retired, the other send stays")
 }
+
+// The reminder window is spread per agent (#3613): never before 0.8 x remindAfter, always by
+// 1.2 x, so reminders set in one pass don't all come due in the same one.
+func TestBoardNotifier_ReminderWindowIsJittered(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+	clock := time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC)
+	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
+	notifier.now = func() time.Time { return clock }
+	notifier.SetIsPausedFn(func(_ string) bool { return false })
+	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentName: "dev-agent", AgentType: "claude", SessionID: "eeee-0001", DisplayName: "Dev"}}, nil
+	})
+	_, err := bs.Subscribe(ctx, "proj", "Dev", "Dev", "claude-eeee-0001", nil, "")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "proj", "Poster", "Poster", "claude-eeee-0002", nil, "")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "proj", "Poster", "@Dev hello", nil)
+	require.NoError(t, err)
+
+	start := clock
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+	clock = start.Add(defaultRemindAfter * 79 / 100)
+	require.NoError(t, notifier.RunOnce(ctx))
+	assert.Len(t, rt.sent, 1, "no reminder before 0.8 x remindAfter")
+	clock = start.Add(defaultRemindAfter * 121 / 100)
+	require.NoError(t, notifier.RunOnce(ctx))
+	assert.Len(t, rt.sent, 2, "a reminder by 1.2 x remindAfter")
+	w := ptymanager.JitterAround(defaultRemindAfter, "claude-eeee-0001")
+	assert.True(t, w >= defaultRemindAfter*8/10 && w <= defaultRemindAfter*12/10, "%v", w)
+}
