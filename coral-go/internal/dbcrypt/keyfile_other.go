@@ -1,4 +1,4 @@
-//go:build windows || plan9 || wasip1
+//go:build plan9 || wasip1
 
 package dbcrypt
 

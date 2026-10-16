@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 func encryptedKeyHex(key string) string {
@@ -266,6 +268,10 @@ func ResolveKey(dir string, b Bootstrap, dbPaths ...string) (string, error) {
 		tmp.Close()
 		return "", err
 	}
+	if err := secfile.Protect(tmpName); err != nil { // Windows ignores the mode (#3693)
+		tmp.Close()
+		return "", fmt.Errorf("make the database key file private: %w", err)
+	}
 	if _, err := tmp.Write(key); err != nil {
 		tmp.Close()
 		return "", err
@@ -313,6 +319,10 @@ func GenerateKeyFile(dir string, b Bootstrap) (string, error) {
 	if err := tmp.Chmod(0600); err != nil {
 		tmp.Close()
 		return "", err
+	}
+	if err := secfile.Protect(tmpName); err != nil { // Windows ignores the mode (#3693)
+		tmp.Close()
+		return "", fmt.Errorf("make the database key file private: %w", err)
 	}
 	if _, err := tmp.WriteString(key); err != nil {
 		tmp.Close()

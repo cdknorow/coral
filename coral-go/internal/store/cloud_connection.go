@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/cdknorow/coral/pkg/secretbox"
@@ -40,6 +41,27 @@ type CloudStore struct {
 func NewCloudStore(db *DB, rs *RemoteServerStore) *CloudStore { return &CloudStore{db: db, rs: rs} }
 
 func cloudAAD(serverID string) string { return "cloud-connector:" + serverID }
+
+// CheckSecrets proves the token can be stored here before anything is enrolled (#3693): the
+// master key loads (or is created, when nothing is stored yet) and seals and opens a value.
+// Enrolling first and failing to store the token afterwards left an enrollment in Coral Hub
+// with no working connection. The error never holds key material.
+func (s *CloudStore) CheckSecrets(ctx context.Context) error {
+	box, err := s.rs.getBox(ctx, true, false)
+	if err != nil {
+		return err
+	}
+	const aad = "cloud-connector:check"
+	env, err := box.Seal(aad, []byte("check"))
+	if err != nil {
+		return unreadable(err)
+	}
+	pt, err := box.Open(aad, env)
+	if err != nil || string(pt) != "check" {
+		return unreadable(fmt.Errorf("the master key can't open what it sealed: %v", err))
+	}
+	return nil
+}
 
 // Save replaces any existing enrollment with a new, active one. The token is
 // sealed before it touches the database.

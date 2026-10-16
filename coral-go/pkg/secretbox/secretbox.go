@@ -24,6 +24,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 const (
@@ -203,6 +205,12 @@ func writeNewKeyFile(path, dir string, key []byte) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return fmt.Errorf("create remote secret key file: %w", err)
+	}
+	// Windows ignores the 0600: give the new file a private access list before the key is in it.
+	if err := secfile.Protect(path); err != nil {
+		f.Close()
+		os.Remove(path)
+		return fmt.Errorf("make the remote secret key file private: %w", err)
 	}
 	hexKey := []byte(hex.EncodeToString(key) + "\n")
 	defer Zero(hexKey)

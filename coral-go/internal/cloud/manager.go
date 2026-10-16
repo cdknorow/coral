@@ -9,6 +9,7 @@ package cloud
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -295,6 +296,13 @@ func (m *Manager) Connect(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
+	// The token must be storable here before the hub enrolls this server (#3693): enrolling
+	// first and failing to store the token left an enrollment in Coral Hub with no connection.
+	if err := m.o.Store.CheckSecrets(ctx); err != nil {
+		m.setError(StateIdle, "Coral can't store the Coral Hub token securely on this computer, so nothing was enrolled: "+err.Error())
+		return fmt.Errorf("the token can't be stored here: %w", err)
+	}
+
 	// A code from an earlier start (this run or a previous one) is reused until it
 	// expires; a new one is asked for at most once per enrollMinGap, and after a failed
 	// start only after a growing, jittered wait. So a machine in a restart loop asks
@@ -441,7 +449,9 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 		case err == nil:
 			_ = m.o.Store.ClearEnrollment(ctx) // enrolled: no pending code, no rate limit
 			if serr := m.o.Store.Save(ctx, m.o.HubURL, en.ServerID, en.Label, en.Token); serr != nil {
-				m.finishEnroll(gen, "enrolled, but the token could not be stored securely; check the Coral data directory")
+				// No token in the message or the log: serr is about the key, never the token.
+				m.finishEnroll(gen, "Coral Hub enrolled this computer, but the token could not be stored here ("+serr.Error()+
+					"), so it can't connect. Remove this computer in Coral Hub, then connect again.")
 				return
 			}
 			conn, gerr := m.o.Store.Get(ctx)

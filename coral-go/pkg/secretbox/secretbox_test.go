@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -79,10 +80,12 @@ func TestCreateKeyFile_ModesAndReload(t *testing.T) {
 	dir := t.TempDir() + "/newdir"
 	b, err := CreateKeyFile(dir)
 	require.NoError(t, err)
-	di, _ := os.Stat(dir)
-	assert.Equal(t, os.FileMode(0700), di.Mode().Perm())
-	fi, _ := os.Stat(KeyFilePath(dir))
-	assert.Equal(t, os.FileMode(0600), fi.Mode().Perm())
+	if runtime.GOOS != "windows" { // Windows has no mode bits: keyfile_windows_test.go checks the DACL
+		di, _ := os.Stat(dir)
+		assert.Equal(t, os.FileMode(0700), di.Mode().Perm())
+		fi, _ := os.Stat(KeyFilePath(dir))
+		assert.Equal(t, os.FileMode(0600), fi.Mode().Perm())
+	}
 
 	env, _ := b.Seal("x", []byte("v"))
 	b2, err := LoadKey(dir)
@@ -97,6 +100,9 @@ func TestCreateKeyFile_ModesAndReload(t *testing.T) {
 }
 
 func TestLoadKey_PermissionRefusal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mode bits: keyfile_windows_test.go checks the DACL instead")
+	}
 	t.Setenv(EnvKey, "")
 	dir := t.TempDir()
 	_, err := CreateKeyFile(dir)
@@ -116,7 +122,9 @@ func TestLoadKey_RefusesSymlink(t *testing.T) {
 	dir := t.TempDir()
 	real := dir + "/real"
 	require.NoError(t, os.WriteFile(real, []byte(strings.Repeat("ab", 32)), 0600))
-	require.NoError(t, os.Symlink(real, KeyFilePath(dir)))
+	if err := os.Symlink(real, KeyFilePath(dir)); err != nil {
+		t.Skipf("symlinks need a privilege here: %v", err)
+	}
 	_, err := LoadKey(dir)
 	assert.Error(t, err)
 	assert.False(t, errors.Is(err, ErrKeyMissing))
