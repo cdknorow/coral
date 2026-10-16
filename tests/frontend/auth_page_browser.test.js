@@ -51,7 +51,18 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
 
         // ── sign in ──
         await open('signin');
-        await waitFor(`document.activeElement && document.activeElement.id === 'password'`, 'focus to start in the password');   // autofocus lands a moment after the page script
+        await waitFor(`document.activeElement && document.activeElement.id === 'password'`, 'focus to start in the password');
+        // text contrast on the card, both themes: the links and the Show button must reach AA (4.5:1); the light theme's accent was 4.4:1 (#4023)
+        const ratio = theme => ev(`(() => { if (!document.getElementById('zz-notransition')) { const st = document.createElement('style'); st.id = 'zz-notransition'; st.textContent = '* { transition: none !important }'; document.head.appendChild(st); } document.documentElement.setAttribute('data-theme', '${theme}');
+            const parse = c => c.match(/[\\d.]+/g).map(Number); const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+            const bg = parse(getComputedStyle(document.querySelector('.card')).backgroundColor); const out = {};
+            for (const sel of ['#show-forgot', '#show-key', '.pw-toggle']) { const e = document.querySelector(sel); const fg = parse(getComputedStyle(e).color); const [x, y] = [lum(fg), lum(bg)].sort((p, q) => q - p); out[sel] = Math.round(((x + 0.05) / (y + 0.05)) * 100) / 100; }
+            return out; })()`);
+        for (const theme of ['dark', 'light']) {
+            const r = await ratio(theme);
+            for (const [sel, v] of Object.entries(r)) assert.ok(v >= 4.5, `${theme}: ${sel} is ${v}:1 on the card, AA needs 4.5`);
+        }
+        await ev(`document.documentElement.setAttribute('data-theme', 'dark'); true`);   // autofocus lands a moment after the page script
         assert.ok(!(await visible('err')) && !(await visible('lock')), 'the error and lockout boxes take no room until they are needed');
         assert.equal(await $('keep', 'checked'), false, '"Keep me signed in" is off by default');
         await ev(`document.querySelector('[data-toggle=password]').click(); true`);

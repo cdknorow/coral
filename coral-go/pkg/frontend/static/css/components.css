@@ -3893,6 +3893,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .pw-input { width: 100%; box-sizing: border-box; padding: 9px 64px 9px 11px; font-size: 14px; border-radius: 8px;
     border: 1px solid var(--border-light); background: var(--bg-primary); color: var(--text-primary); }
 .pw-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+[data-theme="light"] .pw-toggle { color: var(--accent-dim); }   /* AA on the light card (#4023) */
 .pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--accent);
     font-size: 13px; cursor: pointer; padding: 6px 8px; }
 .pw-meter { height: 6px; border-radius: 3px; background: var(--bg-tertiary); overflow: hidden; margin: 2px 0 4px; }
