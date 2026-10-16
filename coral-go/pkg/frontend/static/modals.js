@@ -24,6 +24,7 @@ import {
 import { settingBool, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 import { pollEvery } from './overload.js';
 import { attachDialogFocus } from './dialog_focus.js';
+import { launch } from './launch_state.js';
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
 
@@ -50,21 +51,7 @@ function _setPermFlagsForInput(inputId, agentType, mode) {
 }
 window._setPermFlagsForInput = _setPermFlagsForInput;
 
-// Track which launch mode is active: null (chooser), 'agent', or 'terminal'
-let _launchMode = null;
-let _existingTeamBoardNames = new Set();
-let _teamAgentModalRow = null;
 
-// ── Launch target server (multi-server hub, spec section 5) ─────────────
-// A launch always runs on exactly one server. _launchServer is the Server
-// dropdown of the launch modal, _quickServer the quick-launch (team preset)
-// modal and _addAgentServer the server inherited by "add agent to board" /
-// folder-group launches. With hub mode off all three stay "local" and nothing
-// below ever touches /api/remote/*.
-let _launchServer = LOCAL_SERVER;
-let _launchServerLocked = false;
-let _quickServer = LOCAL_SERVER;
-let _addAgentServer = LOCAL_SERVER;
 
 function _effectiveServer(server) {
     return isHub() ? normServer(server) : LOCAL_SERVER;
@@ -105,9 +92,9 @@ async function _loadServerSettings(server, { fresh = false } = {}) {
 /** Server an Agent Config Form container launches on. */
 function _acfServer(container) {
     const id = container && container.id;
-    if (id === 'add-agent-board-acf') return _effectiveServer(_addAgentServer);
+    if (id === 'add-agent-board-acf') return _effectiveServer(launch.addAgentServer);
     if (id === 'restart-acf') return _effectiveServer(currentServer());
-    return _effectiveServer(_launchServer);
+    return _effectiveServer(launch.server);
 }
 
 // ── Canonical per-agent-type model list ────────────────────────────────
@@ -223,11 +210,11 @@ function _showLaunchStep(step) {
 
 function _selectLaunchType(type) {
     if (type === "back") {
-        _launchMode = null;
+        launch.mode = null;
         _showLaunchStep("chooser");
         return;
     }
-    _launchMode = type;
+    launch.mode = type;
     _showLaunchStep(type);
     if (type === "agent") {
         _loadAgentBoardProjects();
@@ -236,7 +223,7 @@ function _selectLaunchType(type) {
         renderAgentConfigForm('launch-agent-acf', {
             showPreset: false,
             showName: false,
-            value: { agentType: _settingsFor(_effectiveServer(_launchServer)).default_agent_type || 'claude' },
+            value: { agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || 'claude' },
         });
     } else if (type === "team") {
         _initTeamForm();
@@ -252,11 +239,11 @@ window._selectLaunchType = _selectLaunchType;
  * context). Default is the hub itself with a free choice.
  */
 export function showLaunchModal(server, lock = false) {
-    _launchMode = null;
+    launch.mode = null;
     _serverSettings.clear();
-    _launchServerLocked = !!lock && isHub();
-    _launchServer = _effectiveServer(coerceSelection(server, isHub(), state.servers));
-    if (_launchServerLocked && normServer(server) !== LOCAL_SERVER) _launchServer = normServer(server);
+    launch.serverLocked = !!lock && isHub();
+    launch.server = _effectiveServer(coerceSelection(server, isHub(), state.servers));
+    if (launch.serverLocked && normServer(server) !== LOCAL_SERVER) launch.server = normServer(server);
     _renderServerPicker('launch');
     document.getElementById("launch-modal").style.display = "flex";
     _showLaunchStep("chooser");
@@ -281,20 +268,20 @@ export function showLaunchModal(server, lock = false) {
     if (teamFlagsEl) teamFlagsEl.value = "";
     const teamPermModeEl = document.getElementById("team-permission-mode");
     if (teamPermModeEl) {
-        teamPermModeEl.value = _settingsFor(_effectiveServer(_launchServer)).default_permission_mode || 'bypassPermissions';
+        teamPermModeEl.value = _settingsFor(_effectiveServer(launch.server)).default_permission_mode || 'bypassPermissions';
         _updatePermModeDescription(teamPermModeEl);
     }
 
     // Pre-fill from the target server's settings (the hub's own when local)
-    _resetLaunchDirs(_launchServer);
-    const s = _settingsFor(_launchServer);
+    _resetLaunchDirs(launch.server);
+    const s = _settingsFor(launch.server);
     const typeSelect = document.getElementById("launch-type");
     if (s.default_agent_type && typeSelect) {
         typeSelect.value = s.default_agent_type;
     }
 
     _syncMobileLaunchSections();
-    if (_launchServer !== LOCAL_SERVER) _onLaunchServerChange(_launchServer, { force: true });
+    if (launch.server !== LOCAL_SERVER) _onLaunchServerChange(launch.server, { force: true });
 }
 
 // ── Server picker (hub mode) ─────────────────────────────────────────────
@@ -310,8 +297,8 @@ function _renderServerPicker(which) {
     const row = document.getElementById(ids.row);
     const sel = document.getElementById(ids.select);
     if (!row || !sel) return;
-    const current = which === 'launch' ? _launchServer : _quickServer;
-    const locked = which === 'launch' && _launchServerLocked;
+    const current = which === 'launch' ? launch.server : launch.quickServer;
+    const locked = which === 'launch' && launch.serverLocked;
     const show = isHub() && (locked ? current !== LOCAL_SERVER : pickerVisible(true, state.servers));
     if (!show) { row.style.display = 'none'; return; }
     let opts = pickerOptions(state.servers);
@@ -368,9 +355,9 @@ function _resetLaunchDirs(server, opts) {
 /** Reload everything that depends on the launch server after the dropdown changes. */
 async function _onLaunchServerChange(value, { force = false } = {}) {
     const next = _effectiveServer(coerceSelection(value, isHub(), state.servers));
-    if (next === _launchServer && !force) return;
-    const prev = _launchServer;
-    _launchServer = next;
+    if (next === launch.server && !force) return;
+    const prev = launch.server;
+    launch.server = next;
     const note = document.getElementById('launch-server-note');
     if (note) note.textContent = next === LOCAL_SERVER ? '' : 'Loading…';
     // Nothing from the previous server may survive: directory, board server, board choice.
@@ -382,7 +369,7 @@ async function _onLaunchServerChange(value, { force = false } = {}) {
     let loadError = '';
     if (next !== LOCAL_SERVER) {
         try { await _loadServerSettings(next); } catch (e) { loadError = e.message || 'unreachable'; }
-        if (_launchServer !== next) return; // changed again while loading
+        if (launch.server !== next) return; // changed again while loading
     }
     if (note) note.textContent = loadError ? `Could not read ${serverLabel(next, state.servers)}: ${loadError}` : '';
     // Re-apply defaults from the (now loaded) settings, then the dependent option sources.
@@ -390,8 +377,8 @@ async function _onLaunchServerChange(value, { force = false } = {}) {
     const s = _settingsFor(next);
     const typeSelect = document.getElementById('launch-type');
     if (s.default_agent_type && typeSelect) typeSelect.value = s.default_agent_type;
-    if (_launchMode === 'agent') _loadAgentBoardProjects();
-    if (_launchMode === 'team') { _loadExistingTeamBoards(); _checkTeamGitDir(); }
+    if (launch.mode === 'agent') _loadAgentBoardProjects();
+    if (launch.mode === 'team') { _loadExistingTeamBoards(); _checkTeamGitDir(); }
     document.querySelectorAll('#launch-modal [data-acf-uid], #team-agent-modal [data-acf-uid]').forEach(c => {
         if (c.querySelector('.acf-agent-type')) {
             _syncACFModelField(c);
@@ -403,14 +390,14 @@ window._onLaunchServerChange = _onLaunchServerChange;
 
 async function _onQuickLaunchServerChange(value) {
     const next = _effectiveServer(coerceSelection(value, isHub(), state.servers));
-    if (next === _quickServer) return;
-    _quickServer = next;
+    if (next === launch.quickServer) return;
+    launch.quickServer = next;
     const b = document.getElementById('quick-launch-browser');
     if (b) b.style.display = 'none';
     _resetDirInputs(['quick-launch-workdir'], next, {}, { switching: true });
     if (next !== LOCAL_SERVER) {
         try { await _loadServerSettings(next); } catch (_) { /* launch will surface the error */ }
-        if (_quickServer !== next) return;
+        if (launch.quickServer !== next) return;
         _resetDirInputs(['quick-launch-workdir'], next, _settingsFor(next), { switching: true });
     } else {
         _resetDirInputs(['quick-launch-workdir'], next, _settingsFor(next), { switching: true });
@@ -421,9 +408,9 @@ window._onQuickLaunchServerChange = _onQuickLaunchServerChange;
 // Directory inputs belong to whichever server their form launches on.
 setDirServerResolver(inputId => {
     if (!isHub()) return LOCAL_SERVER;
-    if (inputId === 'quick-launch-workdir') return _quickServer;
+    if (inputId === 'quick-launch-workdir') return launch.quickServer;
     if (inputId === 'resume-dir') return LOCAL_SERVER; // resume uses the hub's own session history
-    return _launchServer;
+    return launch.server;
 });
 
 /** Toast and return true when `server` cannot be launched on. */
@@ -618,12 +605,12 @@ function _normalizeGeneratedTeamPayload(payload) {
 }
 
 function _populateGeneratedTeamDraft(team) {
-    _skipDefaultTeamAgents = true;
+    launch.skipDefaultTeamAgents = true;
     // Open the launch modal directly to the team step, skipping the chooser.
     // Don't call showLaunchModal() — it resets to the chooser and clears the agent list.
     document.getElementById("launch-modal").style.display = "flex";
     _showLaunchStep("team");
-    _launchMode = "team";
+    launch.mode = "team";
     _initTeamForm();
 
     // Show generated-team banner
@@ -652,7 +639,7 @@ function _populateGeneratedTeamDraft(team) {
         _syncFlagButtons('team-flags');
     }
     if (teamAgentsList) {
-        _teamAgentCounter = 0;
+        launch.teamAgentCounter = 0;
         teamAgentsList.innerHTML = '';
     }
 
@@ -878,7 +865,7 @@ function _defaultTeamAgentModalConfig() {
 }
 
 function showTeamAgentModal(row = null) {
-    _teamAgentModalRow = row;
+    launch.teamAgentModalRow = row;
     const title = document.getElementById('team-agent-modal-title');
     const subtitle = document.getElementById('team-agent-modal-subtitle');
     const modal = document.getElementById('team-agent-modal');
@@ -898,7 +885,7 @@ window.showTeamAgentModal = showTeamAgentModal;
 function hideTeamAgentModal() {
     const modal = document.getElementById('team-agent-modal');
     if (modal) modal.style.display = 'none';
-    _teamAgentModalRow = null;
+    launch.teamAgentModalRow = null;
 }
 window.hideTeamAgentModal = hideTeamAgentModal;
 
@@ -909,9 +896,9 @@ function saveTeamAgentFromModal() {
         return;
     }
 
-    if (_teamAgentModalRow?.dataset.acfId) {
-        setAgentConfig(_teamAgentModalRow.dataset.acfId, config);
-        _updateTeamAgentSummary(_teamAgentModalRow);
+    if (launch.teamAgentModalRow?.dataset.acfId) {
+        setAgentConfig(launch.teamAgentModalRow.dataset.acfId, config);
+        _updateTeamAgentSummary(launch.teamAgentModalRow);
     } else {
         _addTeamAgent(config.name, config.prompt, config.capabilities, config.agentType, config.model, config.flags);
     }
@@ -1216,7 +1203,7 @@ function _checkPermissionFlag(flagsStr, agentType, server = LOCAL_SERVER) {
 export async function launchSession() {
     let dir, type, agentName, flagsStr, backend;
 
-    if (_launchMode === "terminal") {
+    if (launch.mode === "terminal") {
         dir = document.getElementById("launch-terminal-dir").value.trim();
         type = "terminal";
         agentName = document.getElementById("launch-terminal-name").value.trim();
@@ -1237,11 +1224,11 @@ export async function launchSession() {
     }
 
     // Everything below (directory, CLI, defaults) is interpreted on this server.
-    const server = _effectiveServer(_launchServer);
+    const server = _effectiveServer(launch.server);
     if (_launchBlocked(server)) return;
 
     // Permission flag check (skip for terminals)
-    if (_launchMode !== "terminal") {
+    if (launch.mode !== "terminal") {
         const permResult = await _checkPermissionFlag(flagsStr, type, server);
         if (permResult === null) return;
         if (permResult === 'enable') {
@@ -1259,7 +1246,7 @@ export async function launchSession() {
     }
 
     // Agent config from ACF (only for agent mode)
-    if (_launchMode !== "terminal") {
+    if (launch.mode !== "terminal") {
         const config = getAgentConfig('launch-agent-acf');
         if (config.capabilities) payload.capabilities = config.capabilities;
         if (config.prompt) payload.prompt = config.prompt;
@@ -1287,12 +1274,12 @@ export async function launchSession() {
     if (payload.board_name) payload.board_name = bareBoardName(payload.board_name);
 
     // Disable launch button to prevent double-clicks
-    const stepId = _launchMode === "terminal" ? "launch-step-terminal" : "launch-step-agent";
+    const stepId = launch.mode === "terminal" ? "launch-step-terminal" : "launch-step-agent";
     const launchBtn = document.querySelector(`#${stepId} .btn-primary`);
     if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'Launching...'; }
 
     try {
-        const dirInput = document.getElementById(_launchMode === "terminal" ? "launch-terminal-dir" : "launch-dir");
+        const dirInput = document.getElementById(launch.mode === "terminal" ? "launch-terminal-dir" : "launch-dir");
         const result = await _launchOn(server, "/api/sessions/launch", payload, type, { dirInput });
         if (result) {
             recordRecentDir(dir, server);
@@ -1316,10 +1303,10 @@ async function _loadAgentBoardProjects() {
     select.innerHTML = '<option value="">None</option><option value="__new__">Create new board...</option>';
     try {
         // Boards that exist on the server the agent will launch on.
-        const server = _effectiveServer(_launchServer);
+        const server = _effectiveServer(launch.server);
         const resp = await serverFetch(server, "/api/board/projects");
         const projects = await resp.json();
-        if (!Array.isArray(projects) || server !== _effectiveServer(_launchServer)) return;
+        if (!Array.isArray(projects) || server !== _effectiveServer(launch.server)) return;
         noteBoardLabels(projects, 'project', server);
         for (const p of projects) {
             const opt = document.createElement("option");
@@ -1556,7 +1543,7 @@ function _selectAgentPreset(name) {
         if (nameInput) nameInput.value = persona.name;
     } else {
         setAgentConfig('launch-agent-acf', {
-            agentType: _settingsFor(_effectiveServer(_launchServer)).default_agent_type || current.agentType,
+            agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || current.agentType,
         });
         if (nameInput) nameInput.value = '';
     }
@@ -1570,7 +1557,7 @@ function _selectAgentPreset(name) {
 export function showAddAgentToBoard(boardName, workDir) {
     const server = _effectiveServer(splitKey(boardName).server);
     if (_launchBlocked(server)) return;
-    _addAgentServer = server;
+    launch.addAgentServer = server;
     _serverSettings.delete(server);
     const modal = document.getElementById("add-agent-board-modal");
     document.getElementById("add-agent-board-name").value = boardName;
@@ -1608,7 +1595,7 @@ export function hideAddAgentBoardModal() {
 export async function launchAgentToBoard() {
     const boardKey = document.getElementById("add-agent-board-name").value;
     const workDir = document.getElementById("add-agent-board-workdir").value;
-    const server = _effectiveServer(_addAgentServer);
+    const server = _effectiveServer(launch.addAgentServer);
     if (_launchBlocked(server)) return;
     const config = getAgentConfig('add-agent-board-acf');
 
@@ -1719,7 +1706,7 @@ export async function launchDefaultAgent(workDir, server) {
 export function showAddStandaloneAgent(workDir, server) {
     server = _effectiveServer(server);
     if (_launchBlocked(server)) return;
-    _addAgentServer = server;
+    launch.addAgentServer = server;
     _serverSettings.delete(server);
     const modal = document.getElementById('add-agent-board-modal');
     document.getElementById('add-agent-board-name').value = '';
@@ -1774,8 +1761,6 @@ export async function launchStandaloneTerminal(workDir, server) {
 
 // ── Agent Team ────────────────────────────────────────────────────────────
 
-let _teamAgentCounter = 0;
-let _skipDefaultTeamAgents = false;
 
 // Predefined agent presets
 // All known Coral capabilities
@@ -2269,7 +2254,7 @@ const DEFAULT_TEAM_PRESETS = AGENT_PRESETS.slice(0, 4);
 
 /** Worktree option is offered when the working directory is a git repo ON THE TARGET SERVER. */
 async function _checkTeamGitDir() {
-    const server = _effectiveServer(_launchServer);
+    const server = _effectiveServer(launch.server);
     const dirInput = document.getElementById("launch-team-dir");
     const dir = dirInput ? dirInput.value.trim() : '';
     const worktreeOpt = document.getElementById('team-worktree-option');
@@ -2277,22 +2262,22 @@ async function _checkTeamGitDir() {
     try {
         const resp = await serverFetch(server, `/api/filesystem/is-git?path=${encodeURIComponent(dir)}`);
         const data = await resp.json();
-        if (server !== _effectiveServer(_launchServer)) return;
+        if (server !== _effectiveServer(launch.server)) return;
         worktreeOpt.style.display = data.is_git ? '' : 'none';
     } catch { worktreeOpt.style.display = 'none'; }
 }
 
 /** The target server's board names and labels, to say before launching that one exists (#3536). */
 async function _loadExistingTeamBoards() {
-    const server = _effectiveServer(_launchServer);
-    _existingTeamBoardNames = new Set();
+    const server = _effectiveServer(launch.server);
+    launch.existingTeamBoardNames = new Set();
     try {
         const resp = await serverFetch(server, "/api/board/projects");
         const projects = await resp.json();
-        if (server !== _effectiveServer(_launchServer) || !Array.isArray(projects)) return;
+        if (server !== _effectiveServer(launch.server) || !Array.isArray(projects)) return;
         for (const p of projects) {
-            if (p.project) _existingTeamBoardNames.add(String(p.project).trim().toLowerCase());
-            if (p.board_label) _existingTeamBoardNames.add(String(p.board_label).trim().toLowerCase());
+            if (p.project) launch.existingTeamBoardNames.add(String(p.project).trim().toLowerCase());
+            if (p.board_label) launch.existingTeamBoardNames.add(String(p.board_label).trim().toLowerCase());
         }
     } catch (_) {}
     _validateTeamName();
@@ -2306,21 +2291,21 @@ async function _initTeamForm() {
     // Reset form
     document.getElementById("team-board-name").value = "";
     document.getElementById("team-board-server").value = "";
-    _existingTeamBoardNames = new Set();
+    launch.existingTeamBoardNames = new Set();
     _validateTeamName();
     const tapEl = document.getElementById("team-permission-mode");
     if (tapEl) {
-        tapEl.value = _settingsFor(_effectiveServer(_launchServer)).default_permission_mode || 'bypassPermissions';
+        tapEl.value = _settingsFor(_effectiveServer(launch.server)).default_permission_mode || 'bypassPermissions';
         _updatePermModeDescription(tapEl);
     }
-    _teamAgentCounter = 0;
+    launch.teamAgentCounter = 0;
     const list = document.getElementById("team-agents-list");
     list.innerHTML = "";
 
     // Pre-fill working dir from the target server's settings
-    const s = _settingsFor(_effectiveServer(_launchServer));
+    const s = _settingsFor(_effectiveServer(launch.server));
     const dirInput = document.getElementById("launch-team-dir");
-    if (_launchServer !== LOCAL_SERVER) _resetDirInputs(['launch-team-dir'], _launchServer, s, { switching: true });
+    if (launch.server !== LOCAL_SERVER) _resetDirInputs(['launch-team-dir'], launch.server, s, { switching: true });
     else if (s.default_working_dir && dirInput) dirInput.value = s.default_working_dir;
 
     // Show worktree option when directory is a git repo (checked on the target server)
@@ -2350,12 +2335,12 @@ async function _initTeamForm() {
     _renderTeamTemplateSelector();
 
     // Add three default agents (skip if wizard is populating)
-    if (!_skipDefaultTeamAgents) {
+    if (!launch.skipDefaultTeamAgents) {
         for (const preset of DEFAULT_TEAM_PRESETS) {
             _addTeamAgent(preset.name, preset.prompt, preset.capabilities, preset.agent_type, preset.model);
         }
     }
-    _skipDefaultTeamAgents = false;
+    launch.skipDefaultTeamAgents = false;
 
     document.getElementById("team-board-name").focus();
     _validateTeamName();
@@ -2450,7 +2435,7 @@ window._quickLaunchTeam = async function() {
     const launchBtn = document.querySelector('#quick-launch-modal .btn-primary');
     if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'Launching...'; }
 
-    const server = _effectiveServer(_quickServer);
+    const server = _effectiveServer(launch.quickServer);
     if (_launchBlocked(server)) { if (launchBtn) { launchBtn.disabled = false; launchBtn.textContent = 'Launch'; } return; }
     const ts = _settingsFor(server);
     const agentType = tmpl.agents?.[0]?.agent_type || ts.default_agent_type || 'claude';
@@ -2503,7 +2488,7 @@ function _loadTeamTemplate(name) {
     if (!tmpl) { console.warn('[coral] Template not found:', name); return; }
 
     // Clear current agents and load from template
-    _teamAgentCounter = 0;
+    launch.teamAgentCounter = 0;
     document.getElementById("team-agents-list").innerHTML = "";
 
     for (const agent of tmpl.agents) {
@@ -2590,8 +2575,8 @@ function _truncatePrompt(text, maxLen) {
 }
 
 function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultAgentType, defaultModel, defaultFlags) {
-    _teamAgentCounter++;
-    const idx = _teamAgentCounter;
+    launch.teamAgentCounter++;
+    const idx = launch.teamAgentCounter;
     const acfId = `team-agent-acf-${idx}`;
     const list = document.getElementById("team-agents-list");
     const row = document.createElement("div");
@@ -2734,7 +2719,7 @@ function _validateTeamName() {
         return false;
     }
     // A name in use is allowed (#3536): launching asks whether to join that board or start another.
-    if (_existingTeamBoardNames.has(value.toLowerCase())) {
+    if (launch.existingTeamBoardNames.has(value.toLowerCase())) {
         hint.textContent = "A board with this name exists. Launching asks whether to join it or start another.";
         hint.classList.remove("error");
         return true;
@@ -2762,7 +2747,7 @@ async function launchTeam() {
         return;
     }
 
-    const server = _effectiveServer(_launchServer);
+    const server = _effectiveServer(launch.server);
     if (_launchBlocked(server)) return;
     const agentType = document.getElementById("team-agent-type").value;
     const teamPermMode = document.getElementById("team-permission-mode")?.value || 'default';
