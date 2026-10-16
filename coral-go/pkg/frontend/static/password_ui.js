@@ -5,6 +5,7 @@
 
 import { showToast } from './utils.js';
 import { importOnce } from './import_once.js';
+import { pollEvery } from './overload.js';
 
 // The pure rules are a lazy module of their own (a lazily loaded module may only statically import startup modules).
 const { passwordProblem, strengthOf } = await importOnce('./password_rules.js');
@@ -126,7 +127,30 @@ export function showSetPasswordModal({ local = false } = {}) {
     content.append(head, body, foot); modal.append(content);
     document.body.append(modal);
 
-    const close = () => { document.removeEventListener('keydown', onKey, true); modal.remove(); if (opener && opener.focus && opener.isConnected) opener.focus(); document.dispatchEvent(new CustomEvent('coral:password-prompt-closed')); };
+    // The prompt can outlive the question: a password set in another browser while this page stays open (the Coral app keeps its page
+    // between uses) must not leave the prompt up. Ask the server again when the page is looked at again, and every few seconds meanwhile.
+    let recheckTimer = null;
+    const recheck = async () => {
+        if (!modal.isConnected) return;
+        const st = await authStatus();
+        if (!modal.isConnected || !st || st.password_set !== true) return;
+        close();
+        showToast('A password is already set. Change it in Settings, Security.');
+        document.dispatchEvent(new CustomEvent('coral:password-changed'));
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') recheck(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', recheck);
+    recheckTimer = pollEvery(recheck, 5000);
+    const close = () => {
+        document.removeEventListener('keydown', onKey, true);
+        document.removeEventListener('visibilitychange', onVisible);
+        window.removeEventListener('focus', recheck);
+        clearInterval(recheckTimer);
+        modal.remove();
+        if (opener && opener.focus && opener.isConnected) opener.focus();
+        document.dispatchEvent(new CustomEvent('coral:password-prompt-closed'));
+    };
     const notNow = () => { if (local) _notNowSet(); close(); };
     const onKey = e => {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); notNow(); return; }
