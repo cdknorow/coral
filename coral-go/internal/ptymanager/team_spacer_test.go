@@ -195,9 +195,9 @@ func TestJitterAroundBounds(t *testing.T) {
 // are spaced.
 func TestTheSpacerIsUsedOnlyForCoralsOwnSendsAndStarts(t *testing.T) {
 	allowed := map[string]bool{
-		"internal/ptymanager/automated_input.go": true,
-		"internal/ptymanager/team_spacer.go":     true,
-		"internal/server/routes/sessions.go":     true,
+		"internal/ptymanager/automated_input.go":       true,
+		"internal/ptymanager/team_spacer.go":           true,
+		"internal/server/routes/sessions_lifecycle.go": true,
 	}
 	root := filepath.Join("..", "..")
 	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
@@ -219,7 +219,7 @@ func TestTheSpacerIsUsedOnlyForCoralsOwnSendsAndStarts(t *testing.T) {
 	b, err := os.ReadFile("automated_input.go")
 	require.NoError(t, err)
 	assert.Equal(t, 1, strings.Count(string(b), "SpaceTeam("), "only sendChecked, in the gate")
-	b, err = os.ReadFile(filepath.Join(root, "internal/server/routes/sessions.go"))
+	b, err = os.ReadFile(filepath.Join(root, "internal/server/routes/sessions_lifecycle.go"))
 	require.NoError(t, err)
 	assert.Zero(t, strings.Count(string(b), "SpaceTeam("), "no request waits for the spacing")
 	assert.Equal(t, 1, strings.Count(string(b), "ReserveTeamStart("), "only startAgentCLI")
