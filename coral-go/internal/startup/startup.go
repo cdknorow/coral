@@ -1000,7 +1000,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Batch summarizer — only runs if auto_summarize setting is enabled
 	summarizeFn := background.BuildSummarizeFn(sessStore)
 	settings, _ := sessStore.GetSettings(ctx)
-	if settings["auto_summarize"] == "true" {
+	if config.Truthy(settings["auto_summarize"]) { // PUT /api/settings stores a JSON true as "True"
 		batchSummarizer := background.NewBatchSummarizer(sessStore, summarizeFn)
 		safeGo(ctx, "batch_summarizer", func() { batchSummarizer.Run(ctx) })
 	}

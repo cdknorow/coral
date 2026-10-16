@@ -29,8 +29,14 @@ const (
 	GoalSourceUser = "user" // typed by the operator; never overwritten
 )
 
-// GoalSettingKey disables the generator when set to "false".
+// GoalSettingKey disables the generator when set to "false" (any case: PUT /api/settings
+// stores a JSON false as "False").
 const GoalSettingKey = "auto_goals"
+
+// GoalsDisabled reports whether the auto_goals setting turns the generator off.
+func GoalsDisabled(settings map[string]string) bool {
+	return strings.EqualFold(strings.TrimSpace(settings[GoalSettingKey]), "false")
+}
 
 const (
 	// goalQuietPeriod is how long the transcript must be still before the
@@ -280,7 +286,7 @@ func (g *GoalGenerator) Status(ctx context.Context) GoalGeneratorStatus {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	st := GoalGeneratorStatus{
-		Enabled:         settings[GoalSettingKey] != "false",
+		Enabled:         !GoalsDisabled(settings),
 		CLIFound:        !g.noCLI,
 		TrackedSessions: len(g.states),
 		Concurrency:     cap(g.sem),
@@ -339,7 +345,7 @@ func (g *GoalGenerator) pollOnce(ctx context.Context) {
 	g.lastPoll = g.now()
 	g.mu.Unlock()
 	settings, _ := g.sessionStore.GetSettings(ctx)
-	if settings[GoalSettingKey] == "false" {
+	if GoalsDisabled(settings) {
 		return
 	}
 	sessions, err := g.sessionStore.GetAllLiveSessions(ctx)
