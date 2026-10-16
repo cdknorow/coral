@@ -174,65 +174,89 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 		Agents:    make(map[string]*AgentConcept),
 	}
 
-	// Collect agent info and transcripts — try team store first, fall back to live sessions
-	var agents []agentMeta
-
-	team, _ := ts.GetTeam(ctx, teamName)
-	if team != nil && len(team.Members) > 0 {
-		for _, m := range team.Members {
-			var cfg struct {
-				Prompt string `json:"prompt"`
-			}
-			json.Unmarshal([]byte(m.AgentConfigJSON), &cfg)
-
-			role := inferRole(cfg.Prompt)
-			transcript := ""
-			if m.SessionID != nil {
-				t, err := loadTranscript(ctx, ss, *m.SessionID)
-				if err == nil && t != "" {
-					transcript = t
-				}
-			}
-
-			agents = append(agents, agentMeta{
-				name:       m.AgentName,
-				role:       role,
-				transcript: transcript,
-			})
-		}
-	} else {
-		// Fallback: look up live sessions on this board
-		liveSessions, err := ss.GetBoardSessions(ctx, teamName)
-		if err != nil || len(liveSessions) == 0 {
-			return nil, fmt.Errorf("team %q not found", teamName)
-		}
-		for _, ls := range liveSessions {
-			name := ls.AgentName
-			if ls.DisplayName != nil && *ls.DisplayName != "" {
-				name = *ls.DisplayName
-			}
-			prompt := ""
-			if ls.Prompt != nil {
-				prompt = *ls.Prompt
-			}
-			role := inferRole(prompt)
-			transcript, _ := loadTranscript(ctx, ss, ls.SessionID)
-
-			agents = append(agents, agentMeta{
-				name:       name,
-				role:       role,
-				transcript: transcript,
-			})
-		}
-	}
-
-	if len(agents) == 0 {
-		return nil, fmt.Errorf("team %q has no members", teamName)
+	agents, err := teamKnowledgeAgents(ctx, ss, ts, teamName)
+	if err != nil {
+		return nil, err
 	}
 	call := func(prompt, content string) (string, error) {
 		return callClaudeForKnowledge(ctx, claudePath, callTimeout, prompt, content)
 	}
 	return distillAgents(bundle, agents, call, coralDir, progressFn)
+}
+
+// teamKnowledgeAgents lists the agents a team's distillation covers (#4074): every agent on the
+// team's board now, awake or asleep, including ones launched onto the board after the team was
+// (they have no roster row), and, for a stopped team, the roster members that stopped with it.
+// A member stopped on its own has left the team and is not distilled.
+func teamKnowledgeAgents(ctx context.Context, ss *store.SessionStore, ts *store.TeamStore, teamName string) ([]agentMeta, error) {
+	live, err := ss.GetBoardSessions(ctx, teamName)
+	if err != nil {
+		return nil, err
+	}
+	var team *store.Team
+	if ts != nil {
+		team, _ = ts.GetTeam(ctx, teamName)
+	}
+
+	var agents []agentMeta
+	counted := map[string]bool{}
+	names := map[string]int{}
+	add := func(sessionID, name, prompt string) {
+		counted[sessionID] = true
+		// Two agents with one name would share one document: the second gets a suffix.
+		names[name]++
+		if n := names[name]; n > 1 {
+			name = fmt.Sprintf("%s (%d)", name, n)
+		}
+		agents = append(agents, agentMeta{name: name, role: inferRole(prompt), transcript: agentTranscript(ctx, ss, sessionID)})
+	}
+	for _, ls := range live {
+		name := ls.AgentName
+		if ls.DisplayName != nil && *ls.DisplayName != "" {
+			name = *ls.DisplayName
+		}
+		prompt := ""
+		if ls.Prompt != nil {
+			prompt = *ls.Prompt
+		}
+		add(ls.SessionID, name, prompt)
+	}
+	if team != nil && team.Status == "stopped" && team.StoppedAt != nil {
+		for _, m := range team.Members {
+			if m.SessionID == nil || counted[*m.SessionID] || m.Status != "stopped" ||
+				m.StoppedAt == nil || *m.StoppedAt != *team.StoppedAt {
+				continue
+			}
+			var cfg struct {
+				Prompt string `json:"prompt"`
+			}
+			json.Unmarshal([]byte(m.AgentConfigJSON), &cfg)
+			add(*m.SessionID, m.AgentName, cfg.Prompt)
+		}
+	}
+
+	if len(agents) == 0 {
+		return nil, fmt.Errorf("team %q not found", teamName)
+	}
+	return agents, nil
+}
+
+// agentTranscript is a session's transcript, or, while a restarted or resumed session has none
+// yet, the newest one along its resume chain.
+func agentTranscript(ctx context.Context, ss *store.SessionStore, sessionID string) string {
+	if t, err := loadTranscript(ctx, ss, sessionID); err == nil && t != "" {
+		return t
+	}
+	lineage, _ := ss.GetSessionAncestry(ctx, sessionID)
+	for _, item := range lineage {
+		if item.SessionID == sessionID {
+			continue
+		}
+		if t, err := loadTranscript(ctx, ss, item.SessionID); err == nil && t != "" {
+			return t
+		}
+	}
+	return ""
 }
 
 // distillAgents runs the three passes over the agents with call (the Claude CLI) and writes

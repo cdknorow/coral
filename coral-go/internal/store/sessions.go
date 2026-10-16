@@ -1227,6 +1227,11 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		if _, err := tx.ExecContext(ctx, "UPDATE live_sessions SET status = 'inactive', stopped_at = ? WHERE session_id = ?", nowUTC(), oldSessionID); err != nil {
 			return err
 		}
+		// A team member follows its agent to the new session (#4074): kill, resurrect and the
+		// knowledge distiller find the member by its current session id.
+		if _, err := tx.ExecContext(ctx, "UPDATE team_members SET session_id = ? WHERE session_id = ?", newSession.SessionID, oldSessionID); err != nil {
+			return err
+		}
 
 		now := nowUTC()
 		_, err = tx.ExecContext(ctx,
