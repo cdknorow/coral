@@ -174,7 +174,7 @@ func TestBoardIDsStrictAgentChecks(t *testing.T) {
 	}
 
 	// (2) new_board for a taken name.
-	launch := `{"working_dir":` + jsonString(t.TempDir()) + `,"agent_type":"terminal","board_name":"team","new_board":true}`
+	launch := `{"working_dir":` + jsonString(strictWorkDir(t, dir)) + `,"agent_type":"terminal","board_name":"team","new_board":true}`
 	code, out := asAgent("POST", "/api/sessions/launch", launch)
 	assert.Equal(t, http.StatusForbidden, code, out)
 	assert.Equal(t, "forbidden_for_agent", out["code"])
@@ -197,7 +197,7 @@ func TestBoardIDsStrictAgentChecks(t *testing.T) {
 // Default mode: an agent's new_board for a taken name goes through and is recorded in the
 // identity report's agent_operator_calls.
 func TestAgentNewBoardRecordedInDefaultMode(t *testing.T) {
-	srv, ts, _ := strictServer(t, false)
+	srv, ts, dir := strictServer(t, false)
 	ctx := context.Background()
 	b, err := srv.boardStore.CreateBoard(ctx, "team", "Operator")
 	require.NoError(t, err)
@@ -207,7 +207,7 @@ func TestAgentNewBoardRecordedInDefaultMode(t *testing.T) {
 	require.NoError(t, store.NewSessionStore(srv.db).RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "dev", WorkingDir: t.TempDir()}))
 	tok, err := srv.db.MintSessionToken(ctx, sid, "claude-"+sid)
 	require.NoError(t, err)
-	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/launch", strings.NewReader(`{"working_dir":`+jsonString(t.TempDir())+`,"agent_type":"terminal","board_name":"team","new_board":true}`))
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/launch", strings.NewReader(`{"working_dir":`+jsonString(strictWorkDir(t, dir))+`,"agent_type":"terminal","board_name":"team","new_board":true}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(store.SessionTokenHeader, tok)
 	resp, err := http.DefaultClient.Do(req)
