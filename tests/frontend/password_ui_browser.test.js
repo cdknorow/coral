@@ -26,7 +26,7 @@ const BASE = require('./test_base').BASE;
             window.fetch = async (u, o = {}) => {
                 const url = String(u);
                 if (url.startsWith('/api/system/auth-status')) return new Response(JSON.stringify(status), { status: 200 });
-                if (url.startsWith('/api/auth/sessions') && !o.method) return new Response(JSON.stringify(sessions), { status: 200 });
+                if (url.startsWith('/api/auth/sessions') && !o.method) return window.__needSignIn ? new Response(JSON.stringify({ error: 'Sign in in this browser first', code: 'password_session_required' }), { status: 403 }) : new Response(JSON.stringify(sessions), { status: 200 });
                 if (url.startsWith('/api/auth/')) {
                     calls.push({ url, body: o.body ? JSON.parse(o.body) : null });
                     const r = reply[url] || { status: 200, body: { ok: true } };
@@ -131,6 +131,12 @@ const BASE = require('./test_base').BASE;
             const n0 = calls.length; $('sec-signout-others').click();
             await waitFor(() => calls.length > n0, 'sign out others');
             out.signOutCall = calls[calls.length - 1].url;
+            // a caller with no browser sign-in: the list says so inline, never "signed out" (a 403, not dashboard_auth_required)
+            window.__needSignIn = true;
+            await sec.loadSecurityRow(); await waitFor(() => $('settings-security') && !$('settings-security').hidden && /Sign in in this browser to see/.test(row.textContent), 'the inline note');
+            out.needSignInNote = /Sign in in this browser to see signed-in browsers and sign the others out\./.test(row.textContent);
+            out.noSignedOutPanel = !document.getElementById('signed-out-panel') && !document.querySelector('dialog[open]');
+            window.__needSignIn = false;
             window.fetch = RealFetch; $('set-password-modal')?.remove(); row.remove();
             return out;
         })()`);
@@ -156,6 +162,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(out.wrongCurrent, 'The current password is wrong');
         assert.deepEqual(out.changeCall, { url: '/api/auth/password/change', body: { current: 'old pw', password: 'n' } });
         assert.equal(out.signOutCall, '/api/auth/sessions/sign-out-others');
+        assert.ok(out.needSignInNote, 'a 403 password_session_required shows an inline note'); assert.ok(out.noSignedOutPanel, 'and never the signed-out panel');
         console.log('PASS browser password: prompt, Not now rules, settings list as text, change, sign out others');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

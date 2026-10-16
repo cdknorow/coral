@@ -19,6 +19,16 @@ async function getJson(url) {
     return r.ok ? r.json() : null;
 }
 
+/** The signed-in browsers list. A caller with no browser sign-in at all gets 403 password_session_required: shown inline as a
+ *  note, never as "signed out" (any sign-in, a link, the app, the tray or the password, can list the browsers). */
+async function getSessions() {
+    const r = await fetch('/api/auth/sessions', { credentials: 'same-origin', cache: 'no-store' });
+    if (r.ok) return r.json();
+    let body = {};
+    try { body = await r.json(); } catch { /* no body */ }
+    return r.status === 403 && body.code === 'password_session_required' ? { needSignIn: true } : null;
+}
+
 /** Called when Settings opens: fills the row (or leaves it hidden where it does not apply). */
 export async function loadSecurityRow() {
     const root = document.getElementById('settings-security');
@@ -29,7 +39,7 @@ export async function loadSecurityRow() {
     try { st = await getJson('/api/system/auth-status'); } catch { /* shown as hidden */ }
     if (!st || st.authenticated === false) { root.hidden = true; return; }
     let sessions = null;
-    if (st.password_set) { try { sessions = await getJson('/api/auth/sessions'); } catch { /* the list is optional */ } }
+    if (st.password_set) { try { sessions = await getSessions(); } catch { /* the list is optional */ } }
     render(root, st, sessions);
     root.hidden = false;
 }
@@ -87,6 +97,7 @@ function changeForm() {
 
 function sessionsBlock(data) {
     const box = el('div', 'sec-sessions');
+    if (data && data.needSignIn) { const b = el('div', 'sec-sessions'); b.append(el('p', 'tb-note', 'Sign in in this browser to see signed-in browsers and sign the others out.')); return b; }
     const list = (data && Array.isArray(data.sessions)) ? data.sessions : null;
     if (!list) { box.append(el('p', 'tb-note', 'The list of signed-in browsers could not be loaded.')); return box; }
     const h = el('div', 'sec-sub-head', 'Signed-in browsers '); h.append(el('span', 'sec-count', `(${list.length})`));
