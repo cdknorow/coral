@@ -28,6 +28,7 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/machinehealth"
 	"github.com/cdknorow/coral/internal/proxy"
@@ -372,6 +373,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Middleware
 	r.Use(middleware.Recoverer)
+	r.Use(httputil.GzipAPI) // /api/ JSON over 1 KB, gzipped for a client that accepts it (#3724)
 	r.Use(noStoreAPI)
 
 	// Requests that came through the Cloud Hub tunnel (marked by the connector) are
