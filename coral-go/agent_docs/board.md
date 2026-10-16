@@ -35,7 +35,7 @@ the label.
   it opens from the dashboard again.
 - `GET /api/board/{id}` returns `{board_id, board_label, created_at, created_by, members}`.
 - `PATCH /api/board/{id}` with `{"label": "new-name"}` renames the board. It is the Operator's
-  (an agent's token gets 403 `forbidden_for_agent` with strict local auth), and the new label
+  (an agent's token gets 403 `forbidden_for_agent` in every mode), and the new label
   follows the name rule. A label can never look like a new board's id (`b-` and 10 letters or
   digits): 400 `invalid_board_name`, on a rename and wherever a new board starts. A label may
   equal a legacy board's name (a second "sprint" next to the old one); the key `sprint` still

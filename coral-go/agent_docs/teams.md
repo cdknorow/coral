@@ -420,7 +420,7 @@ and instructions at most 4096 UTF-8 bytes, after trimming surrounding whitespace
 Edits replace the preset content; concurrent edits use the last saved value.
 There is no delete operation. Reset supports built-ins only.
 
-Agents can use the CLI, specifying `--board` outside a joined board:
+The CLI reads them (specify `--board` outside a joined board). Changing a working mode or a preset is the Operator's (#3929): from an agent's own tools the changes below get 403 `forbidden_for_agent`. The Operator runs them in their own terminal, or uses the dashboard:
 
 ```bash
 coral-board working-mode --presets

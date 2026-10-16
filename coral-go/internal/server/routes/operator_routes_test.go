@@ -87,6 +87,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 			{"POST", "/api/board/coral-go-team/resume"},
 			// #3665: which agents run an older hook set, and resuming one on the current set
 			{"GET", "/api/system/hooks-status"}, {"POST", "/api/sessions/live/abc/refresh-hooks"},
+			// #3929 step 2: the dashboard's own preferences are the Operator's too
+			{"PUT", "/api/settings/git-diff-mode"},
 		}
 		for _, wr := range writes {
 			rec := do(wr.method, wr.path, agent)
@@ -98,10 +100,9 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		forged := map[string]string{store.SessionTokenHeader: token, "User-Agent": "coral-agent/dev", "Origin": "http://example.com", "Sec-Fetch-Site": "same-origin"}
 		assert.Equal(t, http.StatusForbidden, do("POST", "/api/system/login-token", forged).Code, "an agent token with forged dashboard headers still can't mint a sign-in link")
 		// An agent launching agents (a team launch, a terminal agent) stays allowed in every mode and is
-		// recorded; a harmless UI preference (git-diff-mode) is not gated.
+		// recorded.
 		assert.Equal(t, http.StatusOK, do("POST", "/api/sessions/launch", agent).Code, "agent launches are allowed")
 		assert.Equal(t, http.StatusOK, do("POST", "/api/sessions/launch-team", agent).Code, "team launches are allowed")
-		assert.Equal(t, http.StatusOK, do("PUT", "/api/settings/git-diff-mode", agent).Code, "other settings routes are not gated")
 		assert.Equal(t, http.StatusOK, do("DELETE", "/api/board/coral-go-team/subscribe", agent).Code, "an agent can still leave its board")
 		assert.Equal(t, http.StatusOK, do("POST", "/api/board/coral-go-team/messages", agent).Code, "and post on it")
 		// Reads stay open to agents; the Operator (here the dashboard's sign-in) can write.
