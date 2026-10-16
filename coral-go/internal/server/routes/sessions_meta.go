@@ -10,6 +10,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/proxy"
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // SetDisplayName sets the display name for a live session.
@@ -183,6 +184,7 @@ func (h *SessionsHandler) ensureCLIVersion(sessionID, agentType string) {
 		return
 	}
 	go func() {
+		defer safego.Recover("server/routes/sessions_meta:185")
 		settings, _ := h.ss.GetSettings(context.Background())
 		h.recordCLIVersion(sessionID, agentType, settings)
 	}()
