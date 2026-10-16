@@ -455,16 +455,28 @@ export async function refreshLiveHistory() {
             const generation = historyGeneration;
             keptRenderGeneration = generation;
             const built = document.createElement("div");
-            const done = await renderMessagesChunked(kept.messages, built, session.agent_type, () => generation === historyGeneration);
-            if (!done || generation !== historyGeneration) return; // the agent was switched while it built
-            container.innerHTML = "";
-            while (built.firstChild) container.appendChild(built.firstChild);
-            historyHasMore = kept.start > 0;
-            historyStart = kept.start;
-            historyMessageCount = kept.total;
-            _updateLoadMoreButton(container);
-            initialLoadDone = true;
-            if (state.autoScroll) container.scrollTop = container.scrollHeight;
+            let rebuilt = false;
+            try {
+                rebuilt = await renderMessagesChunked(kept.messages, built, session.agent_type, () => generation === historyGeneration);
+            } catch (e) {
+                // A failed build must not leave the chat blank or the guard set: forget the kept page, and the first page is
+                // loaded below as for an agent not seen before.
+                console.error("[coral] the kept chat page could not be rebuilt", e);
+                keptPages.delete(session.session_id);
+            } finally {
+                if (!rebuilt && keptRenderGeneration === generation) keptRenderGeneration = -1;
+            }
+            if (generation !== historyGeneration) return; // the agent was switched while it built
+            if (rebuilt) {
+                container.innerHTML = "";
+                while (built.firstChild) container.appendChild(built.firstChild);
+                historyHasMore = kept.start > 0;
+                historyStart = kept.start;
+                historyMessageCount = kept.total;
+                _updateLoadMoreButton(container);
+                initialLoadDone = true;
+                if (state.autoScroll) container.scrollTop = container.scrollHeight;
+            }
         }
     }
 

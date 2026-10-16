@@ -437,6 +437,35 @@ const MAX_FIRST_PAGE = 200;
         await stopPoll();
         console.log(`   ✓ 600 kept messages back in order (${keptYields} yields); leaving mid-build left only the other agent's 5`);
 
+        console.log('15. A kept page whose build throws leaves a loaded chat, and the next switch works (#3866 nit)');
+        await ev(`window.__chatMock.add('qa-fail', 'F', 30)`);
+        await open('qa-fail');
+        await stopPoll();
+        await waitFor(`window.__rendered().length === 30`, 'the 30 messages');
+        await ev(`window.__chatMock.append('qa-fail', 170)`);
+        await ev(`T.liveChat.refreshLiveHistory()`);
+        await waitFor(`window.__rendered().length === 200`, 'the 170 new messages appended');
+        await open('qa-other');
+        await stopPoll();
+        await waitFor(`window.__rendered()[0] === 'O0'`, 'the other agent');
+        // The first yield between slices throws once.
+        await ev(`(() => { window.__unhandled = []; window.addEventListener('unhandledrejection', e => window.__unhandled.push(String(e.reason))); return true; })()`);
+        await ev(`(() => { const real = window.setTimeout; window.__failOnce = true; window.setTimeout = function (fn, ms, ...rest) { if (window.__failOnce && ms === 0) { window.__failOnce = false; throw new Error('boom'); } return real.call(this, fn, ms, ...rest); }; return true; })()`);
+        await open('qa-fail');
+        await waitFor(`window.__rendered().length > 0 && window.__rendered().every(id => id.startsWith('F'))`, 'a loaded chat after the failed build', 8000);
+        const afterFail = await rendered();
+        assert.deepEqual(await ev('window.__unhandled'), [], 'the failed build is handled, not an unhandled rejection');
+        assert.ok(afterFail.length >= 30, `the chat is not blank after the failed build (${afterFail.length} messages)`);
+        await ev(`window.__chatMock.append('qa-fail', 3)`);
+        await ev(`T.liveChat.refreshLiveHistory()`);
+        await waitFor(`window.__rendered().length === ${afterFail.length + 3}`, 'a later poll to add messages (the guard is not stuck)');
+        await open('qa-other'); await stopPoll();
+        await waitFor(`window.__rendered()[0] === 'O0'`, 'the other agent again');
+        await open('qa-fail');
+        await waitFor(`window.__rendered().length > 0 && window.__rendered().every(id => id.startsWith('F'))`, 'a normal switch back after the failure');
+        await stopPoll();
+        console.log(`   ✓ the build threw once: ${afterFail.length} messages shown from a normal first load, later polls and switches work`);
+
         console.log('\nAll live chat autoload checks passed');
     } finally {
         await client.close();
