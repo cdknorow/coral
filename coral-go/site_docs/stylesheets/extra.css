@@ -1,0 +1,220 @@
+/*
+ * Coral docs theme: matches coralhub.dev (dark by default, GitHub-dark family palette).
+ * Palette tokens come from the site's coral.html :root. Only Material's --md-* variables and a few component rules are set here;
+ * nothing is loaded from outside: the font is self-hosted below (mkdocs.yml keeps font: false).
+ *
+ *   bg #0a0e14   surface #0d1117   card #161b22   card-hover #1c2129
+ *   border #21262d / #30363d   text #e6edf3 / #8b949e / #6e7681   accent #58a6ff   accent-dim #1f6feb
+ */
+
+/* Plus Jakarta Sans, self-hosted (SIL Open Font License 1.1; see fonts/OFL.txt). One variable file per subset covers weights 200-800;
+   the browser downloads only the subset a page needs. No request leaves this site for the font. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(fonts/PlusJakartaSans-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(fonts/PlusJakartaSans-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --md-text-font: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ---------- dark (default): scheme "slate" ---------- */
+[data-md-color-scheme="slate"] {
+  --md-hue: 215;
+  --md-default-bg-color: #0a0e14;
+  --md-default-bg-color--light: rgba(10, 14, 20, 0.7);
+  --md-default-bg-color--lighter: rgba(10, 14, 20, 0.3);
+  --md-default-bg-color--lightest: rgba(10, 14, 20, 0.12);
+  --md-default-fg-color: #e6edf3;
+  --md-default-fg-color--light: #8b949e;
+  --md-default-fg-color--lighter: #7d8590; /* site muted is #6e7681 (4.2:1, below AA for text); this is the nearest value that passes */
+  --md-default-fg-color--lightest: #21262d;
+
+  --md-primary-fg-color: #0d1117;
+  --md-primary-fg-color--light: #161b22;
+  --md-primary-fg-color--dark: #0a0e14;
+  --md-primary-bg-color: #e6edf3;
+  --md-primary-bg-color--light: #8b949e;
+
+  --md-accent-fg-color: #58a6ff;
+  --md-accent-fg-color--transparent: rgba(88, 166, 255, 0.1);
+  --md-accent-bg-color: #0a0e14;
+  --md-accent-bg-color--light: rgba(10, 14, 20, 0.7);
+
+  --md-typeset-color: #e6edf3;
+  --md-typeset-a-color: #58a6ff;
+  --md-typeset-mark-color: rgba(88, 166, 255, 0.25);
+  --md-typeset-kbd-color: #161b22;
+  --md-typeset-kbd-accent-color: #1c2129;
+  --md-typeset-kbd-border-color: #30363d;
+  --md-typeset-table-color: #21262d;
+  --md-typeset-table-color--light: rgba(33, 38, 45, 0.5);
+
+  --md-code-bg-color: #161b22;
+  --md-code-fg-color: #e6edf3;
+  --md-code-hl-color: rgba(88, 166, 255, 0.15);
+  --md-code-hl-color--light: rgba(88, 166, 255, 0.1);
+  --md-code-hl-number-color: #79c0ff;
+  --md-code-hl-special-color: #ffa657;
+  --md-code-hl-function-color: #d2a8ff;
+  --md-code-hl-constant-color: #79c0ff;
+  --md-code-hl-keyword-color: #ff7b72;
+  --md-code-hl-string-color: #a5d6ff;
+  --md-code-hl-name-color: #e6edf3;
+  --md-code-hl-operator-color: #8b949e;
+  --md-code-hl-punctuation-color: #8b949e;
+  --md-code-hl-comment-color: #8b949e;
+  --md-code-hl-generic-color: #8b949e;
+  --md-code-hl-variable-color: #e6edf3;
+
+  --md-admonition-fg-color: #e6edf3;
+  --md-admonition-bg-color: #161b22;
+
+  --md-footer-bg-color: #0a0e14;
+  --md-footer-bg-color--dark: #0a0e14;
+  --md-footer-fg-color: #8b949e;
+  --md-footer-fg-color--light: #8b949e;
+  --md-footer-fg-color--lighter: #7d8590;
+
+  --md-shadow-z1: 0 0 0 1px #21262d;
+  --md-shadow-z2: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --md-shadow-z3: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
+}
+
+/* ---------- light: scheme "default" (same structure, GitHub-light values; accent darkened for AA on white) ---------- */
+[data-md-color-scheme="default"] {
+  --md-hue: 215;
+  --md-default-bg-color: #ffffff;
+  --md-default-fg-color: #1f2328;
+  --md-default-fg-color--light: #59636e;
+  --md-default-fg-color--lighter: #636c76;
+  --md-default-fg-color--lightest: #d1d9e0;
+
+  --md-primary-fg-color: #f6f8fa;
+  --md-primary-fg-color--light: #ffffff;
+  --md-primary-fg-color--dark: #eaeef2;
+  --md-primary-bg-color: #1f2328;
+  --md-primary-bg-color--light: #59636e;
+
+  --md-accent-fg-color: #0969da;
+  --md-accent-fg-color--transparent: rgba(9, 105, 218, 0.1);
+
+  --md-typeset-color: #1f2328;
+  --md-typeset-a-color: #0969da;
+  --md-typeset-table-color: #d1d9e0;
+  --md-typeset-table-color--light: rgba(209, 217, 224, 0.5);
+
+  --md-code-bg-color: #f6f8fa;
+  --md-code-fg-color: #1f2328;
+  --md-admonition-bg-color: #f6f8fa;
+
+  --md-footer-bg-color: #f6f8fa;
+  --md-footer-bg-color--dark: #eaeef2;
+  --md-footer-fg-color: #59636e;
+  --md-footer-fg-color--light: #59636e;
+  --md-footer-fg-color--lighter: #636c76;
+
+  --md-shadow-z1: 0 0 0 1px #d1d9e0;
+}
+
+/* ---------- shared component rules (both schemes) ---------- */
+
+/* Header: the same flat, hairline-bordered bar as the coralhub.dev nav */
+.md-header {
+  box-shadow: none;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+[data-md-color-scheme="slate"] .md-header { background-color: rgba(10, 14, 20, 0.98); }
+.md-header__title { font-weight: 700; }
+.md-header[data-md-state="shadow"] { box-shadow: none; }
+
+/* Search box */
+[data-md-color-scheme="slate"] .md-search__form { background-color: #161b22; }
+[data-md-color-scheme="slate"] .md-search__form:hover { background-color: #1c2129; }
+[data-md-color-scheme="slate"] .md-search__input::placeholder { color: #8b949e; }
+[data-md-color-scheme="default"] .md-search__form { background-color: #eaeef2; }
+[data-md-color-scheme="default"] .md-search__form:hover { background-color: #d1d9e0; }
+[data-md-color-scheme="default"] .md-search__input::placeholder { color: #59636e; }
+
+/* Navigation: quiet secondary text, accent on the active page */
+.md-nav__link { color: var(--md-default-fg-color--light); }
+.md-nav__link:hover,
+.md-nav__link:focus { color: var(--md-default-fg-color); }
+.md-nav__item .md-nav__link--active,
+.md-nav__link--active { color: var(--md-accent-fg-color); font-weight: 600; }
+.md-nav--primary .md-nav__title { color: var(--md-default-fg-color); }
+[data-md-color-scheme="slate"] .md-nav--primary .md-nav__title { background-color: #0d1117; }
+.md-sidebar__scrollwrap { scrollbar-color: var(--md-default-fg-color--lightest) transparent; }
+.md-nav__container > .md-nav__link:first-child { font-weight: 600; }
+
+/* Headings: weight 700/800 like the site, no light 300 headline */
+.md-typeset h1 { font-weight: 800; letter-spacing: -0.02em; color: var(--md-default-fg-color); }
+.md-typeset h2 { font-weight: 700; letter-spacing: -0.01em; }
+.md-typeset h3,
+.md-typeset h4 { font-weight: 700; }
+
+/* Links: accent, underline on hover only */
+.md-typeset a { text-decoration: none; }
+.md-typeset a:hover { text-decoration: underline; }
+
+/* Code: card surface with a hairline border */
+.md-typeset code { border: 1px solid #21262d; border-radius: 6px; padding: 0.1em 0.4em; }
+[data-md-color-scheme="default"] .md-typeset code { border-color: #d1d9e0; }
+.md-typeset pre > code { border: 0; padding: 0.7720588235em 1.1764705882em; }
+.md-typeset .highlight,
+.md-typeset pre { border-radius: 8px; }
+.md-typeset .highlight pre,
+.md-typeset pre {
+  border: 1px solid #21262d;
+}
+[data-md-color-scheme="default"] .md-typeset pre { border-color: #d1d9e0; }
+.md-typeset .highlight .filename { background-color: #0d1117; }
+
+/* Admonitions and details: card surface, rounded, no drop shadow (the per-type coloured edge from Material stays) */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 8px;
+  box-shadow: none;
+  background-color: var(--md-admonition-bg-color);
+  color: var(--md-admonition-fg-color, var(--md-typeset-color));
+}
+
+/* Tables: card header row, hairline rules, hover row */
+.md-typeset table:not([class]) {
+  background-color: transparent;
+  border: 1px solid var(--md-typeset-table-color);
+  border-radius: 8px;
+  box-shadow: none;
+}
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th { background-color: #161b22; color: #e6edf3; }
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) tbody tr:hover { background-color: #1c2129; box-shadow: none; }
+.md-typeset table:not([class]) th { font-weight: 600; }
+
+/* Buttons */
+.md-typeset .md-button { border-radius: 8px; font-weight: 600; }
+.md-typeset .md-button--primary { background-color: #1f6feb; border-color: #1f6feb; color: #ffffff; }
+.md-typeset .md-button--primary:hover,
+.md-typeset .md-button--primary:focus { background-color: #58a6ff; border-color: #58a6ff; color: #0a0e14; }
+
+/* Footer and selection */
+.md-footer { border-top: 1px solid var(--md-default-fg-color--lightest); }
+.md-footer-meta { background-color: var(--md-footer-bg-color); }
+::selection { background: rgba(88, 166, 255, 0.3); }
+.md-typeset hr { border-bottom-color: var(--md-default-fg-color--lightest); }
+.md-typeset blockquote { border-left-color: #30363d; color: var(--md-default-fg-color--light); }
