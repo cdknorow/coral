@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cdknorow/coral/internal/agentenv"
+	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
@@ -244,10 +245,10 @@ func NewClient(coralDir ...string) *Client {
 // So the merge is on only for a default-rooted install, and either environment
 // variable overrides that decision explicitly.
 func defaultSocketFallback(socketPath string) bool {
-	if envTruthy(os.Getenv("CORAL_TMUX_NO_FALLBACK")) {
+	if config.Truthy(os.Getenv("CORAL_TMUX_NO_FALLBACK")) {
 		return false
 	}
-	if envTruthy(os.Getenv("CORAL_TMUX_FALLBACK")) {
+	if config.Truthy(os.Getenv("CORAL_TMUX_FALLBACK")) {
 		return true
 	}
 	return socketPath == "" || socketPath == defaultSocketPath()
@@ -260,14 +261,6 @@ func defaultSocketPath() string {
 		return ""
 	}
 	return filepath.Join(home, ".coral", "tmux.sock")
-}
-
-func envTruthy(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
 }
 
 // maxUnixSocketPath is the sun_path limit for unix domain sockets: 104 bytes

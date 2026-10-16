@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cdknorow/coral/internal/config"
 )
 
 // A loopback peer normally gets Coral's no-credentials pass. A reverse proxy (Tailscale Serve,
@@ -33,14 +35,14 @@ func ResolveRequireAuthOnLoopback(stored string) bool {
 	if overridden, v := envOverride(); overridden {
 		return v
 	}
-	return SettingOn(stored)
+	return config.Truthy(stored)
 }
 
 // envOverride reports whether the env var forces a value, and that value. Only a non-empty value
 // overrides.
 func envOverride() (overridden bool, value bool) {
 	if v, ok := os.LookupEnv(RequireAuthOnLoopbackEnv); ok && strings.TrimSpace(v) != "" {
-		return true, SettingOn(v)
+		return true, config.Truthy(v)
 	}
 	return false, false
 }
@@ -50,15 +52,6 @@ func envOverride() (overridden bool, value bool) {
 func EnvOverridesRequireAuthOnLoopback() bool {
 	overridden, _ := envOverride()
 	return overridden
-}
-
-// SettingOn reads a stored boolean setting value ("true"/"1"/"yes"/"on", any case, are on).
-func SettingOn(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
 }
 
 // requireAuthLoopback is the live value of the require_auth_on_loopback setting (default off).

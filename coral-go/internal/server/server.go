@@ -150,7 +150,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 		if err != nil {
 			log.Printf("[auth] WARNING: require_auth_on_loopback could not be read (%v); leaving it OFF until the next change saves it", err)
 		} else {
-			auth.SetRequireAuthOnLoopback(auth.SettingOn(st[auth.RequireAuthOnLoopbackSetting]))
+			auth.SetRequireAuthOnLoopback(config.Truthy(st[auth.RequireAuthOnLoopbackSetting]))
 		}
 	}
 
