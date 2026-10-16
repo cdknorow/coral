@@ -47,7 +47,10 @@ const (
 	mismatchImpersonate = "impersonation"
 	mismatchOperator    = "operator"
 	identityLogInterval = 5 * time.Minute
-	identityRecentMax   = 50
+	// identityLogKeysMax bounds the once-per-interval log memory (#3999, the #3994 audit): a
+	// caller that changes a value the key is built from must not grow the map without end.
+	identityLogKeysMax = 1024
+	identityRecentMax  = 50
 	// identityBreakKeysMax bounds the would-break breakdown (distinct caller, tool and
 	// route triples); later new triples are counted under "other".
 	identityBreakKeysMax = 200
@@ -180,7 +183,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			owner, err := o.db.SessionTokenOwnerOf(r.Context(), token)
 			if err != nil {
 				o.count(callerAgentBadToken)
-				o.logOnce("bad_token:"+r.UserAgent(), "[identity] request with an unknown or revoked session token", "request", r.Method+" "+r.URL.Path, "tool", r.UserAgent(), "strict", o.strict)
+				o.logOnce("bad_token", "[identity] request with an unknown or revoked session token", "request", r.Method+" "+r.URL.Path, "tool", r.UserAgent(), "strict", o.strict)
 				if o.effectiveStrict() {
 					o.countBreak(callerAgentBadToken, r)
 					o.refuse(w, http.StatusUnauthorized, "session_token_required",
@@ -744,7 +747,13 @@ func (o *IdentityObserver) attribute(session, userAgent string) {
 	if tool == "" {
 		tool = "unknown"
 	}
+	if len(tool) > 40 {
+		tool = tool[:40]
+	}
 	o.mu.Lock()
+	if _, ok := o.byTool[tool]; !ok && len(o.byTool) >= identityBreakKeysMax {
+		tool = "other" // a token holder that varies its User-Agent can't grow the map (#3999)
+	}
 	o.bySession[session]++
 	o.byTool[tool]++
 	o.mu.Unlock()
@@ -763,6 +772,17 @@ func (o *IdentityObserver) logOnce(key, msg string, args ...any) {
 	if seen && now.Sub(last) < identityLogInterval {
 		o.mu.Unlock()
 		return
+	}
+	if !seen && len(o.lastLog) >= identityLogKeysMax {
+		for k, t := range o.lastLog { // forget what is due again anyway
+			if now.Sub(t) >= identityLogInterval {
+				delete(o.lastLog, k)
+			}
+		}
+		if len(o.lastLog) >= identityLogKeysMax {
+			o.mu.Unlock() // a flood of distinct keys inside one interval: skip the line, not the memory
+			return
+		}
 	}
 	o.lastLog[key] = now
 	o.mu.Unlock()
