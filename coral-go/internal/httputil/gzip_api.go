@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"io"
 	"mime"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // GzipAPIMinBytes is the smallest /api/ JSON reply GzipAPI compresses: below about 1 KB the
@@ -50,6 +52,13 @@ const (
 	gzPlain                      // passing through
 	gzOn                         // compressing
 )
+
+// gzipWriters reuses gzip writers across replies: each new one allocated its compressor's
+// tables (about 8% of a busy server's allocated bytes, #4028).
+var gzipWriters = sync.Pool{New: func() any {
+	zw, _ := gzip.NewWriterLevel(io.Discard, gzip.BestSpeed)
+	return zw
+}}
 
 type gzipAPIWriter struct {
 	http.ResponseWriter
@@ -113,7 +122,8 @@ func (g *gzipAPIWriter) compress() error {
 	h.Set("Content-Encoding", "gzip")
 	h.Add("Vary", "Accept-Encoding")
 	g.sendHeader()
-	g.zw, _ = gzip.NewWriterLevel(g.ResponseWriter, gzip.BestSpeed)
+	g.zw = gzipWriters.Get().(*gzip.Writer)
+	g.zw.Reset(g.ResponseWriter)
 	_, err := g.zw.Write(g.buf.Bytes())
 	g.buf.Reset()
 	return err
@@ -167,6 +177,9 @@ func (g *gzipAPIWriter) finish() {
 		}
 	case gzOn:
 		_ = g.zw.Close()
+		g.zw.Reset(io.Discard) // drop the reference to this reply's writer before it is reused
+		gzipWriters.Put(g.zw)
+		g.zw = nil
 	}
 }
 
