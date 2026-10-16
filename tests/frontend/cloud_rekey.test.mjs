@@ -15,7 +15,7 @@ const dom = new JSDOM(`<!doctype html><body>
   </div>
   <div id="confirm-modal" style="display:none"><h3 id="confirm-modal-title"></h3><p id="confirm-modal-message"></p><button id="confirm-modal-yes">Yes</button></div>
 </body>`, { url: 'http://127.0.0.1:8420/' });
-for (const k of ['window', 'document', 'navigator', 'localStorage', 'location', 'sessionStorage', 'requestAnimationFrame', 'getComputedStyle', 'HTMLElement', 'Node', 'Event', 'CustomEvent', 'MutationObserver']) {
+for (const k of ['window', 'document', 'navigator', 'localStorage', 'location', 'sessionStorage', 'getComputedStyle', 'HTMLElement', 'Node', 'Event', 'CustomEvent', 'MutationObserver']) {
     Object.defineProperty(globalThis, k, { value: dom.window[k], configurable: true, writable: true });
 }
 
