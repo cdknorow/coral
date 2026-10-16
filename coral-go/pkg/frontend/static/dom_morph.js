@@ -86,7 +86,7 @@ const TAG = /<(\/?)([A-Za-z][\w:-]*)(?:[^"'>]|"[^"]*"|'[^']*')*>/y;
 
 const _state = new WeakMap(); // parent -> { parts: [{src, tag, openEnd}], nodes: Node[] }
 /** Counts since load, for the perf suite: full rebuilds and single-node replacements. */
-export const morphStats = { full: 0, replaced: 0, kept: 0 };
+export const morphStats = { full: 0, replaced: 0, kept: 0, appended: 0 };
 
 /** splitTopLevel(html), reusing `prev` (the parts of the markup this replaces):
  *  pieces unchanged at the start and the end are matched with native string
@@ -121,8 +121,20 @@ function morphInto(parent, html, depth, added) {
     const prev = _state.get(parent);
     const parts = splitAgainst(html, prev && prev.parts);
     const live = parent.childNodes;
-    const aligned = prev && prev.parts.length === parts.length && live.length === prev.nodes.length
-        && prev.nodes.every((nd, k) => live[k] === nd);
+    const liveMatches = prev && live.length === prev.nodes.length && prev.nodes.every((nd, k) => live[k] === nd);
+    // More nodes at the end and the old ones unchanged (a message posted to a board, an agent that joined): keep every old
+    // node and parse only the tail. Anything the tail's own parse would reshape falls through to a full update.
+    if (liveMatches && parts.length > prev.parts.length && prev.parts.every((was, k) => was.src === parts[k].src)) {
+        const tail = parseNodes(parts.slice(prev.parts.length).map(p => p.src).join(''));
+        if (tail.length === parts.length - prev.parts.length) {
+            morphStats.kept += prev.parts.length;
+            morphStats.appended += tail.length;
+            for (const nd of tail) { parent.appendChild(nd); if (nd.nodeType === 1) added.push(nd); }
+            _state.set(parent, { parts, nodes: [...prev.nodes, ...tail] });
+            return;
+        }
+    }
+    const aligned = liveMatches && prev.parts.length === parts.length;
     if (!aligned) { full(parent, html, parts, added); return; }
     const nodes = prev.nodes.slice();
     for (let k = 0; k < parts.length; k++) {

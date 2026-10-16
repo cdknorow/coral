@@ -91,6 +91,9 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('and its reply holds no message', quiet.every(r => r.body && !r.body.error && (r.body.messages ?? []).length === 0),
             `${quiet.map(r => r.bytes).join(', ')} bytes (the page was ${reqs[0].bytes})`);
 
+        // Tag the three messages' nodes: a redraw must keep them (#3881), not rebuild the page.
+        await ev(`document.querySelectorAll('#board-panel-msgs .mb-message').forEach((n, i) => { n.__kept = 'm' + i; })`);
+
         // ── A new message ──────────────────────────────────────────────────
         const before = reqs.length;
         check('a new message is posted', (await post('the new one')) === 200);
@@ -101,6 +104,8 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await waitFor(`document.querySelectorAll('#board-panel-msgs .mb-message').length === 4`, 'the new message shown', { timeout: 5000, soft: true });
         const texts = await ev(`[...document.querySelectorAll('#board-panel-msgs .mb-message-body')].map(e => e.textContent.trim())`);
         check('it shows once, after the others', JSON.stringify(texts) === JSON.stringify(['before 1', 'before 2', 'before 3', 'the new one']), JSON.stringify(texts));
+        const keptTags = await ev(`[...document.querySelectorAll('#board-panel-msgs .mb-message')].map(n => n.__kept || null)`);
+        check('the earlier messages are the same nodes after the new one arrives (not rebuilt)', JSON.stringify(keptTags) === JSON.stringify(['m0', 'm1', 'm2', null]), JSON.stringify(keptTags));
         const newer = brought.body.messages[0].id;
         await until(() => reqs.some(r => r.q.get('after_id') === String(newer) && r.body), 'a poll after it');
         check('the next poll starts after it', reqs.some(r => r.q.get('after_id') === String(newer)));
@@ -110,6 +115,8 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await ev(`import(${S} + 'render.js').then(m => { m.showBoardChatTab(${JSON.stringify(board)}); return true; })`);
         const shownAtOnce = await ev(`document.querySelectorAll('#board-panel-msgs .mb-message').length`);
         check('showing the panel again for the same board shows its messages at once', shownAtOnce === 4, String(shownAtOnce));
+        const keptAgain = await ev(`[...document.querySelectorAll('#board-panel-msgs .mb-message')].map(n => n.__kept || null)`);
+        check('and keeps the nodes it had', JSON.stringify(keptAgain) === JSON.stringify(['m0', 'm1', 'm2', null]), JSON.stringify(keptAgain));
         await until(() => reqs.length > mark && settled(), 'its first request');
         check('and loads no page: only what is new', reqs.slice(mark).every(r => kind(r) === 'after'), JSON.stringify(reqs.slice(mark).map(kind)));
         check('no request for a count or a page after the first load', reqs.slice(1).every(r => kind(r) === 'after'), JSON.stringify(reqs.map(kind)));

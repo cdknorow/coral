@@ -1,5 +1,6 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
 import { formatHourMinute } from './format.js';
+import { morphHtml } from './dom_morph.js';
 import { OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, getAgentColor, externalMessageBadge, hubUserBadge, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { splitKey, keyLabel, boardFetch } from './server_base.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
@@ -32,6 +33,11 @@ export function showBoardChatTab(boardName) {
     const panel = document.getElementById('agentic-panel-board');
     if (!panel) return;
 
+    // The same board again (another agent of its team): the messages element, with its rendered messages, is carried over into
+    // the rebuilt panel, so the render below keeps those nodes instead of building them again (#3881).
+    const carried = _boardChatLoaded && _boardChatBoard === boardName ? document.getElementById('board-panel-msgs') : null;
+    if (carried) carried.remove();
+
     // Populate the board tab content (visibility managed by switchAgenticTab)
     panel.innerHTML = `
         <div class="board-chat-header">
@@ -60,6 +66,8 @@ export function showBoardChatTab(boardName) {
                 <div class="board-mention-dropdown" id="board-mention-dropdown" style="display:none"></div>
             </div>
         </div>`;
+
+    if (carried) document.getElementById('board-panel-msgs').replaceWith(carried);
 
     // Restore saved input pane height
     const savedH = localStorage.getItem('coral-boardchat-height');
@@ -221,7 +229,9 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
 
     // Runs of task-queue lines are one collapsed row (#3343), except in select mode.
     const items = groupTaskQueueRuns(messages, !_boardChatSelectMode);
-    msgsEl.innerHTML = loadEarlierHtml + items.map((item, i) => {
+    // Unchanged messages keep their nodes (and the artifact images and links already resolved in them); only new or changed ones
+    // are built (#3881: the whole page was rebuilt on every agent switch, 170 to 200 ms over five switches).
+    morphHtml(msgsEl, loadEarlierHtml + items.map((item, i) => {
         if (item.kind === 'queue') return renderTaskQueueRun(item, _formatTime);
         const m = item.m;
         const agent = m.job_title || m.sender_name || 'Unknown';
@@ -245,7 +255,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
             </div>
             <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
         </div>`;
-    }).join('');
+    }).join(''));
     resolveBoardArtifacts(msgsEl, _activeBoardChat ? splitKey(_activeBoardChat).server : undefined);
     if (wasAtBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
     msgsEl.dataset.rendered = '1';
