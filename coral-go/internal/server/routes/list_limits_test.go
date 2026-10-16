@@ -99,7 +99,7 @@ func TestListRoutesAreBounded(t *testing.T) {
 	}
 	// The local read follows a subscriber's cursor (each read moves it on), so the reader joins
 	// first and there are enough messages for every case: 4 x 50 + 500 = 700 of 1200.
-	_, err = bs.Subscribe(ctx, "team-3620", "reader", "QA Engineer", "", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "team-3620", "reader", "QA Engineer", "", nil, "all")
 	require.NoError(t, err)
 	for i := 0; i < 1200; i++ {
 		_, err := bs.PostMessage(ctx, "team-3620", "poster", fmt.Sprintf("m%d", i), nil)
