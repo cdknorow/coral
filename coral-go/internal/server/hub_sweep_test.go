@@ -143,7 +143,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 			answered++
 		}
 		for _, home := range homes {
-			if strings.Contains(rec.Body.String(), home) {
+			if strings.Contains(withoutTerminalScreen(rec.Body.String()), home) {
 				leaks = append(leaks, f[1])
 				break
 			}
@@ -187,4 +187,22 @@ func hubSweepQuery(route, sid string) string {
 		return ""
 	}
 	return "?" + strings.Join(parts, "&")
+}
+
+// withoutTerminalScreen is a JSON answer without its "capture" field: the terminal's screen,
+// which the hub is shown as written (hubLongText), as its terminal websocket streams it. A
+// prompt there can show the working folder: PowerShell's always does ("PS C:\Users\...>"),
+// so on Windows the poll's screen held the home on every run, while the sh prompt the Unix
+// runs use ("$") never does. The sweep is about the paths Coral itself answers (#3914).
+func withoutTerminalScreen(body string) string {
+	var m map[string]any
+	if json.Unmarshal([]byte(body), &m) != nil {
+		return body
+	}
+	if _, ok := m["capture"]; !ok {
+		return body
+	}
+	delete(m, "capture")
+	b, _ := json.Marshal(m)
+	return string(b)
 }
