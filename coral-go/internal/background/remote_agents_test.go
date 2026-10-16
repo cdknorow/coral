@@ -393,6 +393,14 @@ func feedHub(reg *fakeRegistry, quiet time.Duration) *RemoteAgentHub {
 	})
 }
 
+// awaitHealthCheck waits for one more health check: a list poll already under way when the feed
+// went live has then ended, and won't be counted as one made with the feed live (#3788).
+func awaitHealthCheck(t *testing.T, a *fakeRemote) {
+	t.Helper()
+	_, h0 := a.counts()
+	require.Eventually(t, func() bool { _, h := a.counts(); return h > h0 }, 3*time.Second, 5*time.Millisecond)
+}
+
 // While the feed is live and active, the hub does not re-fetch the list: it
 // only checks /api/health, and keeps the remote online.
 func TestHub_FeedLiveSkipsListPoll(t *testing.T) {
@@ -408,6 +416,7 @@ func TestHub_FeedLiveSkipsListPoll(t *testing.T) {
 		t.Fatal("hub never opened an upstream feed socket")
 	}
 	require.Eventually(t, func() bool { return h.feedCarriesList("a") }, 2*time.Second, 10*time.Millisecond)
+	awaitHealthCheck(t, a)
 	list0, health0 := a.counts()
 	time.Sleep(800 * time.Millisecond) // ~10 poll intervals
 	list1, health1 := a.counts()
@@ -529,6 +538,7 @@ func TestHub_HeartbeatOnlyFeedStaysFresh(t *testing.T) {
 			}
 		}
 	}()
+	awaitHealthCheck(t, a)
 	list0, _ := a.counts()
 	time.Sleep(time.Second) // > 3x the quiet window
 	list1, health1 := a.counts()

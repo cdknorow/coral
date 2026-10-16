@@ -21,6 +21,7 @@ type limitRig struct {
 	t        *testing.T
 	sess     *Session
 	base     string // the local API, as the dashboard reaches it directly
+	local    *LocalHandler
 	inFlight atomic.Int32
 	release  chan struct{}
 	once     sync.Once
@@ -46,12 +47,26 @@ func newLimitRig(t *testing.T, lim HubLimits) *limitRig {
 	}), func(l *LocalHandler) {
 		l.HubLimits = lim
 		rig.base = l.BaseURL
+		rig.local = l
 	})
 	t.Cleanup(rig.free)
 	return rig
 }
 
 func (rig *limitRig) free() { rig.once.Do(func() { close(rig.release) }) }
+
+// idle reports that no request holds a slot or blocks in the local API. The local API's count
+// drops before the tunnel's deferred release gives the slot back, so a request sent once the
+// count alone reads 0 could still be refused (#3788: testify 1.12 checks at once).
+func (rig *limitRig) idle() bool {
+	if rig.inFlight.Load() != 0 {
+		return false
+	}
+	lm := rig.local.lim.get(rig.local.HubLimits)
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+	return lm.inUse == [poolCount]int{}
+}
 
 // hold starts n hub requests to path that block in the local API, and waits until they all do.
 func (rig *limitRig) hold(path string, n int) {
@@ -107,7 +122,7 @@ func TestHubRequestsBeyondTheGlobalPoolGet429(t *testing.T) {
 	assert.Equal(t, 200, direct.StatusCode, "the local dashboard never passes the limiter")
 
 	rig.free()
-	require.Eventually(t, func() bool { return rig.inFlight.Load() == 0 }, 5*time.Second, 5*time.Millisecond)
+	require.Eventually(t, rig.idle, 5*time.Second, 5*time.Millisecond)
 	resp, _ = rig.get("/api/hold/d?now=1")
 	assert.Equal(t, 200, resp.StatusCode, "the slots came back")
 }
@@ -154,7 +169,7 @@ func TestStalledHubRequestIsCancelledAtTheDeadline(t *testing.T) {
 	assert.Equal(t, CodeUpstream, se.Code)
 	assert.Contains(t, se.Error(), "took too long")
 	assert.Less(t, time.Since(start), 3*time.Second)
-	require.Eventually(t, func() bool { return rig.inFlight.Load() == 0 }, 5*time.Second, 5*time.Millisecond)
+	require.Eventually(t, rig.idle, 5*time.Second, 5*time.Millisecond)
 	resp, _ := rig.get("/api/hold/next?now=1")
 	assert.Equal(t, 200, resp.StatusCode, "the slot was released")
 

@@ -62,7 +62,7 @@ func TestOneHubUserCannotFillTheGeneralPool(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode, "a stream without a user (an old hub) is held only by the pools: %s", body)
 
 	rig.free()
-	require.Eventually(t, func() bool { return rig.inFlight.Load() == 0 }, 5*time.Second, 5*time.Millisecond)
+	require.Eventually(t, rig.idle, 5*time.Second, 5*time.Millisecond)
 	resp, _ = rig.getAs(userA, "/api/hold/a?now=1")
 	assert.Equal(t, 200, resp.StatusCode, "user A's slots came back")
 }

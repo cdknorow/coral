@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -195,8 +196,11 @@ func TestAMentionDoesNotWaitBehindAStuckPaste(t *testing.T) {
 	require.NoError(t, err)
 	require.Eventually(t, func() bool { return len(gave.list()) > 0 }, 3*time.Second, 10*time.Millisecond, "the stuck paste gives up for the mention")
 	assert.Contains(t, gave.list()[0], "board nudge:")
-	pasted, _ := term.got()
-	assert.Contains(t, pasted, "[board] QA: @Orchestrator please look", "the mention is pasted")
+	// The give-up is reported on its own goroutine, before the mention is pasted (#3788).
+	require.Eventually(t, func() bool {
+		pasted, _ := term.got()
+		return slices.Contains(pasted, "[board] QA: @Orchestrator please look")
+	}, 3*time.Second, 10*time.Millisecond, "the mention is pasted")
 }
 
 // Text Coral can't place in the box after its own paste (a person typed meanwhile) is never

@@ -1416,7 +1416,16 @@ func TestBoardNudgeTask(t *testing.T) {
 		"title": "Add the loader", "created_by": "Orchestrator", "assigned_to": "Backend Dev",
 	}).Body.Close()
 	postJSON(t, base+"/tasks", map[string]string{"title": "Nobody's", "created_by": "Orchestrator"}).Body.Close()
-	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-backend")) > 0 }, 2*time.Second, 20*time.Millisecond)
+	// Both notices go out after their replies: task 1's and the pool's (task 2). The nudges below
+	// read the last send, so a pool notice landing after one would be read instead (#3788).
+	require.Eventually(t, func() bool {
+		var claim, pool bool
+		for _, s := range terminal.sentTo("claude-backend") {
+			claim = claim || strings.Contains(s, "coral-board task claim 1")
+			pool = pool || s == taskNudge
+		}
+		return claim && pool
+	}, 2*time.Second, 20*time.Millisecond)
 
 	nudge := func(id int) (int, string) {
 		before := len(terminal.sentTo("claude-backend"))
@@ -1460,13 +1469,18 @@ func TestBoardReassignTask_NudgesNewAssignee(t *testing.T) {
 		"subscriber_id": "Backend Dev", "job_title": "Backend Dev", "session_name": "claude-backend",
 	}).Body.Close()
 	postJSON(t, base+"/tasks", map[string]string{"title": "Pool task", "created_by": "Orchestrator"}).Body.Close()
-	time.Sleep(100 * time.Millisecond)
+	// The pool notice goes out after the reply; counted before it lands, it would pass for the
+	// reassignment's nudge (#3788).
+	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-backend")) > 0 }, 2*time.Second, 20*time.Millisecond)
 	before := len(terminal.sentTo("claude-backend"))
 
 	resp := postJSON(t, base+"/tasks/1/reassign", map[string]string{"subscriber_id": "Orchestrator", "assignee": "Backend Dev"})
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-backend")) > before }, 2*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool {
+		sent := terminal.sentTo("claude-backend")
+		return len(sent) > before && strings.Contains(sent[len(sent)-1], "task claim 1")
+	}, 2*time.Second, 20*time.Millisecond)
 }
 
 func TestBoardRemindTask_StartsAndStopsPeriodicReminder(t *testing.T) {
@@ -1521,13 +1535,24 @@ func TestBoardRemindSubscriber_DeletePersistsAndRequiresIdentity(t *testing.T) {
 	require.Len(t, rows, 1)
 	assert.Equal(t, "Orchestrator", rows[0].SubscriberID)
 	// Replacing a reminder must leave the replacement active after the old
-	// goroutine observes cancellation and runs its deferred cleanup.
+	// goroutine observes cancellation and runs its deferred cleanup. The new
+	// reminder is in place as the reply goes out, so wait for the old goroutine
+	// itself to end (#3788).
+	exited := make(chan struct{}, 1)
+	onExit := func() { exited <- struct{}{} }
+	handler.reminderExited.Store(&onExit)
 	resp = postJSON(t, base+"/reminder", map[string]any{
 		"subscriber_id": "Orchestrator", "message": "Updated instruction", "interval_seconds": 30,
 	})
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Eventually(t, func() bool { return handler.HasSubscriberReminder("myproject", "Orchestrator") }, time.Second, 10*time.Millisecond)
+	select {
+	case <-exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the replaced reminder's goroutine did not end")
+	}
+	handler.reminderExited.Store(nil)
+	assert.True(t, handler.HasSubscriberReminder("myproject", "Orchestrator"), "the replacement is still active")
 
 	badReq, err := http.NewRequest(http.MethodDelete, base+"/reminder", strings.NewReader(`{"subscriber_id":""}`))
 	require.NoError(t, err)

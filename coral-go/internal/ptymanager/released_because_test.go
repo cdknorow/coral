@@ -2,8 +2,10 @@ package ptymanager
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +32,8 @@ func TestReleasedBecauseNamesWhatEndedTheHold(t *testing.T) {
 	}
 }
 
+var draftReleasedRuns atomic.Int64
+
 func TestADraftHoldIsLoggedAsReleasedByTheDraft(t *testing.T) {
 	fastGate(t)
 	var buf bytes.Buffer
@@ -38,11 +42,16 @@ func TestADraftHoldIsLoggedAsReleasedByTheDraft(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(syncWriter{w: &buf, mu: &mu}, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	name := "claude-draft-released"
+	// A name of its own each run: under -count the last run's queue for the same name was still
+	// being flushed, and took this hold before it could be counted (#3788).
+	name := fmt.Sprintf("claude-draft-released-%d", draftReleasedRuns.Add(1))
+	t.Cleanup(func() { DropHeld(name, "test done") })
 	a := &fakeAgent{screen: idleInputBox}
 	gate.holdPaste(a.input(name, "board-unread:bb", "nudge", false), whyDraft, false, "")
 	require.Equal(t, 1, HeldCount(name))
-	require.Eventually(t, func() bool { return HeldCount(name) == 0 }, 5*time.Second, 20*time.Millisecond, "typed once the box is free")
+	// The queue drops the item before typing it, so an empty queue alone can be seen before the
+	// send (#3788); wait for the send.
+	require.Eventually(t, func() bool { return HeldCount(name) == 0 && len(a.sent()) > 0 }, 5*time.Second, 20*time.Millisecond, "typed once the box is free")
 	assert.Equal(t, []string{"nudge"}, a.sent())
 
 	require.Eventually(t, func() bool {

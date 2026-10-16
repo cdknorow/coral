@@ -105,7 +105,9 @@ func TestJobUserKillStaysKilled(t *testing.T) {
 		return r != nil && r.Status == "running"
 	}, 5*time.Second, 20*time.Millisecond)
 	require.True(t, s.KillRun(context.Background(), runID))
-	require.Eventually(t, func() bool { return s.RunningCount() == 0 }, 5*time.Second, 20*time.Millisecond)
+	// KillRun writes "killed" and drops the run from the running set itself, so neither shows
+	// that the watchdog is done; wait for it, then check its write didn't replace the kill (#3788).
+	s.waitWatchers()
 	run := waitRunStatus(t, ss, runID, "killed")
 	require.NotNil(t, run.ExitReason)
 	assert.Equal(t, "user_cancelled", *run.ExitReason)

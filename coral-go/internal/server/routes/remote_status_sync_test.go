@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,13 +19,18 @@ import (
 
 // flakyRemote answers the hub's own probes, but drops the connection of any
 // request to /api/system/status while dropping is set: a blip that only a
-// proxied dashboard request runs into.
-func flakyRemote(t *testing.T, key string, dropping *atomic.Bool) *httptest.Server {
+// proxied dashboard request runs into. A probe that arrives while dropping is
+// set is held until held is closed, so the test can read the row before the
+// re-probe the failure starts can answer (#3788).
+func flakyRemote(t *testing.T, key string, dropping *atomic.Bool, held <-chan struct{}) *httptest.Server {
 	t.Helper()
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+key {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
+		}
+		if r.URL.Path != "/api/system/status" && dropping.Load() {
+			<-held
 		}
 		switch r.URL.Path {
 		case "/api/health":
@@ -71,7 +77,11 @@ func (e *rsEnv) rowStatus(t *testing.T, id string) string {
 func TestRemoteStatus_ProxyBlipRecoversWithoutTest(t *testing.T) {
 	e := newRSEnv(t)
 	var dropping atomic.Bool
-	remote := flakyRemote(t, routeSecret, &dropping)
+	held := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(held) }) }
+	remote := flakyRemote(t, routeSecret, &dropping, held)
+	t.Cleanup(release) // runs before the remote's Close, which waits for a held probe
 	w := e.do("POST", "/api/servers", map[string]any{
 		"id": "boxb", "label": "Box B", "url": remote.URL, "api_key": routeSecret, "allow_private": true})
 	require.Equal(t, 201, w.Code, w.Body.String())
@@ -90,7 +100,19 @@ func TestRemoteStatus_ProxyBlipRecoversWithoutTest(t *testing.T) {
 	go func() { hub.Run(ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
 
-	require.Eventually(t, func() bool { return e.rowStatus(t, "boxb") == store.RemoteStatusOnline }, 3*time.Second, 20*time.Millisecond)
+	// The hub runs a worker for boxb (its snapshot lists it): the row alone says
+	// online from the moment boxb is added, before there is a worker that a
+	// failure can go through (#3788).
+	hubStatus := func() string {
+		for _, s := range hub.Snapshot().Servers {
+			if s.ID == "boxb" {
+				return s.Status
+			}
+		}
+		return ""
+	}
+	require.Eventually(t, func() bool { return hubStatus() == store.RemoteStatusOnline }, 3*time.Second, 20*time.Millisecond)
+	require.Equal(t, store.RemoteStatusOnline, e.rowStatus(t, "boxb"))
 
 	dropping.Store(true)
 	start := time.Now()
@@ -98,15 +120,12 @@ func TestRemoteStatus_ProxyBlipRecoversWithoutTest(t *testing.T) {
 	require.Equal(t, http.StatusBadGateway, w.Code, w.Body.String())
 	assert.Equal(t, store.RemoteStatusUnreachable, e.rowStatus(t, "boxb"), "the proxied failure is recorded at once")
 	dropping.Store(false)
+	release()
 
 	require.Eventually(t, func() bool { return e.rowStatus(t, "boxb") == store.RemoteStatusOnline }, 3*time.Second, 20*time.Millisecond,
 		"the row is online again without a Test click")
 	assert.Less(t, time.Since(start), pollEvery, "recovered by the immediate re-probe, not the poll schedule or the minute write")
-	statuses := map[string]string{}
-	for _, s := range hub.Snapshot().Servers {
-		statuses[s.ID] = s.Status
-	}
-	assert.Equal(t, store.RemoteStatusOnline, statuses["boxb"], "the worker agrees with the row")
+	assert.Equal(t, store.RemoteStatusOnline, hubStatus(), "the worker agrees with the row")
 }
 
 // Without a remote worker (no hub sink, or a server the hub does not run) the

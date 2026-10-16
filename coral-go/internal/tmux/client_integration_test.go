@@ -544,9 +544,16 @@ func TestClient_SendTerminalInputToTarget_SubmitsTrailingCR(t *testing.T) {
 
 	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "exec env PROMPT='ZSH> ' "+zsh+" -f -i"))
 	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "\r"))
+	// A line that starts with the prompt: the typed command's echo holds "ZSH> " too, behind the
+	// old shell's prompt, before zsh is running (#3788).
 	require.Eventually(t, func() bool {
 		out, _ := c.CapturePaneTarget(ctx, target, 50)
-		return strings.Contains(out, "ZSH> ")
+		for _, line := range strings.Split(out, "\n") {
+			if strings.HasPrefix(line, "ZSH>") { // the capture drops the trailing space
+				return true
+			}
+		}
+		return false
 	}, 10*time.Second, 50*time.Millisecond, "zsh never showed its prompt")
 
 	for _, tc := range []struct{ name, data, want string }{

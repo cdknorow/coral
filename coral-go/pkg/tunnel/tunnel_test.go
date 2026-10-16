@@ -720,9 +720,10 @@ func TestNoGoroutineLeakAfterManyStreams(t *testing.T) {
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}
-	require.Eventually(t, func() bool { return goroutines() <= before+10 }, 5*time.Second, 50*time.Millisecond,
-		"goroutines before=%d after=%d", before, goroutines())
-	assert.Equal(t, 0, sess.NumStreams())
+	// The hub drops the last stream a moment after its reply ends; its goroutines fit in the
+	// slack, so the count alone can pass before it does (#3788).
+	require.Eventually(t, func() bool { return sess.NumStreams() == 0 && goroutines() <= before+10 }, 5*time.Second, 50*time.Millisecond,
+		"goroutines before=%d after=%d, streams %d", before, goroutines(), sess.NumStreams())
 }
 
 func TestRetryLaterIsNotPermanent(t *testing.T) {

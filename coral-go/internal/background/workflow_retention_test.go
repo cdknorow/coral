@@ -46,7 +46,14 @@ func TestTriggerKeepsTheNewestRunsAndTheirDirectories(t *testing.T) {
 
 	run, err := wr.TriggerWorkflow(ctx, wf, "api", nil)
 	require.NoError(t, err)
-	require.Eventually(t, func() bool { return !wr.IsRunActive(run.ID) }, 10*time.Second, 20*time.Millisecond)
+	// The run's goroutine has ended: it is counted from the trigger on, where IsRunActive only
+	// turns true once the goroutine has started, so it could read false before the run (#3788).
+	require.Eventually(t, func() bool {
+		wr.mu.Lock()
+		defer wr.mu.Unlock()
+		return wr.running == 0
+	}, 10*time.Second, 20*time.Millisecond)
+	require.False(t, wr.IsRunActive(run.ID))
 
 	ids, err := ws.WorkflowRunIDs(ctx, wf.ID)
 	require.NoError(t, err)

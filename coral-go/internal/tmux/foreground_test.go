@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,10 +87,14 @@ func TestAgentShellIdleIgnoresBackgroundJobs(t *testing.T) {
 
 	// A job in the background: the shell is back at its prompt.
 	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 60 &"))
+	// The job exists: a sleep under the pane's shell. The pane's pid alone is there from the
+	// start, so it said nothing about the job (#3788).
+	pid, err := c.DisplayMessage(ctx, name+".0", "#{pane_pid}")
+	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		out, _ := c.DisplayMessage(ctx, name+".0", "#{pane_pid}")
-		return out != ""
-	}, shellWait, 25*time.Millisecond)
+		out, _ := exec.Command("pgrep", "-P", strings.TrimSpace(pid), "sleep").Output()
+		return strings.TrimSpace(string(out)) != ""
+	}, shellWait, 25*time.Millisecond, "the background sleep never started")
 	time.Sleep(500 * time.Millisecond) // sleep-ok: a negative proof; the shell must still read as idle after the job has had time to be wrongly counted
 	idle, ok := state()
 	require.True(t, ok)

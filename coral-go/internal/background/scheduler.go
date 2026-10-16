@@ -121,6 +121,7 @@ type JobScheduler struct {
 	parentCtx      context.Context // set by Run(); used by launchAndWatch for shutdown
 	runningMu      sync.Mutex
 	running        map[int64]context.CancelFunc // run_id -> cancel func for watchdog
+	watching       sync.WaitGroup               // the launchAndWatch goroutines
 	launchFn       func(ctx context.Context, job store.ScheduledJob, runID int64) error
 	nextFireTimeFn func(cronExpr, tz string, after time.Time) (time.Time, error)
 	worktreeRoot   string // where run worktrees go (Coral's data dir); "" = beside the repo (legacy)
@@ -352,7 +353,7 @@ func (s *JobScheduler) evaluateJob(ctx context.Context, job store.ScheduledJob, 
 			createWorktree:  true,
 			tag:             "scheduled",
 		}
-		go s.launchAndWatch(runID, job, rc)
+		s.watch(runID, job, rc)
 	}
 
 	return nil
@@ -541,7 +542,7 @@ func (s *JobScheduler) FireOneshot(ctx context.Context, config map[string]interf
 		tag:             "task",
 	}
 
-	go s.launchAndWatch(runID, job, rc)
+	s.watch(runID, job, rc)
 	return runID, nil
 }
 
@@ -602,6 +603,19 @@ func (s *JobScheduler) killRunSession(ctx context.Context, run *store.ScheduledR
 
 // launchAndWatch is the core goroutine that creates worktrees, launches agents,
 // monitors via watchdog, fires webhooks, and cleans up.
+// watch runs launchAndWatch on its own goroutine, counted so waitWatchers can wait for it.
+func (s *JobScheduler) watch(runID int64, job store.ScheduledJob, rc runConfig) {
+	s.watching.Add(1)
+	go func() {
+		defer s.watching.Done()
+		s.launchAndWatch(runID, job, rc)
+	}()
+}
+
+// waitWatchers waits until every run's launchAndWatch has returned, its final status
+// written (tests: a kill's own status must still stand once the watchdog is done, #3788).
+func (s *JobScheduler) waitWatchers() { s.watching.Wait() }
+
 func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc runConfig) {
 	// Use the scheduler's parent context so goroutines cancel on shutdown.
 	// Falls back to Background if Run() hasn't been called (e.g., FireOneshot).

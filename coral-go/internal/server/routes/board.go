@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -55,6 +56,9 @@ type BoardHandler struct {
 	// subscriberReminderOps serializes durable-store plus timer changes for one
 	// team/subscriber so concurrent replace and remove cannot interleave.
 	subscriberReminderOps map[string]*sync.Mutex
+	// reminderExited, when set, runs as a reminder goroutine ends, after its cleanup (tests:
+	// a replaced reminder's old goroutine must not clear the new one, #3788).
+	reminderExited atomic.Pointer[func()]
 	// deleteSubscriberReminder is the durable delete; tests inject failures.
 	deleteSubscriberReminder func(ctx context.Context, project, subscriber string) error
 	// crossTeam rate-limits cross-team messages per sender and target.
@@ -326,6 +330,11 @@ func (h *BoardHandler) startSubscriberReminder(project, subscriber, message stri
 		// The first reminder comes 0.8-1.2 intervals in, the same for this subscriber (#3613):
 		// reminders restored together at start don't all fire in the same second. Then every
 		// interval.
+		defer func() {
+			if f := h.reminderExited.Load(); f != nil {
+				(*f)()
+			}
+		}()
 		ticker := time.NewTicker(ptymanager.JitterAround(interval, key))
 		defer ticker.Stop()
 		defer h.finishSubscriberReminder(project, subscriber, generation)

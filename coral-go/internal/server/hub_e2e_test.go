@@ -667,7 +667,17 @@ func TestHubE2E_RegisterOutcomesAndKeyHygiene(t *testing.T) {
 	assert.Equal(t, 200, code)
 
 	// Run the poller and a proxied call so keys have flowed through the hub.
-	hub.eventually("both online", func() bool { return hub.live().status("a") == "online" && hub.live().status("b") == "online" })
+	// Registering writes "online" and the hub copies it, so wait for what only a probe sets: the
+	// version from each remote's health check (#3788).
+	hub.eventually("both online, probed", func() bool {
+		probed := 0
+		for _, s := range hub.live().Servers {
+			if (s.ID == "a" || s.ID == "b") && s.Status == "online" && s.Version != "" {
+				probed++
+			}
+		}
+		return probed == 2
+	})
 	code, _ = hub.do("GET", "/api/remote/a/api/sessions/live", nil)
 	require.Equal(t, 200, code)
 
@@ -1063,7 +1073,8 @@ func TestHubE2E_OfflineMarksStaleAndRecovers(t *testing.T) {
 	hub.eventually("a offline: unreachable and its agent stale", func() bool {
 		v := hub.live()
 		x, ok := v.find("a", "alpha")
-		return v.status("a") == "unreachable" && ok && x.Stale
+		// The row is written after the live view changes (#3788).
+		return v.status("a") == "unreachable" && ok && x.Stale && hub.serverStatus("a") == "unreachable"
 	})
 	v := hub.live()
 	y, ok := v.find("b", "beta")
