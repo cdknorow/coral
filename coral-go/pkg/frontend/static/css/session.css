@@ -1745,6 +1745,11 @@
     .terminal-header-left .terminal-session-label,
     .terminal-header-left .terminal-identity { min-width: 0; }
     .terminal-header-actions { flex: 0 0 auto; }
+}
+/* 200 percent zoom on a phone is a page under 260 px wide: the header's buttons wrap to a second row instead of leaving the screen. */
+@media (max-width: 260px) {
+    .terminal-header { flex-wrap: wrap; height: auto; }
+    .terminal-header-left { flex-basis: 100%; }
     .terminal-header-actions > .terminal-branch { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 .terminal-header-actions > .terminal-folder { flex: 0 1 auto; min-width: 0; }

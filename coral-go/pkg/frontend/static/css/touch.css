@@ -87,6 +87,33 @@
         display: inline-flex;
         align-items: center;
     }
+
+    /* Scenes added in #4086: the Launch dialog's Back arrow and its Permissions toggle, the Servers form's fields, the goal button in an
+       agent row (it only showed in landscape), and the "Details" disclosure inside a Servers row's error line (the hit area grows, the
+       line does not: padding and an equal negative margin). */
+    .launch-back-btn,
+    .permissions-toggle-btn,
+    .sidebar-goal-btn {
+        min-width: var(--control-touch-height);
+        min-height: var(--control-touch-height);
+    }
+    .permissions-toggle-btn {
+        display: flex;
+        align-items: center;
+    }
+    .session-group-item .sidebar-goal-btn-inline {
+        min-width: var(--control-touch-height);
+        min-height: var(--control-touch-height);
+        margin: -10px 0;   /* the row keeps its height: only the hit area grows */
+    }
+    .servers-form input:not([type="checkbox"]):not([type="radio"]) {
+        min-height: var(--control-touch-height);
+    }
+    .servers-row-detail summary {
+        display: inline-block;
+        padding: 15px 6px;
+        margin: -15px 0;
+    }
     .terminal-header {
         height: auto;
         min-height: var(--control-touch-height);
