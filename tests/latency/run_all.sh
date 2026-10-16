@@ -10,6 +10,15 @@
 # Env overrides: GO, REPO, WORK, PORT, N, NSESS, NBIG, BIGMB, FILESN, HOG
 set -u
 
+# Linux (epoch) only, and opt-in (Security on #3740): this seeds a large dataset, starts real tmux
+# sessions and runs a CPU hog, so it must never run on the operator's Mac or in the normal suite.
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "[run_all] the latency guard runs on Linux (epoch) only; got $(uname -s). Refusing." >&2; exit 2
+fi
+if [[ "${QA_LATENCY_RUN:-}" != "1" ]]; then
+  echo "[run_all] opt-in: set QA_LATENCY_RUN=1 to run the latency-budget guard (epoch only)." >&2; exit 2
+fi
+
 GO="${GO:-$HOME/go-install/go/bin/go}"
 REPO="${REPO:-$HOME/coral}"
 CORALGO="$REPO/coral-go"
@@ -23,7 +32,9 @@ NSESS="${NSESS:-24}"
 NBIG="${NBIG:-4}"
 BIGMB="${BIGMB:-80}"
 FILESN="${FILESN:-5000}"
-HOG="${HOG:-72}"
+# The CPU hog is scaled to the box (Security on #3740): 2x the cores (the before/after runs used
+# 72 on epoch's 36), so the stress ratio stays the same on any host.
+HOG="${HOG:-$(( $(nproc) * 2 ))}"
 BASE="http://127.0.0.1:$PORT"
 SOCKET="$DATADIR/tmux.sock"
 
@@ -41,6 +52,9 @@ cleanup() {
   if [[ -n "${SRVPID}" ]] && kill -0 "$SRVPID" 2>/dev/null; then kill "$SRVPID" 2>/dev/null; sleep 2; kill -9 "$SRVPID" 2>/dev/null; fi
   if [[ -f "$HOGPIDS" ]]; then while read -r p; do [[ -n "$p" ]] && kill -9 "$p" 2>/dev/null; done < "$HOGPIDS"; fi
   [[ -S "$SOCKET" ]] && "$TMUX_BIN" -S "$SOCKET" kill-server 2>/dev/null
+  # Leave ~coral as found: the seeder is copied into the module only for the build (Security on #3740),
+  # so drop it here too in case the script died between the copy and its own rm.
+  rm -rf "$CORALGO/cmd/qa3713seed" 2>/dev/null
 }
 trap cleanup EXIT
 
@@ -99,7 +113,9 @@ bash "$HERE/measure.sh" "$BASE" "$TARGETS" idle "$N" "$WORK"
 # ---- start hog ----
 log "starting CPU hog: $HOG busy-loop procs (nice 0)"
 : > "$HOGPIDS"
-for ((i=0;i<HOG;i++)); do sh -c 'while :; do :; done' & echo $! >> "$HOGPIDS"; done
+# Each hog carries its own 900 s timeout (Security on #3740): even if this script is killed before
+# the trap runs, no busy-loop outlives the run (the #3712 "8 loops left on epoch 10 min" lesson).
+for ((i=0;i<HOG;i++)); do timeout 900 sh -c 'while :; do :; done' & echo $! >> "$HOGPIDS"; done
 sleep 3
 log "hog pids: $(wc -l < "$HOGPIDS") ; load: $(cat /proc/loadavg)"
 
