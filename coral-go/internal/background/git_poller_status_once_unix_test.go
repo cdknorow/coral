@@ -20,8 +20,8 @@ import (
 
 // #3730: a pass runs 'git status' once per repository (it ran twice: for the dirty count and
 // for the changed files), and both still come from it. A git on PATH that logs each run
-// counts them; gitutil.Command's filter guard ('git config --get-regexp') still runs before
-// every command.
+// counts them. gitutil.Command's filter guard ('git config --get-regexp') runs right before
+// each git that can run a filter driver, and only those (#3847: it ran before every command).
 func TestGitPollerRunsStatusOncePerPass(t *testing.T) {
 	realGit, err := exec.LookPath("git")
 	require.NoError(t, err)
@@ -58,10 +58,13 @@ func TestGitPollerRunsStatusOncePerPass(t *testing.T) {
 	raw, err := os.ReadFile(logPath)
 	require.NoError(t, err)
 	runs := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	status, guards := 0, 0
+	status, guards, filterCapable := 0, 0, 0
 	for _, r := range runs {
 		if strings.Contains(r, " status ") {
 			status++
+		}
+		if strings.Contains(r, " status ") || strings.Contains(r, " diff ") {
+			filterCapable++
 		}
 		if strings.Contains(r, "--get-regexp") {
 			guards++
@@ -69,7 +72,7 @@ func TestGitPollerRunsStatusOncePerPass(t *testing.T) {
 	}
 	t.Logf("git runs in one pass for one agent: %d (%d of them the filter guard), status: %d", len(runs), guards, status)
 	assert.Equal(t, 1, status, "one status per pass")
-	assert.Equal(t, len(runs)-guards, guards, "the filter guard still runs before every git command")
+	assert.Equal(t, filterCapable, guards, "the filter guard runs before each status and diff, and no other git")
 
 	snap, err := gs.GetLatestGitStateBySession(ctx, sid)
 	require.NoError(t, err)
