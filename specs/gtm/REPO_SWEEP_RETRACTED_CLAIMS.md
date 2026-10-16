@@ -3,7 +3,7 @@
 **Task:** #37 · **Owner:** Content & Launch Producer · 2026-08-28
 **Scope:** `coral-go/agent_docs/`, `coral-go/docs/`, `coral-go/pkg/frontend/`,
 the Go-served activation page, `CLAUDE.md`, `Casks/`, `installers/`, `tools/`.
-**Excluded:** `coral-python-legacy/` (retired), `specs/gtm/` (my own never-say lists, which
+**Excluded:** `specs/gtm/` (my own never-say lists, which
 quote the banned phrasings deliberately).
 **Method:** grepped each retracted claim family, then verified every hit against the code
 before calling it a defect. **Reporting only — nothing fixed.**
