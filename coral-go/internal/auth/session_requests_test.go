@@ -80,3 +80,28 @@ func TestEndingASessionClosesItsOpenRequests(t *testing.T) {
 		ServeHTTP(httptest.NewRecorder(), g.req("GET", "/", "", "10.0.0.5", &http.Cookie{Name: g.ks.cookieName(g.req("GET", "/", "", "10.0.0.5", nil)), Value: "nope"}))
 	assert.True(t, closed(plain))
 }
+
+// Security's fix-forward: rotating the API key ends every session and closes their open
+// requests too.
+func TestRegenerateKeyClosesOpenRequests(t *testing.T) {
+	g := newPwRig(t)
+	r := g.req("GET", "/", "", "10.0.0.5", nil)
+	tok, err := g.ks.NewSession(r, SessionByPassword, false)
+	require.NoError(t, err)
+	entered, done := make(chan struct{}), make(chan struct{})
+	h := g.ks.SessionRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-r.Context().Done()
+		close(done)
+	}))
+	go h.ServeHTTP(httptest.NewRecorder(), g.req("GET", "/ws/coral", "", "10.0.0.5", &http.Cookie{Name: g.ks.cookieName(r), Value: tok}))
+	<-entered
+	_, err = g.ks.RegenerateKey()
+	require.NoError(t, err)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the open request survived the key rotation")
+	}
+	assert.False(t, g.ks.ValidateSession(tok))
+}

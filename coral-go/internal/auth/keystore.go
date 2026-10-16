@@ -232,6 +232,9 @@ func (ks *KeyStore) RegenerateKey() (string, error) {
 	if _, err := ks.sessions.DeleteSessionsExcept(context.Background(), ""); err != nil {
 		log.Printf("[auth] new API key: couldn't end the browser sessions: %v", err)
 	}
+	// Their open WebSockets close too (#3966 (c)). RevokeAllSessions would take ks.mu again;
+	// ks.live has its own lock.
+	ks.live.close("", "")
 	return ks.key, nil
 }
 
