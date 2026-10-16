@@ -312,14 +312,15 @@ func TestCloudRedeemIsLocalCommandLineOnly(t *testing.T) {
 	key := filepath.Join(dir, "id_ed25519")
 	require.NoError(t, os.WriteFile(key, []byte("-----BEGIN OPENSSH PRIVATE KEY-----\n"), 0o600))
 	for _, body := range []string{
-		`{"ticket_file":"` + key + `"}`,
-		`{"proof_file":"` + key + `"}`,
-		`{"check":true,"ticket_file":"` + key + `"}`,
+		`{"ticket_file":` + jsonString(key) + `}`,
+		`{"proof_file":` + jsonString(key) + `}`,
+		`{"check":true,"ticket_file":` + jsonString(key) + `}`,
 	} {
-		code, _ = cli(nil, body, local)
-		assert.Equal(t, 400, code, body)
-		code, _ = cli(bearer, body, local)
-		assert.Equal(t, 400, code, body)
+		for _, auth := range []map[string]string{nil, bearer} {
+			code, o := cli(auth, body, local)
+			assert.Equal(t, 400, code, body)
+			assert.NotEqual(t, "invalid JSON", o["error"], "refused for naming a file, not for the body: %s", body)
+		}
 	}
 	assert.FileExists(t, key)
 

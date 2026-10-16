@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -68,9 +69,11 @@ func TestApplyBoardRekeys(t *testing.T) {
 	assert.Equal(t, id, st["project"])
 	assert.Equal(t, "Lead", st["job_title"])
 	assert.Contains(t, string(data), `"n":12345678901234567890`, "other fields are written back byte-exact")
-	fi, err := os.Stat(state)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o640), fi.Mode().Perm(), "the file keeps its mode")
+	if runtime.GOOS != "windows" { // modes mean nothing there: a writable file is 0666 (#3914)
+		fi, err := os.Stat(state)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o640), fi.Mode().Perm(), "the file keeps its mode")
+	}
 	data, _ = os.ReadFile(outside)
 	assert.JSONEq(t, `{"project":"."}`, string(data), "a symlinked state file is never followed")
 	li, err := os.Lstat(filepath.Join(dir, "board_state_link.json"))

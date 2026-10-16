@@ -127,7 +127,7 @@ func TestHubPathsThroughTheTunnel(t *testing.T) {
 	// query allow-list refuses "~" in file parameters, so bodies are where it arrives.
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"launch"}`, js).Code)
 	launch := func(dir string) *httptest.ResponseRecorder {
-		return call(h, "POST", "/api/sessions/launch", `{"working_dir":"`+dir+`","agent_type":"terminal"}`, mergeHdr(hub, js))
+		return call(h, "POST", "/api/sessions/launch", `{"working_dir":`+jsonString(dir)+`,"agent_type":"terminal"}`, mergeHdr(hub, js))
 	}
 	bad := launch("~/nope")
 	assert.NotEqual(t, 200, bad.Code, bad.Body.String())
