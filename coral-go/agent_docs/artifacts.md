@@ -98,7 +98,7 @@ The Operator, on this computer's own dashboard, also has **Delete** in both list
 ## Limits, images and deleting
 
 - **Size:** at most 64 MiB per artifact (`artifact_too_large`). Uploads are streamed, never held whole in memory.
-- **Per agent, per hour:** 100 uploads and 512 MiB, counting refused uploads (`artifact_quota`, `limit: "hourly"`). Uploads without an agent token (default mode only) share one bucket. It's a soft cap: it is checked when an upload starts, so uploads already running when it's reached still finish.
+- **Per agent, per hour:** 100 uploads and 512 MiB, counting refused uploads (`artifact_quota`, `limit: "hourly"`). Uploads without an agent token (only with strict local auth off) share one bucket. It's a soft cap: it is checked when an upload starts, so uploads already running when it's reached still finish.
 - **The store:** the Operator can cap the object store in Settings ("Artifact store limit", `artifact_store_max_bytes`; 0, the default, is no limit). Above it, new uploads are refused (`artifact_quota`, `limit: "store"`) until the Operator deletes some. Re-uploading bytes that are already stored is always free. Settings also shows the saved task and session diffs, which the limit doesn't cover.
 - **Images are checked by their bytes, whatever their name or `--media-type`:**
   - JPEG, PNG and GIF are stored **without** their metadata (EXIF camera and location data, comments).
