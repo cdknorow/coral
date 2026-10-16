@@ -35,7 +35,8 @@ func cliSign(t *testing.T, h http.Handler, token, method, path, body string, aut
 	if len(authorization) > 0 {
 		auth = authorization[0]
 	}
-	sig, err := cloud.SignCLIRequest(token, cn, hello.Nonce, method, path, []byte(body), auth)
+	p, q, _ := strings.Cut(path, "?")
+	sig, err := cloud.SignCLIRequest(token, cn, hello.Nonce, method, p, q, []byte(body), auth)
 	require.NoError(t, err)
 	return sig
 }
@@ -64,7 +65,8 @@ func cliSignServer(t *testing.T, baseURL, token, method, path, body string, auth
 	if len(authorization) > 0 {
 		auth = authorization[0]
 	}
-	sig, err := cloud.SignCLIRequest(token, cn, hello.Nonce, method, path, []byte(body), auth)
+	p, q, _ := strings.Cut(path, "?")
+	sig, err := cloud.SignCLIRequest(token, cn, hello.Nonce, method, p, q, []byte(body), auth)
 	require.NoError(t, err)
 	return sig
 }

@@ -126,6 +126,38 @@ func TestCloudRoutesSameUserGate(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, hello(nil, "192.168.1.20:5000").Code, "another machine")
 }
 
+// #4041: hellos are limited per caller, and every local peer is one caller, so a flood from
+// both loopback addresses gets the marked per-action 429 (the dashboard does not take it for
+// an overloaded server) instead of filling the pending table.
+func TestCLIHelloFloodGetsAMarked429(t *testing.T) {
+	r := newE2ERemote(t, "cli-hello-limit", nil)
+	h := r.srv.Router()
+	r.srv.cloudHandler.SetPeerCheck(func(*http.Request) (bool, bool) { return true, true })
+	ok, limited := 0, 0
+	for i := 0; i < 300; i++ {
+		cn, _ := cloud.NewCLINonce()
+		req := httptest.NewRequest("POST", cloud.CLIHelloPath, strings.NewReader(`{"nonce":"`+cn+`"}`))
+		req.RemoteAddr = []string{"127.0.0.1:50000", "[::1]:50002"}[i%2]
+		req.Host = "127.0.0.1:8420"
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		switch rec.Code {
+		case http.StatusOK:
+			ok++
+		case http.StatusTooManyRequests:
+			limited++
+			assert.Equal(t, "action", rec.Header().Get("X-Coral-Limit"))
+			assert.Contains(t, rec.Body.String(), `"code":"cli_hello_limit"`)
+		default:
+			t.Fatalf("hello %d: %d %s", i, rec.Code, rec.Body.String())
+		}
+	}
+	assert.GreaterOrEqual(t, ok, 100, "the burst is served")
+	assert.Less(t, ok, 200, "one caller, whatever its loopback address")
+	assert.Equal(t, 300, ok+limited)
+}
+
 // Through a real socket the kernel's answer is used: Coral's own user passes
 // (the lookup finds this process's socket on Linux, macOS and Windows; on other
 // systems it is not supported and the dashboard rules apply).
