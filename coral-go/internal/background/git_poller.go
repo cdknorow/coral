@@ -208,7 +208,7 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 		p.logger.Debug("git query", "workdir", workdir, "branch", gitInfo.Branch, "duration_ms", queryDur.Milliseconds())
 
 		filesStart := time.Now()
-		changedFiles, err := queryChangedFiles(ctx, workdir)
+		changedFiles, err := queryChangedFilesFrom(ctx, workdir, gitInfo.status, gitInfo.statusErr)
 		filesDur := time.Since(filesStart)
 		if err != nil {
 			// Leaving the last list in place would show it as current
@@ -353,6 +353,11 @@ type gitInfo struct {
 	Ahead           int
 	Behind          int
 	DirtyCount      int
+
+	// status is the pass's one 'git status --porcelain -z' (#3730), shared by the dirty count
+	// and the changed files; statusErr is why it failed.
+	status    []byte
+	statusErr error
 }
 
 func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
@@ -405,7 +410,46 @@ func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
 	return info, nil
 }
 
+// statusEntry is one path in 'git status --porcelain -z' output.
+type statusEntry struct {
+	code string // the two status letters, trimmed ("M", "??", "R")
+	path string
+}
+
+// statusEntries parses 'git status --porcelain -z': one record per path, a rename or copy
+// followed by a record holding its old path, which is skipped.
+func statusEntries(out []byte) []statusEntry {
+	if len(out) == 0 {
+		return nil
+	}
+	records := strings.Split(string(out), "\x00")
+	var entries []statusEntry
+	for i := 0; i < len(records); i++ {
+		line := records[i]
+		if len(line) < 4 {
+			continue
+		}
+		// Renames/copies carry the original path as the next record.
+		if line[0] == 'R' || line[0] == 'C' || line[1] == 'R' || line[1] == 'C' {
+			i++
+		}
+		entries = append(entries, statusEntry{code: strings.TrimSpace(line[:2]), path: line[3:]})
+	}
+	return entries
+}
+
+// queryChangedFiles runs its own status; the poller passes the one queryGit ran instead
+// (queryChangedFilesFrom).
 func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	out, err := gitutil.Command(ctx, workdir, "status", "--porcelain", "-z", "--untracked-files=normal").Output()
+	return queryChangedFilesFrom(ctx, workdir, out, err)
+}
+
+// queryChangedFilesFrom lists the files changed since the diff base, with status (the output
+// of 'git status --porcelain -z --untracked-files=normal', or statusErr) for the untracked ones.
+func queryChangedFilesFrom(ctx context.Context, workdir string, status []byte, statusErr error) ([]store.ChangedFile, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	logger := slog.Default().With("service", "git_poller", "workdir", workdir)
@@ -464,12 +508,10 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 	// git status --porcelain for untracked files
 	lineCounts := 0
 	t3 := time.Now()
-	out, err = gitutil.Command(ctx, workdir, "status", "--porcelain", "-z", "--untracked-files=normal").Output()
-	if err != nil {
-		return nil, fmt.Errorf("git status --porcelain: %w", err)
+	if statusErr != nil {
+		return nil, fmt.Errorf("git status --porcelain: %w", statusErr)
 	}
-	if len(out) > 0 {
-		records := strings.Split(string(out), "\x00")
+	if entries := statusEntries(status); len(entries) > 0 {
 		// New files' line counts are read inside the working tree, held open once per pass.
 		countRoot, rootErr := safefs.OpenRoot(workdir)
 		if rootErr != nil {
@@ -477,17 +519,8 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 		} else {
 			defer countRoot.Close()
 		}
-		for i := 0; i < len(records); i++ {
-			line := records[i]
-			if len(line) < 4 {
-				continue
-			}
-			statusCode := strings.TrimSpace(line[:2])
-			fp := line[3:]
-			// Renames/copies carry the original path as the next record.
-			if line[0] == 'R' || line[0] == 'C' || line[1] == 'R' || line[1] == 'C' {
-				i++
-			}
+		for _, e := range entries {
+			statusCode, fp := e.code, e.path
 			if statusCode == "??" {
 				if _, exists := fileMap[fp]; !exists {
 					fullPath := filepath.Join(workdir, fp)
@@ -646,8 +679,10 @@ func queryWorktreeState(ctx context.Context, workdir string, info *gitInfo) {
 		}
 	}
 
-	if out, ok := run("status", "--porcelain"); ok && out != "" {
-		info.DirtyCount = len(strings.Split(out, "\n"))
+	// One status for the pass (#3730): the changed files read it too (queryChangedFilesFrom).
+	info.status, info.statusErr = gitutil.Command(ctx, workdir, "status", "--porcelain", "-z", "--untracked-files=normal").Output()
+	if info.statusErr == nil {
+		info.DirtyCount = len(statusEntries(info.status))
 	}
 
 	if info.Branch == "" || info.Branch == "HEAD" {
