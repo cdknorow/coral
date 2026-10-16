@@ -88,20 +88,22 @@ func TestLoopbackProxyHeaderAndRequireAuthSetting(t *testing.T) {
 	assert.Equal(t, MethodLoopback, m, "with the setting off, a direct-local request keeps the pass")
 }
 
-// CONNECT (the local MITM proxy for agent browsing) stays trusted by loopback IP alone, with its
-// external target Host and without the setting or proxy-header gates breaking it (#3585).
-func TestLoopbackConnectStaysIPOnly(t *testing.T) {
+// A loopback CONNECT gets the same Host check as every other method: the browsing proxy that
+// once needed an IP-only pass is gone (#4032, replacing #3585's exception).
+func TestLoopbackConnectNoLongerSkipsTheHostCheck(t *testing.T) {
 	ks, err := NewKeyStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { SetRequireAuthOnLoopback(false) })
-	var got Method
-	h := Middleware(ks)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { got = MethodFrom(r.Context()) }))
+	ran := false
+	h := Middleware(ks)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { ran = true }))
 	SetRequireAuthOnLoopback(true)
 	r := httptest.NewRequest(http.MethodConnect, "chatgpt.com:443", nil)
 	r.RemoteAddr = "127.0.0.1:5000"
 	r.Host = "chatgpt.com:443"
-	h.ServeHTTP(httptest.NewRecorder(), r)
-	assert.Equal(t, MethodLoopback, got, "CONNECT from loopback stays IP-only even with the setting on")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	assert.False(t, ran, "a loopback CONNECT with an external Host never reaches a handler")
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 // A direct loopback request with an external Host is still refused (DNS rebinding), per listener
