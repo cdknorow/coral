@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/cdknorow/coral/internal/auth"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/secfile"
 )
@@ -152,7 +153,7 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	sig, err := SignCLIRequest(t.Token, cn, sn, out.Method, out.URL.Path, body, out.Header.Get("Authorization"))
+	sig, err := SignCLIRequest(t.Token, cn, sn, out.Method, out.URL.Path, out.URL.RawQuery, body, out.Header.Get("Authorization"))
 	if err != nil {
 		return nil, ErrNotCoral
 	}
@@ -183,6 +184,9 @@ func (t Transport) hello(ctx context.Context, base string) (clientNonce, serverN
 		Proof string `json:"proof"`
 	}
 	_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&h)
+	if resp.Header.Get(httputil.ActionLimitHeader) != "" {
+		return "", "", ErrServerBusy
+	}
 	s, err1 := b64.DecodeString(h.Nonce)
 	proof, err2 := b64.DecodeString(h.Proof)
 	if resp.StatusCode != http.StatusOK || err1 != nil || err2 != nil || len(s) != cliNonceBytes ||

@@ -346,7 +346,13 @@ func (h *CloudHandler) CLIHello(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "nonce is required")
 		return
 	}
-	sn, proof, err := h.cliAuth.Hello(body.Nonce)
+	// Only a direct local peer gets here (localCLI), so every hello is one caller: a program
+	// can't get a bucket per loopback address and fill the pending table (#4041).
+	sn, proof, err := h.cliAuth.HelloFrom("local", body.Nonce)
+	if errors.Is(err, cliauth.ErrHelloLimit) {
+		httputil.WriteActionLimit(w, 1, "cli_hello_limit", err.Error())
+		return
+	}
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
