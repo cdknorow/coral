@@ -112,7 +112,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	}
 	remoteDebounce := min(remoteLimit, pollInterval)
 
-	ticker := time.NewTicker(pollInterval)
+	// Every connection ticks on the same wall-clock boundaries (multiples of the interval), so
+	// all the tabs, popouts and hub feeds ticking at once share one build of the list
+	// (sharedWSTick reuses a build for wsListMaxAge). With their own tickers they ticked at
+	// whatever phase they connected at, and each tick past wsListMaxAge built the list again
+	// (#3833 item 6, #3846).
+	ticker := time.NewTimer(untilTick(time.Now(), pollInterval))
 	defer ticker.Stop()
 
 	// Remote feed changes trigger an early rebuild (see remoteDebounce).
@@ -145,6 +150,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-connected:
 		case <-ticker.C:
+			ticker.Reset(untilTick(time.Now(), pollInterval))
 		case <-remoteChanged:
 			if firstMessage {
 				continue
@@ -1009,4 +1015,16 @@ func (h *SessionsHandler) machineHealthDelta(prev map[string]string) (map[string
 		}
 	}
 	return delta, now
+}
+
+// untilTick is how long from now to the next multiple of interval since the Unix epoch.
+func untilTick(now time.Time, interval time.Duration) time.Duration {
+	if interval <= 0 {
+		return time.Second
+	}
+	d := interval - time.Duration(now.UnixNano()%int64(interval))
+	if d < interval/100 {
+		d += interval // too close to the boundary to tick twice in a row
+	}
+	return d
 }
