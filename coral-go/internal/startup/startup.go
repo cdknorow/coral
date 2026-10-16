@@ -564,7 +564,7 @@ func applyCloudMaxMode(ctx context.Context, db *store.DB, cfg *config.Config) er
 			return fmt.Errorf("could not turn off Coral Hub auto-accept: %w", err)
 		}
 	}
-	log.Printf("[CLOUD] access cap set to %s by --cloud-max-mode", mode.String())
+	log.Printf("[CLOUD] access cap set to %s by --cloud-max-mode / CORAL_CLOUD_MAX_MODE (applied at every start)", mode.String())
 	return nil
 }
 

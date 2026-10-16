@@ -42,3 +42,11 @@ func TestServerSettingsAreNeverKept(t *testing.T) {
 		assert.False(t, Keep(n), n)
 	}
 }
+
+// #3717: the hub access cap given at launch is the server's: an agent (and a Coral an agent
+// starts) never inherits it.
+func TestAgentsNeverInheritTheCloudMaxMode(t *testing.T) {
+	if Keep("CORAL_CLOUD_MAX_MODE") {
+		t.Fatal("CORAL_CLOUD_MAX_MODE reaches agents")
+	}
+}

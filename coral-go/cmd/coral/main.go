@@ -145,17 +145,14 @@ func main() {
 			cfg.CloudConnect = strings.ToLower(strings.TrimSpace(*cloudConnect))
 		}
 	})
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "cloud-max-mode" {
-			cfg.CloudMaxMode = strings.ToLower(strings.TrimSpace(*cloudMaxMode))
-		}
-	})
-	if cfg.CloudMaxMode != "" {
-		if _, ok := tunnel.ParseMode(cfg.CloudMaxMode); !ok {
-			fmt.Fprintf(os.Stderr, "--cloud-max-mode / CORAL_CLOUD_MAX_MODE must be view, interact or launch, got %q\n", cfg.CloudMaxMode)
-			os.Exit(2)
-		}
+	maxModeGiven := false
+	flag.Visit(func(f *flag.Flag) { maxModeGiven = maxModeGiven || f.Name == "cloud-max-mode" })
+	maxMode, maxModeErr := resolveCloudMaxMode(maxModeGiven, *cloudMaxMode, cfg.CloudMaxMode)
+	if maxModeErr != nil {
+		fmt.Fprintln(os.Stderr, maxModeErr)
+		os.Exit(2)
 	}
+	cfg.CloudMaxMode = maxMode
 	cloudMode, err := cloudStartupMode(cfg.EffectiveCloudConnect(), cfg.CloudURL != "", isTerminal(os.Stdin) && isTerminal(os.Stdout))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -446,4 +443,23 @@ func printVersion(w io.Writer) {
 		return
 	}
 	fmt.Fprintln(w, "coral "+v)
+}
+
+// resolveCloudMaxMode is the hub access cap asked for at launch (#3717): the flag when it was
+// given (even empty: it then clears an inherited CORAL_CLOUD_MAX_MODE), else the environment's
+// (config.Load read it). "" means no change. Anything but view, interact or launch is an error,
+// and Coral doesn't start: a cap that was asked for is never silently left lower or made higher.
+func resolveCloudMaxMode(flagGiven bool, flagValue, envValue string) (string, error) {
+	v := envValue
+	if flagGiven {
+		v = flagValue
+	}
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" {
+		return "", nil
+	}
+	if _, ok := tunnel.ParseMode(v); !ok {
+		return "", fmt.Errorf("--cloud-max-mode / CORAL_CLOUD_MAX_MODE must be view, interact or launch, got %q", v)
+	}
+	return v, nil
 }

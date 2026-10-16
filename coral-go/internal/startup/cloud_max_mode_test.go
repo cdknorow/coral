@@ -57,3 +57,37 @@ func TestApplyCloudMaxMode(t *testing.T) {
 		})
 	}
 }
+
+// A cap below Launch ends the auto-accept Coral Hub turned on (it needs Launch), as lowering it
+// in the dashboard does; one the owner turned on locally stays; Launch keeps both.
+func TestCloudMaxModeBelowLaunchEndsHubAutoAccept(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct {
+		mode    string
+		hubKept bool
+	}{{"view", false}, {"interact", false}, {"launch", true}} {
+		dir := t.TempDir()
+		db, err := storetest.Open(t, filepath.Join(dir, "sessions.db"))
+		require.NoError(t, err)
+		ss := store.NewSessionStore(db)
+		for _, sid := range []string{"hub-aa", "local-aa"} {
+			require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: sid, AgentType: "claude", WorkingDir: dir}))
+		}
+		_, err = ss.EnableAutoAccept(ctx, "hub-aa", store.AutoAcceptSourceHub, 0)
+		require.NoError(t, err)
+		_, err = ss.EnableAutoAccept(ctx, "local-aa", store.AutoAcceptSourceLocal, 0)
+		require.NoError(t, err)
+
+		cfg := config.Load(dir)
+		cfg.CloudMaxMode = c.mode
+		require.NoError(t, applyCloudMaxMode(ctx, db, cfg))
+		on := func(sid string) bool {
+			var v int
+			require.NoError(t, db.GetContext(ctx, &v, "SELECT auto_accept FROM live_sessions WHERE session_id = ?", sid))
+			return v == 1
+		}
+		assert.Equal(t, c.hubKept, on("hub-aa"), "%s: the hub's auto-accept", c.mode)
+		assert.True(t, on("local-aa"), "%s: the owner's own auto-accept stays", c.mode)
+		db.Close()
+	}
+}
