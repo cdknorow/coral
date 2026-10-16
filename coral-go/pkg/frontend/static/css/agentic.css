@@ -2567,7 +2567,7 @@ button.team-artifact-name { cursor: pointer; }
 .explorer-file-icon { flex: 0 0 16px; }
 .explorer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .explorer-actions { display: flex; gap: 2px; margin-left: auto; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
-.explorer-item:hover .explorer-actions, .explorer-item:focus .explorer-actions { opacity: 1; }
+.explorer-item:hover .explorer-actions, .explorer-item:focus-within .explorer-actions { opacity: 1; }
 .explorer-action-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 2px; line-height: 1; border-radius: var(--radius-sm); }
 .explorer-action-btn:hover { color: var(--accent); }
 .explorer-status { padding: 6px 12px; color: var(--text-secondary); font-size: 12px; }
