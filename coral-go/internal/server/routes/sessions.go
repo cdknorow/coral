@@ -5808,9 +5808,12 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 	// Read through a folder held open (#3672, path audit #3669 finding 2), as SaveFileContent
 	// writes: the open is non-blocking (a FIFO or socket in the work tree can't hang the
 	// request), the file must be a regular file on the open handle, a symlink swapped in after
-	// the checks above isn't followed, and a file with another name (a hard link to a file
-	// outside the tree) is refused. The working tree is the root; a local dashboard's absolute
-	// read outside it opens the file's own folder.
+	// the checks above isn't followed, and under strict bounds (a tunnelled or proxied request)
+	// a file with another name (a hard link to a file outside the tree) is refused. The local
+	// dashboard may read a linked file: trees hold legitimate hard links (pnpm's node_modules,
+	// cp -l copies, build caches), and its reads are already allowed outside the tree with the
+	// denylist as the guard (Security's SHOULD on #3672). The working tree is the root; a local
+	// dashboard's absolute read outside it opens the file's own folder.
 	rootDir, rel := workdir, ""
 	if tempFile {
 		rootDir, rel = filepath.Dir(fullPath), filepath.Base(fullPath)
@@ -5827,7 +5830,11 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	content, err := root.ReadFileOneLink(rel, maxFileBytes())
+	read := root.ReadFile
+	if strict {
+		read = root.ReadFileOneLink
+	}
+	content, err := read(rel, maxFileBytes())
 	if errors.Is(err, safefs.ErrTooLarge) {
 		errPayloadTooLarge(w, "File too large to preview")
 		return
