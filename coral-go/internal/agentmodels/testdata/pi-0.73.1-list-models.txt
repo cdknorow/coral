@@ -1,0 +1,12 @@
+provider  model                  context  max-out  thinking  images
+openai    gpt-4                  8.2K     8.2K     no        no    
+openai    gpt-4-turbo            128K     4.1K     no        yes   
+openai    gpt-4.1                1.0M     32.8K    no        yes   
+openai    gpt-4.1-mini           1.0M     32.8K    no        yes   
+openai    gpt-4.1-nano           1.0M     32.8K    no        yes   
+openai    gpt-4o                 128K     16.4K    no        yes   
+openai    gpt-4o-2024-05-13      128K     4.1K     no        yes   
+openai    gpt-4o-2024-08-06      128K     16.4K    no        yes   
+openai    gpt-4o-2024-11-20      128K     16.4K    no        yes   
+openai    gpt-4o-mini            128K     16.4K    no        yes   
+openai    gpt-5                  400K     128K     yes       yes   
