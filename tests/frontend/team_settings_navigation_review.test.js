@@ -7,6 +7,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
  const client = await CDP({port:Number(process.env.CDP_PORT)});
  const {Page, Runtime, Emulation, Input} = client;
  const ev = async expression => {const r=await Runtime.evaluate({expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+ const {waitFor}=require('./helpers/wait').bind(ev);
  const results=[];
  const shot=async name=>fs.writeFileSync(`/tmp/coral-1273-${name}.png`,Buffer.from((await Page.captureScreenshot()).data,'base64'));
  const geometry=()=>ev(`(() => {
@@ -20,7 +21,8 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
   for(const [name,width,height] of [['desktop',1280,800],['mobile',390,844]]) {
    await Emulation.setDeviceMetricsOverride({width,height,deviceScaleFactor:1,mobile:false});
    console.log(name,'opening');await ev(`window.openSettings('navigation-review')`);
-   await ev(`new Promise((resolve,reject)=>{setTimeout(()=>reject(new Error("settings load timeout")),10000);const check=()=>{if(!document.querySelector('[type=submit]').disabled)resolve();else requestAnimationFrame(check)};check()})`);
+   // Polled with timers, not requestAnimationFrame: a browser window in the background (the Mac) pauses animation frames and the old rAF loop never saw the button enabled (#3703).
+   await waitFor(`!!document.querySelector('[type=submit]') && !document.querySelector('[type=submit]').disabled`,'the settings to load',{timeout:10000,diag:`({status:(document.querySelector('.working-mode-status')||{}).textContent})`});
    results.push({name,stage:'workflow-initial',...await geometry()});await shot(`${name}-workflow`);
    await ev(`(() => {const f=document.querySelector('form.working-mode-form');f.elements.preset_instructions.value='Unsaved preset draft';f.elements.custom_instructions.value='Unsaved extra';document.querySelector('[data-settings-tab=workflow]').focus()})()`);
    await Input.dispatchKeyEvent({type:'keyDown',key:'ArrowRight',code:'ArrowRight'});await Input.dispatchKeyEvent({type:'keyUp',key:'ArrowRight',code:'ArrowRight'});
