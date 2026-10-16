@@ -17,6 +17,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     let page = 'signin';            // which golden /auth serves
     const posts = [];              // {url, body}
     let replies = [];              // queue of {status, body, headers} for the next POSTs
+    let statusReplies = [];        // the link poll's GET /auth/hub/link/status answers, in order (the last one repeats)
     const json = (status, body, headers = {}) => ({ status, body, headers });
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
@@ -25,6 +26,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
             const u = new URL(p.request.url);
             const fulfill = (status, body, type, headers = {}) => Fetch.fulfillRequest({ requestId: p.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: type }, ...Object.entries(headers).map(([name, value]) => ({ name, value }))], body: Buffer.from(body).toString('base64') });
             if (u.pathname === '/zz-done') return fulfill(200, '<title>done</title><p id="done">done</p>', 'text/html');
+            if (u.pathname === '/auth/hub/link/status') { const r = statusReplies.length > 1 ? statusReplies.shift() : statusReplies[0]; return fulfill(200, JSON.stringify(r || { state: 'enrolling', ready: false, error: '' }), 'application/json'); }
             if (p.request.method === 'POST') {
                 posts.push({ url: u.pathname, body: JSON.parse(p.request.postData || '{}') });
                 const r = replies.shift() || json(200, { ok: true });
@@ -147,9 +149,99 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         await waitFor(`!document.getElementById('lock').hidden`, 'setup lockout'); assert.equal(await $('setup-code', 'disabled'), true);
         await waitFor(`document.getElementById('lock').hidden`, 'setup lockout ends', 4000);
 
+
+        // ── Sign in with Coral Hub (#3966): what the server offers is in the markup; the address only says what went wrong ──
+        await open('hub-ready');
+        assert.ok(await visible('hub-btn'), 'the Sign in with Coral Hub button shows when the server says ready');
+        assert.ok(!(await visible('hub-disabled')), 'and the disabled note stays hidden');
+        replies = [json(200, { ok: true })];
+        await ev(`document.getElementById('hub-btn').click(); true`);
+        await waitFor(`true`, 'the form posts');
+        for (let i = 0; i < 100 && !posts.length; i++) await sleep(20);
+        assert.deepEqual(posts[0], { url: '/auth/hub/start', body: {} }, 'the button is a plain form POST to /auth/hub/start');
+        for (const [q, want] of [['unavailable', 'Coral Hub could not start the sign-in. Use your password.'], ['failed', 'Coral Hub could not sign you in.']]) {
+            await open('hub-ready', `?hub=${q}`);
+            assert.ok(await visible('hub-flash'), `?hub=${q} shows a message`);
+            assert.ok((await text('hub-flash')).startsWith(want), `?hub=${q}: ${await text('hub-flash')}`);
+            assert.ok(!(await ev('location.search')).includes('hub='), `?hub=${q} is dropped from the address`);
+        }
+        await open('hub-ready', '?hub=disabled');
+        assert.ok(await visible('hub-disabled'), '?hub=disabled shows the note');
+        assert.equal(await ev(`document.querySelector('#hub-disabled a').href`), 'https://app.coralhub.dev/', 'with a link to the Hub');
+        await open('hub-ready', '?hub=bogus');
+        assert.ok(!(await visible('hub-flash')), 'an unknown value shows nothing');
+
+        await open('hub-disabled');
+        assert.ok(await visible('hub-disabled'), 'when the Hub says its switch is off the note shows');
+        assert.equal(await ev(`!!document.getElementById('hub-btn') || !!document.getElementById('hub-link-open') || !!document.getElementById('hub-start-form')`), false, 'and there is no sign-in action');
+
+        // the link path, from this computer
+        await open('hub-unpaired');
+        await ev(`window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; true`);
+        assert.ok(await visible('hub-link-open'));
+        await ev(`document.getElementById('hub-link-open').click(); true`);
+        assert.ok(await visible('panel-hublink') && !(await visible('panel-signin')));
+        assert.equal(await $('hub-enable', 'checked'), false, 'the checkbox is unticked');
+        assert.ok(!(await visible('hub-setup-field')), 'from this computer there is no setup code field');
+        await open('hub-unpaired', '?hub_enable=1&enable=1&enable_signin=true&checked=1');
+        await ev(`document.getElementById('hub-link-open').click(); true`);
+        assert.equal(await $('hub-enable', 'checked'), false, 'nothing in the address can tick or fill the checkbox');
+        await ev(`window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; true`);
+        // a bad address from the server is refused before anything opens
+        replies = [json(200, { verification_url: 'http://hub.example/verify', user_code: 'ABCD-EFGH' })];
+        await submit('hub-link-form');
+        await waitFor(`document.getElementById('hub-link-err').textContent.includes('will not open')`, 'a non-https verification address is refused');
+        assert.ok(!(await visible('panel-hubwait')));
+        assert.deepEqual(await ev('window.__opened'), []);
+        // the real flow: link, show the code, open the Hub's page, poll until linked, then the sign-in POST
+        await ev(`document.getElementById('hub-enable').click(); true`);
+        replies = [json(200, { verification_url: 'https://hub.example/verify?c=1', user_code: 'ABCD-EFGH' })];
+        statusReplies = [{ state: 'enrolling', ready: false, error: '' }, { state: 'linked', ready: true, error: '' }];
+        posts.length = 0;
+        await submit('hub-link-form');
+        await waitFor(`!document.getElementById('panel-hubwait').hidden`, 'the waiting step');
+        assert.deepEqual(posts[0], { url: '/auth/hub/link', body: { enable_signin: true } }, 'the ticked checkbox goes with the link request, and no setup code from this computer');
+        assert.equal(await text('hub-code'), 'ABCD-EFGH');
+        assert.deepEqual(await ev('window.__opened'), ['https://hub.example/verify?c=1'], "the Hub's own page is opened");
+        replies = [json(200, { ok: true })];
+        for (let i = 0; i < 400 && !posts.some(x => x.url === '/auth/hub/start'); i++) await sleep(20);
+        assert.ok(posts.some(x => x.url === '/auth/hub/start'), 'once linked and ready, the page makes the sign-in POST by itself');
+        // a failed link shows the server's words and stops
+        await open('hub-unpaired');
+        await ev(`document.getElementById('hub-link-open').click(); true`);
+        replies = [json(200, { verification_url: 'https://hub.example/verify?c=2', user_code: 'WXYZ-1234' })];
+        statusReplies = [{ state: 'failed', ready: false, error: 'The approval was refused in Coral Hub.' }];
+        await ev(`window.open = () => null; true`);
+        await submit('hub-link-form');
+        await waitFor(`document.getElementById('hub-wait-err').textContent === 'The approval was refused in Coral Hub.'`, 'the failure message', 8000);
+        await ev(`document.getElementById('hub-cancel').click(); true`);
+        assert.ok(await visible('panel-signin'), 'Cancel goes back to the password');
+
+        // from another computer: the setup code field, its errors, and an already-linked machine
+        await open('hub-unpaired-remote');
+        await ev(`document.getElementById('hub-link-open').click(); true`);
+        assert.ok(await visible('hub-setup-field'));
+        await submit('hub-link-form');
+        assert.equal(await text('hub-link-err'), 'Enter the setup code.'); assert.equal(posts.length, 0, 'nothing is sent without a code');
+        replies = [json(403, { code: 'setup_code_wrong' })];
+        await type('hub-setup-code', ' abcd-1234 '); await submit('hub-link-form');
+        await waitFor(`document.getElementById('hub-link-err').textContent === 'That setup code is not right.'`, 'a wrong code');
+        assert.deepEqual(posts[0], { url: '/auth/hub/link', body: { enable_signin: false, setup_code: 'ABCD-1234' } }, 'the code is normalised; unticked means enable_signin false');
+        page = 'hub-ready';
+        replies = [json(409, { code: 'already_linked' })];
+        await submit('hub-link-form');
+        await waitFor(`!!document.getElementById('hub-start-form')`, 'a 409 reloads as the page that offers the sign-in');
+        // this computer is asked for a code only when the server demands one
+        await open('hub-unpaired');
+        await ev(`document.getElementById('hub-link-open').click(); true`);
+        replies = [json(403, { code: 'setup_code_required' })];
+        await submit('hub-link-form');
+        await waitFor(`!document.getElementById('hub-setup-field').hidden`, 'the code field appears when the server asks');
+        assert.equal(await text('hub-link-err'), 'Enter the setup code.');
+
         // ── phone width: no horizontal scroll ──
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-        for (const n of ['signin', 'create', 'setup']) { await open(n); assert.equal(await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`), true, `${n}: fits a 390 px phone`); }
+        for (const n of ['signin', 'create', 'setup', 'hub-ready', 'hub-unpaired', 'hub-unpaired-remote', 'hub-disabled']) { await open(n); assert.equal(await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`), true, `${n}: fits a 390 px phone`); }
         console.log('PASS /auth page: sign in, lockout, forgot, API key, create, setup code, phone width');
     } finally { await Fetch.disable().catch(() => {}); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

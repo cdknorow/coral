@@ -12,8 +12,11 @@ const { passwordProblem, strengthOf } = await importOnce('./password_rules.js');
 const NOT_NOW_KEY = 'coral-password-not-now';
 
 /** POST JSON to a same-origin route. Resolves {ok, status, data}; data is the parsed body or {} (never throws for HTTP errors). */
-export async function postJson(url, body) {
-    const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body || {}) });
+export function postJson(url, body) { return sendJson('POST', url, body); }
+
+/** The same for any method (PUT and DELETE for the Hub sign-in settings, #3966); a DELETE sends no body. */
+export async function sendJson(method, url, body) {
+    const resp = await fetch(url, { method, headers: method === 'DELETE' ? {} : { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: method === 'DELETE' ? undefined : JSON.stringify(body || {}) });
     let data = {};
     try { data = await resp.json(); } catch { /* an empty or non-JSON body */ }
     return { ok: resp.ok, status: resp.status, data: data || {}, retryAfter: resp.headers.get('Retry-After') };
@@ -123,7 +126,7 @@ export function showSetPasswordModal({ local = false } = {}) {
     content.append(head, body, foot); modal.append(content);
     document.body.append(modal);
 
-    const close = () => { document.removeEventListener('keydown', onKey, true); modal.remove(); if (opener && opener.focus && opener.isConnected) opener.focus(); };
+    const close = () => { document.removeEventListener('keydown', onKey, true); modal.remove(); if (opener && opener.focus && opener.isConnected) opener.focus(); document.dispatchEvent(new CustomEvent('coral:password-prompt-closed')); };
     const notNow = () => { if (local) _notNowSet(); close(); };
     const onKey = e => {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); notNow(); return; }
