@@ -10,7 +10,7 @@ import { registerActions } from './actions.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 import { serverFetch, serverForSession } from './server_base.js';
 import { formatClockTime } from './format.js';
-import { FILTER_GROUPS, getToolIcon, eventVisible } from './event_icons.js';
+import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './event_icons.js';
 
 // Hidden filters are persisted per-session in state
 // state.eventFiltersHidden = Set of filter keys that are hidden
@@ -77,8 +77,8 @@ export function toggleFilterDropdown(mode) {
 function _openFilterDropdown(mode) {
     _filterDropdownMode = mode;
     const isLive = mode === 'live';
-    const hidden = isLive ? getHiddenFilters() : window.historyFilterHiddenRef;
-    const events = isLive ? (state.currentAgentEvents || []) : null;
+    const hidden = isLive ? getHiddenFilters() : historyEventsView.hidden;
+    const events = isLive ? (state.currentAgentEvents || []) : historyEventsView.events;
     const btn = document.querySelector(`#${isLive ? 'event-filters' : 'history-event-filters'} .filter-dropdown-btn`);
     if (!btn) return;
 
@@ -158,8 +158,8 @@ function _refreshFilterDropdown(mode) {
     if (!dropdown) return;
     // Re-render dropdown items in place
     const isLive = mode === 'live';
-    const hidden = isLive ? getHiddenFilters() : window.historyFilterHiddenRef;
-    const events = isLive ? (state.currentAgentEvents || []) : null;
+    const hidden = isLive ? getHiddenFilters() : historyEventsView.hidden;
+    const events = isLive ? (state.currentAgentEvents || []) : historyEventsView.events;
 
     const items = FILTER_GROUPS.map(group => {
         const isHidden = hidden ? hidden.has(group.key) : false;

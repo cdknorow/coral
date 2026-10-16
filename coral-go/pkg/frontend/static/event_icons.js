@@ -80,3 +80,8 @@ export function eventVisible(ev, hidden) {
     }
     return true;
 }
+
+/** The History tab's events and its hidden filters, shared with the filter dropdown in agentic_state.js (one dropdown serves both
+ *  views). Mutated in place, never reassigned, so a holder always sees the current ones. */
+export const historyEventsView = { hidden: new Set(), events: [] };
+if (typeof window !== 'undefined') (window.__coral ||= {}).historyFilterHidden = historyEventsView.hidden; // the CDP suites read it

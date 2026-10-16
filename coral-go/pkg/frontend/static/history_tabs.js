@@ -4,11 +4,11 @@ import { state } from './state.js';
 import { escapeHtml, escapeAttr, sanitizeMarkdown } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 import { formatClockTime } from './format.js';
-import { FILTER_GROUPS, getToolIcon, eventVisible } from './event_icons.js';
+import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './event_icons.js';
 
 // The icon and filter definitions are shared with the live Activity view (event_icons.js)
 // Per-session filter state for history
-let historyFilterHidden = new Set();
+const historyFilterHidden = historyEventsView.hidden;
 let historyEvents = [];
 let historyTasks = [];
 let historyAgentNotes = [];
@@ -20,14 +20,16 @@ function isEventVisible(ev) {
 // ── Activity ──────────────────────────────────────────────────────────────
 
 export async function loadHistoryEvents(sessionId) {
-    historyFilterHidden = new Set();
+    historyFilterHidden.clear();
     historyEvents = [];
+    historyEventsView.events = historyEvents;
     try {
         const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/events?limit=200`);
         historyEvents = await resp.json();
     } catch (e) {
         historyEvents = [];
     }
+    historyEventsView.events = historyEvents;
 
     const countEl = document.getElementById('history-activity-count');
     if (countEl) countEl.textContent = historyEvents.length > 0 ? historyEvents.length : '';
@@ -54,9 +56,6 @@ function renderHistoryEventFilters() {
         ${badge}
     </button>`;
 }
-
-// Expose historyFilterHidden for the shared dropdown in agentic_state.js
-window.historyFilterHiddenRef = historyFilterHidden;
 
 export function toggleHistoryEventFilter(key) {
     if (!FILTER_GROUPS.some(g => g.key === key)) return; // only a filter this list has
