@@ -6,6 +6,7 @@ package tunnel
 // Coral handler reads. A name ending in "*" is a file or directory reference. A route not
 // listed here accepts no query parameters at all. "name=a|b" accepts only those exact values, once.
 var routeQueries = map[string]string{
+	"DELETE /api/board/{}/tasks/{}/reminder":            "subscriber_id",
 	"DELETE /api/board/{}/waits":                        "subscriber_id",
 	"DELETE /api/sessions/live/{}/events":               "session_id",
 	"DELETE /api/sessions/live/{}/notes/{}":             "session_id",
@@ -87,6 +88,10 @@ var routeQueries = map[string]string{
 	"PATCH /api/sessions/live/{}/tasks/{}":              "session_id",
 	"POST /api/agent/ui-request":                        "session_id",
 	"POST /api/agent/ui/{}/events":                      "session_id",
+	"POST /api/board/{}/tasks/{}/nudge":                 "subscriber_id",
+	"POST /api/board/{}/tasks/{}/publish":               "subscriber_id",
+	"POST /api/board/{}/tasks/{}/reminder":              "subscriber_id",
+	"POST /api/board/{}/tasks/{}/snooze":                "subscriber_id",
 	"POST /api/sessions/live/{}/notes":                  "session_id",
 	"POST /api/sessions/live/{}/tasks":                  "session_id",
 	"POST /api/sessions/live/{}/tasks/reorder":          "session_id",
