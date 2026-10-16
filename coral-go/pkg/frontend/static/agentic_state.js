@@ -12,6 +12,7 @@ import { durationChip, eventDetailText, eventFailed, renderActivityChart } from 
 import { serverFetch, serverForSession } from './server_base.js';
 import { formatClockTime } from './format.js';
 import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './event_icons.js';
+import { filterItemHtml, refillFilterList, syncFilterExpanded, wireFilterDropdown } from './filter_dropdown.js';
 
 // Hidden filters are persisted per-session in state
 // state.eventFiltersHidden = Set of filter keys that are hidden
@@ -55,7 +56,8 @@ export async function loadAgentEvents(agentName, sessionId, options) {
     const activeCount = FILTER_GROUPS.length - hidden.size;
     const badge = hidden.size > 0 ? `<span class="filter-btn-badge">${activeCount}/${FILTER_GROUPS.length}</span>` : '';
 
-    morphHtml(container, `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="live">
+    morphHtml(container, `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="live"
+        aria-haspopup="menu" aria-expanded="${document.getElementById('filter-dropdown') ? 'true' : 'false'}">
         <span class="event-filter-char">&#xe152;</span>
         <span class="filter-btn-label">Filter</span>
         ${badge}
@@ -70,6 +72,7 @@ export function toggleFilterDropdown(mode) {
     if (existing) {
         existing.remove();
         _filterDropdownMode = null;
+        syncFilterExpanded();
         return;
     }
     _openFilterDropdown(mode);
@@ -92,12 +95,7 @@ function _openFilterDropdown(mode) {
         const checked = !isHidden;
         const count = events ? events.filter(group.match).length : '';
         const countHtml = count !== '' ? `<span class="filter-item-count">${count}</span>` : '';
-        return `<div class="filter-dropdown-item ${escapeAttr(group.cls)}" data-on-click="filter-toggle" data-mode="${escapeAttr(mode)}" data-key="${escapeAttr(group.key)}">
-            <span class="filter-item-icon event-filter-char">${group.label}</span>
-            <span class="filter-item-label">${group.title}</span>
-            ${countHtml}
-            <span class="filter-item-check">${checked ? '&#xe834;' : '&#xe835;'}</span>
-        </div>`;
+        return filterItemHtml(group, mode, checked, countHtml);
     }).join('');
 
     dropdown.innerHTML = `
@@ -114,6 +112,8 @@ function _openFilterDropdown(mode) {
     dropdown.style.left = rect.left + 'px';
 
     document.body.appendChild(dropdown);
+    syncFilterExpanded();
+    wireFilterDropdown(dropdown, () => document.querySelector(`#${isLive ? 'event-filters' : 'history-event-filters'} .filter-dropdown-btn`), () => toggleFilterDropdown(mode));
 
     // Close on outside click
     setTimeout(() => {
@@ -122,6 +122,7 @@ function _openFilterDropdown(mode) {
             if (!dd || (!dd.contains(e.target) && !btn.contains(e.target))) {
                 if (dd) dd.remove();
                 _filterDropdownMode = null;
+                syncFilterExpanded();
                 document.removeEventListener('click', closeHandler);
             }
         };
@@ -167,16 +168,10 @@ function _refreshFilterDropdown(mode) {
         const checked = !isHidden;
         const count = events ? events.filter(group.match).length : '';
         const countHtml = count !== '' ? `<span class="filter-item-count">${count}</span>` : '';
-        return `<div class="filter-dropdown-item ${escapeAttr(group.cls)}" data-on-click="filter-toggle" data-mode="${escapeAttr(mode)}" data-key="${escapeAttr(group.key)}">
-            <span class="filter-item-icon event-filter-char">${group.label}</span>
-            <span class="filter-item-label">${group.title}</span>
-            ${countHtml}
-            <span class="filter-item-check">${checked ? '&#xe834;' : '&#xe835;'}</span>
-        </div>`;
+        return filterItemHtml(group, mode, checked, countHtml);
     }).join('');
 
-    const list = dropdown.querySelector('.filter-dropdown-list');
-    if (list) list.innerHTML = items;
+    refillFilterList(dropdown, items);
 }
 
 export function renderEventTimeline() {
