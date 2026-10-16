@@ -15,6 +15,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -446,7 +447,7 @@ func WriteKnowledgeFile(coralDir, teamName, agentName, content string) error {
 		return err
 	}
 	slug := slugify(agentName)
-	return os.WriteFile(filepath.Join(dir, slug+".md"), []byte(content), 0o600)
+	return secfile.WriteFileNoFollow(filepath.Join(dir, slug+".md"), []byte(content), 0o600)
 }
 
 // WriteKnowledgeIndex writes the team's index.md knowledge file.
@@ -458,7 +459,7 @@ func WriteKnowledgeIndex(coralDir, teamName, content string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "index.md"), []byte(content), 0o600)
+	return secfile.WriteFileNoFollow(filepath.Join(dir, "index.md"), []byte(content), 0o600)
 }
 
 const (
@@ -551,7 +552,7 @@ func writeKnowledgeBundle(coralDir string, bundle *KnowledgeBundle) error {
 	}
 
 	// Write index.md
-	if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte(bundle.IndexMD), 0o600); err != nil {
+	if err := secfile.WriteFileNoFollow(filepath.Join(dir, "index.md"), []byte(bundle.IndexMD), 0o600); err != nil {
 		return err
 	}
 
@@ -559,7 +560,7 @@ func writeKnowledgeBundle(coralDir string, bundle *KnowledgeBundle) error {
 	for name, concept := range bundle.Agents {
 		slug := slugify(name)
 		path := filepath.Join(dir, slug+".md")
-		if err := os.WriteFile(path, []byte(concept.FinalMD), 0o600); err != nil {
+		if err := secfile.WriteFileNoFollow(path, []byte(concept.FinalMD), 0o600); err != nil {
 			return err
 		}
 	}

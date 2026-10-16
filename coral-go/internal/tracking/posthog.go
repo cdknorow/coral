@@ -214,8 +214,8 @@ func trackInstall(gen uint64) {
 	if installID == "" {
 		// New install
 		installID = generateUUID()
-		os.WriteFile(idFile, []byte(installID), 0600)
-		os.WriteFile(versionFile, []byte(currentVersion), 0600)
+		secfile.WriteFileNoFollow(idFile, []byte(installID), 0600)
+		secfile.WriteFileNoFollow(versionFile, []byte(currentVersion), 0600)
 		// Update cache
 		installIDMu.Lock()
 		cachedInstallID = installID
@@ -231,7 +231,7 @@ func trackInstall(gen uint64) {
 
 	if currentVersion != "" && storedVersion != currentVersion {
 		// Version upgrade
-		os.WriteFile(versionFile, []byte(currentVersion), 0600)
+		secfile.WriteFileNoFollow(versionFile, []byte(currentVersion), 0600)
 		postEvent(EventUpgrade, installID, uuid.NewString(), nowUTC(), gen, standardProps())
 	}
 }
