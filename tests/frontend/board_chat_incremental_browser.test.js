@@ -117,9 +117,30 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('showing the panel again for the same board shows its messages at once', shownAtOnce === 4, String(shownAtOnce));
         const keptAgain = await ev(`[...document.querySelectorAll('#board-panel-msgs .mb-message')].map(n => n.__kept || null)`);
         check('and keeps the nodes it had', JSON.stringify(keptAgain) === JSON.stringify(['m0', 'm1', 'm2', null]), JSON.stringify(keptAgain));
+
         await until(() => reqs.length > mark && settled(), 'its first request');
         check('and loads no page: only what is new', reqs.slice(mark).every(r => kind(r) === 'after'), JSON.stringify(reqs.slice(mark).map(kind)));
         check('no request for a count or a page after the first load', reqs.slice(1).every(r => kind(r) === 'after'), JSON.stringify(reqs.map(kind)));
+
+        // ── #3898: the panel itself is kept on a switch within the same board ──
+        await ev(`(() => { const p = document.getElementById('agentic-panel-board'); window.__hdr = p.querySelector('.board-chat-header'); window.__pane = document.getElementById('board-chat-input-pane'); const ta = document.getElementById('board-panel-input'); window.__ta = ta; ta.value = 'a draft I have not sent'; return true; })()`);
+        await ev(`import(${S} + 'render.js').then(m => { m.showBoardChatTab(${JSON.stringify(board)}); return true; })`);
+        check('a draft in the board textarea survives a switch within the same board', await ev(`document.getElementById('board-panel-input').value`) === 'a draft I have not sent');
+        check('and the header, input pane and textarea are the same elements', await ev(`document.querySelector('#agentic-panel-board .board-chat-header') === window.__hdr && document.getElementById('board-chat-input-pane') === window.__pane && document.getElementById('board-panel-input') === window.__ta`));
+        // Select mode is reset by a switch, as the rebuild used to do.
+        await ev(`document.querySelector('#agentic-panel-board .board-select-btn').click(); true`);
+        check('select mode starts', await ev(`document.getElementById('board-chat-select-bar') && document.getElementById('board-chat-select-bar').style.display !== 'none' && document.getElementById('board-chat-input-pane').style.display === 'none'`));
+        await ev(`import(${S} + 'render.js').then(m => { m.showBoardChatTab(${JSON.stringify(board)}); return true; })`);
+        check('a switch ends select mode: bar hidden, input pane back, Export button not active', await ev(`(() => { const bar = document.getElementById('board-chat-select-bar'); return (!bar || bar.style.display === 'none') && document.getElementById('board-chat-input-pane').style.display === '' && !document.querySelector('#agentic-panel-board .board-select-btn').classList.contains('active'); })()`));
+        check('the draft is still there', await ev(`document.getElementById('board-panel-input').value`) === 'a draft I have not sent');
+        // A different board gets its own panel (and an empty draft).
+        const other = board + '-other';
+        await ev(`import(${S} + 'render.js').then(m => { m.showBoardChatTab(${JSON.stringify(other)}); return true; })`);
+        check('a different board gets a new panel with an empty draft', await ev(`document.getElementById('board-panel-input') !== window.__ta && document.getElementById('board-panel-input').value === '' && document.querySelector('#agentic-panel-board .board-chat-title').dataset.board === ${JSON.stringify(other)}`));
+        await ev(`import(${S} + 'render.js').then(m => { m.showBoardChatTab(${JSON.stringify(board)}); return true; })`);
+        check('and coming back to the first board builds its panel again, with its messages', await ev(`document.getElementById('board-panel-input').value === '' && document.querySelector('#agentic-panel-board .board-chat-title').dataset.board === ${JSON.stringify(board)}`));
+        await waitFor(`document.querySelectorAll('#board-panel-msgs .mb-message').length === 4`, 'the messages back', { timeout: 8000, soft: true });
+        check('with the four messages', await ev(`document.querySelectorAll('#board-panel-msgs .mb-message').length`) === 4);
     } catch (e) {
         check('the test ran', false, e.stack || String(e));
     } finally {
