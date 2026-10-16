@@ -159,6 +159,10 @@ type Header struct {
 	// per-user limits only (#3642). It is a field of the stream, not an HTTP header, so it never
 	// reaches the local API; an old hub doesn't send it.
 	HubUser string `json:"hub_user,omitempty"`
+	// HubTier is the viewer's effective tier ("view", "interact" or "launch"), set from the
+	// hub's context (WithHubTier); it decides only whether answers are redacted (hubtier.go).
+	// Missing or anything else is View.
+	HubTier string `json:"hub_tier,omitempty"`
 }
 
 // ResponseHeader answers a Header (connector to hub).

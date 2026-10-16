@@ -393,8 +393,10 @@ func ForwardsHubNotice(method, decodedPath string) bool {
 func scrub(h http.Header, method, decodedPath string) http.Header {
 	out := http.Header{}
 	for k, vs := range h {
-		if forwardRequestHeaders[http.CanonicalHeaderKey(k)] {
-			out[http.CanonicalHeaderKey(k)] = append([]string(nil), vs...)
+		if c := http.CanonicalHeaderKey(k); forwardRequestHeaders[c] {
+			// Appended, not assigned: two spellings of one name stay two values, so the
+			// server's "exactly one" checks see them (Security's #3964 finding 1).
+			out[c] = append(out[c], vs...)
 		}
 	}
 	if !ForwardsHubUser(method, decodedPath) {
@@ -557,7 +559,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		return
 	}
 	req.Header = l.stamp(scrub(h.Headers, h.Method, dec))
-	redactRoute := l.redacting() && redactsRoute(h.Method, dec)
+	redactRoute := l.redactFor(viewerTier(h))() && redactsRoute(h.Method, dec)
 	if redactRoute {
 		// A partial body could start inside a token: the whole reply is fetched and redacted.
 		req.Header.Del("Range")
@@ -1056,7 +1058,7 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 	var toHub *wsRedact
 	if redactsRoute(http.MethodGet, dec) {
 		// What a View stream sends to the hub is redacted (#3562); the setting is read per frame.
-		toHub = newWSRedact(ctx, down, l.redactor(), l.redacting, strings.HasPrefix(dec, "/ws/terminal/"))
+		toHub = newWSRedact(ctx, down, l.redactor(), l.redactFor(viewerTier(h)), strings.HasPrefix(dec, "/ws/terminal/"))
 	}
 	pumpWS(ctx, up, down, gate, toHub)
 }
