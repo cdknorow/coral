@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
@@ -2081,7 +2082,7 @@ func TestIsLocalClient(t *testing.T) {
 	} {
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		r.RemoteAddr = addr
-		assert.Equal(t, want, isLocalClient(r), addr)
+		assert.Equal(t, want, auth.IsDirectLocal(r), addr)
 	}
 }
 

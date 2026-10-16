@@ -10,13 +10,6 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 )
 
-// Editors open on the machine running Coral, so they are only offered to a
-// browser on that same machine; a phone or another computer would launch an
-// editor nobody is looking at.
-func isLocalClient(r *http.Request) bool {
-	return auth.IsDirectLocal(r) // #3585: a proxied request, or any request with the setting on, is not local
-}
-
 // Swapped in tests so nothing is launched.
 var (
 	installedEditors = executil.InstalledEditors
@@ -27,7 +20,9 @@ var (
 // GET /api/system/editors
 func (h *SessionsHandler) ListEditors(w http.ResponseWriter, r *http.Request) {
 	editors := []executil.Editor{}
-	if isLocalClient(r) {
+	// Editors open on the machine running Coral, so they are only offered to a browser on that
+	// same machine (#3585: a proxied request, or any request with the setting on, is not local).
+	if auth.IsDirectLocal(r) {
 		editors = append(editors, installedEditors()...)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"editors": editors})
@@ -38,7 +33,7 @@ func (h *SessionsHandler) ListEditors(w http.ResponseWriter, r *http.Request) {
 // resolve-path, so only files inside the agent's git root open.
 // POST /api/sessions/live/{name}/open-in-editor {filepath, session_id, editor}
 func (h *SessionsHandler) OpenInEditor(w http.ResponseWriter, r *http.Request) {
-	if !isLocalClient(r) {
+	if !auth.IsDirectLocal(r) {
 		errForbidden(w, "Editors can only be opened from this computer")
 		return
 	}

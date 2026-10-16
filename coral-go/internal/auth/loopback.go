@@ -2,6 +2,7 @@ package auth
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -52,6 +53,17 @@ func envOverride() (overridden bool, value bool) {
 func EnvOverridesRequireAuthOnLoopback() bool {
 	overridden, _ := envOverride()
 	return overridden
+}
+
+// IsLoopbackHost reports whether a URL's host is this machine: localhost (any case) or a
+// loopback IP. The one helper for it (#3824; cliauth and cloud each had a copy, pkg/tunnel keeps
+// its own since it imports nothing from internal/).
+func IsLoopbackHost(h string) bool {
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
 }
 
 // requireAuthLoopback is the live value of the require_auth_on_loopback setting (default off).

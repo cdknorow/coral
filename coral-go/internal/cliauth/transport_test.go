@@ -14,6 +14,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/auth"
 )
 
 // a Coral that answers the hello and accepts only correctly signed requests.
@@ -82,10 +84,10 @@ func TestTransportOnlySignsLoopback(t *testing.T) {
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Empty(t, rec.hdr.Get(CLIAuthHeader))
-	assert.True(t, loopbackHost("localhost"))
-	assert.True(t, loopbackHost("127.0.0.1"))
-	assert.True(t, loopbackHost("::1"))
-	assert.False(t, loopbackHost("10.0.0.2"))
+	assert.True(t, auth.IsLoopbackHost("localhost"))
+	assert.True(t, auth.IsLoopbackHost("127.0.0.1"))
+	assert.True(t, auth.IsLoopbackHost("::1"))
+	assert.False(t, auth.IsLoopbackHost("10.0.0.2"))
 }
 
 // The token file must be this user's private regular file.
