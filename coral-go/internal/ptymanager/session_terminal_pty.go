@@ -3,7 +3,6 @@ package ptymanager
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -46,11 +45,11 @@ func (p *PTYSessionTerminal) FindSession(_ context.Context, name, agentType, ses
 	sessions := p.backend.ListSessions()
 	for _, s := range sessions {
 		sessName := naming.SessionName(s.AgentType, s.SessionID)
-		// With a session id only that session matches (#3211): an agent name or folder is
-		// shared by team agents, and the first match would be another agent's terminal.
+		// A session id, or else the session's own backend key (AgentName holds it, unique),
+		// finds a session; never a folder (#3211, #3704): teammates share folders.
 		match := s.SessionID == sessionID
 		if sessionID == "" {
-			match = sessName == name || s.AgentName == name
+			match = s.AgentName == name
 		}
 		if match {
 			return &PaneInfo{
@@ -60,6 +59,9 @@ func (p *PTYSessionTerminal) FindSession(_ context.Context, name, agentType, ses
 				CurrentPath: s.WorkingDir,
 			}, nil
 		}
+	}
+	if sessionID == "" {
+		tmux.WarnBareNameLookup("pty", name)
 	}
 	return nil, nil
 }
@@ -83,23 +85,21 @@ func (p *PTYSessionTerminal) keyFor(name, sessionID string) (string, error) {
 	return "", fmt.Errorf("%w: session %s", ErrTerminalGone, sessionID)
 }
 
-// resolveSessionKey maps a display name, folder name, session ID, or session
-// name to the internal key used by PTYBackend. The backend keys sessions by
-// the naming.SessionName (e.g. "claude-{uuid}"), but callers (HTTP routes)
-// often pass the folder name or agent display name.
+// resolveSessionKey maps a session's key (its session name, "claude-{uuid}") or its session
+// id (a pane's Target) to the key PTYBackend uses. Nothing else names a session (#3704, as
+// #3687 for tmux): an agent name or folder is shared by teammates, so a match could be
+// another agent's terminal. An unknown name is returned as it is, and the backend finds no
+// session for it.
 func (p *PTYSessionTerminal) resolveSessionKey(name string) string {
-	// Fast path: direct match
 	if p.backend.IsRunning(name) {
 		return name
 	}
-	tmux.WarnBareNameLookup("pty", name) // deprecated (#3214): a bare name can match another agent
-	// Search through sessions for a match by display name, folder, or ID
 	for _, s := range p.backend.ListSessions() {
-		sessName := naming.SessionName(s.AgentType, s.SessionID)
-		if s.AgentName == name || s.SessionID == name || filepath.Base(s.WorkingDir) == name {
-			return sessName
+		if s.SessionID == name {
+			return naming.SessionName(s.AgentType, s.SessionID)
 		}
 	}
+	tmux.WarnBareNameLookup("pty", name)
 	return name
 }
 
@@ -179,8 +179,12 @@ func (p *PTYSessionTerminal) SendTerminalInput(_ context.Context, target, data s
 
 // HumanInputSince implements HumanInputReader: whether a person typed in the agent's
 // terminal after t (the gate's PTY rule, #3482).
-func (p *PTYSessionTerminal) HumanInputSince(name string, t time.Time) bool {
-	return p.backend.HumanInputSince(p.resolveSessionKey(name), t)
+func (p *PTYSessionTerminal) HumanInputSince(name, sessionID string, t time.Time) bool {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return false // gone: nobody typed in it
+	}
+	return p.backend.HumanInputSince(key, t)
 }
 
 func (p *PTYSessionTerminal) CreateSession(_ context.Context, name, workDir string) error {
@@ -205,8 +209,8 @@ func (p *PTYSessionTerminal) KillSessionOnly(ctx context.Context, name, agentTyp
 	return p.killByAnyKey(ctx, name, agentType, sessionID)
 }
 
-// killByAnyKey kills the agent's own session: by session id when there is one (#3211: a
-// shared name or folder would kill another agent), else by key, agent name or folder.
+// killByAnyKey kills the agent's own session: by session id or exact session name, or a
+// backend key (#3211, #3704: never by an agent name or folder, which would kill another agent).
 func (p *PTYSessionTerminal) killByAnyKey(_ context.Context, name, agentType, sessionID string) error {
 	if sessionID != "" || isSessionName(name) {
 		key, err := p.keyFor(name, sessionID)
@@ -215,16 +219,10 @@ func (p *PTYSessionTerminal) killByAnyKey(_ context.Context, name, agentType, se
 		}
 		return p.backend.Kill(key)
 	}
-	// Legacy callers without a session id: direct key first, then agent or folder name.
-	if err := p.backend.Kill(name); err == nil {
-		return nil
+	if err := p.backend.Kill(p.resolveSessionKey(name)); err != nil {
+		return fmt.Errorf("session %q not found", name)
 	}
-	for _, s := range p.backend.ListSessions() {
-		if s.AgentName == name || filepath.Base(s.WorkingDir) == name {
-			return p.backend.Kill(naming.SessionName(s.AgentType, s.SessionID))
-		}
-	}
-	return fmt.Errorf("session %q not found", name)
+	return nil
 }
 
 func isSessionName(name string) bool {

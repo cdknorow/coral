@@ -16,7 +16,15 @@ type PTYRuntime struct {
 
 // HumanInputSince implements ptymanager.HumanInputReader: whether a person typed in
 // the agent's terminal after t (the gate's PTY rule, #3482).
-func (r *PTYRuntime) HumanInputSince(name string, t time.Time) bool {
+func (r *PTYRuntime) HumanInputSince(name, sessionID string, t time.Time) bool {
+	if sessionID != "" { // the agent's own terminal (#3704)
+		for _, s := range r.backend.ListSessions() {
+			if s.SessionID == sessionID {
+				return r.backend.HumanInputSince(naming.SessionName(s.AgentType, s.SessionID), t)
+			}
+		}
+		return false
+	}
 	return r.backend.HumanInputSince(name, t)
 }
 

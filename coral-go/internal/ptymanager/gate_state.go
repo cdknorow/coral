@@ -124,9 +124,10 @@ var inTurnFallback = 30 * time.Minute
 var staleInTurn = 2 * time.Minute
 
 // HumanInputReader is implemented by terminals that see every keystroke a person
-// sends to the agent (Coral's own PTYs): whether one arrived after t.
+// sends to the agent (Coral's own PTYs): whether one arrived after t. The terminal is the
+// agent's own, by sessionID when given (#3704: never another agent with the same name).
 type HumanInputReader interface {
-	HumanInputSince(name string, t time.Time) bool
+	HumanInputSince(name, sessionID string, t time.Time) bool
 }
 
 // claudeBusyRe: Claude's working line ("✻ Thinking… (12s · esc to interrupt)").
@@ -215,7 +216,7 @@ func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why,
 	if in.RequireInputBox && (agentType == at.Claude || agentType == at.Codex) && (!haveScreen || !InputBoxOnScreen(screen)) {
 		return true, "signals: idle, the agent's input box isn't on screen yet", "", st, true
 	}
-	if hr, isPTY := in.Term.(HumanInputReader); isPTY && !st.LastStop.IsZero() && hr.HumanInputSince(in.Name, st.LastStop) {
+	if hr, isPTY := in.Term.(HumanInputReader); isPTY && !st.LastStop.IsZero() && hr.HumanInputSince(in.Name, in.SessionID, st.LastStop) {
 		// The PTY's box can't be read; a person who typed since the turn ended has a
 		// draft by definition (2.2.6, P3).
 		return true, whyDraft, "", st, true

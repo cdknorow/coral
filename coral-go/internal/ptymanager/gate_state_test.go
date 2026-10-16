@@ -186,7 +186,7 @@ type ptyAgent struct {
 	typedAt time.Time
 }
 
-func (p *ptyAgent) HumanInputSince(_ string, t time.Time) bool { return p.typedAt.After(t) }
+func (p *ptyAgent) HumanInputSince(_, _ string, t time.Time) bool { return p.typedAt.After(t) }
 
 func TestPTYHoldsWhenAPersonTypedSinceTheTurnEnded(t *testing.T) {
 	fastGate(t)
