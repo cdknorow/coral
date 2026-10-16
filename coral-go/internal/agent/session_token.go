@@ -34,7 +34,7 @@ func sessionTokenPrefix(p LaunchParams, agentType string) string {
 	q := shellQuoteLiteral(path)
 	switch detectShell() {
 	case ShellPowerShell:
-		return fmt.Sprintf("$env:%s = (Get-Content -Raw %s).Trim(); Remove-Item -Force %s;", SessionTokenEnv, q, q)
+		return fmt.Sprintf("$env:%s = (Get-Content -Raw -LiteralPath %s).Trim(); Remove-Item -Force -LiteralPath %s;", SessionTokenEnv, q, q)
 	default:
 		return fmt.Sprintf(`export %s="$(cat %s)"; rm -f %s;`, SessionTokenEnv, q, q)
 	}

@@ -12,5 +12,5 @@ func psLiteral(s string) string {
 // psHandoff is the Windows command handoff for a script at path: the script's text (it removes
 // itself, then runs command) and the short line that runs it.
 func psHandoff(path, command string) (script, invocation string) {
-	return "Remove-Item -Force " + psLiteral(path) + "\n" + command + "\n", "& " + psLiteral(path)
+	return "Remove-Item -Force -LiteralPath " + psLiteral(path) + "\n" + command + "\n", "& " + psLiteral(path)
 }
