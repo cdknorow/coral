@@ -291,7 +291,7 @@ func TestDeleteMessage(t *testing.T) {
 	sub(s, ctx, "proj", "agent-1", "Dev")
 	msg, _ := s.PostMessage(ctx, "proj", "agent-1", "delete me", nil)
 
-	removed, err := s.DeleteMessage(ctx, msg.ID)
+	removed, err := s.DeleteMessage(ctx, "proj", msg.ID)
 	require.NoError(t, err)
 	assert.True(t, removed)
 

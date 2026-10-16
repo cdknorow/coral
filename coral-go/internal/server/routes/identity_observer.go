@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -196,7 +197,16 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			// A presented token decides who the caller is on the board, in every mode
 			// (#3495): an agent can't post or act as another subscriber or as the Operator.
 			// Acting on another board stays log-only outside strict mode.
+			if r.Body != nil && strings.HasPrefix(r.URL.Path, "/api/board/") {
+				// boardClaims reads the body to find the identities it names: never an
+				// unbounded one (#3668, the audit's finding 5).
+				r.Body = http.MaxBytesReader(w, r.Body, maxBoardBody)
+			}
 			m, err := o.checkBoard(r, owner)
+			if errors.Is(err, errBoardBodyTooLarge) {
+				o.refuse(w, http.StatusRequestEntityTooLarge, "body_too_large", "This board request's body is over the limit")
+				return
+			}
 			if err != nil {
 				// The board's subscribers couldn't be read, so a name the request claims can't be
 				// told apart from one another session holds: refused, not let through (#3512).
@@ -267,16 +277,21 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 // token can't use them (the Operator can: the dashboard, an API key, the signed command
 // line); otherwise each agent call is recorded in the identity report.
 var operatorOnlyRoutes = map[string]string{
-	"POST /api/workflows":                        "create a workflow",
-	"PUT /api/workflows/{workflowID}":            "change a workflow",
-	"DELETE /api/workflows/{workflowID}":         "delete a workflow",
-	"POST /api/workflows/{workflowID}/trigger":   "run a workflow",
-	"POST /api/workflows/by-name/{name}/trigger": "run a workflow",
-	"POST /api/scheduled/jobs":                   "schedule a job",
-	"PUT /api/scheduled/jobs/{jobID}":            "change a scheduled job",
-	"DELETE /api/scheduled/jobs/{jobID}":         "delete a scheduled job",
-	"POST /api/scheduled/jobs/{jobID}/toggle":    "turn a scheduled job on or off",
-	"POST /api/tasks/run":                        "start a task run",
+	// #3668 (the board authorization audit): deleting a message, and pausing or resuming a board
+	// (the Operator's brake), are the Operator's.
+	"DELETE /api/board/{project}/messages/{messageID}": "delete a board message",
+	"POST /api/board/{project}/pause":                  "pause a board",
+	"POST /api/board/{project}/resume":                 "resume a board",
+	"POST /api/workflows":                              "create a workflow",
+	"PUT /api/workflows/{workflowID}":                  "change a workflow",
+	"DELETE /api/workflows/{workflowID}":               "delete a workflow",
+	"POST /api/workflows/{workflowID}/trigger":         "run a workflow",
+	"POST /api/workflows/by-name/{name}/trigger":       "run a workflow",
+	"POST /api/scheduled/jobs":                         "schedule a job",
+	"PUT /api/scheduled/jobs/{jobID}":                  "change a scheduled job",
+	"DELETE /api/scheduled/jobs/{jobID}":               "delete a scheduled job",
+	"POST /api/scheduled/jobs/{jobID}/toggle":          "turn a scheduled job on or off",
+	"POST /api/tasks/run":                              "start a task run",
 
 	// #3445: stopping the Operator's runs, and changing Coral's settings (the whole PUT: it holds
 	// cli_path_* (persistent code execution for every later launch), auto-accept, remote access,
@@ -345,9 +360,11 @@ func guardedRoute(r *http.Request) (route string, only, ok bool) {
 			break
 		}
 	}
-	// Board traffic is the busiest: only its DELETEs and PATCHes can be a guarded route
-	// (delete or rename a board).
-	if !hit && !((r.Method == http.MethodDelete || r.Method == http.MethodPatch) && strings.HasPrefix(r.URL.Path, "/api/board/")) {
+	// Board traffic is the busiest: only its DELETEs and PATCHes (delete a board or a message,
+	// rename a board) and its pause and resume can be a guarded route.
+	boardGuarded := strings.HasPrefix(r.URL.Path, "/api/board/") && (r.Method == http.MethodDelete || r.Method == http.MethodPatch ||
+		(r.Method == http.MethodPost && (strings.HasSuffix(r.URL.Path, "/pause") || strings.HasSuffix(r.URL.Path, "/resume"))))
+	if !hit && !boardGuarded {
 		return "", false, false
 	}
 	rc := chi.RouteContext(r.Context())
@@ -594,7 +611,10 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 			first = &m
 		}
 	}
-	claims := boardClaims(r)
+	claims, err := boardClaims(r)
+	if err != nil {
+		return nil, err
+	}
 	// A subscription is bound to the session that holds it: an agent can't subscribe (or
 	// act) under another session's name (#3512).
 	for _, v := range claims["session_name"] {
@@ -662,13 +682,17 @@ const notSubscribed = "(not subscribed)"
 // boardClaims collects the identities a board request names: subscriber_id, as,
 // created_by and session_name, from the query and a JSON body (the body is put back for
 // the handler).
-func boardClaims(r *http.Request) map[string][]string {
+func boardClaims(r *http.Request) (map[string][]string, error) {
 	claims := map[string][]string{}
 	for _, f := range []string{"subscriber_id", "as", "created_by", "session_name"} {
 		claims[f] = append(claims[f], r.URL.Query()[f]...)
 	}
 	if r.Body != nil && r.Body != http.NoBody {
 		raw, err := io.ReadAll(r.Body)
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return nil, errBoardBodyTooLarge
+		}
 		r.Body.Close()
 		r.Body = io.NopCloser(bytes.NewReader(raw))
 		var body map[string]json.RawMessage
@@ -681,8 +705,15 @@ func boardClaims(r *http.Request) map[string][]string {
 			}
 		}
 	}
-	return claims
+	return claims, nil
 }
+
+// maxBoardBody caps a board request's body before the identity check reads it (a board post or
+// a task with its body is far smaller).
+const maxBoardBody = 4 << 20
+
+// errBoardBodyTooLarge is a board request whose body is over maxBoardBody: 413.
+var errBoardBodyTooLarge = errors.New("board request body too large")
 
 func (o *IdentityObserver) mismatch(r *http.Request, owner *store.SessionTokenOwner, kind, expected, claimed, field string) IdentityMismatch {
 	m := IdentityMismatch{At: o.now().UTC().Format(time.RFC3339), Kind: kind, Session: owner.SessionName,

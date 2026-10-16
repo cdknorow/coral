@@ -65,7 +65,7 @@ func TestListMessagesKeyset(t *testing.T) {
 	require.Equal(t, 3, n)
 
 	// A deleted message, even the boundary itself, leaves no gap or repeat.
-	ok, err := s.DeleteMessage(ctx, ids[4])
+	ok, err := s.DeleteMessage(ctx, "proj", ids[4])
 	require.NoError(t, err)
 	require.True(t, ok)
 	got, err = s.ListMessagesBefore(ctx, "proj", ids[6], 3)

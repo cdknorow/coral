@@ -27,7 +27,7 @@ func TestPostHubMessage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, OriginHubUser, *u.Origin)
 	assert.Equal(t, "hub-user-1234abcd", u.SubscriberID)
-	_, err = s.DeleteMessage(ctx, u.ID)
+	_, err = s.DeleteMessage(ctx, "p", u.ID)
 	require.NoError(t, err)
 	local, err := s.PostMessage(ctx, "p", "Operator", "@Dev local", nil)
 	require.NoError(t, err)

@@ -1726,9 +1726,11 @@ func (s *Store) ListGroups(ctx context.Context, project string) ([]GroupInfo, er
 }
 
 // DeleteMessage deletes a single message by ID.
-func (s *Store) DeleteMessage(ctx context.Context, messageID int64) (bool, error) {
+// DeleteMessage deletes one message of a board: an id from another board deletes nothing
+// (#3668, the board authorization audit's finding 1).
+func (s *Store) DeleteMessage(ctx context.Context, project string, messageID int64) (bool, error) {
 	s.unreadCounts.invalidate()
-	result, err := s.db.ExecContext(ctx, "DELETE FROM board_messages WHERE id = ?", messageID)
+	result, err := s.db.ExecContext(ctx, "DELETE FROM board_messages WHERE id = ? AND project = ?", messageID, project)
 	if err != nil {
 		return false, err
 	}

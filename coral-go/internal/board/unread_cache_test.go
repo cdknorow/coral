@@ -85,7 +85,7 @@ func TestCheckUnread_IncrementalMentionsCountMatchesFullCount(t *testing.T) {
 			var ids []int64
 			require.NoError(t, s.db.Select(&ids, "SELECT id FROM board_messages WHERE project = ?", board))
 			if len(ids) > 0 {
-				_, err := s.DeleteMessage(ctx, ids[rng.Intn(len(ids))])
+				_, err := s.DeleteMessage(ctx, board, ids[rng.Intn(len(ids))])
 				require.NoError(t, err)
 				deletions++
 			}
@@ -156,7 +156,7 @@ func TestUnreadCache_StrictBoundAndDeleteBrackets(t *testing.T) {
 
 	// Deletes invalidate both before and after the DELETE.
 	before := s.unreadCounts.epoch.Load()
-	_, err = s.DeleteMessage(ctx, msg.ID)
+	_, err = s.DeleteMessage(ctx, "team", msg.ID)
 	require.NoError(t, err)
 	require.Equal(t, before+2, s.unreadCounts.epoch.Load())
 	before = s.unreadCounts.epoch.Load()

@@ -119,7 +119,7 @@ func TestGetUnreadCounts_IncrementalMatchesFullCount(t *testing.T) {
 			var ids []int64
 			require.NoError(t, s.db.Select(&ids, "SELECT id FROM board_messages WHERE project = ?", board))
 			if len(ids) > 0 {
-				_, err := s.DeleteMessage(ctx, ids[rng.Intn(len(ids))])
+				_, err := s.DeleteMessage(ctx, board, ids[rng.Intn(len(ids))])
 				require.NoError(t, err)
 				ops["delete"]++
 			}

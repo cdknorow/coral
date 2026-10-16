@@ -94,6 +94,28 @@ func (s *Store) ensureBoardSettingsSchema(ctx context.Context) error {
 	return err
 }
 
+// settingPaused marks a board the Operator (or a team sleep) paused (#3668).
+const settingPaused = "paused"
+
+// SetBoardPaused stores whether a board is paused.
+func (s *Store) SetBoardPaused(ctx context.Context, project string, paused bool) error {
+	if !paused {
+		_, err := s.db.ExecContext(ctx, `DELETE FROM board_settings WHERE project = ? AND key = ?`, project, settingPaused)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO board_settings (project, key, value) VALUES (?, ?, 'true')
+		 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`, project, settingPaused)
+	return err
+}
+
+// PausedBoards lists the boards stored as paused.
+func (s *Store) PausedBoards(ctx context.Context) ([]string, error) {
+	var out []string
+	err := s.db.SelectContext(ctx, &out, `SELECT project FROM board_settings WHERE key = ? AND value = 'true'`, settingPaused)
+	return out, err
+}
+
 // GetBoardSettings returns a board's settings (defaults when none are stored).
 func (s *Store) GetBoardSettings(ctx context.Context, project string) (BoardSettings, error) {
 	var rows []struct {

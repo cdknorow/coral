@@ -356,6 +356,7 @@ func (s *Server) RestoreSleepingBoards() {
 	if s.boardHandler == nil {
 		return
 	}
+	s.boardHandler.LoadPaused(ctx) // the Operator's pauses survive a restart (#3668)
 	boards, err := ss.GetSleepingBoardNames(ctx)
 	if err != nil || len(boards) == 0 {
 		return

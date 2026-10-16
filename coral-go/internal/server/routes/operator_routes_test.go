@@ -49,6 +49,10 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		r.Delete("/api/board/{project}", ok)
 		r.Patch("/api/board/{project}", ok)
 		r.Delete("/api/board/{project}/subscribe", ok)
+		r.Delete("/api/board/{project}/messages/{messageID}", ok)
+		r.Post("/api/board/{project}/pause", ok)
+		r.Post("/api/board/{project}/resume", ok)
+		r.Post("/api/board/{project}/messages", ok)
 		r.Get("/api/workflows", ok)
 		do := func(method, path string, hdr map[string]string) *httptest.ResponseRecorder {
 			req := httptest.NewRequest(method, path, strings.NewReader("{}"))
@@ -75,6 +79,9 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 			{"GET", "/api/system/api-key"}, {"DELETE", "/api/board/coral-go-team"},
 			// #3536: renaming a board
 			{"PATCH", "/api/board/coral-go-team"},
+			// #3668: deleting a board message, pausing and resuming a board
+			{"DELETE", "/api/board/coral-go-team/messages/42"}, {"POST", "/api/board/coral-go-team/pause"},
+			{"POST", "/api/board/coral-go-team/resume"},
 		}
 		for _, wr := range writes {
 			rec := do(wr.method, wr.path, agent)
@@ -97,6 +104,7 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		assert.Equal(t, http.StatusOK, do("POST", "/api/sessions/launch-team", agent).Code, "team launches are allowed")
 		assert.Equal(t, http.StatusOK, do("PUT", "/api/settings/git-diff-mode", agent).Code, "other settings routes are not gated")
 		assert.Equal(t, http.StatusOK, do("DELETE", "/api/board/coral-go-team/subscribe", agent).Code, "an agent can still leave its board")
+		assert.Equal(t, http.StatusOK, do("POST", "/api/board/coral-go-team/messages", agent).Code, "and post on it")
 		// Reads stay open to agents; the Operator (here the dashboard's sign-in) can write.
 		assert.Equal(t, http.StatusOK, do("GET", "/api/workflows", agent).Code)
 		cookie = true

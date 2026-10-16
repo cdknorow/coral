@@ -98,7 +98,7 @@ func TestBoardNotifier_MentionsNudgesTrackUnreadCount(t *testing.T) {
 	pass()
 	assert.Contains(t, lastNudge(), "You have 2 unread messages")
 
-	_, err = bs.DeleteMessage(ctx, first)
+	_, err = bs.DeleteMessage(ctx, "team", first)
 	require.NoError(t, err)
 	n.now = func() time.Time { return time.Now().Add(4 * defaultRemindAfter) }
 	pass()
