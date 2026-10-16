@@ -108,7 +108,19 @@ type cdp struct {
 func launchChrome(t *testing.T) (*cdp, func()) {
 	t.Helper()
 	bin := chromePath()
-	profile := t.TempDir()
+	// Not t.TempDir: Chrome's helper processes can still be writing the profile for a moment after
+	// the browser is killed, and t.TempDir fails the test when its RemoveAll does. Removed best-effort
+	// once the test is done, after a short wait for those helpers.
+	profile, err := os.MkdirTemp("", "coral-chrome4429-")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for i := 0; i < 20; i++ {
+			if os.RemoveAll(profile) == nil {
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
 	// A free debug port: let Chrome pick it and read DevToolsActivePort.
 	cmd := exec.Command(bin, "--headless=new", "--remote-debugging-port=0", "--no-first-run",
 		"--no-default-browser-check", "--disable-gpu", "--user-data-dir="+profile, "about:blank")
