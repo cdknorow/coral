@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/secfile/secfiletest"
 )
 
 // #3690 (#3689 finding 2): with the temp folder under a name holding an apostrophe (a profile
@@ -31,4 +33,19 @@ func TestWindowsCommandHandoffWithAnApostropheInThePath(t *testing.T) {
 	entries, err := os.ReadDir(tmp)
 	require.NoError(t, err)
 	assert.Empty(t, entries, "the script removed itself")
+}
+
+// #3906 (sweep item 8): the handoff script, which holds the launch line, has an access list of
+// its own (this user and SYSTEM), not the temp folder's.
+func TestWindowsCommandHandoffIsPrivate(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMP", tmp)
+	t.Setenv("TEMP", tmp)
+	_, cleanup, err := commandInvocation("Write-Output coral-handoff-ok")
+	require.NoError(t, err)
+	defer cleanup()
+	scripts, err := filepath.Glob(filepath.Join(tmp, "coral-command-*.ps1"))
+	require.NoError(t, err)
+	require.Len(t, scripts, 1)
+	secfiletest.RequirePrivate(t, scripts[0])
 }
