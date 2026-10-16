@@ -945,6 +945,11 @@ export function setLiveViewMode(mode) {
     }
 }
 
+/** Show the terminal for this agent without changing the saved Chat/Terminal choice. */
+export function showTerminalView() {
+    applyLiveViewMode("terminal");
+}
+
 // ── Pending (sent, not yet in the transcript) messages ───────────────────
 // A message typed into the command box only reaches the transcript once the
 // agent takes it, which can be a whole turn later. Until then it is shown at
@@ -1286,11 +1291,6 @@ function noteAgentActivity(sessionId, msg) {
     if (!sent) return;
     const ts = Date.parse(msg.timestamp || "");
     if (Number.isNaN(ts) || ts >= sent - 2000) lastSendAt.delete(sessionId);
-}
-
-/** Show the terminal for this agent without changing the saved Chat/Terminal choice. */
-export function showTerminalView() {
-    applyLiveViewMode("terminal");
 }
 
 function agentIsWorking(session) {
