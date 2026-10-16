@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"sync"
 	"testing"
@@ -235,4 +236,31 @@ func TestChatReplyCachedReadIsTheExactTargets(t *testing.T) {
 	r = chatReply(t, server.URL+"/api/sessions/live/claude-else", q)
 	_, has = r["prompt_options"]
 	assert.False(t, has, "another terminal with this session's id: not given the cached screen")
+}
+
+// A shared read runs on its own context (Security on #3745): a poller whose request is already gone does
+// not leave the others an empty options list for the rest of the window.
+func TestChatReplySharedReadOutlivesItsFirstPoller(t *testing.T) {
+	server, handler, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-00000000c4b3"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "claude-gone", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-gone", "/tmp/test")
+	terminal.mu.Lock()
+	terminal.outputs["claude-gone"] = screenPermission
+	terminal.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the first poller has gone away before the read
+	r := httptest.NewRequest(http.MethodGet, "/api/sessions/live/claude-gone/chat", nil).WithContext(ctx)
+	reply := map[string]any{}
+	handler.addNeedsInput(r, reply, "claude-gone", "claude", sid)
+	po, ok := reply["prompt_options"].(promptScreen)
+	require.True(t, ok, "the read is made on its own context")
+	assert.Len(t, po.Options, 4)
+
+	// The next poll, inside the window, gets the options too, not an empty list.
+	next := chatReply(t, server.URL+"/api/sessions/live/claude-gone", url.Values{"session_id": {sid}, "agent_type": {"claude"}, "after": {"1"}})
+	np, _ := next["prompt_options"].(map[string]any)
+	o, _ := np["options"].([]any)
+	assert.Len(t, o, 4)
 }

@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -199,8 +200,8 @@ func parseReview(lines []string, questionAt int) []promptReviewItem {
 // Characters Claude Code draws before a review item (focus bar, indent)
 const reviewMarkers = " \t│┃▎▍▌|>"
 
-func (h *SessionsHandler) capturePromptScreen(r *http.Request, name, agentType, sessionID string) (promptScreen, bool) {
-	text, err := h.terminal.CaptureOutput(r.Context(), name, 80, agentType, sessionID)
+func (h *SessionsHandler) capturePromptScreen(ctx context.Context, name, agentType, sessionID string) (promptScreen, bool) {
+	text, err := h.terminal.CaptureOutput(ctx, name, 80, agentType, sessionID)
 	if err != nil || text == "" {
 		return promptScreen{}, false
 	}
@@ -242,7 +243,7 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	screen, ok := h.capturePromptScreen(r, name, body.AgentType, body.SessionID)
+	screen, ok := h.capturePromptScreen(r.Context(), name, body.AgentType, body.SessionID)
 	if !ok || body.N > len(screen.Options) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "The prompt is no longer open. Check the terminal."})
 		return

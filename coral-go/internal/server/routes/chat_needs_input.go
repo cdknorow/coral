@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"sync"
@@ -31,6 +32,11 @@ type promptHints struct {
 
 // promptReadTTL is how long one read of a session's prompt options answers its polls (a var for tests).
 var promptReadTTL = 2 * time.Second
+
+// promptReadTimeout bounds a shared read. It runs on its own context, not the first poller's request: a
+// client that goes away mid-read must not leave the others an empty list for promptReadTTL (Security on
+// #3745).
+var promptReadTimeout = 5 * time.Second
 
 // promptRead is one read of a session's prompt options; done closes when it is complete.
 type promptRead struct {
@@ -148,13 +154,15 @@ func (h *SessionsHandler) addNeedsInput(r *http.Request, reply map[string]any, n
 	// One read per target per promptReadTTL, keyed on the exact target it checked, so a poll naming another
 	// terminal never gets this one's screen.
 	screen, shown := h.hints.read(promptReadKey(sessionID, name, agentType), time.Now(), func() (promptScreen, bool) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), promptReadTimeout)
+		defer cancel()
 		// The check GET /prompt-options used to make: the pane read is the exact target's, never another agent's.
 		if shouldValidateExactTarget(agentType, sessionID) {
-			if _, status, _ := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
+			if _, status, _ := h.validateExactLiveTarget(ctx, name, agentType, sessionID, false); status != 0 {
 				return promptScreen{}, false
 			}
 		}
-		s, ok := h.capturePromptScreen(r, name, agentType, sessionID)
+		s, ok := h.capturePromptScreen(ctx, name, agentType, sessionID)
 		if !ok {
 			s = promptScreen{Options: []promptOption{}}
 		}

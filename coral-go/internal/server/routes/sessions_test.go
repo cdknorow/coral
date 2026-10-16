@@ -129,7 +129,7 @@ func (m *mockSessionTerminal) FindSession(_ context.Context, name, _, _ string) 
 	return nil, fmt.Errorf("session %q not found", name)
 }
 
-func (m *mockSessionTerminal) CaptureOutput(_ context.Context, name string, _ int, _, _ string) (string, error) {
+func (m *mockSessionTerminal) CaptureOutput(ctx context.Context, name string, _ int, _, _ string) (string, error) {
 	m.mu.Lock()
 	m.captures = append(m.captures, name)
 	out, ok := m.outputs[name]
@@ -137,6 +137,9 @@ func (m *mockSessionTerminal) CaptureOutput(_ context.Context, name string, _ in
 	m.mu.Unlock()
 	if hook != nil {
 		hook(name)
+	}
+	if err := ctx.Err(); err != nil { // as a real capture does when its request is gone
+		return "", err
 	}
 	if ok {
 		return out, nil
