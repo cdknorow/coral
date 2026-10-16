@@ -162,7 +162,8 @@ func TestPasswordSetChangeAndSessions(t *testing.T) {
 
 	// Set: needs a session (or the CLI), and an Origin.
 	w, out := g.do(g.ar.SetPassword, g.req("POST", "/api/auth/password/set", `{"password":"first"}`, "10.0.0.5", nil))
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, "password_session_required", out["code"], "never dashboard_auth_required (#52473)")
 	r := g.req("POST", "/api/auth/password/set", `{"password":"first"}`, "10.0.0.5", me)
 	r.Header.Del("Origin")
 	w, out = g.do(g.ar.SetPassword, r)
@@ -379,4 +380,54 @@ func TestAuthPageHeadersInEveryState(t *testing.T) {
 		assert.Equal(t, tc.wantCode, strings.Contains(w.Body.String(), `id="setup-code"`), name)
 		assert.NotContains(t, w.Body.String(), "<script>", name+": no inline script")
 	}
+}
+
+// DevOps's #52473 (Security's ruling): every browser sign-in (link, key form, password) may list
+// sessions and sign out others; with no browser session the answer is 403 password_session_required,
+// never 401 dashboard_auth_required (which the dashboard takes as "signed out"), in every mode,
+// sets no cookie, and reads the same whether or not a password exists.
+func TestSettingsSessionsWorkForEverySignIn(t *testing.T) {
+	g := newPwRig(t)
+	link, err := g.ks.NewSession(g.req("GET", "/", "", "10.0.0.5", nil), SessionByLink, false)
+	require.NoError(t, err)
+	key, err := g.ks.NewSession(g.req("GET", "/", "", "10.0.0.6", nil), SessionByKey, false)
+	require.NoError(t, err)
+	for name, tok := range map[string]string{"link": link, "key": key} {
+		c := &http.Cookie{Name: g.ks.cookieBase, Value: tok}
+		w, out := g.do(g.ar.Sessions, g.req("GET", "/api/auth/sessions", "", "10.0.0.5", c))
+		require.Equal(t, http.StatusOK, w.Code, "%s: %v", name, out)
+	}
+	w, out := g.do(g.ar.SignOutOthers, g.req("POST", "/api/auth/sessions/sign-out-others", `{}`, "10.0.0.5", &http.Cookie{Name: g.ks.cookieBase, Value: link}))
+	require.Equal(t, http.StatusOK, w.Code, "%v", out)
+	assert.False(t, g.ks.ValidateSession(key))
+
+	noSession := func() map[string]string {
+		bodies := map[string]string{}
+		for _, strict := range []bool{false, true} {
+			g.ar.SetStrictLocal(strict)
+			for _, c := range []struct {
+				name string
+				h    http.HandlerFunc
+				m, p string
+			}{
+				{"sessions", g.ar.Sessions, "GET", "/api/auth/sessions"},
+				{"sign-out-others", g.ar.SignOutOthers, "POST", "/api/auth/sessions/sign-out-others"},
+				{"change", g.ar.ChangePassword, "POST", "/api/auth/password/change"},
+				{"set", g.ar.SetPassword, "POST", "/api/auth/password/set"},
+			} {
+				for _, addr := range []string{"127.0.0.1", "10.0.0.9"} {
+					w, out := g.do(c.h, g.req(c.m, c.p, `{"current":"x","password":"y"}`, addr, nil))
+					assert.Equal(t, http.StatusForbidden, w.Code, "%s strict=%v %s", c.name, strict, addr)
+					assert.Equal(t, "password_session_required", out["code"], "%s strict=%v %s", c.name, strict, addr)
+					assert.Empty(t, w.Result().Cookies(), c.name)
+					bodies[c.name] = w.Body.String()
+				}
+			}
+		}
+		return bodies
+	}
+	without := noSession()
+	g.setPassword("pw")
+	with := noSession()
+	assert.Equal(t, without, with, "the answer doesn't tell whether a password exists")
 }

@@ -175,8 +175,14 @@ func (ar *Routes) SignInWithPassword(w http.ResponseWriter, r *http.Request) {
 // signedIn reports a live browser session on r.
 func (ar *Routes) signedIn(r *http.Request) bool { return ar.ks.HasValidSession(r) }
 
+// notSignedIn answers a request that has no browser session where one is needed. It is 403
+// password_session_required, never 401 dashboard_auth_required: the dashboard takes that code as "you are
+// signed out" and covers the whole page, while this is one Settings action (DevOps's #52473:
+// with strict local auth off, a dashboard on this computer has no session cookie at all). The
+// routes stay session-only (Security): any browser session counts (a link, the key form or the
+// password), never the CLI signature or the API key alone.
 func notSignedIn(w http.ResponseWriter) {
-	authError(w, http.StatusUnauthorized, "dashboard_auth_required", "Sign in first")
+	authError(w, http.StatusForbidden, "password_session_required", "Sign in to the dashboard in this browser first (the password, or 'coral open' on this computer)")
 }
 
 // hashNew validates and hashes a new password, holding a hash slot (it costs what a check
