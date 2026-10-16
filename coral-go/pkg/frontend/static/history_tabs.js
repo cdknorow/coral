@@ -4,79 +4,17 @@ import { state } from './state.js';
 import { escapeHtml, escapeAttr, sanitizeMarkdown } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 import { formatClockTime } from './format.js';
+import { FILTER_GROUPS, getToolIcon, eventVisible } from './event_icons.js';
 
-// Re-use tool icon/filter definitions from agentic_state.js
-const TOOL_ICONS = {
-    Read:       { char: '&#xe8f4;', cls: 'tool-read' },
-    Write:      { char: '&#xe3c9;', cls: 'tool-write' },
-    Edit:       { char: '&#xe3c9;', cls: 'tool-edit' },
-    Bash:       { char: '&#xeb8e;', cls: 'tool-bash' },
-    Grep:       { char: '&#xe8b6;', cls: 'tool-grep' },
-    Glob:       { char: '&#xe2c8;', cls: 'tool-glob' },
-    WebFetch:   { char: '&#xe894;', cls: 'tool-web' },
-    WebSearch:  { char: '&#xf02e;', cls: 'tool-web' },
-    TaskCreate: { char: '&#xe145;', cls: 'tool-task' },
-    TaskUpdate: { char: '&#xe8d5;', cls: 'tool-task' },
-    TaskList:   { char: '&#xe8ef;', cls: 'tool-task' },
-    TaskGet:    { char: '&#xe8ef;', cls: 'tool-task' },
-    Task:       { char: '&#xea21;', cls: 'tool-agent' },
-};
-
-const FILTER_GROUPS = [
-    { key: 'read',   label: '&#xe8f4;', title: 'Read',          cls: 'tool-read',   match: ev => ev.tool_name === 'Read' },
-    { key: 'write',  label: '&#xe3c9;', title: 'Write',         cls: 'tool-write',  match: ev => ev.tool_name === 'Write' },
-    { key: 'edit',   label: '&#xe3c9;', title: 'Edit',          cls: 'tool-edit',   match: ev => ev.tool_name === 'Edit' },
-    { key: 'bash',   label: '&#xeb8e;', title: 'Bash',          cls: 'tool-bash',   match: ev => ev.tool_name === 'Bash' },
-    { key: 'search', label: '&#xe8b6;', title: 'Grep / Glob',   cls: 'tool-grep',   match: ev => ev.tool_name === 'Grep' || ev.tool_name === 'Glob' },
-    { key: 'web',    label: '&#xe894;', title: 'Web',           cls: 'tool-web',    match: ev => ev.tool_name === 'WebFetch' || ev.tool_name === 'WebSearch' },
-    { key: 'task',   label: '&#xe8ef;', title: 'Tasks',         cls: 'tool-task',   match: ev => ['TaskCreate','TaskUpdate','TaskList','TaskGet'].includes(ev.tool_name) },
-    { key: 'agent',  label: '&#xea21;', title: 'Subagents',     cls: 'tool-agent',  match: ev => ev.tool_name === 'Task' },
-    { key: 'thinking',   label: '&#xea4a;', title: 'Thinking',        cls: 'tool-thinking',   match: ev => ev.event_type === 'thinking' },
-    { key: 'status',     label: '&#xe8b8;', title: 'Status',          cls: 'tool-status',     match: ev => ev.event_type === 'status' },
-    { key: 'goal',       label: '&#xe153;', title: 'Goal',            cls: 'tool-goal',       match: ev => ev.event_type === 'goal' },
-    { key: 'confidence', label: '&#xe8e8;', title: 'Confidence',      cls: 'tool-confidence', match: ev => ev.event_type === 'confidence' },
-    { key: 'system',     label: '&#xe002;', title: 'Stop / Notify',   cls: 'tool-stop',       match: ev => ev.event_type === 'stop' || ev.event_type === 'notification' },
-    { key: 'pulse',      label: '&#xe87e;', title: 'Pulse (other)',   cls: 'tool-pulse',      match: ev => ev.event_type && !ev.tool_name && !['thinking','status','goal','confidence','stop','notification'].includes(ev.event_type) },
-];
-
+// The icon and filter definitions are shared with the live Activity view (event_icons.js)
 // Per-session filter state for history
 let historyFilterHidden = new Set();
 let historyEvents = [];
 let historyTasks = [];
 let historyAgentNotes = [];
 
-// Icons for agent event types
-const EVENT_ICONS = {
-    thinking:     { char: '&#xea4a;', cls: 'tool-thinking',   title: 'Thinking' },
-    status:       { char: '&#xe8b8;', cls: 'tool-status',     title: 'Status' },
-    goal:         { char: '&#xe153;', cls: 'tool-goal',       title: 'Goal' },
-    confidence:   { char: '&#xe8e8;', cls: 'tool-confidence', title: 'Confidence' },
-    stop:         { char: '&#xe002;', cls: 'tool-stop',       title: 'Stop' },
-    notification: { char: '&#xe7f4;', cls: 'tool-notification', title: 'Notification' },
-};
-
-function getToolIcon(toolName, eventType) {
-    // Check agent event types first
-    const eventIcon = EVENT_ICONS[eventType];
-    if (eventIcon) return { ...eventIcon };
-    // Tool-based events
-    const icon = TOOL_ICONS[toolName];
-    if (icon) return { ...icon, title: toolName };
-    // Generic fallback for unknown event types
-    if (eventType && !toolName) {
-        const label = eventType.charAt(0).toUpperCase();
-        const title = eventType.charAt(0).toUpperCase() + eventType.slice(1);
-        return { char: '&#xe87e;', cls: 'tool-pulse', title };
-    }
-    return { char: '&#xe061;', cls: 'tool-default', title: toolName || eventType || 'Event' };
-}
-
 function isEventVisible(ev) {
-    if (historyFilterHidden.size === 0) return true;
-    for (const group of FILTER_GROUPS) {
-        if (historyFilterHidden.has(group.key) && group.match(ev)) return false;
-    }
-    return true;
+    return eventVisible(ev, historyFilterHidden);
 }
 
 // ── Activity ──────────────────────────────────────────────────────────────
