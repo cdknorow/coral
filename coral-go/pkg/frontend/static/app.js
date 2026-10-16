@@ -26,14 +26,6 @@ import { initEditions } from './editions.js';
 import './modal_chrome.js'; // modal backdrop/Escape/Tab handling for every dialog (#3140)
 import './board_choice.js'; // the duplicate-name choice used by the lazy modals.js (#3538): loaded at startup so a launch never fails on it
 import './dialog_focus.js'; // focus into a dialog and back to its opener (accessibility pass); used by lazy modals.js
-import './launch_state.js'; // the launch flow's shared state, used by the lazy modals.js (#3836): loaded at startup so a launch never fails on it
-import './launch_models.js'; // the launch dialogs' per-server settings and model lists, used by the lazy modals.js (#3836): loaded at startup for the same reason
-import './agent_presets.js'; // the agent presets and capability list, used by the lazy modals.js (#3844): loaded at startup for the same reason
-import './permission_flags.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
-import './cli_check.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
-import './acf_models.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
-import './persona_store.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
-import './agent_config_form.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
 import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
 import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';

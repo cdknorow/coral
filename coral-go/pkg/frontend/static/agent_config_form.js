@@ -1,10 +1,11 @@
 /* Moved out of modals.js as it was (#3844): no behaviour change. */
-import { ALL_CAPABILITIES } from './agent_presets.js';
-import { PERMISSION_MODE_DESCRIPTIONS, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions } from './permission_flags.js';
-import { _acfServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _settingsFor } from './launch_models.js';
-import { _checkAgentCLI } from './cli_check.js';
-import { _classifyLoadedACFModel } from './acf_models.js';
-import { _renderPresetButtons } from './persona_store.js';
+import { importOnce } from './import_once.js';
+const { ALL_CAPABILITIES } = await importOnce('./agent_presets.js');
+const { PERMISSION_MODE_DESCRIPTIONS, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions } = await importOnce('./permission_flags.js');
+const { _acfServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _settingsFor } = await importOnce('./launch_models.js');
+const { _checkAgentCLI } = await importOnce('./cli_check.js');
+const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
+const { _renderPresetButtons } = await importOnce('./persona_store.js');
 import { escapeHtml, escapeAttr } from './utils.js';
 
 // ── Permissions Editor ─────────────────────────────────────────────────

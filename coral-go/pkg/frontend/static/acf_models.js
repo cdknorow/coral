@@ -1,5 +1,6 @@
 /* Moved out of modals.js as it was (#3844): no behaviour change. */
-import { _acfServer, _getAgentModels, _getDefaultModels } from './launch_models.js';
+import { importOnce } from './import_once.js';
+const { _acfServer, _getAgentModels, _getDefaultModels } = await importOnce('./launch_models.js');
 
 // A persisted model is not automatically a user edit. Treat known provider
 // defaults/models as replaceable when the provider changes, while preserving

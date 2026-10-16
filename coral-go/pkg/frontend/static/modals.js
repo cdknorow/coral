@@ -24,14 +24,14 @@ import {
 import { settingBool, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 import { pollEvery } from './overload.js';
 import { attachDialogFocus } from './dialog_focus.js';
-import { launch } from './launch_state.js';
-import { _acfServer, _effectiveServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _invalidateDefaultModels, _loadServerSettings, _serverSettings, _settingsFor } from './launch_models.js';
-import { AGENT_PRESETS, ALL_CAPABILITIES } from './agent_presets.js';
-import { PERMISSION_MODE_DESCRIPTIONS, _getPermissionFlagsForAgentMode, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions, _updatePermModeDescription } from './permission_flags.js';
-import { CLI_INSTALL_INSTRUCTIONS, _checkAgentCLI } from './cli_check.js';
-import { _classifyLoadedACFModel } from './acf_models.js';
-import { _findPersona, _getSavedPersonas, _getSavedTeamTemplates, _renderPresetButtons, _setSavedPersonas, _setSavedTeamTemplates } from './persona_store.js';
-import { _syncACFModelField, _togglePermChip, _togglePermissions, getAgentConfig, renderAgentConfigForm, setAgentConfig } from './agent_config_form.js';
+const { launch } = await importOnce('./launch_state.js');
+const { _acfServer, _effectiveServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _invalidateDefaultModels, _loadServerSettings, _serverSettings, _settingsFor } = await importOnce('./launch_models.js');
+const { AGENT_PRESETS, ALL_CAPABILITIES } = await importOnce('./agent_presets.js');
+const { PERMISSION_MODE_DESCRIPTIONS, _getPermissionFlagsForAgentMode, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions, _updatePermModeDescription } = await importOnce('./permission_flags.js');
+const { CLI_INSTALL_INSTRUCTIONS, _checkAgentCLI } = await importOnce('./cli_check.js');
+const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
+const { _findPersona, _getSavedPersonas, _getSavedTeamTemplates, _renderPresetButtons, _setSavedPersonas, _setSavedTeamTemplates } = await importOnce('./persona_store.js');
+const { _syncACFModelField, _togglePermChip, _togglePermissions, getAgentConfig, renderAgentConfigForm, setAgentConfig } = await importOnce('./agent_config_form.js');
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
 

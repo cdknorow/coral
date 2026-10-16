@@ -20,13 +20,17 @@ const BASE = require('./test_base').BASE;
     const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
     const reqs = [];
     let block = 0; // fail this many requests for modals.js
+    let blockMember = 0; // fail this many requests for launch_models.js, a module modals.js loads (#3836 family)
     try {
         await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
         await Network.setCacheDisabled({ cacheDisabled: true });
         Network.requestWillBeSent(e => reqs.push(e.request.url));
-        await Fetch.enable({ patterns: [{ urlPattern: '*/modals.js*', requestStage: 'Request' }] });
-        Fetch.requestPaused(e => (block > 0 ? (block--, Fetch.failRequest({ requestId: e.requestId, errorReason: 'InternetDisconnected' }))
-            : Fetch.continueRequest({ requestId: e.requestId })));
+        await Fetch.enable({ patterns: [{ urlPattern: '*/modals.js*', requestStage: 'Request' }, { urlPattern: '*/launch_models.js*', requestStage: 'Request' }] });
+        Fetch.requestPaused(e => {
+            const member = /\/launch_models\.js/.test(e.request.url);
+            if (member ? blockMember > 0 : block > 0) { if (member) blockMember--; else block--; return Fetch.failRequest({ requestId: e.requestId, errorReason: 'InternetDisconnected' }); }
+            return Fetch.continueRequest({ requestId: e.requestId });
+        });
         const count = name => reqs.filter(u => new RegExp(`/${name}(\\?|$)`).test(new URL(u).pathname + (new URL(u).search ? '?' : ''))).length;
         const shown = id => ev(`(() => { const m = document.getElementById(${JSON.stringify(id)}); return !!m && m.style.display !== 'none' && m.getClientRects().length > 0; })()`);
         const escape = () => ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
@@ -119,6 +123,22 @@ const BASE = require('./test_base').BASE;
         assert.equal(count('modals.js'), 1, 'modals.js loaded for the restart dialog');
         await escape();
         console.log('   ✓ restart dialog (controls.js) loads the dialogs first: its agent config form renders');
+
+        // 7. The pieces modals.js loads with it (launch_models.js, ...) are one family: a cold load requests none of them, and if one
+        // fails the dialog toasts and the next click retries the piece (?retry=1) and the dialog.
+        reqs.length = 0; blockMember = 1;
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+        await coralReady('startup', 'liveList', 'liveListLoaded', 'settings');
+        for (const m of ['launch_models.js', 'launch_state.js', 'agent_config_form.js', 'persona_store.js']) assert.equal(count(m), 0, 'a cold load does not request ' + m);
+        await ev(`window.showSettingsModal(); true`);
+        await waitFor(`[...document.querySelectorAll('.toast')].some(t => /Could not load this dialog/.test(t.textContent))`, 'the failure toast for a failed piece', 5000);
+        assert.ok(!(await shown('settings-modal')), 'no dialog after a piece failed');
+        await ev(`window.showSettingsModal(); true`);
+        await waitFor(`(() => { const m = document.getElementById('settings-modal'); return m && m.style.display !== 'none'; })()`, 'the settings dialog after the retry', 5000);
+        const memberUrls = reqs.filter(u => /\/launch_models\.js/.test(u)).map(u => u.split('/').pop());
+        assert.deepEqual(memberUrls, ['launch_models.js', 'launch_models.js?retry=1'], 'the piece failed once, then retried under a new URL: ' + JSON.stringify(memberUrls));
+        await escape();
+        console.log('   ✓ a failed piece of modals.js -> toast, next click retries it (?retry=1) and the dialog opens');
         console.log('PASS modals_lazy_browser');
     } finally {
         await client.close();
