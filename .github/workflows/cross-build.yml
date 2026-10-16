@@ -56,7 +56,7 @@ jobs:
           TARGET: ${{ matrix.target }}
           CGO_ENABLED: "0"
         run: GOOS="${TARGET%/*}" GOARCH="${TARGET#*/}" go build -o /dev/null ./...
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gocache.outputs.cache-hit != 'true'
+      - if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/4126-xb') && steps.gocache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
@@ -97,7 +97,7 @@ jobs:
           ARCH: ${{ matrix.arch }}
           CGO_ENABLED: "1"
         run: GOOS=darwin GOARCH="$ARCH" go build -o /dev/null ./...
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gocache.outputs.cache-hit != 'true'
+      - if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/4126-xb') && steps.gocache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
