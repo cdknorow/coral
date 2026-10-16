@@ -17,9 +17,16 @@ const RELOAD_DELAY_MS = 5000;
     return m ? m[1] : '';
 }
 
-/** Whether an answer's build header says this page is out of date. */
+/** Whether an answer's build header says this page is out of date. Only a header that names one build counts: a value with
+ *  a comma is two headers joined (a proxy that appended a second one), and says nothing about this page's build. */
 export function isStale(ownBuild, headerValue) {
-    return !!ownBuild && !!headerValue && headerValue !== ownBuild;
+    return !!ownBuild && !!headerValue && !headerValue.includes(',') && headerValue !== ownBuild;
+}
+
+/** Whether a request URL is an answer from another machine relayed by this hub (/api/remote/<server>/...): its build is that
+ *  machine's, never the build of the page this hub serves (#3990). */
+export function isRelayed(url, base = location.href) {
+    try { return /^\/api\/remote\//.test(new URL(url, base).pathname); } catch { return false; }
 }
 
 const unsavedChecks = [];
@@ -96,7 +103,7 @@ function _install() {
         const p = inner.apply(this, arguments);
         p.then(resp => {
             try {
-                if (!resp || !resp.headers || (resp.url && new URL(resp.url, location.href).origin !== location.origin)) return;
+                if (!resp || !resp.headers || (resp.url && new URL(resp.url, location.href).origin !== location.origin) || isRelayed(resp.url)) return;
                 const v = resp.headers.get(BUILD_HEADER);
                 if (isStale(own, v)) _updated(v);
             } catch { /* never let the watch break a request */ }

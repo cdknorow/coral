@@ -174,6 +174,9 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			if err := Refusal(resp); err != nil {
 				return err
 			}
+			// The remote's own static build is not the build of the page this hub serves. The reverse proxy would append it to
+			// the hub's X-Coral-Build, and the dashboard's update banner would read "hub, remote" and never match (#3990).
+			resp.Header.Del("X-Coral-Build")
 			switch {
 			case h.opts.ResponseFilter != nil:
 				return h.opts.ResponseFilter(resp)

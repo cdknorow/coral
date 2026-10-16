@@ -17,13 +17,15 @@ const NEW_BUILD = 'ffffffffffff';
     const { client, Page, ev, waitFor, sleep, PRELOAD, install } = await connect();
     const { Fetch, Network, Input } = client;
     let spoof = null; // the build the server "now" reports, or null for the real header
+    let remoteSpoof = null; // the X-Coral-Build header a /api/remote/ answer carries (what a self-hosted hub's proxy used to relay), or null
     const seenBuilds = [];
     Fetch.requestPaused(async e => {
         if (!e.responseStatusCode && !e.responseErrorReason) return Fetch.continueRequest({ requestId: e.requestId });
         let headers = e.responseHeaders || [];
         const real = headers.find(h => h.name.toLowerCase() === 'x-coral-build');
         if (real) seenBuilds.push(real.value);
-        if (spoof) headers = headers.filter(h => h.name.toLowerCase() !== 'x-coral-build').concat([{ name: 'X-Coral-Build', value: spoof }]);
+        const value = /\/api\/remote\//.test(e.request.url) ? remoteSpoof : spoof;
+        if (value) headers = headers.filter(h => h.name.toLowerCase() !== 'x-coral-build').concat([{ name: 'X-Coral-Build', value }]);
         return Fetch.continueResponse({ requestId: e.requestId, responseCode: e.responseStatusCode, responsePhrase: e.responseStatusText || undefined, responseHeaders: headers }).catch(() => Fetch.continueRequest({ requestId: e.requestId }).catch(() => {}));
     });
     const load = async (preselect) => {
@@ -55,6 +57,19 @@ const NEW_BUILD = 'ffffffffffff';
         assert.equal(await banner(), null, 'no banner while the builds match');
         assert.equal(await ev(`window.__marker`), 'old-page', 'and no reload');
         console.log(`   ✓ ${seenBuilds.length} answers, all build ${own}; no banner, no reload`);
+
+        console.log('1b. A self-hosted hub: an answer relayed from a remote server never drives the banner (#3990)');
+        // The hub's own header plus the remote's reached the browser as one value, "hub, remote": never equal to the page's build.
+        for (const v of [`${own}, ${own}`, `${own}, ffffffffffff`, 'ffffffffffff']) {
+            remoteSpoof = v;
+            assert.equal(await ev(`fetch('/api/remote/m1/api/system/status').then(r => r.headers.get('X-Coral-Build'))`), v, 'the relayed answer carries that header');
+        }
+        remoteSpoof = null;
+        spoof = `${own}, ${own}`; await poke(); spoof = null;   // a header with two values is no build, even on the hub's own routes
+        await sleep(700); // sleep-ok: no banner appears in the time a reload would have fired (nothing to wait for)
+        assert.equal(await banner(), null, 'no banner from relayed answers or a two-valued header');
+        assert.equal(await ev(`window.__marker`), 'old-page', 'and no reload');
+        console.log('   ✓ relayed and two-valued headers are ignored');
 
         console.log('2. After an update the banner appears and an idle tab reloads by itself, once');
         await ev(`sessionStorage.removeItem('coral-update-reloaded'); true`);
