@@ -15,7 +15,7 @@ import (
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
-// The /api/cloud routes (#3149 ruling 3): on Linux another local user is
+// The /api/cloud routes (#3149 ruling 3): another local user is
 // refused whatever it sends; then the dashboard (browser rules) or the command
 // line with the 0600 token from Coral's data folder, per route; a loopback
 // caller with neither is refused; never through the tunnel.
@@ -64,7 +64,7 @@ func TestCloudRoutesSameUserGate(t *testing.T) {
 	for _, peer := range []struct {
 		name            string
 		same, supported bool
-	}{{"macOS (no peer check)", false, false}, {"Linux, Coral's user", true, true}} {
+	}{{"a system with no peer check", false, false}, {"Coral's user", true, true}} {
 		r.srv.cloudHandler.SetPeerCheck(func(*http.Request) (bool, bool) { return peer.same, peer.supported })
 		for _, rt := range routes {
 			name := peer.name + " " + rt.method + " " + rt.path
@@ -82,7 +82,7 @@ func TestCloudRoutesSameUserGate(t *testing.T) {
 		}
 	}
 
-	// Linux, another user (or a sidecar running as another uid): refused with
+	// Another user (or a sidecar running as another uid): refused with
 	// code other_user even with perfect dashboard headers and the right token.
 	signed := map[string][]map[string]string{}
 	for _, rt := range routes { // signed while the hello still admits Coral's user
@@ -127,8 +127,8 @@ func TestCloudRoutesSameUserGate(t *testing.T) {
 }
 
 // Through a real socket the kernel's answer is used: Coral's own user passes
-// (on Linux the lookup finds this process's socket; elsewhere it is not
-// supported and the dashboard rules apply).
+// (the lookup finds this process's socket on Linux, macOS and Windows; on other
+// systems it is not supported and the dashboard rules apply).
 func TestCloudRoutesRealSocketSameUser(t *testing.T) {
 	r := newE2ERemote(t, "cloud-gate-real", nil)
 	r.srv.cloudHandler.SetPeerCheck(peercred.SameUser)

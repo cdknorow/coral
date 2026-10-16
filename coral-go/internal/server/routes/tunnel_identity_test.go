@@ -515,8 +515,8 @@ func TestHubOperatorSetting(t *testing.T) {
 	h.SetBoardStore(bs)
 	linked := false
 	h.linked = func() bool { return linked }
-	// The request below has no real socket, so the kernel can't name its user (on Linux
-	// peercred fails closed, other_user): say it's Coral's own user, as a real loopback
+	// The request below has no real socket, so the kernel can't name its user (peercred
+	// fails closed, other_user): say it's Coral's own user, as a real loopback
 	// request from this process is (peercred's TestSameUserRealRequest) (#3442).
 	peer := [2]bool{true, true}
 	h.SetPeerCheck(func(*http.Request) (bool, bool) { return peer[0], peer[1] })
@@ -548,7 +548,7 @@ func TestHubOperatorSetting(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, rec.Code, m)
 		assert.Contains(t, rec.Body.String(), `"other_user"`, m)
 	}
-	peer = [2]bool{false, false} // macOS, Windows: the dashboard rules alone
+	peer = [2]bool{false, false} // a system peercred can't ask: the dashboard rules alone
 	require.Equal(t, http.StatusOK, local("GET", "").Code)
 	peer = [2]bool{true, true}
 	assert.JSONEq(t, `{"disabled":false}`, tunneled("GET", "").Body.String(), "the hub can read it")

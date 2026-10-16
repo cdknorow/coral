@@ -276,8 +276,9 @@ const (
 )
 
 // refuseCloud admits only someone using Coral on this computer, as Coral's own
-// user. On Linux the kernel names the user behind a loopback socket: another
-// user (or a pod sidecar running as another uid) is refused whatever it sends,
+// user. On Linux, macOS and Windows the kernel names the user behind a loopback
+// socket (peercred): another user (or a pod sidecar running as another uid) is
+// refused whatever it sends,
 // before any other rule, since browser headers can be forged with curl. Then
 // either the dashboard (loopback peer, localhost Host, same-origin browser
 // fetch, no tunnel stamp, no Bearer credential) or the command line with the

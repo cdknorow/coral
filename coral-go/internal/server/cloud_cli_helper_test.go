@@ -43,10 +43,10 @@ func cliSign(t *testing.T, h http.Handler, token, method, path, body string, aut
 // cliSignServer is cliSign, but it sends the hello over a real server (baseURL, a running
 // httptest.Server) instead of an in-memory request. The hello then arrives on a real loopback
 // socket, so peercred can read the peer uid and the same-user check runs for real. The
-// require_auth_on_loopback e2e uses this so it exercises peercred on Linux rather than pinning
-// the check with SetPeerCheck; an in-memory hello carries no local address, which peercred
-// correctly fails closed (#3585 follow-up, Lead's suggestion). On macOS peercred is unsupported,
-// so the check passes there as before.
+// require_auth_on_loopback e2e uses this so it exercises peercred (Linux, macOS, Windows) rather
+// than pinning the check with SetPeerCheck; an in-memory hello carries no local address, which
+// peercred correctly fails closed (#3585 follow-up, Lead's suggestion). On other systems peercred
+// is unsupported, so the check passes there as before.
 func cliSignServer(t *testing.T, baseURL, token, method, path, body string, authorization ...string) string {
 	t.Helper()
 	cn, err := cloud.NewCLINonce()
