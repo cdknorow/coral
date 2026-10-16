@@ -791,6 +791,7 @@ export async function showExportBoardModal() {
         <div style="margin-bottom:16px">
             <p style="margin:0 0 8px;font-size:14px">Export <strong>${escapeHtml(keyLabel(currentProject))}</strong> board messages.</p>
             <p style="margin:0 0 12px;font-size:13px;color:var(--text-muted)">Optionally include individual agent chat histories, interleaved by timestamp.</p>
+            <p id="export-secrets-note" style="margin:0;font-size:13px;color:var(--text-muted)">The export holds agent output as written and may include secrets the agents printed. It is plain text, not encrypted.</p>
         </div>
         <div style="margin-bottom:16px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
