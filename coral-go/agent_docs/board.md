@@ -557,12 +557,37 @@ review candidates, capacity release and complete handoff examples.
 The CLI exposes the queue as capability-oriented commands: use `task detail` or
 `task current` before work, `task claim [id]` for ready work, `task reassign`,
 `task cancel`, and revisioned `task amend` for planning changes, and
-`task submit-review`/`task release-review` for candidate review without
-confusing capacity release with acceptance. `--blocked-by` and `--outputs`
+`task submit-review` for candidate review (below). `--blocked-by` and `--outputs`
 declare structured handoffs. A terminal result must include the true outcome
 and evidence; a canceled, failed, reassigned, or review-pending row is not a
 successful completion. See the capability map in [Task queue flow](task-workflows.md#orchestrator-capability-map)
 for the authorized backend-only late-edit path and current product gaps.
+
+### Reviewing a task
+
+1. **Submit.** When the work is done, the author runs
+   `coral-board task submit-review <id> --reason "..." [--message "..."] [--artifacts manifest.json]`.
+   The task goes to the team's orchestrator (status `review_pending`, assigned to it), with a
+   board message naming the task, its author and the candidate, and the author's slot is free
+   at once to claim the next task. On a team with no orchestrator, submit-review completes it.
+2. **Complete or delegate.** The orchestrator either completes it
+   (`coral-board task complete <id>`) or delegates it:
+   `coral-board task review <id> --to "Security Reviewer,QA Engineer"`. Each reviewer gets a
+   review task, "Review #<id>: <title>", in their queue.
+3. **Review.** A review task is an ordinary task: the reviewer claims it
+   (`coral-board task claim <review id>`), which takes their one slot like any other task, reads
+   the task (`coral-board task detail <id>`), then runs
+   `coral-board task approve <id> [--note "..."]` or `coral-board task reject <id> --note "why"`
+   (the id of the task under review or of the review task).
+4. **Result.** When every reviewer of the round has approved, the task completes itself (as its
+   orchestrator, with the candidate's message, outcome and artifacts), and the usual completed
+   notice goes out. A rejection sends it back to its author, pending, with the note; the round's
+   other reviews end, and the author resubmits for a new round.
+
+Only the delegated reviewers approve or reject; only the orchestrator delegates or completes a
+task in review. The board's health report lists each open review and its age, and each task in
+review that the orchestrator hasn't completed or delegated. `task release-review` remains for a
+candidate submitted before this flow (an in-progress task with a recorded candidate).
 
 
 Board-level task queue for coordinating work across agents. It shares its

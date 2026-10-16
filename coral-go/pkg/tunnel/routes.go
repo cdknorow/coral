@@ -264,6 +264,9 @@ var routeTable = cat(
 		"/api/board/{project}/tasks/{id}/complete",
 		"/api/board/{project}/tasks/{id}/submit-review",
 		"/api/board/{project}/tasks/{id}/release-review",
+		"/api/board/{project}/tasks/{id}/review",  // #3725: delegate a review (the orchestrator)
+		"/api/board/{project}/tasks/{id}/approve", // #3725: a reviewer's verdict
+		"/api/board/{project}/tasks/{id}/reject",
 		"/api/board/{project}/tasks/{id}/cancel",
 		"/api/board/{project}/tasks/{id}/reassign",
 		"/api/board/{project}/tasks/{id}/nudge",

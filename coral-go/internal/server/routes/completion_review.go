@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -40,8 +41,164 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		}
 		return
 	}
-	h.bs.PostSystemMessage(r.Context(), project, "Coral Task Queue", fmt.Sprintf("[Task #%d completion review requested] Candidate saved; completion is not accepted. An orchestrator may release the worker slot with task release-review. Reason: %s", id, body.Reason), nil)
+	// #3725: the task goes to the team's orchestrator, who completes or delegates it; the
+	// author's slot is free at once. A team with no orchestrator completes it here.
+	ctx := r.Context()
+	author := body.SubscriberID
+	if task.AssignedTo != nil && *task.AssignedTo != "" {
+		author = *task.AssignedTo
+	}
+	orch, err := h.bs.HandToOrchestrator(ctx, project, id, author)
+	if errors.Is(err, board.ErrNoOrchestrator) {
+		msg := body.Message
+		done, cerr := h.bs.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, project, id, author, &msg, body.Outcome, body.Artifacts, body.ExpectedRevision, body.CandidateRevision)
+		if cerr != nil {
+			errBadRequest(w, cerr.Error())
+			return
+		}
+		h.afterTaskCompleted(project, author, done, msg)
+		writeJSON(w, http.StatusOK, done)
+		return
+	}
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	h.stopReminder(project, id)
+	candidate := body.CandidateRevision
+	if candidate == "" {
+		candidate = fmt.Sprintf("%d artifacts", len(body.Artifacts))
+	}
+	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d in review] %s submitted %q (candidate: %s; %s). Complete it with 'coral-board task complete %d', or delegate it: coral-board task review %d --to \"Security Reviewer,QA Engineer\"",
+		orch, id, author, task.Title, candidate, body.Reason, id, id), nil)
+	if next := h.bs.NextPendingTaskForSubscriber(ctx, project, author); next != nil {
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, author, false), nil)
+	}
+	if h.notifyFn != nil {
+		h.notifyFn()
+	}
+	task, _ = h.bs.GetTask(ctx, project, id)
 	writeJSON(w, http.StatusOK, task)
+}
+
+// DelegateReview gives a task in review to reviewers: one review task each, in their queue
+// (#3725). Only the team's orchestrator.
+// POST /api/board/{project}/tasks/{taskID}/review {subscriber_id, reviewers: ["Security Reviewer", ...]}
+func (h *BoardHandler) DelegateReview(w http.ResponseWriter, r *http.Request) {
+	project := urlParam(r, "project")
+	id, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	var body struct {
+		SubscriberID string   `json:"subscriber_id"`
+		Reviewers    []string `json:"reviewers"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" {
+		errBadRequest(w, "subscriber_id and valid JSON required")
+		return
+	}
+	ctx := r.Context()
+	if err := h.bs.RequireTaskReviewer(ctx, project, body.SubscriberID); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
+	task, reviews, err := h.bs.DelegateReview(ctx, project, id, body.SubscriberID, body.Reviewers)
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	names := make([]string, 0, len(reviews))
+	for _, rt := range reviews {
+		names = append(names, fmt.Sprintf("%s (#%d)", *rt.AssignedTo, rt.ID))
+	}
+	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d delegated for review by %s] %s", id, body.SubscriberID, strings.Join(names, ", ")), nil)
+	for _, rt := range reviews {
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, rt, *rt.AssignedTo, false), nil)
+	}
+	if h.notifyFn != nil {
+		h.notifyFn()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"task": task, "reviews": reviews})
+}
+
+// ApproveReview / RejectReview record a reviewer's verdict on the review task they claimed
+// (#3725). The last approval completes the task (as its orchestrator); a rejection sends it back
+// to its author with the note.
+// POST /api/board/{project}/tasks/{taskID}/approve {subscriber_id, note}
+// POST /api/board/{project}/tasks/{taskID}/reject {subscriber_id, note}
+func (h *BoardHandler) ApproveReview(w http.ResponseWriter, r *http.Request) {
+	h.reviewVerdict(w, r, true)
+}
+func (h *BoardHandler) RejectReview(w http.ResponseWriter, r *http.Request) {
+	h.reviewVerdict(w, r, false)
+}
+
+func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, approve bool) {
+	project := urlParam(r, "project")
+	id, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	var body struct {
+		SubscriberID string `json:"subscriber_id"`
+		Note         string `json:"note"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" {
+		errBadRequest(w, "subscriber_id and valid JSON required")
+		return
+	}
+	ctx := r.Context()
+	var v *board.ReviewVerdict
+	if approve {
+		v, err = h.bs.ApproveReview(ctx, project, id, body.SubscriberID, body.Note)
+	} else {
+		v, err = h.bs.RejectReview(ctx, project, id, body.SubscriberID, body.Note)
+	}
+	if err != nil {
+		if strings.Contains(err.Error(), "only the reviewers") {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		} else {
+			errBadRequest(w, err.Error())
+		}
+		return
+	}
+	task := v.Task
+	note := ""
+	if body.Note != "" {
+		note = ": " + body.Note
+	}
+	switch {
+	case v.Rejected:
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d rejected by %s] back to you%s", v.Author, task.ID, body.SubscriberID, note), nil)
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, task, v.Author, true), nil)
+	case v.Complete:
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d approved by %s] every reviewer approved: completing it%s", task.ID, body.SubscriberID, note), nil)
+		msg, outcome, rev := "", "success", ""
+		var artifacts []board.TaskArtifact
+		if cr := task.Workflow.CompletionReview; cr != nil {
+			msg, outcome, rev, artifacts = cr.Message, cr.ProposedOutcome, cr.CandidateRevision, cr.Artifacts
+		}
+		done, cerr := h.bs.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, project, task.ID, v.Orchestrator, &msg, outcome, artifacts, &task.Revision, rev)
+		if cerr != nil {
+			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d approved, but it could not be completed: %s] complete it with 'coral-board task complete %d'", v.Orchestrator, task.ID, cerr.Error(), task.ID), nil)
+		} else {
+			task = done
+			h.afterTaskCompleted(project, v.Orchestrator, done, msg)
+		}
+	default:
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d approved by %s] waiting for the other reviewers%s", task.ID, body.SubscriberID, note), nil)
+	}
+	// The reviewer's slot is free: their next task.
+	if next := h.bs.NextPendingTaskForSubscriber(ctx, project, body.SubscriberID); next != nil {
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, body.SubscriberID, false), nil)
+	}
+	if h.notifyFn != nil {
+		h.notifyFn()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"task": task, "review_task": v.ReviewTask, "completed": v.Complete && task.Status == "completed", "rejected": v.Rejected})
 }
 
 func (h *BoardHandler) ReleaseCompletionReview(w http.ResponseWriter, r *http.Request) {

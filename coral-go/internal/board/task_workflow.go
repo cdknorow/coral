@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -60,6 +61,11 @@ type TaskWorkflow struct {
 	CompletionGates       []CompletionGate       `json:"completion_gates,omitempty"`
 	GateResults           []CompletionGateResult `json:"gate_results,omitempty"`
 	CandidateRevision     string                 `json:"candidate_revision,omitempty"`
+	// The review flow (#3725): who did the work (a task in review is assigned to the
+	// orchestrator, then to reviewers), the parent of a review task, and the review rounds.
+	OriginalAuthor string        `json:"original_author,omitempty"`
+	ReviewOf       int64         `json:"review_of,omitempty"`
+	ReviewRounds   []ReviewRound `json:"review_rounds,omitempty"`
 }
 
 func (s *Store) initTaskWorkflows(ctx context.Context) error {
@@ -472,6 +478,10 @@ func (s *Store) completeTaskWithArtifactsAtRevisionAndCandidate(ctx context.Cont
 		return nil, err
 	}
 	reviewerErr := s.RequireTaskReviewer(ctx, project, subscriberID)
+	// On a team with no orchestrator nobody can review a candidate: its author completes it
+	// (#3725, submit-review there completes the task).
+	_, orchErr := s.TeamOrchestrator(ctx, project)
+	noOrchestrator := errors.Is(orchErr, ErrNoOrchestrator)
 	// validate is run twice: before the completion gates (no transaction, so
 	// slow registered checks never hold the board database) and again inside
 	// the write transaction. See completion_snapshot.go.
@@ -487,7 +497,7 @@ func (s *Store) completeTaskWithArtifactsAtRevisionAndCandidate(ctx context.Cont
 		if revision > 1 && (expectedRevision == nil || *expectedRevision != revision) {
 			return w, fmt.Errorf("task #%d has revision %d; reread task detail before completing, then retry with --revision %d (API: expected_revision=%d). Reading task detail does not set this value automatically. --candidate-revision identifies the source/build revision and does not replace --revision", taskID, revision, revision, revision)
 		}
-		if w.CompletionReview != nil && reviewerErr != nil {
+		if w.CompletionReview != nil && reviewerErr != nil && !noOrchestrator {
 			return w, reviewerErr
 		}
 		// An explicit assignment is exclusive for completion too: another worker

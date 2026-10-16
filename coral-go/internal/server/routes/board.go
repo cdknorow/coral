@@ -1796,18 +1796,23 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 	h.persistTaskArtifact(r.Context(), task)
 	// Task outcome and funnel milestones (first completion, first success).
 	tracking.TrackTaskCompleted(taskOutcomeForTracking(task, body.Outcome))
-	// Copy values for goroutine closure safety
-	completedTask := task
-	subscriberID := body.SubscriberID
 	completionMsg := ""
 	if body.Message != nil {
 		completionMsg = *body.Message
 	}
-	if completedTask == nil {
+	if task == nil {
 		writeJSON(w, http.StatusOK, task)
 		return
 	}
-	// Post board notification and send direct terminal nudge asynchronously
+	h.afterTaskCompleted(project, body.SubscriberID, task, completionMsg)
+	writeJSON(w, http.StatusOK, task)
+}
+
+// afterTaskCompleted posts the completion notice and runs what a completion sets off: the
+// orchestrators' notice, the tasks it unblocks, the waits on it, and the completer's next task.
+// Shared by a completion and by a review's last approval (#3725), which completes the task as its
+// orchestrator.
+func (h *BoardHandler) afterTaskCompleted(project, subscriberID string, completedTask *board.Task, completionMsg string) {
 	h.goBG(func() {
 		ctx := context.Background()
 		msg := completedTask.Title
@@ -1835,7 +1840,6 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 			h.sendTaskNudge(ctx, project, subscriberID, taskNudge)
 		}
 	})
-	writeJSON(w, http.StatusOK, task)
 }
 
 // CancelTaskByID marks a task as skipped/cancelled.

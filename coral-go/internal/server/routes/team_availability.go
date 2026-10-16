@@ -301,6 +301,7 @@ func latestStatusActivity(raw string) string {
 
 func availabilityHealthReport(tasks []board.Task) []string {
 	var report []string
+	report = append(report, openReviewLines(tasks, time.Now())...)
 	assigned := map[string]int{}
 	parallel := 0
 	for _, t := range tasks {
@@ -434,4 +435,34 @@ func classifyAvailability(a *availableAgent, s store.LiveSession, online, subscr
 		a.Available = true
 		a.Reason = "Idle with no active or ready assigned tasks"
 	}
+}
+
+// openReviewLines are the health check's open reviews (#3725): each reviewer's review not yet
+// answered, and each task in review its orchestrator hasn't completed or delegated, with age.
+func openReviewLines(tasks []board.Task, now time.Time) []string {
+	age := func(at string) string {
+		t, err := time.Parse(time.RFC3339, at)
+		if err != nil {
+			return "?"
+		}
+		return now.Sub(t).Round(time.Minute).String()
+	}
+	var lines []string
+	for _, t := range tasks {
+		w := t.Workflow
+		switch {
+		case w.ReviewOf > 0 && (t.Status == "pending" || t.Status == "in_progress") && t.AssignedTo != nil:
+			lines = append(lines, fmt.Sprintf("%s has review #%d of #%d open (%s, %s)", *t.AssignedTo, t.ID, w.ReviewOf, t.Status, age(t.CreatedAt)))
+		case t.Status == "review_pending" && t.AssignedTo != nil:
+			open := len(w.ReviewRounds) > 0 && w.ReviewRounds[len(w.ReviewRounds)-1].Result == ""
+			if !open {
+				since := t.CreatedAt
+				if w.CompletionReview != nil {
+					since = w.CompletionReview.SubmittedAt
+				}
+				lines = append(lines, fmt.Sprintf("#%d is in review with %s, not yet completed or delegated (%s)", t.ID, *t.AssignedTo, age(since)))
+			}
+		}
+	}
+	return lines
 }

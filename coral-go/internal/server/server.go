@@ -898,6 +898,9 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/board/{project}/tasks/{taskID}/complete", boardHandler.CompleteTaskByID)
 	r.Post("/api/board/{project}/tasks/{taskID}/submit-review", boardHandler.SubmitCompletionReview)
 	r.Post("/api/board/{project}/tasks/{taskID}/release-review", boardHandler.ReleaseCompletionReview)
+	r.Post("/api/board/{project}/tasks/{taskID}/review", boardHandler.DelegateReview) // #3725
+	r.Post("/api/board/{project}/tasks/{taskID}/approve", boardHandler.ApproveReview) // #3725
+	r.Post("/api/board/{project}/tasks/{taskID}/reject", boardHandler.RejectReview)   // #3725
 	r.Post("/api/board/{project}/tasks/{taskID}/cancel", boardHandler.CancelTaskByID)
 	r.Patch("/api/board/{project}/tasks/{taskID}", boardHandler.UpdateTask)
 	r.Patch("/api/board/{project}/tasks/{taskID}/amend", boardHandler.AmendTask)
