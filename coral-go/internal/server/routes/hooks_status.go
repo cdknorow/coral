@@ -105,8 +105,12 @@ func (h *SessionsHandler) HooksStatus(w http.ResponseWriter, r *http.Request) {
 
 // RefreshHooks resumes one Claude agent on the current hook set: Sleep then Wake (the same
 // session and conversation). An agent in a turn or waiting on a prompt is not interrupted unless
-// the Operator confirmed ({"force": true}): 409 "busy".
+// the Operator confirmed ({"force": true}): 409 "busy". One refresh per session at a time: a
+// second request while one runs gets 409 "refreshing" (#3685).
 // POST /api/sessions/live/{sessionID}/refresh-hooks (Operator only; Launch through Coral Hub)
+//
+// By decision (#3665 review, #3685), a Coral Hub user at Launch tier may force it too: Launch
+// already lets them restart, sleep and wake an agent, which cut a turn the same way.
 func (h *SessionsHandler) RefreshHooks(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS()
 	sessionID := chi.URLParam(r, "sessionID")
@@ -118,6 +122,15 @@ func (h *SessionsHandler) RefreshHooks(w http.ResponseWriter, r *http.Request) {
 			errBadRequest(w, "invalid JSON")
 			return
 		}
+	}
+	if _, running := h.hooksRefreshing.LoadOrStore(sessionID, struct{}{}); running {
+		writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "code": "refreshing",
+			"error": "this agent is already being resumed on the current hooks"})
+		return
+	}
+	defer h.hooksRefreshing.Delete(sessionID)
+	if h.onRefreshHeld != nil {
+		h.onRefreshHeld(sessionID)
 	}
 	ctx := r.Context()
 	ls, err := h.ss.GetLiveSession(ctx, sessionID)

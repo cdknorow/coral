@@ -3,9 +3,12 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -134,4 +137,55 @@ func TestRefreshHooksResumesAnIdleAgent(t *testing.T) {
 	require.NoError(t, r.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: codexID, AgentName: "cx", AgentType: "codex", WorkingDir: t.TempDir()}))
 	code, _ = refreshHooks(t, r.h, codexID, "")
 	assert.Equal(t, http.StatusBadRequest, code, "only Claude has a hook set")
+}
+
+// #3685 (Security's SHOULD on #3665): two refresh-hooks at once never sleep and wake the agent
+// twice. While one holds the session, every parallel request gets 409 "refreshing"; once it is
+// done (whatever its answer) the next one runs.
+func TestRefreshHooksParallelRequestsGetRefreshing(t *testing.T) {
+	r := newWakeRig(t)
+	ctx := context.Background()
+	sid := "aaaaaaaa-3685-4000-8000-000000000001"
+	require.NoError(t, r.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "dev", AgentType: "claude", WorkingDir: t.TempDir()}))
+
+	held, release := make(chan struct{}), make(chan struct{})
+	var taken atomic.Bool // only the first holder waits: without the lock the others run on and fail
+	r.h.onRefreshHeld = func(string) {
+		if taken.CompareAndSwap(false, true) {
+			close(held)
+			<-release
+		}
+	}
+	first := make(chan int, 1)
+	go func() {
+		code, _ := refreshHooks(t, r.h, sid, "")
+		first <- code
+	}()
+	<-held
+
+	const n = 8
+	codes := make(chan string, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			code, out := refreshHooks(t, r.h, sid, `{"force":true}`)
+			codes <- fmt.Sprintf("%d %v", code, out["code"])
+		}()
+	}
+	wg.Wait()
+	close(codes)
+	for c := range codes {
+		assert.Equal(t, "409 refreshing", c, "a parallel request, even forced")
+	}
+	close(release)
+	assert.Equal(t, http.StatusOK, <-first, "the first one resumes the agent")
+
+	code, out := refreshHooks(t, r.h, sid, "")
+	assert.Equal(t, http.StatusOK, code, "done: the next request runs (%v)", out)
+	code, _ = refreshHooks(t, r.h, "aaaaaaaa-3685-4000-8000-00000000dead", "")
+	assert.Equal(t, http.StatusNotFound, code)
+	code, _ = refreshHooks(t, r.h, "aaaaaaaa-3685-4000-8000-00000000dead", "")
+	assert.Equal(t, http.StatusNotFound, code, "an early answer releases the session too")
 }

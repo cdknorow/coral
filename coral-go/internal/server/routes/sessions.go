@@ -98,6 +98,11 @@ type SessionsHandler struct {
 	hooksRev sync.Map
 	// hooksNoRev: sessions that sent an event without a revision, for the "out of date" log.
 	hooksNoRev sync.Map
+	// hooksRefreshing: sessions with a refresh-hooks in progress, so a second request at once
+	// gets 409 instead of a second sleep and wake (#3685). onRefreshHeld (tests only) runs while
+	// a refresh holds its session.
+	hooksRefreshing sync.Map
+	onRefreshHeld   func(sessionID string)
 
 	autoAccept *AutoAcceptor // answers approval prompts for auto-accept sessions (auto_accept.go)
 
