@@ -133,6 +133,8 @@ launch_result=$(api POST "/api/sessions/launch-team" -d "{
 
 launch_ok=$(echo "$launch_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if d.get('ok') or d.get('sessions') else 'no')" 2>/dev/null || echo "no")
 
+# A launch starts a board with its own id (#3536: b-...); the team is stored, and found, by it.
+TEAM_BOARD_ID=$(echo "$launch_result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('board_id',''))" 2>/dev/null || echo "")
 if [[ "$launch_ok" == "yes" ]]; then
     pass "Team launched successfully"
 else
@@ -199,7 +201,7 @@ fi
 # ── Test 6: Team appears in teams API ────────────────────────────────
 
 log "Test 6: Verify team in teams API..."
-team_status=$(api GET "/api/teams/detail/$TEAM_NAME" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+team_status=$(api GET "/api/teams/detail/${TEAM_BOARD_ID:-$TEAM_NAME}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
 if [[ "$team_status" == "running" ]]; then
     pass "Team appears in API with status 'running'"

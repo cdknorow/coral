@@ -59,6 +59,12 @@ cleanup() {
     for sock in "$DATA"/tmux.sock "$DATA"/*.sock; do
         [[ -S "$sock" ]] && tmux -S "$sock" kill-server 2>/dev/null || true
     done
+    # Stand-ins still running (a timed-out run, #3827): only processes whose program is this run's
+    # own mock-agent, by exact path and PID, never a pattern.
+    local pid
+    for pid in $(ps -eo pid=,args= | awk -v b="$BIN/mock-agent" '$2 == b {print $1}'); do
+        kill "$pid" 2>/dev/null || true
+    done
     if [[ $code -ne 0 || $FAIL -gt 0 || ${KEEP_TEST_DATA:-0} == 1 ]]; then
         log "Test data and server log kept: $TMP"
     else
@@ -94,7 +100,7 @@ sessions() { api GET /api/sessions/live | python3 -c '
 import sys,json
 d=json.load(sys.stdin); d=d.get("sessions",d) if isinstance(d,dict) else d
 for s in d:
-    if str(s.get("board_project","")).startswith("id-team-"): print(s["name"], s["session_id"])'; }
+    if str(s.get("board_label") or s.get("board_project","")).startswith("id-team-"): print(s["name"], s["session_id"])'; }
 # Live team agents whose stand-in has already written its environment dump (with its token): a
 # just-restarted, woken or resumed agent has a new session id before its dump exists, and reading a
 # missing dump aborted the run (set -e). The stand-in writes the dump asynchronously, so wait for it.
@@ -307,7 +313,8 @@ wait_sessions_ready || log "no live agent has its dump yet"
 read -r iname isid < <(sessions_ready | head -1)
 itok=$(sed -n 's/^CORAL_SESSION_TOKEN=//p' "$DUMP/$isid.env")
 iboard=$(api GET /api/sessions/live | python3 -c "import sys,json;d=json.load(sys.stdin);d=d.get('sessions',d) if isinstance(d,dict) else d;print([s['board_project'] for s in d if s['session_id']=='$isid'][0])")
-other=$([[ "$iboard" == id-team-1 ]] && echo id-team-2 || echo id-team-1)
+# Another team's board, by its id (#3536: boards have ids; their names are labels).
+other=$(api GET /api/sessions/live | python3 -c "import sys,json;d=json.load(sys.stdin);d=d.get('sessions',d) if isinstance(d,dict) else d;print(next(s['board_project'] for s in d if str(s.get('board_label') or '').startswith('id-team-') and s['board_project'] != '$iboard'))")
 m0=$(rjson 'json.dumps(d["mismatches"])')
 post_as() { curl -s -m 10 -o /dev/null -w "%{http_code}" -X POST "$BASE/api/board/$1/messages" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-board/test" -d "{\"subscriber_id\":\"$2\",\"content\":\"impersonation probe\"}"; }
 c1=$(post_as "$iboard" "Somebody Else"); c2=$(post_as "$iboard" "Operator")

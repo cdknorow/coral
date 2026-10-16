@@ -54,15 +54,17 @@ func main() {
 	// Extract board name and env vars from the settings JSON written by the server
 	boardName, settingsEnv := parseSettings(settingsFile)
 
-	// Fallback: search positional args for board name (PTY backend expands
-	// $(cat prompt.txt) so the prompt text arrives as a positional arg)
-	if boardName == "" {
-		for _, arg := range positionalArgs {
-			if found := extractBoard(arg); found != "" {
-				boardName = found
-				break
-			}
+	// The prompt (a positional arg: the PTY backend expands $(cat prompt.txt)) names the board
+	// by its label; it is the board name when the settings give none.
+	boardLabel := ""
+	for _, arg := range positionalArgs {
+		if found := extractBoard(arg); found != "" {
+			boardLabel = found
+			break
 		}
+	}
+	if boardName == "" {
+		boardName = boardLabel
 	}
 
 	// Apply env vars from settings (CORAL_SESSION_NAME, CORAL_PORT, etc.)
@@ -86,7 +88,10 @@ func main() {
 	// the token at all (no dump), like a real agent; they only record what Coral handed
 	// them as prompt and settings, which must not mention the token.
 	if dir := os.Getenv("MOCK_AGENT_ENV_DUMP"); dir != "" && sessionID != "" {
-		blind := os.Getenv("MOCK_AGENT_BLIND_PREFIX") != "" && strings.HasPrefix(boardName, os.Getenv("MOCK_AGENT_BLIND_PREFIX"))
+		// A board's name is a label since #3536 (the id is b-...): the prompt names the label, the
+		// settings the id, so either may carry the blind prefix.
+		prefix := os.Getenv("MOCK_AGENT_BLIND_PREFIX")
+		blind := prefix != "" && (strings.HasPrefix(boardName, prefix) || strings.HasPrefix(boardLabel, prefix))
 		if !blind {
 			writeAtomic(filepath.Join(dir, sessionID+".env"),
 				"CORAL_SESSION_TOKEN="+os.Getenv("CORAL_SESSION_TOKEN")+"\nCORAL_SESSION_NAME="+sessionName+"\n")
