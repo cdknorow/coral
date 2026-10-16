@@ -3,11 +3,15 @@ package ptymanager
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
+	"time"
 	"unicode"
 
+	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/naming"
 )
 
@@ -44,20 +48,49 @@ func squeeze(s string) string {
 	return b.String()
 }
 
+// boxScanLines bounds how far up the screen inputBoxText looks for the input box: the whole
+// pane (#3708). It looked at the last 12 lines, and a long automated paste wraps over more than
+// that, so its box's first line was off the window: the paste read as "didn't reach the input
+// box" though it had, and every later send waited behind it.
+const boxScanLines = 400
+
+// boxStartLine is the index of the input box's first line in lines, or -1: the lowest line that
+// starts like one, then up through that same box (to its border or a blank line) to the topmost
+// such line, since a line of pasted text can itself start with "> " (a quote).
+func boxStartLine(lines []string) int {
+	low := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isInputBoxLine(lines[i]) {
+			low = i
+			break
+		}
+	}
+	start := low
+	for i := low - 1; i >= 0 && low >= 0; i-- {
+		t := strings.TrimSpace(lines[i])
+		if t == "" || isBoxBorder(t) {
+			break
+		}
+		if isInputBoxLine(lines[i]) {
+			start = i
+		}
+	}
+	return start
+}
+
+// isBoxBorder: a horizontal rule or box corner that bounds an agent's input box.
+func isBoxBorder(t string) bool {
+	return strings.HasPrefix(t, "─") || strings.HasPrefix(t, "╭") || strings.HasPrefix(t, "╰") || strings.HasPrefix(t, "━")
+}
+
 // inputBoxText returns what the agent's input box holds (its line after the marker
 // and the wrapped lines under it), or ok=false when no input box is on screen.
 func inputBoxText(screen string) (text string, ok bool) {
 	if open, _ := PromptOnScreen(screen); open {
 		return "", false
 	}
-	lines := tailLines(screenText(screen), 12)
-	start := -1
-	for i := len(lines) - 1; i >= 0; i-- {
-		if isInputBoxLine(lines[i]) {
-			start = i
-			break
-		}
-	}
+	lines := tailLines(screenText(screen), boxScanLines)
+	start := boxStartLine(lines)
 	if start < 0 {
 		return "", false
 	}
@@ -65,7 +98,7 @@ func inputBoxText(screen string) (text string, ok bool) {
 	parts := []string{lines[start][m[1]:]}
 	for _, l := range lines[start+1:] {
 		t := strings.TrimSpace(l)
-		if t == "" || strings.HasPrefix(t, "─") || strings.HasPrefix(t, "╰") || strings.HasPrefix(t, "━") {
+		if t == "" || isBoxBorder(t) {
 			break
 		}
 		parts = append(parts, t)
@@ -153,16 +186,14 @@ func suggestionOnly(styled string) bool {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1].text) == "" {
 		lines = lines[:len(lines)-1]
 	}
-	if len(lines) > 12 {
-		lines = lines[len(lines)-12:]
+	if len(lines) > boxScanLines {
+		lines = lines[len(lines)-boxScanLines:]
 	}
-	start := -1
-	for i := len(lines) - 1; i >= 0; i-- {
-		if isInputBoxLine(lines[i].text) {
-			start = i
-			break
-		}
+	texts := make([]string, len(lines))
+	for i, l := range lines {
+		texts[i] = l.text
 	}
+	start := boxStartLine(texts)
 	if start < 0 {
 		return false
 	}
@@ -333,4 +364,56 @@ func (in AutomatedInput) identity() (agentType, sessionID string) {
 		}
 	}
 	return agentType, sessionID
+}
+
+// A held paste of Coral's own that can't be confirmed (#3708). The gate pasted the text, then
+// the input box never showed it, couldn't be read, or showed text Coral can't place. Held as it
+// was, the send waited forever and every later send waited behind it (the coral-hub
+// Orchestrator got no board message for half an hour). After pasteStuckAfter (sooner with a
+// mention behind it) it is given up: dropped with a logged error and a notice on the agent,
+// saying the text may still be in its box. Enter is never pressed on a box Coral can't read or
+// whose text isn't Coral's: that could submit a person's draft.
+var (
+	pasteStuckAfter       = time.Minute
+	pasteStuckAfterUrgent = 10 * time.Second
+)
+
+// errPasteGaveUp is the error of a held paste the gate gave up (the next held send goes).
+var errPasteGaveUp = errors.New("a held paste was given up: its input box never confirmed it")
+
+type mentionWaitingKey struct{}
+
+// mentionWaiting reports whether a mention is being delivered behind what is flushed.
+func mentionWaiting(ctx context.Context) bool {
+	v, _ := ctx.Value(mentionWaitingKey{}).(bool)
+	return v
+}
+
+// pasteStuck reports whether a held paste of Coral's has waited long enough to give up.
+func (g *inputGate) pasteStuck(in AutomatedInput) bool {
+	if in.heldSince.IsZero() {
+		return false
+	}
+	limit := pasteStuckAfter
+	if in.urgent {
+		limit = pasteStuckAfterUrgent
+	}
+	return g.now().Sub(in.heldSince) >= limit
+}
+
+// giveUpPaste drops a stuck held paste: logged, recorded in the input log, and reported to
+// HeldGaveUpFunc. It returns errPasteGaveUp.
+func (g *inputGate) giveUpPaste(in AutomatedInput, why string) error {
+	agentType, sessionID := in.identity()
+	slog.Warn("automated input: gave up a held paste", "session", in.Name, "sender", in.What, "why", why,
+		"held_for", g.now().Sub(in.heldSince).Round(time.Second).String())
+	inputlog.Record(in.Name, inputlog.Text, "[GAVE UP, "+why+"] "+in.Text)
+	heldGaveUp.RLock()
+	fn := heldGaveUp.fn
+	heldGaveUp.RUnlock()
+	if fn != nil {
+		name, what := in.Name, in.What
+		g.notes.post(func() { fn(name, agentType, sessionID, what, why) })
+	}
+	return errPasteGaveUp
 }

@@ -93,6 +93,9 @@ type AutomatedInput struct {
 	// hadPlaceholder: the box held a "[Pasted ...]" placeholder before Coral's paste
 	// (a person's), so one is never taken as ours.
 	hadPlaceholder bool
+	// urgent: an @-mention waits behind this held send (#3708), so a paste of Coral's that
+	// can't be confirmed gives up after pasteStuckAfterUrgent instead of pasteStuckAfter.
+	urgent bool
 	// heldSince, heldWhy and heldReported carry a held send's first hold time, its
 	// reason and whether it was reported across its turns (a paste send is taken out
 	// of the queue and held again on each): it ages to the held-too-long notice and
@@ -157,6 +160,23 @@ var heldTooLong struct {
 var heldEnded struct {
 	sync.RWMutex
 	fn func(name, agentType, sessionID string)
+}
+
+// HeldGaveUpFunc is called when the gate gives up a held paste of its own (#3708): the
+// text was pasted, but its input box then never showed it, couldn't be read, or showed
+// text Coral can't place, for pasteStuckAfter. The send is dropped (never left to block
+// later sends) and the text may still be in the agent's input box, so the dashboard says
+// so. why is the reason; called outside the gate's lock, in order with the other notices.
+var heldGaveUp struct {
+	sync.RWMutex
+	fn func(name, agentType, sessionID, what, why string)
+}
+
+// SetHeldGaveUpFunc installs the callback for a held paste given up.
+func SetHeldGaveUpFunc(fn func(name, agentType, sessionID, what, why string)) {
+	heldGaveUp.Lock()
+	heldGaveUp.fn = fn
+	heldGaveUp.Unlock()
 }
 
 // SetHeldEndedFunc installs the callback for a session's reported sends all gone.
@@ -335,8 +355,13 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 		gate.hold(in, why, kind)
 		return Held, nil
 	}
-	// Anything already held for this agent goes first, so order is kept.
-	if gate.flush(ctx, in.Name) {
+	// Anything already held for this agent goes first, so order is kept. A mention lets a
+	// stuck paste of Coral's ahead of it give up sooner (#3708).
+	fctx := ctx
+	if in.Mention {
+		fctx = context.WithValue(ctx, mentionWaitingKey{}, true)
+	}
+	if gate.flush(fctx, in.Name) {
 		// The flush found the agent waiting again: queue behind what it held.
 		gate.hold(in, "earlier sends still held", "")
 		return Held, nil
@@ -427,6 +452,9 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 		// text Coral can't recognise): never added to; held, and reported.
 		screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
 		if serr != nil {
+			if g.pasteStuck(in) {
+				return false, g.giveUpPaste(in, "the screen couldn't be read"), true
+			}
 			g.holdPaste(in, "the screen couldn't be read", false, "")
 			return true, nil, true
 		}
@@ -450,13 +478,24 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 			return false, es.SendEnter(ctx, in.Name, agentType, sessionID), true
 		case boxEmpty:
 			if in.pasteRetry > maxPasteRetries {
+				if g.pasteStuck(in) {
+					return false, g.giveUpPaste(in, "pasted again but it never reached the input box"), true
+				}
 				g.holdPaste(in, "pasted again but it never reached the input box", false, "")
 				return true, nil, true
 			}
 		case boxOther:
+			// Text Coral can't place is in the box after Coral's own paste: never Entered (it
+			// could be a person's draft), and given up once stuck rather than blocking (#3708).
+			if g.pasteStuck(in) {
+				return false, g.giveUpPaste(in, "the input box holds text Coral can't place"), true
+			}
 			g.holdPaste(in, whyDraft, false, "")
 			return true, nil, true
 		default:
+			if g.pasteStuck(in) {
+				return false, g.giveUpPaste(in, "the input box couldn't be found on screen"), true
+			}
 			g.holdPaste(in, "the input box isn't on screen", false, "")
 			return true, nil, true
 		}
@@ -842,6 +881,10 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		}
 		send := h.in
 		send.heldSince, send.heldWhy, send.heldReported, send.heldReportedPrompt = h.heldAt, h.why, h.reported, h.reportedPrompt
+		send.urgent = mentionWaiting(ctx)
+		for _, behind := range g.held[name] {
+			send.urgent = send.urgent || behind.in.Mention
+		}
 		g.mu.Unlock()
 		if enterHeld, err := g.sendChecked(ctx, send); enterHeld {
 			return true

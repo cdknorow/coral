@@ -26,6 +26,12 @@ const heldInputSummary = sessionstate.HeldInputSummary
 // input, toast or attention (#3471). It must match none of sessionstate's phrases.
 const heldForInputBoxSummary = "Coral is holding automated messages until the text in this agent's input box is sent or cleared"
 
+// heldGaveUpSummary is recorded when the gate gave up a held paste of its own (#3708): it
+// was pasted but its input box never confirmed it, so it was dropped rather than left to
+// block later messages. Informational, like the held notice: it must match none of
+// sessionstate's phrases.
+const heldGaveUpSummary = "Coral dropped an automated message it couldn't confirm in this agent's input box; its text may still be there, so send or clear it"
+
 // InstallAutomatedInputHooks gives the automated-input gate the agents' state
 // and a way to surface a send held too long. The server calls it once.
 func (h *SessionsHandler) InstallAutomatedInputHooks() {
@@ -33,6 +39,7 @@ func (h *SessionsHandler) InstallAutomatedInputHooks() {
 	ptymanager.SetStateFunc(h.gateState)
 	ptymanager.SetHeldTooLongFunc(h.recordHeldTooLong)
 	ptymanager.SetHeldEndedFunc(h.recordHeldEnded)
+	ptymanager.SetHeldGaveUpFunc(h.recordHeldGaveUp)
 	ptymanager.SetSignalsSettingFunc(gateSignalsFromSettings(h.ss))
 }
 
@@ -105,6 +112,17 @@ func (h *SessionsHandler) recordHeldEnded(name, agentType, sessionID string) {
 		return
 	}
 	h.recordHeldNote(name, sessionID, sessionstate.HeldInputEndedSummary)
+}
+
+// recordHeldGaveUp records that a held paste was given up (#3708), on the agent's events.
+func (h *SessionsHandler) recordHeldGaveUp(name, agentType, sessionID, what, why string) {
+	if sessionID == "" {
+		_, sessionID = logparse.ParseSessionName(name)
+	}
+	if h.ts == nil || sessionID == "" {
+		return
+	}
+	h.recordHeldNote(name, sessionID, heldGaveUpSummary)
 }
 
 func (h *SessionsHandler) recordHeldNote(name, sessionID, summary string) {

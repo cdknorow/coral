@@ -23,6 +23,7 @@ func TestHeldTooLongShowsNeedsInputOnlyForAPrompt(t *testing.T) {
 	name := "claude-" + sid
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: name, WorkingDir: "/tmp/p"}))
 	require.Equal(t, sessionstate.NotificationInformational, sessionstate.Classify(heldForInputBoxSummary), "the input-box note raises nothing")
+	require.Equal(t, sessionstate.NotificationInformational, sessionstate.Classify(heldGaveUpSummary), "the gave-up note raises nothing (#3708)")
 
 	// A send held behind the input box (a draft, or a suggestion): a calm note only.
 	h.recordHeldTooLong(name, "claude", sid, "board nudge", "")
