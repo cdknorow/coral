@@ -127,6 +127,9 @@ func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, 
 			}
 			c.mu.Unlock()
 		}
+		if start == lastReadID {
+			start = max(start, s.unreadFloor(ctx, project)) // a first count looks back at most unreadWindow
+		}
 
 		// One read transaction, so the count and the watermark come from one snapshot. The
 		// SQL filter (LIKE) finds candidates; each is confirmed with the same rule
@@ -229,4 +232,23 @@ func (s *Store) messageTotal(ctx context.Context, project string) (int, int64, e
 		c.mu.Unlock()
 		return base + n, hi, nil
 	}
+}
+
+// unreadWindow is how far back, in a board's own messages, a mention still counts as unread for
+// a nudge or a badge when nothing has been counted yet (#3875). A subscriber that never read a
+// long board (a new or reset cursor) made every first count and newest-mention search read the
+// board's whole history through LIKE and the Go matcher: minutes at 300,000 messages, with no
+// nudge until it finished. Reading is unchanged: coral-board read still returns every unread
+// message.
+const unreadWindow = 2000
+
+// unreadFloor is the id just before the board's unreadWindow-th newest message, or 0 when the
+// board has fewer: unread mentions are counted and searched after it. One index seek.
+func (s *Store) unreadFloor(ctx context.Context, project string) int64 {
+	var id int64
+	if err := s.reader().GetContext(ctx, &id,
+		"SELECT id FROM board_messages WHERE project = ? ORDER BY id DESC LIMIT 1 OFFSET ?", project, unreadWindow-1); err != nil {
+		return 0
+	}
+	return id - 1
 }

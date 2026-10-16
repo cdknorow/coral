@@ -72,7 +72,7 @@ func (n *BoardNotifier) SetIsPausedFn(fn func(project string) bool) {
 // pre-existing unread messages after a server restart; they get the regular
 // reminder if the messages are still unread remindAfter later.
 func (n *BoardNotifier) SeedFromDB(ctx context.Context) {
-	states, err := n.boardStore.GetAllUnreadStates(ctx)
+	states, err := n.seedStates(ctx)
 	if err != nil {
 		n.logger.Warn("failed to seed notifier state", "error", err)
 		return
@@ -84,6 +84,26 @@ func (n *BoardNotifier) SeedFromDB(ctx context.Context) {
 		n.notified[sessName] = notifyState{count: state.Count, latestID: state.LatestID, at: now}
 	}
 	n.logger.Info("seeded notifier from DB", "sessions", len(states))
+}
+
+// seedStates are the unread states of the agents running now (#3875): the passes only nudge
+// those, and seeding every subscriber a board ever had made the first nudge wait minutes on a
+// long board. Without a discovery function, every subscriber.
+func (n *BoardNotifier) seedStates(ctx context.Context) (map[string]board.UnreadState, error) {
+	if n.discoverFn == nil {
+		return n.boardStore.GetAllUnreadStates(ctx)
+	}
+	agents, err := n.discoverFn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(agents))
+	for _, a := range agents {
+		if a.SessionID != "" && a.AgentType != "terminal" {
+			names = append(names, naming.SessionName(a.AgentType, a.SessionID))
+		}
+	}
+	return n.boardStore.GetUnreadStatesFor(ctx, names)
 }
 
 // NotifyNow triggers an immediate notification pass without waiting for the next tick.

@@ -647,6 +647,28 @@ func TestBoardNotifier_SeedFromDBPreventsInitialDuplicate(t *testing.T) {
 	assert.Empty(t, rt.sent, "pre-existing unread messages should be seeded and not trigger immediate nudge on startup")
 }
 
+// #3875: the startup seed covers the agents running now, not every subscriber a board ever
+// had (seeding those made the first nudge wait minutes on a long board).
+func TestBoardNotifier_SeedsOnlyRunningAgents(t *testing.T) {
+	bs := testBoardStore(t)
+	ctx := context.Background()
+	for _, s := range []struct{ id, session string }{{"Worker", "claude-run-0001"}, {"Gone", "claude-gone-0002"}} {
+		_, err := bs.Subscribe(ctx, "proj", s.id, s.id, s.session, nil, "all")
+		require.NoError(t, err)
+	}
+	_, err := bs.PostMessage(ctx, "proj", "Lead", "unread for both", nil)
+	require.NoError(t, err)
+	notifier := NewBoardNotifier(bs, &mockRuntime{}, 10*time.Second)
+	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentName: "w", AgentType: "claude", SessionID: "run-0001", DisplayName: "Worker"}}, nil
+	})
+	notifier.SeedFromDB(ctx)
+	notifier.notifiedMu.Lock()
+	defer notifier.notifiedMu.Unlock()
+	require.Len(t, notifier.notified, 1)
+	require.Equal(t, 1, notifier.notified["claude-run-0001"].count)
+}
+
 // heldScreenTerm shows a permission menu, so whatever is sent to it is held.
 type heldScreenTerm struct{}
 

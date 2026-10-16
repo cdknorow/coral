@@ -1405,6 +1405,7 @@ func (s *Store) LatestUnreadMessageID(ctx context.Context, project, subscriberID
 	args := []interface{}{project, sub.LastReadID, subscriberID}
 	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue'"
 	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
+		args[1] = max(sub.LastReadID, s.unreadFloor(ctx, project)) // within the unread window (#3875)
 		return s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, true)
 	}
 	var latest int64
@@ -1482,7 +1483,7 @@ func (s *Store) HasUnreadMention(ctx context.Context, project, subscriberID stri
 	}
 	id, err := s.confirmedMention(ctx, project, subscriberID, sub.JobTitle,
 		"m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue'",
-		[]interface{}{project, sub.LastReadID, subscriberID}, false)
+		[]interface{}{project, max(sub.LastReadID, s.unreadFloor(ctx, project)), subscriberID}, false) // within the unread window (#3875)
 	return id > 0, err
 }
 
@@ -1510,6 +1511,7 @@ func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberI
 	}
 	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue' AND " + senderClause
 	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
+		args[1] = max(sub.LastReadID, s.unreadFloor(ctx, project)) // within the unread window (#3875)
 		id, err := s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, false)
 		return id > 0, err
 	}
@@ -1626,55 +1628,79 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 	}
 
 	for project, projectSubs := range byProject {
-		minStart := projectSubs[0].start
-		for _, sub := range projectSubs {
-			if sub.start < minStart {
-				minStart = sub.start
-			}
-		}
-
-		numbered := s.numberedNames(ctx, s.reader(), project)
-		// Stream messages instead of retaining every unread body in memory.
-		rows, err := s.reader().QueryxContext(ctx,
-			"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
-			project, minStart)
-		if err != nil {
+		var hi int64
+		if err := s.reader().GetContext(ctx, &hi, "SELECT COALESCE(MAX(id), 0) FROM board_messages WHERE project = ?", project); err != nil {
 			return nil, err
 		}
-		hi := minStart
-		for rows.Next() {
-			var id int64
-			var sender, content string
-			if err := rows.Scan(&id, &sender, &content); err != nil {
-				rows.Close()
+		// A subscriber that receives everything is counted by the index: streaming every
+		// message's content for it took minutes on a long board (#3875). The others are
+		// matched in Go, and a first count (nothing cached) looks back at most unreadWindow
+		// messages.
+		var streamed []*subInfo
+		floor := int64(-1)
+		for _, sub := range projectSubs {
+			if sub.ReceiveMode == "all" {
+				var n int
+				if err := s.reader().GetContext(ctx, &n,
+					"SELECT COUNT(*) FROM board_messages WHERE project = ? AND id > ? AND id <= ? AND subscriber_id != ? AND subscriber_id != 'Coral Task Queue'",
+					project, sub.start, hi, sub.SubscriberID); err != nil {
+					return nil, err
+				}
+				sub.count += n
+				continue
+			}
+			if sub.start == sub.LastReadID {
+				if floor < 0 {
+					floor = s.unreadFloor(ctx, project)
+				}
+				sub.start = max(sub.start, floor)
+			}
+			streamed = append(streamed, sub)
+		}
+		if len(streamed) > 0 {
+			minStart := streamed[0].start
+			for _, sub := range streamed {
+				minStart = min(minStart, sub.start)
+			}
+			numbered := s.numberedNames(ctx, s.reader(), project)
+			// Stream messages instead of retaining every unread body in memory.
+			rows, err := s.reader().QueryxContext(ctx,
+				"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND id <= ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
+				project, minStart, hi)
+			if err != nil {
 				return nil, err
 			}
-			hi = id
-			for _, sub := range projectSubs {
-				if id <= sub.start || sender == sub.SubscriberID {
-					continue
+			for rows.Next() {
+				var id int64
+				var sender, content string
+				if err := rows.Scan(&id, &sender, &content); err != nil {
+					rows.Close()
+					return nil, err
 				}
-				eligible := false
-				switch sub.ReceiveMode {
-				case "all":
-					eligible = true
-				case "mentions":
-					eligible = containsExplicitTag(content, sub.SubscriberID, sub.JobTitle, numbered)
-				default:
-					eligible = groupsByKey[groupKey{project, sub.ReceiveMode}][sender]
-				}
-				if eligible {
-					sub.count++
+				for _, sub := range streamed {
+					if id <= sub.start || sender == sub.SubscriberID {
+						continue
+					}
+					eligible := false
+					switch sub.ReceiveMode {
+					case "mentions":
+						eligible = containsExplicitTag(content, sub.SubscriberID, sub.JobTitle, numbered)
+					default:
+						eligible = groupsByKey[groupKey{project, sub.ReceiveMode}][sender]
+					}
+					if eligible {
+						sub.count++
+					}
 				}
 			}
-		}
-		readErr := rows.Err()
-		closeErr := rows.Close()
-		if readErr != nil {
-			return nil, readErr
-		}
-		if closeErr != nil {
-			return nil, closeErr
+			readErr := rows.Err()
+			closeErr := rows.Close()
+			if readErr != nil {
+				return nil, readErr
+			}
+			if closeErr != nil {
+				return nil, closeErr
+			}
 		}
 		for _, sub := range projectSubs {
 			result[sub.SessionName] += sub.count
@@ -1694,7 +1720,20 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 // message ID for each active session. The notifier uses this pair when seeding
 // after startup so a new same-count batch is not mistaken for the seeded one.
 func (s *Store) GetAllUnreadStates(ctx context.Context) (map[string]UnreadState, error) {
-	counts, err := s.GetAllUnreadCounts(ctx)
+	return s.getUnreadStates(ctx, nil)
+}
+
+// GetUnreadStatesFor is GetAllUnreadStates for these sessions only (the notifier seeds the
+// agents that are running, #3875). An empty list gives an empty map.
+func (s *Store) GetUnreadStatesFor(ctx context.Context, sessionNames []string) (map[string]UnreadState, error) {
+	if len(sessionNames) == 0 {
+		return map[string]UnreadState{}, nil
+	}
+	return s.getUnreadStates(ctx, sessionNames)
+}
+
+func (s *Store) getUnreadStates(ctx context.Context, sessionNames []string) (map[string]UnreadState, error) {
+	counts, err := s.getUnreadCounts(ctx, sessionNames)
 	if err != nil {
 		return nil, err
 	}
@@ -1707,10 +1746,16 @@ func (s *Store) GetAllUnreadStates(ctx context.Context) (map[string]UnreadState,
 		JobTitle     string `db:"job_title"`
 		CanPeek      int    `db:"can_peek"`
 	}
-	if err := s.reader().SelectContext(ctx, &subs,
-		`SELECT project, subscriber_id, session_name, COALESCE(receive_mode, '') AS receive_mode,
+	query := `SELECT project, subscriber_id, session_name, COALESCE(receive_mode, '') AS receive_mode,
 		        COALESCE(job_title, '') AS job_title, COALESCE(can_peek, 0) AS can_peek
-		 FROM board_subscribers WHERE is_active = 1`); err != nil {
+		 FROM board_subscribers WHERE is_active = 1`
+	var args []any
+	if sessionNames != nil {
+		if query, args, err = sqlx.In(query+" AND session_name IN (?)", sessionNames); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.reader().SelectContext(ctx, &subs, s.reader().Rebind(query), args...); err != nil {
 		return nil, err
 	}
 	for _, sub := range subs {
