@@ -139,7 +139,10 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		// The template routes fetch only names GitHub's listings hold (#3619, Security's SHOULD on
 		// H2): the placeholder "x" isn't one, so its answer is a 404 template_not_found, which is
 		// the route answering.
-		if rec.Code == 200 || (strings.HasPrefix(f[1], "/api/templates/") && rec.Code == 404 && strings.Contains(rec.Body.String(), "template_not_found")) {
+		// /api/sessions/resolve names a session only by its live process (#3864); the rig's
+		// session has none, so its answer is a 404 "no matching session" (the reply has no path).
+		resolveAnswered := f[1] == "/api/sessions/resolve" && rec.Code == 404 && strings.Contains(rec.Body.String(), "no matching session")
+		if rec.Code == 200 || resolveAnswered || (strings.HasPrefix(f[1], "/api/templates/") && rec.Code == 404 && strings.Contains(rec.Body.String(), "template_not_found")) {
 			answered++
 		}
 		for _, home := range homes {
