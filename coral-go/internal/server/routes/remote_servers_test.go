@@ -323,3 +323,20 @@ func TestRedactQuery(t *testing.T) {
 	assert.NotContains(t, got, "T2")
 	assert.Contains(t, got, "a=1")
 }
+
+// #3970 (Security's #3967 finding 3b): a sign-in link's login_token, and any *_token, *_key or
+// *_secret name, is redacted from a logged query; other names are left as they are.
+func TestRedactQueryCredentialNames(t *testing.T) {
+	got := RedactQuery("login_token=LIVE&return_to=%2F&refresh_token=R&client_secret=S&Session_Key=K&page=2")
+	for _, secret := range []string{"LIVE", "=R&", "=S&", "=K&"} {
+		assert.NotContains(t, got+"&", secret)
+	}
+	assert.Contains(t, got, "page=2")
+	assert.Contains(t, got, "return_to=%2F")
+	for _, name := range []string{"login_token", "LOGIN_TOKEN", "id_token", "github_key", "hmac_secret", "api_key", "password"} {
+		assert.True(t, credentialQueryName(name), name)
+	}
+	for _, name := range []string{"page", "return_to", "tokens", "keyword", "monkey", "secrets_count"} {
+		assert.False(t, credentialQueryName(name), name)
+	}
+}
