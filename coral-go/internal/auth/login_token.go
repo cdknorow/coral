@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // Dashboard login tokens (#3387, identity phase 1). Like Jupyter's: a single-use
@@ -114,6 +115,11 @@ func (ks *KeyStore) WriteLoginTokenFile(dir string) (string, error) {
 	path := filepath.Join(dir, LoginTokenFile)
 	tmp, err := os.CreateTemp(dir, ".login_token-*") // 0600
 	if err != nil {
+		return "", err
+	}
+	if err := secfile.Protect(tmp.Name()); err != nil { // Windows ignores the mode (#3905)
+		tmp.Close()
+		os.Remove(tmp.Name())
 		return "", err
 	}
 	if _, err := tmp.WriteString(token + "\n"); err != nil {

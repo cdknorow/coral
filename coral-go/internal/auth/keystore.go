@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 const (
@@ -81,6 +83,12 @@ func NewKeyStore(coralDir string) (*KeyStore, error) {
 
 func (ks *KeyStore) loadOrGenerate() error {
 	data, err := readKeyFile(ks.keyPath)
+	if errors.Is(err, secfile.ErrExposed) {
+		// Another account could read it (Windows), so the key must be treated as known: a new
+		// one replaces it, in a file only this user can read (#3905).
+		log.Printf("[auth] %v; made a new API key (clients that kept the old one need the new one)", err)
+		data, err = nil, fs.ErrNotExist
+	}
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -104,8 +112,9 @@ func (ks *KeyStore) loadOrGenerate() error {
 
 // readKeyFile reads the API key file: a regular file (never through a symlink or another kind
 // of file, refused with an error to fix by hand), at most 1 KiB. One readable by group or others
-// is tightened to 0600 first, as it should always have been (#3627 F2; Windows has no mode bits:
-// the data folder's ACL protects it).
+// is tightened to 0600 first, as it should always have been (#3627 F2). Windows has no mode bits:
+// there the file's access list is checked instead (secfile.CheckOpen, #3905): one that lets
+// another account read it is secfile.ErrExposed.
 func readKeyFile(path string) ([]byte, error) {
 	li, err := os.Lstat(path)
 	if err != nil {
@@ -122,6 +131,9 @@ func readKeyFile(path string) ([]byte, error) {
 	fi, err := f.Stat()
 	if err != nil || !os.SameFile(li, fi) {
 		return nil, fmt.Errorf("API key file %s changed while it was opened", path)
+	}
+	if err := secfile.CheckOpen(f); err != nil {
+		return nil, err
 	}
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
 		if err := f.Chmod(0o600); err != nil {
@@ -153,6 +165,9 @@ func writeKeyFile(path, key string) error {
 		}
 	}()
 	if err := f.Chmod(0o600); err != nil && runtime.GOOS != "windows" {
+		return err
+	}
+	if err := secfile.Protect(tmp); err != nil { // Windows ignores the mode (#3905)
 		return err
 	}
 	if _, err := f.WriteString(key + "\n"); err != nil {
