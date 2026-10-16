@@ -13,7 +13,7 @@ import { showToast } from './utils.js';
 import { pollEvery } from './overload.js';
 import {
     statusMeta, escHtml, describeServerError, formatLastSeen, isValidServerId,
-    serverVersion, serverAgentCount, updateBadgeHtml,
+    serverVersion, serverAgentCount, updateBadgeHtml, belowMinimumText,
 } from './server_status.js';
 
 let _servers = [];
@@ -111,6 +111,7 @@ function rowHtml(s) {
     const version = serverVersion(live);
     const agents = serverAgentCount(live);
     const badge = updateBadgeHtml(live);
+    const below = belowMinimumText(live); // the Hub's "Update Coral to <min>" hint (#3915), plain text
     // An online server's status is live from the feed; 'last contact' (refreshed
     // about once a minute) is shown only once it is not online (#3152).
     const contact = (live.status || s.status) !== 'online' ? `last contact ${formatLastSeen(s.last_seen)}` : '';
@@ -119,6 +120,7 @@ function rowHtml(s) {
         <div class="servers-row-main">
             <div class="servers-row-title">${escHtml(s.label || s.id)} <span class="servers-id">${escHtml(s.id)}</span>${s.allow_private ? ' <span class="servers-tag" title="Private network addresses are allowed for this server">private network</span>' : ''}${badge ? ' ' + badge : ''}</div>
             <div class="servers-row-meta">${meta.map(escHtml).join(' &middot; ')}</div>
+            ${below ? `<div class="servers-row-hint server-below-minimum">${escHtml(below)}</div>` : ''}
             ${err}${hint}
         </div>
         <div class="servers-row-status">${statusPill(s.status)}</div>

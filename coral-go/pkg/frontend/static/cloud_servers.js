@@ -17,7 +17,7 @@
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { h } from './cloud.js';
-import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentCount } from './server_status.js';
+import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentCount, belowMinimumText } from './server_status.js';
 import { accessBlockedMessage, accessChanged } from './hub_access.js';
 import { pollEvery } from './overload.js';
 import { healthDot, healthCard } from './machine_health.js';
@@ -306,7 +306,8 @@ function row(s) {
             h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Get the latest release' }))
         : null;
     return h('li', { className: 'cs-row', id: rowId(s.id), tabIndex: -1, dataset: { id: s.id } },
-        h('div', { className: 'cs-main' }, title, meta, online ? healthCard(live.machine_health, { title: 'Health' }) : null, launch),
+        h('div', { className: 'cs-main' }, title, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
+            online ? healthCard(live.machine_health, { title: 'Health' }) : null, launch),
         h('div', { className: 'cs-actions' }, actions),
         confirming === s.id ? h('div', { className: 'cs-note', text: 'Revoking disconnects this server now and its token stops working. To connect it again you must enroll it again.' }) : null,
         note ? h('div', { className: 'cs-note', text: note }) : null,
