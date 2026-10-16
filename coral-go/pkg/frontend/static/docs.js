@@ -86,7 +86,8 @@ function renderDocNav() {
 
     list.innerHTML = docsList.map(d => {
         const active = selectedDoc === d.name ? ' active' : '';
-        return `<li class="session-list-item${escapeAttr(active)}" data-on-click="doc-open" data-doc="${escapeAttr(d.name)}">${esc(d.title)}</li>`;
+        // A list item that opens a page: focusable, and Enter or Space opens it like a click (#4026; it had no keyboard route).
+        return `<li class="session-list-item${escapeAttr(active)}" role="button" tabindex="0"${selectedDoc === d.name ? ' aria-current="true"' : ''} data-on-click="doc-open" data-on-keydown="doc-open-key" data-doc="${escapeAttr(d.name)}">${esc(d.title)}</li>`;
     }).join('');
 }
 
@@ -149,4 +150,5 @@ export async function selectDoc(name, { noteRoute = true } = {}) {
 // A doc in the Docs list (#3645).
 registerActions({
     'doc-open': el => { const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
+    'doc-open-key': (el, event) => { if (event.target !== el || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
 });
