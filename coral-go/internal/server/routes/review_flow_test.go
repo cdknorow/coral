@@ -176,6 +176,7 @@ func TestReviewFlowRejection(t *testing.T) {
 	assert.Equal(t, "unsafe default", got.Workflow.ReviewRounds[0].Reviewers[0].Note)
 	qa, _ := h.bs.GetTask(ctx, "rej", qaReview)
 	assert.Equal(t, "pending", qa.Status, "the other reviewer's review task stays open")
+	assert.Equal(t, 1, qa.Workflow.ReviewRound, "a review task records its round (#3805)")
 	code, out = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "QA Engineer"})
 	assert.Equal(t, http.StatusBadRequest, code)
 	assert.Contains(t, out["error"], "back with worker", "no verdict while the author has it")
@@ -198,6 +199,7 @@ func TestReviewFlowRejection(t *testing.T) {
 		rt, _ := h.bs.GetTask(ctx, "rej", rv.ReviewTaskID)
 		assert.Equal(t, "pending", rt.Status, "%s's review task reopens", rv.Reviewer)
 		assert.Contains(t, *rt.Body, "--round 2", "it names the new round")
+		assert.Equal(t, 2, rt.Workflow.ReviewRound, "and records it (#3805)")
 	}
 
 	// A verdict on round 1 is refused; any time it is in review, each reviewer's verdict counts.

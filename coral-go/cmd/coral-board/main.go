@@ -1623,6 +1623,7 @@ Subcommands:
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		noteSeenRound(st.Project, task)
 		pretty, _ := json.MarshalIndent(task, "", "  ")
 		fmt.Println(string(pretty))
 	case "submit-review", "release-review":
@@ -1875,6 +1876,7 @@ func cmdTaskClaim(st *boardState, args ...string) {
 
 	var task map[string]any
 	json.Unmarshal(data, &task)
+	noteSeenRound(st.Project, task)
 	id, _ := task["id"].(float64)
 	title, _ := task["title"].(string)
 	taskBody, _ := task["body"].(string)
@@ -2943,8 +2945,15 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	to := fs.String("to", "", "Reviewers, comma-separated (review)")
 	note := fs.String("note", "", "Your note (approve; required for reject)")
-	round := fs.Int("round", 0, "The review round you reviewed (your review task names it); a verdict on an earlier round is refused")
+	round := fs.Int("round", 0, "The review round you reviewed (default: the one task detail or your review task last showed you); a verdict on an earlier round is refused")
 	fs.Parse(args[1:])
+	explicitRound := false
+	fs.Visit(func(f *flag.Flag) { explicitRound = explicitRound || f.Name == "round" })
+	if !explicitRound && (action == "approve" || action == "reject") {
+		// The round this reviewer last saw (#3805): a verdict typed after the task was
+		// resubmitted is then refused instead of applying to a revision they haven't read.
+		*round = lastSeenRound(st.Project, id)
+	}
 	*note = flagText(*note, "note")
 	body := map[string]any{"subscriber_id": resolveSubscriberID()}
 	switch action {
@@ -2974,7 +2983,8 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", url.PathEscape(st.Project), id, action), body)
 	if err != nil || status != http.StatusOK {
 		fmt.Fprintln(os.Stderr, "Review action failed:", err, string(data))
-		os.Exit(1)
+		exitFn(1)
+		return
 	}
 	var out struct {
 		Completed bool `json:"completed"`
@@ -3000,3 +3010,59 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 		fmt.Printf("Task #%d approved; waiting for the other reviewers.\n", id)
 	}
 }
+
+// seenRoundsPath holds, per board task, the review round this agent was last shown (#3805).
+func seenRoundsPath() string {
+	return filepath.Join(coralDir(), fmt.Sprintf("board_review_rounds_%s.json", resolveSessionName()))
+}
+
+func loadSeenRounds() map[string]int {
+	seen := map[string]int{}
+	if data, err := os.ReadFile(seenRoundsPath()); err == nil {
+		_ = json.Unmarshal(data, &seen)
+	}
+	return seen
+}
+
+// noteSeenRound records the review round a task shows (task detail, a claim): the open round of
+// a task under review, or a review task's own round (recorded for the task it reviews too).
+func noteSeenRound(project string, task map[string]any) {
+	id, _ := task["id"].(float64)
+	w, _ := task["workflow"].(map[string]any)
+	if id <= 0 || w == nil {
+		return
+	}
+	seen := loadSeenRounds()
+	changed := false
+	if rounds, _ := w["review_rounds"].([]any); len(rounds) > 0 {
+		if last, _ := rounds[len(rounds)-1].(map[string]any); last != nil {
+			if n, _ := last["round"].(float64); n > 0 {
+				seen[fmt.Sprintf("%s/%d", project, int64(id))] = int(n)
+				changed = true
+			}
+		}
+	}
+	if of, _ := w["review_of"].(float64); of > 0 {
+		if n, _ := w["review_round"].(float64); n > 0 {
+			seen[fmt.Sprintf("%s/%d", project, int64(id))] = int(n)
+			seen[fmt.Sprintf("%s/%d", project, int64(of))] = int(n)
+			changed = true
+		}
+	}
+	if !changed {
+		return
+	}
+	data, _ := json.Marshal(seen)
+	path := seenRoundsPath()
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	_ = os.WriteFile(path, data, 0o600)
+}
+
+// lastSeenRound is the review round recorded for a task, 0 when none was (the server then takes
+// the current round).
+func lastSeenRound(project string, id int64) int {
+	return loadSeenRounds()[fmt.Sprintf("%s/%d", project, id)]
+}
+
+// exitFn is os.Exit, replaced in tests that check a refused command.
+var exitFn = os.Exit

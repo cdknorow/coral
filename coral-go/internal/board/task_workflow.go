@@ -65,6 +65,7 @@ type TaskWorkflow struct {
 	// orchestrator, then to reviewers), the parent of a review task, and the review rounds.
 	OriginalAuthor string        `json:"original_author,omitempty"`
 	ReviewOf       int64         `json:"review_of,omitempty"`
+	ReviewRound    int           `json:"review_round,omitempty"` // a review task: the round it is for (#3805)
 	ReviewRounds   []ReviewRound `json:"review_rounds,omitempty"`
 }
 

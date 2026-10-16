@@ -119,7 +119,7 @@ func reopenReviews(ctx context.Context, tx *sqlx.Tx, project string, id int64, w
 		if err != nil {
 			return nil, err
 		}
-		rw.Outcome = ""
+		rw.Outcome, rw.ReviewRound = "", round.Round
 		if err := saveWorkflow(ctx, tx, r.ReviewTaskID, rw); err != nil {
 			return nil, err
 		}
@@ -203,7 +203,7 @@ func (s *Store) DelegateReview(ctx context.Context, project string, id int64, ac
 			continue
 		}
 		rt, err := s.CreateTaskWithOpts(ctx, project, fmt.Sprintf("Review #%d: %s", id, task.Title), reviewTaskBody(id, task.Title, w.OriginalAuthor, round.Round), task.Priority, actor,
-			&CreateTaskOpts{Workflow: TaskWorkflow{ReviewOf: id}}, r)
+			&CreateTaskOpts{Workflow: TaskWorkflow{ReviewOf: id, ReviewRound: round.Round}}, r)
 		if err != nil {
 			return nil, nil, err
 		}
