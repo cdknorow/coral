@@ -25,6 +25,7 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/license"
 	"github.com/cdknorow/coral/internal/logexit"
+	"github.com/cdknorow/coral/internal/logrotate"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/store"
@@ -33,6 +34,13 @@ import (
 
 const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
 
+// coral.log rotates by size (#3628 F5): at coralLogMaxSize it becomes coral.log.1, and
+// coralLogKeep older copies are kept (about 120 MB at most).
+const (
+	coralLogMaxSize = 20 << 20
+	coralLogKeep    = 5
+)
+
 // setupCrashLogging logs to <coralDir>/coral.log and copies each line to the
 // terminal (stderr) when running interactively. The file comes first and the
 // terminal copy never blocks: see logOutput (#3226). Exits go through logexit,
@@ -40,7 +48,7 @@ const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
 func setupCrashLogging(coralDir string) {
 	_ = config.EnsureDataDir(coralDir) // this user only (#3637); the log open below reports a failure
 	logFile := filepath.Join(coralDir, "coral.log")
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := logrotate.Open(logFile, coralLogMaxSize, coralLogKeep)
 	if err != nil {
 		return
 	}
