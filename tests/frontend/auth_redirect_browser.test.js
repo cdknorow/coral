@@ -25,7 +25,7 @@ const BASE = require('./test_base').BASE;
         // the authenticated probe /api/settings is refused too (sessionStorage so the state survives the reload the panel does).
         await Page.addScriptToEvaluateOnNewDocument({ source: `(() => { const real = window.fetch.bind(window);
             const json = (b, s) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } }));
-            window.__api = 0;
+            window.__api = 0; window.__inflight = 0;
             // Count the terminal sockets the page opens, and run the terminal's 3 s reconnect delay in 0.2 s (this suite only).
             const RealWS = window.WebSocket; window.__termWs = 0;
             window.WebSocket = function (u, p) { if (String(u).includes('/ws/terminal')) window.__termWs++; return p === undefined ? new RealWS(u) : new RealWS(u, p); };
@@ -36,7 +36,10 @@ const BASE = require('./test_base').BASE;
                 if (s.includes('/api/qa-locked')) return json({ error: 'sign in', code: 'dashboard_auth_required' }, 401);
                 if (s.includes('/api/qa-agent-only')) return json({ error: 'session_token_required', message: 'agents only' }, 401);
                 if (s.includes('/api/') && sessionStorage.getItem('qa-locked') === '1' && s.includes('/api/settings')) return json({ error: 'sign in', code: 'dashboard_auth_required' }, 401);
-                if (s.startsWith('/api/') || s.startsWith(location.origin + '/api/')) window.__api++;
+                if (s.startsWith('/api/') || s.startsWith(location.origin + '/api/')) {
+                    window.__api++; window.__inflight++;
+                    const pr = real(u, o); const done = () => { window.__inflight--; }; pr.then(done, done); return pr;
+                }
                 return real(u, o);
             }; })();` });
         await Page.navigate({ url: BASE + '/chats?q=battle' }); await Page.loadEventFired(); // a page with a path and query (#3532)
@@ -72,6 +75,9 @@ const BASE = require('./test_base').BASE;
         console.log('   ✓ modal panel, focus on Try again, help link ' + p.help);
 
         console.log('3. Every poller and the live feed wait');
+        // Wait until no /api request is in flight before taking the baseline, so a poll already
+        // dispatched when the panel opened doesn't land mid-measurement (#3939 flake: 23 vs 22).
+        await waitFor(`(window.__inflight || 0) === 0`, 'no /api request in flight before the baseline', { timeout: 5000 });
         const ticks = await ev(`window.__ticks`);
         const feed = await ev(`(() => { const T = window.T; return null; })()`);
         const sock = await ev(`(async () => { const st = (await import(${S} + 'state.js')).state; window.__sock = st.coralWs; return st.coralWs ? st.coralWs.readyState : -1; })()`);
