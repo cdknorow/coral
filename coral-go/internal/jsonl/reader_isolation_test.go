@@ -1,6 +1,7 @@
 package jsonl
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,7 +41,7 @@ func TestSessionReader_StrictAliasesClearPoisonedCache(t *testing.T) {
 			}
 			r := NewSessionReader()
 			r.cache[id] = &sessionCache{path: p, offset: 10, messages: []map[string]any{{"content": "wrong history"}}, toolUseNames: map[string]string{"old": "Read"}}
-			msgs, total := r.ReadAllMessagesForLive(id, "", agentType)
+			msgs, total := r.ReadAllMessagesForLiveContext(context.Background(), id, "", agentType)
 			if total != 0 || len(msgs) != 0 {
 				t.Fatalf("strict %s leaked cache: %v", agentType, msgs)
 			}

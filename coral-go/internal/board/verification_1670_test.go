@@ -142,7 +142,7 @@ func TestTask1670_StoreCompletionAndReviewExpectedRevision(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, t1.ID, claimed1.ID)
 
-	comp1, err := s.CompleteTaskWithArtifactsAtRevision(ctx, "team", t1.ID, "worker", nil, "success", nil, nil)
+	comp1, err := s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", t1.ID, "worker", nil, "success", nil, nil, "")
 	require.NoError(t, err)
 	require.Equal(t, "completed", comp1.Status)
 
@@ -157,19 +157,19 @@ func TestTask1670_StoreCompletionAndReviewExpectedRevision(t *testing.T) {
 	require.NoError(t, err)
 
 	// Stale completion with expected_revision == nil must fail
-	_, err = s.CompleteTaskWithArtifactsAtRevision(ctx, "team", t2.ID, "worker", nil, "success", nil, nil)
+	_, err = s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", t2.ID, "worker", nil, "success", nil, nil, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "has revision 2; reread task detail before completing")
 
 	// Stale completion with expected_revision == 1 must fail
 	rev1 := 1
-	_, err = s.CompleteTaskWithArtifactsAtRevision(ctx, "team", t2.ID, "worker", nil, "success", nil, &rev1)
+	_, err = s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", t2.ID, "worker", nil, "success", nil, &rev1, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "has revision 2; reread task detail before completing")
 
 	// Matching completion with expected_revision == 2 succeeds
 	rev2 := 2
-	comp2, err := s.CompleteTaskWithArtifactsAtRevision(ctx, "team", t2.ID, "worker", nil, "success", nil, &rev2)
+	comp2, err := s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", t2.ID, "worker", nil, "success", nil, &rev2, "")
 	require.NoError(t, err)
 	require.Equal(t, "completed", comp2.Status)
 
@@ -187,12 +187,12 @@ func TestTask1670_StoreCompletionAndReviewExpectedRevision(t *testing.T) {
 	require.NoError(t, err)
 
 	// Stale review submission with expectedRevision == 1 fails
-	_, err = s.SubmitCompletionReviewAtRevision(ctx, "team", t3.ID, "worker", "done", "success", "needs review", nil, &rev1)
+	_, err = s.SubmitCompletionReviewAtRevisionAndCandidate(ctx, "team", t3.ID, "worker", "done", "success", "needs review", nil, &rev1, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "has revision 2; reread task detail before submitting review")
 
 	// Matching review submission with expectedRevision == 2 succeeds
-	revTask3, err := s.SubmitCompletionReviewAtRevision(ctx, "team", t3.ID, "worker", "done", "success", "needs review", nil, &rev2)
+	revTask3, err := s.SubmitCompletionReviewAtRevisionAndCandidate(ctx, "team", t3.ID, "worker", "done", "success", "needs review", nil, &rev2, "")
 	require.NoError(t, err)
 	require.Equal(t, "in_progress", revTask3.Status)
 	require.NotNil(t, revTask3.Workflow.CompletionReview)
@@ -273,7 +273,7 @@ func TestTask1670_StoreConcurrentAmendmentAndCompletionRaceFree(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		rev1 := 1
-		_, compErr = s.CompleteTaskWithArtifactsAtRevision(ctx, "team", task.ID, "worker", nil, "success", nil, &rev1)
+		_, compErr = s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", task.ID, "worker", nil, "success", nil, &rev1, "")
 	}()
 
 	wg.Wait()

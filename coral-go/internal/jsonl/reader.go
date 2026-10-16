@@ -236,15 +236,10 @@ func (r *SessionReader) readNewMessagesLocked(ctx context.Context, c *sessionCac
 	return newMessages, len(c.messages)
 }
 
-// ReadAllMessages reads any new data from the file and returns ALL accumulated
-// messages (not just the new ones). Use this when the client needs the full
-// conversation history (e.g. after=0).
-func (r *SessionReader) ReadAllMessages(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
-	return r.ReadAllMessagesContext(context.Background(), sessionID, workingDirectory, agentType)
-}
-
-// ReadAllMessagesContext is ReadAllMessages whose wait for a large decode's turn ends with ctx
-// (then the messages already cached are returned).
+// ReadAllMessagesContext reads any new data from the file and returns ALL accumulated messages
+// (not just the new ones), for a client that needs the full conversation history (e.g.
+// after=0). Its wait for a large decode's turn ends with ctx (then the messages already cached
+// are returned).
 func (r *SessionReader) ReadAllMessagesContext(ctx context.Context, sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
@@ -253,13 +248,8 @@ func (r *SessionReader) ReadAllMessagesContext(ctx context.Context, sessionID, w
 	return c.messages, len(c.messages)
 }
 
-// ReadAllMessagesForLive is the strict counterpart used by the live chat API.
-func (r *SessionReader) ReadAllMessagesForLive(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
-	return r.ReadAllMessagesForLiveContext(context.Background(), sessionID, workingDirectory, agentType)
-}
-
-// ReadAllMessagesForLiveContext is ReadAllMessagesForLive whose wait for a large decode's turn
-// ends with ctx.
+// ReadAllMessagesForLiveContext is ReadAllMessagesContext's strict counterpart used by the live
+// chat API. Its wait for a large decode's turn ends with ctx.
 func (r *SessionReader) ReadAllMessagesForLiveContext(ctx context.Context, sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
@@ -268,18 +258,12 @@ func (r *SessionReader) ReadAllMessagesForLiveContext(ctx context.Context, sessi
 	return c.messages, len(c.messages)
 }
 
-// ReadAllMessagesForLiveWithLineage reads the exact live transcript and, when
-// it has an explicit persisted ancestor, prepends that ancestor's transcript.
-// Resume/restart can leave the provider writing the native rollout under the
-// ancestor Coral marker until the replacement session emits its first marker.
-// The caller supplies only trusted resume_from_id values; this never falls
-// back to newest-workspace or arbitrary transcript discovery.
-func (r *SessionReader) ReadAllMessagesForLiveWithLineage(sessionID, workingDirectory, agentType string, ancestorIDs ...string) ([]map[string]any, int) {
-	return r.ReadAllMessagesForLiveWithLineageContext(context.Background(), sessionID, workingDirectory, agentType, ancestorIDs...)
-}
-
-// ReadAllMessagesForLiveWithLineageContext is ReadAllMessagesForLiveWithLineage with a ctx for
-// the decode wait.
+// ReadAllMessagesForLiveWithLineageContext reads the exact live transcript and, when it has an
+// explicit persisted ancestor, prepends that ancestor's transcript. Resume/restart can leave the
+// provider writing the native rollout under the ancestor Coral marker until the replacement
+// session emits its first marker. The caller supplies only trusted resume_from_id values; this
+// never falls back to newest-workspace or arbitrary transcript discovery. ctx bounds the decode
+// wait.
 func (r *SessionReader) ReadAllMessagesForLiveWithLineageContext(ctx context.Context, sessionID, workingDirectory, agentType string, ancestorIDs ...string) ([]map[string]any, int) {
 	current, _ := r.ReadAllMessagesForLiveContext(ctx, sessionID, workingDirectory, agentType)
 	for _, ancestorID := range ancestorIDs {
@@ -421,15 +405,10 @@ func (r *SessionReader) ClearSession(sessionID string) {
 	r.mu.Unlock()
 }
 
-// ReadFrom parses the complete lines of a transcript file from offset on,
-// and returns the offset after the last complete line, so a line still
-// being written is read on the next call. An offset past the end of the
-// file (it was truncated or replaced) starts over from the top.
-func ReadFrom(path, agentType string, offset int64) ([]map[string]any, int64, error) {
-	return ReadFromContext(context.Background(), path, agentType, offset)
-}
-
-// ReadFromContext is ReadFrom whose wait for a large decode's turn (the decodelimit slots) ends with ctx.
+// ReadFromContext parses the complete lines of a transcript file from offset on, and returns the
+// offset after the last complete line, so a line still being written is read on the next call. An
+// offset past the end of the file (it was truncated or replaced) starts over from the top. Its
+// wait for a large decode's turn (the decodelimit slots) ends with ctx.
 func ReadFromContext(ctx context.Context, path, agentType string, offset int64) ([]map[string]any, int64, error) {
 	f, err := openTranscript(path, agentType)
 	if err != nil {

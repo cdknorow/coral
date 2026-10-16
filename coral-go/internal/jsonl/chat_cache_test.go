@@ -1,6 +1,7 @@
 package jsonl
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,7 +45,7 @@ func readAll(t testing.TB, path string) []map[string]any {
 	r := NewSessionReader()
 	c := r.getOrCreateSessionCache("s")
 	c.path, c.pathVerified = path, true
-	msgs, _ := r.ReadAllMessagesForLive("s", "", "claude")
+	msgs, _ := r.ReadAllMessagesForLiveContext(context.Background(), "s", "", "claude")
 	return msgs
 }
 
@@ -83,7 +84,7 @@ func TestChatCacheFollowsTruncationAndReplacement(t *testing.T) {
 	c := r.getOrCreateSessionCache("s")
 	c.path, c.pathVerified = path, true
 	texts := func() []string {
-		msgs, _ := r.ReadAllMessagesForLive("s", "", "claude")
+		msgs, _ := r.ReadAllMessagesForLiveContext(context.Background(), "s", "", "claude")
 		var out []string
 		for _, m := range msgs {
 			out = append(out, fmt.Sprint(m["text"]))
@@ -120,7 +121,10 @@ func TestConcurrentChatReadersShareOneRead(t *testing.T) {
 	totals := make([]int, 8)
 	for i := range totals {
 		wg.Add(1)
-		go func() { defer wg.Done(); _, totals[i] = r.ReadAllMessagesForLive("s", "", "claude") }()
+		go func() {
+			defer wg.Done()
+			_, totals[i] = r.ReadAllMessagesForLiveContext(context.Background(), "s", "", "claude")
+		}()
 	}
 	wg.Wait()
 	lines := strings.Count(mustRead(t, path), "\n")
@@ -150,10 +154,10 @@ func BenchmarkChatRead(b *testing.B) {
 	r := NewSessionReader()
 	c := r.getOrCreateSessionCache("s")
 	c.path, c.pathVerified = path, true
-	r.ReadAllMessagesForLive("s", "", "claude")
+	r.ReadAllMessagesForLiveContext(context.Background(), "s", "", "claude")
 	b.Run("poll-unchanged", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			r.ReadAllMessagesForLive("s", "", "claude")
+			r.ReadAllMessagesForLiveContext(context.Background(), "s", "", "claude")
 		}
 	})
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
@@ -164,7 +168,7 @@ func BenchmarkChatRead(b *testing.B) {
 	b.Run("poll-append", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			f.WriteString(`{"type":"assistant","timestamp":"2026-10-15T10:00:03Z","message":{"role":"assistant","content":[{"type":"text","text":"more"}]}}` + "\n")
-			r.ReadAllMessagesForLive("s", "", "claude")
+			r.ReadAllMessagesForLiveContext(context.Background(), "s", "", "claude")
 		}
 	})
 }

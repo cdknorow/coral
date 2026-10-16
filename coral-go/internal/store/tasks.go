@@ -207,7 +207,7 @@ func (s *TaskStore) CurrentAgentTask(ctx context.Context, agentName string, sess
 
 // FinishAgentTask marks a task done or cancelled, with an optional message.
 func (s *TaskStore) FinishAgentTask(ctx context.Context, taskID int64, state int, message string) error {
-	return s.FinishAgentTaskWithArtifacts(ctx, taskID, state, message, "success", nil)
+	return s.FinishAgentTaskWithArtifactsAndCandidate(ctx, taskID, state, message, "success", nil, "")
 }
 
 // ClaimNextAgentTask uses the shared workflow engine to claim one ready task.

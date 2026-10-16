@@ -3,6 +3,7 @@
 package jsonl
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ func TestCodexRolloutSwappedForALinkAfterTheCheckIsRefused(t *testing.T) {
 	link := transcriptlink.Codex(sid)
 	require.NotEmpty(t, link.Path, "the rollout is checked and believed")
 
-	msgs, _, err := ReadFrom(link.Path, "codex", 0)
+	msgs, _, err := ReadFromContext(context.Background(), link.Path, "codex", 0)
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 
@@ -45,9 +46,9 @@ func TestCodexRolloutSwappedForALinkAfterTheCheckIsRefused(t *testing.T) {
 	// The file swapped for a link after the check.
 	require.NoError(t, os.Remove(rollout))
 	require.NoError(t, os.Symlink(outside, rollout))
-	_, _, err = ReadFrom(link.Path, "codex", 0)
+	_, _, err = ReadFromContext(context.Background(), link.Path, "codex", 0)
 	assert.Error(t, err, "the swapped-in link is refused at open time")
-	_, n := NewSessionReader().ReadAllMessagesForLive(sid, "", "codex")
+	_, n := NewSessionReader().ReadAllMessagesForLiveContext(context.Background(), sid, "", "codex")
 	assert.Equal(t, 0, n, "the live reader gets nothing from the outside file")
 	assert.NotContains(t, NewSessionReader().FirstUserPrompt(sid, "", "codex"), "OUTSIDE-SECRET")
 
@@ -57,8 +58,8 @@ func TestCodexRolloutSwappedForALinkAfterTheCheckIsRefused(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(outDir, filepath.Base(rollout)), []byte(line("OUTSIDE-SECRET")), 0o600))
 	require.NoError(t, os.Remove(day))
 	require.NoError(t, os.Symlink(outDir, day))
-	_, _, err = ReadFrom(link.Path, "codex", 0)
+	_, _, err = ReadFromContext(context.Background(), link.Path, "codex", 0)
 	assert.Error(t, err, "a symlinked folder on the way is refused too")
-	_, n = NewSessionReader().ReadAllMessagesForLive(sid, "", "codex")
+	_, n = NewSessionReader().ReadAllMessagesForLiveContext(context.Background(), sid, "", "codex")
 	assert.Equal(t, 0, n)
 }

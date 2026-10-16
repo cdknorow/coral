@@ -1,6 +1,7 @@
 package jsonl
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -54,9 +55,9 @@ func TestConcurrentSessionReads(t *testing.T) {
 
 	<-sessionABlocked
 
-	// Now Session B's ReadAllMessagesForLive should NOT block on Session A
+	// Now Session B's ReadAllMessagesForLiveContext should NOT block on Session A
 	start := time.Now()
-	messages, total := reader.ReadAllMessagesForLive("sessionB", "", at.Agy)
+	messages, total := reader.ReadAllMessagesForLiveContext(context.Background(), "sessionB", "", at.Agy)
 	elapsed := time.Since(start)
 
 	require.Equal(t, 5, total)
@@ -121,7 +122,7 @@ func TestConcurrentMultiSessionStress(t *testing.T) {
 			defer wg.Done()
 			for iter := 0; iter < 20; iter++ {
 				sid := fmt.Sprintf("session-%d", (w+iter)%numSessions)
-				msgs, total := reader.ReadAllMessagesForLive(sid, "", at.Agy)
+				msgs, total := reader.ReadAllMessagesForLiveContext(context.Background(), sid, "", at.Agy)
 				if total != 10 || len(msgs) != 10 {
 					t.Errorf("worker %d iter %d got total %d", w, iter, total)
 				}

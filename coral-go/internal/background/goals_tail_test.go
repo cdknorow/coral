@@ -29,7 +29,7 @@ func goalToolResultLine(id, body string) string {
 
 func fullInput(t *testing.T, path string) goalInput {
 	t.Helper()
-	messages, _, err := jsonl.ReadFrom(path, "claude", 0)
+	messages, _, err := jsonl.ReadFromContext(context.Background(), path, "claude", 0)
 	require.NoError(t, err)
 	return condenseForGoal(messages)
 }

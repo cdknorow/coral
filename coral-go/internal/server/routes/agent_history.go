@@ -453,9 +453,9 @@ func (h *SessionsHandler) loadSessionMessages(ctx context.Context, item store.Se
 	if item.IsCurrent {
 		var messages []map[string]any
 		if item.SessionID != "" {
-			messages, _ = h.jsonl.ReadAllMessagesForLive(item.SessionID, item.WorkingDir, agentType)
+			messages, _ = h.jsonl.ReadAllMessagesForLiveContext(context.Background(), item.SessionID, item.WorkingDir, agentType)
 		} else {
-			messages, _ = h.jsonl.ReadAllMessages(item.SessionID, item.WorkingDir, agentType)
+			messages, _ = h.jsonl.ReadAllMessagesContext(context.Background(), item.SessionID, item.WorkingDir, agentType)
 		}
 		if len(messages) > 0 {
 			return messages, "", nil
@@ -473,7 +473,7 @@ func (h *SessionsHandler) loadSessionMessages(ctx context.Context, item store.Se
 		if !fileExists(item.SourceFile) {
 			return nil, fmt.Sprintf("historical transcript file %s does not exist", item.SourceFile), nil
 		}
-		messages, _, err := jsonl.ReadFrom(item.SourceFile, agentType, 0)
+		messages, _, err := jsonl.ReadFromContext(context.Background(), item.SourceFile, agentType, 0)
 		if err != nil {
 			return nil, fmt.Sprintf("failed to read transcript file %s: %v", item.SourceFile, err), nil
 		}
@@ -481,7 +481,7 @@ func (h *SessionsHandler) loadSessionMessages(ctx context.Context, item store.Se
 	}
 
 	// Fallback to jsonl reader by sessionID
-	messages, _ := h.jsonl.ReadAllMessages(item.SessionID, item.WorkingDir, agentType)
+	messages, _ := h.jsonl.ReadAllMessagesContext(context.Background(), item.SessionID, item.WorkingDir, agentType)
 	if len(messages) == 0 {
 		return nil, fmt.Sprintf("no transcript discovered for ancestor session %s", item.SessionID), nil
 	}
