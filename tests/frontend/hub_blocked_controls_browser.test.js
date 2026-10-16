@@ -92,10 +92,10 @@ const HUB_PRELOAD = `(() => {
         await install();
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('bc-awake', 'A', 3, { sleeping: false, server: 'm1' }); window.__m.add('bc-sleep', 'S', 3, { sleeping: true, server: 'm1' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
         await ev(`window.selectLiveSession('bc-awake', 'claude', 'bc-awake-id', 'm1'); true`);
-        await waitFor(`!!document.querySelector('#command-pane [data-on-click=cmd-send]')`, 'the composer', 8000);
+        await waitFor(`!!document.querySelector('#command-toolbar [data-on-click=cmd-send]')`, 'the composer', 8000);
 
         console.log('1. View: everything that needs Interact or Launch is dimmed with its reason');
-        await waitFor(`!!document.querySelector('#command-pane [data-on-click=cmd-send].hub-blocked')`, 'Send dimmed at View', 6000);
+        await waitFor(`!!document.querySelector('#command-toolbar [data-on-click=cmd-send].hub-blocked')`, 'Send dimmed at View', 6000);
         await waitFor(`!!document.querySelector('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-kill].hub-blocked')`, 'Kill dimmed at View', 6000);
         let s = await state();
         blockedAs(s.pane, INTERACT_PANE, true, 'Interact', 'View pane');
@@ -172,7 +172,7 @@ const HUB_PRELOAD = `(() => {
         await Page.loadEventFired();
         await install();
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__mode = 'view'; window.__m.add('bc-awake', 'A', 3, { sleeping: false }); T.render.renderLiveSessions(T.state.liveSessions); window.selectLiveSession('bc-awake', 'claude', 'bc-awake-id', 'local'); true`);
-        await waitFor(`!!document.querySelector('#command-pane [data-on-click=cmd-send]')`, 'the local composer', 8000);
+        await waitFor(`!!document.querySelector('#command-toolbar [data-on-click=cmd-send]')`, 'the local composer', 8000);
         await ev(`new Promise(r => setTimeout(r, 600))`); // sleep-ok: the marking runs 120 ms after a redraw; nothing may appear
         assert.equal(await ev(`document.querySelectorAll('.hub-blocked').length`), 0, 'nothing dimmed on a local dashboard');
         console.log('   ✓ no dimmed control locally');

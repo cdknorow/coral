@@ -20,12 +20,12 @@ const BASE = require('./test_base').BASE;
         await install();
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('es-a', 'A', 3, { sleeping: false }); true`);
         await ev(`window.selectLiveSession('es-a', 'claude', 'es-a-id', 'local'); true`);
-        await waitFor(`!!document.querySelector('#command-pane [data-on-click=cmd-send]') && !document.getElementById('command-input').disabled`, 'the composer', 8000);
+        await waitFor(`!!document.querySelector('#command-toolbar [data-on-click=cmd-send]') && !document.getElementById('command-input').disabled`, 'the composer', 8000);
 
         console.log('1. Send with an empty box focuses and flashes it; with text there is no nudge');
         const nudged = () => ev(`document.getElementById('command-input').classList.contains('empty-send-nudge')`);
         assert.equal(await nudged(), false, 'no nudge to begin with');
-        await ev(`document.activeElement && document.activeElement.blur(); document.querySelector('#command-pane [data-on-click=cmd-send]').click(); true`);
+        await ev(`document.activeElement && document.activeElement.blur(); document.querySelector('#command-toolbar [data-on-click=cmd-send]').click(); true`);
         await waitFor(`document.getElementById('command-input').classList.contains('empty-send-nudge')`, 'the nudge after Send on an empty box', 3000);
         assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'command-input', 'the box has focus');
         assert.notEqual(await ev(`getComputedStyle(document.getElementById('command-input')).animationName`), 'none', 'it plays an animation');
@@ -37,7 +37,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(await nudged(), false, 'Enter on an empty box does not flash');
         // With text: Send goes ahead, no nudge.
         await Input.insertText({ text: 'hello there' });
-        await ev(`document.querySelector('#command-pane [data-on-click=cmd-send]').click(); true`);
+        await ev(`document.querySelector('#command-toolbar [data-on-click=cmd-send]').click(); true`);
         assert.equal(await nudged(), false, 'no nudge when there is text to send');
         console.log('   ✓ empty: focused and flashed, flash ends; Enter quiet; with text no flash');
 
