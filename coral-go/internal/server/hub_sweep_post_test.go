@@ -26,7 +26,7 @@ func TestHubSweepNoHomeInAnyWriteAnswer(t *testing.T) {
 		t.Skip("needs git")
 	}
 	r := newE2ERemote(t, "hub-sweep-write", nil)
-	t.Setenv("HOME", r.dir)
+	setHome(t, r.dir)
 	// A checkout with a change, so stopping the agent stores a diff and says where (QA's kill finding).
 	git := func(args ...string) {
 		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.test"}, args...)...)
@@ -102,10 +102,7 @@ func TestHubSweepNoHomeInAnyWriteAnswer(t *testing.T) {
 	repl := strings.NewReplacer("{name}", name, "{sessionID}", sid, "{project}", "team", "{boardName}", "team",
 		"{taskID}", strconv.FormatInt(task.ID, 10), "{runID}", "1", "{jobID}", "1", "{workflowID}", "1",
 		"{groupID}", "g", "{id}", "1", "{noteID}", "1", "{presetID}", "x", "{messageID}", "1", "{agentName}", "x")
-	homes := []string{r.dir}
-	if real, err := filepath.EvalSymlinks(r.dir); err == nil && real != r.dir {
-		homes = append(homes, real)
-	}
+	homes := homeForms(r.dir) // as given, resolved, and JSON-escaped (#3914)
 	// These end what the others need, so they run last, in this order (covered, not skipped).
 	last := []string{
 		"/api/sessions/live/{sessionID}/archive", "/api/sessions/live/{sessionID}/sleep",

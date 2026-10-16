@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -21,6 +22,9 @@ func TestFirstStartWithOpenNonTTYStdinDoesNotBlock(t *testing.T) {
 		t.Skip("builds and runs the server")
 	}
 	bin := filepath.Join(t.TempDir(), "coral")
+	if runtime.GOOS == "windows" {
+		bin += ".exe" // exec only runs a name with a PATHEXT extension there (#3914)
+	}
 	if out, err := exec.Command("go", "build", "-tags", "dev", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
@@ -44,7 +48,7 @@ func TestFirstStartWithOpenNonTTYStdinDoesNotBlock(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(dataDir) })
 	cmd := exec.Command(bin, "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--no-browser")
-	cmd.Env = append(os.Environ(), "CORAL_DATA_DIR="+dataDir, "HOME="+dataDir, "CORAL_NO_DEMO_SEED=1")
+	cmd.Env = append(os.Environ(), "CORAL_DATA_DIR="+dataDir, "HOME="+dataDir, "USERPROFILE="+dataDir, "CORAL_NO_DEMO_SEED=1")
 	cmd.Stdin = pr
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
