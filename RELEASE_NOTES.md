@@ -1,10 +1,22 @@
 # Release Notes
 
+## v1.4.50 — Fewer rate-limit cascades, and steadier history
+
+### New
+
+- **A team's agents no longer hit the API all at once.** Coral spaces its own automated messages to the agents of one team 2–3 seconds apart, and launching, resetting, resurrecting or waking a team starts its agents 2–3 seconds apart too. Requests still answer at once, and your own typing, keys and kills are never delayed. Coral never throttles or retries the agent CLIs' own API calls.
+- **A notice when agents stop on their own.** If agents end by themselves (rate limited, overloaded, an API error or an exit), Coral sends one notice per team: a dashboard notification and a board post from Coral Health Monitor.
+- **Optional: resume agents stopped by an API error.** Settings › "Resume agents stopped by an API error" (off by default) wakes such an agent again after about 2, 5 and 15 minutes, then stops. Your own Wake resets the count.
+
+### Fixes
+
+- **History pages load reliably under load.** Several requests for the same session's history at once could make one of them answer "not found"; each request now reads the whole transcript itself.
+
 ## v1.4.49 — Agents wake after a restart, and an accurate "Key rejected"
 
 ### New
 
-- **Agents wake again after Coral restarts (pty).** With the pty terminal backend, Coral puts agents to sleep when it stops and now wakes them again when it starts, one at a time, up to the number set in Settings (8 by default; more after you confirm). They resume their conversation with their stored settings and permission mode; a tool that was running is not continued. You can turn this off, and Coral skips it if it has restarted several times in a row. Each woken agent gets a short notice from Coral.
+- **Agents wake again after Coral restarts (pty).** With the pty terminal backend, Coral puts agents to sleep when it stops cleanly (or marks them asleep at the next start after a crash) and now wakes them again when it starts, one at a time, up to the number set in Settings (8 by default; more after you confirm). They resume their conversation with their stored settings and permission mode; a tool that was running is not continued. You can turn this off, and Coral skips it if it has restarted several times in a row. Each woken agent on a board gets a short message from Coral, and you get one notice per start.
 
 ### Fixes
 
