@@ -16,22 +16,39 @@ import (
 
 var jsonHdr = http.Header{"Content-Type": {"application/json"}}
 
-// redactStrings is v with every string (and key) redacted as text: what the structural
-// redaction must give.
-func redactStrings(v any) any {
+// redactStrings is v with every key redacted as text and every value with its key (an array's
+// strings with the key of the member holding it): what the structural redaction must give.
+func redactStrings(v any) any { return redactUnder(v, "", false) }
+
+func redactUnder(v any, key string, has bool) any {
 	switch x := v.(type) {
 	case string:
+		if has {
+			return redactMember(key, x)
+		}
 		return string(RedactTokens([]byte(x)))
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
-			out[i] = redactStrings(e)
+			out[i] = redactUnder(e, key, has)
 		}
 		return out
 	case map[string]any:
+		name, hasName := "", false
+		for k, e := range x {
+			if lk := strings.ToLower(k); lk == "name" || lk == "key" {
+				if str, isStr := e.(string); isStr {
+					name, hasName = str, true
+				}
+			}
+		}
 		out := make(map[string]any, len(x))
 		for k, e := range x {
-			out[string(RedactTokens([]byte(k)))] = redactStrings(e)
+			ctx := k
+			if hasName && strings.EqualFold(k, "value") {
+				ctx = name
+			}
+			out[string(RedactTokens([]byte(k)))] = redactUnder(e, ctx, true)
 		}
 		return out
 	}
@@ -152,4 +169,56 @@ func TestRedactJSONStructureProperty(t *testing.T) {
 		}
 		require.Equal(t, redactStrings(decodeNumbers(t, raw)), decodeNumbers(t, out), "%s", raw)
 	}
+}
+
+// Security's rows (#3732 review): in a JSON object the keyword is the key and the credential
+// its value. None of the secret shows, structurally; nor through the text redactor on the same
+// bytes, except where noted.
+func TestRedactJSONStructureKeyAndValue(t *testing.T) {
+	basic := fake("", 24, alnum+"=")
+	tok := fake("", 36, alnum)
+	bearer := fake("", 30, alnum+"._-")
+	nonce := fake("", 32, "0123456789abcdef")
+	resp := fake("", 32, "fedcba9876543210")
+	ghp := fake("ghp_", 36, alnum)
+	digest := `Digest username="bob", nonce="` + nonce + `", uri="/v1", response="` + resp + `"`
+	for _, c := range []struct {
+		body    any
+		secrets []string
+		textGap bool // the text redactor misses it (a value in an array, not after a quote); held JSON goes the structural way
+	}{
+		{map[string]any{"headers": map[string]any{"Authorization": "Basic " + basic}}, []string{basic}, false},
+		{map[string]any{"authorization": "Basic " + basic}, []string{basic}, false},
+		{map[string]any{"AUTHORIZATION": "Basic " + basic}, []string{basic}, false},
+		{map[string]any{"Authorization": "token " + tok}, []string{tok}, false},
+		{map[string]any{"Authorization": tok}, []string{tok}, false},
+		{map[string]any{"Proxy-Authorization": "Basic " + basic}, []string{basic}, false},
+		{map[string]any{"Authorization": digest}, []string{nonce, resp}, false},
+		{map[string]any{"Authorization": "Bearer " + bearer}, []string{bearer}, false},
+		{map[string]any{"token": ghp}, []string{ghp[4:]}, false},
+		{map[string]any{"Authorization": []any{"Basic " + basic}}, []string{basic}, true},
+		{map[string]any{"req": map[string]any{"header": map[string]any{"Authorization": []any{"Bearer " + bearer, "Basic " + basic}}}}, []string{bearer, basic}, true},
+		{[]any{map[string]any{"name": "Authorization", "value": "Basic " + basic}}, []string{basic}, true},
+		{[]any{map[string]any{"value": "Basic " + basic, "Name": "Proxy-Authorization"}}, []string{basic}, true},
+	} {
+		raw, err := json.Marshal(c.body)
+		require.NoError(t, err)
+		out, ok := redactReply(jsonHdr, raw)
+		require.True(t, ok)
+		require.True(t, json.Valid(out), "%s", out)
+		assert.Empty(t, authSecretLeak(string(out), c.secrets), "structural: %s -> %s", raw, out)
+		if text := string(RedactTokens(raw)); !c.textGap {
+			assert.Empty(t, authSecretLeak(text, c.secrets), "text: %s -> %s", raw, text)
+		}
+	}
+}
+
+// A reply nested deeper than maxJSONDepth isn't walked: it is redacted as text, not refused.
+func TestRedactJSONTooDeepFallsBackToText(t *testing.T) {
+	tok := fake("ghp_", 36, alnum)
+	raw := strings.Repeat("[", maxJSONDepth+5) + `"` + tok + `"` + strings.Repeat("]", maxJSONDepth+5)
+	out, ok := redactReply(jsonHdr, []byte(raw))
+	require.True(t, ok)
+	assert.True(t, json.Valid(out))
+	assert.NotContains(t, string(out), tok)
 }

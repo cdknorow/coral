@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // A JSON reply held whole is redacted by its structure (#3732, Security's option on #3731): it
@@ -14,90 +15,174 @@ import (
 // encoder writes it). Key order and numbers are kept as they were; the reply is written compact.
 // The text redactor's quoting rules then only matter for replies that are streamed, or aren't
 // JSON.
+//
+// A value is redacted together with its key, as "key: value" (Security on #3732): in
+// {"Authorization": "Basic ..."} the keyword is the key and the credential the value, and the
+// Authorization rule needs both. Strings in an array take the key of the member holding it
+// ({"Authorization": ["Basic ..."]}, as Go writes an http.Header), and an object's "value" takes
+// its "name" (or "key") member's text, for headers written as {"name": ..., "value": ...} (HAR
+// files, browser automation logs). The reply is read whole into a tree first, since "name" may
+// come after "value".
 
-// redactJSONStructure is raw (valid JSON) with every string redacted. ok is false if raw can't
-// be walked as one JSON value.
+// jnode is one JSON value: an object (keys and vals), an array (vals), a string (str), or a
+// number, true, false or null (lit, as written).
+type jnode struct {
+	kind byte // '{', '[', 's' or 'l'
+	str  string
+	lit  string
+	keys []string
+	vals []*jnode
+}
+
+// maxJSONDepth bounds the nesting read (the reply is at most jsonWholeMax bytes; this keeps the
+// recursion bounded too). A deeper reply is not walked: the text redactor takes it.
+const maxJSONDepth = 512
+
+// readJSONNode reads one value from dec.
+func readJSONNode(dec *json.Decoder, depth int) (*jnode, bool) {
+	if depth > maxJSONDepth {
+		return nil, false
+	}
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, false
+	}
+	switch v := tok.(type) {
+	case json.Delim:
+		n := &jnode{kind: byte(v)}
+		if v != '{' && v != '[' {
+			return nil, false
+		}
+		for dec.More() {
+			if v == '{' {
+				kt, err := dec.Token()
+				k, isStr := kt.(string)
+				if err != nil || !isStr {
+					return nil, false
+				}
+				n.keys = append(n.keys, k)
+			}
+			c, ok := readJSONNode(dec, depth+1)
+			if !ok {
+				return nil, false
+			}
+			n.vals = append(n.vals, c)
+		}
+		if _, err := dec.Token(); err != nil { // the closing delimiter
+			return nil, false
+		}
+		return n, true
+	case string:
+		return &jnode{kind: 's', str: v}, true
+	case json.Number:
+		return &jnode{kind: 'l', lit: string(v)}, true
+	case bool:
+		if v {
+			return &jnode{kind: 'l', lit: "true"}, true
+		}
+		return &jnode{kind: 'l', lit: "false"}, true
+	case nil:
+		return &jnode{kind: 'l', lit: "null"}, true
+	}
+	return nil, false
+}
+
+// redact redacts n's strings in place; key (when has) is the key its strings are redacted with.
+func (n *jnode) redact(key string, has bool) {
+	switch n.kind {
+	case 's':
+		if has {
+			n.str = redactMember(key, n.str)
+		} else {
+			n.str = string(RedactTokens([]byte(n.str)))
+		}
+	case '[':
+		for _, c := range n.vals {
+			c.redact(key, has)
+		}
+	case '{':
+		name, hasName := "", false
+		for i, k := range n.keys {
+			if lk := strings.ToLower(k); (lk == "name" || lk == "key") && n.vals[i].kind == 's' {
+				name, hasName = n.vals[i].str, true // read before any redaction of it
+				break
+			}
+		}
+		for i, k := range n.keys {
+			ctx := k
+			if hasName && strings.EqualFold(k, "value") {
+				ctx = name
+			}
+			n.vals[i].redact(ctx, true)
+			n.keys[i] = string(RedactTokens([]byte(k)))
+		}
+	}
+}
+
+// write writes n as compact JSON.
+func (n *jnode) write(b *bytes.Buffer) bool {
+	switch n.kind {
+	case 's':
+		return writeJSONString(b, n.str)
+	case 'l':
+		b.WriteString(n.lit)
+		return true
+	}
+	b.WriteByte(n.kind)
+	for i, c := range n.vals {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		if n.kind == '{' {
+			if !writeJSONString(b, n.keys[i]) {
+				return false
+			}
+			b.WriteByte(':')
+		}
+		if !c.write(b) {
+			return false
+		}
+	}
+	if n.kind == '{' {
+		b.WriteByte('}')
+	} else {
+		b.WriteByte(']')
+	}
+	return true
+}
+
+// redactJSONStructure is raw (valid JSON) with every string redacted. ok is false if raw isn't
+// one JSON value that can be walked.
 func redactJSONStructure(raw []byte) (out []byte, ok bool) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
+	root, ok := readJSONNode(dec, 0)
+	if !ok {
+		return nil, false
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, false // one JSON value only
+	}
+	root.redact("", false)
 	var b bytes.Buffer
 	b.Grow(len(raw))
-	type frame struct {
-		obj bool // an object (else an array)
-		n   int  // values written in it
-		key bool // in an object: a key comes next
-	}
-	var stack []frame
-	// done records that a key or a value was written in the innermost container.
-	done := func() {
-		if len(stack) == 0 {
-			return
-		}
-		f := &stack[len(stack)-1]
-		switch {
-		case f.obj && f.key:
-			f.key = false
-		case f.obj:
-			f.key, f.n = true, f.n+1
-		default:
-			f.n++
-		}
-	}
-	values := 0
-	for {
-		tok, err := dec.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, false
-		}
-		if d, isDelim := tok.(json.Delim); isDelim && (d == '}' || d == ']') {
-			if len(stack) == 0 {
-				return nil, false
-			}
-			stack = stack[:len(stack)-1]
-			b.WriteByte(byte(d))
-			done()
-			continue
-		}
-		if len(stack) == 0 {
-			if values++; values > 1 {
-				return nil, false // one JSON value only
-			}
-		} else if f := stack[len(stack)-1]; f.obj && !f.key {
-			b.WriteByte(':')
-		} else if f.n > 0 {
-			b.WriteByte(',')
-		}
-		switch v := tok.(type) {
-		case json.Delim:
-			b.WriteByte(byte(v))
-			stack = append(stack, frame{obj: v == '{', key: v == '{'})
-			continue // done when it closes
-		case string:
-			if !writeJSONString(&b, string(RedactTokens([]byte(v)))) {
-				return nil, false
-			}
-		case json.Number:
-			b.WriteString(string(v))
-		case bool:
-			if v {
-				b.WriteString("true")
-			} else {
-				b.WriteString("false")
-			}
-		case nil:
-			b.WriteString("null")
-		default:
-			return nil, false
-		}
-		done()
-	}
-	if len(stack) != 0 || values != 1 {
+	if !root.write(&b) {
 		return nil, false
 	}
 	return b.Bytes(), true
+}
+
+// redactMember redacts value v as the text "key: v", so a rule that needs its keyword
+// (Authorization) sees it, and returns the value's part, redacted once more on its own. A key
+// that redaction changed (it held a token itself) leaves the value's place unknown: the value is
+// then the marker (fail closed).
+func redactMember(key, v string) string {
+	pre := key + ": "
+	r := string(RedactTokens([]byte(pre + v)))
+	if !strings.HasPrefix(r, pre) {
+		return RedactMarker
+	}
+	return string(RedactTokens([]byte(r[len(pre):])))
 }
 
 // writeJSONString writes s as a JSON string, without the HTML escaping json.Marshal adds.
@@ -121,7 +206,10 @@ func redactReply(hdr http.Header, raw []byte) (out []byte, ok bool) {
 		}
 	}()
 	if jsonReply(hdr) && json.Valid(raw) {
-		return redactJSONStructure(raw)
+		if out, ok := redactJSONStructure(raw); ok {
+			return out, true
+		}
+		// Too deep to walk: redacted as text, as before #3732 (and still checked to parse).
 	}
 	return RedactTokens(raw), true
 }
