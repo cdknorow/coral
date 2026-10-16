@@ -10,6 +10,20 @@ export CORAL_CHROME_BIN=/sd2/$USER/coralgo-tools/chrome-linux64/chrome
 unset CORAL_CLOUD_URL CORAL_DATA_DIR CORAL_URL TMUX   # a test server must never reach the real Hub or a real data dir
 ```
 
+## Where a run keeps its data: /sd2, never /
+
+epoch's root disk (`/`, which holds `/tmp` and `$HOME`) is small and nearly full, while `/sd2` has hundreds of GB free. Every
+run puts its temp data, seeded data dirs, Chrome profiles and worktrees under `/sd2/$USER/<your-role>-tmp` (for example
+`/sd2/$USER/qa-tmp`; DevOps' scripts use `/sd2/$USER/coralgo-tmp`), never under `/tmp` or `$HOME`, and deletes them on exit:
+
+```bash
+export TMPDIR=/sd2/$USER/<your-role>-tmp; mkdir -p "$TMPDIR"
+work=$(mktemp -d "$TMPDIR/run.XXXXXX"); trap 'rm -rf -- "$work"' EXIT   # Go tests, Chrome and mktemp all follow TMPDIR
+```
+
+Everyone on the team runs as the same epoch user, so the owner column of `ls` can't tell whose a folder is. Name yours
+after your role, and remove only your own, by exact path.
+
 | Tool | Where | Version | How it was checked |
 |---|---|---|---|
 | Go | `$HOME/go-install/go/bin/go` | go1.24.1, which switches itself to `coral-go/go.mod`'s toolchain (go1.26.9) on first use (`GOTOOLCHAIN`) | the official go.dev tarball; the switched toolchain is checked against the Go checksum database |
