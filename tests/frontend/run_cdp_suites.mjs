@@ -69,6 +69,8 @@
 // command line still names that run's temp directory, so a reused pid is never hit.
 // Never run bare 'tmux' from an agent shell: $TMUX there points at production Coral's ~/.coral/tmux.sock.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+// The browser password every test server starts with (a throwaway; never printed or logged).
+const TEST_PASSWORD = 'coral-cdp-suites-test-password';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -347,7 +349,12 @@ async function startShard(n, gen = 0, strict = false) {
   // Strict local auth is the default (#3936). The suites' own node-side setup calls send no
   // credential (and some check the same-origin local dashboard, which a key would change), so the
   // regular shards run with it off; the strict phase runs the suites that matter there, signed in.
-  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, ...(strict ? {} : { CORAL_STRICT_LOCAL_AUTH: '0' }) };
+  // A password is set before the server starts (#3949's CORAL_INITIAL_PASSWORD_FILE: a private file, read once and
+  // deleted by Coral), so the first-run "Set a password" prompt (#3948) never covers a suite's page. The suites that
+  // test the prompt and the sign-in page stub the auth API themselves.
+  const pwFile = path.join(dir, 'initial-password');
+  fs.writeFileSync(pwFile, TEST_PASSWORD + '\n', { mode: 0o600 }); fs.chmodSync(pwFile, 0o600);
+  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile, ...(strict ? {} : { CORAL_STRICT_LOCAL_AUTH: '0' }) };
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
     ...(strict ? ['--strict-local-auth'] : []), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
