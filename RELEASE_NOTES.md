@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.4.60 — Navigation that fits every screen, safer review verdicts, and a lighter dashboard
+
+### Fixes
+
+- **The top navigation fits at every width.** The tabs keep today's look with their spacing fixed: at tablet widths they no longer run together, and the row never wraps. When the tabs don't fit (large text, zoom, more tabs), the last ones move under a More menu, never the active one. On phones, one dropdown in the top bar names the current view and lists the others.
+- **The phone's Send button is dimmed again for a View-only agent** (a regression in v1.4.59). The server refused the send either way.
+- **A review verdict goes to the revision the reviewer read.** `coral-board task approve` and `reject` without `--round` send the round the reviewer last saw, so a verdict typed after the author resubmits is refused instead of applying to a revision they haven't read.
+
+### Other changes
+
+- **A smaller dashboard.** Code left from the old inline handlers is removed, along with exports nothing else uses and about 900 lines of CSS that styled nothing. A test now fails on a stylesheet rule that nothing builds. The @file and /command lists share one implementation.
+
 ## v1.4.59 — A redaction fix for v1.4.58, secrets redacted at rest, and controls that say what they do
 
 ### Security
