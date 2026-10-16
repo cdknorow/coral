@@ -621,3 +621,61 @@ func mustRecent(t *testing.T, handler *BoardHandler, ctx context.Context) []boar
 	require.NoError(t, err)
 	return recent
 }
+
+// #3942: a subscribe through Coral Hub subscribes the Coral Hub user the connector names, with
+// the Hub user's role, not the "Operator" the dashboard asks for; never receive_mode all;
+// never without the header. The Hub user's later posts aren't refused as
+// a name already on the board. From this computer the body's names are used, as before.
+func TestTunnelSubscribeIsTheHubUser(t *testing.T) {
+	_, handler := setupBoardTestServer(t)
+	ctx := context.Background()
+	g := TunnelIdentityGuard(handler.bs, func(*http.Request) bool { return true })
+	router := chi.NewRouter()
+	router.With(g).Post("/api/board/{project}/subscribe", handler.Subscribe)
+	router.With(g).Post("/api/board/{project}/messages", handler.PostMessage)
+	do := func(tunneled bool, target, body string, hubUser string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		if tunneled {
+			stamp(r)
+		}
+		if hubUser != "" {
+			r.Header.Set(tunnel.HubUserHeader, hubUser)
+		}
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, r)
+		return rec
+	}
+	const user = "hub-user-1234abcd"
+	// The guard still refuses orchestrator names, other members and receive_mode all first
+	// (TestTunnelIdentityGuard); what passes it is the Operator, which Subscribe replaces.
+	for _, body := range []string{
+		`{"subscriber_id":"Operator","job_title":"Operator"}`, // what the dashboard sends
+		`{"subscriber_id":"Operator","job_title":"Operator","session_name":"claude-x"}`,
+	} {
+		rec := do(true, "/api/board/p/subscribe", body, user)
+		require.Equal(t, http.StatusOK, rec.Code, "%s: %s", body, rec.Body.String())
+	}
+	subs, err := handler.bs.ListSubscribers(ctx, "p")
+	require.NoError(t, err)
+	require.Len(t, subs, 1, "only the Hub user, however the body named itself: %+v", subs)
+	assert.Equal(t, user, subs[0].SubscriberID)
+	assert.Equal(t, hubSubscriberTitle, subs[0].JobTitle)
+	assert.Empty(t, subs[0].SessionName)
+	assert.False(t, board.IsOrchestrator(subs[0].SubscriberID, subs[0].JobTitle, subs[0].CanPeek))
+
+	rec := do(true, "/api/board/p/subscribe", `{"subscriber_id":"Operator","receive_mode":"all"}`, user)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	rec = do(true, "/api/board/p/subscribe", `{"subscriber_id":"Operator"}`, "")
+	assert.Equal(t, http.StatusForbidden, rec.Code, "no Coral Hub user: refused (by the guard), never the Operator")
+	assert.Equal(t, "hub_user_required", codeOf(t, rec))
+
+	rec = do(true, "/api/board/p/messages", `{"content":"hello"}`, user)
+	assert.Equal(t, http.StatusOK, rec.Code, "the subscribed Hub user can still post: %s", rec.Body.String())
+
+	rec = do(false, "/api/board/p/subscribe", `{"subscriber_id":"Operator","job_title":"Operator"}`, "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	op, err := handler.bs.GetProjectSubscription(ctx, "p", "Operator")
+	require.NoError(t, err)
+	require.NotNil(t, op, "from this computer the dashboard still subscribes the Operator")
+}

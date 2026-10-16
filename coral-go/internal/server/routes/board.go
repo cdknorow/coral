@@ -834,6 +834,30 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	if refuseNewBoardName(w, r, h.bs, project) {
 		return
 	}
+	// Through Coral Hub the subscriber is the Coral Hub user the connector names, never a name
+	// from the body: the dashboard asks for "Operator", which made the Hub's viewer the board's
+	// Operator subscription (#3942). Like a chat post (#3377): no header is 400, a name already
+	// on the board 409; no local session, the default mode (mentions), and recorded.
+	if cloud.Tunneled(r) {
+		user, _, status, msg := h.tunnelChatSender(r, project)
+		if status != 0 {
+			writeJSON(w, status, map[string]any{"error": msg, "code": "hub_user_required"})
+			return
+		}
+		if strings.EqualFold(strings.TrimSpace(body.ReceiveMode), "all") {
+			writeJSON(w, http.StatusForbidden, map[string]any{"code": "orchestrator_identity",
+				"error": "Through Coral Hub a subscriber can't receive every message (receive_mode all is the orchestrator's)"})
+			return
+		}
+		sub, err := h.bs.Subscribe(r.Context(), project, user, hubSubscriberTitle, "", nil, body.ReceiveMode)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		recordHubOperatorAction(r.Context(), h.bs, user, r.Method, r.URL.Path, project, http.StatusOK)
+		writeJSON(w, http.StatusOK, sub)
+		return
+	}
 	subscriberID := body.SubscriberID
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
@@ -849,6 +873,9 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, sub)
 }
+
+// hubSubscriberTitle is the role a Coral Hub user's board subscription shows (#3942).
+const hubSubscriberTitle = "Coral Hub user"
 
 // Unsubscribe removes a subscriber from a board.
 // DELETE /api/board/{project}/subscribe
@@ -1030,6 +1057,9 @@ func tunnelHubUser(r *http.Request, bs *board.Store, project string) (user strin
 		return "", true, http.StatusInternalServerError, "could not read the board's members"
 	}
 	for _, s := range subs {
+		if s.SubscriberID == user && s.JobTitle == hubSubscriberTitle {
+			continue // the Hub user's own subscription, made through Coral Hub (#3942)
+		}
 		if strings.EqualFold(s.SubscriberID, user) || strings.EqualFold(strings.TrimSpace(s.JobTitle), user) {
 			return "", true, http.StatusConflict, "That Coral Hub user's name is already a member or role on this board"
 		}
