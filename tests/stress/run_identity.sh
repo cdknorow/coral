@@ -43,6 +43,7 @@ BASE="http://127.0.0.1:${PORT}"
 PASS=0; FAIL=0; SERVER_PID=""
 # A short folder: the tmux socket path must stay under the 104-byte limit (macOS).
 TMP="$(mktemp -d /tmp/cid.XXXXXX)"
+export TMPDIR="$TMP"  # server os.TempDir() droppings land here, removed on exit (#3926)
 DATA="$TMP/d"; DUMP="$TMP/dump"; BIN="$TMP/bin"
 mkdir -p "$DATA" "$DUMP" "$BIN" "$TMP/h" "$TMP/w"
 

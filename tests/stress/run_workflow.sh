@@ -109,6 +109,7 @@ wait_for_run() {
 # ── Setup ────────────────────────────────────────────────────────────
 
 TMPDIR_WF="$(mktemp -d)"
+export TMPDIR="$TMPDIR_WF"  # (#3926)
 export CORAL_DATA_DIR="$TMPDIR_WF"
 
 # Create a repo directory for workflows to use

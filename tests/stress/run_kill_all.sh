@@ -38,6 +38,7 @@ api()  { local m="$1" p="$2"; shift 2; curl -s -m 15 -X "$m" "${BASE_URL}${p}" -
 
 # Short temp path: the tmux socket lives under it and Unix socket paths are limited (~104 bytes).
 TMP="$(mktemp -d /tmp/coral-killall.XXXXXX)"
+export TMPDIR="$TMP"  # (#3926)
 export CORAL_DATA_DIR="$TMP/data"
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job (it would run a real agent)
 export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)

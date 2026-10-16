@@ -77,6 +77,7 @@ function findChrome() {
         catch { throw Error('Missing chrome-remote-interface; provision tests/frontend dependencies before running this helper'); }
         const chromeBin = findChrome();
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-assignment-browser-'));
+        process.env.TMPDIR = tempDir; // Chrome inherits it, so its org.chromium.Chromium.* IPC dirs land in tempDir and go with the rmSync below (#3926); never left in the shared TMPDIR
         chrome = spawn(chromeBin, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
             '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${tempDir}`, 'about:blank'],
             {stdio:['ignore', 'ignore', 'pipe'], detached:true});
