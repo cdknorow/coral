@@ -176,12 +176,15 @@ func TestTeamLaunchCountsStartedAndFailedMembersSeparately(t *testing.T) {
 	sink.wait(t, tracking.EventFirstTeamLaunched, 1)
 
 	// Every member fails: the HTTP call still returns 200 with per-member
-	// errors, but nothing counts as a launched team.
+	// errors, but nothing counts as a launched team. A team's later members have
+	// their CLI typed after the call answers (#3613: their starts are spaced), so
+	// only failures known by then count: here a team of one whose start fails.
 	terminal.mu.Lock()
 	terminal.sendErr = errors.New("boom at /Users/alice/x")
 	terminal.mu.Unlock()
 	b := body()
 	b["board_name"] = "tm2"
+	b["agents"] = []map[string]any{{"name": "A"}}
 	require.Equal(t, 200, postLaunch(t, server.URL, "/api/sessions/launch-team", b))
 	results := sink.wait(t, tracking.EventLaunchResult, 2)
 	var failedTeam map[string]any
@@ -192,7 +195,7 @@ func TestTeamLaunchCountsStartedAndFailedMembersSeparately(t *testing.T) {
 	}
 	require.NotNil(t, failedTeam)
 	assert.Equal(t, float64(0), failedTeam["started_agents"])
-	assert.Equal(t, float64(2), failedTeam["failed_agents"])
+	assert.Equal(t, float64(1), failedTeam["failed_agents"])
 	assert.Equal(t, "spawn_failed", failedTeam["failure_category"])
 	time.Sleep(60 * time.Millisecond)
 	assert.Len(t, sink.named(tracking.EventTeamLaunched), 1, "a team that started nobody is not team_launched")

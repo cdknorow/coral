@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"context"
+	"errors"
 	"hash/fnv"
 	"math/rand/v2"
 	"sync"
@@ -17,11 +18,19 @@ import (
 //   - Only automated sends and launches are spaced: the Operator's input, keys and kill never go
 //     through here (Security).
 //   - Coral never touches the CLIs' own API calls: this only decides when Coral types or launches.
+//   - A send never waits more than MaxTeamWait (Security's SHOULD 2): beyond it the gate holds it
+//     ("not now") and its loop tries again, so a burst never parks minutes of sends.
+//   - A launch or wake never makes its request wait (Security's MUST): its terminal is created at
+//     once and only the CLI's start command is typed when the slot comes (ReserveTeamStart).
 
 const (
-	TeamGap    = 2 * time.Second
-	TeamJitter = time.Second
+	TeamGap     = 2 * time.Second
+	TeamJitter  = time.Second
+	MaxTeamWait = 30 * time.Second
 )
+
+// ErrTeamBusy: the team's next send slot is more than MaxTeamWait away; not now.
+var ErrTeamBusy = errors.New("the team's automated sends are spaced: not now")
 
 type teamSpacer struct {
 	mu    sync.Mutex
@@ -52,13 +61,17 @@ func newTeamSpacer() *teamSpacer {
 }
 
 // reserve takes the team's next slot and returns how long to wait for it (0 for the first).
-func (s *teamSpacer) reserve(team string) time.Duration {
+// With max > 0, a slot further away than max isn't taken: ok is false.
+func (s *teamSpacer) reserve(team string, max time.Duration) (wait time.Duration, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
 	at := now
 	if t, ok := s.next[team]; ok && t.After(now) {
 		at = t
+	}
+	if max > 0 && at.Sub(now) > max {
+		return at.Sub(now), false
 	}
 	s.next[team] = at.Add(s.gap())
 	// Forget teams that have been quiet a while (the map stays small).
@@ -67,19 +80,35 @@ func (s *teamSpacer) reserve(team string) time.Duration {
 			delete(s.next, k)
 		}
 	}
-	return at.Sub(now)
+	return at.Sub(now), true
 }
 
-// SpaceTeam waits for team's next send or launch slot. team "" (an agent on no board) never
-// waits. It reports false when ctx ended first.
-func SpaceTeam(ctx context.Context, team string) bool {
+// SpaceTeam waits for team's next automated send slot. team "" (an agent on no board) never
+// waits. It returns ErrTeamBusy, without waiting, when the slot is over MaxTeamWait away, and
+// ctx's error when ctx ended first.
+func SpaceTeam(ctx context.Context, team string) error {
 	if team == "" {
-		return ctx.Err() == nil
+		return ctx.Err()
 	}
-	if d := spacer.reserve(team); d > 0 {
-		return spacer.sleep(ctx, d)
+	d, ok := spacer.reserve(team, MaxTeamWait)
+	if !ok {
+		return ErrTeamBusy
 	}
-	return ctx.Err() == nil
+	if d > 0 && !spacer.sleep(ctx, d) {
+		return ctx.Err()
+	}
+	return ctx.Err()
+}
+
+// ReserveTeamStart takes team's next slot for an agent's start and returns how long from now
+// it comes; the caller types the start command then, in the background. Never refused: a
+// launched agent must start. team "": 0.
+func ReserveTeamStart(team string) time.Duration {
+	if team == "" {
+		return 0
+	}
+	d, _ := spacer.reserve(team, 0)
+	return d
 }
 
 // The team an agent session belongs to, for spacing automated sends (the server registers it:

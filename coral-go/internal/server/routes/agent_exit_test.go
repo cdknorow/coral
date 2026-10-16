@@ -1,17 +1,23 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -246,4 +252,100 @@ func TestAutoResumeSettingIsABoolean(t *testing.T) {
 	assert.Equal(t, "true", body[AutoResumeSetting])
 	require.NoError(t, validateAutoResumeSetting(map[string]any{AutoResumeSetting: "false"}))
 	require.NoError(t, validateAutoResumeSetting(map[string]any{}))
+}
+
+// Security's MUST on #3647: a team launch never waits for the spacing. Through Coral Hub the
+// connector cancels a request with no response headers at its deadline (#3624), which ends the
+// request's context; here that context has a 5 s deadline, and a team of 15 still launches whole:
+// the call answers within it with all 15 started (their sessions and terminals exist), the team's
+// first CLI is typed at once, and each later start is typed on a background context when its
+// slot comes, 2-3 s apart, after the request's context has ended.
+func TestTeamLaunchOf15AnswersAtOnceAndStartsAllLater(t *testing.T) {
+	r := newWakeRig(t)
+	terminal := r.h.terminal.(*mockSessionTerminal)
+	var mu sync.Mutex
+	var later []timer
+	prev := afterTeamSlot
+	afterTeamSlot = func(d time.Duration, f func()) { mu.Lock(); later = append(later, timer{d, f}); mu.Unlock() }
+	t.Cleanup(func() { afterTeamSlot = prev })
+
+	team := fmt.Sprintf("launch15-%d", time.Now().UnixNano()) // a team the spacer hasn't seen
+	agents := make([]map[string]any, 15)
+	for i := range agents {
+		agents[i] = map[string]any{"name": fmt.Sprintf("Agent %02d", i+1), "prompt": "work"}
+	}
+	body, _ := json.Marshal(map[string]any{"board_name": team, "working_dir": t.TempDir(), "agent_type": "claude", "agents": agents})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(body)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	start := time.Now()
+	r.h.LaunchTeam(rec, req)
+	took := time.Since(start)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Less(t, took, 5*time.Second, "answered within the deadline")
+	require.NoError(t, ctx.Err(), "the request's context was still live when it answered")
+
+	var resp struct {
+		Agents []map[string]any `json:"agents"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Agents, 15)
+	for _, a := range resp.Agents {
+		assert.NotContains(t, a, "error", "%v", a)
+		assert.NotEmpty(t, a["session_id"])
+	}
+	started := 0
+	for _, a := range resp.Agents {
+		if ls, err := r.ss.GetLiveSession(context.Background(), fmt.Sprint(a["session_id"])); err == nil && ls != nil && ls.IsSleeping == 0 {
+			started++
+		}
+	}
+	assert.Equal(t, 15, started, "all 15 sessions exist: never a partial team")
+	assert.Len(t, terminal.sentCommands(), 1, "the team's first CLI is typed at once")
+
+	// The request's context ends (the hub's deadline); the spaced starts still go.
+	cancel()
+	mu.Lock()
+	timers := later
+	mu.Unlock()
+	require.Len(t, timers, 14)
+	// Each start's slot is 2-3 s after the one before (less the time the launch itself took).
+	for i, tm := range timers {
+		hi := time.Duration(i+1) * (ptymanager.TeamGap + ptymanager.TeamJitter)
+		assert.True(t, tm.d > 0 && tm.d <= hi, "start %d in %v, want (0, %v]", i+2, tm.d, hi)
+		if i > 0 {
+			assert.Greater(t, tm.d, timers[i-1].d, "start %d after start %d", i+2, i+1)
+		}
+		tm.f()
+	}
+	assert.Len(t, terminal.sentCommands(), 15, "every agent's CLI typed, after the request ended")
+}
+
+// Security's SHOULD 1: only a person's wake resets the auto-resume count; an agent's wake (its
+// session token) leaves it, so agents waking each other can't defeat the 3-attempt stop.
+func TestOnlyAPersonsWakeResetsTheAutoResumeCount(t *testing.T) {
+	r := newExitRig(t)
+	id := r.agent(1, "Backend Dev", "429")
+	r.h.setAutoResumeAttempt(id, 3)
+	wake := func(person bool) int {
+		t.Helper()
+		require.NoError(t, r.ss.SetSessionSleeping(context.Background(), id, true))
+		req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+id+"/wake", nil)
+		rc := chi.NewRouteContext()
+		rc.URLParams.Add("sessionID", id)
+		ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rc)
+		if person {
+			ctx = context.WithValue(ctx, callerKindKey{}, callerDashCookie)
+		} else {
+			req.Header.Set(store.SessionTokenHeader, "an-agent-token")
+		}
+		rec := httptest.NewRecorder()
+		r.h.WakeSession(rec, req.WithContext(ctx))
+		require.Contains(t, rec.Body.String(), `"ok":true`, rec.Body.String())
+		return r.attempts(id)
+	}
+	assert.Equal(t, 3, wake(false), "an agent's wake leaves the count")
+	assert.Equal(t, 0, wake(true), "a person's wake resets it")
 }

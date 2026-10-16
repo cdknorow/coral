@@ -345,6 +345,11 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 	if enterHeld {
 		return Held, nil
 	}
+	if errors.Is(err, ErrTeamBusy) {
+		// The team's next slot is over MaxTeamWait away (#3613): held, and the loop tries again.
+		gate.hold(in, whyTeamSpaced, "")
+		return Held, nil
+	}
 	gate.shadowForget(in.Name, in.Key)
 	if err == nil {
 		gate.noteDelivered(in.Name, in.Key)
@@ -359,8 +364,8 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHeld bool, err error) {
 	// Coral's automated sends to one team are spaced (#3613): the first goes at once, the next
 	// 2-3 s after. Only here, where a send really goes: a held send waits nothing until it's due.
-	if !SpaceTeam(ctx, teamFor(in.Name)) {
-		return false, ctx.Err()
+	if err := SpaceTeam(ctx, teamFor(in.Name)); err != nil {
+		return false, err
 	}
 	if in.Paste {
 		if held, err, done := g.pasteChecked(ctx, in); done {
@@ -530,8 +535,13 @@ const whyDraft = "a draft is in the input box (someone else's text); not adding 
 
 // releasedBecause says what ended a hold, from its last reason, for the delivery's log
 // line: a draft hold ends when the draft is cleared, not when a prompt closes (#3520).
+// whyTeamSpaced: a send held because its team's next slot was over MaxTeamWait away (#3613).
+const whyTeamSpaced = "the team's sends are spaced"
+
 func releasedBecause(why string) string {
 	switch {
+	case why == whyTeamSpaced:
+		return "the team's slot came"
 	case why == whyDraft:
 		return "the draft cleared"
 	case strings.Contains(why, "input box"):
@@ -834,6 +844,13 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		send.heldSince, send.heldWhy, send.heldReported, send.heldReportedPrompt = h.heldAt, h.why, h.reported, h.reportedPrompt
 		g.mu.Unlock()
 		if enterHeld, err := g.sendChecked(ctx, send); enterHeld {
+			return true
+		} else if errors.Is(err, ErrTeamBusy) {
+			// Not now (#3613): back at the front, for the loop's next pass.
+			g.mu.Lock()
+			h.why, h.kind = whyTeamSpaced, ""
+			g.held[name] = append([]*heldInput{h}, g.held[name]...)
+			g.mu.Unlock()
 			return true
 		} else if err != nil {
 			slog.Warn("automated input: a held send failed", "session", name, "sender", h.in.What, "error", err)

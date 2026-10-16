@@ -3023,6 +3023,31 @@ func sendLaunchCommand(ctx context.Context, terminal ptymanager.SessionTerminal,
 	return nil
 }
 
+// afterTeamSlot runs f once d has passed (tests replace it).
+var afterTeamSlot = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
+
+// startAgentCLI types an agent's start command (its CLI, or its resume) into its terminal. The
+// starts of one team are 2-3 s apart (#3613: each starts an API turn at once): the team's first
+// is typed now; a later one is typed when its slot comes, on a background context, and this
+// returns at once. A launch, team launch or wake request never waits for the spacing, so the
+// hub's response deadline can't cut a team launch in half (Security's MUST); the terminal and
+// the session already exist, and the dashboard shows each agent start.
+func (h *SessionsHandler) startAgentCLI(ctx context.Context, team, target, cmd string) error {
+	d := ptymanager.ReserveTeamStart(team)
+	if d <= 0 {
+		return sendLaunchCommand(ctx, h.terminal, target, cmd)
+	}
+	log.Printf("[launch] %s: its start is typed in %s (the team's starts are spaced)", target, d.Round(100*time.Millisecond))
+	afterTeamSlot(d, func() {
+		bg, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := sendLaunchCommand(bg, h.terminal, target, cmd); err != nil {
+			log.Printf("[launch] %s: the spaced start failed: %v", target, err)
+		}
+	})
+	return nil
+}
+
 // Restart restarts the agent session.
 // POST /api/sessions/live/{name}/restart
 func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
@@ -4056,8 +4081,6 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		// Inject distilled knowledge if available
 		agentPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, agentDef.Name, agentDef.Prompt)
 
-		// A team's launches are 2-3 s apart (#3613): each starts an API turn at once.
-		ptymanager.SpaceTeam(ctx, body.BoardName)
 		result, err := h.launchSession(ctx, workingDir, agentType, agentDef.Name,
 			"", agentFlags, agentPrompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, agentDef.Capabilities,
 			agentDef.Tools, agentDef.Hooks)
@@ -4268,7 +4291,6 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		}
 		tools := store.UnmarshalFlags(cfg.Tools)
 		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, displayName, prompt)
-		ptymanager.SpaceTeam(bgCtx, boardName) // #3613: spaced relaunches
 		result, err := h.launchSession(bgCtx, cfg.WorkingDir, cfg.AgentType, displayName,
 			"", flags, prompt, boardName, boardServer, "", boardType, modelStr, caps,
 			tools, nil)
@@ -5140,7 +5162,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 			} else {
 				time.Sleep(500 * time.Millisecond)
 			}
-			if err := sendLaunchCommand(ctx, h.terminal, sessionName, cmd); err != nil {
+			if err := h.startAgentCLI(ctx, boardName, sessionName, cmd); err != nil {
 				return nil, fmt.Errorf("pty launch command failed: %w", err)
 			}
 		}
@@ -5219,7 +5241,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		// Launch the agent (unless terminal)
 		if !isTerminal {
 			log.Printf("[launch] tmux session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
-			if err := sendLaunchCommand(ctx, h.terminal, sessionName+".0", cmd); err != nil {
+			if err := h.startAgentCLI(ctx, boardName, sessionName+".0", cmd); err != nil {
 				return nil, err
 			}
 		}
@@ -6306,7 +6328,6 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 		// Inject distilled knowledge if available
 		resurrectPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), team.Name, m.AgentName, agentCfg.Prompt)
 
-		ptymanager.SpaceTeam(ctx, team.Name) // #3613: spaced relaunches
 		result, err := h.launchSession(ctx, workingDir, agentType, m.AgentName,
 			"", nil, resurrectPrompt, team.Name, "", "", "", agentCfg.Model, agentCfg.Capabilities,
 			agentCfg.Tools, agentCfg.Hooks)
@@ -6418,13 +6439,14 @@ func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 			continue // archived agents stay asleep on team wake; they wake only one at a time
 		}
 
-		// Relaunch the session, 2-3 s after the team's last one (#3613)
-		ptymanager.SpaceTeam(ctx, boardName)
+		// Relaunch the session
 		if err := h.wakeExistingSession(ctx, &ls); err != nil {
 			log.Printf("Failed to wake session %s — keeping asleep: %v", ls.SessionID[:8], err)
 			continue
 		}
-		h.resetAutoResume(ls.SessionID)
+		if humanInputCaller(r) {
+			h.resetAutoResume(ls.SessionID) // a person's wake (#3613, Security's SHOULD 1)
+		}
 		relaunched++
 	}
 
@@ -6549,7 +6571,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 				target = sessionName
 			}
 			log.Printf("[wake] session=%s: the agent CLI had exited (%s in the foreground); resuming it in the same terminal", sessionName, fg)
-			if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
+			if err := h.startAgentCLI(ctx, boardName, target, cmd); err != nil {
 				return err
 			}
 		}
@@ -6575,7 +6597,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 				} else {
 					time.Sleep(500 * time.Millisecond)
 				}
-				if err := sendLaunchCommand(ctx, h.terminal, sessionName, cmd); err != nil {
+				if err := h.startAgentCLI(ctx, boardName, sessionName, cmd); err != nil {
 					return fmt.Errorf("pty wake command failed: %w", err)
 				}
 			}
@@ -6590,7 +6612,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 			folderName := filepath.Base(ls.WorkingDir)
 			h.terminal.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, ls.AgentType))
 
-			if err := sendLaunchCommand(ctx, h.terminal, sessionName+".0", cmd); err != nil {
+			if err := h.startAgentCLI(ctx, boardName, sessionName+".0", cmd); err != nil {
 				return err
 			}
 
@@ -6667,7 +6689,10 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Failed to relaunch session"})
 		return
 	}
-	h.resetAutoResume(sess.SessionID) // the Operator's wake: Coral may auto-resume it again (#3613)
+	// A person's wake (never an agent's) lets Coral auto-resume it again (#3613, Security's SHOULD 1).
+	if humanInputCaller(r) {
+		h.resetAutoResume(sess.SessionID)
+	}
 	// One the Operator chose to wake from the over-the-cap list (#3636) gets Coral's notice.
 	if h.takePendingAutoWake(sess.SessionID) {
 		h.sendAutoWakeNotice(ctx, *sess)
@@ -6802,12 +6827,13 @@ func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
 	boards := map[string]bool{}
 	relaunched := 0
 	for _, ls := range sleeping {
-		ptymanager.SpaceTeam(ctx, derefStrPtr(ls.BoardName)) // per team, 2-3 s apart (#3613)
 		if err := h.wakeExistingSession(ctx, &ls); err != nil {
 			log.Printf("Failed to wake session %s — keeping asleep: %v", ls.SessionID[:8], err)
 			continue
 		}
-		h.resetAutoResume(ls.SessionID)
+		if humanInputCaller(r) {
+			h.resetAutoResume(ls.SessionID) // a person's wake (#3613, Security's SHOULD 1)
+		}
 		relaunched++
 		if bn := derefStrPtr(ls.BoardName); bn != "" {
 			boards[bn] = true

@@ -8,9 +8,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// #3613 B: Coral's automated sends and launches to one team are spaced.
+// #3613 B: Coral's automated sends and agent starts to one team are spaced.
 
 func fakeSpacer(gap time.Duration) (*teamSpacer, *time.Time) {
 	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
@@ -20,12 +23,18 @@ func fakeSpacer(gap time.Duration) (*teamSpacer, *time.Time) {
 	return s, &now
 }
 
+func useSpacer(t *testing.T, s *teamSpacer) {
+	saved := spacer
+	spacer = s
+	t.Cleanup(func() { spacer = saved })
+}
+
 func TestSpacerFirstSendIsNotDelayed(t *testing.T) {
 	s, _ := fakeSpacer(2500 * time.Millisecond)
-	if d := s.reserve("team"); d != 0 {
-		t.Fatalf("the first send waits %v, want 0", d)
+	if d, ok := s.reserve("team", MaxTeamWait); d != 0 || !ok {
+		t.Fatalf("the first send waits %v (ok %v), want 0", d, ok)
 	}
-	if d := s.reserve("other"); d != 0 {
+	if d, _ := s.reserve("other", MaxTeamWait); d != 0 {
 		t.Fatalf("another team's first send waits %v, want 0", d)
 	}
 }
@@ -34,7 +43,8 @@ func TestSpacerSpacesConsecutiveSendsToOneTeam(t *testing.T) {
 	s, now := fakeSpacer(2500 * time.Millisecond)
 	var waits []time.Duration
 	for i := 0; i < 4; i++ {
-		waits = append(waits, s.reserve("team"))
+		d, _ := s.reserve("team", MaxTeamWait)
+		waits = append(waits, d)
 	}
 	want := []time.Duration{0, 2500 * time.Millisecond, 5 * time.Second, 7500 * time.Millisecond}
 	if fmt.Sprint(waits) != fmt.Sprint(want) {
@@ -43,17 +53,46 @@ func TestSpacerSpacesConsecutiveSendsToOneTeam(t *testing.T) {
 	// A team of one: its sends come further apart than the gap, so none waits.
 	*now = now.Add(time.Minute)
 	for i := 0; i < 3; i++ {
-		if d := s.reserve("solo"); d != 0 {
+		if d, _ := s.reserve("solo", MaxTeamWait); d != 0 {
 			t.Fatalf("a send %d gaps after the last waits %v", i, d)
 		}
 		*now = now.Add(3 * time.Second)
 	}
 	// Quiet teams are forgotten.
 	*now = now.Add(2 * time.Minute)
-	s.reserve("x")
+	s.reserve("x", MaxTeamWait)
 	if _, ok := s.next["team"]; ok {
 		t.Fatal("a team quiet over a minute is still kept")
 	}
+}
+
+// Security's SHOULD 2: 50 sends at once. Only those whose slot is within MaxTeamWait take one;
+// the rest are refused at once and push nothing later.
+func TestSpacerWaitIsCapped(t *testing.T) {
+	s, _ := fakeSpacer(2500 * time.Millisecond)
+	taken, refused := 0, 0
+	for i := 0; i < 50; i++ {
+		d, ok := s.reserve("team", MaxTeamWait)
+		if ok {
+			taken++
+			assert.LessOrEqual(t, d, MaxTeamWait)
+		} else {
+			refused++
+			assert.Greater(t, d, MaxTeamWait)
+		}
+	}
+	assert.Equal(t, 13, taken, "slots at 0, 2.5 ... 30 s")
+	assert.Equal(t, 37, refused)
+	assert.Equal(t, 32500*time.Millisecond, s.next["team"].Sub(s.now()), "a refusal takes no slot")
+
+	useSpacer(t, s)
+	slept := 0
+	s.sleep = func(context.Context, time.Duration) bool { slept++; return true }
+	assert.ErrorIs(t, SpaceTeam(context.Background(), "team"), ErrTeamBusy)
+	assert.Zero(t, slept, "refused without waiting")
+	// An agent's start is never refused: it takes the next slot, however far.
+	assert.Equal(t, 32500*time.Millisecond, ReserveTeamStart("team"))
+	assert.Zero(t, ReserveTeamStart(""), "no team: at once")
 }
 
 func TestSpacerGapIsWithinBounds(t *testing.T) {
@@ -66,29 +105,48 @@ func TestSpacerGapIsWithinBounds(t *testing.T) {
 }
 
 func TestSpaceTeamNoTeamAndCancel(t *testing.T) {
-	saved := spacer
-	defer func() { spacer = saved }()
-	s, _ := fakeSpacer(time.Hour)
+	s, _ := fakeSpacer(time.Second)
+	useSpacer(t, s)
 	slept := 0
 	s.sleep = func(ctx context.Context, d time.Duration) bool { slept++; return false }
-	spacer = s
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		if !SpaceTeam(ctx, "") {
-			t.Fatal("an agent on no board is refused")
-		}
+		require.NoError(t, SpaceTeam(ctx, ""), "an agent on no board")
 	}
-	if !SpaceTeam(ctx, "team") || slept != 0 {
-		t.Fatalf("the first send slept %d times", slept)
-	}
-	if SpaceTeam(ctx, "team") || slept != 1 {
-		t.Fatal("the second send must wait (and report the cancelled wait)")
-	}
+	require.NoError(t, SpaceTeam(ctx, "team"))
+	assert.Zero(t, slept, "the first send doesn't wait")
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if SpaceTeam(cancelled, "fresh") {
-		t.Fatal("a cancelled send goes")
-	}
+	assert.Error(t, SpaceTeam(cancelled, "team"), "the second waits, and its wait was cancelled")
+	assert.Equal(t, 1, slept)
+	assert.Error(t, SpaceTeam(cancelled, "fresh"), "a cancelled send doesn't go")
+}
+
+// A send whose team slot is over MaxTeamWait away is held, not dropped and not parked: the
+// gate's loop types it once the slot is near.
+func TestABusyTeamSendIsHeldThenTyped(t *testing.T) {
+	fastGate(t)
+	s := newTeamSpacer()
+	s.gap = func() time.Duration { return 0 }
+	useSpacer(t, s)
+	SetTeamResolver(func(string) string { return "busy-team" })
+	t.Cleanup(func() { SetTeamResolver(nil) })
+	s.mu.Lock()
+	s.next["busy-team"] = time.Now().Add(time.Hour)
+	s.mu.Unlock()
+
+	a := &fakeAgent{screen: idleInputBox}
+	d, err := DeliverAutomated(context.Background(), a.input("claude-gate-busy", "", "hello", false))
+	require.NoError(t, err)
+	assert.Equal(t, Held, d, "not now")
+	time.Sleep(100 * time.Millisecond) // sleep-ok: several gate passes, still busy
+	assert.Empty(t, a.sent(), "nothing typed while the team is busy")
+
+	s.mu.Lock()
+	delete(s.next, "busy-team")
+	s.mu.Unlock()
+	require.Eventually(t, func() bool { return len(a.sent()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"hello"}, a.sent(), "typed once, when the slot came")
 }
 
 func TestJitterAroundBounds(t *testing.T) {
@@ -113,15 +171,14 @@ func TestJitterAroundBounds(t *testing.T) {
 	}
 }
 
-// Security: the spacer never delays the Operator's input, keys or kill. It is called only where
-// Coral itself sends or launches: the gate's send (automated input), team launch, reset,
-// resurrect, Wake and Wake All, and auto-resume.
-func TestSpaceTeamIsCalledOnlyForCoralsOwnSends(t *testing.T) {
+// Security: the spacer never delays the Operator's input, keys or kill. Only Coral's own sends
+// (the gate's sendChecked) and agent starts (launch and wake, typed later in the background)
+// are spaced.
+func TestTheSpacerIsUsedOnlyForCoralsOwnSendsAndStarts(t *testing.T) {
 	allowed := map[string]bool{
 		"internal/ptymanager/automated_input.go": true,
 		"internal/ptymanager/team_spacer.go":     true,
 		"internal/server/routes/sessions.go":     true,
-		"internal/server/routes/agent_exit.go":   true,
 	}
 	root := filepath.Join("..", "..")
 	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
@@ -133,20 +190,18 @@ func TestSpaceTeamIsCalledOnlyForCoralsOwnSends(t *testing.T) {
 			return err
 		}
 		rel, _ := filepath.Rel(root, p)
-		if strings.Contains(string(b), "SpaceTeam(") && !allowed[filepath.ToSlash(rel)] {
-			t.Errorf("%s calls SpaceTeam: only Coral's own sends and launches may be spaced", rel)
+		src := string(b)
+		if (strings.Contains(src, "SpaceTeam(") || strings.Contains(src, "ReserveTeamStart(")) && !allowed[filepath.ToSlash(rel)] {
+			t.Errorf("%s uses the spacer: only Coral's own sends and agent starts may be spaced", rel)
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// In the gate, only sendChecked (automated sends) spaces: not the Operator's paths.
+	require.NoError(t, err)
 	b, err := os.ReadFile("automated_input.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := strings.Count(string(b), "SpaceTeam("); n != 1 {
-		t.Fatalf("automated_input.go calls SpaceTeam %d times, want 1 (sendChecked)", n)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(string(b), "SpaceTeam("), "only sendChecked, in the gate")
+	b, err = os.ReadFile(filepath.Join(root, "internal/server/routes/sessions.go"))
+	require.NoError(t, err)
+	assert.Zero(t, strings.Count(string(b), "SpaceTeam("), "no request waits for the spacing")
+	assert.Equal(t, 1, strings.Count(string(b), "ReserveTeamStart("), "only startAgentCLI")
 }

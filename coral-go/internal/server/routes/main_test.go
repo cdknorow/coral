@@ -17,6 +17,10 @@ func TestMain(m *testing.M) {
 	// The tests' tmux servers start their panes with $SHELL. A developer's interactive shell and its
 	// rc files make typed commands wait on an unknown startup; a plain sh has none.
 	os.Setenv("SHELL", "/bin/sh")
+	// A team's later agent starts are typed after their slot (#3613); the spacer is process-wide,
+	// so tests reusing a board name within seconds would see a start deferred. Here a deferred
+	// start is typed at once; a test about the spacing replaces afterTeamSlot itself.
+	afterTeamSlot = func(_ time.Duration, f func()) { f() }
 	before := packageArtifactFiles()
 	code := m.Run()
 	// A test whose Config has no data folder writes artifacts and diffs under "artifacts" here,

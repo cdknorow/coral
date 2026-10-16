@@ -27,7 +27,7 @@ import (
 //   - Auto-resume (Settings, off by default): an agent stopped by an API error is woken through
 //     the same wake as the dashboard's, after about 2, 5 then 15 minutes (±20%). The attempts are
 //     counted in a file in the data folder; after the third, Coral stops trying for good, until
-//     the Operator wakes the agent (only that resets the count).
+//     a person wakes the agent (only that resets the count: never an agent's wake).
 // The reconciler finds the deaths (background.SessionReconciler.SetOnSlept); one notice goes out
 // per death, since an agent asleep is never found dead again until it is woken.
 
@@ -193,7 +193,7 @@ func (h *SessionsHandler) postExitNotice(ctx context.Context, team string, agent
 const AutoResumeNotice = "Coral resumed you after your CLI stopped on an API error. Check your last step before you continue."
 
 // autoResume is attempt n (1-based) for an agent. It does nothing when the agent was woken,
-// archived or ended meanwhile, the setting was turned off, or the Operator's wake reset the
+// archived or ended meanwhile, the setting was turned off, or a person's wake reset the
 // count (a stale timer).
 func (h *SessionsHandler) autoResume(ctx context.Context, sid string, n int) {
 	settings, _ := h.ss.GetSettings(ctx)
@@ -209,7 +209,6 @@ func (h *SessionsHandler) autoResume(ctx context.Context, sid string, n int) {
 	}
 	// Counted before the wake: a wake that takes Coral down still counts.
 	h.setAutoResumeAttempt(sid, n)
-	ptymanager.SpaceTeam(ctx, derefStrPtr(ls.BoardName))
 	if err := h.wakeExistingSession(ctx, ls); err != nil {
 		slog.Warn("[agent-exit] auto-resume failed", "session_id", sid, "attempt", n, "err", err)
 		return
