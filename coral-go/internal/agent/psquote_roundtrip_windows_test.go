@@ -1,18 +1,21 @@
 //go:build windows
 
-package psquote
+package agent
 
 import (
 	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/cdknorow/coral/internal/psquote"
 )
 
-// #3904: PowerShell itself reads each quoted word back unchanged, and the text after a quote
+// #3904: PowerShell itself reads each quoted word (psquote.Literal, used by shellQuote and
+// shellQuoteLiteral) back unchanged, and the text after a quote
 // character never runs. The word's characters are written as their code points, so the console's
 // output encoding can't change what is compared.
-func TestLiteralRoundTripsThroughPowerShell(t *testing.T) {
+func TestPSLiteralRoundTripsThroughPowerShell(t *testing.T) {
 	ps, err := exec.LookPath("powershell.exe")
 	if err != nil {
 		if ps, err = exec.LookPath("pwsh.exe"); err != nil {
@@ -24,7 +27,7 @@ func TestLiteralRoundTripsThroughPowerShell(t *testing.T) {
 		words = append(words, "Jane"+q+"s; Write-Output INJECTED", q, q+q+"x"+q, "C:\\Users\\Jane"+q+"s\\claude.exe")
 	}
 	for _, word := range words {
-		script := "$s = " + Literal(word) + "; [string]::Join(',', [int[]][char[]]$s)"
+		script := "$s = " + psquote.Literal(word) + "; [string]::Join(',', [int[]][char[]]$s)"
 		out, err := exec.Command(ps, "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
 		if err != nil {
 			t.Fatalf("%q: powershell failed: %v\n%s", word, err, out)
