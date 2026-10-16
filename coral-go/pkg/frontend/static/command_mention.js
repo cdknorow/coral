@@ -2,11 +2,10 @@
 
 import { state } from './state.js';
 import { isDropdownVisible as isFileMentionVisible } from './file_mention.js';
-import { escapeHtml } from './utils.js';
-import { createMentionList, findTriggerStart } from './mention_list.js';
+import { createMentionList, findTriggerStart, highlightRuns } from './mention_list.js';
 
 // results, selection and the position of the '/' live on the shared list (mention_list.js).
-const list = createMentionList('command-mention', { onInput: e => onInput(e), onPick: i => selectItem(i) });
+const list = createMentionList({ dropdown: 'command-mention-dropdown', item: 'command-mention-item' }, { onInput: e => onInput(e), onPick: i => selectItem(i) });
 
 export function initCommandMention() {
     const input = document.getElementById("command-input");
@@ -100,19 +99,17 @@ function renderDropdown(query) {
         return;
     }
 
-    list.show(list.results.map((cmd, i) => {
-        const cls = i === list.selected ? "command-mention-item selected" : "command-mention-item";
-        const nameHtml = highlightMatch(cmd.command, query);
-        const descHtml = escapeHtml(cmd.description || "");
-        return `<div class="${cls}" data-index="${Number(i)}">
-            <span class="cmd-name">${nameHtml}</span>
-            <span class="cmd-desc">${descHtml}</span>
-        </div>`;
-    }).join(""));
+    list.show(list.results.map(cmd => ({
+        sep: ' ',
+        cells: [
+            { cls: 'cmd-name', parts: highlightParts(cmd.command, query) },
+            { cls: 'cmd-desc', parts: [cmd.description || ''] },
+        ],
+    })));
 }
 
-function highlightMatch(command, query) {
-    if (!query) return escapeHtml(command);
+function highlightParts(command, query) {
+    if (!query) return [command];
     // The query is matched against name (without /), but we display the full /command
     // Strip the leading / from command for matching purposes
     const cmdBody = command.startsWith("/") ? command.slice(1) : command;
@@ -127,19 +124,7 @@ function highlightMatch(command, query) {
             qi++;
         }
     }
-
-    // Build HTML for the full command string
-    const full = command;
-    let html = "";
-    let inStrong = false;
-    for (let i = 0; i < full.length; i++) {
-        const isMatch = matched.has(i);
-        if (isMatch && !inStrong) { html += "<strong>"; inStrong = true; }
-        if (!isMatch && inStrong) { html += "</strong>"; inStrong = false; }
-        html += escapeHtml(full[i]);
-    }
-    if (inStrong) html += "</strong>";
-    return html;
+    return highlightRuns(command, matched);
 }
 
 function selectItem(index) {

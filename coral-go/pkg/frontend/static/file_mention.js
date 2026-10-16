@@ -1,12 +1,11 @@
 /* @file mention autocomplete for the command input textarea */
 
 import { state, sessionKey } from './state.js';
-import { escapeHtml } from './utils.js';
 import { serverFetch, currentServer } from './server_base.js';
-import { createMentionList, findTriggerStart } from './mention_list.js';
+import { createMentionList, findTriggerStart, highlightRuns } from './mention_list.js';
 
 // results, selection and the position of the '@' live on the shared list (mention_list.js).
-const list = createMentionList('file-mention', {
+const list = createMentionList({ dropdown: 'file-mention-dropdown', item: 'file-mention-item' }, {
     onInput: e => onInput(e),
     onPick: i => selectItem(i),
     onHide: () => { currentDir = ''; clearTimeout(renderTimer); },
@@ -292,11 +291,7 @@ function renderDropdown(query) {
         return;
     }
 
-    list.show(list.results.map((fp, i) => {
-        const cls = i === list.selected ? "file-mention-item selected" : "file-mention-item";
-        const highlighted = highlightMatch(fp, query);
-        return `<div class="${cls}" data-index="${Number(i)}">${highlighted}</div>`;
-    }).join(""));
+    list.show(list.results.map(fp => ({ cells: [{ parts: highlightParts(fp, query) }] })));
 }
 
 function renderDropdownDirectory(entries, dir, filter) {
@@ -305,35 +300,34 @@ function renderDropdownDirectory(entries, dir, filter) {
         return;
     }
 
-    // Breadcrumb showing current directory path
-    const breadcrumb = dir ? `<div class="file-mention-breadcrumb">${escapeHtml(dir)}/</div>` : '';
-
-    const items = entries.map((entry, i) => {
-        const cls = i === list.selected ? "file-mention-item selected" : "file-mention-item";
-        const icon = entry.type === 'dir' ? '<span class="file-mention-dir-icon">&#128193;</span>' : '';
+    const rows = entries.map(entry => {
+        const cells = [];
+        if (entry.type === 'dir') cells.push({ cls: 'file-mention-dir-icon', parts: ['\u{1F4C1}'] });
         // entry.name may already include trailing / for dirs
         const displaySuffix = entry.type === 'dir' && !entry.name.endsWith('/') ? '/' : '';
-        const name = escapeHtml(entry.name + displaySuffix);
         const cleanName = entry.name.replace(/\/$/, ''); // name without trailing /
         // Highlight matching filter text
-        let displayName = name;
+        let parts = [entry.name + displaySuffix];
         if (filter) {
             const idx = cleanName.toLowerCase().indexOf(filter);
             if (idx >= 0) {
-                const before = escapeHtml(cleanName.slice(0, idx));
-                const match = escapeHtml(cleanName.slice(idx, idx + filter.length));
-                const after = escapeHtml(cleanName.slice(idx + filter.length) + displaySuffix);
-                displayName = `${before}<strong>${match}</strong>${after}`;
+                parts = [];
+                if (idx > 0) parts.push(cleanName.slice(0, idx));
+                parts.push({ strong: cleanName.slice(idx, idx + filter.length) });
+                const after = cleanName.slice(idx + filter.length) + displaySuffix;
+                if (after) parts.push(after);
             }
         }
-        return `<div class="${cls}" data-index="${Number(i)}">${icon}${displayName}</div>`;
-    }).join("");
+        cells.push({ parts });
+        return { cells };
+    });
 
-    list.show(breadcrumb + items);
+    // Breadcrumb showing current directory path
+    list.show(rows, dir ? { cls: 'file-mention-breadcrumb', text: dir + '/' } : null);
 }
 
-function highlightMatch(filepath, query) {
-    if (!query) return escapeHtml(filepath);
+function highlightParts(filepath, query) {
+    if (!query) return [filepath];
     const lower = filepath.toLowerCase();
     const qLower = query.toLowerCase();
 
@@ -347,19 +341,8 @@ function highlightMatch(filepath, query) {
         }
     }
     // If not all query chars matched, show without highlighting
-    if (qi < qLower.length) return escapeHtml(filepath);
-
-    // Build HTML, merging consecutive matched chars into <strong> runs
-    let html = "";
-    let inStrong = false;
-    for (let i = 0; i < filepath.length; i++) {
-        const isMatch = matched.has(i);
-        if (isMatch && !inStrong) { html += "<strong>"; inStrong = true; }
-        if (!isMatch && inStrong) { html += "</strong>"; inStrong = false; }
-        html += escapeHtml(filepath[i]);
-    }
-    if (inStrong) html += "</strong>";
-    return html;
+    if (qi < qLower.length) return [filepath];
+    return highlightRuns(filepath, matched);
 }
 
 function selectItem(index) {
