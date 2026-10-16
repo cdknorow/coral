@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // Funnel milestone event names. Each fires at most once per install.
@@ -363,7 +365,7 @@ func AcknowledgeDisclosure() error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(disclosurePath(), []byte(nowUTC()+"\n"), 0600)
+	return secfile.WriteFileNoFollow(disclosurePath(), []byte(nowUTC()+"\n"), 0600)
 }
 
 // ── Demonstrated value ───────────────────────────────────────────────────

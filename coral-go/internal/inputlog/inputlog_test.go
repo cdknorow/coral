@@ -232,8 +232,10 @@ func TestLogFileIsNotFollowed(t *testing.T) {
 		Setup(dir, false)
 		_, err := Delete()
 		require.NoError(t, err)
-		_, err = os.Lstat(path)
-		assert.NoError(t, err, "Delete leaves the link alone")
+		if p.Kind != "hardlink" { // removing a second name leaves the file it names as it was
+			_, err = os.Lstat(path)
+			assert.NoError(t, err, "Delete leaves the link alone")
+		}
 	})
 }
 

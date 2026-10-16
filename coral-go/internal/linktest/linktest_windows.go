@@ -8,12 +8,15 @@ import (
 	"testing"
 )
 
-func kinds() []string { return []string{"symlink", "junction"} }
+func kinds() []string { return []string{"symlink", "junction", "hardlink"} }
 
 func plant(t *testing.T, kind, path string) Planted {
 	t.Helper()
-	if kind == "symlink" {
+	switch kind {
+	case "symlink":
 		return plantSymlink(t, path)
+	case "hardlink":
+		return plantHardLink(t, path)
 	}
 	target := path + ".junction-target"
 	if err := os.Mkdir(target, 0o700); err != nil {
