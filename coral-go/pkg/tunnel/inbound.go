@@ -100,7 +100,7 @@ func inboundKindFor(kind Kind) *inboundKind {
 func validInboundHeader(k *inboundKind, h Header) bool {
 	max := k.pathCap(h.Path)
 	return h.Kind == k.kind && h.Method == http.MethodPost && max > 0 &&
-		h.Query == "" && len(h.Headers) == 0 && len(h.Protocols) == 0 && h.HubUser == "" &&
+		h.Query == "" && len(h.Headers) == 0 && len(h.Protocols) == 0 && h.HubUser == "" && h.HubTier == "" &&
 		h.ContentLength >= 0 && h.ContentLength <= int64(max)
 }
 
@@ -142,13 +142,19 @@ func (s *Session) serveInbound(st io.ReadWriteCloser, setDeadline func(time.Time
 	if err != nil || int64(len(body)) != h.ContentLength {
 		return
 	}
-	if int(s.inflight.Add(1)) > s.cfg.MaxRelayInFlight {
-		s.inflight.Add(-1)
+	// Each kind has its own in-flight budget, so a relay burst can't make a sign-in check wait
+	// or come back busy (#3966: a busy check must not sign the owner out).
+	inflight, limit := &s.inflight, s.cfg.MaxRelayInFlight
+	if k.kind == KindSignin {
+		inflight, limit = &s.signinInflight, s.cfg.MaxSigninInFlight
+	}
+	if int(inflight.Add(1)) > limit {
+		inflight.Add(-1)
 		_ = setDeadline(time.Now().Add(inboundReadDeadline))
 		writeInboundResponse(st, RelayResponse{Status: http.StatusTooManyRequests, Body: k.busy, RetryAfter: 1})
 		return
 	}
-	defer s.inflight.Add(-1)
+	defer inflight.Add(-1)
 	_ = setDeadline(time.Time{})
 	ctx, cancel := context.WithTimeout(context.Background(), k.timeout)
 	defer cancel()

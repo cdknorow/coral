@@ -45,7 +45,10 @@ type SessionConfig struct {
 	// OnSignin handles a Hub sign-in request the connector opens (#3966, signin.go). Nil: the
 	// capability is never advertised.
 	OnSignin SigninFunc
-	// MaxRelayInFlight caps concurrent OnRelay and OnSignin calls per tunnel (default 4); more
+	// MaxSigninInFlight caps concurrent OnSignin calls per tunnel (default 2), on their own budget
+	// beside the relay's; more get 429.
+	MaxSigninInFlight int
+	// MaxRelayInFlight caps concurrent OnRelay calls per tunnel (default 4); more
 	// get 429.
 	MaxRelayInFlight int
 	// MaxRelayStreams caps connector-opened streams being read per tunnel (default 8). It is
@@ -71,6 +74,9 @@ func (c SessionConfig) withDefaults() SessionConfig {
 	}
 	if c.MaxRelayInFlight <= 0 {
 		c.MaxRelayInFlight = 4
+	}
+	if c.MaxSigninInFlight <= 0 {
+		c.MaxSigninInFlight = 2
 	}
 	if c.MaxRelayStreams <= 0 {
 		c.MaxRelayStreams = 8
@@ -115,8 +121,10 @@ type Session struct {
 	active    atomic.Int32
 	closeOnce sync.Once
 	hooks     map[Kind]inboundHook // the connector-opened kinds advertised to this tunnel
-	inflight  atomic.Int32         // hook calls in progress
-	relaySlot chan struct{}        // connector-opened streams being handled (MaxRelayStreams)
+	inflight  atomic.Int32         // relay hook calls in progress
+	// signinInflight: sign-in hook calls in progress (their own budget, #3966).
+	signinInflight atomic.Int32
+	relaySlot      chan struct{} // connector-opened streams being handled (MaxRelayStreams)
 }
 
 // Accept performs the server handshake on an upgraded WebSocket and returns a
