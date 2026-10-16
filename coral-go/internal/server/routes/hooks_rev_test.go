@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -78,4 +79,31 @@ func TestGateTrustsOnlyCurrentHookSets(t *testing.T) {
 	_, ok = h.gateState(ctx, "codex-"+sid, "codex", sid)
 	assert.True(t, ok, "Codex keeps its signals")
 	assert.Equal(t, 2, agent.ClaudeSignalsHooksRev)
+}
+
+// #3665: the hook set is revision 3 (absolute hook paths, #3660). The gate still trusts the
+// signals of revision 2 and later, so an agent launched on v1.4.53 keeps them until it is
+// moved onto revision 3.
+func TestGateTrustsRevisionTwoAndThree(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECTS_DIR", t.TempDir())
+	server, h, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	require.Equal(t, 3, agent.ClaudeHooksRev)
+	require.Equal(t, 2, agent.ClaudeSignalsHooksRev)
+	for i, rev := range []int{2, 3} {
+		sid := "eeeeeeee-3665-4000-8000-00000000000" + strconv.Itoa(i)
+		name := "claude-" + sid
+		require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "rev" + strconv.Itoa(rev), WorkingDir: t.TempDir()}))
+		tok := agentToken(t, h, sid, name)
+		req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/rev"+strconv.Itoa(rev)+"/events",
+			strings.NewReader(`{"event_type":"stop","summary":"done","hooks_rev":`+strconv.Itoa(rev)+`}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(store.SessionTokenHeader, tok)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		_, ok := h.gateState(ctx, name, "claude", sid)
+		assert.True(t, ok, "revision %d: its signals decide", rev)
+	}
 }

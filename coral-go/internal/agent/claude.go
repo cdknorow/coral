@@ -353,9 +353,10 @@ func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {
 // whenever they change. Every coral-hook-agentic-state command carries it (--hooks-rev), so the
 // server knows which set a running agent loaded at its launch: Claude reads its hooks only then,
 // and agents outlive upgrades (#3655 F3). Revision 2 has the request and turn signals
-// (PermissionRequest, Elicitation, UserPromptSubmit, StopFailure, SessionEnd: #3481); a command
-// without a revision is from before.
-const ClaudeHooksRev = 2
+// (PermissionRequest, Elicitation, UserPromptSubmit, StopFailure, SessionEnd: #3481); revision
+// 3 names Coral's hook tools by absolute path (#3660); a command without a revision is from
+// before 2.
+const ClaudeHooksRev = 3
 
 // ClaudeSignalsHooksRev is the first revision with the request and turn signals: an agent on an
 // older set can't say it is idle, so the automated-input gate keeps the screen rule for it.
