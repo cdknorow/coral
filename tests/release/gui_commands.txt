@@ -1,0 +1,4 @@
+# The GUI programs the macOS and Windows packages ship (cgo: the tray and the webview app), after
+# the programs in commands.txt (#3855). A line that is empty or starts with # is ignored.
+coral-tray
+coral-app

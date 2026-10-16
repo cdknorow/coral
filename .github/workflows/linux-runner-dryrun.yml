@@ -53,7 +53,8 @@ jobs:
         run: |
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.Version=0.0.0-dryrun"
           mkdir -p ../dist/linux
-          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+          # The shipped programs: tests/release/commands.txt, as release.yml (#3855).
+          for cmd in $(grep -vE '^[[:space:]]*(#|$)' ../tests/release/commands.txt); do
             [ -d "./cmd/$cmd" ] || continue
             CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build \
               -tags fts5 \
