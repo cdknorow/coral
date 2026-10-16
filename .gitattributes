@@ -8,3 +8,8 @@ THIRD_PARTY_NOTICES_MPL.md -text
 # The notices scripts run under Git Bash on the Windows runner.
 installers/third-party-notices.sh text eol=lf
 tests/release/verify_notices.sh text eol=lf
+tests/windows/windows_only_tests.sh text eol=lf
+# Tests compare these byte for byte with text they generate ("\n" endings); a CRLF checkout (core.autocrlf=true,
+# as on the Windows runners) failed them on Windows (pkg/tunnel's view_redaction census and route-query table).
+*.golden text eol=lf
+coral-go/pkg/tunnel/routes_query.go text eol=lf
