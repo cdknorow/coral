@@ -729,6 +729,18 @@ func (s *Store) GetSubscriptionBySessionName(ctx context.Context, sessionName st
 	return &sub, err
 }
 
+// SessionSubscription is the agent session sessionName's active subscription on project, or
+// nil when it has none there.
+func (s *Store) SessionSubscription(ctx context.Context, project, sessionName string) (*Subscriber, error) {
+	var sub Subscriber
+	err := s.reader().GetContext(ctx, &sub,
+		"SELECT * FROM board_subscribers WHERE project = ? AND session_name = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", project, sessionName)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &sub, err
+}
+
 // SessionSubscribedOn reports whether the agent session sessionName has an active
 // subscription on project: what a notice about that board must find before it is typed into
 // the session (#3864).

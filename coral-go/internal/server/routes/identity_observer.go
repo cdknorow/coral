@@ -208,8 +208,9 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 				}
 			}
 			// A presented token decides who the caller is on the board, in every mode
-			// (#3495): an agent can't post or act as another subscriber or as the Operator.
-			// Acting on another board stays log-only outside strict mode.
+			// (#3495): an agent can't post or act as another subscriber or as the Operator,
+			// nor act on a board its session isn't subscribed on (#3869: an agent read other
+			// teams' boards by name), apart from joining one and a cross-team send.
 			m, err := o.checkBoard(r, owner)
 			if errors.Is(err, errBoardBodyTooLarge) {
 				o.refuse(w, http.StatusRequestEntityTooLarge, "body_too_large", "This board request's body is over the limit")
@@ -224,7 +225,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 					"Coral couldn't check this agent's board identity just now; try again")
 				return
 			}
-			if m != nil && (o.effectiveStrict() || m.Kind != mismatchCrossBoard) {
+			if m != nil {
 				o.refuse(w, http.StatusForbidden, "identity_mismatch",
 					"This agent can't act as "+strconv.Quote(m.Claimed)+" ("+m.Field+"): its session is "+strconv.Quote(m.Expected)+" ("+m.Kind+")")
 				return
@@ -677,7 +678,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 	if !ok || o.bs == nil {
 		return nil, nil
 	}
-	project, _, _ := strings.Cut(rest, "/")
+	project, tail, _ := strings.Cut(rest, "/")
 	switch project {
 	case "", "projects", "tasks", "remotes":
 		return nil, nil
@@ -696,7 +697,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 		sub = nil
 	}
 	// The mismatch returned is the one that decides: an impersonation or Operator claim
-	// before a cross-board one (only the first two are refused outside strict mode).
+	// before a cross-board one (all are refused; the first is the one reported).
 	note := func(m IdentityMismatch) {
 		if first == nil || (first.Kind == mismatchCrossBoard && m.Kind != mismatchCrossBoard) {
 			first = &m
@@ -714,7 +715,20 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 		}
 	}
 	delete(claims, "session_name")
+	// An agent on more than one board acts on each as its subscription there.
+	if sub != nil && project != sub.Project {
+		there, err := o.bs.SessionSubscription(r.Context(), project, owner.SessionName)
+		if err != nil {
+			return nil, err
+		}
+		if there != nil {
+			sub = there
+		}
+	}
 	if sub == nil {
+		if !acrossBoards(r.Method, tail) {
+			note(o.mismatch(r, owner, mismatchCrossBoard, notSubscribed, project, "project"))
+		}
 		// Not on a board yet (it may be subscribing now): it can name itself anything new,
 		// but never the Operator or a subscriber another session holds on this board
 		// (#3512; before, such an agent skipped every check here and could act as the
@@ -746,7 +760,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 		}
 		return first, nil
 	}
-	if project != sub.Project {
+	if project != sub.Project && !acrossBoards(r.Method, tail) {
 		note(o.mismatch(r, owner, mismatchCrossBoard, sub.Project, project, "project"))
 	}
 	for f, vs := range claims {
@@ -817,9 +831,6 @@ func (o *IdentityObserver) mismatch(r *http.Request, owner *store.SessionTokenOw
 	}
 	o.mu.Unlock()
 	msg := "[identity] mismatch refused"
-	if kind == mismatchCrossBoard && !o.effectiveStrict() {
-		msg = "[identity] mismatch (log only)"
-	}
 	o.logOnce("mismatch:"+owner.SessionName+":"+kind, msg,
 		"kind", kind, "session", owner.SessionName, "expected", expected, "claimed", claimed, "field", field, "request", m.Request)
 	return m
@@ -893,4 +904,11 @@ func (o *IdentityObserver) AgentOperatorAction(r *http.Request, action string) b
 	}
 	o.countOperatorCall(owner.SessionName, action)
 	return o.effectiveStrict()
+}
+
+// acrossBoards: the requests an agent may make on a board its session isn't subscribed on
+// (#3869): joining it, and a cross-team send to it (whose handler checks that the sender is
+// an active Orchestrator of the board it sends from, in its own session).
+func acrossBoards(method, tail string) bool {
+	return method == http.MethodPost && (tail == "subscribe" || tail == "external-messages")
 }
