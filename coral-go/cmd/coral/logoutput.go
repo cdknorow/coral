@@ -56,7 +56,13 @@ func redactLogLine(p []byte) (out []byte) {
 			out = []byte("[log] a line could not be checked for secrets and was dropped\n")
 		}
 	}()
-	return tunnel.RedactTokens(p)
+	out = tunnel.RedactTokens(p)
+	// A key's start ("-----BEGIN ... PRIVATE KEY-----") swallows the rest of the text, the line's
+	// newline too: the next line would run on after it (#3783, Security's SHOULD on #3763).
+	if len(p) > 0 && p[len(p)-1] == '\n' && (len(out) == 0 || out[len(out)-1] != '\n') {
+		out = append(out, '\n')
+	}
+	return out
 }
 
 // terminalWriter copies log lines to a terminal from its own goroutine. Write

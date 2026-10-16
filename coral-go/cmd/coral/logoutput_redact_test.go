@@ -31,3 +31,13 @@ func TestLogLinesAreRedacted(t *testing.T) {
 		assert.True(t, strings.HasSuffix(got, plain), "an ordinary line is unchanged")
 	}
 }
+
+// #3783: a line in which a private key starts (the redactor drops the rest of it) keeps its
+// newline, so the next line doesn't run on after it.
+func TestLogLineKeepsItsNewlineAfterAKeyStart(t *testing.T) {
+	got := redactLogLine([]byte("[agent] printed -----BEGIN RSA PRIVATE KEY-----MIIEow\n"))
+	assert.True(t, bytes.HasSuffix(got, []byte("\n")), "%q", got)
+	assert.NotContains(t, string(got), "MIIEow")
+	assert.Equal(t, []byte("plain\n"), redactLogLine([]byte("plain\n")))
+	assert.Equal(t, []byte("no newline"), redactLogLine([]byte("no newline")))
+}
