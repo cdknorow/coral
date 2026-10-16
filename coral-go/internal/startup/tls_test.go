@@ -181,7 +181,10 @@ func TestStartWithTLSAnswersHealthOverHTTPS(t *testing.T) {
 		t.Logf("try %d: %v", try+1, err)
 	}
 	require.NoError(t, err)
-	t.Cleanup(func() { rs.Shutdown(5 * time.Second) })
+	t.Cleanup(func() {
+		rs.Shutdown(5 * time.Second)
+		rs.Close() // the database and the instance lock, as the commands do: Windows can't delete them open (#3914)
+	})
 	assert.True(t, cfg.TLS)
 
 	c := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}

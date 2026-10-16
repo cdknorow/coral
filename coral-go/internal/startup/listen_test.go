@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -256,6 +257,12 @@ func TestBothListenersAreKeyedToThePeer(t *testing.T) {
 // #3601 (weak site W17): the pipe log folder is this user's only, and an existing 0755 one (an
 // older install) is tightened.
 func TestPrepareLogDirIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Modes mean nothing there (a folder reports 0777 whatever its access list); the logs
+		// folder inherits the data folder's access list, which Coral sets on a new data folder
+		// and warns about otherwise (the #3905 ruling: no automatic folder ACL changes) (#3914).
+		t.Skip("Unix modes: on Windows the logs folder inherits the data folder's access list")
+	}
 	dir := filepath.Join(t.TempDir(), "logs")
 	prepareLogDir(dir)
 	fi, err := os.Stat(dir)
