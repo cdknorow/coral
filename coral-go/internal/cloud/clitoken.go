@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // The command-line token (#3149): a same-user proof for the local cloud write
@@ -46,6 +48,10 @@ func WriteCLIToken(dir string) (string, error) {
 	tmp := f.Name()
 	defer os.Remove(tmp) // a no-op once renamed
 	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return "", err
+	}
+	if err := secfile.Protect(tmp); err != nil { // Windows ignores the mode (#3905)
 		f.Close()
 		return "", err
 	}

@@ -72,28 +72,55 @@ func ReadPrivate(path string, max int64) ([]byte, error) {
 	}
 	f := os.NewFile(uintptr(h), path)
 	defer f.Close()
+	if err := CheckOpen(f); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(io.LimitReader(f, max))
+}
 
+// CheckOpen applies ReadPrivate's checks to a secret file the caller has opened for reading
+// (os.Open's access includes READ_CONTROL): a regular file (not a link or reparse point), one
+// name, and the owner and DACL rule; a passing file whose DACL is inherited is made private.
+// For callers that open the file themselves (a containment-checked open, a mode check on Unix).
+func CheckOpen(f *os.File) error {
+	path := f.Name()
+	h := windows.Handle(f.Fd())
 	var info windows.ByHandleFileInformation
 	if err := windows.GetFileInformationByHandle(h, &info); err != nil {
-		return nil, fmt.Errorf("%w: %s: %v", ErrNotPrivate, path, err)
+		return fmt.Errorf("%w: %s: %v", ErrNotPrivate, path, err)
 	}
 	if info.FileAttributes&(windows.FILE_ATTRIBUTE_REPARSE_POINT|windows.FILE_ATTRIBUTE_DIRECTORY) != 0 {
-		return nil, fmt.Errorf("%w: %s must be a regular file, not a link or a folder", ErrNotPrivate, path)
+		return fmt.Errorf("%w: %s must be a regular file, not a link or a folder", ErrNotPrivate, path)
 	}
 	if info.NumberOfLinks != 1 {
-		return nil, fmt.Errorf("%w: %s has another name (a hard link)", ErrNotPrivate, path)
+		return fmt.Errorf("%w: %s has another name (a hard link)", ErrNotPrivate, path)
 	}
 	inherited, err := checkHandle(h, path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if inherited {
 		if err := Protect(path); err != nil {
-			return nil, fmt.Errorf("%w: %s: make its access list private: %v", ErrNotPrivate, path, err)
+			return fmt.Errorf("%w: %s: make its access list private: %v", ErrNotPrivate, path, err)
 		}
 		log.Printf("[secfile] %s: its access list was inherited (only this user, SYSTEM and Administrators); it is now private to this user", path)
 	}
-	return io.ReadAll(io.LimitReader(f, max))
+	return nil
+}
+
+// Explicit reports whether the file at path passes the secret-file check with an explicit,
+// protected DACL (what Protect makes), without changing it. For tests of the files Coral writes.
+func Explicit(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	inherited, err := checkHandle(windows.Handle(f.Fd()), path)
+	if err != nil {
+		return false, err
+	}
+	return !inherited, nil
 }
 
 // checkHandle applies the owner and DACL rule to the open file; inherited is true when the file
