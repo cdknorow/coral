@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import (
 	"bytes"
@@ -38,7 +38,7 @@ func pemKey(label string, lines int, nl string) string {
 }
 
 func TestRedactEachRule(t *testing.T) {
-	m := RedactMarker
+	m := Marker
 	for _, c := range []struct{ in, want string }{
 		{"token " + fake("ghp_", 36, alnum) + " end", "token " + m + " end"},
 		{fake("gho_", 40, alnum), m},
@@ -53,7 +53,7 @@ func TestRedactEachRule(t *testing.T) {
 		{"curl -H 'Authorization: token " + fake("", 30, alnum) + "'", "curl -H 'Authorization: token " + m + "'"},
 		{"bearer " + fake("", 25, alnum), "bearer " + m},
 	} {
-		assert.Equal(t, c.want, string(RedactTokens([]byte(c.in))), c.in)
+		assert.Equal(t, c.want, string(Tokens([]byte(c.in))), c.in)
 	}
 }
 
@@ -74,30 +74,30 @@ func TestRedactNearMisses(t *testing.T) {
 		"-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----", // not a private key
 		"-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----",
 	} {
-		assert.Equal(t, in, string(RedactTokens([]byte(in))), in)
+		assert.Equal(t, in, string(Tokens([]byte(in))), in)
 	}
 }
 
 func TestRedactPEM(t *testing.T) {
-	m := RedactMarker
+	m := Marker
 	key := pemKey("RSA ", 20, "\n")
-	assert.Equal(t, "before\n"+m+"\nafter", string(RedactTokens([]byte("before\n"+key+"\nafter"))))
-	assert.Equal(t, m, string(RedactTokens([]byte(pemKey("", 3, "\n")))))
-	assert.Equal(t, m, string(RedactTokens([]byte(pemKey("OPENSSH ", 3, "\r\n")))))
+	assert.Equal(t, "before\n"+m+"\nafter", string(Tokens([]byte("before\n"+key+"\nafter"))))
+	assert.Equal(t, m, string(Tokens([]byte(pemKey("", 3, "\n")))))
+	assert.Equal(t, m, string(Tokens([]byte(pemKey("OPENSSH ", 3, "\r\n")))))
 
 	// Cut off: everything after BEGIN is dropped, to the end of the reply.
 	cut := key[:len(key)/2]
-	assert.Equal(t, "x "+m, string(RedactTokens([]byte("x "+cut))))
+	assert.Equal(t, "x "+m, string(Tokens([]byte("x "+cut))))
 
 	// Over 16 KiB, no END: still never flushed (QA's note on the design).
 	big := pemKey("EC ", 600, "\n")
 	big = big[:strings.LastIndex(big, "-----END")]
 	require.Greater(t, len(big), 32<<10)
-	assert.Equal(t, "a "+m, string(RedactTokens([]byte("a "+big))))
+	assert.Equal(t, "a "+m, string(Tokens([]byte("a "+big))))
 
 	// In JSON, with escaped newlines: the key goes, the JSON stays valid.
 	body, _ := json.Marshal(map[string]string{"output": "cat id_rsa\n" + key + "\ndone", "next": "ok"})
-	red := RedactTokens(body)
+	red := Tokens(body)
 	var got map[string]string
 	require.NoError(t, json.Unmarshal(red, &got), string(red))
 	assert.Equal(t, "cat id_rsa\n"+m+"\ndone", got["output"])
@@ -105,7 +105,7 @@ func TestRedactPEM(t *testing.T) {
 
 	// Cut off inside a JSON string: the key ends at the closing quote.
 	body, _ = json.Marshal(map[string]string{"output": cut, "next": "ok"})
-	red = RedactTokens(body)
+	red = Tokens(body)
 	require.NoError(t, json.Unmarshal(red, &got), string(red))
 	assert.Equal(t, m, got["output"])
 	assert.Equal(t, "ok", got["next"])
@@ -117,11 +117,11 @@ func TestRedactKeepsJSONValid(t *testing.T) {
 	for i, tok := range tokens {
 		for _, s := range []string{tok, "\\" + tok, "\"" + tok + "\"", "line\n" + tok + "\tend", "<b>" + tok + "</b>", "export X=" + tok} {
 			body, _ := json.Marshal(map[string]any{"text": s, "n": i, "list": []string{s, "plain"}})
-			red := RedactTokens(body)
+			red := Tokens(body)
 			var v map[string]any
 			require.NoError(t, json.Unmarshal(red, &v), "%s -> %s", body, red)
 			assert.NotContains(t, string(red), tok)
-			assert.Contains(t, string(red), RedactMarker)
+			assert.Contains(t, string(red), Marker)
 		}
 	}
 }
@@ -136,12 +136,12 @@ func TestRedactStreamEqualsWhole(t *testing.T) {
 		"-----BEGIN PUBLIC KEY-----x", " -----BEGIN ", "authorization=", fake("", 10, alnum),
 	}
 	body := []byte(strings.Join(parts, ""))
-	whole := RedactTokens(body)
+	whole := Tokens(body)
 	assert.NotContains(t, string(whole), fake("ghp_", 40, alnum))
 	assert.Contains(t, string(whole), "ghp_ short", "the near miss stays")
 	for split := 0; split <= len(body); split++ {
 		var out bytes.Buffer
-		r := NewRedactor(&out)
+		r := NewWriter(&out)
 		_, _ = r.Write(body[:split])
 		_, _ = r.Write(body[split:])
 		require.NoError(t, r.Close())
@@ -150,7 +150,7 @@ func TestRedactStreamEqualsWhole(t *testing.T) {
 	rng := rand.New(rand.NewSource(3560))
 	for trial := 0; trial < 300; trial++ {
 		var out bytes.Buffer
-		r := NewRedactor(&out)
+		r := NewWriter(&out)
 		for rest := body; len(rest) > 0; {
 			n := 1 + rng.Intn(min(len(rest), 40))
 			_, _ = r.Write(rest[:n])
@@ -166,7 +166,7 @@ func TestRedactStreamEqualsWhole(t *testing.T) {
 func TestRedactStreamHoldsLittle(t *testing.T) {
 	big := pemKey("EC ", 2000, "\n") // ~130 KiB
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := NewWriter(&out)
 	in := []byte("x " + big + " y")
 	for len(in) > 0 {
 		n := min(len(in), 4096)
@@ -175,10 +175,10 @@ func TestRedactStreamHoldsLittle(t *testing.T) {
 		assert.LessOrEqual(t, len(r.pending), 600)
 	}
 	require.NoError(t, r.Close())
-	assert.Equal(t, "x "+RedactMarker+" y", out.String())
+	assert.Equal(t, "x "+Marker+" y", out.String())
 
 	out.Reset()
-	r = NewRedactor(&out)
+	r = NewWriter(&out)
 	chunk := []byte(strings.Repeat("ordinary log line without secrets 0123456789\n", 800))
 	for i := 0; i < 50; i++ {
 		_, _ = r.Write(chunk)
@@ -191,7 +191,7 @@ func TestRedactStreamHoldsLittle(t *testing.T) {
 // Security's #3560 review (MUST 1): a token longer than its rule's ceiling is still redacted
 // whole (one marker, no tail), in one write and split at every offset.
 func TestRedactLongTokens(t *testing.T) {
-	m := RedactMarker
+	m := Marker
 	jwt := fake("eyJ", 500, alnum+"_-") + "." + fake("", 600, alnum+"_-") + "." + fake("", 396, alnum+"_-")
 	require.Greater(t, len(jwt), 1400)
 	longSK := fake("sk-", 300, alnum)
@@ -203,11 +203,11 @@ func TestRedactLongTokens(t *testing.T) {
 		{longGH, m},
 		{"AKIA" + fake("", 20, upper), "AKIA" + fake("", 20, upper)}, // an exact-length rule: 20 isn't an access key id
 	} {
-		assert.Equal(t, c.want, string(RedactTokens([]byte(c.in))), c.in[:min(40, len(c.in))])
+		assert.Equal(t, c.want, string(Tokens([]byte(c.in))), c.in[:min(40, len(c.in))])
 		body := []byte(c.in)
 		for split := 0; split <= len(body); split++ {
 			var out bytes.Buffer
-			r := NewRedactor(&out)
+			r := NewWriter(&out)
 			_, _ = r.Write(body[:split])
 			_, _ = r.Write(body[split:])
 			require.NoError(t, r.Close())
@@ -217,7 +217,7 @@ func TestRedactLongTokens(t *testing.T) {
 	}
 	// Memory stays flat: a token far longer than any ceiling, in small writes.
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := NewWriter(&out)
 	_, _ = r.Write([]byte("Bearer "))
 	for i := 0; i < 2000; i++ {
 		_, _ = r.Write([]byte(fake("", 64, alnum)))
@@ -230,14 +230,14 @@ func TestRedactLongTokens(t *testing.T) {
 
 // SHOULD 2: PGP private keys; NIT 4: a bare Authorization value needs a digit or a symbol.
 func TestRedactPGPAndBareAuthorization(t *testing.T) {
-	m := RedactMarker
+	m := Marker
 	pgp := "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n" + fake("", 64, alnum) + "\n=abcd\n-----END PGP PRIVATE KEY BLOCK-----"
-	assert.Equal(t, "a\n"+m+"\nb", string(RedactTokens([]byte("a\n"+pgp+"\nb"))))
+	assert.Equal(t, "a\n"+m+"\nb", string(Tokens([]byte("a\n"+pgp+"\nb"))))
 	pub := "-----BEGIN PGP PUBLIC KEY BLOCK-----\nx\n-----END PGP PUBLIC KEY BLOCK-----"
-	assert.Equal(t, pub, string(RedactTokens([]byte(pub))))
+	assert.Equal(t, pub, string(Tokens([]byte(pub))))
 	for split := 0; split <= len(pgp); split++ {
 		var out bytes.Buffer
-		r := NewRedactor(&out)
+		r := NewWriter(&out)
 		_, _ = r.Write([]byte(pgp[:split]))
 		_, _ = r.Write([]byte(pgp[split:]))
 		require.NoError(t, r.Close())
@@ -249,6 +249,6 @@ func TestRedactPGPAndBareAuthorization(t *testing.T) {
 		"Authorization: " + fake("", 30, alnum):      "Authorization: " + m,
 		"Authorization: Basic onlyletterscredential": "Authorization: Basic " + m, // a scheme word: any value
 	} {
-		assert.Equal(t, want, string(RedactTokens([]byte(in))), in)
+		assert.Equal(t, want, string(Tokens([]byte(in))), in)
 	}
 }

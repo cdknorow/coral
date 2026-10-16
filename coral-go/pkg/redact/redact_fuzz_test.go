@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 // #3732, #3733 and #3756 (a split, an escape, a cut or a JSON shape that lets a secret through,
 // or redaction that breaks a reply) is searched for automatically.
 //
-//   go test ./pkg/tunnel -run '^$' -fuzz FuzzRedactStream -fuzztime 10m
+//   go test ./pkg/redact -run '^$' -fuzz FuzzRedactStream -fuzztime 10m
 //
 // A secret is planted between spaces in text the fuzzer chooses. It counts as shown only by a
 // run of 4 or more of its characters that the chosen text doesn't itself contain (the fuzzer may
@@ -88,7 +88,7 @@ func fuzzEncode(s string, enc uint8) []byte {
 
 func fuzzRedactWrites(b []byte, cuts ...int) []byte {
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := NewWriter(&out)
 	at := 0
 	for _, c := range cuts {
 		c = min(max(c, at), len(b))
@@ -120,7 +120,7 @@ func FuzzRedactStream(f *testing.F) {
 	f.Fuzz(func(t *testing.T, prefix string, kind uint8, suffix string, enc uint8, c1, c2 uint16) {
 		text, sec := fuzzPlant(prefix, kind, suffix)
 		body := fuzzEncode(text, enc)
-		whole := RedactTokens(body)
+		whole := Tokens(body)
 		a, b := int(c1)%(len(body)+1), int(c2)%(len(body)+1)
 		if a > b {
 			a, b = b, a
@@ -142,7 +142,7 @@ func FuzzRedactStream(f *testing.F) {
 		if !raceEnabled {
 			big := bytes.Repeat(body, max(1, (64<<10)/max(len(body), 1)))
 			st := time.Now()
-			RedactTokens(big)
+			Tokens(big)
 			if took := time.Since(st); took > time.Second {
 				t.Fatalf("%d bytes took %v:\n unit %q", len(big), took, body)
 			}
@@ -175,7 +175,7 @@ func FuzzRedactJSON(f *testing.F) {
 		if err != nil {
 			return
 		}
-		out, ok := redactReply(jsonHdr, body)
+		out, ok := Reply(body, true)
 		if !ok {
 			t.Fatalf("not redacted: %s", body)
 		}
@@ -205,13 +205,13 @@ func FuzzTrimCut(f *testing.F) {
 		cutAt := int(n) % (len(text) + 1)
 		noise := fuzzNoise(prefix, suffix)
 		// The reader's caps: cut, no redaction before.
-		cut := text[:CutOutsideToken(text, cutAt)]
+		cut := text[:Cut(text, cutAt)]
 		// The chat trim: redacted, then cut.
-		red := string(RedactTokens([]byte(text)))
-		trimmed := red[:CutOutsideToken(red, cutAt)]
+		red := string(Tokens([]byte(text)))
+		trimmed := red[:Cut(red, cutAt)]
 		for name, kept := range map[string]string{"cut": cut, "trim": trimmed} {
 			js, _ := json.Marshal(map[string]string{"content": kept})
-			out := string(RedactTokens(js))
+			out := string(Tokens(js))
 			if w := fuzzShown(out, sec.secret, noise); w != "" {
 				t.Fatalf("%s at %d: %q of the secret shows:\n text %q\n kept %q\n out %q", name, cutAt, w, text, kept, out)
 			}

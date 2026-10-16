@@ -6,7 +6,7 @@ package tunnel
 //
 //   - A text frame (the session feed's JSON, the terminal's control messages) is one whole
 //     reply: it is redacted on its own, so it stays valid JSON.
-//   - The terminal's binary frames are one stream of output: they pass through one Redactor,
+//   - The terminal's binary frames are one stream of output: they pass through one redact.Writer,
 //     so a token split across frames is caught, and a frame that ends inside what could still
 //     be a token holds back only that tail. Frames with nothing held go out at once. When
 //     no frame follows, a held tail with no value in it yet (the first letters of a prefix)
@@ -33,6 +33,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // How long a terminal's held tail may wait for the next frame: the first letters of a prefix
@@ -54,7 +56,7 @@ type wsRedact struct {
 	mu    sync.Mutex // one writer to dst: the pump or the idle flush
 	ctx   context.Context
 	dst   wsEnd
-	red   *Redactor // the terminal stream's scanner (nil while the setting is off)
+	red   *redact.Writer // the terminal stream's scanner (nil while the setting is off)
 	out   bytes.Buffer
 	timer *time.Timer
 	force bool // the timer's next firing redacts a held prefix (wsHoldMax)
@@ -84,7 +86,7 @@ func (w *wsRedact) write(typ websocket.MessageType, data []byte) error {
 	}
 	if typ == websocket.MessageBinary && w.stream {
 		if w.red == nil {
-			w.red = NewRedactor(&w.out)
+			w.red = redact.NewWriter(&w.out)
 		}
 		if !redactWrite(w.red, data) {
 			return w.fail()
@@ -133,7 +135,7 @@ func (w *wsRedact) armIdle() {
 }
 
 func (w *wsRedact) holding() bool {
-	return w.red != nil && !w.red.inPEM && len(w.red.pending) > w.red.shown
+	return w.red != nil && w.red.Holding()
 }
 
 func (w *wsRedact) after(d time.Duration) {
@@ -200,7 +202,7 @@ func terminalClosing(data []byte) bool {
 	return bytes.Contains(data, []byte(`"terminal_closed"`))
 }
 
-func redactFlush(r *Redactor, force bool) (ok bool) {
+func redactFlush(r *redact.Writer, force bool) (ok bool) {
 	defer func() {
 		if recover() != nil {
 			ok = false

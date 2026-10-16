@@ -16,7 +16,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // AgentTask represents a checklist item for an agent.
@@ -476,9 +476,9 @@ func (s *TaskStore) DeleteAgentNote(ctx context.Context, noteID int64) error {
 // (the hooks' events, goals, thinking, auto-accept): the summary as text, the detail by its JSON
 // structure (a value under a secret-named key is redacted whole).
 func redactAgentEvent(event *AgentEvent) {
-	event.Summary = string(tunnel.RedactTokens([]byte(event.Summary)))
+	event.Summary = string(redact.Tokens([]byte(event.Summary)))
 	if event.DetailJSON != nil {
-		d := string(tunnel.RedactJSON([]byte(*event.DetailJSON)))
+		d := string(redact.Document([]byte(*event.DetailJSON)))
 		event.DetailJSON = &d
 	}
 }

@@ -1,9 +1,8 @@
-package tunnel
+package redact
 
 import (
 	"encoding/json"
 	"math/rand"
-	"net/http"
 	"strings"
 	"testing"
 
@@ -13,8 +12,6 @@ import (
 
 // #3732: a JSON reply held whole is redacted by its structure: every string, key or value, at
 // any depth, is redacted as the text it stands for, and the reply is still the same JSON.
-
-var jsonHdr = http.Header{"Content-Type": {"application/json"}}
 
 // redactStrings is v with every key redacted as text and every value with its key (an array's
 // strings with the key of the member holding it): what the structural redaction must give.
@@ -27,11 +24,11 @@ func redactUnder(v any, key string, has, auth, secret bool) any {
 			if x == "" {
 				return x
 			}
-			return RedactMarker
+			return Marker
 		case nil:
 			return nil
 		case bool, float64, json.Number:
-			return RedactMarker
+			return Marker
 		}
 	}
 	switch x := v.(type) {
@@ -42,7 +39,7 @@ func redactUnder(v any, key string, has, auth, secret bool) any {
 		case has:
 			return redactMember(key, x)
 		}
-		return string(RedactTokens([]byte(x)))
+		return string(Tokens([]byte(x)))
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
@@ -76,7 +73,7 @@ func redactUnder(v any, key string, has, auth, secret bool) any {
 				other--
 			}
 			childAuth := auth || strings.Contains(strings.ToLower(k), "authorization") || other > 0 && isStr
-			out[string(RedactTokens([]byte(k)))] = redactUnder(e, ctx, true, childAuth, secret || isSecretKey(ctx))
+			out[string(Tokens([]byte(k)))] = redactUnder(e, ctx, true, childAuth, secret || isSecretKey(ctx))
 		}
 		return out
 	}
@@ -119,7 +116,7 @@ func TestRedactJSONStructureEveryFixture(t *testing.T) {
 		} {
 			raw, err := json.Marshal(v)
 			require.NoError(t, err)
-			out, ok := redactReply(jsonHdr, raw)
+			out, ok := Reply(raw, true)
 			require.True(t, ok)
 			require.True(t, json.Valid(out), "%s", out)
 			assert.Equal(t, redactStrings(decodeNumbers(t, raw)), decodeNumbers(t, out), "%.80s", raw)
@@ -131,7 +128,7 @@ func TestRedactJSONStructureEveryFixture(t *testing.T) {
 // json.Marshal would escape for HTML.
 func TestRedactJSONStructureKeepsTheRest(t *testing.T) {
 	raw := `{"z": 1e400, "a": 12345678901234567890, "m": [1.0, -0, true, false, null], "h": "<b>&amp;</b>", "u": "é😀\u2028"}`
-	out, ok := redactReply(jsonHdr, []byte(raw))
+	out, ok := Reply([]byte(raw), true)
 	require.True(t, ok)
 	assert.Equal(t, `{"z":1e400,"a":12345678901234567890,"m":[1.0,-0,true,false,null],"h":"<b>&amp;</b>","u":"é😀\u2028"}`, string(out))
 }
@@ -140,16 +137,16 @@ func TestRedactJSONStructureKeepsTheRest(t *testing.T) {
 func TestRedactReplyNotJSON(t *testing.T) {
 	tok := fake("ghp_", 36, alnum)
 	for _, c := range []struct {
-		hdr  http.Header
-		body string
+		isJSON bool
+		body   string
 	}{
-		{http.Header{"Content-Type": {"text/plain"}}, `{"a":"` + tok + `"}`},
-		{jsonHdr, `{"a":"` + tok + `"`},
-		{jsonHdr, `{"a":1}{"b":"` + tok + `"}`},
+		{false, `{"a":"` + tok + `"}`},
+		{true, `{"a":"` + tok + `"`},
+		{true, `{"a":1}{"b":"` + tok + `"}`},
 	} {
-		out, ok := redactReply(c.hdr, []byte(c.body))
+		out, ok := Reply([]byte(c.body), c.isJSON)
 		require.True(t, ok)
-		assert.Equal(t, string(RedactTokens([]byte(c.body))), string(out))
+		assert.Equal(t, string(Tokens([]byte(c.body))), string(out))
 		assert.NotContains(t, string(out), tok)
 	}
 }
@@ -190,7 +187,7 @@ func TestRedactJSONStructureProperty(t *testing.T) {
 	for it := 0; it < 20000; it++ {
 		raw, err := json.Marshal(map[string]any{"content": value(0)})
 		require.NoError(t, err)
-		out, ok := redactReply(jsonHdr, raw)
+		out, ok := Reply(raw, true)
 		require.True(t, ok)
 		if !json.Valid(out) {
 			t.Fatalf("invalid: in=%s out=%s", raw, out)
@@ -238,11 +235,11 @@ func TestRedactJSONStructureKeyAndValue(t *testing.T) {
 	} {
 		raw, err := json.Marshal(c.body)
 		require.NoError(t, err)
-		out, ok := redactReply(jsonHdr, raw)
+		out, ok := Reply(raw, true)
 		require.True(t, ok)
 		require.True(t, json.Valid(out), "%s", out)
 		assert.Empty(t, authSecretLeak(string(out), c.secrets), "structural: %s -> %s", raw, out)
-		if text := string(RedactTokens(raw)); !c.textGap {
+		if text := string(Tokens(raw)); !c.textGap {
 			assert.Empty(t, authSecretLeak(text, c.secrets), "text: %s -> %s", raw, text)
 		}
 	}
@@ -252,7 +249,7 @@ func TestRedactJSONStructureKeyAndValue(t *testing.T) {
 func TestRedactJSONTooDeepFallsBackToText(t *testing.T) {
 	tok := fake("ghp_", 36, alnum)
 	raw := strings.Repeat("[", maxJSONDepth+5) + `"` + tok + `"` + strings.Repeat("]", maxJSONDepth+5)
-	out, ok := redactReply(jsonHdr, []byte(raw))
+	out, ok := Reply([]byte(raw), true)
 	require.True(t, ok)
 	assert.True(t, json.Valid(out))
 	assert.NotContains(t, string(out), tok)
@@ -266,7 +263,7 @@ func TestRedactJSONStructureAuthorizationNearMisses(t *testing.T) {
 		`{"authorize":"later","msg":"retry in a minute"}`,
 		`{"kind":"authorization_request","text":"hello world"}`,
 	} {
-		out, ok := redactReply(jsonHdr, []byte(raw))
+		out, ok := Reply([]byte(raw), true)
 		require.True(t, ok)
 		assert.Equal(t, raw, string(out))
 	}
@@ -279,10 +276,10 @@ func TestRedactJSONStructureTokenKeyFailsClosed(t *testing.T) {
 	secret := "Basic " + fake("", 24, alnum+"=")
 	raw, err := json.Marshal(map[string]any{key: secret, "other": "kept as it is"})
 	require.NoError(t, err)
-	out, ok := redactReply(jsonHdr, raw)
+	out, ok := Reply(raw, true)
 	require.True(t, ok)
 	var got map[string]string
 	require.NoError(t, json.Unmarshal(out, &got), string(out))
-	assert.Equal(t, map[string]string{RedactMarker: RedactMarker, "other": "kept as it is"}, got)
-	assert.Equal(t, RedactMarker, redactMember(key, "anything at all"))
+	assert.Equal(t, map[string]string{Marker: Marker, "other": "kept as it is"}, got)
+	assert.Equal(t, Marker, redactMember(key, "anything at all"))
 }

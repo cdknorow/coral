@@ -1,9 +1,8 @@
-package tunnel
+package redact
 
 import (
 	"bytes"
 	"encoding/json"
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,7 +13,7 @@ import (
 // a token: by key in a JSON reply held whole, and as name=value or name: value in text and
 // streams. Ordinary words that only start like a name are left.
 
-const sm = RedactMarker
+const sm = Marker
 
 // In text (a streamed reply, a terminal, a text reply), raw and as JSON writes it.
 func TestRedactSecretNamesInText(t *testing.T) {
@@ -32,10 +31,10 @@ func TestRedactSecretNamesInText(t *testing.T) {
 		{`Secret: abc123`, `Secret: ` + sm}, // bare after ':': letters and digits
 		{`{"refresh_token": "r1", "token": "t2"}`, `{"refresh_token": "` + sm + `", "token": "` + sm + `"}`},
 	} {
-		assert.Equal(t, c.want, string(RedactTokens([]byte(c.in))), c.in)
+		assert.Equal(t, c.want, string(Tokens([]byte(c.in))), c.in)
 		// The same text inside a JSON string: the quotes are \", and the result stays JSON.
 		enc, _ := json.Marshal(map[string]string{"content": c.in})
-		out := RedactTokens(enc)
+		out := Tokens(enc)
 		require.True(t, json.Valid(out), "%s -> %s", enc, out)
 		var got map[string]string
 		require.NoError(t, json.Unmarshal(out, &got))
@@ -51,7 +50,7 @@ func TestRedactSecretNamesNearMisses(t *testing.T) {
 		"token: expired", "password: please", // prose: a bare word after ':'
 		"Authorization: unavailable",
 	} {
-		assert.Equal(t, s, string(RedactTokens([]byte(s))), "left as it is: %s", s)
+		assert.Equal(t, s, string(Tokens([]byte(s))), "left as it is: %s", s)
 	}
 }
 
@@ -63,10 +62,10 @@ func TestRedactSecretNamesEverySplit(t *testing.T) {
 		`{"content":"{\"apiKey\": \"abcd\", \"password\" : 'pw1'}"}`, // JSON inside JSON: a cut inside \"
 		`{"content":"x\u0022token\u0022: \u0022t0k\u0022"}`,
 	} {
-		whole := string(RedactTokens([]byte(s)))
+		whole := string(Tokens([]byte(s)))
 		for cut := 0; cut <= len(s); cut++ {
 			var out bytes.Buffer
-			r := NewRedactor(&out)
+			r := NewWriter(&out)
 			_, _ = r.Write([]byte(s[:cut]))
 			_, _ = r.Write([]byte(s[cut:]))
 			require.NoError(t, r.Close())
@@ -80,7 +79,7 @@ func TestRedactSecretKeysInJSONReplies(t *testing.T) {
 	in := `{"password":"hunter","db":{"PASSWORD":"x","apiKey":"y y","X-Api-Key":"z","auth":"plain",` +
 		`"list":{"refresh_token":["a","b"]},"headers":[{"name":"client_secret","value":"v"}],` +
 		`"tokens":"keep","secretary":"keep","author":"keep","total_token_usage":"keep","empty_password":"","n":{"token":7}}}`
-	out, ok := redactReply(http.Header{"Content-Type": {"application/json"}}, []byte(in))
+	out, ok := Reply([]byte(in), true)
 	require.True(t, ok)
 	require.True(t, json.Valid(out))
 	var got map[string]any
@@ -99,7 +98,7 @@ func TestRedactSecretKeysInJSONReplies(t *testing.T) {
 	assert.Equal(t, sm, db["n"].(map[string]any)["token"], "a number under a secret key is the marker too (a string)")
 
 	// The same text in a reply that isn't JSON goes through the text rule.
-	text, ok := redactReply(http.Header{"Content-Type": {"text/plain"}}, []byte("api_key=abc\n"))
+	text, ok := Reply([]byte("api_key=abc\n"), false)
 	require.True(t, ok)
 	assert.Equal(t, "api_key="+sm+"\n", string(text))
 }
@@ -131,9 +130,9 @@ func TestRedactSecretQuotedValuesAndMoreNames(t *testing.T) {
 		{`secretKey="s k"`, `secretKey="` + sm + `"`},
 		{`password="unterminated and the body ends`, `password="` + sm},
 	} {
-		assert.Equal(t, c.want, string(RedactTokens([]byte(c.in))), c.in)
+		assert.Equal(t, c.want, string(Tokens([]byte(c.in))), c.in)
 		enc, _ := json.Marshal(map[string]string{"content": c.in})
-		out := RedactTokens(enc)
+		out := Tokens(enc)
 		require.True(t, json.Valid(out), "%s -> %s", enc, out)
 		var got map[string]string
 		require.NoError(t, json.Unmarshal(out, &got))
@@ -144,7 +143,7 @@ func TestRedactSecretQuotedValuesAndMoreNames(t *testing.T) {
 		}
 		for cut := 0; cut <= len(enc); cut++ {
 			var b bytes.Buffer
-			r := NewRedactor(&b)
+			r := NewWriter(&b)
 			_, _ = r.Write(enc[:cut])
 			_, _ = r.Write(enc[cut:])
 			require.NoError(t, r.Close())
@@ -159,7 +158,7 @@ func TestRedactSecretSubtrees(t *testing.T) {
 	in := `{"token":{"a":"x","n":{"deep":["y",5]}},"password":{"value":"y"},"secrets":{"db":"z","port":5432},` +
 		`"pin":{"password":12345678},"flag":{"secret":true},"none":{"password":null,"api_key":""},` +
 		`"usage":{"input_tokens":12,"tokens":{"in":3}}}`
-	out, ok := redactReply(http.Header{"Content-Type": {"application/json"}}, []byte(in))
+	out, ok := Reply([]byte(in), true)
 	require.True(t, ok)
 	require.True(t, json.Valid(out), string(out))
 	want := `{"token":{"a":"` + sm + `","n":{"deep":["` + sm + `","` + sm + `"]}},"password":{"value":"` + sm + `"},` +
@@ -176,7 +175,7 @@ func TestRedactSecretFlushedMidValue(t *testing.T) {
 		{`PASSWORD="my pa`, `ss phrase" next`, `PASSWORD="` + sm + `" next`},
 	} {
 		var out bytes.Buffer
-		r := NewRedactor(&out)
+		r := NewWriter(&out)
 		_, _ = r.Write([]byte(c.first))
 		require.NoError(t, r.Flush(true))
 		_, _ = r.Write([]byte(c.rest))

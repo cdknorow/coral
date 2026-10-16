@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import (
 	"bytes"
@@ -31,11 +31,11 @@ func authSecretLeak(out string, secrets []string) string {
 	return ""
 }
 
-// redactTwoWrites runs body through one Redactor in two writes, split at k.
+// redactTwoWrites runs body through one Writer in two writes, split at k.
 func redactTwoWrites(t *testing.T, body []byte, k int) string {
 	t.Helper()
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := NewWriter(&out)
 	_, err := r.Write(body[:k])
 	require.NoError(t, err)
 	_, err = r.Write(body[k:])
@@ -85,7 +85,7 @@ func TestRedactAuthorizationEveryShapeEverySplit(t *testing.T) {
 				js, _ := json.Marshal(map[string]string{"content": text})
 				jsjs, _ := json.Marshal(map[string]string{"content": string(js)})
 				for enc, body := range map[string][]byte{"raw": []byte(text), "json": js, "json-in-json": jsjs} {
-					whole := string(RedactTokens(body))
+					whole := string(Tokens(body))
 					if leak := authSecretLeak(whole, c.secrets); leak != "" {
 						t.Errorf("%s %s %s %s: %q shows in %q", c.name, kw, form, enc, leak, whole)
 						continue
@@ -119,10 +119,10 @@ func TestQuoteLen(t *testing.T) {
 	}
 }
 
-// redactStream runs the parts through one Redactor, one write each.
+// redactStream runs the parts through one Writer, one write each.
 func redactStream(parts ...string) string {
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := NewWriter(&out)
 	for _, p := range parts {
 		_, _ = r.Write([]byte(p))
 	}
@@ -165,7 +165,7 @@ func TestAuthParamListStopsAtTheStringsEnd(t *testing.T) {
 		`{"content":"see Authorization: Digest username=\"bob\", nonce="}`,
 		`{"content":"Authorization: Digest nonce=\"abc", "b":"x \"y\" z"}`,
 	} {
-		out := RedactTokens([]byte(in))
+		out := Tokens([]byte(in))
 		assert.True(t, json.Valid(out), "%s -> %s", in, out)
 	}
 }

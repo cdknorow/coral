@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ func BenchmarkRedactStream(b *testing.B) {
 				b.SetBytes(int64(len(body)))
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
-					r := NewRedactor(io.Discard)
+					r := NewWriter(io.Discard)
 					for rest := body; len(rest) > 0; {
 						n := min(len(rest), 32<<10)
 						_, _ = r.Write(rest[:n])

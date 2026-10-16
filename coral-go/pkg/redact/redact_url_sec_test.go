@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import (
 	"encoding/json"
@@ -28,22 +28,22 @@ func TestSecURLProbes(t *testing.T) {
 		`postgres://u:` + pw + `@h/db password: ok`,
 		`postgres://u:1234` + pw + `@h/db`,
 	} {
-		out := string(RedactTokens([]byte(r)))
+		out := string(Tokens([]byte(r)))
 		assert.NotContains(t, out, "Zq8x", "%.60q -> %.100q", r, out)
 	}
-	assert.NotContains(t, string(RedactTokens([]byte(`postgres://u:p%40ss%2Fw0rd@h/db`))), "p%40ss%2Fw0rd")
+	assert.NotContains(t, string(Tokens([]byte(`postgres://u:p%40ss%2Fw0rd@h/db`))), "p%40ss%2Fw0rd")
 	for _, r := range []string{
 		`ssh://git@github.com:22/org/repo`, `https://host:8443/path`, `https://user@host/x`, `redis://cache:6379`,
 		`mail me at a@b.com: see http://x.y/z`, `https://h:80/x/@user`, `https://h:443?x=@y`,
 	} {
-		assert.Equal(t, r, string(RedactTokens([]byte(r))), "left alone: %s", r)
+		assert.Equal(t, r, string(Tokens([]byte(r))), "left alone: %s", r)
 	}
 	for _, r := range []string{
 		`{"url":"postgres://u:` + pw + `@h/db"}`,
 		`{"cmd":"psql \"postgres://u:` + pw + `@h/db\" -c x"}`,
 		`{"a":"{\"u\":\"redis://:` + pw + `@c\"}"}`,
 	} {
-		out := RedactTokens([]byte(r))
+		out := Tokens([]byte(r))
 		assert.NotContains(t, string(out), "Zq8x", "%s -> %s", r, out)
 		assert.True(t, json.Valid(out), "%s", out)
 	}
@@ -64,7 +64,7 @@ func TestSecURLPerf(t *testing.T) {
 	for _, unit := range urlAdversarial {
 		data := []byte(strings.Repeat(unit, 4<<20/len(unit)))
 		st := time.Now()
-		RedactTokens(data)
+		Tokens(data)
 		took := time.Since(st)
 		t.Logf("%.20q: %v for 4 MiB", unit, took)
 		assert.Less(t, took, 3*time.Second, "unit %.20q", unit)
@@ -77,7 +77,7 @@ func BenchmarkRedactURLAdversarial(b *testing.B) {
 		b.Run(fmt.Sprintf("%.8q", unit), func(b *testing.B) {
 			b.SetBytes(int64(len(data)))
 			for i := 0; i < b.N; i++ {
-				RedactTokens(data)
+				Tokens(data)
 			}
 		})
 	}
@@ -92,8 +92,8 @@ func TestSecURLCut(t *testing.T) {
 		"hexdump": strings.Repeat("0123456789abcdef:", 300),
 		"minjson": strings.Repeat(`{"k":1},`, 600),
 	} {
-		p := CutOutsideToken(s, 2048)
+		p := Cut(s, 2048)
 		assert.GreaterOrEqual(t, p, 2048-maxWideWalk-1, "%s: cut at %d", name, p)
 	}
-	assert.Equal(t, 0, CutOutsideToken(strings.Repeat("QUJDREVGR0hJSktMTU5PUA==", 200), 2048), "base64: a token's run, cut before it")
+	assert.Equal(t, 0, Cut(strings.Repeat("QUJDREVGR0hJSktMTU5PUA==", 200), 2048), "base64: a token's run, cut before it")
 }

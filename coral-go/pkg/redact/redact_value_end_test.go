@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import (
 	"encoding/json"
@@ -29,7 +29,7 @@ func TestRedactValueEndsBeforeAnotherRule(t *testing.T) {
 		js, _ := json.Marshal(map[string]string{"content": c.text})
 		jsjs, _ := json.Marshal(map[string]string{"content": string(js)})
 		for enc, body := range map[string][]byte{"raw": []byte(c.text), "json": js, "json-in-json": jsjs} {
-			whole := string(RedactTokens(body))
+			whole := string(Tokens(body))
 			assert.Empty(t, urlSecretShown(whole, c.secret), "%s (%s): %s", c.text, enc, whole)
 			if enc != "raw" {
 				assert.True(t, json.Valid([]byte(whole)), "%s (%s) stays JSON: %s", c.text, enc, whole)
@@ -43,7 +43,7 @@ func TestRedactValueEndsBeforeAnotherRule(t *testing.T) {
 		}
 	}
 	// A keyword the next rule doesn't take (no value after it) is not a start: the value runs on.
-	out := string(RedactTokens([]byte("token=" + pw + "token rest")))
+	out := string(Tokens([]byte("token=" + pw + "token rest")))
 	assert.False(t, strings.Contains(out, pw[:8]), out)
 }
 
@@ -63,7 +63,7 @@ func TestRedactLongValueEndsBeforeAnotherRule(t *testing.T) {
 		} {
 			js, _ := json.Marshal(map[string]string{"content": c.text})
 			for enc, body := range map[string][]byte{"raw": []byte(c.text), "json": js} {
-				whole := string(RedactTokens(body))
+				whole := string(Tokens(body))
 				if !assert.Empty(t, urlSecretShown(whole, c.secret), "pad %d (%s): %s", pad, enc, whole) {
 					continue
 				}

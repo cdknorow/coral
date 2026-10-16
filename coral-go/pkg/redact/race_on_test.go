@@ -1,6 +1,6 @@
-//go:build !race
+//go:build race
 
-package tunnel
+package redact
 
 // raceEnabled: the tests run under -race, where timing bounds don't hold.
-const raceEnabled = false
+const raceEnabled = true
