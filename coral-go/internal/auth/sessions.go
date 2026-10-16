@@ -50,6 +50,10 @@ type SessionRecord struct {
 	CreatedAt  time.Time
 	LastSeen   time.Time
 	ExpiresAt  time.Time
+	// A Hub session's grant (#3966): the grant id, the owner's account, the cleaned display
+	// name and the last check Coral Hub answered yes to. Empty for every other method.
+	HubGrant, HubAccount, HubDisplay string
+	HubLastOK                        time.Time
 }
 
 // SessionBackend keeps browser sessions (sessions.db: store.BrowserSessions).

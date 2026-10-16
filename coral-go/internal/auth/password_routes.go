@@ -401,6 +401,49 @@ func (ar *Routes) SignOutOthers(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "signed_out": n})
 }
 
+// RevokeSessionByID ends one listed session by its id (the 12-character prefix Sessions lists); a
+// Hub session's open WebSockets close with it.
+// DELETE /api/auth/sessions/{id}
+func (ar *Routes) RevokeSessionByID(w http.ResponseWriter, r *http.Request) {
+	if !sameOriginWrite(r, true) {
+		authError(w, http.StatusForbidden, "cross_origin", "Sign a browser out from Coral's own page")
+		return
+	}
+	if !ar.signedIn(r) {
+		notSignedIn(w)
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/auth/sessions/")
+	if len(id) != 12 || strings.Trim(id, "0123456789abcdef") != "" {
+		authError(w, http.StatusBadRequest, "bad_id", "Unknown session")
+		return
+	}
+	list, err := ar.ks.backend().ListSessions(r.Context())
+	if err != nil {
+		authError(w, http.StatusInternalServerError, "read_failed", "The sessions could not be read")
+		return
+	}
+	var match []SessionRecord
+	for _, s := range list {
+		if strings.HasPrefix(s.IDHash, id) {
+			match = append(match, s)
+		}
+	}
+	if len(match) != 1 {
+		authError(w, http.StatusNotFound, "not_found", "Unknown session")
+		return
+	}
+	s := match[0]
+	if s.Method == SessionByHub && ar.hub != nil {
+		ar.hub.endSession(r.Context(), s, "signed out from Settings")
+	} else if err := ar.ks.backend().DeleteSession(r.Context(), s.IDHash); err != nil {
+		authError(w, http.StatusInternalServerError, "revoke_failed", "The session could not be ended")
+		return
+	}
+	log.Printf("[auth] a browser session (%s) was signed out from Settings", s.Method)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func rfc3339(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
 // signInAudit keeps the last 50 password attempts (never the password).

@@ -22,6 +22,8 @@ type Routes struct {
 	audit       *signInAudit
 	cliVerified func(*http.Request) bool
 	peerUser    func(*http.Request) (same, supported bool)
+	// hub is Sign in with Coral Hub (#3966), nil when the server has none.
+	hub *HubSignin
 }
 
 // SetStrictLocal makes /auth show LockedPageHTML to a browser on this computer that isn't
@@ -46,7 +48,7 @@ func (ar *Routes) AuthPage(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("Referrer-Policy", "no-referrer")
 	set, local, strict := ar.PageState(r)
-	w.Write([]byte(AuthPage(PageState{PasswordSet: set, Local: local, Strict: strict})))
+	w.Write([]byte(AuthPage(PageState{PasswordSet: set, Local: local, Strict: strict, HubSignin: ar.hub.PageState(r)})))
 }
 
 // authPageCSP: scripts only from this server (the page has no inline script), never framed;

@@ -83,6 +83,8 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			// from another computer (it was redirected to /auth).
 			if path == "/auth" || path == "/auth/logout" || path == "/auth/key" || path == "/auth/password" ||
 				path == "/auth/password/create" ||
+				// Sign in with Coral Hub (#3966): each checks its own flow, cookie or proof.
+				path == "/auth/hub/start" || path == "/auth/hub/callback" || path == "/auth/hub/link" || path == "/auth/hub/link/status" ||
 				strings.HasPrefix(path, "/static/") ||
 				path == "/manifest.json" || path == "/favicon.ico" {
 				next.ServeHTTP(w, r)

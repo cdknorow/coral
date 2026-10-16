@@ -21,13 +21,25 @@ type browserSessionRow struct {
 	CreatedAt  int64  `db:"created_at"`
 	LastSeen   int64  `db:"last_seen"`
 	ExpiresAt  int64  `db:"expires_at"`
+	HubGrant   string `db:"hub_grant"`
+	HubAccount string `db:"hub_account"`
+	HubDisplay string `db:"hub_display"`
+	HubLastOK  int64  `db:"hub_last_ok"`
 }
 
 func (r browserSessionRow) record() auth.SessionRecord {
 	return auth.SessionRecord{
 		IDHash: r.IDHash, Label: r.Label, Method: r.Method, Persistent: r.Persistent,
 		CreatedAt: time.Unix(r.CreatedAt, 0).UTC(), LastSeen: time.Unix(r.LastSeen, 0).UTC(), ExpiresAt: time.Unix(r.ExpiresAt, 0).UTC(),
+		HubGrant: r.HubGrant, HubAccount: r.HubAccount, HubDisplay: r.HubDisplay, HubLastOK: unixOrZero(r.HubLastOK),
 	}
+}
+
+func unixOrZero(s int64) time.Time {
+	if s == 0 {
+		return time.Time{}
+	}
+	return time.Unix(s, 0).UTC()
 }
 
 // BrowserSessions is the sessions.db side of auth.SessionBackend.
@@ -37,15 +49,21 @@ type BrowserSessions struct{ db *DB }
 func NewBrowserSessions(db *DB) *BrowserSessions { return &BrowserSessions{db: db} }
 
 func (b *BrowserSessions) PutSession(ctx context.Context, s auth.SessionRecord) error {
+	var lastOK int64
+	if !s.HubLastOK.IsZero() {
+		lastOK = s.HubLastOK.Unix()
+	}
 	_, err := b.db.ExecContext(ctx, `INSERT OR REPLACE INTO browser_sessions
-		(id_hash, label, method, persistent, created_at, last_seen, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		s.IDHash, s.Label, s.Method, s.Persistent, s.CreatedAt.Unix(), s.LastSeen.Unix(), s.ExpiresAt.Unix())
+		(id_hash, label, method, persistent, created_at, last_seen, expires_at, hub_grant, hub_account, hub_display, hub_last_ok)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.IDHash, s.Label, s.Method, s.Persistent, s.CreatedAt.Unix(), s.LastSeen.Unix(), s.ExpiresAt.Unix(),
+		s.HubGrant, s.HubAccount, s.HubDisplay, lastOK)
 	return err
 }
 
 func (b *BrowserSessions) GetSession(ctx context.Context, idHash string) (auth.SessionRecord, bool, error) {
 	var row browserSessionRow
-	err := b.db.Reader().GetContext(ctx, &row, `SELECT id_hash, label, method, persistent, created_at, last_seen, expires_at
+	err := b.db.Reader().GetContext(ctx, &row, `SELECT id_hash, label, method, persistent, created_at, last_seen, expires_at, hub_grant, hub_account, hub_display, hub_last_ok
 		FROM browser_sessions WHERE id_hash = ?`, idHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return auth.SessionRecord{}, false, nil
@@ -77,7 +95,7 @@ func (b *BrowserSessions) DeleteSessionsExcept(ctx context.Context, keep string)
 
 func (b *BrowserSessions) ListSessions(ctx context.Context) ([]auth.SessionRecord, error) {
 	var rows []browserSessionRow
-	if err := b.db.Reader().SelectContext(ctx, &rows, `SELECT id_hash, label, method, persistent, created_at, last_seen, expires_at
+	if err := b.db.Reader().SelectContext(ctx, &rows, `SELECT id_hash, label, method, persistent, created_at, last_seen, expires_at, hub_grant, hub_account, hub_display, hub_last_ok
 		FROM browser_sessions ORDER BY last_seen DESC`); err != nil {
 		return nil, err
 	}

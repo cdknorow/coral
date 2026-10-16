@@ -268,6 +268,11 @@ var columnMigrations = []struct {
 	{"live_sessions", "hooks_rev", "INTEGER"},
 	{"cloud_connection", "route_key", "TEXT"}, // the hub's routing hint for this enrollment (#3683)
 	{"cloud_connection", "hub_owner", "TEXT"}, // the Coral Hub account that owns this enrollment (#3966)
+	// A Hub sign-in's grant (#3966): empty for every other browser session.
+	{"browser_sessions", "hub_grant", "TEXT NOT NULL DEFAULT ''"},
+	{"browser_sessions", "hub_account", "TEXT NOT NULL DEFAULT ''"},
+	{"browser_sessions", "hub_display", "TEXT NOT NULL DEFAULT ''"},
+	{"browser_sessions", "hub_last_ok", "INTEGER NOT NULL DEFAULT 0"},
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},
 	{"token_usage", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},

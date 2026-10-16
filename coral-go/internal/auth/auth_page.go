@@ -20,6 +20,9 @@ type PageState struct {
 	PasswordSet bool
 	Local       bool
 	Strict      bool
+	// HubSignin is Sign in with Coral Hub's state (#3966): "" (no Hub UI), "ready" (the
+	// button), "unpaired" (link and sign in) or "disabled_in_hub" (turned off in Coral Hub).
+	HubSignin string
 }
 
 // AuthPage renders the page for a state. The markup is fixed and has no user data; the behaviour lives in
