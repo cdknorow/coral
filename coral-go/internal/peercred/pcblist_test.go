@@ -125,6 +125,20 @@ func TestParsePCBList(t *testing.T) {
 		bad := pcbList(le, pcb{inpIPv4, client, server, 501, false})
 		le.PutUint32(bad[24:], 40) // an inpcb item too short to hold the addresses
 		_, err := parsePCBList(bad, client, server, true)
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrLayout)
+	})
+	// #3905 (Security): a struct size this build doesn't know is ErrLayout, never a guess at
+	// where so_uid moved, on any item, not only the connection's.
+	t.Run("an unknown item size is ErrLayout", func(t *testing.T) {
+		for name, at := range map[string]int{
+			"inpcb of the connection":  24,
+			"socket of the connection": 24 + 104,
+			"inpcb of another socket":  24 + 104 + 104 + 208,
+		} {
+			b := pcbList(le, pcb{inpIPv4, client, server, 501, false}, other)
+			le.PutUint32(b[at:], 112)
+			_, err := parsePCBList(b, client, server, true)
+			assert.ErrorIs(t, err, ErrLayout, name)
+		}
 	})
 }

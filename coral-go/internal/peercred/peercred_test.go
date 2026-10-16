@@ -1,9 +1,12 @@
 package peercred
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -184,4 +187,32 @@ func TestSameUserUnsupportedElsewhere(t *testing.T) {
 	same, supported := SameUser(httptestRequest())
 	assert.False(t, same)
 	assert.False(t, supported)
+}
+
+// #3905 (Security): an unknown table layout makes SameUser answer unsupported (the caller's
+// own rules, as on a system without the check); every other failure still refuses.
+func TestSameUserLayoutIsUnsupported(t *testing.T) {
+	if !Supported {
+		t.Skip("no peer check on this system")
+	}
+	old := ownerCheck
+	t.Cleanup(func() { ownerCheck = old })
+	r := httptestRequest()
+	r = r.WithContext(context.WithValue(r.Context(), http.LocalAddrContextKey,
+		&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8420}))
+	for _, tc := range []struct {
+		err             error
+		same, supported bool
+	}{
+		{fmt.Errorf("%w: an inpcb item of 112 bytes", ErrLayout), false, false},
+		{ErrNotFound, false, true},
+		{errAmbiguous, false, true},
+		{errors.New("open process: access denied"), false, true},
+		{nil, true, true},
+	} {
+		ownerCheck = func(netip.AddrPort, netip.AddrPort) (bool, error) { return tc.err == nil, tc.err }
+		same, supported := SameUser(r)
+		assert.Equal(t, tc.same, same, "%v", tc.err)
+		assert.Equal(t, tc.supported, supported, "%v", tc.err)
+	}
 }
