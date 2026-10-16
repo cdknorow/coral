@@ -8,6 +8,8 @@ import (
 	"os"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 type instanceLock struct {
@@ -22,9 +24,10 @@ const lockOffsetHigh = 0x40000000
 // kernel releases it when the process ends, however it ends. The file itself was the lock
 // before (created with O_EXCL), so a crash or a power cut left it behind and Coral refused
 // to start until it was deleted by hand (#3906, sweep item 6). A leftover file is now just
-// reused.
+// reused. It is opened through secfile.OpenNoFollow, so a link or junction planted at its name
+// is refused instead of locked and truncated (#3920).
 func acquireInstanceLock(path string) (*instanceLock, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := secfile.OpenNoFollow(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +55,7 @@ func (l *instanceLock) close(path string) {
 	ol := &windows.Overlapped{OffsetHigh: lockOffsetHigh}
 	_ = windows.UnlockFileEx(windows.Handle(l.file.Fd()), 0, 1, 0, ol)
 	_ = l.file.Close()
-	// Fails harmlessly if a new server already has it open (Go opens without
-	// FILE_SHARE_DELETE); that server's lock is on its handle, not the name.
-	_ = os.Remove(path)
+	// The file stays: the next server reuses it. OpenNoFollow shares delete, so removing it here
+	// could unlink the file a server started meanwhile has locked, and a third could then lock a
+	// new file of the same name.
 }
