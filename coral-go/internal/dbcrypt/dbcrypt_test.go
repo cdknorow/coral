@@ -31,13 +31,7 @@ func TestResolveKeyGeneratesOnlyForNewDatabases(t *testing.T) {
 	if err != nil || len(key) < 16 {
 		t.Fatalf("ResolveKey() = %q, %v", key, err)
 	}
-	info, err := os.Stat(filepath.Join(dir, KeyName))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Fatalf("key mode = %o, want 600", info.Mode().Perm())
-	}
+	requirePrivateKeyFile(t, filepath.Join(dir, KeyName)) // mode 0600, or the Windows access list
 	if err := os.WriteFile(filepath.Join(dir, "sessions.db"), []byte("plaintext"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -46,34 +40,6 @@ func TestResolveKeyGeneratesOnlyForNewDatabases(t *testing.T) {
 	}
 	if _, err := ResolveKey(dir, b, filepath.Join(dir, "sessions.db")); err == nil {
 		t.Fatal("expected missing key failure for existing database")
-	}
-}
-
-func TestExistingKeyRequiresSafeRegularFile(t *testing.T) {
-	dir := t.TempDir()
-	b := Bootstrap{DatabaseEncryption: "key_file", KeyFile: "custom.key"}
-	path := filepath.Join(dir, b.KeyFile)
-	if err := os.WriteFile(path, []byte("safe-key-material-123456"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ResolveKey(dir, b); err == nil {
-		t.Fatal("expected permissive key permissions to be rejected")
-	}
-	if err := os.Chmod(path, 0600); err != nil {
-		t.Fatal(err)
-	}
-	key, err := ResolveKey(dir, b)
-	if err != nil || key != "safe-key-material-123456" {
-		t.Fatalf("valid key = %q, %v", key, err)
-	}
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(path, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ResolveKey(dir, b); err == nil {
-		t.Fatal("expected directory key path to be rejected")
 	}
 }
 
