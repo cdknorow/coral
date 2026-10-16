@@ -45,6 +45,8 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         await scrollToTop();
         await waitFor(`window.__m.requests.some(r => r.older && r.settled)`, `${label}: older page`, 5000, SCROLL_DIAG);
         await settled();
+        // The page is built in slices after its reply arrives (#3866): wait for its rows.
+        await waitFor(`window.__rendered().length > ${pageSize}`, `${label}: the older page's rows to show`, 8000);
         await sleep(100);
         r = await reqs();
         assert.equal(r.filter(x => x.older).length, 1, `${label}: one older page per scroll-to-top`);

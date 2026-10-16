@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
-const { framesJs } = require('./helpers/wait');
+const { framesJs, waitStable } = require('./helpers/wait');
 
 // The first page must be smaller than the old 400-message page.
 const MAX_FIRST_PAGE = 200;
@@ -156,7 +156,12 @@ const MAX_FIRST_PAGE = 200;
             assert.deepEqual(ids, want, `${what}: expected ${prefix}${from}..${prefix}${to - 1} contiguous (got ${ids.length} items, first ${ids[0]}, last ${ids[ids.length - 1]})`);
         };
         const scrollTop = () => ev(`(() => { const c = document.getElementById('live-history-messages'); c.scrollTop = 0; c.dispatchEvent(new Event('scroll')); })()`);
-        const idle = () => waitFor(`window.__chatMock.requests.every(r => r.settled || r.aborted)`, 'all /chat requests to settle');
+        // Every /chat reply is in, and the page built from the last one is on screen: a page is built in slices after its reply
+        // arrives (#3866), so the rendered count must also stop changing.
+        const idle = async () => {
+            await waitFor(`window.__chatMock.requests.every(r => r.settled || r.aborted)`, 'all /chat requests to settle');
+            await waitStable(ev, 'window.__rendered().length', 'the rendered rows to stop changing', 150, { timeout: 10000 });
+        };
 
         // Stop the app's own 1s poll between cases; cases poll by hand.
         const stopPoll = () => ev('T.liveChat.stopLiveHistoryPoll()');
