@@ -50,3 +50,40 @@ func TestPaneStateIsSharedAndRight(t *testing.T) {
 	}
 	assert.Equal(t, 1, lists, "one list for all of them within a second: %v", cmds)
 }
+
+// v1.4.63 (#3847's follow-up): Coral's own resize reads back at once. The shared list kept the
+// old size for up to a second, so the dashboard's fit and pane-size checks saw the size from
+// before their resize.
+func TestPaneSizeIsFreshAfterOwnResize(t *testing.T) {
+	c, sibling := newSiblingOnly(t)
+	ctx := context.Background()
+	_, err := c.CapturePane(ctx, sibling, 50, "claude", siblingSID) // resolves the pane target
+	require.NoError(t, err)
+	cols, _, err := c.PaneSizeForAgent(ctx, sibling, "claude", siblingSID) // fills the shared list
+	require.NoError(t, err)
+	for _, want := range []int{cols + 7, cols + 3} {
+		require.NoError(t, c.ResizePane(ctx, sibling, want, "claude", siblingSID))
+		got, _, err := c.PaneSizeForAgent(ctx, sibling, "claude", siblingSID)
+		require.NoError(t, err)
+		assert.Equal(t, want, got, "the size right after Coral's own resize")
+	}
+	target, ok := c.captureTarget(sibling + "\x00claude\x00" + siblingSID)
+	require.True(t, ok)
+	require.NoError(t, c.ResizePaneTarget(ctx, target, cols+5, 0))
+	got, _, err := c.PaneSizeForAgent(ctx, sibling, "claude", siblingSID)
+	require.NoError(t, err)
+	assert.Equal(t, cols+5, got, "and after a resize by target")
+}
+
+// A list taken while a pane changed is not kept: the next caller asks again.
+func TestPaneListTakenDuringAChangeIsNotKept(t *testing.T) {
+	c := &Client{}
+	c.paneStatesMu.Lock()
+	gen := c.paneStatesGen
+	c.paneStatesMu.Unlock()
+	c.forgetPaneStates() // a resize finishes while the list runs
+	c.paneStatesMu.Lock()
+	defer c.paneStatesMu.Unlock()
+	assert.NotEqual(t, gen, c.paneStatesGen)
+	assert.Nil(t, c.paneStates)
+}
