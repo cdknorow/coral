@@ -33,7 +33,7 @@ var reviewedFileOpens = map[string]string{
 	"sessions.go:SessionsHandler.Diff:ReadFile":                   "isPathWithinDir on the resolved path; strict callers get diffPathRefused",
 	"sessions.go:SessionsHandler.SessionChanges:ReadFile":         "the session id is safefs.IsSafeID (W4)",
 	"sessions.go:SessionsHandler.SessionChangesArtifact:ReadFile": "the session id is safefs.IsSafeID (W4)",
-	"sessions.go:getLogStatus:Open":                               "a log named from a tmux session matching UUIDSessionRE",
+	"log_tail.go:readLogTail:Open":                                "a log named from a tmux session matching UUIDSessionRE",
 	"sessions.go:writeBoardStateFile:WriteFile":                   "server data folder, board_state_<Coral's session name>.json, 0600",
 	"system.go:runTeamGeneration:WriteFile":                       "server data folder, a fixed name",
 	"system_bounds.go:readImportFile:OpenFile":                    "#3583: bounded import (O_NOFOLLOW, regular file, size cap)",

@@ -146,6 +146,7 @@ type cachedLogStatus struct {
 	size    int64
 	modTime time.Time
 	value   map[string]any
+	tail    *logTail // the log's end as last read: a grown log reads only its new bytes (#3711)
 }
 
 // GoalRequester asks the goal generator for a fresh goal for one session.
@@ -345,8 +346,15 @@ func (h *SessionsHandler) cachedLogStatus(path string) map[string]any {
 		h.logStatusMu.Unlock()
 		return value
 	}
+	var prev *logTail
+	if cached, ok := h.logStatusCache[path]; ok {
+		prev = cached.tail
+	}
 	h.logStatusMu.Unlock()
-	value := getLogStatus(path)
+	value, tail := readLogTail(path, prev)
+	if tail != nil {
+		info = tail.info // the stat the status was read with
+	}
 	h.logStatusMu.Lock()
 	if len(h.logStatusCache) >= 512 {
 		for key := range h.logStatusCache {
@@ -354,7 +362,7 @@ func (h *SessionsHandler) cachedLogStatus(path string) map[string]any {
 			break
 		}
 	}
-	h.logStatusCache[path] = cachedLogStatus{info: info, size: info.Size(), modTime: info.ModTime(), value: cloneLogStatus(value)}
+	h.logStatusCache[path] = cachedLogStatus{info: info, size: info.Size(), modTime: info.ModTime(), value: cloneLogStatus(value), tail: tail}
 	h.logStatusMu.Unlock()
 	return value
 }
@@ -522,57 +530,8 @@ func (h *SessionsHandler) dropStoppedAgents(ctx context.Context, agents []AgentI
 // read them keep working; live state comes from provider session events and
 // goals from goal events.
 func getLogStatus(logPath string) map[string]any {
-	result := map[string]any{
-		"status":            nil,
-		"summary":           nil,
-		"staleness_seconds": nil,
-		"recent_lines":      []string{},
-	}
-
-	info, err := os.Stat(logPath)
-	if err != nil {
-		return result
-	}
-
-	staleness := time.Since(info.ModTime()).Seconds()
-	result["staleness_seconds"] = staleness
-
-	// Read tail of the file (last ~256KB)
-	const tailBytes = 256_000
-	fileSize := info.Size()
-	start := int64(0)
-	if fileSize > tailBytes {
-		start = fileSize - tailBytes
-	}
-
-	f, err := os.Open(logPath)
-	if err != nil {
-		return result
-	}
-	defer f.Close()
-
-	if start > 0 {
-		f.Seek(start, 0)
-	}
-	raw, err := io.ReadAll(f)
-	if err != nil {
-		return result
-	}
-
-	// Split into lines, decode, strip ANSI
-	rawLines := strings.Split(string(raw), "\n")
-	if start > 0 && len(rawLines) > 0 {
-		rawLines = rawLines[1:] // drop partial first line
-	}
-
-	cleanLines := make([]string, 0, len(rawLines))
-	for _, line := range rawLines {
-		cleanLines = append(cleanLines, logparse.StripANSI(line))
-	}
-
-	result["recent_lines"] = logparse.RecentLines(cleanLines)
-
-	return result
+	status, _ := readLogTail(logPath, nil)
+	return status
 }
 
 func usageLimitNotice(logPath string) string {
@@ -1285,7 +1244,7 @@ func (h *SessionsHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logPath := h.findLogPath(agentType, sessionID)
-	logInfo := getLogStatus(logPath)
+	logInfo := h.cachedLogStatus(logPath) // #3711: kept between reads like the list's
 
 	paneText, _ := h.terminal.CaptureOutput(r.Context(), name, 200, agentType, sessionID)
 
