@@ -1,6 +1,7 @@
 /* Agent task bar — CRUD, rendering, drag reorder */
 
 import { state } from './state.js';
+import { registerTaskView, redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
 import { registerActions, idOf, tokenOf, textOf } from './actions.js';
 import { addPendingMessage } from './live_chat.js';
@@ -121,13 +122,13 @@ export async function loadSubagents(agentName, sessionId, options) {
     if (!agentName || !sid) {
         _subagentsSessionId = null;
         state.currentSubagents = [];
-        renderBoardTaskList();
+        redrawBoardTaskList();
         return;
     }
     if (sid !== _subagentsSessionId) {
         _subagentsSessionId = sid;
         state.currentSubagents = [];
-        renderBoardTaskList();
+        redrawBoardTaskList();
     }
     let subagents = [];
     try {
@@ -140,7 +141,7 @@ export async function loadSubagents(agentName, sessionId, options) {
     }
     if (sid !== _subagentsSessionId) return; // the user moved to another session meanwhile
     state.currentSubagents = Array.isArray(subagents) ? subagents : [];
-    renderBoardTaskList();
+    redrawBoardTaskList();
     _refreshOpenSubagentModal();
 }
 
@@ -176,6 +177,8 @@ function _subagentTooltip(t) {
 
 // subagent_id shown in the modal, or null when it is closed or showing a task.
 let _openSubagentId = null;
+/** The dialog is shared: closing it, or showing a task in it, ends the subagent view. */
+export function clearOpenSubagent() { _openSubagentId = null; }
 // Conversation for the open modal: { key, finished, data } where data is the
 // detail response, or null when the fetch failed.
 let _subagentConversation = null;
@@ -347,9 +350,9 @@ async function _loadSubagentConversation(sa) {
     if (footer) footer.innerHTML = `<button class="btn" data-on-click="task-close">Close</button>`;
 
     modal.style.display = '';
-    modal.onclick = (e) => { if (e.target === modal) hideTaskDetailModal(); };
+    modal.onclick = (e) => { if (e.target === modal) closeTaskDetailModal(); };
     if (modal._escHandler) document.removeEventListener('keydown', modal._escHandler);
-    modal._escHandler = (e) => { if (e.key === 'Escape') hideTaskDetailModal(); };
+    modal._escHandler = (e) => { if (e.key === 'Escape') closeTaskDetailModal(); };
     document.addEventListener('keydown', modal._escHandler);
 }
 
@@ -1099,7 +1102,7 @@ async function _fetchFullBoardTask(taskId, generation) {
 export function showTaskDetailModal(taskId) {
     ++_editGeneration;
     _editOriginalTask = null;
-    _openSubagentId = null; // the modal is shared; it now shows a board task
+    clearOpenSubagent(); // the modal is shared; it now shows a board task
     const sharedContent = document.getElementById('task-detail-content');
     if (sharedContent) { sharedContent._subagentHtml = null; delete sharedContent.dataset.subagentId; }
     const task = _boardTaskById(taskId);
@@ -1142,7 +1145,7 @@ export function showTaskDetailModal(taskId) {
 // Tasks created for an agent that is not on a board. They share the board
 // task modal but not its actions: no edit, dependencies or cancel.
 export function showAgentTaskDetailModal(taskId) {
-    _openSubagentId = null;
+    clearOpenSubagent();
     const sharedContent = document.getElementById('task-detail-content');
     if (sharedContent) { sharedContent._subagentHtml = null; delete sharedContent.dataset.subagentId; }
     const t = (state.currentAgentTasks || []).find(t => t.id === taskId);
@@ -1816,7 +1819,7 @@ export function _restoreTaskFooter(taskId) {
 export function hideTaskDetailModal() {
     ++_editGeneration;
     _editOriginalTask = null;
-    _openSubagentId = null;
+    clearOpenSubagent();
     const modal = document.getElementById('task-detail-modal');
     if (!modal) return;
     modal.style.display = 'none';
@@ -1825,6 +1828,9 @@ export function hideTaskDetailModal() {
         modal._escHandler = null;
     }
 }
+
+// What the subagent dialog calls back (task_hooks.js).
+registerTaskView({ renderBoardTaskList, hideTaskDetailModal });
 
 // The task list and task dialogs' markup (#3645): data-on-* names, never code. Each action calls
 // the same function the inline handler did, after checking its values (a bad one does nothing).
