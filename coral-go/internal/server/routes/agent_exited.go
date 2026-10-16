@@ -11,6 +11,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/logparse"
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptymanager"
 )
 
@@ -23,6 +24,29 @@ var exitLogged sync.Map
 
 // terminalLogged holds the terminal agents whose skipped automated input was logged.
 var terminalLogged sync.Map
+
+// refusedNotices keeps a refused board notice's log line to once per board and session
+// ("<board>\x00<session name>").
+var refusedNotices sync.Map
+
+// All three are forgotten when the session ends (#4057): they are keyed by the session's
+// name or id, and would otherwise keep every session the server has run.
+func init() {
+	ptymanager.OnSessionEnd(func(name string) {
+		exitLogged.Delete(name)
+		terminalLogged.Delete(name)
+		if sid := naming.SessionIDFromName(name); sid != "" {
+			exitLogged.Delete(sid)
+			terminalLogged.Delete(sid)
+		}
+		refusedNotices.Range(func(k, _ any) bool {
+			if _, session, _ := strings.Cut(k.(string), "\x00"); session == name {
+				refusedNotices.Delete(k)
+			}
+			return true
+		})
+	})
+}
 
 // automatedInputBlocked reports whether automated input (board notifications and
 // nudges, agent UI notifications, auto-accept) must not be typed into an agent's
@@ -64,7 +88,7 @@ func automatedInputBlocked(ctx context.Context, term any, name, agentType, sessi
 func (h *BoardHandler) sendAutomated(ctx context.Context, project, sessionName, text string) error {
 	agentType, sessionID, err := h.noticeTarget(ctx, project, sessionName)
 	if err != nil {
-		if _, seen := h.refusedNotices.LoadOrStore(project+"\x00"+sessionName, true); !seen {
+		if _, seen := refusedNotices.LoadOrStore(project+"\x00"+sessionName, true); !seen {
 			slog.Warn("board notice refused", "board", project, "session", sessionName, "error", err)
 		}
 		return err

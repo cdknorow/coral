@@ -75,8 +75,6 @@ type BoardHandler struct {
 	// board notices are typed only into a live session of the type its name says (#3864).
 	// Nil skips that check (a handler without the sessions database).
 	liveSessionType func(ctx context.Context, sessionID string) (agentType string, ok bool, err error)
-	// refusedNotices keeps a refused notice's log line to once per session and board.
-	refusedNotices sync.Map
 	// uploads caches per-session upload records for the artifact views.
 	uploads uploadDirCache
 	// hubOperatorAllowed reports whether a tunnel request may act as the Operator

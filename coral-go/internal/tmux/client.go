@@ -485,6 +485,17 @@ func warnBareNameLookup(backend, name string) {
 	}
 }
 
+// ForgetBareNameWarning forgets that the warning was logged for name, on any backend, once
+// its session ended (#4057): the memo would otherwise keep every name ever looked up.
+func ForgetBareNameWarning(name string) {
+	bareNameWarned.Range(func(k, _ any) bool {
+		if _, n, _ := strings.Cut(k.(string), "\x00"); n == name {
+			bareNameWarned.Delete(k)
+		}
+		return true
+	})
+}
+
 // WarnBareNameLookup is warnBareNameLookup for the other terminal backends.
 func WarnBareNameLookup(backend, name string) { warnBareNameLookup(backend, name) }
 
