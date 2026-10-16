@@ -64,15 +64,7 @@ jobs:
           set -euo pipefail
           root=$(go list -m)
           excluded=(
-            internal/board             # #3920: rekey backup, WAL read pool, check runner (go test), counts
-            internal/inputlog          # #3920: debug-file tests assume Unix modes and paths
-            internal/loginlink         # #3920
-            internal/logrotate         # #3920: an oversized old log (file in use on Windows)
-            internal/machinehealth     # #3920: process tree (grandchildren) on Windows
-            internal/stallwatch        # #3920
-            internal/store             # #3920: WAL read pool, remote servers, team store
-            internal/tmux              # #3920: tmux is not used on Windows (the pty backend is); bundled-tmux tests
-            internal/tracking          # #3920: 20 tests
+            # none: #3914 and #3920 made every package pass on Windows
           )
           all=(); while IFS= read -r p; do all+=("${p#"$root"/}"); done < <(go list -tags fts5 ./...)
           for e in "${excluded[@]}"; do
