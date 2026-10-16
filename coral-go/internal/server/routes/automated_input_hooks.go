@@ -200,16 +200,16 @@ func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessio
 
 // claudeHasRequestSignals reports whether a Claude session's hooks include the request and turn
 // signals (revision agent.ClaudeSignalsHooksRev or later), from the revision its events carry.
-// Unknown (no event since this server started) is not: the screen rule decides until one comes.
-// An event without a revision, or an older one, is an older hook set, logged once per session:
-// the agent needs a relaunch or resume.
+// Unknown (no revision since this server started) is not: the screen rule decides until one
+// comes. Events without a revision, or an older one, mean an older hook set, logged once per
+// session: the agent needs a relaunch or resume.
 func (h *SessionsHandler) claudeHasRequestSignals(name, sessionID string) bool {
 	v, known := h.hooksRev.Load(sessionID)
 	rev, _ := v.(int)
 	if rev >= agent.ClaudeSignalsHooksRev {
 		return true
 	}
-	if known {
+	if _, noRev := h.hooksNoRev.Load(sessionID); known || noRev {
 		if _, logged := oldHookSets.LoadOrStore(sessionID, true); !logged {
 			slog.Info("automated input: this agent's hooks are out of date; the gate keeps the screen rule for it until it is relaunched or resumed",
 				"session", name, "hooks_rev", rev, "want", agent.ClaudeSignalsHooksRev)

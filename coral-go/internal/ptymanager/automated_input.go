@@ -935,6 +935,7 @@ func DropHeld(name, why string) {
 	gate.shadowForgetSessionLocked(name)
 	delete(gate.delivered, name)
 	gate.mu.Unlock()
+	noteDisagreement(name, "", time.Now()) // its disagreement window, if any, ends with it (#3655)
 	gate.checkEnded(name)
 	if n > 0 {
 		slog.Info("automated input: dropped held sends", "session", name, "count", n, "why", why)

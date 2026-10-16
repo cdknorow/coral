@@ -96,6 +96,8 @@ type SessionsHandler struct {
 	// (session id → revision, #3655 F3). In memory: until a session's next event after a
 	// restart it is unknown, and the gate takes the screen rule (the safe side).
 	hooksRev sync.Map
+	// hooksNoRev: sessions that sent an event without a revision, for the "out of date" log.
+	hooksNoRev sync.Map
 
 	autoAccept *AutoAcceptor // answers approval prompts for auto-accept sessions (auto_accept.go)
 
@@ -4745,9 +4747,14 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "unknown event_type "+strconv.Quote(body.EventType))
 		return
 	}
-	if hasToken && body.EventType != "goal" {
-		// The agent's own hooks say which set they are; none is an older set (0).
-		h.hooksRev.Store(body.SessionID, max(body.HooksRev, 0))
+	if hasToken && body.HooksRev > 0 {
+		// The agent's own hooks say which set they are. Only a revision is stored: an event
+		// without one (an older set, or an old Coral hook left in the user's global Claude
+		// settings next to the current ones) must never turn a current set back (Security's
+		// SHOULD on #3655: flapping would spoil the shadow data).
+		h.hooksRev.Store(body.SessionID, body.HooksRev)
+	} else if hasToken && body.EventType != "goal" {
+		h.hooksNoRev.Store(body.SessionID, true) // for the "out of date" log only
 	}
 	if len(body.Summary) > maxEventSummaryBytes {
 		body.Summary = truncateUTF8(body.Summary, maxEventSummaryBytes)

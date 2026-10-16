@@ -50,6 +50,11 @@ func TestStateDisagreementIsLoggedOncePerWindow(t *testing.T) {
 	check()
 	assert.Equal(t, 2, lines(), "a second window: a second line")
 
+	// Security's NIT: the session's end (DropHeld: end, kill, restart, a new launch) ends its window.
+	DropHeld("claude-window", "the agent's session ended")
+	check()
+	assert.Equal(t, 3, lines(), "after DropHeld: a new window")
+
 	// A window whose held send was dropped (no decision ends it) and a menu much later: new line.
 	assert.True(t, noteDisagreement("claude-gap", "selection menu", time.Now()), "a window opens")
 	assert.False(t, noteDisagreement("claude-gap", "selection menu", time.Now()))

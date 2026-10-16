@@ -55,10 +55,23 @@ func TestGateTrustsOnlyCurrentHookSets(t *testing.T) {
 	require.True(t, ok, "the current set: its signals decide")
 	assert.Equal(t, ptymanager.StateIdle, st.State)
 
+	// Security's SHOULD: an event without a revision (an old Coral hook left in the user's
+	// global Claude settings fires next to the current one) never turns the current set back.
+	post(`{"event_type":"stop","summary":"done"}`)
+	_, ok = state()
+	assert.True(t, ok, "no flapping: the current set stays")
+
 	// A revision before the request signals is an older set too.
 	post(`{"event_type":"stop","summary":"done","hooks_rev":1}`)
 	_, ok = state()
 	assert.False(t, ok)
+
+	// The session ends: its signals still say so (Gone holds every send), the revision is kept.
+	post(`{"event_type":"stop","summary":"done","hooks_rev":2}`)
+	post(`{"event_type":"session_end","summary":"Session ended","hooks_rev":2}`)
+	st, ok = state()
+	require.True(t, ok)
+	assert.Equal(t, ptymanager.StateGone, st.State)
 
 	// Other CLIs are not judged by Claude's hook revision.
 	post(`{"event_type":"stop","summary":"done"}`)
