@@ -88,13 +88,28 @@ type HumanInputSender interface {
 	SendHumanInput(name string, data []byte) error
 }
 
+const (
+	// humanAtKeysMax is the size past which SendHumanInput forgets old entries, and
+	// humanAtForgetAfter how old: far longer than any "typed since" question asks (#3999).
+	humanAtKeysMax     = 256
+	humanAtForgetAfter = time.Hour
+)
+
 // SendHumanInput writes a person's keystrokes, recording when they typed.
 func (m *PTYBackend) SendHumanInput(name string, data []byte) error {
 	m.mu.Lock()
 	if m.humanAt == nil {
 		m.humanAt = map[string]time.Time{}
 	}
-	m.humanAt[name] = time.Now()
+	now := time.Now()
+	m.humanAt[name] = now
+	if len(m.humanAt) > humanAtKeysMax { // forget sessions nobody has typed in for a while (#3999)
+		for k, at := range m.humanAt {
+			if now.Sub(at) > humanAtForgetAfter {
+				delete(m.humanAt, k)
+			}
+		}
+	}
 	m.mu.Unlock()
 	return m.SendInput(name, data)
 }

@@ -69,6 +69,9 @@ type GitPoller struct {
 // rarely changes, and gh is the slowest call in a pass.
 const prCacheTTL = 10 * time.Minute
 
+// prCacheKeysMax is the size past which lookupPR sweeps expired entries out of the cache.
+const prCacheKeysMax = 256
+
 // prCacheExpiry keeps a found PR number for prCacheTTL, and a "no PR" answer
 // for one poll interval as before, so a newly opened PR shows up promptly.
 func prCacheExpiry(prNumber int, interval time.Duration) time.Duration {
@@ -588,11 +591,25 @@ func (p *GitPoller) lookupPR(ctx context.Context, remoteURL, branch, workdir str
 	}
 
 	prNumber := queryPRNumber(ctx, branch, workdir, p.logger)
+	p.sweepPRCache(time.Now())
 	p.prCache[cacheKey] = prCacheEntry{
 		prNumber:  prNumber,
 		expiresAt: time.Now().Add(prCacheExpiry(prNumber, p.interval)),
 	}
 	return prNumber
+}
+
+// sweepPRCache drops expired entries once the cache is large: an expired entry is never read
+// again, and the keys are remote and branch names, so they pile up as branches come and go (#3999).
+func (p *GitPoller) sweepPRCache(now time.Time) {
+	if len(p.prCache) < prCacheKeysMax {
+		return
+	}
+	for k, e := range p.prCache {
+		if !now.Before(e.expiresAt) {
+			delete(p.prCache, k)
+		}
+	}
 }
 
 // queryPRNumber shells out to `gh pr list` to find an open or merged PR for a branch.
