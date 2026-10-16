@@ -406,16 +406,28 @@ CODE=$?
 set -e
 check "direct-ID claim refuses a stalled dependent" '[[ $CODE -ne 0 ]] && echo "$OUT" | grep -qiE "blocked|available|dependency"' "$OUT"
 
-# Assignment ownership regressions use their own board and mock identities.
-source "$SCRIPT_DIR/agent_task_assignment.sh"
-
-log "Assignment editor browser regressions..."
-if CORAL_TEST_URL="$BASE_URL" bash "$SCRIPT_DIR/run_assignment_browser.sh" >"$TMPDIR_AT/assignment-browser.log" 2>&1; then
-    cat "$TMPDIR_AT/assignment-browser.log"
-    pass "assignment editor preserves ownership and rejects stale forms"
+# Assignment ownership regressions reuse SESS_A/SESS_B under new board roles (asg_orch runs
+# SESS_A as "Orchestrator"), which strict local auth refuses by design (identity_mismatch,
+# #3495). They are the documented strict-off section (#3936, Security): run this runner with
+# CORAL_STRICT_LOCAL_AUTH=0 to cover them (the server inherits the variable). The strict
+# agent-token path is already proven by run_identity --strict, the Go e2e and Test 13c above,
+# so the strict run skips this suite rather than restructure it.
+case "$(printf %s "${CORAL_STRICT_LOCAL_AUTH:-on}" | tr 'A-Z' 'a-z')" in
+    0|off|false|no) _assign_strict_off=1 ;;
+    *)              _assign_strict_off= ;;
+esac
+if [[ -n "$_assign_strict_off" ]]; then
+    source "$SCRIPT_DIR/agent_task_assignment.sh"
+    log "Assignment editor browser regressions..."
+    if CORAL_TEST_URL="$BASE_URL" bash "$SCRIPT_DIR/run_assignment_browser.sh" >"$TMPDIR_AT/assignment-browser.log" 2>&1; then
+        cat "$TMPDIR_AT/assignment-browser.log"
+        pass "assignment editor preserves ownership and rejects stale forms"
+    else
+        cat "$TMPDIR_AT/assignment-browser.log"
+        fail "assignment editor browser regressions; see $TMPDIR_AT/assignment-browser.log"
+    fi
 else
-    cat "$TMPDIR_AT/assignment-browser.log"
-    fail "assignment editor browser regressions; see $TMPDIR_AT/assignment-browser.log"
+    log "SKIP: assignment ownership + editor-browser regressions are the strict-off section (#3936); run with CORAL_STRICT_LOCAL_AUTH=0 to cover them"
 fi
 
 # ── Cleanup ──────────────────────────────────────────────────────────
