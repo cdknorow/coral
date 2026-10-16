@@ -30,7 +30,12 @@ func startPprof(ctx context.Context) {
 	}
 	enableContentionProfiles()
 	log.Printf("[pprof] serving on http://%s/debug/pprof/ (this computer only; block and mutex profiles on)", bound)
+	log.Print(pprofWarning)
 }
+
+// pprofWarning is logged whenever the profiler is on (#3999, the #3994 audit finding 7): it has no
+// credential, so it sits outside strict local auth, and a heap dump holds secrets.
+const pprofWarning = "[pprof] WARNING: the profiler needs no password, key or token, so any user of this computer can read heap dumps (which hold the API key and session cookies) through it; turn CORAL_PPROF_ADDR off when you are done"
 
 // Block and mutex profiles are empty unless sampling is turned on; with
 // CORAL_PPROF_ADDR set (someone is diagnosing) it is, so /debug/pprof/block and
