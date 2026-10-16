@@ -39,7 +39,7 @@ func fakeTmux(t *testing.T) (*Client, string) {
 	script := `#!/bin/sh
 echo "$*" >> ` + log + `
 case "$1" in
-  list-panes) echo "` + promptTestSession + `|` + promptTestSession + `:0.0|/tmp/work|agent" ;;
+  list-panes) echo "` + promptTestSession + `|` + promptTestSession + `:0.0|4242|80|24|/tmp/work|agent" ;;
   load-buffer) [ -f ` + dir + `/fail-load ] && exit 1; cat > ` + stdin + ` ;;
   paste-buffer) echo pasted > ` + dir + `/pasted; [ -f ` + dir + `/fail-paste ] && exit 1 ;;
   send-keys) [ -f ` + dir + `/fail-enter ] && exit 1 ;;
