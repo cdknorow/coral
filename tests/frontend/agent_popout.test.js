@@ -235,7 +235,7 @@ const SHELL_PROBE = `(() => {
         // Inline handlers, and delegated actions (#3645) whose name says restart, kill, rename or
         // delete: an independent pattern, so a destructive action missing from actions.js's list shows.
         destructive: Array.from(document.querySelectorAll('[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"],[data-action="restart"]'))
-            .concat(Array.from(document.querySelectorAll('[data-on-click]')).filter(el => /restart|kill|rename|delete/i.test(el.getAttribute('data-on-click')) && !el.closest('#macro-modal, .macro-btn-wrap')))
+            .concat(Array.from(document.querySelectorAll('[data-on-click]')).filter(el => /restart|kill|rename|delete/i.test(el.getAttribute('data-on-click')) && !/(^|-)hide-/.test(el.getAttribute('data-on-click')) && !el.closest('#macro-modal, .macro-btn-wrap')))
             .map(el => (el.id || el.textContent.trim().slice(0, 30)) + ':' + (el.getAttribute('onclick') || el.getAttribute('data-on-click') || '').slice(0, 40)),
         toasts: document.querySelectorAll('.notification-toast').length,
     };

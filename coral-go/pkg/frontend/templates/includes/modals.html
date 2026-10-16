@@ -5,14 +5,14 @@
             <!-- Hub only: launch target server (hidden unless hub mode has a usable remote) -->
             <div id="launch-server-row" class="launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:13px">
                 <label for="launch-server" style="margin:0;white-space:nowrap">Server:</label>
-                <select id="launch-server" aria-label="Launch on server" style="flex:1;min-width:0" onchange="window._onLaunchServerChange(this.value)"></select>
+                <select id="launch-server" aria-label="Launch on server" style="flex:1;min-width:0" data-on-change="m-on-launch-server-change"></select>
                 <span id="launch-server-note" class="text-muted-sm"></span>
             </div>
             <!-- Step 1: Session type chooser -->
             <div id="launch-step-chooser" class="launch-modal-step">
                 <h3>Launch New Session</h3>
                 <div class="launch-type-cards">
-                    <button class="launch-type-card" onclick="window._selectLaunchType('agent')">
+                    <button class="launch-type-card" data-on-click="m-select-launch-type" data-arg="agent">
                         <div class="launch-type-icon">
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
@@ -24,7 +24,7 @@
                         <div class="launch-type-label">AI Agent</div>
                         <div class="launch-type-desc">Launch Claude, Antigravity, or Codex with system prompt and tools</div>
                     </button>
-                    <button class="launch-type-card" onclick="window._selectLaunchType('team')">
+                    <button class="launch-type-card" data-on-click="m-select-launch-type" data-arg="team">
                         <div class="launch-type-icon">
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="9" cy="7" r="3"/>
@@ -36,7 +36,7 @@
                         <div class="launch-type-label">Agent Team</div>
                         <div class="launch-type-desc">Launch multiple agents collaborating on a shared message board</div>
                     </button>
-                    <button class="launch-type-card" onclick="window._selectLaunchType('terminal')">
+                    <button class="launch-type-card" data-on-click="m-select-launch-type" data-arg="terminal">
                         <div class="launch-type-icon">
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="2" y="3" width="20" height="18" rx="2"/>
@@ -48,7 +48,7 @@
                         <div class="launch-type-desc">Open a shell session you can use alongside your agents</div>
                     </button>
                     <!-- #3630: pin a folder to the Agents list, ready to launch into -->
-                    <button class="launch-type-card" id="launch-type-open-folder" onclick="showOpenFolderModal()">
+                    <button class="launch-type-card" id="launch-type-open-folder" data-on-click="m-show-open-folder-modal">
                         <div class="launch-type-icon">
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -60,7 +60,7 @@
                         <div class="launch-type-desc">Pin a folder to your Agents list, ready to launch into</div>
                     </button>
                     <!-- Scheduled Job hidden until thoroughly tested
-                    <button class="launch-type-card" onclick="hideLaunchModal(); showJobModal()">
+                    <button class="launch-type-card" data-on-click="m-hide-launch-modal-then-show-job-modal">
                         <div class="launch-type-icon">
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -76,25 +76,25 @@
                     -->
                 </div>
                 <div class="modal-actions">
-                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
+                    <button class="btn" data-on-click="m-hide-launch-modal">Cancel</button>
                 </div>
             </div>
 
             <!-- Step 2a: Agent form -->
             <div id="launch-step-agent" class="launch-modal-step" style="display:none">
                 <h3>
-                    <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
+                    <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back">&larr;</button>
                     Launch AI Agent
                 </h3>
                 <label>Working Directory:
                     <div class="dir-input-row">
                         <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
-                        <button class="btn" id="btn-browse" onclick="toggleBrowser('launch-dir','dir-browser','browser-list','browser-current-path')">Browse</button>
+                        <button class="btn" id="btn-browse" data-on-click="m-toggle-browser" data-browser="launch-dir dir-browser browser-list browser-current-path">Browse</button>
                     </div>
                 </label>
                 <div id="dir-browser" class="dir-browser" style="display:none">
                     <div class="dir-browser-header">
-                        <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                        <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
                         <span class="dir-browser-path" id="browser-current-path">~</span>
                     </div>
                     <ul class="dir-browser-list" id="browser-list">
@@ -112,9 +112,9 @@
                     <div class="team-advanced-body">
                         <div id="launch-agent-acf"></div>
                         <div class="import-export-row agent-persona-actions" style="margin-top:8px">
-                            <button class="btn btn-small btn-subtle" id="agent-save-persona-btn" onclick="window._saveCurrentPersona()" title="Save as reusable persona">Save Persona</button>
-                            <button class="btn btn-small btn-subtle" onclick="exportPersonas()" title="Export saved personas">Export</button>
-                            <button class="btn btn-small btn-subtle" onclick="importPersonas()" title="Import personas from file">Import</button>
+                            <button class="btn btn-small btn-subtle" id="agent-save-persona-btn" data-on-click="m-save-current-persona" title="Save as reusable persona">Save Persona</button>
+                            <button class="btn btn-small btn-subtle" data-on-click="m-export-personas" title="Export saved personas">Export</button>
+                            <button class="btn btn-small btn-subtle" data-on-click="m-import-personas" title="Import personas from file">Import</button>
                         </div>
                     </div>
                 </details>
@@ -122,7 +122,7 @@
                     <summary>Advanced</summary>
                     <div class="team-advanced-body">
                         <label>Message Board <span class="text-muted-sm">(optional)</span>:
-                            <select id="launch-board-select" onchange="window._onAgentBoardChange()">
+                            <select id="launch-board-select" data-on-change="m-on-agent-board-change">
                                 <option value="">None</option>
                                 <option value="__new__">Create new board...</option>
                             </select>
@@ -146,15 +146,15 @@
                     </div>
                 </details>
                 <div class="modal-actions">
-                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="launchSession()">Launch</button>
+                    <button class="btn" data-on-click="m-hide-launch-modal">Cancel</button>
+                    <button class="btn btn-primary" data-on-click="m-launch-session">Launch</button>
                 </div>
             </div>
 
             <!-- Step 2b: Terminal form -->
             <div id="launch-step-terminal" class="launch-modal-step" style="display:none">
                 <h3>
-                    <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
+                    <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back">&larr;</button>
                     Launch Terminal
                 </h3>
                 <label>Session Name <span class="text-muted-sm">(optional)</span>:
@@ -163,12 +163,12 @@
                 <label>Working Directory:
                     <div class="dir-input-row">
                         <input type="text" id="launch-terminal-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
-                        <button class="btn" id="btn-browse-terminal" onclick="toggleBrowser('launch-terminal-dir','dir-browser-terminal','browser-list-terminal','browser-current-path-terminal')">Browse</button>
+                        <button class="btn" id="btn-browse-terminal" data-on-click="m-toggle-browser" data-browser="launch-terminal-dir dir-browser-terminal browser-list-terminal browser-current-path-terminal">Browse</button>
                     </div>
                 </label>
                 <div id="dir-browser-terminal" class="dir-browser" style="display:none">
                     <div class="dir-browser-header">
-                        <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                        <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
                         <span class="dir-browser-path" id="browser-current-path-terminal">~</span>
                     </div>
                     <ul class="dir-browser-list" id="browser-list-terminal">
@@ -182,15 +182,15 @@
                     </select>
                 </label>
                 <div class="modal-actions">
-                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="launchSession()">Launch</button>
+                    <button class="btn" data-on-click="m-hide-launch-modal">Cancel</button>
+                    <button class="btn btn-primary" data-on-click="m-launch-session">Launch</button>
                 </div>
             </div>
 
             <!-- Step 2c: Agent Team form -->
             <div id="launch-step-team" class="launch-modal-step" style="display:none">
                 <h3>
-                    <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
+                    <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back">&larr;</button>
                     Launch Agent Team
                 </h3>
                 <div class="team-columns">
@@ -204,17 +204,17 @@
                                 </div>
                                 <div class="team-agents-container">
                                     <label class="team-template-dropdown-label">Agent Team Templates:
-                                        <select id="team-template-selector" onchange="window._loadTeamTemplateFromSelect(this.value)">
+                                        <select id="team-template-selector" data-on-change="m-load-team-template-from-select">
                                             <option value="">Select a template...</option>
                                         </select>
                                     </label>
                                     <div class="team-template-actions">
-                                        <button class="btn btn-small btn-subtle team-generate-ai-btn" onclick="window.showTeamWizardModal()" title="Generate a team with AI"><span class="material-icons icon-btn-inline">auto_awesome</span> Generate with AI</button>
-                                        <button class="btn btn-small btn-subtle" onclick="importTeamTemplates()" title="Import team templates from file">Import Template</button>
-                                        <button class="btn btn-small btn-subtle" onclick="window._importTeamFromFolder()" title="Import team from a folder with .md agent files">Import from Folder</button>
-                                        <button class="btn btn-small btn-subtle" onclick="window._saveTeamTemplate()" title="Save team configuration as reusable template">Save as Template</button>
+                                        <button class="btn btn-small btn-subtle team-generate-ai-btn" data-on-click="m-show-team-wizard-modal" title="Generate a team with AI"><span class="material-icons icon-btn-inline">auto_awesome</span> Generate with AI</button>
+                                        <button class="btn btn-small btn-subtle" data-on-click="m-import-team-templates" title="Import team templates from file">Import Template</button>
+                                        <button class="btn btn-small btn-subtle" data-on-click="m-import-team-from-folder" title="Import team from a folder with .md agent files">Import from Folder</button>
+                                        <button class="btn btn-small btn-subtle" data-on-click="m-save-team-template" title="Save team configuration as reusable template">Save as Template</button>
                                         <span class="team-template-info info-tooltip" title="Folder structure:&#10;&#10;my-team/&#10;  SKILL.md → Orchestrator prompt&#10;  agents/&#10;    role-name.md → Agent prompt&#10;&#10;Each .md file uses YAML frontmatter:&#10;---&#10;name: role-name&#10;description: What this agent does&#10;---&#10;Prompt body below...">&#9432;</span>
-                                        <input type="file" id="team-folder-input" webkitdirectory directory multiple style="display:none" onchange="window._handleTeamFolderImport(this)">
+                                        <input type="file" id="team-folder-input" webkitdirectory directory multiple style="display:none" data-on-change="m-handle-team-folder-import">
                                     </div>
                                     <div class="team-agents-header">
                                         <strong style="font-size:14px">Team Agents</strong>
@@ -222,7 +222,7 @@
                                     </div>
                                     <div id="team-agents-list" class="team-agents-scroll"></div>
                                     <div class="team-agents-footer">
-                                        <button class="btn btn-primary team-add-agent-btn team-add-agent-btn-full" onclick="window.showTeamAgentModal()">+ Add Agent</button>
+                                        <button class="btn btn-primary team-add-agent-btn team-add-agent-btn-full" data-on-click="m-show-team-agent-modal">+ Add Agent</button>
                                     </div>
                                 </div>
                             </div>
@@ -235,18 +235,18 @@
                                 <p>Name the board, pick the workspace, and tune team defaults.</p>
                             </div>
                             <label>Team Name:
-                                <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" oninput="window._validateTeamName && window._validateTeamName()">
+                                <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" data-on-input="m-validate-team-name">
                             </label>
                             <div id="team-board-name-hint" class="team-field-hint">This will also be used as the message board name.</div>
                             <label>Working Directory:
                                 <div class="dir-input-row">
                                     <input type="text" id="launch-team-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
-                                    <button class="btn" id="btn-browse-team" onclick="toggleBrowser('launch-team-dir','dir-browser-team','browser-list-team','browser-current-path-team')">Browse</button>
+                                    <button class="btn" id="btn-browse-team" data-on-click="m-toggle-browser" data-browser="launch-team-dir dir-browser-team browser-list-team browser-current-path-team">Browse</button>
                                 </div>
                             </label>
                             <div id="dir-browser-team" class="dir-browser" style="display:none">
                                 <div class="dir-browser-header">
-                                    <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                                    <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
                                     <span class="dir-browser-path" id="browser-current-path-team">~</span>
                                 </div>
                                 <ul class="dir-browser-list" id="browser-list-team">
@@ -255,7 +255,7 @@
                             </div>
                             <div id="team-worktree-option" style="display:none">
                                 <label class="settings-toggle team-settings-toggle">
-                                    <input type="checkbox" id="launch-team-worktree" onchange="document.getElementById('team-worktree-branch-row').style.display = this.checked ? '' : 'none'">
+                                    <input type="checkbox" id="launch-team-worktree" data-on-change="m-team-worktree">
                                     <span>
                                         <strong>Launch in Git Worktree</strong>
                                         <div class="team-settings-note">Create an isolated git worktree so the team works on a separate branch.</div>
@@ -292,7 +292,7 @@
                                         </select>
                                     </label>
                                     <label>Permission Mode:
-                                        <select id="team-permission-mode" class="settings-select" onchange="window._updatePermModeDescription(this)">
+                                        <select id="team-permission-mode" class="settings-select" data-on-change="m-perm-mode-describe">
                                             <option value="default">Default</option>
                                             <option value="plan">Plan</option>
                                             <option value="acceptEdits">Accept Edits</option>
@@ -308,26 +308,26 @@
                     </div>
                 </div>
                 <div class="modal-actions">
-                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="window.launchTeam()">Launch Team</button>
+                    <button class="btn" data-on-click="m-hide-launch-modal">Cancel</button>
+                    <button class="btn btn-primary" data-on-click="m-launch-team">Launch Team</button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Open folder (#3630): pins a folder to the Agents list (empty is fine), ready to launch into. -->
-    <div id="open-folder-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="open-folder-title" style="display:none" onclick="if (event.target === this) hideOpenFolderModal()">
+    <div id="open-folder-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="open-folder-title" style="display:none" data-on-click="m-open-folder-backdrop">
         <div class="modal-content modal-content-wide">
             <h3 id="open-folder-title">Open folder</h3>
             <p class="open-folder-help">The folder is pinned to the Agents list, ready to launch agents into. It stays there with no agents until you unpin it.</p>
             <label for="open-folder-dir">Folder:</label>
             <div class="dir-input-row">
-                <input type="text" id="open-folder-dir" placeholder="/path/to/project" autocomplete="off" onkeydown="if (event.key === 'Enter') { event.preventDefault(); submitOpenFolder(); }">
-                <button class="btn" type="button" id="open-folder-browse" onclick="toggleBrowser('open-folder-dir','open-folder-browser','open-folder-browser-list','open-folder-browser-path')">Browse</button>
+                <input type="text" id="open-folder-dir" placeholder="/path/to/project" autocomplete="off" data-on-keydown="m-open-folder-key">
+                <button class="btn" type="button" id="open-folder-browse" data-on-click="m-toggle-browser" data-browser="open-folder-dir open-folder-browser open-folder-browser-list open-folder-browser-path">Browse</button>
             </div>
             <div id="open-folder-browser" class="dir-browser" style="display:none">
                 <div class="dir-browser-header">
-                    <button class="btn btn-small dir-browser-up" type="button" onclick="browserNavigateUp()" title="Go up">..</button>
+                    <button class="btn btn-small dir-browser-up" type="button" data-on-click="m-browser-navigate-up" title="Go up">..</button>
                     <span class="dir-browser-path" id="open-folder-browser-path">~</span>
                 </div>
                 <ul class="dir-browser-list" id="open-folder-browser-list">
@@ -336,8 +336,8 @@
             </div>
             <div id="open-folder-error" class="open-folder-error" role="alert" hidden></div>
             <div class="modal-actions">
-                <button class="btn" type="button" onclick="hideOpenFolderModal()">Cancel</button>
-                <button class="btn btn-primary" type="button" id="open-folder-submit" onclick="submitOpenFolder()">Open folder</button>
+                <button class="btn" type="button" data-on-click="m-hide-open-folder-modal">Cancel</button>
+                <button class="btn btn-primary" type="button" id="open-folder-submit" data-on-click="m-submit-open-folder">Open folder</button>
             </div>
         </div>
     </div>
@@ -352,8 +352,8 @@
                 <div id="team-agent-modal-acf"></div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="window.hideTeamAgentModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="window.saveTeamAgentFromModal()">Save Agent</button>
+                <button class="btn" data-on-click="m-hide-team-agent-modal">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-save-team-agent-from-modal">Save Agent</button>
             </div>
         </div>
     </div>
@@ -370,8 +370,8 @@
                 </label>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="window._hideSaveTemplateModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="window._confirmSaveTemplate()">Save</button>
+                <button class="btn" data-on-click="m-hide-save-template-modal">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-confirm-save-template">Save</button>
             </div>
         </div>
     </div>
@@ -401,9 +401,9 @@
                 <div id="team-wizard-error" class="team-wizard-error" style="display:none"></div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="window.hideTeamWizardModal()">Cancel</button>
-                <button id="team-wizard-test-btn" class="btn" onclick="window.testTeamWizard()" title="Test flow with sample data (no API call)" style="font-size:12px;opacity:0.7">Test</button>
-                <button id="team-wizard-generate-btn" class="btn btn-primary" onclick="window.generateTeamFromWizard()">Generate Team</button>
+                <button class="btn" data-on-click="m-hide-team-wizard-modal">Cancel</button>
+                <button id="team-wizard-test-btn" class="btn" data-on-click="m-test-team-wizard" title="Test flow with sample data (no API call)" style="font-size:12px;opacity:0.7">Test</button>
+                <button id="team-wizard-generate-btn" class="btn btn-primary" data-on-click="m-generate-team-from-wizard">Generate Team</button>
             </div>
         </div>
     </div>
@@ -423,7 +423,7 @@
                 </div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="window.hidePromptModal()">Cancel</button>
+                <button class="btn" data-on-click="m-hide-prompt-modal">Cancel</button>
                 <button id="prompt-modal-ok" class="btn btn-primary">OK</button>
             </div>
         </div>
@@ -453,7 +453,7 @@
                 <p id="confirm-modal-message" class="text-secondary-sm" style="margin:8px 0 16px"></p>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideConfirmModal()">Cancel</button>
+                <button class="btn" data-on-click="m-hide-confirm-modal">Cancel</button>
                 <button id="confirm-modal-yes" class="btn btn-danger">Yes</button>
             </div>
         </div>
@@ -470,8 +470,8 @@
                 <div id="restart-acf"></div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideRestartModal()">Cancel</button>
-                <button class="btn btn-warning" onclick="confirmRestart()">Restart</button>
+                <button class="btn" data-on-click="m-hide-restart-modal">Cancel</button>
+                <button class="btn btn-warning" data-on-click="m-confirm-restart">Restart</button>
             </div>
         </div>
     </div>
@@ -493,7 +493,7 @@
                     <dt>Attach Command</dt>
                     <dd class="info-command-row">
                         <code id="info-tmux-command" class="info-code-block"></code>
-                        <button class="copy-btn" onclick="copyInfoCommand()" title="Copy to clipboard">Copy</button>
+                        <button class="copy-btn" data-on-click="m-copy-info-command" title="Copy to clipboard">Copy</button>
                     </dd>
                     <dt>Working Directory</dt>
                     <dd id="info-working-dir" class="info-value-path"></dd>
@@ -514,7 +514,7 @@
                 </dl>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideInfoModal()">Close</button>
+                <button class="btn" data-on-click="m-hide-info-modal">Close</button>
             </div>
         </div>
     </div>
@@ -530,12 +530,12 @@
                     <label style="font-size:13px;display:block;margin-bottom:8px">Working Directory:
                         <div class="dir-input-row" style="margin-top:4px">
                             <input type="text" id="resume-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
-                            <button class="btn" onclick="toggleBrowser('resume-dir','resume-dir-browser','resume-browser-list','resume-browser-current-path')">Browse</button>
+                            <button class="btn" data-on-click="m-toggle-browser" data-browser="resume-dir resume-dir-browser resume-browser-list resume-browser-current-path">Browse</button>
                         </div>
                     </label>
                     <div id="resume-dir-browser" class="dir-browser" style="display:none">
                         <div class="dir-browser-header">
-                            <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                            <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
                             <span class="dir-browser-path" id="resume-browser-current-path">~</span>
                         </div>
                         <ul class="dir-browser-list" id="resume-browser-list">
@@ -551,8 +551,8 @@
                 </div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideResumeModal()">Cancel</button>
-                <button class="btn btn-primary" id="btn-resume-launch" onclick="resumeLaunchNew()">Resume</button>
+                <button class="btn" data-on-click="m-hide-resume-modal">Cancel</button>
+                <button class="btn btn-primary" id="btn-resume-launch" data-on-click="m-resume-launch-new">Resume</button>
             </div>
         </div>
     </div>
@@ -564,7 +564,7 @@
                 <h3 id="settings-title">Settings</h3>
             </div>
             <div class="modal-body settings-modal-body">
-                <button class="btn btn-primary settings-theme-btn" onclick="hideSettingsModal(); showThemeConfigurator()">
+                <button class="btn btn-primary settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
                     <span class="material-icons icon-inline">palette</span>
                     Customize Theme
                 </button>
@@ -610,7 +610,7 @@
                 </div>
                 <dt id="settings-permission-mode-label">Default Permission Mode</dt>
                 <dd>
-                    <select aria-labelledby="settings-permission-mode-label" id="settings-permission-mode" class="settings-select" onchange="window._updatePermModeDescription(this)">
+                    <select aria-labelledby="settings-permission-mode-label" id="settings-permission-mode" class="settings-select" data-on-change="m-perm-mode-describe">
                         <option value="default">Default</option>
                         <option value="plan">Plan</option>
                         <option value="acceptEdits">Accept Edits</option>
@@ -630,7 +630,7 @@
                         <input type="password" id="settings-api-key" class="settings-input settings-mono-input" readonly autocomplete="off" placeholder="Loading..." aria-label="API key">
                         <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-show" aria-pressed="false" hidden>Show</button>
                         <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-copy" disabled>Copy</button>
-                        <button class="btn btn-small" type="button" onclick="window._showMobileConnectModal()" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:14px;vertical-align:middle">qr_code_2</span> Mobile QR</button>
+                        <button class="btn btn-small" type="button" data-on-click="m-show-mobile-connect-modal" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:14px;vertical-align:middle">qr_code_2</span> Mobile QR</button>
                     </div>
                     <span class="settings-hint">Used for remote/mobile access. Keep secret.</span>
                 </dd>
@@ -786,7 +786,7 @@
                         <span id="cli-result-pi" class="cli-verify-result"></span>
                     </label>
                     <div class="settings-cli-actions">
-                        <button class="btn btn-small" onclick="window._verifyAllCLIs()" id="verify-all-btn">Verify All</button>
+                        <button class="btn btn-small" data-on-click="m-verify-all-c-l-is" id="verify-all-btn">Verify All</button>
                     </div>
                     <span class="settings-hint">Full path to agent CLI binary. Leave empty to use default from PATH.</span>
                 </dd>
@@ -817,7 +817,7 @@
                 <dt>Group by Team</dt>
                 <dd>
                     <label class="settings-toggle">
-                        <input type="checkbox" id="settings-group-by-team" onchange="toggleGroupByTeam()">
+                        <input type="checkbox" id="settings-group-by-team" data-on-change="m-toggle-group-by-team">
                         <span>
                             <strong>Group agents by board/team</strong>
                             <span class="toggle-desc">Keeps related agents grouped together in the sidebar</span>
@@ -827,7 +827,7 @@
                 <dt>Agent Summaries</dt>
                 <dd>
                     <label class="settings-toggle">
-                        <input type="checkbox" id="settings-show-summary" onchange="toggleSessionSummary()">
+                        <input type="checkbox" id="settings-show-summary" data-on-change="m-toggle-session-summary">
                         <span>
                             <strong>Show summary under each agent</strong>
                             <span class="toggle-desc">The goal line beneath an agent's name in the sidebar (off by default)</span>
@@ -950,7 +950,7 @@
                     </select>
                 </dd>
                 </dl>
-                <button class="btn btn-primary settings-prompts-btn" onclick="hideSettingsModal(); showDefaultPromptsModal()">
+                <button class="btn btn-primary settings-prompts-btn" data-on-click="m-hide-settings-modal-then-show-default-prompts-modal">
                     <span style="font-size:16px;vertical-align:middle;margin-right:6px">✏️</span>
                     Edit Default Prompts
                 </button>
@@ -969,8 +969,8 @@
                 <div id="tier-branding-label" class="tier-branding" style="display:none"></div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideSettingsModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="applySettings()">Apply</button>
+                <button class="btn" data-on-click="m-hide-settings-modal">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-apply-settings">Apply</button>
             </div>
         </div>
     </div>
@@ -988,14 +988,14 @@
                 <div class="prompt-field">
                     <div class="prompt-field-header">
                         <label class="prompt-field-label">Orchestrator Prompt</label>
-                        <button class="btn prompt-field-reset" onclick="resetDefaultPrompt('orchestrator')">Reset to Default</button>
+                        <button class="btn prompt-field-reset" data-on-click="m-reset-default-prompt" data-arg="orchestrator">Reset to Default</button>
                     </div>
                     <textarea id="settings-prompt-orchestrator" class="settings-input prompt-textarea" rows="5"></textarea>
                 </div>
                 <div class="prompt-field">
                     <div class="prompt-field-header">
                         <label class="prompt-field-label">Worker Prompt</label>
-                        <button class="btn prompt-field-reset" onclick="resetDefaultPrompt('worker')">Reset to Default</button>
+                        <button class="btn prompt-field-reset" data-on-click="m-reset-default-prompt" data-arg="worker">Reset to Default</button>
                     </div>
                     <textarea id="settings-prompt-worker" class="settings-input prompt-textarea" rows="5"></textarea>
                 </div>
@@ -1006,21 +1006,21 @@
                 <div class="prompt-field">
                     <div class="prompt-field-header">
                         <label class="prompt-field-label">Team Reminder (Orchestrator)</label>
-                        <button class="btn prompt-field-reset" onclick="resetDefaultPrompt('team_orchestrator')">Reset to Default</button>
+                        <button class="btn prompt-field-reset" data-on-click="m-reset-default-prompt" data-arg="team_orchestrator">Reset to Default</button>
                     </div>
                     <textarea id="settings-team-reminder-orchestrator" class="settings-input prompt-textarea" rows="2"></textarea>
                 </div>
                 <div class="prompt-field">
                     <div class="prompt-field-header">
                         <label class="prompt-field-label">Team Reminder (Worker)</label>
-                        <button class="btn prompt-field-reset" onclick="resetDefaultPrompt('team_worker')">Reset to Default</button>
+                        <button class="btn prompt-field-reset" data-on-click="m-reset-default-prompt" data-arg="team_worker">Reset to Default</button>
                     </div>
                     <textarea id="settings-team-reminder-worker" class="settings-input prompt-textarea" rows="2"></textarea>
                 </div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideDefaultPromptsModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveDefaultPrompts()">Save</button>
+                <button class="btn" data-on-click="m-hide-default-prompts-modal">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-save-default-prompts">Save</button>
             </div>
         </div>
     </div>
@@ -1037,10 +1037,10 @@
             <div class="modal-body">
                 <!-- Job type toggle -->
                 <div class="job-type-toggle" id="job-type-toggle">
-                    <button class="job-type-btn active" data-type="workflow" onclick="switchJobType('workflow')">
+                    <button class="job-type-btn active" data-type="workflow" data-on-click="m-switch-job-type" data-arg="workflow">
                         <span class="material-icons" style="font-size:16px">account_tree</span> Workflow
                     </button>
-                    <button class="job-type-btn" data-type="prompt" onclick="switchJobType('prompt')">
+                    <button class="job-type-btn" data-type="prompt" data-on-click="m-switch-job-type" data-arg="prompt">
                         <span class="material-icons" style="font-size:16px">smart_toy</span> Agent Prompt
                     </button>
                 </div>
@@ -1055,19 +1055,19 @@
                 <label>Schedule:</label>
                 <div class="sched-picker" id="sched-picker">
                     <div class="sched-presets">
-                        <button type="button" class="sched-preset active" data-cron="0 * * * *" onclick="pickSchedulePreset(this)">Every hour</button>
-                        <button type="button" class="sched-preset" data-cron="0 */6 * * *" onclick="pickSchedulePreset(this)">Every 6 hours</button>
-                        <button type="button" class="sched-preset" data-cron="0 2 * * *" onclick="pickSchedulePreset(this)">Daily at 2am</button>
-                        <button type="button" class="sched-preset" data-cron="0 9 * * 1" onclick="pickSchedulePreset(this)">Weekly Mon 9am</button>
-                        <button type="button" class="sched-preset" data-cron="" onclick="pickSchedulePreset(this)">Custom</button>
+                        <button type="button" class="sched-preset active" data-cron="0 * * * *" data-on-click="m-pick-schedule-preset">Every hour</button>
+                        <button type="button" class="sched-preset" data-cron="0 */6 * * *" data-on-click="m-pick-schedule-preset">Every 6 hours</button>
+                        <button type="button" class="sched-preset" data-cron="0 2 * * *" data-on-click="m-pick-schedule-preset">Daily at 2am</button>
+                        <button type="button" class="sched-preset" data-cron="0 9 * * 1" data-on-click="m-pick-schedule-preset">Weekly Mon 9am</button>
+                        <button type="button" class="sched-preset" data-cron="" data-on-click="m-pick-schedule-preset">Custom</button>
                     </div>
                     <div class="sched-custom-row" id="sched-custom-row" style="display:none">
-                        <input type="text" id="job-modal-cron" class="sched-cron-input" placeholder="0 2 * * *" value="0 * * * *" oninput="validateCronPreview()">
+                        <input type="text" id="job-modal-cron" class="sched-cron-input" placeholder="0 2 * * *" value="0 * * * *" data-on-input="m-validate-cron-preview">
                     </div>
                     <div class="sched-picker-meta">
                         <div id="cron-preview" class="sched-preview"></div>
                         <label class="sched-tz-label">Timezone:
-                            <input type="text" id="job-modal-timezone" class="sched-tz-input" placeholder="UTC" value="UTC" oninput="validateCronPreview()">
+                            <input type="text" id="job-modal-timezone" class="sched-tz-input" placeholder="UTC" value="UTC" data-on-input="m-validate-cron-preview">
                         </label>
                     </div>
                 </div>
@@ -1122,8 +1122,8 @@
                 </div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideJobModal()">Cancel</button>
-                <button class="btn btn-primary" id="job-modal-submit" onclick="saveScheduledJob()">Create Job</button>
+                <button class="btn" data-on-click="m-hide-job-modal">Cancel</button>
+                <button class="btn btn-primary" id="job-modal-submit" data-on-click="m-save-scheduled-job">Create Job</button>
             </div>
         </div>
     </div>
@@ -1144,8 +1144,8 @@
                 <p style="color:var(--text-muted);font-size:11px;margin-top:6px">Use <code>&&</code> to chain multiple commands (1s delay between each).</p>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideMacroModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="addMacro()">Add</button>
+                <button class="btn" data-on-click="m-hide-macro-modal">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-add-macro">Add</button>
             </div>
         </div>
     </div>
@@ -1160,7 +1160,7 @@
                 <input type="hidden" id="quick-launch-template">
                 <div id="quick-launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:13px">
                     <label for="quick-launch-server" style="margin:0;white-space:nowrap">Server:</label>
-                    <select id="quick-launch-server" aria-label="Launch on server" style="flex:1;min-width:0" onchange="window._onQuickLaunchServerChange(this.value)"></select>
+                    <select id="quick-launch-server" aria-label="Launch on server" style="flex:1;min-width:0" data-on-change="m-on-quick-launch-server-change"></select>
                 </div>
                 <label>Team Name:
                     <input type="text" id="quick-launch-board-name" placeholder="e.g. my-project-team">
@@ -1168,12 +1168,12 @@
                 <label>Working Directory:
                     <div class="dir-input-row">
                         <input type="text" id="quick-launch-workdir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
-                        <button class="btn" onclick="toggleBrowser('quick-launch-workdir','quick-launch-browser','quick-launch-browser-list','quick-launch-browser-path')">Browse</button>
+                        <button class="btn" data-on-click="m-toggle-browser" data-browser="quick-launch-workdir quick-launch-browser quick-launch-browser-list quick-launch-browser-path">Browse</button>
                     </div>
                 </label>
                 <div id="quick-launch-browser" class="dir-browser" style="display:none">
                     <div class="dir-browser-header">
-                        <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                        <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
                         <span class="dir-browser-path" id="quick-launch-browser-path">~</span>
                     </div>
                     <ul class="dir-browser-list" id="quick-launch-browser-list">
@@ -1182,8 +1182,8 @@
                 </div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="document.getElementById('quick-launch-modal').style.display='none'">Cancel</button>
-                <button class="btn btn-primary" onclick="window._quickLaunchTeam()">Launch</button>
+                <button class="btn" data-on-click="m-quick-launch-close">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-quick-launch-team">Launch</button>
             </div>
         </div>
     </div>
@@ -1201,8 +1201,8 @@
                 <div id="add-agent-board-acf"></div>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="hideAddAgentBoardModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="launchAgentToBoard()">Launch</button>
+                <button class="btn" data-on-click="m-hide-add-agent-board-modal">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-launch-agent-to-board">Launch</button>
             </div>
         </div>
     </div>
@@ -1235,16 +1235,16 @@
                 </details>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="window._hideViewModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="window._saveView()">Save</button>
+                <button class="btn" data-on-click="m-hide-view-modal">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-save-view">Save</button>
             </div>
         </div>
     </div>
 
     <!-- Mobile Connect Modal -->
-    <div id="mobile-connect-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="mobile-connect-title" style="display:none" onclick="if(event.target===this)window._hideMobileConnectModal()">
+    <div id="mobile-connect-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="mobile-connect-title" style="display:none" data-on-click="m-mobile-connect-backdrop">
         <div class="modal-content modal-sm" style="text-align:center;position:relative">
-            <button class="modal-close-btn" onclick="window._hideMobileConnectModal()" aria-label="Close" style="position:absolute;top:12px;right:16px"><span class="material-icons" aria-hidden="true">close</span></button>
+            <button class="modal-close-btn" data-on-click="m-hide-mobile-connect-modal" aria-label="Close" style="position:absolute;top:12px;right:16px"><span class="material-icons" aria-hidden="true">close</span></button>
             <h3 id="mobile-connect-title">Coral Mobile</h3>
             <p id="mobile-connect-status" role="status" aria-live="polite" style="margin:12px 0"></p>
             <div id="mobile-connect-actions" class="modal-actions"></div>
@@ -1254,13 +1254,13 @@
                 </p>
                 <div class="mobile-connect-url-box">
                     <code id="mobile-connect-url" class="mobile-connect-url-code"></code>
-                    <button class="btn btn-small" onclick="navigator.clipboard.writeText(document.getElementById('mobile-connect-url').textContent); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                    <button class="btn btn-small" data-on-click="m-mobile-connect-copy">Copy</button>
                 </div>
                 <div id="mobile-connect-qr" class="mobile-connect-qr"></div>
                 <div id="mobile-connect-api-key" class="mobile-connect-api-key"></div>
                 <p class="mobile-connect-hint">Your phone must be on the same network as this computer.</p>
                 <div class="modal-actions" style="margin-top:12px">
-                    <button class="btn btn-primary" onclick="window._hideMobileConnectModal()">Done</button>
+                    <button class="btn btn-primary" data-on-click="m-hide-mobile-connect-modal">Done</button>
                 </div>
             </div>
         </div>
@@ -1271,7 +1271,7 @@
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
                 <h3 id="create-task-heading">Create Task</h3>
-                <button class="modal-close-btn" onclick="window.hideCreateTaskModal()" aria-label="Close dialog"><span class="material-icons" aria-hidden="true">close</span></button>
+                <button class="modal-close-btn" data-on-click="m-hide-create-task-modal" aria-label="Close dialog"><span class="material-icons" aria-hidden="true">close</span></button>
             </div>
             <div class="modal-body">
                 <div id="create-task-error" class="modal-error" style="display:none"></div>
@@ -1329,8 +1329,8 @@
                 </label>
             </div>
             <div class="modal-actions modal-footer">
-                <button class="btn" onclick="window.hideCreateTaskModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="window.submitCreateTask()">Create</button>
+                <button class="btn" data-on-click="m-hide-create-task-modal">Cancel</button>
+                <button class="btn btn-primary" data-on-click="m-submit-create-task">Create</button>
             </div>
         </div>
     </div>
@@ -1345,7 +1345,7 @@
                 <div id="task-detail-content"></div>
             </div>
             <div id="task-detail-modal-footer" class="modal-actions modal-footer">
-                <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
+                <button class="btn" data-on-click="m-hide-task-detail-modal">Close</button>
             </div>
         </div>
     </div>

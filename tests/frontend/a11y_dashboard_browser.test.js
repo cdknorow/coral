@@ -143,7 +143,7 @@ const contrast = (a, b) => {
         await ev(`(() => { document.getElementById('nav-tab-agents').focus(); showSettingsModal(); return true; })()`);
         await waitFor(dialogShown, 'the Settings dialog again', 5000);
         await waitFor(`document.getElementById('settings-modal').contains(document.activeElement)`, 'focus inside on the second open', 3000);
-        await ev(`(() => { [...document.querySelectorAll('#settings-modal button')].find(b => /hideSettingsModal\(\)/.test(b.getAttribute('onclick') || '') && b.textContent.trim() === 'Cancel').click(); return true; })()`);
+        await ev(`(() => { [...document.querySelectorAll('#settings-modal button')].find(b => (/hideSettingsModal\(\)/.test(b.getAttribute('onclick') || '') || b.getAttribute('data-on-click') === 'm-hide-settings-modal') && b.textContent.trim() === 'Cancel').click(); return true; })()`);
         await waitFor(dialogHidden, 'Cancel closes the dialog', 3000);
         await waitFor(`document.activeElement && document.activeElement.id === 'nav-tab-agents'`, 'focus back on the opener after Cancel', 3000,
             `({ active: document.activeElement && (document.activeElement.id || document.activeElement.tagName) })`);
