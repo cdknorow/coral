@@ -64,33 +64,46 @@ type Client struct {
 	captureTargetsMu sync.Mutex
 	captureTargets   map[string]string // agentName \x00 agentType \x00 sessionID -> target
 
-	// paneStates is every pane's pid and size from one list-panes, kept for paneStateTTL
-	// (#3847): the status pass asked each agent's pane for its pid and the feed each pane for
-	// its size, one tmux run per agent each time.
+	// snap is ONE list-panes of the primary socket, shared for paneStateTTL by every reader: the
+	// panes (ListPanes: the board notifier's and the status poller's agent discovery) and each
+	// pane's pid and size (#3847: the status pass and the feed). Before #4049 those were two
+	// list-panes, and ListPanes ran on every call.
 	paneStatesMu  sync.Mutex
-	paneStatesAt  time.Time
-	paneStates    map[string]paneState // target (#S:#I.#P) -> state
-	paneStatesGen uint64               // bumped by every command that changes a pane: a list started before it is not kept
+	snap          *paneSnapshot
+	paneStatesGen uint64 // bumped by every command that changes a pane: a list started before it is not kept
+}
+
+// paneSnapshot is one list-panes: the panes, and each pane's state by target (#S:#I.#P).
+type paneSnapshot struct {
+	at     time.Time
+	panes  []Pane
+	states map[string]paneState
 }
 
 // paneState is a pane's shell pid and size.
 type paneState struct{ pid, cols, rows int }
 
-// paneStateTTL is how long one list-panes answers the agents' pane pid and size questions.
+// paneStateTTL is how long one list-panes answers every pane question (the panes, a pane's pid
+// and size); a command that changes a pane drops it at once.
 const paneStateTTL = time.Second
 
 // paneChanging are the tmux commands after which the shared pane list is stale: a pane's size
 // (Coral's own resize must read back at once, v1.4.63's terminal size checks), its pid (a
-// respawn) or the set of panes.
+// respawn), its title or name, or the set of panes. Changes Coral doesn't make (an agent's own
+// title) show within paneStateTTL.
 var paneChanging = map[string]bool{
 	"resize-window": true, "resize-pane": true, "respawn-pane": true, "new-session": true,
 	"new-window": true, "split-window": true, "kill-session": true, "kill-window": true, "kill-pane": true,
+	// Since #4049 the shared list also carries each pane's title, session name and place: Coral's
+	// own title (select-pane -T), a rename or a moved pane reads back at once too.
+	"select-pane": true, "rename-session": true, "rename-window": true, "respawn-window": true,
+	"swap-pane": true, "move-pane": true, "join-pane": true, "break-pane": true,
 }
 
 // forgetPaneStates drops the shared pane list after a command that changed a pane.
 func (c *Client) forgetPaneStates() {
 	c.paneStatesMu.Lock()
-	c.paneStates = nil
+	c.snap = nil
 	c.paneStatesGen++
 	c.paneStatesMu.Unlock()
 }
@@ -324,7 +337,10 @@ func CheckSocketPath(coralDir string) error {
 // it is off by default for any non-default data directory, because merging
 // there lets one Coral instance discover and kill another's agents.
 func (c *Client) ListPanes(ctx context.Context) ([]Pane, error) {
-	panes := c.listPanesOnSocket(ctx, c.SocketPath)
+	var panes []Pane
+	if s := c.paneSnapshot(ctx); s != nil {
+		panes = append(panes, s.panes...) // a copy: callers may change their slice
+	}
 
 	if c.FallbackToDefault && c.SocketPath != "" && defaultServerMayRun() {
 		fallbackPanes := c.listPanesOnSocket(ctx, "")
@@ -707,6 +723,11 @@ func (c *Client) captureTarget(key string) (string, bool) {
 
 // setCaptureTarget caches target for key, or forgets key when target is "".
 func (c *Client) setCaptureTarget(key, target string) {
+	if target == "" {
+		// The pane is gone (a failed capture): the shared pane list may still show it, so the
+		// next lookup lists the panes again (#4049).
+		c.forgetPaneStates()
+	}
 	c.captureTargetsMu.Lock()
 	defer c.captureTargetsMu.Unlock()
 	if target == "" {
@@ -794,40 +815,64 @@ func (c *Client) DisplayForAgent(ctx context.Context, agentName, agentType, sess
 	return out, nil
 }
 
-// allPaneStates is every pane on the primary socket by target, from one list-panes at most
-// every paneStateTTL.
-func (c *Client) allPaneStates(ctx context.Context) map[string]paneState {
+// snapshotFormat lists every pane once with all that the shared readers need. The title is LAST:
+// it is free-form text the agent sets and can contain the '|' separator (see listPanesOnSocket).
+const snapshotFormat = "#{session_name}|#S:#I.#P|#{pane_pid}|#{pane_width}|#{pane_height}|#{pane_current_path}|#{pane_title}"
+
+// paneSnapshot is the primary socket's panes from one list-panes at most every paneStateTTL,
+// shared by every caller (#4049); nil when tmux couldn't list them.
+func (c *Client) paneSnapshot(ctx context.Context) *paneSnapshot {
 	c.paneStatesMu.Lock()
-	if c.paneStates != nil && time.Since(c.paneStatesAt) < paneStateTTL {
+	if c.snap != nil && time.Since(c.snap.at) < paneStateTTL {
 		defer c.paneStatesMu.Unlock()
-		return c.paneStates
+		return c.snap
 	}
 	gen := c.paneStatesGen
 	c.paneStatesMu.Unlock()
-	out, err := c.run(ctx, "list-panes", "-a", "-F", "#S:#I.#P|#{pane_pid}|#{pane_width}|#{pane_height}")
+	args := []string{"list-panes", "-a", "-F", snapshotFormat}
+	if c.SocketPath != "" {
+		args = append(socketArgs(c.SocketPath), args...)
+	}
+	if runObserver != nil {
+		runObserver([]string{"list-panes"})
+	}
+	bin := c.resolveTmuxBin()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = tmuxEnv(bin)
+	countExec("list-panes")
+	out, err := cmd.Output()
+	noteTmuxResult(err, bin, c.SocketPath)
 	if err != nil {
 		return nil
 	}
-	states := map[string]paneState{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		f := strings.Split(line, "|")
-		if len(f) != 4 {
+	s := &paneSnapshot{at: time.Now(), states: map[string]paneState{}}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.SplitN(strings.TrimSpace(line), "|", 7)
+		if len(f) != 7 {
 			continue
 		}
-		pid, e1 := strconv.Atoi(f[1])
-		cols, e2 := strconv.Atoi(f[2])
-		rows, e3 := strconv.Atoi(f[3])
-		if e1 != nil || e2 != nil || e3 != nil {
-			continue
+		s.panes = append(s.panes, Pane{SessionName: f[0], Target: f[1], CurrentPath: f[5], PaneTitle: f[6], SocketPath: c.SocketPath})
+		pid, e1 := strconv.Atoi(f[2])
+		cols, e2 := strconv.Atoi(f[3])
+		rows, e3 := strconv.Atoi(f[4])
+		if e1 == nil && e2 == nil && e3 == nil {
+			s.states[f[1]] = paneState{pid: pid, cols: cols, rows: rows}
 		}
-		states[f[0]] = paneState{pid: pid, cols: cols, rows: rows}
 	}
 	c.paneStatesMu.Lock()
 	if c.paneStatesGen == gen { // no pane changed while it ran: keep it for the next callers
-		c.paneStates, c.paneStatesAt = states, time.Now()
+		c.snap = s
 	}
 	c.paneStatesMu.Unlock()
-	return states
+	return s
+}
+
+// allPaneStates is every pane on the primary socket by target, from the shared snapshot.
+func (c *Client) allPaneStates(ctx context.Context) map[string]paneState {
+	if s := c.paneSnapshot(ctx); s != nil {
+		return s.states
+	}
+	return nil
 }
 
 // agentPaneState is the agent's pane state from the shared list, when its pane target is known

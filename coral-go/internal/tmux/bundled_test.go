@@ -166,7 +166,7 @@ func TestRealOperationsUseTheSelectedBundledBinaryAndEnvironment(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "calls.log")
 	b := newFakeBundle(t, `echo "$0|$1 $2 $3|TD=$TERMINFO_DIRS|BIN=$CORAL_TMUX_BIN" >> `+logFile+`
 case "$*" in
-  *list-panes*) echo "claude-abc|claude-abc:0.0|/tmp|title" ;;
+  *list-panes*) echo "claude-abc|claude-abc:0.0|4242|80|24|/tmp|title" ;;
 esac
 exit 0`)
 	c := NewClient(t.TempDir())
