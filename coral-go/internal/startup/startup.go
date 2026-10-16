@@ -162,8 +162,12 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	}
 }
 
-// Close closes the database connection.
+// Close stops the server's background work and closes its databases (the board's, then the
+// sessions database) and the instance lock. Call it after Shutdown.
 func (rs *RunningServer) Close() {
+	if rs.Server != nil {
+		rs.Server.Close() // its loops and the board database, before the sessions database (#3914)
+	}
 	if rs.DB != nil {
 		rs.DB.Close()
 	}

@@ -22,7 +22,7 @@ func TestMainRouterDoesNotServePprof(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	stack := newTermStack(t)
-	ts := httptest.NewServer(New(cfg, db, stack.backend, stack.terminal).Router())
+	ts := httptest.NewServer(newTestServer(t, cfg, db, stack.backend, stack.terminal).Router())
 	t.Cleanup(ts.Close)
 	for _, p := range []string{"/debug/pprof/", "/debug/pprof/goroutine?debug=1", "/debug/pprof/heap", "/debug/pprof/cmdline", "/api/debug/pprof/"} {
 		resp, err := http.Get(ts.URL + p)

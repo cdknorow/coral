@@ -28,7 +28,7 @@ func strictServer(t *testing.T, strict bool) (*Server, *httptest.Server, string)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	stack := newTermStack(t)
-	srv := New(cfg, db, stack.backend, stack.terminal)
+	srv := newTestServer(t, cfg, db, stack.backend, stack.terminal)
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	return srv, ts, dir

@@ -42,7 +42,7 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	stack := newTermStack(t)
-	srv := New(cfg, db, stack.backend, stack.terminal)
+	srv := newTestServer(t, cfg, db, stack.backend, stack.terminal)
 	srv.cloudHandler.SetLinkedCheck(func() bool { return true })
 	local := httptest.NewServer(srv.Router())
 	t.Cleanup(local.Close)

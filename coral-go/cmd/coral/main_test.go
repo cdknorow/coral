@@ -52,6 +52,7 @@ func setupTestServerWithHub(t *testing.T, hub bool) *httptest.Server {
 	ptyBackend := ptymanager.NewPTYBackend()
 	terminal := ptymanager.NewPTYSessionTerminal(ptyBackend)
 	srv := server.New(cfg, db, ptyBackend, terminal)
+	t.Cleanup(srv.Close) // its loops and board database, before the TempDir goes (#3914)
 
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)

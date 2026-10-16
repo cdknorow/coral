@@ -168,7 +168,7 @@ func newE2ERemote(t *testing.T, id string, mutate func(*config.Config)) *e2eRemo
 	r := &e2eRemote{
 		t: t, id: id, dir: dir, cfg: cfg, db: db, backend: backend, fake: stack.fake,
 		work:     filepath.Join(dir, "work", "proj"), // same base name on every remote
-		srv:      New(cfg, db, backend, stack.terminal),
+		srv:      newTestServer(t, cfg, db, backend, stack.terminal),
 		hijacked: map[net.Conn]struct{}{},
 	}
 	// Requests built with httptest carry no local address, which peercred refuses
@@ -181,6 +181,7 @@ func newE2ERemote(t *testing.T, id string, mutate func(*config.Config)) *e2eRemo
 		for _, s := range backend.ListSessions() {
 			_ = backend.Kill(s.AgentName)
 		}
+		r.srv.Close() // its loops and board database first (#3914)
 		db.Close()
 	})
 	return r
@@ -336,7 +337,7 @@ func newE2EHub(t *testing.T, env *e2eEnv, dir string, hubMode bool) *e2eHub {
 	stack := newTermStack(t)
 	backend := stack.backend
 	h := &e2eHub{t: t, env: env, dir: dir, cfg: cfg, db: db, backend: backend, done: make(chan struct{})}
-	h.srv = New(cfg, db, backend, stack.terminal)
+	h.srv = newTestServer(t, cfg, db, backend, stack.terminal)
 	h.ts = httptest.NewServer(h.srv.Router())
 	ctx, cancel := context.WithCancel(context.Background())
 	h.cancel = cancel
@@ -356,6 +357,7 @@ func (h *e2eHub) close() {
 	for _, s := range h.backend.ListSessions() {
 		_ = h.backend.Kill(s.AgentName)
 	}
+	h.srv.Close() // its loops and board database first (#3914)
 	h.db.Close()
 	h.cancel = nil
 }
