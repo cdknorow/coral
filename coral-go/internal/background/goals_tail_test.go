@@ -95,3 +95,17 @@ func TestGoalTranscriptFollowsAppends(t *testing.T) {
 	assert.Equal(t, goalInput{Earlier: "two", Request: "three", Response: "r3", HasAssistant: true}, tr.input())
 	assert.Greater(t, tr.offset, before.offset)
 }
+
+// #3847: the tail read stops at its bound (8 MiB; 1 KB here) even when the window holds no two
+// requests, instead of decoding the whole transcript at once: the requests before the bound are
+// not seen, and the next read still starts after the last complete line.
+func TestGoalTailReadIsBounded(t *testing.T) {
+	defer jsonl.SetTailChunkForTest(256)()
+	defer jsonl.SetTailMaxForTest(1024)()
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	content := goalUserLine("one") + goalReplyLine("r1") + goalUserLine("two") + strings.Repeat(goalToolResultLine("t", strings.Repeat("x", 100)), 100)
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	in, tr := tailInput(t, path)
+	assert.Empty(t, in.Earlier, "past the bound")
+	assert.EqualValues(t, strings.LastIndexByte(content, '\n')+1, tr.offset)
+}
