@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // Agent pipe logs (#3601, weak site W17): everything an agent's terminal shows. Readable by this
@@ -52,7 +53,7 @@ func openLogAppend(path string) (*os.File, error) {
 	if path == "" {
 		return nil, errNoLogPath
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND|oNoFollowLog, 0o600)
+	f, err := secfile.OpenNoFollow(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND|oNonBlockLog, 0o600)
 	if err != nil {
 		return nil, err
 	}

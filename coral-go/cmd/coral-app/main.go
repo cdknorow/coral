@@ -35,6 +35,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/loginlink"
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 var debugMode bool
@@ -370,7 +371,7 @@ func setupDebugLogging(dataDir string) {
 	logDir := config.ResolveCoralDir(dataDir)
 	os.MkdirAll(logDir, 0o700)
 	logFile := filepath.Join(logDir, "app.log")
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // this user only (#3628 F6)
+	f, err := secfile.OpenNoFollow(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // this user only (#3628 F6)
 	if err != nil {
 		return
 	}

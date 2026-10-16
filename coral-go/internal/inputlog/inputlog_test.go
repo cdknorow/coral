@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/linktest"
 )
 
 // captureLog collects what goes to the standard log (coral.log in the server).
@@ -217,27 +219,29 @@ func TestDeleteKeptLog(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-// The log never writes through a symlink planted at its path, and Delete never
-// removes one; an existing file with looser permissions is made 0600 (#3256 review).
-func TestLogFileIsNotFollowedAndIsMadePrivate(t *testing.T) {
+// The log never writes through a link planted at its path (a symbolic link; on Windows also a
+// junction: #3920, on Windows it did), and Delete never removes one (#3256 review).
+func TestLogFileIsNotFollowed(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
-	target := filepath.Join(dir, "elsewhere")
-	require.NoError(t, os.WriteFile(target, nil, 0o644))
-	require.NoError(t, os.Symlink(target, path))
 	captureLog(t)
-	Setup(dir, true)
 	t.Cleanup(func() { Setup("", false); SetSetting(false) })
-	Record("p", Text, "must not land in the link target")
-	Flush()
-	b, _ := os.ReadFile(target)
-	assert.Empty(t, string(b), "nothing written through the symlink")
-	Setup(dir, false)
-	_, err := Delete()
-	require.NoError(t, err)
-	_, err = os.Lstat(path)
-	assert.NoError(t, err, "Delete leaves a symlink alone")
+	linktest.Each(t, path, func(t *testing.T, p linktest.Planted) {
+		Setup(dir, true)
+		Record("p", Text, "must not land in the link target")
+		Flush()
+		Setup(dir, false)
+		_, err := Delete()
+		require.NoError(t, err)
+		_, err = os.Lstat(path)
+		assert.NoError(t, err, "Delete leaves the link alone")
+	})
+}
 
+// An existing log file with looser permissions is made 0600 (#3256 review).
+func TestLogFileIsMadePrivate(t *testing.T) {
+	captureLog(t)
+	t.Cleanup(func() { Setup("", false); SetSetting(false) })
 	dir2 := t.TempDir()
 	path2 := filepath.Join(dir2, FileName)
 	require.NoError(t, os.WriteFile(path2, []byte("earlier\n"), 0o644))

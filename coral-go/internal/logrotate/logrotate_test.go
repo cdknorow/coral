@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/linktest"
 )
 
 // #3628 F5: the log rotates at its size, keeps its copies, never splits a line, and every file
@@ -67,20 +69,14 @@ func TestOpenTakesOverAnOldLog(t *testing.T) {
 	}
 }
 
-// A symlink planted at the log's path is never followed.
-func TestOpenDoesNotFollowASymlink(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("no O_NOFOLLOW on Windows")
-	}
-	dir := t.TempDir()
-	target := filepath.Join(dir, "elsewhere")
-	require.NoError(t, os.WriteFile(target, []byte("keep"), 0o644))
-	path := filepath.Join(dir, "coral.log")
-	require.NoError(t, os.Symlink(target, path))
-	_, err := Open(path, 100, 2, 0)
-	assert.Error(t, err)
-	b, _ := os.ReadFile(target)
-	assert.Equal(t, "keep", string(b))
+// A link planted at the log's path (a symbolic link; on Windows also a junction) is never
+// followed (#3920: on Windows it was).
+func TestOpenDoesNotFollowAPlantedLink(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "coral.log")
+	linktest.Each(t, path, func(t *testing.T, p linktest.Planted) {
+		_, err := Open(path, 100, 2, 0)
+		assert.Error(t, err)
+	})
 }
 
 // The operator's choice (#3628): a log from before rotation, over twice the size, keeps only its

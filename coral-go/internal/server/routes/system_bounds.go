@@ -17,6 +17,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // knownCLIBinaries are the CLI names Coral launches (claude, codex, agy, pi).
@@ -172,7 +173,7 @@ func readImportFile(root, path string) (data []byte, ok bool, err error) {
 	}
 	// No symlink swapped in after the Lstat: open without following one, and check that the
 	// handle is the regular file that was checked.
-	f, openErr := os.OpenFile(path, os.O_RDONLY|oNoFollow, 0)
+	f, openErr := secfile.OpenNoFollow(path, os.O_RDONLY, 0)
 	if openErr != nil {
 		return nil, false, nil
 	}
