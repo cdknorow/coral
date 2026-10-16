@@ -65,7 +65,6 @@ const (
 	kindInt
 	kindBool
 	kindSlug // short [A-Za-z0-9_.-] token
-	kindLabel
 )
 
 type propSpec struct {
@@ -88,10 +87,7 @@ var (
 	agentCount = intRange(0, 64)
 )
 
-var (
-	slugRE  = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
-	labelRE = regexp.MustCompile(`^[A-Za-z0-9 _.+()-]{1,64}$`)
-)
+var slugRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 
 // eventSpecs is the closed allowlist of events and, per event, the only
 // properties it may carry beyond the standard ones. An event or property not
@@ -162,10 +158,6 @@ func sanitizeProps(event string, extra map[string]string) (map[string]any, bool)
 			}
 		case kindSlug:
 			if slugRE.MatchString(raw) {
-				out[key] = raw
-			}
-		case kindLabel:
-			if labelRE.MatchString(raw) {
 				out[key] = raw
 			}
 		}
