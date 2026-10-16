@@ -16,9 +16,11 @@ export function htmlToElement(html) {
     return t.content.firstElementChild;
 }
 
-// Everything between a user message and the agent's final reply is folded
-// into one collapsed "work group". The latest reply is shown as final until
-// more work arrives in the same turn, at which point it is folded back in.
+// A run of tool calls (with their results) is folded into one collapsed "work group". Only tool calls
+// fold (#4105): the agent's own prose is never put in a group. A reply, a message from the user or a
+// notice from Coral ends the run, so a turn that goes on after an answer reads as steps, the answer,
+// more steps. (Before, more work after an answer folded the answer back into the next group, and a
+// reply the operator wanted to read sat behind "5 steps".)
 function createWorkGroup() {
     return htmlToElement(`<details class="work-group">
         <summary class="work-group-summary"><span class="work-group-count"></span><span class="work-group-latest"></span></summary>
@@ -52,21 +54,7 @@ export function appendContent(container, el) {
     container.insertBefore(el, firstChrome || null);
 }
 
-function demoteTurnFinal(container) {
-    const last = lastContent(container);
-    if (!last || !last.classList.contains("turn-final")) return;
-    let group = last.previousElementSibling;
-    if (!group || !group.classList.contains("work-group")) {
-        group = createWorkGroup();
-        container.insertBefore(group, last);
-    }
-    last.classList.remove("turn-final");
-    group.querySelector(":scope > .work-group-body").appendChild(last);
-    updateWorkGroupSummary(group);
-}
-
 export function appendWork(container, el) {
-    demoteTurnFinal(container);
     let group = lastContent(container);
     if (!group || !group.classList.contains("work-group")) {
         group = createWorkGroup();
@@ -77,7 +65,6 @@ export function appendWork(container, el) {
 }
 
 export function appendTurnFinal(container, el) {
-    demoteTurnFinal(container);
     el.classList.add("turn-final");
     appendContent(container, el);
 }

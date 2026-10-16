@@ -1,5 +1,5 @@
 // The live chat's content interface (#3837): transcript content goes before the trailing chrome rows (Working, needs-input, empty
-// state, pending messages), lastContent skips them, and a turn's work folds into one group with its final reply kept apart.
+// state, pending messages), lastContent skips them, and a run of tool calls folds into one group and the agent's replies are never folded.
 //   node chat_content.test.mjs
 import assert from 'node:assert';
 import { installDom, importUi } from './helpers/jsdom_env.mjs';
@@ -38,7 +38,9 @@ assert.equal(group.querySelector('.work-group-latest').textContent, 'Edit a.go',
 c.appendTurnFinal(turn, el('chat-bubble agent', 'done'));
 assert.deepEqual(classes(turn), ['chat-bubble human', 'work-group', 'chat-bubble agent turn-final', 'chat-working']);
 c.appendWork(turn, tool('Run tests'));
-assert.deepEqual(classes(turn), ['chat-bubble human', 'work-group', 'chat-working'], 'more work folds the earlier final reply back into the group');
-assert.equal(turn.querySelector('.work-group-body').children.length, 4, 'two steps, the folded reply and the new step');
+assert.deepEqual(classes(turn), ['chat-bubble human', 'work-group', 'chat-bubble agent turn-final', 'work-group', 'chat-working'], 'more work after a reply starts a new group; the reply stays on the page (#4105)');
+assert.deepEqual([...turn.querySelectorAll('.work-group')].map(g => g.querySelector('.work-group-body').children.length), [2, 1], 'the reply is in no group: two steps, then one');
+c.appendWork(turn, tool('Lint'));
+assert.equal(turn.querySelectorAll('.work-group').length, 2, 'later steps join the newest group');
 assert.equal(c.htmlToElement('  <b>x</b> ').tagName, 'B');
 console.log('chat_content: ok');
