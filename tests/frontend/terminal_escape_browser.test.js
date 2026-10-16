@@ -120,6 +120,84 @@ async function run() {
         const one = (await inputs()).replace(/^\x1b\[200~/, '').replace(/\x1b\[201~$/, '');
         check('one line without a newline goes at once, no question', one === 'echo one-line' && (await modal()) === null, JSON.stringify(await inputs()));
         await ev(`(async () => { ${XT}.sendTerminalInputWs('\\x15'); return true; })()`);
+
+        // ── Finding 4: regression pins for Security's #3684 audit run ───
+        // These assert what held when the audit ran against the vendored xterm 5.5.0; an xterm
+        // upgrade that changes any of them trips the version pin at the end (#3684/#3688).
+
+        // OSC 52 clipboard (write and read): inert — no OSC handler, no clipboard addon — so no
+        // reply byte and no clipboard write.
+        await ev(`window.__clipW = 0; try { const c = navigator.clipboard; if (c) { const o = c.writeText && c.writeText.bind(c);
+            Object.defineProperty(c, 'writeText', { configurable: true, value: (...a) => { window.__clipW++; return o ? o(...a) : Promise.resolve(); } }); } } catch (e) {} true`);
+        await ev(`window.__sent = []; true`);
+        await output('\x1b]52;c;aGVsbG8=\x07\x1b]52;c;?\x07');
+        await pause(200); // sleep-ok: proves a negative, any OSC 52 reply gets time to be sent
+        check('OSC 52 is inert: no reply and no clipboard write',
+            (await inputs()) === '' && (await ev(`window.__clipW`)) === 0, JSON.stringify({ sent: await inputs(), clipW: await ev(`window.__clipW`) }));
+
+        // Window and icon titles (OSC 0/1/2, CSI 21t): Coral does not subscribe to onTitleChange,
+        // so document.title never changes, and nothing is echoed back into the pane.
+        const titleBefore = await ev(`document.title`);
+        await ev(`window.__sent = []; true`);
+        await output('\x1b]0;pwned-0\x07\x1b]1;pwned-1\x07\x1b]2;pwned-2\x07\x1b[21t');
+        await pause(200); // sleep-ok: proves a negative
+        check('titles (OSC 0/1/2, CSI 21t) don’t change document.title and send nothing',
+            (await ev(`document.title`)) === titleBefore && (await inputs()) === '',
+            JSON.stringify({ titleBefore, titleAfter: await ev(`document.title`), sent: await inputs() }));
+
+        // XTVERSION and window reports (resize/size/push): xterm's window operations are off, so no reply.
+        await ev(`window.__sent = []; true`);
+        await output('\x1b[>q\x1b[18t\x1b[22t\x1b[8t');
+        await pause(200); // sleep-ok: proves a negative
+        check('XTVERSION and window reports (CSI 18t/22t/8t) get no reply', (await inputs()) === '', JSON.stringify(await inputs()));
+
+        // OSC 8 hyperlinks: only http(s) targets (any case) become links; every other scheme, a
+        // relative path and a UNC path produce no link. Queried through xterm's link PROVIDER (the
+        // activation boundary, which validates the URL's protocol), not the raw OSC-link store.
+        const osc8Cases = [
+            { marker: 'AOK0', uri: 'http://example.com/a' },
+            { marker: 'AOK1', uri: 'https://example.com/b' },
+            { marker: 'AOK2', uri: 'HTTPS://EXAMPLE.COM/c' },
+            { marker: 'DENY0', uri: 'javascript:alert(1)' },
+            { marker: 'DENY1', uri: 'data:text/html,x' },
+            { marker: 'DENY2', uri: 'file:///etc/passwd' },
+            { marker: 'DENY3', uri: 'blob:http://x/y' },
+            { marker: 'DENY4', uri: 'about:blank' },
+            { marker: 'DENY5', uri: 'ftp://h/f' },
+            { marker: 'DENY6', uri: 'mailto:a@b.c' },
+            { marker: 'DENY7', uri: 'ssh://h' },
+            { marker: 'DENY8', uri: 'vscode://x' },
+            { marker: 'DENY9', uri: 'coral://x' },
+            { marker: 'DENY10', uri: 'ws://h' },
+            { marker: 'DENY11', uri: 'chrome://x' },
+            { marker: 'DENY12', uri: '/relative/path' },
+            { marker: 'DENY13', uri: '\\\\host\\share' },
+        ];
+        const osc8 = await ev(`(async () => {
+            const t = ${XT}.getTerminal();
+            const svc = t._core && t._core._linkProviderService;
+            const providers = (svc && svc.linkProviders) || [];
+            const buf = () => t.buffer.active;
+            const out = {};
+            for (const c of ${JSON.stringify(osc8Cases)}) {
+                await new Promise(r => t.write('\\r\\n\\x1b]8;;' + c.uri + '\\x07' + c.marker + '\\x1b]8;;\\x07', r));
+                const baseY = buf().baseY; let row = -1;
+                for (let y = 1; y <= t.rows; y++) { const ln = buf().getLine(baseY + y - 1); const s = ln ? ln.translateToString(true) : ''; if (s.indexOf(c.marker) !== -1) { row = y; break; } }
+                let has = false;
+                if (row !== -1) { const arrs = await Promise.all(providers.map(p => new Promise(res => { try { p.provideLinks(row, ls => res(ls || [])); } catch (e) { res([]); } }))); has = arrs.flat().length > 0; }
+                out[c.marker] = { found: row !== -1, has };
+            }
+            return { providers: providers.length, out };
+        })()`);
+        check('OSC 8: a link provider is present', osc8.providers >= 1, `providers=${osc8.providers}`);
+        const osc8Bad = osc8Cases.filter(c => { const r = osc8.out[c.marker] || {}; const allow = c.marker.startsWith('AOK'); return !r.found || r.has !== allow; })
+            .map(c => `${c.marker}(${c.uri})=${JSON.stringify(osc8.out[c.marker])}`);
+        check('OSC 8: only http(s) become links, not other schemes/relative/UNC', osc8Bad.length === 0, JSON.stringify(osc8Bad));
+
+        // Version pin: an xterm upgrade must re-audit these behaviors (#3684/#3688).
+        const xtermVer = await ev(`(async () => { try { const r = await fetch((window.__coralStatic||'/static/')+'vendor/xterm/xterm.min.js'); const t = await r.text(); const m = t.match(/@xterm\\/xterm@(\\d+\\.\\d+\\.\\d+)/); return m ? m[1] : 'no-version-header'; } catch (e) { return 'fetch-failed:' + String(e); } })()`);
+        check(`vendored xterm is the audited version (pin) — ${xtermVer}`, xtermVer === '5.5.0',
+            `xterm upgraded from 5.5.0 to ${xtermVer}: re-audit the terminal escape behaviors (#3684/#3688)`);
     } catch (e) {
         check('the test ran', false, e.stack || String(e));
     } finally {
