@@ -1,0 +1,391 @@
+/* Moved out of modals.js as it was (#3844): no behaviour change. */
+import { ALL_CAPABILITIES } from './agent_presets.js';
+import { PERMISSION_MODE_DESCRIPTIONS, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions } from './permission_flags.js';
+import { _acfServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _settingsFor } from './launch_models.js';
+import { _checkAgentCLI } from './cli_check.js';
+import { _classifyLoadedACFModel } from './acf_models.js';
+import { _renderPresetButtons } from './persona_store.js';
+import { escapeHtml, escapeAttr } from './utils.js';
+
+// ── Permissions Editor ─────────────────────────────────────────────────
+const CAPABILITY_LABELS = {
+    file_read: 'Read Files',
+    file_write: 'Write Files',
+    shell: 'Shell',
+    web_access: 'Web Access',
+    git_write: 'Git Write',
+    agent_spawn: 'Spawn Agents',
+    notebook: 'Notebooks',
+};
+
+export function _togglePermissions(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const isHidden = el.style.display === 'none';
+    el.style.display = isHidden ? '' : 'none';
+    const chevron = el.previousElementSibling?.querySelector('.permissions-chevron');
+    if (chevron) chevron.style.transform = isHidden ? 'rotate(90deg)' : '';
+}
+
+function _renderPermChips(containerId, type, capabilities) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const caps = capabilities?.[type] || [];
+    // Separate base capabilities from shell patterns
+    const baseCaps = caps.filter(c => !c.startsWith('shell:'));
+    const shellPatterns = caps.filter(c => c.startsWith('shell:')).map(c => c.slice(6));
+
+    let html = '';
+    for (const cap of ALL_CAPABILITIES) {
+        const isActive = baseCaps.includes(cap);
+        const cls = `perm-chip${isActive ? ' active' : ''}`;
+        html += `<button class="${escapeAttr(cls)}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" data-on-click="perm-chip-toggle">${CAPABILITY_LABELS[cap] || cap}</button>`;
+    }
+    container.innerHTML = html;
+
+    // Show shell patterns input if shell is in allow
+    const shellSection = container.closest('.permissions-editor')?.querySelector('.perms-shell-patterns');
+    const shellInput = container.closest('.permissions-editor')?.querySelector('.perms-shell-input');
+    if (shellSection && shellInput && type === 'allow') {
+        const hasShell = baseCaps.includes('shell');
+        const hasShellPatterns = shellPatterns.length > 0;
+        shellSection.style.display = (hasShell || hasShellPatterns) ? '' : 'none';
+        shellInput.value = shellPatterns.join(', ');
+    }
+}
+
+export function _togglePermChip(btn) {
+    btn.classList.toggle('active');
+    // Toggle shell patterns visibility
+    const cap = btn.dataset.cap;
+    const type = btn.dataset.type;
+    if (cap === 'shell' && type === 'allow') {
+        const shellSection = btn.closest('.permissions-editor')?.querySelector('.perms-shell-patterns');
+        if (shellSection) {
+            shellSection.style.display = btn.classList.contains('active') ? '' : 'none';
+        }
+    }
+}
+
+function _getPermissions(editorId) {
+    const editor = document.getElementById(editorId);
+    if (!editor) return null;
+
+    const result = {};
+    for (const type of ['allow', 'deny']) {
+        const chips = editor.querySelectorAll(`[data-type="${type}"].active`);
+        if (chips.length > 0) {
+            result[type] = [...chips].map(c => c.dataset.cap);
+        }
+    }
+
+    // Add shell patterns to allow list
+    const shellInput = editor.querySelector('.perms-shell-input');
+    if (shellInput && shellInput.value.trim()) {
+        if (!result.allow) result.allow = [];
+        const patterns = shellInput.value.split(',').map(p => p.trim()).filter(Boolean);
+        for (const p of patterns) {
+            result.allow.push(`shell:${p}`);
+        }
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+}
+
+function _setPermissions(editorId, capabilities) {
+    const editor = document.getElementById(editorId);
+    if (!editor) return;
+    _renderPermChips(editorId + '-allow', 'allow', capabilities || {});
+    _renderPermChips(editorId + '-deny', 'deny', capabilities || {});
+}
+
+// ── Unified Agent Config Form ─────────────────────────────────────────
+
+let _acfCounter = 0;
+
+/**
+ * Render a unified agent configuration form into a container.
+ * @param {string} containerId - DOM element ID to render into
+ * @param {object} opts - { mode: 'full'|'compact-card', showPreset: bool, showName: bool, value: {...} }
+ */
+export function renderAgentConfigForm(containerId, opts = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    _acfCounter++;
+    const uid = `acf-${_acfCounter}`;
+    container.dataset.acfUid = uid;
+
+    const mode = opts.mode || 'full';
+    const showPreset = opts.showPreset !== false;
+    const showName = opts.showName !== false;
+    const showAutoPermissions = opts.showAutoPermissions !== false;
+    const v = opts.value || {};
+
+    const agentTypeVal = v.agentType || v.agent_type || _settingsFor(_acfServer(container)).default_agent_type || '';
+    const modelVal = v.model || '';
+    const nameVal = v.name || '';
+    const promptVal = v.prompt || '';
+    const flagsVal = v.flags || '';
+    const autoPermsVal = Object.prototype.hasOwnProperty.call(v, 'autoPermissions')
+        ? !!v.autoPermissions
+        : (Object.prototype.hasOwnProperty.call(v, 'flags') ? _hasPermFlag(flagsVal) : true);
+
+    // Build permissions summary text
+    const caps = v.capabilities || null;
+    let permsSummary = 'default';
+    if (caps) {
+        const parts = [];
+        if (caps.allow?.length) parts.push(`${caps.allow.length} allow`);
+        if (caps.deny?.length) parts.push(`${caps.deny.length} deny`);
+        permsSummary = parts.length ? parts.join(', ') : 'default';
+    }
+
+    let presetHTML = '';
+    if (showPreset) {
+        presetHTML = `<div id="${escapeAttr(uid)}-presets" class="agent-preset-selector" style="margin-bottom:8px"></div>`;
+    }
+
+    let nameHTML = '';
+    if (showName) {
+        nameHTML = `
+            <label>Name / Role:
+                <input type="text" class="acf-name" placeholder="e.g. QA Engineer, Frontend Dev" value="${escapeAttr(nameVal)}">
+            </label>`;
+    }
+
+    let autoPermissionsHTML = '';
+    if (showAutoPermissions) {
+        const defaultMode = _settingsFor(_acfServer(container)).default_permission_mode || 'bypassPermissions';
+        const permModeVal = autoPermsVal
+            ? (typeof autoPermsVal === 'string' ? autoPermsVal : (_permissionModeFromFlags(flagsVal) || defaultMode))
+            : 'default';
+        const permModeDesc = PERMISSION_MODE_DESCRIPTIONS[permModeVal] || '';
+        autoPermissionsHTML = `
+            <label>Permission Mode:
+                <select class="acf-permission-mode" data-on-change="perm-mode-describe">
+                    <option value="default"${permModeVal === 'default' ? ' selected' : ''}>Default</option>
+                    <option value="plan"${permModeVal === 'plan' ? ' selected' : ''}>Plan</option>
+                    <option value="acceptEdits"${permModeVal === 'acceptEdits' ? ' selected' : ''}>Accept Edits</option>
+                    <option value="auto"${permModeVal === 'auto' ? ' selected' : ''}>Auto Edit + Bash</option>
+                    <option value="bypassPermissions"${permModeVal === 'bypassPermissions' ? ' selected' : ''}>Bypass Permissions</option>
+                    <option value="dontAsk"${permModeVal === 'dontAsk' ? ' selected' : ''}>Don't Ask</option>
+                </select>
+                <span class="settings-hint perm-mode-desc">${escapeHtml(permModeDesc)}</span>
+            </label>`;
+    }
+
+    container.innerHTML = `
+        ${presetHTML}
+        ${nameHTML}
+        <div class="acf-top-row">
+            <label>Agent Type:
+                <select class="acf-agent-type">
+                    <option value="claude"${agentTypeVal === 'claude' || !agentTypeVal ? ' selected' : ''}>Claude</option>
+                    <option value="agy"${agentTypeVal === 'agy' || agentTypeVal === 'antigravity' || agentTypeVal === 'gemini' ? ' selected' : ''}>Antigravity</option>
+                    <option value="codex"${agentTypeVal === 'codex' ? ' selected' : ''}>Codex</option>
+                    <option value="pi"${agentTypeVal === 'pi' ? ' selected' : ''}>Pi</option>
+                    <option value="terminal"${agentTypeVal === 'terminal' ? ' selected' : ''}>Terminal</option>
+                </select>
+            </label>
+            <label class="acf-model-wrap">Model <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                <input type="text" class="acf-model" list="acf-models-${uid}" placeholder="Leave blank to use default" autocomplete="off" value="${escapeAttr(modelVal)}">
+                <datalist id="acf-models-${escapeAttr(uid)}"></datalist>
+            </label>
+        </div>
+        <div class="acf-cli-warning" style="display:none;margin:8px 0" role="status"></div>
+        <label>Behavior Prompt:
+            <textarea class="acf-prompt" rows="4" placeholder="Describe the agent's role and behavior...">${escapeHtml(promptVal)}</textarea>
+        </label>
+        ${autoPermissionsHTML}
+        <div class="permissions-section">
+            <button type="button" class="permissions-toggle-btn" data-on-click="perms-toggle" data-target="${escapeAttr(uid + '-perms')}">
+                <svg class="permissions-chevron" width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
+                Permissions <span class="acf-perms-summary" style="color:var(--text-muted);font-weight:normal;font-size:11px">(${escapeHtml(permsSummary)})</span>
+            </button>
+            <div id="${escapeAttr(uid)}-perms" class="permissions-editor" style="display:none">
+                <div class="perms-group">
+                    <label class="perms-label">Allow:</label>
+                    <div id="${escapeAttr(uid)}-perms-allow" class="perms-chips"></div>
+                </div>
+                <div class="perms-group">
+                    <label class="perms-label">Deny:</label>
+                    <div id="${escapeAttr(uid)}-perms-deny" class="perms-chips"></div>
+                </div>
+                <div class="perms-shell-patterns" style="display:none">
+                    <label class="perms-label">Shell patterns <span style="color:var(--text-muted);font-weight:normal">(comma-separated)</span>:</label>
+                    <input type="text" class="perms-shell-input" placeholder="e.g. git *, npm *, npx *">
+                </div>
+            </div>
+        </div>
+        <details class="team-advanced acf-flags-details">
+            <summary>Flags</summary>
+            <div class="team-advanced-body">
+                <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                    <input type="text" class="acf-flags" placeholder="e.g. --verbose" value="${escapeAttr(_stripPermFlags(flagsVal))}">
+                </label>
+            </div>
+        </details>
+    `;
+
+    // Initialize permissions chips
+    _setPermissions(`${uid}-perms`, caps);
+
+    // Render presets if enabled — pass containerId so the preset handler knows which ACF to update
+    if (showPreset) {
+        _renderPresetButtons(`${uid}-presets`, 'acf', { target: containerId });
+    }
+
+    // Loaded values are classified against the provider's known defaults and
+    // model catalog. Known values may be replaced on provider switch; custom
+    // values remain user-owned. Hold pre-fill until classification completes.
+    container.dataset.acfModelDirty = 'false';
+    container.dataset.acfModelClassifying = modelVal ? 'true' : 'false';
+    if (modelVal) _classifyLoadedACFModel(container, agentTypeVal, modelVal);
+
+    // Any user keystroke / paste / clear marks the field dirty so subsequent
+    // agent-type changes won't clobber it. Guard with e.isTrusted so our
+    // programmatic assignments (pre-fill, setAgentConfig) don't trip it.
+    const modelInput = container.querySelector('.acf-model');
+    if (modelInput) {
+        modelInput.addEventListener('input', (e) => {
+            if (e.isTrusted) {
+                container.dataset.acfModelClassifying = 'false';
+                container.dataset.acfModelDirty = 'true';
+            }
+        });
+    }
+
+    // Populate datalist + apply visibility + pre-fill for the initial agent type.
+    _syncACFModelField(container);
+    _checkAgentCLI(container.querySelector('.acf-agent-type')?.value || 'claude', container.querySelector('.acf-cli-warning'));
+    container.querySelector('.acf-agent-type')?.addEventListener('change', () => {
+        const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
+        _checkAgentCLI(agentType, container.querySelector('.acf-cli-warning'));
+        const permMode = container.querySelector('.acf-permission-mode')?.value || 'default';
+        const flagsEl = container.querySelector('.acf-flags');
+        if (flagsEl) flagsEl.value = _stripPermFlags(_normalizePermFlagsForAgent(flagsEl.value, agentType, permMode));
+        _syncACFAutoPermissions(container);
+        _syncACFModelField(container);
+    });
+}
+
+// _syncACFModelField reconciles the Model input with the currently selected
+// agent type:
+//   • fills the <datalist> with the canonical options for that type,
+//   • hides the field entirely for the terminal agent,
+//   • pre-fills the input with the user's default for that type, but only
+//     when the user hasn't touched the field (dirty flag off).
+export function _syncACFModelField(container) {
+    if (!container) return;
+    const typeSel = container.querySelector('.acf-agent-type');
+    const modelWrap = container.querySelector('.acf-model-wrap');
+    const modelInput = container.querySelector('.acf-model');
+    const datalist = container.querySelector('datalist[id^="acf-models-"]');
+    const agentType = typeSel?.value || 'claude';
+    if (modelWrap) {
+        modelWrap.style.display = (agentType === 'terminal') ? 'none' : '';
+    }
+    if (datalist) {
+        _getAgentModels(_acfServer(container)).then(models => _fillModelDatalist(datalist, agentType, models));
+    }
+    if (!modelInput) return;
+    if (container.dataset.acfModelClassifying === 'true' || container.dataset.acfModelDirty === 'true') return; // user owns or we are classifying the value
+    if (agentType === 'terminal') {
+        modelInput.value = '';
+        return;
+    }
+    _getDefaultModels(_acfServer(container)).then(defaults => {
+        // If the user started typing during the fetch, don't clobber their input.
+        if (container.dataset.acfModelDirty === 'true' || container.dataset.acfModelClassifying === 'true') return;
+        // Re-check the agent type — the user may have switched again mid-fetch.
+        const currentType = typeSel?.value || 'claude';
+        if (currentType === 'terminal') {
+            modelInput.value = '';
+            return;
+        }
+        modelInput.value = defaults[currentType] || '';
+    });
+}
+window.renderAgentConfigForm = renderAgentConfigForm;
+
+/**
+ * Get current values from an AgentConfigForm.
+ * @param {string} containerId - The container ID
+ * @returns {object} { name, agentType, model, prompt, flags, capabilities }
+ */
+export function getAgentConfig(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return {};
+    const uid = container.dataset.acfUid;
+    const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
+    const permMode = container.querySelector('.acf-permission-mode')?.value || 'default';
+    let flags = _stripPermFlags(container.querySelector('.acf-flags')?.value.trim() || '');
+    if (permMode && permMode !== 'default') {
+        flags = _normalizePermFlagsForAgent(flags, agentType, permMode);
+    }
+
+    // Terminal agents never carry a model — the field is hidden in the UI.
+    const rawModel = container.querySelector('.acf-model')?.value.trim() || '';
+    const model = agentType === 'terminal' ? '' : rawModel;
+
+    return {
+        name: container.querySelector('.acf-name')?.value.trim() || '',
+        agentType,
+        model,
+        prompt: container.querySelector('.acf-prompt')?.value.trim() || '',
+        flags,
+        capabilities: uid ? _getPermissions(`${uid}-perms`) : null,
+    };
+}
+window.getAgentConfig = getAgentConfig;
+
+/**
+ * Set/pre-fill values in an AgentConfigForm.
+ * @param {string} containerId - The container ID
+ * @param {object} values - { name, agentType, model, prompt, flags, capabilities }
+ */
+export function setAgentConfig(containerId, values) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const uid = container.dataset.acfUid;
+    const v = values || {};
+
+    const nameEl = container.querySelector('.acf-name');
+    if (nameEl) nameEl.value = v.name || '';
+    const typeEl = container.querySelector('.acf-agent-type');
+    if (typeEl) typeEl.value = v.agentType || v.agent_type || _settingsFor(_acfServer(container)).default_agent_type || 'claude';
+    const modelEl = container.querySelector('.acf-model');
+    if (modelEl) {
+        modelEl.value = v.model || '';
+        container.dataset.acfModelClassifying = v.model ? 'true' : 'false';
+        container.dataset.acfModelDirty = 'false';
+        if (v.model) _classifyLoadedACFModel(container, typeEl?.value || 'claude', v.model);
+    }
+    const promptEl = container.querySelector('.acf-prompt');
+    if (promptEl) promptEl.value = v.prompt || '';
+    const flagsEl = container.querySelector('.acf-flags');
+    if (flagsEl) flagsEl.value = _stripPermFlags(v.flags || '');
+    const permModeEl = container.querySelector('.acf-permission-mode');
+    if (permModeEl) {
+        // Extract permission mode from flags if present, otherwise use default from settings
+        const flagMode = _permissionModeFromFlags(v.flags || '');
+        const defaultMode = _settingsFor(_acfServer(container)).default_permission_mode || 'bypassPermissions';
+        if (flagMode) {
+            permModeEl.value = flagMode;
+        } else if (_hasPermFlag(v.flags || '')) {
+            // Legacy --dangerously-skip-permissions flag → map to bypassPermissions
+            permModeEl.value = 'bypassPermissions';
+        } else if (Object.prototype.hasOwnProperty.call(v, 'flags')) {
+            permModeEl.value = 'default';
+        } else {
+            permModeEl.value = defaultMode;
+        }
+    }
+
+    if (uid) _setPermissions(`${uid}-perms`, v.capabilities || null);
+
+    // Re-sync Model combo and prerequisite warning after a preset/type change.
+    _syncACFModelField(container);
+    _checkAgentCLI(typeEl?.value || 'claude', container.querySelector('.acf-cli-warning'));
+}
+(window.__coral ||= {}).setAgentConfig = setAgentConfig;
