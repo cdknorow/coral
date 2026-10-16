@@ -376,17 +376,15 @@ export function applySessionSummaryPref() {
     try { return localStorage.getItem('coral-group-by-server') === 'true'; } catch { return false; }
 }
 
-/** Sync the ≡ display menu's checkboxes and which options it offers. */
- function syncDisplayMenu() {
+/** Sync the ≡ display menu's checkboxes and which options it offers: the sidebar's, and the phone's copy in the agent list
+ *  header (#3991, the sidebar is hidden below 768 px). Both are found by data attributes, so each can appear once. */
+ export function syncDisplayMenu() {
     const n = serversShown().length;
-    const set = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
-    const show = (id, v) => { const el = document.getElementById(id); if (el) el.hidden = !v; };
-    set('display-show-summary', isSessionSummaryShown());
-    show('display-show-server-row', n >= 1);
-    set('display-show-server', isServerShownOnRows());
-    show('display-group-by-server-row', n >= 2);
-    set('display-group-by-server', isGroupedByServer());
-    document.getElementById('sidebar-summary-btn')?.classList.toggle('active', isSessionSummaryShown() || (n >= 1 && isServerShownOnRows()));
+    const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer() };
+    const offered = { summary: true, server: n >= 1, group: n >= 2 };
+    for (const input of document.querySelectorAll('[data-display-input]')) input.checked = checked[input.dataset.displayInput] === true;
+    for (const row of document.querySelectorAll('[data-display-row]')) row.hidden = !offered[row.dataset.displayRow];
+    for (const btn of document.querySelectorAll('[data-display-button]')) btn.classList.toggle('active', checked.summary || (n >= 1 && checked.server));
 }
 
 function _isSleepingExpanded(groupName) {
