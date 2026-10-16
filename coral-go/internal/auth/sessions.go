@@ -333,3 +333,10 @@ func (ks *KeyStore) setSessionCookie(w http.ResponseWriter, r *http.Request, tok
 	}
 	http.SetCookie(w, c)
 }
+
+// SetPeerUser gives the store the peer-user check for sign-in links (#3970).
+func (ks *KeyStore) SetPeerUser(f func(*http.Request) (same, supported bool)) {
+	ks.mu.Lock()
+	ks.peerUser = f
+	ks.mu.Unlock()
+}

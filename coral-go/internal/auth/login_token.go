@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -166,6 +167,22 @@ func (ks *KeyStore) handleLoginToken(w http.ResponseWriter, r *http.Request) boo
 	token := r.URL.Query().Get(LoginTokenParam)
 	if token == "" || r.Method != http.MethodGet {
 		return false
+	}
+	// Another account on this computer may have seen the link (an opener's argv is visible in
+	// ps): it can't use it. Checked before the token is used, so the owner's link still works
+	// (#3970, Security's #3967 finding 1).
+	if ks.peerUser != nil {
+		same, supported := ks.peerUser(r)
+		switch {
+		case supported && !same:
+			log.Printf("[auth] a sign-in link was opened by another user of this computer: refused (the link still works for you)")
+			http.Error(w, "This sign-in link was already used or has expired. Run 'coral open' on this computer for a new one.", http.StatusForbidden)
+			return true
+		case !supported:
+			ks.unknownPeer.Do(func() {
+				log.Printf("[auth] this system can't tell which user opened a sign-in link; links work as before")
+			})
+		}
 	}
 	if !ks.consumeLoginToken(token) {
 		http.Error(w, "This sign-in link was already used or has expired. Run 'coral open' on this computer for a new one.", http.StatusForbidden)

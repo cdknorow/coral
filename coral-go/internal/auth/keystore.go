@@ -60,6 +60,10 @@ type KeyStore struct {
 	setupCode    string
 	setupExpires time.Time
 	setupWrong   int
+	// peerUser is the peer-user check (#3970): a sign-in link opened by another OS user of this
+	// computer is refused. nil, or "unsupported", keeps today's behaviour.
+	peerUser    func(*http.Request) (same, supported bool)
+	unknownPeer sync.Once
 }
 
 // NewKeyStore creates or loads an API key from the given directory.

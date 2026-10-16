@@ -509,12 +509,14 @@ func (s *Server) buildRouter() chi.Router {
 	// The password (#3949): never in Coral Hub's tunnel table; an agent's token gets none of
 	// them (operatorOnlyRoutes).
 	authRoutes.SetCLIVerified(cliauth.Verified)
-	authRoutes.SetPeerUser(func(r *http.Request) (bool, bool) {
+	peerUser := func(r *http.Request) (bool, bool) {
 		if s.cloudHandler == nil {
 			return false, false
 		}
 		return s.cloudHandler.SameUser(r)
-	})
+	}
+	authRoutes.SetPeerUser(peerUser)
+	s.keyStore.SetPeerUser(peerUser) // a sign-in link opened by another OS user is refused (#3970)
 	r.Post("/auth/password", authRoutes.SignInWithPassword)
 	r.Post("/auth/password/create", authRoutes.CreatePassword)
 	r.Get("/api/auth/setup-code", authRoutes.GetSetupCode)
