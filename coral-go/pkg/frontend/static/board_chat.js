@@ -27,54 +27,83 @@ const _BOARD_CHAT_PAGE = 50;
 let _boardChatSelectMode = false;
 let _boardChatSelectedIds = new Set();
 
+// What a rebuild used to reset and a kept panel must reset itself on a switch: select mode, an open @-mention list, the title.
+function _resetBoardPanelForSwitch(panel, boardName) {
+    if (_boardChatSelectMode) {
+        const btn = panel.querySelector('.board-select-btn');
+        if (btn) btn.classList.remove('active');
+        const inputPane = document.getElementById('board-chat-input-pane');
+        if (inputPane) inputPane.style.display = '';
+        const bar = document.getElementById('board-chat-select-bar');
+        if (bar) bar.style.display = 'none';
+    }
+    const mention = document.getElementById('board-mention-dropdown');
+    if (mention && mention.style.display !== 'none') mention.style.display = 'none';
+    const title = panel.querySelector('.board-chat-title');
+    const label = keyLabel(boardName);
+    if (title && title.textContent !== label) title.textContent = label;
+}
+
 export function showBoardChatTab(boardName) {
     _activeBoardChat = boardName;
     ++_boardChatGen;
     const panel = document.getElementById('agentic-panel-board');
     if (!panel) return;
 
-    // The same board again (another agent of its team): the messages element, with its rendered messages, is carried over into
-    // the rebuilt panel, so the render below keeps those nodes instead of building them again (#3881).
-    const carried = _boardChatLoaded && _boardChatBoard === boardName ? document.getElementById('board-panel-msgs') : null;
-    if (carried) carried.remove();
+    // The same board again (another agent of its team): the panel is kept as it is, header, messages and input pane, so a draft in
+    // the textarea survives the switch and nothing is rebuilt (#3898; before, every switch rebuilt the panel and wiped the draft).
+    // A different board, or a panel that was cleared, is built afresh.
+    const sameBoard = _boardChatBoard === boardName && panel.dataset.board === boardName
+        && !!panel.querySelector('#board-panel-msgs') && !!panel.querySelector('#board-panel-input');
+    if (sameBoard) {
+        _resetBoardPanelForSwitch(panel, boardName);
+    } else {
+        // The same board again (another agent of its team): the messages element, with its rendered messages, is carried over into
+        // the rebuilt panel, so the render below keeps those nodes instead of building them again (#3881).
+        const carried = _boardChatLoaded && _boardChatBoard === boardName ? document.getElementById('board-panel-msgs') : null;
+        if (carried) carried.remove();
 
-    // Populate the board tab content (visibility managed by switchAgenticTab)
-    panel.innerHTML = `
-        <div class="board-chat-header">
-            <a class="board-chat-title" href="#" data-on-click="board-chat-open" data-board="${escapeAttr(boardName)}" title="Open full board view">${escapeHtml(keyLabel(boardName))}</a>
-            <button class="btn-nav" id="board-chat-pause-btn" data-on-click="board-chat-pause" data-board="${escapeAttr(boardName)}" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
-            <button class="btn-nav board-select-btn" data-on-click="board-chat-select" title="Export — select messages to export as Markdown">Export</button>
-        </div>
-        <div class="board-paused-banner" id="board-chat-paused-banner" style="display:none">Board reads are paused — agents cannot see new messages</div>
-        <div class="board-chat-messages" id="board-panel-msgs"></div>
-        <div class="board-chat-input-pane" id="board-chat-input-pane">
-            <div class="board-chat-resize-handle" id="board-chat-resize-handle"></div>
-            <div class="command-pane-toolbar board-chat-toolbar">
-                <div class="toolbar-group">
-                    <button class="btn-nav" data-on-click="board-chat-all" title="Notify all agents">@all</button>
-                </div>
-                <span class="toolbar-spacer"></span>
-                <div class="toolbar-group">
-                    <button class="btn-nav" data-on-click="board-chat-send" data-board="${escapeAttr(boardName)}" title="Send message">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="8" x2="14" y2="8"/><polyline points="9 3 14 8 9 13"/></svg>
-                    </button>
-                </div>
+        // Populate the board tab content (visibility managed by switchAgenticTab)
+        panel.innerHTML = `
+            <div class="board-chat-header">
+                <a class="board-chat-title" href="#" data-on-click="board-chat-open" data-board="${escapeAttr(boardName)}" title="Open full board view">${escapeHtml(keyLabel(boardName))}</a>
+                <button class="btn-nav" id="board-chat-pause-btn" data-on-click="board-chat-pause" data-board="${escapeAttr(boardName)}" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
+                <button class="btn-nav board-select-btn" data-on-click="board-chat-select" title="Export — select messages to export as Markdown">Export</button>
             </div>
-            <div class="board-chat-editor-wrap">
-                <textarea class="board-chat-textarea" id="board-panel-input" placeholder="Message the team... (@ to mention)"
-                    data-on-keydown="board-chat-key" data-on-input="board-chat-mention" data-board="${escapeAttr(boardName)}"></textarea>
-                <div class="board-mention-dropdown" id="board-mention-dropdown" style="display:none"></div>
-            </div>
-        </div>`;
+            <div class="board-paused-banner" id="board-chat-paused-banner" style="display:none">Board reads are paused — agents cannot see new messages</div>
+            <div class="board-chat-messages" id="board-panel-msgs"></div>
+            <div class="board-chat-input-pane" id="board-chat-input-pane">
+                <div class="board-chat-resize-handle" id="board-chat-resize-handle"></div>
+                <div class="command-pane-toolbar board-chat-toolbar">
+                    <div class="toolbar-group">
+                        <button class="btn-nav" data-on-click="board-chat-all" title="Notify all agents">@all</button>
+                    </div>
+                    <span class="toolbar-spacer"></span>
+                    <div class="toolbar-group">
+                        <button class="btn-nav" data-on-click="board-chat-send" data-board="${escapeAttr(boardName)}" title="Send message">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="8" x2="14" y2="8"/><polyline points="9 3 14 8 9 13"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="board-chat-editor-wrap">
+                    <textarea class="board-chat-textarea" id="board-panel-input" placeholder="Message the team... (@ to mention)"
+                        data-on-keydown="board-chat-key" data-on-input="board-chat-mention" data-board="${escapeAttr(boardName)}"></textarea>
+                    <div class="board-mention-dropdown" id="board-mention-dropdown" style="display:none"></div>
+                </div>
+            </div>`;
 
-    if (carried) document.getElementById('board-panel-msgs').replaceWith(carried);
+        if (carried) document.getElementById('board-panel-msgs').replaceWith(carried);
 
-    // Restore saved input pane height
-    const savedH = localStorage.getItem('coral-boardchat-height');
-    if (savedH) {
-        const pane = document.getElementById('board-chat-input-pane');
-        const h = parseInt(savedH, 10);
-        if (pane && h >= 80) pane.style.height = h + 'px';
+        // Restore saved input pane height
+        const savedH = localStorage.getItem('coral-boardchat-height');
+        if (savedH) {
+            const pane = document.getElementById('board-chat-input-pane');
+            const h = parseInt(savedH, 10);
+            if (pane && h >= 80) pane.style.height = h + 'px';
+        }
+
+
+    panel.dataset.board = boardName;
     }
 
     // A new board starts afresh; the same board shows what it had at once, and the poll fetches
