@@ -8,7 +8,7 @@ import { keyLabel, noteBoardLabels, onBoardLabelsChanged, sessionServer, session
 import { serverLabel, showServerLabels } from './server_status.js';
 
 /** headerContext returns { team, server } for a session ("" where nothing is shown). */
-export function headerContext(s) {
+ function headerContext(s) {
     // The session carries its board's label (board_label): note it first, so the line never shows
     // the board's id while the list that notes labels hasn't rendered this session yet (seen on a
     // slow runner right after a team launch).

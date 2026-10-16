@@ -74,7 +74,7 @@ async function httpError(resp) {
 
 /** apiFetch for a polled GET that is often unchanged (#3439): sends the last answer's validator
  *  and reuses that answer on a 304 (fetchValidated). Errors as apiFetch. */
-export async function apiFetchValidated(url) {
+ async function apiFetchValidated(url) {
     const r = await fetchValidated(url, headers => fetch(url, { headers }));
     if (!r.ok) throw await httpError(r.resp);
     return JSON.parse(r.text);

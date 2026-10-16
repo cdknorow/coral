@@ -189,7 +189,7 @@ export function capturePollStats() { return { ..._pollStats }; }
 
 // One tick of the capture timer. The timer keeps its 500 ms beat so the fast pace is back within one beat of the
 // terminal socket dropping; while the socket is up most beats do nothing.
-export function captureTick(now = Date.now()) {
+ function captureTick(now = Date.now()) {
     // The fast beat is for a terminal that shows the pane (no socket yet). In Chat view the terminal is not
     // shown and has no socket (#3719), so the capture only feeds the side panels and keeps the slow pace.
     const chatView = !!document.getElementById("capture-wrapper")?.classList.contains("chat-mode");

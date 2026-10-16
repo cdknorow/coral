@@ -83,7 +83,7 @@ export async function fetchFileList() {
 
 /** Fetch directory entries for directory browsing mode.
  *  Returns array of { name, type } where type is 'dir' or 'file'. */
-export async function fetchDirEntries(dir) {
+ async function fetchDirEntries(dir) {
     const now = Date.now();
     const cacheKey = dir || '.';
     const cached = dirCache[cacheKey];

@@ -70,7 +70,7 @@ function _getInitials(name) {
 const GOAL_LINE_MAX = 140;
 
 /** Collapse whitespace/newlines and truncate to one line. */
-export function oneLine(text, max = GOAL_LINE_MAX) {
+ function oneLine(text, max = GOAL_LINE_MAX) {
     if (!text) return '';
     const flat = String(text).replace(/\s+/g, ' ').trim();
     if (flat.length <= max) return flat;
@@ -78,7 +78,7 @@ export function oneLine(text, max = GOAL_LINE_MAX) {
 }
 
 /** Goal text for a session row: summary, else the first user prompt. */
-export function sessionGoalText(s) {
+ function sessionGoalText(s) {
     if (!s) return '';
     return oneLine(s.summary || s.first_prompt || '');
 }
@@ -90,7 +90,7 @@ export function sessionGoalText(s) {
  * changes as the agent works, and a prompt is a sentence or a path, not a
  * name (task #85). Both are rendered as goal text only.
  */
-export function sessionIdentitySource(s) {
+ function sessionIdentitySource(s) {
     if (!s) return '';
     return (s.display_name || '').trim()
         || (s.auto_name || '').trim()
@@ -138,7 +138,7 @@ function formatStaleness(seconds) {
  * Context, unread and selection are overlays, never winners. Every surface
  * (row dot/pill/aria, tooltip, mobile chip, workspace header, popout pill,
  * nav and group counts) reads this table so the words never diverge. */
-export const SESSION_STATES = {
+ const SESSION_STATES = {
     ended:          { label: 'Ended',          dot: 'ended',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
     sleeping:       { label: 'Sleeping',       dot: 'sleeping',  pill: null,             pillClass: '',          chip: 'idle',        attention: false },
     stuck:          { label: 'Stuck',          dot: 'stuck',     pill: 'Stuck',          pillClass: 'stuck',     chip: 'error',       attention: true },
@@ -2034,7 +2034,7 @@ export function applySessionSummaryPref() {
 // ── Server info in the agent list (#3085) ────────────────────────────────
 
 /** 'Show server' (setting show_session_server): unset = on with 2+ servers, off with one. */
-export function isServerShownOnRows() {
+ function isServerShownOnRows() {
     const v = String(state.settings?.show_session_server ?? '').toLowerCase();
     if (v === 'true') return true;
     if (v === 'false') return false;
@@ -2042,13 +2042,13 @@ export function isServerShownOnRows() {
 }
 
 /** 'Group by server' (per viewer, off unless chosen); only with 2+ servers. */
-export function isGroupedByServer() {
+ function isGroupedByServer() {
     if (serversShown().length < 2) return false;
     try { return localStorage.getItem('coral-group-by-server') === 'true'; } catch { return false; }
 }
 
 /** Sync the ≡ display menu's checkboxes and which options it offers. */
-export function syncDisplayMenu() {
+ function syncDisplayMenu() {
     const n = serversShown().length;
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
     const show = (id, v) => { const el = document.getElementById(id); if (el) el.hidden = !v; };
@@ -2162,18 +2162,18 @@ function _isSleepingExpanded(groupName) {
 
 /** Row-level attention (amber/red tint + attention pill): the three states
  *  that need the operator at the terminal. */
-export function sessionNeedsAttention(s) {
+ function sessionNeedsAttention(s) {
     return !!(s && SESSION_STATES[deriveSessionState(s)].attention);
 }
 
 /** held_inputs (automated sends the gate holds, #3578) as a safe non-negative integer. */
-export function sessionHeldCount(s) {
+ function sessionHeldCount(s) {
     const n = Number(s && s.held_inputs);
     return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 999) : 0;
 }
 
 /** board_unread as a safe, finite, non-negative integer (payloads are untrusted input to markup). */
-export function sessionUnreadCount(s) {
+ function sessionUnreadCount(s) {
     const n = Number(s && s.board_unread);
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
@@ -3058,7 +3058,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
     }
 }
 
-export function renderPaginationControls(total, page, pageSize) {
+ function renderPaginationControls(total, page, pageSize) {
     let container = document.getElementById("history-pagination");
     if (!container) {
         // Create pagination container after the history list
@@ -3308,7 +3308,7 @@ export async function updateHistoryTokenUsage(sessionId) {
     }
 }
 
-export async function getTeamTokenUsage(boardName) {
+ async function getTeamTokenUsage(boardName) {
     try {
         const resp = await teamFetch(boardName, n => `/api/token-usage?board_name=${encodeURIComponent(n)}`);
         if (!resp.ok) return null;

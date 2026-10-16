@@ -8,7 +8,7 @@
 import { state } from './state.js';
 import { LOCAL_SERVER, normServer, isHub } from './server_base.js';
 
-export const STATUS_META = {
+ const STATUS_META = {
     online:           { label: 'Online',           cls: 'online',       hint: 'Connected' },
     unreachable:      { label: 'Unreachable',      cls: 'unreachable',  hint: 'The hub cannot reach this server. Agents shown are the last known state.' },
     unauthorized:     { label: 'Key rejected',     cls: 'unauthorized', hint: 'The server rejected the stored API key. Edit the server and enter a new key.' },
@@ -178,7 +178,7 @@ export function serverAgentCount(e) {
 }
 
 /** The details panel shared by the server button and the group headers. */
-export function serverDetailsHtml(e) {
+ function serverDetailsHtml(e) {
     const m = statusMeta(e.status);
     const local = normServer(e.id) === LOCAL_SERVER;
     const count = serverAgentCount(e);
@@ -331,7 +331,7 @@ const PROXY_ERRORS = {
 
 /** Plain text for a hub-proxy failure talking to `serverId`, or '' when the
  *  response is not one (the caller then uses its own message). */
-export function proxyErrorMessage(httpStatus, body, serverId) {
+ function proxyErrorMessage(httpStatus, body, serverId) {
     const e = serverEntry(serverId);
     const label = (e && (e.label || e.id)) || 'The server';
     const code = body && typeof body === 'object' ? (body.error || body.code || '') : '';

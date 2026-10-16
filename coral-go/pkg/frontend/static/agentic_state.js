@@ -129,7 +129,7 @@ export async function loadAgentEvents(agentName, sessionId, options) {
     renderEventTimeline();
 }
 
-export function renderEventFilters() {
+ function renderEventFilters() {
     const container = document.getElementById('event-filters');
     if (!container) return;
 

@@ -949,16 +949,6 @@ button.subscriber-history-link {
     width: 100%;
 }
 
-.info-token-card {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--bg-secondary);
-}
-
 .info-token-label {
     color: var(--text-secondary);
     font-size: var(--fs-base);
@@ -1985,7 +1975,6 @@ button.subscriber-history-link {
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning); }
 .settings-hint[data-state="error"] { color: var(--danger); }
-.settings-hint[data-unencrypted="true"] { color: var(--warning); }
 .settings-database-encryption-warning {
     display: block;
     margin-top: 6px;
@@ -2111,42 +2100,7 @@ button.subscriber-history-link {
     color: var(--accent);
 }
 
-.overflow-menu-tier .tier-trial {
-    background: rgba(63, 185, 80, 0.15);
-    color: var(--success);
-}
-
 /* ── Resume Modal Items ────────────────────────────────────── */
-
-.resume-session-item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 10px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-}
-
-.resume-session-item:hover {
-    border-color: var(--accent);
-    background: var(--bg-hover);
-}
-
-.resume-item-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.resume-item-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
 
 /* ── Launch Type Chooser ──────────────────────────────────── */
 
@@ -2216,91 +2170,6 @@ button.subscriber-history-link {
     color: var(--text-secondary);
     text-align: center;
     line-height: 1.4;
-}
-
-.agent-launch-layout {
-    display: grid;
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-    gap: 18px;
-    align-items: start;
-    margin-bottom: 12px;
-}
-
-.agent-launch-sidebar {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 0;
-}
-
-.agent-launch-main,
-.agent-col-presets,
-.agent-col-fields {
-    min-width: 0;
-}
-
-.agent-launch-card {
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent), var(--bg-tertiary);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-}
-
-.agent-launch-card:not(details) {
-    padding: 14px;
-}
-
-.agent-launch-card[open] {
-    overflow: hidden;
-}
-
-.agent-launch-card summary {
-    display: none;
-}
-
-.agent-launch-card .mobile-launch-section-body {
-    padding: 14px;
-}
-
-.agent-launch-card-header {
-    margin-bottom: 12px;
-}
-
-.agent-launch-card-header h4 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.agent-launch-card-header p {
-    margin: 6px 0 0;
-    font-size: 12px;
-    line-height: 1.35;
-    color: var(--text-muted);
-}
-
-.agent-launch-main {
-    display: flex;
-    flex-direction: column;
-}
-
-.agent-col-fields textarea {
-    flex: 1;
-    min-height: 180px;
-    resize: vertical;
-}
-
-.agent-preset-vertical {
-    flex-direction: column;
-    align-items: stretch;
-    border-bottom: none;
-    padding-bottom: 0;
-    margin-bottom: 8px;
-}
-
-.agent-preset-vertical .agent-preset-btn {
-    text-align: left;
 }
 
 .agent-persona-actions {
@@ -2380,11 +2249,6 @@ button.subscriber-history-link {
     justify-content: center;
 }
 
-.agent-launch-sidebar .team-advanced {
-    gap: 8px;
-    margin-top: 2px;
-}
-
 .acf-top-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -2423,13 +2287,7 @@ button.subscriber-history-link {
     margin-top: 12px;
 }
 
-
 /* Locked preset fields */
-.preset-locked {
-    opacity: 0.6;
-    background: var(--bg-primary) !important;
-    cursor: default;
-}
 
 .team-columns {
     display: grid;
@@ -2935,43 +2793,6 @@ button.subscriber-history-link {
     margin-bottom: 12px;
 }
 
-.agent-preset-btn {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    padding: 5px 12px;
-    font-size: var(--fs-md);
-    cursor: pointer;
-    border-radius: 14px;
-    transition: all 0.15s;
-    white-space: nowrap;
-}
-
-.agent-preset-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-    border-color: var(--text-muted);
-}
-
-.agent-preset-btn.active {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
-}
-
-.agent-preset-saved {
-    background: transparent;
-    border-style: dashed;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.agent-preset-saved.active {
-    background: var(--accent);
-    border-style: solid;
-}
-
 .import-export-row {
     display: flex;
     gap: 6px;
@@ -3013,14 +2834,6 @@ button.subscriber-history-link {
 
 .launch-back-btn:hover {
     color: var(--text-primary);
-}
-
-.resume-item-goal {
-    font-size: 12px;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 /* ── Template Browser ─────────────────────────────────────── */
@@ -3359,10 +3172,6 @@ button.subscriber-history-link {
     margin-top: 2px;
 }
 
-.cli-warning-icon {
-    font-size: 13px;
-}
-
 /* ── Color Picker Popover ────────────────────────────────── */
 
 .color-picker-popover {
@@ -3553,7 +3362,6 @@ button.subscriber-history-link {
 
 .modal-sm { width: 400px; }
 .modal-md { width: 420px; }
-.modal-lg { width: 480px; }
 .modal-xl { width: 600px; }
 
 /* ── Default Prompts Modal ─────────────────────────────────── */
@@ -3816,7 +3624,6 @@ button.subscriber-history-link {
 .settings-cloud-code { margin: 6px 0; font-size: var(--fs-base); }
 .settings-cloud-usercode { font-size: 1.6em; letter-spacing: 0.12em; margin-top: 4px; user-select: all; }
 .settings-cloud-actions { display: flex; gap: 8px; margin: 6px 0; }
-.settings-cloud-launch { display: block; margin: 6px 0; }
 
 /* A field the server rejected (e.g. a launch directory that does not exist, #3152). */
 .input-invalid,

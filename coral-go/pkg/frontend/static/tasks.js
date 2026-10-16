@@ -144,7 +144,7 @@ export async function loadSubagents(agentName, sessionId, options) {
 }
 
 /** Shape a subagent like a task row so it can share the unified task table. */
-export function subagentToTaskRow(sa, mainAgentName) {
+ function subagentToTaskRow(sa, mainAgentName) {
     const type = sa.subagent_type || '';
     return {
         ...sa,
@@ -331,7 +331,7 @@ async function _loadSubagentConversation(sa) {
     _renderSubagentDetail(current);
 }
 
-export function showSubagentDetailModal(subagentId) {
+ function showSubagentDetailModal(subagentId) {
     const sa = (state.currentSubagents || []).find(s => s.subagent_id === subagentId);
     const modal = document.getElementById('task-detail-modal');
     if (!sa || !modal) return;
@@ -473,7 +473,7 @@ let _boardTasksLoadSeq = 0;
 // as light items (no body or workflow text; the detail view fetches the full task).
 // "Load more" pages older done tasks with the cursor; a poll refreshes the first page
 // and keeps the older pages already loaded.
-export const BOARD_TASK_PAGE = 50;
+ const BOARD_TASK_PAGE = 50;
 // A fetch that never answers (a hung server, a dead hub link) must not stop the poll for
 // good, since the poll never starts a tick while one runs (#3262).
 export const boardTaskFetchHooks = { timeoutMs: 20000 };

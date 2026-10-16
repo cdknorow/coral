@@ -114,7 +114,7 @@ function _updateFitButton(show) {
 }
 
 /** Turns fit to width on or off on this device (#3455). */
-export function toggleTerminalFitWidth(on = !_fitWidth) {
+ function toggleTerminalFitWidth(on = !_fitWidth) {
     _fitWidth = !!on;
     try { localStorage.setItem(FIT_WIDTH_KEY, _fitWidth ? '1' : '0'); } catch { /* private mode */ }
     _applyFitWidth();
@@ -331,7 +331,7 @@ function _setDisconnectedBadge(visible) {
 // early and turn the rest into typed input; without ESC it stays text inside the paste.
 const PASTE_CONTROLS = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g;
 
-export function sanitizePaste(text) {
+ function sanitizePaste(text) {
     return String(text == null ? '' : text).replace(PASTE_CONTROLS, '');
 }
 
@@ -345,7 +345,7 @@ function _onPaste(e) {
 // Paste text into the terminal, cleaned. Output can switch bracketed paste off (ESC[?2004l), and
 // then each line of a multi-line paste is sent as typed and runs on its own: so that case asks
 // first. The answer applies to the terminal the paste was made in.
-export function pasteText(text) {
+ function pasteText(text) {
     const t = terminal;
     const clean = sanitizePaste(text);
     if (!t || !clean) return;
@@ -747,7 +747,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
 
 // TERMINAL_BUSY_CLOSE is the close code Coral Hub sends when the machine refused a terminal
 // because too many are open through the Hub (hubproxy.StatusTooManyStreams, #3663).
-export const TERMINAL_BUSY_CLOSE = 4429;
+ const TERMINAL_BUSY_CLOSE = 4429;
 const TERMINAL_BUSY_RETRY_MS = 15000;
 
 export function disconnectTerminalWs() {

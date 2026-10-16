@@ -52,19 +52,19 @@ export function applyMachineHealth(msg) {
 }
 
 /** This dashboard's machine health, or null when unknown (no value yet, or the feed is down). */
-export function localMachineHealth() {
+ function localMachineHealth() {
     const ws = state.coralWs;
     if (!_local || !ws || ws.readyState !== 1) return null;
     return _local;
 }
 
 /** The status to show: ok | busy | stalled, or unknown (no value, or not one of the enums). */
-export function healthStatus(h) {
+ function healthStatus(h) {
     return h && typeof h.status === 'string' && STATUS.has(h.status) ? h.status : 'unknown';
 }
 
 /** One line for the status, e.g. "Busy (CPU)", "OK", "Unknown". */
-export function healthStatusText(h) {
+ function healthStatusText(h) {
     const s = healthStatus(h);
     if (s === 'unknown') return 'Unknown';
     const r = typeof h.reason === 'string' ? REASON.get(h.reason) : undefined;
@@ -74,7 +74,7 @@ export function healthStatusText(h) {
 const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /** Bytes as "512 MB", "1.4 GB"; '–' when unknown. */
-export function formatBytes(v) {
+ function formatBytes(v) {
     const b = num(v);
     if (b === null) return '–';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -151,4 +151,3 @@ if (typeof document !== 'undefined') { // a page (pure-node tests import this mo
     document.addEventListener('coral:feed-state', renderLocalCard);
     renderLocalCard();
 }
-export { renderLocalCard };

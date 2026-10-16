@@ -148,25 +148,6 @@
 
 /* ── Command Hint ──────────────────────────────────────────── */
 
-.command-hint {
-    font-size: var(--fs-base);
-    color: var(--text-muted);
-    padding: 4px 0 0;
-    text-align: right;
-}
-
-.command-hint kbd {
-    display: inline-block;
-    padding: 1px 5px;
-    font-size: var(--fs-sm);
-    font-family: var(--font-mono);
-    color: var(--text-secondary);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    box-shadow: 0 1px 0 var(--border);
-}
-
 /* ── Split Send Button ─────────────────────────────────────── */
 
 .toolbar-send-split {

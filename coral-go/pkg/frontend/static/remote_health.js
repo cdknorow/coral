@@ -10,7 +10,7 @@ import { staleReason, serverEntry } from './server_status.js';
 
 /** The selected session's live-list entry: the feed keeps its `stale` current
  *  (state.currentSession is a copy taken when the agent was selected). */
-export function liveEntry(session) {
+ function liveEntry(session) {
     if (!session) return null;
     const srv = normServer(sessionServer(session));
     return (state.liveSessions || []).find(s => s && s.session_id === session.session_id && normServer(sessionServer(s)) === srv) || null;

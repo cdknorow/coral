@@ -14,11 +14,11 @@
 
 import { isCloud } from './server_base.js';
 
-export const HUB_NAV_URL = '/hub/nav.json';
+ const HUB_NAV_URL = '/hub/nav.json';
 export const HUB_NAV_MAX_BYTES = 4096;
-export const HUB_NAV_MAX_ITEMS = 8;
-export const HUB_NAV_MAX_LABEL = 40;
-export const HUB_NAV_PATH = /^\/machines(\/[a-z0-9-]+)*$/;
+ const HUB_NAV_MAX_ITEMS = 8;
+ const HUB_NAV_MAX_LABEL = 40;
+ const HUB_NAV_PATH = /^\/machines(\/[a-z0-9-]+)*$/;
 
 /** The links a /hub/nav.json body allows ([] for anything that isn't a valid list). */
 export function parseHubNav(text) {
@@ -42,7 +42,7 @@ export function parseHubNav(text) {
 }
 
 /** Render links into nav (an element): plain same-tab anchors, text only. */
-export function renderHubNav(nav, links) {
+ function renderHubNav(nav, links) {
     if (!nav) return;
     nav.replaceChildren(...links.map(({ label, path }) => {
         const a = document.createElement('a');

@@ -192,11 +192,6 @@
     font-variant-numeric: tabular-nums;
 }
 
-.cost-card-value-muted {
-    font-size: 16px;
-    color: var(--text-muted);
-}
-
 /* Sections */
 .cost-section {
     margin-bottom: 24px;
@@ -294,49 +289,12 @@
     font-weight: 400;
 }
 
-.cost-board-name {
-    color: var(--text-muted);
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .cost-date {
     color: var(--text-secondary);
     font-size: var(--fs-base);
 }
 
 /* Agent type badges */
-.cost-agent-badge {
-    display: inline-block;
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 3px;
-    text-transform: uppercase;
-}
-
-.cost-agent-claude {
-    background: rgba(204, 132, 63, 0.15);
-    color: #cc843f;
-}
-
-.cost-agent-agy,
-.cost-agent-antigravity,
-.cost-agent-gemini {
-    background: rgba(66, 133, 244, 0.15);
-    color: #4285f4;
-}
-
-.cost-agent-codex {
-    background: rgba(16, 163, 127, 0.15);
-    color: #10a37f;
-}
-
-.cost-agent-terminal {
-    background: rgba(136, 136, 136, 0.12);
-    color: var(--text-muted);
-}
 
 /* Model name */
 .cost-model-name {

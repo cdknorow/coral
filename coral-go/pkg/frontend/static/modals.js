@@ -462,7 +462,7 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
 /** Mark a form field the server rejected: aria-invalid, a red outline and the
  *  reason as its title, focused. Cleared by the next edit, typed or set by
  *  Browse ('change'), and when the dialog closes or its fields reset (#3152). */
-export function markFieldInvalid(input, message) {
+ function markFieldInvalid(input, message) {
     clearFieldInvalid(input);
     const previousTitle = input.title;
     input.setAttribute('aria-invalid', 'true');
@@ -482,7 +482,7 @@ export function markFieldInvalid(input, message) {
 }
 
 /** Undo markFieldInvalid, if the field is marked. */
-export function clearFieldInvalid(input) {
+ function clearFieldInvalid(input) {
     if (input && input._clearInvalid) {
         const undo = input._clearInvalid;
         input._clearInvalid = null;

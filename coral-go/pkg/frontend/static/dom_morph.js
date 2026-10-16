@@ -37,7 +37,7 @@ const ATOMIC = new Set(['svg', 'math', 'table', 'thead', 'tbody', 'tr', 'select'
 const TAG = /<(\/?)([A-Za-z][\w:-]*)(?:[^"'>]|"[^"]*"|'[^']*')*>/y;
 
 /** Split markup into its top-level nodes: [{ src, tag, openEnd }] (tag null for text/comments). */
-export function splitTopLevel(html) {
+ function splitTopLevel(html) {
     const out = [];
     const n = html.length;
     let i = 0, depth = 0, start = 0, top = null;
@@ -92,7 +92,7 @@ export const morphStats = { full: 0, replaced: 0, kept: 0 };
  *  pieces unchanged at the start and the end are matched with native string
  *  compares, and only the changed middle is tokenized. The tokenizer's state is
  *  the same after an identical prefix, so the result equals splitTopLevel(html). */
-export function splitAgainst(html, prev) {
+ function splitAgainst(html, prev) {
     if (!prev || !prev.length) return splitTopLevel(html);
     let off = 0, k = 0;
     while (k < prev.length && html.startsWith(prev[k].src, off)) { off += prev[k].src.length; k++; }

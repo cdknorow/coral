@@ -15,12 +15,12 @@
  *     folders are already a short list (6 per server); they go on sign-out and account change.
  *   - A local dashboard has no account: its keys stay as they were (nothing is lost on update). */
 
-export const STORED_KINDS = ['coral-input-drafts', 'coral-pending-messages', 'coral-recent-dirs', 'coral-starred-files-'];
+ const STORED_KINDS = ['coral-input-drafts', 'coral-pending-messages', 'coral-recent-dirs', 'coral-starred-files-'];
 const OWNER_KEY = 'coral-store-owner';
-export const DRAFT_MAX_AGE_MS = 3 * 24 * 3600 * 1000;
-export const ENDED_GRACE_MS = 24 * 3600 * 1000;
+ const DRAFT_MAX_AGE_MS = 3 * 24 * 3600 * 1000;
+ const ENDED_GRACE_MS = 24 * 3600 * 1000;
 export const DRAFTS_MAX_BYTES = 256 * 1024;
-export const STARS_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+ const STARS_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 export const DAY_MS = 24 * 3600 * 1000;
 let _lastLivePrune = 0;
 

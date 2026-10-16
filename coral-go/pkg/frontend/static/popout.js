@@ -92,8 +92,8 @@ function _detect() {
 }
 
 export function isPopout() { _detect(); return _mode === 'agent' || _mode === 'invalid'; }
-export function popoutTargetId() { _detect(); return _targetId; }
-export function popoutGetState() { return _state; }
+ function popoutTargetId() { _detect(); return _targetId; }
+ function popoutGetState() { return _state; }
 
 /** True while terminal input/keys/commands must not be sent: no authoritative
  *  attachable state yet (loading/reconnecting), sleeping, ended or not-found. */
@@ -163,7 +163,7 @@ async function _fetchResolver(id) {
     } catch { return null; }
 }
 
-export async function resolveAndSelect(attempt = 0, downAttempt = 0) {
+ async function resolveAndSelect(attempt = 0, downAttempt = 0) {
     if (!_targetId) { _setState('not-found'); return; }
     if (_resolverRetryTimer) { clearTimeout(_resolverRetryTimer); _resolverRetryTimer = null; }
     if (downAttempt === 0) _setState('loading');

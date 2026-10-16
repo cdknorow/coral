@@ -382,7 +382,7 @@ export function syncFilesSourceTeam() {
     render();activate();
 }
 
-export function selectKnowledgeSource() { window.switchAgenticTab?.('knowledge', 'top'); }
+ function selectKnowledgeSource() { window.switchAgenticTab?.('knowledge', 'top'); }
 
 // ── Knowledge tab ───────────────────────────────────────────────────────
 

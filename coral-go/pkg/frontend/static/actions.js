@@ -107,7 +107,7 @@ function run(event) {
 
 let installed = false;
 /** installActions starts the delegated listeners (once). */
-export function installActions(root = document) {
+ function installActions(root = document) {
     if (installed) return;
     installed = true;
     for (const type of ACTION_EVENTS) root.addEventListener(type, run);

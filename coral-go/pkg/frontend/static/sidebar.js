@@ -312,7 +312,7 @@ export function toggleAgenticPanel(forceState) {
     setTimeout(() => fitTerminal(), 300);
 }
 
-export function _syncPanelToggleBtn(isOpen) {
+ function _syncPanelToggleBtn(isOpen) {
     const btn = document.getElementById('panel-toggle-btn');
     if (btn) btn.classList.toggle('active', isOpen);
     const popoutBtn = document.getElementById('popout-panel-toggle-btn');

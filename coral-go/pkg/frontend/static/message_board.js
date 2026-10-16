@@ -598,7 +598,7 @@ export async function toggleBoardPause() {
 
 // The × on a message asks first: a deleted message is gone for every reader. The wording names the
 // sender and the start of the text, so a mis-click on the wrong row is easy to spot (#3696).
-export function confirmDeleteBoardMessage(messageId) {
+ function confirmDeleteBoardMessage(messageId) {
     const m = _allMessages.find(x => x.id === messageId);
     const text = m ? String(m.content || '').replace(/\s+/g, ' ').trim() : '';
     const what = m ? `the message from ${m.job_title || 'Unknown'}${text ? ` ("${text.length > 60 ? text.slice(0, 60) + '\u2026' : text}")` : ''}` : `message #${messageId}`;
@@ -821,7 +821,7 @@ export async function showExportBoardModal() {
     modal.style.display = 'flex';
 }
 
-export function hideExportBoardModal() {
+ function hideExportBoardModal() {
     const modal = document.getElementById('mb-export-modal');
     if (modal) modal.style.display = 'none';
 }

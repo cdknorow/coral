@@ -50,7 +50,7 @@ export function loadSession(force = false) {
 }
 
 /** The current CSRF token ('' until the session has loaded). */
-export function csrfToken() { return (_session && _session.csrf) || ''; }
+ function csrfToken() { return (_session && _session.csrf) || ''; }
 
 /** Where the sign-in page sends the user back to afterwards (same-origin path only). */
 export function signInUrl() {

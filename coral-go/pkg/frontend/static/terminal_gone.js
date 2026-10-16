@@ -20,7 +20,7 @@ import { isPopout } from './popout.js';
 const _gone = new Set();
 const keyOf = s => `${sessionServer(s)}|${s.session_id}`;
 
-export function isTerminalGone(s) {
+ function isTerminalGone(s) {
     return !!s && !!s.session_id && (_gone.has(keyOf(s)) || isGoneAsleep(s));
 }
 
@@ -31,7 +31,7 @@ export function isGoneAsleep(s) {
 }
 
 /** Record that this agent's terminal is gone and show it on its row and header. */
-export function markTerminalGone(s) {
+ function markTerminalGone(s) {
     if (!s || !s.session_id || isTerminalGone(s)) return;
     _gone.add(keyOf(s));
     _dismissed.delete(keyOf(s)); // a new failure is said again
@@ -139,8 +139,8 @@ document.addEventListener('click', e => {
 // carrying an id: the send is accepted once all its frames are acknowledged, and refused when one
 // of them is (terminal_gone, terminal_input_failed, the hub's hub_read_only).
 // A send that gets no answer in this long is not taken as delivered.
-export const SOCKET_ACK_TIMEOUT_MS = 20000;
-export const NO_ANSWER_TEXT = "The agent's terminal did not confirm the message. It may not have been sent: check the terminal before sending it again.";
+ const SOCKET_ACK_TIMEOUT_MS = 20000;
+ const NO_ANSWER_TEXT = "The agent's terminal did not confirm the message. It may not have been sent: check the terminal before sending it again.";
 const _socketSends = new Set();
 let _nextInputId = 1;
 

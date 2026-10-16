@@ -8,9 +8,9 @@
 
 import { escapeHtml, escapeAttr } from './utils.js';
 
-export const TASK_QUEUE_SENDER = 'Coral Task Queue';
+ const TASK_QUEUE_SENDER = 'Coral Task Queue';
 
-export function isTaskQueueMessage(m) {
+ function isTaskQueueMessage(m) {
     if (!m) return false;
     // The server sets is_system for its own posts (#3387); a name alone is never trusted.
     return m.is_system === true && m.subscriber_id === TASK_QUEUE_SENDER;

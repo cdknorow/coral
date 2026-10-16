@@ -201,7 +201,6 @@
 }
 
 .session-group-item.session-done .session-label,
-.session-group-item.session-done .session-avatar,
 .session-group-item.session-done .session-goal {
     color: var(--text-muted);
     filter: grayscale(1);
@@ -308,16 +307,6 @@
     font-weight: 500;
 }
 
-.session-token-line {
-    font-size: var(--fs-base);
-    color: var(--text-secondary);
-    opacity: 0.7;
-    margin-top: 1px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .session-context-bar {
     display: flex;
     align-items: center;
@@ -326,34 +315,12 @@
     line-height: 14px;
 }
 
-.context-bar-track {
-    flex: 1;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 3px;
-    overflow: hidden;
-    min-width: 40px;
-    max-width: 80px;
-}
-
-.context-bar-fill {
-    display: block;
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.3s ease;
-}
-
 .context-bar-label {
     font-size: var(--fs-base);
     line-height: 14px;
     color: var(--text-secondary);
     opacity: 0.8;
     white-space: nowrap;
-}
-
-.session-context-bar.ctx-warning .context-bar-label {
-    color: var(--status-warning);
-    opacity: 1;
 }
 
 .session-context-bar.ctx-error .context-bar-label {
@@ -664,30 +631,6 @@
     opacity: 0.8;
 }
 
-.agent-subgroup-header {
-    font-size: var(--fs-base);
-    font-weight: 500;
-    color: var(--text-secondary);
-    padding: 6px 8px 4px 18px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255, 255, 255, 0.02);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-    margin-top: 4px;
-    user-select: none;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-}
-
-.agent-subgroup-header:first-child {
-    margin-top: 0;
-}
-
-.agent-subgroup-header svg {
-    opacity: 0.6;
-}
-
 .session-list .sleeping-summary-row {
     font-size: var(--fs-base);
     color: var(--text-muted);
@@ -762,22 +705,6 @@
     /* Same as regular agent rows — no size reduction */
 }
 
-.group-board-link {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 3px;
-    line-height: 1;
-    flex-shrink: 0;
-}
-
-.group-board-link:hover {
-    color: var(--accent);
-    background: var(--bg-hover);
-}
-
 /* ── Grouped Sessions ──────────────────────────────────────── */
 
 .session-group-header {
@@ -848,17 +775,6 @@
 
 /* ── Terminal icon in sidebar ─────────────────────────────── */
 
-.terminal-icon {
-    vertical-align: -1px;
-    opacity: 0.7;
-    flex-shrink: 0;
-}
-
-.orch-icon {
-    vertical-align: -1px;
-    flex-shrink: 0;
-}
-
 .agent-icon {
     font-size: 13px;
     vertical-align: middle;
@@ -890,10 +806,6 @@
     white-space: nowrap;
     text-transform: none;
     letter-spacing: 0;
-}
-
-.session-group-spacer {
-    flex: 1;
 }
 
 .folder-copy-btn {
@@ -1005,7 +917,6 @@
 .session-group-item.needs-attention .session-label {
     color: var(--text-primary);
 }
-
 
 /* Rows never animate (reduced motion by default); the state pill carries the text. */
 .session-group-item .session-dot,
@@ -1237,14 +1148,6 @@
     gap: 4px;
 }
 
-.session-title-actions .actions-divider {
-    width: 1px;
-    height: 20px;
-    background: var(--border);
-    margin: 0 4px;
-    flex-shrink: 0;
-}
-
 .session-title h2 {
     font-size: 16px;
     font-weight: 600;
@@ -1260,11 +1163,6 @@
     flex-direction: row;
     align-items: center;
     gap: 8px;
-}
-
-.meta-separator {
-    color: var(--text-muted);
-    font-size: 14px;
 }
 
 .status-line, .summary-line {
@@ -1506,12 +1404,6 @@
     padding: 8px 12px;
 }
 
-.waiting-banner.done-banner {
-    background: rgba(76, 175, 80, 0.15);
-    border-color: rgba(76, 175, 80, 0.3);
-    color: var(--success);
-}
-
 /* ── Session ID Label ──────────────────────────────────────── */
 
 .session-id-label {
@@ -1572,21 +1464,8 @@
 }
 
 .session-board-card.team-sleeping .group-header-text,
-.session-board-card.team-sleeping .group-board-link,
 .session-board-card.team-sleeping .board-card-agents {
     color: var(--text-muted);
-}
-
-.agent-folder-path {
-    font-size: var(--fs-base);
-    color: var(--text-secondary);
-    opacity: 0.7;
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    direction: rtl;
-    text-align: left;
 }
 
 .session-board-card-toplevel .board-card-header .group-name-line {

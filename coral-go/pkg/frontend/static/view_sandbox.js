@@ -31,7 +31,7 @@ export const VIEW_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-s
 /** The host's own CSP (view_host.html's meta tag; a test keeps the two in step). */
 export const HOST_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src about:; form-action 'none'; base-uri 'none'";
 /** A fixed URL (outside the versioned static prefix), as panel_host.html. */
-export const VIEW_HOST_URL = '/static/view_host.html';
+ const VIEW_HOST_URL = '/static/view_host.html';
 export const MAX_BRIDGE_RESPONSE_BYTES = 1024 * 1024;
 const MAX_PATH_LENGTH = 300;
 

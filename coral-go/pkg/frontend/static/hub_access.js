@@ -65,13 +65,13 @@ export function blockedReason(server, tier) {
 export function launchBlockedReason(server) { return blockedReason(server, 'launch'); }
 
 /** Header chip text, e.g. "Read-only: Hub: View". */
-export function readOnlyChipText(a) {
+ function readOnlyChipText(a) {
     const m = a.limitedBy === 'machine' ? label(a.effective) || label(a.local) : label(a.hub) || label(a.effective);
     if (!m) return 'Read-only';
     return a.limitedBy === 'machine' ? `Read-only: This machine: ${m}` : `Read-only: Hub: ${m}`;
 }
 
-export const VIEW_ONLY_PLACEHOLDER = 'View only through Coral Hub';
+ const VIEW_ONLY_PLACEHOLDER = 'View only through Coral Hub';
 
 function renderChip() {
     const chip = document.getElementById('hub-readonly-chip');

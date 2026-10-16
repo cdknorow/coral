@@ -149,7 +149,7 @@ async function loadAllOlder() {
     }
 }
 
-export function openFind() {
+ function openFind() {
     if (!chatVisible()) return false;
     ensureBar();
     bar.hidden = false;
@@ -171,7 +171,7 @@ export function openFind() {
     return true;
 }
 
-export function closeFind() {
+ function closeFind() {
     if (!bar) return;
     bar.hidden = true;
     setFindBtn(false);

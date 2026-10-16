@@ -151,7 +151,7 @@ export function pausedForMs(machine = '') {
  *  marks its own congestion, 'the machine' when one remote machine refused through a hub, and
  *  otherwise the server the page talks to ('Coral Hub' on a hub-served dashboard, else 'Coral').
  *  Without an answer (a pause already running), by the pause: Coral's own, or that machine's. */
-export function busyWho(resp, { machine = '', hub = false } = {}) {
+ function busyWho(resp, { machine = '', hub = false } = {}) {
     const self = hub ? 'Coral Hub' : 'Coral';
     if (resp) {
         if (resp.headers && resp.headers.get('X-Coral-Hub-Overload') === '1') return 'Coral Hub';

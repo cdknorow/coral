@@ -175,7 +175,7 @@ export async function loadSettings() {
 
 /** A partner build's name in the settings menu (Coral for Dropbox); nothing otherwise.
  *  Coral has no paid licence (#3221). */
-export async function _loadTierBadge() {
+ async function _loadTierBadge() {
     const badge = document.getElementById('tier-badge');
     if (!badge) return;
     try {
@@ -192,7 +192,7 @@ export async function _loadTierBadge() {
 }
 
 /** Resolve "system" to the actual dark/light value */
-export function resolveTheme(theme) {
+ function resolveTheme(theme) {
     if (theme === "system") {
         return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     }

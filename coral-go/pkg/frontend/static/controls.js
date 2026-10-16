@@ -294,7 +294,7 @@ export function getMacros() {
     return [...DEFAULT_MACROS];
 }
 
-export async function saveMacros(macros) {
+ async function saveMacros(macros) {
     state.settings.macros = JSON.stringify(macros);
     try {
         await fetch("/api/settings", {

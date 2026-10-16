@@ -52,7 +52,6 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
     display: none;
 }
 
-
 .agentic-state {
     width: 420px;
     min-width: 280px;
@@ -218,16 +217,6 @@ body.panel-dragging .agentic-state {
 
 /* Reversible Team settings workspace: replace only the right pane while the
    selected agent's chat/terminal remains mounted on the left. */
-.agentic-state.team-settings-workspace-active {
-    width: min(760px, 92vw);
-    min-width: 320px;
-    max-width: 92vw;
-}
-.agentic-state.team-settings-workspace-active > .agentic-block,
-.agentic-state.team-settings-workspace-active > .agentic-block-resize-handle,
-.agentic-state.team-settings-workspace-active > .agentic-collapse-btn {
-    display: none;
-}
 .team-settings-workspace {
     display: flex;
     flex: 1;
@@ -250,13 +239,6 @@ body.panel-dragging .agentic-state {
 }
 .team-settings-workspace > header h2 { margin: 0 0 4px; font-size: var(--type-page-size); }
 .team-settings-workspace > header p { margin: 0; color: var(--text-secondary); font-size: 12px; }
-.team-settings-workspace-actions { display: flex; gap: 8px; flex-shrink: 0; }
-.team-settings-workspace-actions button { cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
-    font-size: var(--fs-md);
-    font-family: var(--font-sans);
-    min-height: var(--control-compact-height);
-}
-.team-settings-workspace-actions button:hover { background: var(--bg-hover); }
 .team-settings-workspace .working-mode-form { flex: 1; }
 .team-view-workspace .availability-content { flex: 1; min-height: 0; overflow: auto; padding-right: 4px; }
 .team-view-workspace .availability-toolbar { flex-shrink: 0; }
@@ -283,14 +265,6 @@ body.panel-dragging .agentic-state {
 }
 
 @media(max-width: 767px) {
-    .agentic-state.team-settings-workspace-active {
-        position: fixed;
-        inset: var(--top-bar-height, 49px) 0 0;
-        width: 100% !important;
-        max-width: none;
-        min-width: 0;
-        z-index: 60;
-    }
     .team-settings-workspace { padding: 14px; }
     .team-settings-workspace > header h2 { font-size: var(--type-page-size); }
 }
@@ -928,27 +902,6 @@ body.panel-dragging .agentic-state {
     white-space: normal;
 }
 
-.task-delete-btn {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-size: 16px;
-    cursor: pointer;
-    padding: 0 4px;
-    line-height: 1;
-    opacity: 0;
-    transition: opacity 0.15s, color 0.15s;
-    flex-shrink: 0;
-}
-
-.task-item:hover .task-delete-btn {
-    opacity: 1;
-}
-
-.task-delete-btn:hover {
-    color: var(--error);
-}
-
 /* ── Board Tasks ──────────────────────────────────────────── */
 
 .board-tasks-section {
@@ -1012,16 +965,6 @@ body.panel-dragging .agentic-state {
 .task-confirm-text {
     font-size: 13px;
     color: var(--text-secondary);
-}
-
-.task-confirm-input {
-    width: 100%;
-    padding: 6px 8px;
-    font-size: 13px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text);
 }
 
 .task-confirm-buttons {
@@ -1189,12 +1132,6 @@ body.panel-dragging .agentic-state {
 
 .board-task-item.failed {
     background: rgba(248, 81, 73, 0.06);
-}
-
-.board-task-failure-reason {
-    color: var(--error);
-    margin-left: 5px;
-    font-size: var(--fs-base);
 }
 
 .board-task-item.cancelled {
@@ -1531,7 +1468,6 @@ body.panel-dragging .agentic-state {
 .task-detail-status-inprogress { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .task-detail-status-completed { background: rgba(var(--success-rgb), 0.15); color: var(--success); }
 .task-detail-status-cancelled { background: rgba(var(--warning-rgb), 0.15); color: var(--warning); }
-.task-detail-status-failed { background: rgba(var(--error-rgb), 0.12); color: var(--error); }
 .task-detail-outcome-failed { background: rgba(var(--error-rgb), 0.12); color: var(--error); padding: 3px 7px; border-radius: 4px; font-size: var(--fs-base); }
 .task-detail-failure-reason .task-detail-value { color: var(--error); }
 .task-detail-status-blocked { background: rgba(var(--warning-rgb), 0.15); color: var(--warning); }
@@ -1944,50 +1880,6 @@ body.panel-dragging .agentic-state {
 
 /* ── Inline Preview Pane ─────────────────────────────────── */
 
-.inline-preview-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    background: var(--bg-secondary);
-}
-
-.inline-preview-back {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 2px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    min-width: var(--control-compact-height);
-    min-height: var(--control-compact-height);
-    justify-content: center;
-}
-
-.inline-preview-back:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-}
-
-.inline-preview-back .material-icons {
-    font-size: 18px;
-}
-
-.inline-preview-filepath {
-    flex: 1;
-    min-width: 0;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .inline-preview-actions {
     display: flex;
     gap: 4px;
@@ -2037,12 +1929,6 @@ body.panel-dragging .agentic-state {
 .inline-preview-save:hover {
     background: var(--accent);
     color: #fff;
-}
-
-.inline-preview-body {
-    flex: 1;
-    overflow: auto;
-    min-height: 0;
 }
 
 .inline-preview-loading,
@@ -2195,22 +2081,6 @@ body.panel-dragging .agentic-state {
     margin: 12px auto;
 }
 
-.inline-preview-code {
-    margin: 0;
-    padding: 8px 12px;
-    font-size: 12px;
-    line-height: 1.5;
-    font-family: var(--font-mono);
-    color: var(--text-primary);
-    background: var(--bg-primary);
-    white-space: pre;
-    overflow-x: auto;
-}
-
-.inline-preview-code code {
-    font-family: inherit;
-}
-
 /* CodeMirror editor container */
 .inline-preview-cm {
     flex: 1;
@@ -2271,15 +2141,6 @@ body.panel-dragging .agentic-state {
     box-sizing: border-box;
 }
 
-#agentic-panel-files:has(.inline-preview-header) {
-    padding: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-
-
 .file-action-btns {
     display: flex;
     gap: 2px;
@@ -2309,25 +2170,6 @@ body.panel-dragging .agentic-state {
     font-size: var(--icon-size);
 }
 
-.file-status-icon {
-    width: 16px;
-    height: 16px;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-    flex-shrink: 0;
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-}
-
-.file-modified .file-status-icon { color: var(--warning); background: rgba(210, 153, 34, 0.12); }
-.file-added .file-status-icon    { color: var(--success); background: rgba(63, 185, 80, 0.12); }
-.file-deleted .file-status-icon  { color: var(--error); background: rgba(248, 81, 73, 0.12); }
-.file-renamed .file-status-icon  { color: var(--accent); background: rgba(var(--accent-rgb), 0.12); }
-
 .file-type-icon { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex-shrink: 0; }
 
 /* Git status now shows on the name (the type icon replaced the status badge) */
@@ -2337,7 +2179,6 @@ body.panel-dragging .agentic-state {
 
 .file-agents { display: block; font-size: var(--fs-base); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-item.file-agent-only { opacity: 0.7; }
-.file-agent-only .file-status-icon { background: var(--bg-tertiary); color: var(--text-secondary); }
 
 .file-path-wrap {
     flex: 1;
@@ -2420,11 +2261,6 @@ body.panel-dragging .agentic-state {
     line-height: 1.6;
     resize: none;
     outline: none;
-}
-
-
-.activity-stats-summary:hover {
-    color: var(--text-primary);
 }
 
 /* ── Custom Views ─────────────────────────────────────────── */
@@ -2538,8 +2374,6 @@ body.panel-dragging .agentic-state {
    any diff is open. */
 .refresh-files-btn.active { color: var(--accent); }
 
-
-
 /* Tasks panel: empty state for a live agent (the + Task button stays reachable) */
 .board-task-empty {
     padding: 14px 12px;
@@ -2614,13 +2448,6 @@ body.panel-dragging .agentic-state {
 .availability-health h3 { margin:0 0 6px; font-size:14px; }
 .availability-health ul { margin:0; padding-left:20px; color:var(--text-secondary); font-size:13px; }
 .agent-reminder-icon { margin-left: 6px; color: var(--warning); font-size: 12px; line-height: 1; }
-.agent-ui-workspace-tabs { display:flex; gap:6px; overflow-x:auto; padding:0 0 10px; flex-shrink:0; }
-.agent-ui-workspace-tabs button { white-space:nowrap; max-width:180px; overflow:hidden; text-overflow:ellipsis; padding:7px 12px; color:var(--text-secondary); background:var(--bg-secondary); border:1px solid var(--border); border-radius: var(--radius-md); font:inherit; font-size: var(--fs-md); cursor:pointer;
-    min-height: var(--control-compact-height);
-}
-.agent-ui-workspace-tabs button:hover { color:var(--text-primary); background:var(--bg-hover); }
-.agent-ui-workspace-tabs button.active { color:var(--accent); border-color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, var(--bg-secondary)); }
-.agent-ui-workspace-tabs button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .agent-ui-home { flex:1; min-height:0; overflow:auto; }
 .agent-ui-home h3 { margin:8px 0 12px; font-size: var(--type-page-size); }
 .agent-ui-help { max-width:620px; margin:0 0 14px; color:var(--text-secondary); font-size:14px; line-height:1.5; }
@@ -2632,7 +2459,6 @@ body.panel-dragging .agentic-state {
     min-height: var(--control-compact-height);
 }
 .agent-ui-send:hover { filter:brightness(1.1); }
-.agent-ui-docs-link { color:var(--accent); font-size:13px; }
 .agent-ui-home-row { width:100%; display:flex; justify-content:space-between; align-items:center; gap:12px; text-align:left; margin:6px 0; padding:12px; color:var(--text-primary); background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; }
 .agent-ui-home-row span { color:var(--text-secondary); font-size:12px; white-space: normal;
     overflow-wrap: anywhere;
@@ -2694,14 +2520,6 @@ button.team-artifact-name { cursor: pointer; }
 /* The icons sit in one row so rows stay short. */
 .team-artifact-actions { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: var(--space-xs); flex-shrink: 0; }
 .team-artifact-icon-btn { padding: var(--space-xs); min-width: 32px; min-height: 32px; border-radius: var(--radius-md); }
-.team-artifact-row-expanded { background: var(--bg-tertiary); }
-.team-artifact-preview-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
-.team-artifact-preview-cell { background: var(--bg-primary); }
-.team-artifact-preview-container { padding: var(--space-lg); max-height: 400px; overflow: auto; font-size: var(--fs-md); color: var(--text-secondary); }
-.team-artifact-preview-iframe { width: 100%; height: 360px; border: 0; background: #fff; border-radius: var(--radius-md); }
-.team-artifact-preview-image { max-width: 100%; max-height: 360px; border-radius: var(--radius-md); object-fit: contain; }
-.team-artifact-preview-text { margin: 0; padding: var(--space-md); background: var(--bg-tertiary); border-radius: var(--radius-md); font-size: var(--fs-base); line-height: 1.5; overflow-x: auto; white-space: pre-wrap; word-break: break-word; color: var(--text-primary); max-height: 360px; overflow-y: auto; }
-.team-artifact-preview-md { padding: var(--space-md); max-height: 360px; overflow-y: auto; }
 .artifact-linked-preview { display: flex; flex-direction: column; height: 100%; min-height: 320px; }
 .artifact-linked-notice, .artifact-linked-status { margin: 0; padding: 10px 12px; font-size: 12px; color: var(--text-secondary); }
 .artifact-linked-notice { border-bottom: 1px solid var(--border); }
@@ -2807,8 +2625,6 @@ button.team-artifact-name { cursor: pointer; }
 
 /* Team settings as a sidebar panel rather than a full-pane workspace */
 #agentic-panel-team-settings > .team-settings-workspace { overflow: auto; padding: 14px; }
-
-
 
 /* The open-team button sits beside the group kebab (same look as the folder copy button).
    It is the way into a team's views, so it is always shown (muted) and reachable by keyboard,

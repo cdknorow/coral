@@ -116,7 +116,7 @@ export function syncMobileAgentList() {
 // ── Intercept Session Selection on Mobile ─────────────────────────────────
 
 const _origSelectLiveSession = window.selectLiveSession;
-export function wrapSelectLiveSession() {
+ function wrapSelectLiveSession() {
     const orig = window.selectLiveSession;
     if (!orig) return;
 

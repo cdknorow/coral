@@ -29,7 +29,7 @@ const WARNING_TRUST = ' Only turn this on for a task you trust, ideally in a san
 const WARNING_WAITS = 'Questions and plan approvals still wait for you. It turns off when the agent restarts or wakes.';
 
 // Why Coral turned it off (auto_accept_paused_code). The server sends codes only; the words are ours.
-export const PAUSED_TEXT = {
+ const PAUSED_TEXT = {
     repeat_loop: 'the same prompt repeated 5 times in a minute',
     rate_cap: 'more than 30 approvals in a minute',
     expired: 'its time limit ran out',
@@ -163,7 +163,7 @@ export function confirmAutoAccept(name, onConfirm, onCancel, { hub = isCloud() }
 }
 
 /** Turning it on and off are separate routes, so a hub can require more access to turn it on. */
-export function autoAcceptPath(sessionId, enabled) {
+ function autoAcceptPath(sessionId, enabled) {
     return `/api/sessions/live/${encodeURIComponent(sessionId)}/auto-accept/${enabled ? 'enable' : 'disable'}`;
 }
 
@@ -293,7 +293,7 @@ export function noteAutoAcceptPauses(sessions) {
 }
 
 /** "Stop all auto-accept" (top-bar menu) is shown only while some agent has it on. */
-export function syncStopAll() {
+ function syncStopAll() {
     const item = document.getElementById('stop-all-auto-accept');
     if (!item) return;
     const n = (state.liveSessions || []).filter(s => s.auto_accept).length;

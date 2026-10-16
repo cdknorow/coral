@@ -1185,7 +1185,7 @@ function _updateLoadMoreButton(container) {
 // Returns the first load, so a caller can hold slower work (the git/file
 // queries) until the transcript is in. The browser allows only a handful of
 // connections per origin, and on a big repo those queries are seconds long.
-export function startLiveHistoryPoll() {
+ function startLiveHistoryPoll() {
     stopLiveHistoryPoll();
     const firstLoad = refreshLiveHistory();
     historyPollInterval = pollEvery(refreshLiveHistory, 1000, { machine: () => state.currentSession && sessionServer(state.currentSession), agentView: true });

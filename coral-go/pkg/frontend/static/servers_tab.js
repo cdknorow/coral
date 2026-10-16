@@ -11,7 +11,7 @@ import { state } from './state.js';
 import { isCloud, isHub, normServer, LOCAL_SERVER } from './server_base.js';
 
 /** Whether the Servers tab has anything to show. */
-export function serversTabAvailable() {
+ function serversTabAvailable() {
     if (isCloud()) return true;
     if (!isHub()) return false;
     return (state.servers || []).some(s => s && s.id && normServer(s.id) !== LOCAL_SERVER);

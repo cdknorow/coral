@@ -17,7 +17,7 @@ let _returnFocus = null;
 let _server = undefined; // the server of the artifact on show, for the artifacts it links
 
 /** Render an artifact's text: Markdown through the strict renderer, anything else as plain text. */
-export function renderArtifactText(el, content, path) {
+ function renderArtifactText(el, content, path) {
     if (/\.(?:md|markdown|mdown)$/i.test(path || '')) {
         el.innerHTML = `<div class="preview-pane-markdown artifact-viewer-markdown">${renderMarkdownStrict(content)}</div>`;
         highlightCodeIn(el);
@@ -111,7 +111,7 @@ export function openArtifactViewer(hex, opts = {}) {
     return true;
 }
 
-export function closeArtifactViewer() {
+ function closeArtifactViewer() {
     if (!_dialog || _dialog.hidden) return;
     _abort?.abort();
     _abort = null;

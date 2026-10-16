@@ -20,7 +20,7 @@ import { isPopout } from './popout.js';
 import { escapeAttr } from './utils.js';
 import { mountCloudConnect, enrolledRetrying } from './cloud_connect.js';
 
-export const OWN_HUB_GUIDE_URL = 'https://cdknorow.github.io/coral/multi-server-hub/';
+ const OWN_HUB_GUIDE_URL = 'https://cdknorow.github.io/coral/multi-server-hub/';
 
 function _available() {
     return !isCloud() && !isPopout();
@@ -211,7 +211,7 @@ function _dismiss(choice) {
 // ── The home section ─────────────────────────────────────────────────────
 
 /** Show the home section unless hidden (or in the Coral Hub / a popout). */
-export function syncHomeEditions() {
+ function syncHomeEditions() {
     const el = document.getElementById('editions-home');
     if (!el) return;
     el.hidden = !_available() || String((state.settings || {}).home_editions_hidden) === 'True';

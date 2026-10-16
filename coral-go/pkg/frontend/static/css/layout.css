@@ -117,13 +117,6 @@
     gap: 6px;
 }
 
-.top-bar-logo {
-    height: 18px;
-    width: 18px;
-    object-fit: contain;
-    border-radius: 4px;
-}
-
 .top-bar h1 {
     font-size: 13px;
     font-weight: 600;
@@ -467,18 +460,6 @@ body.panel-dragging .sidebar {
     gap: 6px;
 }
 
-.collapse-chevron {
-    transition: transform 0.2s ease;
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-    color: var(--text-muted);
-}
-
-.sidebar-section.collapsed .collapse-chevron {
-    transform: rotate(-90deg);
-}
-
 .section-count-badge {
     font-size: var(--fs-sm);
     font-weight: 600;
@@ -532,12 +513,6 @@ body.panel-dragging .sidebar {
     font-size: var(--fs-sm);
     color: var(--text-muted);
     margin-left: 2px;
-}
-
-.sidebar-new-btn {
-    margin: 0 !important;
-    padding: 2px 8px !important;
-    font-size: var(--fs-md) !important;
 }
 
 .sidebar-new-btn-full {
@@ -840,131 +815,6 @@ body.panel-dragging .sidebar {
     margin-bottom: 16px;
 }
 
-.welcome-wizard-card {
-    position: relative;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 16px;
-    width: var(--welcome-row-width);
-    margin: 0 16px 10px;
-    padding: 22px 24px;
-    border-radius: 18px;
-    border: 1px solid rgba(124, 92, 255, 0.28);
-    background:
-        radial-gradient(circle at top left, rgba(255, 255, 255, 0.12), transparent 34%),
-        linear-gradient(135deg, rgba(79, 70, 229, 0.9), rgba(14, 165, 233, 0.82));
-    color: #fff;
-    text-align: left;
-    cursor: pointer;
-    box-shadow: 0 22px 48px rgba(14, 20, 32, 0.28);
-    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
-}
-
-.welcome-wizard-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 28px 60px rgba(14, 20, 32, 0.36);
-    filter: saturate(1.05);
-}
-
-.welcome-wizard-badge {
-    position: absolute;
-    top: 12px;
-    right: 16px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.16);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.welcome-wizard-icon {
-    font-size: 30px;
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(7, 11, 20, 0.18);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-}
-
-.welcome-wizard-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-}
-
-.welcome-wizard-copy strong {
-    font-size: 17px;
-    font-weight: 700;
-}
-
-.welcome-wizard-copy span {
-    font-size: 13px;
-    line-height: 1.5;
-    color: rgba(255, 255, 255, 0.84);
-}
-
-.welcome-wizard-arrow {
-    font-size: 22px;
-    color: rgba(255, 255, 255, 0.82);
-}
-
-.welcome-actions {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    justify-content: center;
-}
-
-.welcome-action-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 20px 28px;
-    width: 120px;
-    height: 100px;
-    text-decoration: none;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    font-size: 13px;
-    font-family: inherit;
-}
-
-.welcome-action-card .material-icons {
-    font-size: 28px;
-    color: var(--accent);
-}
-
-.welcome-action-card:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent-dim);
-    color: var(--text-primary);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-.welcome-action-card--create {
-    background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.06));
-    border-color: rgba(var(--accent-rgb), 0.26);
-}
-
-.welcome-action-card--create .material-icons {
-    color: var(--accent);
-}
-
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -972,66 +822,6 @@ body.panel-dragging .sidebar {
     color: var(--text-muted);
     width: var(--welcome-row-width);
     margin-bottom: 8px;
-}
-
-.welcome-team-presets {
-    display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    width: var(--welcome-row-width);
-    margin-bottom: 24px;
-}
-
-.welcome-team-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 20px 24px;
-    width: var(--welcome-preset-card-width);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-    color: var(--text-secondary);
-    font-size: 12px;
-}
-
-.welcome-team-card:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--accent-dim);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-.welcome-team-card strong {
-    font-size: 14px;
-    color: var(--text-primary);
-}
-
-.welcome-team-icon {
-    font-size: 32px;
-    color: var(--accent);
-    margin-bottom: 4px;
-}
-
-.welcome-team-desc {
-    color: var(--text-muted);
-    font-size: 11px;
-    line-height: 1.4;
-}
-
-.welcome-team-count {
-    font-size: 11px;
-    color: var(--text-muted);
-    background: var(--bg-tertiary);
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-top: 2px;
-}
 
 /* Simplified launch page */
 .welcome {
@@ -1134,37 +924,6 @@ body.panel-dragging .sidebar {
 }
 
 /* Welcome screen secondary links */
-
-.welcome-secondary {
-    display: flex;
-    gap: 16px;
-    margin-top: 12px;
-}
-
-.welcome-secondary-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--text-muted);
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-    padding: 4px 8px;
-    border-radius: 6px;
-    text-decoration: none;
-    transition: color 0.15s;
-}
-
-.welcome-secondary-link .material-icons {
-    font-size: 14px;
-}
-
-.welcome-secondary-link:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-}
 
 /* Native app rules moved to css/native.css and css/native-macos.css */
 

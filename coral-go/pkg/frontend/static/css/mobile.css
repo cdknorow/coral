@@ -72,27 +72,8 @@
 }
 
 /* Badge on mobile tab */
-.mobile-tab-badge {
-    position: absolute;
-    top: 4px;
-    right: calc(50% - 16px);
-    background: var(--accent);
-    color: var(--bg-primary);
-    border-radius: 8px;
-    font-size: 9px;
-    font-weight: 700;
-    min-width: 14px;
-    height: 14px;
-    line-height: 14px;
-    text-align: center;
-    padding: 0 3px;
-}
 
 /* ── Mobile-only overflow menu items (hidden on desktop) ── */
-
-.mobile-overflow-only {
-    display: none !important;
-}
 
 /* ── Mobile Send Button (hidden on desktop) ──────────────── */
 
@@ -160,9 +141,8 @@
 
 @media (max-width: 1023px) {
     /* Hide agentic state panel + resize handles on tablet */
-    .agentic-state-panel,
     .task-bar-resize-handle,
-    .board-chat-resize-handle {
+.board-chat-resize-handle {
         display: none !important;
     }
 
@@ -391,9 +371,8 @@
     }
 
     .agentic-state,
-    .agentic-state-panel,
-    .agentic-collapse-btn,
-    .task-bar-resize-handle {
+.agentic-collapse-btn,
+.task-bar-resize-handle {
         display: none !important;
     }
 
@@ -455,15 +434,10 @@
         border-radius: 18px;
     }
 
-    .command-hint {
-        display: none !important;
-    }
-
     /* Send buttons: ensure they show on mobile */
     .command-pane .mobile-send-btn {
         display: flex !important;
     }
-
 
     /* Board chat: compact on mobile */
     .board-chat-input-pane {
@@ -556,15 +530,11 @@
         white-space: nowrap;
     }
 
-
     .session-title-actions {
         flex-shrink: 0;
     }
 
     /* Show Attach/Restart inside the overflow menu on mobile */
-    .mobile-overflow-only {
-        display: flex !important;
-    }
 
     /* Message board adjustments: the Subscribers column is hidden; its button opens the same list
        as a sheet (#3610). */
@@ -643,9 +613,6 @@
     }
 
     /* Job cards stack full width */
-    .sched-card {
-        padding: 10px !important;
-    }
 
     /* History session view mobile */
     #history-session-view .session-header {
@@ -673,48 +640,6 @@
 
     .welcome p {
         font-size: 12px;
-    }
-
-    .welcome-actions {
-        gap: 8px;
-    }
-
-    .welcome-action-card {
-        width: 90px;
-        height: 80px;
-        padding: 12px;
-        font-size: 11px;
-    }
-
-    .welcome-wizard-card {
-        grid-template-columns: auto 1fr;
-        gap: 12px;
-        width: calc(100vw - 24px);
-        margin: 0 12px 10px;
-        padding: 18px 16px;
-    }
-
-    .welcome-wizard-badge {
-        position: static;
-        grid-column: 1 / -1;
-        justify-self: start;
-        margin-bottom: 4px;
-    }
-
-    .welcome-wizard-copy strong {
-        font-size: 15px;
-    }
-
-    .welcome-wizard-copy span {
-        font-size: 12px;
-    }
-
-    .welcome-wizard-arrow {
-        display: none;
-    }
-
-    .welcome-action-card .material-icons {
-        font-size: 22px;
     }
 
     /* History tabs scrollable */
@@ -759,16 +684,6 @@
         grid-template-columns: 1fr;
     }
 
-    .agent-launch-layout {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    .agent-launch-sidebar {
-        display: contents;
-    }
-
     .mobile-launch-section {
         border: 1px solid var(--border);
         border-radius: 10px;
@@ -811,19 +726,6 @@
         padding: 0;
     }
 
-    .agent-launch-card {
-        background: var(--bg-tertiary);
-        box-shadow: none;
-    }
-
-    .agent-launch-card summary {
-        display: block;
-    }
-
-    .agent-launch-card .mobile-launch-section-body {
-        padding: 0 14px 14px;
-    }
-
     .agent-persona-actions,
     .acf-top-row {
         grid-template-columns: 1fr;
@@ -863,9 +765,6 @@
     }
 
     /* Output container full width */
-    .output-container {
-        min-height: 200px;
-    }
 
     /* Waiting banner compact */
     .waiting-banner {
@@ -876,12 +775,6 @@
     /* View body for message board */
     .view-body {
         flex-direction: column !important;
-    }
-
-    .welcome-secondary {
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: center;
     }
 
     /* Board cards: disable drag on mobile, hide grip */
@@ -1137,10 +1030,6 @@
     }
 
     /* Board card folder footer: tighter */
-    .board-card-folder-footer {
-        padding: 4px 10px 4px 16px;
-        font-size: 9px;
-    }
 
     /* Filter dropdown: full width on mobile */
     .filter-dropdown {
@@ -1276,17 +1165,6 @@
     .editions-actions .btn { min-height: 44px; }
 
     /* Welcome team cards: stack vertically on mobile */
-    .welcome-team-presets {
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
-        width: 100%;
-    }
-
-    .welcome-team-card {
-        width: 100%;
-        max-width: 300px;
-    }
 }
 
 /* ── Small Phone: ≤ 479px ────────────────────────────────── */
@@ -1300,11 +1178,6 @@
 
     .top-bar-title {
         font-size: 13px;
-    }
-
-    .top-bar-logo {
-        width: 20px;
-        height: 20px;
     }
 
     /* Hide search on very small screens to save space */
@@ -1470,17 +1343,12 @@
         padding: 6px 14px;
     }
 
-
-
     /* Task items: larger touch target */
     .task-item {
         min-height: 44px;
     }
 
     /* Always show task delete button on touch */
-    .task-delete-btn {
-        opacity: 0.5 !important;
-    }
 
     /* Group kebab always visible on touch */
     .group-kebab .sidebar-kebab-btn {
@@ -1513,13 +1381,22 @@
 /* Shared controls keep readable labels and touch targets. Composer and
    terminal geometry retain their existing mobile rules above. */
 @media (max-width: 767px), (pointer: coarse) {
-    .btn, .btn-small, .btn-sm, .sidebar-subtab, .modal-close-btn, .mb-action-btn, .cost-time-select,
-    .agent-ui-workspace-tabs button, .agent-ui-card button, .agent-ui-send,
-    .team-settings-workspace-actions button, .sched-preset,
-    .team-settings-tabs [role="tab"], .team-availability-dialog button,
-    .working-mode-form select, .working-mode-form input[name="preset_name"],
-    .modal-content select,
-    .modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]) {
+    .btn,
+.btn-small,
+.btn-sm,
+.sidebar-subtab,
+.modal-close-btn,
+.mb-action-btn,
+.cost-time-select,
+.agent-ui-card button,
+.agent-ui-send,
+.sched-preset,
+.team-settings-tabs [role="tab"],
+.team-availability-dialog button,
+.working-mode-form select,
+.working-mode-form input[name="preset_name"],
+.modal-content select,
+.modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]) {
         min-height: var(--control-touch-height);
     }
 }

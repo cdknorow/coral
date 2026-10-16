@@ -57,7 +57,7 @@ export function loadScriptOnce(rel) {
 }
 
 /** Load a vendor stylesheet once. */
-export function loadStyleOnce(rel) {
+ function loadStyleOnce(rel) {
     const href = vendorUrl(rel);
     if (_loads.has(href)) return _loads.get(href);
     const p = new Promise((resolve, reject) => {

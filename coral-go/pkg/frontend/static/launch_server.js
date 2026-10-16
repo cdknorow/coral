@@ -19,7 +19,7 @@ import { storeKey } from './local_store.js';
 
 /** Statuses that make a registered remote unusable as a launch target, with
  *  the reason shown next to it in the dropdown. */
-export const UNUSABLE_STATUS_REASON = {
+ const UNUSABLE_STATUS_REASON = {
     unreachable: 'offline',
     offline: 'offline',
     stale: 'offline',
@@ -94,7 +94,7 @@ export function bareBoardName(key) {
 }
 
 /** Parse a launch response body that may be empty or non-JSON (proxy/gateway errors). */
-export function parseLaunchBody(text) {
+ function parseLaunchBody(text) {
     if (!text) return null;
     try { const v = JSON.parse(text); return v && typeof v === 'object' ? v : null; } catch { return null; }
 }

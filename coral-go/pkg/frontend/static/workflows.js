@@ -524,7 +524,7 @@ export async function triggerWorkflow(id) {
 // ── Kill ───────────────────────────────────────────────────────────────
 
 // Kill asks first: it stops the run's agents mid-step and cannot be resumed (#3696).
-export function confirmKillWorkflowRun(runId) {
+ function confirmKillWorkflowRun(runId) {
     const name = shownRun && Number(shownRun.id) === runId && shownRun.workflow_name ? ` of workflow "${shownRun.workflow_name}"` : '';
     window.showConfirmModal('Kill Run', `Stop run #${runId}${name}? Its steps stop where they are and the run cannot be resumed.`, () => killWorkflowRun(runId));
 }

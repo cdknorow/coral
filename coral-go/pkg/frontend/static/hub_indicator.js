@@ -123,7 +123,7 @@ export async function refresh() {
 }
 
 /** Open Settings at its Coral Hub section. */
-export async function openHubSettings() {
+ async function openHubSettings() {
     try { await window.showSettingsModal?.(); } catch { /* the dialog shows its own errors */ }
     const section = document.getElementById('settings-cloud');
     const heading = section && section.previousElementSibling;
@@ -143,7 +143,7 @@ export function initHubIndicator() {
 }
 
 /** Stop polling and hide (the status can't be read here). */
-export function stopHubIndicator() {
+ function stopHubIndicator() {
     _stopped = true;
     if (_timer) { clearInterval(_timer); _timer = null; }
     if (_btn) hide(_btn);

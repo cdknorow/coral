@@ -20,7 +20,7 @@ import { keyRoute, liveRoute } from './routes.js';
 
 let _boardTeam = null;   // team whose group chat is mounted in the center
 
-export function getSelectedTeam() {
+ function getSelectedTeam() {
     return state.selectedTeam || null;
 }
 

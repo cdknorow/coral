@@ -330,7 +330,7 @@ function enrollBlock() {
 }
 
 /** The DOM id of a server's row, for deep links. */
-export function rowId(id) { return 'server-row-' + String(id).replace(/[^A-Za-z0-9_-]/g, '_'); }
+ function rowId(id) { return 'server-row-' + String(id).replace(/[^A-Za-z0-9_-]/g, '_'); }
 
 function render() {
     if (!host) return;

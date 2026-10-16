@@ -605,7 +605,7 @@ export async function refreshChangedFiles() {
     if (btn) setTimeout(() => btn.classList.remove('refreshing'), 300);
 }
 
-export function renderChangedFiles() {
+ function renderChangedFiles() {
     const list = document.getElementById('changed-files-list');
     const titleEl = document.getElementById('changed-files-title');
     const countEl = document.getElementById('files-bar-count');

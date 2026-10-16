@@ -13,7 +13,7 @@
  * Why a URL and not srcdoc: a srcdoc/blob/data document INHERITS the embedding page's CSP, and the hub's `script-src 'self'` would
  * silently stop every panel script. A document loaded by URL is governed by its own response headers. */
 
-export const PANEL_HOST_URL = '/static/panel_host.html';
+ const PANEL_HOST_URL = '/static/panel_host.html';
 export const PANEL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 /** The response header the hub sends with panel_host.html (also asserted in the hub's tests). */
 export const PANEL_HOST_CSP = PANEL_CSP.replace("frame-src 'none'", 'frame-src about:') + "; frame-ancestors 'self'; sandbox allow-scripts";

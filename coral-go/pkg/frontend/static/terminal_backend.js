@@ -315,7 +315,7 @@ function wireHooksBanner() {
 /** What Coral can truthfully say about one agent's hook set. An agent on a hook set from before the revision
  *  existed never reports one, so "older" without a revision is all the server can tell; "unknown" is an agent
  *  with no revision recorded and no event heard since Coral started, which may well be current. */
-export function hooksStateText(agent, current) {
+ function hooksStateText(agent, current) {
     if (agent.status === 'unknown') return 'started before hook versions were tracked';
     if (agent.rev > 0) return `older hooks (rev ${agent.rev}, current is ${current})`;
     return 'older hooks (no version reported)';
@@ -401,7 +401,7 @@ async function resumeOneOnCurrentHooks(sessionId, name) {
 }
 
 /** All of them, one at a time, 2 s plus up to 1 s apart; an agent in a turn is skipped and stays listed. */
-export async function resumeAllOnCurrentHooks() {
+ async function resumeAllOnCurrentHooks() {
     let st;
     try { st = await hooksStatus(); } catch { return; }
     const agents = (st.agents || []).slice();

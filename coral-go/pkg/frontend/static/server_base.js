@@ -304,7 +304,7 @@ let _hubPromise = null;
 let _boot = null;
 
 /** Parsed boot data ({} when absent or malformed). */
-export function bootConfig() {
+ function bootConfig() {
     if (_boot) return _boot;
     _boot = {};
     try {

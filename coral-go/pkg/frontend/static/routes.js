@@ -16,20 +16,20 @@
    its own pattern; anything else is not a route (parse returns null and the router goes to /).
    Ids are never built into an /api path unless they passed these patterns (coral-hub Security). */
 
-export const SERVER_RE = /^(?:[a-z0-9-]{1,32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
-export const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ const SERVER_RE = /^(?:[a-z0-9-]{1,32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+ const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // A history chat id: the agent's own session id (a UUID for most agents). No "/", "?", "#",
 // "%" or "..", so it can't steer an API path.
-export const HISTORY_ID_RE = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+ const HISTORY_ID_RE = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 // An agent doc's name: its file name without .md (README, coral-board, ...).
-export const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-export const INT_RE = /^[1-9][0-9]{0,15}$/;
+ const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+ const INT_RE = /^[1-9][0-9]{0,15}$/;
 // An agent's own tabs (live_session.html #agentic-tab-<id>); the team-scoped ones belong to /team.
 export const AGENT_SUBTABS = ['board', 'tasks', 'notes', 'files', 'browse', 'artifacts', 'activity', 'agent-ui'];
 const NAME_MAX = 200; // board.MaxIdentityRunes
 
 // The query keys the Chats tab owns (search_filters.js), kept on /chats only.
-export const CHATS_QUERY_KEYS = ['page', 'type', 'q', 'fts_mode', 'tag_ids', 'tag_logic', 'source_types',
+ const CHATS_QUERY_KEYS = ['page', 'type', 'q', 'fts_mode', 'tag_ids', 'tag_logic', 'source_types',
     'date_from', 'date_to', 'min_duration_sec', 'max_duration_sec'];
 
 // eslint-disable-next-line no-control-regex

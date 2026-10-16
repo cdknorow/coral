@@ -15,7 +15,7 @@ import { showToast } from './utils.js';
 import { importOnce } from './import_once.js';
 import { pollEvery } from './overload.js';
 
-export const DISTILL_POLL_MS = 2000;
+ const DISTILL_POLL_MS = 2000;
 export const distillHooks = { pollMs: DISTILL_POLL_MS };
 
 const jobs = new Map();     // team key -> last status from the server
@@ -39,7 +39,7 @@ export function distillJob(team) {
     return jobs.get(team) || { status: 'none' };
 }
 
-export function isDistilling(team) {
+ function isDistilling(team) {
     return distillJob(team).status === 'running';
 }
 

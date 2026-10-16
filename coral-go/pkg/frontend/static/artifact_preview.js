@@ -10,7 +10,7 @@ import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
 
 const MAX_ARTIFACT_PREVIEW_BYTES = 2 * 1024 * 1024;
 const MAX_ARTIFACT_MANIFEST_ENTRIES = 200;
-export const CORAL_ARTIFACT_URI_RE = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i;
+ const CORAL_ARTIFACT_URI_RE = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i;
 
 function _sizeLabel(bytes) {
     if (!Number.isFinite(bytes) || bytes < 0) return 'unknown size';

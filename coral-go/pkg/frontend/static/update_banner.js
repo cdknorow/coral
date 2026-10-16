@@ -8,11 +8,11 @@
 import { state } from './state.js';
 import { registerActions } from './actions.js';
 
-export const BUILD_HEADER = 'X-Coral-Build';
+ const BUILD_HEADER = 'X-Coral-Build';
 const RELOAD_DELAY_MS = 5000;
 
 /** The build id in a static prefix like /static/b/<build>/, or '' (plain /static/, the hub). */
-export function buildOf(staticBase) {
+ function buildOf(staticBase) {
     const m = /^\/static\/b\/([^/]+)\/$/.exec(staticBase || '');
     return m ? m[1] : '';
 }
@@ -32,7 +32,7 @@ const typed = new WeakSet();
 if (typeof document !== 'undefined') document.addEventListener('input', e => { if (e.isTrusted && e.target) typed.add(e.target); }, true);
 
 /** Unsent text the user typed in any box, a draft kept for an agent, or work a module reports. */
-export function hasUnsavedWork() {
+ function hasUnsavedWork() {
     for (const el of document.querySelectorAll('textarea, input, [contenteditable=""], [contenteditable="true"]')) {
         if (!typed.has(el) || el.closest('.cm-editor')) continue;
         if (String('value' in el ? el.value : el.textContent || '').trim()) return true;
@@ -74,7 +74,7 @@ function _tick() {
     reloadNow();
 }
 
-export function reloadNow() { window.location.reload(); }
+ function reloadNow() { window.location.reload(); }
 
 function _updated(build) {
     if (_updatedTo === build) return;

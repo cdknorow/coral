@@ -17,17 +17,17 @@ const STATUS_URL = '/api/cloud/status';
 // 'Let Coral Hub act as the Operator' (#3377): a local-only owner setting. The route answers only
 // on this computer (404 through the hub), so the row is shown only when it answers 200.
 const HUB_OPERATOR_URL = '/api/system/hub-operator';
-export const MODE_HELP = {
+ const MODE_HELP = {
     view: 'Read everything: every agent\'s terminal output and chat, all board chat on every team, files, tasks and boards. Nothing can be typed, changed or started from the web.',
     interact: 'Also type into agents that are already running (send text, keys, answer prompts) and change tasks, notes and the board. Typing can run commands: an agent with shell tools acts on it. It can also change board settings, including turning on cross-team messaging.',
     launch: 'Also start, wake and restart agents and browse folders to choose where. Launching runs code on this computer as you.',
 };
 // Said when this page is not the dashboard on the computer running Coral (the cloud routes
 // answer 403): connecting has to happen there.
-export const ELSEWHERE_TEXT = 'Connecting has to happen on the computer running Coral. On that computer, run: coral cloud connect';
-export const CONNECT_COMMAND = 'coral cloud connect';
+ const ELSEWHERE_TEXT = 'Connecting has to happen on the computer running Coral. On that computer, run: coral cloud connect';
+ const CONNECT_COMMAND = 'coral cloud connect';
 // Said when this server has no hub (a dev build, or --cloud-url off); the CLI says the same (#3285).
-export const OFF_TEXT = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralhub.dev (or CORAL_CLOUD_URL=https://app.coralhub.dev), then run: coral cloud connect";
+ const OFF_TEXT = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralhub.dev (or CORAL_CLOUD_URL=https://app.coralhub.dev), then run: coral cloud connect";
 
 const ENROLLED = ['connecting', 'connected', 'retrying', 'revoked', 'key_unreadable', 'upgrade_required'];
 const LIVE = ['enrolling', 'connecting', 'retrying'];
@@ -87,11 +87,11 @@ export function describe(st) {
 
 // Coral Hub never says why a code went unapproved (that would leak who is in the beta), so an
 // expired code may mean the user could not sign in at all: say so, with where to ask for access.
-export const HUB_ACCESS_URL = 'https://coralhub.dev/hub.html';
-export const EXPIRED_TEXT = "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at ";
+ const HUB_ACCESS_URL = 'https://coralhub.dev/hub.html';
+ const EXPIRED_TEXT = "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at ";
 
 /** An idle status after a code expired (last_error_code, #3285). */
-export function codeExpired(st) {
+ function codeExpired(st) {
     return st.state === 'idle' && st.last_error_code === 'code_expired';
 }
 
