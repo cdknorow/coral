@@ -105,6 +105,8 @@ type cloudClient struct {
 	cli    cloud.CLIClient
 	server string
 	cmd    string
+	// label names the command in messages ("coral cloud <cmd>" when empty).
+	label  string
 	stderr io.Writer
 	// retryAfter is the last refusal's Retry-After (0 if none): the unattended startup
 	// step waits at least this long before asking again.
@@ -125,6 +127,14 @@ func newCloudClient(base, home, cmd string, stderr io.Writer) (*cloudClient, int
 	return &cloudClient{cli: cloud.CLIClient{Base: server, Token: token}, server: server, cmd: cmd, stderr: stderr}, 0
 }
 
+// who names the command in messages.
+func (c *cloudClient) who() string {
+	if c.label != "" {
+		return c.label
+	}
+	return "coral cloud " + c.cmd
+}
+
 // call sends one request. code is -1 when out was filled from a 200, else the
 // exit code for a failure (already reported).
 func (c *cloudClient) call(ctx context.Context, method, path string, body any, hdr http.Header, timeout time.Duration, out any) int {
@@ -135,12 +145,12 @@ func (c *cloudClient) call(ctx context.Context, method, path string, body any, h
 	resp, err := c.cli.Do(ctx, method, path, b, hdr, timeout)
 	switch {
 	case errors.Is(err, cloud.ErrNotCoral):
-		fmt.Fprintf(c.stderr, "coral cloud %s: %s: %v. Nothing was sent. Check --url (and --home), and that Coral is running.\n", c.cmd, c.server, err)
+		fmt.Fprintf(c.stderr, "%s: %s: %v. Nothing was sent. Check --url (and --home), and that Coral is running.\n", c.who(), c.server, err)
 		return 4
 	case ctx.Err() != nil:
 		return 130
 	case err != nil:
-		fmt.Fprintf(c.stderr, "coral cloud %s: Coral is not running at %s: start it and run this again\n", c.cmd, c.server)
+		fmt.Fprintf(c.stderr, "%s: Coral is not running at %s: start it and run this again\n", c.who(), c.server)
 		return 4
 	}
 	defer resp.Body.Close()
@@ -157,7 +167,7 @@ func (c *cloudClient) call(ctx context.Context, method, path string, body any, h
 		if e.Error == "" {
 			e.Error = resp.Status
 		}
-		fmt.Fprintf(c.stderr, "coral cloud %s: %s\n", c.cmd, e.Error)
+		fmt.Fprintf(c.stderr, "%s: %s\n", c.who(), e.Error)
 		switch resp.StatusCode {
 		case http.StatusBadRequest:
 			return 2
@@ -168,7 +178,7 @@ func (c *cloudClient) call(ctx context.Context, method, path string, body any, h
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
-			fmt.Fprintf(c.stderr, "coral cloud %s: unexpected answer from Coral\n", c.cmd)
+			fmt.Fprintf(c.stderr, "%s: unexpected answer from Coral\n", c.who())
 			return 1
 		}
 	}
