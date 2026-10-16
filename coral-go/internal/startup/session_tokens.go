@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -40,6 +41,12 @@ func setupSessionTokens(db *store.DB, coralDir string) {
 		f, err := os.CreateTemp(dir, "t-*")
 		if err != nil {
 			log.Printf("[identity] could not write a session token file: %v", err)
+			return ""
+		}
+		if err := secfile.Protect(f.Name()); err != nil { // Windows ignores the mode (#3905)
+			log.Printf("[identity] could not make a session token file private: %v", err)
+			f.Close()
+			os.Remove(f.Name())
 			return ""
 		}
 		_, werr := f.WriteString(token)
