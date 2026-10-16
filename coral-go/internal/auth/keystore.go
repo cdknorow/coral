@@ -482,6 +482,24 @@ func (ks *KeyStore) setSessionCookie(w http.ResponseWriter, r *http.Request, tok
 	})
 }
 
+// signOut ends every session of this server that r's cookies carry (#3682, Security: a browser
+// can hold this server's cookie under each of its names, and each would keep it signed in) and
+// clears this server's cookie. The pre-#3682 shared cookie is cleared only when its token was a
+// session here: another Coral on the same host may own it.
+func (ks *KeyStore) signOut(w http.ResponseWriter, r *http.Request) {
+	for _, name := range []string{"__Host-" + ks.cookieBase, ks.cookieBase, legacyCookieName} {
+		c, err := r.Cookie(name)
+		if err != nil || c.Value == "" || !ks.ValidateSession(c.Value) {
+			continue
+		}
+		ks.RevokeSession(c.Value)
+		if name == legacyCookieName {
+			http.SetCookie(w, &http.Cookie{Name: legacyCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		}
+	}
+	ks.clearSessionCookie(w, r)
+}
+
 // clearSessionCookie tells the browser to drop the session cookie.
 func (ks *KeyStore) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{

@@ -64,3 +64,49 @@ func TestSessionCookieIsPerServer(t *testing.T) {
 	assert.True(t, a.HasValidSession(legacy))
 	assert.False(t, b.HasValidSession(legacy), "a session is only valid on the server that made it")
 }
+
+// Sign-out (Security's REQUIRED on #3682): every session of this server among the cookie names
+// ends; the old shared cookie is cleared only when its token was a session here, and left alone
+// when it belongs to another Coral.
+func TestSignOutEndsEveryNameAndLeavesAnotherCoralsCookie(t *testing.T) {
+	a, err := NewKeyStore(t.TempDir())
+	require.NoError(t, err)
+	b, err := NewKeyStore(t.TempDir())
+	require.NoError(t, err)
+	plain := httptest.NewRequest("GET", "http://127.0.0.1:8420/", nil)
+	s1, _ := a.CreateSession("127.0.0.1", "t")
+	s2, _ := a.CreateSession("127.0.0.1", "t")
+	s3, _ := a.CreateSession("127.0.0.1", "t")
+	req := httptest.NewRequest("POST", "http://127.0.0.1:8420/auth/logout", nil)
+	req.AddCookie(&http.Cookie{Name: "__Host-" + a.SessionCookieName(plain), Value: s1})
+	req.AddCookie(&http.Cookie{Name: a.SessionCookieName(plain), Value: s2})
+	req.AddCookie(&http.Cookie{Name: legacyCookieName, Value: s3})
+	rec := httptest.NewRecorder()
+	a.signOut(rec, req)
+	for _, s := range []string{s1, s2, s3} {
+		assert.False(t, a.ValidateSession(s), "every name's session ended")
+	}
+	cleared := map[string]bool{}
+	for _, c := range rec.Result().Cookies() {
+		if c.MaxAge < 0 {
+			cleared[c.Name] = true
+		}
+	}
+	assert.True(t, cleared[a.SessionCookieName(plain)], "this server's cookie cleared")
+	assert.True(t, cleared[legacyCookieName], "the old shared cookie was this server's session: cleared")
+
+	// The old shared cookie belongs to another Coral (its session there): left alone, and that
+	// session still works there.
+	other, _ := b.CreateSession("127.0.0.1", "t")
+	mine, _ := a.CreateSession("127.0.0.1", "t")
+	req = httptest.NewRequest("POST", "http://127.0.0.1:8420/auth/logout", nil)
+	req.AddCookie(&http.Cookie{Name: a.SessionCookieName(plain), Value: mine})
+	req.AddCookie(&http.Cookie{Name: legacyCookieName, Value: other})
+	rec = httptest.NewRecorder()
+	a.signOut(rec, req)
+	assert.False(t, a.ValidateSession(mine))
+	assert.True(t, b.ValidateSession(other), "another Coral's session is untouched")
+	for _, c := range rec.Result().Cookies() {
+		assert.NotEqual(t, legacyCookieName, c.Name, "another Coral's cookie is not cleared")
+	}
+}

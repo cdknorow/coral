@@ -87,10 +87,7 @@ func (ar *Routes) Logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if token := ar.ks.extractSessionCookie(r); token != "" {
-		ar.ks.RevokeSession(token)
-	}
-	ar.ks.clearSessionCookie(w, r)
+	ar.ks.signOut(w, r)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
