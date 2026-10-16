@@ -33,6 +33,7 @@ import './permission_flags.js'; // used by the lazy modals.js (#3844): loaded at
 import './cli_check.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
 import './acf_models.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
 import './persona_store.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
+import './agent_config_form.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
 import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
 import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
