@@ -900,9 +900,19 @@ export function applyLiveViewMode(override) {
 // (CSS caps it at 40vh). Mobile keeps its own compact input bar.
 const desktopComposer = window.matchMedia("(min-width: 768px)");
 
+// What the last autosize measured for: the text, the box's width (a ResizeObserver keeps it; 0 while the box is hidden), the window
+// height (the 40vh cap) and the mode. Measuring forces layout several times (#3866: 112 ms over five agent switches), so
+// when none of these changed since the last run the result cannot have changed either and there is nothing to do.
+let _autosizeKey = "";
+let _inputWidth = 0;
+
 function autosizeCommandInput() {
     const input = document.getElementById("command-input");
     if (!input) return;
+    const key = [input.value, _inputWidth, window.innerHeight, desktopComposer.matches,
+        document.getElementById("command-pane")?.classList.contains("chat-mode")].join("\u0001");
+    if (key === _autosizeKey) return;
+    _autosizeKey = key;
     const before = input.offsetHeight;
     if (!desktopComposer.matches || !input.offsetParent) {
         input.style.height = "";
@@ -935,6 +945,12 @@ export function initCommandInputAutosize() {
     });
     input.addEventListener("input", autosizeCommandInput);
     window.addEventListener("resize", autosizeCommandInput);
+    if (typeof ResizeObserver === "function") {
+        new ResizeObserver(entries => {
+            const width = Math.round(entries[entries.length - 1].contentRect.width);
+            if (width !== _inputWidth) { _inputWidth = width; autosizeCommandInput(); }
+        }).observe(input);
+    }
 }
 
 export function setLiveViewMode(mode) {
