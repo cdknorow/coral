@@ -1,0 +1,60 @@
+name: govulncheck
+# Known-vulnerability check of the Go code and its modules (#4088). govulncheck reports a
+# vulnerability only when the code can reach it (source mode), so a finding here is a real
+# one: the job fails (exit 3) and the Go or module version to move to is in its output.
+# A vulnerability only in a module Coral requires but doesn't call is listed, not failed.
+# Runs when the module pins can change, weekly (new advisories appear without any change here),
+# and on demand. The tool version is pinned; bump it on purpose.
+on:
+  push:
+    branches: [main, "ci/**"]
+    paths:
+      - "coral-go/go.mod"
+      - "coral-go/go.sum"
+      - ".github/workflows/govulncheck.yml"
+  pull_request:
+    paths:
+      - "coral-go/go.mod"
+      - "coral-go/go.sum"
+      - ".github/workflows/govulncheck.yml"
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOVULNCHECK_VERSION: v1.9.0
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: Install govulncheck
+        run: go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+      # The release builds: Linux and Windows without cgo (the shipped command-line programs and
+      # server), with the fts5 tag as release.yml builds them. The GUI programs (cgo) are covered
+      # by the same packages; they add only the webview and tray glue.
+      - name: Scan Linux
+        working-directory: coral-go
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 "$(go env GOPATH)/bin/govulncheck" -tags fts5 ./...
+      - name: Scan Windows
+        working-directory: coral-go
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 "$(go env GOPATH)/bin/govulncheck" -tags fts5 ./...
+      - name: Scan macOS (packages without the cgo GUI programs)
+        working-directory: coral-go
+        run: |
+          set -euo pipefail
+          export CGO_ENABLED=0 GOOS=darwin GOARCH=arm64
+          pkgs=()
+          while IFS= read -r p; do
+            case "$p" in */cmd/coral-tray|*/cmd/coral-app) ;; *) pkgs+=("$p") ;; esac
+          done < <(go list -tags fts5 ./...)
+          "$(go env GOPATH)/bin/govulncheck" -tags fts5 "${pkgs[@]}"
