@@ -68,6 +68,12 @@ func newArtifactRig(t *testing.T) *artifactRig {
 
 // upload sends data as session's agent (its token); it returns the status and the JSON body.
 func (rig *artifactRig) upload(session, name, mediaType string, body io.Reader) (int, map[string]any) {
+	code, out, _ := rig.uploadH(session, name, mediaType, body)
+	return code, out
+}
+
+// uploadH is upload, also returning the response headers (for Retry-After on a 429).
+func (rig *artifactRig) uploadH(session, name, mediaType string, body io.Reader) (int, map[string]any, http.Header) {
 	req, err := http.NewRequest(http.MethodPost, rig.srv.URL+"/api/agent/artifacts?session_id="+session, body)
 	require.NoError(rig.t, err)
 	req.Header.Set("X-Artifact-Name", name)
@@ -79,7 +85,7 @@ func (rig *artifactRig) upload(session, name, mediaType string, body io.Reader) 
 	defer resp.Body.Close()
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
-	return resp.StatusCode, out
+	return resp.StatusCode, out, resp.Header
 }
 
 func (rig *artifactRig) del(id string, header map[string]string) (int, map[string]any) {
@@ -196,20 +202,23 @@ func TestArtifactHourlyCap(t *testing.T) {
 		code, out := rig.upload("s1", "n.txt", "", strings.NewReader(fmt.Sprintf("note %d", i)))
 		require.Equal(t, http.StatusCreated, code, out)
 	}
-	code, out := rig.upload("s1", "n.txt", "", strings.NewReader("one too many"))
-	require.Equal(t, http.StatusRequestEntityTooLarge, code)
+	// The hourly count cap is a rate limit: 429 Too Many Requests with a Retry-After (#4007).
+	code, out, hdr := rig.uploadH("s1", "n.txt", "", strings.NewReader("one too many"))
+	require.Equal(t, http.StatusTooManyRequests, code)
 	require.Equal(t, "artifact_quota", out["code"])
 	require.Equal(t, "hourly", out["limit"])
+	require.NotEmpty(t, hdr.Get("Retry-After"), "a 429 count cap carries Retry-After")
 	code, _ = rig.upload("s2", "n.txt", "", strings.NewReader("another agent"))
 	require.Equal(t, http.StatusCreated, code, "the cap is per agent session")
 
-	// A refused upload's bytes count too (a client can't probe for free).
+	// A refused upload's bytes count too (a client can't probe for free); the hourly byte
+	// window is a rate limit too (429).
 	st := storeFor(rig.coralDir)
 	st.mu.Lock()
 	st.windows["session:s2"].bytes = uploadWindowBytes - 10
 	st.mu.Unlock()
 	code, out = rig.upload("s2", "big.txt", "", strings.NewReader(strings.Repeat("x", 100)))
-	require.Equal(t, http.StatusRequestEntityTooLarge, code, out)
+	require.Equal(t, http.StatusTooManyRequests, code, out)
 	require.Equal(t, "hourly", out["limit"])
 }
 
