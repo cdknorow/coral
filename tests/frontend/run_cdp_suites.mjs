@@ -11,6 +11,10 @@
 // prints pass/fail per suite. It refuses to start (exit 2) while any *.test.js/mjs file here has no runner
 // or more than one, so a suite can't be silently skipped.
 //
+// Every suite is started with helpers/keep_page_visible.js preloaded: headless Chrome on the Mac hides a page after a
+// key event sent through Input.dispatchKeyEvent, and a hidden page runs no animation frames (#3707). The preload
+// switches on focus emulation for each CDP connection a suite makes; CDP_KEEP_VISIBLE=0 turns it off.
+//
 // --shards N (default 1) starts N such server+Chrome pairs, each with its own data dir, ports and profile,
 // and runs N suites at once: each shard takes the next suite from one shared queue, so within a shard
 // suites still run one at a time. Output is printed per suite as it finishes.
@@ -458,7 +462,8 @@ async function runAttempt(t, shard) {
   }
   const started = Date.now();
   return await new Promise(resolve => {
-    const p = spawn('node', [t], { cwd: here, env: shard.env, detached: true });
+    // helpers/keep_page_visible.js keeps each suite's pages visible (a hidden page runs no animation frames, #3707).
+    const p = spawn('node', ['--require', path.join(here, 'helpers', 'keep_page_visible.js'), t], { cwd: here, env: shard.env, detached: true });
     track(p);
     let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
     let timedOut = false;

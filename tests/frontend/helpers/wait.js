@@ -68,9 +68,10 @@ async function coralReady(ev, step = null, ...args) {
 }
 
 // Animation frames, bounded. A page that is not visible (document.visibilityState 'hidden') runs no
-// requestAnimationFrame callbacks: on the Mac, headless Chrome hides the page after an Escape key press sent
-// through Input.dispatchKeyEvent, and a wait made of frames then never finishes (#3703, #3705). So a frame
-// wait here gives up after maxMs and resolves false instead of hanging; it resolves true when the frames ran.
+// requestAnimationFrame callbacks: on the Mac, headless Chrome hides the page after a key event sent through
+// Input.dispatchKeyEvent, and a wait made of frames then never finishes (#3703, #3705). run_cdp_suites.mjs now
+// keeps every suite's pages visible (helpers/keep_page_visible.js, #3707); as a second line of defence a frame
+// wait here gives up after maxMs and resolves false instead of hanging, and true when the frames ran.
 // framesJs(n, maxMs) is the in-page expression (a Promise), for use inside a suite's own page script:
 //   await ${framesJs(2)};          // inside an ev(`...`) template
 // n may be a number or the name of an in-page variable. Test files never call requestAnimationFrame
