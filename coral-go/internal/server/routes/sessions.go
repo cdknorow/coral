@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/testguard"
-	"io"
 	"log"
 	"log/slog"
 	"net"
