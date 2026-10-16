@@ -1,12 +1,15 @@
 package startup
 
 import (
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -62,7 +65,9 @@ func TestListenAllAddsTheLoopbackListener(t *testing.T) {
 		t.Skip("this machine has no non-loopback IPv4 address")
 	}
 	cfg := &config.Config{Host: ip, Port: 0}
-	lns, port, err := listenAll(cfg)
+	// Port 0 picks a free port on the named address; the loopback listener then takes the same
+	// number on 127.0.0.1, which another process can hold on a busy host: try another port.
+	lns, port, err := listenAllRetrying(t, cfg)
 	require.NoError(t, err)
 	require.Len(t, lns, 2)
 	serveAll(t, lns)
@@ -82,23 +87,57 @@ func TestListenAllAddsTheLoopbackListener(t *testing.T) {
 	agentenv.UseServerEnv(cfg.AgentHost(), port, "")
 	assert.Equal(t, "http://127.0.0.1:"+strconv.Itoa(port), agentenvURL(t))
 
-	opt := &config.Config{Host: ip, Port: 0, NoAutoLoopback: true}
-	lns2, port2, err := listenAll(opt)
-	require.NoError(t, err)
-	require.Len(t, lns2, 1, "--no-auto-loopback: only the named address")
-	serveAll(t, lns2)
-	assert.Equal(t, "ok", get(t, ip, port2))
-	c := &http.Client{Timeout: 2 * time.Second}
-	if _, err := c.Get("http://127.0.0.1:" + strconv.Itoa(port2) + "/"); err == nil {
-		t.Errorf("nothing should listen on 127.0.0.1:%d with --no-auto-loopback", port2)
+	// --no-auto-loopback: only the named address. Proved by binding 127.0.0.1 on that port
+	// ourselves (a connect could reach another process's socket); a port another process holds
+	// on 127.0.0.1 is tried again with a new one, a loopback listener of ours fails every try.
+	var lastErr error
+	for try := 0; try < 5; try++ {
+		opt := &config.Config{Host: ip, Port: 0, NoAutoLoopback: true}
+		lns2, port2, err := listenAll(opt)
+		require.NoError(t, err)
+		require.Len(t, lns2, 1, "--no-auto-loopback: only the named address")
+		require.Equal(t, ip, lns2[0].Addr().(*net.TCPAddr).IP.String())
+		serveAll(t, lns2)
+		assert.Equal(t, "ok", get(t, ip, port2))
+		ln, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port2))
+		if err == nil {
+			ln.Close()
+			return
+		}
+		lastErr = err
+		t.Logf("try %d: %v", try+1, err)
 	}
+	t.Fatalf("127.0.0.1 on the named address's port stayed taken with --no-auto-loopback: %v", lastErr)
+}
+
+// addrInUse reports a bind refused because the port is taken (wrapped or only in the text).
+func addrInUse(err error) bool {
+	return errors.Is(err, syscall.EADDRINUSE) || (err != nil && strings.Contains(err.Error(), "address already in use"))
+}
+
+// listenAllRetrying is listenAll with port 0 where a second address must take the first one's
+// port: a collision with another process's socket ("address already in use") is retried, up to
+// five times; any other error is returned at once.
+func listenAllRetrying(t *testing.T, cfg *config.Config) ([]net.Listener, int, error) {
+	t.Helper()
+	var err error
+	for try := 0; try < 5; try++ {
+		var lns []net.Listener
+		var port int
+		if lns, port, err = listenAll(cfg); err == nil || !addrInUse(err) {
+			return lns, port, err
+		}
+		t.Logf("try %d: %v", try+1, err)
+	}
+	return nil, 0, err
 }
 
 // A comma list listens on each address; a busy port closes the ones already open.
 func TestListenAllList(t *testing.T) {
 	cfg := &config.Config{Host: "127.0.0.1, ::1", Port: 0}
-	lns, port, err := listenAll(cfg)
+	lns, port, err := listenAllRetrying(t, cfg)
 	if err != nil {
+		require.False(t, addrInUse(err), "a free port pair after five tries: %v", err)
 		t.Skipf("no IPv6 loopback here: %v", err)
 	}
 	require.Len(t, lns, 2, "both loopback addresses, nothing added")
@@ -168,7 +207,7 @@ func TestBothListenersAreKeyedToThePeer(t *testing.T) {
 		t.Skip("this machine has no non-loopback IPv4 address")
 	}
 	cfg := &config.Config{Host: ip, Port: 0}
-	lns, port, err := listenAll(cfg)
+	lns, port, err := listenAllRetrying(t, cfg)
 	require.NoError(t, err)
 	auth.SetListenHosts(cfg.ListenHosts())
 	t.Cleanup(func() { auth.SetListenHosts([]string{""}) })

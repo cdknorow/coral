@@ -168,10 +168,18 @@ func TestStartWithTLSAnswersHealthOverHTTPS(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "needs both --tls-cert and --tls-key")
 
-	cfg = config.Load(home)
-	cfg.Host = "127.0.0.1"
-	cfg.Port = freePort(t)
-	rs, err := Start(context.Background(), cfg, Options{BackendType: "pty", TLSCert: certFile, TLSKey: keyFile})
+	// freePort's port can be taken by another process before Start binds it (a busy host):
+	// try another one, up to five times.
+	var rs *RunningServer
+	for try := 0; try < 5; try++ {
+		cfg = config.Load(home)
+		cfg.Host = "127.0.0.1"
+		cfg.Port = freePort(t)
+		if rs, err = Start(context.Background(), cfg, Options{BackendType: "pty", TLSCert: certFile, TLSKey: keyFile}); err == nil || !addrInUse(err) {
+			break
+		}
+		t.Logf("try %d: %v", try+1, err)
+	}
 	require.NoError(t, err)
 	t.Cleanup(func() { rs.Shutdown(5 * time.Second) })
 	assert.True(t, cfg.TLS)
