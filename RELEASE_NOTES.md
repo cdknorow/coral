@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.4.58 — Redaction by structure and by name, smaller replies, and tabs that notice updates
+
+### Security
+
+- **Redaction by structure.** Through Coral Hub, a JSON reply that Coral holds whole is now redacted by its structure: each key and value is redacted as the text it stands for, at any depth, and the reply is written back valid. A value is redacted together with its key, so `{"Authorization": "Basic ..."}` is caught, and every string under a member whose key contains "authorization" is treated as an Authorization value however it's nested.
+- **Values named as secrets are redacted.** A value whose name marks it as a secret (password, passwd, passphrase, secret, secret_key, access_key, token, auth, api_key, private_key, credential and the like, so access_token, client_secret and AWS_SECRET_ACCESS_KEY too) is redacted, by its key in a JSON reply (and everything under such a key, whatever it holds) and as `name=value` or `name: value` in text. Limits: an unquoted value of letters only after a colon (`password: correcthorse`) is kept on purpose, and an unquoted value after a space-separated flag (`--api-key VALUE`) is not covered.
+- **Passwords in URLs are redacted.** The password in a URL (scheme://user:password@host, in postgres, mysql, redis, mongodb, amqp, https and the like) is redacted through Coral Hub, raw and in JSON, whatever characters it holds (a raw / or ? or # too); a port (https://host:8443/path) and a plain user@host stay as they are. A password over about 1 KB, or with non-ASCII characters, is not covered.
+
+### Fixes
+
+- **Smaller replies.** JSON replies of 1 KB or more from /api/ are gzipped for a browser that accepts it, so the board's message page and other mid-size replies no longer go out uncompressed.
+- **A tab left open across an update says so.** A dashboard tab that loaded an older build shows that the server was updated and reloads itself when idle, and the offline page cached by the service worker stays current.
+- **Fewer terminal reads for chat.** One read of a session's prompt options answers its chat polls for 2 seconds, so an agent without prompt hooks costs one screen read per 2 seconds instead of one per poll.
+- **The diff view has no dead buttons.** The file preview's read-only Diff mode no longer shows Accept and Reject buttons that did nothing.
+
+### Other changes
+
+- **No code for older servers.** The dashboard and the server ship together, so the dashboard's fallbacks for older servers and reply shapes are removed.
+- **Dependencies.** chi 5.5.0, go-chi/cors 1.2.2, golang.org/x/sys 0.49.0, x/term 0.47.0, gopsutil 4.26.9 and fsnotify 1.10.1. The vendored CodeMirror bundle is rebuilt from a recorded, pinned input and checked byte for byte.
+
 ## v1.4.57 — Redaction fixes, lighter chat pages, and PowerShell for Windows agents
 
 ### Fixes
