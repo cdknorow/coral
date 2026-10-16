@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -69,17 +70,37 @@ func TestFirstStartWithOpenNonTTYStdinDoesNotBlock(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	resp, err := http.Get(base + "/api/settings")
+	if enabled, saved := remoteSetting(t, base, dataDir); saved || enabled {
+		t.Fatalf("remote access must stay off and unsaved when nothing was asked (enabled %v, saved %v)", enabled, saved)
+	}
+}
+
+// remoteSetting reads the saved remote access answer from /api/system/privacy, with the
+// server's API key (strict local auth is the default since #3936: without a credential the
+// read is refused and proves nothing). saved is false when nothing was saved.
+func remoteSetting(t *testing.T, base, dataDir string) (enabled, saved bool) {
+	t.Helper()
+	key, err := os.ReadFile(filepath.Join(dataDir, "api_key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest("GET", base+"/api/system/privacy", nil)
+	req.Header.Set("X-API-Key", strings.TrimSpace(string(key)))
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	var settings map[string]any
-	if err := json.Unmarshal(body, &settings); err != nil {
-		t.Fatalf("settings: %v: %s", err, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("privacy: %d %s", resp.StatusCode, body)
 	}
-	if v, saved := settings["remote_access_enabled"]; saved {
-		t.Fatalf("remote_access_enabled must not be saved when nothing was asked, got %v", v)
+	var privacy struct {
+		Enabled    *bool `json:"remote_access_enabled"`
+		Configured *bool `json:"remote_access_configured"`
 	}
+	if err := json.Unmarshal(body, &privacy); err != nil || privacy.Enabled == nil || privacy.Configured == nil {
+		t.Fatalf("privacy: %v: %s", err, body)
+	}
+	return *privacy.Enabled, *privacy.Configured
 }

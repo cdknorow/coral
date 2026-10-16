@@ -537,6 +537,8 @@ func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config,
 			log.Printf("[startup] failed to save remote_access_enabled: %v", err)
 		}
 		settings["remote_access_enabled"] = value
+	} else if !configured && !forceRemote {
+		log.Printf("[startup] remote access is off: Coral didn't ask, as nobody is at a terminal to answer (it accepts connections from this computer only). To let other devices connect, turn it on in Settings > Privacy, or start Coral with --remote")
 	}
 	if !forceRemote && !strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "true") {
 		restrictToLoopback(cfg, "remote access is not enabled")
