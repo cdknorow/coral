@@ -14,12 +14,33 @@ env:
   CORAL_TELEMETRY_DISABLED: "1"
 
 jobs:
+  # ── What this tag builds ───────────────────────────────────────
+  # One place for the tier logic and the shipped program lists (#3855): every build job reads
+  # these outputs (tests/release/resolve_release.sh, its table in resolve_release_test.sh).
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.r.outputs.version }}
+      build_tags: ${{ steps.r.outputs.build_tags }}
+      prerelease: ${{ steps.r.outputs.prerelease }}
+      commands: ${{ steps.r.outputs.commands }}
+      gui_commands: ${{ steps.r.outputs.gui_commands }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Resolve the tier, version and program lists
+        id: r
+        run: |
+          set -euo pipefail
+          bash tests/release/resolve_release_test.sh
+          bash tests/release/resolve_release.sh "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
+
   # ── Linux ──────────────────────────────────────────────────────
   # linux-runner-dryrun.yml mirrors these steps; keep the two in step.
   # Each architecture builds and is smoke-tested on its own native runner: the
   # smoke tests refuse emulation as acceptance evidence.
   build-linux:
     name: build-linux (${{ matrix.arch }})
+    needs: [resolve]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true
@@ -45,22 +66,16 @@ jobs:
         env:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           ARCH: ${{ matrix.arch }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
-          BUILD_TAGS="-tags fts5"
-          if [[ "$GITHUB_REF_NAME" == *"-forDropbox"* ]]; then
-            BUILD_TAGS="-tags fts5,dropboxers"
-          elif [[ "$GITHUB_REF_NAME" == *"-beta"* ]]; then
-            BUILD_TAGS="-tags fts5,beta"
-          elif [[ "$GITHUB_REF_NAME" == *"-dev"* ]]; then
-            BUILD_TAGS="-tags fts5,dev"
-          fi
           mkdir -p ../dist/linux
-          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+          for cmd in $COMMANDS; do
             [ -d "./cmd/$cmd" ] || continue
             CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build \
-              $BUILD_TAGS \
+              -tags "$BUILD_TAGS" \
               -ldflags "$LDFLAGS" \
               -o "../dist/linux/$cmd" \
               "./cmd/$cmd/"
@@ -106,6 +121,7 @@ jobs:
 
   # ── Windows ──────────────────────────────────────────────────
   build-windows:
+    needs: [resolve]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -125,23 +141,19 @@ jobs:
         working-directory: coral-go
         env:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
         run: |
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
-          $version = "${{ github.ref_name }}" -replace "^v", ""
+          $version = $env:VERSION
           $ldflags = "-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=$env:POSTHOG_PROJECT_KEY -X github.com/cdknorow/coral/internal/config.Version=$version"
-          $buildTags = "fts5"
-          if ("${{ github.ref_name }}" -match "-forDropbox") {
-            $buildTags = "fts5,dropboxers"
-          } elseif ("${{ github.ref_name }}" -match "-beta") {
-            $buildTags = "fts5,beta"
-          } elseif ("${{ github.ref_name }}" -match "-dev") {
-            $buildTags = "fts5,dev"
-          }
+          $buildTags = $env:BUILD_TAGS
           New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null
 
           $env:CGO_ENABLED = "0"
-          foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-session-start", "coral-hook-task-sync")) {
+          foreach ($cmd in ($env:COMMANDS -split ' ')) {
             if (Test-Path "./cmd/$cmd") {
               go build -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
             }
@@ -284,44 +296,31 @@ jobs:
   # Build each architecture on its native hosted runner. macos-14 is arm64
   # and macos-15-intel is Intel. Keep native GUI deployment at macOS 13.0.
   build-macos-arm64:
+    needs: [resolve]
     runs-on: macos-14
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
-      # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
-      # pinned to the official SHA-256 of the same version.
-      - name: Install Go 1.26.9 (go.dev, checksum-pinned)
-        run: |
-          set -euo pipefail
-          case "$(uname -m)" in
-            arm64) f=go1.26.9.darwin-arm64.tar.gz; sum=f9bb7c0a02506c5d9bf0d1eb1f7ee6c7684f844ae49558308a0427b830e022cc ;;
-            x86_64) f=go1.26.9.darwin-amd64.tar.gz; sum=00c29e3d4c8562f547410daa18d2959b641bd691ab00c4a525ea817a0253d4bd ;;
-            *) echo "::error::unexpected architecture $(uname -m)"; exit 1 ;;
-          esac
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$f" "https://go.dev/dl/$f"
-          echo "$sum  $RUNNER_TEMP/$f" | shasum -a 256 -c -
-          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/$f"
-          echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/go/bin/go" version
+      # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855).
+      - uses: ./.github/actions/setup-go-macos
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
       - name: Build arm64 binaries
         working-directory: coral-go
         env:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
+          GUI_COMMANDS: ${{ needs.resolve.outputs.gui_commands }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
-          BUILD_TAGS="-tags fts5"
-          if [[ "$GITHUB_REF_NAME" == *"-forDropbox"* ]]; then BUILD_TAGS="-tags fts5,dropboxers"; elif [[ "$GITHUB_REF_NAME" == *"-beta"* ]]; then BUILD_TAGS="-tags fts5,beta"; elif [[ "$GITHUB_REF_NAME" == *"-dev"* ]]; then BUILD_TAGS="-tags fts5,dev"; fi
           mkdir -p ../dist/macos-arm64
-          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
-            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
+          for cmd in $COMMANDS; do
+            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
-          WEBVIEW_TAGS="-tags webview,${BUILD_TAGS#-tags }"
-          for cmd in coral-tray coral-app; do
-            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
+          for cmd in $GUI_COMMANDS; do
+            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 go build -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
       - name: Build bundled tmux (arm64)
         run: |
@@ -336,10 +335,13 @@ jobs:
       # Made here, where the build filled the module cache (the script makes no network request);
       # build-macos checks the two slices' folders are the same and puts one in Coral.app before signing.
       - name: Third-party notices (arm64)
+        env:
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
+          GUI_COMMANDS: ${{ needs.resolve.outputs.gui_commands }}
         run: |
           set -euo pipefail
           (cd coral-go && go mod download)
-          bins=(); for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do bins+=("dist/macos-arm64/$cmd"); done
+          bins=(); for cmd in $COMMANDS $GUI_COMMANDS; do bins+=("dist/macos-arm64/$cmd"); done
           bash installers/third-party-notices.sh --macos dist/macos-arm64/licenses "${bins[@]}"
           bash tests/release/verify_notices.sh dist/macos-arm64/licenses "${bins[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -348,44 +350,31 @@ jobs:
           path: dist/macos-arm64
 
   build-macos-amd64:
+    needs: [resolve]
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
-      # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
-      # pinned to the official SHA-256 of the same version.
-      - name: Install Go 1.26.9 (go.dev, checksum-pinned)
-        run: |
-          set -euo pipefail
-          case "$(uname -m)" in
-            arm64) f=go1.26.9.darwin-arm64.tar.gz; sum=f9bb7c0a02506c5d9bf0d1eb1f7ee6c7684f844ae49558308a0427b830e022cc ;;
-            x86_64) f=go1.26.9.darwin-amd64.tar.gz; sum=00c29e3d4c8562f547410daa18d2959b641bd691ab00c4a525ea817a0253d4bd ;;
-            *) echo "::error::unexpected architecture $(uname -m)"; exit 1 ;;
-          esac
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$f" "https://go.dev/dl/$f"
-          echo "$sum  $RUNNER_TEMP/$f" | shasum -a 256 -c -
-          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/$f"
-          echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/go/bin/go" version
+      # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855).
+      - uses: ./.github/actions/setup-go-macos
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
       - name: Build amd64 binaries
         working-directory: coral-go
         env:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
+          GUI_COMMANDS: ${{ needs.resolve.outputs.gui_commands }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
-          BUILD_TAGS="-tags fts5"
-          if [[ "$GITHUB_REF_NAME" == *"-forDropbox"* ]]; then BUILD_TAGS="-tags fts5,dropboxers"; elif [[ "$GITHUB_REF_NAME" == *"-beta"* ]]; then BUILD_TAGS="-tags fts5,beta"; elif [[ "$GITHUB_REF_NAME" == *"-dev"* ]]; then BUILD_TAGS="-tags fts5,dev"; fi
           mkdir -p ../dist/macos-amd64
-          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
+          for cmd in $COMMANDS; do
+            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
-          WEBVIEW_TAGS="-tags webview,${BUILD_TAGS#-tags }"
-          for cmd in coral-tray coral-app; do
-            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
+          for cmd in $GUI_COMMANDS; do
+            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 go build -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
       - name: Build bundled tmux (x86_64)
         run: |
@@ -398,10 +387,13 @@ jobs:
           CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/macos-amd64/tmux-payload/terminfo
         run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1
       - name: Third-party notices (x86_64)
+        env:
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
+          GUI_COMMANDS: ${{ needs.resolve.outputs.gui_commands }}
         run: |
           set -euo pipefail
           (cd coral-go && go mod download)
-          bins=(); for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do bins+=("dist/macos-amd64/$cmd"); done
+          bins=(); for cmd in $COMMANDS $GUI_COMMANDS; do bins+=("dist/macos-amd64/$cmd"); done
           bash installers/third-party-notices.sh --macos dist/macos-amd64/licenses "${bins[@]}"
           bash tests/release/verify_notices.sh dist/macos-amd64/licenses "${bins[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -410,26 +402,12 @@ jobs:
           path: dist/macos-amd64
 
   build-macos:
-    needs: [build-macos-arm64, build-macos-amd64]
+    needs: [resolve, build-macos-arm64, build-macos-amd64]
     runs-on: macos-14
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
-      # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
-      # pinned to the official SHA-256 of the same version.
-      - name: Install Go 1.26.9 (go.dev, checksum-pinned)
-        run: |
-          set -euo pipefail
-          case "$(uname -m)" in
-            arm64) f=go1.26.9.darwin-arm64.tar.gz; sum=f9bb7c0a02506c5d9bf0d1eb1f7ee6c7684f844ae49558308a0427b830e022cc ;;
-            x86_64) f=go1.26.9.darwin-amd64.tar.gz; sum=00c29e3d4c8562f547410daa18d2959b641bd691ab00c4a525ea817a0253d4bd ;;
-            *) echo "::error::unexpected architecture $(uname -m)"; exit 1 ;;
-          esac
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$f" "https://go.dev/dl/$f"
-          echo "$sum  $RUNNER_TEMP/$f" | shasum -a 256 -c -
-          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/$f"
-          echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/go/bin/go" version
+      # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855).
+      - uses: ./.github/actions/setup-go-macos
       - name: Require macOS release signing credentials
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -455,10 +433,13 @@ jobs:
           path: dist/macos-amd64
       - name: Merge and verify universal binaries
         working-directory: coral-go
+        env:
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
+          GUI_COMMANDS: ${{ needs.resolve.outputs.gui_commands }}
         run: |
           set -euo pipefail
           mkdir -p ../dist/macos
-          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
+          for cmd in $COMMANDS $GUI_COMMANDS; do
             lipo -create -output "../dist/macos/$cmd" "../dist/macos-arm64/$cmd" "../dist/macos-amd64/$cmd"
             chmod +x "../dist/macos/$cmd"
           done
@@ -489,11 +470,14 @@ jobs:
           bash tools/bundle-frontend.sh
 
       - name: Create Coral.app bundle
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
+          GUI_COMMANDS: ${{ needs.resolve.outputs.gui_commands }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           APP="dist/Coral.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          for bin in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app tmux; do
+          for bin in $COMMANDS $GUI_COMMANDS tmux; do
             cp "dist/macos/$bin" "$APP/Contents/MacOS/$bin"
             chmod +x "$APP/Contents/MacOS/$bin"
           done
@@ -501,7 +485,7 @@ jobs:
           cp -R dist/macos/tmux-licenses "$APP/Contents/Resources/tmux-licenses"
           # In the bundle before it is signed and notarized, never after (that would break the seal).
           cp -R dist/macos/licenses "$APP/Contents/Resources/licenses"
-          bins=(); for b in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do bins+=("$APP/Contents/MacOS/$b"); done
+          bins=(); for b in $COMMANDS $GUI_COMMANDS; do bins+=("$APP/Contents/MacOS/$b"); done
           bash tests/release/verify_notices.sh "$APP/Contents/Resources/licenses" "${bins[@]}"
           sed "s/VERSION_PLACEHOLDER/${VERSION}/g" tools/Info.plist > "$APP/Contents/Info.plist"
           [ -f Coral.icns ] && cp Coral.icns "$APP/Contents/Resources/AppIcon.icns"
@@ -536,11 +520,13 @@ jobs:
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          COMMANDS: ${{ needs.resolve.outputs.commands }}
         run: |
           APP="dist/Coral.app"
           # Sign executable code explicitly before signing the wrapper. The
           # tmux data files and notices are sealed by the outer app signature.
-          for bin in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+          # The GUI programs are signed below, each with its own entitlements.
+          for bin in $COMMANDS; do
             codesign --force --options runtime --sign "$SIGNING_IDENTITY" \
               --entitlements entitlements.plist "$APP/Contents/MacOS/$bin"
           done
@@ -573,9 +559,6 @@ jobs:
           # Then run the signed app: the tray (cgo) starts the server and must answer, and the
           # webview (coral-app, cgo) is launched and must not crash. A failure here fails the job.
           CI=true SMOKE_TEST_WEBVIEW=1 TEST_PORT=8498 tools/test-macos-app.sh dist/Coral.app
-
-      - name: Smoke test Coral.app
-        run: tools/test-macos-app.sh dist/Coral.app
 
       - name: Verify signed Standard app payload
         run: |
@@ -677,7 +660,7 @@ jobs:
       contents: write
       id-token: write      # Sigstore keyless signing: this job's GitHub OIDC identity
       attestations: write  # GitHub artifact attestations (build provenance)
-    needs: [build-linux, build-windows, build-macos]
+    needs: [resolve, build-linux, build-windows, build-macos]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -695,16 +678,18 @@ jobs:
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          # Create the release if it doesn't exist. Test tiers (-dev, -beta, -rc,
+          # Create the release unless it exists (a re-run). Test tiers (-dev, -beta, -rc,
           # -forDropbox) are prereleases and never "Latest": installed Corals offer the
-          # latest release as an update. -all and -windows are production releases.
+          # latest release as an update (resolve_release.sh decides). A failed create fails
+          # the step here, not as a misleading upload error later (#3855).
           PRE=()
-          case "$TAG" in
-            *-dev*|*-beta*|*-rc*|*-forDropbox*) PRE=(--prerelease --latest=false) ;;
-          esac
-          gh release create "$TAG" --title "$TAG" --generate-notes "${PRE[@]}" || true
+          if [ "$PRERELEASE" = true ]; then PRE=(--prerelease --latest=false); fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes "${PRE[@]}"
+          fi
           # Publish install packages only; native macOS slices are build inputs.
           # Linux and the macOS DMG are always built, so a missing package is an
           # error. The Windows packages are built and signed on every tag, so
