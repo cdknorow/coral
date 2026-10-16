@@ -50,10 +50,6 @@ func (s *Store) SubmitCompletionReviewAtRevision(ctx context.Context, project st
 	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision, "")
 }
 
-func (s *Store) submitCompletionReviewAtRevision(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
-	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision, "")
-}
-
 func (s *Store) SubmitCompletionReviewAtRevisionAndCandidate(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
 	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision, candidateRevision)
 }

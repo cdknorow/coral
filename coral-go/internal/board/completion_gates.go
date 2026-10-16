@@ -82,14 +82,6 @@ func validateCompletionGateConfiguration(gates []CompletionGate, enabled bool) e
 	return nil
 }
 
-func checkCompletionGates(gates []CompletionGate, artifacts []TaskArtifact, candidateRevision string) ([]CompletionGateResult, error) {
-	return checkCompletionGatesWithRunner(gates, artifacts, candidateRevision, nil)
-}
-
-func checkCompletionGatesWithRunner(gates []CompletionGate, artifacts []TaskArtifact, candidateRevision string, runner CompletionCheckRunner) ([]CompletionGateResult, error) {
-	return checkCompletionGatesWithPolicy(gates, artifacts, candidateRevision, runner, true)
-}
-
 func checkCompletionGatesWithPolicy(gates []CompletionGate, artifacts []TaskArtifact, candidateRevision string, runner CompletionCheckRunner, enabled bool) ([]CompletionGateResult, error) {
 	if len(candidateRevision) > 256 {
 		return nil, fmt.Errorf("candidate_revision must be at most 256 bytes")
