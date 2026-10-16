@@ -9,7 +9,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { filterSettingsPayload, settingsErrorMessage } from './cloud_settings.js';
-import { purgeStored } from './local_store.js';
+import { purgeStored, forgetAccountMemory } from './local_store.js';
 
 /** GET paths that only a machine's own dashboard serves: privacy state, agent panels (and the licence
  *  status of machines older than #3221). (Themes, settings, tags,
@@ -168,6 +168,7 @@ async function signOut() {
     // What was typed and where people worked stays in this browser otherwise (#3681): drafts,
     // pending messages, recent folders and stars of every account, removed before signing out.
     try { purgeStored(); } catch { /* storage refused */ }
+    forgetAccountMemory(); // and what this page holds in memory: the kept chat pages (#3726)
     try { await fetch('/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch { /* ignore */ }
     location.replace('/signin');
 }

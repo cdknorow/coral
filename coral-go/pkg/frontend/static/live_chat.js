@@ -12,7 +12,7 @@ import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from '.
 import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
 import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from './overload.js';
-import { storeKey } from './local_store.js';
+import { storeKey, onAccountForgotten } from './local_store.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -53,6 +53,8 @@ function keepMore(sessionId, messages, total) {
 
 /** Forget every kept page (a suite that reuses an agent id with different content between its cases). */
 export function clearKeptChatPages() { keptPages.clear(); }
+// The account's chat text is not kept past sign-out or a change of Coral Hub account.
+onAccountForgotten(clearKeptChatPages);
 
 /** The kept page of a session seen within the last few minutes, or null (an older one is dropped). */
 function freshKeptPage(sessionId) {

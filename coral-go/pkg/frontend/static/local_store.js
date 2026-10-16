@@ -55,6 +55,15 @@ function ownerOf(key) {
     return /^[0-9a-f]{16}$/.test(t) ? t : '';
 }
 
+// What a page holds in memory for the signed-in account (the chat pages kept for a quick switch back, #3726) goes when
+// the account does: modules register what to forget here, and sign-out and an account change run it.
+const _forgetters = new Set();
+export function onAccountForgotten(fn) { _forgetters.add(fn); }
+/** Forget what is held in memory for the account. Sign-out and an account change call it, next to purgeStored. */
+export function forgetAccountMemory() {
+    for (const fn of _forgetters) { try { fn(); } catch { /* one forgetter's failure must not keep the rest */ } }
+}
+
 /** Remove the stored kinds: all of them, or those `which(key, owner)` picks. */
 export function purgeStored(which = () => true) {
     const s = ls();
@@ -76,7 +85,7 @@ export function setStoreOwner(tag) {
     if (!s) return;
     let prev = null;
     try { prev = s.getItem(OWNER_KEY); } catch { /* none */ }
-    if (prev !== _tag) purgeStored((k, owner) => owner !== _tag);
+    if (prev !== _tag) { purgeStored((k, owner) => owner !== _tag); forgetAccountMemory(); }
     try { s.setItem(OWNER_KEY, _tag); } catch { /* storage refused */ }
 }
 

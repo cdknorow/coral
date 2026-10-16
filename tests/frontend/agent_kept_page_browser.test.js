@@ -98,6 +98,25 @@ const BASE = require('./test_base').BASE;
         assert.ok(stat.length <= 2, `eight quick switches and re-renders made at most one status call per team inside the throttle (got ${stat.length}: ${JSON.stringify(stat)})`);
         console.log(`   ✓ 8 quick switches and re-renders: ${stat.length} status calls (the throttle is 5 s per team)`);
 
+        console.log('5. A change of Coral Hub account, and sign-out, forget the kept pages');
+        const MOD = `(window.__coralStatic || '/static/') + 'local_store.js'`;
+        for (const [how, forget] of [['an account change (setStoreOwner)', `import(${MOD}).then(m => { m.setStoreOwner('0123456789abcdef'); return true; })`],
+            ['sign-out (forgetAccountMemory, which cloud.js runs next to purgeStored)', `import(${MOD}).then(m => { m.forgetAccountMemory(); return true; })`]]) {
+            await select('qa-kept-a');
+            await waitFor(`window.__rendered().length >= 100`, 'A shown');
+            await quiet();
+            await select('qa-kept-b');
+            await waitFor(`window.__rendered().length >= 100`, 'B shown');
+            await quiet();
+            await ev(forget);
+            await clearReqs();
+            await select('qa-kept-a');
+            await waitFor(`window.__m.requests.some(r => r.first && r.settled)`, `a first page after ${how}`, 5000);
+            await quiet();
+            assert.ok((await chat()).some(r => r.first), `after ${how}: the first page is fetched, not shown from a kept page`);
+        }
+        console.log('   ✓ after an account change and after sign-out, the first page is fetched again');
+
         console.log('\nAll kept-page checks passed');
     } finally {
         await client.close();
