@@ -1053,12 +1053,15 @@ func (h *RemoteAgentHub) pingFeed(ctx context.Context, conn proxy.WSConn, p feed
 			missed = 0
 			continue
 		}
-		if missed++; missed < 2 && ctx.Err() == nil {
+		// A ping cut short by the feed's own end is not a miss: the feed is closing anyway,
+		// and the ctx.Done branch above leaves the close to the caller too.
+		if ctx.Err() != nil {
+			return
+		}
+		if missed++; missed < 2 {
 			continue
 		}
-		if ctx.Err() == nil {
-			h.logger.Debug("remote feed ping failed twice; dropping feed", "error", err)
-		}
+		h.logger.Debug("remote feed ping failed twice; dropping feed", "error", err)
 		conn.CloseNow()
 		return
 	}

@@ -51,8 +51,14 @@ func TestWorkflowRunsAreCapped(t *testing.T) {
 		}
 		return true
 	}, 20*time.Second, 50*time.Millisecond)
+	var last *store.WorkflowRun
 	require.Eventually(t, func() bool {
-		_, err := runner.TriggerWorkflow(ctx, wf, "api", nil)
+		last, err = runner.TriggerWorkflow(ctx, wf, "api", nil)
 		return err == nil
 	}, 5*time.Second, 50*time.Millisecond, "a slot frees when a run finishes")
+	// Wait for that run too: on Windows its shell still holding a file makes the TempDir cleanup fail.
+	require.Eventually(t, func() bool {
+		got, _ := wfStore.GetWorkflowRunDirect(ctx, last.ID)
+		return got != nil && (got.Status == "completed" || got.Status == "failed")
+	}, 20*time.Second, 50*time.Millisecond)
 }
