@@ -4,9 +4,18 @@
 
 as_board() {
     local session="$1" role="$2"; shift 2
+    # Send the session token only under strict local auth (the default). A presented token's
+    # identity is enforced in EVERY mode (#3495), so sending it strict-off would break the
+    # assignment suite, which reuses one session under several board roles (SESS_A as both
+    # Builder and Orchestrator) and depends on locality trust there. Strict-off: no token.
+    local _tok=""
+    case "$(printf %s "${CORAL_STRICT_LOCAL_AUTH:-on}" | tr 'A-Z' 'a-z')" in
+        0|off|false|no) ;;
+        *)              _tok="$(token_of "$session")" ;;
+    esac
     env -u TMUX -u CORAL_PORT CORAL_URL="$BASE_URL" \
         CORAL_SESSION_NAME="$session" CORAL_SUBSCRIBER_ID="$role" \
-        CORAL_SESSION_TOKEN="$(token_of "$session")" \
+        CORAL_SESSION_TOKEN="$_tok" \
         "$TMPDIR_AT/coral-board" "$@"
 }
 builder() { as_board "$SESS_A" Builder "$@"; }
