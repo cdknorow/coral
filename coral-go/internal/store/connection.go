@@ -211,6 +211,10 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 		WHERE detail_json IS NOT NULL AND typeof(json_extract(detail_json, '$')) = 'text'
 		AND json_valid(json_extract(detail_json, '$'))`)
 
+	// After the fixup above, so a new table is filled from the fixed rows (#3846).
+	if err := d.ensureEditedFiles(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 

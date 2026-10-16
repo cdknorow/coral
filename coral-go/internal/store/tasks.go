@@ -870,13 +870,7 @@ func (s *TaskStore) GetAllEditedFileCounts(ctx context.Context) (map[string]int,
 		Count     int    `db:"cnt"`
 	}
 	err := s.reader().SelectContext(ctx, &rows,
-		`SELECT session_id, COUNT(DISTINCT json_extract(detail_json, '$.file_path')) AS cnt
-		 FROM agent_events INDEXED BY idx_agent_events_edited_files
-		 WHERE event_type = 'tool_use'
-		   AND tool_name IN ('Write', 'Edit')
-		   AND detail_json IS NOT NULL AND json_valid(detail_json)
-		   AND session_id IS NOT NULL
-		 GROUP BY session_id`)
+		`SELECT session_id, COUNT(*) AS cnt FROM agent_event_files GROUP BY session_id`) // edited_files.go
 	if err != nil {
 		return nil, err
 	}
