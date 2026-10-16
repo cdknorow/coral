@@ -665,10 +665,6 @@ func resolveAgyTranscriptFromHistory(historyPath, basePath, workingDirectory str
 	return ""
 }
 
-func resolveGeminiTranscript(sessionID string, workingDirectory ...string) string {
-	return resolveAgyTranscript(sessionID, workingDirectory...)
-}
-
 // openTranscript opens an agent's transcript for reading. Codex's rollout files sit in a folder
 // the agent can write, so they are opened through a root on that folder, never following a
 // symlink (#3599): a Codex session's transcript always, and any path inside that folder.
