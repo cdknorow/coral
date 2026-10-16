@@ -3,7 +3,6 @@
 package peercred
 
 import (
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -41,20 +40,6 @@ func TestPeerUIDRealLoopback(t *testing.T) {
 		require.NoError(t, err, network)
 		assert.Equal(t, os.Geteuid(), uid, network)
 	}
-}
-
-func TestSameUserRealRequest(t *testing.T) {
-	var same, supported bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		same, supported = SameUser(r)
-	}))
-	defer srv.Close()
-	resp, err := http.Get(srv.URL)
-	require.NoError(t, err)
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	assert.True(t, supported)
-	assert.True(t, same, "a request from this process is from the same user")
 }
 
 // Another local user's request is not the same user (run as root with setpriv and

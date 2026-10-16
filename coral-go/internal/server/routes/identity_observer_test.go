@@ -108,7 +108,7 @@ func TestIdentityReportRoute(t *testing.T) {
 	defer db.Close()
 	h := NewCloudHandler(store.NewSessionStore(db), t.TempDir())
 	h.SetIdentityObserver(NewIdentityObserver(db, nil, nil))
-	// No real socket below: say it's Coral's own user, or peercred fails closed on Linux (#3442).
+	// No real socket below: say it's Coral's own user, or peercred fails closed (#3442).
 	h.SetPeerCheck(func(*http.Request) (bool, bool) { return true, true })
 	req := func(mut func(*http.Request)) int {
 		r := httptest.NewRequest("GET", "http://127.0.0.1:8420/api/system/identity-report", nil)

@@ -1,23 +1,31 @@
 // Package peercred tells which local user is on the other end of a loopback TCP
-// request (Linux).
+// request (Linux, macOS, Windows).
 //
 // Requests from this computer bypass Coral's API-key auth, and the dashboard is
 // recognised by browser headers that any local program can forge. On a shared
 // host or in a pod with sidecars, that lets another local user drive Coral as if
-// it were Coral's own user. On Linux the kernel says who owns each socket: the
-// client's row in /proc/net/tcp (or tcp6), local address = the request's remote
-// address and remote address = the server's local address, carries the uid of
-// the process that opened it. SameUser compares that uid with Coral's own.
+// it were Coral's own user. The kernel knows who owns each socket. The client's
+// socket is the one whose local address is the request's remote address and
+// whose remote address is the server's local address:
+//   - Linux: its row in /proc/net/tcp (or tcp6) carries the uid of the process
+//     that opened it;
+//   - macOS: its entry in the net.inet.tcp.pcblist_n sysctl carries the socket's
+//     uid (the same table netstat reads);
+//   - Windows: its row in GetExtendedTcpTable carries the owning process id, whose
+//     token names the user's SID.
 //
-// It fails closed: a row that cannot be found (after one re-read, for the race
-// with accept), a TIME_WAIT or listening row, or any parse error is "not the
-// same user". Elsewhere (macOS, Windows) it reports unsupported and callers keep
-// their own rules.
+// SameUser compares that user with Coral's own.
+//
+// It fails closed: a socket that cannot be found (after one re-read, for the race
+// with accept), a TIME_WAIT or listening row, two rows that disagree, a process
+// that cannot be opened, or any parse error is "not the same user". On other
+// systems it reports unsupported and callers keep their own rules.
 //
 // Limits: a program running as Coral's own user cannot be told apart (it could
 // read Coral's files anyway); a client in another network namespace that reaches
 // Coral through a proxy shows up as the proxy's socket, which is refused unless
-// the proxy runs as Coral's user.
+// the proxy runs as Coral's user. On Windows, a process that exits between the
+// connect and the check is refused, and the pid could in theory be reused by then.
 //
 // Used by the cloud write routes (#3149). Worth considering later for other
 // routes that act for the user from a loopback request: /send, /keys and
@@ -38,9 +46,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-// Supported reports whether this platform can tell the peer's user.
-var Supported = runtime.GOOS == "linux"
 
 // procNet is where the socket tables live (a test seam).
 var procNet = "/proc/net"
@@ -169,9 +174,10 @@ func unmap(ap netip.AddrPort) netip.AddrPort {
 }
 
 // SameUser reports whether the loopback TCP client of r runs as this process's
-// user. supported is false where the kernel cannot be asked (not Linux) or the
-// request is not a TCP connection over loopback: the caller applies its own rules.
-// On Linux, any failure to find the owner is "not the same user" (fail closed).
+// user. supported is false where the kernel cannot be asked (see Supported) or
+// the request is not a TCP connection over loopback: the caller applies its own
+// rules. Where it is supported, any failure to find the owner is "not the same
+// user" (fail closed).
 func SameUser(r *http.Request) (same, supported bool) {
 	if !Supported {
 		return false, false
@@ -189,9 +195,15 @@ func SameUser(r *http.Request) (same, supported bool) {
 	if !client.Addr().Unmap().IsLoopback() {
 		return false, false // not a local request: not this package's question
 	}
-	uid, err := PeerUID(client, server)
-	if err != nil {
-		return false, true
+	client, server = unmap(client), unmap(server)
+	for attempt := 0; attempt < 2; attempt++ { // re-read once: the race with accept
+		me, err := ownerIsMe(client, server)
+		if err == nil {
+			return me, true
+		}
+		if !errors.Is(err, ErrNotFound) {
+			break
+		}
 	}
-	return uid == os.Geteuid(), true
+	return false, true
 }
