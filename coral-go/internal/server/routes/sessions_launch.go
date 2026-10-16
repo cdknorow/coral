@@ -1,0 +1,1459 @@
+package routes
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/cdknorow/coral/internal/testguard"
+	"log"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/cdknorow/coral/internal/agent"
+	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/proxy"
+	"github.com/cdknorow/coral/internal/ptr"
+	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/cdknorow/coral/internal/tracking"
+)
+
+// Launch creates a new agent session.
+// POST /api/sessions/launch
+func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
+	var body struct {
+		WorkingDir      string                 `json:"working_dir"`
+		AgentType       string                 `json:"agent_type"`
+		DisplayName     string                 `json:"display_name"`
+		Flags           []string               `json:"flags"`
+		Prompt          string                 `json:"prompt"`
+		BoardName       string                 `json:"board_name"`
+		BoardID         string                 `json:"board_id"`  // join this board (#3536)
+		NewBoard        bool                   `json:"new_board"` // create another board even if the name exists
+		BoardServer     string                 `json:"board_server"`
+		Backend         string                 `json:"backend"`
+		BoardType       string                 `json:"board_type"`
+		Model           string                 `json:"model"`
+		ResumeSessionID string                 `json:"resume_session_id"`
+		Capabilities    *agent.Capabilities    `json:"capabilities"`
+		Tools           []string               `json:"tools"`
+		MCPServers      json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
+		Hooks           map[string]interface{} `json:"hooks"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if mcpGiven(body.MCPServers) {
+		errBadRequest(w, errMCPNotSupported)
+		return
+	}
+	// No agent_type (e.g. `coral-agent launch`) means the operator's default,
+	// as the + New Agent modal pre-selects it.
+	if body.AgentType == "" {
+		if settings, err := h.ss.GetSettings(r.Context()); err == nil {
+			body.AgentType = settings["default_agent_type"]
+		}
+	}
+	if body.ResumeSessionID != "" && !agent.IsResumeID(body.AgentType, body.ResumeSessionID) {
+		errBadRequest(w, "resume_session_id is not a valid resume id") // #3582: it goes into file paths
+		return
+	}
+	// Analytics: one requested/result pair per attempt, with controlled
+	// categories only (never error text, paths, names or prompts).
+	attempt := tracking.StartLaunch(tracking.KindAgent, tracking.ProviderFor(body.AgentType), h.launchBackendLabel(body.Backend), 1, body.ResumeSessionID != "")
+	if body.WorkingDir == "" {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+		errBadRequest(w, "working_dir is required")
+		return
+	}
+	// Which board on this Coral the agent joins or starts (#3536); a remote board's Coral decides its own.
+	if (body.BoardName != "" || body.BoardID != "") && (body.BoardServer == "" || body.BoardServer == "local") {
+		key, ok := h.launchBoard(w, r, body.BoardID, body.BoardName, body.NewBoard)
+		if !ok {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+			return
+		}
+		body.BoardName = key
+	}
+	// An unknown agent_type used to fall through to Claude and return 200
+	// ok:true, silently starting an agent the caller never asked for.
+	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+		errBadRequest(w, err.Error())
+		return
+	}
+	// A directory that does not exist is the caller's mistake: 400 naming the
+	// field, so the dialog can mark it (it used to surface as a 500) (#3152).
+	if msg := launchDirError(body.WorkingDir); msg != "" {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailWorkdirUnavailable, 0, 1)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg, "field": "working_dir"})
+		return
+	}
+	slog.Info("launch request received",
+		"working_dir", body.WorkingDir,
+		"agent_type", body.AgentType,
+		"display_name", body.DisplayName,
+		"requested_backend", body.Backend,
+		"terminal_type", fmt.Sprintf("%T", h.terminal),
+		"backend_type", fmt.Sprintf("%T", h.backend),
+		"path", os.Getenv("PATH"),
+		"shell", os.Getenv("SHELL"),
+		"coral_tmux_bin", os.Getenv("CORAL_TMUX_BIN"),
+	)
+
+	// Validate resume support
+	if body.ResumeSessionID != "" {
+		agentImpl := agent.GetAgent(body.AgentType)
+		if agentImpl != nil && !agentImpl.SupportsResume() {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailUnsupportedOption, 0, 1)
+			errBadRequest(w, fmt.Sprintf("Resume not supported for %s", body.AgentType))
+			return
+		}
+	}
+
+	// Resolve model: request wins, else per-type default from settings.
+	effectiveModel := h.resolveModel(r.Context(), body.AgentType, body.Model)
+
+	// Add model flag if resolved to non-empty
+	launchFlags := body.Flags
+	if effectiveModel != "" {
+		launchFlags = append(append([]string{}, body.Flags...), "--model", effectiveModel)
+	}
+	result, err := h.launchSession(r.Context(), body.WorkingDir, body.AgentType, body.DisplayName,
+		body.ResumeSessionID, launchFlags, body.Prompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, body.Capabilities,
+		body.Tools, body.Hooks)
+	if err != nil {
+		attempt.Finish(tracking.OutcomeFailure, classifyLaunchError(err), 0, 1)
+		errInternalServer(w, err.Error())
+		return
+	}
+	attempt.Finish(tracking.OutcomeSuccess, "", 1, 0)
+
+	// Setup board subscription in background (prompt is passed as CLI arg, not via tmux send-keys)
+	if body.BoardName != "" {
+		h.setupBoardAndPrompt(result["session_id"].(string), result["session_name"].(string),
+			body.AgentType, body.BoardName, launchedName(result, body.DisplayName))
+	}
+
+	tracking.TrackEvent(tracking.EventSessionLaunched, nil)
+	tracking.TrackOnce(tracking.EventFirstAgentLaunched, nil)
+	if body.BoardName != "" && (body.BoardServer == "" || body.BoardServer == "local") {
+		result["board_id"] = body.BoardName
+		result["board_label"] = h.boardLabel(body.BoardName)
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// LaunchTeam launches multiple agents on a shared message board.
+// POST /api/sessions/launch-team
+func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
+	var body struct {
+		BoardName   string   `json:"board_name"`
+		BoardID     string   `json:"board_id"`  // relaunch on this board (#3536)
+		NewBoard    bool     `json:"new_board"` // create another board even if the name exists
+		WorkingDir  string   `json:"working_dir"`
+		AgentType   string   `json:"agent_type"`
+		Flags       []string `json:"flags"`
+		BoardServer string   `json:"board_server"`
+		Backend     string   `json:"backend"`
+		BoardType   string   `json:"board_type"`
+		Worktree    bool     `json:"worktree"`
+		BaseBranch  string   `json:"base_branch"`
+		Agents      []struct {
+			Name         string                 `json:"name"`
+			Prompt       string                 `json:"prompt"`
+			Capabilities *agent.Capabilities    `json:"capabilities"`
+			AgentType    string                 `json:"agent_type"`
+			Model        string                 `json:"model"`
+			Flags        []string               `json:"flags"`
+			Tools        []string               `json:"tools"`
+			MCPServers   json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
+			Hooks        map[string]interface{} `json:"hooks"`
+			Knowledge    string                 `json:"knowledge"`
+		} `json:"agents"`
+		TeamKnowledgeIndex string `json:"team_knowledge_index"`
+		WorkingMode        *struct {
+			Mode               string `json:"mode"`
+			DependencyGuidance bool   `json:"dependency_guidance"`
+			CustomInstructions string `json:"custom_instructions"`
+		} `json:"working_mode"`
+		WorkflowPresets []struct {
+			ID           string `json:"id"`
+			Name         string `json:"name"`
+			Instructions string `json:"instructions"`
+			Builtin      bool   `json:"builtin"`
+		} `json:"workflow_presets"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	for _, a := range body.Agents {
+		if mcpGiven(a.MCPServers) {
+			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, errMCPNotSupported))
+			return
+		}
+	}
+	// Which board the team joins or starts (#3536), decided before anything is written
+	// (knowledge files, working mode, presets, worktrees, the teams row). From here on
+	// body.BoardName is the board's id.
+	// The base branch reaches git: never an option, and checked before anything is created
+	// (#3601, weak site W24).
+	if body.Worktree && body.BaseBranch != "" {
+		if err := gitutil.ValidRef(body.BaseBranch); err != nil {
+			errBadRequest(w, "base_branch: "+err.Error())
+			return
+		}
+	}
+	if body.BoardName != "" || body.BoardID != "" {
+		key, ok := h.launchBoard(w, r, body.BoardID, body.BoardName, body.NewBoard)
+		if !ok {
+			return
+		}
+		body.BoardName = key
+	}
+
+	// Write any bundled knowledge files from the template
+	if body.BoardName != "" {
+		coralDir := h.cfg.CoralDir()
+		hasKnowledge := false
+		for _, a := range body.Agents {
+			if a.Knowledge != "" {
+				background.WriteKnowledgeFile(coralDir, body.BoardName, a.Name, a.Knowledge)
+				hasKnowledge = true
+			}
+		}
+		if body.TeamKnowledgeIndex != "" {
+			background.WriteKnowledgeIndex(coralDir, body.BoardName, body.TeamKnowledgeIndex)
+			hasKnowledge = true
+		}
+		if hasKnowledge {
+			log.Printf("[launch-team] restored %d agent knowledge files for team %s", len(body.Agents), body.BoardName)
+		}
+	}
+
+	// Restore working mode settings from template
+	if body.WorkingMode != nil && h.bs != nil {
+		wm := board.WorkingMode{
+			Mode:               body.WorkingMode.Mode,
+			DependencyGuidance: body.WorkingMode.DependencyGuidance,
+			CustomInstructions: body.WorkingMode.CustomInstructions,
+		}
+		if _, err := h.bs.SetWorkingMode(r.Context(), body.BoardName, wm); err != nil {
+			log.Printf("[launch-team] failed to restore working mode for team %s: %v", body.BoardName, err)
+		} else {
+			log.Printf("[launch-team] restored working mode %q for team %s", wm.Mode, body.BoardName)
+		}
+	}
+
+	// Restore workflow presets from template
+	if len(body.WorkflowPresets) > 0 && h.bs != nil {
+		for _, p := range body.WorkflowPresets {
+			if p.Builtin {
+				h.bs.SaveWorkflowPreset(r.Context(), body.BoardName, p.ID, p.Name, p.Instructions, false)
+			} else {
+				h.bs.SaveWorkflowPreset(r.Context(), body.BoardName, p.ID, p.Name, p.Instructions, true)
+			}
+		}
+		log.Printf("[launch-team] restored %d workflow presets for team %s", len(body.WorkflowPresets), body.BoardName)
+	}
+
+	// Label the team by the effective provider of the members that will
+	// actually launch (their own type, else the team's, else the Claude
+	// fallback launchSession applies): "mixed" only when those truly differ.
+	var memberTypes []string
+	skippedMembers := 0
+	for _, a := range body.Agents {
+		if a.Name == "" {
+			skippedMembers++ // the launch loop skips unnamed members
+			continue
+		}
+		t := body.AgentType
+		if a.AgentType != "" {
+			t = a.AgentType
+		}
+		memberTypes = append(memberTypes, t)
+	}
+	teamProvider := tracking.TeamProvider(memberTypes)
+	attempt := tracking.StartLaunch(tracking.KindTeam, teamProvider, h.launchBackendLabel(body.Backend), len(body.Agents), false)
+	if body.BoardName == "" || body.WorkingDir == "" || len(body.Agents) == 0 {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
+		errBadRequest(w, "board_name, working_dir, and agents required")
+		return
+	}
+	// Validate the team-level type and every per-agent override before
+	// launching anything: a team that fails halfway leaves live agents behind.
+	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
+		errBadRequest(w, err.Error())
+		return
+	}
+	for _, a := range body.Agents {
+		if err := agent.ValidateAgentType(a.AgentType); err != nil {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
+			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, err))
+			return
+		}
+	}
+
+	ctx := r.Context()
+
+	// Create git worktree if requested
+	workingDir := body.WorkingDir
+	var worktreePath string
+	if body.Worktree && body.WorkingDir != "" {
+		branch := body.BaseBranch
+		if branch == "" {
+			branch = "main"
+		}
+		worktreeDir := filepath.Join(h.cfg.CoralDir(), "worktrees")
+		os.MkdirAll(worktreeDir, 0755)
+		worktreePath = filepath.Join(worktreeDir, body.BoardName)
+		worktreeBranch := fmt.Sprintf("coral-team/%s", body.BoardName)
+		cmd := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "-b", worktreeBranch, "--", worktreePath, branch)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			// Branch may already exist from a previous run — try without -b
+			cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "--", worktreePath, worktreeBranch)
+			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+				attempt.Finish(tracking.OutcomeFailure, tracking.FailWorktreeFailed, 0, len(body.Agents))
+				errBadRequest(w, fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2)))
+				return
+			}
+		}
+		workingDir = worktreePath
+		log.Printf("[launch-team] created worktree at %s (branch %s from %s)", worktreePath, worktreeBranch, branch)
+	}
+
+	// Create team persistence record
+	var teamID int64
+	if h.teamStore != nil {
+		configJSON, _ := json.Marshal(body)
+		isWorktree := 0
+		if worktreePath != "" {
+			isWorktree = 1
+		}
+		team, err := h.teamStore.CreateTeam(ctx, &store.Team{
+			Name:       body.BoardName,
+			ConfigJSON: string(configJSON),
+			Status:     "running",
+			WorkingDir: workingDir,
+			IsWorktree: isWorktree,
+		})
+		if err != nil {
+			log.Printf("[launch-team] failed to create team record: %v", err)
+		} else {
+			teamID = team.ID
+		}
+	}
+
+	var launched []map[string]any
+	firstFailure := ""
+
+	// Load settings once so we can fall back to per-type default_model_<type>.
+	userSettings, _ := h.ss.GetSettings(ctx)
+
+	for _, agentDef := range body.Agents {
+		if agentDef.Name == "" {
+			continue
+		}
+
+		// Per-agent type/model override team-level defaults
+		agentType := body.AgentType
+		if agentDef.AgentType != "" {
+			agentType = agentDef.AgentType
+		}
+
+		// Resolve model: per-agent request wins, else user's default_model_<type>.
+		effectiveModel := defaultModelFromSettings(userSettings, agentType, agentDef.Model)
+
+		// Per-agent flags carry the member's own permission mode from the UI.
+		// When present, use them (after stripping engine-specific permission
+		// flags that might not match this agent's type — launchSession will
+		// re-derive the correct flags from the cleaned set). Otherwise fall
+		// back to team-level flags (also cleaned).
+		var agentFlags []string
+		if len(agentDef.Flags) > 0 {
+			agentFlags = agentDef.Flags
+		} else {
+			agentFlags = stripAgentPermissionFlags(body.Flags)
+		}
+		if effectiveModel != "" {
+			agentFlags = append(agentFlags, "--model", effectiveModel)
+		}
+
+		// Inject distilled knowledge if available
+		agentPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, agentDef.Name, agentDef.Prompt)
+
+		result, err := h.launchSession(ctx, workingDir, agentType, agentDef.Name,
+			"", agentFlags, agentPrompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, agentDef.Capabilities,
+			agentDef.Tools, agentDef.Hooks)
+		if err != nil {
+			log.Printf("[launch-team] failed to launch agent %s: %v", agentDef.Name, err)
+			if firstFailure == "" {
+				firstFailure = classifyLaunchError(err)
+			}
+			launched = append(launched, map[string]any{"name": agentDef.Name, "error": err.Error()})
+			continue
+		}
+
+		sessionID := result["session_id"].(string)
+
+		// Store worktree info on the live session
+		if worktreePath != "" {
+			h.ss.UpdateWorktreeInfo(ctx, sessionID, worktreePath, body.WorkingDir)
+		}
+
+		// Create team member record and set team_id on live session
+		if teamID > 0 && h.teamStore != nil {
+			agentConfigJSON, _ := json.Marshal(agentDef)
+			h.teamStore.CreateTeamMember(ctx, &store.TeamMember{
+				TeamID:          teamID,
+				AgentName:       agentDef.Name,
+				AgentConfigJSON: string(agentConfigJSON),
+				SessionID:       &sessionID,
+				Status:          "active",
+			})
+			h.ss.SetTeamID(ctx, sessionID, teamID)
+		}
+
+		// Board subscription handled by setupBoardAndPrompt (prompt passed as CLI arg)
+		if body.BoardName != "" {
+			h.setupBoardAndPrompt(sessionID, result["session_name"].(string),
+				agentType, body.BoardName, launchedName(result, agentDef.Name))
+		}
+
+		launchResult := map[string]any{
+			"name": launchedName(result, agentDef.Name), "session_id": sessionID, "session_name": result["session_name"],
+		}
+		if worktreePath != "" {
+			launchResult["worktree_path"] = worktreePath
+		}
+		launched = append(launched, launchResult)
+	}
+
+	resp := map[string]any{"ok": true, "board": body.BoardName, "board_id": body.BoardName, "board_label": h.boardLabel(body.BoardName), "agents": launched}
+	if teamID > 0 {
+		resp["team_id"] = teamID
+	}
+	// launched holds both started members and {name, error} failures, so count
+	// each kind separately: only started members are real launches.
+	started, failed := 0, 0
+	for _, m := range launched {
+		if _, bad := m["error"]; bad {
+			failed++
+		} else {
+			started++
+		}
+	}
+	// Unnamed members were never launched: count them as failed (not started)
+	// with a fixed category so requested == started + failed.
+	failed += skippedMembers
+	if skippedMembers > 0 && firstFailure == "" {
+		firstFailure = tracking.FailInvalidRequest
+	}
+	switch {
+	case failed == 0 && started > 0:
+		attempt.Finish(tracking.OutcomeSuccess, "", started, 0)
+	case started == 0:
+		attempt.Finish(tracking.OutcomeFailure, firstFailure, 0, failed)
+	default:
+		attempt.Finish(tracking.OutcomePartial, firstFailure, started, failed)
+	}
+	if started > 0 {
+		counts := map[string]string{
+			"agent_count": strconv.Itoa(started), "requested_agents": strconv.Itoa(len(body.Agents)),
+			"started_agents": strconv.Itoa(started), "failed_agents": strconv.Itoa(failed),
+		}
+		tracking.TrackEvent(tracking.EventTeamLaunched, counts)
+		tracking.TrackOnce(tracking.EventFirstTeamLaunched, map[string]string{"agent_count": strconv.Itoa(started)})
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// ResetTeam kills all agents on a board and re-launches them with their
+// original prompts and configuration. Each agent gets a fresh context.
+// POST /api/sessions/live/team/{boardName}/reset
+func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
+	boardName := urlParam(r, "boardName")
+	if boardName == "" {
+		errBadRequest(w, "boardName is required")
+		return
+	}
+
+	ctx := r.Context()
+	bgCtx := context.Background()
+
+	// Get all sessions on this board
+	sessions, err := h.ss.GetBoardSessions(ctx, boardName)
+	if err != nil {
+		errInternalServer(w, "failed to get board sessions: "+err.Error())
+		return
+	}
+	if len(sessions) == 0 {
+		errBadRequest(w, "no agents found on board: "+boardName)
+		return
+	}
+
+	// Save each agent's config before killing
+	type agentConfig struct {
+		DisplayName  *string
+		WorkingDir   string
+		AgentType    string
+		Flags        *string
+		Prompt       *string
+		BoardServer  *string
+		BoardType    *string
+		Icon         *string
+		Capabilities *string
+		Model        *string
+		Tools        *string
+	}
+	configs := make([]agentConfig, 0, len(sessions))
+	for _, s := range sessions {
+		dn := s.DisplayName
+		// Fallback: if display_name is nil in live_sessions, check session_meta
+		if dn == nil {
+			if metaName, err := h.ss.GetDisplayName(ctx, s.SessionID); err == nil && metaName != nil {
+				dn = metaName
+			}
+		}
+		configs = append(configs, agentConfig{
+			DisplayName:  dn,
+			WorkingDir:   s.WorkingDir,
+			AgentType:    s.AgentType,
+			Flags:        s.Flags,
+			Prompt:       s.Prompt,
+			BoardServer:  s.BoardServer,
+			BoardType:    s.BoardType,
+			Icon:         s.Icon,
+			Capabilities: s.Capabilities,
+			Model:        s.Model,
+			Tools:        s.Tools,
+		})
+	}
+
+	// Kill all agents and unsubscribe from board
+	for _, s := range sessions {
+		h.chatMeta.forget(s.SessionID)
+		h.ss.UnregisterLiveSession(bgCtx, s.SessionID)
+		h.terminal.KillSession(bgCtx, s.AgentName, s.AgentType, s.SessionID)
+		removeBoardStateFile(s.AgentName, h.cfg)
+		// Mark subscriber as inactive during reset; re-launch will reactivate.
+		if h.bs != nil && s.DisplayName != nil && *s.DisplayName != "" {
+			h.bs.Unsubscribe(bgCtx, boardName, *s.DisplayName)
+		}
+	}
+
+	// Clear board pause state
+	if h.boardHandler != nil {
+		h.boardHandler.SetPaused(boardName, false)
+	}
+
+	// Brief pause to let tmux sessions clean up
+	time.Sleep(500 * time.Millisecond)
+
+	// Re-launch each agent with original config
+	var launched []map[string]any
+	var relaunched []string // the names the agents were launched under
+	for _, cfg := range configs {
+		var flags []string
+		if cfg.Flags != nil && *cfg.Flags != "" {
+			json.Unmarshal([]byte(*cfg.Flags), &flags)
+		}
+		prompt := ""
+		if cfg.Prompt != nil {
+			prompt = *cfg.Prompt
+		}
+		boardServer := ""
+		if cfg.BoardServer != nil {
+			boardServer = *cfg.BoardServer
+		}
+		boardType := ""
+		if cfg.BoardType != nil {
+			boardType = *cfg.BoardType
+		}
+		displayName := ""
+		if cfg.DisplayName != nil {
+			displayName = *cfg.DisplayName
+		}
+
+		// Restore model and capabilities from saved config
+		modelStr := ""
+		if cfg.Model != nil {
+			modelStr = *cfg.Model
+		}
+		var caps *agent.Capabilities
+		if cfg.Capabilities != nil && *cfg.Capabilities != "" {
+			caps = &agent.Capabilities{}
+			json.Unmarshal([]byte(*cfg.Capabilities), caps)
+		}
+		// Add model flag if stored
+		if modelStr != "" {
+			flags = append(flags, "--model", modelStr)
+		}
+		tools := store.UnmarshalFlags(cfg.Tools)
+		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, displayName, prompt)
+		result, err := h.launchSession(bgCtx, cfg.WorkingDir, cfg.AgentType, displayName,
+			"", flags, prompt, boardName, boardServer, "", boardType, modelStr, caps,
+			tools, nil)
+		if err != nil {
+			log.Printf("[reset-team] failed to re-launch %s: %v", displayName, err)
+			launched = append(launched, map[string]any{"name": displayName, "error": err.Error()})
+			continue
+		}
+
+		// Re-setup board subscription
+		h.setupBoardAndPrompt(result["session_id"].(string), result["session_name"].(string),
+			cfg.AgentType, boardName, launchedName(result, displayName))
+
+		name := launchedName(result, displayName)
+		if name != "" {
+			relaunched = append(relaunched, name)
+		}
+		launched = append(launched, map[string]any{
+			"name":         name,
+			"session_id":   result["session_id"],
+			"session_name": result["session_name"],
+		})
+	}
+
+	// Advance read cursors for ALL agents AFTER all launches complete.
+	// This ensures no agent has a stale cursor from messages posted by
+	// other agents during the sequential re-launch process. By the name each was launched
+	// under: a numbered one ("Backend Dev 2", #3543) has its own subscription (#3549).
+	if h.bs != nil {
+		for _, name := range relaunched {
+			if err := h.bs.AdvanceReadCursor(bgCtx, boardName, name); err != nil {
+				log.Printf("[reset-team] failed to advance read cursor for %s: %v", name, err)
+			}
+		}
+	}
+
+	log.Printf("[reset-team] reset board %q: %d agents", boardName, len(launched))
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "board": boardName, "agents": launched})
+}
+
+// launchSession creates a new agent session using the specified backend (tmux or pty).
+func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType, displayName, resumeSessionID string,
+	flags []string, prompt, boardName, boardServer, backend, boardType, model string, capabilities *agent.Capabilities,
+	tools []string, hooks map[string]interface{}) (_ map[string]any, retErr error) {
+
+	if msg := launchDirError(workDir); msg != "" {
+		return nil, errors.New(msg)
+	}
+	absDir, _ := filepath.Abs(workDir)
+
+	if agentType == "" {
+		agentType = at.Claude
+	}
+	// A role another running agent already holds on this board gets a numbered name
+	// ("Backend Dev 2"), so the two never share a subscription, mentions or read state
+	// (#3543). On this Coral's boards only; a remote board's Coral decides its own.
+	if boardName != "" && (boardServer == "" || boardServer == "local") {
+		displayName = h.uniqueBoardRole(ctx, boardName, displayName, agentType)
+		picked := naming.SubscriberID(displayName, agentType)
+		defer func() {
+			if retErr != nil {
+				h.releaseRoleReservation(boardName, picked) // the launch failed: the name is free again
+			}
+		}()
+	}
+	if err := validateAgentModel(agentType, model); err != nil {
+		return nil, err
+	}
+
+	// Resolve custom CLI path from settings
+	userSettings, _ := h.ss.GetSettings(ctx)
+	cliPath := agent.ResolveCLIPath(userSettings, agentType)
+
+	// Check CLI availability before launching (skip for terminal type)
+	if agentType != at.Terminal {
+		checkBin := cliPath
+		if checkBin == "" {
+			if info := agent.GetCLIInfo(agentType); info != nil {
+				checkBin = info.Binary
+			}
+		}
+		if checkBin != "" {
+			if resolved, err := exec.LookPath(checkBin); err != nil {
+				// LookPath failed — try common install locations
+				if found := agent.FindCLIInCommonPaths(checkBin); found != "" {
+					cliPath = found
+					log.Printf("[launch] %s not on PATH, found at %s", checkBin, found)
+				} else {
+					info := agent.GetCLIInfo(agentType)
+					installCmd := ""
+					if info != nil {
+						installCmd = info.InstallCommand
+					}
+					return nil, fmt.Errorf("%s CLI not found. Install it: %s", checkBin, installCmd)
+				}
+			} else if cliPath == "" {
+				cliPath = resolved
+			}
+		}
+	}
+
+	if err := agent.ValidateAgentType(agentType); err != nil {
+		return nil, err
+	}
+
+	// NOTE: this value selects the LAUNCH PATH, not the terminal a session ends
+	// up on. "pty" means "go through the TerminalBackend abstraction", which is
+	// how tmux-backed sessions are launched too — h.backend is a TmuxBackend in
+	// that case. It is persisted and drives the same branch on wake, so it must
+	// keep meaning exactly this. Use terminalKind below for what actually runs.
+	// When the server is using a PTY backend, always use PTY regardless of
+	// what the frontend requests — tmux is not available on this platform.
+	if _, isPTY := h.backend.(*ptymanager.PTYBackend); isPTY {
+		backend = "pty"
+	} else if backend == "" {
+		if h.backend != nil {
+			backend = "pty"
+		} else {
+			backend = "tmux"
+		}
+	}
+	folderName := filepath.Base(absDir)
+
+	sessionID := generateUUID()
+	sessionName := naming.SessionName(agentType, sessionID)
+	logFile := naming.LogFile(h.cfg.LogDir, agentType, sessionID)
+
+	isTerminal := agentType == at.Terminal
+	agentImpl := agent.GetAgent(agentType)
+	if resumeSessionID != "" && !isTerminal {
+		agent.TryPrepareResume(agentImpl, resumeSessionID, absDir)
+	}
+
+	role := naming.SubscriberID(displayName, agentType)
+
+	launchParams := agent.LaunchParams{
+		SessionID:       sessionID,
+		SessionName:     sessionName,
+		ProtocolPath:    h.protocolPath(),
+		ResumeSessionID: resumeSessionID,
+		Flags:           flags,
+		WorkingDir:      absDir,
+		BoardName:       boardName,
+		BoardLabel:      h.boardLabel(boardName),
+		Role:            role,
+		Prompt:          prompt,
+		PromptOverrides: promptOverrides(userSettings),
+		BoardType:       boardType,
+		Capabilities:    capabilities,
+		Tools:           tools,
+		Hooks:           hooks,
+		CLIPath:         cliPath,
+		PermissionMode:  userSettings["default_permission_mode"],
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.AgentHost(),
+		CoralPort:       h.cfg.Port,
+	}
+	if cliPath != "" {
+		log.Printf("[launch] using custom CLI path: %s", cliPath)
+	}
+
+	// The launch command is built before any terminal is made: when its prompt or settings
+	// files can't be written, the launch fails with nothing left behind (#3601 W12).
+	var cmd string
+	if !isTerminal {
+		var err error
+		if cmd, err = launchCommand(agentImpl, launchParams); err != nil {
+			return nil, err
+		}
+	}
+
+	if backend == "pty" && h.backend != nil {
+		// PTY backend: spawn the agent process directly
+		// Spawn a shell first (empty command), then send the agent command as input.
+		// This matches the tmux pattern and works cross-platform — the shell
+		// interprets bash syntax like $(cat ...) correctly.
+		if err := h.backend.Spawn(sessionName, agentType, absDir, sessionID, "", 200, 50); err != nil {
+			return nil, fmt.Errorf("pty spawn failed: %w", err)
+		}
+		// PTY backend manages its own log file
+		logFile = h.backend.LogPath(sessionName)
+
+		// Wait for shell to initialize, then send the launch command
+		if !isTerminal && cmd != "" {
+			log.Printf("[launch] pty session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
+			if pb, ok := h.backend.(*ptymanager.PTYBackend); ok {
+				if !pb.WaitReady(sessionName, 5*time.Second) {
+					log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", sessionName)
+				}
+			} else {
+				time.Sleep(500 * time.Millisecond)
+			}
+			if err := h.startAgentCLI(ctx, boardName, sessionName, cmd); err != nil {
+				return nil, fmt.Errorf("pty launch command failed: %w", err)
+			}
+		}
+	} else {
+		// Tmux backend: create session, pipe-pane, send keys
+		backend = "tmux" // normalize if pty requested but no backend available
+
+		// Only check real tmux availability when the terminal is the real
+		// tmux terminal — tests inject a mock that should bypass this.
+		if tmuxTerm, isTmux := h.terminal.(*ptymanager.TmuxSessionTerminal); isTmux {
+			tmuxPath, ok := tmux.IsAvailable()
+			slog.Info("launch tmux availability",
+				"available", ok,
+				"resolved_path", tmuxPath,
+				"client_tmux_bin_before", tmuxTerm.Client().TmuxBin,
+				"socket", tmuxTerm.Client().SocketPath,
+				"path", os.Getenv("PATH"),
+			)
+			if !ok {
+				return nil, fmt.Errorf("tmux is required to launch agents but was not found on this system. Install tmux (e.g. 'brew install tmux' on macOS), then try again")
+			}
+			if tmuxPath != "" && tmuxTerm.Client().TmuxBin != tmuxPath {
+				slog.Info("launch updating tmux client binary",
+					"from", tmuxTerm.Client().TmuxBin,
+					"to", tmuxPath,
+				)
+				tmuxTerm.Client().TmuxBin = tmuxPath
+			}
+		}
+
+		// Create empty log file
+		ptymanager.ResetAgentLog(logFile) // 0600, never through a link (#3601, W17)
+
+		slog.Info("launch creating tmux session",
+			"session_name", sessionName,
+			"working_dir", absDir,
+			"terminal_type", fmt.Sprintf("%T", h.terminal),
+		)
+		if err := h.terminal.CreateSession(ctx, sessionName, absDir); err != nil {
+			slog.Error("launch tmux CreateSession failed",
+				"session_name", sessionName,
+				"working_dir", absDir,
+				"terminal_type", fmt.Sprintf("%T", h.terminal),
+				"error", err,
+			)
+			return nil, fmt.Errorf("tmux new-session failed: %w", err)
+		}
+		// Put the Coral environment into the tmux session so that anything the
+		// user runs by hand in that pane — coral-board especially — reaches the
+		// server that launched the agent. Same source as the agent's own env.
+		if tmuxTerm, ok := h.terminal.(*ptymanager.TmuxSessionTerminal); ok {
+			for _, kv := range agent.CoralEnv(launchParams) {
+				if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, kv[0], kv[1]); err != nil {
+					log.Printf("[launch] failed to set %s for %s: %v", kv[0], sessionName, err)
+				}
+			}
+			// Prepend Coral tools dir to PATH so coral-board and hooks are
+			// discoverable by subshells Claude spawns (e.g. Bash tool).
+			if binDir := agent.CoralToolsDir(); binDir != "" {
+				currentPath := os.Getenv("PATH")
+				if !strings.Contains(currentPath, binDir) {
+					currentPath = binDir + ":" + currentPath
+				}
+				if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, "PATH", currentPath); err != nil {
+					log.Printf("[launch] failed to set PATH for %s: %v", sessionName, err)
+				}
+			}
+		}
+
+		// Setup pipe-pane logging
+		h.terminal.StartLogging(ctx, sessionName, logFile)
+
+		// Set pane title using native tmux command (avoids shell echo)
+		h.terminal.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, agentType))
+
+		// Launch the agent (unless terminal)
+		if !isTerminal {
+			log.Printf("[launch] tmux session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
+			if err := h.startAgentCLI(ctx, boardName, sessionName+".0", cmd); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Capture shell PID for process-tree-based identity resolution.
+	// Must happen after CreateSession (tmux session exists) but the pane PID
+	// is available immediately — it's the shell spawned by tmux new-session.
+	shellPID, pidErr := launchedSessionPID(ctx, backend, h.backend, h.terminal, sessionName)
+	if pidErr != nil {
+		log.Printf("[launch] failed to capture PID for session %s: %v", sessionName, pidErr)
+	} else if shellPID > 0 {
+		log.Printf("[launch] captured PID %d for session %s", shellPID, sessionName)
+	}
+
+	// Register in DB
+	h.chatMeta.forget(sessionID, sessionName, folderName)
+	h.ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID:     sessionID,
+		AgentType:     agentType,
+		AgentName:     folderName,
+		WorkingDir:    absDir,
+		DisplayName:   ptr.NonEmpty(displayName),
+		ResumeFromID:  ptr.NonEmpty(resumeSessionID),
+		Flags:         store.MarshalFlags(flags),
+		Prompt:        ptr.NonEmpty(prompt),
+		BoardName:     ptr.NonEmpty(boardName),
+		BoardServer:   ptr.NonEmpty(boardServer),
+		Backend:       ptr.NonEmpty(backend),
+		BoardType:     ptr.NonEmpty(boardType),
+		Capabilities:  store.MarshalCapabilities(capabilities),
+		Model:         ptr.NonEmpty(model),
+		ContextWindow: proxy.LookupContextWindow(model),
+		Tools:         store.MarshalCapabilities(tools),
+		PID:           shellPID,
+	})
+	h.noteLaunchedHooks(ctx, sessionID, agentType) // #3665
+	if agentType != at.Terminal {
+		go h.recordCLIVersion(sessionID, agentType, userSettings) // #3481
+	}
+
+	if displayName != "" {
+		h.ss.SetDisplayName(ctx, sessionID, displayName)
+	}
+
+	return map[string]any{
+		"ok": true, "session_id": sessionID, "session_name": sessionName,
+		"agent_type": agentType, "working_dir": absDir,
+		"display_name": displayName, // numbered when the role was taken on the board (#3543)
+		"log_file":     logFile, "backend": backend,
+		// backend names the launch path and reads as "pty" even for a tmux
+		// session; terminal names what the session actually runs on. Reporting
+		// only the former is how a silent backend downgrade went unnoticed.
+		"terminal": terminalKind(h.backend),
+	}, nil
+}
+
+// validateAgentModel rejects only known Coral model IDs whose provider is
+// incompatible with the selected agent implementation. Unknown IDs remain
+// valid for custom/provider-specific configurations.
+func validateAgentModel(agentType, model string) error {
+	provider, known := proxy.KnownModelProvider(model)
+	if !known {
+		return nil
+	}
+	var expected string
+	switch agentType {
+	case at.Claude:
+		expected = "anthropic"
+	case at.Codex:
+		expected = "openai"
+	case at.Agy, at.Antigravity, at.Gemini:
+		expected = "google"
+	default:
+		return nil
+	}
+	if provider != expected {
+		return fmt.Errorf("model %q belongs to %s provider and cannot launch with %s agent; choose a compatible model or leave custom IDs unchanged", model, provider, agentType)
+	}
+	return nil
+}
+
+// launchedSessionPID resolves the process identifier from what actually owns
+// the launched session. The persisted backend label describes the launch path
+// and can be "pty" even when h.backend is a TmuxBackend, so it must not be the
+// sole condition for PID capture.
+func launchedSessionPID(ctx context.Context, backend string, terminalBackend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, sessionName string) (int, error) {
+	if provider, ok := terminalBackend.(ptymanager.SessionPIDProvider); ok {
+		return provider.SessionPID(ctx, sessionName)
+	}
+	if backend == "tmux" {
+		if tmuxTerm, ok := terminal.(*ptymanager.TmuxSessionTerminal); ok {
+			return tmuxTerm.Client().GetPanePID(ctx, sessionName)
+		}
+	}
+	return 0, nil
+}
+
+// terminalKind names the terminal a session actually runs on, as opposed to
+// the launch path taken to get there.
+func terminalKind(b ptymanager.TerminalBackend) string {
+	switch b.(type) {
+	case *ptymanager.PTYBackend:
+		return "pty"
+	case *ptymanager.TmuxBackend:
+		return "tmux"
+	case nil:
+		return "tmux"
+	}
+	return "unknown"
+}
+
+// setupBoardAndPrompt subscribes a session to a message board.
+// The agent prompt is now passed directly as a CLI positional argument
+// in launchSession, so no tmux-based prompt delivery is needed.
+// subscriberID is the stable identity (role name), sessionName is the mutable tmux session.
+func (h *SessionsHandler) setupBoardAndPrompt(sessionID, sessionName, agentType, boardName, displayName string) {
+	role := naming.SubscriberID(displayName, agentType)
+	subscriberID := role // stable board identity = role name
+	ctx := context.Background()
+
+	if boardName == "" {
+		return
+	}
+
+	// Board subscription (immediate — no delay needed)
+	if h.bs != nil {
+		isOrchestrator := strings.Contains(strings.ToLower(role), "orchestrator")
+		receiveMode := "mentions"
+		if isOrchestrator {
+			receiveMode = "all"
+		}
+		if agentType == "terminal" {
+			receiveMode = "none"
+		}
+
+		// Preserve existing receive_mode on re-subscribe (e.g. restart).
+		// Use session-name lookup to find the subscription for THIS session,
+		// not a stale one from a previous board with the same subscriber_id.
+		existing, err := h.bs.GetSubscriptionBySessionName(ctx, sessionName)
+		if err == nil && existing != nil && existing.ReceiveMode != "" {
+			receiveMode = existing.ReceiveMode
+		}
+
+		if _, err := h.bs.Subscribe(ctx, boardName, subscriberID, role, sessionName, nil, receiveMode, isOrchestrator); err != nil {
+			log.Printf("Failed to subscribe session %s to board %s: %v", sessionID[:8], boardName, err)
+		}
+		// The subscription now holds the name; the reservation that covered the launch goes.
+		h.releaseRoleReservation(boardName, subscriberID)
+	}
+
+	// Write local board state file so coral-board CLI can find its subscription
+	writeBoardStateFile(sessionName, boardName, role, h.cfg)
+}
+
+// writeBoardStateFile writes the local board state file that coral-board CLI
+// reads to determine which board a session is subscribed to.
+func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config) {
+	if !plainFileName(sessionName) {
+		return // only a plain name can be part of a file name (#3602 W25)
+	}
+	stateDir := ""
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		stateDir = filepath.Join(home, ".coral")
+	}
+	if cfg != nil {
+		stateDir = cfg.CoralDir()
+	}
+	if stateDir == "" {
+		// No data dir (a Config not built by config.Load, or no home
+		// directory): never resolve the file against the working directory.
+		return
+	}
+	testguard.CheckDataPath(stateDir)
+	os.MkdirAll(stateDir, 0o700)
+
+	state := map[string]string{
+		"project":   boardName,
+		"job_title": role,
+	}
+	// Persist the explicit loopback URL even on the default port. Codex's
+	// sandbox can strip CORAL_URL/CORAL_PORT from child processes; without
+	// this persisted value coral-board falls back to localhost, which may
+	// resolve to IPv6 ::1 and be denied while IPv4 loopback is available.
+	if cfg != nil {
+		host := cfg.AgentHost() // the loopback listener whenever there is one (#3594)
+		state["server_url"] = fmt.Sprintf("http://%s", net.JoinHostPort(host, strconv.Itoa(cfg.Port)))
+	}
+
+	data, _ := json.Marshal(state)
+	statePath := filepath.Join(stateDir, fmt.Sprintf("board_state_%s.json", sessionName))
+	// 0600: it names the agent's board and server (#3581).
+	if err := os.WriteFile(statePath, data, 0o600); err != nil {
+		log.Printf("Failed to write board state file for %s: %v", sessionName, err)
+	} else {
+		os.Chmod(statePath, 0o600) // a file an older version wrote 0644
+	}
+}
+
+// removeBoardStateFile deletes the board state file for a session.
+// Called when a session is killed so state files don't accumulate.
+func removeBoardStateFile(sessionName string, cfg *config.Config) {
+	if cfg == nil || cfg.CoralDir() == "" {
+		return // no data dir: nothing was written (see writeBoardStateFile)
+	}
+	if !plainFileName(sessionName) {
+		return // nothing was written for it (writeBoardStateFile)
+	}
+	statePath := filepath.Join(cfg.CoralDir(), fmt.Sprintf("board_state_%s.json", sessionName))
+	os.Remove(statePath) // Ignore error — file may not exist
+}
+
+// boardProject returns the board project name for a session, checking
+// board subscriptions first, then falling back to live_sessions DB.
+// boardSubscriberFlag exposes the authoritative CanPeek role without using
+// mutable display names or job-title substring matching. Nil means no board.
+func boardSubscriberFlag(sub *board.Subscriber) any {
+	if sub == nil {
+		return nil
+	}
+	return sub.CanPeek != 0
+}
+
+func boardProject(subs map[string]*board.Subscriber, fallback map[string][2]string, tmuxName, sessionID string) any {
+	if sub, ok := subs[tmuxName]; ok {
+		return sub.Project
+	}
+	if fb, ok := fallback[sessionID]; ok && fb[0] != "" {
+		return fb[0]
+	}
+	return nil
+}
+
+// boardJobTitle returns the board job title for a session.
+func boardJobTitle(subs map[string]*board.Subscriber, fallback map[string][2]string, tmuxName, sessionID string) any {
+	if sub, ok := subs[tmuxName]; ok {
+		return sub.JobTitle
+	}
+	if fb, ok := fallback[sessionID]; ok && fb[1] != "" {
+		return fb[1]
+	}
+	return nil
+}
+
+func stripAgentPermissionFlags(flags []string) []string {
+	agentPermFlags := map[string]bool{
+		"--full-auto": true, "--dangerously-skip-permissions": true,
+		"--dangerously-bypass-approvals-and-sandbox": true,
+		"--sandbox": true, "--search": true,
+		"--approval-mode": true, "--permission-mode": true, "--yolo": true,
+	}
+
+	var cleanFlags []string
+	skipNext := false
+	for _, f := range flags {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		if strings.HasPrefix(f, "--permission-mode=") {
+			continue
+		}
+		if agentPermFlags[f] {
+			// Some flags take a value argument (e.g. --sandbox workspace-write, -a untrusted).
+			if f == "--sandbox" || f == "--approval-mode" || f == "--permission-mode" || f == "-a" {
+				skipNext = true
+			}
+			continue
+		}
+		if f == "-a" {
+			skipNext = true
+			continue
+		}
+		cleanFlags = append(cleanFlags, f)
+	}
+	return cleanFlags
+}
+
+// launchBackendLabel reports the terminal backend for analytics as a closed
+// enum: the requested one when valid, otherwise the one this server runs.
+func (h *SessionsHandler) launchBackendLabel(requested string) string {
+	switch requested {
+	case "tmux", "pty":
+		return requested
+	}
+	switch h.terminal.(type) {
+	case *ptymanager.TmuxSessionTerminal:
+		return "tmux"
+	case *ptymanager.PTYSessionTerminal:
+		return "pty"
+	}
+	return "unknown"
+}
+
+// classifyLaunchError maps a launch error to a controlled analytics category.
+// It inspects the message only to choose a category; the text is never sent.
+func classifyLaunchError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "cli not found"):
+		return tracking.FailProviderUnavailable
+	case strings.Contains(msg, "tmux is required") || strings.Contains(msg, "terminal backend"):
+		return tracking.FailBackendUnavailable
+	case strings.Contains(msg, "directory not found") || strings.Contains(msg, "no such file") || strings.Contains(msg, "not a directory") || strings.Contains(msg, "working directory"):
+		return tracking.FailWorkdirUnavailable
+	case strings.Contains(msg, "spawn failed") || strings.Contains(msg, "launch command failed") || strings.Contains(msg, "launch command delivery") || strings.Contains(msg, "new-session failed"):
+		return tracking.FailSpawnFailed
+	}
+	return tracking.FailInternal
+}
+
+// launchDirError is the error for a launch working directory that is not an
+// existing directory, or "" when it is usable.
+func launchDirError(dir string) string {
+	// A network path is refused before anything stats it: on Windows the stat alone connects to
+	// the host as the user (#3671).
+	if safefs.RefuseRemote(dir) != nil {
+		return fmt.Sprintf("a network path can't be a working folder: %s", dir)
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil || !isDir(abs) {
+		return fmt.Sprintf("directory not found: %s", dir)
+	}
+	return ""
+}
+
+// boardLabel is a board's display name for an agent's prompt (#3536); "" if unknown.
+func (h *SessionsHandler) boardLabel(key string) string {
+	if h.bs == nil || key == "" {
+		return ""
+	}
+	return h.bs.BoardLabel(context.Background(), key)
+}
+
+var launchBoardMu sync.Mutex
+
+// launchBoard decides the board a launch uses (#3536, the operator's decision): board_id
+// joins that board; board_name starts a NEW board (a fresh b- id, that label) unless a board
+// with that id or label already exists, which is answered 409 board_name_exists with the
+// candidates (join one by its board_id, or send new_board to start another with the same
+// name). A new board's name follows the #3534 rule. It returns the board's id, or false
+// after answering.
+func (h *SessionsHandler) launchBoard(w http.ResponseWriter, r *http.Request, boardID, boardName string, newBoard bool) (string, bool) {
+	ctx := r.Context()
+	if h.bs == nil {
+		if boardID != "" {
+			return boardID, true
+		}
+		return boardName, true
+	}
+	if boardID != "" {
+		b, err := h.bs.GetBoard(ctx, boardID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "board_not_found", "code": "board_not_found", "message": "No board has that id"})
+			return "", false
+		}
+		return b.ID, true
+	}
+	boardName = strings.TrimSpace(boardName)
+	// One check-then-create at a time, so two launches of the same new name can't both see
+	// it free and start two boards with one label.
+	launchBoardMu.Lock()
+	defer launchBoardMu.Unlock()
+	var existing []board.Board
+	if b, err := h.bs.GetBoard(ctx, boardName); err == nil {
+		if inUse, _ := h.bs.BoardExists(ctx, b.ID); inUse {
+			existing = append(existing, *b)
+		}
+	} else if inUse, _ := h.bs.BoardExists(ctx, boardName); inUse {
+		existing = append(existing, board.Board{ID: boardName, Label: boardName})
+	}
+	if named, err := h.bs.BoardsLabelledForLaunch(ctx, boardName); err == nil {
+		for _, b := range named {
+			if b.ID != boardName {
+				existing = append(existing, b)
+			}
+		}
+	}
+	// Another board with a name that's taken makes that name ambiguous for every caller who
+	// uses it: the Operator's choice (Security's #3536 review). An agent's token is refused
+	// with strict local auth, and recorded otherwise.
+	if len(existing) > 0 && newBoard && h.agentOperatorGate != nil && h.agentOperatorGate(r, "POST /api/sessions/launch new_board") {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden_for_agent", "code": "forbidden_for_agent",
+			"message": "An agent can't start another board with a name that's taken: that is for the Operator. Join it with board_id, or pick a new name"})
+		return "", false
+	}
+	if len(existing) > 0 && !newBoard {
+		// Next to the member count, how many of the board's agents are running (#3543).
+		cands := boardCandidates(r, h.bs, existing)
+		live := h.liveSessionNames(ctx)
+		for _, c := range cands {
+			c["live_agents"] = h.liveAgentsOn(ctx, c["board_id"].(string), live)
+		}
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "board_name_exists", "code": "board_name_exists",
+			"message":    "A board named \"" + boardName + "\" already exists: join it (board_id) or start another (new_board)",
+			"candidates": cands})
+		return "", false
+	}
+	if problem := h.bs.LabelProblem(boardName); problem != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_board_name", "code": "invalid_board_name", "message": problem})
+		return "", false
+	}
+	b, err := h.bs.CreateBoard(ctx, boardName, "Operator")
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return "", false
+	}
+	return b.ID, true
+}
+
+// addBoardLabels gives every session row with a board ("board_project") its board's display
+// name as "board_label" (#3536), with one lookup for the whole list.
+func (h *SessionsHandler) addBoardLabels(ctx context.Context, rows []map[string]any) {
+	if h.bs == nil {
+		return
+	}
+	var ids []string
+	for _, row := range rows {
+		if id := boardKeyOf(row["board_project"]); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	labels := h.bs.BoardLabels(ctx, ids)
+	for _, row := range rows {
+		if id := boardKeyOf(row["board_project"]); id != "" {
+			row["board_label"] = labels[id]
+		}
+	}
+}
+
+func boardKeyOf(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case *string:
+		if t != nil {
+			return *t
+		}
+	}
+	return ""
+}
+
+// liveSessionNames is the set of session names of every live (running or sleeping) session.
+func (h *SessionsHandler) liveSessionNames(ctx context.Context) map[string]bool {
+	live := map[string]bool{}
+	if h.ss == nil {
+		return live
+	}
+	sessions, err := h.ss.GetAllLiveSessions(ctx)
+	if err != nil {
+		return live
+	}
+	for _, ls := range sessions {
+		live[naming.SessionName(ls.AgentType, ls.SessionID)] = true
+	}
+	return live
+}
+
+// uniqueBoardRole returns displayName, or "<role> N" (the lowest N from 2) when another
+// live agent already holds that role on the board (#3543). A subscription left by an agent
+// that is no longer running doesn't count: a relaunched or resurrected member keeps its name.
+//
+// Names picked in the last two minutes count as taken too (roleReservations): the board
+// subscription is written only after the launch, so two launches of one role close together
+// (two tabs, a double click) would otherwise both see the role free.
+func (h *SessionsHandler) uniqueBoardRole(ctx context.Context, boardName, displayName, agentType string) string {
+	if h.bs == nil {
+		return displayName
+	}
+	h.roleRes.mu.Lock()
+	defer h.roleRes.mu.Unlock()
+	if h.roleRes.at == nil {
+		h.roleRes.at = map[string]time.Time{}
+	}
+	now := time.Now()
+	taken := map[string]bool{}
+	for key, at := range h.roleRes.at {
+		if now.Sub(at) > roleReservationTTL {
+			delete(h.roleRes.at, key)
+			continue
+		}
+		if b, name, ok := strings.Cut(key, "\x00"); ok && b == boardName {
+			taken[name] = true
+		}
+	}
+	if subs, err := h.bs.ListSubscribers(ctx, boardName); err == nil && len(subs) > 0 {
+		live := h.liveSessionNames(ctx)
+		for _, s := range subs {
+			if s.SessionName != "" && live[s.SessionName] {
+				taken[strings.ToLower(s.SubscriberID)] = true
+			}
+		}
+	}
+	role := naming.SubscriberID(displayName, agentType)
+	pick := displayName
+	if taken[strings.ToLower(role)] {
+		// A taken numbered name is renumbered from its base role: "Backend Dev 2" becomes
+		// "Backend Dev 3", not "Backend Dev 2 2" (QA's #3543 review).
+		base := role
+		if i := strings.LastIndexByte(role, ' '); i > 0 {
+			if _, err := strconv.Atoi(role[i+1:]); err == nil {
+				base = role[:i]
+			}
+		}
+		for n := 2; n < 1000; n++ {
+			if candidate := fmt.Sprintf("%s %d", base, n); !taken[strings.ToLower(candidate)] {
+				pick = candidate
+				break
+			}
+		}
+	}
+	h.roleRes.at[boardName+"\x00"+strings.ToLower(naming.SubscriberID(pick, agentType))] = now
+	return pick
+}
+
+// roleReservations holds the names uniqueBoardRole picked recently, per board; one per
+// handler (QA's #3543 review: a package-level map leaked between tests).
+type roleReservations struct {
+	mu sync.Mutex
+	at map[string]time.Time
+}
+
+const roleReservationTTL = 2 * time.Minute
+
+// releaseRoleReservation drops a name's reservation: its subscription now holds it, or its
+// launch failed.
+func (h *SessionsHandler) releaseRoleReservation(boardName, role string) {
+	h.roleRes.mu.Lock()
+	delete(h.roleRes.at, boardName+"\x00"+strings.ToLower(role))
+	h.roleRes.mu.Unlock()
+}
+
+// liveAgentsOn counts the board's subscribers whose session is live.
+func (h *SessionsHandler) liveAgentsOn(ctx context.Context, boardID string, live map[string]bool) int {
+	subs, err := h.bs.ListSubscribers(ctx, boardID)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, s := range subs {
+		if s.SessionName != "" && live[s.SessionName] {
+			n++
+		}
+	}
+	return n
+}
+
+// launchedName is the display name launchSession gave the agent (numbered when its role was
+// taken on the board, #3543), else the one asked for.
+func launchedName(result map[string]any, asked string) string {
+	if n, _ := result["display_name"].(string); n != "" {
+		return n
+	}
+	return asked
+}
+
+// launchCommand is the agent's launch command with the bundled tools on PATH. It fails when
+// the agent's prompt, settings or instructions files can't be written to the temp folder: the
+// launch fails with that error instead of starting an agent without them (#3601 W12).
+func launchCommand(ag agent.Agent, p agent.LaunchParams) (string, error) {
+	cmd, err := ag.LaunchCommand(p)
+	if err != nil {
+		return "", err
+	}
+	return agent.WrapWithBundlePath(cmd), nil
+}

@@ -34,7 +34,7 @@ var reviewedFileOpens = map[string]string{
 	"sessions_files.go:SessionsHandler.SessionChanges:ReadFile":         "the session id is safefs.IsSafeID (W4)",
 	"sessions_files.go:SessionsHandler.SessionChangesArtifact:ReadFile": "the session id is safefs.IsSafeID (W4)",
 	"log_tail.go:readLogTail:Open":                                      "a log named from a tmux session matching UUIDSessionRE",
-	"sessions.go:writeBoardStateFile:WriteFile":                         "server data folder, board_state_<Coral's session name>.json, 0600",
+	"sessions_launch.go:writeBoardStateFile:WriteFile":                  "server data folder, board_state_<Coral's session name>.json, 0600",
 	"system.go:runTeamGeneration:WriteFile":                             "server data folder, a fixed name",
 	"system_bounds.go:readImportFile:OpenNoFollow":                      "#3583: bounded import (no link followed, regular file, size cap)",
 	"team_artifacts.go:enrichTeamArtifact:ReadFile":                     "a managed artifact's hex name, lower-cased and checked",
