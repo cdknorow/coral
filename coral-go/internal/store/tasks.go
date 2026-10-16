@@ -16,7 +16,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/cdknorow/coral/internal/secrets"
 )
 
 // AgentTask represents a checklist item for an agent.
@@ -474,14 +474,29 @@ func (s *TaskStore) DeleteAgentNote(ctx context.Context, noteID int64) error {
 // ...'", "export TOKEN=...", "psql postgres://user:pw@..."), and sessions.db is what gets
 // backed up and attached. Coral Hub's redactor runs once here, at the write, for every writer
 // (the hooks' events, goals, thinking, auto-accept): the summary as text, the detail by its JSON
-// structure (a value under a secret-named key is redacted whole).
+// structure (each value scanned with its key). What can't be checked is not stored (#3808).
 func redactAgentEvent(event *AgentEvent) {
-	event.Summary = string(redact.Tokens([]byte(event.Summary)))
+	red := eventRedactor()
+	if s, err := red.Text([]byte(event.Summary)); err == nil {
+		event.Summary = string(s)
+	} else {
+		event.Summary = uncheckedEvent
+	}
 	if event.DetailJSON != nil {
-		d := string(redact.Document([]byte(*event.DetailJSON)))
-		event.DetailJSON = &d
+		if d, err := red.Document([]byte(*event.DetailJSON)); err == nil {
+			ds := string(d)
+			event.DetailJSON = &ds
+		} else {
+			event.DetailJSON = nil
+		}
 	}
 }
+
+// eventRedactor is the redactor events are stored through (a test replaces it).
+var eventRedactor = secrets.Redactor
+
+// uncheckedEvent is stored in place of an event summary the redactor could not check.
+const uncheckedEvent = "[this event could not be checked for secrets, so it was not stored]"
 
 // InsertAgentEvent inserts an event and auto-prunes to 500 per agent.
 // CreatedAt is stamped with the current time unless the caller set it, which

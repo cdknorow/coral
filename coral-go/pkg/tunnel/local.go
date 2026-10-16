@@ -275,6 +275,10 @@ type LocalHandler struct {
 	// formats and private keys are replaced by redact.Marker before a reply leaves this
 	// computer. Read on every request; nil means on.
 	RedactTokens func() bool
+	// Redactor removes secrets from those replies and streams (#3808: Coral sets betterleaks'
+	// rules, pkg/redact/betterleaks). Nil refuses every reply that would be redacted: none is
+	// ever sent unchecked.
+	Redactor redact.Redactor
 	// HubLimits bounds what Coral Hub can hold open on this computer at once (#3624); zero
 	// values take the defaults (DefaultGlobalInFlight, DefaultLongInFlight,
 	// DefaultSearchInFlight, DefaultRequestDeadline, DefaultBodyIdle). The limiter is always on.
@@ -679,6 +683,13 @@ func (l *LocalHandler) limits() HubLimits {
 
 func (l *LocalHandler) redacting() bool { return l.RedactTokens == nil || l.RedactTokens() }
 
+func (l *LocalHandler) redactor() redact.Redactor {
+	if l.Redactor == nil {
+		return redact.Refuse
+	}
+	return l.Redactor
+}
+
 // redactFailed is the whole answer when a reply couldn't be scanned: it never passes unscanned.
 const redactFailed = `{"error":"this reply could not be checked for secrets, so it is not shown through Coral Hub; open it on the computer"}` + "\n"
 
@@ -686,7 +697,7 @@ var redactFailLog sync.Once
 
 // serveRedacted relays a View reply with its tokens replaced (#3560). A reply of known size up
 // to wholeReplyMax goes in one write, as unredacted ones do; a larger, open-ended or decoded one
-// streams through a redact.Writer, which holds back only a tail that could still be a token. Range
+// streams through the redactor's Stream, which holds back only what it can't check yet. Range
 // is dropped per route, not per content type, so a binary reply on a redacted View route (an
 // image the agent's page serves, say) is a 200 with the whole body: accepted (Security's #3560
 // note 2), since only artifact downloads need byte ranges and they are exempt.
@@ -700,7 +711,7 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 			s.Reject(CodeUpstream, "local response ended early", 0)
 			return
 		}
-		out, ok := redactReply(resp.Header, raw)
+		out, ok := l.redactReply(resp.Header, raw)
 		if !ok || !redactedJSONOK(resp.Header, raw, out) {
 			l.respondRedactFailed(s)
 			return
@@ -728,7 +739,7 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 			s.Reject(CodeUpstream, "local response ended early", 0)
 			return
 		}
-		out, ok := redactReply(resp.Header, raw)
+		out, ok := l.redactReply(resp.Header, raw)
 		if !ok || !redactedJSONOK(resp.Header, raw, out) {
 			l.respondRedactFailed(s)
 			return
@@ -752,7 +763,7 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 	if err != nil {
 		return
 	}
-	red := redact.NewWriter(w)
+	red := l.redactor().NewStream(w)
 	buf := make([]byte, maxChunk)
 	for {
 		n, rerr := body.Read(buf)
@@ -905,15 +916,22 @@ func respondJSONBusy(s *Stream) {
 
 // jsonReply reports whether a reply's Content-Type is JSON (application/json or a +json type).
 // It goes by the declared type: a JSON body sent as text/plain is streamed through the
-// redact.Writer unchecked (Coral's own JSON endpoints all declare application/json).
-// redactReply redacts a reply held whole: by its structure when hdr declares JSON.
-func redactReply(hdr http.Header, raw []byte) ([]byte, bool) {
-	return redact.Reply(raw, jsonReply(hdr))
-}
-
+// redactor's stream unchecked (Coral's own JSON endpoints all declare application/json).
 func jsonReply(hdr http.Header) bool {
 	mt, _, err := mime.ParseMediaType(hdr.Get("Content-Type"))
 	return err == nil && (mt == "application/json" || strings.HasSuffix(mt, "+json"))
+}
+
+// redactReply redacts a reply held whole: by its structure when hdr declares JSON. A panic is a
+// failure, so a reply is never sent unchecked.
+func (l *LocalHandler) redactReply(hdr http.Header, raw []byte) (out []byte, ok bool) {
+	defer func() {
+		if recover() != nil {
+			out, ok = nil, false
+		}
+	}()
+	out, err := l.redactor().Reply(raw, jsonReply(hdr))
+	return out, err == nil
 }
 
 // redactedJSONOK is false when a JSON reply that parsed before redaction doesn't after it (#3694:
@@ -933,18 +951,9 @@ func (l *LocalHandler) respondRedactFailed(s *Stream) {
 	_ = w.Close()
 }
 
-// redactWhole, redactWrite and redactClose turn a panic in the scanner into a failure, so a
-// reply is never sent unscanned.
-func redactWhole(b []byte) (out []byte, ok bool) {
-	defer func() {
-		if recover() != nil {
-			out, ok = nil, false
-		}
-	}()
-	return redact.Tokens(b), true
-}
-
-func redactWrite(r *redact.Writer, b []byte) (ok bool) {
+// redactWrite and redactClose turn an error or a panic in the stream into a failure, so a reply
+// is never sent unscanned.
+func redactWrite(r redact.Stream, b []byte) (ok bool) {
 	defer func() {
 		if recover() != nil {
 			ok = false
@@ -954,7 +963,7 @@ func redactWrite(r *redact.Writer, b []byte) (ok bool) {
 	return err == nil
 }
 
-func redactClose(r *redact.Writer) (ok bool) {
+func redactClose(r redact.Stream) (ok bool) {
 	defer func() {
 		if recover() != nil {
 			ok = false
@@ -1054,7 +1063,7 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 	var toHub *wsRedact
 	if redactsRoute(http.MethodGet, dec) {
 		// What a View stream sends to the hub is redacted (#3562); the setting is read per frame.
-		toHub = newWSRedact(ctx, down, l.redacting, strings.HasPrefix(dec, "/ws/terminal/"))
+		toHub = newWSRedact(ctx, down, l.redactor(), l.redacting, strings.HasPrefix(dec, "/ws/terminal/"))
 	}
 	pumpWS(ctx, up, down, gate, toHub)
 }

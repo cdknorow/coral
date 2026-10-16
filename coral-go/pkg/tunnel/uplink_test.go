@@ -20,6 +20,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // ── A throttled link ───────────────────────────────────────────────────
@@ -168,7 +170,7 @@ func connectShaped(t testing.TB, h *hubHarness, local http.Handler, shape linkSh
 		return newShapedConn(c, shape.mbit*1e6/8, shape.rtt/2, shape.queue), nil
 	}}
 	cs, err := Dial(context.Background(), h.URL(), testToken, ClientOptions{
-		SessionConfig: h.Cfg, Handler: &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll},
+		SessionConfig: h.Cfg, Handler: &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll, Redactor: redact.Rules},
 		CoralVersion: "test", AllowInsecure: true, HTTPClient: &http.Client{Transport: tr}, uplink: up,
 	})
 	require.NoError(t, err)
@@ -341,7 +343,7 @@ func TestUplinkSingleBulkThroughput(t *testing.T) {
 		h := newHub(t, SessionConfig{})
 		ls := httptest.NewServer(localApp())
 		t.Cleanup(ls.Close)
-		cs, err := Dial(context.Background(), h.URL(), testToken, ClientOptions{SessionConfig: h.Cfg, Handler: &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll}, CoralVersion: "test", AllowInsecure: true, uplink: up})
+		cs, err := Dial(context.Background(), h.URL(), testToken, ClientOptions{SessionConfig: h.Cfg, Handler: &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll, Redactor: redact.Rules}, CoralVersion: "test", AllowInsecure: true, uplink: up})
 		require.NoError(t, err)
 		t.Cleanup(func() { cs.Close() })
 		s := h.next(t)

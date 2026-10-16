@@ -36,6 +36,7 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/server"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
@@ -177,6 +178,11 @@ func (rs *RunningServer) Close() {
 // server runs in a background goroutine; callers should wait on ctx.Done()
 // then call RunningServer.Shutdown().
 func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServer, error) {
+	// The secret detector (#3808): coral, the tray and launch-coral all serve Coral Hub and
+	// write coral.log from this process, so none of them runs without it.
+	if err := secrets.Init(); err != nil {
+		return nil, fmt.Errorf("the secret detector could not be built: %w", err)
+	}
 	dbcrypt.SetUnlockSurface(opts.UnlockSurface)
 	backendFlag := opts.BackendType // resolved against the saved setting once the database is open
 	exe, exeErr := os.Executable()
@@ -1068,6 +1074,7 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		LocalBaseURL: "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Port)),
 		MaxMode:      routes.MaxModeFromSettings(ss),
 		RedactTokens: routes.RedactTokensFromSettings(ss),
+		Redactor:     secrets.Redactor(),
 		HubLimits:    routes.HubLimitsFromSettings(ss),
 		CoralVersion: config.ReportedVersion(),
 		Logger:       slog.Default(),

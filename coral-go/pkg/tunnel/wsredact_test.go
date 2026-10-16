@@ -183,7 +183,7 @@ func TestWSRedactTerminal(t *testing.T) {
 	on := atomic.Bool{}
 	on.Store(true)
 	dst := &wsRecorder{}
-	w := newWSRedact(context.Background(), dst, on.Load, true)
+	w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
 	bin := func(s string) { require.NoError(t, w.write(websocket.MessageBinary, []byte(s))) }
 
 	bin("out: " + tok[:10])
@@ -242,7 +242,7 @@ func TestWSRedactTerminal(t *testing.T) {
 func TestWSRedactFeed(t *testing.T) {
 	tok := fake("sk-", 30, alnum)
 	dst := &wsRecorder{}
-	w := newWSRedact(context.Background(), dst, func() bool { return true }, false)
+	w := newWSRedact(context.Background(), dst, redact.Rules, func() bool { return true }, false)
 	msg, _ := json.Marshal(map[string]any{"type": "coral_update", "sessions": []map[string]string{{"summary": "set OPENAI_API_KEY=" + tok}}})
 	require.NoError(t, w.write(websocket.MessageText, msg))
 	require.NoError(t, w.write(websocket.MessageText, []byte(`{"type":"coral_heartbeat"}`)))
@@ -261,7 +261,7 @@ func TestWSRedactFeed(t *testing.T) {
 func TestWSRedactFrameCost(t *testing.T) {
 	frame := []byte(strings.Repeat("\x1b[32m+\x1b[0m added line of code with some text 0123456789\r\n", 64)) // ~4 KiB
 	dst := &wsRecorder{}
-	w := newWSRedact(context.Background(), dst, func() bool { return true }, true)
+	w := newWSRedact(context.Background(), dst, redact.Rules, func() bool { return true }, true)
 	const n = 500
 	start := time.Now()
 	for i := 0; i < n; i++ {
@@ -276,7 +276,7 @@ func TestWSRedactFrameCost(t *testing.T) {
 
 func BenchmarkWSRedactTerminalFrame(b *testing.B) {
 	frame := []byte(strings.Repeat("\x1b[32m+\x1b[0m added line of code with some text 0123456789\r\n", 64))
-	w := newWSRedact(context.Background(), &wsDiscard{}, func() bool { return true }, true)
+	w := newWSRedact(context.Background(), &wsDiscard{}, redact.Rules, func() bool { return true }, true)
 	b.SetBytes(int64(len(frame)))
 	for i := 0; i < b.N; i++ {
 		_ = w.write(websocket.MessageBinary, frame)
@@ -445,7 +445,7 @@ func TestRedactAfterColourCodes(t *testing.T) {
 		in := []byte(c.in)
 		for split := 1; split < len(in); split++ {
 			dst := &wsRecorder{}
-			w := newWSRedact(context.Background(), dst, func() bool { return true }, true)
+			w := newWSRedact(context.Background(), dst, redact.Rules, func() bool { return true }, true)
 			require.NoError(t, w.write(websocket.MessageBinary, in[:split]))
 			require.NoError(t, w.write(websocket.MessageBinary, in[split:]))
 			w.close()

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,7 @@ func connectCapped(t *testing.T, local http.Handler, hubMax, connectorMax int) *
 	t.Cleanup(ths.Close)
 	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
 		SessionConfig: tunnel.SessionConfig{MaxStreams: connectorMax},
-		Handler:       &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: allowAll},
+		Handler:       &tunnel.LocalHandler{Redactor: redact.Rules, BaseURL: ls.URL, AllowPath: allowAll},
 		AllowInsecure: true,
 	})
 	require.NoError(t, err)

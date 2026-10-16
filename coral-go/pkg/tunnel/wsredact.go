@@ -6,7 +6,7 @@ package tunnel
 //
 //   - A text frame (the session feed's JSON, the terminal's control messages) is one whole
 //     reply: it is redacted on its own, so it stays valid JSON.
-//   - The terminal's binary frames are one stream of output: they pass through one redact.Writer,
+//   - The terminal's binary frames are one stream of output: they pass through one redact.Stream,
 //     so a token split across frames is caught, and a frame that ends inside what could still
 //     be a token holds back only that tail. Frames with nothing held go out at once. When
 //     no frame follows, a held tail with no value in it yet (the first letters of a prefix)
@@ -56,15 +56,16 @@ type wsRedact struct {
 	mu    sync.Mutex // one writer to dst: the pump or the idle flush
 	ctx   context.Context
 	dst   wsEnd
-	red   *redact.Writer // the terminal stream's scanner (nil while the setting is off)
+	rd    redact.Redactor
+	red   redact.Stream // the terminal stream's scanner (nil while the setting is off)
 	out   bytes.Buffer
 	timer *time.Timer
 	force bool // the timer's next firing redacts a held prefix (wsHoldMax)
 	err   error
 }
 
-func newWSRedact(ctx context.Context, dst wsEnd, on func() bool, stream bool) *wsRedact {
-	return &wsRedact{ctx: ctx, dst: dst, on: on, stream: stream}
+func newWSRedact(ctx context.Context, dst wsEnd, rd redact.Redactor, on func() bool, stream bool) *wsRedact {
+	return &wsRedact{ctx: ctx, dst: dst, rd: rd, on: on, stream: stream}
 }
 
 // write sends one frame from the local server to the hub, redacted.
@@ -86,7 +87,7 @@ func (w *wsRedact) write(typ websocket.MessageType, data []byte) error {
 	}
 	if typ == websocket.MessageBinary && w.stream {
 		if w.red == nil {
-			w.red = redact.NewWriter(&w.out)
+			w.red = w.rd.NewStream(&w.out)
 		}
 		if !redactWrite(w.red, data) {
 			return w.fail()
@@ -94,7 +95,7 @@ func (w *wsRedact) write(typ websocket.MessageType, data []byte) error {
 		w.armIdle()
 		return w.sendOut()
 	}
-	out, ok := redactWhole(data)
+	out, ok := redactFrame(w.rd, data)
 	if !ok {
 		return w.fail()
 	}
@@ -202,7 +203,19 @@ func terminalClosing(data []byte) bool {
 	return bytes.Contains(data, []byte(`"terminal_closed"`))
 }
 
-func redactFlush(r *redact.Writer, force bool) (ok bool) {
+// redactFrame redacts a text frame on its own: by its structure when it is JSON (the feed), as
+// text otherwise. A panic is a failure.
+func redactFrame(rd redact.Redactor, data []byte) (out []byte, ok bool) {
+	defer func() {
+		if recover() != nil {
+			out, ok = nil, false
+		}
+	}()
+	out, err := rd.Reply(data, true)
+	return out, err == nil
+}
+
+func redactFlush(r redact.Stream, force bool) (ok bool) {
 	defer func() {
 		if recover() != nil {
 			ok = false

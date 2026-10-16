@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
@@ -63,7 +64,7 @@ func TestTerminalSizeFramesPassAViewOnlyHub(t *testing.T) {
 				machineMode = tunnel.TierView
 			}
 			cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
-				Handler: &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: func(string, string) bool { return true },
+				Handler: &tunnel.LocalHandler{Redactor: redact.Rules, BaseURL: ls.URL, AllowPath: func(string, string) bool { return true },
 					MaxMode: func() tunnel.Mode { return machineMode }},
 				AllowInsecure: true,
 			})

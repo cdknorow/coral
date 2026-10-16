@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 const testToken = "tok-secret"
@@ -63,7 +65,9 @@ func connect(t *testing.T, h *hubHarness, local http.Handler, mod func(*LocalHan
 	t.Helper()
 	ls := httptest.NewServer(local)
 	t.Cleanup(ls.Close)
-	lh := &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll}
+	// The tunnel's tests run pkg/redact's own rules: they test the tunnel's handling of replies
+	// and streams; the library's rules are tested in pkg/redact/betterleaks.
+	lh := &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll, Redactor: redact.Rules}
 	if mod != nil {
 		mod(lh)
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/pkg/redact"
 )
 
@@ -40,17 +41,15 @@ func trimFake(prefix string, n int, alphabet string) string {
 
 func TestTrimNeverShowsAPieceOfAToken(t *testing.T) {
 	const alnum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	hex := "0123456789abcdef"
 	type token struct{ text, secret string }
+	// Shapes betterleaks' rules find whole (#3808: they are Coral's rules now); the ones only
+	// Coral's old rules found are listed in the #3808 gap report.
 	tokens := []token{
 		{trimFake("ghp_", 36, alnum), trimFake("ghp_", 36, alnum)[4:]},
-		{trimFake("github_pat_", 30, alnum+"_"), trimFake("github_pat_", 30, alnum+"_")[11:]},
-		{trimFake("sk-ant-api03-", 40, alnum+"-_"), trimFake("sk-ant-api03-", 40, alnum+"-_")[13:]},
-		{trimFake("AKIA", 16, "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"), trimFake("AKIA", 16, "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")[4:]},
-		{trimFake("xoxb-", 30, alnum+"-"), trimFake("xoxb-", 30, alnum+"-")[5:]},
-		{"Authorization: Bearer " + trimFake("", 40, alnum+"._-"), trimFake("", 40, alnum+"._-")},
-		{`"authorization": "Basic ` + trimFake("", 24, alnum+"=") + `"`, trimFake("", 24, alnum+"=")},
-		{`Authorization: Digest username="bob", response="` + trimFake("", 32, hex) + `"`, trimFake("", 32, hex)},
+		{trimFake("github_pat_", 82, alnum+"_"), trimFake("github_pat_", 82, alnum+"_")[11:]},
+		{trimFake("sk-ant-api03-", 93, alnum+"-_") + "AA", trimFake("sk-ant-api03-", 93, alnum+"-_")[13:]},
+		{"xoxb-" + trimFake("", 11, "0123456789") + "-" + trimFake("", 12, "0123456789") + "-" + trimFake("", 24, alnum), trimFake("", 24, alnum)},
+		{"sk_" + trimFake("live_", 24, alnum), trimFake("live_", 24, alnum)[5:]},
 	}
 	page := func(content string) []map[string]any {
 		return []map[string]any{{"type": "tool_result", "tool_use_id": "t1", "content": content}}
@@ -59,7 +58,9 @@ func TestTrimNeverShowsAPieceOfAToken(t *testing.T) {
 		t.Helper()
 		body, err := json.Marshal(map[string]any{"messages": trimChatPage(page(content), n)})
 		require.NoError(t, err)
-		out := string(redact.Tokens(body))
+		red, err := secrets.Redactor().Reply(body, true)
+		require.NoError(t, err)
+		out := string(red)
 		if shown := trimSecretShown(out, secret); shown != "" {
 			t.Errorf("trim=%d shows %q of %q", n, shown, secret)
 		}
@@ -90,7 +91,9 @@ func TestTrimNeverShowsAPieceOfAPEMKey(t *testing.T) {
 	content := strings.Repeat("cat id_rsa\n", 20) + key.String() + "\ndone\n" + strings.Repeat("z", 1000)
 	for n := trimMin; n <= len(content); n++ {
 		body, _ := json.Marshal(map[string]any{"messages": trimChatPage([]map[string]any{{"type": "tool_result", "content": content}}, n)})
-		out := string(redact.Tokens(body))
+		red, err := secrets.Redactor().Reply(body, true)
+		require.NoError(t, err)
+		out := string(red)
 		if shown := trimSecretShown(out, line); shown != "" {
 			t.Fatalf("trim=%d shows %q", n, shown)
 		}

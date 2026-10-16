@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -46,7 +47,7 @@ func TestConditionalPollThroughTheHub(t *testing.T) {
 	}))
 	defer ths.Close()
 	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
-		Handler: &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: func(string, string) bool { return true },
+		Handler: &tunnel.LocalHandler{Redactor: redact.Rules, BaseURL: ls.URL, AllowPath: func(string, string) bool { return true },
 			MaxMode: func() tunnel.Mode { return tunnel.TierView }},
 		AllowInsecure: true,
 	})

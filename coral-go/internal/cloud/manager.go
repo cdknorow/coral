@@ -20,6 +20,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -46,6 +47,11 @@ type Options struct {
 	LocalBaseURL string             // loopback URL of this server, e.g. http://127.0.0.1:8420
 	MaxMode      func() tunnel.Mode // this server's own maximum access mode; default view
 	RedactTokens func() bool        // hide tokens from Coral Hub viewers (#3560); nil means on
+	// Redactor removes secrets from what Coral Hub viewers see (#3808: the server passes
+	// internal/secrets'); nil refuses every reply that would be redacted. An option, so the
+	// commands that use this package without serving (the tray, launch-coral) don't link the
+	// detector.
+	Redactor redact.Redactor
 	// HubLimits gives the Coral Hub request pools' sizes for each request (#3642); nil means
 	// the defaults.
 	HubLimits    func() tunnel.HubLimits
@@ -532,6 +538,7 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		MaxMode:       m.currentMode,                    // gates WebSocket input frame by frame
 		ViaValue:      ViaSecret(),                      // lets the server tell the connector from a forged stamp
 		RedactTokens:  m.o.RedactTokens,                 // read on every reply: a change applies at once
+		Redactor:      m.o.Redactor,                     // betterleaks' rules (#3808)
 		HubLimitsFunc: m.o.HubLimits,                    // read on every request: a change applies at once
 	}
 	err = tunnel.Run(ctx, TunnelURL(m.o.HubURL), token, tunnel.ClientOptions{
