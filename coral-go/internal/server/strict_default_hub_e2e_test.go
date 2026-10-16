@@ -37,6 +37,7 @@ func TestStrictDefaultHubTunnelEndToEnd(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	stack := newTermStack(t)
 	srv := NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+	t.Cleanup(srv.Close) // its loops and the board database, which Windows won't remove while open (#3914)
 	srv.cloudHandler.SetLinkedCheck(func() bool { return true })
 	local := httptest.NewServer(srv.Router())
 	t.Cleanup(local.Close)
