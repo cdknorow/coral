@@ -204,3 +204,6 @@ if (urlKey) {
     showPanel($('panel-key'));
     sendKey();
 }
+
+// The page's handlers are in place: a test (or a script) can wait for this instead of guessing how long a module takes to load.
+document.documentElement.dataset.authReady = 'true';

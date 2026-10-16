@@ -40,7 +40,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
             page = name; posts.length = 0; replies = nextReplies; nextReplies = [];
             await Page.navigate({ url: BASE + '/auth' + query }); await Page.loadEventFired();
             await waitFor(`!!document.getElementById('submit') || !!document.getElementById('key-submit')`, 'the page');
-            await sleep(100);   // the module script runs after load
+            await waitFor(`document.documentElement.dataset.authReady === 'true'`, 'the page script');   // the module script runs after load
             assert.equal(await ev(`(() => { const i = document.querySelector('.brand img'); return !!i && i.complete && i.naturalWidth > 0; })()`), true, `${name}: Coral's logo loads (from /static, with no credential)`);
         };
         const $ = (id, prop = 'value') => ev(`document.getElementById('${id}').${prop}`);
@@ -51,7 +51,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
 
         // ── sign in ──
         await open('signin');
-        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'password', 'focus starts in the password');
+        await waitFor(`document.activeElement && document.activeElement.id === 'password'`, 'focus to start in the password');   // autofocus lands a moment after the page script
         assert.ok(!(await visible('err')) && !(await visible('lock')), 'the error and lockout boxes take no room until they are needed');
         assert.equal(await $('keep', 'checked'), false, '"Keep me signed in" is off by default');
         await ev(`document.querySelector('[data-toggle=password]').click(); true`);
