@@ -13,6 +13,7 @@ import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
 import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from './overload.js';
 import { storeKey, onAccountForgotten } from './local_store.js';
+import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, lastContent, updateWorkGroupSummary } from './chat_content.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -617,78 +618,6 @@ document.addEventListener("click", (e) => {
     const el = e.target.closest && e.target.closest("#history-messages a[data-file-ref]");
     if (el) e.preventDefault();
 });
-
-function htmlToElement(html) {
-    const t = document.createElement("template");
-    t.innerHTML = html.trim();
-    return t.content.firstElementChild;
-}
-
-// Everything between a user message and the agent's final reply is folded
-// into one collapsed "work group". The latest reply is shown as final until
-// more work arrives in the same turn, at which point it is folded back in.
-function createWorkGroup() {
-    return htmlToElement(`<details class="work-group">
-        <summary class="work-group-summary"><span class="work-group-count"></span><span class="work-group-latest"></span></summary>
-        <div class="work-group-body"></div>
-    </details>`);
-}
-
-function updateWorkGroupSummary(group) {
-    const body = group.querySelector(":scope > .work-group-body");
-    const steps = body.children.length;
-    group.querySelector(".work-group-count").textContent = `${steps} step${steps === 1 ? "" : "s"}`;
-    const lastTool = Array.from(body.querySelectorAll(":scope > .tool-call")).pop();
-    const latest = lastTool ? lastTool.querySelector(".tool-call-label").textContent : "";
-    group.querySelector(".work-group-latest").textContent = latest;
-}
-
-// The Working row and pending (Sent/Queued) bubbles live at the bottom of the
-// live chat but are not part of the transcript. Rendering reads and appends
-// transcript content as if they were not there, so a new tool call still
-// joins the turn's group while the Working row is showing.
-const TRAILING_CHROME = ".chat-working, .chat-needs-input, .chat-empty, .pending-messages";
-
-function lastContent(container) {
-    let el = container.lastElementChild;
-    while (el && el.matches(TRAILING_CHROME)) el = el.previousElementSibling;
-    return el;
-}
-
-function appendContent(container, el) {
-    const firstChrome = Array.from(container.children).find(c => c.matches(TRAILING_CHROME));
-    container.insertBefore(el, firstChrome || null);
-}
-
-function demoteTurnFinal(container) {
-    const last = lastContent(container);
-    if (!last || !last.classList.contains("turn-final")) return;
-    let group = last.previousElementSibling;
-    if (!group || !group.classList.contains("work-group")) {
-        group = createWorkGroup();
-        container.insertBefore(group, last);
-    }
-    last.classList.remove("turn-final");
-    group.querySelector(":scope > .work-group-body").appendChild(last);
-    updateWorkGroupSummary(group);
-}
-
-function appendWork(container, el) {
-    demoteTurnFinal(container);
-    let group = lastContent(container);
-    if (!group || !group.classList.contains("work-group")) {
-        group = createWorkGroup();
-        appendContent(container, group);
-    }
-    group.querySelector(":scope > .work-group-body").appendChild(el);
-    updateWorkGroupSummary(group);
-}
-
-function appendTurnFinal(container, el) {
-    demoteTurnFinal(container);
-    el.classList.add("turn-final");
-    appendContent(container, el);
-}
 
 // Join a prepended older page to the page after it: a trailing "final" reply
 // that was followed by more work is folded in, and split groups are merged.
