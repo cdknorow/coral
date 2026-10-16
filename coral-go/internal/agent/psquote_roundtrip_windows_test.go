@@ -3,6 +3,7 @@
 package agent
 
 import (
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -19,6 +20,9 @@ func TestPSLiteralRoundTripsThroughPowerShell(t *testing.T) {
 	ps, err := exec.LookPath("powershell.exe")
 	if err != nil {
 		if ps, err = exec.LookPath("pwsh.exe"); err != nil {
+			if os.Getenv("CI") != "" {
+				t.Fatal("no PowerShell on this CI runner: the round trip must run there, not skip")
+			}
 			t.Skip("no PowerShell on this host")
 		}
 	}
