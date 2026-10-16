@@ -273,8 +273,12 @@ type LocalHandler struct {
 	RedactTokens func() bool
 	// HubLimits bounds what Coral Hub can hold open on this computer at once (#3624); zero
 	// values take the defaults (DefaultGlobalInFlight, DefaultLongInFlight,
-	// DefaultSearchInFlight, DefaultRequestDeadline). The limiter is always on.
+	// DefaultSearchInFlight, DefaultRequestDeadline, DefaultBodyIdle). The limiter is always on.
 	HubLimits HubLimits
+	// HubLimitsFunc, when set, gives the pool sizes and per-user caps for each request (the
+	// settings, #3642), so a change applies to the next request. RequestDeadline and BodyIdle
+	// always come from HubLimits.
+	HubLimitsFunc func() HubLimits
 
 	lim    limiterOnce
 	once   sync.Once
@@ -514,10 +518,10 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	}
 	lm := l.lim.get(l.HubLimits)
 	class := classify(h.Kind, dec)
-	release, ok := lm.acquire(class)
+	release, perUser, ok := lm.acquire(class, h.HubUser, l.limits())
 	if !ok {
-		lm.refused(class, dec)
-		busy(s)
+		lm.refused(class, dec, perUser)
+		busy(s, perUser)
 		return
 	}
 	defer release()
@@ -568,6 +572,12 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		return
 	}
 	defer resp.Body.Close()
+	// From here the reply must keep moving: no progress for BodyIdle (nothing more from the
+	// local API, or the hub not taking what was sent) ends the stream, so its slot is freed
+	// (#3642). The hub sees a truncated reply.
+	idle := time.AfterFunc(lm.bodyIdle, s.abort)
+	defer idle.Stop()
+	progress := func() { idle.Reset(lm.bodyIdle) }
 	hdr := resp.Header.Clone()
 	for _, k := range []string{"Connection", "Keep-Alive", "Transfer-Encoding", "Upgrade", "Proxy-Authenticate", "Te", "Trailer"} {
 		hdr.Del(k)
@@ -609,7 +619,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		// before streaming, never passed on to the browser, and the hub caps the body by its own
 		// limit, so the redacted body's different length breaks nothing. Content-Length itself is
 		// already removed (the body is re-framed). A decoded or open-ended reply has none.
-		l.serveRedacted(s, resp, respBody, hdr, decoded)
+		l.serveRedacted(s, resp, respBody, hdr, decoded, progress)
 		return
 	}
 	if resp.ContentLength >= 0 && resp.ContentLength <= wholeReplyMax && !decoded && bodyAllowed(s.Header.Method, resp.StatusCode) {
@@ -633,6 +643,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 			if _, werr := w.Write(buf[:n]); werr != nil {
 				return
 			}
+			progress()
 		}
 		if rerr != nil {
 			if rerr == io.EOF {
@@ -641,6 +652,14 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 			return // anything else: leave the body unterminated so the hub sees a truncated response
 		}
 	}
+}
+
+// limits is the pool sizes and per-user caps for a request.
+func (l *LocalHandler) limits() HubLimits {
+	if l.HubLimitsFunc != nil {
+		return l.HubLimitsFunc()
+	}
+	return l.HubLimits
 }
 
 func (l *LocalHandler) redacting() bool { return l.RedactTokens == nil || l.RedactTokens() }
@@ -656,7 +675,7 @@ var redactFailLog sync.Once
 // is dropped per route, not per content type, so a binary reply on a redacted View route (an
 // image the agent's page serves, say) is a 200 with the whole body: accepted (Security's #3560
 // note 2), since only artifact downloads need byte ranges and they are exempt.
-func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Reader, hdr http.Header, decoded bool) {
+func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Reader, hdr http.Header, decoded bool, progress func()) {
 	// The whole-reply path reads exactly Content-Length bytes, which for a decoded (gzip) reply is
 	// the compressed size, not the body's: such a reply streams instead (#3564, as the unredacted
 	// path does).
@@ -682,8 +701,11 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 	buf := make([]byte, maxChunk)
 	for {
 		n, rerr := body.Read(buf)
-		if n > 0 && !redactWrite(red, buf[:n]) {
-			return // the scanner failed mid-stream: leave it unterminated, so the hub sees a truncated reply
+		if n > 0 {
+			if !redactWrite(red, buf[:n]) {
+				return // the scanner failed mid-stream: leave it unterminated, so the hub sees a truncated reply
+			}
+			progress()
 		}
 		if rerr != nil {
 			if rerr == io.EOF && redactClose(red) {
@@ -781,10 +803,10 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 		return
 	}
 	lm := l.lim.get(l.HubLimits)
-	release, ok := lm.acquire(classLong)
+	release, perUser, ok := lm.acquire(classLong, h.HubUser, l.limits())
 	if !ok {
-		lm.refused(classLong, dec)
-		busy(s)
+		lm.refused(classLong, dec, perUser)
+		busy(s, perUser)
 		return
 	}
 	defer release()

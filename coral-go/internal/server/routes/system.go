@@ -201,6 +201,11 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, HubModeSetting+" is set with PUT /api/system/hub-mode")
 		return
 	}
+	// The Coral Hub request pools' sizes (#3642): whole numbers in range, or empty for the default.
+	if err := validateHubLimitSettings(body); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	// The auto-wake setting and cap (#3636): a boolean, and a whole number from 1 to 50.
 	if err := validateAutoWakeSettings(body); err != nil {
 		errBadRequest(w, err.Error())

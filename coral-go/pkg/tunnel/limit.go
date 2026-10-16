@@ -18,13 +18,19 @@ import (
 //   - every other request takes a slot in the global pool, and the search routes also take one
 //     in a small cost pool;
 //   - a full pool answers at once (429, Retry-After, X-Coral-Limit: connector), never queues;
+//   - one Coral Hub user (the stream's HubUser) holds at most a share of each pool, so a few busy
+//     viewers can't fill it for everyone (#3642); a stream without a user (an old hub) is held
+//     only by the pools;
 //   - a non-stream request that has no response headers after RequestDeadline is cancelled, so
-//     a stalled handler can't hold its slot.
+//     a stalled handler can't hold its slot, and a reply body that makes no progress for
+//     BodyIdle (nothing read from the local API, or the hub not taking it) is ended, so a
+//     stalled reader can't either (#3642).
 const (
 	DefaultGlobalInFlight  = 64
 	DefaultLongInFlight    = 16
 	DefaultSearchInFlight  = 4
 	DefaultRequestDeadline = 30 * time.Second
+	DefaultBodyIdle        = 60 * time.Second
 	// busyRetryAfter is the Retry-After a full pool answers with, in seconds.
 	busyRetryAfter = "2"
 	// LimitHeader marks Coral's own limit replies (the dashboard's X-Coral-Limit). "connector"
@@ -35,7 +41,50 @@ const (
 // HubLimits configures LocalHandler's hub request limits. Zero values take the defaults.
 type HubLimits struct {
 	Global, Long, Search int
-	RequestDeadline      time.Duration
+	// UserGlobal, UserLong and UserSearch cap one Coral Hub user inside each pool. Zero: a
+	// quarter of the pool for Global and Long (16 of 64, 4 of 16), half for Search (2 of 4),
+	// never less than 1.
+	UserGlobal, UserLong, UserSearch int
+	RequestDeadline                  time.Duration
+	BodyIdle                         time.Duration
+}
+
+// The pools, as indexes of the limiter's counters.
+const (
+	poolGlobal = iota
+	poolLong
+	poolSearch
+	poolCount
+)
+
+func (l HubLimits) size(pool int) int {
+	pick := func(v, def int) int {
+		if v > 0 {
+			return v
+		}
+		return def
+	}
+	switch pool {
+	case poolLong:
+		return pick(l.Long, DefaultLongInFlight)
+	case poolSearch:
+		return pick(l.Search, DefaultSearchInFlight)
+	}
+	return pick(l.Global, DefaultGlobalInFlight)
+}
+
+func (l HubLimits) userCap(pool int) int {
+	v, share := l.UserGlobal, 4
+	switch pool {
+	case poolLong:
+		v = l.UserLong
+	case poolSearch:
+		v, share = l.UserSearch, 2
+	}
+	if v > 0 {
+		return v
+	}
+	return max(1, l.size(pool)/share)
 }
 
 type requestClass int
@@ -73,80 +122,104 @@ func classify(kind Kind, decodedPath string) requestClass {
 	return classGeneral
 }
 
+// poolsOf lists the pools a class takes a slot in.
+func poolsOf(c requestClass) []int {
+	switch c {
+	case classLong:
+		return []int{poolLong}
+	case classSearch:
+		return []int{poolGlobal, poolSearch}
+	}
+	return []int{poolGlobal}
+}
+
+// limiter counts the slots in use, in all and per Coral Hub user. The sizes come with each
+// acquire, so a changed setting applies to the next request; slots already held above a
+// smaller size are kept until they end.
 type limiter struct {
-	global, long, search chan struct{}
-	deadline             time.Duration
-	rejected             atomic.Uint64
-	lastLog              atomic.Int64 // unix seconds of the last rejection log line
+	mu       sync.Mutex
+	inUse    [poolCount]int
+	users    map[string]*[poolCount]int
+	deadline time.Duration
+	bodyIdle time.Duration
+	rejected atomic.Uint64
+	lastLog  atomic.Int64 // unix seconds of the last rejection log line
 }
 
 func newLimiter(l HubLimits) *limiter {
-	pick := func(v, def int) int {
-		if v > 0 {
-			return v
-		}
-		return def
-	}
 	d := l.RequestDeadline
 	if d <= 0 {
 		d = DefaultRequestDeadline
 	}
-	return &limiter{
-		global:   make(chan struct{}, pick(l.Global, DefaultGlobalInFlight)),
-		long:     make(chan struct{}, pick(l.Long, DefaultLongInFlight)),
-		search:   make(chan struct{}, pick(l.Search, DefaultSearchInFlight)),
-		deadline: d,
+	idle := l.BodyIdle
+	if idle <= 0 {
+		idle = DefaultBodyIdle
 	}
+	return &limiter{users: map[string]*[poolCount]int{}, deadline: d, bodyIdle: idle}
 }
 
-func tryTake(c chan struct{}) bool {
-	select {
-	case c <- struct{}{}:
-		return true
-	default:
-		return false
-	}
-}
-
-// acquire takes the slots a class needs, or none; release gives them back.
-func (lm *limiter) acquire(c requestClass) (release func(), ok bool) {
-	switch c {
-	case classLong:
-		if !tryTake(lm.long) {
-			return nil, false
+// acquire takes the slots a class needs for user ("" for none), or none; release gives them
+// back. perUser says a refusal came from the user's own share, not a full pool.
+func (lm *limiter) acquire(c requestClass, user string, lim HubLimits) (release func(), perUser, ok bool) {
+	pools := poolsOf(c)
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+	u := lm.users[user]
+	for _, p := range pools {
+		if lm.inUse[p] >= lim.size(p) {
+			return nil, false, false
 		}
-		return func() { <-lm.long }, true
-	case classSearch:
-		if !tryTake(lm.global) {
-			return nil, false
+		if user != "" && u != nil && u[p] >= lim.userCap(p) {
+			return nil, true, false
 		}
-		if !tryTake(lm.search) {
-			<-lm.global
-			return nil, false
+	}
+	if user != "" && u == nil {
+		u = &[poolCount]int{}
+		lm.users[user] = u
+	}
+	for _, p := range pools {
+		lm.inUse[p]++
+		if u != nil {
+			u[p]++
 		}
-		return func() { <-lm.search; <-lm.global }, true
 	}
-	if !tryTake(lm.global) {
-		return nil, false
-	}
-	return func() { <-lm.global }, true
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			lm.mu.Lock()
+			defer lm.mu.Unlock()
+			for _, p := range pools {
+				lm.inUse[p]--
+				if u != nil {
+					u[p]--
+				}
+			}
+			if u != nil && *u == [poolCount]int{} {
+				delete(lm.users, user)
+			}
+		})
+	}, false, true
 }
 
 // refused counts a refusal and logs one line a minute at most, so a flood can't fill the log.
-func (lm *limiter) refused(c requestClass, path string) {
+func (lm *limiter) refused(c requestClass, path string, perUser bool) {
 	n := lm.rejected.Add(1)
 	now := time.Now().Unix()
 	if last := lm.lastLog.Load(); now-last >= 60 && lm.lastLog.CompareAndSwap(last, now) {
-		slog.Warn("[tunnel] Coral Hub request refused: too many at once", "pool", c.String(), "path", path, "refused_total", n)
+		slog.Warn("[tunnel] Coral Hub request refused: too many at once", "pool", c.String(), "one_user", perUser, "path", path, "refused_total", n)
 	}
 }
 
 // busy answers a stream whose pool is full: a 429 with Retry-After and the limit marker for an
 // HTTP request; a WebSocket open is refused as too many streams (the hub answers 503, Retry-After).
-func busy(s *Stream) {
+func busy(s *Stream, perUser bool) {
 	if s.Header.Kind == KindWS {
 		s.Reject(CodeTooManyStreams, "too many requests from Coral Hub at once", 0)
 		return
+	}
+	msg := `{"error":"this computer is answering too many Coral Hub requests at once; try again shortly","code":"hub_busy"}`
+	if perUser {
+		msg = `{"error":"you have too many Coral Hub requests open on this computer at once; try again shortly","code":"hub_busy"}`
 	}
 	h := http.Header{}
 	h.Set("Content-Type", "application/json")
@@ -154,7 +227,7 @@ func busy(s *Stream) {
 	h.Set(LimitHeader, "connector")
 	h.Set("Cache-Control", "no-store")
 	_ = s.RespondWhole(ResponseHeader{Status: http.StatusTooManyRequests, Headers: h},
-		[]byte(`{"error":"this computer is answering too many Coral Hub requests at once; try again shortly","code":"hub_busy"}`))
+		[]byte(msg))
 }
 
 // limiterOnce lazily builds the limiter for handlers that never call init (tests building

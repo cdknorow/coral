@@ -132,6 +132,10 @@ type Header struct {
 	Headers       http.Header `json:"headers,omitempty"`
 	Protocols     []string    `json:"protocols,omitempty"` // ws subprotocols
 	ContentLength int64       `json:"content_length,omitempty"`
+	// HubUser is the Coral Hub user the stream is for (hub-user-<8 hex>), for the connector's
+	// per-user limits only (#3642). It is a field of the stream, not an HTTP header, so it never
+	// reaches the local API; an old hub doesn't send it.
+	HubUser string `json:"hub_user,omitempty"`
 }
 
 // ResponseHeader answers a Header (connector to hub).
@@ -220,6 +224,9 @@ func (h *Header) validate(l Limits) error {
 	}
 	if h.ContentLength < -1 {
 		return fmt.Errorf("%w: content length", ErrBadHeader)
+	}
+	if h.HubUser != "" && !ValidHubUser(h.HubUser) {
+		return fmt.Errorf("%w: hub user", ErrBadHeader)
 	}
 	if len(h.Protocols) > 16 {
 		return fmt.Errorf("%w: protocols", ErrBadHeader)

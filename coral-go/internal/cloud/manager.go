@@ -45,6 +45,9 @@ type Options struct {
 	LocalBaseURL string             // loopback URL of this server, e.g. http://127.0.0.1:8420
 	MaxMode      func() tunnel.Mode // this server's own maximum access mode; default view
 	RedactTokens func() bool        // hide tokens from Coral Hub viewers (#3560); nil means on
+	// HubLimits gives the Coral Hub request pools' sizes for each request (#3642); nil means
+	// the defaults.
+	HubLimits    func() tunnel.HubLimits
 	CoralVersion string
 	HTTPClient   *http.Client // enrollment and tunnel handshake; nil uses NewHubHTTPClient()
 	Backoff      tunnel.Backoff
@@ -514,11 +517,12 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		return
 	}
 	local := &tunnel.LocalHandler{
-		BaseURL:      m.o.LocalBaseURL,
-		AllowRequest: tunnel.AllowRequest(m.o.MaxMode), // read on every request: a change applies at once
-		MaxMode:      m.currentMode,                    // gates WebSocket input frame by frame
-		ViaValue:     ViaSecret(),                      // lets the server tell the connector from a forged stamp
-		RedactTokens: m.o.RedactTokens,                 // read on every reply: a change applies at once
+		BaseURL:       m.o.LocalBaseURL,
+		AllowRequest:  tunnel.AllowRequest(m.o.MaxMode), // read on every request: a change applies at once
+		MaxMode:       m.currentMode,                    // gates WebSocket input frame by frame
+		ViaValue:      ViaSecret(),                      // lets the server tell the connector from a forged stamp
+		RedactTokens:  m.o.RedactTokens,                 // read on every reply: a change applies at once
+		HubLimitsFunc: m.o.HubLimits,                    // read on every request: a change applies at once
 	}
 	err = tunnel.Run(ctx, TunnelURL(m.o.HubURL), token, tunnel.ClientOptions{
 		Handler:       local,

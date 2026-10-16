@@ -77,6 +77,12 @@ func upstreamPath(r *http.Request) (string, bool) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The Coral Hub user behind the request goes with every tunnel stream as Header.HubUser, so
+	// the machine can cap what one viewer holds open (#3642). Read here, before the header
+	// allowlist, which forwards X-Coral-Hub-User itself only on board writes.
+	if vs := r.Header.Values(tunnel.HubUserHeader); len(vs) == 1 {
+		r = r.WithContext(tunnel.WithHubUser(r.Context(), vs[0]))
+	}
 	id := chi.URLParam(r, "server")
 	rawPath, ok := upstreamPath(r)
 	if id == "" || !ok {

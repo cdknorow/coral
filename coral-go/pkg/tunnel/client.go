@@ -441,6 +441,13 @@ func (s *Stream) send(rh ResponseHeader) error {
 	return writeFrame(s.w, rh)
 }
 
+// abort ends the stream from this side: its context is cancelled and the stream closed, so a
+// write waiting on the hub returns. A reply in progress is left unterminated (truncated).
+func (s *Stream) abort() {
+	s.cancel()
+	_ = s.st.Close()
+}
+
 // Reject answers the stream with an error. status is the upstream status for
 // a failed WebSocket handshake, else 0.
 func (s *Stream) Reject(code, msg string, status int) {
