@@ -225,13 +225,13 @@ func Derive(in Input) State {
 			if event.Summary == HeldInputEndedSummary {
 				// Coral's held sends were delivered or dropped: its own notice no
 				// longer stands. A request the agent made itself is kept (#3471).
-				if state.NeedsInput && state.WaitingSummary == HeldInputSummary {
+				if state.NeedsInput && IsHeldInputSummary(state.WaitingSummary) {
 					clearRequest()
 					latestType, state.AwaitingUser = beforeType, beforeAwaiting
 				}
 				continue
 			}
-			if event.Summary == HeldInputSummary && state.NeedsInput && state.WaitingSummary != HeldInputSummary {
+			if IsHeldInputSummary(event.Summary) && state.NeedsInput && !IsHeldInputSummary(state.WaitingSummary) {
 				// Coral's held notice while the agent's own request is open: the request is
 				// what the agent waits on, so it stays as it is (#3655). Replacing its summary
 				// made OwnRequest false, and the gate read the agent as idle with its menu open.
@@ -259,7 +259,7 @@ func Derive(in Input) State {
 		}
 	}
 	state.InTurn = !state.NeedsInput && (latestType == "tool_use" || latestType == "prompt_submit")
-	state.OwnRequest = state.NeedsInput && state.WaitingSummary != HeldInputSummary
+	state.OwnRequest = state.NeedsInput && !IsHeldInputSummary(state.WaitingSummary)
 	state.Working = (latestType == "tool_use" || latestType == "prompt_submit") &&
 		in.StalenessSeconds < 120
 	// No authoritative stuck signal exists in the event schema yet. Keep the
@@ -311,6 +311,14 @@ func SignedInSince(events []Event, t time.Time) bool {
 // been held a while because the agent waits on a prompt (#3431): it shows the
 // agent as needing the user (it matches "needs your input").
 const HeldInputSummary = "Coral is holding automated messages: this agent needs your input in its terminal (a prompt is open)"
+
+// HeldDialogSummary is HeldInputSummary for a dialog Claude Code draws over its input box (its
+// bug-report draft, #4104): the same request, saying what to do. It matches "needs your input".
+const HeldDialogSummary = "Delivery held: a dialog is open in this agent's terminal (Claude Code's bug-report draft) and needs your input: review, send or dismiss it, and Coral's messages follow"
+
+// IsHeldInputSummary reports whether a notification is one of Coral's own held notices
+// (HeldInputSummary, HeldDialogSummary): Coral's, not a request the agent made.
+func IsHeldInputSummary(s string) bool { return s == HeldInputSummary || s == HeldDialogSummary }
 
 // HeldInputEndedSummary is recorded when those held sends were delivered or
 // dropped. It clears HeldInputSummary's request and nothing else, so an agent

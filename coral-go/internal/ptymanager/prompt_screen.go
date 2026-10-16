@@ -146,6 +146,9 @@ func isPromptHold(why string) bool {
 func PromptOnScreen(screen string) (bool, string) {
 	lines := tailLines(screenText(screen), promptScreenLines)
 	all := lines
+	if choices := dialogAboveInputBox(all); choices != "" {
+		return true, dialogWhy + "a dialog is open above the input box (" + choices + ")"
+	}
 	if unnumberedMenu(all) {
 		return true, "selection menu"
 	}
@@ -190,6 +193,85 @@ func PromptOnScreen(screen string) (bool, string) {
 		return true, loginWhy + why
 	}
 	return false, ""
+}
+
+// dialogWhy starts PromptOnScreen's reason for a dialog Claude Code draws directly above its input
+// box (#4104): its bug-report draft ("1 to review · 2 to send · 0 to dismiss") or its session
+// survey ("1: Bad  2: Fine  3: Good  0: Dismiss"). They act on single digit keys: a send that
+// starts with a digit could answer one ("2 to send" sends a report), and while one is up an
+// Enter doesn't submit the input box. Nothing is pasted or pressed until it closes.
+const dialogWhy = "dialog: "
+
+// isDialogHold reports whether a PromptOnScreen reason is a dialog (dialogWhy).
+func isDialogHold(why string) bool { return strings.HasPrefix(why, dialogWhy) }
+
+// dialogChoiceRe is one numbered choice of such a dialog: "2 to send", "2: Fine".
+var dialogChoiceRe = regexp.MustCompile(`(?:^|[\s·│])(\d)(?::\s*| to )([A-Za-z]+)`)
+
+// dialogChoices reports whether t offers at least two numbered choices, one of them to dismiss:
+// both of Claude Code's digit-key dialogs do, and an agent's own numbered list doesn't.
+func dialogChoices(t string) bool {
+	m := dialogChoiceRe.FindAllStringSubmatch(t, -1)
+	if len(m) < 2 {
+		return false
+	}
+	for _, c := range m {
+		if strings.EqualFold(c[2], "dismiss") {
+			return true
+		}
+	}
+	return false
+}
+
+// dialogAboveInputBox returns the choices line of a digit-key dialog drawn directly above the
+// agent's input box, or "": a bordered box (╭ … ╰) holding the choices, or the choices line
+// itself under a "●" question line, with only blank lines and the input box's own top rule between
+// it and the input line.
+// The same words anywhere else (an agent quoting them, a dialog higher up in the scrollback)
+// don't count (the Orchestrator's #4104 condition).
+func dialogAboveInputBox(lines []string) string {
+	in := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isInputBoxLine(lines[i]) {
+			in = i
+			break
+		}
+	}
+	if in < 0 {
+		return ""
+	}
+	i := in - 1
+	for skipped := 0; i >= 0 && skipped < 4; i-- {
+		t := strings.TrimSpace(lines[i])
+		if t == "" || strings.HasPrefix(t, "─") || strings.HasPrefix(t, "━") {
+			skipped++
+			continue
+		}
+		break
+	}
+	if i < 0 {
+		return ""
+	}
+	t := strings.TrimSpace(lines[i])
+	if !strings.HasPrefix(t, "╰") {
+		// The survey: its choices line right above the box, under the question Claude Code draws
+		// with its own "●" bullet. An agent's reply (its "⏺" bullet, or a line of one) quoting
+		// the same words is not it.
+		if i > 0 && dialogChoices(t) && strings.HasPrefix(strings.TrimSpace(lines[i-1]), "●") {
+			return t
+		}
+		return ""
+	}
+	for j := i - 1; j >= 0 && j >= i-12; j-- {
+		t := strings.TrimSpace(lines[j])
+		if !strings.HasPrefix(t, "│") {
+			return "" // the box's top, or not a box: no choices inside it
+		}
+		if dialogChoices(t) {
+			return strings.TrimSpace(strings.Trim(t, "│"))
+		}
+	}
+	return ""
 }
 
 // loginWhy starts PromptOnScreen's reason for one of Claude's sign-in screens.

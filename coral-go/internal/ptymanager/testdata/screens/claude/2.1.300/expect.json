@@ -97,5 +97,35 @@
   "box": "empty",
   "suggestion_only": false,
   "note": "esc to interrupt, Thinking spinner"
+ },
+ "bug_report_dialog.ansi": {
+  "state": "dialog",
+  "prompt": true,
+  "why_prefix": "dialog: ",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "Claude Code's bug-report draft above the input box (#4104); geometry from a capture, text neutral"
+ },
+ "bug_report_dialog_stalled.ansi": {
+  "state": "dialog",
+  "prompt": true,
+  "why_prefix": "dialog: ",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "the same, with Coral's earlier notice left unsubmitted in the input box under it: the #4104 stall"
+ },
+ "feedback_survey.ansi": {
+  "state": "dialog",
+  "prompt": true,
+  "why_prefix": "dialog: ",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "note": "Claude Code's session survey right above the input box (#4104); layout from a capture, text neutral"
  }
 }
