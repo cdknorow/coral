@@ -766,3 +766,31 @@ func TestTokenUsageStore_GetUsageSummaryByAgent_NameAndFolder(t *testing.T) {
 	assert.Equal(t, "Old Name", byID["orphan"].AgentName)
 	assert.Equal(t, "", byID["orphan"].Folder)
 }
+
+// #3920: two usage reports with no timestamp of their own that Coral stamps on the same instant
+// (Windows' clock made that common) are both kept: the second takes the next microsecond. A
+// report that repeats a transcript turn's own timestamp is still dropped as a duplicate.
+func TestRecordUsageKeepsServerStampedReportsOnTheSameInstant(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTokenUsageStore(db)
+	ctx := context.Background()
+	old := tokenUsageNow
+	tokenUsageNow = func() string { return "2026-10-16T12:00:00.000000+00:00" }
+	defer func() { tokenUsageNow = old }()
+
+	for _, total := range []int{150, 300, 50} {
+		require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "sess-1", AgentName: "a", TotalTokens: total}))
+	}
+	got, err := s.GetSessionUsage(ctx, "sess-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, 500, got.TotalTokens, "all three reports are kept")
+
+	turn := "2026-10-16T11:00:00.000000+00:00"
+	for i := 0; i < 2; i++ {
+		require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "sess-2", AgentName: "a", TotalTokens: 100, RecordedAt: turn}))
+	}
+	got, err = s.GetSessionUsage(ctx, "sess-2")
+	require.NoError(t, err)
+	assert.Equal(t, 100, got.TotalTokens, "the same transcript turn twice is one row")
+}

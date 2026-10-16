@@ -400,3 +400,30 @@ func TestTeamStore_HydrateConfig(t *testing.T) {
 	assert.NotNil(t, member.AgentConfig)
 	assert.Contains(t, string(member.AgentConfig), "test")
 }
+
+// #3920: a member stopped on its own at (or after) the instant the team is then stopped is not
+// resurrected with the team: the team stop takes an instant after every earlier member stop.
+func TestTeamStore_ResurrectSkipsAMemberStoppedOnTheSameInstant(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTeamStore(db)
+	ctx := context.Background()
+	team, err := s.CreateTeam(ctx, &Team{Name: "same-instant", ConfigJSON: "{}", WorkingDir: "/x"})
+	require.NoError(t, err)
+	sid1, sid2 := "claude-1", "claude-2"
+	_, err = s.CreateTeamMember(ctx, &TeamMember{TeamID: team.ID, AgentName: "Agent1", AgentConfigJSON: "{}", SessionID: &sid1})
+	require.NoError(t, err)
+	m2, err := s.CreateTeamMember(ctx, &TeamMember{TeamID: team.ID, AgentName: "Agent2", AgentConfigJSON: "{}", SessionID: &sid2})
+	require.NoError(t, err)
+	// Agent2 stopped on its own on the very instant the team is then stopped (one clock tick).
+	const instant = "2026-10-16T12:00:00.000000+00:00"
+	old := teamStopNow
+	teamStopNow = func() string { return instant }
+	defer func() { teamStopNow = old }()
+	_, err = db.ExecContext(ctx, "UPDATE team_members SET status = 'stopped', stopped_at = ? WHERE id = ?", instant, m2.ID)
+	require.NoError(t, err)
+	require.NoError(t, s.StopTeam(ctx, team.ID))
+	members, err := s.GetMembersForResurrect(ctx, team.ID)
+	require.NoError(t, err)
+	require.Len(t, members, 1)
+	assert.Equal(t, "Agent1", members[0].AgentName)
+}

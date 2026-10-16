@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // Team represents a persistent agent team.
@@ -284,17 +287,31 @@ func (s *TeamStore) WakeTeamMembers(ctx context.Context, teamID int64) error {
 // StopTeam atomically stops a team and its active members with the same timestamp.
 // This ensures GetMembersForResurrect can match stopped_at between members and team.
 func (s *TeamStore) StopTeam(ctx context.Context, teamID int64) error {
-	now := NowUTC()
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE team_members SET status = 'stopped', stopped_at = ? WHERE team_id = ? AND status = 'active'",
-		now, teamID)
-	if err != nil {
+	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		now := teamStopNow()
+		// A member stopped on its own in the same clock tick as this stop would share its
+		// timestamp and be resurrected with the team (#3920: on Windows' coarser clock it was).
+		// The team's stop takes an instant after every earlier member stop.
+		var latest sql.NullString
+		if err := tx.GetContext(ctx, &latest,
+			"SELECT MAX(stopped_at) FROM team_members WHERE team_id = ? AND stopped_at IS NOT NULL", teamID); err != nil {
+			return err
+		}
+		if latest.Valid && latest.String >= now {
+			if t, err := time.Parse(ISOFormat, latest.String); err == nil {
+				now = t.Add(time.Microsecond).Format(ISOFormat)
+			}
+		}
+		if _, err := tx.ExecContext(ctx,
+			"UPDATE team_members SET status = 'stopped', stopped_at = ? WHERE team_id = ? AND status = 'active'",
+			now, teamID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx,
+			"UPDATE teams SET status = 'stopped', updated_at = ?, stopped_at = ? WHERE id = ?",
+			now, now, teamID)
 		return err
-	}
-	_, err = s.db.ExecContext(ctx,
-		"UPDATE teams SET status = 'stopped', updated_at = ?, stopped_at = ? WHERE id = ?",
-		now, now, teamID)
-	return err
+	})
 }
 
 // GetMemberBySessionID finds a team member by its current session ID.
@@ -312,3 +329,6 @@ func (s *TeamStore) GetMemberBySessionID(ctx context.Context, sessionID string) 
 	m.HydrateConfig()
 	return &m, nil
 }
+
+// teamStopNow is StopTeam's clock (a var for tests).
+var teamStopNow = NowUTC
