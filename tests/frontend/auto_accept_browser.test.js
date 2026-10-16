@@ -234,7 +234,7 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(await ev(`window.__cloudPuts[0]`), { method: 'PUT', body: { allow: false } });
         console.log('   ✓ hidden below Launch; on by default; PUT /api/cloud/allow-auto-accept {allow}');
 
-        console.log('10b. Settings: "Hide tokens from Coral Hub viewers" (#3560) is on by default and saves locally');
+        console.log('10b. Settings: "Hide tokens from Coral Hub viewers who can only look" (#3560, #3958) is on by default and saves locally');
         const redactRow = await ev(`(async () => {
             const box = document.getElementById('settings-cloud-redact-tokens');
             if (!box) return 'missing';
