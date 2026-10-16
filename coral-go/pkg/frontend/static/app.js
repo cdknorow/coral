@@ -62,7 +62,7 @@ import { showServersModal, hideServersModal, initServersUi } from './servers.js'
 import { initHubIndicator } from './hub_indicator.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './csp_compat.js';   // runs inline handlers without eval on the Coral Hub (inert elsewhere)
-import { registerActions } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
+import { registerActions, tokenOf } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
 import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals } from './lazy_panels.js';
 
@@ -93,6 +93,20 @@ registerActions({
     'mb-post': () => postBoardMessage(),
     // Enter sends, Shift+Enter is a new line.
     'mb-post-key': (el, event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); postBoardMessage(); } },
+});
+// The job dialog's flag shortcuts and agent select (#3645): a shortcut toggles its flag in its
+// flags input; the permission shortcut (flag-perm, set by _updatePermFlagButtons when the agent
+// changes) sets that agent's permission flags for the saved mode. Values are checked.
+registerActions({
+    'flag-toggle': el => {
+        const input = tokenOf(el.dataset.flagInput), flag = el.dataset.flag || '';
+        if (input && /^--[a-z0-9-]+$/.test(flag)) window.toggleFlag(input, flag);
+    },
+    'flag-perm': el => {
+        const input = tokenOf(el.dataset.flagInput), type = tokenOf(el.dataset.agentType), mode = tokenOf(el.dataset.mode);
+        if (input && type && mode) window._setPermFlagsForInput(input, type, mode);
+    },
+    'flag-agent-change': el => { if (window._updatePermFlagButtons) window._updatePermFlagButtons(el); },
 });
 // The sidebar's own controls (#3645): rail, search, launch, display toggles, the Jobs subtabs.
 registerActions({

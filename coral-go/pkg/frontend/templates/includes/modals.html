@@ -1091,7 +1091,7 @@
                             <input type="text" id="job-modal-branch" placeholder="main" value="main">
                         </label>
                         <label>Agent Type:
-                            <select id="job-modal-agent" onchange="window._updatePermFlagButtons && window._updatePermFlagButtons(this)">
+                            <select id="job-modal-agent" data-on-change="flag-agent-change">
                                 <option value="claude">Claude</option>
                                 <option value="agy">Antigravity (agy)</option>
                                 <option value="codex">Codex</option>
@@ -1106,8 +1106,8 @@
                         <input type="text" id="job-modal-flags" placeholder="e.g. --verbose">
                     </label>
                     <div class="flag-shortcuts">
-                        <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('job-modal-flags','--chrome')">--chrome</button>
-                        <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('job-modal-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+                        <button class="btn btn-small flag-shortcut-btn" data-on-click="flag-toggle" data-flag-input="job-modal-flags" data-flag="--chrome">--chrome</button>
+                        <button class="btn btn-small flag-shortcut-btn" data-on-click="flag-toggle" data-flag-input="job-modal-flags" data-flag="--dangerously-skip-permissions">--dangerously-skip-permissions</button>
                     </div>
                 </div>
 

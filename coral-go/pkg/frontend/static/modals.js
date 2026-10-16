@@ -3,7 +3,8 @@ import { checkAgentCLI } from './prerequisites.js';
 /* Modal management: launch and info dialogs */
 
 import { state } from './state.js';
-import { showToast, escapeHtml, escapeAttr, jsStr, jsIdent, copyText, boardNameProblem, boardNameSlug } from './utils.js';
+import { showToast, escapeHtml, escapeAttr, copyText, boardNameProblem, boardNameSlug } from './utils.js';
+import { registerActions, tokenOf, textOf } from './actions.js';
 import { loadLiveSessions } from './api.js';
 import { refreshChangedFiles } from './changed_files.js';
 import { loadBoardProjects } from './message_board.js';
@@ -778,7 +779,7 @@ function _handleGenerateResult(payload) {
                         <span class="material-icons team-wizard-success-icon">check_circle</span>
                         <strong>Team generated!</strong>
                         <p>${team.agents.length} agents created for "${escapeHtml(team.name)}"</p>
-                        <button class="btn btn-primary" onclick="window._reviewGeneratedTeam()">Review Team</button>
+                        <button class="btn btn-primary" data-on-click="team-generated-review">Review Team</button>
                     </div>
                 `;
             }
@@ -847,7 +848,7 @@ async function testTeamWizard() {
                 <span class="material-icons team-wizard-success-icon">check_circle</span>
                 <strong>Team generated!</strong>
                 <p>${sampleTeam.agents.length} agents created for "${escapeHtml(sampleTeam.name)}"</p>
-                <button class="btn btn-primary" onclick="window._reviewGeneratedTeam()">Review Team</button>
+                <button class="btn btn-primary" data-on-click="team-generated-review">Review Team</button>
             </div>
         `;
     }
@@ -1049,21 +1050,17 @@ function _updatePermFlagButtons(selectEl) {
     const modal = selectEl.closest('.modal-content') || selectEl.closest('.modal');
     if (!modal) return;
 
+    // The permission button: the shortcut whose flag is a skip-permissions or full-auto one, or that
+    // this function already switched (data-on-click="flag-perm"). Found by its data attributes, never
+    // by handler text (#3645): it now sets the agent type's permission flags for the saved mode.
     modal.querySelectorAll('.flag-shortcut-btn').forEach(btn => {
-        const onclick = btn.getAttribute('onclick') || '';
-        // Match buttons that toggle a dangerously- or --full-auto flag
-        if (onclick.includes('dangerously-') || onclick.includes('full-auto') || onclick.includes('_setPermFlagsForInput') || btn.dataset.flagInput) {
-            // Extract the flag input ID from the onclick (or from the marker set below)
-            const match = onclick.match(/(?:toggleFlag|_setPermFlagsForInput)\('([^']+)'/);
-            const flagInputId = match ? match[1] : btn.dataset.flagInput;
-            if (flagInputId) {
-                // A real listener, not an interpolated onclick string: the values come from the DOM.
-                btn.removeAttribute('onclick');
-                btn.dataset.flagInput = flagInputId;
-                btn.onclick = () => window._setPermFlagsForInput(flagInputId, agentType, mode);
-                btn.textContent = flag;
-            }
-        }
+        const isPerm = btn.getAttribute('data-on-click') === 'flag-perm' || /dangerously-|full-auto/.test(btn.dataset.flag || '');
+        if (!isPerm || !btn.dataset.flagInput) return;
+        btn.setAttribute('data-on-click', 'flag-perm');
+        btn.dataset.agentType = agentType;
+        btn.dataset.mode = mode;
+        btn.dataset.flag = flag;
+        btn.textContent = flag;
     });
 
     // Also update the flags input value — replace any known perm flag with the new one
@@ -1164,7 +1161,7 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
             </p>
             <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:13px;display:flex;align-items:center;gap:8px">
                 <code style="flex:1;user-select:all">${escapeHtml(info.cmd)}</code>
-                <button class="btn btn-small" onclick="navigator.clipboard.writeText('${jsStr(info.cmd)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                <button class="btn btn-small" data-on-click="info-copy" data-cmd="${escapeAttr(info.cmd)}">Copy</button>
             </div>
             <div class="modal-actions" style="margin-top:16px">
                 ${remote ? '' : '<button class="btn" data-action="settings">Set CLI Path</button>'}
@@ -1376,6 +1373,9 @@ async function _setSavedTeamTemplates(templates) {
     });
 }
 
+// What a preset select's choice does, by the handler a caller names (#3645).
+const PRESET_KINDS = { 'window._selectAgentPreset': 'agent', 'window._applyACFPresetValue': 'acf' };
+
 /** Render preset buttons (built-in + saved) into a container. */
 function _renderPresetButtons(containerId, onClickFn, opts = {}) {
     const container = document.getElementById(containerId);
@@ -1383,9 +1383,11 @@ function _renderPresetButtons(containerId, onClickFn, opts = {}) {
     const saved = _getSavedPersonas();
 
     const target = opts.target;
-    let html = target
-        ? `<select class="agent-preset-select" onchange="${jsIdent(onClickFn)}(this.value, '${jsStr(target)}'); this.value='';">`
-        : `<select class="agent-preset-select" onchange="${jsIdent(onClickFn)}(this.value); this.value='';">`;
+    // The select names what a choice does (preset-pick, by kind): the agent dialog's preset, or an
+    // agent config form's (with its target), never a function name in the markup.
+    const kind = PRESET_KINDS[onClickFn];
+    if (!kind) throw new Error('unknown preset handler ' + onClickFn);
+    let html = `<select class="agent-preset-select" data-on-change="preset-pick" data-kind="${escapeAttr(kind)}" data-target="${escapeAttr(target || '')}">`;
     html += `<option value="" disabled selected>Choose a preset or custom...</option>`;
     html += `<optgroup label="Built-in">`;
     for (const preset of AGENT_PRESETS) {
@@ -1904,7 +1906,7 @@ function _renderPermChips(containerId, type, capabilities) {
     for (const cap of ALL_CAPABILITIES) {
         const isActive = baseCaps.includes(cap);
         const cls = `perm-chip${isActive ? ' active' : ''}`;
-        html += `<button class="${cls}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" onclick="window._togglePermChip(this)">${CAPABILITY_LABELS[cap] || cap}</button>`;
+        html += `<button class="${escapeAttr(cls)}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" data-on-click="perm-chip-toggle">${CAPABILITY_LABELS[cap] || cap}</button>`;
     }
     container.innerHTML = html;
 
@@ -2028,7 +2030,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
         const permModeDesc = PERMISSION_MODE_DESCRIPTIONS[permModeVal] || '';
         autoPermissionsHTML = `
             <label>Permission Mode:
-                <select class="acf-permission-mode" onchange="window._updatePermModeDescription(this)">
+                <select class="acf-permission-mode" data-on-change="perm-mode-describe">
                     <option value="default"${permModeVal === 'default' ? ' selected' : ''}>Default</option>
                     <option value="plan"${permModeVal === 'plan' ? ' selected' : ''}>Plan</option>
                     <option value="acceptEdits"${permModeVal === 'acceptEdits' ? ' selected' : ''}>Accept Edits</option>
@@ -2064,7 +2066,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
         </label>
         ${autoPermissionsHTML}
         <div class="permissions-section">
-            <button type="button" class="permissions-toggle-btn" onclick="window._togglePermissions('${jsStr(uid)}-perms')">
+            <button type="button" class="permissions-toggle-btn" data-on-click="perms-toggle" data-target="${escapeAttr(uid + '-perms')}">
                 <svg class="permissions-chevron" width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
                 Permissions <span class="acf-perms-summary" style="color:var(--text-muted);font-weight:normal;font-size:11px">(${escapeHtml(permsSummary)})</span>
             </button>
@@ -2641,22 +2643,22 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
 
     row.innerHTML = `
         <div class="team-agent-card">
-            <div class="team-agent-summary" onclick="window.showTeamAgentModal(this.closest('.team-agent-row'))">
+            <div class="team-agent-summary" data-on-click="team-agent-open">
                 <div class="team-agent-summary-left">
                     <span class="team-agent-role-name">${escapeHtml(defaultName || 'New Agent')}</span>
                     <span class="team-agent-prompt-preview">${escapeHtml(_truncatePrompt(defaultPrompt, 200) || 'No behavior prompt yet.')}</span>
                 </div>
                 <div class="team-agent-summary-actions">
-                    <button class="team-agent-reorder-btn" title="Move up" onclick="event.stopPropagation(); window._moveTeamAgent(this, -1)">
+                    <button class="team-agent-reorder-btn" title="Move up" data-on-click="team-agent-move" data-dir="up">
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
                     </button>
-                    <button class="team-agent-reorder-btn" title="Move down" onclick="event.stopPropagation(); window._moveTeamAgent(this, 1)">
+                    <button class="team-agent-reorder-btn" title="Move down" data-on-click="team-agent-move" data-dir="down">
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4 9l4 4 4-4"/></svg>
                     </button>
-                    <button class="team-agent-edit-btn" title="Edit" onclick="event.stopPropagation(); window.showTeamAgentModal(this.closest('.team-agent-row'))">
+                    <button class="team-agent-edit-btn" title="Edit" data-on-click="team-agent-edit">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
-                    <button class="team-agent-remove" onclick="event.stopPropagation(); this.closest('.team-agent-row').remove()" title="Remove">&times;</button>
+                    <button class="team-agent-remove" data-on-click="team-agent-remove" title="Remove">&times;</button>
                 </div>
             </div>
             <div class="team-agent-form" hidden>
@@ -2753,20 +2755,20 @@ function _showAddAgentPicker() {
 
     let html = '';
     for (const preset of available) {
-        html += `<button class="agent-picker-item" onclick="window._addPresetAgent('${jsStr(preset.name)}')">${escapeHtml(preset.name)}</button>`;
+        html += `<button class="agent-picker-item" data-on-click="team-preset-add" data-name="${escapeAttr(preset.name)}">${escapeHtml(preset.name)}</button>`;
     }
     if (savedAvailable.length > 0) {
         if (available.length > 0) html += '<div class="agent-picker-divider"></div>';
         for (const persona of savedAvailable) {
-            html += `<button class="agent-picker-item agent-preset-saved" onclick="window._addPresetAgent('${jsStr(persona.name)}')">${escapeHtml(persona.name)}</button>`;
+            html += `<button class="agent-picker-item agent-preset-saved" data-on-click="team-preset-add" data-name="${escapeAttr(persona.name)}">${escapeHtml(persona.name)}</button>`;
         }
     }
     if (available.length > 0 || savedAvailable.length > 0) {
         html += '<div class="agent-picker-divider"></div>';
     }
-    html += `<button class="agent-picker-item agent-picker-custom" onclick="window._addTeamAgent()">+ Create Custom</button>`;
+    html += `<button class="agent-picker-item agent-picker-custom" data-on-click="team-agent-custom">+ Create Custom</button>`;
     html += '<div class="agent-picker-divider"></div>';
-    html += `<button class="agent-picker-item agent-picker-browse" onclick="browseAgentTemplatesNew(); document.getElementById('team-agent-picker').style.display='none'">Browse Community Templates</button>`;
+    html += `<button class="agent-picker-item agent-picker-browse" data-on-click="templates-browse-new">Browse Community Templates</button>`;
 
     picker.innerHTML = html;
     picker.style.display = "";
@@ -3966,3 +3968,38 @@ else _attachFlagSync();
 // The mobile QR dialog loads on first use (#3140).
 window._showMobileConnectModal = (...args) => importOnce('./mobile_connect.js', 'the mobile connect dialog').then(m => m.showMobileConnectModal(...args), () => {});
 window._hideMobileConnectModal = (...args) => importOnce('./mobile_connect.js').then(m => m.hideMobileConnectModal(...args), () => {});
+
+// The dialogs' generated markup (#3645): data-on-* names, never code. Values are checked; a bad
+// one does nothing. (The job dialog's own flag buttons and agent select register in app.js: they
+// exist before this module loads.)
+const teamRow = el => el.closest('.team-agent-row');
+registerActions({
+    'team-generated-review': () => window._reviewGeneratedTeam(),
+    'info-copy': el => {
+        const cmd = textOf(el.dataset.cmd, 8192);
+        if (!cmd) return;
+        navigator.clipboard.writeText(cmd);
+        el.textContent = 'Copied!';
+        setTimeout(() => { el.textContent = 'Copy'; }, 1500);
+    },
+    'preset-pick': el => {
+        const v = textOf(el.value);
+        if (v && el.dataset.kind === 'agent') window._selectAgentPreset(v);
+        else if (v && el.dataset.kind === 'acf') { const t = tokenOf(el.dataset.target); if (t) window._applyACFPresetValue(v, t); }
+        el.value = '';
+    },
+    'perm-chip-toggle': el => window._togglePermChip(el),
+    'perm-mode-describe': el => window._updatePermModeDescription(el),
+    'perms-toggle': el => { const t = tokenOf(el.dataset.target); if (t) window._togglePermissions(t); },
+    'team-agent-open': el => { const r = teamRow(el); if (r) window.showTeamAgentModal(r); },
+    'team-agent-edit': (el, event) => { event.stopPropagation(); const r = teamRow(el); if (r) window.showTeamAgentModal(r); },
+    'team-agent-move': (el, event) => { event.stopPropagation(); if (el.dataset.dir === 'up' || el.dataset.dir === 'down') window._moveTeamAgent(el, el.dataset.dir === 'up' ? -1 : 1); },
+    'team-agent-remove': (el, event) => { event.stopPropagation(); teamRow(el)?.remove(); },
+    'team-preset-add': el => { const n = textOf(el.dataset.name); if (n) window._addPresetAgent(n); },
+    'team-agent-custom': () => window._addTeamAgent(),
+    'templates-browse-new': () => {
+        window.browseAgentTemplatesNew();
+        const picker = document.getElementById('team-agent-picker');
+        if (picker) picker.style.display = 'none';
+    },
+});
