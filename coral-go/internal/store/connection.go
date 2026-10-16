@@ -720,6 +720,23 @@ CREATE TABLE IF NOT EXISTS call_metrics (
 );
 CREATE INDEX IF NOT EXISTS idx_call_metrics_created ON call_metrics(created_at);
 
+-- Raw call metrics older than a day, one row per hour and kind of call (#4098).
+CREATE TABLE IF NOT EXISTS call_metrics_hourly (
+    hour TEXT NOT NULL,
+    call_type TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    agent_name TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL DEFAULT '',
+    board_name TEXT NOT NULL DEFAULT '',
+    calls INTEGER NOT NULL,
+    errors INTEGER NOT NULL DEFAULT 0,
+    duration_sum_ms INTEGER NOT NULL DEFAULT 0,
+    duration_n INTEGER NOT NULL DEFAULT 0,
+    p50_ms INTEGER NOT NULL DEFAULT 0,
+    p95_ms INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(hour, call_type, operation, agent_name, session_id, board_name)
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_token_usage_session_time ON token_usage(session_id, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_token_usage_team ON token_usage(team_id);
 CREATE INDEX IF NOT EXISTS idx_token_usage_time ON token_usage(recorded_at);

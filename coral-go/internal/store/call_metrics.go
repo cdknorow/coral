@@ -305,21 +305,34 @@ func (s *DB) CallMetricSummary(ctx context.Context, since time.Time) ([]CallMetr
 	if err := s.FlushCallMetrics(ctx); err != nil {
 		return nil, err
 	}
+	// Raw rows for the last day, hourly rollups before that (#4098): no hour is in both, since
+	// an hour's raw rows are deleted in the transaction that rolls them up. A window starting
+	// mid-hour counts that whole rolled-up hour.
 	var out []CallMetricSummary
-	err := s.Reader().SelectContext(ctx, &out, `SELECT cm.operation, cm.call_type,
-		COALESCE(NULLIF(ls.display_name, ''), cm.agent_name, '') AS agent_name,
-		COALESCE(NULLIF(cm.board_name, ''), ls.board_name, '') AS board_name,
-		COUNT(*) AS calls,
-		SUM(cm.is_error) AS errors,
-		COALESCE(AVG(cm.duration_ms), 0) AS avg_duration_ms
-		FROM call_metrics cm LEFT JOIN live_sessions ls ON ls.session_id = cm.session_id
-		WHERE cm.created_at >= ?
-		AND cm.operation NOT IN (?, ?, ?)
-		GROUP BY cm.operation, cm.call_type,
-		COALESCE(NULLIF(ls.display_name, ''), cm.agent_name, ''),
-		COALESCE(NULLIF(cm.board_name, ''), ls.board_name, '')
-		ORDER BY COUNT(*) DESC`, since.UTC().Format(time.RFC3339Nano),
-		internalMetricOperations[0], internalMetricOperations[1], internalMetricOperations[2])
+	err := s.Reader().SelectContext(ctx, &out, `SELECT operation, call_type, agent_name, board_name,
+		SUM(calls) AS calls, SUM(errors) AS errors,
+		CASE WHEN SUM(duration_n) > 0 THEN CAST(SUM(duration_sum_ms) AS REAL) / SUM(duration_n) ELSE 0 END AS avg_duration_ms
+		FROM (
+			SELECT cm.operation, cm.call_type,
+				COALESCE(NULLIF(ls.display_name, ''), cm.agent_name, '') AS agent_name,
+				COALESCE(NULLIF(cm.board_name, ''), ls.board_name, '') AS board_name,
+				1 AS calls, cm.is_error AS errors,
+				COALESCE(cm.duration_ms, 0) AS duration_sum_ms,
+				CASE WHEN cm.duration_ms IS NULL THEN 0 ELSE 1 END AS duration_n
+			FROM call_metrics cm LEFT JOIN live_sessions ls ON ls.session_id = cm.session_id
+			WHERE cm.created_at >= ? AND cm.operation NOT IN (?, ?, ?)
+			UNION ALL
+			SELECT h.operation, h.call_type,
+				COALESCE(NULLIF(ls.display_name, ''), h.agent_name) AS agent_name,
+				COALESCE(NULLIF(h.board_name, ''), ls.board_name, '') AS board_name,
+				h.calls, h.errors, h.duration_sum_ms, h.duration_n
+			FROM call_metrics_hourly h LEFT JOIN live_sessions ls ON ls.session_id = NULLIF(h.session_id, '')
+			WHERE h.hour >= ? AND h.operation NOT IN (?, ?, ?)
+		)
+		GROUP BY operation, call_type, agent_name, board_name
+		ORDER BY SUM(calls) DESC`,
+		since.UTC().Format(time.RFC3339Nano), internalMetricOperations[0], internalMetricOperations[1], internalMetricOperations[2],
+		hourPrefix(since), internalMetricOperations[0], internalMetricOperations[1], internalMetricOperations[2])
 	return out, err
 }
 

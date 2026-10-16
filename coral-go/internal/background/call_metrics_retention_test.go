@@ -48,11 +48,23 @@ func TestCallMetricsRetentionRunsInCappedBatches(t *testing.T) {
 	assert.EqualValues(t, 0, j.RunOnce(ctx))
 	assert.Equal(t, 50, metricCount(t, db), "recent rows stay")
 
-	// A shorter window (1 day) removes rows the default keeps.
+	// Rows older than a day are rolled into hourly rows (#4098), kept for the window; a
+	// shorter window (1 day) removes them.
 	addMetrics(t, db, 20, now.Add(-3*24*time.Hour))
-	assert.EqualValues(t, 0, NewCallMetricsRetention(db).RunOnce(ctx), "kept under the 14-day default")
+	assert.EqualValues(t, 0, NewCallMetricsRetention(db).RunOnce(ctx), "nothing past the 14-day default")
+	assert.Equal(t, 50, metricCount(t, db), "the 3-day-old rows were rolled up")
+	assert.Equal(t, 20, hourlyCalls(t, db))
 	require.NoError(t, store.NewSessionStore(db).SetSetting(ctx, store.CallMetricsRetentionSetting, "1"))
-	assert.EqualValues(t, 20, j.RunOnce(ctx))
+	j.RunOnce(ctx)
+	assert.Equal(t, 0, hourlyCalls(t, db), "past a 1-day window the rollup goes too")
+	assert.Equal(t, 50, metricCount(t, db), "recent rows stay")
+}
+
+func hourlyCalls(t *testing.T, db *store.DB) int {
+	t.Helper()
+	var n int
+	require.NoError(t, db.Get(&n, `SELECT COALESCE(SUM(calls), 0) FROM call_metrics_hourly`))
+	return n
 }
 
 // Cancelling stops a run between batches.

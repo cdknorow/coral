@@ -140,6 +140,7 @@ func (r *pruneReport) finish() {
 // with the reason.
 var referenceExclusions = map[string]string{
 	"call_metrics":        "a request log: a GET of /api/artifacts/<hex> there is a fetch, not a link (and it is by far the slowest table to scan)",
+	"call_metrics_hourly": "call_metrics rolled up by hour (#4098): route patterns and counts, never a link",
 	"session_fts_data":    "session_fts's own index storage (binary); session_fts itself is scanned",
 	"session_fts_idx":     "session_fts's own index storage; session_fts itself is scanned",
 	"session_fts_content": "the same transcript text as session_fts, which is scanned",
