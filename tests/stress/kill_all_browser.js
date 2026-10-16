@@ -61,7 +61,9 @@ function findChrome() {
         // Every agent of the folder must be loaded (sleeping/archived rows may sit in collapsed sections,
         // so wait on the live list rather than on rows).
         await waitFor(`(async () => { const { state } = await import((window.__coralStatic || '/static/') + 'state.js'); const have = new Set((state.liveSessions || []).map(s => s.session_id)); return ${JSON.stringify(ids)}.every(id => have.has(id)); })()`, 'agents in the dashboard list');
-        const button = `[...document.querySelectorAll('#live-sessions-list .overflow-menu-item')].find(b => (b.getAttribute('onclick') || '').includes("killGroup('${folder.replace(/'/g, "\\'")}')"))`;
+        // The folder group's menu item is a registered action since #3645 (no inline onclick): data-on-click="group-kill",
+        // with the group in data-group.
+        const button = `[...document.querySelectorAll('#live-sessions-list [data-on-click="group-kill"]')].find(b => b.dataset.group === ${JSON.stringify(folder)})`;
         await waitFor(`!!${button}`, `the "${folder}" group's Kill all`);
         await ev(`${button}.click(); true`);
         await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm dialog', 5000);

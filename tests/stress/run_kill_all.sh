@@ -120,14 +120,17 @@ wait_running() {  # display names...
 
 log "Launching 2 solo agents, a team of 2 and an archived agent in $WORK ..."
 launch_solo "Solo A"; launch_solo "Solo B"; launch_solo "Archive Me"
-api POST "/api/sessions/launch-team" -d "{
+team_launch=$(api POST "/api/sessions/launch-team" -d "{
     \"board_name\": \"killall-team\", \"working_dir\": \"$WORK\", \"backend\": \"tmux\",
     \"agents\": [
         {\"agent_type\": \"claude\", \"name\": \"Team Lead\", \"role\": \"orchestrator\", \"prompt\": \"Coordinate.\"},
         {\"agent_type\": \"claude\", \"name\": \"Team Dev\", \"prompt\": \"Implement.\"}
-    ]}" >/dev/null
+    ]}")
+# A launch starts a board with its own id (#3536: b-...), which the live list's board_project shows; "killall-team" is its label.
+TEAM_BOARD=$(echo "$team_launch" | python3 -c "import sys,json; print(json.load(sys.stdin).get('board_id',''))" 2>/dev/null || echo "")
+[[ -n "$TEAM_BOARD" ]] || { log "ERROR: the team launch returned no board_id: $team_launch"; exit 1; }
 wait_running "Solo A" "Solo B" "Archive Me"
-TEAM_SIDS=$(live | awk -F'\t' '$4 == "killall-team" {print $1}')
+TEAM_SIDS=$(live | awk -F'\t' -v b="$TEAM_BOARD" '$4 == b {print $1}')
 [[ $(echo "$TEAM_SIDS" | grep -c .) == 2 ]] || { log "ERROR: expected 2 team agents"; live; exit 1; }
 for t in $TEAM_SIDS; do tmux_has "$(row_of "$t" | cut -f7)" || { log "ERROR: team agent $t has no tmux session"; exit 1; }; done
 ARCH=$(sid_of "Archive Me")
