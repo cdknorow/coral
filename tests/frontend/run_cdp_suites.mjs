@@ -263,8 +263,32 @@ const bin = path.join(tmp, 'coral');
 // installed app's (#3492), so without them its agents would send no status events.
 const toolPackages = ['./cmd/coral', './cmd/coral-board', './cmd/coral-agent', './cmd/coral-hook-agentic-state',
   './cmd/coral-hook-session-start', './cmd/coral-hook-message-check', './cmd/coral-hook-task-sync'];
-const b = spawnSync('go', ['build', '-tags', 'dev fts5', '-o', tmp + path.sep, ...toolPackages], { cwd: goDir, stdio: 'inherit' });
+const goBuildArgs = ['build', '-tags', 'dev fts5', '-o', tmp + path.sep, ...toolPackages];
+const b = spawnSync('go', goBuildArgs, { cwd: goDir, stdio: 'inherit' });
 if (b.status !== 0) process.exit(2);
+
+// The run's folder (Coral's binary, each shard's data, results.json) can be removed from under a run by something
+// outside it (a cleanup of temp folders, an overeager script: #3707's run lost it mid-way). Before a shard starts, the
+// folder and Coral's binary are put back, the binary by building it again; two shards asking at once share one build.
+// Without this a shard's replacement died on spawn ENOENT and took the whole run with it (#3727).
+let restoring = null;
+function ensureRunDir() {
+  if (fs.existsSync(tmp) && fs.existsSync(bin)) return Promise.resolve();
+  if (!restoring) {
+    restoring = (async () => {
+      console.log(`  [runner] the run's folder ${tmp} (or coral's binary in it) is gone: something outside this run removed it. Recreating it and building coral again ...`);
+      fs.mkdirSync(tmp, { recursive: true });
+      const built = await new Promise(resolve => {
+        const p = spawn('go', goBuildArgs, { cwd: goDir, stdio: 'inherit' });
+        p.on('error', e => resolve({ error: e.message }));
+        p.on('exit', code => resolve(code === 0 ? {} : { error: `go build exited ${code}` }));
+      });
+      if (built.error || !fs.existsSync(bin)) throw new Error(`the run's folder ${tmp} was removed and coral could not be built into it again (${built.error || 'no binary'})`);
+      console.log('  [runner] the folder and coral are back');
+    })().finally(() => { restoring = null; });
+  }
+  return restoring;
+}
 
 // Same isolation as run.sh: no inherited production pointers, isolated Codex home, no telemetry.
 // An agent shell's identity and production links (Cloud Hub URL, hub mode, tmux socket, workflow
@@ -304,6 +328,7 @@ const allLogs = []; // every shard's Coral log, including shards that were repla
 // Codex home, ports and Chrome profile, so shards share nothing but the built binary. gen counts the
 // replacements of shard n (after a timeout or a dead process), so each start gets fresh directories.
 async function startShard(n, gen = 0, strict = false) {
+  await ensureRunDir();
   const dir = path.join(tmp, `shard${n}${gen ? `-${gen}` : ''}`);
   fs.mkdirSync(dir, { recursive: true });
   const port = await freePort();
@@ -327,6 +352,8 @@ async function startShard(n, gen = 0, strict = false) {
   allLogs.push(log);
   let coralExit = null;
   coral.on('exit', (code, sig) => { coralExit = `exit code ${code} signal ${sig}`; });
+  // A binary that cannot be started (it vanished since the check above) is an 'error' event, which nobody listening kills the runner.
+  coral.on('error', e => { coralExit = `could not start ${bin}: ${e.message}`; });
   // A port that answers is not proof that this shard owns it, so wait for coral's own log to say it
   // bound the port (it prints the dashboard line only after net.Listen succeeds), or for it to exit.
   const bound = `Coral dashboard: http://localhost:${port}\n`;
@@ -351,6 +378,7 @@ async function startShard(n, gen = 0, strict = false) {
   chrome.stderr.on('data', d => { chromeErr = (chromeErr + d).slice(-8000); });
   let chromeExit = null;
   chrome.on('exit', (code, sig) => { chromeExit = `exit code ${code} signal ${sig}`; });
+  chrome.on('error', e => { chromeExit = `could not start ${chromePath}: ${e.message}`; });
   let cdp = 0;
   try {
     const portFile = path.join(profile, 'DevToolsActivePort');
@@ -470,6 +498,7 @@ async function runAttempt(t, shard) {
     const timer = setTimeout(() => { timedOut = true; killTree(p); }, timeoutS * 1000);
     let closed = false;
     p.on('close', () => { closed = true; });
+    p.on('error', e => { clearTimeout(timer); untrack(p); resolve({ status: 'fail', code: 'spawn', secs: '0.0', shard: shard.n, log: shard.log, out: `[runner] could not start the suite: ${e.message}` }); });
     p.on('exit', async code => {
       clearTimeout(timer);
       const secs = ((Date.now() - started) / 1000).toFixed(1);
@@ -505,6 +534,12 @@ async function ensureShard(i, force) {
   return shardsUp[i];
 }
 
+// A shard that cannot be (re)started fails the suite that needed it, with the reason, and the run goes on: the next
+// suite asks again, which also rebuilds a folder that was removed (ensureRunDir).
+async function tryShard(i, force) {
+  try { return { shard: await ensureShard(i, force) }; } catch (e) { return { error: `[runner] this suite did not run: its shard could not be started: ${e.message}` }; }
+}
+
 const lastLines = (s, n) => s.trim().split('\n').slice(-n).join('\n');
 const results = []; // one entry per suite per run
 async function runOnce(run) {
@@ -514,8 +549,10 @@ async function runOnce(run) {
     while (next < tests.length) {
       const t = tests[next++];
       const attempts = [];
-      let shard = await ensureShard(i, false);
-      for (let a = 0; a <= retries; a++) {
+      const first = await tryShard(i, false);
+      let shard = first.shard;
+      if (!shard) attempts.push({ status: 'fail', code: 'shard', secs: '0.0', shard: shardsUp[i] ? shardsUp[i].n : i + 1, log: '', out: first.error });
+      for (let a = 0; shard && a <= retries; a++) {
         const r = await runAttempt(t, shard);
         attempts.push(r);
         if (r.status === 'pass') break;
@@ -523,9 +560,14 @@ async function runOnce(run) {
           console.log(`RETRY ${phase}${t}  (${r.status === 'timeout' ? `TIMEOUT after ${r.secs}s` : `exit=${r.code} after ${r.secs}s`})${shards > 1 ? `  [shard ${r.shard}]` : ''}${label}`);
           // A retry gets a fresh Coral and Chrome: retrying on the same server and browser would repeat a
           // failure caused by their state rather than by the suite.
-          shard = await ensureShard(i, r.status === 'timeout' ? 'after a TIMEOUT' : 'before a retry');
+          const again = await tryShard(i, r.status === 'timeout' ? 'after a TIMEOUT' : 'before a retry');
+          shard = again.shard;
+          if (!shard) attempts.push({ status: 'fail', code: 'shard', secs: '0.0', shard: r.shard, log: r.log, out: again.error });
         } else if (r.status === 'timeout') {
-          shard = await ensureShard(i, 'after a TIMEOUT');
+          // The next suite finds this shard unhealthy and tries again; a failure here must not stop the run.
+          const again = await tryShard(i, 'after a TIMEOUT');
+          shard = again.shard;
+          if (!shard) console.log(`  ${again.error.replace('this suite did not run: ', '')}`);
         }
       }
       const final = attempts[attempts.length - 1];
@@ -552,7 +594,13 @@ async function runOnce(run) {
 async function runSequences() {
   for (const group of sequences) {
     const name = `sequence: ${group.join(' > ')}`;
-    const shard = await ensureShard(0, `fresh for ${name}`);
+    const got = await tryShard(0, `fresh for ${name}`);
+    if (!got.shard) {
+      results.push({ test: name, run: 1, status: 'fail', ok: false, code: 'shard', secs: '0.0', attempts: [], output: got.error, tail: got.error });
+      console.log(`FAIL    ${name}  (0.0s)\n      ${got.error}`);
+      continue;
+    }
+    const shard = got.shard;
     let failed = null, secs = 0;
     for (const t of group) {
       const r = await runAttempt(t, shard);
@@ -585,6 +633,7 @@ try {
 } catch (e) { console.error(`runner error (a shard could not be replaced?): ${e.message}`); process.exit(2); }
 const elapsed = ((Date.now() - runStarted) / 1000).toFixed(1);
 results.sort((a, b) => a.test.localeCompare(b.test) || a.run - b.run);
+fs.mkdirSync(tmp, { recursive: true }); // it may have been removed during the run (#3727)
 fs.writeFileSync(path.join(tmp, 'results.json'), JSON.stringify(results, null, 1));
 const where = `results: ${path.join(tmp, 'results.json')}  coral logs: ${allLogs.join(' ')}`;
 
