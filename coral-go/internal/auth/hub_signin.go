@@ -960,12 +960,18 @@ func (h *HubSignin) DismissOffer(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// GetOrigins: GET /api/auth/hub-origins (the configured ones; loopback is always included).
+// GetOrigins: GET /api/auth/hub-origins {"origins": the configured ones, "loopback": this
+// server's own, always included (http, and https when it serves TLS), so the page shows them as
+// the server has them rather than guessing from its own address.
 func (h *HubSignin) GetOrigins(w http.ResponseWriter, r *http.Request) {
 	if !h.hubSettingsCaller(w, r, false) {
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"origins": nonNil(h.settings.Origins())})
+	var loopback []string
+	if h.loopbackOrigins != nil {
+		loopback = h.loopbackOrigins()
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"origins": nonNil(h.settings.Origins()), "loopback": nonNil(loopback)})
 }
 
 // SetOrigins replaces the configured return origins: PUT /api/auth/hub-origins
