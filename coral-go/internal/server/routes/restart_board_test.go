@@ -54,3 +54,48 @@ func TestRestartPreservesSubscriptionWithoutStoredBoard(t *testing.T) {
 	require.NotNil(t, other)
 	assert.Equal(t, "other-board", other.Project)
 }
+
+// The membership part of the removed tests/stress/test_team_restart.py (#3811): a board-only
+// membership (joined through the board API, not at launch) survives two restarts in a row: one
+// subscription, the same row, role and receive mode, targeting the newest terminal, and the
+// session keeps its board and display name.
+func TestRestartTwiceKeepsBoardMembership(t *testing.T) {
+	server, handler, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	id, name := "restart-twice-ui", "claude-restart-twice-ui"
+	term.addSession(name, t.TempDir())
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: id, AgentType: "claude", AgentName: "coral-go", DisplayName: strPtr("UI"),
+	}))
+	original, err := handler.bs.Subscribe(ctx, "restart-membership", "UI", "UI", name, nil, "all")
+	require.NoError(t, err)
+	for attempt := 1; attempt <= 2; attempt++ {
+		resp, err := http.Post(server.URL+"/api/sessions/live/"+name+"/restart", "application/json",
+			bytes.NewBufferString(`{"session_id":"`+id+`","agent_type":"claude"}`))
+		require.NoError(t, err)
+		var result struct {
+			SessionID   string `json:"session_id"`
+			SessionName string `json:"session_name"`
+		}
+		require.Equal(t, http.StatusOK, resp.StatusCode, "restart %d", attempt)
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		resp.Body.Close()
+		require.NotEqual(t, id, result.SessionID, "restart %d: a new session", attempt)
+		id, name = result.SessionID, result.SessionName
+		term.addSession(name, t.TempDir()) // the new terminal, for the next restart
+
+		ls, err := ss.GetLiveSession(ctx, id)
+		require.NoError(t, err)
+		require.NotNil(t, ls)
+		assert.Equal(t, "restart-membership", derefStrPtr(ls.BoardName), "restart %d keeps the board", attempt)
+		assert.Equal(t, "UI", derefStrPtr(ls.DisplayName), "restart %d keeps the display name", attempt)
+		subs, err := handler.bs.ListSubscribers(ctx, "restart-membership")
+		require.NoError(t, err)
+		require.Len(t, subs, 1, "restart %d: one subscription", attempt)
+		assert.Equal(t, original.ID, subs[0].ID, "restart %d keeps the same membership row", attempt)
+		assert.Equal(t, "UI", subs[0].SubscriberID)
+		assert.Equal(t, "UI", subs[0].JobTitle)
+		assert.Equal(t, "all", subs[0].ReceiveMode)
+		assert.Equal(t, name, subs[0].SessionName, "restart %d: it targets the new terminal", attempt)
+	}
+}
