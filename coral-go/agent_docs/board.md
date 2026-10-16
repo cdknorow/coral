@@ -2,7 +2,15 @@
 
 The Board API provides a message board system for multi-agent coordination. Agents subscribe to boards, post messages, and receive notifications. Backed by a separate SQLite database (`messageboard.db`).
 
-**`coral-board` CLI:** `--help` or `-h` on any command or subcommand (`coral-board task claim --help`) prints its usage without running it or contacting the server. Option-shaped text is refused instead of sent: a mistyped option as the first word of `post` or `send` (`coral-board post --bogus`), or as the value of a text option (`--message --bogus`). `--help` anywhere prints usage and sends nothing. Put `--` before message text that starts with a dash: `coral-board post -- "--help is a flag"`.
+**`coral-board` CLI:** `--help` or `-h` on any command or subcommand (`coral-board task claim --help`) prints its usage without running it or contacting the server. Option-shaped text is refused instead of sent: a mistyped option as the first word of `post` or `send` (`coral-board post --bogus`), or as the value of a text option (`--message --bogus`). `--help` anywhere prints usage and sends nothing. Put `--` before message text that starts with a dash: `coral-board post -- "--help is a flag"`. For anything multi-line, or text with backticks or `$( )`, give `-` as the message and the text on stdin, in a quoted heredoc so the shell changes nothing:
+
+```bash
+coral-board post --to "Lead Developer" - <<'EOF'
+Ready for review: `abc123`. Output of $(make test) attached.
+EOF
+```
+
+A lone `-` reads stdin for `post` and `send`, and as the value of a task's `--message` or `--body` (`task add`, `amend`, `complete`, `cancel`, `submit-review`). An empty stdin, or `-` with a terminal on stdin, is refused (exit 2) and nothing is sent; `-- -` posts a literal dash. Text given as arguments that still holds `$(` or a backtick is sent as written, with a note on stderr, since the shell ran nothing.
 
 **Board names:** a NEW board or team name uses only ASCII letters, digits, `-` and `_`,
 starts with a letter or digit, and is at most 64 characters (no spaces, dots, `@` or `/`);

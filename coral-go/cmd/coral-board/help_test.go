@@ -40,6 +40,12 @@ type boardRun struct {
 // data dir, so nothing can reach a real server or a real board state file.
 func runBoard(t *testing.T, serverURL, dataDir string, args ...string) boardRun {
 	t.Helper()
+	return runBoardInput(t, serverURL, dataDir, nil, args...)
+}
+
+// runBoardInput is runBoard with stdin (nil: the null device, as for runBoard).
+func runBoardInput(t *testing.T, serverURL, dataDir string, stdin io.Reader, args ...string) boardRun {
+	t.Helper()
 	encoded, _ := json.Marshal(args)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperRunBoard$")
 	for _, kv := range os.Environ() {
@@ -52,7 +58,7 @@ func runBoard(t *testing.T, serverURL, dataDir string, args ...string) boardRun 
 		"CORAL_URL="+serverURL, testguard.TestURLEnv+"=1", "CORAL_DATA_DIR="+dataDir, "CORAL_DIR="+dataDir,
 		"HOME="+t.TempDir(), "CORAL_SESSION_NAME=help-test", "CORAL_SUBSCRIBER_ID=Tester")
 	var stdout, stderr strings.Builder
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, &stdout, &stderr
 	err := cmd.Run()
 	code := 0
 	var exitErr *exec.ExitError

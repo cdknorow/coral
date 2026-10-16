@@ -37,10 +37,12 @@ type sendIdentity struct {
 func runSend(args []string, id sendIdentity, out io.Writer) error {
 	var target, to, address, replyTo, messageID string
 	var msgParts []string
+	literal := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--":
 			msgParts = append(msgParts, args[i+1:]...)
+			literal = true
 			i = len(args)
 		case "--board", "--to", "--address", "--reply-to", "--message-id":
 			if i+1 >= len(args) || args[i+1] == "" {
@@ -66,7 +68,17 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 			msgParts = append(msgParts, args[i])
 		}
 	}
-	message := strings.TrimSpace(strings.Join(msgParts, " "))
+	var message string
+	if !literal && len(msgParts) == 1 && msgParts[0] == "-" {
+		text, err := readStdinText("message")
+		if err != nil {
+			return err
+		}
+		message = text
+	} else {
+		message = strings.TrimSpace(strings.Join(msgParts, " "))
+		warnShellSyntax(os.Stderr, message)
+	}
 	if address != "" {
 		if target != "" || to != "" {
 			return fmt.Errorf("--address can't be combined with --board or --to")

@@ -450,6 +450,8 @@ Commands:
   join <project> --as <role>   Subscribe to a board
   post "<message>" [--to "a,b"] Post a message (optionally @mention agents);
                                use -- before text that starts with '-'
+  post - [--to "a,b"] <<'EOF'  Post the text on stdin, as written (best for
+                               multi-line text, backticks and $( ))
   read [--all] [--last N] [--id N] [--json]
                                Read new messages (tagged only by default; --all
                                for all), the newest N (marks older unread
@@ -466,7 +468,8 @@ Commands:
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
   send --board <target> [--to <orchestrator>] "<message>"
                                Message another team's Orchestrator (Orchestrators
-                               and the Operator only; both boards must allow it)
+                               and the Operator only; both boards must allow it);
+                               "-" as the message reads it from stdin
   send --address <server>/<team> [--reply-to <id>] [--message-id <id>] "<message>"
                                Message a team on another Coral through Coral Hub
                                (a target from 'targets'; --message-id retries)
@@ -725,9 +728,11 @@ func cmdPost() {
 	// Parse --to flag and collect remaining args as the message
 	var toNames string
 	var msgParts []string
+	literal := false
 	for i := 2; i < len(os.Args); i++ {
 		if os.Args[i] == "--" { // everything after is message text
 			msgParts = append(msgParts, os.Args[i+1:]...)
+			literal = true
 			break
 		}
 		if os.Args[i] == "--to" && i+1 < len(os.Args) {
@@ -737,7 +742,13 @@ func cmdPost() {
 			msgParts = append(msgParts, os.Args[i])
 		}
 	}
-	message := strings.Join(msgParts, " ")
+	var message string
+	if !literal && len(msgParts) == 1 && msgParts[0] == "-" {
+		message = stdinTextOrExit("message")
+	} else {
+		message = strings.Join(msgParts, " ")
+		warnShellSyntax(os.Stderr, message)
+	}
 
 	// Prepend @mentions if --to was provided
 	if toNames != "" {
@@ -1686,6 +1697,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retryOf := fs.Int64("retry-of", 0, "Finished task ID this new task retries")
 	fs.Parse(reordered)
+	*taskBody = flagText(*taskBody, "task body")
 
 	if title == "" {
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task add "title" [--body "details"] [--priority P] [--assignee "Agent Name"]`)
@@ -1919,6 +1931,7 @@ func cmdTaskComplete(st *boardState, args []string) {
 	expectedRevision := fs.Int("revision", 0, "Expected task revision after amendments")
 	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by completion evidence")
 	fs.Parse(args[1:])
+	*message = flagText(*message, "completion message")
 
 	subscriberID := resolveSubscriberID()
 	body := map[string]any{
@@ -1988,6 +2001,7 @@ func cmdTaskCancel(st *boardState, args []string) {
 	fs := flag.NewFlagSet("task-cancel", flag.ExitOnError)
 	message := fs.String("message", "", "Cancellation reason")
 	fs.Parse(args[1:])
+	*message = flagText(*message, "cancellation reason")
 
 	subscriberID := resolveSubscriberID()
 	body := map[string]any{
@@ -2092,6 +2106,7 @@ func cmdTaskAmend(st *boardState, args []string) {
 	instructions := fs.String("workflow-instructions", "", "Replacement task-specific instructions")
 	completionGates := fs.String("completion-gates", "", "Replacement completion gates JSON (experimental and disabled by default)")
 	fs.Parse(args[1:])
+	*bodyText = flagText(*bodyText, "task body")
 	if *revision <= 0 || strings.TrimSpace(*reason) == "" {
 		fmt.Fprintln(os.Stderr, "--revision and --reason are required")
 		os.Exit(1)
@@ -2855,6 +2870,7 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 	manifest := fs.String("artifacts", "", "Candidate artifact manifest")
 	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by candidate evidence")
 	fs.Parse(args[1:])
+	*message = flagText(*message, "completion message")
 	if strings.TrimSpace(*reason) == "" {
 		fmt.Fprintln(os.Stderr, "--reason is required")
 		os.Exit(1)
