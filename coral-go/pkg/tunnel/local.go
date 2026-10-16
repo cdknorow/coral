@@ -712,7 +712,7 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 		// is sent (#3694): one that parsed before redaction and doesn't after is never passed on,
 		// it becomes the could-not-be-checked answer. A JSON reply is never a live stream, so
 		// holding it costs only the wait for its last byte.
-		raw, err := io.ReadAll(io.LimitReader(body, jsonWholeMax+1))
+		raw, err := io.ReadAll(io.LimitReader(body, int64(jsonWholeMax)+1))
 		if err != nil {
 			s.Reject(CodeUpstream, "local response ended early", 0)
 			return
@@ -767,10 +767,17 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 	}
 }
 
-// jsonWholeMax bounds how much of a JSON reply serveRedacted holds to check it after redaction.
-const jsonWholeMax = 64 << 20
+// jsonWholeMax bounds how much of a JSON reply serveRedacted holds to check it after redaction
+// (Security's SHOULD on #3694). Real replies are far below it: the largest 100-message chat page
+// measured on 277 MB, 199 MB and 172 MB transcripts was 193 KB, and a whole history with no
+// paging about 9.5 MB. A bigger reply streams through the Redactor unchecked, as before.
+// Worst case held at once: one reply per stream of the general and long pools, 64 + 64 at the
+// defaults, times this cap, 2 GiB; one Coral Hub user's share (16 + 32 streams) 768 MiB.
+var jsonWholeMax = 16 << 20 // a var so a test can lower it
 
 // jsonReply reports whether a reply's Content-Type is JSON (application/json or a +json type).
+// It goes by the declared type: a JSON body sent as text/plain is streamed through the
+// Redactor unchecked (Coral's own JSON endpoints all declare application/json).
 func jsonReply(hdr http.Header) bool {
 	mt, _, err := mime.ParseMediaType(hdr.Get("Content-Type"))
 	return err == nil && (mt == "application/json" || strings.HasSuffix(mt, "+json"))

@@ -169,3 +169,33 @@ func TestRedactedChatReplyParsesThroughTheTunnel(t *testing.T) {
 	require.NoError(t, json.Unmarshal(got, &parsed))
 	assert.Len(t, parsed.Messages, len(msgs))
 }
+
+// A JSON reply over jsonWholeMax isn't held: what was read ahead and the rest stream through the
+// Redactor, redacted exactly as a whole reply would be (the cap lowered so the test stays small).
+func TestRedactedJSONOverTheCapStreams(t *testing.T) {
+	keep := jsonWholeMax
+	jsonWholeMax = 4 << 10
+	t.Cleanup(func() { jsonWholeMax = keep })
+	tok := fake("ghp_", 36, alnum)
+	var msgs []any
+	for i := 0; i < 300; i++ {
+		msgs = append(msgs, map[string]any{"type": "assistant", "content": "line " + strings.Repeat("x", i%97) + " " + tok})
+	}
+	body, err := json.Marshal(map[string]any{"messages": msgs})
+	require.NoError(t, err)
+	require.Greater(t, len(body), jsonWholeMax*4)
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(body)
+	})
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, local, nil)
+	resp := do(t, sess, "GET", "/api/sessions/live/a/chat", "", strings.NewReader(""), nil)
+	defer resp.Body.Close()
+	got, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, string(RedactTokens(body)), string(got), "the read-ahead and the rest, redacted as one")
+	assert.NotContains(t, string(got), tok)
+	assert.True(t, json.Valid(got))
+}
