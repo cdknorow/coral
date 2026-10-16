@@ -292,8 +292,6 @@
 
     <script src="{{ $base }}vendor/marked.min.js"></script>
     <script src="{{ $base }}vendor/purify.min.js"></script>
-    <!-- csp_compat first: the same URL app.js imports (one module instance), so inline handlers work on the Cloud Hub before app.js finishes loading. -->
-    <script type="module" src="{{ $base }}csp_compat.js"></script>
     <script type="module" src="{{ $base }}app.js"></script>
     <script src="{{ $base }}sw_register.js"></script>
 </body>

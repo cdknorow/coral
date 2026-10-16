@@ -57,12 +57,15 @@ const base = require('./test_base').BASE;
         // A UI-created view runs at once, in an opaque-origin sandbox.
         await ev(`cv.activateCustomView(101)`);
         await sleep(1500);
-        const frame = await ev(`(() => { const f = document.querySelector('#agentic-panel-custom-view-101 iframe'); return f && { sandbox: f.getAttribute('sandbox'), csp: f.getAttribute('csp') }; })()`);
+        const frame = await ev(`(() => { const f = document.querySelector('#agentic-panel-custom-view-101 iframe'); return f && { sandbox: f.getAttribute('sandbox'), csp: f.getAttribute('csp'), src: f.getAttribute('src') }; })()`);
         assert.ok(frame, 'the view frame exists');
         assert.equal(frame.sandbox, 'allow-scripts');
         assert.ok(!/same-origin/.test(frame.sandbox));
-        assert.match(frame.csp, /default-src 'none'/);
-        assert.ok(await ev(`document.querySelector('#agentic-panel-custom-view-101 iframe').srcdoc.includes("frame-src about:")`), 'the view runs inside a host frame whose CSP is frame-src about:');
+        // The host loads by URL (#3645): a srcdoc host would inherit the dashboard's script-src 'self' and no view script
+        // would run. Its own CSP (frame-src about:) is what refuses a view's navigation.
+        assert.equal(frame.src, '/static/view_host.html', 'the view runs inside the host page, loaded by URL');
+        assert.equal(frame.csp, null, 'no csp attribute on a URL-loaded frame');
+        assert.ok(await ev(`fetch('/static/view_host.html').then(r => r.text()).then(t => t.includes("frame-src about:") && t.includes("default-src 'none'"))`), "the host's CSP is default-src 'none' and frame-src about:");
         const probes = await ev(`window.probes`);
         assert.equal(probes.parentDom, 'blocked', 'the view cannot touch the dashboard DOM');
         assert.equal(probes.storage, 'blocked', 'the view has no storage (opaque origin)');

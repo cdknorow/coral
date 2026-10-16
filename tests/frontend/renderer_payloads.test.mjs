@@ -1,10 +1,8 @@
 // Runs the REAL renderers (jsdom + the real app-shell HTML) with attacker-controlled strings in
 // every connector/agent/file-controlled field, and checks the markup they produce:
-//   * no injected on* attribute, extra attribute or element appears;
-//   * every inline handler has the same SHAPE (functions, statements, argument kinds) as with
-//     benign data, so attacker text can only ever be an argument VALUE;
-//   * running the handlers through csp_compat calls only the intended functions, and the exact
-//     payload from the #2785 review never reaches sendKeys;
+//   * no extra attribute or element appears, and no renderer writes an inline on* handler at
+//     all (the dashboard CSP has no 'unsafe-inline' since #3645: one would not run);
+//   * the exact payload from the #2785 review never reaches sendKeys;
 //   * delegated actions (data-on-<event>="name", #3645) keep the same names as with benign data,
 //     and firing each one through the real dispatcher never reaches a dangerous function: attacker
 //     text can only ever be a data-* VALUE.
@@ -13,10 +11,7 @@ import assert from 'node:assert';
 import { installDom, importUi, STATIC } from './helpers/jsdom_env.mjs';
 
 installDom({ mode: 'cloud' });
-const compat = await importUi('csp_compat');
 const { state } = await importUi('state');
-const shapesMod = await importUi('csp_shapes');
-const parseMod = await importUi('csp_parse');
 const tags = await importUi('tags');
 const render = await importUi('render');
 
@@ -43,33 +38,6 @@ const called = [];
 const DANGEROUS = ['sendKeys', 'sendRawKeys', 'executeMacro', 'sendQuickCommand', 'killSession', 'restartSession', 'foo', 'PWNED'];
 for (const n of DANGEROUS) window[n] = globalThis[n] = (...a) => { called.push([n, ...a]); };
 
-/** Shape signature of a parsed handler: structure and callee names, literals reduced to kinds. */
-function sig(node) {
-    if (Array.isArray(node)) return node.map(sig);
-    if (node && typeof node === 'object') {
-        if (node.k === 'lit') return 'L';
-        const o = {};
-        for (const [k, v] of Object.entries(node)) o[k] = k === 'v' ? 'L' : sig(v);
-        return o;
-    }
-    return node;
-}
-/** Names of functions a parsed handler calls. */
-function calleeNames(ast) {
-    const out = new Set();
-    (function walk(n) {
-        if (Array.isArray(n)) return n.forEach(walk);
-        if (!n || typeof n !== 'object') return;
-        if (n.k === 'call') {
-            if (n.fn.k === 'id') out.add(n.fn.name);
-            else if (n.fn.k === 'member') out.add(n.fn.prop);
-        }
-        Object.values(n).forEach(walk);
-    })(ast);
-    return out;
-}
-const sigOf = src => JSON.stringify(sig(compat.parse(src)));
-
 function snapshot(root = document.body) {
     const attrs = new Set(), tagsSeen = new Set(), handlers = [], actions = [];
     for (const el of root.querySelectorAll('*')) {
@@ -86,12 +54,7 @@ function snapshot(root = document.body) {
 function check(label, base, now) {
     for (const t of now.tagsSeen) assert.ok(base.tagsSeen.has(t), `${label}: new element <${t}> appeared`);
     for (const a of now.attrs) assert.ok(base.attrs.has(a), `${label}: injected attribute "${a}"`);
-    const okShapes = new Set(base.handlers.map(h => h.name + '|' + sigOf(h.src)));
-    for (const h of now.handlers) {
-        let s;
-        try { s = sigOf(h.src); } catch (e) { assert.fail(`${label}: handler not in the grammar: ${h.src.slice(0, 120)}`); }
-        assert.ok(okShapes.has(h.name + '|' + s), `${label}: handler shape changed: ${h.src.slice(0, 160)}`);
-    }
+    assert.deepStrictEqual(now.handlers.map(h => `${h.name}="${h.src.slice(0, 80)}"`), [], `${label}: an inline handler`);
     // A delegated action's name is a constant: the payload can't add or change one.
     const okActions = new Set(base.actions.map(a => a.name + '|' + a.action));
     for (const a of now.actions) assert.ok(okActions.has(a.name + '|' + a.action), `${label}: action changed or injected: ${a.name}="${a.action}"`);
@@ -105,25 +68,13 @@ function scenario(label, setup, run, clear) {
     const pageEls = new Set(empty.actions.map(a => a.el));
     setup(BENIGN); run();
     const base = snapshot(); clear();
-    assert.ok(base.handlers.length + base.actions.length > empty.handlers.length + empty.actions.length, `${label}: the renderer produced no handlers or actions with benign data, so the test would prove nothing`);
-    for (const h of base.handlers) {
-        const shape = parseMod.shapeOf(h.src);
-        assert.ok(shapesMod.SHAPES.has(shape), `${label}: a handler the renderer really produces is missing from the generated allowlist: ${h.src.slice(0, 120)}`);
-    }
+    assert.ok(base.actions.length > empty.actions.length, `${label}: the renderer produced no actions with benign data, so the test would prove nothing`);
+    assert.deepStrictEqual(base.handlers.map(h => `${h.name}="${h.src.slice(0, 80)}"`), [], `${label}: the renderer writes an inline handler`);
     for (const p of PAYLOADS) {
         called.length = 0;
         setup(p); run();
         const now = snapshot();
         check(`${label} [${JSON.stringify(p).slice(0, 40)}]`, base, now);
-        // Fire every handler through the CSP-safe runner as a click would.
-        for (const h of now.handlers) {
-            called.length = 0;
-            const ev = new window.Event('click', { bubbles: true });
-            compat.runHandler(h.src, h.el, ev);
-            const allowed = calleeNames(compat.parse(h.src));
-            const extra = called.filter(c => !allowed.has(c[0]));
-            assert.deepStrictEqual(extra, [], `${label}: handler called a function it does not name (payload ${JSON.stringify(p)}): ${h.src.slice(0, 120)} -> ${JSON.stringify(extra)}`);
-        }
         // Fire every delegated action through the real dispatcher (actions.js) as its event would.
         for (const a of now.actions) {
             if (pageEls.has(a.el)) continue;
@@ -133,7 +84,7 @@ function scenario(label, setup, run, clear) {
         }
         clear();
     }
-    return base.handlers.length + base.actions.length;
+    return base.actions.length;
 }
 
 let total = 0;
@@ -194,5 +145,5 @@ total += scenario('agent tasks',
     () => { try { tasksMod.renderBoardTaskList(); } catch (e) { if (!/not defined|Cannot read|null/.test(String(e))) throw e; } },
     () => { for (const id of ['board-task-list', 'task-bar-list', 'board-tasks-body']) { const l = document.getElementById(id); if (l) l.innerHTML = ''; } });
 
-console.log(`renderer_payloads.test.mjs: ok (${PAYLOADS.length} payloads, ${total} baseline handlers across scenarios)`);
+console.log(`renderer_payloads.test.mjs: ok (${PAYLOADS.length} payloads, ${total} baseline actions across scenarios)`);
 process.exit(0);

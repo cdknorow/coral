@@ -65,8 +65,8 @@ function _showMobileHistory(agentList) {
             const clone = body.cloneNode(true);
             clone.style.cssText = 'padding:0 12px;overflow-y:auto;flex:1;';
 
-            // cloneNode keeps the inline onclick attributes, so the clones work as they are: natively on a
-            // local Coral, through csp_compat's delegation on the hub (which forbids eval).
+            // cloneNode keeps the data-on-* actions, so the clones work as they are (one delegated
+            // listener per event, actions.js).
 
             // Re-wire search input
             const searchInput = clone.querySelector('input[type="search"]');
@@ -150,8 +150,7 @@ export function syncMobileAgentList() {
         const clone = sidebarList.cloneNode(true);
         clone.id = 'mobile-session-list';
 
-        // The cloned items keep their inline onclick attributes: they run natively on a local Coral and through
-        // csp_compat's delegation on the hub. Moving them into eval() would be blocked by the hub's CSP.
+        // The cloned items keep their data-on-* actions, so they work as they are (actions.js delegates).
         agentList.appendChild(clone);
     }
 }

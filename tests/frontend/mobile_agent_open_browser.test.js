@@ -1,6 +1,7 @@
 // A phone-width tap on an agent must open it (T121: on the Cloud Hub it did nothing). The mobile agent list is a
 // clone of the sidebar rows; it used to strip each row's inline onclick and re-run the text through eval(), which
-// the hub's CSP (script-src 'self', no unsafe-eval) refuses, and the stripped row left csp_compat nothing to run.
+// the hub's CSP (script-src 'self', no unsafe-eval) refuses. Since #3645 a row names its action (data-on-click) and
+// the clone keeps it.
 // Real touch events on iPhone- and Android-sized viewports; eval and Function are made to throw so a regression to
 // either shows up here, on a plain local Coral, the same way the hub's CSP would show it.
 const assert = require('node:assert/strict');
@@ -46,7 +47,7 @@ const DEVICES = [
                 window.selectLiveSession = function (...a) { window.__picked.push(a[0]); try { return orig.apply(this, a); } catch (e) { /* the fake session has no server */ } };
                 window.__seedRows = () => {
                     const list = document.getElementById('live-sessions-list');
-                    list.innerHTML = ['alpha', 'beta'].map(n => '<li class="session-group-item" data-session-id="sid-' + n + '" onclick="selectLiveSession(\\'' + n + '\\', \\'terminal\\', \\'sid-' + n + '\\', \\'local\\')"><span class="session-label">' + n + '</span></li>').join('');
+                    list.innerHTML = ['alpha', 'beta'].map(n => '<li class="session-group-item" data-session-id="sid-' + n + '" data-server="local" data-on-click="session-open" data-done="0" data-name="' + n + '" data-agent-type="terminal"><span class="session-label">' + n + '</span></li>').join('');
                     return import((window.__coralStatic||'/static/')+'mobile.js').then(m => m.syncMobileAgentList());
                 };
                 return window.__seedRows();
@@ -64,9 +65,9 @@ const DEVICES = [
                     setTimeout(check, 50);
                 })();
             })`);
-            const rows = await evaluate(`[...document.querySelectorAll('#mobile-session-list .session-group-item')].map(e => ({ onclick: e.getAttribute('onclick'), label: e.textContent.trim() }))`);
+            const rows = await evaluate(`[...document.querySelectorAll('#mobile-session-list .session-group-item')].map(e => ({ action: e.getAttribute('data-on-click'), name: e.dataset.name, label: e.textContent.trim() }))`);
             assert.equal(rows.length, 2, `${d.name}: both rows are in the mobile list`);
-            assert.ok(rows.every(r => /^selectLiveSession\(/.test(r.onclick || '')), `${d.name}: each cloned row keeps its inline onclick (csp_compat runs it on the hub)`);
+            assert.ok(rows.every(r => r.action === 'session-open' && r.name === r.label), `${d.name}: each cloned row keeps its action and its agent: ${JSON.stringify(rows)}`);
             assert.equal(await evaluate(`(() => { const t = document.querySelector('#mobile-agent-list .mobile-list-title'); return !!t && !t.hasAttribute('style') && getComputedStyle(t).fontWeight === '600'; })()`), true, `${d.name}: the list title is styled by a class, not a style attribute the hub's style-src refuses`);
 
             await tap('#mobile-session-list .session-group-item[data-session-id="sid-beta"]');

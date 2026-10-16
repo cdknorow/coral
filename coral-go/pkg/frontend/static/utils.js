@@ -28,21 +28,6 @@ export function escapeAttr(str) {
 }
 
 /**
- * Escape for a JS string literal INSIDE an on*= attribute (the literal is single-quoted:
- * onclick="f('${jsStr(x)}')").
- *
- * The browser HTML-decodes an attribute before the JS parser sees it, so entity escaping
- * (&#39;) does NOT keep a quote inside the string: it decodes back to ' and ends the literal.
- * Every character that could end the literal, the attribute, or the element is emitted as a
- * \uXXXX escape instead; JS decodes those after HTML parsing, so the string value is exact
- * and no raw quote, ampersand or angle bracket reaches the page.
- */
-export function jsStr(v) {
-    return String(v == null ? '' : v).replace(/[\\'"&<>`$\u0000-\u001f\u007f\u2028\u2029]/g,
-        c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
-}
-
-/**
  * Show a short message at the bottom right. Errors are announced at once
  * (role=alert) and informational toasts politely (role=status); every toast can
  * be dismissed (close button, or Escape while focused).
@@ -1031,17 +1016,6 @@ export function copyBranchName(btn) {
     }).catch(() => {
         showToast("Failed to copy", true);
     });
-}
-
-/** Function names that may be chosen dynamically for an on*= attribute (see tools/gen_handler_shapes.mjs). */
-export const HANDLER_NAMES = ['toggleEventFilter', 'toggleHistoryEventFilter', 'toggleAllEventFilters', 'toggleAllHistoryEventFilters',
-    'window._selectAgentPreset', 'window._applyACFPresetValue'];
-
-/** A function name for an on*= attribute; only names from HANDLER_NAMES are accepted. */
-export function jsIdent(name) {
-    const n = String(name == null ? '' : name);
-    if (!HANDLER_NAMES.includes(n)) throw new Error('unsafe handler name');
-    return n;
 }
 
 // The rule for a NEW board or team name (#3534; the server's board.NewNamePattern): letters,

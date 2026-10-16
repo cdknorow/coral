@@ -1,14 +1,14 @@
 // Build-versioned static URLs (#3079, #3092):  run via run_cdp_suites.mjs
 // The shell loads every stylesheet, script, module and font from one
-// /static/b/<build>/ prefix, served immutable; csp_compat.js is the same URL as
-// app.js's import (one module instance, fetched once); a revisit fetches none
-// of them from the network. The service worker is bypassed so the HTTP cache
+// /static/b/<build>/ prefix, served immutable; app.js is the one module tag
+// (actions.js, which every module imports, is fetched once); a revisit fetches
+// none of them from the network. The service worker is bypassed so the HTTP cache
 // is what is measured.
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html']);
+const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html', '/static/view_host.html']);
 
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -42,14 +42,13 @@ const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html']);
         assert.equal(await ev('window.__coralStatic'), prefix, 'the page knows its static prefix');
 
         const order = await ev(`Array.from(document.querySelectorAll('script[type=module]')).map(s => s.src)`);
-        assert.deepEqual(order.map(u => new URL(u).pathname.split('/').pop()), ['csp_compat.js', 'app.js'], 'csp_compat has its own module tag, before app.js');
-        const csp = cold.filter(r => r.url.endsWith('/csp_compat.js'));
-        assert.equal(csp.length, 1, 'csp_compat.js is fetched once: ' + JSON.stringify(csp.map(r => r.url)));
-        assert.equal(csp[0].url, new URL('csp_compat.js', appSrc).href, "csp_compat's tag URL is app.js's import URL (one instance)");
-        assert.equal(await ev(`performance.getEntriesByType('resource').filter(e => e.name.endsWith('/csp_compat.js')).length`), 1);
+        assert.deepEqual(order.map(u => new URL(u).pathname.split('/').pop()), ['app.js'], 'app.js is the one module tag (csp_compat.js is gone, #3645)');
+        const acts = cold.filter(r => r.url.endsWith('/actions.js'));
+        assert.equal(acts.length, 1, 'actions.js is fetched once: ' + JSON.stringify(acts.map(r => r.url)));
+        assert.equal(acts[0].url, new URL('actions.js', appSrc).href, 'actions.js loads at app.js\'s prefix (one instance)');
 
         // Only the files that must keep a fixed URL (the service worker and the
-        // panel sandbox host) are fetched outside the prefix; images included.
+        // panel and view sandbox hosts) are fetched outside the prefix; images included.
         const unversioned = rs => rs.filter(r => !new URL(r.url).pathname.startsWith(prefix) && !UNVERSIONED_OK.has(new URL(r.url).pathname)).map(r => r.url);
         assert.deepEqual(unversioned(cold), [], 'no static file from an unversioned path');
         // The manifest is linked under the prefix and names its icons relatively,
@@ -63,7 +62,7 @@ const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html']);
         assert.ok(versioned.length > 50, 'the module graph loads under the prefix: ' + versioned.length);
         assert.ok(versioned.some(r => r.url.includes('/vendor/fonts/')), 'fonts (relative url() in fonts.css) load under the prefix');
         for (const r of versioned) assert.match(r.cache, /immutable/, 'immutable: ' + r.url);
-        console.log(`PASS cold: ${versioned.length} files under ${prefix}, immutable; csp_compat once at app.js's URL`);
+        console.log(`PASS cold: ${versioned.length} files under ${prefix}, immutable; actions.js once at app.js's prefix`);
 
         // A revisit (a new navigation, not a reload): nothing under the prefix
         // comes from the network.

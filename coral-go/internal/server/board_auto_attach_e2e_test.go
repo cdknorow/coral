@@ -106,8 +106,9 @@ func TestBoardAutoAttachEndToEnd(t *testing.T) {
 	assert.Equal(t, "done: ![run](shot.png)", post("done: ![run](shot.png)", asAgent, "Dev"), "a JSON false (stored as False) is off too")
 }
 
-// #3515, #3623: the dashboard and the agent pop-out send the CSP (scripts, media and images from
-// this server only, forms post only here, no <base> or plugins, framed only by Coral itself).
+// #3515, #3623, #3645: the dashboard and the agent pop-out send the CSP (scripts, media and images
+// from this server only and no inline script or handler, forms post only here, no <base> or
+// plugins, framed only by Coral itself).
 func TestDashboardPagesSendTheCSP(t *testing.T) {
 	_, ts, _ := strictServer(t, false)
 	for _, path := range []string{"/", "/agent/eeeeeeee-3515-0000-0000-00000000000e"} {
@@ -115,9 +116,12 @@ func TestDashboardPagesSendTheCSP(t *testing.T) {
 		require.NoError(t, err)
 		resp.Body.Close()
 		csp := resp.Header.Get("Content-Security-Policy")
-		for _, d := range []string{"script-src 'self' 'unsafe-inline'", "form-action 'self'", "media-src 'self' blob: data:",
+		for _, d := range []string{"script-src 'self';", "form-action 'self'", "media-src 'self' blob: data:",
 			"img-src 'self' data: blob:", "base-uri 'self'", "object-src 'none'", "frame-ancestors 'self'"} {
 			assert.Contains(t, csp, d, path)
 		}
+		// No inline script or handler runs on the dashboard (#3645 stage 2).
+		assert.NotContains(t, csp, "unsafe-inline", path)
+		assert.NotContains(t, csp, "unsafe-eval", path)
 	}
 }

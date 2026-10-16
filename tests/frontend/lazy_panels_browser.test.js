@@ -60,7 +60,7 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
         await quietSeen(); // startup is done (fresh); no panel request follows
         for (const m of MODULES) assert.equal(count(m), 0, `${m} not requested on a cold load (${JSON.stringify(seen.filter(x => !x.startsWith('API')).slice(0, 80))})`);
         const stubs = await ev(`['showWorkflowsTab','selectWorkflow','selectWorkflowRun','showCostDashboard','showDocsTab','showThemeConfigurator','showTemplateBrowser','searchChats'].filter(n => typeof window[n] !== 'function')`);
-        assert.deepEqual(stubs, [], 'every lazy window function exists (as a stub) for inline handlers');
+        assert.deepEqual(stubs, [], 'every lazy window function exists (as a stub) for the actions that call it');
         console.log('   ✓ 0 requests for the 6 modules; stubs in place');
 
         console.log('2. Each panel loads once on first use; stubs become the real functions');
@@ -128,24 +128,26 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
         await ev(`window.hideThemeConfigurator(); true`);
         console.log('   ✓ Docs + theme editor: toast, then ?retry=1 → works');
 
-        console.log('5. Inline handlers into a not-yet-loaded panel work on the first click');
+        // Since #3645 a control names an action; the Jobs view's workflow and run links are the real ones
+        // that call into the workflows panel before it has loaded (scheduler.js loads up front).
+        console.log('5. Actions into a not-yet-loaded panel work on the first click');
         await fresh();
         await ev(`(() => {
             const host = document.createElement('div'); host.id = 'qa-inline';
-            host.innerHTML = '<a href="javascript:void(0)" id="qa-wf" onclick="selectWorkflow(7)">wf</a> <button id="qa-run" onclick="event.stopPropagation(); selectWorkflowRun(9)">run</button>';
+            host.innerHTML = '<a href="#" id="qa-wf" data-on-click="job-workflow" data-workflow-id="7">wf</a> <button id="qa-run" data-on-click="job-run" data-run-id="9">run</button>';
             document.body.appendChild(host); return true;
         })()`);
         await ev(`document.getElementById('qa-wf').click(); true`);
-        await waitFor(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'lazy_panels.js'); return !!m.loadWorkflows.module; })()`, 'workflows loaded by an inline handler', 8000);
+        await waitFor(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'lazy_panels.js'); return !!m.loadWorkflows.module; })()`, 'workflows loaded by an action', 8000);
         await waitForSeen(x => /^API \/api\/workflows\/7\b/.test(x), 'selectWorkflow(7) after loading'); await quietSeen();
-        assert.equal(count('workflows.js'), 1, 'one import for the inline handler');
+        assert.equal(count('workflows.js'), 1, 'one import for the action');
         assert.ok(seen.some(x => /^API \/api\/workflows\/7\b/.test(x)), `selectWorkflow(7) ran after loading (${JSON.stringify(seen.filter(x => x.startsWith('API')))})`);
         await ev(`document.getElementById('qa-run').click(); true`);
         await waitForSeen(x => /^API \/api\/workflows\/runs\/9\b/.test(x), 'selectWorkflowRun(9)');
         assert.ok(seen.some(x => /^API \/api\/workflows\/runs\/9\b/.test(x)), `selectWorkflowRun(9) ran (${JSON.stringify(seen.filter(x => x.startsWith('API')))})`);
         assert.equal(count('workflows.js'), 1, 'still one import');
         await ev(`document.getElementById('qa-inline').remove(); true`);
-        console.log('   ✓ selectWorkflow(7) and selectWorkflowRun(9) from inline onclick: loaded once, both ran');
+        console.log('   ✓ selectWorkflow(7) and selectWorkflowRun(9) from data-on-click actions: loaded once, both ran');
 
         console.log('\nAll lazy panel checks passed');
     } finally {

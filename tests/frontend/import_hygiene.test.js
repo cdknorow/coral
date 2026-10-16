@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const STATIC = path.resolve(__dirname, '../../coral-go/pkg/frontend/static');
-const HELPERS = ['escapeAttr', 'escapeHtml', 'jsStr'];
+const HELPERS = ['escapeAttr', 'escapeHtml'];
 
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

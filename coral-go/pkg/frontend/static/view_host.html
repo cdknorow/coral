@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src about:; form-action 'none'; base-uri 'none'"><title>Custom view</title>
+<!-- The trusted HOST of a custom view (view_sandbox.js). It is loaded by URL, so the dashboard's CSP (script-src 'self', #3645)
+     is not inherited: a srcdoc host would inherit it and no view script could run. The dashboard frames it with
+     sandbox="allow-scripts" (an opaque origin) and posts the view's document once; this host runs it in a child frame and
+     relays the bridge messages both ways. Its CSP (frame-src about:) governs the child's navigations, so a view cannot send
+     data out by navigating itself, and a second load of the child removes it. -->
+<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%;display:block}</style></head>
+<body><script>
+(function () {
+  'use strict';
+  var VIEW_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
+  var f = null, started = false, loads = 0;
+  function up(m) { window.parent.postMessage(m, '*'); }
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || typeof m !== 'object') return;
+    if (e.source === window.parent) {
+      if (m.type === 'coral-view-load' && !started && typeof m.doc === 'string') { started = true; start(m.doc); }
+      else if (m.type === 'coral-view-response' && f && f.contentWindow) f.contentWindow.postMessage(m, '*');
+      return;
+    }
+    if (f && e.source === f.contentWindow && m.type === 'coral-view-get') up(m);
+  });
+  function start(doc) {
+    f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-scripts');
+    f.setAttribute('csp', VIEW_CSP);
+    f.referrerPolicy = 'no-referrer';
+    f.addEventListener('load', function () {
+      if (++loads > 1) { f.remove(); f = null; up({ type: 'coral-view-navigated' }); }
+    });
+    f.srcdoc = doc;
+    document.body.appendChild(f);
+  }
+  up({ type: 'coral-view-host-ready' });
+})();
+</script></body></html>

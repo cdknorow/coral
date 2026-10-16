@@ -1,13 +1,10 @@
 // Scans the UI sources for template-literal holes (${...}) that land inside HTML attributes
-// built as strings, and classifies how each is protected. Shared by the lint test and the
-// one-time codemod.
+// built as strings, and classifies how each is protected (tests/frontend/attr_holes.test.js).
 //
-//   on*="..."   JS code inside an attribute. The browser HTML-decodes the attribute BEFORE the
-//               JS parser sees it, so entity escaping (&#39;) does not protect a JS string
-//               literal. Holes must be wrapped by jsStr(...) (quoted position) or Number(...)
-//               (unquoted position).
 //   data-*="..." and other attributes: holes must be wrapped by escapeAttr(...), escapeHtml(...)
 //               or Number(...).
+//   on*="..."   not allowed at all: the dashboard CSP has no 'unsafe-inline' (#3645), so an inline
+//               handler would not run; markup names a data-on-* action instead.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -74,38 +71,21 @@ export function scanAttributes(src) {
     return out;
 }
 
-const WRAPPERS_HANDLER_QUOTED = /^\s*jsStr\(/;
-// Unquoted position: numbers, a validated function name, or (nested-escape sites the quote tracker
-// cannot follow) jsStr itself.
-const WRAPPERS_NUMERIC = /^\s*(Number|Math\.\w+|parseInt|parseFloat|jsIdent|jsStr)\(/;
-// Variables that hold a handler string assembled from jsStr()/Number() pieces (reviewed by hand).
-const PREBUILT = new Set(['clickHandler']);
-const WRAPPERS_ATTR = /^\s*(escapeAttr|escapeHtml|escAttr|escHtml|esc|Number|jsStr)\(/;
+const WRAPPERS_ATTR = /^\s*(escapeAttr|escapeHtml|escAttr|escHtml|esc|Number)\(/;
 // cond ? 'literal' : 'literal' (nothing attacker-controlled can reach the attribute)
 const LITERAL_TERNARY = /^[^?]*\?\s*('[^'\\]*'|"[^"\\]*"|``)\s*:\s*('[^'\\]*'|"[^"\\]*"|``)\s*$/;
 
 /** Classify each hole: {ok, reason}. */
 export function checkAttribute(src, a) {
     const problems = [];
-    const isHandler = HANDLER.test(a.name);
+    if (HANDLER.test(a.name)) return [{ line: a.line, attr: a.name, expr: 'an inline handler (name a data-on-* action instead)', quoted: false, start: 0, end: 0 }];
     const isData = a.name.startsWith('data-') || ['title', 'value', 'id', 'for', 'name', 'alt', 'aria-label'].includes(a.name);
-    if (!isHandler && !isData && !['href', 'src'].includes(a.name)) return problems;
-    let inQuote = false;
+    if (!isData && !['href', 'src'].includes(a.name)) return problems;
     for (const p of a.parts) {
-        if (p.kind === 'text') {
-            for (let k = p.s; k < p.e; k++) {
-                if (src[k] === '\\') { k++; continue; }
-                if (src[k] === "'") inQuote = !inQuote;
-            }
-            continue;
-        }
+        if (p.kind === 'text') continue;
         const expr = src.slice(p.s, p.e);
-        if (LITERAL_TERNARY.test(expr.trim()) || (isHandler && PREBUILT.has(expr.trim()))) continue;
-        if (isHandler) {
-            if (inQuote ? !WRAPPERS_HANDLER_QUOTED.test(expr) : !WRAPPERS_NUMERIC.test(expr)) {
-                problems.push({ line: a.line, attr: a.name, expr: expr.trim().slice(0, 80), quoted: inQuote, start: p.s, end: p.e });
-            }
-        } else if (!WRAPPERS_ATTR.test(expr)) {
+        if (LITERAL_TERNARY.test(expr.trim())) continue;
+        if (!WRAPPERS_ATTR.test(expr)) {
             problems.push({ line: a.line, attr: a.name, expr: expr.trim().slice(0, 80), quoted: true, start: p.s, end: p.e });
         }
     }

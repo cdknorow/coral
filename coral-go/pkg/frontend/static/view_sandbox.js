@@ -13,18 +13,25 @@
  * CORAL_CONTEXT (the selected agent) is injected by the prelude as before.
  *
  * Navigation: nothing in a CSP stops a document from navigating ITSELF to http://host/?data, so the view does not run
- * in the dashboard's frame directly. It runs in a child frame of a small trusted HOST frame (viewHostDocument) whose CSP is
- * `frame-src about:`: the host's policy governs the child's navigations, so location.href, meta refresh, links and
+ * in the dashboard's frame directly. It runs in a child frame of a small trusted HOST frame (static/view_host.html) whose
+ * CSP is `frame-src about:`: the host's policy governs the child's navigations, so location.href, meta refresh, links and
  * form submits to a URL are refused by the browser. The host also removes the child if it ever loads a second time, and
  * relays the bridge messages. The dashboard needs no CSP of its own for this (its linked artifact previews frame
  * external pages, so a dashboard-wide frame-src would break them).
+ *
+ * Why the host is a URL and not srcdoc (#3645): a srcdoc document inherits the embedding page's CSP, and the dashboard's
+ * script-src 'self' would stop the host's script and every view script. A document loaded by URL has its own policy. The
+ * dashboard posts the view's document to the host once the host says it is ready (attachViewBridge).
  *
  * Tiers: a view created in the dashboard ('ui') may read the full allowlist; a view created by an automated caller
  * ('api') may only read the agent list, tasks, tags, board names and the history list (no terminal output, files, git,
  * notes or events), and the confirm gate says so. */
 
 export const VIEW_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
-const HOST_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src about:; form-action 'none'; base-uri 'none'";
+/** The host's own CSP (view_host.html's meta tag; a test keeps the two in step). */
+export const HOST_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src about:; form-action 'none'; base-uri 'none'";
+/** A fixed URL (outside the versioned static prefix), as panel_host.html. */
+export const VIEW_HOST_URL = '/static/view_host.html';
 export const MAX_BRIDGE_RESPONSE_BYTES = 1024 * 1024;
 const MAX_PATH_LENGTH = 300;
 
@@ -103,45 +110,31 @@ export function viewDocument(html, ctx) {
     return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${VIEW_CSP}">${prelude(ctx)}${html}`;
 }
 
-/** The trusted host frame: its CSP (frame-src about:) is what stops the view navigating itself anywhere. It builds the
- *  view's frame from `innerDoc`, removes it if it loads a second time, and relays the bridge messages both ways. */
-export function viewHostDocument(innerDoc) {
-    const doc = JSON.stringify(innerDoc).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-    const csp = JSON.stringify(VIEW_CSP);
-    return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${HOST_CSP}"><style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%;display:block}</style><body><script>(function(){
-var f = document.createElement('iframe'), loads = 0;
-f.setAttribute('sandbox', 'allow-scripts');
-f.setAttribute('csp', ${csp});
-f.referrerPolicy = 'no-referrer';
-f.addEventListener('load', function () {
-  if (++loads > 1) { f.remove(); window.parent.postMessage({ type: 'coral-view-navigated' }, '*'); }
-});
-window.addEventListener('message', function (e) {
-  var m = e.data;
-  if (!m || typeof m !== 'object') return;
-  if (e.source === f.contentWindow && m.type === 'coral-view-get') window.parent.postMessage(m, '*');
-  else if (e.source === window.parent && m.type === 'coral-view-response' && f.contentWindow) f.contentWindow.postMessage(m, '*');
-});
-f.srcdoc = ${doc};
-document.body.appendChild(f);
-})();<\/script>`;
-}
-
-/** Lock a view frame: scripts only, an opaque origin, and a csp attribute. */
+/** Lock a view's host frame: scripts only, an opaque origin, no referrer, and the host page by URL. No csp attribute: a
+ *  document loaded by URL would have to opt in to one; the host's own CSP is in view_host.html (and the view's frame,
+ *  which the host builds, carries VIEW_CSP). */
 export function lockViewFrame(frame) {
     frame.setAttribute('sandbox', 'allow-scripts');
-    frame.setAttribute('csp', VIEW_CSP);
+    frame.setAttribute('allow', ''); // no camera, microphone, geolocation, clipboard...
     frame.referrerPolicy = 'no-referrer';
+    frame.src = VIEW_HOST_URL;
     return frame;
 }
 
-/** The parent side of the bridge for one frame. `fetchFn` defaults to fetch. Returns a function that detaches it. */
-export function attachViewBridge(frame, { fetchFn, tier = 'ui', onNavigated } = {}) {
+/** The parent side of the bridge for one host frame: hands the host `doc` (viewDocument) when it says it is ready, then
+ *  answers its reads. `fetchFn` defaults to fetch. Returns a function that detaches it. */
+export function attachViewBridge(frame, { doc, fetchFn, tier = 'ui', onNavigated } = {}) {
     const doFetch = fetchFn || ((u, i) => fetch(u, i));
+    let sent = false;
     const handler = async (e) => {
         if (e.source !== frame.contentWindow) return; // only this frame
         const m = e.data;
         if (m && m.type === 'coral-view-navigated') { if (onNavigated) onNavigated(); return; }
+        if (m && m.type === 'coral-view-host-ready') {
+            // Once: a second ready means the host reloaded, which the dashboard treats as a navigation (custom_views.js).
+            if (!sent && typeof doc === 'string') { sent = true; frame.contentWindow.postMessage({ type: 'coral-view-load', doc }, '*'); }
+            return;
+        }
         if (!m || m.type !== 'coral-view-get' || typeof m.id !== 'number') return;
         const reply = payload => { try { frame.contentWindow.postMessage({ type: 'coral-view-response', id: m.id, ...payload }, '*'); } catch { /* frame gone */ } };
         if (!isAllowedViewRequest('GET', m.path, tier)) { reply({ error: 'This endpoint is not available to views' }); return; }

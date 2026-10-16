@@ -61,7 +61,6 @@ import { teamFetch, sessionServer, keyLabel } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import { initHubIndicator } from './hub_indicator.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
-import './csp_compat.js';   // runs inline handlers without eval on the Coral Hub (inert elsewhere)
 import { registerActions, tokenOf } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
 import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals } from './lazy_panels.js';

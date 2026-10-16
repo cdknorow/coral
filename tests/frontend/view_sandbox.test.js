@@ -42,7 +42,11 @@ const { JSDOM } = require('jsdom');
     m.lockViewFrame(fr);
     assert.strictEqual(fr.getAttribute('sandbox'), 'allow-scripts');
     assert.ok(!fr.getAttribute('sandbox').includes('same-origin'));
-    assert.strictEqual(fr.getAttribute('csp'), "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'");
+    // The host loads by URL (a srcdoc host would inherit the dashboard's script-src 'self', #3645), with no csp attribute
+    // (a URL-loaded document would have to opt in to one); its own CSP is in view_host.html.
+    assert.strictEqual(fr.getAttribute('src'), '/static/view_host.html');
+    assert.strictEqual(fr.getAttribute('csp'), null);
+    assert.strictEqual(m.VIEW_CSP, "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'");
     const doc = m.viewDocument('<h1>x</h1>', { agentName: 'a</script><script>alert(1)', sessionId: 's' });
     assert.ok(doc.startsWith('<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\''));
     assert.ok(doc.includes('<h1>x</h1>'));
@@ -50,11 +54,13 @@ const { JSDOM } = require('jsdom');
     assert.ok(doc.includes('window.coral') && doc.includes('window.fetch'));
 
     // ── host frame: its CSP is what refuses a view's navigation; one load only; relays only bridge messages ──
-    const host = m.viewHostDocument('<h1>x</h1><script>1<\/script></body>');
-    assert.ok(host.startsWith('<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; frame-src about:;'));
-    assert.ok(host.includes("sandbox', 'allow-scripts'") && !host.includes('allow-same-origin'));
+    const host = require('fs').readFileSync(path.join(dir, 'view_host.html'), 'utf8');
+    assert.ok(host.includes(`<meta http-equiv="Content-Security-Policy" content="${m.HOST_CSP}">`), 'view_host.html carries HOST_CSP');
+    assert.ok(m.HOST_CSP.includes('frame-src about:'), "the host's frame-src governs the view's navigations");
+    assert.ok(host.includes(`var VIEW_CSP = "${m.VIEW_CSP}";`), 'the view frame the host builds carries VIEW_CSP');
+    assert.ok(host.includes("setAttribute('sandbox', 'allow-scripts')") && !host.includes('allow-same-origin'));
     assert.ok(host.includes('loads > 1') && host.includes('coral-view-navigated'));
-    assert.ok(host.split('<script>').length === 2 && !host.includes('</script><script>'), 'the view html cannot close the host script');
+    assert.ok(host.includes('e.source === window.parent') && host.includes("m.type === 'coral-view-load' && !started"), 'only the dashboard hands over a document, once');
 
     // ── bridge ──
     const posted = [];
@@ -62,8 +68,16 @@ const { JSDOM } = require('jsdom');
     const other = { postMessage() {} };
     const calls = [];
     const text = JSON.stringify([{ session_id: 'a' }]);
-    const detach = m.attachViewBridge(frame, { fetchFn: async (u, i) => { calls.push({ u, i }); return { headers: { get: () => null }, text: async () => text, status: 200 }; } });
+    const detach = m.attachViewBridge(frame, { doc: '<!doctype html>view', fetchFn: async (u, i) => { calls.push({ u, i }); return { headers: { get: () => null }, text: async () => text, status: 200 }; } });
     const send = (data, source = frame.contentWindow) => { dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data, source })); return new Promise(r => setTimeout(r, 15)); };
+
+    // The host's ready gets the view's document, once; another window's ready gets nothing.
+    await send({ type: 'coral-view-host-ready' }, other);
+    assert.strictEqual(posted.length, 0, 'a ready from another window is ignored');
+    await send({ type: 'coral-view-host-ready' });
+    assert.deepStrictEqual(posted.pop(), { type: 'coral-view-load', doc: '<!doctype html>view' });
+    await send({ type: 'coral-view-host-ready' });
+    assert.strictEqual(posted.length, 0, 'the document is handed over once');
 
     await send({ type: 'coral-view-get', id: 1, path: '/api/sessions/live' });
     assert.deepStrictEqual(posted.pop(), { type: 'coral-view-response', id: 1, status: 200, body: text });

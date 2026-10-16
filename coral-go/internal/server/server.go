@@ -1051,15 +1051,16 @@ func (s *Server) staticBase() string {
 //     (clickjacking). Nothing frames these pages but Coral itself: the native app shows them
 //     top-level, Coral Hub serves its own copy (its proxy drops this header), and the
 //     dashboard's own iframes load agent panels, previews and views, never these pages.
-//   - script-src 'self' 'unsafe-inline' (#3623, rendering audit F3 stage 1): scripts only from
-//     this server. Inline scripts and handlers stay allowed for now (csp_shapes.js tracks every
-//     inline handler; stage 2 removes them, as Coral Hub's copy already has script-src 'self').
-//     No eval: nothing in the dashboard or its vendored libraries uses eval or new Function.
+//   - script-src 'self' (#3623 stage 1, #3645 stage 2; Coral Hub's copy has the same): scripts
+//     only from this server, and no inline script or on* handler runs. Controls name a data-on-*
+//     action that actions.js runs (tests/frontend/action_census.test.mjs keeps the UI free of
+//     inline handlers). No eval: nothing in the dashboard or its vendored libraries uses eval or
+//     new Function.
 //   - form-action 'self': a form can only post to this server.
 //   - media-src 'self' blob: data: (Security's SHOULD on #3622): audio and video only from this
 //     server, so remote media can't be fetched from the page (agent content can't carry media
 //     tags at all; this is the second layer).
-const dashboardCSP = "script-src 'self' 'unsafe-inline'; form-action 'self'; media-src 'self' blob: data:; " +
+const dashboardCSP = "script-src 'self'; form-action 'self'; media-src 'self' blob: data:; " +
 	"img-src 'self' data: blob:; base-uri 'self'; object-src 'none'; frame-ancestors 'self'"
 
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {

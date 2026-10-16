@@ -5,7 +5,7 @@ import { escapeHtml, escapeAttr } from './utils.js';
 import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { isCloud } from './server_base.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
-import { lockViewFrame, viewDocument, viewHostDocument, attachViewBridge, API_VIEW_SEES } from './view_sandbox.js';
+import { lockViewFrame, viewDocument, attachViewBridge, API_VIEW_SEES } from './view_sandbox.js';
 import { loadCodeMirror } from './vendor_loader.js';
 
 let _views = [];       // cached views from API
@@ -123,14 +123,13 @@ function _mountViewFrame(panel, view) {
         // (view_sandbox.js), never as the dashboard. It runs in a child frame of a trusted host frame whose CSP refuses any
         // navigation of the view (nothing else can stop a document sending data out by navigating itself).
         lockViewFrame(iframe);
-        iframe.srcdoc = viewHostDocument(viewDocument(view.html, _viewContext()));
         _detach.get(view.id)?.();
         const stop = () => {
             _detach.get(view.id)?.(); _detach.delete(view.id);
             iframe.remove();
             _renderNotice(panel, view, 'This view tried to navigate away from Coral and was stopped.');
         };
-        _detach.set(view.id, attachViewBridge(iframe, { tier: view.created_via === 'api' ? 'api' : 'ui', onNavigated: stop }));
+        _detach.set(view.id, attachViewBridge(iframe, { doc: viewDocument(view.html, _viewContext()), tier: view.created_via === 'api' ? 'api' : 'ui', onNavigated: stop }));
         let loads = 0;
         iframe.addEventListener('load', () => { if (++loads > 1) stop(); }); // the host itself must load exactly once
     }

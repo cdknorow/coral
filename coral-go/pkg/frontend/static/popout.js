@@ -46,9 +46,9 @@ let _restartedId = '';
 let _terminalDown = false;
 let _attached = false;          // terminal attached for the current target
 let _waking = false;
-// The controls a popout hides: the destructive actions (one shared list, actions.js), plus the
-// inline handlers that haven't moved to actions yet (#3645 removes these as their slices land).
-const DESTRUCTIVE_SELECTOR = actionSelector(DESTRUCTIVE_ACTIONS) + ',[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"],[data-action="restart"]';
+// The controls a popout hides: the destructive actions (one shared list, actions.js). No control
+// has an inline handler since #3645, so the list is the whole rule.
+const DESTRUCTIVE_SELECTOR = actionSelector(DESTRUCTIVE_ACTIONS) + ',[data-action="restart"]';
 
 /** States in which the target is attached and may receive input. */
 const LIVE_STATES = new Set(['working', 'waiting', 'check', 'stuck', 'your-turn', 'idle']);
@@ -296,13 +296,11 @@ function _setState(next) {
 /** Every control in the command pane that can send input/keys/commands
  *  (Send, +Team, send menu items, quick actions, macros, Mode, Enter/Esc/arrows,
  *  mobile send buttons) is truly disabled while blocked and re-enabled after. */
-const SEND_CAPABLE = /sendCommand|sendCommandWithTeam|sendBoardProtocol|sendRawKeys|cycleModeToggle|sendModeToggle|sendQuickCommand|executeMacro|resendInputPrompt|toggleSendMenu/;
 function _gateTerminalControls(blocked) {
     const pane = document.getElementById('command-pane');
     if (!pane) return;
     pane.querySelectorAll('button, [role="button"], .send-menu-item').forEach(b => {
-        const handler = b.getAttribute('onclick') || '';
-        const sends = SEND_ACTIONS.has(b.getAttribute('data-on-click')) || SEND_CAPABLE.test(handler) || b.classList.contains('mobile-send-btn')
+        const sends = SEND_ACTIONS.has(b.getAttribute('data-on-click')) || b.classList.contains('mobile-send-btn')
             || b.classList.contains('btn-send') || b.classList.contains('btn-send-dropdown')
             || b.classList.contains('send-menu-item') || b.closest('.command-pane-toolbar');
         if (!sends) return;

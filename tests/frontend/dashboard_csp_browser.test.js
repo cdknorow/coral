@@ -1,13 +1,14 @@
 // The dashboard's own CSP and media rules (#3623, rendering audit F3 stage 1, with Security's SHOULD and
-// NIT on #3622):
-//  1. the dashboard page sends script-src 'self' 'unsafe-inline', form-action 'self' and
+// NIT on #3622; #3645 stage 2):
+//  1. the dashboard page sends script-src 'self' (no 'unsafe-inline' since #3645), form-action 'self' and
 //     media-src 'self' blob: data:, beside the earlier img-src, base-uri, object-src and
 //     frame-ancestors;
 //  2. media and embedded documents in agent content (video, audio, source, track, picture, svg,
 //     math) are dropped by every renderer, and rendering them into the page makes no request;
 //  3. the CSP is the second layer: remote media put into the page directly (bypassing the
 //     sanitizer), a form posting elsewhere and a script from elsewhere all fail to reach the
-//     counting server;
+//     counting server; an inline handler and an inline script put into the page don't run (the
+//     CSP reports them), while a control naming a data-on-* action still works;
 //  4. a notification's web link shows its host next to the label, and "not encrypted" for http.
 // A positive control (an XHR from the page to the counting server) must arrive, or zero hits would
 // prove nothing.
@@ -52,7 +53,8 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await loaded;
         await coralReady();
         await waitFor(`typeof DOMPurify !== 'undefined' && typeof marked !== 'undefined'`, 'the sanitizer and marked');
-        for (const d of ["script-src 'self' 'unsafe-inline'", "form-action 'self'", "media-src 'self' blob: data:",
+        check("the dashboard's CSP has no 'unsafe-inline' or 'unsafe-eval'", !/unsafe-inline|unsafe-eval/.test(csp), csp);
+        for (const d of ["script-src 'self';", "form-action 'self'", "media-src 'self' blob: data:",
             "img-src 'self' data: blob:", "base-uri 'self'", "object-src 'none'", "frame-ancestors 'self'"]) {
             check(`the dashboard's CSP has ${d}`, csp.includes(d), csp);
         }
@@ -133,6 +135,25 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('the CSP reports script-src for the remote script', blocked.some(v => /^script-src/.test(v)), JSON.stringify(blocked));
         check('the CSP reports form-action for the form post', blocked.some(v => /^form-action /.test(v)), JSON.stringify(blocked));
         await ev(`document.getElementById('csp-media-test').remove()`);
+
+        // Inline code doesn't run (#3645); a delegated action does.
+        const inline = await ev(`new Promise(resolve => {
+            const seen = []; window.__qaInline = 0;
+            const onViolation = e => seen.push(e.violatedDirective);
+            document.addEventListener('securitypolicyviolation', onViolation);
+            const host = document.createElement('div'); document.body.appendChild(host);
+            host.innerHTML = '<button id="qa-inline-btn" onclick="window.__qaInline++">x</button>';
+            document.getElementById('qa-inline-btn').click();
+            const s = document.createElement('script'); s.textContent = 'window.__qaInline++'; host.appendChild(s);
+            let ran = 0; const keep = window.toggleTopBarSettings; window.toggleTopBarSettings = () => { ran++; };
+            const b = document.createElement('button'); b.setAttribute('data-on-click', 'm-toggle-top-bar-settings'); host.appendChild(b); b.click();
+            window.toggleTopBarSettings = keep;
+            setTimeout(() => { document.removeEventListener('securitypolicyviolation', onViolation); host.remove();
+                resolve({ inlineRan: window.__qaInline, actionRan: ran, seen }); }, 500); // sleep-ok: the violation events are queued
+        })`);
+        check('an inline handler and an inline script put into the page do not run', inline.inlineRan === 0, JSON.stringify(inline));
+        check('the CSP reports script-src for each', inline.seen.filter(v => /^script-src/.test(v)).length >= 2, JSON.stringify(inline.seen));
+        check('a control naming a data-on-* action still works', inline.actionRan === 1, JSON.stringify(inline));
 
         // ── 4. a notification's web link shows its host ─────────────────────────
         const notes = await ev(`${U}.then(u => {

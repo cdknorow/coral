@@ -23,8 +23,12 @@ func render(t *testing.T, d PageData) string {
 
 var scriptTag = regexp.MustCompile(`(?is)<script\b([^>]*)>`)
 
-// The shell must contain no executable inline script, so the Cloud Hub can serve
-// it with script-src 'self'. Only external scripts and JSON data blocks are allowed.
+// An inline handler attribute (onclick=, onsubmit=, ...) in a tag; data-on-* is not one.
+var inlineHandler = regexp.MustCompile(`(?is)<[a-z][^>]*?\son[a-z]+\s*=`)
+
+// The shell must contain no executable inline script or inline handler: both Coral and the
+// Cloud Hub serve it with script-src 'self' (#3645). Only external scripts and JSON data
+// blocks are allowed; controls name data-on-* actions.
 func TestIndexHasNoInlineScript(t *testing.T) {
 	for name, d := range map[string]PageData{
 		"local": {CoralRoot: "/x"},
@@ -36,6 +40,9 @@ func TestIndexHasNoInlineScript(t *testing.T) {
 			if !strings.Contains(attrs, "src=") && !strings.Contains(attrs, `type="application/json"`) {
 				t.Errorf("%s: inline script tag <script%s>", name, m[1])
 			}
+		}
+		if m := inlineHandler.FindString(out); m != "" {
+			t.Errorf("%s: inline handler in %.160s", name, m)
 		}
 	}
 }
@@ -53,8 +60,8 @@ func TestBootJSON(t *testing.T) {
 
 func TestAssetsEmbedded(t *testing.T) {
 	for _, p := range []string{
-		"static/app.js", "static/csp_compat.js", "static/cloud.js", "static/cloud_servers.js", "static/theme_init.js",
-		"static/sw_register.js", "static/cloud/signin.js", "static/cloud/enroll.js", "static/css/cloud.css",
+		"static/app.js", "static/actions.js", "static/cloud.js", "static/cloud_servers.js", "static/theme_init.js",
+		"static/sw_register.js", "static/view_host.html", "static/panel_host.html", "static/cloud/signin.js", "static/cloud/enroll.js", "static/css/cloud.css",
 		"templates/cloud/signin.html", "templates/cloud/enroll.html",
 	} {
 		if _, err := Static.ReadFile(p); err != nil {
