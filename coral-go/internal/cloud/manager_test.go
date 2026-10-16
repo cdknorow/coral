@@ -41,6 +41,16 @@ type fakeHub struct {
 	starts      atomic.Int64 // POST /api/enroll/start requests
 	down        atomic.Bool  // start answers 503
 	sessions    chan *tunnel.Session
+
+	routeKey  atomic.Value // string: the route key Welcome carries (#3683); unset: none
+	routeMu   sync.Mutex
+	routeSeen []string // the X-Coral-Route header of each /tunnel dial
+}
+
+func (h *fakeHub) routeHeaders() []string {
+	h.routeMu.Lock()
+	defer h.routeMu.Unlock()
+	return append([]string(nil), h.routeSeen...)
 }
 
 func newFakeHub(t *testing.T) *fakeHub {
@@ -87,12 +97,15 @@ func newFakeHub(t *testing.T) *fakeHub {
 	})
 	mux.HandleFunc("GET /tunnel", func(w http.ResponseWriter, r *http.Request) {
 		h.tunnels.Add(1)
+		h.routeMu.Lock()
+		h.routeSeen = append(h.routeSeen, r.Header.Get(tunnel.RouteHeader))
+		h.routeMu.Unlock()
 		s, err := tunnel.AcceptHTTP(w, r, func(_ context.Context, tok string) (any, error) {
 			if h.revoked.Load() || tok != fakeToken {
 				return nil, tunnel.ErrUnauthorized
 			}
 			return "srv_1", nil
-		}, tunnel.SessionConfig{})
+		}, tunnel.SessionConfig{RouteKey: func(any) string { k, _ := h.routeKey.Load().(string); return k }})
 		if err == nil {
 			h.sessions <- s
 		}

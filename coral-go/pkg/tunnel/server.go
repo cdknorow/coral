@@ -34,6 +34,9 @@ type SessionConfig struct {
 	// advertises in Welcome (version 2 peers only); nil advertises none. Only "relay" is
 	// known, and only with OnRelay set.
 	Capabilities func(identity any) []string
+	// RouteKey gives, per authenticated tunnel, the route key the hub sends in Welcome
+	// (#3683); nil or a malformed value sends none.
+	RouteKey func(identity any) string
 	// OnRelay handles a relay request the connector opens (#3489, relay.go). Nil: every
 	// connector-opened stream is closed, as in version 1.
 	OnRelay RelayFunc
@@ -160,7 +163,13 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 			}
 		}
 	}
-	w, _ := json.Marshal(Welcome{AcceptedVersion: v, MaxStreams: cfg.MaxStreams, Capabilities: caps})
+	var routeKey string
+	if cfg.RouteKey != nil {
+		if k := cfg.RouteKey(identity); ValidRouteKey(k) {
+			routeKey = k
+		}
+	}
+	w, _ := json.Marshal(Welcome{AcceptedVersion: v, MaxStreams: cfg.MaxStreams, Capabilities: caps, RouteKey: routeKey})
 	if err := c.Write(hctx, websocket.MessageBinary, w); err != nil {
 		_ = c.Close(websocket.StatusInternalError, "")
 		return nil, err

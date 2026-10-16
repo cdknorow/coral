@@ -85,6 +85,28 @@ type Welcome struct {
 	MaxStreams      int    `json:"max_streams,omitempty"`
 	// Capabilities (version 2) the hub turns on for this tunnel, e.g. "relay".
 	Capabilities []string `json:"capabilities,omitempty"`
+	// RouteKey (optional, #3683, coral-hub's account affinity) is an opaque routing hint: the
+	// connector sends it back as the RouteHeader on its later dials to the same hub, so the hub
+	// can place the tunnel near the account's other sessions. Exactly 32 lowercase hex
+	// characters; anything else is ignored. Old hubs never send it (no version change).
+	RouteKey string `json:"route_key,omitempty"`
+}
+
+// RouteHeader carries a hub's last route key on a tunnel dial to that same hub (#3683).
+const RouteHeader = "X-Coral-Route"
+
+// ValidRouteKey reports whether k is a well-formed route key: exactly 32 lowercase hex
+// characters. A route key is never logged.
+func ValidRouteKey(k string) bool {
+	if len(k) != 32 {
+		return false
+	}
+	for i := 0; i < len(k); i++ {
+		if c := k[i]; !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 var (

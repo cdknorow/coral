@@ -74,10 +74,11 @@ func (s *CloudStore) Save(ctx context.Context, hubURL, serverID, label, token st
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at)
-		VALUES (1, ?, ?, ?, ?, ?, ?)
+	// A new enrollment starts without a route key (#3683): an earlier one belonged to it.
+	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at, route_key)
+		VALUES (1, ?, ?, ?, ?, ?, ?, NULL)
 		ON CONFLICT(id) DO UPDATE SET hub_url=excluded.hub_url, server_id=excluded.server_id, label=excluded.label,
-		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL`,
+		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL`,
 		strings.TrimRight(hubURL, "/"), serverID, label, env, CloudStateActive, nowUTC())
 	return err
 }
@@ -128,6 +129,24 @@ func (s *CloudStore) SetState(ctx context.Context, state, msg string) error {
 		m = msg
 	}
 	_, err := s.db.ExecContext(ctx, "UPDATE cloud_connection SET state = ?, last_error = ? WHERE id = 1", state, m)
+	return err
+}
+
+// RouteKey is the route key the hub at hubURL last gave this enrollment, or "" (#3683). It is
+// kept only for the hub that gave it: a key stored for another hub URL is never returned.
+func (s *CloudStore) RouteKey(ctx context.Context, hubURL string) (string, error) {
+	var k sql.NullString
+	err := s.db.GetContext(ctx, &k, "SELECT route_key FROM cloud_connection WHERE id = 1 AND hub_url = ?", strings.TrimRight(hubURL, "/"))
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return k.String, err
+}
+
+// SetRouteKey keeps key as the route key of the enrollment with hubURL; with another hub's
+// enrollment it changes nothing. The caller has checked the key's form. Never logged.
+func (s *CloudStore) SetRouteKey(ctx context.Context, hubURL, key string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE cloud_connection SET route_key = ? WHERE id = 1 AND hub_url = ?", key, strings.TrimRight(hubURL, "/"))
 	return err
 }
 

@@ -543,6 +543,17 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		Backoff:       m.o.Backoff,
 		Logger:        m.o.Logger,
 		OnSession:     func(cs *tunnel.ClientSession) { m.setSession(gen, cs) },
+		// The hub's routing hint (#3683): kept for this hub URL only (a new enrollment or another
+		// hub drops it), sent back on the next dial to it, never logged.
+		RouteKey: func() string {
+			k, _ := m.o.Store.RouteKey(ctx, m.o.HubURL)
+			return k
+		},
+		OnRouteKey: func(k string) {
+			if old, _ := m.o.Store.RouteKey(ctx, m.o.HubURL); old != k {
+				_ = m.o.Store.SetRouteKey(ctx, m.o.HubURL, k)
+			}
+		},
 		OnState: func(connected bool, err error) {
 			switch {
 			case connected:

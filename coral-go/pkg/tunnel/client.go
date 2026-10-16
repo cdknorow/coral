@@ -79,7 +79,13 @@ type ClientOptions struct {
 	// OnSession is called with the live session after each connect, and with nil when it
 	// ends, so the owner can send relay requests over it (#3489). Optional.
 	OnSession func(*ClientSession)
-	Logger    *slog.Logger
+	// RouteKey is read on every dial: the route key this hub last gave, sent as the
+	// RouteHeader to this URL only, and only when well-formed (#3683). Nil or "" sends none.
+	RouteKey func() string
+	// OnRouteKey is called after a handshake whose Welcome carried a well-formed route key, so
+	// the owner can keep it for the next dial to the same hub. A malformed one never reaches it.
+	OnRouteKey func(string)
+	Logger     *slog.Logger
 
 	uplink uplinkConfig // the uplink scheduler's tuning (tests)
 }
@@ -212,7 +218,13 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	cfg := o.SessionConfig.withDefaults()
 	hctx, hcancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer hcancel()
-	c, _, err := websocket.Dial(hctx, rawURL, &websocket.DialOptions{HTTPClient: lowLatencyClient(noRedirectClient(o.HTTPClient))})
+	dopts := &websocket.DialOptions{HTTPClient: lowLatencyClient(noRedirectClient(o.HTTPClient))}
+	if o.RouteKey != nil {
+		if k := o.RouteKey(); ValidRouteKey(k) {
+			dopts.HTTPHeader = http.Header{RouteHeader: {k}}
+		}
+	}
+	c, _, err := websocket.Dial(hctx, rawURL, dopts)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +264,9 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	}
 	if w.MaxStreams > 0 && cfg.MaxStreams > w.MaxStreams {
 		cfg.MaxStreams = w.MaxStreams
+	}
+	if o.OnRouteKey != nil && ValidRouteKey(w.RouteKey) {
+		o.OnRouteKey(w.RouteKey)
 	}
 
 	c.SetReadLimit(cfg.wsReadLimit())
