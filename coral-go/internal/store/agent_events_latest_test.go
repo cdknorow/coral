@@ -84,26 +84,6 @@ func seedAgentEvents(t testing.TB, db *DB, n, perSession int, seed int64) []stri
 // Reference implementations: the queries before #2917, kept to prove the
 // rewritten ones return the same answers.
 
-func legacyLatestEventTypes(t testing.TB, db *DB, ids []string) map[string][2]string {
-	query, args, err := sqlx.In(`SELECT session_id, event_type, summary FROM agent_events
-		 WHERE session_id IN (?) AND event_type NOT IN ('status', 'goal', 'confidence')
-		 ORDER BY created_at DESC`, ids)
-	require.NoError(t, err)
-	var rows []struct {
-		SessionID string `db:"session_id"`
-		EventType string `db:"event_type"`
-		Summary   string `db:"summary"`
-	}
-	require.NoError(t, db.Select(&rows, query, args...))
-	out := map[string][2]string{}
-	for _, r := range rows {
-		if _, ok := out[r.SessionID]; !ok {
-			out[r.SessionID] = [2]string{r.EventType, r.Summary}
-		}
-	}
-	return out
-}
-
 func legacyLatestGoals(t testing.TB, db *DB, ids []string) map[string]string {
 	query, args, err := sqlx.In(`SELECT session_id, summary FROM agent_events
 		 WHERE session_id IN (?) AND event_type = 'goal'
