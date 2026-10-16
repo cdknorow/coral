@@ -2154,7 +2154,8 @@ body.panel-dragging .agentic-state {
     transition: opacity 0.15s;
 }
 
-.file-item:hover .file-action-btns {
+.file-item:hover .file-action-btns,
+.file-item:focus-within .file-action-btns {
     opacity: 1;
 }
 
