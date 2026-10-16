@@ -69,6 +69,9 @@ const SETTINGS_PRELOAD = `(() => {
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         await install();
+        // The page's own settings load must be in before a step sets 'Show server': a late one would
+        // put back whatever the server held (on a busy machine, step 2's saved "False" in step 3).
+        await require('./helpers/wait').bind(ev).coralReady('startup', 'settings');
         await ev(`localStorage.clear(); true`);
 
         console.log('1. Short names');
@@ -128,7 +131,8 @@ const SETTINGS_PRELOAD = `(() => {
         console.log('   ✓ button "studio-mac", panel details + Open in Servers, Escape, Show server saves + chips');
 
         console.log('3. Three servers (one offline): N servers, chips by default, Group by server, collapse persisted');
-        await ev(`window.__settingsPuts.length = 0; (async () => { const s = await import((window.__coralStatic || '/static/') + 'state.js'); if (s.state.settings) delete s.state.settings.show_session_server; })(); true`);
+        // Back to unset before the scene renders: done here, not in a promise left running (step 2 left "False").
+        await ev(`window.__settingsPuts.length = 0; if (T.state.settings) delete T.state.settings.show_session_server; true`);
         await scene(THREE);
         v = await view();
         assert.equal(v.button.label, '3 servers');
