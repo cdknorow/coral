@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/safefs"
@@ -196,13 +197,21 @@ func (t Transport) hello(ctx context.Context, base string) (clientNonce, serverN
 // nothing inside an agent session, when the process already has an agent session token
 // (CORAL_SESSION_TOKEN), or when the token can't be read (Coral not running as this
 // user, or another data folder): the request then goes out unsigned, as before.
+//
+// When it can't sign, a 401 from this computer's Coral then prints once, on stderr, why the
+// request went out without a credential (#3936: with strict local auth the default, a bare
+// "401 session_token_required" told a person nothing).
 func InstallOperatorSigning() bool {
 	if InsideAgentSession() {
+		if strings.TrimSpace(os.Getenv("CORAL_SESSION_TOKEN")) == "" {
+			installUnsignedHint("this agent session has no session token (it started before Coral gave agents one): restart the agent from Coral")
+		}
 		return false
 	}
 	dir := DataDir()
 	tok, err := ReadToken(dir)
 	if err != nil {
+		installUnsignedHint(fmt.Sprintf("this command couldn't read Coral's command-line token in %s (%v), so it could not sign as you: run it as the user Coral runs as, with CORAL_DATA_DIR set if Coral uses another data folder", dir, err))
 		return false
 	}
 	if _, done := http.DefaultTransport.(Transport); done {
@@ -210,6 +219,30 @@ func InstallOperatorSigning() bool {
 	}
 	http.DefaultTransport = Transport{Base: http.DefaultTransport, Token: tok, Dir: dir}
 	return true
+}
+
+// unsignedHint explains, once, a 401 from this computer's Coral to a request that went out
+// without a credential.
+type unsignedHint struct {
+	base http.RoundTripper
+	hint string
+	once *sync.Once
+	out  io.Writer
+}
+
+func installUnsignedHint(hint string) {
+	if _, done := http.DefaultTransport.(unsignedHint); done {
+		return
+	}
+	http.DefaultTransport = unsignedHint{base: http.DefaultTransport, hint: hint, once: new(sync.Once), out: os.Stderr}
+}
+
+func (u unsignedHint) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := u.base.RoundTrip(r)
+	if err == nil && resp.StatusCode == http.StatusUnauthorized && auth.IsLoopbackHost(r.URL.Hostname()) {
+		u.once.Do(func() { fmt.Fprintf(u.out, "coral: Coral refused the request (401): %s\n", u.hint) })
+	}
+	return resp, err
 }
 
 type verifiedKey struct{}

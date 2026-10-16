@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // A loopback peer normally gets Coral's no-credentials pass. A reverse proxy (Tailscale Serve,
@@ -113,10 +114,24 @@ func hasProxyHeaders(r *http.Request) bool {
 // local-only power (the dashboard's relaxed file bounds, Coral Hub connect, opening an editor,
 // deleting the input log) must use it, not a bare RemoteAddr loopback check, so a request a local
 // proxy forwarded — and every request while the setting is on, when Coral can't tell a local
-// browser from a proxied one — gets the strict, non-local rules (#3585).
+// browser from a proxied one — gets the strict, non-local rules (#3585). Coral Hub's tunnel
+// also reaches Coral from 127.0.0.1, so a request with its stamp, authentic or not, is never
+// local either (#3936): the hub's route table is the only gate for a hub user.
 func IsDirectLocal(r *http.Request) bool {
-	return isDirectLocal(r) && !RequireAuthOnLoopback()
+	return localOperator(r) && !RequireAuthOnLoopback()
 }
+
+// localOperator is isDirectLocal without Coral Hub's tunnel: a loopback peer, no reverse-proxy
+// header and no tunnel stamp. Whatever trusts locality as the authority for a local-only power
+// uses this (or IsDirectLocal); the middleware's own pass (IsDirectLocalPeer) keeps the tunnel,
+// whose stamp the identity layer and the cloud guard check after it.
+func localOperator(r *http.Request) bool {
+	return isDirectLocal(r) && !tunneled(r)
+}
+
+// tunneled reports a request carrying Coral Hub's tunnel stamp, authentic or forged: either way
+// it is not the person at this computer.
+func tunneled(r *http.Request) bool { return r.Header.Get(tunnel.ViaHeader) != "" }
 
 // IsDirectLocalPeer is IsDirectLocal without the require_auth_on_loopback clause: a loopback peer
 // with no reverse-proxy header, whatever the setting. It is for a flow whose OWN credential is

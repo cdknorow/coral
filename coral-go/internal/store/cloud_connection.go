@@ -74,11 +74,12 @@ func (s *CloudStore) Save(ctx context.Context, hubURL, serverID, label, token st
 	if err != nil {
 		return err
 	}
-	// A new enrollment starts without a route key (#3683): an earlier one belonged to it.
-	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at, route_key)
-		VALUES (1, ?, ?, ?, ?, ?, ?, NULL)
+	// A new enrollment starts without a route key (#3683) or an owner (#3966): an earlier one's
+	// belonged to it.
+	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at, route_key, hub_owner)
+		VALUES (1, ?, ?, ?, ?, ?, ?, NULL, NULL)
 		ON CONFLICT(id) DO UPDATE SET hub_url=excluded.hub_url, server_id=excluded.server_id, label=excluded.label,
-		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL`,
+		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL, hub_owner=NULL`,
 		strings.TrimRight(hubURL, "/"), serverID, label, env, CloudStateActive, nowUTC())
 	return err
 }
@@ -147,6 +148,39 @@ func (s *CloudStore) RouteKey(ctx context.Context, hubURL string) (string, error
 // enrollment it changes nothing. The caller has checked the key's form. Never logged.
 func (s *CloudStore) SetRouteKey(ctx context.Context, hubURL, key string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE cloud_connection SET route_key = ? WHERE id = 1 AND hub_url = ?", key, strings.TrimRight(hubURL, "/"))
+	return err
+}
+
+// Owner is what is pinned as the Coral Hub account that owns this enrollment (Hub sign-in,
+// #3966): "" when none is known yet, an account id, or OwnerBlocked after the hub named
+// another account. Only a new enrollment (Save) clears it.
+func (s *CloudStore) Owner(ctx context.Context) (string, error) {
+	var o sql.NullString
+	err := s.db.GetContext(ctx, &o, "SELECT hub_owner FROM cloud_connection WHERE id = 1")
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNoCloudConnection
+	}
+	return o.String, err
+}
+
+// OwnerBlocked is the owner pin after the hub named another account than the pinned one:
+// Hub sign-in stays off until this computer is linked again.
+const OwnerBlocked = "blocked"
+
+// PinOwner pins account as the owner of the enrollment with serverID when none is pinned,
+// and reports whether it did.
+func (s *CloudStore) PinOwner(ctx context.Context, serverID, account string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, "UPDATE cloud_connection SET hub_owner = ? WHERE id = 1 AND server_id = ? AND hub_owner IS NULL", account, serverID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// BlockOwner sets the pin of the enrollment with serverID to OwnerBlocked.
+func (s *CloudStore) BlockOwner(ctx context.Context, serverID string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE cloud_connection SET hub_owner = ? WHERE id = 1 AND server_id = ?", OwnerBlocked, serverID)
 	return err
 }
 

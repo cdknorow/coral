@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -104,4 +105,42 @@ func TestLoginTokenTTLKnob(t *testing.T) {
 	assert.Equal(t, LoginTokenTTL, loginTokenTTL(), "never longer")
 	t.Setenv("CORAL_TEST_LOGIN_TOKEN_TTL", "junk")
 	assert.Equal(t, LoginTokenTTL, loginTokenTTL())
+}
+
+// #3970 (Security's #3967 finding 1): a sign-in link opened by another OS user of this computer
+// is refused like a used one, and the token survives for its owner; where the system can't tell
+// the user, links work as before and that is logged once.
+func TestLoginTokenRefusesAnotherUser(t *testing.T) {
+	var logs strings.Builder
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	ks, err := NewKeyStore(t.TempDir())
+	require.NoError(t, err)
+	h := Middleware(ks)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(299) }))
+	get := func(token string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/?login_token="+token, nil)
+		r.RemoteAddr = "127.0.0.1:1234"
+		r.Host = "localhost:8420"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec
+	}
+	same, supported := false, true
+	ks.SetPeerUser(func(*http.Request) (bool, bool) { return same, supported })
+	tok, err := ks.MintLoginToken()
+	require.NoError(t, err)
+	rec := get(tok)
+	assert.Equal(t, http.StatusForbidden, rec.Code, "another user")
+	assert.Empty(t, rec.Result().Cookies())
+	assert.Contains(t, logs.String(), "opened by another user")
+	same = true
+	rec = get(tok)
+	assert.Equal(t, http.StatusFound, rec.Code, "the owner's link still works")
+
+	supported, same = false, false
+	for i := 0; i < 2; i++ {
+		tok, _ := ks.MintLoginToken()
+		assert.Equal(t, http.StatusFound, get(tok).Code, "unsupported: as before")
+	}
+	assert.Equal(t, 1, strings.Count(logs.String(), "can't tell which user"), "logged once")
 }

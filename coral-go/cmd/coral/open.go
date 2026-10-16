@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/hooks"
 	"github.com/cdknorow/coral/internal/loginlink"
@@ -33,6 +34,16 @@ func openDashboard(out io.Writer, link string, browse bool) {
 		return
 	}
 	fmt.Fprintf(out, "  Open the dashboard (sign-in link, single use, 10 minutes):\n  %s\n\n", link)
+	if inAgentTerminal() {
+		fmt.Fprintln(out, "  Warning: this looks like an agent's terminal (or a tmux pane an agent can read). Anything shown here can read this link and sign in as you: run 'coral open' in your own terminal instead.")
+		fmt.Fprintln(out)
+	}
+}
+
+// inAgentTerminal: a Coral agent session's variables, or tmux (where an agent's pane can be read
+// back), are set (#3970, Security's #3967 finding 4).
+func inAgentTerminal() bool {
+	return cliauth.InsideAgentSession() || os.Getenv("TMUX") != ""
 }
 
 // runOpen is `coral open`: a fresh dashboard sign-in link from the running Coral on

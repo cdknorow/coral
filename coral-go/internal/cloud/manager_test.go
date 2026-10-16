@@ -43,9 +43,13 @@ type fakeHub struct {
 	sessions    chan *tunnel.Session
 
 	routeKey  atomic.Value // string: the route key Welcome carries (#3683); unset: none
+	account   atomic.Value // string: the account the enrollment reply names (#3966); unset: none
+	signin    atomic.Value // signinFunc: answers Hub sign-in (#3966); unset: not advertised
 	routeMu   sync.Mutex
 	routeSeen []string // the X-Coral-Route header of each /tunnel dial
 }
+
+type signinFunc func(tunnel.SigninRequest) tunnel.SigninResponse
 
 func (h *fakeHub) routeHeaders() []string {
 	h.routeMu.Lock()
@@ -93,7 +97,11 @@ func newFakeHub(t *testing.T) *fakeHub {
 			w.Write([]byte(`{"error":"authorization_pending"}`))
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"server_token": fakeToken, "server_id": "srv_1", "label": "My Laptop"})
+		reply := map[string]any{"server_token": fakeToken, "server_id": "srv_1", "label": "My Laptop"}
+		if a, ok := h.account.Load().(string); ok {
+			reply["account"] = a
+		}
+		json.NewEncoder(w).Encode(reply)
 	})
 	mux.HandleFunc("GET /tunnel", func(w http.ResponseWriter, r *http.Request) {
 		h.tunnels.Add(1)
@@ -105,7 +113,18 @@ func newFakeHub(t *testing.T) *fakeHub {
 				return nil, tunnel.ErrUnauthorized
 			}
 			return "srv_1", nil
-		}, tunnel.SessionConfig{RouteKey: func(any) string { k, _ := h.routeKey.Load().(string); return k }})
+		}, tunnel.SessionConfig{
+			RouteKey: func(any) string { k, _ := h.routeKey.Load().(string); return k },
+			Capabilities: func(any) []string {
+				if _, ok := h.signin.Load().(signinFunc); ok {
+					return []string{tunnel.CapabilitySignin}
+				}
+				return nil
+			},
+			OnSignin: func(ctx context.Context, s *tunnel.Session, req tunnel.SigninRequest) tunnel.SigninResponse {
+				return h.signin.Load().(signinFunc)(req)
+			},
+		})
 		if err == nil {
 			h.sessions <- s
 		}

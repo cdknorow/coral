@@ -173,6 +173,20 @@ func (h *SystemHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 
 // PutSettings upserts one or more settings.
 // PUT /api/settings
+// hubTrustSettingRoutes are the Coral Hub link's trust settings and the routes that write them
+// (all three are denied to a Coral Hub sign-in, and the dashboard writes them there).
+var hubTrustSettingRoutes = map[string]string{
+	MaxModeSetting:            "PUT /api/cloud/max-mode",
+	AllowHubAutoAcceptSetting: "PUT /api/cloud/allow-auto-accept",
+	RedactTokensSetting:       "PUT /api/cloud/redact-tokens",
+}
+
+// hubSigninSettingKey: a Sign in with Coral Hub setting (server.HubSigninEnabledSetting and its
+// siblings, all named hub_signin_*), never written by PUT /api/settings.
+func hubSigninSettingKey(k string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(k)), "hub_signin")
+}
+
 func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
 	if err := decodeJSON(r, &body); err != nil {
@@ -195,6 +209,20 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 	for _, k := range []string{HubOperatorDisabledSetting, legacyHubOperatorSetting} {
 		if _, ok := body[k]; ok {
 			errBadRequest(w, k+" is set with PUT /api/system/hub-operator")
+			return
+		}
+	}
+	// Sign in with Coral Hub's settings have their own routes (#3966, Security condition 4):
+	// only a local Operator may change them, and turning it off ends Hub sessions.
+	for k := range body {
+		if hubSigninSettingKey(k) {
+			errBadRequest(w, k+" is set in Settings > Browser sign-in (PUT /api/auth/hub-signin or /api/auth/hub-origins)")
+			return
+		}
+		// The Coral Hub link's trust settings have their own routes, which a Coral Hub sign-in
+		// can't reach (#3966 round 1): never through the generic PUT, for any caller.
+		if route, ok := hubTrustSettingRoutes[strings.ToLower(strings.TrimSpace(k))]; ok {
+			errBadRequest(w, k+" is set with "+route)
 			return
 		}
 	}

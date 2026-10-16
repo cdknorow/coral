@@ -34,6 +34,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 func TestKnownContextWindow_UnknownMetadataIsSuppressed(t *testing.T) {
@@ -2072,6 +2073,25 @@ func TestSessionsOpenInEditor(t *testing.T) {
 	var body struct{ Editors []map[string]string }
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	assert.Equal(t, []map[string]string{{"id": "vscode", "name": "VS Code"}}, body.Editors)
+
+	// #3936 (Coral Hub Security's (b)): a request with the tunnel's stamp, authentic or forged,
+	// isn't the person at this computer, whatever the route table says.
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/claude-editor/open-in-editor",
+		bytes.NewBufferString(`{"filepath": "main.go", "session_id": "editor-1", "editor": "vscode"}`))
+	req.Header.Set(tunnel.ViaHeader, "forged")
+	stamped, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	stamped.Body.Close()
+	assert.Equal(t, http.StatusForbidden, stamped.StatusCode)
+	assert.Len(t, calls, 1, "no editor opened for a tunnelled request")
+	req, _ = http.NewRequest("GET", server.URL+"/api/system/editors", nil)
+	req.Header.Set(tunnel.ViaHeader, "forged")
+	stamped, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer stamped.Body.Close()
+	var none struct{ Editors []map[string]string }
+	require.NoError(t, json.NewDecoder(stamped.Body).Decode(&none))
+	assert.Empty(t, none.Editors, "no editors offered through the tunnel")
 }
 
 func TestIsLocalClient(t *testing.T) {

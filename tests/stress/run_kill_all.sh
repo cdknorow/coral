@@ -156,7 +156,10 @@ kill_round() {  # label, group-by-team on|off
     local ids; ids=$(echo "$a,$b,$ARCH,$(echo $TEAM_SIDS | tr ' ' ',')")
     log "[$label] Kill all on folder '$FOLDER' in the dashboard (Group by Team $grouping) ..."
     local out
-    if ! out=$("$NODE" "$SCRIPT_DIR/kill_all_browser.js" "$BASE_URL" "$FOLDER" "$grouping" "$ids"); then
+    # Strict local auth is the default (#3936): the tab signs in with a single-use 'coral open' link.
+    local link; link=$("$TMP/coral" open --print --url "$BASE_URL" --home "$CORAL_DATA_DIR" | sed -n 's/^ *\(http[^ ]*login_token=[^ ]*\).*/\1/p' | head -1)
+    [[ -n "$link" ]] || { fail "[$label] coral open printed no sign-in link"; return; }
+    if ! out=$("$NODE" "$SCRIPT_DIR/kill_all_browser.js" "$BASE_URL" "$FOLDER" "$grouping" "$ids" "$link"); then
         fail "[$label] dashboard Kill all did not run"; return
     fi
     log "[$label] confirm: $(echo "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["confirm"])')"

@@ -77,6 +77,8 @@ const (
 var (
 	userCodeRe = regexp.MustCompile(`^[A-Z0-9]{4}-?[A-Z0-9]{4}$`)
 	serverIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	// hubAccountRe is a Coral Hub account id: a lowercase UUID (#3966).
+	hubAccountRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 )
 
 // NormalizeHubURL validates the configured hub address and returns it as a bare
@@ -146,6 +148,7 @@ type Enrolled struct {
 	Token    string // secret
 	ServerID string
 	Label    string
+	Account  string // the Coral Hub account that enrolled it (#3966); "" from a hub that doesn't say
 }
 
 func hubPost(ctx context.Context, hc *http.Client, hubURL, path string, in, out any) (int, error) {
@@ -268,6 +271,7 @@ func PollEnrollment(ctx context.Context, hc *http.Client, hubURL, deviceCode str
 		Token    string `json:"server_token"`
 		ServerID string `json:"server_id"`
 		Label    string `json:"label"`
+		Account  string `json:"account"`
 		Error    string `json:"error"`
 	}
 	status, err := hubPost(ctx, hc, hubURL, "/api/enroll/poll", map[string]string{"device_code": deviceCode}, &r)
@@ -279,7 +283,12 @@ func PollEnrollment(ctx context.Context, hc *http.Client, hubURL, deviceCode str
 		if !strings.HasPrefix(r.Token, tokenPrefix) || len(r.Token) > 256 || !serverIDRe.MatchString(r.ServerID) {
 			return nil, ErrHubResponse
 		}
-		return &Enrolled{Token: r.Token, ServerID: r.ServerID, Label: cleanLabel(r.Label)}, nil
+		// A malformed account is no account: Hub sign-in then stays off until one is pinned.
+		acct := r.Account
+		if !ValidHubAccount(acct) {
+			acct = ""
+		}
+		return &Enrolled{Token: r.Token, ServerID: r.ServerID, Label: cleanLabel(r.Label), Account: acct}, nil
 	case http.StatusBadRequest, http.StatusForbidden:
 		switch r.Error {
 		case "authorization_pending":
@@ -296,6 +305,9 @@ func PollEnrollment(ctx context.Context, hc *http.Client, hubURL, deviceCode str
 	}
 	return nil, ErrHubResponse
 }
+
+// ValidHubAccount reports whether s is a Coral Hub account id.
+func ValidHubAccount(s string) bool { return hubAccountRe.MatchString(s) }
 
 func cleanLabel(s string) string {
 	s = strings.Map(func(r rune) rune {

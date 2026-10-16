@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -222,7 +223,7 @@ func parseSettings(path string) (boardName string, env map[string]string) {
 func post(baseURL, board, sessionName, message string) {
 	// Like a real agent's tool call (#3387): post through coral-board, which adds the
 	// session token from its inherited environment; the mock never touches the token.
-	if cb := os.Getenv("MOCK_AGENT_CORAL_BOARD"); cb != "" {
+	if cb := coralBoard(); cb != "" {
 		cmd := exec.Command(cb, "post", message)
 		cmd.Env = append(os.Environ(), "CORAL_URL="+baseURL)
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -248,7 +249,7 @@ func post(baseURL, board, sessionName, message string) {
 func readMessages(baseURL, board string) int {
 	// Like a real agent (#3418): read through coral-board, which carries the session token,
 	// so the stand-in also works with strict local auth. The count is only for the log.
-	if cb := os.Getenv("MOCK_AGENT_CORAL_BOARD"); cb != "" {
+	if cb := coralBoard(); cb != "" {
 		cmd := exec.Command(cb, "read")
 		cmd.Env = append(os.Environ(), "CORAL_URL="+baseURL)
 		out, err := cmd.Output()
@@ -266,6 +267,29 @@ func readMessages(baseURL, board string) int {
 	var msgs []any
 	json.Unmarshal(data, &msgs)
 	return len(msgs)
+}
+
+// coralBoard is the coral-board the stand-in posts and reads through, like a real agent, so its
+// requests carry the session's token (strict local auth, the default since #3936):
+// MOCK_AGENT_CORAL_BOARD, else a coral-board next to this executable. "" posts directly, which
+// strict local auth refuses.
+func coralBoard() string {
+	if cb := os.Getenv("MOCK_AGENT_CORAL_BOARD"); cb != "" {
+		return cb
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	name := "coral-board"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	cb := filepath.Join(filepath.Dir(exe), name)
+	if fi, err := os.Stat(cb); err == nil && fi.Mode().IsRegular() {
+		return cb
+	}
+	return ""
 }
 
 func short(id string) string {

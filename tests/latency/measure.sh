@@ -20,6 +20,8 @@ FILES_PATH=$(j "['files_path']")
 
 HOST=$(echo "$BASE" | sed -E 's#^https?://##')
 HDR=(-H "Origin: $BASE" -H "Referer: $BASE/" -H "Sec-Fetch-Site: same-origin")
+# Strict local auth is the default (#3936): the test server's API key, from run_all.sh.
+[[ -n "${CORAL_API_KEY:-}" ]] && HDR+=(-H "Authorization: Bearer $CORAL_API_KEY")
 
 # run_ep NAME  curl-args...
 run_ep() {

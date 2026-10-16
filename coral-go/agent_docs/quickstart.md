@@ -162,11 +162,10 @@ counts as loopback, any other name (`myhost.local`) as a network address. Every 
 Coral stops at startup and says so.
 
 > **On a computer other people log in to:** a loopback listener lets any local user reach
-> Coral, and in the default mode a request from this computer needs no credential. For the
-> stricter setup, keep the loopback listener and turn on
-> [strict local auth](auth.md#strict-local-auth-opt-in) (`--strict-local-auth`): every
-> request from this computer then needs an agent's session token, the dashboard sign-in or
-> the command line's signature, which your agents and the `coral` command already send.
+> Coral, but [strict local auth](auth.md#strict-local-auth-the-default) (the default) makes every request from
+> this computer need an agent's session token, the dashboard sign-in, the command line's
+> signature or the API key, which your agents and the `coral` command already send. Keep it
+> on (don't set `CORAL_STRICT_LOCAL_AUTH=0`) and keep the loopback listener.
 > `--no-auto-loopback` is not the stricter setup where Coral runs agents: they would reach it
 > through the network address, where only the API key or a dashboard sign-in is accepted, and
 > their board and task calls would be refused. Use it only on a computer where Coral runs no
@@ -229,8 +228,8 @@ Go to **http://localhost:8420**.
 ## 4. Launch your first agent
 
 From the dashboard click **+New**, choose a working directory and an agent type. The
-equivalent API call (with [strict local auth](auth.md#strict-local-auth-opt-in) on, add
-`-H "Authorization: Bearer <api key>"` to every `curl` in this guide):
+equivalent API call (with [strict local auth](auth.md#strict-local-auth-the-default), the default, add
+`-H "Authorization: Bearer $(coral api-key)"` to every `curl` in this guide):
 
 ```console
 $ curl -s -X POST http://127.0.0.1:8420/api/sessions/launch \

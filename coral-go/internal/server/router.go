@@ -13,6 +13,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/logexit"
@@ -73,8 +74,15 @@ func (s *Server) useMiddleware(r *chi.Mux) {
 
 	// API key auth — gates remote access behind an auto-generated key.
 	// Localhost connections bypass auth entirely.
+	// The auth routes are made here: Sign in with Coral Hub's guard (#3966) runs right after the
+	// sign-in middleware, on every route.
+	s.authRoutes = auth.NewRoutes(s.keyStore)
 	if s.keyStore != nil {
 		r.Use(auth.Middleware(s.keyStore))
+		// Ending a browser session closes its open WebSockets too (#3966 (c)).
+		r.Use(s.keyStore.SessionRequests)
+		s.hubSignin = s.newHubSignin(s.authRoutes)
+		r.Use(s.hubSignin.HubSessionGuard)
 	}
 
 	// Debug request logger (session/ws calls only, when CORAL_DEBUG=1)
@@ -122,7 +130,7 @@ func (s *Server) registerAuth(r *chi.Mux) {
 	})
 
 	// Auth endpoints
-	authRoutes := auth.NewRoutes(s.keyStore)
+	authRoutes := s.authRoutes
 	authRoutes.SetStrictLocal(s.cfg.StrictLocalAuth) // /auth here shows the locked page (#3418)
 	r.Get("/auth", authRoutes.AuthPage)
 	r.Post("/auth/key", authRoutes.ValidateKey)
@@ -130,6 +138,39 @@ func (s *Server) registerAuth(r *chi.Mux) {
 	r.Get("/api/system/api-key", authRoutes.GetAPIKey)
 	r.Post("/api/system/api-key/regenerate", authRoutes.RegenerateKey)
 	r.Get("/api/system/auth-status", authRoutes.AuthStatus)
+	// The password (#3949): never in Coral Hub's tunnel table; an agent's token gets none of
+	// them (operatorOnlyRoutes).
+	authRoutes.SetCLIVerified(cliauth.Verified)
+	peerUser := func(r *http.Request) (bool, bool) {
+		if s.cloudHandler == nil {
+			return false, false
+		}
+		return s.cloudHandler.SameUser(r)
+	}
+	authRoutes.SetPeerUser(peerUser)
+	s.keyStore.SetPeerUser(peerUser) // a sign-in link opened by another OS user is refused (#3970)
+	r.Post("/auth/password", authRoutes.SignInWithPassword)
+	r.Post("/auth/password/create", authRoutes.CreatePassword)
+	r.Get("/api/auth/setup-code", authRoutes.GetSetupCode)
+	r.Post("/api/auth/password/set", authRoutes.SetPassword)
+	r.Post("/api/auth/password/change", authRoutes.ChangePassword)
+	r.Post("/api/auth/password/reset", authRoutes.ResetPassword)
+	r.Get("/api/auth/sessions", authRoutes.Sessions)
+	r.Post("/api/auth/sessions/sign-out-others", authRoutes.SignOutOthers)
+	r.Delete("/api/auth/sessions/{id}", authRoutes.RevokeSessionByID)
+	// Sign in with Coral Hub (#3966): never in the tunnel's table; agent tokens are refused.
+	if hs := s.hubSignin; hs != nil {
+		r.Post("/auth/hub/start", hs.Start)
+		r.Get("/auth/hub/callback", hs.Callback)
+		r.Post("/auth/hub/link", hs.Link)
+		r.Get("/auth/hub/link/status", hs.LinkStatus)
+		r.Get("/api/auth/hub-signin", hs.Settings)
+		r.Put("/api/auth/hub-signin", hs.SetSettings)
+		r.Post("/api/auth/hub-signin/dismiss", hs.DismissOffer)
+		r.Get("/api/auth/hub-origins", hs.GetOrigins)
+		r.Put("/api/auth/hub-origins", hs.SetOrigins)
+		s.goBackground(hs.Run)
+	}
 }
 
 // newRouteHandlers makes the API handlers and seeds what they serve.

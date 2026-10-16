@@ -92,8 +92,9 @@ type Options struct {
 	// accepts only HTTPS from other computers. Only one, or a pair that does not load,
 	// stops startup.
 	TLSCert, TLSKey string
-	// StrictLocalAuth turns on strict local auth (--strict-local-auth, #3418).
-	StrictLocalAuth bool
+	// StrictLocalAuth overrides strict local auth (--strict-local-auth, #3418). nil: on unless
+	// CORAL_STRICT_LOCAL_AUTH says off (#3936), the same for coral, coral-tray and launch-coral.
+	StrictLocalAuth *bool
 }
 
 // RunningServer holds all resources created during startup.
@@ -351,7 +352,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		return nil, err
 	}
 	cfg.TLS = tlsConfig != nil
-	cfg.StrictLocalAuth = opts.StrictLocalAuth
+	cfg.StrictLocalAuth = strictLocalAuth(cfg.CoralDir(), opts.StrictLocalAuth)
 
 	// Bind the port now and keep the listeners open to avoid a TOCTOU race
 	// (another process grabbing the port between check and serve). One listener per --host
@@ -1065,7 +1066,13 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 // startCloudConnector wires the optional Cloud Hub connector. A bad --cloud-url is
 // logged and ignored: the connector stays off and the server starts normally.
 // cloudAttacher is the part of *server.Server the connector needs.
-type cloudAttacher interface{ SetCloud(*cloud.Manager) }
+type cloudAttacher interface {
+	SetCloud(*cloud.Manager)
+	// Sign in with Coral Hub (#3966).
+	HubSigninOrigins() []string
+	HubSigninEvent(ctx context.Context, ev cloud.SigninEvent)
+	EndHubSessions(ctx context.Context, why string)
+}
 
 func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, srv cloudAttacher, ss *store.SessionStore) {
 	hubURL := ""
@@ -1087,7 +1094,12 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		HubLimits:    routes.HubLimitsFromSettings(ss),
 		CoralVersion: config.ReportedVersion(),
 		Logger:       slog.Default(),
+		// Sign in with Coral Hub (#3966): the return origins, the owner-pin events, and the
+		// sessions a lost link ends.
+		SigninOrigins: srv.HubSigninOrigins,
+		OnSigninEvent: srv.HubSigninEvent,
 		OnLinkLost: func(ctx context.Context) {
+			srv.EndHubSessions(ctx, "this computer is no longer linked to Coral Hub")
 			if n, err := ss.ClearHubAutoAccept(ctx, store.AutoAcceptLinkRemoved); err != nil {
 				log.Printf("[CLOUD] turning off Coral Hub auto-accept: %v", err)
 			} else if n > 0 {

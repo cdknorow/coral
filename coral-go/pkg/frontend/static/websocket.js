@@ -16,6 +16,7 @@ import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSe
 import { applySleepingView } from './sleeping_view.js';
 import { updateServersTabVisibility } from './servers_tab.js';
 import { markReady } from './ready.js';
+import { isSignedOut } from './overload.js';
 import { syncUnreachableBanner } from './hub_access.js';
 import { applyMachineHealth } from './machine_health.js';
 import { syncAutoAcceptHeader, noteAutoAcceptPauses } from './auto_accept.js';
@@ -30,6 +31,7 @@ let _feedFailures = 0;
 let _lastSidebarRenderAt = 0;
 
 function scheduleFeedReconnect() {
+    if (isSignedOut()) return; // the sign-in panel is up (#3939): the page reloads once signed in
     _feedFailures++;
     feedHooks.schedule(connectCoralWs, feedRetryDelay(_feedFailures));
 }

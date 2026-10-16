@@ -172,6 +172,17 @@ env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u C
 SERVER_PID=$!
 wait_for_server
 
+# Strict local auth is the default (#3936): the per-session task routes take an agent's token or
+# the dashboard Operator, not the API key, so this harness signs in as the dashboard does: a
+# single-use 'coral open' link traded for the session cookie, sent on every dashboard call.
+JAR="$TMPDIR_AT/cookies.txt"
+LINK=$("$TMPDIR_AT/coral" open --print --url "$BASE_URL" --home "$CORAL_DATA_DIR" | sed -n 's/^ *\(http[^ ]*login_token=[^ ]*\).*/\1/p' | head -1)
+[[ -n "$LINK" ]] || { log "ERROR: coral open printed no sign-in link"; exit 1; }
+command curl -s -m 10 -o /dev/null -c "$JAR" "$LINK"
+COOKIE=$(awk '$6 ~ /^coral_session/ {print $6 "=" $7}' "$JAR" | tail -1)
+[[ -n "$COOKIE" ]] || { log "ERROR: the sign-in link gave no session cookie"; exit 1; }
+DASHBOARD_HEADERS+=(-H "Cookie: $COOKIE")
+
 # The dummy agent stands in for the Claude CLI
 api PUT "/api/settings" -d "{\"cli_path_claude\": \"$TMPDIR_AT/mock-agent\"}" >/dev/null
 
@@ -322,6 +333,14 @@ OUT=$(as_agent "$SESS_A" task current)
 check "current reports no active task" '[[ "$OUT" == "No active task" ]]' "$OUT"
 
 # Exercise team workflows with the same live mock agents and real board CLI.
+# #3936/#3963: agent_task_workflows drives Orchestrator and Reviewer board roles through
+# coral-board, which needs a session token under strict local auth. Launch them as real agents
+# (like Builder/Tester) so Coral issues their tokens; as_board then carries token_of.
+LP=$(launch_agent "$TMPDIR_AT/work-planner/agent" "Task Planner")
+SESS_PLANNER=$(echo "$LP" | jget "d.get('session_name') or ('claude-' + d.get('session_id',''))")
+LR=$(launch_agent "$TMPDIR_AT/work-reviewer/agent" "Task Reviewer")
+SESS_REVIEWER=$(echo "$LR" | jget "d.get('session_name') or ('claude-' + d.get('session_id',''))")
+
 source "$SCRIPT_DIR/personal_task_workflows.sh"
 source "$SCRIPT_DIR/agent_task_workflows.sh"
 
@@ -387,16 +406,28 @@ CODE=$?
 set -e
 check "direct-ID claim refuses a stalled dependent" '[[ $CODE -ne 0 ]] && echo "$OUT" | grep -qiE "blocked|available|dependency"' "$OUT"
 
-# Assignment ownership regressions use their own board and mock identities.
-source "$SCRIPT_DIR/agent_task_assignment.sh"
-
-log "Assignment editor browser regressions..."
-if CORAL_TEST_URL="$BASE_URL" bash "$SCRIPT_DIR/run_assignment_browser.sh" >"$TMPDIR_AT/assignment-browser.log" 2>&1; then
-    cat "$TMPDIR_AT/assignment-browser.log"
-    pass "assignment editor preserves ownership and rejects stale forms"
+# Assignment ownership regressions reuse SESS_A/SESS_B under new board roles (asg_orch runs
+# SESS_A as "Orchestrator"), which strict local auth refuses by design (identity_mismatch,
+# #3495). They are the documented strict-off section (#3936, Security): run this runner with
+# CORAL_STRICT_LOCAL_AUTH=0 to cover them (the server inherits the variable). The strict
+# agent-token path is already proven by run_identity --strict, the Go e2e and Test 13c above,
+# so the strict run skips this suite rather than restructure it.
+case "$(printf %s "${CORAL_STRICT_LOCAL_AUTH:-on}" | tr 'A-Z' 'a-z')" in
+    0|off|false|no) _assign_strict_off=1 ;;
+    *)              _assign_strict_off= ;;
+esac
+if [[ -n "$_assign_strict_off" ]]; then
+    source "$SCRIPT_DIR/agent_task_assignment.sh"
+    log "Assignment editor browser regressions..."
+    if CORAL_TEST_URL="$BASE_URL" bash "$SCRIPT_DIR/run_assignment_browser.sh" >"$TMPDIR_AT/assignment-browser.log" 2>&1; then
+        cat "$TMPDIR_AT/assignment-browser.log"
+        pass "assignment editor preserves ownership and rejects stale forms"
+    else
+        cat "$TMPDIR_AT/assignment-browser.log"
+        fail "assignment editor browser regressions; see $TMPDIR_AT/assignment-browser.log"
+    fi
 else
-    cat "$TMPDIR_AT/assignment-browser.log"
-    fail "assignment editor browser regressions; see $TMPDIR_AT/assignment-browser.log"
+    log "SKIP: assignment ownership + editor-browser regressions are the strict-off section (#3936); run with CORAL_STRICT_LOCAL_AUTH=0 to cover them"
 fi
 
 # ── Cleanup ──────────────────────────────────────────────────────────

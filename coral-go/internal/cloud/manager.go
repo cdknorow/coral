@@ -69,6 +69,13 @@ type Options struct {
 	// RecordTerms records the terms version the Hub confirmed when a credential
 	// is redeemed (nil: the local acceptance marker; tests replace it).
 	RecordTerms func(version string) error
+	// SigninOrigins gives the exact return origins Hub sign-in may use (#3966): sent to the hub
+	// on every tunnel that offers sign-in and again on SigninOriginsChanged. Nil: none are sent
+	// and no sign-in starts.
+	SigninOrigins func() []string
+	// OnSigninEvent tells the local side about the owner pin (pinned, or another account
+	// named: end every Hub session).
+	OnSigninEvent func(ctx context.Context, ev SigninEvent)
 }
 
 // Status is the safe, secret-free view for the UI.
@@ -147,6 +154,10 @@ type Manager struct {
 	// in-flight cap (4), so a legitimate request is never closed for being over its
 	// stream cap (which the connector would read as "no relay").
 	relaySlots chan struct{}
+	// originsAccepted is the return-origin list the hub accepted on tunnel originsSession
+	// (#3966); a sign-in starts only on that tunnel and only for an origin on it.
+	originsAccepted []string
+	originsSession  *tunnel.ClientSession
 }
 
 // New creates a Manager. Nothing runs until Run.
@@ -460,6 +471,12 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 					"), so it can't connect. Remove this computer in Coral Hub, then connect again.")
 				return
 			}
+			if en.Account != "" {
+				// The owner Hub sign-in compares every reply with (#3966).
+				if pinned, oerr := m.o.Store.PinOwner(ctx, en.ServerID, en.Account); oerr == nil && pinned {
+					m.signinEvent(ctx, SigninEvent{Kind: SigninOwnerPinned, How: "enrollment"})
+				}
+			}
 			conn, gerr := m.o.Store.Get(ctx)
 			if gerr != nil {
 				m.finishEnroll(gen, "enrolled, but the stored enrollment could not be read")
@@ -648,6 +665,10 @@ func (m *Manager) setSession(gen int, cs *tunnel.ClientSession) {
 	defer m.mu.Unlock()
 	if !m.stale(gen) {
 		m.session.Store(cs)
+		m.originsAccepted, m.originsSession = nil, nil
+		if cs != nil && cs.CanSignin() {
+			go m.pushOrigins(gen, cs) // takes m.mu itself
+		}
 	}
 }
 

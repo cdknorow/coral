@@ -134,8 +134,15 @@ export function noteResponse(status, retryAfterValue, { machine = '', overload }
     if (status >= 200 && status < 400 && now >= st.until) st.failures = 0;
 }
 
+// The dashboard has no sign-in session (a 401 that means signed out, #3939): every poller waits, as it does while Coral is overloaded, until
+// the page is signed in again (signed_out.js). Not a timed pause: it ends only when signed_out.js says so.
+let _signedOut = false;
+export function setSignedOut(on) { _signedOut = !!on; }
+export function isSignedOut() { return _signedOut; }
+
 /** Whether polling is paused: for Coral as a whole, or (machine given) for that machine. */
 export function isPaused(machine = '') {
+    if (_signedOut) return true;
     const now = overloadHooks.now();
     if (now < _global.until) return true;
     const st = machine ? _machines.get(machine) : null;
@@ -177,7 +184,7 @@ export function afterPause(fn, machine = '') {
 }
 
 /** Tests: forget every pause. */
-export function _resetOverloadForTests() { _global.until = 0; _global.failures = 0; _machines.clear(); }
+export function _resetOverloadForTests() { _global.until = 0; _global.failures = 0; _machines.clear(); _signedOut = false; }
 
 /** setInterval for a poller: its ticks are skipped while Coral is overloaded (or, with
  *  machine, while the machine it polls is), and, unless whenHidden, while the tab is hidden.
