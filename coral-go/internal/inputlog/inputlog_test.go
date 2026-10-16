@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/linktest"
+	"github.com/cdknorow/coral/internal/secfile/secfiletest"
 )
 
 // captureLog collects what goes to the standard log (coral.log in the server).
@@ -105,9 +106,7 @@ func TestDebugFileIsPrivate(t *testing.T) {
 	captureLog(t)
 	Record("p", Text, "secret-ish")
 	readFile(t, path)
-	st, err := os.Stat(path)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
+	secfiletest.AssertPrivate(t, path)
 }
 
 // With the debug file on, every write is a line: target, source, kind, escaped and
@@ -245,10 +244,9 @@ func TestLogFileIsMadePrivate(t *testing.T) {
 	dir2 := t.TempDir()
 	path2 := filepath.Join(dir2, FileName)
 	require.NoError(t, os.WriteFile(path2, []byte("earlier\n"), 0o644))
+	secfiletest.Expose(t, path2)
 	Setup(dir2, true)
 	Record("p", Text, "now")
 	Flush()
-	fi, err := os.Stat(path2)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm(), "an existing looser file is made 0600")
+	secfiletest.AssertPrivate(t, path2) // an existing looser file is made private
 }

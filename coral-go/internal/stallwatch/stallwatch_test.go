@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/secfile/secfiletest"
 )
 
 // a log output that stops reading, like the terminal in #3226.
@@ -83,9 +85,7 @@ func TestDumpWhenTheLoggerIsStuck(t *testing.T) {
 	assert.Contains(t, text, "Stuck: logger (no answer for 35s)")
 	assert.Contains(t, text, "stuckWriter.Write", "the blocked write is in the dump")
 	assert.Contains(t, text, "goroutine ", "full stacks")
-	fi, err := os.Stat(path)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	secfiletest.AssertPrivate(t, path)
 
 	// One dump per stall: still stuck, no new dump.
 	c.add(15 * time.Minute)

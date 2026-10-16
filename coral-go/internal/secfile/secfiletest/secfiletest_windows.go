@@ -3,6 +3,7 @@
 package secfiletest
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -54,4 +55,33 @@ func RequirePrivate(t *testing.T, path string) {
 	explicit, err := secfile.Explicit(path)
 	require.NoError(t, err, path)
 	require.True(t, explicit, "%s: its access list is inherited, not its own", path)
+}
+
+// AssertPrivate fails the test unless path is private the way Coral makes a secret file: an
+// explicit, protected access list (0600 on Unix).
+func AssertPrivate(t *testing.T, path string) {
+	t.Helper()
+	RequirePrivate(t, path)
+}
+
+// AssertOwnerOnly fails the test unless only this user (and SYSTEM, Administrators) can open path,
+// whether its access list is its own or inherited from a private folder (0600 on Unix).
+func AssertOwnerOnly(t *testing.T, path string) {
+	t.Helper()
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	defer f.Close()
+	require.NoError(t, secfile.CheckOpen(f), path)
+}
+
+// Expose lets another account read path: the built-in Users group (0644 on Unix).
+func Expose(t *testing.T, path string) {
+	t.Helper()
+	GrantUsersRead(t, path)
+}
+
+// OwnerOnlyDir makes dir private to this user, as Coral sets up a new data folder (0700 on Unix).
+func OwnerOnlyDir(t *testing.T, dir string) {
+	t.Helper()
+	OwnerOnlyFolder(t, dir)
 }
