@@ -18,7 +18,7 @@ func TestPathTemplatesInShellCommandsUseForwardSlashes(t *testing.T) {
 	env := []string{"CORAL_PREV_STDOUT=" + native, "CORAL_STEP_0_DIR=" + filepath.Dir(native)}
 	got, err := expandShellTemplates("cat {{prev_stdout}} {{step_0_dir}}", env)
 	require.NoError(t, err)
-	assert.Equal(t, "cat "+filepath.ToSlash(native)+" "+filepath.ToSlash(filepath.Dir(native)), got)
+	assert.Equal(t, "cat '"+filepath.ToSlash(native)+"' '"+filepath.ToSlash(filepath.Dir(native))+"'", got, "forward slashes, each one quoted word (#3930)")
 	assert.NotContains(t, got, `\`)
 	assert.Equal(t, "see "+native, expandTemplates("see {{prev_stdout}}", env), "a prompt keeps the native path")
 }

@@ -965,11 +965,43 @@ func expandShellTemplates(text string, env []string) (string, error) {
 // as escapes, so {{prev_stdout}} named a file that doesn't exist (#3638); C:/Users/... is the
 // same file to sh and to Windows. On Unix ToSlash changes nothing. An agent prompt keeps the
 // native path.
-func templatePath(v string, shell bool) string {
-	if shell {
-		return filepath.ToSlash(v)
+//
+// In a shell command the path is also quoted for where it sits (#3930, Security's #3927
+// finding 7): a data folder with a space, an apostrophe or a shell character must not break or
+// change the command. Outside quotes it is one single-quoted word; inside double quotes (an
+// older workflow's "{{run_dir}}/x") its \, $, ` and " are escaped; inside single quotes an
+// apostrophe closes, escapes and reopens the quote.
+func templatePath(v string, shell bool, quote byte) string {
+	if !shell {
+		return v
 	}
-	return v
+	v = stripNUL(filepath.ToSlash(v))
+	switch quote {
+	case '"':
+		return strings.NewReplacer(`\`, `\\`, `$`, `\$`, "`", "\\`", `"`, `\"`).Replace(v)
+	case '\'':
+		return strings.ReplaceAll(v, "'", `'\''`)
+	}
+	return shellWord(v)
+}
+
+// shellQuoteAt is the POSIX quote open at byte i of cmd: a single quote, a double quote or 0.
+func shellQuoteAt(cmd string, i int) byte {
+	var q byte
+	for j := 0; j < i && j < len(cmd); j++ {
+		c := cmd[j]
+		switch {
+		case q == 0 && c == '\\':
+			j++
+		case q == '"' && c == '\\':
+			j++
+		case q == 0 && (c == '\'' || c == '"'):
+			q = c
+		case q != 0 && c == q:
+			q = 0
+		}
+	}
+	return q
 }
 
 // maxTemplateContent caps a content template in a shell command (F3): above it, the
@@ -1000,13 +1032,14 @@ func expandTemplatesWith(text string, env []string, shell bool, tooBig func(name
 		}
 	}
 
-	return templatePattern.ReplaceAllStringFunc(text, func(match string) string {
+	var quote byte // the quote open where the current template starts (shell commands only)
+	replace := func(match string) string {
 		varName := match[2 : len(match)-2] // strip {{ and }}
 
 		// Check direct mapping
 		if envKey, ok := envKeyForTemplate[varName]; ok {
 			if val, found := envMap[envKey]; found {
-				return templatePath(val, shell)
+				return templatePath(val, shell, quote)
 			}
 			return match // leave unexpanded if env var not set
 		}
@@ -1019,7 +1052,7 @@ func expandTemplatesWith(text string, env []string, shell bool, tooBig func(name
 			}
 			envKey := fmt.Sprintf("CORAL_STEP_%s_%s", m[1], suffix)
 			if val, found := envMap[envKey]; found {
-				return templatePath(val, shell)
+				return templatePath(val, shell, quote)
 			}
 			return match
 		}
@@ -1076,7 +1109,20 @@ func expandTemplatesWith(text string, env []string, shell bool, tooBig func(name
 		}
 
 		return match // unknown template, leave as-is
-	})
+	}
+	if !shell {
+		return templatePattern.ReplaceAllStringFunc(text, replace)
+	}
+	var b strings.Builder
+	last := 0
+	for _, loc := range templatePattern.FindAllStringIndex(text, -1) {
+		b.WriteString(text[last:loc[0]])
+		quote = shellQuoteAt(text, loc[0])
+		b.WriteString(replace(text[loc[0]:loc[1]]))
+		last = loc[1]
+	}
+	b.WriteString(text[last:])
+	return b.String()
 }
 
 // mergeAgentConfig merges step-level agent config over workflow-level default.
