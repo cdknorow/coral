@@ -40,7 +40,10 @@ with tempfile.TemporaryDirectory(prefix='coral-standard-smoke-') as directory:
     (context / 'home' / '.coral' / '.eula-accepted').write_text('accepted\n')
     (context / 'Dockerfile').write_text(
         'FROM scratch\nCOPY bin/ /usr/local/bin/\nCOPY home/ /data/\n'
-        'ENV HOME=/data CORAL_DATA_DIR=/data CORAL_DIR=/data CORAL_SESSION_NAME=standard-smoke\n'
+        # No agent-session variable: coral-board runs as a person in a terminal, so under strict
+        # local auth (#3936) it signs as the Operator with the command-line token the server writes
+        # in /data. An agent-marked caller with no session token is refused, by design.
+        'ENV HOME=/data CORAL_DATA_DIR=/data CORAL_DIR=/data\n'
         'ENV CORAL_TELEMETRY_DISABLED=1\n'
         'ENTRYPOINT ["/usr/local/bin/coral"]\n')
     try:
