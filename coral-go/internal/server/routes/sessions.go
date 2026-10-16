@@ -171,7 +171,7 @@ func (h *SessionsHandler) RequestGoal(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "goal generation is not running"})
 		return
 	}
-	if settings, err := h.ss.GetSettings(r.Context()); err == nil && settings["auto_goals"] == "false" {
+	if settings, err := h.ss.GetSettings(r.Context()); err == nil && background.GoalsDisabled(settings) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "goal generation is turned off"})
 		return
 	}

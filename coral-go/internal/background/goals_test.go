@@ -363,3 +363,12 @@ func TestGoalGenerator_SendsTheLatestRequestAndReplyEvenBehindLargeToolOutput(t 
 	assert.NotContains(t, f.prompt, "go test", "tool calls are never sent")
 	assert.NotContains(t, f.prompt, "xxxx", "tool output is never sent")
 }
+
+// PUT /api/settings stores a JSON false as "False": auto_goals off in any case turns the
+// generator off; anything else (missing, "true", "True") leaves it on (#3825 G).
+func TestGoalsDisabledAnyCase(t *testing.T) {
+	for v, want := range map[string]bool{"false": true, "False": true, " FALSE ": true, "": false, "true": false, "True": false, "0": false} {
+		assert.Equal(t, want, GoalsDisabled(map[string]string{GoalSettingKey: v}), "%q", v)
+	}
+	assert.False(t, GoalsDisabled(map[string]string{}), "missing: on")
+}

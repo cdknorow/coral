@@ -40,7 +40,16 @@ Upserts arbitrary key-value settings.
 
 **Response:** `{"ok": true}`
 
-**Note:** Booleans are converted to Python-style `"True"` / `"False"` strings.
+**Note:** Booleans are converted to Python-style `"True"` / `"False"` strings. Coral reads its
+boolean settings in any case, so `true` and `"true"` mean the same.
+
+**Settings with no control in the dashboard** (set them with this route):
+
+| Key | Default | Effect |
+|---|---|---|
+| `auto_summarize` | off | `true` runs the batch summarizer over finished sessions. Read at startup: restart Coral after changing it. |
+| `auto_goals` | on | `false` stops the short goal line Coral keeps for each live agent (and `POST /api/sessions/live/{name}/goal` answers 409). Read on every pass, so it applies within a minute. |
+| `terminal_replay_bytes` | 262144 | How much recent terminal output a newly opened terminal is sent first (see websockets.md), clamped to 4 KiB to 16 MiB. Applies to terminals opened from then on. |
 
 **CLI paths:** `cli_path_<type>` (Settings › CLI Paths: `claude`, `codex`, `agy`,
 `antigravity`, `gemini`, `pi`) is the program Coral runs for that agent type. A new value
