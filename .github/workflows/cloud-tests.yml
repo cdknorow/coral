@@ -56,7 +56,7 @@ jobs:
           node-version: "22"
       - name: install
         working-directory: tests/frontend
-        run: npm install --no-audit --no-fund --no-package-lock
+        run: npm ci --ignore-scripts --no-audit --no-fund # exactly package-lock.json, no install scripts (#3675)
       - name: cloud-mode frontend tests
         working-directory: tests/frontend
         run: npm run test:cloud
@@ -99,7 +99,7 @@ jobs:
           chrome-version: "155.0.8059.39" # the suites were developed on 155.0.8059.40 locally; CI uses the nearest published known-good build of the same major; bump deliberately
       - name: install
         working-directory: tests/frontend
-        run: npm install --no-audit --no-fund --no-package-lock
+        run: npm ci --ignore-scripts --no-audit --no-fund # exactly package-lock.json, no install scripts (#3675)
       - name: cloud-mode CSP and fetch-metadata suites in real Chrome
         working-directory: tests/frontend
         env:
