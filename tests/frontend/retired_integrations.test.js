@@ -1,4 +1,4 @@
-// Isolated browser contract for retired proxy and Connected Apps surfaces.
+// Isolated browser contract for retired proxy, Connected Apps and webhook surfaces.
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
@@ -30,15 +30,22 @@ const BASE = require('./test_base').BASE;
     assert.equal(checks.codexProxySetting, false);
     assert.equal(checks.modelSelector, true);
     assert.equal(checks.analyticsView, true);
-    assert.equal(checks.webhookModal, true);
+    assert.equal(checks.webhookModal, false, 'webhooks are retired (#3646)');
 
     const source = await (await fetch(`${BASE}/static/modals.js`)).text();
     const cost = await (await fetch(`${BASE}/static/cost_dashboard.js`)).text();
+    const app = await (await fetch(`${BASE}/static/app.js`)).text();
     assert.equal((await fetch(`${BASE}/api/connected-apps`)).status, 404);
     assert.equal((await fetch(`${BASE}/api/proxy/health`)).status, 404);
     assert.equal(source.includes('/api/proxy/'), false);
     assert.equal(source.includes('proxy_enabled'), false);
     assert.equal(cost.includes('/api/proxy/'), false);
-    console.log('PASS retired proxy and Connected Apps UI surfaces absent; models, analytics, and webhooks preserved');
+    // Webhooks are retired (#3646): no route, no script, no code in the modals or the app.
+    assert.equal((await fetch(`${BASE}/api/webhooks`)).status, 404);
+    assert.equal((await fetch(`${BASE}/static/webhooks.js`)).status, 404);
+    for (const [name, text] of [['modals.js', source], ['app.js', app]]) {
+      assert.equal(/webhook/i.test(text), false, `${name} has no webhook code`);
+    }
+    console.log('PASS retired proxy, Connected Apps and webhook UI surfaces absent; models and analytics preserved');
   } finally { await client.close(); }
 })().catch(error => { console.error(error); process.exit(1); });
