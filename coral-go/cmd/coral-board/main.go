@@ -179,10 +179,10 @@ func resolveSessionName() string {
 		return resolved.SessionName
 	}
 	// The Operator's own coral-board in a plain terminal: no agent session in this process's
-	// tree and no session token, so one fixed name (#3864). Never the hostname, which every
-	// sessionless process shared, and never for a process holding an agent's token: that one
-	// has no board rather than the Operator's.
-	if strings.TrimSpace(os.Getenv("CORAL_SESSION_TOKEN")) == "" {
+	// tree and none of the variables Coral sets for one, so one fixed name (#3864). Never the
+	// hostname, which every sessionless process shared, and never for a process with an
+	// agent's marker (cliauth's list): that one has no board rather than the Operator's.
+	if !cliauth.InsideAgentSession() {
 		return operatorSessionName
 	}
 	return ""

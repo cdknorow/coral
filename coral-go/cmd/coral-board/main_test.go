@@ -94,6 +94,15 @@ func TestResolveSessionName_NoSessionMeansNoBoard(t *testing.T) {
 	if p := seenRoundsPath(); p != "" {
 		t.Fatalf("seenRoundsPath() = %q, want \"\"", p)
 	}
+	// Any one of the agent markers is enough (cliauth's list), not only the token.
+	t.Setenv("CORAL_SESSION_TOKEN", "")
+	for _, marker := range []string{"CORAL_SESSION_ID", "CORAL_SUBSCRIBER_ID"} {
+		t.Setenv(marker, "set-by-coral")
+		if name := resolveSessionName(); name != "" {
+			t.Fatalf("with only %s: resolveSessionName() = %q, want \"\"", marker, name)
+		}
+		t.Setenv(marker, "")
+	}
 
 	// The server named this process's session (verified against its live process).
 	cachedPIDResolution = &pidResolution{SubscriberID: "QA Engineer", Project: "team", SessionName: "claude-11111111-1111-4111-8111-111111111111"}
@@ -108,6 +117,7 @@ func TestResolveSessionName_OperatorTerminalKeepsItsBoard(t *testing.T) {
 	dataDir := isolateBoardEnv(t)
 	t.Setenv("CORAL_SESSION_NAME", "")
 	t.Setenv("CORAL_SESSION_TOKEN", "")
+	t.Setenv("CORAL_SESSION_ID", "")
 
 	if name := resolveSessionName(); name != operatorSessionName {
 		t.Fatalf("resolveSessionName() = %q, want %q", name, operatorSessionName)
