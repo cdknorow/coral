@@ -377,11 +377,22 @@ function _disposeTab(tab) {
     tab.renderGen++;
 }
 
+// A tab with unsaved edits asks first, in the confirm dialog; the tab is looked up again once
+// answered, since tabs can change while the dialog is open.
 export function closeTab(tabId) {
+    const tab = _tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    if (_isDirty(tab)) {
+        window.showConfirmModal('Discard Changes', `Discard unsaved changes to ${_fileName(tab.filepath)}?`, () => _closeTabNow(tabId));
+        return;
+    }
+    _closeTabNow(tabId);
+}
+
+function _closeTabNow(tabId) {
     const idx = _tabs.findIndex(t => t.id === tabId);
     if (idx === -1) return;
     const tab = _tabs[idx];
-    if (_isDirty(tab) && !window.confirm(`Discard unsaved changes to ${_fileName(tab.filepath)}?`)) return;
     if (tab.id === _activeId) { _destroyEditor(); }
     _disposeTab(tab);
     _tabs.splice(idx, 1);

@@ -42,7 +42,11 @@ const BASE = require('./test_base').BASE;
         return new Response('{}');
       };
       window.closeSidebarKebabs = () => {};
-      window.confirm = () => false;
+      // This page's body is replaced above, so there is no confirm dialog to open: stand in for
+      // showConfirmModal, record what it was asked, and answer with window.__confirmAnswer. (The real dialog is
+      // covered by confirm_dialogs_browser.test.js.)
+      window.__confirmAnswer = false; window.__asked = [];
+      window.showConfirmModal = (title, message, onConfirm, onCancel) => { window.__asked.push({ title, message }); (window.__confirmAnswer ? onConfirm : onCancel)(); };
     })()`);
 
     // No agent is selected, and another pane starts active. Opening Team view selects the team: Team View tab active, group chat in the center.
@@ -86,11 +90,12 @@ const BASE = require('./test_base').BASE;
     await ev(`window.showTeamWorkingModeWorkspace('beta'); new Promise(r => setTimeout(r, 80))`); // sleep-ok: negative check, the declined switch must change nothing
     assert.equal(await ev(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent`), 'alpha');
     assert.equal(await ev(`location.pathname + location.hash`), '/team/alpha/settings');
-    await ev(`window.confirm = () => true; window.showTeamWorkingModeWorkspace('beta'); true`);
+    assert.deepEqual(await ev(`window.__asked`), [{ title: 'Unsaved Team Settings', message: 'Team settings have unsaved changes. Leave without saving?' }], 'the switch asked once, in the confirm dialog');
+    await ev(`window.__confirmAnswer = true; window.showTeamWorkingModeWorkspace('beta'); true`);
     await w.waitFor(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent === 'beta' && document.querySelector('#team-settings-workspace .working-mode-form')?.dataset.initialState !== undefined`, 'beta settings to load', { soft: true });
     assert.equal(await ev(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent`), 'beta');
     assert.equal(await ev(`location.pathname + location.hash`), '/team/beta/settings');
-    await ev(`window.fetch = window.__reviewFetch; window.confirm = () => false; true`);
+    await ev(`window.fetch = window.__reviewFetch; window.__confirmAnswer = false; true`);
     console.log(JSON.stringify({ alpha, beta, settingsSwitchGuarded: true }));
   } finally { await client.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

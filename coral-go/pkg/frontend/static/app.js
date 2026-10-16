@@ -984,7 +984,7 @@ function currentChatsQuery() {
 function registerRouteHandlers() {
     // Any view but a team leaves the team workspace (Back from a team to where the user was).
     const route = (view, fn) => onRoute(view, async (r, opts) => {
-        if (state.selectedTeam && exitTeamContext({ goBack: false }) === false) {
+        if (state.selectedTeam && await exitTeamContext({ goBack: false }) === false) {
             note(keyRoute('team', state.selectedTeam), { replace: true }); // kept: unsaved team settings
             return;
         }

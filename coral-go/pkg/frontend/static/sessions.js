@@ -45,7 +45,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     const srv = normServer(server || serverForSession(name, sessionId));
     dbg('selectLiveSession', { name, agentType, sessionId, server: srv });
     // Selecting an agent leaves the team view (declining to discard unsaved team settings cancels).
-    if (window.exitTeamContext && window.exitTeamContext({ goBack: false }) === false) return;
+    if (state.selectedTeam && window.exitTeamContext && await window.exitTeamContext({ goBack: false }) === false) return;
     const generation = ++switchGeneration;
     agentSwitchStarted(name, sessionId || null); // window.__coralReady.agentSelected (#3118)
     stopCaptureRefresh();

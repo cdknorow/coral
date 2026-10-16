@@ -92,6 +92,8 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         const cbs = await ev(`(() => { const all = document.querySelector('[data-on-click="mb-export-agents"][data-checked="1"]'), none = document.querySelector('[data-on-click="mb-export-agents"][data-checked="0"]');
             const boxes = () => [...document.querySelectorAll('.export-agent-cb')]; if (!boxes().length) return { n: 0 };
             none.click(); const off = boxes().every(c => !c.checked); all.click(); const on = boxes().every(c => c.checked); return { n: boxes().length, off, on }; })()`);
+        const cbWidth = await ev(`Math.max(...[...document.querySelectorAll('.export-agent-cb')].map(c => c.getBoundingClientRect().width))`);
+        check('each agent checkbox is checkbox-sized, not stretched across its row (#3702)', cbWidth > 0 && cbWidth <= 24, String(cbWidth));
         check('the export dialog\'s All/None set every agent checkbox', cbs.n >= 1 && cbs.off && cbs.on, JSON.stringify(cbs));
         await ev(`window.__downloads.length = 0; document.querySelector('[data-on-click="mb-export-do"]').click(); true`);
         await until(`window.__downloads.length > 0`, 'the board export', 5000);

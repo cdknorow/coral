@@ -91,7 +91,7 @@ function unmountGroupChat() {
 export async function enterTeamContext(team, opts = {}) {
     if (!team) return false;
     const current = getSelectedTeam();
-    if (current && current !== team && !confirmTeamWorkspaceChange()) return false;
+    if (current && current !== team && hasUnsavedTeamSettings() && !(await confirmTeamWorkspaceChange())) return false;
 
     state.selectedTeam = team;
     state.currentBoardServer = splitKey(team).server;
@@ -118,10 +118,11 @@ export async function enterTeamContext(team, opts = {}) {
     return true;
 }
 
-/** Leave the team context and return to the selected agent. */
-export function exitTeamContext({ goBack = true, force = false } = {}) {
+/** Leave the team context and return to the selected agent. Resolves false if the user declined to discard unsaved team settings. */
+export async function exitTeamContext({ goBack = true, force = false } = {}) {
     if (!getSelectedTeam()) return true;
-    if (!force && hasUnsavedTeamSettings() && !confirmTeamWorkspaceChange()) return false;
+    // The dialog is only awaited when there is something unsaved, so a plain exit still happens at once.
+    if (!force && hasUnsavedTeamSettings() && !(await confirmTeamWorkspaceChange())) return false;
 
     state.selectedTeam = null;
     setPreviewSession(state.currentSession?.type === 'live' ? state.currentSession.session_id : null);

@@ -202,8 +202,7 @@ export async function refreshAgentUI() {
                 showActivePanel(); // at once, like a row click: no need to wait for a request in flight
                 refreshAgentUI();
             };
-            remove.onclick = async () => {
-                if (!window.confirm(`Delete “${panel.title}”? This removes the panel and its saved responses.`)) return;
+            remove.onclick = () => window.showConfirmModal('Delete Panel', `Delete “${panel.title}”? This removes the panel and its saved responses.`, async () => {
                 remove.disabled = true;
                 try {
                     const response = await serverFetch(serverForSession(null, sid), endpoint(sid, panel.id), { method: 'DELETE' });
@@ -223,7 +222,7 @@ export async function refreshAgentUI() {
                     remove.disabled = false;
                     status.textContent = error.message;
                 }
-            };
+            });
             popout.onclick = () => window.open(frame.src, '_blank', 'noopener,noreferrer');
             if (isCloud()) {
                 // Publishing and removing panels is the agent's own action on its machine (the hub never forwards PUT/DELETE), and a

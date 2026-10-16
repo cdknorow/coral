@@ -337,6 +337,15 @@
     color: var(--error);
 }
 
+/* The Export dialog's agent rows: a global input width stretched each checkbox across its row (#3702). */
+#mb-export-body .export-agent-cb {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    min-height: 0;
+    margin: 0;
+}
+
 /* Message board multi-select */
 .mb-select-checkbox {
     margin-right: 8px;

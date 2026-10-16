@@ -148,9 +148,21 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal(closedAtOnce, true, 'Close shows the home list at once, even with a refresh in flight');
   await ev(`(()=>{ document.querySelector('.agent-ui-home-row').click(); return true; })()`);
   await waitFor(`!!document.querySelector('.agent-ui-card') && !document.querySelector('.agent-ui-card').hidden`, 'the card shown before deleting');
-  await ev(`(()=>{ window.__confirm = window.confirm; window.confirm = () => true; document.querySelector('.agent-ui-card .agent-ui-delete').click(); return true; })()`);
+  // Delete asks first, in the confirm dialog: Cancel keeps the panel (page and server), Yes deletes it.
+  const confirmOpen = `(()=>{const m=document.getElementById('confirm-modal');return !!m && getComputedStyle(m).display !== 'none';})()`;
+  await ev(`(()=>{ document.querySelector('.agent-ui-card .agent-ui-delete').click(); return true; })()`);
+  await waitFor(confirmOpen, 'the delete confirmation');
+  assert.equal(await ev(`document.getElementById('confirm-modal-title').textContent`), 'Delete Panel');
+  assert.match(await ev(`document.getElementById('confirm-modal-message').textContent`), /^Delete “.+”\? This removes the panel and its saved responses\.$/);
+  await ev(`(()=>{ document.querySelector('#confirm-modal .btn:not(#confirm-modal-yes)').click(); return true; })()`);
+  await sleep(300); // sleep-ok: shows that Cancel deletes nothing (no condition to wait for)
+  assert.equal(await ev(confirmOpen), false, 'Cancel closes the dialog');
+  assert.equal(await ev(`document.querySelectorAll('.agent-ui-card').length`), 1, 'Cancel keeps the panel on the page');
+  assert.equal(cli(['list']).length, 1, 'Cancel keeps the panel on the server');
+  await ev(`(()=>{ document.querySelector('.agent-ui-card .agent-ui-delete').click(); return true; })()`);
+  await waitFor(confirmOpen, 'the delete confirmation again');
+  await ev(`(()=>{ document.getElementById('confirm-modal-yes').click(); return true; })()`);
   await waitFor(`document.querySelectorAll('.agent-ui-card').length === 0 && !document.querySelector('.agent-ui-home-row')`, 'the deleted panel gone from the page');
-  await ev(`(()=>{ window.confirm = window.__confirm; return true; })()`);
   assert.equal(await ev(`!document.querySelector('.agent-ui-home').hidden`), true, 'back on the home list after Delete');
   assert.deepEqual(cli(['list']), [], 'Delete removed the panel on the server');
   assert.equal(cli(['publish','--id','demo','--file',file]).revision >= 1, true, 'republished for the steps below');

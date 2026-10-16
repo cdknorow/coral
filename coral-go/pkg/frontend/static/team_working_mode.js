@@ -17,10 +17,12 @@ export function hasUnsavedTeamSettings() {
     return Boolean(form?.dataset.initialState && settingsFormSnapshot(form) !== form.dataset.initialState);
 }
 
-/** True when leaving the team settings panel should be confirmed first. */
+/** Resolves true when leaving the team settings panel may go ahead: nothing unsaved, or the user
+ *  chose to leave in the confirm dialog (Cancel, Escape and a replaced dialog all resolve false). */
 export function confirmTeamWorkspaceChange() {
-    if (!hasUnsavedTeamSettings()) return true;
-    return window.confirm('Team settings have unsaved changes. Leave without saving?');
+    if (!hasUnsavedTeamSettings()) return Promise.resolve(true);
+    return new Promise(resolve => window.showConfirmModal('Unsaved Team Settings', 'Team settings have unsaved changes. Leave without saving?',
+        () => resolve(true), () => resolve(false)));
 }
 
 /** Open the team: team view in the center, team tabs (settings first) in the sidebar. */
