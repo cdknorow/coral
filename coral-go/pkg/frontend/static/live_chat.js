@@ -5,6 +5,7 @@ import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast, copyText } from
 import { registerActions } from './actions.js';
 import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
+import { fireAgentView } from './agent_view.js';
 import { deriveSessionState } from './render.js';
 import { chatAgentAdapter } from './chat_agents.js';
 import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from './server_base.js';
@@ -1066,7 +1067,7 @@ function _updateLoadMoreButton(container) {
 export function startLiveHistoryPoll() {
     stopLiveHistoryPoll();
     const firstLoad = refreshLiveHistory();
-    historyPollInterval = pollEvery(refreshLiveHistory, 1000, { machine: () => state.currentSession && sessionServer(state.currentSession) });
+    historyPollInterval = pollEvery(refreshLiveHistory, 1000, { machine: () => state.currentSession && sessionServer(state.currentSession), agentView: true });
     return firstLoad;
 }
 
@@ -1139,10 +1140,16 @@ function hasTranscript(session) {
     return !!session && session.agent_type !== "terminal";
 }
 
+/** The view the selected agent shows in the centre: "chat" or "terminal". A plain terminal has no transcript,
+ *  so it is always the terminal; otherwise the persisted mode, or a one-off override. */
+export function effectiveLiveViewMode(override) {
+    return hasTranscript(state.currentSession) ? (override || getLiveViewMode()) : "terminal";
+}
+
 /** Apply the persisted mode (or a one-off override) to the DOM and start/stop the transcript poll. */
 export function applyLiveViewMode(override) {
+    const mode = effectiveLiveViewMode(override);
     const canChat = hasTranscript(state.currentSession);
-    const mode = canChat ? (override || getLiveViewMode()) : "terminal";
     const toggle = document.querySelector(".live-view-toggle");
     if (toggle) toggle.hidden = !canChat;
     const findBtn = document.getElementById("chat-find-btn");
@@ -1161,14 +1168,19 @@ export function applyLiveViewMode(override) {
         btn.setAttribute("aria-pressed", String(m === mode));
     }
     if (mode === "chat") {
+        // The terminal is not shown: its socket closes (sessions.js), and opens again when it is.
+        fireAgentView("coral:terminal-unwanted");
         return startLiveHistoryPoll();
     } else {
         stopLiveHistoryPoll();
+        // The terminal is shown: it attaches now if it has not (sessions.js; no socket or xterm.js in Chat view).
+        fireAgentView("coral:terminal-wanted");
         // The xterm canvas was hidden; refit now that it has a size again.
         setTimeout(fitTerminal, 0);
     }
     return Promise.resolve();
 }
+
 
 // On desktop the command box grows with its text, like a chat composer
 // (CSS caps it at 40vh). Mobile keeps its own compact input bar.

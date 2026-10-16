@@ -10,7 +10,7 @@ import { registerActions, idOf } from './actions.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
-import { addPendingMessage, removePendingMessage, resetLiveHistory } from './live_chat.js';
+import { addPendingMessage, removePendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
@@ -663,7 +663,9 @@ export async function confirmRestart() {
                     const liveResp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(newName)}?session_id=${encodeURIComponent(newSessionId)}&agent_type=${encodeURIComponent(newAgentType || '')}`);
                     if (liveResp.ok) {
                         clearInterval(pollInterval);
-                        xtermMod.connectTerminalWs(state.currentSession.tmux_session || newName, newAgentType, newSessionId, currentServer());
+                        // Chat view has no terminal socket to take over (#3719): the Terminal view attaches when it is shown.
+                        if (effectiveLiveViewMode() === 'terminal') xtermMod.connectTerminalWs(state.currentSession.tmux_session || newName, newAgentType, newSessionId, currentServer());
+                        else xtermMod.setRestarting(false);
                     }
                 } catch (_) { /* ignore fetch errors during poll */ }
                 if (pollCount >= 15) {

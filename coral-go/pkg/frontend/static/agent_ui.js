@@ -6,6 +6,7 @@ import { createPanelFrame, openPanel, isPanelEvent, createEventThrottle, MAX_PAN
 import { sessionUnreachable, backoffBlocked, backoffRecord } from './remote_health.js';
 import { responseErrorText } from './server_status.js';
 import { pollEvery } from './overload.js';
+import { agentViewVisible } from './agent_view.js';
 
 let session = null;
 let generation = 0;
@@ -287,13 +288,18 @@ export async function refreshAgentUI() {
 
 export function initAgentUI() {
     refreshAgentUI();
-    let tick = 0;
+    let lastRun = Date.now();
     pollEvery(() => {
-        if (document.hidden) return;
-        // Every request on the hub is a tunnel round trip: poll fast only while the Agent UI tab is open, slowly (for the unread count) otherwise.
-        if (isCloud() && ++tick % 5 && !document.getElementById('agentic-panel-agent-ui')?.classList.contains('active')) return;
+        // Not at all while the agent's page is off screen. While it is showing, every 2 s when the Agent UI tab is
+        // open, and slowly (for the tab's unread count) otherwise: every 30 s, 10 s on the hub (#3719).
+        if (!agentViewVisible()) return;
+        const open = !!document.getElementById('agentic-panel-agent-ui')?.classList.contains('active');
+        const now = Date.now();
+        if (!open && now - lastRun < (isCloud() ? 10000 : 30000)) return;
+        lastRun = now;
         refreshAgentUI();
     }, 2000);
+
     window.addEventListener('message', async event => {
         if (event.data?.type !== 'coral-ui-event') return;
         if (isCloud() && !isPanelEvent(event.data)) return; // the host already validated it; so does the dashboard

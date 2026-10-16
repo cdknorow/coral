@@ -21,7 +21,8 @@ import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './hi
 import { loadHistoryChanges } from './history_changes.js';
 import { note, currentRoute } from './nav.js';
 import { liveRoute } from './routes.js';
-import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode } from './live_chat.js';
+import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode, effectiveLiveViewMode } from './live_chat.js';
+import { agentViewVisible, onAgentView } from './agent_view.js';
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
 import { loadXterm, xtermReady, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
@@ -39,6 +40,26 @@ import { clearComposerError, syncTerminalGoneHeader } from './terminal_gone.js';
 // is no longer the selected one.
 let switchGeneration = 0;
 
+// The selected agent's terminal (#3719). It is only attached while the Terminal view is the one showing and the
+// agent's page is on screen: in Chat view (the default) there is no xterm.js download, no WebSocket and no tmux
+// attach, and Back to the phone's list or any other view closes the socket. _attachTerminal is set by
+// selectLiveSession for an agent that has a terminal; _terminalStarted says its attach has begun and the socket
+// was not closed since.
+let _attachTerminal = null;
+let _terminalStarted = false;
+const closeTerminalSocket = () => { _terminalStarted = false; disconnectTerminalWs(); };
+// A popout is a window for one agent's terminal: it always attaches. The dashboard attaches in Terminal view only.
+const terminalWanted = () => isPopout() || effectiveLiveViewMode(state.currentSession?.sleeping ? 'chat' : undefined) === 'terminal';
+const attachTerminalIfWanted = () => {
+    if (_attachTerminal && !_terminalStarted && agentViewVisible() && terminalWanted()) _attachTerminal();
+};
+onAgentView('coral:terminal-wanted', attachTerminalIfWanted);
+// The view is shown just before an agent tap's selectLiveSession runs: wait a tick, so the terminal that attaches
+// is the one for the agent being selected, not the one left behind.
+onAgentView('coral:agent-view-shown', () => setTimeout(attachTerminalIfWanted, 0));
+onAgentView('coral:terminal-unwanted', () => { if (_terminalStarted) closeTerminalSocket(); });
+onAgentView('coral:agent-view-hidden', () => { if (_terminalStarted) closeTerminalSocket(); });
+
 export async function selectLiveSession(name, agentType, sessionId, server) {
     // Identity is (server, name). Callers that only know the session id (hash
     // restore, toasts) omit `server` and it is resolved from the live list.
@@ -50,7 +71,8 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     agentSwitchStarted(name, sessionId || null); // window.__coralReady.agentSelected (#3118)
     stopCaptureRefresh();
     stopLiveHistoryPoll();
-    disconnectTerminalWs();
+    _attachTerminal = null;
+    closeTerminalSocket();
     invalidateFileCache();
 
     // Save current input text for the old session
@@ -253,18 +275,22 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
             console.error('[coral]', err);
             if (generation === switchGeneration) showVendorLoadError(container, 'The terminal', loadThenAttach);
         };
-        let attached;
-        terminalAttached = new Promise(r => { attached = r; });
+        let attached = () => {};
         const tryAttach = () => {
             if (generation !== switchGeneration) return;
-            try { attach(); attached(); } catch (err) { failed(err); }
+            try { attach(); attached(); } catch (err) { _terminalStarted = false; failed(err); }
         };
         const loadThenAttach = () => {
             if (xtermReady()) { tryAttach(); return; }
             const notice = showVendorLoading(container, 'the terminal');
-            loadXterm().then(() => { notice.remove(); tryAttach(); }, (err) => { notice.remove(); failed(err); });
+            loadXterm().then(() => { notice.remove(); tryAttach(); }, (err) => { notice.remove(); _terminalStarted = false; failed(err); });
         };
-        loadThenAttach();
+        _attachTerminal = () => { if (generation !== switchGeneration) return; _terminalStarted = true; loadThenAttach(); };
+        // Chat view shows no terminal: nothing is loaded or opened until the Terminal view is shown (applyLiveViewMode).
+        if (terminalWanted()) {
+            terminalAttached = new Promise(r => { attached = r; });
+            _attachTerminal();
+        }
     } else {
         dbg('switching to capture mode, disposing terminal');
         document.getElementById("xterm-container").style.display = "none";

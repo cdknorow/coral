@@ -35,6 +35,7 @@
    The live feed (/ws/coral) has its own reconnect backoff (feed_pacing.js). */
 
 import { importOnce } from './import_once.js';
+import { agentViewVisible } from './agent_view.js';
 
 const MIN_PAUSE_MS = 2000;
 const MAX_BACKOFF_MS = 30000;
@@ -181,12 +182,21 @@ export function _resetOverloadForTests() { _global.until = 0; _global.failures =
 /** setInterval for a poller: its ticks are skipped while Coral is overloaded (or, with
  *  machine, while the machine it polls is), and, unless whenHidden, while the tab is hidden.
  *  machine is a function returning the remote machine id ('' or 'local' for Coral itself).
+ *  agentView is for a poller that only serves the selected agent's page (#3719): true skips its ticks
+ *  while that page is not on screen (another view, Back to the phone's list, a hidden tab); a number
+ *  keeps a slow beat instead, running at most once per that many ms while it is off screen (for a poller
+ *  whose answer also feeds an unread count or a notification).
  *  Returns the interval id (clearInterval stops it). */
-export function pollEvery(fn, ms, { whenHidden = false, machine = null } = {}) {
+export function pollEvery(fn, ms, { whenHidden = false, machine = null, agentView = false } = {}) {
+    let lastRun = 0;
     return setInterval(() => {
         const m = machine ? String(machine() || '') : '';
         if (isPaused(m === 'local' ? '' : m)) return;
         if (!whenHidden && typeof document !== 'undefined' && document.hidden) return;
+        if (agentView && !agentViewVisible()) {
+            if (typeof agentView !== 'number' || Date.now() - lastRun < agentView) return;
+        }
+        lastRun = Date.now();
         fn();
     }, ms);
 }

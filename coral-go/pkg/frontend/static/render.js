@@ -503,7 +503,8 @@ export function showBoardChatTab(boardName) {
     _checkBoardPauseState(boardName);
     // Start polling
     if (_boardChatTimer) clearInterval(_boardChatTimer);
-    _boardChatTimer = pollEvery(() => _loadBoardPanelChat(boardName), 3000, { whenHidden: true }); // unread counts and notifications
+    // Unread counts and notifications keep a slow beat (30 s) while the agent's page is off screen (#3719).
+    _boardChatTimer = pollEvery(() => _loadBoardPanelChat(boardName), 3000, { whenHidden: true, agentView: 30000 });
 }
 
 export function hideBoardChatTab() {

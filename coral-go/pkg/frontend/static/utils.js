@@ -1,6 +1,7 @@
 import { parse, normalize, build as buildRoute } from './routes.js';
 import { importOnce } from './import_once.js';
 import { loadHighlight } from './vendor_loader.js';
+import { checkAgentView } from './agent_view.js';
 /* Utility functions: HTML escaping and toast notifications */
 
 // Debug logging — enabled via ?debug=1 URL param or localStorage coral-debug=1
@@ -250,6 +251,7 @@ export function showView(activeId) {
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', FULL_WIDTH_VIEWS.has(activeId));
     document.body.classList.toggle('live-session-active', activeId === 'live-session-view');
+    checkAgentView(); // the agent's pollers and terminal socket follow whether its page is on screen (#3719)
 }
 
 // options is passed through to marked.parse for this call only, e.g.
