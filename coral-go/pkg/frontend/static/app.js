@@ -31,6 +31,7 @@ import './launch_models.js'; // the launch dialogs' per-server settings and mode
 import './agent_presets.js'; // the agent presets and capability list, used by the lazy modals.js (#3844): loaded at startup for the same reason
 import './permission_flags.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
 import './cli_check.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
+import './acf_models.js'; // used by the lazy modals.js (#3844): loaded at startup for the same reason
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
 import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
 import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
