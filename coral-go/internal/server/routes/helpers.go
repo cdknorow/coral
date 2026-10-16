@@ -166,13 +166,17 @@ var debugEnabled = sync.OnceValue(func() bool {
 // being a symptom worth a log line. A variable so tests need not be slow.
 var slowRequestThreshold = time.Second
 
-// credentialQueryName reports whether a query parameter name carries a credential.
+// credentialQueryName reports whether a query parameter name carries a credential: the known
+// names, and any name ending in _token, _key or _secret, so a dashboard sign-in link's
+// login_token (a live session credential for 10 minutes) never reaches coral.log (#3970,
+// Security's #3967 finding 3b).
 func credentialQueryName(name string) bool {
-	switch strings.ToLower(name) {
-	case "api_key", "apikey", "key", "token", "access_token", "authorization", "secret", "password":
+	n := strings.ToLower(name)
+	switch n {
+	case "api_key", "apikey", "key", "token", "access_token", "authorization", "secret", "password", "login_token":
 		return true
 	}
-	return false
+	return strings.HasSuffix(n, "_token") || strings.HasSuffix(n, "_key") || strings.HasSuffix(n, "_secret")
 }
 
 // hasCredentialQuery reports whether r carries a credential in its query string
