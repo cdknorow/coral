@@ -15,6 +15,8 @@ import (
 	"unicode"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // Boards as their own entities (#3536, design #3534 B, operator-approved). A board has an id
@@ -368,10 +370,12 @@ func (s *Store) backupBeforeRekey(ctx context.Context) {
 		slog.Warn("[boards] backup before re-keying failed; re-keying anyway", "error", err)
 		return
 	}
-	// The copy holds the same data: give it the database file's own mode.
+	// The copy holds the same data: give it the database file's own mode (on Windows, where the
+	// mode says nothing, make it private to this user).
 	if fi, err := os.Stat(file); err == nil {
 		_ = os.Chmod(dst, fi.Mode().Perm())
 	}
+	_ = secfile.Protect(dst)
 	slog.Info("[boards] saved a copy of the board database before re-keying", "copy", filepath.Base(dst))
 }
 

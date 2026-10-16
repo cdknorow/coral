@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/secfile/secfiletest"
 )
 
 // #3536: at upgrade every existing board becomes a row with id = label = its name (nothing
@@ -252,9 +254,7 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 	assert.Empty(t, rekeys)
 	_, err = os.Stat(path + ".pre-rekey")
 	require.NoError(t, err, "the copy was saved before the attempt")
-	bfi, err := os.Stat(path + ".pre-rekey")
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), bfi.Mode().Perm(), "the copy has the database file's mode")
+	secfiletest.AssertPrivate(t, path+".pre-rekey") // the copy has the database file's mode
 
 	// Unblocked: the next start re-keys it, and the copy isn't replaced.
 	before, _ := os.Stat(path + ".pre-rekey")

@@ -12,6 +12,8 @@ import (
 	"github.com/cdknorow/coral/pkg/secretbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/secfile/secfiletest"
 )
 
 const plainKey = "PLAINTEXT-API-KEY-1234567890"
@@ -49,10 +51,8 @@ func TestRemoteServers_CRUDNoPlaintext(t *testing.T) {
 			assert.False(t, bytes.Contains(b, []byte(plainKey)), p)
 		}
 	}
-	// Master key lives outside the DB, mode 0600.
-	fi, err := os.Stat(filepath.Join(dir, ".remote_secret_key"))
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0600), fi.Mode().Perm())
+	// Master key lives outside the DB, private (0600 on Unix).
+	secfiletest.AssertPrivate(t, filepath.Join(dir, ".remote_secret_key"))
 
 	got, err := s.DecryptedKey(ctx, "work")
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func TestRemoteServers_PermissionRefusal(t *testing.T) {
 	s, db, dir, _ := newRemoteStore(t)
 	ctx := context.Background()
 	_, _ = s.Add(ctx, "a", "A", "http://a", "key-a", false)
-	require.NoError(t, os.Chmod(filepath.Join(dir, ".remote_secret_key"), 0644))
+	secfiletest.Expose(t, filepath.Join(dir, ".remote_secret_key"))
 
 	s2 := NewRemoteServerStore(db, dir)
 	_, err := s2.DecryptedKey(ctx, "a")
@@ -247,8 +247,7 @@ func TestRemoteServers_Rotation(t *testing.T) {
 	require.NoError(t, s.RotateMasterKey(ctx))
 	newKey, _ := os.ReadFile(keyPath)
 	assert.NotEqual(t, oldKey, newKey)
-	fi, _ := os.Stat(keyPath)
-	assert.Equal(t, os.FileMode(0600), fi.Mode().Perm())
+	secfiletest.AssertPrivate(t, keyPath)
 	_, statErr := os.Stat(keyPath + ".new")
 	assert.True(t, os.IsNotExist(statErr))
 	var newRows []string
