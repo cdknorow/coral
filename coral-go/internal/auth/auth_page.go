@@ -12,7 +12,7 @@ import (
 //     to use an API key instead.
 //   - not set, Local: "Create a password" (password, confirm, keep signed in); the page is on this computer, so
 //     it needs nothing else.
-//   - not set, not Local: the same, plus a setup code (printed in Coral's startup log, and by coral setup-code on
+//   - not set, not Local: the same, plus a setup code (printed on Coral's console where it was started, never in coral.log, and by coral setup-code on
 //     the computer that runs Coral), so whoever reaches the port first cannot claim the install.
 //
 // Strict marks strict local auth: the app, the tray and `coral open` still sign in by themselves, and the page says so.
@@ -112,7 +112,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`<!DOCTYPE html>
       <input type="text" name="username" value="coral" autocomplete="username" hidden aria-hidden="true" readonly tabindex="-1">
 {{if not .Local}}
       <label class="pw-field"><span class="pw-label">Setup code</span><span class="pw-input-row"><input class="pw-input setup-input" id="setup-code" name="setup-code" type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" inputmode="text" maxlength="16"></span></label>
-      <p class="note" style="margin:-4px 0 14px">Find it in Coral's startup log, or run <b>coral setup-code</b> on the computer that runs Coral.</p>
+      <p class="note" style="margin:-4px 0 14px">Coral prints it where it was started (its console), or run <b>coral setup-code</b> on the computer that runs Coral.</p>
 {{end}}
       <label class="pw-field"><span class="pw-label">Password</span><span class="pw-input-row"><input class="pw-input" id="password" name="new-password" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" aria-describedby="strength"><button type="button" class="pw-toggle" data-toggle="password" aria-pressed="false" aria-label="Show password">Show</button></span></label>
       <div class="pw-strength" id="meter" data-level="empty"><div class="pw-meter" role="img" aria-label="Strength"><i></i></div><p class="pw-hint" id="strength" aria-live="polite"></p></div>
