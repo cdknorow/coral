@@ -1022,8 +1022,15 @@ func (c *Client) SetEnvironment(ctx context.Context, session, key, value string)
 
 // PipePane sets up pipe-pane logging for a tmux session.
 func (c *Client) PipePane(ctx context.Context, target, logFile string) error {
-	_, err := c.run(ctx, "pipe-pane", "-t", target, "-o", fmt.Sprintf("cat >> '%s'", logFile))
+	_, err := c.run(ctx, "pipe-pane", "-t", target, "-o", pipePaneCommand(logFile))
 	return err
+}
+
+// pipePaneCommand is the shell command tmux runs for pipe-pane: the log path as one quoted word,
+// so an apostrophe in the data folder (/home/o'brien) can't end the quote and run the rest of
+// the name (#3930, Security's #3927 finding 4).
+func pipePaneCommand(logFile string) string {
+	return "cat >> " + shellQuote(logFile)
 }
 
 // ClosePipePane closes the existing pipe-pane for a target (kills the cat process).
