@@ -177,6 +177,16 @@ export function serverAgentCount(e) {
     return local || typeof e.agents !== 'number' ? own : e.agents;
 }
 
+/** The Hub's hint for a machine below its minimum Coral version: "Update Coral to <min_coral>" (#3915). The feed's servers entry carries
+ *  below_minimum (true only when below) and min_coral; absent fields give ''. It is a hint for the machine's owner, not a gate, and
+ *  min_coral comes from outside this page: it is only ever shown as text (callers escape it or set textContent), never as markup or a
+ *  link, and is cut to 32 characters. */
+export function belowMinimumText(e) {
+    if (!e || e.below_minimum !== true) return '';
+    const min = typeof e.min_coral === 'string' ? e.min_coral.trim().slice(0, 32) : '';
+    return min ? `Update Coral to ${min}` : 'Update Coral';
+}
+
 /** The details panel shared by the server button and the group headers. */
  function serverDetailsHtml(e) {
     const m = statusMeta(e.status);
@@ -194,6 +204,7 @@ export function serverAgentCount(e) {
     const notice = local ? null : updateNotice(e);
     return `<dl class="server-details-list">${rows.map(([k, v]) => `<dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd>`).join('')}</dl>`
         + (notice ? `<p class="server-details-update">${escHtml(notice.text)} ${updateBadgeHtml(e)}</p>` : '')
+        + (!local && belowMinimumText(e) ? `<p class="server-details-update server-below-minimum">${escHtml(belowMinimumText(e))}</p>` : '')
         + (!local && e.status !== 'online' ? `<p class="server-details-hint">${escHtml(m.hint)}</p>` : '');
 }
 
