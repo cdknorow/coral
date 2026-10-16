@@ -25,6 +25,7 @@ import { terminalGoneChip } from './terminal_gone.js';
 import { pollEvery } from './overload.js';
 import { isPinnedDir, emptyPins, notePinKeys, pinPathForKey, pinnedFolders } from './pinned_folders.js';
 import { LOCAL_SERVER } from './server_base.js';
+import { formatTokens } from './format.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -245,7 +246,7 @@ export function buildSessionTooltip(s) {
     // null (unknown model) must read "unknown", never 0% or full.
     const ctxText = (s.context_pct === null || s.context_pct === undefined)
         ? 'unknown'
-        : (s.context_window ? `${s.context_pct}% of ${_formatTokens(s.context_window)}` : `${s.context_pct}%`);
+        : (s.context_window ? `${s.context_pct}% of ${formatTokens(s.context_window)}` : `${s.context_pct}%`);
     rows.push(`<tr><td class="tt-label">Context</td><td class="tt-value">${escapeHtml(ctxText)}</td></tr>`);
     if (s.working_directory) {
         rows.push(`<tr><td class="tt-label">Directory</td><td class="tt-value" title="${escapeAttr(s.working_directory)}">${escapeHtml(_shortPath(s.working_directory, 3))}</td></tr>`);
@@ -254,11 +255,11 @@ export function buildSessionTooltip(s) {
         rows.push(`<tr><td class="tt-label">Files changed</td><td class="tt-value">${s.changed_file_count}</td></tr>`);
     }
     if (s.token_cost_usd > 0 || s.token_input > 0) {
-        const tokIn = _formatTokens(s.token_input || 0);
-        const tokOut = _formatTokens(s.token_output || 0);
+        const tokIn = formatTokens(s.token_input || 0);
+        const tokOut = formatTokens(s.token_output || 0);
         const tokCache = (s.token_cache_read || 0);
         let tokenText = `${tokIn} in / ${tokOut} out`;
-        if (tokCache > 0) tokenText += ` / ${_formatTokens(tokCache)} cache`;
+        if (tokCache > 0) tokenText += ` / ${formatTokens(tokCache)} cache`;
         if (s.token_cost_usd > 0) tokenText += ` · ${_formatCost(s.token_cost_usd)}`;
         rows.push(`<tr><td class="tt-label">Tokens</td><td class="tt-value">${tokenText}</td></tr>`);
     }
@@ -3162,7 +3163,7 @@ function _renderCtxPill(s) {
     const label = pct >= 100 ? 'ctx full' : `ctx ${Math.round(pct)}%`;
     const win = s.context_window || 0;
     const title = win > 0
-        ? `Context: ${_formatTokens(Math.round(win * pct / 100))} / ${_formatTokens(win)} tokens (${pct}%)`
+        ? `Context: ${formatTokens(Math.round(win * pct / 100))} / ${formatTokens(win)} tokens (${pct}%)`
         : `Context: ${pct}%`;
     return ` <span class="badge session-ctx-pill${pct >= 100 ? ' ctx-full' : ''}" title="${escapeAttr(title)}">${label}</span>`;
 }
@@ -3253,12 +3254,6 @@ export function hideTeamDetails() {
     if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
 }
 
-function _formatTokens(n) {
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-    return String(n);
-}
-
 function _formatCost(c) {
     if (c < 0.01) return '$' + c.toFixed(4);
     return '$' + c.toFixed(2);
@@ -3275,7 +3270,7 @@ export async function updateTokenUsage(sessionId) {
         const data = await resp.json();
         if (!data.totals.total_tokens || data.totals.total_tokens === 0) { el.style.display = 'none'; return; }
 
-        const parts = [_formatTokens(data.totals.total_tokens) + ' tokens'];
+        const parts = [formatTokens(data.totals.total_tokens) + ' tokens'];
         if (data.totals.cost_usd > 0) parts.push(_formatCost(data.totals.cost_usd));
         el.textContent = parts.join(' · ');
         el.style.display = '';
@@ -3296,10 +3291,10 @@ export async function updateHistoryTokenUsage(sessionId) {
         const t = data.totals;
         if (!t || !t.total_tokens || t.total_tokens === 0) { container.style.display = 'none'; return; }
 
-        document.getElementById('htu-input').textContent = _formatTokens(t.input_tokens || 0);
-        document.getElementById('htu-output').textContent = _formatTokens(t.output_tokens || 0);
+        document.getElementById('htu-input').textContent = formatTokens(t.input_tokens || 0);
+        document.getElementById('htu-output').textContent = formatTokens(t.output_tokens || 0);
         const cache = (t.cache_read_tokens || 0) + (t.cache_write_tokens || 0);
-        document.getElementById('htu-cache').textContent = cache > 0 ? _formatTokens(cache) : '—';
+        document.getElementById('htu-cache').textContent = cache > 0 ? formatTokens(cache) : '—';
         document.getElementById('htu-requests').textContent = String(t.num_sessions || '—');
         document.getElementById('htu-cost').textContent = t.cost_usd > 0 ? _formatCost(t.cost_usd) : '—';
         container.style.display = '';
@@ -3314,7 +3309,7 @@ export async function updateHistoryTokenUsage(sessionId) {
         if (!resp.ok) return null;
         const data = await resp.json();
         if (!data.totals.total_tokens || data.totals.total_tokens === 0) return null;
-        const parts = [_formatTokens(data.totals.total_tokens) + ' tokens'];
+        const parts = [formatTokens(data.totals.total_tokens) + ' tokens'];
         if (data.totals.cost_usd > 0) parts.push(_formatCost(data.totals.cost_usd));
         if (data.totals.execution_time_sec > 0) parts.push(formatDuration(data.totals.execution_time_sec));
         return parts.join(' · ');
@@ -3369,10 +3364,10 @@ export async function showTeamTokenUsage(boardName) {
         ? `<span class="info-token-label">Execution Time</span><span class="info-token-value">${formatDuration(usageData.totals.execution_time_sec)}</span>`
         : '';
     let html = `<div class="info-token-grid" style="margin-bottom:16px">
-        <span class="info-token-label">Input</span><span class="info-token-value">${_formatTokens(totalIn)}</span>
-        <span class="info-token-label">Output</span><span class="info-token-value">${_formatTokens(totalOut)}</span>
-        <span class="info-token-label">Cache Read</span><span class="info-token-value">${_formatTokens(totalCacheR)}</span>
-        <span class="info-token-label">Cache Write</span><span class="info-token-value">${_formatTokens(totalCacheW)}</span>
+        <span class="info-token-label">Input</span><span class="info-token-value">${formatTokens(totalIn)}</span>
+        <span class="info-token-label">Output</span><span class="info-token-value">${formatTokens(totalOut)}</span>
+        <span class="info-token-label">Cache Read</span><span class="info-token-value">${formatTokens(totalCacheR)}</span>
+        <span class="info-token-label">Cache Write</span><span class="info-token-value">${formatTokens(totalCacheW)}</span>
         <span class="info-token-label">Requests</span><span class="info-token-value">${totalReqs}</span>
         <span class="info-token-label">Cost</span><span class="info-token-value">${_formatCost(totalCost)}</span>
         ${executionTimeRow}
@@ -3391,10 +3386,10 @@ export async function showTeamTokenUsage(boardName) {
     for (const a of agents.sort((x, y) => (y.total_cost_usd || 0) - (x.total_cost_usd || 0))) {
         html += `<tr>
             <td style="font-weight:500">${escapeHtml(a.name)}</td>
-            <td style="text-align:right">${_formatTokens(a.total_input_tokens || 0)}</td>
-            <td style="text-align:right">${_formatTokens(a.total_output_tokens || 0)}</td>
-            <td style="text-align:right">${_formatTokens(a.total_cache_read_tokens || 0)}</td>
-            <td style="text-align:right">${_formatTokens(a.total_cache_write_tokens || 0)}</td>
+            <td style="text-align:right">${formatTokens(a.total_input_tokens || 0)}</td>
+            <td style="text-align:right">${formatTokens(a.total_output_tokens || 0)}</td>
+            <td style="text-align:right">${formatTokens(a.total_cache_read_tokens || 0)}</td>
+            <td style="text-align:right">${formatTokens(a.total_cache_write_tokens || 0)}</td>
             <td style="text-align:right;font-weight:600;color:var(--accent)">${_formatCost(a.total_cost_usd || 0)}</td>
         </tr>`;
     }

@@ -29,6 +29,16 @@ function returnTarget(opener) {
     return null;
 }
 
+/** Keep Tab inside `dialog` for a dialog that handles its own keys (the artifact viewer, the Coral Hub setup screen): from
+ *  the last control it wraps to the first, from the first with Shift to the last. */
+export function trapTab(dialog, e) {
+    const f = focusables(dialog);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
 /** Call as the dialog opens (before it is shown is fine): records the opener now, while the
  *  clicked control still has focus, and wires the dialog up once. */
 export function attachDialogFocus(dialog) {

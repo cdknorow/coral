@@ -5,12 +5,7 @@ import { registerActions, idOf, uuidOf, tokenOf, textOf } from './actions.js';
 import { state } from './state.js';
 import { pollEvery } from './overload.js';
 import { keyLabel } from './server_base.js';
-
-function _formatTokens(n) {
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-    return String(n);
-}
+import { formatTokens } from './format.js';
 
 function _formatCost(c) {
     if (c === 0) return '$0.00';
@@ -395,10 +390,10 @@ export async function _refreshCostDashboard() {
         if (summaryResp && summaryResp.ok) {
             const data = await summaryResp.json();
             const t = data.totals || {};
-            _setText('cost-input-tokens', _formatTokens(t.input_tokens || 0));
-            _setText('cost-output-tokens', _formatTokens(t.output_tokens || 0));
-            _setText('cost-cache-read', _formatTokens(t.cache_read_tokens || 0));
-            _setText('cost-cache-write', _formatTokens(t.cache_write_tokens || 0));
+            _setText('cost-input-tokens', formatTokens(t.input_tokens || 0));
+            _setText('cost-output-tokens', formatTokens(t.output_tokens || 0));
+            _setText('cost-cache-read', formatTokens(t.cache_read_tokens || 0));
+            _setText('cost-cache-write', formatTokens(t.cache_write_tokens || 0));
             _setText('cost-total-requests', String(t.num_sessions || 0));
             _setText('cost-total-cost', _formatCost(t.cost_usd || 0));
 
@@ -504,10 +499,10 @@ function _renderModelTable(rows) {
         html += `<tr>
             <td class="cost-model-name">${escapeHtml(r.model)}</td>
             <td class="cost-col-right">${r.requests}</td>
-            <td class="cost-col-right">${_formatTokens(r.input_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(r.output_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(r.cache_read_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(r.cache_write_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.input_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.output_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_read_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_write_tokens || 0)}</td>
             <td class="cost-col-right cost-cost-cell">${_formatCost(r.cost_usd)}</td>
         </tr>`;
     }
@@ -581,10 +576,10 @@ function _renderAgentTable(rows) {
             <td>${launchedHtml}</td>
             <td class="cost-col-right">${durationHtml}</td>
             <td class="cost-col-right">${r.requests}</td>
-            <td class="cost-col-right">${_formatTokens(r.input_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(r.output_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(r.cache_read_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(r.cache_write_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.input_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.output_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_read_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_write_tokens || 0)}</td>
             <td class="cost-col-right cost-cost-cell">${_formatCost(r.cost_usd)}</td>
         </tr>`;
     }
@@ -756,10 +751,10 @@ function _renderTaskTable(tasks) {
             <td><span class="board-task-priority ${priorityClass}">${escapeHtml(t.priority || 'medium')}</span></td>
             <td>${startTime}</td>
             <td class="cost-col-right">${duration}</td>
-            <td class="cost-col-right">${_formatTokens(t.input_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(t.output_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(t.cache_read_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(t.cache_write_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(t.input_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(t.output_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(t.cache_read_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(t.cache_write_tokens || 0)}</td>
             <td class="cost-col-right cost-cost-cell">${_formatCost(t.cost_usd || 0)}</td>
         </tr>`;
     }
@@ -813,10 +808,10 @@ function _renderRequestLog(requests) {
         html += `<tr>
             <td class="cost-model-name">${escapeHtml(r.model_used)}</td>
             <td class="cost-agent-name">${escapeHtml(agentName)}</td>
-            <td class="cost-col-right">${_formatTokens(r.input_tokens)}</td>
-            <td class="cost-col-right">${_formatTokens(r.output_tokens)}</td>
-            <td class="cost-col-right">${_formatTokens(r.cache_read_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(r.cache_write_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.input_tokens)}</td>
+            <td class="cost-col-right">${formatTokens(r.output_tokens)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_read_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_write_tokens || 0)}</td>
             <td class="cost-col-right cost-cost-cell">${_formatCost(r.cost_usd)}</td>
             <td class="cost-col-right">${_formatLatency(r.latency_ms)}</td>
             <td><span class="cost-status ${statusClass}">${escapeHtml(r.status)}</span></td>
@@ -1018,10 +1013,10 @@ function _renderTeamTable(teams) {
         html += `<tr>
             <td class="cost-agent-name">${escapeHtml(name)}</td>
             <td class="cost-col-right">${t.num_agents || 0}</td>
-            <td class="cost-col-right">${_formatTokens(t.input_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(t.output_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(t.cache_read_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(t.cache_write_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(t.input_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(t.output_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(t.cache_read_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(t.cache_write_tokens || 0)}</td>
             <td class="cost-col-right cost-cost-cell">${_formatCost(t.cost_usd || 0)}</td>
             <td class="cost-col-right">
                 <div class="cost-share-bar-wrapper">
@@ -1085,10 +1080,10 @@ function _renderBranchTable(branches) {
             <td class="cost-agent-team">${teamHtml}</td>
             <td class="cost-col-right">${prCell}</td>
             <td class="cost-col-right">${b.num_agents || 0}</td>
-            <td class="cost-col-right">${_formatTokens(b.input_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(b.output_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(b.cache_read_tokens || 0)}</td>
-            <td class="cost-col-right">${_formatTokens(b.cache_write_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(b.input_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(b.output_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(b.cache_read_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(b.cache_write_tokens || 0)}</td>
             <td class="cost-col-right cost-cost-cell">${_formatCost(b.cost_usd || 0)}</td>
             <td class="cost-col-right">
                 <div class="cost-share-bar-wrapper">

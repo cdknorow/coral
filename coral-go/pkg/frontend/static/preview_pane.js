@@ -12,6 +12,7 @@ import { serverUrl, currentServer, isCloud } from './server_base.js';
 import { fetchImageSrc } from './image_source.js';
 import { wireDownloads } from './artifact_download.js';
 import { retryOnce } from './overload.js';
+import { agentName, apiQs } from './agent_file_api.js';
 
 const ICON_MAP = {
     javascript: '{ }', typescript: '{ }', jsx: '{ }', tsx: '{ }',
@@ -36,21 +37,10 @@ function _tabTitle(tab) {
     return _fileName(tab.filepath);
 }
 
-function _agentName() {
-    return state.currentSession && state.currentSession.name;
-}
-
-function _apiQs(filepath) {
-    const qs = new URLSearchParams({ filepath });
-    const sid = state.currentSession && state.currentSession.session_id;
-    if (sid) qs.set('session_id', sid);
-    return qs;
-}
-
 function _fileUrl(endpoint, filepath, extra) {
-    const qs = _apiQs(filepath);
+    const qs = apiQs(filepath);
     if (extra) for (const [k, v] of Object.entries(extra)) qs.set(k, v);
-    return serverUrl(`/api/sessions/live/${encodeURIComponent(_agentName())}/${endpoint}?${qs}`, currentServer());
+    return serverUrl(`/api/sessions/live/${encodeURIComponent(agentName())}/${endpoint}?${qs}`, currentServer());
 }
 
 // Tab: { id, kind: 'file'|'artifact', filepath, line, mode: 'preview'|'edit'|'diff',
@@ -502,7 +492,7 @@ async function _render(tab) {
 
     if (tab.content === null) {
         _setBody('<div class="preview-pane-loading">Loading…</div>');
-        if (!_agentName()) return;
+        if (!agentName()) return;
         try {
             const resp = await retryOnce(() => fetch(_fileUrl('file-content', tab.filepath)));
             const data = await resp.json();
@@ -707,7 +697,7 @@ function setMode(tab, mode) {
 
 async function saveTab(tab, btn) {
     _captureEditor();
-    const agentName = _agentName();
+    const agentName = agentName();
     if (!agentName || tab.content === null) return;
     const content = tab.content;
     if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }

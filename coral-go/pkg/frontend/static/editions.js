@@ -19,6 +19,7 @@ import { isCloud } from './server_base.js';
 import { isPopout } from './popout.js';
 import { escapeAttr } from './utils.js';
 import { mountCloudConnect, enrolledRetrying } from './cloud_connect.js';
+import { trapTab } from './dialog_focus.js';
 
  const OWN_HUB_GUIDE_URL = 'https://cdknorow.github.io/coral/multi-server-hub/';
 
@@ -88,17 +89,9 @@ function _modal() {
     document.body.appendChild(m);
     m.addEventListener('keydown', e => {
         if (e.key === 'Escape') { e.preventDefault(); _dismiss('skipped'); }
-        if (e.key === 'Tab') _trapTab(m, e);
+        if (e.key === 'Tab') trapTab(m, e);
     });
     return m;
-}
-
-function _trapTab(m, e) {
-    const f = [...m.querySelectorAll('button, a[href], select, input')].filter(el => !el.disabled && el.offsetParent !== null);
-    if (!f.length) return;
-    const first = f[0], last = f[f.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 }
 
 /** Open the screen: 'connect' (Connect to Coral Hub) or 'own-hub' (the explainer). */

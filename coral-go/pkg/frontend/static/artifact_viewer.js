@@ -8,6 +8,7 @@ import { escapeHtml, renderMarkdownStrict, highlightCodeIn, keepFragmentsInside 
 import { serverUrl, artifactPath, isCloud } from './server_base.js';
 import { renderArtifact } from './artifact_preview.js';
 import { downloadArtifact, sanitizeDownloadName } from './artifact_download.js';
+import { trapTab } from './dialog_focus.js';
 
 const HEX_RE = /^[a-f0-9]{64}$/;
 let _dialog = null;
@@ -56,21 +57,13 @@ function _build() {
     d.addEventListener('keydown', (e) => {
         // Stop here: the page-wide Escape handler (modal_chrome) would also close a modal under the viewer.
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeArtifactViewer(); }
-        else if (e.key === 'Tab') _trapTab(d, e);
+        else if (e.key === 'Tab') trapTab(d, e);
     });
     keepFragmentsInside(d.querySelector('.artifact-viewer-body'));
     // Back or Forward changes the page under the viewer (#3532 routes): close it with the page.
     window.addEventListener('popstate', closeArtifactViewer);
     document.body.appendChild(d);
     return d;
-}
-
-function _trapTab(d, e) {
-    const f = [...d.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])')].filter(el => !el.disabled && el.offsetParent !== null);
-    if (!f.length) return;
-    const first = f[0], last = f[f.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 }
 
 /** Open the artifact `hex` (64 lowercase hex). opts: { server, filename, mediaType }. */

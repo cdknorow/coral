@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, sanitizeMarkdown } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
+import { formatClockTime } from './format.js';
 
 // Re-use tool icon/filter definitions from agentic_state.js
 const TOOL_ICONS = {
@@ -43,16 +44,6 @@ let historyFilterHidden = new Set();
 let historyEvents = [];
 let historyTasks = [];
 let historyAgentNotes = [];
-
-function formatTime(isoStr) {
-    if (!isoStr) return '';
-    try {
-        const d = new Date(isoStr);
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch {
-        return '';
-    }
-}
 
 // Icons for agent event types
 const EVENT_ICONS = {
@@ -198,7 +189,7 @@ function renderHistoryEventTimeline() {
                 <span class="event-summary">${escapeHtml(ev.summary)}</span>
             </span>
             ${durationChip(ev)}
-            <span class="event-time">${formatTime(ev.created_at)}</span>
+            <span class="event-time">${formatClockTime(ev.created_at)}</span>
         </div>`;
     }).join('');
 }

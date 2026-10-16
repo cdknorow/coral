@@ -26,11 +26,23 @@ const tests = textFiles(walk(here, p => /\.(js|mjs)$/.test(p)));
 const other = textFiles([...walk(path.join(root, 'coral-go'), p => p.endsWith('.go') && !p.endsWith('_test.go')), ...walk(path.join(root, 'installers'), p => /\.(sh|ps1|wxs|plist|html|go)$/.test(p))].filter(p => !p.includes(`${path.sep}pkg${path.sep}frontend${path.sep}`)));
 
 const tokens = new Set(src.match(/[A-Za-z_][A-Za-z0-9_-]*/g));
-const prefixes = new Set([...(src.matchAll(/([A-Za-z][A-Za-z0-9_-]*[-_])\$\{/g))].map(m => m[1])
-    .concat([...src.matchAll(/['"]([A-Za-z][A-Za-z0-9_-]*[-_])['"]\s*\+/g)].map(m => m[1])));
+// A class a script builds from a prefix: `file-${kind}` (a template literal) or 'file-' + kind (a concatenation).
+export const prefixesOf = text => new Set([...text.matchAll(/([A-Za-z][A-Za-z0-9_-]*[-_])\$\{/g)].map(m => m[1])
+    .concat([...text.matchAll(/['"]([A-Za-z][A-Za-z0-9_-]*[-_])['"]\s*\+/g)].map(m => m[1])));
+const prefixes = prefixesOf(src);
 // Classes drawn by libraries, or put on the page by the native shell, which no script of ours names.
 const EXTERNAL = /^(cm-|xterm|hljs|material-icons|ͼ)/;
-const built = c => tokens.has(c) || tests.includes(c) || other.includes(c) || EXTERNAL.test(c) || [...prefixes].some(p => c.startsWith(p));
+const builtFrom = (c, pre) => [...pre].some(p => c.startsWith(p));
+const built = c => tokens.has(c) || tests.includes(c) || other.includes(c) || EXTERNAL.test(c) || builtFrom(c, prefixes);
+
+// The prefix rule itself (Security's question on #3793): both ways of building a class name from a prefix are seen, a name that is
+// merely similar is not, and a plain concatenation of two names is not a prefix.
+const sample = prefixesOf('el.className = `row-${kind} x`; b.className = "cost-agent-" + type; c.className = "plain" + z; d = "abc" + e;');
+assert.deepEqual([...sample].sort(), ['cost-agent-', 'row-'], 'the template and the concatenation forms give their prefixes');
+assert.equal(builtFrom('row-error', sample), true);
+assert.equal(builtFrom('cost-agent-claude', sample), true);
+assert.equal(builtFrom('rowing', sample), false, 'a similar name is not built from the prefix');
+assert.equal(builtFrom('plainer', sample), false, 'a name joined from two plain names is no prefix');
 
 const DEAD_ATTRS_OK = new Set(['aria-', 'data-theme', 'lang', 'type', 'href', 'src', 'hidden', 'disabled', 'open', 'checked', 'role', 'dir', 'title', 'tabindex', 'value',
     'placeholder', 'name', 'class', 'id', 'style', 'target', 'rel', 'draggable', 'contenteditable', 'readonly', 'selected', 'popover', 'inert']);

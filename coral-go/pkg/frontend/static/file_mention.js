@@ -3,11 +3,14 @@
 import { state, sessionKey } from './state.js';
 import { escapeHtml } from './utils.js';
 import { serverFetch, currentServer } from './server_base.js';
+import { createMentionList, findTriggerStart } from './mention_list.js';
 
-let dropdown = null;
-let selectedIndex = 0;
-let currentResults = [];
-let mentionStart = -1; // position of the '@' character
+// results, selection and the position of the '@' live on the shared list (mention_list.js).
+const list = createMentionList('file-mention', {
+    onInput: e => onInput(e),
+    onPick: i => selectItem(i),
+    onHide: () => { currentDir = ''; clearTimeout(renderTimer); },
+});
 
 // Client-side file list cache (fetched once per session, refreshed on TTL)
 let cachedFiles = [];       // string[]
@@ -25,20 +28,7 @@ const DIR_CACHE_TTL_MS = 30_000;
 export function initFileMention() {
     const input = document.getElementById("command-input");
     if (!input) return;
-
-    // Create dropdown element
-    dropdown = document.createElement("div");
-    dropdown.className = "file-mention-dropdown";
-    dropdown.style.display = "none";
-    // Append to the command-editor wrapper so it positions relative to the textarea
-    input.parentElement.appendChild(dropdown);
-
-    input.addEventListener("input", onInput);
-    input.addEventListener("keydown", onKeydown);
-    input.addEventListener("blur", () => {
-        // Delay hide so click on dropdown item can fire first
-        setTimeout(hideDropdown, 200);
-    });
+    list.mount(input);
 }
 
 export async function fetchFileList() {
@@ -188,14 +178,14 @@ async function onInput(e) {
 
     // Find the '@' that starts the current mention
     const beforeCursor = text.slice(0, cursor);
-    const atIndex = findMentionStart(beforeCursor);
+    const atIndex = findTriggerStart(beforeCursor, '@');
 
     if (atIndex === -1) {
-        hideDropdown();
+        list.hide();
         return;
     }
 
-    mentionStart = atIndex;
+    list.start = atIndex;
     const query = beforeCursor.slice(atIndex + 1); // text after '@'
 
     // Require at least 1 character (or show root dir in directory mode)
@@ -242,20 +232,20 @@ export async function getDirBrowseResults(query) {
 async function onInputDirectory(query) {
     const browse = await getDirBrowseResults(query);
     if (!browse) {
-        hideDropdown();
+        list.hide();
         return;
     }
 
     currentDir = browse.dir;
-    currentResults = browse.results;
-    selectedIndex = 0;
+    list.results = browse.results;
+    list.selected = 0;
     renderDropdownDirectory(browse.entries, browse.dir, browse.filter);
 }
 
 /** Fuzzy matching mode (original behavior). */
 async function onInputFuzzy(query) {
     if (query.length < 1) {
-        hideDropdown();
+        list.hide();
         return;
     }
 
@@ -268,7 +258,7 @@ async function onInputFuzzy(query) {
     }
 
     if (files.length === 0) {
-        hideDropdown();
+        list.hide();
         return;
     }
 
@@ -281,64 +271,37 @@ async function onInputFuzzy(query) {
         const currentText = currentInput.value;
         const currentCursor = currentInput.selectionStart;
         const currentBefore = currentText.slice(0, currentCursor);
-        const currentAtIndex = findMentionStart(currentBefore);
-        if (currentAtIndex === -1) { hideDropdown(); return; }
+        const currentAtIndex = findTriggerStart(currentBefore, '@');
+        if (currentAtIndex === -1) { list.hide(); return; }
         const currentQuery = currentBefore.slice(currentAtIndex + 1);
-        if (currentQuery.length < 1) { hideDropdown(); return; }
+        if (currentQuery.length < 1) { list.hide(); return; }
 
-        currentResults = fuzzyFilter(files, currentQuery);
-        if (currentResults.length === 0) {
-            hideDropdown();
+        list.results = fuzzyFilter(files, currentQuery);
+        if (list.results.length === 0) {
+            list.hide();
             return;
         }
-        selectedIndex = 0;
+        list.selected = 0;
         renderDropdown(currentQuery);
     }, 30);
 }
 
-function findMentionStart(text) {
-    // Walk backwards from end to find '@' that isn't preceded by a non-whitespace char
-    // (so "foo@bar" doesn't trigger, but "foo @bar" or "@bar" does)
-    for (let i = text.length - 1; i >= 0; i--) {
-        const ch = text[i];
-        // If we hit whitespace or newline before finding '@', no active mention
-        if (ch === ' ' || ch === '\n' || ch === '\t') return -1;
-        if (ch === '@') {
-            // Valid if at start of text or preceded by whitespace
-            if (i === 0 || /\s/.test(text[i - 1])) return i;
-            return -1;
-        }
-    }
-    return -1;
-}
-
 function renderDropdown(query) {
-    if (!dropdown || currentResults.length === 0) {
-        hideDropdown();
+    if (!list.el || list.results.length === 0) {
+        list.hide();
         return;
     }
 
-    dropdown.innerHTML = currentResults.map((fp, i) => {
-        const cls = i === selectedIndex ? "file-mention-item selected" : "file-mention-item";
+    list.show(list.results.map((fp, i) => {
+        const cls = i === list.selected ? "file-mention-item selected" : "file-mention-item";
         const highlighted = highlightMatch(fp, query);
         return `<div class="${cls}" data-index="${Number(i)}">${highlighted}</div>`;
-    }).join("");
-
-    dropdown.style.display = "block";
-
-    // Add click handlers
-    dropdown.querySelectorAll(".file-mention-item").forEach(el => {
-        el.addEventListener("mousedown", (e) => {
-            e.preventDefault(); // prevent blur
-            const idx = parseInt(el.dataset.index);
-            selectItem(idx);
-        });
-    });
+    }).join(""));
 }
 
 function renderDropdownDirectory(entries, dir, filter) {
-    if (!dropdown || currentResults.length === 0) {
-        hideDropdown();
+    if (!list.el || list.results.length === 0) {
+        list.hide();
         return;
     }
 
@@ -346,7 +309,7 @@ function renderDropdownDirectory(entries, dir, filter) {
     const breadcrumb = dir ? `<div class="file-mention-breadcrumb">${escapeHtml(dir)}/</div>` : '';
 
     const items = entries.map((entry, i) => {
-        const cls = i === selectedIndex ? "file-mention-item selected" : "file-mention-item";
+        const cls = i === list.selected ? "file-mention-item selected" : "file-mention-item";
         const icon = entry.type === 'dir' ? '<span class="file-mention-dir-icon">&#128193;</span>' : '';
         // entry.name may already include trailing / for dirs
         const displaySuffix = entry.type === 'dir' && !entry.name.endsWith('/') ? '/' : '';
@@ -366,17 +329,7 @@ function renderDropdownDirectory(entries, dir, filter) {
         return `<div class="${cls}" data-index="${Number(i)}">${icon}${displayName}</div>`;
     }).join("");
 
-    dropdown.innerHTML = breadcrumb + items;
-    dropdown.style.display = "block";
-
-    // Add click handlers
-    dropdown.querySelectorAll(".file-mention-item").forEach(el => {
-        el.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            const idx = parseInt(el.dataset.index);
-            selectItem(idx);
-        });
-    });
+    list.show(breadcrumb + items);
 }
 
 function highlightMatch(filepath, query) {
@@ -411,18 +364,18 @@ function highlightMatch(filepath, query) {
 
 function selectItem(index) {
     const input = document.getElementById("command-input");
-    if (!input || index < 0 || index >= currentResults.length) return;
+    if (!input || index < 0 || index >= list.results.length) return;
 
-    const filepath = currentResults[index];
+    const filepath = list.results[index];
     const mode = (state.settings || {}).file_search_mode || 'directory';
 
     // In directory mode, selecting a directory expands into it
     if (mode === 'directory' && filepath.endsWith('/')) {
         const text = input.value;
-        const before = text.slice(0, mentionStart + 1); // keep the '@'
+        const before = text.slice(0, list.start + 1); // keep the '@'
         const after = text.slice(input.selectionStart);
         input.value = before + filepath + after;
-        const newPos = mentionStart + 1 + filepath.length;
+        const newPos = list.start + 1 + filepath.length;
         input.selectionStart = input.selectionEnd = newPos;
         input.focus();
         // Trigger input event to refresh directory listing
@@ -435,62 +388,20 @@ function selectItem(index) {
 
     // Replace @query with the filepath (strip trailing / for files)
     const cleanPath = filepath.replace(/\/$/, '');
-    const before = text.slice(0, mentionStart);
+    const before = text.slice(0, list.start);
     const after = text.slice(cursor);
     input.value = before + cleanPath + " " + after;
 
     // Position cursor after the inserted path + space
-    const newPos = mentionStart + cleanPath.length + 1;
+    const newPos = list.start + cleanPath.length + 1;
     input.selectionStart = input.selectionEnd = newPos;
     input.focus();
 
-    hideDropdown();
-}
-
-function onKeydown(e) {
-    if (!dropdown || dropdown.style.display === "none") return;
-
-    if (e.key === "ArrowDown") {
-        e.preventDefault();
-        selectedIndex = Math.min(selectedIndex + 1, currentResults.length - 1);
-        updateSelection();
-    } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        selectedIndex = Math.max(selectedIndex - 1, 0);
-        updateSelection();
-    } else if (e.key === "Tab" || e.key === "Enter") {
-        if (currentResults.length > 0) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            selectItem(selectedIndex);
-        }
-    } else if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        hideDropdown();
-    }
-}
-
-function updateSelection() {
-    if (!dropdown) return;
-    dropdown.querySelectorAll(".file-mention-item").forEach((el, i) => {
-        el.classList.toggle("selected", i === selectedIndex);
-    });
-    // Scroll selected item into view
-    const selected = dropdown.querySelector(".file-mention-item.selected");
-    if (selected) selected.scrollIntoView({ block: "nearest" });
-}
-
-function hideDropdown() {
-    if (dropdown) dropdown.style.display = "none";
-    currentResults = [];
-    mentionStart = -1;
-    currentDir = '';
-    clearTimeout(renderTimer);
+    list.hide();
 }
 
 export function isDropdownVisible() {
-    return dropdown && dropdown.style.display !== "none";
+    return list.visible();
 }
 
 export function invalidateFileCache() {

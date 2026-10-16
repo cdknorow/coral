@@ -9,6 +9,7 @@ import { fileIconHtml } from './file_explorer.js';
 import { openPreviewTab, openArtifactTab, setPreviewSession } from './preview_pane.js';
 import { storeKey, readStars, writeStars } from './local_store.js';
 import { serverFetch, serverForSession, sessionServer, currentServer, isCloud } from './server_base.js';
+import { agentName, apiQs } from './agent_file_api.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;
@@ -443,17 +444,6 @@ function splitPath(filepath) {
 }
 
 /* ── Helper: build API query string for the current session ── */
-
-function _apiQs(filepath) {
-    const qs = new URLSearchParams({ filepath });
-    const sid = state.currentSession && state.currentSession.session_id;
-    if (sid) qs.set('session_id', sid);
-    return qs;
-}
-
-function _agentName() {
-    return state.currentSession && state.currentSession.name;
-}
 
 /** Show preview for a file. Everything opens as a tab in the bottom preview pane;
  *  `opts.diff` marks files from the changed-files list so the Diff mode is offered. */

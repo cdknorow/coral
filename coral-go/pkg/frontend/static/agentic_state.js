@@ -9,6 +9,7 @@ import { escapeHtml, escapeAttr } from './utils.js';
 import { registerActions } from './actions.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 import { serverFetch, serverForSession } from './server_base.js';
+import { formatClockTime } from './format.js';
 
 const TOOL_ICONS = {
     Read:       { char: '&#xe8f4;', cls: 'tool-read' },
@@ -89,16 +90,6 @@ function getToolIcon(toolName, eventType) {
         return { char: '&#xe87e;', cls: 'tool-pulse', title };
     }
     return { char: '&#xe061;', cls: 'tool-default', title: toolName || eventType || 'Event' };
-}
-
-function formatTime(isoStr) {
-    if (!isoStr) return '';
-    try {
-        const d = new Date(isoStr);
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch {
-        return '';
-    }
 }
 
 function isEventVisible(ev) {
@@ -293,7 +284,7 @@ export function renderEventTimeline() {
                 <span class="event-summary">${escapeHtml(ev.summary)}</span>
             </span>
             ${durationChip(ev)}
-            <span class="event-time">${formatTime(ev.created_at)}</span>
+            <span class="event-time">${formatClockTime(ev.created_at)}</span>
         </div>`;
     }).join('');
 
@@ -322,7 +313,7 @@ export function showFilterPopup(mouseEvent, key) {
         ? recentItems.map(ev =>
             `<div class="filter-popup-event">
                 <span class="filter-popup-summary">${escapeHtml(ev.summary)}</span>
-                <span class="filter-popup-time">${formatTime(ev.created_at)}</span>
+                <span class="filter-popup-time">${formatClockTime(ev.created_at)}</span>
             </div>`
         ).join('')
         : '<div class="filter-popup-empty">No events</div>';

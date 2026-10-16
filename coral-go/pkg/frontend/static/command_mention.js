@@ -3,29 +3,15 @@
 import { state } from './state.js';
 import { isDropdownVisible as isFileMentionVisible } from './file_mention.js';
 import { escapeHtml } from './utils.js';
+import { createMentionList, findTriggerStart } from './mention_list.js';
 
-let dropdown = null;
-let selectedIndex = 0;
-let currentResults = [];
-let slashStart = -1; // position of the '/' character
+// results, selection and the position of the '/' live on the shared list (mention_list.js).
+const list = createMentionList('command-mention', { onInput: e => onInput(e), onPick: i => selectItem(i) });
 
 export function initCommandMention() {
     const input = document.getElementById("command-input");
     if (!input) return;
-
-    // Create dropdown element
-    dropdown = document.createElement("div");
-    dropdown.className = "command-mention-dropdown";
-    dropdown.style.display = "none";
-    // Append to the command-editor wrapper so it positions relative to the textarea
-    input.parentElement.appendChild(dropdown);
-
-    input.addEventListener("input", onInput);
-    input.addEventListener("keydown", onKeydown);
-    input.addEventListener("blur", () => {
-        // Delay hide so click on dropdown item can fire first
-        setTimeout(hideDropdown, 200);
-    });
+    list.mount(input);
 }
 
 function onInput(e) {
@@ -38,41 +24,26 @@ function onInput(e) {
 
     // Find the '/' that starts the current command mention
     const beforeCursor = text.slice(0, cursor);
-    const idx = findSlashStart(beforeCursor);
+    const idx = findTriggerStart(beforeCursor, '/');
 
     if (idx === -1) {
-        hideDropdown();
+        list.hide();
         return;
     }
 
-    slashStart = idx;
+    list.start = idx;
     const query = beforeCursor.slice(idx + 1); // text after '/'
 
     const filtered = fuzzyFilter(state.currentCommands || [], query);
-    currentResults = filtered;
+    list.results = filtered;
 
-    if (currentResults.length === 0) {
-        hideDropdown();
+    if (list.results.length === 0) {
+        list.hide();
         return;
     }
 
-    selectedIndex = 0;
+    list.selected = 0;
     renderDropdown(query);
-}
-
-function findSlashStart(text) {
-    // Walk backwards from end to find '/' that is at start of text or preceded by whitespace
-    for (let i = text.length - 1; i >= 0; i--) {
-        const ch = text[i];
-        // If we hit whitespace or newline before finding '/', no active mention
-        if (ch === ' ' || ch === '\n' || ch === '\t') return -1;
-        if (ch === '/') {
-            // Valid if at start of text or preceded by whitespace
-            if (i === 0 || /\s/.test(text[i - 1])) return i;
-            return -1;
-        }
-    }
-    return -1;
 }
 
 function fuzzyFilter(commands, query) {
@@ -124,31 +95,20 @@ function fuzzyMatch(text, query) {
 }
 
 function renderDropdown(query) {
-    if (!dropdown || currentResults.length === 0) {
-        hideDropdown();
+    if (!list.el || list.results.length === 0) {
+        list.hide();
         return;
     }
 
-    dropdown.innerHTML = currentResults.map((cmd, i) => {
-        const cls = i === selectedIndex ? "command-mention-item selected" : "command-mention-item";
+    list.show(list.results.map((cmd, i) => {
+        const cls = i === list.selected ? "command-mention-item selected" : "command-mention-item";
         const nameHtml = highlightMatch(cmd.command, query);
         const descHtml = escapeHtml(cmd.description || "");
         return `<div class="${cls}" data-index="${Number(i)}">
             <span class="cmd-name">${nameHtml}</span>
             <span class="cmd-desc">${descHtml}</span>
         </div>`;
-    }).join("");
-
-    dropdown.style.display = "block";
-
-    // Add click handlers
-    dropdown.querySelectorAll(".command-mention-item").forEach(el => {
-        el.addEventListener("mousedown", (e) => {
-            e.preventDefault(); // prevent blur
-            const idx = parseInt(el.dataset.index);
-            selectItem(idx);
-        });
-    });
+    }).join(""));
 }
 
 function highlightMatch(command, query) {
@@ -184,65 +144,25 @@ function highlightMatch(command, query) {
 
 function selectItem(index) {
     const input = document.getElementById("command-input");
-    if (!input || index < 0 || index >= currentResults.length) return;
+    if (!input || index < 0 || index >= list.results.length) return;
 
-    const cmd = currentResults[index];
+    const cmd = list.results[index];
     const text = input.value;
     const cursor = input.selectionStart;
 
     // Replace /query with the full command
-    const before = text.slice(0, slashStart);
+    const before = text.slice(0, list.start);
     const after = text.slice(cursor);
     input.value = before + cmd.command + " " + after;
 
     // Position cursor after the inserted command + space
-    const newPos = slashStart + cmd.command.length + 1;
+    const newPos = list.start + cmd.command.length + 1;
     input.selectionStart = input.selectionEnd = newPos;
     input.focus();
 
-    hideDropdown();
-}
-
-function onKeydown(e) {
-    if (!dropdown || dropdown.style.display === "none") return;
-
-    if (e.key === "ArrowDown") {
-        e.preventDefault();
-        selectedIndex = Math.min(selectedIndex + 1, currentResults.length - 1);
-        updateSelection();
-    } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        selectedIndex = Math.max(selectedIndex - 1, 0);
-        updateSelection();
-    } else if (e.key === "Tab" || e.key === "Enter") {
-        if (currentResults.length > 0) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            selectItem(selectedIndex);
-        }
-    } else if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        hideDropdown();
-    }
-}
-
-function updateSelection() {
-    if (!dropdown) return;
-    dropdown.querySelectorAll(".command-mention-item").forEach((el, i) => {
-        el.classList.toggle("selected", i === selectedIndex);
-    });
-    // Scroll selected item into view
-    const selected = dropdown.querySelector(".command-mention-item.selected");
-    if (selected) selected.scrollIntoView({ block: "nearest" });
-}
-
-function hideDropdown() {
-    if (dropdown) dropdown.style.display = "none";
-    currentResults = [];
-    slashStart = -1;
+    list.hide();
 }
 
 export function isDropdownVisible() {
-    return dropdown && dropdown.style.display !== "none";
+    return list.visible();
 }
