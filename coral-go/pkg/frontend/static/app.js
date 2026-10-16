@@ -3,6 +3,7 @@ import { importOnce } from './import_once.js';
 import './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
 import './nav_tabs.js'; // the tab row, its More menu and the phone's view dropdown (#3816)
 import { initPrerequisiteChecks } from './prerequisites.js';
+import { fetchSystemStatus } from './system_status.js';
 import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';
 import { showTeamWorkingMode, showTeamWorkingModeWorkspace } from './team_working_mode.js';
@@ -830,6 +831,7 @@ const _settlePollListLoad = () => { if (!_pollListLoadSettled) { _pollListLoadSe
 function pollStartupStatus() {
     const el = document.getElementById('startup-loading');
     if (!el) { _settlePollListLoad(); return; }
+    let firstCheck = true;   // the first answer may be the one the page's other startup callers share; a retry must be fresh
     const check = async () => {
         // The hub has no local startup phase: each machine is its own server, and the merged list
         // fills in as the feed reports them, so there is nothing to wait for here.
@@ -840,7 +842,8 @@ function pollStartupStatus() {
             return;
         }
         try {
-            const resp = await fetch('/api/system/status');
+            const resp = await fetchSystemStatus({ fresh: !firstCheck });
+            firstCheck = false;
             if (!resp.ok) { dashboardFailed('status_fetch_http'); _settlePollListLoad(); setTimeout(check, 2000); return; }
             const data = await resp.json();
             if (!data || typeof data.startup_complete !== 'boolean') throw new SyntaxError('Invalid startup status');
