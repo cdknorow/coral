@@ -1,14 +1,14 @@
-package tunnel
+package redact
 
 // Token redaction for Coral Hub viewers (#3560, design c73e2d6a). The connector replaces
-// well-known credential formats in the text replies of View routes with RedactMarker before
+// well-known credential formats in the text replies of View routes with Marker before
 // they leave this computer; local requests never pass through here. Rules: a literal prefix,
 // a character class, a length floor and ceiling, and a word boundary before the token. There
 // is no entropy rule, so hashes, UUIDs and base64 are left alone. A PEM private-key block is
 // removed from its BEGIN line to its END line, to the end of the JSON string it sits in, or to
 // the end of the reply, however long it is: a key is never flushed in part.
 //
-// The Redactor streams: each Write emits everything that can no longer be part of a token and
+// The Writer streams: each Write emits everything that can no longer be part of a token and
 // holds back only a tail that could still start or continue one (bounded by the longest rule,
 // or the few bytes that could start a key's END line), so memory stays flat whatever the
 // reply's size. A body redacted in one Write comes out byte for byte the same as any split of
@@ -24,8 +24,8 @@ import (
 	"strings"
 )
 
-// RedactMarker replaces a token. For Bearer and Authorization values the scheme is kept.
-const RedactMarker = "[redacted token]"
+// Marker replaces a token. For Bearer and Authorization values the scheme is kept.
+const Marker = "[redacted token]"
 
 type tokenRule struct {
 	prefixes []string                 // literal starts (case variants listed explicitly)
@@ -583,8 +583,8 @@ var (
 
 const maxPEMLabel = 64
 
-// Redactor redacts what is written to it and passes the result on to its destination.
-type Redactor struct {
+// Writer redacts what is written to it and passes the result on to its destination.
+type Writer struct {
 	dst     io.Writer
 	pending []byte          // held back: it could still start or continue a token
 	prev    []byte          // the last few bytes of the original stream before pending (for the boundary)
@@ -598,11 +598,11 @@ type Redactor struct {
 	st      starts
 }
 
-// NewRedactor returns a Redactor writing the redacted stream to dst. Close flushes it.
-func NewRedactor(dst io.Writer) *Redactor { return &Redactor{dst: dst} }
+// NewWriter returns a Writer writing the redacted stream to dst. Close flushes it.
+func NewWriter(dst io.Writer) *Writer { return &Writer{dst: dst} }
 
 // Write redacts p (after what was held back) and emits everything that is settled.
-func (r *Redactor) Write(p []byte) (int, error) {
+func (r *Writer) Write(p []byte) (int, error) {
 	if r.err != nil {
 		return 0, r.err
 	}
@@ -630,7 +630,7 @@ func (r *Redactor) Write(p []byte) (int, error) {
 // skipShown drops from out what Flush already emitted: the leading bytes of data, shown as
 // they were. Where a token turned out to start inside them, out differs from data from there
 // on, and the viewer, having seen its first characters, gets the marker after them.
-func (r *Redactor) skipShown(out, data []byte, consumed int) []byte {
+func (r *Writer) skipShown(out, data []byte, consumed int) []byte {
 	if r.shown == 0 {
 		return out
 	}
@@ -641,6 +641,10 @@ func (r *Redactor) skipShown(out, data []byte, consumed int) []byte {
 	r.shown = max(0, r.shown-consumed)
 	return out[k:]
 }
+
+// Holding reports whether the stream holds bytes it hasn't shown that a Flush could settle:
+// not inside a private key, whose bytes wait for its END line whatever happens.
+func (r *Writer) Holding() bool { return !r.inPEM && len(r.pending) > r.shown }
 
 // Flush settles the held tail of a stream that has gone quiet, without ending it (#3562: a
 // terminal must not sit on its last characters). No character of a token's value is ever
@@ -654,7 +658,7 @@ func (r *Redactor) skipShown(out, data []byte, consumed int) []byte {
 //     scheme stay when the rule keeps them), and the rest of the run is dropped if more
 //     arrives.
 //   - Inside a private key nothing is shown, so Flush waits for its END line.
-func (r *Redactor) Flush(force bool) error {
+func (r *Writer) Flush(force bool) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -674,7 +678,7 @@ func (r *Redactor) Flush(force bool) error {
 		if r.shown > keep {
 			out = out[:0] // a token began inside what was shown: the marker follows it
 		}
-		out = append(out, RedactMarker...)
+		out = append(out, Marker...)
 		r.inToken = rule.class
 		if rule.toQuote && openingQuote(r.pending, valueAt) != nil {
 			r.inToken = notQuoteEnd // a quoted value's rest runs to its quote, spaces and all
@@ -702,7 +706,7 @@ func (r *Redactor) Flush(force bool) error {
 }
 
 // settleAll counts everything held back as consumed (Flush).
-func (r *Redactor) settleAll() {
+func (r *Writer) settleAll() {
 	r.prev = append(r.prev, r.pending[max(0, len(r.pending)-escapeContext):]...)
 	r.prev = r.prev[:copy(r.prev, r.prev[max(0, len(r.prev)-escapeContext):])]
 	r.pending, r.shown = r.pending[:0], 0
@@ -733,7 +737,7 @@ func heldValue(b []byte) (*tokenRule, int) {
 }
 
 // Close redacts and emits what was held back; a private key still open is dropped.
-func (r *Redactor) Close() error {
+func (r *Writer) Close() error {
 	if r.err != nil {
 		return r.err
 	}
@@ -749,10 +753,10 @@ func (r *Redactor) Close() error {
 	return nil
 }
 
-// RedactTokens redacts a whole body.
-func RedactTokens(b []byte) []byte {
+// Tokens redacts a whole body.
+func Tokens(b []byte) []byte {
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := NewWriter(&out)
 	_, _ = r.Write(b)
 	_ = r.Close()
 	return out.Bytes()
@@ -760,7 +764,7 @@ func RedactTokens(b []byte) []byte {
 
 // process redacts data and returns the output and how many bytes of data it settled; the rest
 // is held back. With final set, all of data is settled.
-func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
+func (r *Writer) process(data []byte, final bool) (out []byte, consumed int) {
 	out = r.out[:0]
 	defer func() { r.out = out[:0] }()
 	st := &r.st
@@ -833,7 +837,7 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 				out = append(out, data[start])
 				i = start + 1
 			default:
-				out = append(out, RedactMarker...)
+				out = append(out, Marker...)
 				r.inPEM, r.pemEsc = true, false
 				i = start + n
 			}
@@ -891,7 +895,7 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 			if rule.keep {
 				out = append(out, data[start:start+valueAt]...)
 			}
-			out = append(out, RedactMarker...)
+			out = append(out, Marker...)
 			i = start + n
 			if long {
 				r.inToken = rule.class // the rest of the run is dropped as it arrives

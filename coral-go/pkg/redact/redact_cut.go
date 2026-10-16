@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import "unicode/utf8"
 
@@ -22,11 +22,11 @@ func tokenByte(c byte) bool {
 // ghp_..., base64) still moves the cut back to its start, however long.
 const maxWideWalk = maxURLUser + maxURLRun
 
-// CutOutsideToken is where s may be cut at or before byte n: the largest p <= n that starts a
+// Cut is where s may be cut at or before byte n: the largest p <= n that starts a
 // UTF-8 character and doesn't fall between two bytes that could both belong to a token. A run
 // of such bytes that crosses n is dropped whole; if it starts at 0, p is 0. Through bytes that
 // only the wide rules take, the walk back stops after maxWideWalk. n >= len(s) gives len(s).
-func CutOutsideToken(s string, n int) int {
+func Cut(s string, n int) int {
 	if n >= len(s) {
 		return len(s)
 	}

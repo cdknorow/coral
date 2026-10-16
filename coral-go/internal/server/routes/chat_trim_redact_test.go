@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // Security's #3723 finding: trim=N is chosen by the caller, a View-tier Coral Hub user among
@@ -59,7 +59,7 @@ func TestTrimNeverShowsAPieceOfAToken(t *testing.T) {
 		t.Helper()
 		body, err := json.Marshal(map[string]any{"messages": trimChatPage(page(content), n)})
 		require.NoError(t, err)
-		out := string(tunnel.RedactTokens(body))
+		out := string(redact.Tokens(body))
 		if shown := trimSecretShown(out, secret); shown != "" {
 			t.Errorf("trim=%d shows %q of %q", n, shown, secret)
 		}
@@ -90,7 +90,7 @@ func TestTrimNeverShowsAPieceOfAPEMKey(t *testing.T) {
 	content := strings.Repeat("cat id_rsa\n", 20) + key.String() + "\ndone\n" + strings.Repeat("z", 1000)
 	for n := trimMin; n <= len(content); n++ {
 		body, _ := json.Marshal(map[string]any{"messages": trimChatPage([]map[string]any{{"type": "tool_result", "content": content}}, n)})
-		out := string(tunnel.RedactTokens(body))
+		out := string(redact.Tokens(body))
 		if shown := trimSecretShown(out, line); shown != "" {
 			t.Fatalf("trim=%d shows %q", n, shown)
 		}
@@ -102,7 +102,7 @@ func TestTrimRedactsBeforeCutting(t *testing.T) {
 	tok := trimFake("ghp_", 36, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 	content := "token " + tok + "\n" + strings.Repeat("output\n", 100)
 	got := trimChatPage([]map[string]any{{"type": "tool_result", "content": content}}, 300)[0]["content"].(string)
-	assert.Contains(t, got, tunnel.RedactMarker)
+	assert.Contains(t, got, redact.Marker)
 	assert.NotContains(t, got, tok[4:12])
 	assert.LessOrEqual(t, len(got), 300)
 }

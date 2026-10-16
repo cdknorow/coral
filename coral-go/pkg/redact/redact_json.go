@@ -1,10 +1,9 @@
-package tunnel
+package redact
 
 import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"net/http"
 	"strings"
 )
 
@@ -113,7 +112,7 @@ func (n *jnode) redact(key string, has, auth, secret bool) {
 	if secret {
 		switch {
 		case n.kind == 's' && n.str != "", n.kind == 'l' && n.lit != "null":
-			n.kind, n.str, n.lit = 's', RedactMarker, ""
+			n.kind, n.str, n.lit = 's', Marker, ""
 			return
 		case n.kind == 's' || n.kind == 'l':
 			return
@@ -127,7 +126,7 @@ func (n *jnode) redact(key string, has, auth, secret bool) {
 		case has:
 			n.str = redactMember(key, n.str)
 		default:
-			n.str = string(RedactTokens([]byte(n.str)))
+			n.str = string(Tokens([]byte(n.str)))
 		}
 	case '[':
 		for _, c := range n.vals {
@@ -161,7 +160,7 @@ func (n *jnode) redact(key string, has, auth, secret bool) {
 			childAuth := auth || strings.Contains(strings.ToLower(k), "authorization") ||
 				other > 0 && n.vals[i].kind == 's'
 			n.vals[i].redact(ctx, true, childAuth, secret || isSecretKey(ctx))
-			n.keys[i] = string(RedactTokens([]byte(k)))
+			n.keys[i] = string(Tokens([]byte(k)))
 		}
 	}
 }
@@ -198,9 +197,9 @@ func (n *jnode) write(b *bytes.Buffer) bool {
 	return true
 }
 
-// redactJSONStructure is raw (valid JSON) with every string redacted. ok is false if raw isn't
+// JSON is raw (valid JSON) with every string redacted. ok is false if raw isn't
 // one JSON value that can be walked.
-func redactJSONStructure(raw []byte) (out []byte, ok bool) {
+func JSON(raw []byte) (out []byte, ok bool) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	root, ok := readJSONNode(dec, 0)
@@ -225,11 +224,11 @@ func redactJSONStructure(raw []byte) (out []byte, ok bool) {
 // then the marker (fail closed).
 func redactMember(key, v string) string {
 	pre := key + ": "
-	r := string(RedactTokens([]byte(pre + v)))
+	r := string(Tokens([]byte(pre + v)))
 	if !strings.HasPrefix(r, pre) {
-		return RedactMarker
+		return Marker
 	}
-	return string(RedactTokens([]byte(r[len(pre):])))
+	return string(Tokens([]byte(r[len(pre):])))
 }
 
 // writeJSONString writes s as a JSON string, without the HTML escaping json.Marshal adds.
@@ -244,39 +243,39 @@ func writeJSONString(b *bytes.Buffer, s string) bool {
 	return true
 }
 
-// RedactJSON redacts a JSON document Coral stores (an agent event's detail, #3763): by its
+// Document redacts a JSON document kept at rest (an agent event's detail, #3763): by its
 // structure when it is valid JSON that can be walked, as text otherwise. It never fails: what
 // can't be walked is redacted as text.
-func RedactJSON(raw []byte) []byte {
-	out := RedactTokens(raw)
+func Document(raw []byte) []byte {
+	out := Tokens(raw)
 	if json.Valid(raw) {
-		if s, ok := redactJSONStructure(raw); ok {
+		if s, ok := JSON(raw); ok {
 			out = s
 		}
 	}
 	// Redaction only ever puts the marker in: with no new one, nothing was found, and the
 	// document is kept as it was written (the walk re-encodes it, \u0026 and all).
-	if bytes.Count(out, []byte(RedactMarker)) == bytes.Count(raw, []byte(RedactMarker)) {
+	if bytes.Count(out, []byte(Marker)) == bytes.Count(raw, []byte(Marker)) {
 		return raw
 	}
 	return out
 }
 
-// redactReply redacts a reply held whole: by its structure when it is JSON (declared and
+// Reply redacts a reply held whole: by its structure when it is JSON (isJSON: declared so, and
 // valid), as text otherwise. A panic in either is a failure, so a reply is never sent unscanned.
-func redactReply(hdr http.Header, raw []byte) (out []byte, ok bool) {
+func Reply(raw []byte, isJSON bool) (out []byte, ok bool) {
 	defer func() {
 		if recover() != nil {
 			out, ok = nil, false
 		}
 	}()
-	if jsonReply(hdr) && json.Valid(raw) {
-		if out, ok := redactJSONStructure(raw); ok {
+	if isJSON && json.Valid(raw) {
+		if out, ok := JSON(raw); ok {
 			return out, true
 		}
 		// Too deep to walk: redacted as text, as before #3732 (and still checked to parse).
 	}
-	return RedactTokens(raw), true
+	return Tokens(raw), true
 }
 
 // isSecretKey reports whether a JSON key names a secret (#3733): one of secretNames or its

@@ -21,6 +21,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/coder/websocket"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // ── Path guard ──────────────────────────────────────────────────────
@@ -270,7 +272,7 @@ type LocalHandler struct {
 	// tunnel-only rules apply, so a forged stamp can only make things stricter).
 	ViaValue string
 	// RedactTokens turns on token redaction in View replies (#3560): well-known credential
-	// formats and private keys are replaced by RedactMarker before a reply leaves this
+	// formats and private keys are replaced by redact.Marker before a reply leaves this
 	// computer. Read on every request; nil means on.
 	RedactTokens func() bool
 	// HubLimits bounds what Coral Hub can hold open on this computer at once (#3624); zero
@@ -684,7 +686,7 @@ var redactFailLog sync.Once
 
 // serveRedacted relays a View reply with its tokens replaced (#3560). A reply of known size up
 // to wholeReplyMax goes in one write, as unredacted ones do; a larger, open-ended or decoded one
-// streams through a Redactor, which holds back only a tail that could still be a token. Range
+// streams through a redact.Writer, which holds back only a tail that could still be a token. Range
 // is dropped per route, not per content type, so a binary reply on a redacted View route (an
 // image the agent's page serves, say) is a 200 with the whole body: accepted (Security's #3560
 // note 2), since only artifact downloads need byte ranges and they are exempt.
@@ -750,7 +752,7 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 	if err != nil {
 		return
 	}
-	red := NewRedactor(w)
+	red := redact.NewWriter(w)
 	buf := make([]byte, maxChunk)
 	for {
 		n, rerr := body.Read(buf)
@@ -903,7 +905,12 @@ func respondJSONBusy(s *Stream) {
 
 // jsonReply reports whether a reply's Content-Type is JSON (application/json or a +json type).
 // It goes by the declared type: a JSON body sent as text/plain is streamed through the
-// Redactor unchecked (Coral's own JSON endpoints all declare application/json).
+// redact.Writer unchecked (Coral's own JSON endpoints all declare application/json).
+// redactReply redacts a reply held whole: by its structure when hdr declares JSON.
+func redactReply(hdr http.Header, raw []byte) ([]byte, bool) {
+	return redact.Reply(raw, jsonReply(hdr))
+}
+
 func jsonReply(hdr http.Header) bool {
 	mt, _, err := mime.ParseMediaType(hdr.Get("Content-Type"))
 	return err == nil && (mt == "application/json" || strings.HasSuffix(mt, "+json"))
@@ -934,10 +941,10 @@ func redactWhole(b []byte) (out []byte, ok bool) {
 			out, ok = nil, false
 		}
 	}()
-	return RedactTokens(b), true
+	return redact.Tokens(b), true
 }
 
-func redactWrite(r *Redactor, b []byte) (ok bool) {
+func redactWrite(r *redact.Writer, b []byte) (ok bool) {
 	defer func() {
 		if recover() != nil {
 			ok = false
@@ -947,7 +954,7 @@ func redactWrite(r *Redactor, b []byte) (ok bool) {
 	return err == nil
 }
 
-func redactClose(r *Redactor) (ok bool) {
+func redactClose(r *redact.Writer) (ok bool) {
 	defer func() {
 		if recover() != nil {
 			ok = false

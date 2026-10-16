@@ -24,7 +24,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/transcriptlink"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // SessionReader incrementally reads JSONL session files for live chat display.
@@ -1240,11 +1240,11 @@ func summarizeToolInput(name string, input map[string]any) string {
 	return ""
 }
 
-// A field cut short never ends in the start of a token (tunnel.CutOutsideToken): the Coral Hub
+// A field cut short never ends in the start of a token (redact.Cut): the Coral Hub
 // redactor knows whole tokens only, and would pass a token's first characters (#3723).
 func truncate(s string, n int) string {
 	if len(s) > n {
-		return s[:tunnel.CutOutsideToken(s, n)] + "..."
+		return s[:redact.Cut(s, n)] + "..."
 	}
 	return s
 }
@@ -1252,7 +1252,7 @@ func truncate(s string, n int) string {
 // truncateContent truncates large content blocks (tool results, file writes) to 10KB.
 func truncateContent(s string) string {
 	if len(s) > 10000 {
-		return s[:tunnel.CutOutsideToken(s, 10000)] + "\n... (truncated)"
+		return s[:redact.Cut(s, 10000)] + "\n... (truncated)"
 	}
 	return s
 }

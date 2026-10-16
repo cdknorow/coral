@@ -1,6 +1,6 @@
 package routes
 
-import "github.com/cdknorow/coral/pkg/tunnel"
+import "github.com/cdknorow/coral/pkg/redact"
 
 // A chat page asked for with ?trim=N (#3723) carries at most N bytes of each long tool field:
 // a tool's output, a written file, an edit's old and new text, a patch. These are folded away in
@@ -12,7 +12,7 @@ import "github.com/cdknorow/coral/pkg/tunnel"
 // N is the caller's, and a View-tier Coral Hub user is a caller: a cut that left the start of a
 // token would pass the Hub's redactor (it knows whole tokens only), and sliding N would read the
 // token a character at a time (Security, #3723). So a field is redacted before it is cut, and the
-// cut never splits a run that could belong to a token (tunnel.CutOutsideToken).
+// cut never splits a run that could belong to a token (redact.Cut).
 
 // trimMin and trimMax bound a requested trim (bytes).
 const (
@@ -111,6 +111,6 @@ func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
 // trimField is s, longer than n, redacted and then cut to at most n bytes where no token can
 // be split.
 func trimField(s string, n int) string {
-	r := string(tunnel.RedactTokens([]byte(s)))
-	return r[:tunnel.CutOutsideToken(r, n)]
+	r := string(redact.Tokens([]byte(s)))
+	return r[:redact.Cut(r, n)]
 }

@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // terminalLogDepth is how many log lines may wait for a slow terminal before
@@ -56,7 +56,7 @@ func redactLogLine(p []byte) (out []byte) {
 			out = []byte("[log] a line could not be checked for secrets and was dropped\n")
 		}
 	}()
-	out = tunnel.RedactTokens(p)
+	out = redact.Tokens(p)
 	// A key's start ("-----BEGIN ... PRIVATE KEY-----") swallows the rest of the text, the line's
 	// newline too: the next line would run on after it (#3783, Security's SHOULD on #3763).
 	if len(p) > 0 && p[len(p)-1] == '\n' && (len(out) == 0 || out[len(out)-1] != '\n') {

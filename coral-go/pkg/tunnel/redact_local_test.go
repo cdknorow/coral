@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // #3560 through a real hub session: a View reply's tokens are replaced before it leaves the
@@ -85,7 +87,7 @@ func TestRedactThroughTheTunnel(t *testing.T) {
 	resp, body := get("GET", "/api/sessions/live/a/capture", http.Header{"Range": {"bytes=10-"}})
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.NotContains(t, body, tok)
-	assert.Contains(t, body, RedactMarker)
+	assert.Contains(t, body, redact.Marker)
 	assert.True(t, json.Valid([]byte(body)), body)
 	assert.Equal(t, strconv.Itoa(len(small)), resp.Header.Get(BodyLengthHeader), "the upstream length stays advisory for the hub's cap (#3568)")
 	assert.Empty(t, resp.Header.Get("Content-Length"), "the body is re-framed: no Content-Length")
@@ -97,7 +99,7 @@ func TestRedactThroughTheTunnel(t *testing.T) {
 	assert.NotContains(t, body, tok)
 	assert.NotContains(t, body, "PRIVATE KEY")
 	assert.NotContains(t, body, key[100:160], "no part of the key")
-	assert.Equal(t, string(RedactTokens(large.Bytes())), body, "the stream gives what redacting the whole gives")
+	assert.Equal(t, string(redact.Tokens(large.Bytes())), body, "the stream gives what redacting the whole gives")
 
 	// A large reply of known length streams through the redactor and keeps the upstream length.
 	resp, body = get("GET", "/api/sessions/live/a/events", nil)
@@ -195,7 +197,7 @@ func TestRedactDecodedReplyWhole(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	assert.Equal(t, string(RedactTokens(plain)), string(body), "the whole decoded body, redacted")
+	assert.Equal(t, string(redact.Tokens(plain)), string(body), "the whole decoded body, redacted")
 	assert.Empty(t, resp.Header.Get(BodyLengthHeader), "a decoded body's length isn't known, so none is announced")
 	assert.True(t, json.Valid(body))
 	assert.Contains(t, string(body), "end of output")

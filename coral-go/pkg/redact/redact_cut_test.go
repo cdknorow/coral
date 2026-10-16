@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import (
 	"encoding/json"
@@ -82,14 +82,14 @@ func TestCutOutsideTokenNeverLeavesAPieceOfAToken(t *testing.T) {
 	for _, tk := range redactorTokens() {
 		for _, s := range []string{"see " + tk.text + " done", tk.text, "é" + tk.text + "\nnext"} {
 			for n := 0; n <= len(s)+1; n++ {
-				p := CutOutsideToken(s, n)
+				p := Cut(s, n)
 				require.LessOrEqual(t, p, max(n, 0))
 				cut := s[:p]
 				assert.True(t, utf8.ValidString(cut), "a cut at a character boundary")
-				raw := string(RedactTokens([]byte(cut)))
+				raw := string(Tokens([]byte(cut)))
 				assert.Empty(t, leaks(raw, tk.secret), "%q cut at %d (raw): %q", tk.text[:min(12, len(tk.text))], n, raw)
 				body, _ := json.Marshal(map[string]string{"content": cut})
-				red := string(RedactTokens(body))
+				red := string(Tokens(body))
 				assert.Empty(t, leaks(red, tk.secret), "%q cut at %d (JSON): %q", tk.text[:min(12, len(tk.text))], n, red)
 			}
 		}
@@ -102,17 +102,17 @@ func TestCutOutsideTokenPEMCutAnywhere(t *testing.T) {
 	body := strings.Split(key, "\n")[1]
 	s := "cat id_rsa\n" + key + "\ndone"
 	for n := 0; n <= len(s); n++ {
-		cut := s[:CutOutsideToken(s, n)]
+		cut := s[:Cut(s, n)]
 		js, _ := json.Marshal(map[string]string{"content": cut})
-		red := string(RedactTokens(js))
+		red := string(Tokens(js))
 		assert.Empty(t, leaks(red, body), "cut at %d: %q", n, red)
 	}
 }
 
 func TestCutOutsideTokenPlaces(t *testing.T) {
-	assert.Equal(t, 3, CutOutsideToken("ab ghp_xyz", 6), "back to before the run")
-	assert.Equal(t, 0, CutOutsideToken("abcdef", 3), "a run from the start: nothing")
-	assert.Equal(t, 6, CutOutsideToken("abc de", 9), "past the end: all")
-	assert.Equal(t, 4, CutOutsideToken("abc def", 4), "right after a space")
-	assert.Equal(t, 0, CutOutsideToken("éé", 1), "never inside a character")
+	assert.Equal(t, 3, Cut("ab ghp_xyz", 6), "back to before the run")
+	assert.Equal(t, 0, Cut("abcdef", 3), "a run from the start: nothing")
+	assert.Equal(t, 6, Cut("abc de", 9), "past the end: all")
+	assert.Equal(t, 4, Cut("abc def", 4), "right after a space")
+	assert.Equal(t, 0, Cut("éé", 1), "never inside a character")
 }

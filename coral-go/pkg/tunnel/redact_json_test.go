@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // #3694: a private key quoted inside a JSON string ("key := \"-----BEGIN ...") made the
@@ -65,7 +67,7 @@ func jsonKeyReply(t *testing.T, content string) []byte {
 
 func redactSplit(b []byte, k int) []byte {
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := redact.NewWriter(&out)
 	_, _ = r.Write(b[:k])
 	_, _ = r.Write(b[k:])
 	_ = r.Close()
@@ -76,7 +78,7 @@ func TestRedactQuotedKeyKeepsJSONValid(t *testing.T) {
 	for _, c := range jsonKeyCases {
 		t.Run(c.name, func(t *testing.T) {
 			in := jsonKeyReply(t, c.content)
-			want := RedactTokens(in)
+			want := redact.Tokens(in)
 			if c.same {
 				assert.Equal(t, string(in), string(want), "nothing to redact")
 			}
@@ -119,7 +121,7 @@ func TestRedactKeyCutOffAtTheEnd(t *testing.T) {
 		for _, s := range []string{"b3Blbn", "secretT", "secretU", "and"} {
 			require.NotContains(t, got, s, "split at %d", k)
 		}
-		require.True(t, strings.HasSuffix(got, RedactMarker), "dropped to the end, split at %d: %s", k, got)
+		require.True(t, strings.HasSuffix(got, redact.Marker), "dropped to the end, split at %d: %s", k, got)
 	}
 }
 

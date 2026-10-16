@@ -15,6 +15,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // #3562: Flush settles a quiet stream's tail without ever showing a character of a token's
@@ -24,7 +26,7 @@ func TestRedactorFlush(t *testing.T) {
 	tok := fake("ghp_", 36, alnum)
 	run := func(steps ...any) string {
 		var out bytes.Buffer
-		r := NewRedactor(&out)
+		r := redact.NewWriter(&out)
 		for _, s := range steps {
 			switch v := s.(type) {
 			case string:
@@ -40,52 +42,52 @@ func TestRedactorFlush(t *testing.T) {
 
 	// The first letters of a prefix are shown; the token they start is still caught.
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := redact.NewWriter(&out)
 	_, _ = r.Write([]byte("echo g"))
 	assert.Equal(t, "echo ", out.String(), "'g' could start a prefix: held")
 	require.NoError(t, r.Flush(false))
 	assert.Equal(t, "echo g", out.String(), "shown when the stream goes quiet")
 	_, _ = r.Write([]byte(tok[1:] + " x"))
 	require.NoError(t, r.Close())
-	assert.Equal(t, "echo g"+RedactMarker+" x", out.String())
+	assert.Equal(t, "echo g"+redact.Marker+" x", out.String())
 
 	// A whole prefix with part of its value: held, never shown; forced, the marker, and the
 	// rest of its run is dropped.
 	out.Reset()
-	r = NewRedactor(&out)
+	r = redact.NewWriter(&out)
 	_, _ = r.Write([]byte("x " + tok[:12]))
 	require.NoError(t, r.Flush(false))
 	assert.Equal(t, "x ", out.String(), "a value is never shown on a flush")
 	require.NoError(t, r.Flush(true))
-	assert.Equal(t, "x "+RedactMarker, out.String())
+	assert.Equal(t, "x "+redact.Marker, out.String())
 	_, _ = r.Write([]byte(tok[12:] + " more"))
 	require.NoError(t, r.Close())
-	assert.Equal(t, "x "+RedactMarker+" more", out.String())
+	assert.Equal(t, "x "+redact.Marker+" more", out.String())
 
 	// A whole prefix, or a scheme, with no value yet: shown (nothing secret), then caught.
 	out.Reset()
-	r = NewRedactor(&out)
+	r = redact.NewWriter(&out)
 	_, _ = r.Write([]byte("x ghp_"))
 	require.NoError(t, r.Flush(false))
 	assert.Equal(t, "x ghp_", out.String())
 	_, _ = r.Write([]byte(tok[4:] + " y"))
 	require.NoError(t, r.Close())
-	assert.Equal(t, "x ghp_"+RedactMarker+" y", out.String())
-	assert.Equal(t, "Authorization: Bearer "+RedactMarker+" z",
+	assert.Equal(t, "x ghp_"+redact.Marker+" y", out.String())
+	assert.Equal(t, "Authorization: Bearer "+redact.Marker+" z",
 		run(steps("Authorization: Bearer", false, " "+fake("", 40, alnum)+" z")...))
 
 	// A value already long enough is redacted the same way.
-	assert.Equal(t, RedactMarker+" ok", run(steps(tok, true, "abc ok")...))
+	assert.Equal(t, redact.Marker+" ok", run(steps(tok, true, "abc ok")...))
 	// A near miss shown after a flush comes out as it would whole.
 	assert.Equal(t, "pip install sk-learn now", run(steps("pip install s", false, "k", false, "-learn", false, " now")...))
 	// The kept part of a Bearer value: the scheme shows, the value doesn't.
 	val := fake("", 40, alnum)
-	assert.Equal(t, "Bearer "+RedactMarker+" z", run(steps("Bea", false, "rer "+val+" z")...))
+	assert.Equal(t, "Bearer "+redact.Marker+" z", run(steps("Bea", false, "rer "+val+" z")...))
 	// A private key: nothing of it shows, flushed or not, until its END line.
 	key := pemKey("RSA ", 3, "\n")
-	assert.Equal(t, "k "+RedactMarker+" after", run(steps("k "+key[:90], true, false, key[90:]+" after")...))
+	assert.Equal(t, "k "+redact.Marker+" after", run(steps("k "+key[:90], true, false, key[90:]+" after")...))
 	// A BEGIN line still arriving has no secret in it: shown, and the key is still caught.
-	assert.Equal(t, key[:18]+RedactMarker+" ok", run(steps(key[:18], false, key[18:]+" ok")...))
+	assert.Equal(t, key[:18]+redact.Marker+" ok", run(steps(key[:18], false, key[18:]+" ok")...))
 }
 
 // No flush, wherever it falls and forced or not, shows any part of a token's value, and with
@@ -110,7 +112,7 @@ func TestRedactorFlushNeverShowsAValue(t *testing.T) {
 	rng := rand.New(rand.NewSource(3562))
 	for trial := 0; trial < 2000; trial++ {
 		var out bytes.Buffer
-		r := NewRedactor(&out)
+		r := redact.NewWriter(&out)
 		for rest := in; len(rest) > 0; {
 			n := 1 + rng.Intn(min(len(rest), 24))
 			_, _ = r.Write(rest[:n])
@@ -187,7 +189,7 @@ func TestWSRedactTerminal(t *testing.T) {
 	bin("out: " + tok[:10])
 	assert.Equal(t, "out: ", dst.binary(), "what can't be a token goes out with its frame")
 	bin(tok[10:] + "\r\n")
-	assert.Equal(t, "out: "+RedactMarker+"\r\n", dst.binary(), "a token split across two frames")
+	assert.Equal(t, "out: "+redact.Marker+"\r\n", dst.binary(), "a token split across two frames")
 
 	// The feed's and the terminal's JSON: each text frame redacted whole, still JSON.
 	msg, _ := json.Marshal(map[string]string{"type": "terminal_input_failed", "error": "bad " + tok})
@@ -212,10 +214,10 @@ func TestWSRedactTerminal(t *testing.T) {
 	bin("p_" + tok[4:20])
 	time.Sleep(wsIdleFlush + 50*time.Millisecond)
 	assert.NotContains(t, dst.binary(), tok[4:9], "a value never shows on an idle flush")
-	require.Eventually(t, func() bool { return strings.HasSuffix(dst.binary(), RedactMarker) }, 3*time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return strings.HasSuffix(dst.binary(), redact.Marker) }, 3*time.Second, 5*time.Millisecond)
 	assert.Less(t, time.Since(start), wsHoldMax+400*time.Millisecond, "the hold budget")
 	bin(tok[20:] + " done")
-	assert.True(t, strings.HasSuffix(dst.binary(), "$ g"+RedactMarker+" done"), dst.binary())
+	assert.True(t, strings.HasSuffix(dst.binary(), "$ g"+redact.Marker+" done"), dst.binary())
 	assert.NotContains(t, dst.binary(), tok[20:25], "the rest of the token is dropped")
 
 	// The terminal ends: what was held goes out before terminal_closed.
@@ -232,7 +234,7 @@ func TestWSRedactTerminal(t *testing.T) {
 	assert.True(t, strings.HasSuffix(dst.binary(), "a x"+tok+"\n"), "off: unchanged")
 	on.Store(true)
 	bin(tok + "\n")
-	assert.True(t, strings.HasSuffix(dst.binary(), RedactMarker+"\n"), "on again")
+	assert.True(t, strings.HasSuffix(dst.binary(), redact.Marker+"\n"), "on again")
 	w.close()
 }
 
@@ -247,7 +249,7 @@ func TestWSRedactFeed(t *testing.T) {
 	f := dst.got()
 	require.Len(t, f, 2)
 	assert.NotContains(t, f[0].data, tok)
-	assert.Contains(t, f[0].data, RedactMarker)
+	assert.Contains(t, f[0].data, redact.Marker)
 	assert.True(t, json.Valid([]byte(f[0].data)))
 	assert.Equal(t, `{"type":"coral_heartbeat"}`, f[1].data)
 	w.close()
@@ -360,12 +362,12 @@ func TestWSRedactThroughTheTunnel(t *testing.T) {
 	}
 
 	bin, text := readAll("/ws/terminal/a", 3)
-	assert.Equal(t, "\x1b[2J$ cat .env\r\nGITHUB_TOKEN="+RedactMarker+"\r\n$ ", bin)
+	assert.Equal(t, "\x1b[2J$ cat .env\r\nGITHUB_TOKEN="+redact.Marker+"\r\n$ ", bin)
 	assert.Equal(t, `{"type":"terminal_hello","input_acks":true}`, text)
 
 	_, text = readAll("/ws/coral", 1)
 	assert.NotContains(t, text, tok)
-	assert.Contains(t, text, RedactMarker)
+	assert.Contains(t, text, redact.Marker)
 	assert.True(t, json.Valid([]byte(text)))
 
 	// #3560's capture, already shipped: a token in colour is redacted too (QA's #3562 finding).
@@ -373,7 +375,7 @@ func TestWSRedactThroughTheTunnel(t *testing.T) {
 	var cap map[string]string
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&cap))
 	resp.Body.Close()
-	assert.Equal(t, "$ gh auth token\r\n\x1b[1;32m"+RedactMarker+"\x1b[0m\r\n$ ", cap["output"])
+	assert.Equal(t, "$ gh auth token\r\n\x1b[1;32m"+redact.Marker+"\x1b[0m\r\n$ ", cap["output"])
 
 	redactOn.Store(false)
 	_, text = readAll("/ws/coral", 1)
@@ -396,27 +398,27 @@ func TestRedactAfterColourCodes(t *testing.T) {
 	var cases []tc
 	for _, f := range forms {
 		for _, tok := range []string{fake("ghp_", 36, alnum), fake("github_pat_", 30, alnum), fake("sk-", 30, alnum), fake("AKIA", 16, upper), fake("xoxb-", 20, alnum)} {
-			cases = append(cases, tc{"key: " + f + tok + "\x1b[0m end", "key: " + f + RedactMarker + "\x1b[0m end"})
+			cases = append(cases, tc{"key: " + f + tok + "\x1b[0m end", "key: " + f + redact.Marker + "\x1b[0m end"})
 		}
-		cases = append(cases, tc{"x " + f + pemKey("RSA ", 2, "\r\n") + "\x1b[0m y", "x " + f + RedactMarker + "\x1b[0m y"})
+		cases = append(cases, tc{"x " + f + pemKey("RSA ", 2, "\r\n") + "\x1b[0m y", "x " + f + redact.Marker + "\x1b[0m y"})
 		if strings.HasPrefix(f, "\x1b[") && strings.Count(f, "\x1b") == len(f)-len(strings.ReplaceAll(f, "\x1b", "")) && !strings.ContainsAny(f, "\r\a]") {
 			// Colour codes between a scheme and its value (the glue takes spaces and CSI codes).
 			cases = append(cases,
-				tc{"Authorization: " + f + "Bearer" + f + " " + jwt + "\x1b[0m", "Authorization: " + f + "Bearer" + f + " " + RedactMarker + "\x1b[0m"},
-				tc{"curl -H " + f + "Bearer " + f + val + "\x1b[0m", "curl -H " + f + "Bearer " + f + RedactMarker + "\x1b[0m"},
+				tc{"Authorization: " + f + "Bearer" + f + " " + jwt + "\x1b[0m", "Authorization: " + f + "Bearer" + f + " " + redact.Marker + "\x1b[0m"},
+				tc{"curl -H " + f + "Bearer " + f + val + "\x1b[0m", "curl -H " + f + "Bearer " + f + redact.Marker + "\x1b[0m"},
 				// Only the Authorization glue can catch these (no Bearer).
-				tc{"Authorization:" + f + " " + val + "\x1b[0m", "Authorization:" + f + " " + RedactMarker + "\x1b[0m"},
-				tc{"Authorization: " + f + "Basic" + f + " " + val + "\x1b[0m", "Authorization: " + f + "Basic" + f + " " + RedactMarker + "\x1b[0m"},
+				tc{"Authorization:" + f + " " + val + "\x1b[0m", "Authorization:" + f + " " + redact.Marker + "\x1b[0m"},
+				tc{"Authorization: " + f + "Basic" + f + " " + val + "\x1b[0m", "Authorization: " + f + "Basic" + f + " " + redact.Marker + "\x1b[0m"},
 			)
 		}
 	}
 	for _, c := range cases {
 		// Raw terminal bytes, whole and split at every byte.
-		require.Equal(t, c.want, string(RedactTokens([]byte(c.in))), "%q", c.in)
+		require.Equal(t, c.want, string(redact.Tokens([]byte(c.in))), "%q", c.in)
 		in := []byte(c.in)
 		for split := 0; split <= len(in); split++ {
 			var out bytes.Buffer
-			r := NewRedactor(&out)
+			r := redact.NewWriter(&out)
 			_, _ = r.Write(in[:split])
 			_, _ = r.Write(in[split:])
 			require.NoError(t, r.Close())
@@ -425,13 +427,13 @@ func TestRedactAfterColourCodes(t *testing.T) {
 		// As JSON writes it (capture, poll): ESC is "\u001b".
 		j, _ := json.Marshal(map[string]string{"output": c.in})
 		var back map[string]string
-		got := RedactTokens(j)
+		got := redact.Tokens(j)
 		require.True(t, json.Valid(got), "%s", got)
 		require.NoError(t, json.Unmarshal(got, &back))
 		require.Equal(t, c.want, back["output"], "JSON %s", j)
 		for split := 0; split <= len(j); split += 3 {
 			var out bytes.Buffer
-			r := NewRedactor(&out)
+			r := redact.NewWriter(&out)
 			_, _ = r.Write(j[:split])
 			_, _ = r.Write(j[split:])
 			require.NoError(t, r.Close())
@@ -453,7 +455,7 @@ func TestRedactAfterColourCodes(t *testing.T) {
 	// Still not caught, as the docs say: an escape code inside a token.
 	tok := fake("ghp_", 36, alnum)
 	inside := "key: " + tok[:10] + "\x1b[1m" + tok[10:]
-	assert.Equal(t, inside, string(RedactTokens([]byte(inside))))
+	assert.Equal(t, inside, string(redact.Tokens([]byte(inside))))
 }
 
 // Security's #3562 SHOULD 1: a prefix's first letters are held only where a token could start,
@@ -461,7 +463,7 @@ func TestRedactAfterColourCodes(t *testing.T) {
 func TestRedactHoldsOnlyWordStarts(t *testing.T) {
 	held := func(typed string) string {
 		var out bytes.Buffer
-		r := NewRedactor(&out)
+		r := redact.NewWriter(&out)
 		var h strings.Builder
 		for i := 0; i < len(typed); i++ {
 			_, _ = r.Write([]byte{typed[i]})

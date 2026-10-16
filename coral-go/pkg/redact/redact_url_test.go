@@ -1,4 +1,4 @@
-package tunnel
+package redact
 
 import (
 	"bytes"
@@ -30,7 +30,7 @@ func urlSecretShown(out, secret string) string {
 func urlRedactTwoWrites(t *testing.T, body []byte, k int) string {
 	t.Helper()
 	var out bytes.Buffer
-	r := NewRedactor(&out)
+	r := NewWriter(&out)
 	_, err := r.Write(body[:k])
 	require.NoError(t, err)
 	_, err = r.Write(body[k:])
@@ -67,11 +67,11 @@ func TestRedactURLPasswords(t *testing.T) {
 			js, _ := json.Marshal(map[string]string{"content": text})
 			jsjs, _ := json.Marshal(map[string]string{"content": string(js)})
 			for enc, body := range map[string][]byte{"raw": []byte(text), "json": js, "json-in-json": jsjs} {
-				whole := string(RedactTokens(body))
+				whole := string(Tokens(body))
 				assert.Empty(t, urlSecretShown(whole, c.secret), "%s (%s): %s", text, enc, whole)
 				if enc == "raw" {
 					scheme := c.url[:strings.Index(c.url, "://")+3]
-					assert.Contains(t, whole, scheme+c.user+":"+RedactMarker+c.host, "scheme, user and host stay: %s", whole)
+					assert.Contains(t, whole, scheme+c.user+":"+Marker+c.host, "scheme, user and host stay: %s", whole)
 				} else {
 					assert.True(t, json.Valid([]byte(whole)), "%s (%s) stays JSON: %s", text, enc, whole)
 				}
@@ -101,9 +101,9 @@ func TestRedactURLNearMisses(t *testing.T) {
 		"redis://cache:6379",
 		"time 10:30 at 5://x",
 	} {
-		assert.Equal(t, text, string(RedactTokens([]byte(text))), text)
+		assert.Equal(t, text, string(Tokens([]byte(text))), text)
 		js, _ := json.Marshal(map[string]string{"content": text})
-		assert.Equal(t, string(js), string(RedactTokens(js)), "%s in JSON", text)
+		assert.Equal(t, string(js), string(Tokens(js)), "%s in JSON", text)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestRedactURLJSONStaysValid(t *testing.T) {
 		in := string(b)
 		split := rng.Intn(len(in) + 1)
 		var out bytes.Buffer
-		r := NewRedactor(&out)
+		r := NewWriter(&out)
 		_, _ = r.Write(b[:split])
 		_, _ = r.Write(b[split:])
 		_ = r.Close()
@@ -130,7 +130,7 @@ func TestRedactURLJSONStaysValid(t *testing.T) {
 			t.Errorf("INVALID JSON in=%q out=%q", in, out.String())
 			bad++
 		}
-		if whole := string(RedactTokens(b)); whole != out.String() {
+		if whole := string(Tokens(b)); whole != out.String() {
 			t.Errorf("SPLIT DIFFERS in=%q whole=%q split=%q", in, whole, out.String())
 			bad++
 		}
