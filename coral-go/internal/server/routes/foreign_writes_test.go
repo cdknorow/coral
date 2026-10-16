@@ -58,7 +58,15 @@ func TestRefuseForeignBrowserWrites(t *testing.T) {
 		"foreign Origin, no fetch metadata": {"PUT", map[string]string{"Origin": "https://evil.example"}, 403},
 		"Coral's host in another case":      {"PUT", map[string]string{"Origin": "http://LOCALHOST:8420", "Sec-Fetch-Site": "same-origin"}, 200},
 		"the Coral Hub connector":           {"PUT", map[string]string{"Origin": "https://app.coralhub.dev", tunnel.ViaHeader: cloud.ViaSecret()}, 200},
-		"a read from another port":          {"GET", map[string]string{"Origin": "http://localhost:3000", "Sec-Fetch-Site": "same-site"}, 200},
+		// #4032 (Security's #4031 finding 2): reads of /api and /ws from another page are refused too.
+		"a read from another port":          {"GET", map[string]string{"Origin": "http://localhost:3000", "Sec-Fetch-Site": "same-site"}, 403},
+		"a read from another site":          {"GET", map[string]string{"Sec-Fetch-Site": "cross-site"}, 403},
+		"a HEAD from another port":          {"HEAD", map[string]string{"Sec-Fetch-Site": "same-site"}, 403},
+		"Coral's own page reads":            {"GET", map[string]string{"Sec-Fetch-Site": "same-origin"}, 200},
+		"the user's own navigation, a read": {"GET", map[string]string{"Sec-Fetch-Site": "none"}, 200},
+		"a read with no metadata (curl)":    {"GET", nil, 200},
+		"Coral Hub's connector reads":       {"GET", map[string]string{"Sec-Fetch-Site": "cross-site", tunnel.ViaHeader: cloud.ViaSecret()}, 200},
+		"a forged stamp's read":             {"GET", map[string]string{"Sec-Fetch-Site": "same-site", tunnel.ViaHeader: "1"}, 403},
 	} {
 		reached = 0
 		got := do(c.method, c.headers)
@@ -123,5 +131,18 @@ func TestRepeatedOriginOrFetchSiteIsRefused(t *testing.T) {
 			assert.Zero(t, reached, name)
 			assert.Contains(t, w.Body.String(), "foreign_origin", name)
 		}
+	}
+}
+
+// #4032: only /api and /ws are guarded on reads; the dashboard's pages and static files load as
+// before (a navigation from another page is the user's choice, and those carry no data).
+func TestForeignReadsOnlyGuardTheAPI(t *testing.T) {
+	h := RefuseForeignBrowserWrites(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	for path, want := range map[string]int{"/api/sessions/live": 403, "/ws/coral": 403, "/ws": 403, "/static/app.js": 200, "/": 200, "/auth": 200, "/apiary": 200} {
+		r := httptest.NewRequest("GET", "http://localhost:8420"+path, nil)
+		r.Header.Set("Sec-Fetch-Site", "same-site")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		assert.Equal(t, want, w.Code, path)
 	}
 }
