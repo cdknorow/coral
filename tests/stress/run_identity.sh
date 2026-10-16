@@ -407,13 +407,12 @@ if [[ $STRICT == 1 ]]; then
     [[ $c3 == 403 && $c4 == 403 && $c5 == 403 ]] && pass "STRICT: an agent's token can't change Coral's settings or stop a workflow or task run (403 forbidden_for_agent)" || fail "STRICT: agent settings PUT answered $c3, workflow kill $c4, task kill $c5"
     [[ "$(api GET /api/settings | python3 -c 'import sys,json;print(json.load(sys.stdin).get("cli_path_claude",""))' 2>/dev/null)" != "/bin/sh" ]] && pass "STRICT: the refused settings change did not happen (cli_path_claude is not /bin/sh)" || fail "STRICT: cli_path_claude was changed by an agent"
     # #3445 (QA finding): the dashboard-provenance headers (Origin, Sec-Fetch-Site) are forgeable, so an agent token
-    # plus those two headers must not mint a sign-in link (that made the agent the Operator), rotate the API key or
-    # create a webhook.
+    # plus those two headers must not mint a sign-in link (that made the agent the Operator) or rotate the API key.
+    # (Webhooks were removed in #3646, so there is no webhook route to probe.)
     c7=$(code_of -X POST "$BASE/api/system/login-token" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" -A "coral-agent/test" -d '{}')
     c8=$(code_of -X POST "$BASE/api/system/api-key/regenerate" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" -A "coral-agent/test" -d '{}')
-    c9=$(code_of -X POST "$BASE/api/webhooks" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{"url":"https://example.com/h","name":"x"}')
-    EXP_AGENT_OP=$((EXP_AGENT_OP + 3))
-    [[ $c7 == 403 && $c8 == 403 && $c9 == 403 ]] && pass "STRICT: an agent token (even with forged Origin and Sec-Fetch-Site) can't mint a sign-in link, rotate the API key or create a webhook" || fail "STRICT: agent login-token $c7, key regenerate $c8, webhook $c9"
+    EXP_AGENT_OP=$((EXP_AGENT_OP + 2))
+    [[ $c7 == 403 && $c8 == 403 ]] && pass "STRICT: an agent token (even with forged Origin and Sec-Fetch-Site) can't mint a sign-in link or rotate the API key" || fail "STRICT: agent login-token $c7, key regenerate $c8"
     c6=$(code_of -X POST "$BASE/api/sessions/launch" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{}')
     [[ $c6 != 403 && $c6 != 401 ]] && pass "STRICT: an agent can still launch agents (a bad request is $c6, not a refusal)" || fail "STRICT: an agent launch was refused ($c6)"
     rj=$(report); grep -q "POST /api/sessions/launch" <<<"$rj" && pass "STRICT: the agent's launch is recorded in agent_operator_calls" || fail "STRICT: the agent launch is not in agent_operator_calls"

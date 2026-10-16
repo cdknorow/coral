@@ -21,11 +21,10 @@ Serves the HTML authentication page where users can enter their API key.
 ## Validate API Key
 
 ```
-POST /auth
 POST /auth/key
 ```
 
-Validates an API key and sets a session cookie on success. Both paths are equivalent.
+Validates an API key and sets a session cookie on success.
 
 **Request Body:**
 ```json
