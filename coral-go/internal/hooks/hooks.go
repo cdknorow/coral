@@ -7,12 +7,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -49,7 +49,7 @@ func ResolveSessionID(payloadSessionID string) string {
 		return id
 	}
 	if os.Getenv("TMUX") != "" {
-		out, err := exec.Command(tmux.BinaryFromEnv(), "display-message", "-p", "#{session_name}").Output()
+		out, err := executil.Output(3*time.Second, tmux.BinaryFromEnv(), "display-message", "-p", "#{session_name}")
 		if err == nil {
 			if id := sessionIDFromName(strings.TrimSpace(string(out))); id != "" {
 				return id

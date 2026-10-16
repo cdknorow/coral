@@ -3,7 +3,7 @@ package tmux
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	"github.com/cdknorow/coral/internal/executil"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -89,6 +89,10 @@ var (
 
 // readProcTable returns a snapshot of every process (pid, parent, state, command) no older
 // than procTableTTL, from one 'ps' run.
+// psTimeout bounds the ps call: readProcTable holds procTableMu while it runs, so a stuck ps would
+// block every caller for good (#3999, the #3994 audit finding 4).
+var psTimeout = 5 * time.Second
+
 func readProcTable() (*procTable, error) {
 	procTableMu.Lock()
 	defer procTableMu.Unlock()
@@ -96,7 +100,7 @@ func readProcTable() (*procTable, error) {
 		return t, nil
 	}
 	procTableRuns.Add(1)
-	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,stat=,comm=").Output()
+	out, err := executil.Output(psTimeout, "ps", "-A", "-o", "pid=,ppid=,stat=,comm=")
 	if err != nil {
 		return nil, err
 	}
