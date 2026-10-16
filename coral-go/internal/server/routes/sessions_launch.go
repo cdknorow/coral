@@ -130,6 +130,11 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// An agent never starts a less-restricted agent (#4032).
+	if agentCaller(r) {
+		body.Flags, body.Capabilities, body.Tools, body.Hooks = limitAgentLaunch("launch", body.Flags, body.Capabilities, body.Tools, body.Hooks)
+	}
+
 	// Resolve model: request wins, else per-type default from settings.
 	effectiveModel := h.resolveModel(r.Context(), body.AgentType, body.Model)
 
@@ -372,9 +377,13 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	// Load settings once so we can fall back to per-type default_model_<type>.
 	userSettings, _ := h.ss.GetSettings(ctx)
 
+	fromAgent := agentCaller(r)
 	for _, agentDef := range body.Agents {
 		if agentDef.Name == "" {
 			continue
+		}
+		if fromAgent { // an agent never starts a less-restricted agent (#4032)
+			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
 		}
 
 		// Per-agent type/model override team-level defaults
@@ -1131,6 +1140,69 @@ func boardJobTitle(subs map[string]*board.Subscriber, fallback map[string][2]str
 		return fb[1]
 	}
 	return nil
+}
+
+// agentCaller reports a request made with an agent session's token.
+func agentCaller(r *http.Request) bool {
+	_, ok := VerifiedSession(r.Context())
+	return ok
+}
+
+// limitAgentLaunch is what an agent may ask for when it starts another agent (#4032, Security's
+// #4031 finding 1): users govern agents through their CLI's permissions, so an agent must not
+// start one with fewer. The permission flags (--dangerously-skip-permissions, --yolo, ...) are
+// removed, as for a team launch's own flags; so are allowed tools, capability "allow" rules and
+// custom hooks (commands the agent's CLI would run itself). Deny rules, which only narrow, stay.
+// The Operator (the dashboard, the command line, the API key) keeps every choice.
+func limitAgentLaunch(route string, flags []string, caps *agent.Capabilities, tools []string, hooks map[string]interface{}) ([]string, *agent.Capabilities, []string, map[string]interface{}) {
+	clean := dropWideningFlags(stripAgentPermissionFlags(flags))
+	var dropped []string
+	if len(clean) != len(flags) {
+		dropped = append(dropped, "permission flags")
+	}
+	if caps != nil && len(caps.Allow) > 0 {
+		dropped = append(dropped, "capability allow rules")
+		caps = &agent.Capabilities{Deny: caps.Deny}
+	}
+	if len(tools) > 0 {
+		dropped = append(dropped, "allowed tools")
+		tools = nil
+	}
+	if len(hooks) > 0 {
+		dropped = append(dropped, "hooks")
+		hooks = nil
+	}
+	if len(dropped) > 0 {
+		log.Printf("[%s] an agent's launch asked for %s: removed (only the Operator can start a less-restricted agent)", route, strings.Join(dropped, ", "))
+	}
+	return clean, caps, tools, hooks
+}
+
+// wideningFlags widen what an agent's CLI may do without asking (value: the flag takes the next
+// word when written without "="). An agent's launch never carries them, in any spelling.
+var wideningFlags = map[string]bool{
+	"--dangerously-skip-permissions": false, "--dangerously-bypass-approvals-and-sandbox": false,
+	"--yolo": false, "--full-auto": false, "-y": false,
+	"--sandbox": true, "-s": true, "--approval-mode": true, "-a": true, "--permission-mode": true,
+	"--allowedTools": true, "--allowed-tools": true, "--settings": true, "--mcp-config": true,
+	"--add-dir": true, "--permission-prompt-tool": true,
+}
+
+// dropWideningFlags removes wideningFlags, as "--flag", "--flag=value" or "--flag value".
+func dropWideningFlags(flags []string) []string {
+	var out []string
+	for i := 0; i < len(flags); i++ {
+		name, _, hasValue := strings.Cut(flags[i], "=")
+		takesValue, widening := wideningFlags[name]
+		if !widening {
+			out = append(out, flags[i])
+			continue
+		}
+		if takesValue && !hasValue {
+			i++ // its value
+		}
+	}
+	return out
 }
 
 func stripAgentPermissionFlags(flags []string) []string {
