@@ -124,6 +124,11 @@ function morphInto(parent, html, depth, added) {
     const liveMatches = prev && live.length === prev.nodes.length && prev.nodes.every((nd, k) => live[k] === nd);
     // More nodes at the end and the old ones unchanged (a message posted to a board, an agent that joined): keep every old
     // node and parse only the tail. Anything the tail's own parse would reshape falls through to a full update.
+    // What this relies on: the markup is balanced at the top level, each part a complete node. innerHTML on the whole string
+    // and a parse of the tail alone then give the same nodes. That holds for the old parts because the state is only kept
+    // when they parsed to exactly one node each (full() below), and liveMatches checks the live children are those nodes; for
+    // the tail it is checked after the fact, by the tail parsing to exactly as many nodes as it has parts. A tail that the
+    // parser would nest into an earlier part (a stray end tag, an unclosed element) changes that count and takes the full path.
     if (liveMatches && parts.length > prev.parts.length && prev.parts.every((was, k) => was.src === parts[k].src)) {
         const tail = parseNodes(parts.slice(prev.parts.length).map(p => p.src).join(''));
         if (tail.length === parts.length - prev.parts.length) {
