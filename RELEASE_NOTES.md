@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.4.59 — A redaction fix for v1.4.58, secrets redacted at rest, and controls that say what they do
+
+### Security
+
+- **A long value no longer lets the next secret through.** In v1.4.58, a quoted or secret-named value of 508 to 511 bytes followed directly by another credential (another secret-named value such as DB_PASSWORD, or an Authorization header) could let that credential through Coral Hub unredacted. Only v1.4.58 was affected (v1.4.57 is not).
+- **The redactor is fuzz-tested.** Go fuzz targets now feed the Hub redactor random input, split across writes, raw and inside JSON. Each target checks that a planted secret never shows, that the JSON stays valid, and that a 64 KB input is redacted within a second.
+- **Secrets are redacted where Coral stores them.** Agent events and every line of coral.log are redacted before they are written; a panic's value is logged through the same redaction.
+- **The board's Export dialog warns that the export may hold secrets and is not encrypted.**
+
+### Fixes
+
+- **Controls the Coral Hub doesn't allow are dimmed.** Through Coral Hub, a control that the machine's access level (View or Interact) doesn't allow is dimmed, and its tooltip gives the reason. Before, it looked available and only answered "Blocked" when clicked.
+- **A sleeping agent's Terminal view keeps its Wake bar,** and View-only access through the Hub really dims Send.
+- **No more silent controls.** Send with an empty box flashes the box, and the team launcher's Move up and Move down buttons are disabled at the ends of the list.
+- **Task reviews survive a rejection.** When one reviewer rejects a task, the other reviewers keep their review tasks. A resubmission opens the next round for the same reviewers. A verdict is refused while the task is back with its author, and a verdict on an earlier round is refused (`coral-board task approve/reject --round N`).
+
+### Other changes
+
+- **API: the compatibility paths are gone.** The board routes take `subscriber_id` only. A Coral Hub chat post must name its Hub user. `PUT /api/system/hub-operator` takes only `{"disabled"}`, and its tunnel GET answers `{"disabled"}` only. `POST /auth` is gone; use `POST /auth/key`.
+
 ## v1.4.58 — Redaction by structure and by name, smaller replies, and tabs that notice updates
 
 ### Security
