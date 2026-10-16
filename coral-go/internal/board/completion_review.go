@@ -77,15 +77,18 @@ func (s *Store) SubmitCompletionReviewAtRevisionAndCandidate(ctx context.Context
 		if row.Revision > 1 && (expectedRevision == nil || *expectedRevision != row.Revision) {
 			return TaskWorkflow{}, fmt.Errorf("task #%d has revision %d; reread task detail before submitting review", id, row.Revision)
 		}
-		if row.Status != "in_progress" {
+		w, err := loadWorkflow(ctx, q, id)
+		if err != nil {
+			return w, err
+		}
+		// A task a reviewer rejected is back with its author, pending: the author resubmits it
+		// without claiming it again, so another task in progress doesn't stand in the way (#3889).
+		resubmit := row.Status == "pending" && row.AssignedTo != nil && *row.AssignedTo == actor && lastRoundRejected(w)
+		if row.Status != "in_progress" && !resubmit {
 			return TaskWorkflow{}, fmt.Errorf("only an in-progress task can submit completion evidence")
 		}
 		if (row.AssignedTo == nil || *row.AssignedTo != actor) && reviewerErr != nil {
 			return TaskWorkflow{}, reviewerErr
-		}
-		w, err := loadWorkflow(ctx, q, id)
-		if err != nil {
-			return w, err
 		}
 		if w.CompletionReview != nil {
 			return w, fmt.Errorf("completion review evidence is already recorded and immutable")

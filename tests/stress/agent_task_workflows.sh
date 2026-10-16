@@ -181,3 +181,19 @@ builder task claim "$PLAIN" >/dev/null
 builder task submit-review "$PLAIN" --reason "small change" >/dev/null
 planner task complete "$PLAIN" --message "accepted without reviewers" >/dev/null
 check "the orchestrator completes a task in review with no reviewers" 'wait_task_status "$PLAIN" completed'
+
+log "Test 13c: A busy author resubmits a rejected task without claiming it (#3889)..."
+REV2=$(planner task add "Reviewed change, author busy" --assignee Builder | task_id)
+builder task claim "$REV2" >/dev/null
+builder task submit-review "$REV2" --reason "ready for review" --message "candidate 1" >/dev/null
+planner task review "$REV2" --to "Reviewer" >/dev/null
+reviewer task reject "$REV2" --round 1 --note "needs a test" >/dev/null
+BUSY=$(planner task add "Something else meanwhile" --assignee Builder | task_id)
+builder task claim "$BUSY" >/dev/null
+check "the busy author can't claim the rejected task back" 'reject_board builder task claim "$REV2"'
+builder task submit-review "$REV2" --reason "fixed" --message "candidate 2" >/dev/null
+check "the author resubmits it unclaimed: round 2 opens" '[[ $(workflow_status "$REV2") == review_pending && $(review_round "$REV2") == 2 ]]'
+check "the author's other task is untouched" '[[ $(workflow_status "$BUSY") == in_progress ]]'
+reviewer task approve "$REV2" --round 2 --note "test added" >/dev/null
+check "the approval completes the resubmitted task" 'wait_task_status "$REV2" completed'
+builder task complete "$BUSY" --message "done" >/dev/null
