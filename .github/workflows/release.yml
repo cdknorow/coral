@@ -30,9 +30,9 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
@@ -89,7 +89,7 @@ jobs:
           tar czf "../coral-linux-${ARCH}-${VERSION}.tar.gz" .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-linux-${{ matrix.arch }}
           path: dist/coral-linux-${{ matrix.arch }}-*.tar.gz
@@ -98,9 +98,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
@@ -250,13 +250,13 @@ jobs:
           echo "ZIP_PATH=$zipPath" >> $env:GITHUB_ENV
 
       - name: Upload MSI artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-windows-msi
           path: ${{ env.MSI_PATH }}
 
       - name: Upload portable ZIP artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-windows-portable
           path: ${{ env.ZIP_PATH }}
@@ -267,7 +267,7 @@ jobs:
   build-macos-arm64:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
       # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
       # pinned to the official SHA-256 of the same version.
@@ -314,7 +314,7 @@ jobs:
           CORAL_BUNDLED_TMUX_BIN: ${{ github.workspace }}/dist/macos-arm64/tmux-payload/bin/tmux
           CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/macos-arm64/tmux-payload/terminfo
         run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-macos-arm64-slices
           path: dist/macos-arm64
@@ -322,7 +322,7 @@ jobs:
   build-macos-amd64:
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
       # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
       # pinned to the official SHA-256 of the same version.
@@ -369,7 +369,7 @@ jobs:
           CORAL_BUNDLED_TMUX_BIN: ${{ github.workspace }}/dist/macos-amd64/tmux-payload/bin/tmux
           CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/macos-amd64/tmux-payload/terminfo
         run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-macos-amd64-slices
           path: dist/macos-amd64
@@ -378,7 +378,7 @@ jobs:
     needs: [build-macos-arm64, build-macos-amd64]
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       # actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
       # 2026-10-15, which blocked v1.4.29), so the macOS jobs take Go straight from go.dev,
       # pinned to the official SHA-256 of the same version.
@@ -410,11 +410,11 @@ jobs:
               exit 1
             fi
           done
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: coral-macos-arm64-slices
           path: dist/macos-arm64
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: coral-macos-amd64-slices
           path: dist/macos-amd64
@@ -517,6 +517,14 @@ jobs:
           echo "Verifying..."
           codesign --verify --deep --verbose=2 "$APP"
 
+      # The signed app runs under the hardened runtime with the minimal (empty) entitlements, so a
+      # binary that needed an exception (JIT, unsigned memory, library loading) would crash here.
+      # The webview is forced on: coral-app is the one most likely to need one (#3659).
+      - name: Smoke test the signed Coral.app (hardened runtime, minimal entitlements)
+        run: |
+          codesign -d --entitlements - dist/Coral.app/Contents/MacOS/coral-app 2>/dev/null | grep -E 'allow-jit|allow-unsigned|disable-library' && { echo "::error::an exception entitlement is still set"; exit 1; } || true
+          CI=true SMOKE_TEST_WEBVIEW=1 TEST_PORT=8498 tools/test-macos-app.sh dist/Coral.app
+
       - name: Smoke test Coral.app
         run: tools/test-macos-app.sh dist/Coral.app
 
@@ -608,7 +616,7 @@ jobs:
         run: security delete-keychain "$KEYCHAIN_PATH" || true
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-macos-dmg
           path: dist/${{ env.DMG_NAME }}
@@ -623,10 +631,10 @@ jobs:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
 

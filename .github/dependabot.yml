@@ -1,0 +1,16 @@
+# Keeps the SHA-pinned GitHub Actions current (#3659, update/install audit item 3). Every workflow
+# pins its actions by commit with the version in a comment; Dependabot proposes a new pin (commit
+# and comment) when an action releases, so a pin never goes stale and an update is always a
+# reviewed change. Actions only: Go modules and npm are reviewed through the team's own updates.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci(deps)"
