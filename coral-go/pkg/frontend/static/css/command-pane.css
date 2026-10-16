@@ -19,6 +19,7 @@
 }
 
 .command-pane-toolbar {
+    order: -1; /* drawn above the text box; it follows the box in the DOM so Tab reaches the box first */
     display: flex;
     align-items: center;
     gap: var(--space-md);
@@ -419,6 +420,7 @@
 /* ── Sleeping agent: Wake / Restart… in place of the send controls ── */
 
 .sleeping-composer {
+    order: -2;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
