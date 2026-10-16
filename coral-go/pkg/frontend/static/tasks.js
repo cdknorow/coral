@@ -461,13 +461,13 @@ export function renderBoardTaskList() {
     const header = `
         <div class="board-task-item board-task-header">
             <span class="board-task-status-col">Status</span>
-            <span class="board-task-id board-task-sort" data-on-click="task-sort" data-sort="id">ID${arrow('id')}</span>
-            <span class="board-task-priority board-task-sort" data-on-click="task-sort" data-sort="priority">Priority${arrow('priority')}</span>
-            <span class="board-task-type board-task-sort" data-on-click="task-sort" data-sort="type">Type${arrow('type')}</span>
-            <span class="board-task-assignee board-task-sort" data-on-click="task-sort" data-sort="assignee">Agent${arrow('assignee')}</span>
-            <span class="board-task-desc board-task-sort" data-on-click="task-sort" data-sort="created_at">Task${arrow('created_at')}</span>
-            <span class="board-task-cost board-task-sort" data-on-click="task-sort" data-sort="cost">Cost${arrow('cost')}</span>
-            <span class="board-task-time board-task-sort" data-on-click="task-sort" data-sort="created_at">Created${arrow('created_at')}</span>
+            <span class="board-task-id board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="id">ID${arrow('id')}</span>
+            <span class="board-task-priority board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="priority">Priority${arrow('priority')}</span>
+            <span class="board-task-type board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="type">Type${arrow('type')}</span>
+            <span class="board-task-assignee board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="assignee">Agent${arrow('assignee')}</span>
+            <span class="board-task-desc board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="created_at">Task${arrow('created_at')}</span>
+            <span class="board-task-cost board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="cost">Cost${arrow('cost')}</span>
+            <span class="board-task-time board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="created_at">Created${arrow('created_at')}</span>
         </div>`;
 
     const rows = tasks.map(t => {
@@ -529,9 +529,9 @@ export function renderBoardTaskList() {
             if (lc.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
         }
         // The subagent id stays in its data-subagent-id attribute; the action reads it from there.
-        const clickHandler = isSubagent ? ` data-on-click="task-subagent-open" style="cursor:pointer"`
-            : isAgent ? ` data-on-click="task-open" data-kind="agent" data-task-id="${Number(t.id)}" style="cursor:pointer"`
-            : ` data-on-click="task-open" data-kind="board" data-task-id="${Number(t.id)}" style="cursor:pointer"`;
+        const clickHandler = isSubagent ? ` role="button" tabindex="0" data-key-click data-on-click="task-subagent-open" style="cursor:pointer"`
+            : isAgent ? ` role="button" tabindex="0" data-key-click data-on-click="task-open" data-kind="agent" data-task-id="${Number(t.id)}" style="cursor:pointer"`
+            : ` role="button" tabindex="0" data-key-click data-on-click="task-open" data-kind="board" data-task-id="${Number(t.id)}" style="cursor:pointer"`;
         const typeCell = isSubagent
             ? `<span class="board-task-type board-task-type-subagent" title="Subagent launched by ${escapeAttr(assignee)}"><span class="material-icons">account_tree</span>sub</span>`
             : `<span class="board-task-type">${isAgent ? 'agent' : 'board'}</span>`;
