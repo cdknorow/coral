@@ -1,6 +1,7 @@
 /* Mobile navigation and view management */
 
 import { state } from './state.js';
+import { syncDisplayMenu } from './session_rows.js';
 import { showView } from './utils.js';
 import { note, backIs } from './nav.js';
 
@@ -91,6 +92,7 @@ export function syncMobileAgentList() {
     const sidebarList = document.getElementById('live-sessions-list');
     if (sidebarList && agentList) {
         // Clear and clone
+        const displayOpen = !!agentList.querySelector('[data-list-display-menu]')?.open;   // a redraw must not close the menu being used
         agentList.innerHTML = '';
 
         // Add header with New button
@@ -99,9 +101,20 @@ export function syncMobileAgentList() {
         header.innerHTML = `
             <h2 class="mobile-list-title">Live Sessions</h2>
             <div class="server-switcher-host" data-server-switcher-host hidden></div>
+            <details class="list-display-menu" data-list-display-menu${displayOpen ? ' open' : ''}>
+                <summary class="sidebar-collapse-btn" data-display-button title="Display options" aria-label="Display options">
+                    <span class="material-icons" style="font-size:18px" aria-hidden="true">notes</span>
+                </summary>
+                <div class="list-display-panel" role="group" aria-label="Display options">
+                    <label class="list-display-option"><input type="checkbox" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>
+                    <label class="list-display-option" data-display-row="server" hidden><input type="checkbox" data-display-input="server" data-on-change="toggle-show-server"> Show server</label>
+                    <label class="list-display-option" data-display-row="group" hidden><input type="checkbox" data-display-input="group" data-on-change="toggle-group-by-server"> Group by server</label>
+                </div>
+            </details>
             <button class="btn btn-small btn-primary" data-on-click="launch-show">+ New</button>
         `;
         agentList.appendChild(header);
+        syncDisplayMenu();   // the phone's copy of the ≡ menu (#3991)
         // The servers button (#3085) lives in the sidebar's search row on wider screens.
         if (window.renderServerSwitcher) window.renderServerSwitcher();
 
