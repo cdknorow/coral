@@ -32,7 +32,9 @@ func ResolveHookCommand(cmd string) string {
 		return cmd
 	}
 	p = filepath.ToSlash(p)
-	if strings.ContainsAny(p, "\"$`\\%!\n") {
+	// PowerShell also ends a double-quoted string at the curly double quotes U+201C, U+201D and
+	// U+201E (#3930, Security's #3927 finding 6, as #3904 did for single quotes).
+	if strings.ContainsAny(p, "\"$`\\%!\n\u201c\u201d\u201e") {
 		return cmd // never a path a shell would expand inside double quotes
 	}
 	out := `"` + p + `"`
