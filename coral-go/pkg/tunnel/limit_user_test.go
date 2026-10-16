@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"nhooyr.io/websocket"
 )
 
 const (
@@ -65,17 +67,18 @@ func TestOneHubUserCannotFillTheGeneralPool(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode, "user A's slots came back")
 }
 
-// One user holds at most 4 of the 16 long-lived slots (long polls, terminals) and 2 of the 4
-// search slots.
+// One user holds at most 32 of the 64 long-lived slots (long polls, terminals; #3663) and 2 of
+// the 4 search slots.
 func TestOneHubUserCannotFillTheLongOrSearchPool(t *testing.T) {
 	rig := newLimitRig(t, HubLimits{})
-	rig.holdAs(userA, "/api/board/p/waits/poll", 4)
+	rig.holdAs(userA, "/api/board/p/waits/poll", 32)
 	resp, body := rig.getAs(userA, "/api/board/p/peek?now=1")
-	assertBusy(t, resp, body, "user A's fifth long-lived request")
+	assertBusy(t, resp, body, "user A's 33rd long-lived request")
 	_, err := rig.sess.DialWS(WithHubUser(context.Background(), userA), "/ws/terminal/x", "", nil)
 	var se *StreamError
 	require.ErrorAs(t, err, &se, "user A's terminal over their long share")
 	assert.Equal(t, CodeTooManyStreams, se.Code)
+	assert.Contains(t, se.Message, "You have too many terminals open", "the refusal says it is the user's own share (the hub shows it)")
 	resp, body = rig.getAs(userB, "/api/board/p/waits/poll?now=1")
 	assert.Equal(t, 200, resp.StatusCode, "user B's long poll passes: %s", body)
 
@@ -118,9 +121,11 @@ func TestHubPoolSizesApplyPerRequest(t *testing.T) {
 
 func TestHubUserShares(t *testing.T) {
 	var l HubLimits
-	assert.Equal(t, []int{16, 4, 2}, []int{l.userCap(poolGlobal), l.userCap(poolLong), l.userCap(poolSearch)})
+	assert.Equal(t, []int{16, 32, 2}, []int{l.userCap(poolGlobal), l.userCap(poolLong), l.userCap(poolSearch)})
 	l = HubLimits{Global: 8, Long: 2, Search: 1}
-	assert.Equal(t, []int{2, 1, 1}, []int{l.userCap(poolGlobal), l.userCap(poolLong), l.userCap(poolSearch)}, "never less than 1")
+	assert.Equal(t, []int{2, 2, 1}, []int{l.userCap(poolGlobal), l.userCap(poolLong), l.userCap(poolSearch)}, "a long pool under 16 is the user's whole")
+	assert.Equal(t, 16, HubLimits{Long: 20}.userCap(poolLong), "at least 16 when the pool allows")
+	assert.Equal(t, 50, HubLimits{Long: 100}.userCap(poolLong), "half a large pool")
 	l = HubLimits{UserGlobal: 5}
 	assert.Equal(t, 5, l.userCap(poolGlobal))
 }
@@ -219,4 +224,59 @@ func TestStalledLocalBodyFreesItsSlot(t *testing.T) {
 	assert.Less(t, time.Since(start), 3*time.Second)
 	resp, body := rig.get("/api/small")
 	assert.Equal(t, 200, resp.StatusCode, "the slot was freed: %s", body)
+}
+
+// #3663: one user's normal use, a dashboard tab (its live feed) and 12 terminals, is never refused
+// with the default limits; another user still gets in, and only past the user's share (32) does a
+// terminal get the per-user refusal.
+func TestATabAndTwelveTerminalsAreNeverRefused(t *testing.T) {
+	sess, _ := connect(t, newHub(t, fastCfg()), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		c.Read(r.Context()) // held open until the test closes it
+	}), nil)
+	var open []*WSConn
+	t.Cleanup(func() {
+		for _, c := range open {
+			c.CloseNow()
+		}
+	})
+	dial := func(user, path string) error {
+		c, err := sess.DialWS(WithHubUser(context.Background(), user), path, "", nil)
+		if err == nil {
+			open = append(open, c)
+		}
+		return err
+	}
+	require.NoError(t, dial(userA, "/ws/coral"), "the tab's live feed")
+	for i := 0; i < 12; i++ {
+		require.NoError(t, dial(userA, "/ws/terminal/agent-"+strconv.Itoa(i)), "terminal %d", i+1)
+	}
+	for i := 12; i < 31; i++ { // up to the share: 32 with the feed
+		require.NoError(t, dial(userA, "/ws/terminal/agent-"+strconv.Itoa(i)), "terminal %d", i+1)
+	}
+	err := dial(userA, "/ws/terminal/one-too-many")
+	var se *StreamError
+	require.ErrorAs(t, err, &se, "past the user's share")
+	assert.Equal(t, CodeTooManyStreams, se.Code)
+	require.NoError(t, dial(userB, "/ws/coral"), "another user's tab still opens")
+}
+
+// #3663: users never crowd out the hub's own streams (its feed of this machine, its agent-list
+// reads), which carry no user: users' streams leave the last slots of the pool to them.
+func TestUsersLeaveTheHubsReserve(t *testing.T) {
+	rig := newLimitRig(t, HubLimits{Long: 8}) // reserve 1; a user may take up to 7
+	rig.holdAs(userA, "/api/board/p/waits/poll", 4)
+	rig.holdAs(userB, "/api/board/p/waits/poll", 3)
+	resp, body := rig.getAs(userB, "/api/board/p/peek?now=1")
+	assertBusy(t, resp, body, "a user's stream into the hub's reserve")
+	assert.NotContains(t, body, "you have too many", "it is the machine's limit, not the user's share")
+	resp, body = rig.get("/api/board/p/peek?now=1")
+	assert.Equal(t, 200, resp.StatusCode, "the hub's own (no user) gets the reserved slot: %s", body)
+
+	assert.Equal(t, []int{4, 4, 0}, []int{HubLimits{}.reserve(poolLong), HubLimits{}.reserve(poolGlobal), HubLimits{}.reserve(poolSearch)})
+	assert.Equal(t, 0, HubLimits{Long: 1}.reserve(poolLong), "a one-slot pool has no reserve")
 }

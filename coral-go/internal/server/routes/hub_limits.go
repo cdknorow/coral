@@ -14,9 +14,10 @@ import (
 
 // The Coral Hub request pools' sizes (#3642): how many requests Coral Hub can hold open on
 // this computer at once, in all, on long-lived routes (long polls, terminals), and on the
-// search routes. Empty means the default (64, 16, 4). One Hub user can use a quarter of the
-// general and long pools and half the search pool. Set with PUT /api/settings, which the Hub
-// can't reach, so the Hub can't raise its own limits.
+// search routes. Empty means the default (64, 64, 4). One Hub user can use a quarter of the
+// general pool, half the long pool (at least 16: a dashboard tab and its terminals, #3663) and
+// half the search pool. Set with PUT /api/settings, which the Hub can't reach, so the Hub can't
+// raise its own limits.
 const (
 	HubLimitGlobalSetting = "hub_limit_global"
 	HubLimitLongSetting   = "hub_limit_long"

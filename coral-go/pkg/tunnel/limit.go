@@ -28,8 +28,10 @@ import (
 //     BodyIdle (nothing read from the local API, or the hub not taking it) is ended, so a
 //     stalled reader can't either (#3642).
 const (
-	DefaultGlobalInFlight  = 64
-	DefaultLongInFlight    = 16
+	DefaultGlobalInFlight = 64
+	// DefaultLongInFlight: every terminal through the Hub is one long-lived stream, and a dashboard
+	// tab holds one more for its live feed (#3663: one user's tab and 12 terminals is normal use).
+	DefaultLongInFlight    = 64
 	DefaultSearchInFlight  = 4
 	DefaultRequestDeadline = 30 * time.Second
 	DefaultBodyIdle        = 60 * time.Second
@@ -44,8 +46,9 @@ const (
 type HubLimits struct {
 	Global, Long, Search int
 	// UserGlobal, UserLong and UserSearch cap one Coral Hub user inside each pool. Zero: a
-	// quarter of the pool for Global and Long (16 of 64, 4 of 16), half for Search (2 of 4),
-	// never less than 1.
+	// quarter of the general pool (16 of 64), half the long pool but at least 16 when the pool
+	// allows (32 of 64: a tab and its terminals, #3663), half the search pool (2 of 4); never
+	// less than 1.
 	UserGlobal, UserLong, UserSearch int
 	RequestDeadline                  time.Duration
 	BodyIdle                         time.Duration
@@ -75,11 +78,27 @@ func (l HubLimits) size(pool int) int {
 	return pick(l.Global, DefaultGlobalInFlight)
 }
 
+// reserve is how many slots of a pool only streams without a Coral Hub user (the hub's own) may
+// take (#3663): a sixteenth of the general and long pools (4 of 64), at least 1 while the pool
+// has more than one slot; none in the search pool (the hub doesn't search).
+func (l HubLimits) reserve(pool int) int {
+	size := l.size(pool)
+	if pool == poolSearch || size < 2 {
+		return 0
+	}
+	return max(1, size/16)
+}
+
 func (l HubLimits) userCap(pool int) int {
 	v, share := l.UserGlobal, 4
 	switch pool {
 	case poolLong:
-		v = l.UserLong
+		if l.UserLong > 0 {
+			return l.UserLong
+		}
+		// A user's terminals: half the pool, and at least 16 (or the whole pool, if smaller).
+		size := l.size(pool)
+		return max(min(16, size), size/2)
 	case poolSearch:
 		v, share = l.UserSearch, 2
 	}
@@ -171,6 +190,12 @@ func (lm *limiter) acquire(c requestClass, user string, lim HubLimits) (release 
 		if lm.inUse[p] >= lim.size(p) {
 			return nil, false, false
 		}
+		// Users' streams leave the last reserve(p) slots to the hub's own, which carry no user
+		// (its feed of this machine's agents, its agent-list reads): users never crowd it out
+		// (#3663). A hub that sends no user at all keeps the whole pool, as before.
+		if user != "" && lm.inUse[p] >= lim.size(p)-lim.reserve(p) {
+			return nil, false, false
+		}
 		if user != "" && u != nil && u[p] >= lim.userCap(p) {
 			return nil, true, false
 		}
@@ -216,7 +241,12 @@ func (lm *limiter) refused(c requestClass, path string, perUser bool) {
 // HTTP request; a WebSocket open is refused as too many streams (the hub answers 503, Retry-After).
 func busy(s *Stream, perUser bool) {
 	if s.Header.Kind == KindWS {
-		s.Reject(CodeTooManyStreams, "too many requests from Coral Hub at once", 0)
+		// The hub shows this text in the terminal (#3663), so it says which limit and what to do.
+		msg := "This computer has too many terminals open through Coral Hub at once; close one, or try again shortly."
+		if perUser {
+			msg = "You have too many terminals open on this computer through Coral Hub; close one, or try again shortly."
+		}
+		s.Reject(CodeTooManyStreams, msg, 0)
 		return
 	}
 	msg := `{"error":"this computer is answering too many Coral Hub requests at once; try again shortly","code":"hub_busy"}`
