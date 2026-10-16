@@ -768,16 +768,35 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 	i := 0
 	for i < len(data) {
 		if r.inToken != nil {
-			// The rest of an over-long token: dropped up to the first byte outside its class.
+			// The rest of an over-long token: dropped up to the first byte outside its class, or
+			// to another rule's start, which then redacts what follows. A quoted value cut at its
+			// rule's max (PASSWORD="... 500 bytes ... DB_PASSWORD="<pw>") otherwise dropped the
+			// next name with the run and let its value out (#3761, found by FuzzTrimCut). A start
+			// counts as it does for a value's end in the match below.
 			j := i
 			for j < len(data) && r.inToken(data[j]) {
 				j++
 			}
+			for k, kr := st.next(i); k >= 0 && k < j; k, kr = st.next(k + 1) {
+				if kr == nil { // a PEM BEGIN
+					j = k
+					break
+				}
+				_, _, kok, kneed, _ := kr.match(data[k:], final)
+				if kneed && !final {
+					return out, k // dropped up to the start; it's told with more bytes
+				}
+				if kok {
+					j = k
+					break
+				}
+			}
 			if j == len(data) {
 				if final {
 					r.inToken = nil
+					return out, len(data)
 				}
-				return out, len(data)
+				return out, len(data) - st.partialTail(i) // a start may begin in the tail
 			}
 			r.inToken = nil
 			i = j
@@ -849,6 +868,13 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 				if kok {
 					cut = k
 					break
+				}
+			}
+			// A start cut off by the end of the data (Authorizatio|n) can't be found yet; one that
+			// begins inside the value waits for its bytes too.
+			if cut < 0 && !final {
+				if p := st.partialTail(start + valueAt); p > 0 && len(data)-p < start+n {
+					wait = true
 				}
 			}
 			if wait {

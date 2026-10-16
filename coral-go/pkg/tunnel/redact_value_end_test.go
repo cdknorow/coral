@@ -46,3 +46,37 @@ func TestRedactValueEndsBeforeAnotherRule(t *testing.T) {
 	out := string(RedactTokens([]byte("token=" + pw + "token rest")))
 	assert.False(t, strings.Contains(out, pw[:8]), out)
 }
+
+// #3761 (found by FuzzTrimCut): a value with no end within its rule's max is redacted to there
+// and the rest of its run dropped; the drop ends at another rule's start too. A quoted value of
+// about 500 bytes ending in DB_PASSWORD=" had the next name dropped with the run, and the
+// password after it went out. Every length across the max, raw and in JSON, at every split.
+func TestRedactLongValueEndsBeforeAnotherRule(t *testing.T) {
+	b64 := fake("", 24, alnum+"=")
+	pw := fake("", 30, alnum)
+	for pad := 496; pad <= 524; pad++ {
+		fill := strings.Repeat("0", pad)
+		for _, c := range []struct{ text, secret string }{
+			{`token:"` + fill + ` DB_PASSWORD="` + pw + `" 0`, pw},
+			{`password="` + fill + ` Authorization: Basic ` + b64 + `"`, b64},
+			{"token=" + fill + "_api_key=" + pw + " 0", pw},
+		} {
+			js, _ := json.Marshal(map[string]string{"content": c.text})
+			for enc, body := range map[string][]byte{"raw": []byte(c.text), "json": js} {
+				whole := string(RedactTokens(body))
+				if !assert.Empty(t, urlSecretShown(whole, c.secret), "pad %d (%s): %s", pad, enc, whole) {
+					continue
+				}
+				if enc == "json" {
+					assert.True(t, json.Valid([]byte(whole)), "pad %d stays JSON: %s", pad, whole)
+				}
+				for k := 0; k <= len(body); k++ {
+					if got := urlRedactTwoWrites(t, body, k); got != whole {
+						t.Errorf("pad %d (%s) split at %d: %q, whole %q", pad, enc, k, got, whole)
+						break
+					}
+				}
+			}
+		}
+	}
+}
