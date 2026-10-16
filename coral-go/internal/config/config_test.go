@@ -56,3 +56,13 @@ func TestEnvIntInvalid(t *testing.T) {
 	cfg := Load()
 	assert.Equal(t, DefaultPort, cfg.Port) // fallback to the platform default
 }
+
+func TestLoadCloudMaxModeFromEnv(t *testing.T) {
+	for _, tc := range []struct{ env, want string }{
+		{"", ""}, {"launch", "launch"}, {" Interact ", "interact"}, {"VIEW", "view"},
+	} {
+		isolateConfigEnv(t)
+		t.Setenv("CORAL_CLOUD_MAX_MODE", tc.env)
+		assert.Equal(t, tc.want, Load().CloudMaxMode, "CORAL_CLOUD_MAX_MODE=%q", tc.env)
+	}
+}

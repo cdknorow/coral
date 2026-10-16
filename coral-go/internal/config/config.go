@@ -93,6 +93,14 @@ type Config struct {
 	// enrolled server reconnects on its own.
 	CloudConnect string
 
+	// CloudMaxMode is the most Coral Hub may do on this computer when the process was started
+	// with one: --cloud-max-mode or CORAL_CLOUD_MAX_MODE (view, interact or launch). It is the
+	// launch-time form of Settings > Coral Hub > "Most the hub may do on this computer", for a
+	// machine nobody sits at (a container, a CI runner). Whoever starts the process is the
+	// machine's owner; the hub, a tunneled request and the API still cannot change the cap.
+	// Empty leaves the saved setting alone (view if none).
+	CloudMaxMode string
+
 	// BootstrapFile and ProofFile name a one-time Coral Hub credential and its
 	// optional proof (--bootstrap-file, --proof-file), redeemed at startup when
 	// this server has no identity yet (#3149). Paths only: a credential is never
@@ -146,6 +154,7 @@ func Load(dataDir ...string) *Config {
 		CloudURL:         CloudURLSetting(envURL, envURLSet),
 		CloudURLExplicit: envURLSet && CloudURLSetting(envURL, envURLSet) != "",
 		CloudConnect:     cloudConnectFromEnv(os.Getenv("CORAL_CLOUD_CONNECT")),
+		CloudMaxMode:     strings.ToLower(strings.TrimSpace(os.Getenv("CORAL_CLOUD_MAX_MODE"))),
 		coralDir:         coralDir,
 		DBPath:           filepath.Join(coralDir, "sessions.db"),
 		DBBusyTimeoutMS:  5000,

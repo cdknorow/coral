@@ -41,6 +41,7 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 const devStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-01"
@@ -325,6 +326,10 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	boardProbe.Close()
 	applyPrivacySettings(ctx, db, cfg, opts.RemoteAccess, opts.RemoteAccessPrompt)
 	applyHubModeSetting(ctx, db, cfg)
+	if err := applyCloudMaxMode(ctx, db, cfg); err != nil {
+		db.Close()
+		return nil, err
+	}
 	// Per-session agent tokens, before anything can launch an agent (#3387).
 	setupSessionTokens(db, cfg.CoralDir())
 	setupAgentTools(cfg.CoralDir())
@@ -533,6 +538,34 @@ func applyHubModeSetting(ctx context.Context, db *store.DB, cfg *config.Config) 
 		cfg.HubMode = true
 		log.Printf("[startup] hub mode is on (Settings > Run as a hub)")
 	}
+}
+
+// applyCloudMaxMode saves the cap given at launch (--cloud-max-mode, CORAL_CLOUD_MAX_MODE) as the
+// cloud_max_mode setting, so the connector, the dashboard and 'coral cloud status' read it as any
+// other. It is the launch-time form of the local owner's choice, for a machine with nobody at its
+// dashboard: the hub, a tunneled request and the API still cannot change it. Unset changes nothing.
+// A value that is not view, interact or launch, or one that cannot be saved, stops Coral from
+// starting: a cap that was asked for is never silently left lower, and never made higher. Lowering
+// it ends what the hub turned on above the new cap (auto-accept needs Launch), as the dashboard does.
+func applyCloudMaxMode(ctx context.Context, db *store.DB, cfg *config.Config) error {
+	if cfg.CloudMaxMode == "" {
+		return nil
+	}
+	mode, ok := tunnel.ParseMode(cfg.CloudMaxMode)
+	if !ok {
+		return fmt.Errorf("cloud max mode %q must be view, interact or launch", cfg.CloudMaxMode)
+	}
+	ss := store.NewSessionStore(db)
+	if err := ss.SetSetting(ctx, routes.MaxModeSetting, mode.String()); err != nil {
+		return fmt.Errorf("could not save the cloud max mode: %w", err)
+	}
+	if mode < tunnel.TierLaunch {
+		if _, err := ss.ClearHubAutoAccept(ctx, store.AutoAcceptModeLowered); err != nil {
+			return fmt.Errorf("could not turn off Coral Hub auto-accept: %w", err)
+		}
+	}
+	log.Printf("[CLOUD] access cap set to %s by --cloud-max-mode", mode.String())
+	return nil
 }
 
 // listenAll opens one listener per address in cfg.ListenHosts(), all on one port: the first
