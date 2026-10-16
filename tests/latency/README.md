@@ -12,7 +12,8 @@ dataset, real tmux sessions and a CPU hog, so it is only meaningful on the epoch
 QA_LATENCY_RUN=1 bash tests/latency/run_all.sh
 
 # or against an isolated worktree at a specific commit (recommended, leaves ~/coral alone):
-QA_LATENCY_RUN=1 GO=$HOME/go-install/go/bin/go REPO=/path/to/worktree WORK=$HOME/lat-run bash tests/latency/run_all.sh
+QA_LATENCY_RUN=1 GO=$HOME/go-install/go/bin/go REPO=/path/to/worktree bash tests/latency/run_all.sh
+# On epoch the data lands under /sd2/$USER/qa-tmp and is removed on exit (tests/EPOCH.md); KEEP_TEST_DATA=1 keeps it.
 ```
 
 It builds `coral` + the seeder (`seed/`, copied into the module as `cmd/qa3713seed` only for the
