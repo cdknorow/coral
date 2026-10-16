@@ -5,6 +5,7 @@ import { escapeHtml, escapeAttr, sanitizeMarkdown } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 import { formatClockTime } from './format.js';
 import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './event_icons.js';
+import { filterItemHtml, refillFilterList } from './filter_dropdown.js';
 
 // The icon and filter definitions are shared with the live Activity view (event_icons.js)
 // Per-session filter state for history
@@ -50,7 +51,8 @@ function renderHistoryEventFilters() {
     const activeCount = FILTER_GROUPS.length - historyFilterHidden.size;
     const badge = historyFilterHidden.size > 0 ? `<span class="filter-btn-badge">${activeCount}/${FILTER_GROUPS.length}</span>` : '';
 
-    container.innerHTML = `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="history">
+    container.innerHTML = `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="history"
+        aria-haspopup="menu" aria-expanded="${document.getElementById('filter-dropdown') ? 'true' : 'false'}">
         <span class="event-filter-char">&#xe152;</span>
         <span class="filter-btn-label">Filter</span>
         ${badge}
@@ -89,16 +91,10 @@ function _refreshHistoryFilterDropdown() {
         const checked = !isHidden;
         const count = historyEvents.filter(group.match).length;
         const countHtml = `<span class="filter-item-count">${count}</span>`;
-        return `<div class="filter-dropdown-item ${escapeAttr(group.cls)}" data-on-click="filter-toggle" data-mode="history" data-key="${escapeAttr(group.key)}">
-            <span class="filter-item-icon event-filter-char">${group.label}</span>
-            <span class="filter-item-label">${group.title}</span>
-            ${countHtml}
-            <span class="filter-item-check">${checked ? '&#xe834;' : '&#xe835;'}</span>
-        </div>`;
+        return filterItemHtml(group, 'history', checked, countHtml);
     }).join('');
 
-    const list = dropdown.querySelector('.filter-dropdown-list');
-    if (list) list.innerHTML = items;
+    refillFilterList(dropdown, items);
 }
 
 function renderHistoryEventTimeline() {
