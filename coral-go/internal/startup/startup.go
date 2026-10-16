@@ -132,7 +132,8 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 		log.Printf("Shutdown error: %v", err)
 	}
 	if rs.Server != nil {
-		rs.Server.CloseCloud() // no command-line token outlives the server (#3285)
+		rs.Server.CloseCloud()       // no command-line token outlives the server (#3285)
+		rs.Server.RemoveLoginToken() // nor the sign-in token's file (#3628 F7)
 	}
 	// Mark all PTY sessions as sleeping before killing them so they can
 	// be re-launched on next startup.

@@ -105,6 +105,8 @@ func (ks *KeyStore) removeLoginFileLocked() {
 // replacing an older one. The file is removed once its token is used or has expired
 // (#3628 F7): a spent token on disk only invites a look.
 func (ks *KeyStore) WriteLoginTokenFile(dir string) (string, error) {
+	// A file an earlier run left goes first, so a failure below leaves no spent token (#3628 F7).
+	RemoveLoginTokenFile(dir)
 	token, err := ks.MintLoginToken()
 	if err != nil {
 		return "", err
@@ -139,6 +141,16 @@ func (ks *KeyStore) WriteLoginTokenFile(dir string) (string, error) {
 		}
 	})
 	return token, nil
+}
+
+// RemoveLoginTokenFile removes <dir>/login_token: at a clean shutdown (no token of a stopped
+// server is any use) and before a new one is written (#3628 F7, Security's SHOULD). A
+// symlink at the path is removed, never followed.
+func RemoveLoginTokenFile(dir string) {
+	if dir == "" {
+		return
+	}
+	_ = os.Remove(filepath.Join(dir, LoginTokenFile)) // gone already is fine
 }
 
 // handleLoginToken trades a ?login_token= for a session cookie (SameSite Strict) and

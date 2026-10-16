@@ -273,9 +273,15 @@ func (s *Server) BoardHandler() *routes.BoardHandler {
 // <data>/login_token (#3387). "" when there is no key store.
 func (s *Server) WriteLoginToken() (string, error) {
 	if s.keyStore == nil {
+		auth.RemoveLoginTokenFile(s.cfg.CoralDir()) // no token to give: none left from a run before
 		return "", nil
 	}
 	return s.keyStore.WriteLoginTokenFile(s.cfg.CoralDir())
+}
+
+// RemoveLoginToken removes <data>/login_token at a clean shutdown (#3628 F7).
+func (s *Server) RemoveLoginToken() {
+	auth.RemoveLoginTokenFile(s.cfg.CoralDir())
 }
 
 // MintLoginToken mints a fresh single-use dashboard sign-in token (#3387), for an app
