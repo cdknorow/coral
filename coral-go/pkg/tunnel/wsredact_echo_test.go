@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/pkg/redact"
 )
 
@@ -29,34 +30,32 @@ func typeKeys(t *testing.T, w *wsRedact, dst *wsRecorder, prefix, text string, t
 	shown := prefix
 	for i := 0; i < len(text); i++ {
 		shown += text[i : i+1]
+		frames := len(dst.got())
 		start := time.Now()
 		require.NoError(t, w.write(websocket.MessageBinary, []byte(text[i:i+1])))
-		for dst.binary() != shown && time.Since(start) < timeout {
+		// The key has left when a frame went out for it (the key itself, or the marker when it
+		// completed a token).
+		for len(dst.got()) == frames && time.Since(start) < timeout {
 			time.Sleep(time.Millisecond)
 		}
 		lat = append(lat, time.Since(start))
-		if dst.binary() != shown { // never came: the later keys cannot be told from this one, so settle it and go on
-			w.mu.Lock()
-			_ = redactFlush(w.red, true)
-			_ = w.sendOut()
-			w.mu.Unlock()
+		if dst.binary() != shown { // nothing is held, so a difference is a completed token shown as the marker
 			shown = dst.binary()
 		}
 	}
 	return lat
 }
 
-// Typing ordinary commands through the real detector is echoed at once, key by key, while a token typed the same way is
-// still held: the guard for #3958. The words below contain no token-like run (no 8-character mix of letters and digits,
-// no secret prefix followed by a value), so each key's echo must go out within echoBound of its own frame, not after the
-// stream's idle flush. A token-like tail (a secret prefix and the start of its value) must still be held back.
+// Typing through the production detector is echoed at once, key by key: the guard for #3958. Nothing is held (the
+// operator's decision), so each key's echo goes out within echoBound of its own frame, ordinary commands and a typed
+// token alike (its completing key goes out as the marker).
 func TestWSRedactTypingEchoIsNotHeldBack(t *testing.T) {
 	for _, cmd := range []string{"git status", "ls -la", "cd /tmp", "make test", "echo hello world", "kubectl get pods", "cat README.md", "python3 -m pytest"} {
 		t.Run(cmd, func(t *testing.T) {
 			on := atomic.Bool{}
 			on.Store(true)
 			dst := &wsRecorder{}
-			w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
+			w := newWSRedact(context.Background(), dst, secrets.Redactor(), on.Load, true)
 			defer w.close()
 			lat := typeKeys(t, w, dst, "$ ", cmd, 300*time.Millisecond)
 			var slow []string
@@ -77,7 +76,7 @@ func TestWSRedactTypingEchoIsNotHeldBack(t *testing.T) {
 			on := atomic.Bool{}
 			on.Store(true)
 			dst := &wsRecorder{}
-			w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
+			w := newWSRedact(context.Background(), dst, secrets.Redactor(), on.Load, true)
 			lat := typeKeys(t, w, dst, "$ export T=", tok, 300*time.Millisecond)
 			for i, d := range lat {
 				assert.LessOrEqual(t, d, echoBound, "key %d (%q) of a typed %s... token left within %v, was %v", i, tok[i], tok[:4], echoBound, d)
@@ -93,7 +92,7 @@ func TestWSRedactOneFrameSecretIsReplaced(t *testing.T) {
 	on := atomic.Bool{}
 	on.Store(true)
 	dst := &wsRecorder{}
-	w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
+	w := newWSRedact(context.Background(), dst, secrets.Redactor(), on.Load, true)
 	defer w.close()
 	require.NoError(t, w.write(websocket.MessageBinary, []byte("$ echo "+tok+"\r\n")))
 	assert.Equal(t, "$ echo "+redact.Marker+"\r\n", dst.binary())
@@ -108,7 +107,7 @@ func TestWSRedactSplitFrameSecretIsTheAcceptedRisk(t *testing.T) {
 	on := atomic.Bool{}
 	on.Store(true)
 	dst := &wsRecorder{}
-	w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
+	w := newWSRedact(context.Background(), dst, secrets.Redactor(), on.Load, true)
 	defer w.close()
 	require.NoError(t, w.write(websocket.MessageBinary, []byte("$ export T="+tok[:20])))
 	require.NoError(t, w.write(websocket.MessageBinary, []byte(tok[20:]+"\r\n")))
