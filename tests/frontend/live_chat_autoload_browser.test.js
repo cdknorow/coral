@@ -387,6 +387,56 @@ const MAX_FIRST_PAGE = 200;
             console.log(`   ✓ ${status} (${body.error}): retried on a click, by before=`);
         }
 
+        console.log('13. A long page is rendered in slices, not in one task (#3866)');
+        // Count the yields between slices: setTimeout(fn, 0) calls made while a page renders.
+        await ev(`(() => { window.__zeroTimeouts = 0; const real = window.setTimeout; window.setTimeout = function (fn, ms, ...rest) { if (ms === 0 || ms === undefined) window.__zeroTimeouts++; return real.call(this, fn, ms, ...rest); }; return true; })()`);
+        await ev(`window.__chatMock.add('qa-long', 'L', 1000)`);
+        await open('qa-long');
+        await stopPoll();
+        await waitFor(`window.__rendered().length > 0`, 'first page of the long agent');
+        const firstSize = (await rendered()).length;
+        await ev(`window.__zeroTimeouts = 0`);
+        const moreOk = await ev(`T.liveChat.loadMoreHistory().then(() => true)`);
+        assert.ok(moreOk);
+        await waitFor(`window.__rendered().length > ${firstSize}`, 'the older page');
+        const afterMore = await rendered();
+        const olderAdded = afterMore.length - firstSize;
+        expectRange(afterMore, 'L', 1000 - firstSize - olderAdded, 1000, 'first page plus the older page, contiguous');
+        const yields = await ev('window.__zeroTimeouts');
+        assert.ok(olderAdded >= 100 && yields >= Math.floor(olderAdded / 40) - 1, `an older page of ${olderAdded} messages yields between slices (${yields} yields)`);
+        console.log(`   ✓ older page of ${olderAdded} messages: contiguous, ${yields} yields between slices`);
+
+        console.log('14. A kept page is rebuilt in slices, in order, and leaving mid-build shows nothing stale');
+        await ev(`window.__chatMock.add('qa-keep', 'K', 30)`);
+        await open('qa-keep');
+        await stopPoll();
+        await waitFor(`window.__rendered().length === 30`, 'the 30 messages');
+        await ev(`window.__chatMock.append('qa-keep', 570)`);
+        await ev(`T.liveChat.refreshLiveHistory()`);
+        await waitFor(`window.__rendered().length === 600`, 'the 570 new messages appended');
+        await ev(`window.__chatMock.add('qa-other', 'O', 5, { short: true })`);
+        await open('qa-other');
+        await stopPoll();
+        await waitFor(`window.__rendered().length === 5 && window.__rendered()[0] === 'O0'`, 'the other agent');
+        await ev(`window.__zeroTimeouts = 0`);
+        await open('qa-keep');
+        await waitFor(`window.__rendered().length === 600`, 'the kept page back', 8000);
+        expectRange(await rendered(), 'K', 0, 600, 'the kept page back, contiguous and in order');
+        const keptYields = await ev('window.__zeroTimeouts');
+        assert.ok(keptYields >= 14, `600 kept messages are built in slices (${keptYields} yields)`);
+        await stopPoll();
+        // Leave while it builds: go back to the kept agent and switch away at once.
+        await open('qa-other');
+        await stopPoll();
+        await ev(`(() => { T.sessions.selectLiveSession('qa-keep', 'claude', 'qa-keep-id', 'local'); return true; })()`);
+        await ev(`(() => { T.sessions.selectLiveSession('qa-other', 'claude', 'qa-other-id', 'local'); return true; })()`);
+        await waitFor(`window.__rendered().length === 5`, 'the other agent alone', 8000);
+        await sleep(600);
+        const finalIds = await rendered();
+        assert.ok(finalIds.every(id => id.startsWith('O')), `nothing of the agent that was left shows (got ${finalIds.length} items, first ${finalIds[0]})`);
+        await stopPoll();
+        console.log(`   ✓ 600 kept messages back in order (${keptYields} yields); leaving mid-build left only the other agent's 5`);
+
         console.log('\nAll live chat autoload checks passed');
     } finally {
         await client.close();

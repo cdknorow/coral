@@ -84,6 +84,7 @@ const CHAT_TRIM = 2048;
 // keep a single refresh in flight: overlapping initial loads would otherwise
 // both render the full history.
 let historyGeneration = 0;
+let keptRenderGeneration = -1; // the generation whose kept page is being built (refreshLiveHistory)
 let refreshInFlight = -1;
 let activeChatAbortController = null;
 let activeLoadMoreAbortController = null;
@@ -420,6 +421,21 @@ export function renderTranscript(messages, container, agentType = "claude") {
     }
 }
 
+// Messages rendered in slices of RENDER_SLICE with a yield between them, so a long page is not one long task (#3866: 200 messages
+// took about 190 ms and a 600-message kept page about 500 ms in one go). `target` is a detached element; the caller inserts what
+// it built. Resolves false, rendering no more, when `stillWanted()` says the page was left meanwhile.
+const RENDER_SLICE = 40;
+async function renderMessagesChunked(messages, target, agentType, stillWanted) {
+    for (let i = 0; i < messages.length; i += RENDER_SLICE) {
+        for (const msg of messages.slice(i, i + RENDER_SLICE)) renderMessage(msg, target, agentType);
+        if (i + RENDER_SLICE < messages.length) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            if (!stillWanted()) return false;
+        }
+    }
+    return true;
+}
+
 export async function refreshLiveHistory() {
     if (!state.currentSession || state.currentSession.type !== "live") return;
     if (!platform.isNative && document.hidden) return;
@@ -432,11 +448,17 @@ export async function refreshLiveHistory() {
 
     // An agent seen in the last few minutes: its kept page shows at once, and only what came after is asked for
     // below (a poll from the page's end), not the first page again (#3726).
-    if (!initialLoadDone) {
+    if (!initialLoadDone && keptRenderGeneration !== historyGeneration) {
         const kept = freshKeptPage(session.session_id);
         if (kept) {
+            // Built off screen in slices; a poll that comes while it builds returns at once (keptRenderGeneration).
+            const generation = historyGeneration;
+            keptRenderGeneration = generation;
+            const built = document.createElement("div");
+            const done = await renderMessagesChunked(kept.messages, built, session.agent_type, () => generation === historyGeneration);
+            if (!done || generation !== historyGeneration) return; // the agent was switched while it built
             container.innerHTML = "";
-            for (const msg of kept.messages) renderMessage(msg, container, session.agent_type);
+            while (built.firstChild) container.appendChild(built.firstChild);
             historyHasMore = kept.start > 0;
             historyStart = kept.start;
             historyMessageCount = kept.total;
@@ -696,7 +718,11 @@ async function _loadMoreHistory(generation) {
         if (generation !== historyGeneration) return;
 
         if (data.messages && data.messages.length > 0) {
-            // Preserve scroll position: measure before inserting
+            const temp = document.createElement("div");
+            noteIndexes(data.messages, data.start);
+            if (!await renderMessagesChunked(data.messages, temp, session.agent_type, () => generation === historyGeneration)) return;
+
+            // Preserve scroll position: measure just before inserting
             const prevScrollHeight = container.scrollHeight;
             const prevScrollTop = container.scrollTop;
 
@@ -704,11 +730,6 @@ async function _loadMoreHistory(generation) {
             const loadMoreBtn = container.querySelector(".load-more-btn");
             const refNode = loadMoreBtn ? loadMoreBtn.nextSibling : container.firstChild;
 
-            const temp = document.createElement("div");
-            noteIndexes(data.messages, data.start);
-            for (const msg of data.messages) {
-                renderMessage(msg, temp, session.agent_type);
-            }
             const lastOlder = temp.lastElementChild;
             while (temp.firstChild) {
                 container.insertBefore(temp.firstChild, refNode);
