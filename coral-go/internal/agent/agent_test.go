@@ -1458,7 +1458,7 @@ func TestClassifyShell(t *testing.T) {
 	}{
 		{"/bin/bash", ShellBash}, {"/bin/zsh", ShellZsh}, {"zsh", ShellZsh},
 		{"pwsh", ShellPowerShell}, {"powershell.exe", ShellPowerShell},
-		{"cmd", ShellCmd}, {"cmd.exe", ShellCmd}, {"sh", ShellBash},
+		{"cmd", ShellPowerShell}, {"cmd.exe", ShellPowerShell}, {`C:\\Windows\\System32\\cmd.exe`, ShellPowerShell}, {"sh", ShellBash}, // cmd.exe: never (#3692)
 	}
 	for _, tt := range tests {
 		if got := classifyShell(tt.input); got != tt.expected {

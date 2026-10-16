@@ -2,12 +2,17 @@ package agent
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
+
+// cmdShellIgnored logs once that a CORAL_SHELL naming cmd.exe is ignored (#3692).
+var cmdShellIgnored sync.Once
 
 // ShellType identifies the type of shell being used for agent sessions.
 type ShellType string
@@ -16,14 +21,22 @@ const (
 	ShellBash       ShellType = "bash"
 	ShellZsh        ShellType = "zsh"
 	ShellPowerShell ShellType = "powershell"
-	ShellCmd        ShellType = "cmd"
 )
 
 // DetectShell determines the shell type from CORAL_SHELL env var,
 // falling back to platform defaults.
 func detectShell() ShellType {
 	if env := os.Getenv("CORAL_SHELL"); env != "" {
-		return classifyShell(env)
+		if !isCmdShell(env) {
+			return classifyShell(env)
+		}
+		// cmd.exe is never an agent's shell (#3692): the launch line is PowerShell's on Windows
+		// (the prompt argument, the long-command handoff), and the terminal starts PowerShell
+		// there (ptymanager's pickShell ignores it the same way). Elsewhere the platform's own
+		// shell is used.
+		cmdShellIgnored.Do(func() {
+			log.Printf("[agent] CORAL_SHELL=%q is ignored for agents: Coral starts Windows agents through PowerShell, since cmd.exe can't run their launch line", env)
+		})
 	}
 
 	if runtime.GOOS == "windows" {
@@ -39,15 +52,12 @@ func detectShell() ShellType {
 
 // classifyShell maps a shell path or name to a ShellType.
 func classifyShell(shell string) ShellType {
-	base := strings.ToLower(filepath.Base(shell))
-	// Strip .exe suffix for Windows
-	base = strings.TrimSuffix(base, ".exe")
-
+	base := shellBase(shell)
 	switch {
 	case base == "pwsh" || base == "powershell":
 		return ShellPowerShell
 	case base == "cmd":
-		return ShellCmd
+		return ShellPowerShell // never cmd.exe (#3692): see detectShell
 	case base == "zsh":
 		return ShellZsh
 	default:
@@ -55,6 +65,15 @@ func classifyShell(shell string) ShellType {
 		return ShellBash
 	}
 }
+
+// shellBase is a shell's name: its last path element (either slash), lower case, without .exe.
+func shellBase(shell string) string {
+	base := strings.ToLower(filepath.Base(strings.ReplaceAll(shell, `\`, "/")))
+	return strings.TrimSuffix(base, ".exe")
+}
+
+// isCmdShell reports whether shell names cmd.exe.
+func isCmdShell(shell string) bool { return shellBase(shell) == "cmd" }
 
 // AppBundleBinDir returns the directory containing hook binaries if the
 // current executable is running from a macOS .app bundle or a similar
@@ -171,19 +190,10 @@ func shellQuoteLiteral(s string) string {
 // variable for subsequent commands on the same line.
 // On bash/zsh: export K='V' &&
 // On PowerShell: $env:K='V';
-// On cmd.exe: set "K=V" &&
 func formatEnvExport(key, value string) string {
 	switch detectShell() {
 	case ShellPowerShell:
 		return fmt.Sprintf("$env:%s=%s;", key, shellQuoteLiteral(value))
-	case ShellCmd:
-		// cmd.exe has no literal quoting: drop what could end the quotes or expand (#3362).
-		return fmt.Sprintf(`set "%s=%s" &&`, key, strings.Map(func(r rune) rune {
-			if strings.ContainsRune("\"%^!\r\n", r) {
-				return -1
-			}
-			return r
-		}, value))
 	default:
 		return fmt.Sprintf(`export %s=%s &&`, key, singleQuote(value))
 	}
@@ -227,8 +237,6 @@ func prefixWithPathEnv(binDir string) string {
 	switch shell {
 	case ShellPowerShell:
 		return fmt.Sprintf(`$env:PATH=%s + $env:PATH; `, shellQuoteLiteral(binDir+";"))
-	case ShellCmd:
-		return fmt.Sprintf(`set "PATH=%s;%%PATH%%" && `, binDir)
 	default:
 		// binDir is quoted as a literal; only $PATH is expanded (#3362).
 		return fmt.Sprintf(`export PATH=%s"$PATH" && `, singleQuote(binDir+":"))
@@ -318,7 +326,7 @@ func FindCLIInCommonPaths(binary string) string {
 func FormatPromptFileArg(promptFile string) string {
 	shell := detectShell()
 	switch shell {
-	case ShellPowerShell, ShellCmd:
+	case ShellPowerShell:
 		return fmt.Sprintf(`"$((Get-Content -Raw %s) -replace '"', '\"')"`, shellQuoteLiteral(promptFile))
 	default:
 		// bash, zsh, sh. The path is quoted like any value (#3362): it is Coral's own temp
