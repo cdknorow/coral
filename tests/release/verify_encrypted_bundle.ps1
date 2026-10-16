@@ -15,7 +15,11 @@ $dllName = "libcrypto-${cryptoMajor}-x64.dll"
 $dll = Join-Path $PackageDir $dllName
 if (!(Test-Path $exe) -or !(Test-Path $dll)) { throw "missing packaged Coral executable or OpenSSL DLL" }
 if ((Get-Item $dll).VersionInfo.FileVersion -ne $version) { throw "packaged OpenSSL DLL version differs from attestation" }
-$expected = @("coral.exe","launch-coral.exe","coral-board.exe","coral-agent.exe","coral-hook-agentic-state.exe","coral-hook-message-check.exe","coral-hook-session-start.exe","coral-hook-task-sync.exe","coral-tray.exe","coral-app.exe")
+# The shipped programs: commands.txt and gui_commands.txt beside this script (#3855).
+$expected = @(foreach ($f in 'commands.txt', 'gui_commands.txt') {
+  Get-Content (Join-Path $PSScriptRoot $f) | Where-Object { $_ -notmatch '^\s*(#|$)' } | ForEach-Object { "$($_.Trim()).exe" }
+})
+if ($expected.Count -lt 2) { throw "commands.txt and gui_commands.txt list no programs" }
 foreach ($name in $expected) { if (!(Test-Path (Join-Path $PackageDir $name))) { throw "missing packaged executable $name" } }
 $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
 $objdump = Get-Command objdump.exe -ErrorAction SilentlyContinue
