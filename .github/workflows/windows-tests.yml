@@ -4,7 +4,9 @@ name: windows-tests
 # (GetFileInformationByHandle) in safefs, routes, agent and background; UNC and device-path refusal
 # in auto-attach; the no-hooks path in gitutil; the token owner check in cliauth; ptymanager's
 # Windows input and pipe-log code; the data folder's ACL in config (#3637); and the secret key files'
-# access-list check in secfile and secretbox, with the stub-hub enrollment in cloud (#3693). The server builds
+# access-list check in secfile and secretbox, with the stub-hub enrollment in cloud (#3693); the peer-user
+# check in peercred and the API key, login token and session-token files' access lists in auth and
+# startup (#3905). The server builds
 # with CGO_ENABLED=0 and -tags fts5 (the pure-Go SQLite driver), as release.yml's Windows build
 # does, so no C toolchain is needed.
 #
@@ -58,6 +60,7 @@ jobs:
           ./internal/gitutil/... ./internal/background/... ./internal/ptymanager/...
           ./internal/config/...
           ./internal/secfile/... ./pkg/secretbox/... ./internal/cloud/...
+          ./internal/peercred/... ./internal/auth/... ./internal/startup/...
       - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
         if: ${{ !cancelled() }} # report the routes results even when the packages step failed
         env:
