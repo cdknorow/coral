@@ -106,16 +106,41 @@ func TestListenAllList(t *testing.T) {
 	assert.Equal(t, "ok", get(t, "127.0.0.1", port))
 	assert.Equal(t, "ok", get(t, "::1", port))
 
-	// The second address's port is taken: the first listener is closed again.
+	// The second address's port is taken: the first listener is closed again. Another process can
+	// hold 127.0.0.1 on the port picked for ::1 (or take it meanwhile) on a busy host, so a port
+	// whose 127.0.0.1 side is in use is skipped, and the check is tried up to five times: a
+	// listener left open fails every try, another process's socket only by chance.
+	var lastErr error
+	for try := 0; try < 5; try++ {
+		if lastErr = busyPortClosesTheFirstListener(t); lastErr == nil {
+			return
+		}
+		t.Logf("try %d: %v", try+1, lastErr)
+	}
+	t.Fatalf("the 127.0.0.1 listener opened before the failure was closed: %v", lastErr)
+}
+
+// busyPortClosesTheFirstListener holds [::1]:P, has listenAll bind 127.0.0.1 then ::1 on P (so
+// the second fails), and reports whether 127.0.0.1:P is free again.
+func busyPortClosesTheFirstListener(t *testing.T) error {
+	t.Helper()
 	busy, err := net.Listen("tcp", "[::1]:0")
 	require.NoError(t, err)
 	defer busy.Close()
 	bport := busy.Addr().(*net.TCPAddr).Port
+	addr := "127.0.0.1:" + strconv.Itoa(bport)
+	probe, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err // someone else's port: try another
+	}
+	probe.Close()
 	_, _, err = listenAll(&config.Config{Host: "127.0.0.1,::1", Port: bport})
-	require.Error(t, err)
-	ln, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(bport))
-	require.NoError(t, err, "the 127.0.0.1 listener opened before the failure was closed")
-	ln.Close()
+	require.Error(t, err, "::1 is taken")
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	return ln.Close()
 }
 
 func agentenvURL(t *testing.T) string {
