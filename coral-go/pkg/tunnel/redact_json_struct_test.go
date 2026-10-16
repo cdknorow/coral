@@ -18,19 +18,22 @@ var jsonHdr = http.Header{"Content-Type": {"application/json"}}
 
 // redactStrings is v with every key redacted as text and every value with its key (an array's
 // strings with the key of the member holding it): what the structural redaction must give.
-func redactStrings(v any) any { return redactUnder(v, "", false) }
+func redactStrings(v any) any { return redactUnder(v, "", false, false) }
 
-func redactUnder(v any, key string, has bool) any {
+func redactUnder(v any, key string, has, auth bool) any {
 	switch x := v.(type) {
 	case string:
-		if has {
+		switch {
+		case auth:
+			return redactMember("Authorization", x)
+		case has:
 			return redactMember(key, x)
 		}
 		return string(RedactTokens([]byte(x)))
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
-			out[i] = redactUnder(e, key, has)
+			out[i] = redactUnder(e, key, has, auth)
 		}
 		return out
 	case map[string]any:
@@ -42,13 +45,25 @@ func redactUnder(v any, key string, has bool) any {
 				}
 			}
 		}
+		mentions := 0
+		for _, e := range x {
+			if str, isStr := e.(string); isStr && namesAuthorization(str) {
+				mentions++
+			}
+		}
 		out := make(map[string]any, len(x))
 		for k, e := range x {
 			ctx := k
 			if hasName && strings.EqualFold(k, "value") {
 				ctx = name
 			}
-			out[string(RedactTokens([]byte(k)))] = redactUnder(e, ctx, true)
+			str, isStr := e.(string)
+			other := mentions
+			if isStr && namesAuthorization(str) {
+				other--
+			}
+			childAuth := auth || strings.Contains(strings.ToLower(k), "authorization") || other > 0 && isStr
+			out[string(RedactTokens([]byte(k)))] = redactUnder(e, ctx, true, childAuth)
 		}
 		return out
 	}
@@ -200,6 +215,13 @@ func TestRedactJSONStructureKeyAndValue(t *testing.T) {
 		{map[string]any{"req": map[string]any{"header": map[string]any{"Authorization": []any{"Bearer " + bearer, "Basic " + basic}}}}, []string{bearer, basic}, true},
 		{[]any{map[string]any{"name": "Authorization", "value": "Basic " + basic}}, []string{basic}, true},
 		{[]any{map[string]any{"value": "Basic " + basic, "Name": "Proxy-Authorization"}}, []string{basic}, true},
+		// Security's SHOULD rows: the keyword is an object's key, or another member names it.
+		{map[string]any{"Authorization": map[string]any{"scheme": "Basic", "credentials": basic}}, []string{basic}, true},
+		{map[string]any{"items": []any{map[string]any{"k": "Authorization", "v": "Basic " + basic}}}, []string{basic}, true},
+		{map[string]any{"auth": map[string]any{"proxyAuthorization": map[string]any{"value": map[string]any{"token": tok}}}}, []string{tok}, true},
+		{map[string]any{"env": []any{map[string]any{"n": "HTTP_AUTHORIZATION", "v": "Bearer " + bearer}}}, []string{bearer}, true},
+		{map[string]any{"header": "Proxy-Authorization:", "credential": "Basic " + basic}, []string{basic}, true},
+		{map[string]any{"field": "authorization ", "data": tok, "n": 3}, []string{tok}, true},
 	} {
 		raw, err := json.Marshal(c.body)
 		require.NoError(t, err)
@@ -221,4 +243,18 @@ func TestRedactJSONTooDeepFallsBackToText(t *testing.T) {
 	require.True(t, ok)
 	assert.True(t, json.Valid(out))
 	assert.NotContains(t, string(out), tok)
+}
+
+// Near misses for the Authorization inheritance: an object that only mentions authorization in
+// passing, and a key that only resembles it, are redacted as before.
+func TestRedactJSONStructureAuthorizationNearMisses(t *testing.T) {
+	for _, raw := range []string{
+		`{"note":"authorization was refused","detail":"see the log"}`,
+		`{"authorize":"later","msg":"retry in a minute"}`,
+		`{"kind":"authorization_request","text":"hello world"}`,
+	} {
+		out, ok := redactReply(jsonHdr, []byte(raw))
+		require.True(t, ok)
+		assert.Equal(t, raw, string(out))
+	}
 }

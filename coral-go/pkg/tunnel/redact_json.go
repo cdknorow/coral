@@ -23,6 +23,12 @@ import (
 // its "name" (or "key") member's text, for headers written as {"name": ..., "value": ...} (HAR
 // files, browser automation logs). The reply is read whole into a tree first, since "name" may
 // come after "value".
+//
+// And the Authorization keyword reaches what it governs however it is nested (Security's SHOULD on
+// #3732): every string inside a member whose key contains "authorization" is redacted as an
+// Authorization value ({"Authorization": {"scheme": "Basic", "credentials": "..."}}), and in an
+// object where one string is, or ends with, "authorization", so are the others
+// ({"k": "Authorization", "v": "Basic ..."}, whatever the members are called).
 
 // jnode is one JSON value: an object (keys and vals), an array (vals), a string (str), or a
 // number, true, false or null (lit, as written).
@@ -87,18 +93,32 @@ func readJSONNode(dec *json.Decoder, depth int) (*jnode, bool) {
 	return nil, false
 }
 
-// redact redacts n's strings in place; key (when has) is the key its strings are redacted with.
-func (n *jnode) redact(key string, has bool) {
+// authKeyword is the keyword a string under an Authorization member is redacted with.
+const authKeyword = "Authorization"
+
+// namesAuthorization reports whether s is, or ends with, "authorization" (any case, an optional
+// colon, spaces around): a member saying that the others hold an Authorization value.
+func namesAuthorization(s string) bool {
+	t := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(strings.ToLower(s)), ":"))
+	return strings.HasSuffix(t, "authorization")
+}
+
+// redact redacts n's strings in place; key (when has) is the key its strings are redacted with,
+// and auth means they are under an Authorization member (redacted as its value).
+func (n *jnode) redact(key string, has, auth bool) {
 	switch n.kind {
 	case 's':
-		if has {
+		switch {
+		case auth:
+			n.str = redactMember(authKeyword, n.str)
+		case has:
 			n.str = redactMember(key, n.str)
-		} else {
+		default:
 			n.str = string(RedactTokens([]byte(n.str)))
 		}
 	case '[':
 		for _, c := range n.vals {
-			c.redact(key, has)
+			c.redact(key, has, auth)
 		}
 	case '{':
 		name, hasName := "", false
@@ -108,12 +128,26 @@ func (n *jnode) redact(key string, has bool) {
 				break
 			}
 		}
+		mentions := 0 // string members that name authorization (read before any is redacted)
+		names := make([]bool, len(n.vals))
+		for i, v := range n.vals {
+			if v.kind == 's' && namesAuthorization(v.str) {
+				names[i] = true
+				mentions++
+			}
+		}
 		for i, k := range n.keys {
 			ctx := k
 			if hasName && strings.EqualFold(k, "value") {
 				ctx = name
 			}
-			n.vals[i].redact(ctx, true)
+			other := mentions
+			if names[i] {
+				other--
+			}
+			childAuth := auth || strings.Contains(strings.ToLower(k), "authorization") ||
+				other > 0 && n.vals[i].kind == 's'
+			n.vals[i].redact(ctx, true, childAuth)
 			n.keys[i] = string(RedactTokens([]byte(k)))
 		}
 	}
@@ -163,7 +197,7 @@ func redactJSONStructure(raw []byte) (out []byte, ok bool) {
 	if _, err := dec.Token(); err != io.EOF {
 		return nil, false // one JSON value only
 	}
-	root.redact("", false)
+	root.redact("", false, false)
 	var b bytes.Buffer
 	b.Grow(len(raw))
 	if !root.write(&b) {
