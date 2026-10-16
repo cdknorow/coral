@@ -6867,8 +6867,9 @@ func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sessions_relaunched": relaunched})
 }
 
-// ResolveByPIDs looks up the agent identity for a set of process IDs.
-// Used by coral-board to identify itself when env vars are stripped (e.g. Codex sandbox).
+// ResolveByPIDs looks up the agent identity for a set of process IDs: the caller's process
+// and its ancestors, nearest first. Used by coral-board to identify itself when env vars are
+// stripped (e.g. Codex sandbox).
 // GET /api/sessions/resolve?pids=12345,12340,12335
 func (h *SessionsHandler) ResolveByPIDs(w http.ResponseWriter, r *http.Request) {
 	pidStr := r.URL.Query().Get("pids")
@@ -6892,8 +6893,12 @@ func (h *SessionsHandler) ResolveByPIDs(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "no valid PIDs")
 		return
 	}
-	ls, err := h.ss.ResolveByPIDs(r.Context(), pids)
-	if err != nil {
+	rows, err := h.ss.LiveSessionsByPIDs(r.Context(), pids)
+	var ls *store.LiveSession
+	if err == nil {
+		ls = h.verifiedSessionForPIDs(r.Context(), pids, rows)
+	}
+	if ls == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no matching session"})
 		return
 	}
@@ -6908,8 +6913,44 @@ func (h *SessionsHandler) ResolveByPIDs(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"subscriber_id": naming.SubscriberID(role, ls.AgentType),
 		"project":       boardName,
-		"session_name":  ls.SessionID,
+		"session_name":  naming.SessionName(ls.AgentType, ls.SessionID),
 	})
+}
+
+// verifiedSessionForPIDs returns the session the caller runs in, or nil. pids are the
+// caller's process and its ancestors, nearest first; rows are the active sessions whose
+// recorded process is one of them. The first pid that is a session's process NOW, as its
+// terminal backend reports it, names the session. A recorded pid that is no longer the
+// session's process is skipped: the number may have been reused by anything, another
+// agent's shell included, and trusting it handed that agent this session's board and role
+// (#3864). Two sessions on one pid give no answer rather than a guess.
+func (h *SessionsHandler) verifiedSessionForPIDs(ctx context.Context, pids []int, rows []store.LiveSession) *store.LiveSession {
+	byPID := make(map[int][]*store.LiveSession, len(rows))
+	for i := range rows {
+		byPID[rows[i].PID] = append(byPID[rows[i].PID], &rows[i])
+	}
+	for _, pid := range pids {
+		var live []*store.LiveSession
+		for _, ls := range byPID[pid] {
+			backend := ""
+			if ls.Backend != nil {
+				backend = *ls.Backend
+			}
+			now, err := launchedSessionPID(ctx, backend, h.backend, h.terminal, naming.SessionName(ls.AgentType, ls.SessionID))
+			if err == nil && now == pid {
+				live = append(live, ls)
+			}
+		}
+		switch len(live) {
+		case 0:
+			continue
+		case 1:
+			return live[0]
+		default:
+			return nil
+		}
+	}
+	return nil
 }
 
 // knownContextWindow returns zero when model metadata is absent or unrecognized,

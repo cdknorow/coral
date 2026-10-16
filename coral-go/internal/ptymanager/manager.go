@@ -240,6 +240,18 @@ func (m *PTYBackend) PaneSize(name string) (int, int, error) {
 	return int(cols), int(rows), nil
 }
 
+// SessionPID is the process a running session was started with: what coral-board's
+// process-tree identity is checked against (#3864).
+func (m *PTYBackend) SessionPID(_ context.Context, name string) (int, error) {
+	m.mu.RLock()
+	s, ok := m.sessions[name]
+	m.mu.RUnlock()
+	if !ok || !s.isRunning() {
+		return 0, fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
+	}
+	return s.proc.Pid(), nil
+}
+
 // AgentPIDs is the process each running session was started with (#3444).
 func (m *PTYBackend) AgentPIDs() []int {
 	m.mu.RLock()

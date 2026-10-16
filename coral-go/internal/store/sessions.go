@@ -1112,23 +1112,21 @@ func (s *SessionStore) SetTeamID(ctx context.Context, sessionID string, teamID i
 	return err
 }
 
-// ResolveByPIDs looks up live sessions matching any of the given PIDs.
-// Returns the first match (used for process-tree-based identity resolution).
-func (s *SessionStore) ResolveByPIDs(ctx context.Context, pids []int) (*LiveSession, error) {
+// LiveSessionsByPIDs returns every active session whose recorded process is one of pids.
+// A recorded pid is only where the session's process WAS: once that process ends the
+// system can reuse the number for anything, so a caller must check the session's live
+// process before trusting a match (#3864).
+func (s *SessionStore) LiveSessionsByPIDs(ctx context.Context, pids []int) ([]LiveSession, error) {
 	if len(pids) == 0 {
 		return nil, fmt.Errorf("no PIDs provided")
 	}
-	query, args, err := sqlx.In("SELECT session_id, agent_type, agent_name, working_dir, display_name, board_name, pid FROM live_sessions WHERE pid IN (?) AND pid > 0 AND status = 'active' LIMIT 1", pids)
+	query, args, err := sqlx.In("SELECT session_id, agent_type, agent_name, working_dir, display_name, board_name, backend, pid FROM live_sessions WHERE pid IN (?) AND pid > 0 AND status = 'active'", pids)
 	if err != nil {
 		return nil, err
 	}
-	query = s.db.Rebind(query)
-	var ls LiveSession
-	err = s.reader().GetContext(ctx, &ls, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	return &ls, nil
+	var out []LiveSession
+	err = s.reader().SelectContext(ctx, &out, s.db.Rebind(query), args...)
+	return out, err
 }
 
 // CountBoardSessions returns the number of live sessions on a given board.
