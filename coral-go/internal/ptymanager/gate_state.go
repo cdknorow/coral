@@ -154,6 +154,12 @@ func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why,
 	if !ok {
 		return false, "", "", st, false
 	}
+	disagreed := false
+	defer func() {
+		if !disagreed {
+			noteDisagreement(in.Name, "", time.Now()) // any other decision ends the session's window
+		}
+	}()
 	var screen string
 	haveScreen := false
 	if r, isReader := in.Term.(ScreenReader); isReader {
@@ -197,8 +203,11 @@ func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why,
 	if haveScreen {
 		if open, why := PromptOnScreen(screen); open {
 			if isPromptHold(why) {
-				slog.Warn("automated input: state_disagreement: the signals say idle but the screen shows a prompt",
-					"session", in.Name, "why", why, "cli_version", st.CLIVersion)
+				disagreed = true
+				if noteDisagreement(in.Name, why, time.Now()) {
+					slog.Warn("automated input: state_disagreement: the signals say idle but the screen shows a prompt",
+						"session", in.Name, "why", why, "cli_version", st.CLIVersion)
+				}
 			}
 			return true, "signals: idle, screen: " + why, promptKind(why), st, true
 		}
@@ -261,6 +270,42 @@ func (in AutomatedInput) staleRelaxation(st AgentState, agentType, screen string
 	}
 	box, ok := inputBoxText(screen)
 	return ok && boxPlaceholder(box)
+}
+
+// disagreements are the sessions whose signals say idle while the screen shows a prompt, with
+// the reason and when it was last seen (#3655 F4). A held send is re-checked every couple of
+// seconds, so the state_disagreement line is logged once per window: when one opens, or its
+// reason changes. A decision for the session that doesn't disagree ends the window, and so does
+// a gap of disagreementGap (a held send dropped without another decision), so two separate
+// windows are two lines and coral-shadow-report counts windows.
+var disagreements struct {
+	sync.Mutex
+	m map[string]disagreement
+}
+
+type disagreement struct {
+	why  string
+	seen time.Time
+}
+
+// disagreementGap: a disagreement seen again after this long is a new window.
+var disagreementGap = time.Minute
+
+// noteDisagreement records a decision for session name at now: why is the disagreement's
+// reason, or "" for none (the window, if any, ends). It reports whether a line is due.
+func noteDisagreement(name, why string, now time.Time) bool {
+	disagreements.Lock()
+	defer disagreements.Unlock()
+	if why == "" {
+		delete(disagreements.m, name)
+		return false
+	}
+	if disagreements.m == nil {
+		disagreements.m = map[string]disagreement{}
+	}
+	prev, open := disagreements.m[name]
+	disagreements.m[name] = disagreement{why: why, seen: now}
+	return !open || prev.why != why || now.Sub(prev.seen) > disagreementGap
 }
 
 // shadowLog records one decision's screen rule and signal rule, once per change for a
