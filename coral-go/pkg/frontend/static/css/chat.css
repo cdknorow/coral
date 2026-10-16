@@ -147,7 +147,8 @@
     transition: opacity 0.15s;
 }
 
-.chat-bubble:hover .edit-btn {
+.chat-bubble:hover .edit-btn,
+.chat-bubble:focus-within .edit-btn {
     opacity: 1;
 }
 

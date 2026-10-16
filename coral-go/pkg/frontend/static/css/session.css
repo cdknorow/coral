@@ -466,7 +466,8 @@
     background: var(--bg-hover);
 }
 
-.session-list li:hover .sidebar-kebab-btn {
+.session-list li:hover .sidebar-kebab-btn,
+.session-list li:focus-within .sidebar-kebab-btn {
     opacity: 1;
 }
 

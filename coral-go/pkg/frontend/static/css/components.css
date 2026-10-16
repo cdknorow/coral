@@ -329,7 +329,8 @@
     margin-left: auto;
 }
 
-.mb-message:hover .mb-delete-msg-btn {
+.mb-message:hover .mb-delete-msg-btn,
+.mb-message:focus-within .mb-delete-msg-btn {
     opacity: 1;
 }
 
