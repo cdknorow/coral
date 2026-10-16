@@ -711,6 +711,10 @@ func noStoreAPI(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p := r.URL.Path; strings.HasPrefix(p, "/api/") || p == "/ws" || strings.HasPrefix(p, "/ws/") {
 			w.Header().Set("Cache-Control", "no-store")
+			// Another page can't load an answer as an image or a script, and a browser never
+			// guesses another type for it (#4032, Security's #4031 finding 2).
+			w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
 		}
 		next.ServeHTTP(w, r)
 	})

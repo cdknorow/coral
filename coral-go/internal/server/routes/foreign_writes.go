@@ -45,6 +45,17 @@ func refuseForeignBrowserWrites(next http.Handler, forwardedHost func(*http.Requ
 		}
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			// A read of /api or /ws from another page is refused too (#4032, Security's #4031
+			// finding 2): the sign-in cookie is SameSite=Strict, but a page on another port of
+			// localhost is the same SITE, so the browser sends it. A browser says where a request
+			// comes from in Sec-Fetch-Site; the dashboard's own requests are same-origin, the
+			// user's own navigation is none, and a client that sends none (curl, the CLI, Coral
+			// Hub's server-to-server calls) is not a browser page.
+			if foreignBrowserRead(r) && !cloud.TunneledAuthentic(r) {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "foreign_origin",
+					"message": "Coral answers only its own page"})
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -85,4 +96,17 @@ func ownBrowserOrigin(r *http.Request, forwardedHost string) bool {
 		return true
 	}
 	return false
+}
+
+// foreignBrowserRead: a read of /api or /ws that a browser says came from another page.
+func foreignBrowserRead(r *http.Request) bool {
+	p := r.URL.Path
+	if !strings.HasPrefix(p, "/api/") && p != "/ws" && !strings.HasPrefix(p, "/ws/") {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))) {
+	case "", "same-origin", "none":
+		return false
+	}
+	return true
 }
