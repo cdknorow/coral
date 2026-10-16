@@ -67,6 +67,16 @@ jobs:
           done
           ../tests/release/verify_standard_bundle.sh ../dist/linux "$ARCH"
 
+      # The package's licenses/ folder: the notices of exactly the modules these binaries link, the
+      # dashboard's vendored libraries and fonts, and Coral's license (installers/third-party-notices.sh).
+      - name: Third-party notices
+        run: |
+          set -euo pipefail
+          (cd coral-go && go mod download)
+          bins=(); for f in dist/linux/*; do [ -f "$f" ] && bins+=("$f"); done
+          bash installers/third-party-notices.sh dist/linux/licenses "${bins[@]}"
+          bash tests/release/verify_notices.sh dist/linux/licenses "${bins[@]}"
+
       - name: Smoke test package on Ubuntu 22.04
         env:
           ARCH: ${{ matrix.arch }}
@@ -144,6 +154,15 @@ jobs:
           go build -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
           go build -tags $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
+
+      # dist\windows\bin\licenses goes into the portable ZIP (bin\*) and the MSI (Coral\licenses, tools/coral.wxs).
+      - name: Third-party notices
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd coral-go && go mod download)
+          bash installers/third-party-notices.sh dist/windows/bin/licenses dist/windows/bin/*.exe
+          bash tests/release/verify_notices.sh dist/windows/bin/licenses dist/windows/bin/*.exe
 
       # Windows is beta: signing is opt-in through the repository variable
       # WINDOWS_SIGNING ('true' turns it on; unset or anything else leaves the
@@ -314,6 +333,15 @@ jobs:
           CORAL_BUNDLED_TMUX_BIN: ${{ github.workspace }}/dist/macos-arm64/tmux-payload/bin/tmux
           CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/macos-arm64/tmux-payload/terminfo
         run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1
+      # Made here, where the build filled the module cache (the script makes no network request);
+      # build-macos checks the two slices' folders are the same and puts one in Coral.app before signing.
+      - name: Third-party notices (arm64)
+        run: |
+          set -euo pipefail
+          (cd coral-go && go mod download)
+          bins=(); for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do bins+=("dist/macos-arm64/$cmd"); done
+          bash installers/third-party-notices.sh --macos dist/macos-arm64/licenses "${bins[@]}"
+          bash tests/release/verify_notices.sh dist/macos-arm64/licenses "${bins[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-macos-arm64-slices
@@ -369,6 +397,13 @@ jobs:
           CORAL_BUNDLED_TMUX_BIN: ${{ github.workspace }}/dist/macos-amd64/tmux-payload/bin/tmux
           CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/macos-amd64/tmux-payload/terminfo
         run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1
+      - name: Third-party notices (x86_64)
+        run: |
+          set -euo pipefail
+          (cd coral-go && go mod download)
+          bins=(); for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do bins+=("dist/macos-amd64/$cmd"); done
+          bash installers/third-party-notices.sh --macos dist/macos-amd64/licenses "${bins[@]}"
+          bash tests/release/verify_notices.sh dist/macos-amd64/licenses "${bins[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-macos-amd64-slices
@@ -431,8 +466,10 @@ jobs:
           chmod +x ../dist/macos/tmux
           diff -qr ../dist/macos-arm64/tmux-payload/terminfo ../dist/macos-amd64/tmux-payload/terminfo
           diff -qr ../dist/macos-arm64/tmux-payload/licenses ../dist/macos-amd64/tmux-payload/licenses
+          diff -qr ../dist/macos-arm64/licenses ../dist/macos-amd64/licenses
           cp -R ../dist/macos-arm64/tmux-payload/terminfo ../dist/macos/terminfo
           cp -R ../dist/macos-arm64/tmux-payload/licenses ../dist/macos/tmux-licenses
+          cp -R ../dist/macos-arm64/licenses ../dist/macos/licenses
           ../tests/release/verify_standard_bundle.sh ../dist/macos
 
       - name: Copy .icns icon
@@ -462,6 +499,10 @@ jobs:
           done
           cp -R dist/macos/terminfo "$APP/Contents/Resources/terminfo"
           cp -R dist/macos/tmux-licenses "$APP/Contents/Resources/tmux-licenses"
+          # In the bundle before it is signed and notarized, never after (that would break the seal).
+          cp -R dist/macos/licenses "$APP/Contents/Resources/licenses"
+          bins=(); for b in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do bins+=("$APP/Contents/MacOS/$b"); done
+          bash tests/release/verify_notices.sh "$APP/Contents/Resources/licenses" "${bins[@]}"
           sed "s/VERSION_PLACEHOLDER/${VERSION}/g" tools/Info.plist > "$APP/Contents/Info.plist"
           [ -f Coral.icns ] && cp Coral.icns "$APP/Contents/Resources/AppIcon.icns"
           cp installers/install-cli.sh "$APP/Contents/MacOS/install-cli.sh"

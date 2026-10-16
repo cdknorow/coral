@@ -75,6 +75,9 @@
         <Component Id="CoralAgentExe" Guid="E1F2A3B4-C5D6-7890-EFAB-012345678901">
           <File Id="coral_agent.exe" Source="$(var.BinDir)\coral-agent.exe" KeyPath="yes" />
         </Component>
+
+        <!-- Third-party notices (installers/third-party-notices.sh): installed as Coral\licenses -->
+        <Directory Id="LicensesFolder" Name="licenses" />
       </Directory>
     </StandardDirectory>
 
@@ -135,6 +138,8 @@
       <ComponentRef Id="HookSessionStart" />
       <ComponentRef Id="CoralAgentExe" />
       <ComponentRef Id="CoralShortcut" />
+      <!-- every file under bin\licenses, its folders kept (WiX v5 harvesting) -->
+      <Files Directory="LicensesFolder" Include="$(var.BinDir)\licenses\**" />
     </Feature>
 
   </Package>

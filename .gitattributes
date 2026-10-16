@@ -1,2 +1,10 @@
 # Preserve the upstream OpenSSL license bytes on Windows checkouts.
 licenses/OPENSSL-LICENSE.txt -text
+# Keep every shipped license and notice text byte for byte on Windows checkouts: the
+# vendor and font texts are pinned in licenses/SHA256SUMS.vendor, and a CRLF checkout
+# would fail installers/third-party-notices.sh.
+licenses/** -text
+THIRD_PARTY_NOTICES_MPL.md -text
+# The notices scripts run under Git Bash on the Windows runner.
+installers/third-party-notices.sh text eol=lf
+tests/release/verify_notices.sh text eol=lf
