@@ -80,6 +80,49 @@ def main():
 
     try:
         start()
+        # The review flow (#3725, #3787): one of two reviewers rejects, the other's review task
+        # stays open, the author re-claims and resubmits, both review tasks reopen for round 2 with
+        # no orchestrator step, a verdict on round 1 is refused, both approvals complete it; and an
+        # orchestrator completes a task in review with no reviewers.
+        rb = "/api/board/api-review"
+        for sub, title in (("lead", "Orchestrator"), ("author", "Builder"), ("rev-a", "Security Reviewer"), ("rev-b", "QA Engineer")):
+            api("POST", rb + "/subscribe", {"subscriber_id": sub, "job_title": title})
+        rt = rb + "/tasks"
+        task = api("POST", rt, {"title": "Reviewed change", "created_by": "lead", "assigned_to": "author"}, 201)
+        tid = task["id"]
+        api("POST", rt + "/claim", {"subscriber_id": "author", "task_id": tid})
+        submit = {"subscriber_id": "author", "reason": "ready for review", "message": "candidate 1"}
+        api("POST", f"{rt}/{tid}/submit-review", submit)
+        check(api("GET", f"{rt}/{tid}")["status"] == "review_pending", "submit-review hands the task to the orchestrator")
+        api("POST", f"{rt}/{tid}/review", {"subscriber_id": "lead", "reviewers": ["rev-a", "rev-b"]})
+        reviewers = api("GET", f"{rt}/{tid}")["workflow"]["review_rounds"][0]["reviewers"]
+        review_a, review_b = reviewers[0]["review_task_id"], reviewers[1]["review_task_id"]
+        api("POST", f"{rt}/{tid}/reject", {"subscriber_id": "rev-a", "round": 1, "note": "needs a test"})
+        back = api("GET", f"{rt}/{tid}")
+        check(back["status"] == "pending" and back["assigned_to"] == "author", "a rejection sends the task back to its author")
+        check(api("GET", f"{rt}/{review_b}")["status"] == "pending", "the other reviewer's review task stays open")
+        early = api("POST", f"{rt}/{tid}/approve", {"subscriber_id": "rev-b", "round": 1}, 400)
+        check("back with author" in early["error"], "no verdict while the author has it")
+        api("POST", rt + "/claim", {"subscriber_id": "author", "task_id": tid})
+        api("POST", f"{rt}/{tid}/submit-review", {**submit, "message": "candidate 2"})
+        again = api("GET", f"{rt}/{tid}")
+        rounds = again["workflow"]["review_rounds"]
+        check(again["status"] == "review_pending" and len(rounds) == 2 and rounds[1]["delegated_by"] == "resubmitted",
+              "a resubmission opens round 2 with no orchestrator step")
+        check([r["review_task_id"] for r in rounds[1]["reviewers"]] == [review_a, review_b]
+              and all(api("GET", f"{rt}/{r}")["status"] == "pending" for r in (review_a, review_b)),
+              "both reviewers' review tasks reopen, the rejecter's too")
+        stale = api("POST", f"{rt}/{tid}/approve", {"subscriber_id": "rev-b", "round": 1}, 409)
+        check("round 2" in stale["error"], "a verdict on round 1 is refused")
+        api("POST", f"{rt}/{tid}/approve", {"subscriber_id": "rev-a", "round": 2})
+        done = api("POST", f"{rt}/{tid}/approve", {"subscriber_id": "rev-b", "round": 2})
+        check(done["completed"] and api("GET", f"{rt}/{tid}")["status"] == "completed", "both approvals complete the task")
+        plain = api("POST", rt, {"title": "Unreviewed change", "created_by": "lead", "assigned_to": "author"}, 201)
+        api("POST", rt + "/claim", {"subscriber_id": "author", "task_id": plain["id"]})
+        api("POST", f"{rt}/{plain['id']}/submit-review", submit)
+        api("POST", f"{rt}/{plain['id']}/complete", {"subscriber_id": "lead"})
+        check(api("GET", f"{rt}/{plain['id']}")["status"] == "completed", "the orchestrator completes a task in review with no reviewers")
+
         api("POST", "/api/board/api-regression/subscribe", {"subscriber_id": "api-test", "job_title": "Orchestrator"})
         names = [f"output-{i}" for i in range(33)]
         error = api("POST", tasks, {"title": "Impossible outputs", "created_by": "api-test",

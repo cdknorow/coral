@@ -572,19 +572,23 @@ for the authorized backend-only late-edit path and current product gaps.
 2. **Complete or delegate.** The orchestrator either completes it
    (`coral-board task complete <id>`) or delegates it:
    `coral-board task review <id> --to "Security Reviewer,QA Engineer"`. Each reviewer gets a
-   review task, "Review #<id>: <title>", in their queue.
-3. **Review.** A review task is an ordinary task: the reviewer claims it
-   (`coral-board task claim <review id>`), which takes their one slot like any other task, reads
-   the task (`coral-board task detail <id>`), then runs
-   `coral-board task approve <id> [--note "..."]` or `coral-board task reject <id> --note "why"`
-   (the id of the task under review or of the review task).
+   review task, "Review #<id>: <title>", in their queue, naming the review round.
+3. **Review.** Any time the task is in review, each reviewer reads it
+   (`coral-board task detail <id>`) and runs
+   `coral-board task approve <id> --round N [--note "..."]` or
+   `coral-board task reject <id> --round N --note "why"` (the id of the task under review or of
+   the review task; N is the round their review task names). A reviewer may claim the review
+   task first, like any task. A verdict naming an earlier round is refused: the task was
+   resubmitted since, so read it again.
 4. **Result.** When every reviewer of the round has approved, the task completes itself (as its
    orchestrator, with the candidate's message, outcome and artifacts), and the usual completed
-   notice goes out. A rejection sends it back to its author, pending, with the note; the round's
-   other reviews end, and the author resubmits for a new round.
+   notice goes out. A rejection sends it back to its author, pending, with the note. The
+   reviewers stay on the task: when the author fixes it (claiming it again if needed) and runs
+   submit-review again, every reviewer's review task reopens for the new round, with no
+   orchestrator step, and every reviewer, earlier approvers too, reviews the new revision.
 
-Only the delegated reviewers approve or reject; only the orchestrator delegates or completes a
-task in review. The board's health report lists each open review and its age, and each task in
+Only the task's reviewers approve or reject; only the orchestrator delegates, changes the
+reviewers (task review again, while a round is open) or completes a task in review. The board's health report lists each open review and its age, and each task in
 review that the orchestrator hasn't completed or delegated. `task release-review` remains for a
 candidate submitted before this flow (an in-progress task with a recorded candidate).
 

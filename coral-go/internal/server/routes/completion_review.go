@@ -48,7 +48,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 	if task.AssignedTo != nil && *task.AssignedTo != "" {
 		author = *task.AssignedTo
 	}
-	orch, err := h.bs.HandToOrchestrator(ctx, project, id, author)
+	orch, reopened, err := h.bs.HandToOrchestrator(ctx, project, id, author)
 	if errors.Is(err, board.ErrNoOrchestrator) {
 		msg := body.Message
 		done, cerr := h.bs.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, project, id, author, &msg, body.Outcome, body.Artifacts, body.ExpectedRevision, body.CandidateRevision)
@@ -69,8 +69,19 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 	if candidate == "" {
 		candidate = fmt.Sprintf("%d artifacts", len(body.Artifacts))
 	}
-	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d in review] %s submitted %q (candidate: %s; %s). Complete it with 'coral-board task complete %d', or delegate it: coral-board task review %d --to \"Security Reviewer,QA Engineer\"",
-		orch, id, author, task.Title, candidate, body.Reason, id, id), nil)
+	if reopened != nil {
+		// Resubmitted after a rejection (#3787): its reviewers review the new revision, with no
+		// orchestrator step; the orchestrator is told, and can still change the reviewers.
+		var mentions []string
+		for _, rv := range reopened.Reviewers {
+			mentions = append(mentions, "@"+rv.Reviewer)
+		}
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("%s [Task #%d resubmitted for review, round %d] %s submitted %q again (candidate: %s; %s). Review it again: coral-board task detail %d, then coral-board task approve %d --round %d, or reject %d --round %d --note \"why\". @%s the same reviewers have it; change them with coral-board task review %d --to \"...\"",
+			strings.Join(mentions, " "), id, reopened.Round, author, task.Title, candidate, body.Reason, id, id, reopened.Round, id, reopened.Round, orch, id), nil)
+	} else {
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d in review] %s submitted %q (candidate: %s; %s). Complete it with 'coral-board task complete %d', or delegate it: coral-board task review %d --to \"Security Reviewer,QA Engineer\"",
+			orch, id, author, task.Title, candidate, body.Reason, id, id), nil)
+	}
 	if next := h.bs.NextPendingTaskForSubscriber(ctx, project, author); next != nil {
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, author, false), nil)
 	}
@@ -145,6 +156,7 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
 		Note         string `json:"note"`
+		Round        int    `json:"round"` // the round reviewed; an earlier one is refused (#3787)
 	}
 	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id and valid JSON required")
@@ -153,13 +165,15 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 	ctx := r.Context()
 	var v *board.ReviewVerdict
 	if approve {
-		v, err = h.bs.ApproveReview(ctx, project, id, body.SubscriberID, body.Note)
+		v, err = h.bs.ApproveReview(ctx, project, id, body.SubscriberID, body.Note, body.Round)
 	} else {
-		v, err = h.bs.RejectReview(ctx, project, id, body.SubscriberID, body.Note)
+		v, err = h.bs.RejectReview(ctx, project, id, body.SubscriberID, body.Note, body.Round)
 	}
 	if err != nil {
 		if strings.Contains(err.Error(), "only the reviewers") {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		} else if strings.Contains(err.Error(), "was resubmitted") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		} else {
 			errBadRequest(w, err.Error())
 		}
@@ -172,7 +186,7 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 	}
 	switch {
 	case v.Rejected:
-		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d rejected by %s] back to you%s", v.Author, task.ID, body.SubscriberID, note), nil)
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d rejected by %s] back to you%s. Fix it and submit-review again: the same reviewers review the new revision", v.Author, task.ID, body.SubscriberID, note), nil)
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, task, v.Author, true), nil)
 	case v.Complete:
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d approved by %s] every reviewer approved: completing it%s", task.ID, body.SubscriberID, note), nil)

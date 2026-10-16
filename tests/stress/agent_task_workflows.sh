@@ -11,6 +11,7 @@ as_board() {
 builder() { as_board "$SESS_A" Builder "$@"; }
 planner() { as_board "task-planner-$SID_A" Orchestrator "$@"; }
 tester() { as_board "$SESS_B" Tester "$@"; }
+reviewer() { as_board "task-reviewer-$SID_A" Reviewer "$@"; }
 task_id() { sed -n 's/^Created Task #\([0-9]*\):.*/\1/p'; }
 workflow_detail() { builder task detail "$1"; }
 workflow_status() { workflow_detail "$1" | jget "d['status']"; }
@@ -40,6 +41,7 @@ reject_board() {
 builder join workflow-integration --as Builder >/dev/null
 tester join workflow-integration --as Tester >/dev/null
 planner join workflow-integration --as Orchestrator >/dev/null
+reviewer join workflow-integration --as Reviewer >/dev/null
 
 check "workers cannot create shared tasks" 'reject_board builder task add "Unauthorized worker task"'
 
@@ -148,3 +150,34 @@ cat >"$TMPDIR_AT/contract-build.json" <<'JSON'
 JSON
 builder task complete "$CONTRACT_BUILD" --artifacts "$TMPDIR_AT/contract-build.json" --message "Candidate and verification handoff" >/dev/null
 check "valid declared contract unlocks after matching artifacts" 'wait_task_status "$CONTRACT_TEST" pending'
+
+log "Test 13b: Review flow: a rejection keeps the reviewers, a resubmission reopens their reviews (#3725, #3787)..."
+review_round() { workflow_detail "$1" | jget "len(d['workflow']['review_rounds'])"; }
+review_task() { workflow_detail "$1" | jget "d['workflow']['review_rounds'][-1]['reviewers'][$2]['review_task_id']"; }
+REV=$(planner task add "Reviewed change" --assignee Builder --body "Two reviewers check it." | task_id)
+builder task claim "$REV" >/dev/null
+builder task submit-review "$REV" --reason "ready for review" --message "candidate 1" >/dev/null
+check "submit-review hands the task to the orchestrator" '[[ $(workflow_status "$REV") == review_pending ]]'
+planner task review "$REV" --to "Tester,Reviewer" >/dev/null
+TESTER_REVIEW=$(review_task "$REV" 0)
+REVIEWER_REVIEW=$(review_task "$REV" 1)
+check "each reviewer gets a review task" '[[ -n "$TESTER_REVIEW" && -n "$REVIEWER_REVIEW" && $(workflow_status "$TESTER_REVIEW") == pending ]]'
+reviewer task reject "$REV" --round 1 --note "needs a test" >/dev/null
+check "a rejection sends the task back to its author" '[[ $(workflow_status "$REV") == pending && $(workflow_detail "$REV" | jget "d[\"assigned_to\"]") == Builder ]]'
+check "the other reviewer's review task stays open" '[[ $(workflow_status "$TESTER_REVIEW") == pending ]]'
+check "no verdict while the author has it" 'reject_board tester task approve "$REV" --round 1 && grep -q "back with Builder" "$TMPDIR_AT/last-rejection.log"'
+builder task claim "$REV" >/dev/null
+builder task submit-review "$REV" --reason "fixed" --message "candidate 2" >/dev/null
+check "a resubmission opens round 2 with no orchestrator step" '[[ $(workflow_status "$REV") == review_pending && $(review_round "$REV") == 2 ]]'
+check "both review tasks reopen, the rejecter's too" '[[ $(review_task "$REV" 0) == "$TESTER_REVIEW" && $(review_task "$REV" 1) == "$REVIEWER_REVIEW" && $(workflow_status "$REVIEWER_REVIEW") == pending ]]'
+check "the reviewers are told on the board" 'wait_board_message "[Task #$REV resubmitted for review, round 2]"'
+check "a verdict on round 1 is refused" 'reject_board tester task approve "$REV" --round 1 && grep -q "round 2" "$TMPDIR_AT/last-rejection.log"'
+tester task approve "$REV" --round 2 >/dev/null
+reviewer task approve "$REV" --round 2 --note "test added" >/dev/null
+check "both approvals complete the task" 'wait_task_status "$REV" completed'
+check "the completion names both approvers" 'wait_board_message "approved by Tester, Reviewer"'
+PLAIN=$(planner task add "Unreviewed change" --assignee Builder | task_id)
+builder task claim "$PLAIN" >/dev/null
+builder task submit-review "$PLAIN" --reason "small change" >/dev/null
+planner task complete "$PLAIN" --message "accepted without reviewers" >/dev/null
+check "the orchestrator completes a task in review with no reviewers" 'wait_task_status "$PLAIN" completed'

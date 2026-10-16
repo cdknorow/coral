@@ -1580,7 +1580,7 @@ Subcommands:
   submit-review <id> --reason "review pending" [--revision N] [--candidate-revision REVISION] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   release-review <id> --reason "slot released pending review" (orchestrator only)
   review <id> --to "Security Reviewer,QA Engineer"   (orchestrator: delegate a task in review)
-  approve <id> [--note "..."] / reject <id> --note "why"   (a delegated reviewer)
+  approve <id> [--round N] [--note "..."] / reject <id> [--round N] --note "why"   (a delegated reviewer)
   complete <id> [--message "note"]`)
 		os.Exit(1)
 	}
@@ -1659,8 +1659,8 @@ Subcommands:
   submit-review <id> --reason "review pending" [--revision N] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
                                    Hands the task to the team's orchestrator (frees your slot); with no orchestrator, completes it
   review <id> --to "Security Reviewer,QA Engineer"  The orchestrator delegates a task in review: one review task each
-  approve <id> [--note "..."]      A delegated reviewer approves (claim your review task first); the last approval completes it
-  reject <id> --note "why"         A delegated reviewer rejects: the task goes back to its author with the note
+  approve <id> [--round N] [--note "..."]  A reviewer approves, any time the task is in review; the last approval completes it
+  reject <id> [--round N] --note "why"     A reviewer rejects: back to its author; the reviewers stay on it and review the resubmission
   release-review <id> --reason "slot released pending review" (orchestrator only; for a candidate submitted before v1.4.56)
   complete <id> [--revision N] [--message "note"] [--outcome success|failed] [--candidate-revision REVISION] [--artifacts manifest.json]
   cancel <id> [--message "reason"]
@@ -2927,11 +2927,12 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 	fmt.Printf("Task #%d: %s recorded. Completion has not been accepted.\n", id, action)
 }
 
-// cmdTaskReviewFlow: the orchestrator delegates a task in review (review --to); a delegated
-// reviewer approves or rejects it on their claimed review task (#3725).
+// cmdTaskReviewFlow: the orchestrator delegates a task in review (review --to, which also changes
+// the reviewers of an open round); a reviewer approves or rejects it any time it is in review,
+// naming the round they reviewed with --round (#3725, #3787).
 func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, `Usage: coral-board task review <id> --to "Reviewer A,Reviewer B" | approve <id> [--note "..."] | reject <id> --note "why"`)
+		fmt.Fprintln(os.Stderr, `Usage: coral-board task review <id> --to "Reviewer A,Reviewer B" | approve <id> [--round N] [--note "..."] | reject <id> [--round N] --note "why"`)
 		os.Exit(1)
 	}
 	id, err := strconv.ParseInt(args[0], 10, 64)
@@ -2942,6 +2943,7 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	to := fs.String("to", "", "Reviewers, comma-separated (review)")
 	note := fs.String("note", "", "Your note (approve; required for reject)")
+	round := fs.Int("round", 0, "The review round you reviewed (your review task names it); a verdict on an earlier round is refused")
 	fs.Parse(args[1:])
 	*note = flagText(*note, "note")
 	body := map[string]any{"subscriber_id": resolveSubscriberID()}
@@ -2964,8 +2966,10 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 			os.Exit(1)
 		}
 		body["note"] = *note
+		body["round"] = *round
 	default:
 		body["note"] = *note
+		body["round"] = *round
 	}
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", url.PathEscape(st.Project), id, action), body)
 	if err != nil || status != http.StatusOK {

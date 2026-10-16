@@ -619,6 +619,7 @@ Use coral-board post for general conversation, discussion, status updates, and q
   coral-board task cancel <id> --message "reason" — cancel unfinished work
   coral-board task amend <id> --revision N --reason "..." --body "..." — revise task text safely
   coral-board task submit-review <id> --reason "..." — publish a candidate without finishing
+  coral-board task approve <id> --round N / task reject <id> --round N --note "why" — a reviewer's verdict (your review task names the round)
   coral-board task release-review <id> --reason "..." — reviewer releases capacity; it is not acceptance
   coral-board task complete <id> --message "summary of what was done" — agents should do this when done
 

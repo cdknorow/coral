@@ -99,7 +99,7 @@ func TestReviewFlowApproval(t *testing.T) {
 	code, out = postCode(t, base(task.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": reviewers})
 	require.Equal(t, http.StatusOK, code, "%v", out)
 	code, _ = postCode(t, base(task.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": reviewers})
-	assert.Equal(t, http.StatusBadRequest, code, "a round is already open")
+	assert.Equal(t, http.StatusOK, code, "naming the same reviewers again changes nothing (#3787)")
 
 	got, _ = h.bs.GetTask(ctx, "team", task.ID)
 	round := got.Workflow.ReviewRounds[0]
@@ -110,9 +110,8 @@ func TestReviewFlowApproval(t *testing.T) {
 	assert.Equal(t, "Security Reviewer", *rt.AssignedTo)
 	assert.Equal(t, task.ID, rt.Workflow.ReviewOf)
 
-	code, out = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "Security Reviewer"})
-	assert.Equal(t, http.StatusBadRequest, code, "claim the review task first: %v", out)
-	// The review task is an ordinary task: it takes the reviewer's one slot.
+	// The review task is an ordinary task: claiming it takes the reviewer's one slot (a verdict
+	// doesn't need the claim since #3787).
 	other, err := h.bs.CreateTask(ctx, "team", "Other work", "", "medium", "lead", "QA Engineer")
 	require.NoError(t, err)
 	_, err = h.bs.ClaimTask(ctx, "team", "QA Engineer", other.ID)
@@ -150,8 +149,10 @@ func TestReviewFlowApproval(t *testing.T) {
 	}, 2*time.Second, 50*time.Millisecond, "the completion notice names the approvers")
 }
 
-// (3) A rejection sends the task back to its author (pending, with the note), ends the round's
-// other review, and the author can submit again for a new round.
+// (3) #3787 (operator): a rejection sends the task back to its author and the reviewers stay on
+// it: the other reviewer's review task stays open, the author re-claims and resubmits, both review
+// tasks reopen for round 2 with no orchestrator step, a verdict on round 1 is refused, and both
+// approvals (claimed or not) complete the task.
 func TestReviewFlowRejection(t *testing.T) {
 	base, h, task := reviewTeam(t, "rej", true)
 	ctx := context.Background()
@@ -164,7 +165,7 @@ func TestReviewFlowRejection(t *testing.T) {
 	require.NoError(t, err)
 	code, _ = postCode(t, base(task.ID, "reject"), map[string]any{"subscriber_id": "Security Reviewer"})
 	assert.Equal(t, http.StatusBadRequest, code, "a rejection needs a note")
-	code, out = postCode(t, base(task.ID, "reject"), map[string]any{"subscriber_id": "Security Reviewer", "note": "unsafe default"})
+	code, out = postCode(t, base(task.ID, "reject"), map[string]any{"subscriber_id": "Security Reviewer", "note": "unsafe default", "round": 1})
 	require.Equal(t, http.StatusOK, code, "%v", out)
 	assert.Equal(t, true, out["rejected"])
 
@@ -174,17 +175,81 @@ func TestReviewFlowRejection(t *testing.T) {
 	assert.Equal(t, "rejected", got.Workflow.ReviewRounds[0].Result)
 	assert.Equal(t, "unsafe default", got.Workflow.ReviewRounds[0].Reviewers[0].Note)
 	qa, _ := h.bs.GetTask(ctx, "rej", qaReview)
-	assert.Equal(t, "skipped", qa.Status, "the round's other review ends")
+	assert.Equal(t, "pending", qa.Status, "the other reviewer's review task stays open")
+	code, out = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "QA Engineer"})
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, out["error"], "back with worker", "no verdict while the author has it")
 
-	// The author fixes it and submits again: round 2.
+	// The author re-claims it, fixes it and submits again: round 2 opens by itself, for both.
 	_, err = h.bs.ClaimTask(ctx, "rej", "worker", task.ID)
 	require.NoError(t, err)
 	submit(t, base, task.ID)
-	code, out = postCode(t, base(task.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": []string{"QA Engineer"}})
-	require.Equal(t, http.StatusOK, code, "%v", out)
 	got, _ = h.bs.GetTask(ctx, "rej", task.ID)
+	require.Equal(t, "review_pending", got.Status)
 	require.Len(t, got.Workflow.ReviewRounds, 2)
-	assert.Equal(t, 2, got.Workflow.ReviewRounds[1].Round)
+	r2 := got.Workflow.ReviewRounds[1]
+	assert.Equal(t, 2, r2.Round)
+	assert.Equal(t, "resubmitted", r2.DelegatedBy, "no orchestrator step")
+	require.Len(t, r2.Reviewers, 2)
+	assert.Equal(t, secReview, r2.Reviewers[0].ReviewTaskID, "the same review tasks")
+	assert.Equal(t, qaReview, r2.Reviewers[1].ReviewTaskID)
+	for _, rv := range r2.Reviewers {
+		assert.Equal(t, "pending", rv.State)
+		rt, _ := h.bs.GetTask(ctx, "rej", rv.ReviewTaskID)
+		assert.Equal(t, "pending", rt.Status, "%s's review task reopens", rv.Reviewer)
+		assert.Contains(t, *rt.Body, "--round 2", "it names the new round")
+	}
+
+	// A verdict on round 1 is refused; any time it is in review, each reviewer's verdict counts.
+	code, out = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "QA Engineer", "round": 1})
+	assert.Equal(t, http.StatusConflict, code)
+	assert.Contains(t, out["error"], "round 2")
+	code, out = postCode(t, base(secReview, "approve"), map[string]any{"subscriber_id": "Security Reviewer", "round": 2})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	assert.Equal(t, false, out["completed"])
+	code, out = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "QA Engineer", "round": 2})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	assert.Equal(t, true, out["completed"])
+	got, _ = h.bs.GetTask(ctx, "rej", task.ID)
+	assert.Equal(t, "completed", got.Status)
+	assert.Equal(t, "approved", got.Workflow.ReviewRounds[1].Result)
+}
+
+// #3787: the orchestrator changes the reviewers of an open round: a dropped one's review task is
+// skipped, a new one gets a review task, a kept one keeps theirs and their verdict.
+func TestReviewFlowOrchestratorChangesReviewers(t *testing.T) {
+	base, h, task := reviewTeam(t, "chg", true)
+	ctx := context.Background()
+	submit(t, base, task.ID)
+	code, out := postCode(t, base(task.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": []string{"Security Reviewer"}})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	got, _ := h.bs.GetTask(ctx, "chg", task.ID)
+	sec := got.Workflow.ReviewRounds[0].Reviewers[0].ReviewTaskID
+	code, out = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "Security Reviewer"})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	assert.Equal(t, true, out["completed"], "the only reviewer approved")
+
+	// A second task: change the open round's reviewers.
+	next, err := h.bs.CreateTask(ctx, "chg", "Second", "", "high", "lead", "worker")
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, "chg", "worker", next.ID)
+	require.NoError(t, err)
+	submit(t, base, next.ID)
+	code, out = postCode(t, base(next.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": []string{"Security Reviewer", "QA Engineer"}})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	code, out = postCode(t, base(next.ID, "approve"), map[string]any{"subscriber_id": "Security Reviewer"})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	got, _ = h.bs.GetTask(ctx, "chg", next.ID)
+	qa := got.Workflow.ReviewRounds[0].Reviewers[1].ReviewTaskID
+	code, out = postCode(t, base(next.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": []string{"Security Reviewer"}})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	got, _ = h.bs.GetTask(ctx, "chg", next.ID)
+	require.Len(t, got.Workflow.ReviewRounds, 1, "the same round")
+	require.Len(t, got.Workflow.ReviewRounds[0].Reviewers, 1)
+	assert.Equal(t, "approved", got.Workflow.ReviewRounds[0].Reviewers[0].State, "a kept reviewer keeps their verdict")
+	qt, _ := h.bs.GetTask(ctx, "chg", qa)
+	assert.Equal(t, "skipped", qt.Status, "a dropped reviewer's review task ends")
+	_ = sec
 }
 
 // (5) The health check shows open reviews and their age.
