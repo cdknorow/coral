@@ -34,6 +34,7 @@ func TestTmuxInputIsRecorded(t *testing.T) {
 	t.Cleanup(func() { inputlog.Setup("", false) })
 
 	require.NoError(t, c.SendKeysToTarget(ctx, target, "echo one"))
+	require.NoError(t, c.SendKeysToTarget(ctx, target, "-t x --help")) // after "--", all text (#3690)
 	require.NoError(t, c.SendKeysToTarget(ctx, target, "line a\nline b"))
 	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "\x1b[A"))
 	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "\x03"))
@@ -47,6 +48,7 @@ func TestTmuxInputIsRecorded(t *testing.T) {
 	src := "source=tmux.TestTmuxInputIsRecorded "
 	for _, want := range []string{
 		"target=" + target + " " + src + `kind=text len=8 text="echo one"`,
+		"target=" + target + " " + src + `kind=text len=11 text="-t x --help"`,
 		"target=" + target + " " + src + `kind=keys keys="Enter"`,
 		"target=" + target + " " + src + `kind=paste len=13 text="line a\nline b"`,
 		"target=" + target + " " + src + `kind=raw len=3 text="\x1b[A"`,

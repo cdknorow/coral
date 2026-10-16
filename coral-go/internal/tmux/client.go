@@ -556,11 +556,16 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 	if strings.Contains(command, "\n") {
 		sendErr = c.pasteToTarget(ctx, target, command)
 	} else {
-		_, sendErr = c.run(ctx, "send-keys", "-t", target, "-l", command)
+		// "--": text starting with '-' ("- fix the tests", "--help") is typed, not read as
+		// tmux options (#3690).
+		_, sendErr = c.run(ctx, "send-keys", "-t", target, "-l", "--", command)
 	}
 	if sendErr != nil {
+		// No Enter after a failed send: it would submit whatever was already in the agent's
+		// input instead of this text (#3690).
 		cleanup()
 		log.Printf("[tmux] send-keys error (target=%s, cmd_len=%d): %v", target, originalCommandLen, sendErr)
+		return fmt.Errorf("send-keys failed: %w", sendErr)
 	}
 
 	// Brief pause for tmux to deliver keystrokes
@@ -571,16 +576,11 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 		return ErrEnterWithheld
 	}
 
-	// Always send Enter even if send-keys reported an error — the text
-	// may have been delivered despite a non-zero exit from tmux.
 	if _, err := c.run(ctx, "send-keys", "-t", target, "Enter"); err != nil {
 		cleanup()
-		if sendErr != nil {
-			return fmt.Errorf("send-keys failed: %w; enter also failed: %v", sendErr, err)
-		}
 		return fmt.Errorf("send Enter failed: %w", err)
 	}
-	return sendErr
+	return nil
 }
 
 // pasteToTarget loads text into a tmux buffer and pastes it into the target pane.
@@ -896,7 +896,7 @@ func (c *Client) scrubServerEnv(ctx context.Context) {
 		old, had := have[k]
 		switch {
 		case set && (!had || old != v):
-			if _, err := c.run(ctx, "set-environment", "-g", k, v); err != nil {
+			if _, err := c.run(ctx, "set-environment", "-g", "--", k, v); err != nil { // "--": hygiene, as for send-keys
 				log.Printf("[tmux] could not set %s for new panes: %v", k, err)
 			}
 		case !set && had:
@@ -909,7 +909,7 @@ func (c *Client) scrubServerEnv(ctx context.Context) {
 
 // SetEnvironment sets an environment variable for a tmux session.
 func (c *Client) SetEnvironment(ctx context.Context, session, key, value string) error {
-	_, err := c.run(ctx, "set-environment", "-t", session, key, value)
+	_, err := c.run(ctx, "set-environment", "-t", session, "--", key, value) // "--": hygiene (tmux stops at the name; #3690)
 	return err
 }
 
@@ -1015,8 +1015,8 @@ func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data str
 		return c.pasteToTarget(ctx, target, data)
 	}
 
-	// Single-line literal text
-	_, err := c.run(ctx, "send-keys", "-t", target, "-l", data)
+	// Single-line literal text ("--": a leading '-' is text, not a tmux option, #3690)
+	_, err := c.run(ctx, "send-keys", "-t", target, "-l", "--", data)
 	return err
 }
 

@@ -17,6 +17,9 @@ func recordSendKeys(args []string) {
 	var hexBytes, rest []string
 	for i := 1; i < len(args); i++ {
 		switch a := args[i]; {
+		case a == "--": // the end of the options: the rest is text, even "-t" (#3690)
+			rest = append(rest, args[i+1:]...)
+			i = len(args)
 		case a == "-t" && i+1 < len(args):
 			target = args[i+1]
 			i++
