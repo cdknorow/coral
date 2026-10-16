@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.4.53 — Coral reads Claude's question and plan menus correctly
+
+**After upgrading, relaunch or resume your Claude agents.** Claude reads Coral's hooks only when an agent starts, so agents started before this release keep the older behaviour until they're relaunched or resumed.
+
+### Fixes
+
+- **Claude's question and plan menus are read correctly by the signal-based gate.** The signal-based rule (gate phase 2, still off by default) now treats Claude's question and plan menus as waiting for you from the moment they open, and Coral's own "message held" notice no longer replaces the agent's open request. The current screen rule, which decides today, was already holding in these cases.
+- **Agents started by an older Coral stay on the safe rule.** Every Claude hook now carries its hook set's version; an agent running an older or unknown set stays on the screen rule under the signal-based gate (phase 2, still off) until it's relaunched.
+- **Quieter logs.** A disagreement between the agent's signals and its screen is logged once per occurrence instead of on every re-check.
+
+### Security
+
+- **Fewer inline scripts in the dashboard.** The task list, the task dialog and the dependency picker no longer use inline event handlers.
+- **Look-alike names.** Agent names in Coral's notices also drop variation selectors, Hangul fillers and the braille blank, which draw nothing and could make two names look alike or a name look empty.
+
 ## v1.4.52 — The agent's team in its header, and fewer inline scripts
 
 ### New
