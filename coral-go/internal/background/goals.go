@@ -102,6 +102,35 @@ func (t *goalTranscript) feed(messages []map[string]any) {
 	}
 }
 
+// read brings the transcript up to date: the first read (after a start, or of a new or rewritten
+// transcript) needs only the last two requests and the latest reply, so it reads back from the
+// end until they are there instead of decoding the whole transcript (#3715); later reads take
+// the appended lines, as before.
+func (t *goalTranscript) read(ctx context.Context, path, agentType string) error {
+	var messages []map[string]any
+	var offset int64
+	var err error
+	if t.offset == 0 {
+		messages, offset, err = jsonl.ReadTail(ctx, path, agentType, goalInputComplete)
+	} else {
+		messages, offset, err = jsonl.ReadFromContext(ctx, path, agentType, t.offset)
+	}
+	if err != nil {
+		return err
+	}
+	t.offset = offset
+	t.feed(messages)
+	return nil
+}
+
+// goalInputComplete reports whether messages (a transcript's tail) already decide goalInput:
+// two user requests and a reply after them can't be changed by anything earlier (#3715).
+func goalInputComplete(messages []map[string]any) bool {
+	var t goalTranscript
+	t.feed(messages)
+	return t.prevRequest != "" && t.response != ""
+}
+
 // input is the model's input: the last two user requests and the agent's
 // last text reply.
 func (t *goalTranscript) input() goalInput {
@@ -468,12 +497,9 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 	if size < transcript.offset {
 		*transcript = goalTranscript{} // truncated or replaced: start over
 	}
-	messages, offset, err := jsonl.ReadFrom(path, ls.AgentType, transcript.offset)
-	if err != nil {
+	if transcript.read(ctx, path, ls.AgentType) != nil {
 		return
 	}
-	transcript.offset = offset
-	transcript.feed(messages)
 	in := transcript.input()
 	if in.Request == "" {
 		in.Request = truncateRunes(userRequestText(g.reader.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType)), 1500)

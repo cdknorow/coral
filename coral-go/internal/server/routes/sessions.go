@@ -1559,12 +1559,12 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	trace.begin("transcript_read")
 	if sessionID != "" {
 		if resumeFromID != "" {
-			messages, total = h.jsonl.ReadAllMessagesForLiveWithLineage(id, workingDir, agentType, resumeFromID)
+			messages, total = h.jsonl.ReadAllMessagesForLiveWithLineageContext(r.Context(), id, workingDir, agentType, resumeFromID)
 		} else {
-			messages, total = h.jsonl.ReadAllMessagesForLive(id, workingDir, agentType)
+			messages, total = h.jsonl.ReadAllMessagesForLiveContext(r.Context(), id, workingDir, agentType)
 		}
 	} else {
-		messages, total = h.jsonl.ReadAllMessages(id, workingDir, agentType)
+		messages, total = h.jsonl.ReadAllMessagesContext(r.Context(), id, workingDir, agentType)
 	}
 	trace.end("transcript_read", "messages", total)
 	trace.begin("log_status")

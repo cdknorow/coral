@@ -4,6 +4,7 @@ package jsonl
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -131,10 +132,10 @@ func (r *SessionReader) readNewMessages(sessionID, workingDirectory, agentType s
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return r.readNewMessagesLocked(c, sessionID, workingDirectory, agentType, strictLive)
+	return r.readNewMessagesLocked(context.Background(), c, sessionID, workingDirectory, agentType, strictLive)
 }
 
-func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workingDirectory, agentType string, strictLive bool) ([]map[string]any, int) {
+func (r *SessionReader) readNewMessagesLocked(ctx context.Context, c *sessionCache, sessionID, workingDirectory, agentType string, strictLive bool) ([]map[string]any, int) {
 	if agentType == at.Codex {
 		refreshCodexLink(c, sessionID)
 	}
@@ -195,17 +196,22 @@ func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workin
 	} else if tail := newData[end+1:]; len(bytes.TrimSpace(tail)) > 0 && !json.Valid(bytes.TrimSpace(tail)) {
 		newData = newData[:end+1]
 	}
-	c.offset += int64(len(newData))
-
 	if len(newData) == 0 {
 		return nil, len(c.messages)
 	}
 
 	// Parse new lines: decoding the JSON is the cost of a large read (a long transcript read cold,
-	// after a restart or an eviction), so it runs in parallel; turning entries into messages
-	// stays in order, since a tool result is named from the tool call before it (#3710).
+	// after a restart or an eviction), so it runs in parallel, at most two such decodes at once
+	// in the process (#3715); turning entries into messages stays in order, since a tool result is
+	// named from the tool call before it (#3710). A wait that ctx ends consumes nothing: the next
+	// read starts from the same offset.
+	entries, err := decodeLimited(ctx, newData)
+	if err != nil {
+		return nil, len(c.messages)
+	}
+	c.offset += int64(len(newData))
 	var newMessages []map[string]any
-	for _, entry := range decodeLines(newData) {
+	for _, entry := range entries {
 		if entry == nil {
 			continue
 		}
@@ -232,19 +238,31 @@ func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workin
 // messages (not just the new ones). Use this when the client needs the full
 // conversation history (e.g. after=0).
 func (r *SessionReader) ReadAllMessages(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
+	return r.ReadAllMessagesContext(context.Background(), sessionID, workingDirectory, agentType)
+}
+
+// ReadAllMessagesContext is ReadAllMessages whose wait for a large decode's turn ends with ctx
+// (then the messages already cached are returned).
+func (r *SessionReader) ReadAllMessagesContext(ctx context.Context, sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	r.readNewMessagesLocked(c, sessionID, workingDirectory, agentType, false)
+	r.readNewMessagesLocked(ctx, c, sessionID, workingDirectory, agentType, false)
 	return c.messages, len(c.messages)
 }
 
 // ReadAllMessagesForLive is the strict counterpart used by the live chat API.
 func (r *SessionReader) ReadAllMessagesForLive(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
+	return r.ReadAllMessagesForLiveContext(context.Background(), sessionID, workingDirectory, agentType)
+}
+
+// ReadAllMessagesForLiveContext is ReadAllMessagesForLive whose wait for a large decode's turn
+// ends with ctx.
+func (r *SessionReader) ReadAllMessagesForLiveContext(ctx context.Context, sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	r.readNewMessagesLocked(c, sessionID, workingDirectory, agentType, true)
+	r.readNewMessagesLocked(ctx, c, sessionID, workingDirectory, agentType, true)
 	return c.messages, len(c.messages)
 }
 
@@ -255,12 +273,18 @@ func (r *SessionReader) ReadAllMessagesForLive(sessionID, workingDirectory, agen
 // The caller supplies only trusted resume_from_id values; this never falls
 // back to newest-workspace or arbitrary transcript discovery.
 func (r *SessionReader) ReadAllMessagesForLiveWithLineage(sessionID, workingDirectory, agentType string, ancestorIDs ...string) ([]map[string]any, int) {
-	current, _ := r.ReadAllMessagesForLive(sessionID, workingDirectory, agentType)
+	return r.ReadAllMessagesForLiveWithLineageContext(context.Background(), sessionID, workingDirectory, agentType, ancestorIDs...)
+}
+
+// ReadAllMessagesForLiveWithLineageContext is ReadAllMessagesForLiveWithLineage with a ctx for
+// the decode wait.
+func (r *SessionReader) ReadAllMessagesForLiveWithLineageContext(ctx context.Context, sessionID, workingDirectory, agentType string, ancestorIDs ...string) ([]map[string]any, int) {
+	current, _ := r.ReadAllMessagesForLiveContext(ctx, sessionID, workingDirectory, agentType)
 	for _, ancestorID := range ancestorIDs {
 		if ancestorID == "" || ancestorID == sessionID {
 			continue
 		}
-		ancestor, _ := r.ReadAllMessagesForLive(ancestorID, workingDirectory, agentType)
+		ancestor, _ := r.ReadAllMessagesForLiveContext(ctx, ancestorID, workingDirectory, agentType)
 		if len(ancestor) == 0 {
 			continue
 		}
@@ -400,6 +424,11 @@ func (r *SessionReader) ClearSession(sessionID string) {
 // being written is read on the next call. An offset past the end of the
 // file (it was truncated or replaced) starts over from the top.
 func ReadFrom(path, agentType string, offset int64) ([]map[string]any, int64, error) {
+	return ReadFromContext(context.Background(), path, agentType, offset)
+}
+
+// ReadFromContext is ReadFrom whose wait for a large decode's turn (coldDecodes) ends with ctx.
+func ReadFromContext(ctx context.Context, path, agentType string, offset int64) ([]map[string]any, int64, error) {
 	f, err := openTranscript(path, agentType)
 	if err != nil {
 		return nil, offset, err
@@ -423,27 +452,9 @@ func ReadFrom(path, agentType string, offset int64) ([]map[string]any, int64, er
 	if end < 0 {
 		return nil, offset, nil
 	}
-	toolUseNames := make(map[string]string)
-	var messages []map[string]any
-	for _, line := range bytes.Split(data[:end], []byte("\n")) {
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		var entry map[string]any
-		if err := json.Unmarshal(line, &entry); err != nil {
-			continue
-		}
-		for _, message := range parseTranscriptEntry(entry, toolUseNames, agentType) {
-			var previous map[string]any
-			if len(messages) > 0 {
-				previous = messages[len(messages)-1]
-			}
-			if agentType == at.Codex && mergeDuplicateCodexMessage(previous, message) {
-				continue
-			}
-			messages = append(messages, message)
-		}
+	messages, err := parseLines(ctx, data[:end], agentType)
+	if err != nil {
+		return nil, offset, err
 	}
 	return messages, offset + int64(end) + 1, nil
 }
