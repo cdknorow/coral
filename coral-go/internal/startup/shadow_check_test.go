@@ -3,6 +3,7 @@ package startup
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -59,6 +60,10 @@ func TestSameFileHandlesMissingPaths(t *testing.T) {
 	}
 }
 
+// coralExe is the name exec.LookPath("coral") finds: on Windows only names with a PATHEXT
+// extension count, so a file named plain "coral" is never found there (#3914).
+var coralExe = map[bool]string{true: "coral.exe", false: "coral"}[runtime.GOOS == "windows"]
+
 // End to end through the exported function, with PATH controlled.
 func TestCheckPATHShadowing(t *testing.T) {
 	t.Run("no coral on PATH is not a warning", func(t *testing.T) {
@@ -70,7 +75,7 @@ func TestCheckPATHShadowing(t *testing.T) {
 
 	t.Run("a different coral earlier on PATH warns", func(t *testing.T) {
 		dir := t.TempDir()
-		other := filepath.Join(dir, "coral")
+		other := filepath.Join(dir, coralExe)
 		writeExecutable(t, other, "#!/bin/sh\necho not ours\n")
 		t.Setenv("PATH", dir)
 
@@ -92,7 +97,7 @@ func TestCheckPATHShadowing(t *testing.T) {
 			t.Skip("cannot resolve the test executable")
 		}
 		dir := t.TempDir()
-		if err := os.Symlink(self, filepath.Join(dir, "coral")); err != nil {
+		if err := os.Symlink(self, filepath.Join(dir, coralExe)); err != nil {
 			t.Skip("cannot symlink here")
 		}
 		t.Setenv("PATH", dir)

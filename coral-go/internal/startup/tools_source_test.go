@@ -16,6 +16,7 @@ func TestSetupAgentToolsForbidsTheInstalledAppOnATestServer(t *testing.T) {
 	t.Cleanup(func() { agent.SetInstalledToolsFallback(prev) })
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows (#3914)
 
 	setupAgentTools(t.TempDir())
 	if agent.InstalledToolsFallback() {
