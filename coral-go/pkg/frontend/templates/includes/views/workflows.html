@@ -7,13 +7,13 @@
             <span class="wf-count-badge" id="wf-count-badge"></span>
         </div>
         <div class="wf-header-actions">
-            <button class="btn btn-sm" id="wf-back-btn" style="display:none" onclick="workflowsBackToList()">
+            <button class="btn btn-sm" id="wf-back-btn" style="display:none" data-on-click="wf-back">
                 <span class="material-icons" style="font-size:16px">arrow_back</span> Back
             </button>
-            <button class="btn btn-sm" id="wf-build-agent-btn" onclick="launchWorkflowAgent()">
+            <button class="btn btn-sm" id="wf-build-agent-btn" data-on-click="wf-build-agent">
                 <span class="material-icons" style="font-size:16px">smart_toy</span> Build with Agent
             </button>
-            <button class="btn btn-sm btn-primary" id="wf-create-btn" onclick="showWorkflowCreateModal()">
+            <button class="btn btn-sm btn-primary" id="wf-create-btn" data-on-click="wf-create">
                 <span class="material-icons" style="font-size:16px">add</span> New Workflow
             </button>
         </div>
@@ -41,11 +41,11 @@
 </div>
 
 <!-- Create/Edit Workflow Modal -->
-<div id="wf-create-modal" class="modal" style="display:none" onclick="if(event.target===this)hideWorkflowCreateModal()">
+<div id="wf-create-modal" class="modal" style="display:none" data-on-click="wf-modal-backdrop">
     <div class="modal-content modal-content-extra-wide">
         <div class="modal-header">
             <h3 id="wf-modal-title">Create Workflow</h3>
-            <button class="modal-close" onclick="hideWorkflowCreateModal()">&times;</button>
+            <button class="modal-close" data-on-click="wf-modal-close">&times;</button>
         </div>
         <div class="modal-body wf-modal-body">
             <label class="wf-label">Name <span class="wf-hint">(letters, numbers, hyphens, underscores)</span></label>
@@ -62,15 +62,15 @@
 
             <label class="wf-label">Steps</label>
             <div id="wf-steps-editor" class="wf-steps-editor"></div>
-            <button class="btn btn-sm wf-add-step-btn" onclick="workflowAddStep()">
+            <button class="btn btn-sm wf-add-step-btn" data-on-click="wf-add-step">
                 <span class="material-icons" style="font-size:14px">add</span> Add Step
             </button>
 
             <div id="wf-modal-error" class="wf-modal-error" style="display:none"></div>
         </div>
         <div class="modal-footer">
-            <button class="btn" onclick="hideWorkflowCreateModal()">Cancel</button>
-            <button class="btn btn-primary" id="wf-modal-save" onclick="saveWorkflow()">Create</button>
+            <button class="btn" data-on-click="wf-modal-close">Cancel</button>
+            <button class="btn btn-primary" id="wf-modal-save" data-on-click="wf-save">Create</button>
         </div>
     </div>
 </div>

@@ -76,6 +76,17 @@ const {
     'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent']);
 const { showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } =
     lazyFns(loadCostDashboard, ['showCostDashboard', '_refreshCostDashboard', '_costTimeRangeChanged']);
+// The Workflows view's own buttons and create dialog (#3645); its generated markup's actions
+// register with its module.
+registerActions({
+    'wf-back': () => workflowsBackToList(),
+    'wf-build-agent': () => launchWorkflowAgent(),
+    'wf-create': () => showWorkflowCreateModal(),
+    'wf-modal-backdrop': (el, event) => { if (event.target === el) hideWorkflowCreateModal(); },
+    'wf-modal-close': () => hideWorkflowCreateModal(),
+    'wf-add-step': () => workflowAddStep(),
+    'wf-save': () => saveWorkflow(),
+});
 // The Cost view's own controls (#3645); the table's actions register with its module.
 registerActions({
     'cost-time-range': () => _costTimeRangeChanged(),

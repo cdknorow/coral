@@ -1,6 +1,7 @@
 /* Workflows: list, detail, run views, and CRUD */
 
-import { escapeHtml as esc, escapeAttr as escAttr, showView, showToast, jsStr } from './utils.js';
+import { escapeHtml as esc, escapeAttr as escAttr, showView, showToast } from './utils.js';
+import { registerActions, idOf, textOf } from './actions.js';
 import { apiFetch, loadLiveSessions } from './api.js';
 import { selectLiveSession } from './sessions.js';
 import { pollEvery } from './overload.js';
@@ -214,7 +215,7 @@ function renderWorkflowList() {
             lastRunHtml = '<span style="color:var(--text-muted)">Never run</span>';
         }
 
-        return `<div class="wf-card" onclick="selectWorkflow(${Number(wf.id)})">
+        return `<div class="wf-card" data-on-click="wf-select" data-workflow-id="${Number(wf.id)}">
             <div class="wf-card-top">
                 <span class="wf-card-name">${esc(wf.name)}</span>
                 <span class="wf-card-badges">
@@ -274,7 +275,7 @@ function renderWorkflowDetail(wf, runs) {
     if (runs.length) {
         const rowsHtml = runs.map(r => {
             const statusIcon = statusIconHtml(r.status);
-            return `<tr onclick="selectWorkflowRun(${Number(r.id)})">
+            return `<tr data-on-click="wf-run" data-run-id="${Number(r.id)}">
                 <td>#${r.id}</td>
                 <td>${statusIcon} ${esc(r.status)}</td>
                 <td>${esc(r.trigger_type || '')}</td>
@@ -297,14 +298,14 @@ function renderWorkflowDetail(wf, runs) {
                 ${wf.description ? `<div style="color:var(--text-secondary);font-size:13px;margin-top:2px">${esc(wf.description)}</div>` : ''}
             </div>
             <div class="wf-detail-actions">
-                <button class="btn btn-sm btn-primary" onclick="triggerWorkflow(${Number(wf.id)})">
+                <button class="btn btn-sm btn-primary" data-on-click="wf-trigger" data-workflow-id="${Number(wf.id)}">
                     <span class="material-icons" style="font-size:14px">play_arrow</span> Run
                 </button>
-                <button class="btn btn-sm" onclick="editWorkflow(${Number(wf.id)})">Edit</button>
-                <button class="btn btn-sm" onclick="editWorkflowWithAgent(${Number(wf.id)})">
+                <button class="btn btn-sm" data-on-click="wf-edit" data-workflow-id="${Number(wf.id)}">Edit</button>
+                <button class="btn btn-sm" data-on-click="wf-edit-agent" data-workflow-id="${Number(wf.id)}">
                     <span class="material-icons" style="font-size:14px">smart_toy</span> Edit with Agent
                 </button>
-                <button class="btn btn-sm" style="color:var(--error)" onclick="deleteWorkflow(${Number(wf.id)}, '${jsStr(wf.name)}')">Delete</button>
+                <button class="btn btn-sm" style="color:var(--error)" data-on-click="wf-delete" data-workflow-id="${Number(wf.id)}" data-name="${escAttr(wf.name)}">Delete</button>
             </div>
         </div>
         <div class="wf-detail-meta">
@@ -426,7 +427,7 @@ function renderRunDetail(run) {
             const outputId = `wf-step-output-${run.id}-${i}`;
             const autoExpand = isFailed ? ' wf-expanded' : '';
             outputHtml = `
-                <button type="button" class="wf-run-step-output-toggle" aria-expanded="${isFailed}" aria-controls="${escAttr(outputId)}" onclick="this.setAttribute('aria-expanded', document.getElementById('${jsStr(outputId)}').classList.toggle('wf-expanded'))">
+                <button type="button" class="wf-run-step-output-toggle" aria-expanded="${escAttr(isFailed)}" aria-controls="${escAttr(outputId)}" data-on-click="wf-output-toggle">
                     <span class="material-icons" style="font-size:14px" aria-hidden="true">terminal</span> Output
                     <span class="material-icons wf-toggle-arrow" style="font-size:14px" aria-hidden="true">expand_more</span>
                 </button>
@@ -453,7 +454,7 @@ function renderRunDetail(run) {
         // Session link for agent steps
         let agentHtml = '';
         if (s.type === 'agent' && s.session_id) {
-            agentHtml = `<span class="wf-step-agent-link" onclick="event.stopPropagation(); selectLiveSession('${jsStr(s.session_name || s.session_id)}')">
+            agentHtml = `<span class="wf-step-agent-link" data-on-click="wf-step-agent" data-session="${escAttr(s.session_name || s.session_id)}">
                 <span class="material-icons" style="font-size:13px">open_in_new</span> View agent
             </span>`;
         }
@@ -476,13 +477,13 @@ function renderRunDetail(run) {
     }).join('');
 
     const killBtn = isActive
-        ? `<button class="btn btn-sm" style="color:var(--error)" onclick="killWorkflowRun(${Number(run.id)})">
+        ? `<button class="btn btn-sm" style="color:var(--error)" data-on-click="wf-kill-run" data-run-id="${Number(run.id)}">
             <span class="material-icons" style="font-size:14px">stop</span> Kill
           </button>`
         : '';
 
     const retriggerBtn = !isActive && run.workflow_id
-        ? `<button class="btn btn-sm" onclick="triggerWorkflow(${Number(run.workflow_id)})">
+        ? `<button class="btn btn-sm" data-on-click="wf-trigger" data-workflow-id="${Number(run.workflow_id)}">
             <span class="material-icons" style="font-size:14px">replay</span> Re-run
           </button>`
         : '';
@@ -603,12 +604,12 @@ export function workflowAddStep(step) {
     div.className = 'wf-step-editor-item';
     div.innerHTML = `
         <div class="wf-step-editor-top">
-            <select class="wf-step-type-select" onchange="workflowStepTypeChanged(this)">
+            <select class="wf-step-type-select" data-on-change="wf-step-type">
                 <option value="shell" ${type === 'shell' ? 'selected' : ''}>shell</option>
                 <option value="agent" ${type === 'agent' ? 'selected' : ''}>agent</option>
             </select>
             <input type="text" class="wf-step-name-input" placeholder="Step name" value="${escAttr(name)}">
-            <button class="wf-step-remove-btn" onclick="this.closest('.wf-step-editor-item').remove()" title="Remove step">&times;</button>
+            <button class="wf-step-remove-btn" data-on-click="wf-step-remove" title="Remove step">&times;</button>
         </div>
         <div class="wf-step-editor-body">
             <textarea class="wf-step-content" placeholder="${type === 'shell' ? 'Shell command...' : 'Agent prompt...'}" rows="2">${esc(content)}</textarea>
@@ -736,3 +737,25 @@ function showError(el, msg) {
     el.textContent = msg;
     el.style.display = '';
 }
+
+// The Workflows view's generated markup (#3645): data-on-* names, never code. The view's own
+// buttons (back, build, create and the create dialog) register in app.js, which loads this module.
+// Ids are checked (idOf) before use: a bad one does nothing.
+const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
+registerActions({
+    'wf-select': el => withId(el.dataset.workflowId, selectWorkflow),
+    'wf-run': el => withId(el.dataset.runId, selectWorkflowRun),
+    'wf-trigger': el => withId(el.dataset.workflowId, triggerWorkflow),
+    'wf-edit': el => withId(el.dataset.workflowId, editWorkflow),
+    'wf-edit-agent': el => withId(el.dataset.workflowId, editWorkflowWithAgent),
+    // Deleting still asks first (deleteWorkflow's confirm); the name is only shown in it.
+    'wf-delete': el => withId(el.dataset.workflowId, id => deleteWorkflow(id, String(el.dataset.name || ''))),
+    'wf-kill-run': el => withId(el.dataset.runId, killWorkflowRun),
+    'wf-output-toggle': el => {
+        const out = document.getElementById(el.getAttribute('aria-controls'));
+        if (out) el.setAttribute('aria-expanded', String(out.classList.toggle('wf-expanded')));
+    },
+    'wf-step-agent': (el, event) => { event.stopPropagation(); const s = textOf(el.dataset.session); if (s) selectLiveSession(s); },
+    'wf-step-type': el => workflowStepTypeChanged(el),
+    'wf-step-remove': el => el.closest('.wf-step-editor-item')?.remove(),
+});

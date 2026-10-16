@@ -1,7 +1,8 @@
 /* Scheduler: scheduled jobs sidebar list, job detail view, and CRUD operations */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast, showView, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
+import { registerActions, idOf, uuidOf } from './actions.js';
 import { pollEvery } from './overload.js';
 
 let scheduledJobs = [];
@@ -61,7 +62,7 @@ function renderJobsSidebar() {
         const failBadge = fails >= 2
             ? `<span class="sched-fail-badge" title="The last ${escapeAttr(fails)} runs all failed">${fails} failed</span>`
             : '';
-        return `<li class="session-list-item ${active}" onclick="selectScheduledJob(${Number(job.id)})">
+        return `<li class="session-list-item ${escapeAttr(active)}" data-on-click="job-select" data-job-id="${Number(job.id)}">
             <span class="sched-dot">${dot}</span>
             ${typeIcon}
             <span class="session-name">${escapeHtml(job.name)}${status}</span>
@@ -108,7 +109,7 @@ function renderJobDetail(job, runs) {
         const wfName = job.workflow_name || `Workflow #${job.workflow_id}`;
         jobTypeHtml = `
             <dt>Type</dt><dd><span class="material-icons" style="font-size:14px;vertical-align:-2px;color:var(--color-tool-agent)">account_tree</span> Workflow</dd>
-            <dt>Workflow</dt><dd><a href="javascript:void(0)" onclick="selectWorkflow(${Number(job.workflow_id)})" style="color:var(--accent)">${escapeHtml(wfName)}</a></dd>`;
+            <dt>Workflow</dt><dd><a href="#" data-on-click="job-workflow" data-workflow-id="${Number(job.workflow_id)}" style="color:var(--accent)">${escapeHtml(wfName)}</a></dd>`;
     } else {
         jobTypeHtml = `
             <dt>Type</dt><dd>Agent Job</dd>
@@ -143,9 +144,9 @@ function renderJobDetail(job, runs) {
         <div class="sched-header">
             <h2>${escapeHtml(job.name)}</h2>
             <div class="sched-actions">
-                <button class="btn btn-small" onclick="editScheduledJob(${Number(job.id)})">Edit</button>
-                <button class="btn btn-small" onclick="toggleScheduledJob(${Number(job.id)})">${toggleLabel}</button>
-                <button class="btn btn-small btn-warning" onclick="deleteScheduledJob(${Number(job.id)})">Delete</button>
+                <button class="btn btn-small" data-on-click="job-edit" data-job-id="${Number(job.id)}">Edit</button>
+                <button class="btn btn-small" data-on-click="job-toggle" data-job-id="${Number(job.id)}">${toggleLabel}</button>
+                <button class="btn btn-small btn-warning" data-on-click="job-delete" data-job-id="${Number(job.id)}">Delete</button>
             </div>
         </div>
         ${job.description ? `<p class="sched-desc">${escapeHtml(job.description)}</p>` : ''}
@@ -184,7 +185,7 @@ function renderWorkflowRunsTable(runs) {
                 ? formatDuration(new Date(r.finished_at) - new Date(r.started_at))
                 : r.started_at ? 'running...' : '-';
             const stepsInfo = r.current_step != null ? `${r.current_step + 1}` : '-';
-            return `<tr onclick="selectWorkflowRun(${Number(r.id)})" style="cursor:pointer">
+            return `<tr data-on-click="job-run" data-run-id="${Number(r.id)}" style="cursor:pointer">
                 <td>#${r.id}</td>
                 <td><span class="sched-status ${statusClass}">${r.status}</span></td>
                 <td>${stepsInfo}</td>
@@ -208,7 +209,7 @@ function renderRunsTable(runs) {
                 : r.status === 'running' ? 'status-running'
                 : '';
             const sessionLink = r.session_id
-                ? `<a href="javascript:void(0)" class="run-session-link" title="View session history" onclick="selectHistorySession('${jsStr(r.session_id)}')">${r.session_id.substring(0, 8)}</a>`
+                ? `<a href="#" class="run-session-link" title="View session history" data-on-click="job-run-session" data-session-id="${escapeAttr(r.session_id)}">${r.session_id.substring(0, 8)}</a>`
                 : '-';
             return `<tr>
                 <td>${scheduled}</td>
@@ -448,3 +449,17 @@ export function initScheduler() {
     // Refresh jobs every 30s
     pollEvery(fetchJobs, 30000, { whenHidden: true }); // job notifications
 }
+
+// The scheduled jobs' markup (#3645): data-on-* names, never code.
+// Ids are checked (idOf, uuidOf) before use: a bad one does nothing. Deleting still asks first.
+const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
+registerActions({
+    'job-new': () => showJobModal(),
+    'job-select': el => withId(el.dataset.jobId, selectScheduledJob),
+    'job-edit': el => withId(el.dataset.jobId, editScheduledJob),
+    'job-toggle': el => withId(el.dataset.jobId, toggleScheduledJob),
+    'job-delete': el => withId(el.dataset.jobId, deleteScheduledJob),
+    'job-workflow': (el, event) => { event.preventDefault(); withId(el.dataset.workflowId, id => window.selectWorkflow(id)); },
+    'job-run': el => withId(el.dataset.runId, id => window.selectWorkflowRun(id)),
+    'job-run-session': (el, event) => { event.preventDefault(); const sid = uuidOf(el.dataset.sessionId); if (sid) window.selectHistorySession(sid); },
+});
