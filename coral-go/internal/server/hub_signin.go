@@ -95,6 +95,13 @@ func (b hubBackend) Link(ctx context.Context) (string, string, error) {
 	return st.VerificationURL, st.UserCode, nil
 }
 
+func (b hubBackend) HubPage() string {
+	if m := b.mgr(); m != nil {
+		return m.HubPage()
+	}
+	return ""
+}
+
 func (b hubBackend) LinkState() (string, string) {
 	m := b.mgr()
 	if m == nil {

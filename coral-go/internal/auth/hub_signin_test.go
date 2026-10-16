@@ -69,6 +69,7 @@ func (f *fakeHubBackend) Link(context.Context) (string, string, error) {
 	f.linkState = "enrolling"
 	return "https://hub.example/enroll?code=ABCD-EFGH", "ABCD-EFGH", nil
 }
+func (f *fakeHubBackend) HubPage() string { return "https://hub.example" }
 func (f *fakeHubBackend) LinkState() (string, string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -480,8 +481,9 @@ func TestHubSigninSettingsRoutes(t *testing.T) {
 	}
 	w, _ := put(hub, `{"enabled":false}`, nil)
 	assert.Equal(t, http.StatusForbidden, w.Code, "a Hub session can't change it")
-	w, _ = put(nil, `{"enabled":true}`, nil)
-	assert.Equal(t, http.StatusUnauthorized, w.Code, "signed out")
+	w, outNoSession := put(nil, `{"enabled":true}`, nil)
+	assert.Equal(t, http.StatusForbidden, w.Code, "no browser session")
+	assert.Equal(t, "password_session_required", outNoSession["code"])
 	w, _ = put(pw, `{}`, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code, "no value is no change")
 
@@ -670,4 +672,28 @@ func TestHubSessionSensitiveReadsAreRecordedOnceAMinute(t *testing.T) {
 		assert.Equal(t, want, hubSensitiveRead("GET", path), path)
 	}
 	assert.Empty(t, hubSensitiveRead("POST", "/api/sessions/live/a/file-content"), "writes are recorded as writes")
+}
+
+// A dashboard with no browser session (this computer without a cookie, an API-key caller) is
+// answered 403 password_session_required by every Hub sign-in settings route, never the 401
+// that reads as "signed out" (UX's real-server run; Backend's f2966d5a).
+func TestHubSigninSettingsNeedABrowserSession(t *testing.T) {
+	g := newHubRig(t)
+	for name, h := range map[string]http.HandlerFunc{
+		"GET hub-signin": g.hs.Settings, "PUT hub-signin": g.hs.SetSettings, "POST dismiss": g.hs.DismissOffer,
+		"GET hub-origins": g.hs.GetOrigins, "PUT hub-origins": g.hs.SetOrigins,
+	} {
+		method := strings.Fields(name)[0]
+		w, out := g.do(h, g.req(method, "/api/auth/x", `{"enabled":true,"origins":[]}`, "10.0.0.5", nil))
+		assert.Equal(t, http.StatusForbidden, w.Code, name)
+		assert.Equal(t, "password_session_required", out["code"], name)
+	}
+	assert.False(t, g.set.dismissed)
+}
+
+func TestHubSigninHubURL(t *testing.T) {
+	g := newHubRig(t)
+	assert.Equal(t, "https://hub.example", g.hs.HubURL())
+	var none *HubSignin
+	assert.Empty(t, none.HubURL())
 }

@@ -282,3 +282,10 @@ func TestCleanDisplay(t *testing.T) {
 	assert.Equal(t, 64, len([]rune(CleanDisplay(strings.Repeat("é", 100)))))
 	assert.Equal(t, "ab", CleanDisplay("a\xffb"))
 }
+
+// The sign-in page's "Open Coral Hub" link: the configured hub only when it is https.
+func TestHubPage(t *testing.T) {
+	assert.Equal(t, "https://app.coralhub.dev", New(Options{HubURL: "https://app.coralhub.dev"}).HubPage())
+	assert.Empty(t, New(Options{HubURL: "http://hub.local:8080"}).HubPage())
+	assert.Empty(t, New(Options{}).HubPage())
+}

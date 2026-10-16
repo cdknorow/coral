@@ -61,6 +61,8 @@ type HubBackend interface {
 	Link(ctx context.Context) (verificationURL, userCode string, err error)
 	// LinkState is "enrolling", "linked" or "failed" (with a message) for the last Link.
 	LinkState() (state, message string)
+	// HubPage is Coral Hub's own https address on the configured host, or "".
+	HubPage() string
 }
 
 // HubSettings keeps the local settings (user_settings; the server adapts the store). They
@@ -274,6 +276,15 @@ func (h *HubSignin) PageState(r *http.Request) string {
 		return "ready"
 	}
 	return ""
+}
+
+// HubURL is the checked Coral Hub address for the sign-in page's "Open Coral Hub" link
+// (PageState.HubURL), or "" when there is none or it doesn't pass the check.
+func (h *HubSignin) HubURL() string {
+	if h == nil {
+		return ""
+	}
+	return h.hub.HubPage()
 }
 
 // Origins is the whole return-origin list the hub is told: this server's loopback origins

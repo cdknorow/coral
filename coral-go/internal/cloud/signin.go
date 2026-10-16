@@ -299,6 +299,15 @@ func CleanDisplay(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// HubPage is the configured Coral Hub's own address for a link on the sign-in page, only when it
+// passes the same check as a page the browser is sent to (https on the configured host); else "".
+func (m *Manager) HubPage() string {
+	if m.hubPageURL(m.o.HubURL) {
+		return m.o.HubURL
+	}
+	return ""
+}
+
 // SigninReady reports whether a sign-in may start for a page reached on origin: a live
 // tunnel that offers sign-in, a pinned owner with no mismatch, and origin on the list the
 // hub accepted on this tunnel.
