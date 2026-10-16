@@ -67,6 +67,7 @@ wait_for_server() {
 # ── Setup ────────────────────────────────────────────────────────────
 
 TMPDIR_JOBS="$(mktemp -d)"
+export TMPDIR="$TMPDIR_JOBS"  # (#3926)
 export CORAL_DATA_DIR="$TMPDIR_JOBS"
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job: a test server never runs a real agent on its own
 export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)
