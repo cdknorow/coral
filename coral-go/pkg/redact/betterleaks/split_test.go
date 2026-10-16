@@ -9,22 +9,18 @@ import (
 	"github.com/cdknorow/coral/pkg/redact"
 )
 
-// Security's probes on #3808, as tests: a secret written in two bursts with the terminal's idle
-// flush between them, and a secret where a long line's frame ends. Neither may show any of a
-// secret the whole-text scan redacts.
+// Security's probes on #3808, as tests: a secret written in two bursts, and a secret where a
+// long line's frame ends. A reply stream (NewStream) may not show any of a secret the
+// whole-text scan redacts. A live stream (the terminal, #3958) holds nothing: a secret within
+// one write is replaced; split across writes is the accepted risk, documented in pkg/tunnel.
 
-func probeStream(t *testing.T, s *redact.Scanner, chunks []string, flush map[int]bool, force bool) string {
+func probeStream(t *testing.T, s *redact.Scanner, chunks []string) string {
 	t.Helper()
 	var out bytes.Buffer
 	st := s.NewStream(&out)
-	for i, c := range chunks {
+	for _, c := range chunks {
 		if _, err := st.Write([]byte(c)); err != nil {
 			t.Fatalf("write: %v", err)
-		}
-		if flush[i] {
-			if err := st.Flush(force); err != nil {
-				t.Fatalf("flush: %v", err)
-			}
 		}
 	}
 	if err := st.Close(); err != nil {
@@ -43,7 +39,7 @@ func pieceShown(out, secret string) string {
 	return ""
 }
 
-func TestAFlushNeverSplitsASecret(t *testing.T) {
+func TestASplitNeverShowsASecret(t *testing.T) {
 	s := &redact.Scanner{Detector: detector(t), Budget: 10 * time.Second}
 	tok := "ghp_" + pseudo(36, alnum, 31)
 	pw := pseudo(24, alnum, 32)
@@ -53,21 +49,25 @@ func TestAFlushNeverSplitsASecret(t *testing.T) {
 		{"password=" + pw + " now\n", pw},
 		{"stripe key sk_" + "live_" + pw + " here\n", pw},
 	} {
-		whole := probeStream(t, s, []string{c.text}, nil, false)
+		whole := probeStream(t, s, []string{c.text})
 		if w := pieceShown(whole, c.secret); w != "" {
 			t.Logf("%q: the library doesn't redact it whole, so there is nothing to keep (%q)", c.text, whole)
 			continue
 		}
 		for cut := 1; cut < len(c.text); cut++ {
-			parts := []string{c.text[:cut], c.text[cut:]}
-			// The idle flush: the same as written whole.
-			if got := probeStream(t, s, parts, map[int]bool{0: true}, false); got != whole {
-				t.Fatalf("%q idle flush at %d:\n got %q\nwhole %q", c.text, cut, got, whole)
+			// A reply written in two pieces is the same as written whole.
+			if got := probeStream(t, s, []string{c.text[:cut], c.text[cut:]}); got != whole {
+				t.Fatalf("%q split at %d:\n got %q\nwhole %q", c.text, cut, got, whole)
 			}
-			// The forced flush (wsHoldMax): no 8 characters of the secret.
-			if got := probeStream(t, s, parts, map[int]bool{0: true}, true); pieceShown(got, c.secret) != "" {
-				t.Fatalf("%q forced flush at %d shows %q: %q", c.text, cut, pieceShown(got, c.secret), got)
-			}
+		}
+		// The terminal's live stream: the secret within one write is replaced.
+		var live bytes.Buffer
+		ls := s.NewLiveStream(&live)
+		if _, err := ls.Write([]byte(c.text)); err != nil {
+			t.Fatal(err)
+		}
+		if w := pieceShown(live.String(), c.secret); w != "" {
+			t.Fatalf("%q in one live write shows %q", c.text, w)
 		}
 	}
 }
@@ -78,7 +78,7 @@ func TestAFrameEndNeverSplitsASecret(t *testing.T) {
 	for _, shape := range []string{`{"password":"%s"}`, `{"a":1,"api_key": "%s","b":2}`, `token=%s `, `"secret":"%s",`} {
 		for off := redact.DefaultFrame - 100; off <= redact.DefaultFrame+100; off++ {
 			line := strings.Repeat("x", off) + strings.Replace(shape, "%s", secret, 1) + strings.Repeat(`{"k":"v"},`, 50)
-			out := probeStream(t, s, []string{line}, nil, false)
+			out := probeStream(t, s, []string{line})
 			if w := pieceShown(out, secret); w != "" {
 				t.Fatalf("shape %s at %d (frame %d) shows %q", shape, off, redact.DefaultFrame, w)
 			}

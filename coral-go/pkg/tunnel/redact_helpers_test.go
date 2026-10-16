@@ -27,3 +27,15 @@ func pemKey(label string, lines int, nl string) string {
 	b.WriteString("-----END " + label + "PRIVATE KEY-----")
 	return b.String()
 }
+
+// secretSpan is where in differs from its redacted form want: the secret's bytes in in.
+func secretSpan(in, want string) (start, end int) {
+	for start < len(in) && start < len(want) && in[start] == want[start] {
+		start++
+	}
+	end = len(in)
+	for w := len(want); end > start && w > start && in[end-1] == want[w-1]; w-- {
+		end--
+	}
+	return start, end
+}
