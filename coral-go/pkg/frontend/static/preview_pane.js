@@ -697,8 +697,7 @@ function setMode(tab, mode) {
 
 async function saveTab(tab, btn) {
     _captureEditor();
-    const agentName = agentName();
-    if (!agentName || tab.content === null) return;
+    if (!agentName() || tab.content === null) return;
     const content = tab.content;
     if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
     try {
