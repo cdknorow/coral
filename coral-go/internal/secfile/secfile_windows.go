@@ -184,9 +184,19 @@ func checkDescriptor(sd *windows.SECURITY_DESCRIPTOR, p principals, path string)
 // SYSTEM, nothing inherited. Call it on a new secret file before writing the secret (the 0600
 // passed to os.OpenFile means nothing on Windows).
 func Protect(path string) error {
-	p, err := currentPrincipals()
+	acl, err := privateACL()
 	if err != nil {
 		return err
+	}
+	return windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
+}
+
+// privateACL is the access list Protect sets: full control for this user and SYSTEM.
+func privateACL() (*windows.ACL, error) {
+	p, err := currentPrincipals()
+	if err != nil {
+		return nil, err
 	}
 	entry := func(sid *windows.SID) windows.EXPLICIT_ACCESS {
 		return windows.EXPLICIT_ACCESS{
@@ -200,10 +210,5 @@ func Protect(path string) error {
 			},
 		}
 	}
-	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{entry(p.user), entry(p.system)}, nil)
-	if err != nil {
-		return err
-	}
-	return windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
+	return windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{entry(p.user), entry(p.system)}, nil)
 }
