@@ -106,8 +106,16 @@ type hubRig struct {
 	set      *fakeHubSettings
 	hs       *HubSignin
 	operator bool
+	actMu    sync.Mutex // the guard and the test both record and read actions
 	actions  []string
 	now      time.Time
+}
+
+// recorded is a copy of the actions recorded so far.
+func (g *hubRig) recorded() []string {
+	g.actMu.Lock()
+	defer g.actMu.Unlock()
+	return append([]string(nil), g.actions...)
 }
 
 const lanOrigin = "http://10.0.0.9:8420"
@@ -132,7 +140,9 @@ func newHubRig(t *testing.T) *hubRig {
 		Hub: g.hub, Settings: g.set, OperatorAllowed: func() bool { return g.operator },
 		LoopbackOrigins: func() []string { return []string{"http://localhost:8420"} },
 		OnAction: func(_ context.Context, who, method, path string, _ int) {
+			g.actMu.Lock()
 			g.actions = append(g.actions, who+" "+method+" "+path)
+			g.actMu.Unlock()
 		},
 	})
 	g.hs.now = func() time.Time { return g.now }
@@ -364,8 +374,8 @@ func TestHubSessionDenyTable(t *testing.T) {
 		guard.ServeHTTP(w, g.req(rt[0], rt[1], "", "10.0.0.5", hub))
 		assert.Equal(t, 200, w.Code, "a full Operator otherwise: %s %s", rt[0], rt[1])
 	}
-	assert.Contains(t, g.actions, "Coral Hub: Ann POST /api/sessions/live/a/send", "its writes are in the Operator-actions log")
-	assert.NotContains(t, g.actions, "Coral Hub: Ann GET /api/sessions/live", "plain reads are not")
+	assert.Contains(t, g.recorded(), "Coral Hub: Ann POST /api/sessions/live/a/send", "its writes are in the Operator-actions log")
+	assert.NotContains(t, g.recorded(), "Coral Hub: Ann GET /api/sessions/live", "plain reads are not")
 }
 
 // passwordSession signs a browser in with a password session directly.
@@ -600,7 +610,7 @@ func TestHubLinkFromTheSignedOutPage(t *testing.T) {
 	_, out = g.do(g.hs.LinkStatus, g.req("GET", "/auth/hub/link/status", "", "127.0.0.1", lc))
 	assert.Equal(t, "linked", out["state"])
 	assert.True(t, g.set.enabled, "the person's tick turns it on, once")
-	assert.Contains(t, g.actions, "this computer EVENT Sign in with Coral Hub enabled while linking")
+	assert.Contains(t, g.recorded(), "this computer EVENT Sign in with Coral Hub enabled while linking")
 
 	_, out = g.do(g.hs.LinkStatus, g.req("GET", "/auth/hub/link/status", "", "10.0.0.5", nil))
 	assert.Equal(t, "no_link", out["code"], "only the browser that started it")
@@ -639,7 +649,7 @@ func TestHubSessionSensitiveReadsAreRecordedOnceAMinute(t *testing.T) {
 	}
 	count := func(line string) int {
 		n := 0
-		for _, a := range g.actions {
+		for _, a := range g.recorded() {
 			if a == line {
 				n++
 			}
