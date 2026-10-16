@@ -2,8 +2,7 @@
  * checked for secrets, and one over 2 MiB is refused, so a long transcript can't come in one
  * reply: the view loads the newest HISTORY_PAGE messages (a page of 100 measured at most 193 KB)
  * and loads more as asked, "Load earlier messages" above and, when a search hit opened a page in
- * the middle, "Load later messages" below. A server that doesn't page (no total in its reply)
- * sent the whole transcript, and no button shows. */
+ * the middle, "Load later messages" below. */
 import { loadHistoryMessages } from './api.js';
 import { renderHistoryNodes } from './render.js';
 import { registerActions } from './actions.js';
@@ -15,9 +14,9 @@ let win = null;
 
 function box() { return document.getElementById('history-messages'); }
 
-/** Record what renderHistoryChat just drew: messages lo..hi of total (total unknown: all). */
+/** Record what renderHistoryChat just drew: messages lo..hi of total. */
 export function setHistoryWindow(sessionId, agentType, lo, hi, total) {
-    win = { sessionId, agentType, lo, hi, total: Number.isInteger(total) ? total : hi, busy: false };
+    win = { sessionId, agentType, lo, hi, total, busy: false };
     syncButtons();
 }
 

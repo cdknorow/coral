@@ -4,7 +4,6 @@
 //   - The history view shows the newest 100 with "Load earlier messages"; each click puts the
 //     previous page above, in order, keeping what was being read in place; at the start the button
 //     goes.
-//   - A server that doesn't page (no total) sends the whole transcript: all shown, no button.
 //   - The export's helpers read a board, a live chat and a history in pages, every message once,
 //     in order, no request asking for more than a page.
 'use strict';
@@ -25,12 +24,11 @@ const STUB = `(() => {
     return { messages: all.slice(start, end), total: all.length, start };
   };
   const msgs = n => Array.from({ length: n }, (_, i) => ({ type: i % 2 ? 'assistant' : 'user', content: 'message ' + i, text: 'message ' + i }));
-  window.__fake = { paged: msgs(250), old: msgs(130), chat: msgs(230), board: Array.from({ length: 450 }, (_, i) => ({ id: i + 1, content: 'post ' + i, created_at: '2026-10-16T00:00:00Z', job_title: 'Dev' })) };
+  window.__fake = { paged: msgs(250), chat: msgs(230), board: Array.from({ length: 450 }, (_, i) => ({ id: i + 1, content: 'post ' + i, created_at: '2026-10-16T00:00:00Z', job_title: 'Dev' })) };
   window.fetch = async (input, init) => {
     const u = new URL(typeof input === 'string' ? input : input.url, location.origin);
     const json = v => new Response(JSON.stringify(v), { headers: { 'Content-Type': 'application/json' } });
     if (u.pathname === '/api/sessions/history/qa-paged') { window.__requests.push(u.search); return json({ session_id: 'qa-paged', agent_type: 'claude', ...page(window.__fake.paged, u.searchParams) }); }
-    if (u.pathname === '/api/sessions/history/qa-old') { window.__requests.push('old' + u.search); return json({ session_id: 'qa-old', agent_type: 'claude', messages: window.__fake.old }); }
     if (u.pathname === '/api/sessions/live/qa-live/chat') { window.__requests.push('chat' + u.search); return json(page(window.__fake.chat, u.searchParams)); }
     if (/\\/messages\\/all$/.test(u.pathname) && u.searchParams.get('format') === 'dashboard' && window.__boardStub) {
       window.__requests.push('board' + u.search);
@@ -88,11 +86,6 @@ const STUB = `(() => {
         idx = [...new Set(await shown())];
         check('the last page reaches the start, and the button goes', idx.length === 250 && !(await btn('history-load-earlier')), JSON.stringify(range(idx)));
         check('no request asked for more than a page', (await ev(`window.__requests`)).every(q => /limit=(100|50)\b/.test(q)), JSON.stringify(await ev(`window.__requests`)));
-
-        // ── A server that doesn't page ─────────────────────────────────────
-        await ev(`window.selectHistorySession('qa-old'); true`);
-        await until(`document.querySelectorAll('#history-messages [data-message-index]').length === 130`, 'the old server’s transcript');
-        check('a server that doesn’t page: the whole transcript, no button', (await shown()).length >= 130 && !(await btn('history-load-earlier')) && !(await btn('history-load-later')));
 
         // ── The export's helpers ───────────────────────────────────────────
         const exp = await ev(`(async () => {

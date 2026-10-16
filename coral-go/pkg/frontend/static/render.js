@@ -441,7 +441,6 @@ export function getActiveBoardChat() { return _activeBoardChat; }
 let _boardChatMessages = [];
 let _boardChatTotal = 0;
 let _boardChatOffset = 0;   // older messages not loaded yet
-let _boardChatKeyset = false; // the board's server pages by message id (before_id / after_id)
 // The board the message state above belongs to, and whether its latest page has loaded. The state
 // outlives the panel, so switching between agents of one board doesn't load the page again (#3722).
 let _boardChatBoard = null;
@@ -503,7 +502,6 @@ export function showBoardChatTab(boardName) {
         _boardChatMessages = [];
         _boardChatTotal = 0;
         _boardChatOffset = 0;
-        _boardChatKeyset = false;
     }
     _boardChatSelectMode = false;
     _boardChatSelectedIds.clear();
@@ -533,11 +531,10 @@ function _formatTime(iso) {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// Loads what's new on the board into the panel. Once the latest page is in, a server that pages
-// by id is asked only for the messages after the newest one shown (after_id), so a steady poll
-// costs one small request that returns nothing (#3722). The latest page is loaded again when the
-// total says messages were deleted, or a page or more arrived at once. An older server is asked
-// for its total, and the latest page when that changed.
+// Loads what's new on the board into the panel. Once the latest page is in, the board is asked
+// only for the messages after the newest one shown (after_id), so a steady poll costs one small
+// request that returns nothing (#3722). The latest page is loaded again when the total says
+// messages were deleted, or a page or more arrived at once.
 async function _loadBoardPanelChat(boardName, { full = false } = {}) {
     if (!document.getElementById('board-panel-msgs')) return;
     // Rapid agent/team switching rebuilds the panel while requests are in flight;
@@ -549,7 +546,7 @@ async function _loadBoardPanelChat(boardName, { full = false } = {}) {
     _boardChatAgain = false;
     try {
         const loaded = !full && _boardChatLoaded && _boardChatBoard === boardName;
-        if (loaded && _boardChatKeyset) {
+        if (loaded) {
             const last = _boardChatMessages[_boardChatMessages.length - 1];
             const afterId = last ? last.id : 0;
             const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&after_id=${encodeURIComponent(afterId)}&format=dashboard`);
@@ -560,7 +557,7 @@ async function _loadBoardPanelChat(boardName, { full = false } = {}) {
             const expected = _boardChatTotal + fresh.length;
             // The total must be exactly what the panel counts plus the new ones: a message deleted in
             // the same tick as one arrives (a secret, say) still makes it reload, and goes within a poll.
-            if (data?.paging === 'keyset' && fresh.length < _BOARD_CHAT_PAGE && Number(data.total) === expected) {
+            if (fresh.length < _BOARD_CHAT_PAGE && Number(data.total) === expected) {
                 if (!fresh.length) return;
                 const byId = new Map([..._boardChatMessages, ...fresh].map(m => [m.id, m]));
                 _boardChatMessages = [...byId.values()].sort((a, b) => a.id - b.id);
@@ -569,31 +566,22 @@ async function _loadBoardPanelChat(boardName, { full = false } = {}) {
                 if (el) _renderBoardPanelMessages(el, false);
                 return;
             }
-            // Deleted messages, a page or more at once, or a server that stopped paging by id.
-        } else if (loaded) {
-            const countResp = await boardFetch(boardName, `/messages/all?limit=1&offset=0&format=dashboard`);
-            if (!countResp.ok) return;
-            const countData = await countResp.json();
-            if (stale()) return;
-            const total = countData.total || (Array.isArray(countData) ? countData.length : 0);
-            if (total === _boardChatTotal) return; // nothing new since the panel last rendered
+            // Deleted messages, or a page or more at once.
         }
 
-        // The latest page: offset=0 returns it on every server version
-        // without the OFFSET scan that grows with board size.
+        // The latest page (offset=0: no OFFSET scan).
         const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&offset=0&format=dashboard`);
         if (!resp.ok) return; // a refusal is not an empty board
         const data = await resp.json();
         if (stale()) return;
-        const messages = Array.isArray(data) ? data : (data.messages || []);
-        const total = Array.isArray(data) ? data.length : (Number(data.total) || 0);
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        const total = Number(data.total) || 0;
         const first = !(_boardChatLoaded && _boardChatBoard === boardName);
 
         _boardChatBoard = boardName;
         _boardChatMessages = messages;
         _boardChatTotal = total;
-        _boardChatKeyset = data?.paging === 'keyset';
-        _boardChatOffset = _boardChatKeyset ? Number(data.before_count) || 0 : Math.max(0, total - messages.length);
+        _boardChatOffset = Number(data.before_count) || 0;
         _boardChatLoaded = true;
 
         const el = document.getElementById('board-panel-msgs');
@@ -608,29 +596,25 @@ async function _loadBoardPanelChat(boardName, { full = false } = {}) {
 }
 
 async function _loadEarlierBoardChat() {
-    if (!_activeBoardChat || _boardChatOffset <= 0) return;
+    if (!_activeBoardChat || _boardChatOffset <= 0 || !_boardChatMessages.length) return;
     const msgsEl = document.getElementById('board-panel-msgs');
     if (!msgsEl) return;
     const boardName = _activeBoardChat;
     const gen = _boardChatGen;
     try {
-        const keyset = _boardChatKeyset && _boardChatMessages.length > 0;
-        const newOffset = keyset ? 0 : Math.max(0, _boardChatOffset - _BOARD_CHAT_PAGE);
-        const page = keyset
-            ? `limit=${_BOARD_CHAT_PAGE}&before_id=${encodeURIComponent(_boardChatMessages[0].id)}`
-            : `limit=${_boardChatOffset - newOffset}&offset=${newOffset}`;
-        const resp = await boardFetch(boardName, `/messages/all?${page}&format=dashboard`);
+        const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&before_id=${encodeURIComponent(_boardChatMessages[0].id)}&format=dashboard`);
+        if (!resp.ok) return;
         const data = await resp.json();
         // The panel may have switched boards or reloaded while this was in flight.
         if (gen !== _boardChatGen || _activeBoardChat !== boardName) return;
-        const messages = Array.isArray(data) ? data : (data.messages || []);
+        const messages = Array.isArray(data.messages) ? data.messages : [];
 
         // Save scroll height to preserve position after prepending
         const prevScrollHeight = msgsEl.scrollHeight;
 
         const byId = new Map([...messages, ..._boardChatMessages].map(m => [m.id, m]));
         _boardChatMessages = [...byId.values()].sort((a, b) => a.id - b.id);
-        _boardChatOffset = keyset ? Number(data.before_count) || 0 : newOffset;
+        _boardChatOffset = Number(data.before_count) || 0;
 
         _renderBoardPanelMessages(msgsEl, false);
 

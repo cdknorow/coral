@@ -405,7 +405,7 @@ export async function selectHistorySession(sessionId, locator = null) {
     let messageBaseIndex = 0;
     if (generation !== switchGeneration) return;
     if (data && data.messages) {
-        messageBaseIndex = Math.max(0, (data.total || data.messages.length) - data.messages.length);
+        messageBaseIndex = data.start;
         // Search locators identify the absolute message index. Fetch a page
         // around that index so a hit in an older conversation is never opened
         // at the newest page or an ambiguous text match.

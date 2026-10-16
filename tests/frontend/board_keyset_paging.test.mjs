@@ -1,6 +1,5 @@
 // Board message paging: the message board and the board chat panel page by
-// message id (before_id / after_id) when the server supports it, and keep
-// offset paging for older servers. Run: node board_keyset_paging.test.mjs
+// message id (before_id / after_id). Run: node board_keyset_paging.test.mjs
 import assert from 'node:assert/strict';
 import { installDom, importUi } from './helpers/jsdom_env.mjs';
 
@@ -8,7 +7,6 @@ installDom();
 const settle = () => new Promise(r => setTimeout(r, 0));
 
 // A board of 120 messages with ids 1..120, served like the Go handler.
-let keysetServer = true;
 let board = globalThis.__board = Array.from({ length: 120 }, (_, i) => ({ id: i + 1, content: `m${i + 1}`, job_title: 'Dev', created_at: '2026-10-01T00:00:00Z' }));
 const requests = [];
 const otherBoard = Array.from({ length: 5 }, (_, i) => ({ id: 1000 + i, content: `o${i}`, job_title: 'QA', created_at: '2026-10-01T00:00:00Z' }));
@@ -18,14 +16,14 @@ function serve(url) {
     const board = u.pathname.includes('/other/') ? otherBoard : globalThis.__board;
     const limit = Number(q.get('limit') || 200), offset = Number(q.get('offset') || 0);
     const before = Number(q.get('before_id') || 0);
-    const after = q.has('after_id') && keysetServer;
+    const after = q.has('after_id');
     let msgs;
     if (after) msgs = board.filter(m => m.id > Number(q.get('after_id'))).slice(0, limit);
-    else if (before > 0 && keysetServer) msgs = board.filter(m => m.id < before).slice(-limit);
+    else if (before > 0) msgs = board.filter(m => m.id < before).slice(-limit);
     else if (offset > 0) msgs = board.slice(offset, offset + limit);
     else msgs = board.slice(-limit);
     const body = { messages: msgs, total: board.length, limit, offset };
-    if (keysetServer && offset === 0) {
+    if (offset === 0) {
         body.paging = 'keyset';
         const anchor = msgs.length ? msgs[0].id : after ? Number(q.get('after_id')) + 1 : before;
         body.before_count = board.filter(m => m.id < anchor).length;
@@ -78,25 +76,7 @@ assert.equal(query(requests.at(-1)).get('after_id'), '120', 'the poll asks for w
 assert.equal(renderedIds().at(-1), 121);
 assert.ok(requests.every(r => Number(query(r).get('offset')) === 0), 'no OFFSET scans on a keyset server');
 
-// ── Message board against an older server (no paging field): offsets as before ──
-keysetServer = false;
-requests.length = 0;
-mb.selectBoardProject('legacy');
-for (let i = 0; i < 5; i++) await settle();
-assert.deepEqual(renderedIds(), board.slice(-50).map(m => m.id));
-window.loadEarlierMessages();
-for (let i = 0; i < 3; i++) await settle();
-assert.equal(query(requests.at(-1)).get('offset'), '21', 'older servers page by offset');
-assert.ok(!query(requests.at(-1)).has('before_id'));
-assert.equal(renderedIds().length, 100);
-pollTick();
-for (let i = 0; i < 3; i++) await settle();
-assert.equal(query(requests.at(-1)).get('offset'), '121', 'older servers poll by offset');
-assert.ok(!requests.some(r => query(r).has('after_id')));
-mb.showMessageBoardProjects();
-
 // ── Poll races: overlap, board switch, poll before the initial load ──
-keysetServer = true;
 const unique = ids => new Set(ids).size === ids.length && ids.every((id, i) => i === 0 || ids[i - 1] < id);
 // A poll before the initial page has loaded must not send after_id=0.
 requests.length = 0;
@@ -147,7 +127,6 @@ assert.deepEqual(renderedIds(), otherBoard.map(m => m.id), "board A's poll resul
 mb.showMessageBoardProjects();
 
 // ── Board chat panel ──
-keysetServer = true;
 requests.length = 0;
 // The panel is part of the agent view, and its poll keeps a slow beat while that view is off
 // screen (#3719): the board view above hid it, so show it, as when the panel is in use.
@@ -226,18 +205,6 @@ window._toggleBoardChatSelect(); // re-renders the panel from its message state
 const chatText = document.getElementById('board-panel-msgs').textContent;
 assert.match(chatText, /o4/);
 assert.doesNotMatch(chatText, /\bm1\b|m10\b/, "team's earlier page never lands in another board's chat");
-
-// An older server (no paging field): the panel polls its total and loads the page when it changed.
-keysetServer = false;
-render.showBoardChatTab('legacy-chat');
-for (let i = 0; i < 6; i++) await settle();
-q = await tick();
-assert.deepEqual(q.map(x => x.get('limit')), ['1'], 'an older server: a count, nothing new');
-board.push({ id: board.at(-1).id + 1, content: 'legacy new', job_title: 'QA', created_at: '2026-10-01T00:06:00Z' });
-q = await tick();
-assert.deepEqual(q.map(x => x.get('limit')), ['1', '50'], 'then the page when the total changed');
-assert.ok(q.every(x => !x.has('after_id')));
-assert.match(document.getElementById('board-panel-msgs').textContent, /legacy new/);
 
 console.log('board_keyset_paging: ok');
 process.exit(0);

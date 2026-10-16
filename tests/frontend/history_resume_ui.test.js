@@ -106,7 +106,7 @@ const BASE = require('./test_base').BASE;
                         messages: [
                             { type: 'user', content: 'Reproduce history resume bug' },
                             { type: 'assistant', text: 'Rollout identity resolved.' },
-                        ],
+                        ], total: 2, start: 0,
                     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
                 }
 
@@ -127,7 +127,7 @@ const BASE = require('./test_base').BASE;
                         messages: [
                             { type: 'user', content: 'Audit Antigravity transcript' },
                             { type: 'assistant', text: 'Conversation directory mapped.' },
-                        ],
+                        ], total: 2, start: 0,
                     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
                 }
 
@@ -148,7 +148,7 @@ const BASE = require('./test_base').BASE;
                         messages: [
                             { type: 'user', content: 'Claude unchanged check' },
                             { type: 'assistant', text: 'Claude identity unchanged.' },
-                        ],
+                        ], total: 2, start: 0,
                     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
                 }
 

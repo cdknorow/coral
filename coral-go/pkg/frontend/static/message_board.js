@@ -22,7 +22,6 @@ const PAGE_SIZE = 50;
 let _allMessages = [];
 let _totalMessages = 0;
 let _loadedOffset = 0; // older messages not loaded yet (the offset of the first loaded one)
-let _keyset = false;    // the board's server pages by message id (before_id / after_id)
 let _loadedProject = null; // board whose initial page is loaded; polls wait for it
 let _pollInFlight = false;
 
@@ -59,9 +58,8 @@ async function fetchProjects() {
     return [...local, ...lists.flat()];
 }
 
-// page is {offset} or {before_id} / {after_id}. Servers that page by id say
-// so (paging: "keyset") and report before_count, the messages older than the
-// page; OFFSET paging slows down linearly with board size.
+// page is {before_id} or {after_id} (none: the latest page). A reply reports
+// before_count, the messages older than the page.
 async function fetchMessages(project, limit = PAGE_SIZE, page = {}) {
     const params = new URLSearchParams({ limit: String(limit), format: 'dashboard' });
     for (const [k, v] of Object.entries(page)) params.set(k, String(v));
@@ -70,42 +68,27 @@ async function fetchMessages(project, limit = PAGE_SIZE, page = {}) {
     // A refusal is not an empty board: a 503's {error} body once read as zero messages (#3430).
     if (!resp.ok) { const err = new Error(`messages: HTTP ${resp.status}`); err.resp = resp; throw err; }
     const data = await resp.json();
-    // Support both old format (array) and new format ({messages, total})
-    if (Array.isArray(data)) {
-        return { messages: data, total: data.length, offset: 0, keyset: false, beforeCount: 0 };
-    }
     return {
-        messages: data.messages || [], total: data.total || 0, offset: data.offset || 0,
-        keyset: data.paging === 'keyset', beforeCount: Number(data.before_count) || 0,
+        messages: Array.isArray(data.messages) ? data.messages : [], total: Number(data.total) || 0,
+        beforeCount: Number(data.before_count) || 0,
     };
 }
 
 // The export reads whole boards and transcripts in pages (#3718): through Coral Hub a JSON reply
 // is held whole to be checked for secrets and refused over 2 MiB, so it never asks for all of one
-// at once. A server that doesn't page sends everything in its first reply, and the loops stop.
+// at once.
 const EXPORT_PAGE = 200;
 const EXPORT_CHAT_PAGE = 100;
 
 export async function fetchAllBoardMessages(project) {
     const first = await fetchMessages(project, EXPORT_PAGE);
     let all = first.messages;
-    if (first.keyset) {
-        let before = first.beforeCount;
-        while (before > 0 && all.length) {
-            const r = await fetchMessages(project, EXPORT_PAGE, { before_id: all[0].id });
-            if (!r.messages.length) break;
-            all = mergeMessages(r.messages, all);
-            before = r.beforeCount;
-        }
-    } else {
-        let offset = Math.max(0, first.total - all.length);
-        while (offset > 0) {
-            const next = Math.max(0, offset - EXPORT_PAGE);
-            const r = await fetchMessages(project, offset - next, { offset: next });
-            if (!r.messages.length) break;
-            all = mergeMessages(r.messages, all);
-            offset = next;
-        }
+    let before = first.beforeCount;
+    while (before > 0 && all.length) {
+        const r = await fetchMessages(project, EXPORT_PAGE, { before_id: all[0].id });
+        if (!r.messages.length) break;
+        all = mergeMessages(r.messages, all);
+        before = r.beforeCount;
     }
     return all;
 }
@@ -136,8 +119,7 @@ export async function fetchAllHistory(sessionId) {
         const data = await resp.json();
         const page = Array.isArray(data.messages) ? data.messages : [];
         messages.unshift(...page);
-        // No total: a server that doesn't page sent the whole transcript.
-        if (!page.length || !Number.isInteger(data.total) || !data.start) break;
+        if (!page.length || !data.start) break;
     }
     return { messages };
 }
@@ -310,14 +292,12 @@ async function loadBoardMessages(project) {
     }
     _loadedProject = null;
     try {
-        // offset=0 returns the latest page on every server version.
         const result = await fetchMessages(project, PAGE_SIZE);
         if (currentProject !== project) return;
         _loadedProject = project;
-        _keyset = result.keyset;
         _totalMessages = result.total;
         _allMessages = result.messages;
-        _loadedOffset = _keyset ? result.beforeCount : Math.max(0, _totalMessages - _allMessages.length);
+        _loadedOffset = result.beforeCount;
         renderMessages(_allMessages);
     } catch (e) {
         // Refused as busy (#3430): say it is retrying, and load again once the pause is over
@@ -344,21 +324,12 @@ let _boardBusyRetry = null;
 
 async function loadEarlierMessages() {
     const project = currentProject;
-    if (!project || _loadedProject !== project || _loadedOffset <= 0) return;
+    if (!project || _loadedProject !== project || _loadedOffset <= 0 || !_allMessages.length) return;
     try {
-        if (_keyset && _allMessages.length) {
-            const result = await fetchMessages(project, PAGE_SIZE, { before_id: _allMessages[0].id });
-            if (currentProject !== project) return;
-            _allMessages = mergeMessages(result.messages, _allMessages);
-            _loadedOffset = result.beforeCount;
-        } else {
-            const newOffset = Math.max(0, _loadedOffset - PAGE_SIZE);
-            const fetchCount = _loadedOffset - newOffset;
-            const result = await fetchMessages(project, fetchCount, { offset: newOffset });
-            if (currentProject !== project) return;
-            _allMessages = mergeMessages(result.messages, _allMessages);
-            _loadedOffset = newOffset;
-        }
+        const result = await fetchMessages(project, PAGE_SIZE, { before_id: _allMessages[0].id });
+        if (currentProject !== project) return;
+        _allMessages = mergeMessages(result.messages, _allMessages);
+        _loadedOffset = result.beforeCount;
         renderMessages(_allMessages);
     } catch (e) {
         console.error('Failed to load earlier messages:', e);
@@ -693,14 +664,12 @@ async function _pollNewMessages() {
     if (!project || isPaused || _loadedProject !== project || _pollInFlight) return;
     _pollInFlight = true;
     try {
-        // Fetch a small batch from the end — if total grew, we have new messages
+        // What follows the newest message shown.
         const last = _allMessages[_allMessages.length - 1];
-        const result = _keyset
-            ? await fetchMessages(project, PAGE_SIZE, { after_id: last ? last.id : 0 })
-            : await fetchMessages(project, PAGE_SIZE, { offset: _loadedOffset + _allMessages.length });
+        const result = await fetchMessages(project, PAGE_SIZE, { after_id: last ? last.id : 0 });
         if (currentProject !== project || _loadedProject !== project) return;
         // With after_id every returned row is new, even if deletes kept the total flat.
-        if (result.messages.length > 0 && (_keyset || result.total > _totalMessages)) {
+        if (result.messages.length > 0) {
             _allMessages = mergeMessages(_allMessages, result.messages);
             _totalMessages = result.total;
             renderMessages(_allMessages);

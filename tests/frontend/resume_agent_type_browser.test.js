@@ -47,7 +47,7 @@ const BASE = require('./test_base').BASE;
                 const m = u.pathname.match(/^\\/api\\/sessions\\/history\\/([^/]+)(\\/resume-info)?$/);
                 if (m && m[1] in historyType) {
                     if (m[2] || historyType[m[1]] === null) return new Response('{"error":"boom"}', { status: 500 });
-                    return new Response(JSON.stringify({ session_id: m[1], agent_type: historyType[m[1]], messages: [{ type: 'user', content: 'hello' }, { type: 'assistant', content: 'hi' }] }));
+                    return new Response(JSON.stringify({ session_id: m[1], agent_type: historyType[m[1]], messages: [{ type: 'user', content: 'hello' }, { type: 'assistant', content: 'hi' }], total: 2, start: 0 }));
                 }
                 if (u.pathname === '/api/sessions/launch') { launches.push(JSON.parse(opts.body)); return new Response(JSON.stringify({ error: 'recorded by test' })); }
                 return orig(url, opts);
