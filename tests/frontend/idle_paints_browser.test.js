@@ -21,14 +21,14 @@ const BASE = require('./test_base').BASE;
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Page.navigate({ url: BASE }); await Page.loadEventFired();
         await ev(`new Promise(r => { const w = () => typeof window.selectLiveSession === 'function' ? r() : setTimeout(w, 50); w(); })`);
-        await sleep(2000);
+        await sleep(2000); // sleep-ok: the baseline trace needs startup work to be over; nothing marks that moment
         const idle = await paints(3000);
         await ev(`(() => { const c = document.createElement('div'); c.id = 'probe-dots'; c.style.cssText = 'position:fixed;left:8px;top:300px;display:flex;gap:8px;z-index:9999;align-items:center';
             const add = (tag, cls, text) => { const d = document.createElement(tag); d.className = cls; if (text) d.textContent = text; c.appendChild(d); };
             for (const s of ['working', 'waiting', 'stuck']) { add('span', 'session-dot ' + s); add('span', 'status-dot ' + s); }
             add('span', 'status-dot-working'); add('span', 'team-distill-dot'); add('span', 'badge waiting-badge', 'waiting');
             document.body.appendChild(c); return true; })()`);
-        await sleep(500);
+        for (let i = 0; i < 200 && !(await ev(`[...document.querySelectorAll('#probe-dots > *')].every(e => e.getAnimations().length > 0)`)); i++) await sleep(20);   // every dot is animating
         const rings = await ev(`[...document.querySelectorAll('#probe-dots > *')].map(e => ({ cls: e.className, ring: getComputedStyle(e, '::after').animationName, pos: getComputedStyle(e).position, shadow: getComputedStyle(e).boxShadow }))`);
         const pulsing = await paints(3000);
         await ev(`document.getElementById('probe-dots').remove(); true`);
