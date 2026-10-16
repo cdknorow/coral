@@ -4,9 +4,7 @@
 //
 // /chat is answered by an in-page mock that follows the server's semantics:
 // offset counts back from the end, before=<absolute index> ends the page there,
-// and the response carries start (the page's first absolute index). The
-// "old server" mode drops start and ignores before, like a remote that has not
-// been updated, which the client must page with offset.
+// and the response carries start (the page's first absolute index).
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
@@ -66,12 +64,12 @@ const MAX_FIRST_PAGE = 200;
             };
 
             const mock = window.__chatMock = {
-                sessions: {},   // name -> { prefix, msgs, delay, olderDelay, failOlder, oldServer }
+                sessions: {},   // name -> { prefix, msgs, delay, olderDelay, failOlder }
                 requests: [],
                 add(name, prefix, n, opts = {}) {
                     const msgs = [];
                     for (let i = 0; i < n; i++) msgs.push(make(prefix, i, opts.short));
-                    this.sessions[name] = { prefix, msgs, delay: 0, olderDelay: 0, failOlder: 0, oldServer: false, refuseBefore: 0, refuseBody: { error: 'path not allowed' }, failStatus: 500, failBody: { error: 'boom' }, server: 'local', ...opts };
+                    this.sessions[name] = { prefix, msgs, delay: 0, olderDelay: 0, failOlder: 0, failStatus: 500, failBody: { error: 'boom' }, server: 'local', ...opts };
                     state.liveSessions = (state.liveSessions || []).filter(s => s.name !== name).concat([{
                         session_id: name + '-id', name, display_name: name, agent_type: 'claude', working_directory: '/tmp/' + name,
                         server: this.sessions[name].server,
@@ -99,11 +97,6 @@ const MAX_FIRST_PAGE = 200;
                 return new Promise((resolve, reject) => {
                     const respond = () => {
                         req.settled = true;
-                        // A route allowlist in front of the machine (the Cloud Hub tunnel) refusing before=.
-                        if (s.refuseBefore && p.has('before')) {
-                            resolve(new Response(JSON.stringify(s.refuseBody), { status: s.refuseBefore, headers: { 'content-type': 'application/json' } }));
-                            return;
-                        }
                         if (older && s.failOlder > 0) {
                             s.failOlder--;
                             resolve(new Response(JSON.stringify(s.failBody), { status: s.failStatus, headers: { 'content-type': 'application/json' } }));
@@ -115,12 +108,12 @@ const MAX_FIRST_PAGE = 200;
                             body = { messages: all.slice(Math.min(after, all.length)), total: all.length };
                         } else {
                             const limit = Number(p.get('limit')) > 0 ? Number(p.get('limit')) : 100;
-                            const end = (!s.oldServer && p.has('before'))
+                            const end = p.has('before')
                                 ? Math.min(Math.max(Number(p.get('before')), 0), all.length)
                                 : Math.max(all.length - Number(p.get('offset') || 0), 0);
                             const start = Math.max(end - limit, 0);
                             body = { messages: all.slice(start, end), total: all.length, has_more: start > 0 };
-                            if (!s.oldServer) body.start = start;
+                            body.start = start;
                         }
                         resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
                     };
@@ -240,37 +233,6 @@ const MAX_FIRST_PAGE = 200;
         await sleep(50);
         expectRange(await rendered(), 'B', Math.max(1000 - pageSize - olderSize, 0), 1005, 'after append + older page');
         console.log('   ✓ no duplicates, no gap');
-
-        console.log('5. An old remote (no start, before ignored) is paged with offset');
-        await ev(`window.__chatMock.add('qa-c', 'C', 1000, { oldServer: true })`);
-        await open('qa-c');
-        await stopPoll();
-        await waitFor(`window.__rendered().length > 0`, 'first page');
-        await scrollTop();
-        await waitFor(`window.__chatMock.requests.some(r => r.older && r.settled)`, 'older page');
-        await idle();
-        await sleep(50);
-        reqs = await requests();
-        const olderOld = reqs.find(r => r.older);
-        assert.equal(olderOld.offset, String(pageSize), 'without start the client pages with offset');
-        expectRange(await rendered(), 'C', Math.max(1000 - pageSize - olderSize, 0), 1000, 'old-server older page');
-        console.log('   ✓ offset fallback renders the right page');
-
-        // Appends counted into offset: an old remote's offset page must not overlap.
-        await ev(`window.__chatMock.add('qa-c2', 'Q', 1000, { oldServer: true })`);
-        await open('qa-c2');
-        await stopPoll();
-        await waitFor(`window.__rendered().length > 0`, 'first page');
-        await ev(`window.__chatMock.append('qa-c2', 5)`);
-        await ev('T.liveChat.refreshLiveHistory()');
-        await waitFor(`window.__rendered().slice(-1)[0] === 'Q1004'`, 'poll to append Q1000..Q1004');
-        await scrollTop();
-        await waitFor(`window.__chatMock.requests.some(r => r.older && r.settled)`, 'older page');
-        await idle();
-        await sleep(50);
-        assert.equal((await requests()).find(r => r.older).offset, String(pageSize + 5), 'offset counts the appended messages');
-        expectRange(await rendered(), 'Q', Math.max(1000 - pageSize - olderSize, 0), 1005, 'old server after append + older page');
-        console.log('   ✓ old remote: appended messages counted into offset, no duplicates');
 
         console.log('6. Rapid switching with slow responses shows only the last agent');
         await ev(`(() => {
@@ -402,70 +364,7 @@ const MAX_FIRST_PAGE = 200;
         console.log(`   switch→paint median ${median.toFixed(1)}ms (min ${times[0].toFixed(1)}, max ${times[5].toFixed(1)}), page ${pageSize}`);
         assert.ok(median < 500, `switch→paint median ${median.toFixed(1)}ms under 500ms`);
 
-        console.log('12. A server that refuses before= is paged by offset; a transient error does not switch it');
-        // The refusals as they arrive: a Cloud Hub on an older allowlist answers 404 not_found; a
-        // hub whose connector is older answers 403 path_not_allowed; 400 is a machine rejecting the
-        // value; 502 with code path_not_allowed is accepted as well.
-        for (const [status, body] of [
-            [404, { error: 'not_found' }],
-            [403, { error: 'path not allowed', code: 'path_not_allowed' }],
-            [400, { error: 'before must be a non-negative integer' }],
-            [502, { error: 'path not allowed', code: 'path_not_allowed' }],
-        ]) {
-            const name = 'qa-refuse-' + status;
-            const opts = { refuseBefore: status, refuseBody: body, server: 'qa-srv-refuse-' + status };
-            await ev(`window.__chatMock.add('${name}', 'R', 1000, ${JSON.stringify(opts)})`);
-            await open(name);
-            await stopPoll();
-            await waitFor(`window.__rendered().length > 0`, 'first page');
-            await ev(`window.__chatMock.append('${name}', 3)`);
-            await ev('T.liveChat.refreshLiveHistory()');
-            await waitFor(`window.__rendered().slice(-1)[0] === 'R1002'`, 'poll to append');
-            await scrollTop();
-            await waitFor(`window.__chatMock.requests.filter(r => r.older && r.settled).length >= 2`, 'refused page and its offset retry');
-            await idle();
-            await sleep(50);
-            reqs = (await requests()).filter(r => r.older);
-            assert.equal(reqs.length, 2, `${status}: one refused request and one retry (got ${reqs.length})`);
-            assert.ok(reqs[0].before !== null && reqs[1].before === null, `${status}: the retry drops before=`);
-            assert.equal(reqs[1].offset, String(pageSize + 3), `${status}: the retry pages by offset, counting appended messages`);
-            expectRange(await rendered(), 'R', Math.max(1000 - pageSize - olderSize, 0), 1003, `${status}: after the refused page`);
-            // The next page goes straight to offset: one refusal per server, not per page.
-            await ev(`window.__chatMock.requests.length = 0`);
-            await scrollTop();
-            await waitFor(`window.__chatMock.requests.some(r => r.older && r.settled)`, 'next older page');
-            await idle();
-            await sleep(50);
-            reqs = (await requests()).filter(r => r.older);
-            assert.equal(reqs.length, 1, `${status}: next page is a single request`);
-            assert.equal(reqs[0].before, null, `${status}: next page sends no before=`);
-            expectRange(await rendered(), 'R', Math.max(1000 - pageSize - 2 * olderSize, 0), 1003, `${status}: second older page`);
-            console.log(`   ✓ ${status}: refused once, offset fallback, no duplicates`);
-        }
-        // The offset retry is made once: when it fails too, paging stops until the reader asks.
-        await ev(`window.__chatMock.add('qa-refuse-twice', 'W', 1000, { refuseBefore: 404, refuseBody: { error: 'not_found' }, failOlder: 1, failStatus: 404, failBody: { error: 'not_found' }, server: 'qa-srv-refuse-twice' })`);
-        await open('qa-refuse-twice');
-        await stopPoll();
-        await waitFor(`window.__rendered().length > 0`, 'first page');
-        await scrollTop();
-        await waitFor(`window.__chatMock.requests.filter(r => r.older && r.settled).length >= 2`, 'refused page and its failed retry');
-        for (let i = 0; i < 10; i++) { await scrollTop(); await sleep(80); }
-        await idle();
-        reqs = (await requests()).filter(r => r.older);
-        assert.equal(reqs.length, 2, `a refused retry ends paging: one refused + one retry, nothing more (got ${JSON.stringify(reqs.map(r => ({ before: r.before, offset: r.offset })))})`);
-        assert.ok(reqs[0].before !== null && reqs[1].before === null, 'the retry dropped before=');
-        expectRange(await rendered(), 'W', 1000 - pageSize, 1000, 'nothing prepended after the failed retry');
-        assert.ok(await ev(`(() => { const s = document.querySelector('#live-history-messages .chat-history-sentinel'); return !!(s && (s.matches('button') ? s : s.querySelector('button'))); })()`), 'the retry button stays');
-        await ev(`(() => { const s = document.querySelector('#live-history-messages .chat-history-sentinel'); (s.matches('button') ? s : s.querySelector('button')).click(); })()`);
-        await waitFor(`window.__rendered()[0] !== 'W${1000 - pageSize}'`, 'older page after a click');
-        await idle();
-        reqs = (await requests()).filter(r => r.older);
-        assert.equal(reqs.length, 3, 'a click makes one request');
-        assert.equal(reqs[2].before, null, 'the click pages by offset: the server stays refused');
-        expectRange(await rendered(), 'W', Math.max(1000 - pageSize - olderSize, 0), 1000, 'after the click');
-        console.log('   ✓ refused retry stops paging; the button pages by offset');
-
-        // Transient errors are not refusals: no offset retry, and keyset paging continues there.
+        console.log('12. An older page that fails is not retried by itself; a click loads it, still by before=');
         for (const [status, body] of [[500, { error: 'boom' }], [502, { error: 'remote unreachable' }], [429, { error: 'rate limited' }], [401, { error: 'unauthorized' }]]) {
             const name = 'qa-transient-' + status;
             const opts = { failOlder: 1, failStatus: status, failBody: body, server: 'qa-srv-transient-' + status };
@@ -478,14 +377,14 @@ const MAX_FIRST_PAGE = 200;
             await idle();
             await sleep(100);
             reqs = (await requests()).filter(r => r.older);
-            assert.equal(reqs.length, 1, `${status}: a transient error is not retried without before= (requests: ${JSON.stringify(reqs.map(r => ({ before: r.before, offset: r.offset })))})`);
+            assert.equal(reqs.length, 1, `${status}: a failed older page is not retried by itself (requests: ${JSON.stringify(reqs.map(r => ({ before: r.before, offset: r.offset })))})`);
             await ev(`(() => { const s = document.querySelector('#live-history-messages .chat-history-sentinel'); const b = s && (s.matches('button') ? s : s.querySelector('button')); b && b.click(); })()`);
             await waitFor(`window.__rendered()[0] !== 'X${1000 - pageSize}'`, `${status}: older page after the error`);
             await idle();
             reqs = (await requests()).filter(r => r.older);
             assert.notEqual(reqs[reqs.length - 1].before, null, `${status}: the server is still paged with before=`);
             expectRange(await rendered(), 'X', Math.max(1000 - pageSize - olderSize, 0), 1000, `${status}: after the error and a retry`);
-            console.log(`   ✓ ${status} (${body.error}): no fallback, keyset paging continues`);
+            console.log(`   ✓ ${status} (${body.error}): retried on a click, by before=`);
         }
 
         console.log('\nAll live chat autoload checks passed');

@@ -40,10 +40,12 @@ const DEFAULT_VIEW_HTML = `<!DOCTYPE html>
 export async function loadCustomViews() {
     try {
         const resp = await fetch('/api/views');
+        // A refusal is not an empty list: the views shown stay until a load succeeds.
+        if (!resp.ok) throw new Error(`views: HTTP ${resp.status}`);
         const data = await resp.json();
-        _views = Array.isArray(data) ? data : (data.views || []);
-    } catch {
-        _views = [];
+        _views = Array.isArray(data) ? data : [];
+    } catch (e) {
+        console.warn('[coral] custom views could not be loaded', e);
     }
     _renderViewTabs();
 }

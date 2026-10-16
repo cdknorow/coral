@@ -33,7 +33,7 @@ let _local = null; // this dashboard's own machine_health, as merged from the fe
 export function applyMachineHealth(msg) {
     if (!msg) return;
     if (!('machine_health' in msg)) {
-        // A full update without it: an older Coral, or none sampled yet. Unknown, not the last value.
+        // A full update without it: none sampled yet. Unknown, not the last value.
         if (msg.type === 'coral_update' && _local) { _local = null; document.dispatchEvent(new CustomEvent('coral:machine-health')); }
         return;
     }

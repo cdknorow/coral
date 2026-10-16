@@ -1,13 +1,11 @@
-// The terminal socket answers input (#3276). A server that says terminal_hello
-// {input_acks:true} acknowledges each terminal_input that carries an id, so a composer
-// send is settled on the answer instead of on a quiet 1.2 s window:
+// The terminal socket answers input (#3276): the server acknowledges each terminal_input that
+// carries an id, so a composer send is settled on the answer:
 //   - accepted: "Sent" and the saved draft cleared as soon as both frames (text, Enter)
 //     are acknowledged, well before the old window;
 //   - refused by a gone terminal: terminal_gone names the input's id; the draft comes back;
-//   - refused by a read-only Coral Hub (hub_read_only, the input dropped): the draft comes back;
-//   - an older server (no terminal_hello): no ids are sent and the old window applies.
+//   - refused by a read-only Coral Hub (hub_read_only, the input dropped): the draft comes back.
 // Real isolated server and real terminal agents. The page's terminal socket is wrapped
-// only to observe frames, or to act as an older server / a read-only hub.
+// only to observe frames, or to act as a read-only hub.
 //
 // Expects CORAL_TEST_URL + CDP_PORT from tests/frontend/run.sh. Exit 0 / 1.
 
@@ -29,9 +27,9 @@ async function httpJson(method, path, body) {
 }
 
 // window.__in: text frames received (parsed); window.__out: input frames sent (parsed).
-// __hideHello: drop terminal_hello (an older server). __readOnlyHub: drop terminal_input and
+// __readOnlyHub: drop terminal_input and
 // answer hub_read_only, as a read-only Coral Hub does.
-const WRAP = `(function(){ const Real = window.WebSocket; window.__in = []; window.__out = []; window.__hideHello = false; window.__readOnlyHub = false;
+const WRAP = `(function(){ const Real = window.WebSocket; window.__in = []; window.__out = []; window.__readOnlyHub = false;
   function W(u, p) { const s = p === undefined ? new Real(u) : new Real(u, p);
     if (!/\\/ws\\/terminal/.test(String(u))) return s;
     const send = s.send.bind(s);
@@ -43,7 +41,7 @@ const WRAP = `(function(){ const Real = window.WebSocket; window.__in = []; wind
     Object.defineProperty(s, 'onmessage', { configurable: true, get: () => handler, set: f => { handler = f; } });
     s.addEventListener('message', e => {
       if (typeof e.data === 'string') { let m = null; try { m = JSON.parse(e.data); } catch {}
-        if (m) { window.__in.push({ ...m, at: performance.now() }); if (m.type === 'terminal_hello' && window.__hideHello) return; } }
+        if (m) window.__in.push({ ...m, at: performance.now() }); }
       if (handler) handler.call(s, e); });
     return s; }
   W.prototype = Real.prototype; W.CONNECTING = 0; W.OPEN = 1; W.CLOSING = 2; W.CLOSED = 3; window.WebSocket = W; })();`;
@@ -68,12 +66,11 @@ async function run() {
         launched.push(r.data);
         return r.data;
     };
-    const attach = async (s, { hello = true } = {}) => {
+    const attach = async (s) => {
         await until(`(window._coralGetLiveSessions ? window._coralGetLiveSessions() : []).some(x => x.session_id === ${JSON.stringify(s.session_id)})`, `${s.session_name} listed`);
         await ev(`window.__in = []; window.selectLiveSession(${JSON.stringify(s.session_name)}, 'terminal', ${JSON.stringify(s.session_id)}, ''); true`);
         await until(`(async () => ${XT}.sendTerminalInputWs(''))()`, `${s.session_name}: socket open`);
-        if (hello) await until(`(async () => ${XT}.terminalInputAcks())()`, `${s.session_name}: the server answers input`);
-        else await until(`window.__in.some(m => m.type === 'terminal_hello')`, 'the (hidden) hello');
+        await until(`(async () => ${XT}.terminalInputAcks())()`, `${s.session_name}: the socket takes input`);
     };
     const type = text => ev(`(() => { const i = document.getElementById('command-input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     const savedDraft = () => ev(`(async () => { const m = ${ST}; return m.state.sessionInputText[m.sessionKey(m.state.currentSession)] || null; })()`);
@@ -117,17 +114,6 @@ async function run() {
         await ev(`window.__readOnlyHub = false; true`);
         // The read-only lock clears once the hub is out of the way (reload the agent).
         await ev(`(async () => { const m = ${ST}; if (m.state.currentSession) m.state.currentSession.hubReadOnly = null; return true; })()`);
-
-        // ── An older server (no terminal_hello): no ids, the window decides ──
-        await ev(`window.__hideHello = true; true`);
-        await attach(gone, { hello: false });
-        check('older server: the client does not use acks', !(await ev(`(async () => ${XT}.terminalInputAcks())()`)));
-        await ev(`window.__out = []; true`);
-        t0 = await send('echo old-server');
-        await until(`!!(window.__sentAt || {})['echo old-server']`, 'Sent (window)', 4000);
-        const oldAt = await sentToastAt('echo old-server');
-        check('older server: frames carry no id, and "Sent" comes after the 1.2 s window', (await ev(`window.__out.every(m => m.id === undefined)`)) && oldAt !== null && oldAt - t0 >= 1150, oldAt === null ? 'no Sent' : `${Math.round(oldAt - t0)} ms`);
-        await ev(`window.__hideHello = false; true`);
 
         // ── Refused by a gone terminal: terminal_gone names the input's id ──
         await attach(gone);

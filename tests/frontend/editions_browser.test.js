@@ -41,7 +41,6 @@ const VERIFY = 'https://app.coralhub.dev/enroll?code=ABCD-EFGH';
 const STUB = `
   window.__cloudForbidden = !!window.__cloudStartForbidden; window.__cloudCalls = [];
   window.__cloudForbiddenBody = window.__cloudStartForbiddenBody || { error: 'Cloud connector settings are only available from the Coral dashboard on this computer' };
-  window.__cloudCancel = 'ok'; // 'ok' (a server with #3285) or '404' (an older one)
   window.__cloud = Object.assign({ state: 'idle', hub_url: 'https://app.coralhub.dev', configured: true, max_mode: 'view', allow_hub_auto_accept: true, offer_at_launch: true }, window.__cloudStart || {});
   const realFetch = window.fetch.bind(window);
   const json = (b, status = 200) => Promise.resolve(new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } }));
@@ -51,7 +50,7 @@ const STUB = `
     const m = (opts.method || 'GET').toUpperCase();
     if (window.__cloudForbidden) return json(window.__cloudForbiddenBody, 403);
     if (m !== 'GET') window.__cloudCalls.push(m + ' ' + path + (opts.body && opts.body !== '{}' ? ' ' + opts.body : ''));
-    if (path === '/api/cloud/connect/cancel') { if (window.__cloudCancel === '404') return json({ error: 'not found' }, 404); Object.assign(window.__cloud, { state: 'idle', user_code: '', verification_url: '' }); return json({ ok: true }); }
+    if (path === '/api/cloud/connect/cancel') { Object.assign(window.__cloud, { state: 'idle', user_code: '', verification_url: '' }); return json({ ok: true }); }
     if (path === '/api/cloud/disconnect') Object.assign(window.__cloud, { state: 'idle', user_code: '', verification_url: '' });
     if (path === '/api/cloud/connect') Object.assign(window.__cloud, { state: 'enrolling', user_code: 'ABCD-EFGH', verification_url: '${VERIFY}' });
     if (path === '/api/cloud/max-mode') window.__cloud.max_mode = JSON.parse(opts.body).mode;
@@ -161,14 +160,7 @@ async function run() {
             await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'Connect again');
             s = await screen();
             check(`${label}: Cancel calls /api/cloud/connect/cancel and offers Connect again`, (await ev('window.__cloudCalls')).includes('POST /api/cloud/connect/cancel') && s.connect && !s.code && !s.cancel, JSON.stringify({ s, calls: await ev('window.__cloudCalls') }));
-            // A server from before #3285 (no cancel endpoint): Cancel falls back to Disconnect.
-            await ev(`window.__cloudCancel = '404'; true`);
-            await click('#editions-modal [data-cloud="connect"]');
-            await until(`!!document.querySelector('#editions-modal [data-cloud="cancel"]:not([hidden])')`, 'Cancel again');
-            await click('#editions-modal [data-cloud="cancel"]');
-            await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'Connect after the fallback');
-            check(`${label}: on an older server Cancel falls back to Disconnect`, (await ev('window.__cloudCalls')).includes('POST /api/cloud/disconnect'), JSON.stringify(await ev('window.__cloudCalls')));
-            await ev(`window.__cloudCancel = 'ok'; window.__cloudCalls = []; true`);
+            await ev(`window.__cloudCalls = []; true`);
             await click('#editions-modal [data-cloud="connect"]');
             await until(`!!document.querySelector('#editions-modal [data-cloud="code"]:not([hidden])')`, 'the code again');
             // The hub approves: the panel's own status poll picks it up.
@@ -254,8 +246,7 @@ async function run() {
             await put({ welcome_choice: 'own-hub', welcome_pending: 'False' });
 
             // ── The code expired before it was approved (#3285): say why it may have, link to access ──
-            for (const [how, st] of [['last_error_code', { state: 'idle', last_error_code: 'code_expired', last_error: "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html" }],
-                                     ['an older server', { state: 'idle', last_error: 'the code expired; start again' }]]) {
+            for (const [how, st] of [['last_error_code', { state: 'idle', last_error_code: 'code_expired', last_error: "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at https://coralhub.dev/hub.html" }]]) {
                 await put({ welcome_pending: 'True', welcome_choice: '' });
                 await load(st);
                 await until(`!!document.querySelector('#editions-modal [data-cloud="access-link"]')`, 'the access link');
@@ -280,7 +271,7 @@ async function run() {
             await ev(`(async () => (await import((window.__coralStatic||'/static/')+'editions.js')).showHubSetup())()`);
             await until(`/computer running Coral/.test((document.querySelector('#editions-modal [data-cloud="status"]') || {}).textContent || '')`, 'the elsewhere message');
             s = await screen();
-            check(`${label}: from another computer (older server): connect on the computer running Coral, with the command to copy`, !!s && s.status === 'Connecting has to happen on the computer running Coral. On that computer, run: coral cloud connect' && !s.connect && !s.code && s.command === 'coral cloud connect', JSON.stringify(s));
+            check(`${label}: from another computer (a 403 without the server's code): connect on the computer running Coral, with the command to copy`, !!s && s.status === 'Connecting has to happen on the computer running Coral. On that computer, run: coral cloud connect' && !s.connect && !s.code && s.command === 'coral cloud connect', JSON.stringify(s));
             // Headless Chrome has no clipboard: record what would be copied.
             await ev(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async t => { window.__copied = t; } } }); true`);
             await click('#editions-modal [data-cloud="copy"]');

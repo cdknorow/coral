@@ -41,7 +41,7 @@ const { pathToFileURL } = require('url');
     assert.match(connectInteract, /run commands/);
     assert.match(connectInteract, /board settings, including turning on cross-team messaging/);
     const cl = await import(pathToFileURL(path.join(dir, 'cloud.js')).href);
-    for (const ok of ['/api/license/status', '/api/system/privacy', '/api/agent/ui', '/api/agent/ui/x']) assert.ok(cl.NO_HUB_ENDPOINT.test(ok), ok);
+    for (const ok of ['/api/system/privacy', '/api/agent/ui', '/api/agent/ui/x']) assert.ok(cl.NO_HUB_ENDPOINT.test(ok), ok);
     for (const no of ['/api/themes/variables', '/api/themes', '/api/themes/Dark', '/api/settings', '/api/tags', '/api/views', '/api/servers', '/api/remote/x/api/license/status', '/api/sessions/live']) assert.ok(!cl.NO_HUB_ENDPOINT.test(no), no);
     // C2 (#3068): refusals start with 'Blocked:', name what each side allows and who can fix it.
     assert.match(m.refusalMessage(403, { error: 'local_mode', mode: 'view' }, 'Work Mac'), /^Blocked: Work Mac .*This machine allows: View.*Change it in Coral on that machine/);
@@ -61,7 +61,7 @@ const { pathToFileURL } = require('url');
         globalThis.location = { protocol: 'https:', host: 'hub.example', origin: 'https://hub.example', href: 'https://hub.example/' };
         globalThis.fetch = async u => { sent.push(String(u)); return new Response('{}', { status: 200 }); };
         cl.installCloudFetch();
-        for (const [u, init] of [['/api/cloud-unavailable', undefined], ['/api/cloud-unavailable?x=1', { method: 'POST', body: '{}' }], ['/api/license/status', undefined]]) {
+        for (const [u, init] of [['/api/cloud-unavailable', undefined], ['/api/cloud-unavailable?x=1', { method: 'POST', body: '{}' }]]) {
             const r = await fetch(u, init);
             assert.strictEqual(r.status, 404, u);
         }

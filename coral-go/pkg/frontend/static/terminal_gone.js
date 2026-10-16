@@ -135,13 +135,10 @@ document.addEventListener('click', e => {
     window.restartDirect(chip.dataset.name, chip.dataset.agentType, chip.dataset.sessionId);
 }, true);
 
-// A composer send over the terminal socket (#3218, #3276). A server that answers input
-// (terminal_hello) acknowledges each frame carrying an id: the send is accepted once all its
-// frames are acknowledged, and refused when one of them is (terminal_gone, terminal_input_failed,
-// the hub's hub_read_only). An older server sends no answer: there the send counts as accepted
-// once the socket has said nothing against it for SOCKET_ACCEPT_MS (its Enter goes at +300 ms).
-export const SOCKET_ACCEPT_MS = 1200;
-// With answers, a send that gets none in this long is not taken as delivered.
+// A composer send over the terminal socket (#3218, #3276). The server acknowledges each frame
+// carrying an id: the send is accepted once all its frames are acknowledged, and refused when one
+// of them is (terminal_gone, terminal_input_failed, the hub's hub_read_only).
+// A send that gets no answer in this long is not taken as delivered.
 export const SOCKET_ACK_TIMEOUT_MS = 20000;
 export const NO_ANSWER_TEXT = "The agent's terminal did not confirm the message. It may not have been sent: check the terminal before sending it again.";
 const _socketSends = new Set();
@@ -150,14 +147,12 @@ let _nextInputId = 1;
 /** A fresh id for a terminal_input frame. */
 export function nextInputId() { return _nextInputId++; }
 
-/** Resolves true when a socket send for `session` is accepted, false when it is refused.
- *  ids: the frame ids the server will answer (an answering server); none: the quiet window. */
-export function awaitSocketAccept(session, { ids = null } = {}) {
+/** Resolves true when a socket send for `session` is accepted (the server answered every frame
+ *  in ids), false when it is refused or not answered in SOCKET_ACK_TIMEOUT_MS. */
+export function awaitSocketAccept(session, ids) {
     return new Promise(resolve => {
-        const p = { sid: session && session.session_id, resolve, ids: ids ? new Set(ids) : null };
-        p.timer = ids
-            ? setTimeout(() => { if (_settle(p, false)) showComposerError(NO_ANSWER_TEXT); }, SOCKET_ACK_TIMEOUT_MS)
-            : setTimeout(() => _settle(p, true), SOCKET_ACCEPT_MS);
+        const p = { sid: session && session.session_id, resolve, ids: new Set(ids) };
+        p.timer = setTimeout(() => { if (_settle(p, false)) showComposerError(NO_ANSWER_TEXT); }, SOCKET_ACK_TIMEOUT_MS);
         _socketSends.add(p);
     });
 }
@@ -173,7 +168,7 @@ function _settle(p, ok) {
 export function refuseSocketSends(sessionId, id) {
     for (const p of [..._socketSends]) {
         if (sessionId && p.sid !== sessionId) continue;
-        if (id !== undefined && id !== null && !(p.ids && p.ids.has(id))) continue;
+        if (id !== undefined && id !== null && !p.ids.has(id)) continue;
         _settle(p, false);
     }
 }
@@ -182,7 +177,7 @@ export function refuseSocketSends(sessionId, id) {
 document.addEventListener('coral:terminal-input-ack', e => {
     const { sessionId, id } = e.detail || {};
     for (const p of [..._socketSends]) {
-        if (!p.ids || (sessionId && p.sid !== sessionId) || !p.ids.delete(id)) continue;
+        if ((sessionId && p.sid !== sessionId) || !p.ids.delete(id)) continue;
         if (p.ids.size === 0) _settle(p, true);
     }
 });

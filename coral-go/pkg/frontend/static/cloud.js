@@ -11,10 +11,9 @@ import { isCloud } from './server_base.js';
 import { filterSettingsPayload, settingsErrorMessage } from './cloud_settings.js';
 import { purgeStored, forgetAccountMemory } from './local_store.js';
 
-/** GET paths that only a machine's own dashboard serves: privacy state, agent panels (and the licence
- *  status of machines older than #3221). (Themes, settings, tags,
- *  folder tags and views are the hub's own per-user data.) */
-export const NO_HUB_ENDPOINT = /^\/api\/(license\/status|system\/privacy|agent\/ui(\/.*)?)$/;
+/** GET paths that only a machine's own dashboard serves: privacy state and agent panels. (Themes,
+ *  settings, tags, folder tags and views are the hub's own per-user data.) */
+export const NO_HUB_ENDPOINT = /^\/api\/(system\/privacy|agent\/ui(\/.*)?)$/;
 
 let _session = null;      // {authenticated, email, csrf}
 let _loading = null;

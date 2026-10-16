@@ -293,7 +293,7 @@ export async function showTeamWorkingMode(team, options = {}) {
                 form.elements.cross_team_messaging.checked = Boolean((await boardSettingsResponse.json()).cross_team_messaging);
                 boardSettingsLoaded = true;
             } else {
-                // An older server has no board settings: leave the switch off and disabled.
+                // The board settings could not be loaded: leave the switch off and disabled.
                 form.elements.cross_team_messaging.disabled = true;
             }
             inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : '<p class="working-mode-hint">Prompt inspection is unavailable.</p>';

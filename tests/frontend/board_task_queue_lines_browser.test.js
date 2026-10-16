@@ -29,11 +29,11 @@ const BASE = require('./test_base').BASE;
             const Q = 'Coral Task Queue';
             const msgs = [
                 { id: 1, subscriber_id: 'QA', job_title: 'QA', content: 'hello' },
-                { id: 2, subscriber_id: Q, content: '@notify-all [New Task #7 (low)] Fix it — run claim' },
-                { id: 3, subscriber_id: Q, content: '[Task #7 claimed by Backend Dev] Fix it' },
-                { id: 4, subscriber_id: Q, content: '[Task #7 completed by Backend Dev] Outcome: success' },
+                { id: 2, subscriber_id: Q, is_system: true, content: '@notify-all [New Task #7 (low)] Fix it — run claim' },
+                { id: 3, subscriber_id: Q, is_system: true, content: '[Task #7 claimed by Backend Dev] Fix it' },
+                { id: 4, subscriber_id: Q, is_system: true, content: '[Task #7 completed by Backend Dev] Outcome: success' },
                 { id: 5, subscriber_id: 'Lead', job_title: 'Lead', content: 'done?' },
-                { id: 6, subscriber_id: Q, content: '@Backend Dev [Task #8 (high)] <b>x</b> — assigned to you' },
+                { id: 6, subscriber_id: Q, is_system: true, content: '@Backend Dev [Task #8 (high)] <b>x</b> — assigned to you' },
             ];
             const items = m.groupTaskQueueRuns(msgs);
             const box = document.createElement('div');
@@ -56,7 +56,7 @@ const BASE = require('./test_base').BASE;
             out.openAfter = box.querySelector('.mb-queue-run[data-queue-run="2"]').open;
             out.otherClosed = !box.querySelector('.mb-queue-run[data-queue-run="6"]').open;
             // The row grows at both ends (a newer line; older ones from Load earlier): still open.
-            const grown = [{ id: 1.5, subscriber_id: Q, content: '[Task #6 claimed by QA] y' }, ...msgs.slice(1, 4), { id: 4.5, subscriber_id: Q, content: '[Task #9 claimed by QA] z' }];
+            const grown = [{ id: 1.5, subscriber_id: Q, is_system: true, content: '[Task #6 claimed by QA] y' }, ...msgs.slice(1, 4), { id: 4.5, subscriber_id: Q, is_system: true, content: '[Task #9 claimed by QA] z' }];
             box.innerHTML = m.groupTaskQueueRuns(grown).map(it => m.renderTaskQueueRun(it, () => 'T')).join('');
             out.grownOpen = box.querySelector('.mb-queue-run').open && box.querySelectorAll('.mb-queue-line').length === 5;
             // Closing it forgets it.
@@ -89,7 +89,7 @@ const BASE = require('./test_base').BASE;
             const msgs = [];
             for (let i = 1; i <= 30; i++) {
                 const queue = i % 5 !== 0;
-                msgs.push({ id: i, project: 'beta', subscriber_id: queue ? Q : 'Lead Developer', job_title: queue ? '' : 'Lead Developer',
+                msgs.push({ id: i, project: 'beta', subscriber_id: queue ? Q : 'Lead Developer', is_system: queue, job_title: queue ? '' : 'Lead Developer',
                     content: queue ? '[Task #' + i + ' claimed by QA] t' : 'human ' + i, created_at: new Date(Date.UTC(2026, 9, 14, 8, 0, i)).toISOString() });
             }
             window.fetch = async (url, opts) => {

@@ -23,7 +23,7 @@ let _panelDragging = false;
 // a phone) renders the xterm at the pane's own size and scrolls, instead of wrapping lines drawn
 // for a wider pane at its own width. A window that sets the size follows a change made elsewhere
 // (another browser or device) instead of fighting it, until it is resized or typed in again.
-// An older server sends no size: then every window fits its container, as before.
+// A backend that can't report the pane's size sends none: then every window fits its container.
 let _pane = null;        // { cols, rows } the server last reported for this socket, or null
 let _following = false;  // rendering at the pane's size rather than this window's own
 let _containerEl = null;
@@ -268,7 +268,6 @@ let _connectedSessionId = null;
 let _connectedServer = 'local';
 let _wsGeneration = 0;
 let _paneClosed = false;  // true when server reports pane is gone
-let _inputAcks = false;   // the server answers input carrying an id (terminal_hello, #3276)
 let _restarting = false;  // true when a restart is in progress
 let _needsScrollToBottom = false;  // set on connect, cleared after settling
 let _bottomWhenHidden = null;      // while the container is hidden: whether it was at the bottom
@@ -602,7 +601,6 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
     _connectedSessionId = sessionId;
     _connectedServer = srv;
     _paneClosed = false;
-    _inputAcks = false; // until this server says it answers input (terminal_hello)
     _pane = null;       // until this server reports the pane's size (terminal_size, #3422)
     _seq = 0;
     _needsScrollToBottom = true;
@@ -689,8 +687,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             // scroll position (0 after the container was hidden) as the buffer's (#3464).
             if (_needsScrollToBottom) requestAnimationFrame(() => { if (terminal) terminal.scrollToBottom(); });
         } else if (data.type === "terminal_hello") {
-            // The server answers input that carries an id (#3276).
-            _inputAcks = data.input_acks === true;
+            // Nothing to do: every server answers input that carries an id (#3276).
         } else if (data.type === "terminal_input_ack") {
             document.dispatchEvent(new CustomEvent('coral:terminal-input-ack', { detail: { sessionId, id: data.id } }));
         } else if (data.type === "terminal_gone") {
@@ -835,19 +832,19 @@ export function focusTerminal() {
     }
 }
 
-/** Whether the open terminal socket's server answers input carrying an id (#3276). */
+/** Whether the terminal socket takes input now; the server answers each frame carrying an id (#3276). */
 export function terminalInputAcks() {
-    return !!(terminalWs && terminalWs.readyState === WebSocket.OPEN && !_paneClosed && _inputAcks);
+    return !!(terminalWs && terminalWs.readyState === WebSocket.OPEN && !_paneClosed);
 }
 
 /** Send raw terminal input data over the WebSocket (used by textarea integration). With an
- *  id, a server that answers input acknowledges or refuses it by that id (#3276). */
+ *  id, the server acknowledges or refuses it by that id (#3276). */
 export function sendTerminalInputWs(data, id) {
     // After terminal_closed the server reads nothing more from this socket, though it may
     // still be open: callers fall back to HTTP, which says when the terminal is gone (#3218).
     if (terminalWs && terminalWs.readyState === WebSocket.OPEN && !_paneClosed) {
         const frame = { type: "terminal_input", data };
-        if (id !== undefined && _inputAcks) frame.id = id;
+        if (id !== undefined) frame.id = id;
         terminalWs.send(JSON.stringify(frame));
         return true;
     }

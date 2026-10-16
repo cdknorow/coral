@@ -122,17 +122,16 @@ export async function sendCommand() {
         // Try WebSocket path first (sends text, then Enter separately)
         if (!hasAttachments) {
             const xterm = await _getXtermModule();
-            // A server that answers input (#3276) acknowledges the text and the Enter by id.
-            const acks = !!xterm.terminalInputAcks?.();
-            const textId = acks ? nextInputId() : undefined;
+            // The server acknowledges the text and the Enter by id (#3276).
+            const textId = nextInputId();
             if (xterm.sendTerminalInputWs(command, textId)) {
-                const enterId = acks ? nextInputId() : undefined;
+                const enterId = nextInputId();
                 // The box clears now, but the saved draft only once the send is accepted:
                 // a gone terminal refuses it and the text comes back (#3218).
-                const accepted = awaitSocketAccept(targetSession, acks ? { ids: [textId, enterId] } : {});
+                const accepted = awaitSocketAccept(targetSession, [textId, enterId]);
                 // Send Enter after delay so bracket paste + tmux processing completes
                 setTimeout(() => {
-                    if (!xterm.sendTerminalInputWs("\r", enterId) && acks) refuseSocketSends(targetSession.session_id, enterId);
+                    if (!xterm.sendTerminalInputWs("\r", enterId)) refuseSocketSends(targetSession.session_id, enterId);
                 }, 300);
                 addPendingMessage(sentSessionId, command, sentAt);
                 input.value = "";

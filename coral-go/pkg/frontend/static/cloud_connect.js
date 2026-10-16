@@ -90,9 +90,9 @@ export function describe(st) {
 export const HUB_ACCESS_URL = 'https://coralhub.dev/hub.html';
 export const EXPIRED_TEXT = "The code expired before it was approved. If you couldn't sign in at app.coralhub.dev, Coral Hub is in closed beta: request access at ";
 
-/** An idle status after a code expired (last_error_code from #3285; older servers only say it in last_error). */
+/** An idle status after a code expired (last_error_code, #3285). */
 export function codeExpired(st) {
-    return st.state === 'idle' && (st.last_error_code === 'code_expired' || /code expired/i.test(st.last_error || ''));
+    return st.state === 'idle' && st.last_error_code === 'code_expired';
 }
 
 function safeHref(u) {
@@ -196,7 +196,7 @@ class CloudPanel {
             if (r.ok) s = await r.json();
         } catch { /* hidden */ }
         const local = !!s && typeof s.linked === 'boolean';
-        const disabled = !!s && (s.disabled !== undefined ? !!s.disabled : !s.enabled);
+        const disabled = !!s && !!s.disabled;
         row.hidden = !local || !(s.linked || disabled);
         const box = this.part('hub-operator');
         if (local && box) box.checked = disabled;
@@ -256,9 +256,9 @@ class CloudPanel {
         }
     }
 
-    // Not the dashboard on the computer running Coral. A server with #3285 says so itself
-    // (code local_dashboard_required, with the command to run there); an older one only
-    // answers 403, and the same sentence is said here.
+    // Not the dashboard on the computer running Coral. The server says so itself (code
+    // local_dashboard_required, with the command to run there); any other 403 gets the same
+    // sentence, since the cloud routes are refused only off that computer.
     elsewhere(body) {
         const own = body && body.code === 'local_dashboard_required' && body.error;
         this.say(own ? body.error : ELSEWHERE_TEXT);
@@ -330,11 +330,9 @@ class CloudPanel {
         this.part('hub-operator')?.addEventListener('change', (e) => this.setHubOperator(e.target.checked));
     }
 
-    // Cancel an enrollment in progress (#3285). A server from before that endpoint answers
-    // 404: Disconnect stops an enrollment too.
+    // Cancel an enrollment in progress (#3285).
     async cancel() {
         const r = await post('POST', '/api/cloud/connect/cancel');
-        if (r.status === 404 || r.status === 405) { await this.act('POST', '/api/cloud/disconnect'); return; }
         if (r.ok) { await this.load(); return; }
         if (r.status === 403) { this.elsewhere(await r.json().catch(() => null)); return; }
         let msg = 'Request failed';

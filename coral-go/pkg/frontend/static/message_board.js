@@ -106,7 +106,7 @@ export async function fetchAllLiveChat(live) {
         const data = await resp.json();
         const page = Array.isArray(data.messages) ? data.messages : [];
         messages.unshift(...page);
-        if (!page.length || !Number.isInteger(data.total) || messages.length >= data.total) break;
+        if (!page.length || messages.length >= data.total) break;
     }
     return { messages };
 }

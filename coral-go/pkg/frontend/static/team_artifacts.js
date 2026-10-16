@@ -254,8 +254,7 @@ function render() {
         for (const [label, value] of [
             ['Name', name], ['Type', type], ['MIME', item.media_type || 'Unknown'],
             ['Size', size], ['Task', task], ['Task title', item.task_title],
-            // The team list says produced_by; older payloads used subscriber_id.
-            ['Created', created], ['Producer', item.produced_by ?? item.subscriber_id],
+            ['Created', created], ['Producer', item.produced_by],
             ['Source', item.source], ['References', item.reference_count],
         ]) {
             if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));

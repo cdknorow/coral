@@ -16,7 +16,6 @@ import { storeKey, onAccountForgotten } from './local_store.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
-let historyOffset = 0;      // messages rendered, counted from the end (offset paging, for servers without keyset)
 let historyStart = 0;       // absolute index of the oldest rendered message (keyset cursor)
 let historyHasMore = false;  // whether older messages exist
 let initialLoadDone = false; // whether the initial full load has completed
@@ -164,22 +163,6 @@ document.addEventListener("toggle", (e) => {
     if (card.dataset.trimUse !== undefined || card.dataset.trimResult !== undefined) loadTrimmedCard(card);
 }, true);
 
-// Servers that refused a before= page; older pages there go by offset.
-const beforeRefused = new Set();
-// Whether a response refuses the request itself (an unknown parameter), as
-// opposed to a transient failure (401, 429, an unreachable remote) that is
-// retried as a normal error. 400/403/404: the server or a hub's route
-// allowlist. 502 only when it says path_not_allowed.
-async function refusedParam(resp) {
-    if (resp.status === 400 || resp.status === 403 || resp.status === 404) return true;
-    if (resp.status !== 502) return false;
-    try {
-        const body = await resp.clone().json();
-        return body && (body.code === "path_not_allowed" || body.error === "path_not_allowed");
-    } catch (_) {
-        return false;
-    }
-}
 
 
 const TOOL_ICONS = {
@@ -863,7 +846,6 @@ export async function refreshLiveHistory() {
             container.innerHTML = "";
             for (const msg of kept.messages) renderMessage(msg, container, session.agent_type);
             historyHasMore = kept.start > 0;
-            historyOffset = kept.messages.length;
             historyStart = kept.start;
             historyMessageCount = kept.total;
             _updateLoadMoreButton(container);
@@ -940,11 +922,10 @@ export async function refreshLiveHistory() {
 
         // The transcript is shorter than what this client holds (it was cut or replaced while the agent was away, or a kept
         // page outlived it): forget what is shown and load it again from its start.
-        if (initialLoadDone && Number.isInteger(data.total) && data.total < historyMessageCount) {
+        if (initialLoadDone && data.total < historyMessageCount) {
             keptPages.delete(session.session_id);
             container.innerHTML = "";
             historyMessageCount = 0;
-            historyOffset = 0;
             historyStart = 0;
             historyHasMore = false;
             initialLoadDone = false;
@@ -962,25 +943,21 @@ export async function refreshLiveHistory() {
         if (data.messages && data.messages.length > 0) {
             if (!initialLoadDone) {
                 container.innerHTML = "";
-                noteIndexes(data.messages, pageStart(data));
+                noteIndexes(data.messages, data.start);
                 // Initial load — render all and add "Load More" button if needed
                 for (const msg of data.messages) {
                     renderMessage(msg, container, session.agent_type);
                 }
                 historyHasMore = data.has_more || false;
-                historyOffset = data.messages.length;
-                historyStart = pageStart(data);
+                historyStart = data.start;
                 _updateLoadMoreButton(container);
                 initialLoadDone = true;
                 keepFirstPage(session.session_id, data.messages, data.total, historyStart);
             } else {
-                // Poll — append new messages at the bottom. They count toward
-                // offset, which a server without keyset paging measures from
-                // the current end.
+                // Poll — append new messages at the bottom.
                 for (const msg of data.messages) {
                     renderMessage(msg, container, session.agent_type);
                 }
-                historyOffset += data.messages.length;
                 keepMore(session.session_id, data.messages, data.total);
             }
             for (const msg of data.messages) {
@@ -998,7 +975,7 @@ export async function refreshLiveHistory() {
         syncUsageLimitNotice(container, data.limit_notice || '');
         // The agent is still on screen: its kept page is as fresh as this reply, so the time limit counts from when it left.
         const keptNow = keptPages.get(session.session_id);
-        if (keptNow && Number.isInteger(data.total)) keptNow.at = Date.now();
+        if (keptNow) keptNow.at = Date.now();
 
         // Pending first: it settles its place at the bottom, then the working row goes above it
         syncPendingBubbles(container, session.session_id);
@@ -1104,13 +1081,11 @@ async function _loadMoreHistory(generation) {
     // Pagination is anchored by the cursor; omit an explicit after=0 so
     // providers and test harnesses can distinguish load-more from initial load.
     // before= is the oldest rendered message's absolute index, so messages
-    // appended since the first page do not shift the window. offset is what a
-    // server without keyset paging reads.
+    // appended since the first page do not shift the window.
     params.set("limit", String(OLDER_PAGE));
     params.set("trim", String(CHAT_TRIM));
+    params.set("before", String(historyStart));
     const server = sessionServer(session);
-    if (!beforeRefused.has(server)) params.set("before", String(historyStart));
-    params.set("offset", String(historyOffset));
 
     if (activeLoadMoreAbortController) {
         activeLoadMoreAbortController.abort();
@@ -1120,17 +1095,8 @@ async function _loadMoreHistory(generation) {
 
     try {
         const url = () => `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`;
-        let resp = await serverFetch(server, url(), { signal: abortCtrl.signal });
+        const resp = await serverFetch(server, url(), { signal: abortCtrl.signal });
         if (generation !== historyGeneration) return; // switched agents meanwhile
-        if (!resp.ok && params.has("before") && await refusedParam(resp)) {
-            // A route allowlist between here and the machine (the Cloud Hub
-            // tunnel) can refuse a parameter it does not know yet. Page by
-            // offset for this server from now on.
-            beforeRefused.add(server);
-            params.delete("before");
-            resp = await serverFetch(server, url(), { signal: abortCtrl.signal });
-            if (generation !== historyGeneration) return;
-        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (generation !== historyGeneration) return;
@@ -1145,7 +1111,7 @@ async function _loadMoreHistory(generation) {
             const refNode = loadMoreBtn ? loadMoreBtn.nextSibling : container.firstChild;
 
             const temp = document.createElement("div");
-            noteIndexes(data.messages, pageStart(data, historyStart));
+            noteIndexes(data.messages, data.start);
             for (const msg of data.messages) {
                 renderMessage(msg, temp, session.agent_type);
             }
@@ -1155,8 +1121,7 @@ async function _loadMoreHistory(generation) {
             }
             stitchPages(lastOlder);
 
-            historyOffset += data.messages.length;
-            historyStart = pageStart(data, historyStart);
+            historyStart = data.start;
             historyHasMore = (data.has_more || false) && historyStart > 0;
 
             // Restore scroll position so the view doesn't jump
@@ -1176,15 +1141,6 @@ async function _loadMoreHistory(generation) {
             activeLoadMoreAbortController = null;
         }
     }
-}
-
-// Absolute index of a page's first message. A server with keyset paging says
-// so (start); otherwise it is derived: a page ends where the previous began,
-// or, for the first page, at the end of the transcript.
-function pageStart(data, end) {
-    if (Number.isInteger(data.start)) return data.start;
-    if (end === undefined) end = Number.isInteger(data.total) ? data.total : data.messages.length;
-    return Math.max(0, end - data.messages.length);
 }
 
 // The button at the top of the chat is also the autoload sentinel: when it
@@ -1275,7 +1231,6 @@ export function resetLiveHistory({ resume = false } = {}) {
     // the one emptying the container fires after the first page renders.
     state.autoScroll = true;
     historyMessageCount = 0;
-    historyOffset = 0;
     historyStart = 0;
     historyHasMore = false;
     initialLoadDone = false;

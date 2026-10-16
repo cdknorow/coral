@@ -181,7 +181,7 @@ const BASE = require('./test_base').BASE;
         await waitFor(`${row}.hidden`, 'hidden on the read-only answer');
         await ev(`(async () => { window.__ctl.viaHub(false); window.__ctl.opStatus(404); window.__ctl.cloud({ state: 'idle' }); (await import(${S}+'cloud_connect.js')).loadCloudStatus();
             window.__ctl.cloud({ state: 'connected' }); (await import(${S}+'cloud_connect.js')).loadCloudStatus(); return true; })()`);
-        await waitFor(`${row}.hidden`, 'hidden on a 404 (an older server through the hub)');
+        await waitFor(`${row}.hidden`, 'hidden when the status answers 404');
         console.log('   ✓ hidden where the answer is read-only (through the hub) or 404');
         console.log('PASS hub_user_ui_browser');
     } finally {
