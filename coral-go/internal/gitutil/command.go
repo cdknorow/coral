@@ -46,7 +46,10 @@ func Command(ctx context.Context, dir string, args ...string) *exec.Cmd {
 // Args is the argument list Command runs git with, for a caller that has to build the
 // exec.Cmd itself (its own environment, say); it must add Env() to that environment.
 func Args(ctx context.Context, dir string, args ...string) []string {
-	full := append(safeConfig(), filterOverrides(ctx, dir)...)
+	full := safeConfig()
+	if !filterFree[subcommand(args)] {
+		full = append(full, filterOverrides(ctx, dir)...)
+	}
 	if dir != "" {
 		full = append(full, "-C", dir)
 	}
@@ -99,6 +102,30 @@ func withDiffGuards(args []string) []string {
 		return append(out, args[i+1:]...)
 	}
 	return args
+}
+
+// filterFree are the subcommands that never run a filter driver: they read the object store,
+// refs and config, never a file in the working tree, which is where clean and smudge run. For
+// them the extra git that reads the filter config is not run: it doubled every git Coral runs
+// (#3847: about 240 of the 600 git processes in 6.5 minutes with 40 agents). status, diff, show,
+// ls-files (-m can hash a racily clean file), cat-file and worktree (add checks files out) keep
+// the overrides.
+var filterFree = map[string]bool{
+	"rev-parse": true, "rev-list": true, "log": true, "remote": true, "config": true, "merge-base": true,
+}
+
+// subcommand is git's subcommand in args: the first argument that isn't an option, or "" when
+// the caller passes its own -c or -C first.
+func subcommand(args []string) string {
+	for _, a := range args {
+		if a == "-C" || a == "-c" {
+			return ""
+		}
+		if !strings.HasPrefix(a, "-") {
+			return a
+		}
+	}
+	return ""
 }
 
 // lfsDriver is Git LFS's standard filter driver, as 'git lfs install' writes it.

@@ -117,6 +117,11 @@ func TestCommandRunsNoRepositoryCommand(t *testing.T) {
 		{"show", "HEAD:a.txt"},
 		{"ls-files", "--cached", "--others", "--exclude-standard"},
 		{"rev-parse", "--abbrev-ref", "HEAD"},
+		// The filter-free subcommands, run without the filter overrides (#3847).
+		{"rev-list", "--count", "HEAD"},
+		{"merge-base", "HEAD", "main"},
+		{"remote"},
+		{"config", "--get", "core.pager"},
 		{"worktree", "add", "-b", "coral-x", wt, "main"},
 		{"worktree", "remove", "--force", wt},
 		{"branch", "-D", "coral-x"},
@@ -324,4 +329,77 @@ func mustParseTime(t *testing.T, s string) time.Time {
 		t.Fatal(err)
 	}
 	return tm
+}
+
+// #3847: the subcommands that never run a filter skip the extra git that reads the filter config;
+// the others keep the overrides.
+func TestFilterOverridesOnlyWhereFiltersRun(t *testing.T) {
+	repo, _ := hostileRepo(t)
+	ctx := context.Background()
+	has := func(args ...string) bool {
+		return slices.Contains(Args(ctx, repo, args...), "filter.evil.clean=")
+	}
+	for _, args := range [][]string{{"rev-parse", "HEAD"}, {"rev-list", "--count", "HEAD"}, {"log", "-1"}, {"remote", "get-url", "origin"}, {"config", "--get", "x"}, {"merge-base", "a", "b"}} {
+		if has(args...) {
+			t.Errorf("git %v carries the filter overrides; it runs no filter", args)
+		}
+	}
+	for _, args := range [][]string{{"status"}, {"diff", "HEAD"}, {"show", "HEAD:a.txt"}, {"ls-files", "-m"}, {"cat-file", "-p", "HEAD"}, {"worktree", "add", "x"}, {"-c", "a=b", "rev-parse"}} {
+		if !has(args...) {
+			t.Errorf("git %v lost the filter overrides", args)
+		}
+	}
+}
+
+// Security on #3847: a filter driver an agent adds between two git runs is emptied by the second
+// run's own read of the config (the guard is read right before each filter-capable git, never
+// kept), and the control shows a plain git runs it.
+func TestAFilterAddedBetweenTwoRunsDoesNotRun(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the filter command is a shell script")
+	}
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	setup := func() (string, string) {
+		dir := t.TempDir()
+		marker := filepath.Join(t.TempDir(), "RAN")
+		git := func(args ...string) {
+			c := exec.Command("git", args...)
+			c.Dir = dir
+			c.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+			if out, err := c.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v %s", args, err, out)
+			}
+		}
+		git("init", "-q")
+		must(os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o644))
+		git("add", "a.txt")
+		git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x")
+		return dir, marker
+	}
+	addFilter := func(dir, marker string) {
+		must(exec.Command("git", "-C", dir, "config", "filter.x.clean", "touch "+marker+"; cat").Run())
+		must(os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("a.txt filter=x\n"), 0o644))
+		must(os.WriteFile(filepath.Join(dir, "a.txt"), []byte("two\n"), 0o644))
+	}
+	ctx := context.Background()
+
+	dir, marker := setup()
+	must(Command(ctx, dir, "status", "--porcelain").Run())
+	addFilter(dir, marker)
+	_ = Command(ctx, dir, "status", "--porcelain").Run()
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Error("the filter added between the two runs ran")
+	}
+
+	dir, marker = setup()
+	addFilter(dir, marker)
+	_ = exec.Command("git", "-C", dir, "status", "--porcelain").Run()
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("control: a plain git status should run the filter, so the test can see it: %v", err)
+	}
 }
