@@ -6,6 +6,8 @@ package clitext
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -17,8 +19,10 @@ const (
 // Clean returns s without terminal control: escape sequences are removed whole (CSI, OSC, DCS,
 // APC, PM, SOS and two-byte ones, in their 7-bit and C1 forms), every other control character
 // goes (C0 except newline and tab, DEL, C1), and the bidirectional and other format characters
-// that reorder or hide text go too (see isBidiOrFormat). Text, newlines and tabs stay, and the
-// zero-width joiner and non-joiner stay so emoji and scripts render. A string sequence with no
+// that reorder or hide text go too (see isBidiOrFormat), as do the invisible characters that
+// mean nothing in text (see isInvisible, #3648). Text, newlines and tabs stay, and the
+// zero-width joiner and non-joiner stay so emoji and scripts render; a name or title that must
+// not carry them goes through CleanName. A string sequence with no
 // terminator loses only its introducer, so no text after it is lost.
 func Clean(s string) string {
 	if clean(s) {
@@ -42,7 +46,7 @@ func Clean(s string) string {
 		case r == '\n' || r == '\t':
 			b = append(b, s[i])
 			i++
-		case r < 0x20 || r == 0x7f || isBidiOrFormat(r):
+		case r < 0x20 || r == 0x7f || isBidiOrFormat(r) || isInvisible(r):
 			i += size
 		default:
 			b = append(b, s[i:i+size]...)
@@ -72,6 +76,39 @@ func isBidiOrFormat(r rune) bool {
 	return false
 }
 
+// isInvisible reports whether r is an invisible character with no meaning in text, which can
+// only hide or fake what a reader sees (#3648): the zero-width space, the word joiner and the
+// invisible operators (U+2060 to U+2064), the Mongolian vowel separator, and the tag
+// characters (U+E0000 to U+E007F, which can spell a hidden message). Not the zero-width joiner
+// and non-joiner, which emoji sequences and Persian and Indic scripts need, and not the soft
+// hyphen: CleanName drops those for names and titles.
+func isInvisible(r rune) bool {
+	switch {
+	case r == 0x200b: // zero-width space
+		return true
+	case r >= 0x2060 && r <= 0x2064: // word joiner, function application, invisible times, separator, plus
+		return true
+	case r == 0x180e: // Mongolian vowel separator
+		return true
+	case r >= 0xe0000 && r <= 0xe007f: // tag characters
+		return true
+	}
+	return false
+}
+
+// CleanName returns s safe to show as one name or title: Clean, then every other Unicode format
+// character too (the zero-width joiner and non-joiner, the soft hyphen, ...), which can make two
+// different names look the same, with whitespace folded to single spaces on one line.
+func CleanName(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, Clean(s))
+	return strings.Join(strings.Fields(s), " ")
+}
+
 // clean reports whether s has nothing Clean would remove (the common case: no copy).
 func clean(s string) bool {
 	if !utf8.ValidString(s) {
@@ -81,7 +118,7 @@ func clean(s string) bool {
 		if (r < 0x20 && r != '\n' && r != '\t') || r == 0x7f {
 			return false
 		}
-		if (r >= 0x80 && r <= 0x9f) || isBidiOrFormat(r) {
+		if (r >= 0x80 && r <= 0x9f) || isBidiOrFormat(r) || isInvisible(r) {
 			return false
 		}
 	}

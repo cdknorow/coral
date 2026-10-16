@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/clitext"
@@ -160,17 +159,10 @@ func validateAutoWakeSettings(body map[string]any) error {
 }
 
 // cleanAgentName makes a name safe to show in a notice (Security's point e and NIT): the shared
-// cleaner (clitext.Clean: controls and bidi), then every other format character (Unicode Cf:
-// zero-width spaces and joiners, tag characters), which clitext.Clean keeps; one line, capped
-// at 80.
+// name cleaner (clitext.CleanName: controls, bidi and every format character, one line, #3648),
+// capped at 80.
 func cleanAgentName(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.Is(unicode.Cf, r) {
-			return -1
-		}
-		return r
-	}, clitext.Clean(s))
-	out := strings.Join(strings.Fields(s), " ")
+	out := clitext.CleanName(s)
 	if r := []rune(out); len(r) > 80 {
 		out = string(r[:80])
 	}
