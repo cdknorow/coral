@@ -32,8 +32,10 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
             }
             return fulfill(200, GOLD(page), 'text/html; charset=utf-8');
         });
+        let nextReplies = [];
+        const openWith = (name, query, r) => { nextReplies = r; return open(name, query); };
         const open = async (name, query = '?return_to=/zz-done') => {
-            page = name; posts.length = 0; replies = [];
+            page = name; posts.length = 0; replies = nextReplies; nextReplies = [];
             await Page.navigate({ url: BASE + '/auth' + query }); await Page.loadEventFired();
             await waitFor(`!!document.getElementById('submit') || !!document.getElementById('key-submit')`, 'the page');
             await sleep(100);   // the module script runs after load
@@ -90,6 +92,20 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         replies = [json(200, { ok: true })];
         await submit('key-form'); await waitFor(`!!document.getElementById('done')`, 'key redirect');
         assert.deepEqual(posts[posts.length - 1], { url: '/auth/key', body: { key: 'bad-key' } });
+        // a key in the address (the QR link): the fragment is read first, ?api_key= still works, both leave the address bar
+        await openWith('signin', '#api_key=FRAGKEY', [json(401, { error: 'Invalid API key' })]);
+        assert.ok(await visible('panel-key'), 'a key in the address opens the key panel');
+        await waitFor(`!document.getElementById('panel-key').hidden && document.getElementById('api-key').value === 'FRAGKEY'`, 'the key is filled');
+        assert.deepEqual(posts[0], { url: '/auth/key', body: { key: 'FRAGKEY' } }, 'the fragment key is sent');
+        assert.equal(await ev('location.hash'), '', 'and the fragment is cleared from the address');
+        replies = [json(401, { error: 'Invalid API key' })];
+        await openWith('signin', '?api_key=OLDKEY', [json(401, { error: 'Invalid API key' })]);
+        assert.deepEqual(posts[0], { url: '/auth/key', body: { key: 'OLDKEY' } }, 'an older ?api_key= link still works');
+        assert.ok(!(await ev('location.search')).includes('api_key'), 'and is cleared from the address');
+        await openWith('signin', '?api_key=OLDKEY#api_key=FRAGKEY', [json(401, { error: 'Invalid API key' })]);
+        assert.equal(posts[0].body.key, 'FRAGKEY', 'the fragment wins when both are present');
+        assert.equal(await ev('location.hash'), '');
+        assert.ok(!(await ev('location.search')).includes('api_key'));
         // an unsafe return_to is ignored
         await open('signin', '?return_to=//evil.example');
         replies = [json(200, { ok: true })]; await type('password', 'x'); await submit('signin-form');
