@@ -43,7 +43,8 @@ func (ar *Routes) AuthPage(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(LockedPageHTML))
 		return
 	}
-	w.Write([]byte(authPageHTML))
+	// PasswordSet and Local come from #3949's password store and peer check, which Backend wires in on the same branch.
+	w.Write([]byte(AuthPage(PageState{Strict: ar.strictLocal, Local: isDirectLocal(r)})))
 }
 
 // ValidateKey validates an API key and sets a session cookie.
