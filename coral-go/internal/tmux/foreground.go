@@ -134,6 +134,9 @@ func parseProcTable(out string) *procTable {
 // prompt (ShellIdle on the pane's shell). It returns ErrTerminalGone when the
 // pane is gone.
 func (c *Client) AgentShellIdle(ctx context.Context, agentName, agentType, sessionID string) (bool, string, error) {
+	if st, ok := c.agentPaneState(ctx, agentName, agentType, sessionID); ok && st.pid > 0 {
+		return ShellIdle(st.pid) // the shared pane list (#3847)
+	}
 	out, err := c.DisplayForAgent(ctx, agentName, agentType, sessionID, "#{pane_pid}")
 	if err != nil {
 		return false, "", err

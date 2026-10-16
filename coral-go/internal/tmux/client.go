@@ -62,7 +62,20 @@ type Client struct {
 	// for a session id, whose tmux session name the target contains; a failed capture drops it.
 	captureTargetsMu sync.Mutex
 	captureTargets   map[string]string // agentName \x00 agentType \x00 sessionID -> target
+
+	// paneStates is every pane's pid and size from one list-panes, kept for paneStateTTL
+	// (#3847): the status pass asked each agent's pane for its pid and the feed each pane for
+	// its size, one tmux run per agent each time.
+	paneStatesMu sync.Mutex
+	paneStatesAt time.Time
+	paneStates   map[string]paneState // target (#S:#I.#P) -> state
 }
+
+// paneState is a pane's shell pid and size.
+type paneState struct{ pid, cols, rows int }
+
+// paneStateTTL is how long one list-panes answers the agents' pane pid and size questions.
+const paneStateTTL = time.Second
 
 // resolveTmuxBin returns the path used to invoke tmux, re-checking the
 // filesystem if the cached binary isn't reachable. This lets a tmux that
@@ -746,6 +759,66 @@ func (c *Client) DisplayForAgent(ctx context.Context, agentName, agentType, sess
 		c.setCaptureTarget(key, target)
 	}
 	return out, nil
+}
+
+// allPaneStates is every pane on the primary socket by target, from one list-panes at most
+// every paneStateTTL.
+func (c *Client) allPaneStates(ctx context.Context) map[string]paneState {
+	c.paneStatesMu.Lock()
+	defer c.paneStatesMu.Unlock()
+	if c.paneStates != nil && time.Since(c.paneStatesAt) < paneStateTTL {
+		return c.paneStates
+	}
+	out, err := c.run(ctx, "list-panes", "-a", "-F", "#S:#I.#P|#{pane_pid}|#{pane_width}|#{pane_height}")
+	if err != nil {
+		return nil
+	}
+	states := map[string]paneState{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		f := strings.Split(line, "|")
+		if len(f) != 4 {
+			continue
+		}
+		pid, e1 := strconv.Atoi(f[1])
+		cols, e2 := strconv.Atoi(f[2])
+		rows, e3 := strconv.Atoi(f[3])
+		if e1 != nil || e2 != nil || e3 != nil {
+			continue
+		}
+		states[f[0]] = paneState{pid: pid, cols: cols, rows: rows}
+	}
+	c.paneStates, c.paneStatesAt = states, time.Now()
+	return states
+}
+
+// agentPaneState is the agent's pane state from the shared list, when its pane target is known
+// (the capture cache) and the list has it; otherwise false, and the caller asks the pane itself.
+func (c *Client) agentPaneState(ctx context.Context, agentName, agentType, sessionID string) (paneState, bool) {
+	if sessionID == "" {
+		return paneState{}, false
+	}
+	target, ok := c.captureTarget(agentName + "\x00" + agentType + "\x00" + sessionID)
+	if !ok || target == "" {
+		return paneState{}, false
+	}
+	st, ok := c.allPaneStates(ctx)[target]
+	return st, ok
+}
+
+// PaneSizeForAgent is the agent's pane size: from the shared pane list when it has the pane,
+// else from the pane itself. It returns ErrTerminalGone when the pane is gone.
+func (c *Client) PaneSizeForAgent(ctx context.Context, agentName, agentType, sessionID string) (cols, rows int, err error) {
+	if st, ok := c.agentPaneState(ctx, agentName, agentType, sessionID); ok && st.cols > 0 && st.rows > 0 {
+		return st.cols, st.rows, nil
+	}
+	out, err := c.DisplayForAgent(ctx, agentName, agentType, sessionID, "#{pane_width} #{pane_height}")
+	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := fmt.Sscanf(strings.TrimSpace(out), "%d %d", &cols, &rows); err != nil || cols <= 0 || rows <= 0 {
+		return 0, 0, fmt.Errorf("pane size %q: unexpected tmux output", strings.TrimSpace(out))
+	}
+	return cols, rows, nil
 }
 
 // KillSession kills the tmux session for a given agent.
