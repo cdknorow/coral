@@ -64,6 +64,8 @@ while IFS= read -r mv; do
   [ -n "$mv" ] || continue
   m=${mv%@*}; v=${mv##*@}
   dir=$(cd "$root/coral-go" && go mod download -json "$mv" 2>/dev/null | sed -n 's/^[[:space:]]*"Dir": "\(.*\)",*$/\1/p' | sed 's/\\\\/\\/g')
+  # Git Bash on Windows: the module cache path comes back as C:\...; use its /c/... form.
+  if [ -n "$dir" ] && command -v cygpath >/dev/null 2>&1; then dir=$(cygpath -u "$dir"); fi
   if [ -z "$dir" ] || [ ! -d "$dir" ]; then echo "third-party-notices: $mv is not in the module cache" >&2; missing=1; continue; fi
   dest="$out/go/$m@$v"; mkdir -p "$dest"
   files=""; has_license=0
