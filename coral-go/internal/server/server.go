@@ -121,6 +121,12 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	} else if n > 0 {
 		log.Printf("[webhooks] cleared stored webhook data (%d records; Coral no longer sends webhooks)", n)
 	}
+	// connected_apps (OAuth secrets and tokens of a retired feature) is dropped, for real (#3628 F8).
+	if n, err := store.DropConnectedApps(context.Background(), db); err != nil {
+		log.Printf("[store] dropping the retired connected_apps table: %v", err)
+	} else if n > 0 {
+		log.Printf("[store] dropped the retired connected_apps table (%d rows)", n-1)
+	}
 	if n, err := boardStore.WipeWebhookURLs(context.Background()); err != nil {
 		log.Printf("[webhooks] clearing board subscriptions' webhook URLs: %v", err)
 	} else if n > 0 {
