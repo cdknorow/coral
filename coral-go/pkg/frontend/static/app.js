@@ -75,10 +75,6 @@ const {
     'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent']);
 const { showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } =
     lazyFns(loadCostDashboard, ['showCostDashboard', '_refreshCostDashboard', '_costTimeRangeChanged']);
-// The shared confirm dialog's close button, wherever its markup is built (#3645). The board's
-// export dialog called closeConfirmModal(), which never existed, so its Cancel and Close did
-// nothing; they close it now.
-registerActions({ 'confirm-close': () => hideConfirmModal() });
 // The board view's header, composer and subscribers sheet (#3645). Pause and deleting the board
 // behave as before: the board's delete still asks first (deleteMessageBoardProject).
 registerActions({
