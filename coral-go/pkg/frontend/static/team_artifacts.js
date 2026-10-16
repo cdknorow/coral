@@ -1,6 +1,6 @@
 /* Optional, lazy team artifact source for the existing Files viewer. */
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, sanitizeHtml } from './utils.js';
+import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
 import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
@@ -423,8 +423,9 @@ async function loadKnowledgeTab() {
         return;
     }
 
+    let refused = false; // too large to check through Coral Hub (#3718): said, not "no knowledge yet"
     const data = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/knowledge`)
-        .then(r => r.ok ? r.json() : null).catch(() => null);
+        .then(async r => { if (r.ok) return r.json(); refused = await refusedTooLarge(r); return null; }).catch(() => null);
 
     // If team changed while we were fetching, discard the result
     if (boardName !== currentTeam()) { knowledgeLoading = false; return; }
@@ -432,6 +433,10 @@ async function loadKnowledgeTab() {
     knowledgeLoading = false;
     knowledgeLoaded = true;
 
+    if (refused) {
+        panel.innerHTML = '<div class="knowledge-empty">This team\u2019s knowledge is too large to show through Coral Hub; open it on the computer.</div>';
+        return;
+    }
     if (!data || !data.exists) {
         if (job.status === 'failed') { renderDistillFailed(panel, boardName, job); return; }
         panel.innerHTML = `<div class="knowledge-empty">

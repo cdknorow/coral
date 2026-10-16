@@ -98,6 +98,21 @@ function explainRefusal(resp) {
     }).catch(() => {});
 }
 
+// A reply the computer refused to send because it is too large to check for secrets through
+// Coral Hub (#3718: a JSON reply over 2 MiB). Whatever view asked, the user is told why it is
+// empty instead of seeing a blank pane: the dashboard pages what can be that big (history, the
+// board export), so this is a rare reply, and one toast at a time says it.
+let _lastTooLarge = 0;
+function explainTooLarge(resp) {
+    if (!/json/i.test(resp.headers.get('Content-Type') || '')) return;
+    resp.clone().json().then(async body => {
+        if (!body || body.code !== 'hub_reply_too_large' || Date.now() - _lastTooLarge < 5000) return;
+        _lastTooLarge = Date.now();
+        const { showToast } = await importOnce('./utils.js');
+        showToast('This is too large to show through Coral Hub; open it on the computer.', true, 8000);
+    }).catch(() => {});
+}
+
 /** Wrap window.fetch: add X-CSRF-Token on same-origin state-changing calls and
  *  send the user to sign-in when the session has ended. */
 export function installCloudFetch() {
@@ -137,6 +152,7 @@ export function installCloudFetch() {
         }
         const resp = await orig(input, init);
         if (resp.status === 403 && !SAFE.has(method)) _session = null; // token may have rotated; refetch next time
+        if (resp.status === 502 && sameOrigin(input)) explainTooLarge(resp);
         // `quiet: true` marks a background request the user did not ask for (e.g. fitting the pane width on open):
         // a refusal there is not worth a toast, only an action the user took is.
         if (resp.status === 403 && sameOrigin(input) && !(init && init.quiet)) explainRefusal(resp);

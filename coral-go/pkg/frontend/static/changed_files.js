@@ -1,7 +1,7 @@
 /* Changed files panel — load and render per-agent file diffs */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, refusedTooLarge } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { fetchFileList, fuzzyFilter, getDirBrowseResults } from './file_mention.js';
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
@@ -377,6 +377,9 @@ function _updateSearchSelection() {
     if (selected) selected.scrollIntoView({ block: 'nearest' });
 }
 
+// The list was refused as too large to check through Coral Hub (#3718): it says so, not "No changed files".
+let _filesRefused = false;
+
 export async function loadChangedFiles(agentName, sessionId) {
     if (!agentName) return;
     try {
@@ -385,6 +388,7 @@ export async function loadChangedFiles(agentName, sessionId) {
         if (sid) params.set("session_id", sid);
         const qs = params.toString() ? `?${params}` : "";
         const resp = await serverFetch(serverForSession(agentName), `/api/sessions/live/${encodeURIComponent(agentName)}/files${qs}`);
+        _filesRefused = !resp.ok && await refusedTooLarge(resp);
         if (!resp.ok) throw new Error(`files fetch failed: ${resp.status}`);
         const data = await resp.json();
         _currentFiles = data.files || [];
@@ -635,7 +639,9 @@ export function renderChangedFiles() {
             `<option value="${escapeAttr(m)}"${m === _getGitDiffMode() ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
         ).join('');
         const emptySelect = `<br><select class="diff-mode-select" data-on-change="diff-mode" style="margin-top:8px" title="Diff comparison mode">${emptyOptions}</select>`;
-        list.innerHTML = `<div class="file-empty">No changed files${emptySelect}</div>`;
+        list.innerHTML = _filesRefused
+            ? '<div class="file-empty">Too many changed files to show through Coral Hub; open the agent on the computer.</div>'
+            : `<div class="file-empty">No changed files${emptySelect}</div>`;
         return;
     }
 

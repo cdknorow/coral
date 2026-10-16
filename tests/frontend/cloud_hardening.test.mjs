@@ -94,5 +94,32 @@ const cloud = await importUi('cloud');
     assert.ok(!JSON.stringify(Object.entries(w.localStorage)).includes(TOKEN), 'nor in localStorage');
 }
 
+// ── #3718: a reply refused as too large to check says so, never a blank pane ──
+{
+    const replies = {
+        '/api/big': { status: 502, body: { error: 'too large', code: 'hub_reply_too_large' } },
+        '/api/other502': { status: 502, body: { error: 'bad gateway' } },
+        '/api/fine': { status: 200, body: { ok: true } },
+    };
+    globalThis.fetch = w.fetch = async (u) => {
+        const url = typeof u === 'string' ? u : u.url;
+        const r = replies[url] || { status: 200, body: {} };
+        return new Response(JSON.stringify(r.body), { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    };
+    w.__coralCloudFetch = false;
+    cloud.installCloudFetch();
+    const toasts = () => [...w.document.querySelectorAll('.toast')].map(t => t.textContent);
+    const settle = () => new Promise(r => setTimeout(r, 50));
+    const before = toasts().length;
+    await w.fetch('/api/fine'); await w.fetch('/api/other502'); await settle();
+    assert.strictEqual(toasts().length, before, 'no toast for a normal reply or another 502');
+    await w.fetch('/api/big'); await settle();
+    const shown = toasts().slice(before);
+    assert.strictEqual(shown.length, 1, 'one toast for a reply too large to check');
+    assert.ok(/too large to show through Coral Hub; open it on the computer/.test(shown[0]), shown[0]);
+    await w.fetch('/api/big'); await settle();
+    assert.strictEqual(toasts().length - before, 1, 'and not a second one at once');
+}
+
 console.log('cloud_hardening.test.mjs: ok');
 process.exit(0);
