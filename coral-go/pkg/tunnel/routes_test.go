@@ -34,7 +34,7 @@ func TestClassifyTiers(t *testing.T) {
 		{"POST", "/api/board/p/messages", "", TierInteract},
 		{"POST", "/api/board/p/tasks", "", TierInteract},
 		{"PUT", "/api/sessions/live/a/display-name", "", TierInteract},
-		{"DELETE", "/api/board/p/messages/3", "", TierInteract},
+		{"DELETE", "/api/board/p/messages/3", "", TierLaunch}, // #3942
 		{"POST", "/api/sessions/live/a/kill", "", TierInteract},
 		{"POST", "/api/sessions/launch", "", TierLaunch},
 		{"POST", "/api/sessions/live/a/open-in-editor", "", TierNever}, // local only (#3619, H4)
@@ -436,7 +436,9 @@ func TestRealUIQueriesAreNotRefused(t *testing.T) {
 		{"GET", "/api/sessions/live/001/search-files", "session_id=abc&q=main"},
 		{"GET", "/api/sessions/live/001/chat", "session_id=abc&agent_type=claude&after=0&limit=100&offset=0"},
 		{"GET", "/api/sessions/live/001/chat", "session_id=abc&agent_type=claude&limit=200&before=900&offset=105"},
-		{"GET", "/api/sessions/live/001/poll", "session_id=abc&agent_type=claude&events_limit=50"},
+		// events_limit came from coral-hub's capacity tool, not the dashboard; the hub drops it in the
+		// release that pins #3942, and the tunnel refuses it from then on (asserted below).
+		{"GET", "/api/sessions/live/001/poll", "session_id=abc&agent_type=claude"},
 		{"GET", "/api/sessions/live/001/tasks", "session_id=abc&limit=50"},
 		{"GET", "/api/sessions/live/001/git", "session_id=abc&limit=10"},
 		{"GET", "/api/sessions/live/001/history/search", "q=x&limit=10&offset=0&session_id=abc"},
@@ -449,6 +451,8 @@ func TestRealUIQueriesAreNotRefused(t *testing.T) {
 	} {
 		assert.NotEqual(t, TierNever, Classify(c.method, c.path, c.query), "%s %s?%s is refused but the UI sends it", c.method, c.path, c.query)
 	}
+	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/001/poll", "session_id=abc&events_limit=50"), "#3942")
+	assert.Equal(t, TierNever, Classify("GET", "/api/token-usage", "team_id=t"), "#3942")
 	// Path parameters are not query parameters: they must not be accepted as such.
 	assert.Equal(t, TierNever, Classify("GET", "/api/board/proj/messages", "project=other"))
 	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/001/events", "name=other"))
@@ -591,10 +595,8 @@ func TestDeletingABoardNeedsLaunch(t *testing.T) {
 	if got := Classify("DELETE", "/api/board/team", ""); got != TierLaunch {
 		t.Fatalf("DELETE /api/board/team: %v, want launch", got)
 	}
-	for _, p := range []string{"/api/board/team/messages/4", "/api/board/team/waits", "/api/board/team/reminder"} {
-		if got := Classify("DELETE", p, ""); got != TierInteract {
-			t.Errorf("DELETE %s: %v, want interact", p, got)
-		}
+	if got := Classify("DELETE", "/api/board/team/reminder", ""); got != TierInteract {
+		t.Errorf("DELETE reminder: %v, want interact", got)
 	}
 	allow := AllowRequest(func() Mode { return TierInteract })
 	if allow("DELETE", "/api/board/team", "") {
@@ -609,5 +611,65 @@ func TestDeletingABoardNeedsLaunch(t *testing.T) {
 	}
 	if got := Classify("POST", "/api/sessions/live/agent-1/kill", ""); got != TierInteract {
 		t.Errorf("single kill: %v, want interact", got)
+	}
+}
+
+// #3942 (coral-hub's tiers, Security's #3901 item 2): sleeping a team or every agent, pausing
+// a board and deleting a board message are Launch, like what undoes them; the agents' own
+// board calls are never reachable through the tunnel. One agent's sleep, the dashboard's
+// subscribe, resolve-path and a session's resolve keep their tiers.
+func TestHubTierMoves3942(t *testing.T) {
+	for _, c := range []struct {
+		method, path string
+		want         Tier
+	}{
+		{"POST", "/api/sessions/live/team/alpha/sleep", TierLaunch},
+		{"POST", "/api/sessions/live/sleep-all", TierLaunch},
+		{"POST", "/api/board/team/pause", TierLaunch},
+		{"DELETE", "/api/board/team/messages/7", TierLaunch},
+		{"POST", "/api/board/team/resume", TierLaunch}, // the undo, already Launch
+
+		{"POST", "/api/board/team/messages/mark-read", TierNever},
+		{"POST", "/api/board/team/tasks/claim", TierNever},
+		{"POST", "/api/board/team/tasks/current", TierNever},
+		{"POST", "/api/board/team/tasks/9/submit-review", TierNever},
+		{"POST", "/api/board/team/tasks/9/release-review", TierNever},
+		{"GET", "/api/board/team/waits", TierNever},
+		{"GET", "/api/board/team/waits/poll", TierNever},
+		{"POST", "/api/board/team/waits", TierNever},
+		{"DELETE", "/api/board/team/waits", TierNever},
+		{"GET", "/api/board/team/groups", TierNever},
+		{"GET", "/api/board/team/groups/g/members", TierNever},
+		{"POST", "/api/board/team/groups/g/members", TierNever},
+		{"DELETE", "/api/board/team/groups/g/members/s", TierNever},
+		{"GET", "/api/board/team/messages/check", TierNever},
+		{"GET", "/api/board/team/peek", TierNever},
+		{"GET", "/api/sessions/resolve", TierNever},
+		{"DELETE", "/api/board/team/subscribe", TierNever},
+
+		{"POST", "/api/sessions/live/agent-1/sleep", TierInteract},
+		{"POST", "/api/board/team/subscribe", TierInteract},
+		{"POST", "/api/board/team/messages", TierInteract},
+		{"GET", "/api/sessions/live/agent-1/resolve-path", TierView},
+		{"GET", "/api/sessions/0b1e2c3d-0000-4000-8000-000000000001/resolve", TierView},
+	} {
+		assert.Equal(t, c.want, Classify(c.method, c.path, ""), "%s %s", c.method, c.path)
+	}
+}
+
+// #3942: the generator's question, "does the tunnel let this route shape through at all?".
+func TestShapeAllowed(t *testing.T) {
+	for shape, want := range map[string]bool{
+		"GET /api/sessions/live/{}/poll":                  true,
+		"GET /api/artifacts/{}":                           true, // a {hex64} segment
+		"DELETE /api/board/{}/messages/{}":                true, // Launch
+		"GET /api/board/{}/peek":                          false,
+		"GET /api/sessions/resolve":                       false,
+		"GET /api/agent/history/search":                   false,
+		"GET /api/board/remotes/proxy/{}/{}/messages/all": false,
+		"GET /api/system/status":                          false,
+	} {
+		method, path, _ := strings.Cut(shape, " ")
+		assert.Equal(t, want, ShapeAllowed(method, path), shape)
 	}
 }

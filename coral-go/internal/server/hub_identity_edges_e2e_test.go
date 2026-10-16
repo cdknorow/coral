@@ -158,13 +158,18 @@ func TestHubIdentityEdgesEndToEnd(t *testing.T) {
 		label, method, path string
 		body                map[string]any
 	}{
-		{"claim as Dev", "POST", "/api/board/team/tasks/claim", map[string]any{"subscriber_id": "Dev"}},
 		{"complete as Dev", "POST", "/api/board/team/tasks/1/complete", map[string]any{"subscriber_id": "dev ", "message": "x"}},
 		{"rename Dev", "POST", "/api/board/team/subscribe", map[string]any{"subscriber_id": "Dev", "job_title": "Hacked Title"}},
-		{"unsubscribe Dev (NBSP)", "DELETE", "/api/board/team/subscribe", map[string]any{"subscriber_id": "Dev\u00a0"}},
-		{"wait as Dev", "POST", "/api/board/team/waits", map[string]any{"subscriber_id": "Dev", "wait_type": "message", "target_id": "x", "reason": "r"}},
 		{"create a task as Dev", "POST", "/api/board/team/tasks", map[string]any{"created_by": "Dev", "title": "x"}},
 		{"take Dev's role", "POST", "/api/board/team/subscribe", map[string]any{"subscriber_id": "Backend Dev"}},
+	}
+	agentOnly := []struct {
+		label, method, path string
+		body                map[string]any
+	}{
+		{"claim as Dev", "POST", "/api/board/team/tasks/claim", map[string]any{"subscriber_id": "Dev"}},
+		{"unsubscribe Dev (NBSP)", "DELETE", "/api/board/team/subscribe", map[string]any{"subscriber_id": "Dev\u00a0"}},
+		{"wait as Dev", "POST", "/api/board/team/waits", map[string]any{"subscriber_id": "Dev", "wait_type": "message", "target_id": "x", "reason": "r"}},
 	}
 	check := func(when string) {
 		for _, tc := range memberWrites {
@@ -172,9 +177,15 @@ func TestHubIdentityEdgesEndToEnd(t *testing.T) {
 			assert.Equal(t, http.StatusConflict, code, when+": "+tc.label+" "+b)
 			assert.Equal(t, "member_identity", out["code"], when+": "+tc.label)
 		}
-		code, out, _ := viaHub("POST", "/api/board/team/tasks/claim", map[string]any{"subscriber_id": "Mallory"})
+		code, out, _ := viaHub("POST", "/api/board/team/tasks/1/complete", map[string]any{"subscriber_id": "Mallory", "message": "x"})
 		assert.Equal(t, http.StatusForbidden, code, when)
 		assert.Equal(t, "hub_identity_required", out["code"], when)
+		// The agents' own board calls never pass the tunnel at all (#3942), whoever they name.
+		for _, tc := range agentOnly {
+			code, out, b := viaHub(tc.method, tc.path, tc.body)
+			assert.Equal(t, http.StatusForbidden, code, when+": "+tc.label+" "+b)
+			assert.Equal(t, "path_not_allowed", out["code"], when+": "+tc.label)
+		}
 	}
 	check("operator-by-default on")
 	setDisabled := func(d bool) {
