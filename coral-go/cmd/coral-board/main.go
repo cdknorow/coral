@@ -2662,7 +2662,7 @@ func cmdWait() {
 	sessionName := resolveSessionName()
 
 	if isStatus {
-		data, status, err := apiCallRaw("GET", fmt.Sprintf("/%s/waits?subscriber_id=%s", project, url.QueryEscape(subscriberID)), nil)
+		data, status, err := apiCallRaw("GET", fmt.Sprintf("/%s/waits?subscriber_id=%s", url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -2703,7 +2703,7 @@ func cmdWait() {
 	}
 
 	if isCancel {
-		data, status, err := apiCallRaw("DELETE", fmt.Sprintf("/%s/waits?subscriber_id=%s", project, url.QueryEscape(subscriberID)), nil)
+		data, status, err := apiCallRaw("DELETE", fmt.Sprintf("/%s/waits?subscriber_id=%s", url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -2744,7 +2744,7 @@ func cmdWait() {
 		"timeout":       timeout,
 	}
 
-	data, status, err := apiCallRaw("POST", "/"+project+"/waits", body)
+	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(project)+"/waits", body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -2781,7 +2781,7 @@ func cmdWait() {
 		fmt.Println("\nBlocking until wait resolves...")
 		pollClient := &http.Client{Timeout: 65 * time.Second}
 		for {
-			req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/board/%s/waits/poll?subscriber_id=%s&timeout=30", serverURL, project, url.QueryEscape(subscriberID)), nil)
+			req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/board/%s/waits/poll?subscriber_id=%s&timeout=30", serverURL, url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Poll error:", err)
 				os.Exit(1)
