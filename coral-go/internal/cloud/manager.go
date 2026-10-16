@@ -155,6 +155,9 @@ type Manager struct {
 	// in-flight cap (4), so a legitimate request is never closed for being over its
 	// stream cap (which the connector would read as "no relay").
 	relaySlots chan struct{}
+	// signinSlots is Hub sign-in's own in-flight budget (2, the hub's per-tunnel cap for it), so
+	// a relay burst never makes a sign-in check wait or come back busy (#3966).
+	signinSlots chan struct{}
 	// originsAccepted is the return-origin list the hub accepted on tunnel originsSession
 	// (#3966); a sign-in starts only on that tunnel and only for an origin on it.
 	originsAccepted []string
@@ -173,7 +176,7 @@ func New(o Options) *Manager {
 	if hc == nil {
 		hc = NewHubHTTPClient()
 	}
-	m := &Manager{o: o, hc: hc, loaded: make(chan struct{}), relaySlots: make(chan struct{}, 4)}
+	m := &Manager{o: o, hc: hc, loaded: make(chan struct{}), relaySlots: make(chan struct{}, 4), signinSlots: make(chan struct{}, 2)}
 	m.st = Status{Configured: o.HubURL != "", HubURL: o.HubURL, State: StateOff}
 	if o.HubURL != "" {
 		m.st.State = StateIdle

@@ -289,3 +289,53 @@ func TestHubPage(t *testing.T) {
 	assert.Empty(t, New(Options{HubURL: "http://hub.local:8080"}).HubPage())
 	assert.Empty(t, New(Options{}).HubPage())
 }
+
+// #3966, coral-hub Security's finding: Coral Hub's busy answer (429, the same {"ok":false} body
+// as a refusal) is transient on a check, like no answer, so a relay burst never signs the owner
+// out; a 400 with the same body still ends it, and begin and redeem take a 429 as a plain failure.
+func TestSigninBusyCheckIsTransient(t *testing.T) {
+	_, m, sh, _ := signinEnv(t, ownerAcct)
+	ctx := context.Background()
+	setStatus := func(op string, code int) {
+		sh.mu.Lock()
+		sh.status[op] = code
+		sh.mu.Unlock()
+	}
+	sh.set(tunnel.SigninCheck, `{"ok":false}`)
+	setStatus(tunnel.SigninCheck, 429)
+	err := m.CheckSignin(ctx, grantID)
+	assert.ErrorIs(t, err, ErrSigninBusy)
+	assert.ErrorIs(t, err, ErrSigninUnanswered, "the grace applies")
+	assert.NotErrorIs(t, err, ErrSigninRefused)
+
+	setStatus(tunnel.SigninCheck, 400)
+	err = m.CheckSignin(ctx, grantID)
+	assert.ErrorIs(t, err, ErrSigninRefused, "the same body with 400 ends the session")
+	assert.NotErrorIs(t, err, ErrSigninUnanswered)
+
+	sh.set(tunnel.SigninRedeem, `{"ok":false}`)
+	setStatus(tunnel.SigninRedeem, 429)
+	_, err = m.RedeemSignin(ctx, strings.Repeat("c", 43), strings.Repeat("v", 43))
+	assert.ErrorIs(t, err, ErrSigninRefused, "a busy redeem is a failed sign-in, not a retry")
+	sh.set(tunnel.SigninBegin, `{"ok":false}`)
+	setStatus(tunnel.SigninBegin, 429)
+	_, err = m.StartSignin(ctx, "ch", "st", loopback)
+	assert.ErrorIs(t, err, ErrSigninRefused)
+}
+
+// The connector's own budget: relay requests filling the relay's slots never hold up a check.
+func TestSigninDoesNotWaitForRelaySlots(t *testing.T) {
+	_, m, sh, _ := signinEnv(t, ownerAcct)
+	sh.set(tunnel.SigninCheck, `{"ok":true,"status":"ok","account":"`+ownerAcct+`"}`)
+	for i := 0; i < cap(m.relaySlots); i++ {
+		m.relaySlots <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < cap(m.relaySlots); i++ {
+			<-m.relaySlots
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	assert.NoError(t, m.CheckSignin(ctx, grantID))
+}

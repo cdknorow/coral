@@ -137,6 +137,7 @@ func TestSigninClosesEveryOtherStream(t *testing.T) {
 		"query":           {Header{Kind: KindSignin, Method: "POST", Path: "/signin/v1/check", Query: "a=1", ContentLength: 2}, small},
 		"headers":         {Header{Kind: KindSignin, Method: "POST", Path: "/signin/v1/check", Headers: http.Header{"X-Coral-Hub-User": {"hub-user-0000000a"}}, ContentLength: 2}, small},
 		"a hub user":      {Header{Kind: KindSignin, Method: "POST", Path: "/signin/v1/check", HubUser: "hub-user-0000000a", ContentLength: 2}, small},
+		"a hub tier":      {Header{Kind: KindSignin, Method: "POST", Path: "/signin/v1/check", HubTier: "launch", ContentLength: 2}, small},
 		"over the cap":    {Header{Kind: KindSignin, Method: "POST", Path: "/signin/v1/redeem", ContentLength: SigninMaxBody + 1}, big},
 		"short body":      {Header{Kind: KindSignin, Method: "POST", Path: "/signin/v1/check", ContentLength: 10}, small},
 		"relay kind here": {Header{Kind: KindRelay, Method: "POST", Path: RelayMessagePath, ContentLength: 2}, small},
@@ -186,4 +187,51 @@ func TestSigninClientChecks(t *testing.T) {
 	_, err = cs.Signin(context.Background(), SigninRedeem, make([]byte, SigninMaxBody+1))
 	assert.Error(t, err)
 	assert.Equal(t, int32(0), calls.Load())
+}
+
+// #3966: sign-in has its own in-flight budget (2) beside the relay's (4): a relay burst at its
+// full budget doesn't make a check wait or come back busy, and a third concurrent sign-in call is
+// answered 429 with the fixed body.
+func TestSigninHasItsOwnInFlightBudget(t *testing.T) {
+	release := make(chan struct{})
+	var relaysIn, signinsIn atomic.Int32
+	h := signinHub(t, []string{CapabilitySignin, CapabilityRelay}, func(ctx context.Context, _ *Session, req SigninRequest) SigninResponse {
+		if req.Op == SigninBegin { // the slow ones that fill sign-in's budget
+			signinsIn.Add(1)
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+		}
+		return SigninResponse{Status: 200, Body: []byte(`{"ok":true}`)}
+	}, func(ctx context.Context, _ *Session, _ RelayRequest) RelayResponse {
+		relaysIn.Add(1)
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return RelayResponse{Status: 200, Body: []byte(`{}`)}
+	})
+	_, cs := connect(t, h, noopLocal(), nil)
+	var wg sync.WaitGroup
+	defer func() { close(release); wg.Wait() }()
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, _ = cs.Relay(context.Background(), RelayTargetsPath, []byte(`{}`)) }()
+	}
+	require.Eventually(t, func() bool { return relaysIn.Load() == 4 }, 5*time.Second, 10*time.Millisecond, "the relay budget is full")
+	r, err := cs.Signin(context.Background(), SigninCheck, []byte(`{}`))
+	require.NoError(t, err)
+	assert.Equal(t, 200, r.Status, "a check isn't blocked by a relay burst")
+
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, _ = cs.Signin(context.Background(), SigninBegin, []byte(`{}`)) }()
+	}
+	require.Eventually(t, func() bool { return signinsIn.Load() == 2 }, 5*time.Second, 10*time.Millisecond, "sign-in's budget is full")
+	r, err = cs.Signin(context.Background(), SigninCheck, []byte(`{}`))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusTooManyRequests, r.Status, "over sign-in's own budget")
+	assert.JSONEq(t, `{"ok":false}`, string(r.Body))
+	assert.Equal(t, 1, r.RetryAfter)
 }

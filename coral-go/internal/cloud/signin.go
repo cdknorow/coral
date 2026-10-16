@@ -48,6 +48,11 @@ var (
 	// ErrSigninUnanswered: no answer came (no tunnel, a timeout, the tunnel dropped). A
 	// session may wait for the next check, up to the 10-minute grace.
 	ErrSigninUnanswered = errors.New("cloud: Coral Hub didn't answer")
+	// ErrSigninBusy: a check answered 429, Coral Hub's busy answer (its body is the same fixed
+	// {"ok":false} as a refusal, so only the status tells them apart). It is transient like no
+	// answer: it wraps ErrSigninUnanswered, so the grace applies, and it never counts as a good
+	// check (#3966, coral-hub Security's finding).
+	ErrSigninBusy = fmt.Errorf("%w: busy", ErrSigninUnanswered)
 	// ErrSigninNoOwner: no owner is pinned (an older hub never named one): Hub sign-in is off.
 	ErrSigninNoOwner = errors.New("cloud: this computer's Coral Hub owner isn't known")
 )
@@ -110,8 +115,8 @@ func (m *Manager) signin(ctx context.Context, op string, req any) (int, []byte, 
 		return 0, nil, err
 	}
 	select {
-	case m.relaySlots <- struct{}{}: // the hub's in-flight cap counts relay and sign-in together
-		defer func() { <-m.relaySlots }()
+	case m.signinSlots <- struct{}{}: // sign-in's own budget beside the relay's
+		defer func() { <-m.signinSlots }()
 	case <-ctx.Done():
 		return 0, nil, fmt.Errorf("%w: %v", ErrSigninUnanswered, ctx.Err())
 	}
@@ -217,7 +222,8 @@ func (m *Manager) RedeemSignin(ctx context.Context, code, verifier string) (Sign
 }
 
 // CheckSignin asks whether grant still holds. nil only for {"ok":true,"status":"ok"} naming the
-// pinned owner; ErrSigninUnanswered when no answer came; anything else ends the session.
+// pinned owner; ErrSigninUnanswered when no answer came or the hub was busy (429,
+// ErrSigninBusy); anything else, any other status included, ends the session.
 func (m *Manager) CheckSignin(ctx context.Context, grant string) error {
 	owner, err := m.owner(ctx)
 	if err != nil {
@@ -226,6 +232,9 @@ func (m *Manager) CheckSignin(ctx context.Context, grant string) error {
 	status, b, err := m.signin(ctx, tunnel.SigninCheck, map[string]any{"v": signinVersion, "grant": grant})
 	if err != nil {
 		return err
+	}
+	if status == http.StatusTooManyRequests {
+		return ErrSigninBusy // check only: begin and redeem take a 429 as a plain failure
 	}
 	var r struct {
 		OK      bool   `json:"ok"`
