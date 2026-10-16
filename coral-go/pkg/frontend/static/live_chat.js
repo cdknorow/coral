@@ -24,9 +24,15 @@ let loadingMore = false;     // an older page is being fetched
 // Messages per page. Tool calls and results each count as one and are folded
 // away in the chat, so a page covers fewer turns than its size suggests. The
 // first page is small so a switch paints quickly (the payload crosses the hub
-// leg); older pages load as the reader scrolls toward the top.
-const FIRST_PAGE = 100;
+// leg); older pages load as the reader scrolls toward the top. 30 messages fill
+// the view and are about a third of the 100 it was (#3723: 22 to 61 KB against
+// 68 to 170 KB on 100 MB transcripts).
+const FIRST_PAGE = 30;
 const OLDER_PAGE = 200;
+// Pages carry at most CHAT_TRIM bytes of each long tool field (an output, a
+// written file, an edit): they are folded away, and a card loads its message in
+// full when opened (loadTrimmedCard).
+const CHAT_TRIM = 2048;
 // Bumped on reset so responses for a previous session are dropped, and used to
 // keep a single refresh in flight: overlapping initial loads would otherwise
 // both render the full history.
@@ -34,6 +40,88 @@ let historyGeneration = 0;
 let refreshInFlight = -1;
 let activeChatAbortController = null;
 let activeLoadMoreAbortController = null;
+// The query every chat request starts from: which session, and where it is.
+function chatParams(session) {
+    const params = new URLSearchParams();
+    params.set("session_id", session.session_id);
+    if (session.agent_type) {
+        params.set("agent_type", session.agent_type);
+    }
+    // Through the hub the machine resolves the directory from session_id (its own stored record), and the hub's route
+    // table refuses an absolute path in a file-ref parameter: sending it would turn the chat into a 404.
+    if (session.working_directory && !(isCloud() && sessionServer(session) !== 'local')) {
+        params.set("working_directory", session.working_directory);
+    }
+    return params;
+}
+
+// A trimmed message (#3723) keeps its absolute index, so its card can load it in full.
+function noteIndexes(messages, start) {
+    messages.forEach((m, i) => { if (m && m.trimmed) m._index = start + i; });
+}
+
+// One message, whole: the page of one that ends after it, without trim.
+async function fetchChatMessage(session, index) {
+    const params = chatParams(session);
+    params.set("after", "0");
+    params.set("limit", "1");
+    params.set("before", String(index + 1));
+    const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    return (data && Array.isArray(data.messages) && data.messages[0]) || null;
+}
+
+// Opening a card whose tool or output was shortened loads its message in full and shows that in
+// the card. Checked by tool_use_id, so a transcript that changed underneath shows nothing wrong:
+// the card then says its text was shortened.
+async function loadTrimmedCard(card) {
+    const session = state.currentSession;
+    if (!session || card.dataset.trimLoading) return;
+    card.dataset.trimLoading = "1";
+    const generation = historyGeneration;
+    try {
+        const toolUseId = card.dataset.toolUseId || "";
+        if (card.dataset.trimUse !== undefined) {
+            const msg = await fetchChatMessage(session, Number(card.dataset.trimUse));
+            if (generation !== historyGeneration) return;
+            const tool = (msg && Array.isArray(msg.tool_uses) ? msg.tool_uses : []).find(t => (t.tool_use_id || "") === toolUseId);
+            if (!tool || tool.trimmed) throw new Error("the message changed");
+            const fresh = htmlToElement(renderToolCard(tool, chatAgentAdapter(session.agent_type)));
+            const body = card.querySelector(":scope > .tool-call-body");
+            const outputs = [...body.querySelectorAll(":scope > .tool-card-output")];
+            body.replaceChildren(...fresh.querySelector(".tool-call-body").childNodes, ...outputs);
+            delete card.dataset.trimUse;
+        }
+        if (card.dataset.trimResult !== undefined) {
+            const msg = await fetchChatMessage(session, Number(card.dataset.trimResult));
+            if (generation !== historyGeneration) return;
+            if (!msg || msg.type !== "tool_result" || (msg.tool_use_id || "") !== (card.dataset.trimResultId || "") || msg.trimmed) {
+                throw new Error("the message changed");
+            }
+            const pre = card.querySelector(".tool-card-output > pre");
+            if (pre) pre.textContent = msg.content || "";
+            delete card.dataset.trimResult;
+            delete card.dataset.trimResultId;
+        }
+    } catch (e) {
+        if (generation !== historyGeneration) return;
+        const body = card.querySelector(":scope > .tool-call-body");
+        if (body && !body.querySelector(":scope > .tool-card-trim-note")) {
+            body.insertAdjacentHTML("beforeend", `<div class="tool-card-trim-note">Shortened; the full text couldn't be loaded (${escapeHtml(e.message || "error")}).</div>`);
+        }
+    } finally {
+        delete card.dataset.trimLoading;
+    }
+}
+
+// toggle doesn't bubble: caught on the way down.
+document.addEventListener("toggle", (e) => {
+    const card = e.target;
+    if (!card || !card.open || !card.classList || !card.classList.contains("tool-call")) return;
+    if (card.dataset.trimUse !== undefined || card.dataset.trimResult !== undefined) loadTrimmedCard(card);
+}, true);
+
 // Servers that refused a before= page; older pages there go by offset.
 const beforeRefused = new Set();
 // Whether a response refuses the request itself (an unknown parameter), as
@@ -98,8 +186,10 @@ function toolLabel(tool) {
     return tool.input_summary || "";
 }
 
-function renderToolCard(tool, adapter) {
+function renderToolCard(tool, adapter, index) {
     const toolUseId = tool.tool_use_id || "";
+    // A shortened tool (#3723): the index of its message, loaded in full when the card opens.
+    const trim = tool.trimmed && Number.isInteger(index) ? ` data-trim-use="${Number(index)}"` : "";
     const view = adapter.toolView(tool);
     let bodyHtml = "";
 
@@ -120,7 +210,7 @@ function renderToolCard(tool, adapter) {
     }
 
     const label = toolLabel(tool);
-    return `<details class="tool-call" data-tool-use-id="${escapeHtml(toolUseId)}">
+    return `<details class="tool-call" data-tool-use-id="${escapeHtml(toolUseId)}"${trim}>
         <summary class="tool-call-summary">
             <span class="tool-call-icon">${getToolIcon(view.icon)}</span>
             <span class="tool-call-name" title="${escapeHtml(tool.name || "")}">${escapeHtml(view.name)}</span>
@@ -647,7 +737,7 @@ function renderOneMessage(msg, container, agentType) {
                 appendTurnFinal(container, makeBubble("chat-bubble assistant",
                     `<div class="role-label">${getToolIcon(view.icon)} ${escapeHtml(view.questionLabel)}</div>` + renderQuestionCard(tool)));
             } else {
-                appendWork(container, htmlToElement(renderToolCard(tool, adapter)));
+                appendWork(container, htmlToElement(renderToolCard(tool, adapter, msg._index)));
             }
         }
     } else if (msg.type === "tool_result") {
@@ -656,24 +746,31 @@ function renderOneMessage(msg, container, agentType) {
             ? container.querySelector(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
             : null;
         const outputHtml = `<pre class="tool-output-inline${msg.is_error ? " tool-result-error" : ""}">${escapeHtml(msg.content || "")}</pre>`;
+        const markTrimmed = card => {
+            if (!msg.trimmed || !Number.isInteger(msg._index)) return card;
+            card.dataset.trimResult = String(msg._index);
+            card.dataset.trimResultId = toolUseId;
+            return card;
+        };
         if (target && target.classList.contains("tool-call")) {
             if (msg.is_error) target.classList.add("tool-call-error");
             target.querySelector(".tool-call-body").insertAdjacentHTML("beforeend",
                 `<div class="tool-card-output">${outputHtml}</div>`);
+            markTrimmed(target);
         } else if (target) {
             target.insertAdjacentHTML("beforeend", `<div class="tool-card-output">${outputHtml}</div>`);
         } else {
             // The matching tool call is on an older, not-yet-loaded page.
             const toolName = msg.tool_name || "Tool";
             const view = adapter.toolView({ name: toolName });
-            appendWork(container, htmlToElement(`<details class="tool-call${msg.is_error ? " tool-call-error" : ""}">
+            appendWork(container, markTrimmed(htmlToElement(`<details class="tool-call${msg.is_error ? " tool-call-error" : ""}">
                     <summary class="tool-call-summary">
                         <span class="tool-call-icon">${getToolIcon(view.icon)}</span>
                         <span class="tool-call-name" title="${escapeHtml(toolName)}">${escapeHtml(view.name)}</span>
                         <span class="tool-call-label">output</span>
                     </summary>
                     <div class="tool-call-body"><div class="tool-card-output">${outputHtml}</div></div>
-                </details>`));
+                </details>`)));
         }
     }
 }
@@ -721,22 +818,14 @@ export async function refreshLiveHistory() {
         container.innerHTML = '<div class="loading-indicator">Loading chat history</div>';
     }
 
-    const params = new URLSearchParams();
-    params.set("session_id", session.session_id);
-    if (session.agent_type) {
-        params.set("agent_type", session.agent_type);
-    }
-    // Through the hub the machine resolves the directory from session_id (its own stored record), and the hub's route
-    // table refuses an absolute path in a file-ref parameter: sending it would turn the chat into a 404.
-    if (session.working_directory && !(isCloud() && sessionServer(session) !== 'local')) {
-        params.set("working_directory", session.working_directory);
-    }
+    const params = chatParams(session);
 
     if (!initialLoadDone) {
         // First load: fetch most recent messages with pagination
         params.set("after", "0");
         params.set("limit", String(FIRST_PAGE));
         params.set("offset", "0");
+        params.set("trim", String(CHAT_TRIM));
     } else {
         // Subsequent polls: only fetch new messages
         params.set("after", historyMessageCount);
@@ -793,6 +882,7 @@ export async function refreshLiveHistory() {
         if (data.messages && data.messages.length > 0) {
             if (!initialLoadDone) {
                 container.innerHTML = "";
+                noteIndexes(data.messages, pageStart(data));
                 // Initial load — render all and add "Load More" button if needed
                 for (const msg of data.messages) {
                     renderMessage(msg, container, session.agent_type);
@@ -928,22 +1018,14 @@ async function _loadMoreHistory(generation) {
     const container = document.getElementById("live-history-messages");
     if (!container) return;
 
-    const params = new URLSearchParams();
-    params.set("session_id", session.session_id);
-    if (session.agent_type) {
-        params.set("agent_type", session.agent_type);
-    }
-    // Through the hub the machine resolves the directory from session_id (its own stored record), and the hub's route
-    // table refuses an absolute path in a file-ref parameter: sending it would turn the chat into a 404.
-    if (session.working_directory && !(isCloud() && sessionServer(session) !== 'local')) {
-        params.set("working_directory", session.working_directory);
-    }
+    const params = chatParams(session);
     // Pagination is anchored by the cursor; omit an explicit after=0 so
     // providers and test harnesses can distinguish load-more from initial load.
     // before= is the oldest rendered message's absolute index, so messages
     // appended since the first page do not shift the window. offset is what a
     // server without keyset paging reads.
     params.set("limit", String(OLDER_PAGE));
+    params.set("trim", String(CHAT_TRIM));
     const server = sessionServer(session);
     if (!beforeRefused.has(server)) params.set("before", String(historyStart));
     params.set("offset", String(historyOffset));
@@ -981,6 +1063,7 @@ async function _loadMoreHistory(generation) {
             const refNode = loadMoreBtn ? loadMoreBtn.nextSibling : container.firstChild;
 
             const temp = document.createElement("div");
+            noteIndexes(data.messages, pageStart(data, historyStart));
             for (const msg of data.messages) {
                 renderMessage(msg, temp, session.agent_type);
             }

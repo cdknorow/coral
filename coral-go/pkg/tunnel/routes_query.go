@@ -48,7 +48,7 @@ var routeQueries = map[string]string{
 	"GET /api/sessions/live/{}":                         "agent_type,session_id",
 	"GET /api/sessions/live/{}/capture":                 "agent_type,session_id",
 	"GET /api/sessions/live/{}/changes.diff":            "session_id",
-	"GET /api/sessions/live/{}/chat":                    "after,agent_type,before,limit,offset,session_id,working_directory*",
+	"GET /api/sessions/live/{}/chat":                    "after,agent_type,before,limit,offset,session_id,trim,working_directory*",
 	"GET /api/sessions/live/{}/diff":                    "filepath*,session_id",
 	"GET /api/sessions/live/{}/events":                  "limit,session_id",
 	"GET /api/sessions/live/{}/events/counts":           "session_id",

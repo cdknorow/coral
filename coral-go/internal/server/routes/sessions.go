@@ -1567,8 +1567,12 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			end = max(end-max(offset, 0), 0)
 		}
 		start := max(end-limit, 0)
+		page := messages[start:end]
+		if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
+			page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
+		}
 		httputil.WriteJSONCompressed(w, r, http.StatusOK, map[string]any{
-			"messages":     messages[start:end],
+			"messages":     page,
 			"total":        total,
 			"start":        start,
 			"has_more":     start > 0,

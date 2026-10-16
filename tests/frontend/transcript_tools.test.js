@@ -96,7 +96,7 @@ async function run() {
       : { kind: el.classList.contains('human') ? 'user' : 'reply', final: el.classList.contains('turn-final'), text: (el.querySelector('.message-text') || el).innerText.trim() })`);
   await cycles(3);
   let t = await top();
-  check('history loads a first page of 100 messages', (await ev(`window.__chatLimits || []`)).every(l => l === '100') && (await ev(`(window.__chatLimits || []).length`)) > 0, JSON.stringify(await ev(`window.__chatLimits`)));
+  check('history loads a first page of 30 messages (#3723)', (await ev(`window.__chatLimits || []`)).every(l => l === '30') && (await ev(`(window.__chatLimits || []).length`)) > 0, JSON.stringify(await ev(`window.__chatLimits`)));
   check('overlapping initial loads render the history once', t.filter(x => x.kind === 'user').length === 1, JSON.stringify(t.map(x => x.kind)));
   check('top level: group, user, group, final reply', JSON.stringify(t.map(x => x.kind)) === '["group","user","group","reply"]', JSON.stringify(t.map(x => x.kind)));
   check('groups are collapsed by default', t.filter(x => x.kind === 'group').every(g => !g.open));
