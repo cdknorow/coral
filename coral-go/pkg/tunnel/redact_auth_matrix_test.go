@@ -3,6 +3,7 @@ package tunnel
 import (
 	"bytes"
 	"encoding/json"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -112,7 +113,59 @@ func TestQuoteLen(t *testing.T) {
 		"\"x": 1, "'x": 1, "\\\"x": 2, "\\\\\\\"x": 4, "\\u0022x": 6, "\\U0027x": 6,
 		"x": 0, "\\nx": 0, "\\u0041x": 0, "": 0,
 		"\\": -2, "\\\\\\": -2, "\\u00": -2,
+		"\\\\\"x": 0, // an escaped backslash, then the string's own end
 	} {
 		assert.Equal(t, want, quoteLen([]byte(in)), in)
+	}
+}
+
+// redactStream runs the parts through one Redactor, one write each.
+func redactStream(parts ...string) string {
+	var out bytes.Buffer
+	r := NewRedactor(&out)
+	for _, p := range parts {
+		_, _ = r.Write([]byte(p))
+	}
+	_ = r.Close()
+	return out.String()
+}
+
+// Security's property test (#3731 review): any JSON string built from these atoms, split
+// anywhere, is still JSON after redaction and the same as unsplit. An auth-param list that ran
+// to its end used to take the string's closing quote.
+func TestSecAuth2JSONStaysValid(t *testing.T) {
+	rng := rand.New(rand.NewSource(99))
+	atoms := []string{"authorization", "Authorization: ", "\"", "\\", ": ", "Basic ", "Bearer ", "token ", "Digest ", "username=", "nonce=", "response=", "\"x\"", "=", ",", " ", "\n", "abc123", "é", "😀", "'", "{", "}", "[", "]"}
+	bad := 0
+	for it := 0; it < 60000 && bad < 5; it++ {
+		var sb strings.Builder
+		for i, n := 0, 2+rng.Intn(18); i < n; i++ {
+			sb.WriteString(atoms[rng.Intn(len(atoms))])
+		}
+		b, _ := json.Marshal(map[string]string{"content": sb.String()})
+		in := string(b)
+		split := rng.Intn(len(in) + 1)
+		out := redactStream(in[:split], in[split:])
+		if !json.Valid([]byte(out)) {
+			t.Errorf("INVALID JSON in=%q out=%q", in, out)
+			bad++
+		}
+		if whole := redactStream(in); whole != out {
+			t.Errorf("SPLIT DIFFERS in=%q whole=%q split=%q", in, whole, out)
+			bad++
+		}
+	}
+}
+
+// Security's repros: a text that ends inside a parameter keeps its JSON string's closing quote.
+func TestAuthParamListStopsAtTheStringsEnd(t *testing.T) {
+	for _, in := range []string{
+		`{"content":"Authorization: username="}`,
+		`{"content":"authorization: Bearer response="}`,
+		`{"content":"see Authorization: Digest username=\"bob\", nonce="}`,
+		`{"content":"Authorization: Digest nonce=\"abc", "b":"x \"y\" z"}`,
+	} {
+		out := RedactTokens([]byte(in))
+		assert.True(t, json.Valid(out), "%s -> %s", in, out)
 	}
 }

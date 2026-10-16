@@ -103,7 +103,7 @@ func authGlue(b []byte) (n int, scheme bool) {
 const maxQuoteEscape = 8
 
 // quoteLen is the length of the quote at the start of b, however it is written: " or ',
-// after any backslashes (JSON writes " as \", and a \" in the text as \\\"), or a JSON \u0022
+// after an odd run of backslashes (JSON writes " as \", and a \" in the text as \\\"), or a JSON \u0022
 // or \u0027. 0: no quote there; -2: b ends before that can be told. When unsure, a quote: an
 // Authorization value after it is then redacted (fail closed).
 func quoteLen(b []byte) int {
@@ -118,8 +118,12 @@ func quoteLen(b []byte) int {
 		return 0
 	}
 	switch c := b[i]; {
-	case c == '"' || c == '\'':
+	case c == '"' && i%2 == 1, c == '"' && i == 0, c == '\'':
 		return i + 1
+	case c == '"':
+		// An even run of backslashes is that many escaped backslashes: this '"' is unescaped,
+		// the end of the JSON string around the text, not a quote in it.
+		return 0
 	case i > 0 && (c == 'u' || c == 'U'):
 		for _, hex := range []string{"u0022", "u0027"} {
 			k := 0
@@ -780,16 +784,27 @@ func paramList(b []byte, final bool) (n, pairs int) {
 		switch {
 		case q == -2:
 			return short(true)
+		case q == 1 && b[k] == '"' && k+1 == len(b) && !final:
+			return -2, 0 // the string's own end, or a value's opening quote: the next byte tells
+		case q == 1 && b[k] == '"' && (k+1 == len(b) || strings.IndexByte("},]:", b[k+1]) >= 0):
+			// An empty value: this quote closes the JSON string around the text (#3731,
+			// Security: the list must never take it, or the reply stops being JSON).
+			return k, pairs + 1
 		case q > 0:
-			form := b[k : k+q]
-			end := bytes.Index(b[k+q:], form)
-			if end < 0 {
-				if len(b) >= maxParamList {
-					return maxParamList, pairs + 1
-				}
+			end, stop := quotedEnd(b[k:k+q], b[k+q:], final)
+			switch {
+			case stop == -2:
+				return -2, 0
+			case stop >= 0:
+				// The JSON string around the text ends inside the value: the list stops there and
+				// never takes the closing quote (#3731, Security; as pemClose, #3694).
+				return k + q + stop, pairs + 1
+			case end < 0 && len(b) >= maxParamList:
+				return maxParamList, pairs + 1
+			case end < 0:
 				return short(true)
 			}
-			k += q + end + q
+			k += q + end
 		default:
 			for k < len(b) && isCredValue(b[k]) {
 				k++
@@ -822,6 +837,53 @@ func paramList(b []byte, final bool) (n, pairs int) {
 		}
 		i = k
 	}
+}
+
+// quotedEnd finds, in b (what follows a value's opening quote, written as form), the end of the
+// value: the index just after its closing quote, which is the same quote after the same number
+// of backslashes (end), or where the JSON string around the text ends first (stop): an
+// unescaped '"' when the value's quote was escaped (the text is inside a JSON string), or, for a
+// raw quote, a '"' of another kind that is followed by '}', ',', ']', ':' or the end. -1, -1:
+// neither in b; stop -2: b ends right after such a '"' and only the next byte tells.
+func quotedEnd(form, b []byte, final bool) (end, stop int) {
+	r := len(form) - 1 // backslashes before the quote
+	qc := form[r]
+	if qc != '"' && qc != '\'' {
+		// \u0022 or \u0027: the same spelling closes it; the string still ends at a '"'.
+		e := bytes.Index(b, form)
+		if u := unescapedQuote(b, false); u >= 0 && (e < 0 || u < e) {
+			return -1, u
+		}
+		if e < 0 {
+			return -1, -1
+		}
+		return e + len(form), -1
+	}
+	run := 0
+	for j, c := range b {
+		if c == '\\' {
+			run++
+			continue
+		}
+		switch {
+		case c == qc && run == r:
+			return j + 1, -1
+		case c == '"' && run%2 == 0 && r > 0:
+			return -1, j // escaped quotes inside, so this unescaped one ends the JSON string
+		case c == '"' && run%2 == 0:
+			if j+1 == len(b) {
+				if !final {
+					return -1, -2
+				}
+				return -1, j
+			}
+			if strings.IndexByte("},]:", b[j+1]) >= 0 {
+				return -1, j
+			}
+		}
+		run = 0
+	}
+	return -1, -1
 }
 
 // mixedValue: the value holds a digit or a symbol, as credentials do.
