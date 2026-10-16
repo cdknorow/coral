@@ -114,23 +114,34 @@ cpu_seconds(){
 T0=$(date +%s); C0=$(cpu_seconds)
 log "warming up ${WARMUP}s"
 sleep "$WARMUP"
+curl -s -m 10 "http://127.0.0.1:$PPROF/debug/coral/tmux-execs" -o "$OUT/tmux-execs-start.json"
 log "profiling ${PROFILE}s"
 curl -s -m $((PROFILE + 30)) "http://127.0.0.1:$PPROF/debug/pprof/profile?seconds=$PROFILE" -o "$OUT/cpu.pprof" &
 P1=$!
 curl -s -m $((PROFILE + 30)) "http://127.0.0.1:$PPROF/debug/pprof/allocs?seconds=$PROFILE" -o "$OUT/allocs.pprof" &
 P2=$!
 wait "$P1" "$P2" # by pid: %1 and %2 would be the first jobs started, the servers
+curl -s -m 10 "http://127.0.0.1:$PPROF/debug/coral/tmux-execs" -o "$OUT/tmux-execs-end.json"
 REST=$(( MINUTES * 60 - WARMUP - PROFILE ))
 [[ $REST -gt 0 ]] && { log "running ${REST}s more"; sleep "$REST"; }
 T1=$(date +%s); C1=$(cpu_seconds)
 curl -s -m 30 "http://127.0.0.1:$PPROF/debug/pprof/heap" -o "$OUT/heap.pprof"
 curl -s -m 30 "http://127.0.0.1:$PPROF/debug/pprof/goroutine?debug=1" -o "$OUT/goroutines.txt"
 
-python3 -I - "$OUT" "$T0" "$T1" "$C0" "$C1" <<'PY' | tee "$OUT/summary.txt"
+PROFILE="$PROFILE" python3 -I - "$OUT" "$T0" "$T1" "$C0" "$C1" <<'PY' | tee "$OUT/summary.txt"
 import re, sys
 out, t0, t1, c0, c1 = sys.argv[1], *map(float, sys.argv[2:])
 wall = t1 - t0
 print(f"wall {wall:.0f} s; server CPU {c1 - c0:.0f} s = {100 * (c1 - c0) / wall:.1f}% of one core")
+import json, os
+try:
+    a = json.load(open(f"{out}/tmux-execs-start.json")); b = json.load(open(f"{out}/tmux-execs-end.json"))
+    win = float(os.environ.get("PROFILE", "120")) / 60
+    per = {k: (b.get(k, 0) - a.get(k, 0)) / win for k in b}
+    print("tmux execs per minute (profile window): total %.0f; %s" % (sum(per.values()),
+          ", ".join(f"{k} {v:.0f}" for k, v in sorted(per.items(), key=lambda kv: -kv[1]) if v)))
+except Exception as e:
+    print(f"tmux execs: not available ({e})")
 gc = [l for l in open(f"{out}/server.log", errors="replace") if l.startswith("gc ")]
 if gc:
     m = re.search(r"@[\d.]+s (\d+)%", gc[-1])
