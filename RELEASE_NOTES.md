@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.63 — Windows hardening, fewer background processes, and smoother review and board flows
+
+### Security
+
+- **The same-user check now covers macOS and Windows.** Coral's cloud routes refuse a request from another local account on macOS and Windows, as they already did on Linux (403 `other_user`). Both checks fail closed when Coral can't attribute a connection, except that on a macOS version whose connection table Coral doesn't recognise the check is skipped (as before this release) and the reason is logged once, so an OS update can't lock you out.
+- **Secret files on Windows are private to you.** The API key, the sign-in token, the command-line token and each session token are written with an owner-only access list (you and SYSTEM). A file found readable by others is refused; for the API key, Coral treats the key as exposed and makes a new one, so clients holding the old key need the new one.
+- **Windows: a long launch command no longer leaves its script behind, and non-ASCII text in it is read as written.** Coral hands a long launch command to PowerShell through a temporary script. On Windows with a temporary folder whose path has a non-ASCII character (an accented or curly-apostrophe user name), the script was read in the ANSI code page by Windows PowerShell 5.1, so it could not delete itself and any non-ASCII text in the command (a prompt, a name, a path) was misread. The script now starts with a byte-order mark, and the paths Coral gives PowerShell are literal, so folders with [ ] in their names work too. Also: PowerShell quoting now covers the curly quotes ‘ ’ ‚ ‛ (a launch flag or path with one could end its quoting early). Affected: Windows builds from the v1.3.31 line through v1.4.62, for users with a non-ASCII or [ ] character in their temp folder path; the curly-quote quoting applies to every Windows launch whose flags, imported team values or paths contained one.
+
+### Fixes
+
+- **A rejected task can be resubmitted without claiming it again,** so another task in progress doesn't block the fix.
+- **An unsent board message survives an agent switch** within the same board.
+- **The Servers list says when a machine needs an update.** Through Coral Hub, a machine below the Hub's minimum version shows "Update Coral to <version>" in the Servers list and its details.
+
+### Performance
+
+- **Fewer git and tmux processes** (571 to 334 in 80 seconds with 40 agents). The git call that names a repository's filters runs only before commands that can run a filter, and one tmux call answers every agent's pane size and process instead of one call per agent.
+- **Dashboard tabs watching the same agent share its terminal capture** for 2 seconds instead of each reading it.
+- **A transcript's first read is bounded** (8 MiB), so a large transcript is no longer decoded whole at once.
+
+### Other changes
+
+- **Code cleanup:** unused code removed across the server.
+
 ## v1.4.62 — Agents stay on their own boards, a sign-in card, and a lighter server and dashboard
 
 ### Security
