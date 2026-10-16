@@ -20,6 +20,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/jsonl"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
 )
@@ -203,7 +204,7 @@ func TestAgentHistorySearch_ResumedLineage(t *testing.T) {
 		AgentType:    at.Claude,
 		AgentName:    "worker-1",
 		WorkingDir:   workDir,
-		ResumeFromID: strPtr(s0ID),
+		ResumeFromID: ptr.NonEmpty(s0ID),
 	}))
 
 	// S2 transcript (current active session)
@@ -217,7 +218,7 @@ func TestAgentHistorySearch_ResumedLineage(t *testing.T) {
 		AgentType:    at.Claude,
 		AgentName:    "worker-2",
 		WorkingDir:   workDir,
-		ResumeFromID: strPtr(s1ID),
+		ResumeFromID: ptr.NonEmpty(s1ID),
 	}))
 
 	// Search from S2 for secret in S0: "ALPHA-SECRET-99"
@@ -401,7 +402,7 @@ func TestAgentHistorySearch_LiveAppendedAndUnavailableSources(t *testing.T) {
 		AgentType:    at.Claude,
 		AgentName:    "live-appender",
 		WorkingDir:   workDir,
-		ResumeFromID: strPtr(ancestorSessID),
+		ResumeFromID: ptr.NonEmpty(ancestorSessID),
 	}))
 
 	// Register missing ancestor in session_index with non-existent source_file

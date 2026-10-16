@@ -30,6 +30,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
@@ -1520,7 +1521,7 @@ func TestSessionsRestartSleeping(t *testing.T) {
 	server, _, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	wd := t.TempDir()
-	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "sleepy", AgentType: "claude", WorkingDir: wd, SessionID: "sleep-1", Prompt: strPtr("old prompt")})
+	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "sleepy", AgentType: "claude", WorkingDir: wd, SessionID: "sleep-1", Prompt: ptr.NonEmpty("old prompt")})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "sleep-1", true))
 
 	resp, err := http.Post(server.URL+"/api/sessions/live/sleepy/restart", "application/json",
@@ -1551,7 +1552,7 @@ func TestSessionsRestartSleeping(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ls)
 	assert.Equal(t, 0, ls.IsSleeping)
-	assert.Equal(t, "my custom prompt", derefStrPtr(ls.Prompt))
+	assert.Equal(t, "my custom prompt", ptr.Value(ls.Prompt))
 	old, _ := ss.GetLiveSession(ctx, "sleep-1")
 	require.NotNil(t, old)
 	assert.NotNil(t, old.StoppedAt, "the sleeping session is retired")
@@ -1563,7 +1564,7 @@ func TestSessionsRestartInfersStoredAgentTypeWhenOmitted(t *testing.T) {
 	wd := t.TempDir()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "codex-sleepy", AgentType: "codex", WorkingDir: wd,
-		SessionID: "codex-sleep-1", Model: strPtr("gpt-6-sol"),
+		SessionID: "codex-sleep-1", Model: ptr.NonEmpty("gpt-6-sol"),
 	})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-sleep-1", true))
 
@@ -1621,7 +1622,7 @@ func TestSessionsRestart_RejectsCrossProviderModelBeforeMutation(t *testing.T) {
 	wd := t.TempDir()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "codex-test", AgentType: "codex", WorkingDir: wd,
-		SessionID: "codex-test-1", Model: strPtr("gpt-6-sol"),
+		SessionID: "codex-test-1", Model: ptr.NonEmpty("gpt-6-sol"),
 	})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-test-1", true))
 
@@ -1652,7 +1653,7 @@ func TestSessionsRestart_RejectsProviderSwitchStaleModelBeforeMutation(t *testin
 	// An existing Claude session running claude-opus-5
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "claude-worker", AgentType: "claude", WorkingDir: wd,
-		SessionID: "claude-worker-1", Model: strPtr("claude-opus-5"),
+		SessionID: "claude-worker-1", Model: ptr.NonEmpty("claude-opus-5"),
 	})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "claude-worker-1", true))
 
@@ -1684,7 +1685,7 @@ func TestSessionsRestart_ExplicitEmptyModelClearsStoredModel(t *testing.T) {
 	caps := &agent.Capabilities{Allow: []string{agent.CapShell, agent.CapFileRead, agent.CapFileWrite, agent.CapGitWrite}}
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "codex-dot", AgentType: "codex", WorkingDir: wd,
-		SessionID: "codex-dot-1", Model: strPtr("gpt-6-sol"),
+		SessionID: "codex-dot-1", Model: ptr.NonEmpty("gpt-6-sol"),
 		Flags:        store.MarshalFlags(flags),
 		Capabilities: store.MarshalCapabilities(caps),
 	})
@@ -1718,7 +1719,7 @@ func TestSessionsRestart_ExplicitEmptyModelClearsStoredModel(t *testing.T) {
 	ls, err := ss.GetLiveSession(ctx, body.SessionID)
 	require.NoError(t, err)
 	require.NotNil(t, ls)
-	assert.Empty(t, derefStrPtr(ls.Model))
+	assert.Empty(t, ptr.Value(ls.Model))
 	assert.Equal(t, 0, ls.ContextWindow)
 	storedFlags := store.UnmarshalFlags(ls.Flags)
 	assert.NotContains(t, storedFlags, "--model")
@@ -1737,7 +1738,7 @@ func TestSessionsRestart_WhitespaceModelClearsStoredModel(t *testing.T) {
 	flags := []string{"--model", "gpt-6-sol", "--custom-flag"}
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "codex-ws", AgentType: "codex", WorkingDir: wd,
-		SessionID: "codex-ws-1", Model: strPtr("gpt-6-sol"),
+		SessionID: "codex-ws-1", Model: ptr.NonEmpty("gpt-6-sol"),
 		Flags: store.MarshalFlags(flags),
 	})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-ws-1", true))
@@ -1769,7 +1770,7 @@ func TestSessionsRestart_WhitespaceModelClearsStoredModel(t *testing.T) {
 	ls, err := ss.GetLiveSession(ctx, body.SessionID)
 	require.NoError(t, err)
 	require.NotNil(t, ls)
-	assert.Empty(t, derefStrPtr(ls.Model))
+	assert.Empty(t, ptr.Value(ls.Model))
 	assert.Equal(t, 0, ls.ContextWindow)
 	storedFlags := store.UnmarshalFlags(ls.Flags)
 	assert.NotContains(t, storedFlags, "--model")
@@ -1784,7 +1785,7 @@ func TestSessionsRestart_WhitespaceClearFollowedByOmittedModelRestart(t *testing
 	flags := []string{"--model", "gpt-6-sol", "--custom-flag"}
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "codex-chain", AgentType: "codex", WorkingDir: wd,
-		SessionID: "codex-chain-1", Model: strPtr("gpt-6-sol"),
+		SessionID: "codex-chain-1", Model: ptr.NonEmpty("gpt-6-sol"),
 		Flags: store.MarshalFlags(flags),
 	})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-chain-1", true))
@@ -1814,7 +1815,7 @@ func TestSessionsRestart_WhitespaceClearFollowedByOmittedModelRestart(t *testing
 	ls1, err := ss.GetLiveSession(ctx, body1.SessionID)
 	require.NoError(t, err)
 	require.NotNil(t, ls1)
-	assert.Empty(t, derefStrPtr(ls1.Model))
+	assert.Empty(t, ptr.Value(ls1.Model))
 	assert.Equal(t, 0, ls1.ContextWindow)
 
 	// Step 2: Subsequent restart omitting model field.
@@ -1844,7 +1845,7 @@ func TestSessionsRestart_WhitespaceClearFollowedByOmittedModelRestart(t *testing
 	ls2, err := ss.GetLiveSession(ctx, body2.SessionID)
 	require.NoError(t, err)
 	require.NotNil(t, ls2)
-	assert.Empty(t, derefStrPtr(ls2.Model), "subsequent omitted-model restart must keep model cleared")
+	assert.Empty(t, ptr.Value(ls2.Model), "subsequent omitted-model restart must keep model cleared")
 	assert.Equal(t, 0, ls2.ContextWindow)
 }
 
@@ -1854,7 +1855,7 @@ func TestSessionsRestart_OmittedModelInheritsStoredModel(t *testing.T) {
 	wd := t.TempDir()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "codex-dot", AgentType: "codex", WorkingDir: wd,
-		SessionID: "codex-dot-2", Model: strPtr("gpt-6-sol"),
+		SessionID: "codex-dot-2", Model: ptr.NonEmpty("gpt-6-sol"),
 	})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-dot-2", true))
 
@@ -1890,7 +1891,7 @@ func TestSessionsRestart_ExplicitModelUpdatesStoredModel(t *testing.T) {
 	wd := t.TempDir()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "codex-dot", AgentType: "codex", WorkingDir: wd,
-		SessionID: "codex-dot-3", Model: strPtr("gpt-6-sol"),
+		SessionID: "codex-dot-3", Model: ptr.NonEmpty("gpt-6-sol"),
 	})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-dot-3", true))
 
@@ -1927,7 +1928,7 @@ func TestSessionsRestart_ProviderSwitchWithExplicitEmptyModelSucceeds(t *testing
 	wd := t.TempDir()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "claude-switch", AgentType: "claude", WorkingDir: wd,
-		SessionID: "claude-switch-1", Model: strPtr("claude-opus-5"),
+		SessionID: "claude-switch-1", Model: ptr.NonEmpty("claude-opus-5"),
 	})
 	require.NoError(t, ss.SetSessionSleeping(ctx, "claude-switch-1", true))
 
@@ -1956,7 +1957,7 @@ func TestSessionsRestart_ProviderSwitchWithExplicitEmptyModelSucceeds(t *testing
 	require.NoError(t, err)
 	require.NotNil(t, ls)
 	assert.Equal(t, "codex", ls.AgentType)
-	assert.Empty(t, derefStrPtr(ls.Model))
+	assert.Empty(t, ptr.Value(ls.Model))
 }
 
 func TestSessionsRawImage(t *testing.T) {

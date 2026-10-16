@@ -208,7 +208,7 @@ func (h *SessionsHandler) buildWSRemotePart(gen uint64, genOK bool) *wsRemotePar
 	encoded := p.snap.SessionsJSON() // encoded once per snapshot, shared with the HTTP list
 	for i, s := range p.snap.Sessions {
 		srv, _ := s["server"].(string)
-		k := feedKey(s)
+		k := background.FeedKey(s)
 		if k == "" {
 			continue
 		}

@@ -425,7 +425,7 @@ func (h *RemoteAgentHub) jitter(d time.Duration) time.Duration {
 	return d - d/5 + time.Duration(rand.Int63n(int64(d)/5*2+1))
 }
 
-func sleepCtx(ctx context.Context, d time.Duration) bool {
+func SleepCtx(ctx context.Context, d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
@@ -511,7 +511,7 @@ func (h *RemoteAgentHub) waitOrWake(ctx context.Context, wake <-chan struct{}, d
 	case <-t.C:
 		return true
 	case <-wake:
-		return sleepCtx(ctx, h.cfg.MinBackoff-time.Since(probed))
+		return SleepCtx(ctx, h.cfg.MinBackoff-time.Since(probed))
 	}
 }
 
@@ -897,7 +897,7 @@ func (h *RemoteAgentHub) feedLoop(ctx context.Context, id string) {
 				backoff = h.cfg.MinBackoff
 			}
 		}
-		if !sleepCtx(ctx, backoff) {
+		if !SleepCtx(ctx, backoff) {
 			return
 		}
 		if backoff *= 2; backoff > h.cfg.MaxBackoff {
@@ -906,7 +906,7 @@ func (h *RemoteAgentHub) feedLoop(ctx context.Context, id string) {
 	}
 }
 
-func feedKey(s map[string]any) string {
+func FeedKey(s map[string]any) string {
 	if sid, _ := s["session_id"].(string); sid != "" {
 		return sid
 	}
@@ -973,14 +973,14 @@ func (h *RemoteAgentHub) runFeed(ctx context.Context, id string) {
 			feed = map[string]map[string]any{}
 			order = order[:0]
 			for _, s := range filterLocalOnly(msg.Sessions) {
-				if k := feedKey(s); k != "" {
+				if k := FeedKey(s); k != "" {
 					feed[k] = s
 					order = append(order, k)
 				}
 			}
 		case "coral_diff":
 			for _, s := range filterLocalOnly(msg.Changed) {
-				k := feedKey(s)
+				k := FeedKey(s)
 				if k == "" {
 					continue
 				}

@@ -20,6 +20,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -72,7 +73,7 @@ func (r *wakeRig) asleep(sid string) (bool, string) {
 	r.t.Helper()
 	ls, err := r.ss.GetLiveSession(context.Background(), sid)
 	require.NoError(r.t, err)
-	return ls.IsSleeping == 1, derefStrPtr(ls.SleepReason)
+	return ls.IsSleeping == 1, ptr.Value(ls.SleepReason)
 }
 
 func sid(n int) string { return fmt.Sprintf("0b2f6c1e-3d4a-4b5c-8d6e-%012d", n) }
@@ -254,7 +255,7 @@ func TestNoRouteSetsCoralStopped(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	ls, err := ss.GetLiveSession(ctx, sid(1))
 	require.NoError(t, err)
-	assert.NotEqual(t, store.SleepReasonCoralStopped, derefStrPtr(ls.SleepReason), "a request's reason is never taken (%d %s)", rec.Code, rec.Body.String())
+	assert.NotEqual(t, store.SleepReasonCoralStopped, ptr.Value(ls.SleepReason), "a request's reason is never taken (%d %s)", rec.Code, rec.Body.String())
 }
 
 func TestAutoWakeSettingsAreValidated(t *testing.T) {

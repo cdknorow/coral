@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/jsonl"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -103,7 +104,7 @@ func (h *HistoryHandler) SearchChats(w http.ResponseWriter, r *http.Request) {
 				}
 				if len(hits) > 0 {
 					score := float64(len(hits))
-					results = append(results, ChatSearchResult{SessionID: idx.SessionID, Type: "agent", SourceType: idx.SourceType, Score: score, LastTimestamp: derefStrPtr(idx.LastTimestamp), Hits: hits})
+					results = append(results, ChatSearchResult{SessionID: idx.SessionID, Type: "agent", SourceType: idx.SourceType, Score: score, LastTimestamp: ptr.Value(idx.LastTimestamp), Hits: hits})
 				}
 			}
 		}

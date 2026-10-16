@@ -40,16 +40,7 @@ func NewCallMetricsRetention(db *store.DB) *CallMetricsRetention {
 
 // Run prunes FirstRun after startup, then every Interval, until ctx is done.
 func (j *CallMetricsRetention) Run(ctx context.Context) error {
-	wait := j.FirstRun
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(wait):
-		}
-		j.RunOnce(ctx)
-		wait = j.Interval
-	}
+	return runEvery(ctx, j.FirstRun, j.Interval, func() { j.RunOnce(ctx) })
 }
 
 // RunOnce deletes expired rows, batch by batch, up to RunCap, and reports how
@@ -93,4 +84,19 @@ func (j *CallMetricsRetention) RunOnce(ctx context.Context) int64 {
 			"took_ms", j.now().Sub(started).Milliseconds(), "more_next_run", capped)
 	}
 	return total
+}
+
+// runEvery calls fn after first and then every interval until ctx ends, and returns ctx's error.
+// The retention jobs' loop (#3824: it was written twice).
+func runEvery(ctx context.Context, first, interval time.Duration, fn func()) error {
+	wait := first
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+		fn()
+		wait = interval
+	}
 }

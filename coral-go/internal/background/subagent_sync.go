@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/proxy"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/subagent"
 )
@@ -59,10 +60,10 @@ func syncOneSubagent(ctx context.Context, st *store.SubagentStore, sessionID str
 		// was found under, which is what sessionID identifies.
 		SessionID:        sessionID,
 		SubagentID:       f.SubagentID,
-		SubagentType:     strPtrOrNil(meta.AgentType),
-		Description:      strPtrOrNil(meta.Description),
-		ToolUseID:        strPtrOrNil(meta.ToolUseID),
-		Model:            strPtrOrNil(t.PrimaryModel()),
+		SubagentType:     ptr.NonEmpty(meta.AgentType),
+		Description:      ptr.NonEmpty(meta.Description),
+		ToolUseID:        ptr.NonEmpty(meta.ToolUseID),
+		Model:            ptr.NonEmpty(t.PrimaryModel()),
 		SpawnDepth:       meta.SpawnDepth,
 		APICalls:         totals.APICalls,
 		InputTokens:      totals.InputTokens,
@@ -71,9 +72,9 @@ func syncOneSubagent(ctx context.Context, st *store.SubagentStore, sessionID str
 		CacheWriteTokens: totals.CacheWriteTokens,
 		CostUSD:          subagentCostUSD(t),
 		Finished:         t.Finished,
-		TranscriptPath:   strPtrOrNil(f.TranscriptPath),
-		StartedAt:        strPtrOrNil(t.StartedAt),
-		LastActivityAt:   strPtrOrNil(t.LastActivityAt),
+		TranscriptPath:   ptr.NonEmpty(f.TranscriptPath),
+		StartedAt:        ptr.NonEmpty(t.StartedAt),
+		LastActivityAt:   ptr.NonEmpty(t.LastActivityAt),
 	})
 }
 
@@ -91,13 +92,6 @@ func subagentCostUSD(t *subagent.Transcript) float64 {
 		})
 	}
 	return total
-}
-
-func strPtrOrNil(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
 
 // latestMtime returns the newest modification time among paths that exist.

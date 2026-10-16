@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/cdknorow/coral/internal/ptr"
 )
 
 // The review flow (#3725, settled with the operator):
@@ -327,7 +329,7 @@ func (s *Store) reviewVerdict(ctx context.Context, project string, id int64, act
 		// open and reopen for the next round when the author resubmits.
 		round.Result = "rejected"
 		// Back to its author, pending, with a fresh candidate to come.
-		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='pending', assigned_to=?, claimed_at=NULL WHERE id=? AND board_id=?", nullIfEmpty(w.OriginalAuthor), id, project); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='pending', assigned_to=?, claimed_at=NULL WHERE id=? AND board_id=?", ptr.NullIfEmpty(w.OriginalAuthor), id, project); err != nil {
 			return nil, err
 		}
 		w.CompletionReview = nil
@@ -370,11 +372,4 @@ func finishReviewTask(ctx context.Context, tx *sqlx.Tx, project string, reviewTa
 	}
 	rw.Outcome = outcome
 	return saveWorkflow(ctx, tx, reviewTaskID, rw)
-}
-
-func nullIfEmpty(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
 }

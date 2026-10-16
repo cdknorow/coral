@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/logparse"
+	"github.com/cdknorow/coral/internal/ptr"
 )
 
 // sessionCachePruneEvery is how often per-session caches are swept of sessions
@@ -52,7 +53,7 @@ func (h *SessionsHandler) pruneSessionCaches(ctx context.Context) int {
 		keep[s.SessionID] = true
 		// A resumed session's chat reads its ancestor's transcript too (the lineage, Chat):
 		// dropping the ancestor made the next poll re-parse it whole, every minute (#3710).
-		if a := derefStrPtr(s.ResumeFromID); a != "" {
+		if a := ptr.Value(s.ResumeFromID); a != "" {
 			keep[a] = true
 		}
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
@@ -72,7 +73,7 @@ func exitLabel(text string, failed bool) string {
 // capped and with no "@", so a notice never mentions anyone.
 func (h *SessionsHandler) noticeName(ctx context.Context, ls store.LiveSession) string {
 	name := ""
-	if h.bs != nil && derefStrPtr(ls.BoardName) != "" {
+	if h.bs != nil && ptr.Value(ls.BoardName) != "" {
 		if sub, err := h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(ls.AgentType, ls.SessionID)); err == nil && sub != nil {
 			name = cleanAgentName(sub.JobTitle)
 		}
@@ -91,7 +92,7 @@ func (h *SessionsHandler) AgentsSlept(ctx context.Context, sessionIDs []string) 
 		if err != nil || ls == nil {
 			continue
 		}
-		team := derefStrPtr(ls.BoardName)
+		team := ptr.Value(ls.BoardName)
 		h.exits.mu.Lock()
 		if h.exits.pending == nil {
 			h.exits.pending = map[string][]string{}
@@ -214,8 +215,8 @@ func (h *SessionsHandler) autoResume(ctx context.Context, sid string, n int) {
 		return
 	}
 	slog.Info("[agent-exit] auto-resumed", "session_id", sid, "attempt", n)
-	if title := h.noticeName(ctx, *ls); title != "" && h.bs != nil && derefStrPtr(ls.BoardName) != "" {
-		if _, err := h.bs.PostSystemMessage(ctx, derefStrPtr(ls.BoardName), board.CoralSender, "@"+title+" "+AutoResumeNotice, nil); err != nil {
+	if title := h.noticeName(ctx, *ls); title != "" && h.bs != nil && ptr.Value(ls.BoardName) != "" {
+		if _, err := h.bs.PostSystemMessage(ctx, ptr.Value(ls.BoardName), board.CoralSender, "@"+title+" "+AutoResumeNotice, nil); err != nil {
 			slog.Warn("[agent-exit] resume notice not posted", "err", err)
 		}
 	}

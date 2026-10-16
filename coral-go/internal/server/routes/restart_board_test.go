@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ func TestRestartPreservesSubscriptionWithoutStoredBoard(t *testing.T) {
 	const oldName = "codex-" + oldID
 	term.addSession(oldName, t.TempDir())
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
-		SessionID: oldID, AgentType: "codex", AgentName: "coral-go", DisplayName: strPtr("UI"),
+		SessionID: oldID, AgentType: "codex", AgentName: "coral-go", DisplayName: ptr.NonEmpty("UI"),
 	}))
 	_, err := handler.bs.Subscribe(ctx, "coral-task-workflows", "UI", "UI", oldName, nil, "all", true)
 	require.NoError(t, err)
@@ -39,7 +40,7 @@ func TestRestartPreservesSubscriptionWithoutStoredBoard(t *testing.T) {
 	ls, err := ss.GetLiveSession(ctx, result.SessionID)
 	require.NoError(t, err)
 	require.NotNil(t, ls)
-	assert.Equal(t, "coral-task-workflows", derefStrPtr(ls.BoardName))
+	assert.Equal(t, "coral-task-workflows", ptr.Value(ls.BoardName))
 	sub, err := handler.bs.GetSubscriptionBySessionName(ctx, result.SessionName)
 	require.NoError(t, err)
 	require.NotNil(t, sub)
@@ -65,7 +66,7 @@ func TestRestartTwiceKeepsBoardMembership(t *testing.T) {
 	id, name := "restart-twice-ui", "claude-restart-twice-ui"
 	term.addSession(name, t.TempDir())
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
-		SessionID: id, AgentType: "claude", AgentName: "coral-go", DisplayName: strPtr("UI"),
+		SessionID: id, AgentType: "claude", AgentName: "coral-go", DisplayName: ptr.NonEmpty("UI"),
 	}))
 	original, err := handler.bs.Subscribe(ctx, "restart-membership", "UI", "UI", name, nil, "all")
 	require.NoError(t, err)
@@ -87,8 +88,8 @@ func TestRestartTwiceKeepsBoardMembership(t *testing.T) {
 		ls, err := ss.GetLiveSession(ctx, id)
 		require.NoError(t, err)
 		require.NotNil(t, ls)
-		assert.Equal(t, "restart-membership", derefStrPtr(ls.BoardName), "restart %d keeps the board", attempt)
-		assert.Equal(t, "UI", derefStrPtr(ls.DisplayName), "restart %d keeps the display name", attempt)
+		assert.Equal(t, "restart-membership", ptr.Value(ls.BoardName), "restart %d keeps the board", attempt)
+		assert.Equal(t, "UI", ptr.Value(ls.DisplayName), "restart %d keeps the display name", attempt)
 		subs, err := handler.bs.ListSubscribers(ctx, "restart-membership")
 		require.NoError(t, err)
 		require.Len(t, subs, 1, "restart %d: one subscription", attempt)

@@ -88,19 +88,9 @@ type boardState struct {
 // both failed to find its own subscription and wrote a file into the user's
 // real install. Coral sets CORAL_DATA_DIR in every agent's environment.
 func coralDir() string {
-	dir := resolveCoralDir()
+	dir := cliauth.DataDir()
 	testguard.CheckDataPath(dir)
 	return dir
-}
-
-func resolveCoralDir() string {
-	for _, k := range []string{"CORAL_DATA_DIR", "CORAL_DIR"} {
-		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
-			return v
-		}
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".coral")
 }
 
 // stateFilePath is this agent session's board state file, or "" outside an agent session.

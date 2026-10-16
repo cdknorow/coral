@@ -17,6 +17,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -529,7 +530,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"staleness_seconds":     listStaleness(logInfo["staleness_seconds"]),
 			"display_name":          displayVal,
 			"icon":                  iconVal,
-			"name_color":            nilIfEmpty(nameColors[sid]),
+			"name_color":            ptr.NullIfEmpty(nameColors[sid]),
 			"working_directory":     agent.WorkingDir,
 			"waiting_for_input":     state.NeedsInput,
 			"needs_login":           state.NeedsLogin,

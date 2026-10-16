@@ -93,7 +93,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	// Build the launch command (empty for terminal sessions)
 	var launchCmd string
 	if !isTerminal {
-		protocolPath := findProtocolMD()
+		protocolPath := FindProtocolMD()
 		// Settings > CLI Paths applies to job and scheduled runs like a dashboard
 		// launch: the macOS app started from Finder has no Homebrew PATH (#3205).
 		var settings map[string]string
@@ -280,7 +280,7 @@ func boolToInt(b bool) int {
 }
 
 // findProtocolMD locates PROTOCOL.md relative to the running binary or source.
-func findProtocolMD() string {
+func FindProtocolMD() string {
 	// Check next to the executable
 	exe, err := os.Executable()
 	if err == nil {

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/ptr"
 )
 
 // DefaultInactivityLimit is the heuristic threshold for long active tasks.
@@ -305,7 +307,7 @@ func computeActiveLoad(cohortTasks []Task, allTasks []Task, status *BoardStatus,
 					ID:        t.ID,
 					Title:     t.Title,
 					Status:    t.Status,
-					Assignee:  stringVal(t.AssignedTo),
+					Assignee:  ptr.Value(t.AssignedTo),
 					CreatedAt: t.CreatedAt,
 				})
 			}
@@ -366,7 +368,7 @@ func computeDependencies(tasks []Task) DependencyMetrics {
 		bTask := BlockedTask{
 			TaskID:   t.ID,
 			Title:    t.Title,
-			Assignee: stringVal(t.AssignedTo),
+			Assignee: ptr.Value(t.AssignedTo),
 		}
 		for _, dep := range t.BlockedBy {
 			curStatus := taskStatusMap[dep.TaskID]
@@ -407,7 +409,7 @@ func computeReviewHeldSlots(tasks []Task, now time.Time) []ReviewHeldTask {
 			reviewTasks = append(reviewTasks, ReviewHeldTask{
 				TaskID:       t.ID,
 				Title:        t.Title,
-				Assignee:     stringVal(t.AssignedTo),
+				Assignee:     ptr.Value(t.AssignedTo),
 				ReviewerRole: t.Workflow.CompletionReview.ReviewerRole,
 				DurationSec:  duration,
 			})
@@ -438,7 +440,7 @@ func analyzeReadyUnclaimed(tasks []Task, load ActiveLoadMetrics, now time.Time) 
 			age = now.Sub(createdAt).Seconds()
 		}
 
-		assignee := stringVal(t.AssignedTo)
+		assignee := ptr.Value(t.AssignedTo)
 		if assignee == "" {
 			analysis.UnassignedCount++
 			analysis.UnassignedTasks = append(analysis.UnassignedTasks, ReadyTaskDetail{
@@ -507,7 +509,7 @@ func detectActiveWithoutProgress(tasks []Task, messages []Message, threshold tim
 		}
 		duration := now.Sub(clTime)
 		if duration >= threshold {
-			assignee := stringVal(t.AssignedTo)
+			assignee := ptr.Value(t.AssignedTo)
 			var lastMsg *time.Time
 			if lm, ok := lastMsgMap[assignee]; ok {
 				lastMsg = &lm
@@ -558,7 +560,7 @@ func detectNotificationChurn(messages []Message, tasks []Task) []NotificationChu
 				if claimed && mTime.After(claimedAt.Add(2*time.Second)) {
 					lagSec := mTime.Sub(claimedAt).Seconds()
 					task := taskMap[id]
-					assignee := stringVal(task.AssignedTo)
+					assignee := ptr.Value(task.AssignedTo)
 					if assignee == "" {
 						assignee = m.SubscriberID
 					}
@@ -623,7 +625,7 @@ func detectNotificationChurn(messages []Message, tasks []Task) []NotificationChu
 
 		if churnType != "" {
 			task := taskMap[id]
-			assignee := stringVal(task.AssignedTo)
+			assignee := ptr.Value(task.AssignedTo)
 			var claimedAtPtr *time.Time
 			if cl, ok := taskClaimMap[id]; ok {
 				claimedAtPtr = &cl
@@ -654,12 +656,12 @@ func detectManualRecovery(tasks []Task, messages []Message) []ManualRecoveryEven
 	for _, t := range tasks {
 		if t.Status == "cancelled" {
 			ts, _ := parseTime(t.CreatedAt)
-			reason := stringVal(t.CompletionMessage)
+			reason := ptr.Value(t.CompletionMessage)
 			events = append(events, ManualRecoveryEvent{
 				TaskID:    t.ID,
 				Title:     t.Title,
 				EventType: "cancellation",
-				Actor:     stringVal(t.CompletedBy),
+				Actor:     ptr.Value(t.CompletedBy),
 				Timestamp: ts,
 				Reason:    reason,
 			})
@@ -1008,13 +1010,6 @@ func parseTime(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("could not parse time: %s", s)
-}
-
-func stringVal(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 func extractTaskIDs(content string) []int64 {
