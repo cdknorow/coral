@@ -11,7 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"github.com/cdknorow/coral/pkg/tunnel"
 	"nhooyr.io/websocket"
 )
 
@@ -135,6 +137,16 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 	// Dial the remote first so failures can still be reported as HTTP errors.
 	up, err := t.DialWS(r.Context(), raw, stripAPIKey(r.URL.RawQuery), requestedProtocols(r))
 	if err != nil {
+		if msg, busy := tooManyStreams(err); busy {
+			// A browser can't read a refused handshake's status, so a busy machine's refusal
+			// would only look like a dropped terminal that keeps reconnecting. The socket is
+			// accepted and closed at once with StatusTooManyStreams and the machine's reason,
+			// which the terminal shows (#3663).
+			if down, aerr := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: patterns}); aerr == nil {
+				down.Close(StatusTooManyStreams, closeReason(msg))
+			}
+			return
+		}
 		h.writeUpstreamErr(w, r.Context(), id, err)
 		return
 	}
@@ -281,4 +293,33 @@ func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, l
 			return
 		}
 	}
+}
+
+// StatusTooManyStreams closes a browser's WebSocket that the machine refused because too many
+// streams are open through Coral Hub (its limit, or the user's share of it; #3663). The reason
+// says which, and the dashboard shows it and waits before trying again.
+const StatusTooManyStreams = websocket.StatusCode(4429)
+
+// tooManyStreams reports whether err is the machine's "too many streams" refusal, with its text.
+func tooManyStreams(err error) (string, bool) {
+	var se *tunnel.StreamError
+	switch {
+	case errors.As(err, &se) && se.Code == tunnel.CodeTooManyStreams:
+		return se.Message, true
+	case errors.Is(err, tunnel.ErrTooManyStreams):
+		return "", true
+	}
+	return "", false
+}
+
+// closeReason is msg fit for a close frame (at most 123 bytes, whole runes), or a default.
+func closeReason(msg string) string {
+	if msg == "" {
+		msg = "Too many terminals are open through Coral Hub on this computer; close one, or try again shortly."
+	}
+	for len(msg) > 123 {
+		_, size := utf8.DecodeLastRuneInString(msg)
+		msg = msg[:len(msg)-size]
+	}
+	return msg
 }

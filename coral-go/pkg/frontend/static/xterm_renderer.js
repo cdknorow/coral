@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { isInteractiveOwner, claimOwnership, ownershipSessionId } from './ownership.js';
-import { dbg } from './utils.js';
+import { dbg, showToast } from './utils.js';
 import { normServer, serverWsBase, sessionServer } from './server_base.js';
 import { hubBlocksKeystrokes, applyHubReadOnlyFrame } from './hub_access.js';
 
@@ -665,6 +665,12 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
 
         if (state.currentSession && state.currentSession.type === "live"
             && state.currentSession.session_id === sessionId) {
+            // The machine refused the terminal: too many are open through Coral Hub (#3663). Say
+            // so, with its reason, and wait longer before trying again.
+            const busy = ev.code === TERMINAL_BUSY_CLOSE;
+            if (busy) {
+                showToast(ev.reason || "Too many terminals are open through Coral Hub on this computer; close one, or try again shortly.", true, 8000);
+            }
             _setDisconnectedBadge(true);
             document.dispatchEvent(new CustomEvent('coral:terminal-disconnected'));
             setTimeout(() => {
@@ -679,10 +685,15 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
                         sessionServer(state.currentSession),
                     );
                 }
-            }, 3000);
+            }, busy ? TERMINAL_BUSY_RETRY_MS : 3000);
         }
     };
 }
+
+// TERMINAL_BUSY_CLOSE is the close code Coral Hub sends when the machine refused a terminal
+// because too many are open through the Hub (hubproxy.StatusTooManyStreams, #3663).
+export const TERMINAL_BUSY_CLOSE = 4429;
+const TERMINAL_BUSY_RETRY_MS = 15000;
 
 export function disconnectTerminalWs() {
     dbg('disconnectTerminalWs', { hadWs: !!terminalWs, connectedSession: _connectedSessionId });
