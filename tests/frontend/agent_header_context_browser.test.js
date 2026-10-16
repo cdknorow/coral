@@ -63,6 +63,17 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('on a hub with remotes the server shows: "Local" for the local agent', m.server.shown && m.server.text === 'Local' && m.team.shown, JSON.stringify(m));
         check('team and server are whole and inside the header at 390 wide', m.team.whole && m.server.whole && m.team.inside && m.server.inside, JSON.stringify(m));
 
+        // The race a slow runner hit (v1.4.51's run): the header filled before the list noted the
+        // new board's label. The session's own board_label is used; a label noted later replaces the id.
+        await update(`{ board_project: 'b-race0000001', board_label: 'Raced Team' }`);
+        m = await ev(measure);
+        check('a board whose label isn\'t noted yet shows the session\'s own label, never its b- id', m.team.text === 'Raced Team', JSON.stringify(m.team));
+        await update(`{ board_project: 'b-late0000001' }`);
+        const early = (await ev(measure)).team.text;
+        await ev(`import(${MOD} + 'server_base.js').then(b => { b.noteBoardLabel(null, 'b-late0000001', 'Late Team'); return true; })`);
+        m = await ev(measure);
+        check('a label noted after the header was filled replaces the id at once', early === 'b-late0000001' && m.team.text === 'Late Team', `${early} -> ${m.team.text}`);
+
         await update(`{ board_project: 'infra', server: 'build-box' }`);
         m = await ev(measure);
         check('a remote agent shows its server', m.server.text === 'build-box' && m.team.text === 'infra' && m.server.whole, JSON.stringify(m));

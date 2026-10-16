@@ -1816,13 +1816,14 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-/* The name over its team and server (#3653): one column that shrinks with the header. */
+/* The name over its team and server (#3653): one column that shrinks with the header, but keeps
+   the room the name had on its own (never below 120px while it has more to show). */
 .terminal-header-left .terminal-identity {
     display: flex;
     flex-direction: column;
     justify-content: center;
     flex: 0 1 auto;
-    min-width: 0;
+    min-width: min(120px, 100%);
     line-height: 1.25;
 }
 .terminal-session-context {
