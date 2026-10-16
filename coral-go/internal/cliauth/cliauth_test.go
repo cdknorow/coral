@@ -261,3 +261,17 @@ func TestCLIClientHelloLimitIsNotNotCoral(t *testing.T) {
 	_, _, err = Transport{Token: "the-token", Base: http.DefaultTransport}.hello(context.Background(), srv.URL)
 	assert.ErrorIs(t, err, ErrServerBusy)
 }
+
+// #4041: Rotate makes the old token useless at once, including a hello it already answered,
+// and an empty token turns the command line off.
+func TestCLIAuthRotate(t *testing.T) {
+	a := NewCLIAuth("old-token")
+	pending := signed(t, a, "old-token", "GET", "/api/cloud/status", nil)
+	a.Rotate("new-token")
+	assert.False(t, a.Verify(pending, nil), "a hello answered before the rotation")
+	assert.False(t, a.Verify(signed(t, a, "old-token", "GET", "/api/cloud/status", nil), nil), "the old token")
+	assert.True(t, a.Verify(signed(t, a, "new-token", "GET", "/api/cloud/status", nil), nil), "the new token")
+	a.Rotate("")
+	_, _, err := a.Hello(b64.EncodeToString(nonce(t)))
+	assert.Error(t, err, "no token: no hello")
+}

@@ -140,6 +140,14 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	out.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
 	base := r.URL.Scheme + "://" + r.URL.Host
 	cn, sn, err := t.hello(r.Context(), base)
+	if errors.Is(err, ErrNotCoral) && t.Dir != "" {
+		// The server may have a newer token than the one this process read at its start (it
+		// restarted, or `coral reset-password` replaced it, #4041): read it again, once.
+		if tok, rerr := ReadToken(t.Dir); rerr == nil && tok != t.Token {
+			t.Token = tok
+			cn, sn, err = t.hello(r.Context(), base)
+		}
+	}
 	if errors.Is(err, ErrNotCoral) {
 		// Never sent unsigned (#3421 v2, operator decision): the server rejects unsigned
 		// command-line requests, and a program that can't prove it knows the token gets

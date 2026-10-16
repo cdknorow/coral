@@ -145,15 +145,15 @@ func (a *CLIAuth) HelloFrom(caller, clientNonce string) (serverNonce, proof stri
 	if err != nil || len(c) != cliNonceBytes {
 		return "", "", errors.New("nonce must be 32 random bytes, base64url")
 	}
-	if a.token == "" {
-		return "", "", errors.New("the command-line token could not be written; the command line is off")
-	}
 	s := make([]byte, cliNonceBytes)
 	if _, err := rand.Read(s); err != nil {
 		return "", "", err
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.token == "" {
+		return "", "", errors.New("the command-line token could not be written; the command line is off")
+	}
 	now := a.now()
 	if caller != "" && !a.allowHello(caller, now) {
 		return "", "", ErrHelloLimit
@@ -181,6 +181,15 @@ func (a *CLIAuth) HelloFrom(caller, clientNonce string) (serverNonce, proof stri
 	a.seq++
 	a.pending[sn] = cliHello{client: c, expires: now.Add(cliHelloTTL), seq: a.seq}
 	return sn, b64.EncodeToString(cliMAC(a.token, cliServerLabel, c, s)), nil
+}
+
+// Rotate replaces the token (#4041: after a password reset) and drops every pending hello,
+// so nothing signed for the old token is accepted. "" turns the command line off.
+func (a *CLIAuth) Rotate(token string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.token = token
+	a.pending = map[string]cliHello{}
 }
 
 // allowHello takes one hello from caller's bucket (a.mu held). Buckets that have refilled
@@ -212,7 +221,7 @@ func (a *CLIAuth) allowHello(caller string, now time.Time) bool {
 func (a *CLIAuth) Verify(r *http.Request, body []byte) bool {
 	h := r.Header.Get(CLIAuthHeader)
 	sn, macText, ok := strings.Cut(h, ".")
-	if !ok || a.token == "" {
+	if !ok {
 		return false
 	}
 	mac, err := b64.DecodeString(macText)
@@ -226,11 +235,12 @@ func (a *CLIAuth) Verify(r *http.Request, body []byte) bool {
 	a.mu.Lock()
 	hello, found := a.pending[sn]
 	delete(a.pending, sn) // once, right or wrong
+	token := a.token
 	a.mu.Unlock()
-	if !found || a.now().After(hello.expires) {
+	if !found || token == "" || a.now().After(hello.expires) {
 		return false
 	}
-	return hmac.Equal(mac, clientMAC(a.token, hello.client, s, r.Method, r.URL.Path, r.URL.RawQuery, body, r.Header.Get("Authorization")))
+	return hmac.Equal(mac, clientMAC(token, hello.client, s, r.Method, r.URL.Path, r.URL.RawQuery, body, r.Header.Get("Authorization")))
 }
 
 // CLIClient is the command-line side: it talks only to a Coral that proves it
