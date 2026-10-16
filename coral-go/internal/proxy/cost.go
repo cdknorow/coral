@@ -293,30 +293,6 @@ type CostBreakdown struct {
 	TotalCostUSD      float64      `json:"total_cost_usd"`
 }
 
-// PricingEntry is a serializable pricing table row.
-type PricingEntry struct {
-	Model string `json:"model"`
-	ModelPricing
-}
-
-// PricingTable returns the current pricing table in stable model order.
-func PricingTable() []PricingEntry {
-	keys := make([]string, 0, len(Pricing))
-	for model := range Pricing {
-		keys = append(keys, model)
-	}
-	sort.Strings(keys)
-
-	rows := make([]PricingEntry, 0, len(keys))
-	for _, model := range keys {
-		rows = append(rows, PricingEntry{
-			Model:        model,
-			ModelPricing: Pricing[model],
-		})
-	}
-	return rows
-}
-
 // CalculateCostBreakdown computes the dollar cost breakdown for a request.
 func CalculateCostBreakdown(model string, usage TokenUsage) CostBreakdown {
 	pricing, ok := lookupPricing(model)
