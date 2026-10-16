@@ -20,6 +20,9 @@ func TestOpenNoFollowRefusesPlantedLinks(t *testing.T) {
 			"trunc":  os.O_CREATE | os.O_WRONLY | os.O_TRUNC,
 			"rdwr":   os.O_RDWR,
 		} {
+			if p.Kind == "hardlink" && name == "read" {
+				continue // reading a second name is harmless: the same user could read the file
+			}
 			f, err := OpenNoFollow(path, flag, 0o600)
 			if err == nil {
 				f.Close()

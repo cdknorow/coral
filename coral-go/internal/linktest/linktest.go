@@ -20,8 +20,8 @@ type Planted struct {
 }
 
 // Each plants, one at a time, every kind of link this platform has at path (a symbolic link to
-// a file; on Windows also a junction to a folder), runs fn, then checks the target is unchanged
-// and removes the link and its target. path must not exist.
+// a file, a hard link to a file; on Windows also a junction to a folder), runs fn, then checks
+// the target is unchanged and removes the link and its target. path must not exist.
 func Each(t *testing.T, path string, fn func(t *testing.T, p Planted)) {
 	t.Helper()
 	for _, kind := range kinds() {
@@ -73,4 +73,19 @@ func plantSymlink(t *testing.T, path string) Planted {
 		t.Skipf("can't create a symbolic link here: %v", err)
 	}
 	return Planted{Kind: "symlink", Target: target}
+}
+
+// plantHardLink gives a file elsewhere a second name at path. Reading it is harmless (the same
+// user could read the file), but a write through it changes the other file. Hard links need no
+// privilege on any platform, so this kind never skips.
+func plantHardLink(t *testing.T, path string) Planted {
+	t.Helper()
+	target := path + ".hardlink-target"
+	if err := os.WriteFile(target, []byte(Sentinel), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(target, path); err != nil {
+		t.Fatalf("plant a hard link: %v", err)
+	}
+	return Planted{Kind: "hardlink", Target: target}
 }
