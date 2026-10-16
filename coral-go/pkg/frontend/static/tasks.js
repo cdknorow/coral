@@ -7,6 +7,7 @@ import { addPendingMessage } from './live_chat.js';
 import { serverUrl, artifactPath, contextServer, keyLabel, boardKeyName, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
 import { platform } from './platform/detect.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
+import { _agentTaskStatus, _formatCost, _formatTaskTime, _formatTokenCount, _priorityLabel, _priorityOrder, formatTaskDate } from './task_format.js';
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
@@ -616,57 +617,6 @@ function _toggleHideCompleted() {
 
 // Expose globally
 (window.__coral ||= {})._toggleTaskSort = _toggleTaskSort;
-
-const _priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-const _priorityRank = { critical: 1, high: 2, medium: 3, low: 4 };
-// Priority as the words people choose it by (the create dialog and the CLI), not its sort rank.
-const _priorityLabel = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' };
-
-function _formatCost(usd, precise) {
-    if (usd == null) return '$0.00';
-    if (usd === 0) return '$0.00';
-    if (precise) {
-        // Detail view: up to 4 decimal places, trim trailing zeros (keep at least 2)
-        const s = usd.toFixed(4);
-        return '$' + s.replace(/0{1,2}$/, '');
-    }
-    // Badge: show 2 decimals, but use <$0.01 for sub-cent costs
-    if (usd > 0 && usd < 0.01) return '<$0.01';
-    return '$' + usd.toFixed(2);
-}
-
-function _formatTokenCount(n) {
-    if (n == null) return '0';
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
-    return n.toLocaleString();
-}
-
-function _formatTaskTime(ts) {
-    if (!ts) return '';
-    try {
-        const d = new Date(ts);
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-            + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    } catch { return ''; }
-}
-
-function _agentTaskStatus(t) {
-    if (t.status) return t.status;
-    return t.completed === 1 ? 'completed' : t.completed === 2 ? 'in_progress' : t.completed === 3 ? 'skipped' : 'pending';
-}
-
-function formatTaskDate(isoStr) {
-    try {
-        const d = new Date(isoStr);
-        return d.toLocaleString(undefined, {
-            month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-        });
-    } catch {
-        return isoStr;
-    }
-}
 
 export function renderBoardTaskList() {
     const container = document.getElementById('board-task-list');
