@@ -1,6 +1,6 @@
 {{ define "includes/modals.html" }}
     <!-- Launch Modal -->
-    <div id="launch-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="launch-modal" class="modal" role="dialog" aria-labelledby="launch-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <!-- Hub only: launch target server (hidden unless hub mode has a usable remote) -->
             <div id="launch-server-row" class="launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:13px">
@@ -10,7 +10,7 @@
             </div>
             <!-- Step 1: Session type chooser -->
             <div id="launch-step-chooser" class="launch-modal-step">
-                <h3>Launch New Session</h3>
+                <h3 id="launch-title">Launch New Session</h3>
                 <div class="launch-type-cards">
                     <button class="launch-type-card" data-on-click="m-select-launch-type" data-arg="agent">
                         <div class="launch-type-icon">
@@ -342,7 +342,7 @@
         </div>
     </div>
 
-    <div id="team-agent-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="team-agent-modal" class="modal" role="dialog" aria-labelledby="team-agent-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
                 <h3 id="team-agent-modal-title">Add Team Agent</h3>
@@ -358,10 +358,10 @@
         </div>
     </div>
 
-    <div id="save-template-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="save-template-modal" class="modal" role="dialog" aria-labelledby="save-template-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-md">
             <div class="modal-header">
-                <h3>Save Team Template</h3>
+                <h3 id="save-template-title">Save Team Template</h3>
             </div>
             <div class="modal-body">
                 <p class="team-agent-modal-subtitle">Name this team configuration so it shows up alongside your reusable templates.</p>
@@ -376,10 +376,10 @@
         </div>
     </div>
 
-    <div id="team-wizard-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="team-wizard-modal" class="modal" role="dialog" aria-labelledby="team-wizard-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
-                <h3>Create Your Own Team</h3>
+                <h3 id="team-wizard-title">Create Your Own Team</h3>
                 <p class="team-wizard-subtitle">Tell Coral what the team should achieve and how you want it staffed. You can review and edit every generated agent before launch.</p>
             </div>
             <div class="modal-body team-wizard-body">
@@ -409,7 +409,7 @@
     </div>
 
     <!-- Generic Prompt Modal (reusable replacement for browser prompt()) -->
-    <div id="prompt-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="prompt-modal" class="modal" role="dialog" aria-labelledby="prompt-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-md">
             <div class="modal-header">
                 <h3 id="prompt-modal-title">Enter value</h3>
@@ -429,7 +429,7 @@
         </div>
     </div>
 
-    <div id="alert-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="alert-modal" class="modal" role="dialog" aria-labelledby="alert-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-md">
             <div class="modal-header">
                 <h3 id="alert-modal-title">Notice</h3>
@@ -455,7 +455,7 @@
     </div>
 
     <!-- Confirm Modal (reusable) -->
-    <div id="confirm-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="confirm-modal" class="modal" role="dialog" aria-labelledby="confirm-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-md">
             <div class="modal-header">
                 <h3 id="confirm-modal-title">Are you sure?</h3>
@@ -471,10 +471,10 @@
     </div>
 
     <!-- Restart Modal -->
-    <div id="restart-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="restart-modal" class="modal" role="dialog" aria-labelledby="restart-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
-                <h3>Restart Session</h3>
+                <h3 id="restart-title">Restart Session</h3>
             </div>
             <div class="modal-body">
                 <p id="restart-modal-name" style="color:var(--text-secondary);font-size:13px;margin-bottom:12px"></p>
@@ -488,10 +488,10 @@
     </div>
 
     <!-- Info Modal -->
-    <div id="info-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="info-modal" class="modal" role="dialog" aria-labelledby="info-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide session-info-modal">
             <div class="modal-header">
-                <h3>Session Info</h3>
+                <h3 id="info-title">Session Info</h3>
             </div>
             <div class="modal-body">
                 <dl class="info-grid session-info-grid">
@@ -531,10 +531,10 @@
     </div>
 
     <!-- Resume Modal -->
-    <div id="resume-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="resume-modal" class="modal" role="dialog" aria-labelledby="resume-title" aria-modal="true" style="display:none">
         <div class="modal-content" style="width:480px">
             <div class="modal-header">
-                <h3>Resume Session</h3>
+                <h3 id="resume-title">Resume Session</h3>
             </div>
             <div class="modal-body">
                 <div id="resume-launch-form">
@@ -990,10 +990,10 @@
     </div>
 
     <!-- Default Prompts Modal -->
-    <div id="default-prompts-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="default-prompts-modal" class="modal" role="dialog" aria-labelledby="default-prompts-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-xl">
             <div class="modal-header">
-                <h3>Edit Default Prompts</h3>
+                <h3 id="default-prompts-title">Edit Default Prompts</h3>
             </div>
             <div class="modal-body">
                 <p class="prompts-description">
@@ -1040,10 +1040,10 @@
     </div>
 
     <!-- Theme Configurator Modal (content rendered dynamically) -->
-    <div id="theme-configurator-modal" class="modal" role="dialog" aria-modal="true" style="display:none"></div>
+    <div id="theme-configurator-modal" class="modal" role="dialog" aria-label="Customize theme" aria-modal="true" style="display:none"></div>
 
     <!-- Scheduled Job Modal -->
-    <div id="job-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="job-modal" class="modal" role="dialog" aria-labelledby="job-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
                 <h3 id="job-modal-title">New Scheduled Job</h3>
@@ -1143,10 +1143,10 @@
     </div>
 
     <!-- Add Macro Modal -->
-    <div id="macro-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="macro-modal" class="modal" role="dialog" aria-labelledby="macro-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-sm">
             <div class="modal-header">
-                <h3>Add Macro</h3>
+                <h3 id="macro-title">Add Macro</h3>
             </div>
             <div class="modal-body">
                 <label>Label:
@@ -1165,7 +1165,7 @@
     </div>
 
     <!-- Quick Launch Team Modal -->
-    <div id="quick-launch-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="quick-launch-modal" class="modal" role="dialog" aria-labelledby="quick-launch-title" aria-modal="true" style="display:none">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="quick-launch-title">Launch Coding Team</h3>
@@ -1203,10 +1203,10 @@
     </div>
 
     <!-- Add Agent to Board Modal -->
-    <div id="add-agent-board-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="add-agent-board-modal" class="modal" role="dialog" aria-labelledby="add-agent-board-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
-                <h3>Add Agent to Board</h3>
+                <h3 id="add-agent-board-title">Add Agent to Board</h3>
             </div>
             <div class="modal-body">
                 <p class="add-agent-board-subtitle" id="add-agent-board-subtitle"></p>
@@ -1222,7 +1222,7 @@
     </div>
 
     <!-- Create/Edit Custom View Modal -->
-    <div id="custom-view-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="custom-view-modal" class="modal" role="dialog" aria-labelledby="custom-view-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-extra-wide">
             <div class="modal-header">
                 <h3 id="custom-view-modal-title">Create Custom View</h3>
@@ -1281,7 +1281,7 @@
     </div>
 
     <!-- Task Detail Modal -->
-    <div id="create-task-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="create-task-modal" class="modal" role="dialog" aria-labelledby="create-task-heading" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
                 <h3 id="create-task-heading">Create Task</h3>
@@ -1349,7 +1349,7 @@
         </div>
     </div>
 
-    <div id="task-detail-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="task-detail-modal" class="modal" role="dialog" aria-labelledby="task-detail-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-extra-wide">
             <div class="modal-header">
                 <h3 id="task-detail-modal-title">Task Details</h3>

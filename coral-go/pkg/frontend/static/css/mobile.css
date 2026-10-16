@@ -85,8 +85,8 @@
     height: 36px;
     min-width: 36px;
     border-radius: 50%;
-    background: var(--accent);
-    color: #fff;
+    background: var(--accent-dim);   /* white on the dark theme's light accent was 2.5:1; the dim accent is 5:1 or better (#4023) */
+    color: var(--text-on-accent);
     border: none;
     cursor: pointer;
     flex-shrink: 0;

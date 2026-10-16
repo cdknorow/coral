@@ -5,6 +5,12 @@
 //   3. Every Settings select and the Analytics time range have an accessible name.
 //   4. The Settings dialog is named, takes focus when it opens, keeps Tab inside, and gives focus
 //      back when it closes (Escape: to the menu button its opener sat in; Cancel: to the opener).
+//   5. Every dialog in the page has an accessible name (aria-labelledby or aria-label) and aria-modal (#4023).
+//   6. Contrast on the home page, an agent's Chat view and Settings, light and dark, at 1280 and 390 px: no text below 4.5:1
+//      (3:1 for large text), no icon glyph below 3:1 (#4023).
+//   7. Every kind of focusable control shows a focus indicator (an outline, a ring, or for the two text boxes that use it,
+//      a border colour change) when :focus-visible applies (#4023).
+//   8. A live list update does not take keyboard focus away from the row it is on (#4023).
 //
 // Drives Chrome over CDP (chrome-remote-interface) through agent_view_harness.js; run_cdp_suites.mjs
 // finds CDP suites by that name.
@@ -25,8 +31,8 @@ const contrast = (a, b) => {
 };
 
 (async () => {
-    const { client, Page, ev, waitFor, PRELOAD } = await connect();
-    const { Input } = client;
+    const { client, Page, ev, waitFor, PRELOAD, install } = await connect();
+    const { Input, Emulation, DOM, CSS } = client;
     const key = async (k, shift = false) => {
         const code = { Tab: 9, Escape: 27, Enter: 13 }[k];
         const base = { key: k, code: k, windowsVirtualKeyCode: code, modifiers: shift ? 8 : 0 };
@@ -148,6 +154,104 @@ const contrast = (a, b) => {
         await waitFor(`document.activeElement && document.activeElement.id === 'nav-tab-agents'`, 'focus back on the opener after Cancel', 3000,
             `({ active: document.activeElement && (document.activeElement.id || document.activeElement.tagName) })`);
         console.log('   ✓ Cancel: focus back on the opener');
+
+        console.log('5. Dialogs are named and modal');
+        const dialogs = await ev(`[...document.querySelectorAll('[role=dialog], dialog')].map(d => ({ id: d.id, name: !!(d.getAttribute('aria-label') || (d.getAttribute('aria-labelledby') && d.getAttribute('aria-labelledby').split(' ').every(i => document.getElementById(i)))), modal: d.getAttribute('aria-modal') === 'true' || d.tagName === 'DIALOG' }))`);
+        assert.ok(dialogs.length >= 15, `the page has its dialogs (${dialogs.length})`);
+        assert.deepEqual(dialogs.filter(d => !d.name).map(d => d.id), [], 'every dialog has an accessible name that points at something');
+        assert.deepEqual(dialogs.filter(d => !d.modal).map(d => d.id), [], 'and says it is modal');
+        console.log(`   ✓ ${dialogs.length} dialogs named and modal`);
+
+        console.log('6. Contrast in both themes at 1280 and 390 px');
+        const CONTRAST = `(() => {
+            const vis = e => { const r = e.getBoundingClientRect(); const c = getComputedStyle(e); return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none' && c.opacity !== '0'; };
+            const parse = s => { const m = s.match(/rgba?\\(([^)]+)\\)/); if (!m) return null; const p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+            const blend = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+            const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+            const bgOf = e => { const layers = []; let n = e; while (n && n.nodeType === 1) { const cs = getComputedStyle(n); if (cs.backgroundImage && cs.backgroundImage !== 'none') return null; const c = parse(cs.backgroundColor); if (c && c.a > 0) { layers.push(c); if (c.a === 1) break; } n = n.parentElement; } let base = { r: 255, g: 255, b: 255, a: 1 }; const root = parse(getComputedStyle(document.body).backgroundColor); if (layers.length && layers[layers.length - 1].a < 1 && root && root.a > 0) base = root; for (let i = layers.length - 1; i >= 0; i--) base = blend(layers[i], base); return base; };
+            const bad = []; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); const seen = new Set();
+            for (let n = w.nextNode(); n; n = w.nextNode()) {
+                if (!n.nodeValue.trim()) continue; const e = n.parentElement; if (!e || seen.has(e) || !vis(e) || e.closest('script, style, svg')) continue; seen.add(e);
+                const cs = getComputedStyle(e); const fg = parse(cs.color); const bg = bgOf(e); if (!fg || !bg) continue; const f = blend(fg, bg);
+                const ratio = (Math.max(lum(f), lum(bg)) + 0.05) / (Math.min(lum(f), lum(bg)) + 0.05); const size = parseFloat(cs.fontSize); const large = size >= 24 || (size >= 18.66 && parseInt(cs.fontWeight) >= 700);
+                const need = e.classList.contains('material-icons') ? 3 : (large ? 3 : 4.5);
+                if (ratio < need - 0.01) bad.push((e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).split(' ').slice(0, 2).join('.')) + ' "' + n.nodeValue.trim().slice(0, 20) + '" ' + Math.round(ratio * 100) / 100 + ' < ' + need);
+            }
+            return [...new Set(bad)];
+        })()`;
+        const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a scene settles over several answers; there is no single completion event
+        for (const [dev, w, h, mobile] of [['desktop', 1280, 800, false], ['phone', 390, 844, true]]) {
+            await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
+            for (const theme of ['dark', 'light']) {
+                await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+                await ev(`window.__coralReady.then(() => true)`);
+                await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); (async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars(); m.applyTheme('${theme}'); })(); window.__m.add('docs-bot', 'A', 6, { sleeping: false }); window.__m.add('api-worker', 'B', 3, { sleeping: false }); true`);
+                await ev(`document.documentElement.style.setProperty('--zz', '1'); const st = document.createElement('style'); st.textContent = '* { transition: none !important }'; document.head.appendChild(st); true`);
+                await sleep(500);   // sleep-ok: a scene settles over several answers; there is no single completion event
+                const scenes = [['home', null], ['chat', `window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`], ['settings', `(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`]];
+                for (const [name, act] of scenes) {
+                    if (act) { await ev(act); await sleep(name === 'settings' ? 1200 : 1000); }   // sleep-ok: a scene settles over several answers; there is no single completion event
+                    const bad = await ev(CONTRAST);
+                    assert.deepEqual(bad, [], `${name} / ${theme} / ${dev}: text and icons reach contrast: ${bad.join('; ')}`);
+                }
+            }
+        }
+        console.log('   ✓ home, Chat and Settings: no text under 4.5:1, no icon under 3:1, both themes, 1280 and 390 px');
+
+        console.log('7. Every kind of focusable control shows a focus indicator');
+        await Emulation.setDeviceMetricsOverride({ width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+        await ev(`window.__coralReady.then(() => true)`);
+        await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('docs-bot', 'A', 6, { sleeping: false }); true`);
+        await sleep(500);   // sleep-ok: a scene settles over several answers; there is no single completion event
+        await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`); await sleep(1000);   // sleep-ok: a scene settles over several answers; there is no single completion event
+        await DOM.enable(); await CSS.enable();
+        const marked = await ev(`(() => { const seen = new Set(); let i = 0; document.querySelectorAll('[data-zz]').forEach(e => e.removeAttribute('data-zz'));
+            const vis = e => { const r = e.getBoundingClientRect(); const c = getComputedStyle(e); return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none'; };
+            for (const e of document.querySelectorAll('button, a[href], input:not([type=hidden]), select, textarea, summary, [tabindex]:not([tabindex="-1"]), [role=button]')) { if (!vis(e)) continue;
+                const sig = e.tagName + '|' + (typeof e.className === 'string' ? e.className.split(/\\s+/).slice(0, 3).join('.') : '') + '|' + (e.type || ''); if (seen.has(sig)) continue; seen.add(sig); e.setAttribute('data-zz', String(i++)); } return i; })()`);
+        assert.ok(marked >= 15, `controls to check (${marked})`);
+        const { root } = await DOM.getDocument({ depth: 0 });
+        const { nodeIds } = await DOM.querySelectorAll({ nodeId: root.nodeId, selector: '[data-zz]' });
+        const noRing = [];
+        for (const nodeId of nodeIds) {
+            const style = async forced => { await CSS.forcePseudoState({ nodeId, forcedPseudoClasses: forced }); const { computedStyle } = await CSS.getComputedStyleForNode({ nodeId }); return k => (computedStyle.find(c => c.name === k) || {}).value; };
+            const on = await style(['focus', 'focus-visible']); const onOutline = on('outline-style') !== 'none' && parseFloat(on('outline-width')) > 0; const onShadow = on('box-shadow') && on('box-shadow') !== 'none'; const onBorder = on('border-top-color');
+            const off = await style([]); const borderChange = onBorder !== off('border-top-color');
+            await CSS.forcePseudoState({ nodeId, forcedPseudoClasses: [] });
+            if (!onOutline && !onShadow) {
+                const { node } = await DOM.describeNode({ nodeId }); const attrs = node.attributes || [];
+                const id = attrs[attrs.indexOf('id') + 1] || '';
+                if (!borderChange && id !== 'command-input') noRing.push(node.nodeName.toLowerCase() + (id ? '#' + id : ''));   // the composer is checked below, by real focus
+            }
+        }
+        assert.deepEqual(noRing, [], 'every control kind shows an outline, a ring or a border change on keyboard focus: ' + noRing.join(', '));
+        // The composer: on a phone the box's own border turns accent; on desktop the card around it does. Either must be 3:1 against what is next to it.
+        for (const theme of ['dark', 'light']) {
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars(); m.applyTheme('${theme}'); return true; })()`);
+        await sleep(150);   // sleep-ok: a scene settles over several answers; there is no single completion event
+        const comp = await ev(`(() => { const st = document.createElement('style'); st.textContent = '* { transition: none !important }'; document.head.appendChild(st);
+            const t = document.getElementById('command-input'), p = document.getElementById('command-pane'); const parse = c => (c.match(/[\\d.]+/g) || []).map(Number);
+            const col = c => { const m = c.match(/color\\(srgb ([\\d.]+) ([\\d.]+) ([\\d.]+)/); return m ? [m[1], m[2], m[3]].map(v => v * 255) : parse(c).slice(0, 3); };
+            const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+            const ratio = (x, y) => { const [a, b] = [lum(x), lum(y)].sort((p, q) => q - p); return (a + 0.05) / (b + 0.05); };
+            const read = () => { const ta = getComputedStyle(t), pn = getComputedStyle(p); return { ta: col(ta.borderTopColor), tw: parseFloat(ta.borderTopWidth), pn: col(pn.borderTopColor), pbg: col(pn.backgroundColor), tbg: col(ta.backgroundColor) }; };
+            t.blur(); const a = read(); t.focus(); const b = read();
+            const taOn = b.tw > 0 && JSON.stringify(a.ta) !== JSON.stringify(b.ta) ? ratio(b.ta, b.tbg[0] === 0 && b.tbg[1] === 0 ? b.pbg : b.tbg) : 0;
+            const paneOn = JSON.stringify(a.pn) !== JSON.stringify(b.pn) ? ratio(b.pn, b.pbg) : 0;
+            return { taOn: Math.round(taOn * 100) / 100, paneOn: Math.round(paneOn * 100) / 100 }; })()`);
+        assert.ok(Math.max(comp.taOn, comp.paneOn) >= 3, `${theme}: the composer shows focus with a 3:1 border change (box ${comp.taOn}, card ${comp.paneOn})`);
+        console.log(`   ✓ ${theme}: the composer's focus border is ${Math.max(comp.taOn, comp.paneOn)}:1`);
+        }
+        console.log(`   ✓ ${marked} control kinds checked`);
+
+        console.log('8. A live update does not take focus from the row it is on');
+        const kept = await ev(`(() => { const row = document.querySelector('#live-sessions-list li[data-session-id="docs-bot-id"]'); if (!row) return { err: 'no row' }; row.focus(); const before = document.activeElement === row;
+            window.__m.add('late-bot', 'B', 1, { sleeping: false }); T.render.renderLiveSessions(T.state.liveSessions);
+            const a = document.activeElement; return { before, id: a && a.dataset && a.dataset.sessionId, inRow: !!(a && a.closest && a.closest('li[data-session-id="docs-bot-id"]')), tag: a && a.tagName }; })()`);
+        assert.ok(kept.before, 'the row took focus');
+        assert.ok(kept.inRow, `after a list redraw focus is still on that row, not lost to the page (focus is on ${kept.tag} ${kept.id})`);
+        console.log('   ✓ focus stays on the focused row through a redraw');
 
         console.log('\nAll dashboard accessibility checks passed');
     } finally {

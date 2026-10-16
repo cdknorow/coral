@@ -1767,6 +1767,11 @@
     color: color-mix(in srgb, var(--agent-name-color) 62%, black);
 }
 
+/* On the selected row the muted name is 4.3:1 in the light theme; the primary colour passes (#4023). A colour the user picked still wins. */
+.session-group-item.active:not(.sleeping):not(.session-done) .session-label-name:not([style]) {
+    color: var(--text-primary);
+}
+
 /* Sleeping and finished agents stay muted so their state still reads at a glance */
 .session-group-item.sleeping .session-label-name,
 .session-group-item.session-done .session-label-name {

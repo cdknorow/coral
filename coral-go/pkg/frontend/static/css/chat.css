@@ -548,7 +548,7 @@
 }
 
 .live-view-toggle-btn.active {
-    color: var(--text-primary);
+    color: var(--text-on-accent);   /* the dim accent is dark blue in the light theme: the icon was dark on it, 2.1:1 (#4023) */
     background: var(--accent-dim);
 }
 
