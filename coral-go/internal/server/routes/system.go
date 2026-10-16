@@ -353,10 +353,10 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 			agentprio.SetSetting(s) // agents started from now on (#3437)
 		}
 		if k == inputlog.SettingKey {
-			inputlog.SetSetting(inputlog.SettingOn(s))
+			inputlog.SetSetting(config.Truthy(s))
 		}
 		if k == auth.RequireAuthOnLoopbackSetting {
-			auth.SetRequireAuthOnLoopback(auth.SettingOn(s)) // #3585: takes effect for the next request
+			auth.SetRequireAuthOnLoopback(config.Truthy(s)) // #3585: takes effect for the next request
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})

@@ -25,6 +25,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cdknorow/coral/internal/config"
 )
 
 const (
@@ -79,15 +81,6 @@ func SetSetting(on bool) {
 	defer mu.Unlock()
 	setting = on
 	applyLocked("setting")
-}
-
-// SettingOn reads a stored debug_input_log value ("True"/"true"/"1" are on).
-func SettingOn(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
 }
 
 // Status is the log's state, for the Settings page.
@@ -180,7 +173,7 @@ func Flush() {
 
 // EnabledFromEnv reports whether CORAL_DEBUG_INPUT asks for the debug file.
 func EnabledFromEnv() bool {
-	return SettingOn(os.Getenv("CORAL_DEBUG_INPUT"))
+	return config.Truthy(os.Getenv("CORAL_DEBUG_INPUT"))
 }
 
 // Record logs one write to the terminal target (a tmux target or a PTY session

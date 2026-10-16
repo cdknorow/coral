@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/config"
 )
 
 // A loopback request that carries a reverse-proxy header is not a direct local client, so it
@@ -157,9 +159,9 @@ func TestResolveRequireAuthOnLoopback(t *testing.T) {
 
 func TestSettingOn(t *testing.T) {
 	for _, v := range []string{"true", "True", "1", "yes", "on", " TRUE "} {
-		assert.True(t, SettingOn(v), v)
+		assert.True(t, config.Truthy(v), v)
 	}
 	for _, v := range []string{"", "false", "0", "no", "off", "nope"} {
-		assert.False(t, SettingOn(v), v)
+		assert.False(t, config.Truthy(v), v)
 	}
 }

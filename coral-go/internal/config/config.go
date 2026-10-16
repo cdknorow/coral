@@ -147,7 +147,7 @@ func Load(dataDir ...string) *Config {
 	logDir = filepath.Join(coralDir, "logs")
 
 	envURL, envURLSet := os.LookupEnv("CORAL_CLOUD_URL")
-	hubEnv := truthy(os.Getenv("CORAL_HUB"))
+	hubEnv := Truthy(os.Getenv("CORAL_HUB"))
 	cfg := &Config{
 		HubMode:          hubEnv,
 		HubModeForced:    hubEnv,
@@ -290,8 +290,9 @@ func cloudConnectFromEnv(v string) string {
 	return "off"
 }
 
-// truthy reads an on/off environment value: 1, true, yes or on.
-func truthy(v string) bool {
+// Truthy reads an on/off value, from the environment or a stored setting: 1, true, yes or on, in
+// any case, around spaces. The one helper for it (#3824: there were six copies).
+func Truthy(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "1", "true", "yes", "on":
 		return true

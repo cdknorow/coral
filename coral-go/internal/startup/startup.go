@@ -379,7 +379,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	inputlog.Setup(cfg.CoralDir(), opts.DebugInput || inputlog.EnabledFromEnv())
 	savedBackend := ""
 	if settings, err := store.NewSessionStore(db).GetSettings(ctx); err == nil {
-		inputlog.SetSetting(inputlog.SettingOn(settings[inputlog.SettingKey]))
+		inputlog.SetSetting(config.Truthy(settings[inputlog.SettingKey]))
 		agentprio.SetSetting(settings[agentprio.SettingKey])
 		savedBackend = settings[routes.TerminalBackendSetting]
 	}

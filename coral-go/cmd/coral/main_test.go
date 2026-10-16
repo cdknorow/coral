@@ -241,13 +241,13 @@ func TestServer_WSCoralEndpointExists(t *testing.T) {
 
 func TestEnvTruthy(t *testing.T) {
 	for _, v := range []string{"1", "true", "TRUE", " yes ", "on"} {
-		if !envTruthy(v) {
-			t.Errorf("envTruthy(%q) = false, want true", v)
+		if !config.Truthy(v) {
+			t.Errorf("config.Truthy(%q) = false, want true", v)
 		}
 	}
 	for _, v := range []string{"", "0", "false", "no", "off", "maybe"} {
-		if envTruthy(v) {
-			t.Errorf("envTruthy(%q) = true, want false", v)
+		if config.Truthy(v) {
+			t.Errorf("config.Truthy(%q) = true, want false", v)
 		}
 	}
 }
