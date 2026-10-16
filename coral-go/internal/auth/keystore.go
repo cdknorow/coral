@@ -110,11 +110,6 @@ func (ks *KeyStore) loadOrGenerate() error {
 	return nil
 }
 
-// readKeyFile reads the API key file: a regular file (never through a symlink or another kind
-// of file, refused with an error to fix by hand), at most 1 KiB. One readable by group or others
-// is tightened to 0600 first, as it should always have been (#3627 F2). Windows has no mode bits:
-// there the file's access list is checked instead (secfile.CheckOpen, #3905): one that lets
-// another account read it is secfile.ErrExposed.
 // ReadAPIKey reads the API key Coral keeps in coralDir (`coral api-key`, #3936), with the
 // same checks as the server: a regular file, private to this user. It never makes a key: a
 // data folder without one gets an fs.ErrNotExist error.
@@ -130,6 +125,11 @@ func ReadAPIKey(coralDir string) (string, error) {
 	return key, nil
 }
 
+// readKeyFile reads the API key file: a regular file (never through a symlink or another kind
+// of file, refused with an error to fix by hand), at most 1 KiB. One readable by group or others
+// is tightened to 0600 first, as it should always have been (#3627 F2). Windows has no mode bits:
+// there the file's access list is checked instead (secfile.CheckOpen, #3905): one that lets
+// another account read it is secfile.ErrExposed.
 func readKeyFile(path string) ([]byte, error) {
 	li, err := os.Lstat(path)
 	if err != nil {
