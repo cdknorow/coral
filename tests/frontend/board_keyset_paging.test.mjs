@@ -149,6 +149,9 @@ mb.showMessageBoardProjects();
 // ── Board chat panel ──
 keysetServer = true;
 requests.length = 0;
+// The panel is part of the agent view, and its poll keeps a slow beat while that view is off
+// screen (#3719): the board view above hid it, so show it, as when the panel is in use.
+{ const agentView = document.getElementById('live-session-view'); if (agentView) agentView.style.display = ''; }
 const render = await importUi('render');
 render.showBoardChatTab('team');
 for (let i = 0; i < 6; i++) await settle();
