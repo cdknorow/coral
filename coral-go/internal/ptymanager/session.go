@@ -298,8 +298,10 @@ func parseCommand(cmd string) []string {
 	if cmd == "" {
 		return nil
 	}
-	// If the command contains shell metacharacters, wrap via platform shell
-	if strings.ContainsAny(cmd, "|&;`$(){}[]<>!~*?#") || strings.Contains(cmd, "&&") {
+	// Shell syntax (metacharacters, and quotes or a backslash, which a split on spaces would
+	// break: "sh -c 'sleep 60'" became sh, -c, 'sleep, 60' and the shell exited at once, #4013)
+	// goes to the platform shell; plain words are run as they are.
+	if strings.ContainsAny(cmd, "|&;`$(){}[]<>!~*?#'\"\\") {
 		return shellWrap(cmd)
 	}
 	return strings.Fields(cmd)
