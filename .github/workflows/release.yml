@@ -32,6 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           bash tests/release/resolve_release_test.sh
+          bash tests/release/install_cli_tools_test.sh
           bash tests/release/resolve_release.sh "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
 
   # ── Linux ──────────────────────────────────────────────────────
