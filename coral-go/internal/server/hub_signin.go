@@ -177,10 +177,7 @@ func (s *Server) newHubSignin(ar *auth.Routes) *auth.HubSignin {
 			st, err := ss.GetSettings(context.Background())
 			return err == nil && !routes.HubOperatorDisabled(st)
 		},
-		LoopbackOrigins: func() []string {
-			p := strconv.Itoa(s.cfg.Port)
-			return []string{"http://localhost:" + p, "http://" + net.JoinHostPort("127.0.0.1", p), "http://" + net.JoinHostPort("::1", p)}
-		},
+		LoopbackOrigins: s.loopbackOrigins,
 		OriginsChanged: func() {
 			if m := s.cloudMgr.Load(); m != nil {
 				m.SigninOriginsChanged()
@@ -190,6 +187,22 @@ func (s *Server) newHubSignin(ar *auth.Routes) *auth.HubSignin {
 			routes.RecordHubSigninAction(ctx, s.boardStore, who, method, path, status)
 		},
 	})
+}
+
+// loopbackOrigins are this server's own loopback origins for Hub sign-in: http on its port,
+// and https as well when it serves TLS on that port (--tls-cert; the port speaks both), so a
+// dashboard opened at https://localhost gets the Hub button too.
+func (s *Server) loopbackOrigins() []string {
+	p := strconv.Itoa(s.cfg.Port)
+	schemes := []string{"http"}
+	if s.cfg.TLS {
+		schemes = append(schemes, "https")
+	}
+	var out []string
+	for _, sc := range schemes {
+		out = append(out, sc+"://localhost:"+p, sc+"://"+net.JoinHostPort("127.0.0.1", p), sc+"://"+net.JoinHostPort("::1", p))
+	}
+	return out
 }
 
 // HubSigninOrigins is the return-origin list the connector sends Coral Hub.
