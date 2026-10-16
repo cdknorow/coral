@@ -212,12 +212,12 @@ func main() {
 	defer stop()
 	interrupts := newInterruptRouter(stop)
 
-	// Without a terminal on stdin (a service, or a shell that started Coral in the
-	// background) a prompt would block startup in read(0) forever. Skip the remote
-	// access question then: remote access stays off and nothing is saved, so the
-	// next interactive start still asks.
+	// Without someone at a terminal (a service, a CI runner, the tray, a shell that started
+	// Coral in the background) a prompt would block startup before the server listens. Skip
+	// the remote access question then: remote access stays off, nothing is saved, the log
+	// says how to turn it on, and the next interactive start still asks (#3271, #4052).
 	var remotePrompt func() bool
-	if term.IsTerminal(int(os.Stdin.Fd())) {
+	if canAskAtTerminal(os.Stdin, os.Stdout) {
 		tlsOn := strings.TrimSpace(*tlsCert) != "" && strings.TrimSpace(*tlsKey) != ""
 		remotePrompt = func() bool { return promptRemoteAccess(os.Stdin, os.Stdout, tlsOn) }
 	}
