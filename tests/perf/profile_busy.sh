@@ -33,9 +33,9 @@ log(){ echo "[perf $(date +%H:%M:%S)] $*"; }
 PIDS=()
 cleanup() {
   log "cleanup"
-  for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done
+  for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null; done
   sleep 2
-  for p in "${PIDS[@]}"; do kill -9 "$p" 2>/dev/null; done
+  for p in ${PIDS[@]+"${PIDS[@]}"}; do kill -9 "$p" 2>/dev/null; done
   for d in "$WORK/d1" "$WORK/d2"; do
     [[ -S "$d/tmux.sock" ]] && tmux -S "$d/tmux.sock" kill-server 2>/dev/null
   done
@@ -74,7 +74,7 @@ start_server() { # $1 data dir, $2 port, $3 log, rest: extra flags
 log "starting the busy server on $PORT (pprof on $PPROF)"
 # MOCK_TRANSCRIPT=1: the mock agents write Claude Code transcripts, as real agents do after their first turn.
 MOCK_ENV=(); [[ "${MOCK_TRANSCRIPT:-0}" == 1 ]] && MOCK_ENV=(MOCK_AGENT_TRANSCRIPT=1)
-start_server "$WORK/d1" "$PORT" "$OUT/server.log" CORAL_PPROF_ADDR="127.0.0.1:$PPROF" GODEBUG=gctrace=1 "${MOCK_ENV[@]}"
+start_server "$WORK/d1" "$PORT" "$OUT/server.log" CORAL_PPROF_ADDR="127.0.0.1:$PPROF" GODEBUG=gctrace=1 ${MOCK_ENV[@]+"${MOCK_ENV[@]}"} # bash 3.2: an empty array is "unbound" under set -u
 SRV=${PIDS[$((${#PIDS[@]} - 1))]}
 KEY="$(cat "$WORK/d1/api_key")"
 api(){ local m="$1" p="$2"; shift 2; curl -s -m 20 -X "$m" "http://127.0.0.1:$PORT$p" -H "X-API-Key: $KEY" -H "Content-Type: application/json" "$@"; }
