@@ -30,7 +30,7 @@ func newNoLicenceServer(t *testing.T, prepare func(coralDir string)) *httptest.S
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	stack := newTermStack(t)
-	ts := httptest.NewServer(NewWithKey(cfg, db, stack.backend, stack.terminal, "").Router())
+	ts := httptest.NewServer(newTestServer(t, cfg, db, stack.backend, stack.terminal).Router())
 	t.Cleanup(ts.Close)
 	return ts
 }

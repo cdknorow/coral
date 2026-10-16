@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -28,10 +29,24 @@ func strictServer(t *testing.T, strict bool) (*Server, *httptest.Server, string)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	stack := newTermStack(t)
-	srv := NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+	srv := newTestServer(t, cfg, db, stack.backend, stack.terminal)
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
+	t.Cleanup(func() { // terminals a test launched: Windows can't delete a folder one is working in (#3914)
+		for _, s := range stack.backend.ListSessions() {
+			_ = stack.backend.Kill(s.AgentName)
+		}
+	})
 	return srv, ts, dir
+}
+
+// strictWorkDir is a folder to launch terminals in, under the server's data folder, which is
+// removed after the terminals are stopped; a TempDir made later would be removed before (#3914).
+func strictWorkDir(t *testing.T, dir string) string {
+	t.Helper()
+	w, err := os.MkdirTemp(dir, "work-")
+	require.NoError(t, err)
+	return w
 }
 
 func codeOfBody(b []byte) string {

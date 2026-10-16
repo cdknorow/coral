@@ -72,5 +72,13 @@ func Open(tb testing.TB, path string) (*store.DB, error) {
 			return nil, err
 		}
 	}
-	return store.OpenWithKey(context.Background(), path, "")
+	db, err := store.OpenWithKey(context.Background(), path, "")
+	if err != nil {
+		return nil, err
+	}
+	// Closed before the test's temp folders are removed (cleanups run last-in, first-out, and
+	// the path's TempDir was made before this call): Windows can't delete an open database
+	// (#3914). Close is idempotent, so callers that close it themselves are unaffected.
+	tb.Cleanup(func() { db.Close() })
+	return db, nil
 }

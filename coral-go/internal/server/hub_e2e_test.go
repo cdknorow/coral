@@ -38,6 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -85,7 +86,13 @@ func (l *lockedBuf) String() string {
 
 func newE2EEnv(t *testing.T) *e2eEnv {
 	t.Helper()
-	t.Setenv("CORAL_SHELL", "/bin/sh")
+	if runtime.GOOS == "windows" {
+		// Coral's own default there: PowerShell (/bin/sh doesn't exist, so every launch failed
+		// with "file not found"). Its echo prints hub-e2e-$((20+22)) as hub-e2e-42 too (#3914).
+		t.Setenv("CORAL_SHELL", "")
+	} else {
+		t.Setenv("CORAL_SHELL", "/bin/sh")
+	}
 	t.Logf("terminal backend: real PTY=%v (false means in-memory fake; sandbox forbids fork/exec)", realPTYUsable())
 	t.Setenv("TMPDIR", t.TempDir())
 	t.Setenv("CLAUDE_PROJECTS_DIR", filepath.Join(t.TempDir(), "projects"))
@@ -168,7 +175,7 @@ func newE2ERemote(t *testing.T, id string, mutate func(*config.Config)) *e2eRemo
 	r := &e2eRemote{
 		t: t, id: id, dir: dir, cfg: cfg, db: db, backend: backend, fake: stack.fake,
 		work:     filepath.Join(dir, "work", "proj"), // same base name on every remote
-		srv:      NewWithKey(cfg, db, backend, stack.terminal, ""),
+		srv:      newTestServer(t, cfg, db, backend, stack.terminal),
 		hijacked: map[net.Conn]struct{}{},
 	}
 	// Requests built with httptest carry no local address, which peercred refuses
@@ -181,6 +188,7 @@ func newE2ERemote(t *testing.T, id string, mutate func(*config.Config)) *e2eRemo
 		for _, s := range backend.ListSessions() {
 			_ = backend.Kill(s.AgentName)
 		}
+		r.srv.Close() // its loops and board database first (#3914)
 		db.Close()
 	})
 	return r
@@ -336,7 +344,7 @@ func newE2EHub(t *testing.T, env *e2eEnv, dir string, hubMode bool) *e2eHub {
 	stack := newTermStack(t)
 	backend := stack.backend
 	h := &e2eHub{t: t, env: env, dir: dir, cfg: cfg, db: db, backend: backend, done: make(chan struct{})}
-	h.srv = NewWithKey(cfg, db, backend, stack.terminal, "")
+	h.srv = newTestServer(t, cfg, db, backend, stack.terminal)
 	h.ts = httptest.NewServer(h.srv.Router())
 	ctx, cancel := context.WithCancel(context.Background())
 	h.cancel = cancel
@@ -356,6 +364,7 @@ func (h *e2eHub) close() {
 	for _, s := range h.backend.ListSessions() {
 		_ = h.backend.Kill(s.AgentName)
 	}
+	h.srv.Close() // its loops and board database first (#3914)
 	h.db.Close()
 	h.cancel = nil
 }
@@ -699,9 +708,7 @@ func TestHubE2E_RegisterOutcomesAndKeyHygiene(t *testing.T) {
 	_, err = hub.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	require.NoError(t, err)
 	env.assertNoPlaintext(t, hub.dir, a.key(), b.key())
-	keyFile, err := os.Stat(filepath.Join(hub.dir, ".remote_secret_key"))
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), keyFile.Mode().Perm())
+	requirePrivateFile(t, filepath.Join(hub.dir, ".remote_secret_key")) // mode 0600, or the Windows access list
 }
 
 // ── 3. merged list, same-named agents, live updates ─────────────────
@@ -883,7 +890,11 @@ func TestHubE2E_ChatAndTerminalViaProxy(t *testing.T) {
 	c, _, err := websocket.Dial(ctx, wsURLFor(hub.ts, wsPath), nil)
 	require.NoError(t, err)
 	defer c.CloseNow()
-	require.NoError(t, wsjson.Write(ctx, c, map[string]any{"type": "terminal_input", "data": "echo hub-e2e-$((20+22))\n"}))
+	enter := "\n"
+	if runtime.GOOS == "windows" {
+		enter = "\r" // Enter, as the dashboard's terminal sends it: PowerShell's line editor runs the line on CR (#3914)
+	}
+	require.NoError(t, wsjson.Write(ctx, c, map[string]any{"type": "terminal_input", "data": "echo hub-e2e-$((20+22))" + enter}))
 	var got strings.Builder
 	for !strings.Contains(strings.ReplaceAll(got.String(), "\r", ""), "hub-e2e-42\n") {
 		typ, data, err := c.Read(ctx)

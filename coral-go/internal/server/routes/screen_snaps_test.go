@@ -112,11 +112,12 @@ func (b *stampingBackend) set(stamp string) {
 }
 
 // #3887: the agent poll is the read-only path QA's census found (122 of 175 capture-panes): two
-// tabs polling one agent share a capture. A shared capture older than the output stamp is shown
-// but never kept against that stamp, so new output can't hide behind the stamp reuse.
-func TestPollSharesCapturesAcrossTabs(t *testing.T) {
+// tabs polling one agent share a capture while its output is unchanged. #3954: the output stamp is
+// part of the sharing key, so once the pane prints, the next poll captures fresh even within the
+// sharing TTL (it showed the old screen for up to 2 s); without a stamp nothing is shared.
+func TestPollSharesCapturesOnlyForTheSameOutput(t *testing.T) {
 	defer func(old time.Duration) { screenSnapTTL = old }(screenSnapTTL)
-	screenSnapTTL = 150 * time.Millisecond
+	screenSnapTTL = time.Hour // every poll below is within the TTL
 	_, h, terminal, _ := setupSessionsTestServer(t)
 	ctx := context.Background()
 	const name, sid = "claude-11111111-2222-4333-8444-555555555555", "11111111-2222-4333-8444-555555555555"
@@ -127,40 +128,32 @@ func TestPollSharesCapturesAcrossTabs(t *testing.T) {
 		defer terminal.mu.Unlock()
 		return len(terminal.captures)
 	}
-
-	// A backend without output stamps: the two tabs' polls share one capture until the TTL.
-	h.backend = nil
-	for i := 0; i < 2; i++ {
+	poll := func() string {
+		t.Helper()
 		text, err := h.captureForPoll(ctx, name, "claude", sid)
 		require.NoError(t, err)
-		assert.Equal(t, "first screen", text)
+		return text
 	}
-	assert.Equal(t, 1, captures(), "two tabs, one capture")
-	time.Sleep(screenSnapTTL + 20*time.Millisecond)
-	_, _ = h.captureForPoll(ctx, name, "claude", sid)
-	assert.Equal(t, 2, captures(), "after the TTL, a new capture")
 
-	// With output stamps: a capture is kept against its stamp only if it started after the stamp.
+	// A backend without output stamps: nothing tells two captures apart, so each poll captures.
+	h.backend = nil
+	poll()
+	terminal.setOutput(name, "printed")
+	assert.Equal(t, "printed", poll(), "no stamp: never an older screen")
+	assert.Equal(t, 2, captures(), "no stamp: no sharing")
+
+	// With output stamps: the same stamp shares one capture; a new stamp captures again at once.
 	b := &stampingBackend{stamp: "a"}
 	h.backend = b
-	time.Sleep(screenSnapTTL + 20*time.Millisecond)
-	text, err := h.captureForPoll(ctx, name, "claude", sid)
-	require.NoError(t, err)
-	assert.Equal(t, "first screen", text)
+	terminal.setOutput(name, "first screen")
 	n := captures()
+	assert.Equal(t, "first screen", poll())
+	assert.Equal(t, "first screen", poll())
+	assert.Equal(t, n+1, captures(), "same output: one capture")
 	terminal.setOutput(name, "second screen")
-	b.set("b") // the pane printed: the stamp moves, the shared capture is still the old one
-	text, _ = h.captureForPoll(ctx, name, "claude", sid)
-	assert.Equal(t, "first screen", text, "within the TTL the shared capture answers")
-	h.captureMu.Lock()
-	_, kept := h.captureCache[name+"\x00claude\x00"+sid]
-	h.captureMu.Unlock()
-	assert.False(t, kept, "an older shared capture is not kept against the new stamp")
-	time.Sleep(screenSnapTTL + 20*time.Millisecond)
-	text, _ = h.captureForPoll(ctx, name, "claude", sid)
-	assert.Equal(t, "second screen", text)
-	assert.Equal(t, n+1, captures())
-	text, _ = h.captureForPoll(ctx, name, "claude", sid)
-	assert.Equal(t, "second screen", text, "now kept: the stamp is unchanged, no capture")
-	assert.Equal(t, n+1, captures())
+	b.set("b") // the pane printed
+	assert.Equal(t, "second screen", poll(), "the next poll shows the new output, within the TTL")
+	assert.Equal(t, n+2, captures(), "new output: a fresh capture")
+	assert.Equal(t, "second screen", poll())
+	assert.Equal(t, n+2, captures(), "unchanged again: shared")
 }

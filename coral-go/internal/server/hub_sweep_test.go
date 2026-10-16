@@ -29,7 +29,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		t.Skip("needs git")
 	}
 	r := newE2ERemote(t, "hub-sweep", nil)
-	t.Setenv("HOME", r.dir)
+	setHome(t, r.dir)
 	gitIn := func(args ...string) {
 		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.test"}, args...)...)
 		cmd.Dir = r.work
@@ -102,7 +102,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	// The step's command and args through the hub: the home shown as "~", the rest as written.
 	wfHub := call(h, "GET", "/api/workflows/by-name/"+name, "", map[string]string{tunnel.ViaHeader: cloud.ViaSecret()})
 	require.Equal(t, 200, wfHub.Code, wfHub.Body.String())
-	require.Contains(t, wfHub.Body.String(), "cd ~/work/proj \u0026\u0026 make test")
+	require.Contains(t, wfHub.Body.String(), "cd "+strings.Trim(jsonString(tildePath("work", "proj")), `"`)+" \u0026\u0026 make test")
 
 	// #3561 (e): a missing task's (or board's) cost is a 404, not a 500.
 	require.Equal(t, 404, call(h, "GET", "/api/board/team/tasks/999999/cost", "", nil).Code)
@@ -112,10 +112,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 
 	golden, err := os.ReadFile("testdata/cloud_routes.golden")
 	require.NoError(t, err)
-	homes := []string{r.dir}
-	if real, err := filepath.EvalSymlinks(r.dir); err == nil && real != r.dir {
-		homes = append(homes, real)
-	}
+	homes := homeForms(r.dir) // as given, resolved, and JSON-escaped (#3914)
 	repl := strings.NewReplacer("{name}", name, "{sessionID}", sid, "{project}", "team", "{boardName}", "team",
 		"{taskID}", strconv.FormatInt(task.ID, 10), "{runID}", "1", "{jobID}", "1", "{workflowID}", "1", "{groupID}", "g", "{id}", "1",
 		"{category}", "x", "{agentName}", "x", "{subagentID}", "x", "{folderName}", "x", "{name}", name)
@@ -146,7 +143,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 			answered++
 		}
 		for _, home := range homes {
-			if strings.Contains(rec.Body.String(), home) {
+			if strings.Contains(withoutTerminalScreen(rec.Body.String()), home) {
 				leaks = append(leaks, f[1])
 				break
 			}
@@ -190,4 +187,22 @@ func hubSweepQuery(route, sid string) string {
 		return ""
 	}
 	return "?" + strings.Join(parts, "&")
+}
+
+// withoutTerminalScreen is a JSON answer without its "capture" field: the terminal's screen,
+// which the hub is shown as written (hubLongText), as its terminal websocket streams it. A
+// prompt there can show the working folder: PowerShell's always does ("PS C:\Users\...>"),
+// so on Windows the poll's screen held the home on every run, while the sh prompt the Unix
+// runs use ("$") never does. The sweep is about the paths Coral itself answers (#3914).
+func withoutTerminalScreen(body string) string {
+	var m map[string]any
+	if json.Unmarshal([]byte(body), &m) != nil {
+		return body
+	}
+	if _, ok := m["capture"]; !ok {
+		return body
+	}
+	delete(m, "capture")
+	b, _ := json.Marshal(m)
+	return string(b)
 }

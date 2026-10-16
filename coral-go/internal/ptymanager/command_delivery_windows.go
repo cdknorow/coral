@@ -5,6 +5,8 @@ package ptymanager
 import (
 	"fmt"
 	"os"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // inlineCommandLimit stays below the small canonical input buffer used by a
@@ -21,6 +23,14 @@ func commandInvocation(command string) (invocation string, cleanup func(), err e
 		return "", func() {}, fmt.Errorf("create command handoff: %w", err)
 	}
 	path := file.Name()
+	// The script holds the launch line (paths, flags, the session token file's path): only
+	// this user and SYSTEM may read it, whoever else can read the temp folder (#3906, sweep
+	// item 8). Before anything is written.
+	if err := secfile.Protect(path); err != nil {
+		file.Close()
+		os.Remove(path)
+		return "", func() {}, fmt.Errorf("protect command handoff: %w", err)
+	}
 	content, invocation := psHandoff(path, command)
 	if _, err := file.WriteString(content); err != nil {
 		file.Close()

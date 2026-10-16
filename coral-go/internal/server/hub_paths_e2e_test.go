@@ -31,7 +31,7 @@ func TestHubPathsThroughTheTunnel(t *testing.T) {
 		t.Skip("needs git")
 	}
 	r := newE2ERemote(t, "hub-paths", nil)
-	t.Setenv("HOME", r.dir) // the agent's folder, r.work, is under it
+	setHome(t, r.dir) // the agent's folder, r.work, is under it
 	gitIn := func(args ...string) {
 		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.test"}, args...)...)
 		cmd.Dir = r.work
@@ -71,9 +71,8 @@ func TestHubPathsThroughTheTunnel(t *testing.T) {
 	noHome := func(where string, v any) {
 		t.Helper()
 		data, _ := json.Marshal(v)
-		assert.NotContains(t, string(data), r.dir, "%s: no path under the home directory", where)
-		if real, err := filepath.EvalSymlinks(r.dir); err == nil {
-			assert.NotContains(t, string(data), real, "%s: nor its resolved form", where)
+		for _, home := range homeForms(r.dir) { // as given, resolved, and JSON-escaped (#3914)
+			assert.NotContains(t, string(data), home, "%s: no path under the home directory", where)
 		}
 	}
 	mine := func(list []any) map[string]any {
@@ -92,13 +91,13 @@ func TestHubPathsThroughTheTunnel(t *testing.T) {
 	assert.NotEmpty(t, local["log_path"])
 	viaHub := get("/api/sessions/live", hub)
 	row := mine(viaHub["list"].([]any))
-	assert.Equal(t, "~/work/proj", row["working_directory"])
+	assert.Equal(t, tildePath("work", "proj"), row["working_directory"])
 	assert.NotContains(t, row, "log_path")
 	noHome("live list", viaHub)
 
 	// Info.
 	info := get("/api/sessions/live/"+name+"/info", hub)
-	assert.Equal(t, "~/work/proj", info["working_directory"])
+	assert.Equal(t, tildePath("work", "proj"), info["working_directory"])
 	assert.NotContains(t, info, "tmux_command")
 	noHome("info", info)
 	assert.NotEmpty(t, get("/api/sessions/live/"+name+"/info", nil)["working_directory"], "locally the real folder")
@@ -127,7 +126,7 @@ func TestHubPathsThroughTheTunnel(t *testing.T) {
 	// query allow-list refuses "~" in file parameters, so bodies are where it arrives.
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"launch"}`, js).Code)
 	launch := func(dir string) *httptest.ResponseRecorder {
-		return call(h, "POST", "/api/sessions/launch", `{"working_dir":"`+dir+`","agent_type":"terminal"}`, mergeHdr(hub, js))
+		return call(h, "POST", "/api/sessions/launch", `{"working_dir":`+jsonString(dir)+`,"agent_type":"terminal"}`, mergeHdr(hub, js))
 	}
 	bad := launch("~/nope")
 	assert.NotEqual(t, 200, bad.Code, bad.Body.String())
@@ -168,7 +167,7 @@ func TestHubPathsThroughTheTunnel(t *testing.T) {
 		}
 	}
 	require.NotNil(t, wsRow, "the session is in the hub's feed")
-	assert.Equal(t, "~/work/proj", wsRow["working_directory"])
+	assert.Equal(t, tildePath("work", "proj"), wsRow["working_directory"])
 	assert.NotContains(t, wsRow, "log_path")
 	noHome("ws/coral", frame)
 }

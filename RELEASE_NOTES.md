@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.4.64 — Windows: a crash no longer blocks the next start, and the server's security checks now run on Windows
+
+### Security
+
+- **coral-tray --stop never stops another program.** After a crash, a left-over tray.pid could name a process id the system had since reused, and `--stop` would end whatever had that number (on every OS). A pid now counts only while it is the same Coral tray executable.
+- **The Windows launch hand-off script is private to you.** A long launch command goes to PowerShell through a script in the temp folder. That script now gets an owner-only access list before the command is written, so it stays private even if TEMP points at a shared folder.
+- **The server's security tests now run on Windows.** Coral's sign-in, auto-accept tier, forged-stamp and cloud same-user checks are now tested on Windows in CI, as on Linux and macOS (until now that package was only compiled there).
+
+### Fixes
+
+- **Typed output shows on the next poll again.** In v1.4.63, a dashboard tab could show the screen from before your last keystroke for up to 2 seconds (the shared terminal capture didn't notice new output); a capture is now shared only while the output is unchanged.
+- **Windows: Coral starts again after a crash or power cut.** The single-instance lock is now one the system releases when Coral stops, instead of a file that stayed behind and made Coral refuse to start ("another Coral server is already running") until it was deleted by hand.
+
 ## v1.4.63 — Windows hardening, fewer background processes, and smoother review and board flows
 
 ### Security

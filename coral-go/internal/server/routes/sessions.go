@@ -1362,34 +1362,34 @@ const captureCacheMax = 256
 // reused. The stamp is taken before capturing, so output printed meanwhile is seen next time.
 func (h *SessionsHandler) captureForPoll(ctx context.Context, name, agentType, sessionID string) (string, error) {
 	key := name + "\x00" + agentType + "\x00" + sessionID
-	// Every tab polling this agent shares one capture for a moment (#3887); the exact target is
-	// the key, as for the terminal.
-	capture := func() (string, time.Time, error) {
-		return h.screens.capture(ctx, key, 200, time.Now(), func(c context.Context) (string, error) {
-			return h.terminal.CaptureOutput(c, name, 200, agentType, sessionID)
-		})
+	fetch := func(c context.Context) (string, error) {
+		return h.terminal.CaptureOutput(c, name, 200, agentType, sessionID)
 	}
+	// Tabs polling this agent share one capture for a moment (#3887), but only while the pane's
+	// output is unchanged: the output stamp is part of the sharing key, so a poll that sees new
+	// output never gets a capture started before it (#3954: typed output showed up to 2 s late).
+	// Without a stamp nothing tells the captures apart, so none is shared.
 	stamper, _ := h.backend.(ptymanager.OutputStamper)
 	if stamper == nil {
-		text, _, err := capture()
-		return text, err
+		return fetch(ctx)
 	}
 	stampedAt := time.Now()
 	stamp, ok := stamper.OutputStamp(agentType, sessionID)
-	if ok {
-		h.captureMu.Lock()
-		c, hit := h.captureCache[key]
-		h.captureMu.Unlock()
-		if hit && c.stamp == stamp && time.Since(c.at) < captureReuseMax {
-			return c.text, nil
-		}
+	if !ok {
+		return fetch(ctx)
 	}
-	text, capturedAt, err := capture()
+	h.captureMu.Lock()
+	c, hit := h.captureCache[key]
+	h.captureMu.Unlock()
+	if hit && c.stamp == stamp && time.Since(c.at) < captureReuseMax {
+		return c.text, nil
+	}
+	text, capturedAt, err := h.screens.capture(ctx, key+"\x00"+stamp, 200, time.Now(), fetch)
 	h.captureMu.Lock()
 	defer h.captureMu.Unlock()
 	// Kept against the stamp only when the capture started after the stamp was read: a shared
 	// capture from before it may miss output the stamp already counts.
-	if ok && err == nil && text != "" && !capturedAt.Before(stampedAt) {
+	if err == nil && text != "" && !capturedAt.Before(stampedAt) {
 		if h.captureCache == nil || len(h.captureCache) >= captureCacheMax {
 			h.captureCache = map[string]cachedCapture{}
 		}
