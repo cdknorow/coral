@@ -75,7 +75,7 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 0.8125rem;   /* 13px; rem so it follows the text size */
     font-family: var(--font-sans); /* the same on a phone as in the desktop card (#3218) */
     outline: none;
     transition: border-color 0.15s;

@@ -128,15 +128,16 @@
     --radius-2xl: 16px;
 
     /* Design Tokens — Font Size Scale */
-    --fs-xs:   10px;
-    --fs-sm:   11px;
-    --fs-base: 12px;
-    --fs-md:   13px;
-    --fs-lg:   14px;
-    --fs-xl:   16px;
+    /* In rem, equal to the old pixel sizes at the default 16 px root: text follows a larger default font size or text zoom (#4086). */
+    --fs-xs:   0.625rem;   /* 10px */
+    --fs-sm:   0.6875rem;  /* 11px */
+    --fs-base: 0.75rem;    /* 12px */
+    --fs-md:   0.8125rem;  /* 13px */
+    --fs-lg:   0.875rem;   /* 14px */
+    --fs-xl:   1rem;       /* 16px */
 
     /* Shared UI roles. User themes may override the prose family and size. */
-    --type-page-size: 20px;
+    --type-page-size: 1.25rem;   /* 20px */
     --control-height: 36px;
     --control-compact-height: 32px;
     --control-touch-height: 44px;

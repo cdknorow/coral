@@ -876,15 +876,15 @@ body.panel-dragging .sidebar {
 .welcome-shell { width: min(640px, 100%); margin: 0 auto; }
 .welcome-header { margin-bottom: 30px; }
 .welcome-eyebrow { display: block; margin-bottom: 10px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.welcome-header h1 { margin: 0 0 8px; color: var(--text-primary); font-size: clamp(26px, 3.4vw, 38px); line-height: 1.15; letter-spacing: -.035em; }
-.welcome-header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+.welcome-header h1 { margin: 0 0 8px; color: var(--text-primary); font-size: clamp(1.625rem, 3.4vw, 2.375rem); line-height: 1.15; letter-spacing: -.035em; }
+.welcome-header p { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
 .welcome-launch:hover { border-color: var(--border-light); background: var(--bg-hover); }
 .welcome-launch-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; } /* agent, team, Open folder (#3630) */
 .welcome-launch { position: relative; display: flex; border: 1px solid var(--border); font-family: inherit; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; flex-direction: column; align-items: flex-start; gap: 14px; min-width: 0; padding: 20px; border-radius: 14px; background: var(--bg-secondary); color: var(--text-secondary); text-align: left; }
 .welcome-launch:hover { transform: translateY(-1px); }
 .welcome-launch .welcome-launch-icon { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 11px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 21px; line-height: 1; }
 .welcome-launch-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.welcome-launch-copy strong { color: var(--text-primary); font-size: 15px; }
+.welcome-launch-copy strong { color: var(--text-primary); font-size: 0.9375rem; }
 .welcome-launch-copy span { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
 .welcome-launch .welcome-launch-arrow { position: absolute; top: 20px; right: 20px; color: var(--text-muted); font-size: 19px; }
 .welcome-launch:hover .welcome-launch-arrow { color: var(--accent); }
