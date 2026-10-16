@@ -1,5 +1,34 @@
 # Release Notes
 
+## v1.4.61 — Secret redaction from a maintained rule set
+
+### Security
+
+- **A message is read by id only through its own board.** coral-board read --id (and messages/all?id=) answered with a message from any board on the server, so an agent that walked message ids under its own board could read other boards' messages; another board's id now answers like a missing one. It needed an agent or user who could reach the same Coral server's board API; boards on different servers were never reachable. Through Coral Hub it was reachable at the View tier (the same GET route), so a Hub member with View access to a computer could read other boards' messages on that computer by id; fixed by the same change. Affected: v1.0.0 through v1.4.60, servers with more than one board.
+- **Secret redaction now uses betterleaks' rules (v1.9.0, about 460 rules) and only them.** This covers what Coral Hub viewers see, agent events stored on this computer, and coral.log. Coral's own detection rules are no longer used.
+  - Newly redacted: Stripe and npm tokens, plus the rest of betterleaks' provider rules. Fewer false markers appear in ordinary code.
+  - No longer redacted:
+    - Authorization header values (`Authorization: Basic ...`, `Bearer ...`, `Digest ...`, and the JSON form); only a `curl -H "Authorization: ..."` line is caught.
+    - Low-entropy values after a secret name (`token=abc123`, `secret: "changeme"`, `api_key=12345678`, `--password=hunter2`, a passphrase with spaces).
+    - Any value named `passphrase`.
+    - A URL password containing a raw `/`.
+    - A secret directly after another keyword (`token: Authorization: Basic ...`).
+    - Everything nested under a secret-named JSON key (`{"secrets":{...}}`), and a number under one (`{"password": 12345678}`).
+    - AWS access key IDs that don't decode as real ones, the AWS documentation example key, and shorter or looser token shapes than the providers issue (a 30-character `github_pat_`, a 40-character `sk-ant-` key, `sk-` keys, a loose `xoxb-`).
+  - Text the rules can't check in time (3 s for a Coral Hub reply or stream unit, 0.25 s for a coral.log line; input dense with keywords) is not passed on: Coral Hub shows "could not be checked", and coral.log has a note in place of the line.
+  - A secret in terminal output is checked line by line; a line longer than 8 KiB is checked in overlapping pieces. An unfinished line is held until it ends, or for up to a second when the output goes quiet; then it is shown, except a token-like tail.
+
+### Fixes
+
+- **The History tab shows auto-accept events like the live view.** It uses the live view's icons, titles and filters (an Auto-accept filter included), and its filter list shows each group's count as soon as it opens.
+- **Dialogs no longer stack a second Escape listener** when opened twice without closing (the team wizard and create-task).
+
+### Other changes
+
+- **Smaller downloads, slightly larger programs.** An unused 6.9 MB image is no longer built into the Coral programs, and coral, coral-tray and launch-coral now include the betterleaks rules (about 8.5 MB), so each of those is about 1.6 MB larger. The packages are smaller than v1.4.60's, because the rules compress well and the image didn't: the macOS DMG is 128 MB (was 139), the Linux tarballs 44 and 40 MB (were 49 and 46), and the Windows installer 94 MB (was 96).
+- **License notices in every package.** Each package now has a `licenses` folder listing the third-party components Coral includes, with their licenses and where their source is: the Linux tarballs, the Windows ZIP and installer (`Coral\licenses`), and the macOS app (`Coral.app/Contents/Resources/licenses`).
+- **A tidier dashboard.** Large dashboard files are split into smaller modules, and the dialogs' parts load on first use. Code nothing used is removed from the server.
+
 ## v1.4.60 — Navigation that fits every screen, safer review verdicts, and a lighter dashboard
 
 ### Fixes
