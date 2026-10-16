@@ -629,7 +629,9 @@ func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []strin
 	}
 
 	for _, key := range keys {
-		if _, err := c.run(ctx, "send-keys", "-t", target, key); err != nil {
+		// "--": a key from the request that starts with "-" is a key, never a tmux option (-X, -F,
+		// -H...) (#3930, Security's #3927 finding 5).
+		if _, err := c.run(ctx, "send-keys", "-t", target, "--", key); err != nil {
 			return fmt.Errorf("send-keys %q failed: %w", key, err)
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -1080,14 +1082,14 @@ func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data str
 	// Single control character
 	if len(data) == 1 {
 		if key, ok := ctrlMap[data]; ok {
-			_, err := c.run(ctx, "send-keys", "-t", target, key)
+			_, err := c.run(ctx, "send-keys", "-t", target, "--", key)
 			return err
 		}
 		// Ctrl+<letter> (0x01-0x1a)
 		b := data[0]
 		if b >= 1 && b <= 26 {
 			key := fmt.Sprintf("C-%c", b+96)
-			_, err := c.run(ctx, "send-keys", "-t", target, key)
+			_, err := c.run(ctx, "send-keys", "-t", target, "--", key)
 			return err
 		}
 	}
