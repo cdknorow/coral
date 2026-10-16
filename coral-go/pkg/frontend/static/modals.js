@@ -1,4 +1,5 @@
 import { importOnce } from './import_once.js';
+import { closeOnBackdropAndEscape, releaseEscape } from './dialog_close.js';
 import { checkAgentCLI } from './prerequisites.js';
 /* Modal management: launch and info dialogs */
 
@@ -446,11 +447,8 @@ function showTeamWizardModal() {
     modal.style.display = 'flex';
     if (!_activeGenerateJobId) directiveEl?.focus();
 
-    // Close on backdrop click
-    modal.onclick = (e) => { if (e.target === modal) hideTeamWizardModal(); };
-    // Close on Escape
-    modal._escHandler = (e) => { if (e.key === 'Escape') hideTeamWizardModal(); };
-    document.addEventListener('keydown', modal._escHandler);
+    // Close on backdrop click and on Escape
+    closeOnBackdropAndEscape(modal, hideTeamWizardModal);
 }
 window.showTeamWizardModal = showTeamWizardModal;
 
@@ -459,10 +457,7 @@ function hideTeamWizardModal() {
     if (!modal) return;
     modal.style.display = 'none';
     _setTeamWizardError('');
-    if (modal._escHandler) {
-        document.removeEventListener('keydown', modal._escHandler);
-        modal._escHandler = null;
-    }
+    releaseEscape(modal);
 }
 window.hideTeamWizardModal = hideTeamWizardModal;
 

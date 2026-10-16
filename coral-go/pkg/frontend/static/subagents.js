@@ -1,5 +1,6 @@
 /* Moved out of tasks.js as it was (#3837): no behaviour change. */
 import { escapeHtml, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
+import { closeOnBackdropAndEscape } from './dialog_close.js';
 import { _formatCost, _formatTokenCount, formatTaskDate } from './task_format.js';
 import { redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
 import { serverFetch, serverForSession } from './server_base.js';
@@ -243,10 +244,7 @@ async function _loadSubagentConversation(sa) {
     if (footer) footer.innerHTML = `<button class="btn" data-on-click="task-close">Close</button>`;
 
     modal.style.display = '';
-    modal.onclick = (e) => { if (e.target === modal) closeTaskDetailModal(); };
-    if (modal._escHandler) document.removeEventListener('keydown', modal._escHandler);
-    modal._escHandler = (e) => { if (e.key === 'Escape') closeTaskDetailModal(); };
-    document.addEventListener('keydown', modal._escHandler);
+    closeOnBackdropAndEscape(modal, closeTaskDetailModal);
 }
 
 // Called after each subagent poll: keep an open modal's stats current, and

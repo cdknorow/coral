@@ -1,6 +1,7 @@
 /* Agent task bar — CRUD, rendering, drag reorder */
 
 import { state } from './state.js';
+import { closeOnBackdropAndEscape, releaseEscape } from './dialog_close.js';
 import { registerTaskView, redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
 import { registerActions, idOf, tokenOf, textOf } from './actions.js';
@@ -682,19 +683,14 @@ export async function showCreateTaskModal() {
     modal.style.display = '';
     document.getElementById('create-task-title').focus();
 
-    modal.onclick = (e) => { if (e.target === modal) hideCreateTaskModal(); };
-    modal._escHandler = (e) => { if (e.key === 'Escape') hideCreateTaskModal(); };
-    document.addEventListener('keydown', modal._escHandler);
+    closeOnBackdropAndEscape(modal, hideCreateTaskModal);
 }
 
 export function hideCreateTaskModal() {
     const modal = document.getElementById('create-task-modal');
     if (!modal) return;
     modal.style.display = 'none';
-    if (modal._escHandler) {
-        document.removeEventListener('keydown', modal._escHandler);
-        modal._escHandler = null;
-    }
+    releaseEscape(modal);
 }
 
 export async function submitCreateTask() {
@@ -928,12 +924,8 @@ export function showAgentTaskDetailModal(taskId) {
 
 function _openTaskDetailModal(modal) {
     modal.style.display = '';
-    // Close on backdrop click
-    modal.onclick = (e) => { if (e.target === modal) hideTaskDetailModal(); };
-    // Close on Escape
-    if (modal._escHandler) document.removeEventListener('keydown', modal._escHandler);
-    modal._escHandler = (e) => { if (e.key === 'Escape') hideTaskDetailModal(); };
-    document.addEventListener('keydown', modal._escHandler);
+    // Close on backdrop click and on Escape
+    closeOnBackdropAndEscape(modal, hideTaskDetailModal);
 }
 
 function _taskDetailHtml(task, liveCost) {
@@ -1569,10 +1561,7 @@ export function hideTaskDetailModal() {
     const modal = document.getElementById('task-detail-modal');
     if (!modal) return;
     modal.style.display = 'none';
-    if (modal._escHandler) {
-        document.removeEventListener('keydown', modal._escHandler);
-        modal._escHandler = null;
-    }
+    releaseEscape(modal);
 }
 
 // What the subagent dialog calls back (task_hooks.js).
