@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.70 — Command-line signing hardened, a quieter first launch, and terminal fit fixes
+
+### Security
+
+- **A signed command-line request can no longer have its query changed:** the signature covers the raw query string. The command line's handshake (its hello) is limited per caller, so a flood can't push out another command line's handshake. A coral or coral-board command from an earlier version is refused by this server (and the reverse): use the coral commands that come with this Coral. Agents are not affected.
+- **coral reset-password also replaces the command-line token,** so a program that read the old one can no longer act as the Operator. A command-line tool that started before the reset reads the new token once by itself. If a signature doesn't verify, the error says a coral command from another version may be the cause.
+- **The docs say why Coral sends no HSTS** (put it on a TLS reverse proxy instead) and that renewing a TLS certificate needs a restart.
+
+### Fixes
+
+- **Knowledge distillation includes every current team member:** agents added later, sleeping agents and restarted agents; members stopped on their own are left out.
+- **Agents show the model they actually use, and Coral can list each CLI's models.**
+- **The first-launch "Enable remote access?" question is asked only in a terminal.** When Coral is started by the tray, a service, a script or CI, it no longer waits for an answer: remote access stays off and the log says how to turn it on.
+- **The "Set a password" prompt closes once a password is set elsewhere,** for example in a browser while the Coral app's window stays open.
+- **The terminal fits its window exactly:** the last row no longer ends in the bottom padding at some window heights.
+- **install-cli.sh now links coral-hook-session-start too,** the one shipped program it missed, so a CLI-only setup gets every hook on its PATH.
+
+### Performance
+
+- **17% fewer tmux commands with many agents.**
+- **Compressed replies reuse their compressors:** a 16 KB reply now allocates 45 KB instead of 852 KB and takes 14 µs instead of 56 µs.
+- **A Claude agent's login screen is checked again only when its terminal writes something, or after a minute,** not every 3 seconds.
+- **Session log memos and the CLI version cache no longer grow** with every session or CLI version the server has seen.
+
 ## v1.4.69 — Stability, agent launch limits, and the dashboard by keyboard
 
 ### Security
