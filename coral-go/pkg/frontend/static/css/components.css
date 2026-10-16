@@ -866,6 +866,9 @@ button.subscriber-history-link {
     margin-top: -2px;
 }
 
+/* A checkbox in a settings row is a box, not a field: the generic input width of 100% made it a full-width box with the tick
+   centred in it, detached from its label on a phone (#3981). */
+.info-grid dd > input[type="checkbox"] { width: auto; margin: 0; flex: none; }
 .info-grid dd code {
     background: var(--bg-tertiary);
     padding: 2px 8px;
@@ -3598,6 +3601,9 @@ button.subscriber-history-link {
 .servers-row-error { margin-top: var(--space-xs); font-size: var(--fs-base); color: var(--error); overflow-wrap: anywhere; }
 .servers-row-status { flex: 0 0 auto; }
 .servers-row-actions { display: flex; flex-wrap: wrap; gap: var(--space-md); }
+.servers-row-detail { display: inline; color: var(--text-secondary); }
+.servers-row-detail summary { display: inline; cursor: pointer; color: var(--text-secondary); text-decoration: underline; }
+.servers-row-detail[open] summary { display: block; margin: var(--space-xs) 0; }
 .server-status { display: inline-flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-base); font-weight: 500; }
 .servers-form {
     border-top: 1px solid var(--border);

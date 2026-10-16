@@ -101,11 +101,14 @@ function rowHtml(s) {
     }
     const busy = _busy.has(s.id);
     const confirming = _confirmDelete === s.id;
-    const err = s.last_error ? `<div class="servers-row-error" role="status">${escHtml(s.last_error)}</div>` : '';
-    const hint = (s.status === 'key_unreadable' || s.status === 'unauthorized')
-        ? `<div class="servers-row-error">${escHtml(statusMeta(s.status).hint)}</div>`
-        : s.status === 'unreachable'
-            ? `<div class="servers-row-error servers-row-hint">Is Coral running on that machine? Check the URL.</div>` : '';
+    // One line says what to do; the raw error is behind Details, for support (#3981).
+    const act = (s.status === 'key_unreadable' || s.status === 'unauthorized')
+        ? statusMeta(s.status).hint
+        : s.status === 'unreachable' ? 'Is Coral running on that machine? Check the URL.' : '';
+    const raw = s.last_error && s.last_error !== act ? s.last_error : '';
+    const attention = act
+        ? `<div class="servers-row-error" role="status"><span class="servers-row-hint">${escHtml(act)}</span>${raw ? ` <details class="servers-row-detail"><summary>Details</summary>${escHtml(raw)}</details>` : ''}</div>`
+        : raw ? `<div class="servers-row-error" role="status">${escHtml(raw)}</div>` : '';
     // Version, agent count and update come with the live list's servers entry (#3099).
     const live = { ...s, ...((state.servers || []).find(x => x && x.id === s.id) || {}) };
     const version = serverVersion(live);
@@ -121,7 +124,7 @@ function rowHtml(s) {
             <div class="servers-row-title">${escHtml(s.label || s.id)} <span class="servers-id">${escHtml(s.id)}</span>${s.allow_private ? ' <span class="servers-tag" title="Private network addresses are allowed for this server">private network</span>' : ''}${badge ? ' ' + badge : ''}</div>
             <div class="servers-row-meta">${meta.map(escHtml).join(' &middot; ')}</div>
             ${below ? `<div class="servers-row-hint server-below-minimum">${escHtml(below)}</div>` : ''}
-            ${err}${hint}
+            ${attention}
         </div>
         <div class="servers-row-status">${statusPill(s.status)}</div>
         <div class="servers-row-actions">
