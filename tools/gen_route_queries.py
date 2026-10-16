@@ -104,7 +104,9 @@ def params(body, seen, depth=0):
 
 
 reg = re.compile(r'r\.(Get|Post|Put|Patch|Delete)\("([^"]+)",\s*([\w\.]+)\)')
-sv = open(ROOT + '/server.go', encoding='utf-8').read()
+# The routes are registered in router.go since #3825 split buildRouter out of server.go; read every non-test file of the
+# package (sorted, so the output never depends on directory order), so a later move can't hide the routes again.
+sv = '\n'.join(open(f, encoding='utf-8').read() for f in sorted(glob.glob(ROOT + '/*.go')) if not f.endswith('_test.go'))
 # The handler type behind each variable a route is registered on (boardHandler := routes.NewBoardHandler(...)),
 # so a method is matched on its own type: BoardHandler.ListTasks and SessionsHandler.ListTasks used to pool their
 # parameters (#3279).
