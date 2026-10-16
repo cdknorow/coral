@@ -1,0 +1,34 @@
+//go:build windows
+
+package ptymanager
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// #3690 (#3689 finding 2): with the temp folder under a name holding an apostrophe (a profile
+// like C:\Users\O'Brien), PowerShell runs the handoff, and the script removes itself.
+func TestWindowsCommandHandoffWithAnApostropheInThePath(t *testing.T) {
+	tmp := filepath.Join(t.TempDir(), "O'Brien")
+	require.NoError(t, os.MkdirAll(tmp, 0o700))
+	t.Setenv("TMP", tmp)
+	t.Setenv("TEMP", tmp)
+	inv, cleanup, err := commandInvocation("Write-Output coral-handoff-ok")
+	require.NoError(t, err)
+	defer cleanup()
+	require.True(t, strings.Contains(inv, "O''Brien"), inv)
+
+	out, err := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", inv).CombinedOutput()
+	require.NoError(t, err, "%s", out)
+	assert.Contains(t, string(out), "coral-handoff-ok")
+	entries, err := os.ReadDir(tmp)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "the script removed itself")
+}

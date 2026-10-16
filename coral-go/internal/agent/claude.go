@@ -189,7 +189,9 @@ func (a *ClaudeAgent) LaunchCommand(params LaunchParams) (string, error) {
 		promptFile := files.write("prompt", effectiveID, "txt", []byte(cliPrompt))
 		arg := FormatPromptFileArg(promptFile)
 		raw = append(raw, arg)
-		parts = append(parts, arg)
+		// "--": a prompt that is only a flag ("--dangerously-skip-permissions") is the
+		// prompt, not that option (#3690). The prompt is the last argument.
+		parts = append(parts, "--", arg)
 	}
 
 	parts, raw = withSessionToken(parts, raw, params, "claude")

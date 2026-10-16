@@ -20,7 +20,11 @@ type windowsPTY struct {
 }
 
 func startPTYProcess(name string, args []string, dir string, env []string, cols, rows uint16) (ptyProcess, error) {
-	// ConPTY takes a single command line string.
+	// ConPTY takes a single command line string. Joining with spaces, unquoted, is right only for
+	// what newSession passes (#3690, #3689 finding 5): defaultShell (one word), shellWrap
+	// (powershell.exe -NoProfile -Command <cmd>: PowerShell reads everything after -Command as the
+	// command) and strings.Fields of a command with no shell metacharacters or quotes. Any other
+	// caller must quote its arguments itself.
 	cmdLine := name
 	if len(args) > 0 {
 		cmdLine = name + " " + strings.Join(args, " ")

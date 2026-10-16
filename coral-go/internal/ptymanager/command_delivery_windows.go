@@ -21,7 +21,7 @@ func commandInvocation(command string) (invocation string, cleanup func(), err e
 		return "", func() {}, fmt.Errorf("create command handoff: %w", err)
 	}
 	path := file.Name()
-	content := "Remove-Item -Force '" + path + "'\n" + command + "\n"
+	content, invocation := psHandoff(path, command)
 	if _, err := file.WriteString(content); err != nil {
 		file.Close()
 		os.Remove(path)
@@ -31,5 +31,5 @@ func commandInvocation(command string) (invocation string, cleanup func(), err e
 		os.Remove(path)
 		return "", func() {}, fmt.Errorf("close command handoff: %w", err)
 	}
-	return "& '" + path + "'", func() { _ = os.Remove(path) }, nil
+	return invocation, func() { _ = os.Remove(path) }, nil
 }
