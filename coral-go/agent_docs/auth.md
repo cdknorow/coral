@@ -31,9 +31,21 @@ A browser signs in to Coral with a password (#3949). The Coral app, the tray and
 - **Changing it, and other browsers:** Settings > Browser sign-in changes the password (every other browser is signed out), lists the signed-in browsers and recent sign-ins, and signs out the others.
 - **Forgot it:** run `coral reset-password` (or `--clear` to remove it) on the computer that runs Coral, as the user Coral runs as. It works with Coral stopped too, and every browser is signed out.
 - **Sessions** are kept in `sessions.db` (only a hash of each cookie), so a restart doesn't sign anyone out. The cookie is HttpOnly and SameSite=Strict, and Secure over TLS.
-- **Coral Hub** never reaches any of this: Hub users sign in to the Hub.
+- **Coral Hub** never reaches the password or the session routes, not even through a Hub sign-in (below).
 - **Exposing Coral through a reverse proxy on the same computer:** set the password first, or turn on `require_auth_on_loopback`. A proxy that adds no forwarding header makes a remote browser look like this computer, and the setup code can't help there.
 - **Plain HTTP:** over plain HTTP on a network, the password and the cookie can be read by someone on that network, as the API key can. Use TLS (`--tls-cert`) or a private network for remote access.
+
+## Sign in with Coral Hub
+
+The sign-in page can also offer **Sign in with Coral Hub** (#3966). **A Coral Hub sign-in gives full control of this computer**, like the password: whoever controls the Coral Hub account that owns this computer can run commands on it. A compromised or phished Coral Hub account is a compromised computer.
+
+- **Off by default.** It is turned on only in Settings > Browser sign-in, from a session on this computer, or by the box (unticked by default) on the "link this computer and sign in" step of the sign-in page. Coral Hub can't turn it on, an agent can't, and `PUT /api/settings` can't. Coral Hub has its own switch per computer too: both must be on.
+- **Who:** only the Coral Hub account that linked this computer (its owner, recorded when it was linked). If Coral Hub ever names another account, Hub sign-in stays off until the computer is linked again.
+- **How:** the button sends the browser to Coral Hub, which asks the owner to confirm ("Full control of <computer>") and sends it back to `/auth/hub/callback` with a one-time code. Coral redeems the code over its Coral Hub connection (PKCE, single use, 60 seconds) and signs the browser in with the same kind of cookie as the password, listed as "Coral Hub: <name>". It comes back only to an address this computer told Coral Hub: its own `localhost` port, plus the addresses in Settings (https, or http to a private, loopback or Tailscale IP).
+- **How long:** Coral checks with Coral Hub every minute. If Coral Hub says no (signed out there, revoked, the computer removed), the browser is signed out at once. **If your computer cannot reach Coral Hub, a Hub sign-in can last up to 10 more minutes.** It never lasts longer than Coral Hub's grant (at most 8 hours) or 24 hours.
+- **What it can't do:** change or reset the password, list or sign out browsers, mint a sign-in link, read or rotate the API key, or change the Coral Hub link and its settings (connect, disconnect, the access level, redaction, auto-accept, the Operator switch, Hub sign-in itself). Those answer 403 `hub_session_not_allowed`. Everything it changes is recorded with its name in the Operator actions list.
+- **Turned off at once** by: the setting off, "Don't let Coral Hub act as the Operator" on, disconnecting or re-keying the Coral Hub link, a password change, or signing it out in Settings. Its open terminals close with it.
+- **Routes:** `POST /auth/hub/start`, `GET /auth/hub/callback`, `POST /auth/hub/link` and `GET /auth/hub/link/status` (the sign-in page); `GET`/`PUT /api/auth/hub-signin`, `POST /api/auth/hub-signin/dismiss`, `GET`/`PUT /api/auth/hub-origins`, and `DELETE /api/auth/sessions/{id}` (Settings: a signed-in session on this computer or the signed command line; never an agent or Coral Hub).
 
 ## Validate API Key
 
