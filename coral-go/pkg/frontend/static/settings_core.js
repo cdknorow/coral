@@ -7,6 +7,7 @@
 import { state } from './state.js';
 import { fetchSystemStatus } from './system_status.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
+import { browserLocal } from './safe_storage.js';
 
 export function settingBool(value, fallback = true) {
     if (typeof value === 'boolean') return value;
@@ -206,7 +207,7 @@ export function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", resolved);
 
     // Store the *preference* (dark/light/system) so other pages can read it
-    try { localStorage.setItem("coral-theme", theme); } catch (_) {}
+    try { browserLocal.set("coral-theme", theme); } catch (_) {}
 
     // Update xterm.js terminal colors to match
     updateTerminalTheme();

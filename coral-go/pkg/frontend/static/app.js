@@ -292,6 +292,7 @@ import { initCloud } from './cloud.js';
 import { isCloud } from './server_base.js';
 import { installOverloadWatch } from './overload.js';
 import { handleUnauthorized, isSignedOut401 } from './auth_redirect.js';
+import { browserLocal } from './safe_storage.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -688,7 +689,7 @@ function toggleTopBarSettings() {
     // Sync group-by-team checkmark
     const check = document.getElementById('group-by-team-check-top');
     if (check) {
-        const groupByTeam = localStorage.getItem('coral-group-by-team') === 'true';
+        const groupByTeam = browserLocal.get('coral-group-by-team') === 'true';
         check.style.opacity = groupByTeam ? '1' : '0.2';
     }
 }

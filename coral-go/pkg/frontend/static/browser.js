@@ -4,6 +4,7 @@ import { escapeHtml, escapeAttr } from './utils.js';
 import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { serverFetch, LOCAL_SERVER, normServer } from './server_base.js';
 import { recentDirsKey } from './launch_server.js';
+import { browserLocal } from './safe_storage.js';
 
 /* Multi-server hub: a directory input may belong to a remote server. The
  * launch modals register a resolver (input id -> server id) so listing,
@@ -26,7 +27,7 @@ const MAX_RECENT_DIRS = 6;
 
 function getRecentDirs(server = LOCAL_SERVER) {
     try {
-        const dirs = JSON.parse(localStorage.getItem(recentDirsKey(server)) || "[]");
+        const dirs = JSON.parse(browserLocal.get(recentDirsKey(server)) || "[]");
         return Array.isArray(dirs) ? dirs.filter(d => typeof d === "string") : [];
     } catch (_) {
         return [];
@@ -40,7 +41,7 @@ export function recordRecentDir(path, server = LOCAL_SERVER) {
     if (!path) return;
     const dirs = [path, ...getRecentDirs(server).filter(d => d !== path)].slice(0, MAX_RECENT_DIRS);
     try {
-        localStorage.setItem(recentDirsKey(server), JSON.stringify(dirs));
+        browserLocal.set(recentDirsKey(server), JSON.stringify(dirs));
     } catch (_) {}
 }
 

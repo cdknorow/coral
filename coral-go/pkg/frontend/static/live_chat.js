@@ -17,6 +17,7 @@ import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElem
 import { flashCopied, makeBubble } from './chat_bubbles.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 import { INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, isCoralNudge, normalizeNudgeText, noteAgentActivity, noteInterrupt, rememberUserMessage, syncPendingBubbles, syncWorkingIndicator } from './pending_messages.js';
+import { browserLocal } from './safe_storage.js';
 export { addPendingMessage, loadPendingFromStorage, removePendingMessage } from './pending_messages.js';
 export { linkifyRefs } from './chat_bubbles.js';
 
@@ -875,7 +876,7 @@ const VIEW_MODE_KEY = "coral-live-view-mode";
 /** The chosen center view; Chat unless the user picked Terminal. */
 export function getLiveViewMode() {
     try {
-        return localStorage.getItem(VIEW_MODE_KEY) === "terminal" ? "terminal" : "chat";
+        return browserLocal.get(VIEW_MODE_KEY) === "terminal" ? "terminal" : "chat";
     } catch {
         return "chat";
     }
@@ -1008,7 +1009,7 @@ export function initCommandInputAutosize() {
 
 export function setLiveViewMode(mode) {
     try {
-        localStorage.setItem(VIEW_MODE_KEY, mode === "chat" ? "chat" : "terminal");
+        browserLocal.set(VIEW_MODE_KEY, mode === "chat" ? "chat" : "terminal");
     } catch { /* storage unavailable — mode lasts for this page only */ }
     applyLiveViewMode();
     if (mode === "chat") {

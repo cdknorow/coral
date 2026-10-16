@@ -1,6 +1,7 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
 import { redrawLiveList } from './list_hooks.js';
 import { serverSwitcherHtml } from './server_status.js';
+import { browserLocal } from './safe_storage.js';
 
 // ── Servers UI in the agent list (#3085) ─────────────────────────────────
 // Which disclosures are open survives the frequent list re-renders.
@@ -8,7 +9,7 @@ let _switcherOpen = false;
 export const _openServerDetails = new Set();
 
 export function _isServerCollapsed(id) {
-    try { return localStorage.getItem(`coral-server-collapsed:${id}`) === 'true'; } catch { return false; }
+    try { return browserLocal.get(`coral-server-collapsed:${id}`) === 'true'; } catch { return false; }
 }
 
 /** Render the search-row server button (and its phone copy). */
@@ -28,7 +29,7 @@ if (typeof document !== 'undefined') {
         if (!t) return;
         e.preventDefault();
         const id = t.dataset.serverToggle;
-        try { localStorage.setItem(`coral-server-collapsed:${id}`, _isServerCollapsed(id) ? 'false' : 'true'); } catch { /* per-viewer only */ }
+        try { browserLocal.set(`coral-server-collapsed:${id}`, _isServerCollapsed(id) ? 'false' : 'true'); } catch { /* per-viewer only */ }
         _openServerDetails.delete(id);
         redrawLiveList();
         const again = document.querySelector(`#live-sessions-list .server-group-toggle[data-server-toggle="${CSS.escape(id)}"]`);

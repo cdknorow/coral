@@ -1,24 +1,25 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
 import { escapeAttr } from './utils.js';
 import { redrawLiveList } from './list_hooks.js';
+import { browserLocal } from './safe_storage.js';
 
 // ── Board accent colors (localStorage) ────────────────────────────────
 export function _getBoardColor(boardName) {
     try {
-        const colors = JSON.parse(localStorage.getItem('coral-board-colors') || '{}');
+        const colors = JSON.parse(browserLocal.get('coral-board-colors') || '{}');
         return colors[boardName] || null;
     } catch { return null; }
 }
 
 function _setBoardColor(boardName, color) {
     try {
-        const colors = JSON.parse(localStorage.getItem('coral-board-colors') || '{}');
+        const colors = JSON.parse(browserLocal.get('coral-board-colors') || '{}');
         if (color) {
             colors[boardName] = color;
         } else {
             delete colors[boardName];
         }
-        localStorage.setItem('coral-board-colors', JSON.stringify(colors));
+        browserLocal.set('coral-board-colors', JSON.stringify(colors));
     } catch { /* ignore */ }
 }
 

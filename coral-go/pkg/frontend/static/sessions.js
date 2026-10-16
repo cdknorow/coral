@@ -36,6 +36,7 @@ import { applySleepingView } from './sleeping_view.js';
 import { refreshHubAccess, syncUnreachableBanner } from './hub_access.js';
 import { syncAutoAcceptHeader } from './auto_accept.js';
 import { clearComposerError, syncTerminalGoneHeader } from './terminal_gone.js';
+import { browserLocal } from './safe_storage.js';
 
 // Bumped on every switch, so deferred work started for one agent can tell it
 // is no longer the selected one.
@@ -208,7 +209,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         if (boardTab) boardTab.style.display = '';
         showBoardChatTab(identityKey(srv, agentData.board_project));
         // Auto-switch to Board tab if no persisted preference
-        const savedTab = localStorage.getItem('coral-agentic-tab-top');
+        const savedTab = browserLocal.get('coral-agentic-tab-top');
         if (!savedTab || savedTab === 'board') {
             switchAgenticTab('board', 'top');
         }
@@ -216,7 +217,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         if (boardTab) boardTab.style.display = 'none';
         hideBoardChatTab();
         // If persisted tab was 'board' but agent has no board, fall back to files
-        const savedTab = localStorage.getItem('coral-agentic-tab-top');
+        const savedTab = browserLocal.get('coral-agentic-tab-top');
         if (savedTab === 'board') {
             switchAgenticTab('files', 'top');
         }

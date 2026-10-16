@@ -25,6 +25,7 @@ import {
 import { settingBool, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 import { pollEvery } from './overload.js';
 import { attachDialogFocus } from './dialog_focus.js';
+import { browserLocal } from './safe_storage.js';
 const { launch } = await importOnce('./launch_state.js');
 const { _acfServer, _effectiveServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _invalidateDefaultModels, _loadServerSettings, _serverSettings, _settingsFor } = await importOnce('./launch_models.js');
 const { AGENT_PRESETS, ALL_CAPABILITIES } = await importOnce('./agent_presets.js');
@@ -2503,7 +2504,7 @@ export async function showSettingsModal() {
     // Group by Team
     const groupByTeamCheck = document.getElementById("settings-group-by-team");
     if (groupByTeamCheck) {
-        groupByTeamCheck.checked = localStorage.getItem('coral-group-by-team') !== 'false';
+        groupByTeamCheck.checked = browserLocal.get('coral-group-by-team') !== 'false';
     }
 
     // Terminal Font Size
@@ -2538,7 +2539,7 @@ export async function showSettingsModal() {
 
     // Check for Updates (stored in localStorage, defaults to on)
     const updateCheck = document.getElementById("settings-check-updates");
-    if (updateCheck) updateCheck.checked = localStorage.getItem("coral-update-check-enabled") !== "false";
+    if (updateCheck) updateCheck.checked = browserLocal.get("coral-update-check-enabled") !== "false";
 
     // Show Scrollbars (defaults to true)
     const scrollbarsCheck = document.getElementById("settings-show-scrollbars");
@@ -2621,7 +2622,7 @@ export async function applySettings() {
     const terminalFontSize = document.getElementById("settings-terminal-font-size")?.value || "13";
     const terminalScrollback = document.getElementById("settings-terminal-scrollback")?.value || "20000";
     const checkUpdates = document.getElementById("settings-check-updates")?.checked ?? true;
-    localStorage.setItem("coral-update-check-enabled", checkUpdates ? "true" : "false");
+    browserLocal.set("coral-update-check-enabled", checkUpdates ? "true" : "false");
     const showScrollbars = document.getElementById("settings-show-scrollbars")?.checked ?? true;
     const fileSearchMode = document.getElementById("settings-file-search-mode")?.value || "directory";
     const fileSearchLimit = document.getElementById("settings-file-search-limit")?.value || "500";

@@ -12,6 +12,7 @@ import { platform } from './platform/detect.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { _agentTaskStatus, _formatCost, _formatTaskTime, _formatTokenCount, _priorityLabel, _priorityOrder, formatTaskDate } from './task_format.js';
 import { _claimedFor, _subagentTooltip, clearOpenSubagent, loadSubagents, showSubagentDetailModal, subagentToTaskRow } from './subagents.js';
+import { browserLocal } from './safe_storage.js';
 export { clearOpenSubagent, loadSubagents } from './subagents.js';
 
 // ── Board task polling ───────────────────────────────────────────────
@@ -348,7 +349,7 @@ function _reviewRequested(t) {
 // Current sort and filter state for task list
 let _taskSortField = 'created_at';
 let _taskSortAsc = false; // default newest first
-let _hideCompleted = localStorage.getItem('coral-hide-completed') === 'true'; // off by default, persisted
+let _hideCompleted = browserLocal.get('coral-hide-completed') === 'true'; // off by default, persisted
 
 function _toggleTaskSort(field) {
     if (_taskSortField === field) {
@@ -362,7 +363,7 @@ function _toggleTaskSort(field) {
 
 function _toggleHideCompleted() {
     _hideCompleted = !_hideCompleted;
-    localStorage.setItem('coral-hide-completed', _hideCompleted);
+    browserLocal.set('coral-hide-completed', _hideCompleted);
     renderBoardTaskList();
 }
 

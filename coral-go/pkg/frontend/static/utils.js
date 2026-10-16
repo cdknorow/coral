@@ -2,11 +2,12 @@ import { parse, normalize, build as buildRoute } from './routes.js';
 import { importOnce } from './import_once.js';
 import { loadHighlight } from './vendor_loader.js';
 import { checkAgentView } from './agent_view.js';
+import { browserLocal } from './safe_storage.js';
 /* Utility functions: HTML escaping and toast notifications */
 
 // Debug logging — enabled via ?debug=1 URL param or localStorage coral-debug=1
 const _debugEnabled = new URLSearchParams(location.search).has('debug') ||
-    localStorage.getItem('coral-debug') === '1';
+    browserLocal.get('coral-debug') === '1';
 
 export function dbg(...args) {
     if (_debugEnabled) console.log('[coral]', ...args);

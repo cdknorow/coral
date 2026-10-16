@@ -7,6 +7,7 @@ import { normServer, serverWsBase, sessionServer } from './server_base.js';
 import { hubBlocksKeystrokes, applyHubReadOnlyFrame } from './hub_access.js';
 import { feedRetryDelay } from './feed_pacing.js';
 import { isSignedOut } from './overload.js';
+import { browserLocal } from './safe_storage.js';
 
 let terminal = null;
 let fitAddon = null;
@@ -45,7 +46,7 @@ const PHONE_MAX_WIDTH = 767; // the mobile layout's breakpoint (mobile.js, css/m
 const FIT_WIDTH_KEY = 'coral-terminal-fit-width';
 const MIN_FIT_FONT = 7;
 let _baseFont = 13;      // the font size from Settings, used whenever not fitting
-let _fitWidth = (() => { try { return localStorage.getItem(FIT_WIDTH_KEY) === '1'; } catch { return false; } })();
+let _fitWidth = (() => { try { return browserLocal.get(FIT_WIDTH_KEY) === '1'; } catch { return false; } })();
 
 function _fitButton() {
     return document.getElementById('terminal-fit-width-btn');
@@ -118,7 +119,7 @@ function _updateFitButton(show) {
 /** Turns fit to width on or off on this device (#3455). */
  function toggleTerminalFitWidth(on = !_fitWidth) {
     _fitWidth = !!on;
-    try { localStorage.setItem(FIT_WIDTH_KEY, _fitWidth ? '1' : '0'); } catch { /* private mode */ }
+    try { browserLocal.set(FIT_WIDTH_KEY, _fitWidth ? '1' : '0'); } catch { /* private mode */ }
     _applyFitWidth();
 }
 

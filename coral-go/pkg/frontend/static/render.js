@@ -30,6 +30,7 @@ import { _attachDragListeners, _renderAgentListWithSubgroups, _renderArchivedSec
 import { showConfirmModal } from './confirm_dialog.js';
 import { getAgentFilter, setAgentFilter } from './agent_filter.js';
 import { _collapseAttrs, _isGroupCollapsed } from './group_collapse.js';
+import { browserLocal } from './safe_storage.js';
 export { groupHeaderKey, toggleGroupCollapse } from './group_collapse.js';
 export { hideConfirmModal, showConfirmModal } from './confirm_dialog.js';
 export { applySessionSummaryPref, isSessionSummaryShown, toggleArchivedSection } from './session_rows.js';
@@ -231,7 +232,7 @@ export function copyFolderPath(path) {
 // Archived section, and with Group by Team on, workflow-run agents in their
 // workflow group. A search narrows the group as it does in the list.
 function _groupMembers(groupName) {
-    const byTeam = localStorage.getItem('coral-group-by-team') !== 'false';
+    const byTeam = browserLocal.get('coral-group-by-team') !== 'false';
     const shown = state.liveSessions.filter(s => !s.archived && !s.board_project && (!getAgentFilter() || _agentMatches(s, getAgentFilter())));
     if (groupName.startsWith('wf:')) {
         const wf = groupName.slice(3);
@@ -676,7 +677,7 @@ export async function toggleShowServer() {
 }
 
 export function toggleGroupByServer() {
-    try { localStorage.setItem('coral-group-by-server', isGroupedByServer() ? 'false' : 'true'); } catch { /* per-viewer only */ }
+    try { browserLocal.set('coral-group-by-server', isGroupedByServer() ? 'false' : 'true'); } catch { /* per-viewer only */ }
     redrawLiveList();
 }
 
@@ -737,8 +738,8 @@ export async function toggleSessionSummary() {
 }
 
 export function toggleGroupByTeam() {
-    const current = localStorage.getItem('coral-group-by-team') !== 'false';
-    localStorage.setItem('coral-group-by-team', !current ? 'true' : 'false');
+    const current = browserLocal.get('coral-group-by-team') !== 'false';
+    browserLocal.set('coral-group-by-team', !current ? 'true' : 'false');
     const check = document.getElementById('group-by-team-check-top');
     if (check) check.style.opacity = !current ? '1' : '0.2';
     redrawLiveList();
@@ -746,8 +747,8 @@ export function toggleGroupByTeam() {
 
 export function expandSleepingGroup(groupName) {
     const key = `coral-sleeping-expanded:${groupName}`;
-    const current = localStorage.getItem(key) === 'true';
-    localStorage.setItem(key, current ? 'false' : 'true');
+    const current = browserLocal.get(key) === 'true';
+    browserLocal.set(key, current ? 'false' : 'true');
     redrawLiveList();
 }
 
@@ -802,7 +803,7 @@ function _railTeamColor(name) {
 function _renderSidebarRail(sessions) {
     const rail = document.getElementById('sidebar-rail-list');
     if (!rail) return;
-    const groupByTeam = localStorage.getItem('coral-group-by-team') !== 'false';
+    const groupByTeam = browserLocal.get('coral-group-by-team') !== 'false';
 
     // Same group and agent order as the full list, so both views line up.
     const isOrchSession = s => (s.display_name || s.board_job_title || '').toLowerCase().includes('orchestrator');
@@ -976,7 +977,7 @@ function _renderLiveSessions(sessions) {
     }
 
     // Sync the Group by Team checkmark
-    const groupByTeam = localStorage.getItem('coral-group-by-team') !== 'false';
+    const groupByTeam = browserLocal.get('coral-group-by-team') !== 'false';
     const check = document.getElementById('group-by-team-check-top');
     if (check) check.style.opacity = groupByTeam ? '1' : '0.2';
 

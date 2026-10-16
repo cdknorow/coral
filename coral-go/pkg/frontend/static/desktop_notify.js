@@ -3,14 +3,15 @@
  * Deliberately small: the page raises a Notification itself while it is open in a background tab. No service worker, no
  * push subscription, nothing stored on the server. It is off until this browser opts in, and the opt-in lives in this
  * browser's localStorage only. The text carries names, never agent output: no summary, prompt, path or tool input. */
+import { browserLocal } from './safe_storage.js';
 export const DESKTOP_NOTIFY_KEY = 'coral-desktop-notify';
 const MAX_NAME = 60;
 const MIN_GAP_MS = 30000, PER_MINUTE = 10; // per agent, and overall
 const lastByTag = new Map(), recent = [];
 
 function api() { return typeof Notification === 'undefined' ? null : Notification; }
-function read() { try { return localStorage.getItem(DESKTOP_NOTIFY_KEY) === '1'; } catch { return false; } }
-function write(on) { try { if (on) localStorage.setItem(DESKTOP_NOTIFY_KEY, '1'); else localStorage.removeItem(DESKTOP_NOTIFY_KEY); } catch { /* storage blocked */ } }
+function read() { try { return browserLocal.get(DESKTOP_NOTIFY_KEY) === '1'; } catch { return false; } }
+function write(on) { try { if (on) browserLocal.set(DESKTOP_NOTIFY_KEY, '1'); else browserLocal.remove(DESKTOP_NOTIFY_KEY); } catch { /* storage blocked */ } }
 
 export function desktopNotifySupported() { return !!api(); }
 

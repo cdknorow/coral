@@ -13,6 +13,7 @@ import { serverFetch, serverForSession } from './server_base.js';
 import { formatClockTime } from './format.js';
 import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './event_icons.js';
 import { filterItemHtml, refillFilterList, syncFilterExpanded, wireFilterDropdown } from './filter_dropdown.js';
+import { browserLocal } from './safe_storage.js';
 
 // Hidden filters are persisted per-session in state
 // state.eventFiltersHidden = Set of filter keys that are hidden
@@ -296,7 +297,7 @@ export function switchAgenticTab(tabName, blockId) {
 
     // Persist tab choice per block (team-only tabs only exist while a team is selected)
     if (blockId && activeBtn?.dataset.scope !== 'team') {
-        localStorage.setItem(`coral-agentic-tab-${blockId}`, tabName);
+        browserLocal.set(`coral-agentic-tab-${blockId}`, tabName);
     }
 
     if (tabName === 'team-settings') window.renderTeamSettingsTab?.();
@@ -336,7 +337,7 @@ export function switchAgenticTab(tabName, blockId) {
 /** Restore persisted tab selection on page load. */
 export function restoreAgenticTabs() {
     // Only restore for the single unified top block
-    const saved = localStorage.getItem('coral-agentic-tab-top');
+    const saved = browserLocal.get('coral-agentic-tab-top');
     if (saved) {
         const tab = document.getElementById(`agentic-tab-${saved}`);
         if (tab && tab.style.display !== 'none') {
@@ -344,7 +345,7 @@ export function restoreAgenticTabs() {
         }
     }
     // Clean up stale bottom block preference
-    localStorage.removeItem('coral-agentic-tab-bottom');
+    browserLocal.remove('coral-agentic-tab-bottom');
 }
 
 // The activity filter's dropdown, for the live view and history alike (#3645): data-on-* names,

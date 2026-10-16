@@ -6,6 +6,7 @@ import { splitKey, keyLabel, boardFetch } from './server_base.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { pollEvery } from './overload.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
+import { browserLocal } from './safe_storage.js';
 
 // ── Board Chat (right-panel tab) ──────────────────────────────────────
 let _boardChatTimer = null;
@@ -96,7 +97,7 @@ export function showBoardChatTab(boardName) {
         if (carried) document.getElementById('board-panel-msgs').replaceWith(carried);
 
         // Restore saved input pane height
-        const savedH = localStorage.getItem('coral-boardchat-height');
+        const savedH = browserLocal.get('coral-boardchat-height');
         if (savedH) {
             const pane = document.getElementById('board-chat-input-pane');
             const h = parseInt(savedH, 10);

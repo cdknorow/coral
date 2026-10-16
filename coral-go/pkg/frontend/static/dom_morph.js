@@ -14,6 +14,7 @@
  * Kill switch: localStorage 'coral-no-morph' = '1' (read on each call), or
  * ?nomorph=1 in the URL the page was loaded with, makes every update a plain
  * innerHTML assignment. */
+import { browserLocal } from './safe_storage.js';
 
 // Read once at load: the app rewrites the query string at startup (filter state),
 // which drops parameters it does not know.
@@ -22,7 +23,7 @@ const _urlNoMorph = (() => { try { return new URLSearchParams(location.search).g
 /** True when the kill switch asks for plain innerHTML updates. */
 export function morphDisabled() {
     if (_urlNoMorph) return true;
-    try { return localStorage.getItem('coral-no-morph') === '1'; } catch { return false; }
+    try { return browserLocal.get('coral-no-morph') === '1'; } catch { return false; }
 }
 
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);

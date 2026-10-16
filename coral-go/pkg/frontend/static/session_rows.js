@@ -11,6 +11,7 @@ import { sessionServer, keyLabel, sessionTeamKey } from './server_base.js';
 import { redrawLiveList } from './list_hooks.js';
 import { state } from './state.js';
 import { terminalGoneChip } from './terminal_gone.js';
+import { browserLocal } from './safe_storage.js';
 
 // ── Archived section (#3030) ─────────────────────────────────────────────
 // One global collapsed section at the bottom of the list. The grouping is all
@@ -42,12 +43,12 @@ export function _renderArchivedSection(archived) {
 }
 
 export function toggleArchivedSection() {
-    try { localStorage.setItem('coral-archived-expanded', _isArchivedExpanded() ? 'false' : 'true'); } catch { /* per-viewer only */ }
+    try { browserLocal.set('coral-archived-expanded', _isArchivedExpanded() ? 'false' : 'true'); } catch { /* per-viewer only */ }
     redrawLiveList();
 }
 
 function _isArchivedExpanded() {
-    try { return localStorage.getItem('coral-archived-expanded') === 'true'; }
+    try { return browserLocal.get('coral-archived-expanded') === 'true'; }
     catch { return false; }
 }
 
@@ -373,7 +374,7 @@ export function applySessionSummaryPref() {
 /** 'Group by server' (per viewer, off unless chosen); only with 2+ servers. */
  export function isGroupedByServer() {
     if (serversShown().length < 2) return false;
-    try { return localStorage.getItem('coral-group-by-server') === 'true'; } catch { return false; }
+    try { return browserLocal.get('coral-group-by-server') === 'true'; } catch { return false; }
 }
 
 /** Sync the ≡ display menu's checkboxes and which options it offers: the sidebar's, and the phone's copy in the agent list
@@ -388,7 +389,7 @@ export function applySessionSummaryPref() {
 }
 
 function _isSleepingExpanded(groupName) {
-    try { return localStorage.getItem(`coral-sleeping-expanded:${groupName}`) === 'true'; }
+    try { return browserLocal.get(`coral-sleeping-expanded:${groupName}`) === 'true'; }
     catch { return false; }
 }
 

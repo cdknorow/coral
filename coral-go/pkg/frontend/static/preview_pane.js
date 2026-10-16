@@ -13,6 +13,7 @@ import { fetchImageSrc } from './image_source.js';
 import { wireDownloads } from './artifact_download.js';
 import { retryOnce } from './overload.js';
 import { agentName, apiQs } from './agent_file_api.js';
+import { browserLocal } from './safe_storage.js';
 
 const ICON_MAP = {
     javascript: '{ }', typescript: '{ }', jsx: '{ }', tsx: '{ }',
@@ -73,7 +74,7 @@ export function initPreviewPane() {
     const handle = document.getElementById('preview-pane-resize-handle');
     if (!handle) return;
 
-    const saved = localStorage.getItem('coral-preview-pane-height');
+    const saved = browserLocal.get('coral-preview-pane-height');
     if (saved) _paneHeight = parseInt(saved, 10);
 
     makeDraggable(handle, {
@@ -94,14 +95,14 @@ export function initPreviewPane() {
         onEnd: (v) => {
             if (v != null) {
                 _paneHeight = Math.round(v);
-                localStorage.setItem('coral-preview-pane-height', _paneHeight);
+                browserLocal.set('coral-preview-pane-height', _paneHeight);
             }
         },
     });
 
-    const savedWidth = localStorage.getItem('coral-preview-column-width');
+    const savedWidth = browserLocal.get('coral-preview-column-width');
     if (savedWidth) _paneWidth = parseInt(savedWidth, 10);
-    if (localStorage.getItem('coral-preview-pane-dock') === 'column') _dock = 'column';
+    if (browserLocal.get('coral-preview-pane-dock') === 'column') _dock = 'column';
 
     const colHandle = document.getElementById('preview-column-resize-handle');
     const column = document.getElementById('preview-column');
@@ -118,7 +119,7 @@ export function initPreviewPane() {
             onEnd: (v) => {
                 if (v != null) {
                     _paneWidth = Math.round(v);
-                    localStorage.setItem('coral-preview-column-width', _paneWidth);
+                    browserLocal.set('coral-preview-column-width', _paneWidth);
                 }
             },
         });
@@ -126,7 +127,7 @@ export function initPreviewPane() {
 
     document.getElementById('preview-dock-btn')?.addEventListener('click', () => {
         _dock = _dock === 'column' ? 'bottom' : 'column';
-        localStorage.setItem('coral-preview-pane-dock', _dock);
+        browserLocal.set('coral-preview-pane-dock', _dock);
         _placePane();
     });
     window.addEventListener('resize', () => { if (_tabs.length) _placePane(); });

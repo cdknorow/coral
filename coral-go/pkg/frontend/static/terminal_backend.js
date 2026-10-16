@@ -10,6 +10,7 @@ import { showToast } from './utils.js';
 import { isCloud } from './server_base.js';
 import { showConfirmModal } from './render.js';
 import { state } from './state.js';
+import { browserSession } from './safe_storage.js';
 
 let _status = null; // GET /api/system/terminal-backend
 let _autoWakeShown = null; // the auto-wake values as the dialog opened (#3636)
@@ -287,7 +288,7 @@ async function hooksStatus() {
 }
 
 function hooksDismissed() {
-    try { return sessionStorage.getItem(HOOKS_DISMISS_KEY) === '1'; } catch { return false; }
+    try { return browserSession.get(HOOKS_DISMISS_KEY) === '1'; } catch { return false; }
 }
 
 function wireHooksBanner() {
@@ -295,7 +296,7 @@ function wireHooksBanner() {
     _hooksWired = true;
     $('hooks-go')?.addEventListener('click', () => resumeAllOnCurrentHooks());
     $('hooks-dismiss')?.addEventListener('click', () => {
-        try { sessionStorage.setItem(HOOKS_DISMISS_KEY, '1'); } catch { /* it just hides for now */ }
+        try { browserSession.set(HOOKS_DISMISS_KEY, '1'); } catch { /* it just hides for now */ }
         const banner = $('hooks-banner');
         if (banner) banner.hidden = true;
     });

@@ -2,6 +2,7 @@
 
 import { escapeHtml, showToast, escapeAttr } from './utils.js';
 import { registerActions, idOf, textOf, tokenOf } from './actions.js';
+import { browserLocal } from './safe_storage.js';
 
 /**
  * Fetch update info from the backend and show a toast if a new version is available.
@@ -9,7 +10,7 @@ import { registerActions, idOf, textOf, tokenOf } from './actions.js';
  */
 export async function checkForUpdates(force = false) {
     // Respect opt-out (only for automatic checks)
-    if (!force && localStorage.getItem("coral-update-check-enabled") === "false") return;
+    if (!force && browserLocal.get("coral-update-check-enabled") === "false") return;
 
     try {
         const resp = await fetch("/api/system/update-check");
@@ -22,7 +23,7 @@ export async function checkForUpdates(force = false) {
 
         // Skip if user already dismissed this version (automatic check only)
         if (!force) {
-            const dismissed = localStorage.getItem("coral-update-dismissed");
+            const dismissed = browserLocal.get("coral-update-dismissed");
             if (dismissed === data.latest) return;
         }
 
@@ -36,7 +37,7 @@ export async function checkForUpdates(force = false) {
  * Dismiss the update toast and remember the dismissed version.
  */
 export function dismissUpdateToast(version) {
-    localStorage.setItem("coral-update-dismissed", version);
+    browserLocal.set("coral-update-dismissed", version);
     const toast = document.getElementById("update-toast");
     if (toast) toast.remove();
 }

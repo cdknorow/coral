@@ -7,6 +7,7 @@
  * they are sent or saved (or the user reloads). Not on the Cloud Hub, which serves its own pages. */
 import { state } from './state.js';
 import { registerActions } from './actions.js';
+import { browserSession } from './safe_storage.js';
 
  const BUILD_HEADER = 'X-Coral-Build';
 const RELOAD_DELAY_MS = 5000;
@@ -75,8 +76,8 @@ function _tick() {
     if (hasUnsavedWork()) { _show('unsaved'); _timer = setTimeout(_tick, _delay()); return; }
     // Once per build: a reload that still sees a different build (a half-finished update) must not loop.
     try {
-        if (sessionStorage.getItem('coral-update-reloaded') === _updatedTo) { _show('manual'); return; }
-        sessionStorage.setItem('coral-update-reloaded', _updatedTo);
+        if (browserSession.get('coral-update-reloaded') === _updatedTo) { _show('manual'); return; }
+        browserSession.set('coral-update-reloaded', _updatedTo);
     } catch { /* storage blocked: reload anyway, once per page load */ }
     reloadNow();
 }

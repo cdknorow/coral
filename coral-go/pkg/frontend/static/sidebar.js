@@ -2,6 +2,7 @@
 
 import { fitTerminal } from './xterm_renderer.js';
 import { makeDraggable, makeDelegatedDraggable } from './draggable.js';
+import { browserLocal } from './safe_storage.js';
 
 /* Layout persistence is scoped per entry mode: a narrow popout window must
    never overwrite the dashboard's saved panel sizes. */
@@ -13,7 +14,7 @@ export function initSidebarResize() {
     const handle = document.getElementById("sidebar-resize-handle");
     const sidebar = document.querySelector(".sidebar");
 
-    const saved = localStorage.getItem('coral-sidebar-width');
+    const saved = browserLocal.get('coral-sidebar-width');
     if (saved) {
         const w = parseInt(saved, 10);
         if (w >= 200 && w <= window.innerWidth * 0.5) sidebar.style.width = w + "px";
@@ -23,7 +24,7 @@ export function initSidebarResize() {
         cursor: 'col-resize',
         onMove: (e) => Math.min(Math.max(e.clientX, 200), window.innerWidth * 0.5),
         onFlush: (v) => { sidebar.style.width = v + "px"; },
-        onEnd: () => { localStorage.setItem('coral-sidebar-width', sidebar.offsetWidth); },
+        onEnd: () => { browserLocal.set('coral-sidebar-width', sidebar.offsetWidth); },
     });
 }
 
@@ -45,7 +46,7 @@ export function initTaskBarResize() {
 
     if (!handle || !taskBar || !liveBody) return;
 
-    const saved = localStorage.getItem(layoutKey('coral-taskbar-width'));
+    const saved = browserLocal.get(layoutKey('coral-taskbar-width'));
     if (saved) {
         const w = parseInt(saved, 10);
         if (w >= AGENTIC_MIN_WIDTH) {
@@ -62,7 +63,7 @@ export function initTaskBarResize() {
         },
         onFlush: (v) => { taskBar.style.width = v + "px"; },
         onEnd: (v) => {
-            if (v != null) localStorage.setItem(layoutKey('coral-taskbar-width'), Math.round(v));
+            if (v != null) browserLocal.set(layoutKey('coral-taskbar-width'), Math.round(v));
         },
     });
 }
@@ -85,7 +86,7 @@ export function initBoardChatResize() {
         onFlush: (v, { pane }) => { pane.style.height = v + "px"; },
         onEnd: (handle, _v, { pane }) => {
             handle.style.background = '';
-            localStorage.setItem(layoutKey('coral-boardchat-height'), pane.offsetHeight);
+            browserLocal.set(layoutKey('coral-boardchat-height'), pane.offsetHeight);
         },
     });
 }
@@ -101,7 +102,7 @@ export function initAgenticBlockResize() {
     if (!handle || !topBlock || !bottomBlock || !container) return;
 
     // Restore saved ratio
-    const saved = localStorage.getItem('coral-block-ratio');
+    const saved = browserLocal.get('coral-block-ratio');
     if (saved) {
         const ratio = parseFloat(saved);
         if (ratio > 0 && ratio < 1) {
@@ -129,7 +130,7 @@ export function initAgenticBlockResize() {
             bottomBlock.style.flex = (1 - ratio).toString();
         },
         onEnd: (ratio) => {
-            if (ratio != null) localStorage.setItem('coral-block-ratio', ratio.toFixed(3));
+            if (ratio != null) browserLocal.set('coral-block-ratio', ratio.toFixed(3));
         },
     });
 }
@@ -140,14 +141,14 @@ const STORAGE_KEY = 'coral-sidebar-collapsed';
 
 function getCollapsedState() {
     try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        return JSON.parse(browserLocal.get(STORAGE_KEY) || '{}');
     } catch {
         return {};
     }
 }
 
 function saveCollapsedState(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    browserLocal.set(STORAGE_KEY, JSON.stringify(state));
 }
 
 export function initSidebarCollapse() {
@@ -236,7 +237,7 @@ export function initAgenticBlockCollapse() {
     // Clear any stale collapsed state from localStorage — the hidden
     // double-click-to-collapse behavior confused users into permanently
     // hiding the panel with no obvious way to restore it.
-    localStorage.removeItem('coral-block-collapsed');
+    browserLocal.remove('coral-block-collapsed');
 
     for (const block of blocks) {
         const tabs = block.querySelector('.agentic-state-tabs');
@@ -258,7 +259,7 @@ export function initAgenticPanelCollapse() {
     if (!panel) return;
 
     // Default to open unless user has explicitly closed it
-    const stored = localStorage.getItem(layoutKey('coral-agentic-collapsed'));
+    const stored = browserLocal.get(layoutKey('coral-agentic-collapsed'));
     const collapsed = stored === null ? false : stored === 'true';
     if (collapsed) panel.classList.add('collapsed');
 
@@ -270,7 +271,7 @@ export function initAgenticPanelCollapse() {
     if (btn) {
         btn.addEventListener('click', () => {
             const isCollapsed = panel.classList.toggle('collapsed');
-            localStorage.setItem(layoutKey('coral-agentic-collapsed'), isCollapsed);
+            browserLocal.set(layoutKey('coral-agentic-collapsed'), isCollapsed);
             _syncPanelToggleBtn(!isCollapsed);
             fitTerminal();
         });
@@ -304,7 +305,7 @@ export function toggleAgenticPanel(forceState) {
     if (typeof forceState === 'boolean') {
         panel.classList.toggle('collapsed', isCollapsed);
     }
-    localStorage.setItem(layoutKey('coral-agentic-collapsed'), isCollapsed);
+    browserLocal.set(layoutKey('coral-agentic-collapsed'), isCollapsed);
     _syncPanelToggleBtn(!isCollapsed);
     // Fit terminal immediately and again after CSS transition completes
     fitTerminal();
@@ -336,12 +337,12 @@ function applyRail(collapsed) {
 
 export function toggleSidebarRail() {
     const collapsed = !document.querySelector('.layout')?.classList.contains('sidebar-collapsed');
-    try { localStorage.setItem(RAIL_KEY, collapsed ? '1' : '0'); } catch { /* storage unavailable */ }
+    try { browserLocal.set(RAIL_KEY, collapsed ? '1' : '0'); } catch { /* storage unavailable */ }
     applyRail(collapsed);
 }
 
 export function initSidebarRail() {
     let collapsed = false;
-    try { collapsed = localStorage.getItem(RAIL_KEY) === '1'; } catch { /* storage unavailable */ }
+    try { collapsed = browserLocal.get(RAIL_KEY) === '1'; } catch { /* storage unavailable */ }
     if (collapsed) applyRail(true);
 }

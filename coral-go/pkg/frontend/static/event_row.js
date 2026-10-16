@@ -1,6 +1,7 @@
 /* Shared pieces of an Activity row: how long the activity took and what else is known about it */
 
 import { escapeHtml } from './utils.js';
+import { browserLocal } from './safe_storage.js';
 
 /** 850 -> "850ms", 9100 -> "9.1s", 75000 -> "1m 15s", 3720000 -> "1h 2m". */
 export function formatDuration(ms) {
@@ -50,7 +51,7 @@ const CHART_MODE_KEY = 'coral-activity-chart-mode';
 
 function getChartMode() {
     // Time is the default; Count only when it was picked explicitly.
-    try { return localStorage.getItem(CHART_MODE_KEY) === 'count' ? 'count' : 'time'; } catch { return 'time'; }
+    try { return browserLocal.get(CHART_MODE_KEY) === 'count' ? 'count' : 'time'; } catch { return 'time'; }
 }
 
 /** Activity histogram per filter group: how many events, or how much time they took in total.
@@ -113,7 +114,7 @@ export function renderActivityChart(container, events, groups) {
     container.onclick = (e) => {
         const btn = e.target.closest('[data-chart-mode]');
         if (!btn) return;
-        try { localStorage.setItem(CHART_MODE_KEY, btn.dataset.chartMode); } catch {}
+        try { browserLocal.set(CHART_MODE_KEY, btn.dataset.chartMode); } catch {}
         renderActivityChart(container, events, groups);
     };
 }

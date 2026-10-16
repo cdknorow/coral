@@ -7,6 +7,7 @@ import { sessionUnreachable, backoffBlocked, backoffRecord } from './remote_heal
 import { responseErrorText } from './server_status.js';
 import { pollEvery } from './overload.js';
 import { agentViewVisible } from './agent_view.js';
+import { browserSession } from './safe_storage.js';
 
 let session = null;
 let generation = 0;
@@ -30,13 +31,13 @@ function newRequestID() {
 function requestState(sid) {
     if (!requests.has(sid)) {
         let saved = {};
-        try { saved = JSON.parse(sessionStorage.getItem('coral-panel-request:' + sid) || '{}'); } catch {}
+        try { saved = JSON.parse(browserSession.get('coral-panel-request:' + sid) || '{}'); } catch {}
         requests.set(sid, {draft:typeof saved.draft === 'string' ? saved.draft : '', attempt:saved.attempt || null, blockedRequest:saved.blockedRequest || null, pending:false, message:saved.blockedRequest ? 'Delivery could not be confirmed. Check with your agent before sending this request again.' : '', error:!!saved.blockedRequest});
     }
     return requests.get(sid);
 }
 function saveRequest(sid, value) {
-    try { sessionStorage.setItem('coral-panel-request:' + sid, JSON.stringify({draft:value.draft, attempt:value.attempt, blockedRequest:value.blockedRequest})); } catch {}
+    try { browserSession.set('coral-panel-request:' + sid, JSON.stringify({draft:value.draft, attempt:value.attempt, blockedRequest:value.blockedRequest})); } catch {}
 }
 function updateRequestForm(form, value) {
     const input = form.querySelector('textarea');

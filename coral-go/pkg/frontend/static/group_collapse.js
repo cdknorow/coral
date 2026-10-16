@@ -3,10 +3,11 @@
 import { escapeAttr } from './utils.js';
 import { redrawLiveList } from './list_hooks.js';
 import { isAgentFiltering } from './agent_filter.js';
+import { browserLocal } from './safe_storage.js';
 
 // ── Group collapse state ─────────────────────────────────────────────
 function _getCollapsedGroups() {
-    try { return JSON.parse(localStorage.getItem('coral_collapsed_groups') || '[]'); }
+    try { return JSON.parse(browserLocal.get('coral_collapsed_groups') || '[]'); }
     catch { return []; }
 }
 
@@ -38,6 +39,6 @@ export function toggleGroupCollapse(groupName) {
     const idx = groups.indexOf(groupName);
     if (idx >= 0) groups.splice(idx, 1);
     else groups.push(groupName);
-    localStorage.setItem('coral_collapsed_groups', JSON.stringify(groups));
+    browserLocal.set('coral_collapsed_groups', JSON.stringify(groups));
     redrawLiveList();
 }

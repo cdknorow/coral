@@ -15,7 +15,9 @@
  *     folders are already a short list (6 per server); they go on sign-out and account change.
  *   - A local dashboard has no account: its keys stay as they were (nothing is lost on update). */
 
- const STORED_KINDS = ['coral-input-drafts', 'coral-pending-messages', 'coral-recent-dirs', 'coral-starred-files-'];
+import { browserLocal } from './safe_storage.js';
+
+const STORED_KINDS = ['coral-input-drafts', 'coral-pending-messages', 'coral-recent-dirs', 'coral-starred-files-'];
 const OWNER_KEY = 'coral-store-owner';
  const DRAFT_MAX_AGE_MS = 3 * 24 * 3600 * 1000;
  const ENDED_GRACE_MS = 24 * 3600 * 1000;
@@ -26,7 +28,6 @@ let _lastLivePrune = 0;
 
 let _tag = '';
 
-function ls() { try { return window.localStorage; } catch { return null; } }
 
 /** The storage key of `base` for the signed-in account (base itself on a local dashboard). */
 export function storeKey(base) {
@@ -66,14 +67,8 @@ export function forgetAccountMemory() {
 
 /** Remove the stored kinds: all of them, or those `which(key, owner)` picks. */
 export function purgeStored(which = () => true) {
-    const s = ls();
-    if (!s) return 0;
-    const keys = [];
-    for (let i = 0; i < s.length; i++) {
-        const k = s.key(i);
-        if (k && isStored(k) && which(k, ownerOf(k))) keys.push(k);
-    }
-    for (const k of keys) { try { s.removeItem(k); } catch { /* storage refused */ } }
+    const keys = browserLocal.keys().filter(k => isStored(k) && which(k, ownerOf(k)));
+    for (const k of keys) browserLocal.remove(k);
     return keys.length;
 }
 
@@ -81,20 +76,15 @@ export function purgeStored(which = () => true) {
  *  sign-in on a browser that held data from before this rule) removes everyone else's. */
 export function setStoreOwner(tag) {
     _tag = tag || '';
-    const s = ls();
-    if (!s) return;
-    let prev = null;
-    try { prev = s.getItem(OWNER_KEY); } catch { /* none */ }
+    const prev = browserLocal.get(OWNER_KEY);
     if (prev !== _tag) { purgeStored((k, owner) => owner !== _tag); forgetAccountMemory(); }
-    try { s.setItem(OWNER_KEY, _tag); } catch { /* storage refused */ }
+    browserLocal.set(OWNER_KEY, _tag);
 }
 
 /** Drafts as stored: { key: { t: text, at: ms } }. Older drafts were { key: text }; they load as
  *  touched now, so they age out from today. */
 export function readDrafts() {
-    const s = ls();
-    let raw = null;
-    try { raw = s && s.getItem(storeKey('coral-input-drafts')); } catch { /* none */ }
+    const raw = browserLocal.get(storeKey('coral-input-drafts'));
     let obj = {};
     try { obj = raw ? JSON.parse(raw) : {}; } catch { obj = {}; }
     const out = {};
@@ -107,9 +97,7 @@ export function readDrafts() {
 }
 
 export function writeDrafts(drafts) {
-    const s = ls();
-    if (!s) return;
-    try { s.setItem(storeKey('coral-input-drafts'), JSON.stringify(drafts)); } catch { /* full or refused */ }
+    browserLocal.set(storeKey('coral-input-drafts'), JSON.stringify(drafts));
 }
 
 /** Age the drafts: drop those older than DRAFT_MAX_AGE_MS, those of a live session (`live:<id>`)
@@ -136,30 +124,24 @@ export function ageDrafts(drafts, { now = Date.now(), liveIds = null } = {}) {
 /** A session's starred files as stored: { files: [...], at: ms }. Older lists were a bare array;
  *  they read as touched now. */
 export function readStars(key) {
-    const s = ls();
     let v = null;
-    try { v = JSON.parse((s && s.getItem(key)) || 'null'); } catch { v = null; }
+    try { v = JSON.parse(browserLocal.get(key) || 'null'); } catch { v = null; }
     if (Array.isArray(v)) return { files: v.filter(f => typeof f === 'string'), at: Date.now() };
     if (v && Array.isArray(v.files)) return { files: v.files.filter(f => typeof f === 'string'), at: Number(v.at) || Date.now() };
     return { files: [], at: Date.now() };
 }
 
 export function writeStars(key, files) {
-    const s = ls();
-    if (!s) return;
-    try {
-        if (files.length) s.setItem(key, JSON.stringify({ files, at: Date.now() }));
-        else s.removeItem(key);
-    } catch { /* full or refused */ }
+    if (files.length) browserLocal.set(key, JSON.stringify({ files, at: Date.now() }));
+    else browserLocal.remove(key);
 }
 
 /** Star lists of this account untouched for STARS_MAX_AGE_MS. A bare (older) list is kept. */
 function pruneStars(now) {
-    const s = ls();
     purgeStored((k, owner) => {
         if (owner !== _tag || !k.startsWith('coral-starred-files-')) return false;
         let v = null;
-        try { v = JSON.parse(s.getItem(k) || 'null'); } catch { return true; }
+        try { v = JSON.parse(browserLocal.get(k) || 'null'); } catch { return true; }
         return !!v && !Array.isArray(v) && now - (Number(v.at) || 0) > STARS_MAX_AGE_MS;
     });
 }

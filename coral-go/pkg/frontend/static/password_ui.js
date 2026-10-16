@@ -6,6 +6,7 @@
 import { showToast } from './utils.js';
 import { importOnce } from './import_once.js';
 import { pollEvery } from './overload.js';
+import { browserLocal } from './safe_storage.js';
 
 // The pure rules are a lazy module of their own (a lazily loaded module may only statically import startup modules).
 const { passwordProblem, strengthOf } = await importOnce('./password_rules.js');
@@ -81,8 +82,8 @@ export function errorText(res, fallback) {
 
 // ── The one-time prompt ──────────────────────────────────────────────────────────────────────────────
 
-const _notNowGet = () => { try { return localStorage.getItem(NOT_NOW_KEY) === '1'; } catch { return false; } };
-const _notNowSet = () => { try { localStorage.setItem(NOT_NOW_KEY, '1'); } catch { /* private mode: asked again, harmless */ } };
+const _notNowGet = () => { try { return browserLocal.get(NOT_NOW_KEY) === '1'; } catch { return false; } };
+const _notNowSet = () => { try { browserLocal.set(NOT_NOW_KEY, '1'); } catch { /* private mode: asked again, harmless */ } };
 
 /** GET /api/system/auth-status, or null when it cannot be read. */
 async function authStatus() {

@@ -8,6 +8,7 @@ import { escapeHtml, renderMarkdown } from './utils.js';
 import { makeBubble } from './chat_bubbles.js';
 import { state } from './state.js';
 import { storeKey } from './local_store.js';
+import { browserLocal } from './safe_storage.js';
 
 // ── Pending (sent, not yet in the transcript) messages ───────────────────
 // A message typed into the command box only reaches the transcript once the
@@ -25,7 +26,7 @@ const recentUserEntriesBySession = new Map();
 export function loadPendingFromStorage() {
     pendingBySession.clear();
     try {
-        const raw = localStorage.getItem(storeKey(STORAGE_KEY_PENDING));
+        const raw = browserLocal.get(storeKey(STORAGE_KEY_PENDING));
         if (!raw) return;
         const obj = JSON.parse(raw);
         const now = Date.now();
@@ -55,7 +56,7 @@ function savePendingToStorage() {
                 obj[sid] = valid;
             }
         }
-        localStorage.setItem(storeKey(STORAGE_KEY_PENDING), JSON.stringify(obj));
+        browserLocal.set(storeKey(STORAGE_KEY_PENDING), JSON.stringify(obj));
     } catch (e) {
         console.warn("[coral] Failed to save pending messages to storage", e);
     }
