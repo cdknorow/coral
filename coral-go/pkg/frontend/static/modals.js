@@ -29,6 +29,7 @@ import { _acfServer, _effectiveServer, _fillModelDatalist, _getAgentModels, _get
 import { AGENT_PRESETS, ALL_CAPABILITIES } from './agent_presets.js';
 import { PERMISSION_MODE_DESCRIPTIONS, _getPermissionFlagsForAgentMode, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions, _updatePermModeDescription } from './permission_flags.js';
 import { CLI_INSTALL_INSTRUCTIONS, _checkAgentCLI } from './cli_check.js';
+import { _classifyLoadedACFModel } from './acf_models.js';
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
 
@@ -56,28 +57,6 @@ function _setPermFlagsForInput(inputId, agentType, mode) {
 window._setPermFlagsForInput = _setPermFlagsForInput;
 
 
-
-// A persisted model is not automatically a user edit. Treat known provider
-// defaults/models as replaceable when the provider changes, while preserving
-// an explicitly chosen custom model across the switch.
-function _classifyLoadedACFModel(container, agentType, model) {
-    if (!container || !model) return;
-    const input = container.querySelector('.acf-model');
-    const initialModel = model;
-    const acfServer = _acfServer(container);
-    Promise.all([_getDefaultModels(acfServer), _getAgentModels(acfServer)]).then(([defaults, models]) => {
-        if (container.dataset.acfModelDirty === 'true' || input?.value !== initialModel) return;
-        const knownModels = Array.isArray(models?.[agentType]) ? models[agentType] : [];
-        const isKnown = defaults?.[agentType] === initialModel || knownModels.includes(initialModel);
-        container.dataset.acfModelDirty = isKnown ? 'false' : 'true';
-        container.dataset.acfModelClassifying = 'false';
-    }).catch(() => {
-        // If the catalog cannot be read, preserve the explicit value rather
-        // than risking data loss.
-        container.dataset.acfModelClassifying = 'false';
-        container.dataset.acfModelDirty = 'true';
-    });
-}
 
 function _syncMobileLaunchSections(step) {
     const isMobile = window.innerWidth <= 767;
