@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -89,4 +90,44 @@ func TestBoardBodyIsCappedBeforeTheIdentityCheck(t *testing.T) {
 	big := `{"subscriber_id":"Dev","content":"` + strings.Repeat("x", maxBoardBody) + `"}`
 	assert.Equal(t, http.StatusRequestEntityTooLarge, do(big))
 	assert.Equal(t, 1, reached, "never reaches the handler")
+}
+
+// #3695: the cap holds for a board request with no session token too (a local curl, the
+// dashboard), which the identity check doesn't read but the handler's decoder does. A declared
+// length over the cap is refused with 413 before the handler; a chunked body is cut at the cap.
+func TestTokenlessBoardBodyIsCapped(t *testing.T) {
+	_, bh := setupBoardTestServer(t)
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	o := NewIdentityObserver(db, bh.bs, func(*http.Request) bool { return false })
+	reached, read := 0, 0
+	var readErr error
+	h := o.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached++
+		b, err := io.ReadAll(r.Body)
+		read, readErr = len(b), err
+	}))
+	do := func(body string, chunked bool) int {
+		req := httptest.NewRequest("POST", "/api/board/p/messages", strings.NewReader(body))
+		if chunked {
+			req.ContentLength = -1
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	assert.Equal(t, http.StatusOK, do(`{"subscriber_id":"Dev","content":"hi"}`, false))
+	assert.Equal(t, 1, reached)
+	assert.NoError(t, readErr)
+
+	big := `{"subscriber_id":"Dev","content":"` + strings.Repeat("x", maxBoardBody) + `"}`
+	assert.Equal(t, http.StatusRequestEntityTooLarge, do(big, false))
+	assert.Equal(t, 1, reached, "a declared length over the cap never reaches the handler")
+
+	do(big, true)
+	assert.Equal(t, 2, reached)
+	var tooBig *http.MaxBytesError
+	assert.ErrorAs(t, readErr, &tooBig, "a chunked body over the cap is cut")
+	assert.LessOrEqual(t, read, maxBoardBody)
 }

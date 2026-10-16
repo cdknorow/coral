@@ -165,6 +165,17 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// Every board request's body is capped before anything reads it: the identity check below
+		// (boardClaims) for an agent's token, and the handler's decoder for every caller, token or
+		// not (#3668 finding 5, #3695). A declared length over the cap is refused here with 413; a
+		// chunked body is cut at the cap, so its handler fails to decode it.
+		if r.Body != nil && strings.HasPrefix(r.URL.Path, "/api/board/") {
+			if r.ContentLength > maxBoardBody {
+				o.refuse(w, http.StatusRequestEntityTooLarge, "body_too_large", "This board request's body is over the limit")
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxBoardBody)
+		}
 		if token := r.Header.Get(store.SessionTokenHeader); token != "" {
 			owner, err := o.db.SessionTokenOwnerOf(r.Context(), token)
 			if err != nil {
@@ -199,11 +210,6 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			// A presented token decides who the caller is on the board, in every mode
 			// (#3495): an agent can't post or act as another subscriber or as the Operator.
 			// Acting on another board stays log-only outside strict mode.
-			if r.Body != nil && strings.HasPrefix(r.URL.Path, "/api/board/") {
-				// boardClaims reads the body to find the identities it names: never an
-				// unbounded one (#3668, the audit's finding 5).
-				r.Body = http.MaxBytesReader(w, r.Body, maxBoardBody)
-			}
 			m, err := o.checkBoard(r, owner)
 			if errors.Is(err, errBoardBodyTooLarge) {
 				o.refuse(w, http.StatusRequestEntityTooLarge, "body_too_large", "This board request's body is over the limit")
