@@ -246,14 +246,7 @@ func (b *TmuxBackend) PaneSize(name string) (int, int, error) {
 		agentType = sess.info.AgentType
 		sessionID = sess.info.SessionID
 	}
-	target, err := b.client.FindPaneTarget(ctx, name, agentType, sessionID)
-	if err != nil {
-		return 0, 0, err
-	}
-	if target == "" {
-		return 0, 0, fmt.Errorf("%w: pane %q not found", ErrTerminalGone, name)
-	}
-	out, err := b.client.DisplayMessage(ctx, target, "#{pane_width} #{pane_height}")
+	out, err := b.client.DisplayForAgent(ctx, name, agentType, sessionID, "#{pane_width} #{pane_height}")
 	if err != nil {
 		return 0, 0, err
 	}

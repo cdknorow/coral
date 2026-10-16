@@ -266,7 +266,9 @@ func (tl *transcriptTail) read() ([]thinkingTurn, error) {
 	}
 
 	var turns []thinkingTurn
-	r := bufio.NewReaderSize(f, 256*1024)
+	// The buffer fits what was appended (usually a few lines), up to 256 KiB: a 256 KiB buffer
+	// for every poll of every live transcript was a steady share of the allocations (#3728).
+	r := bufio.NewReaderSize(f, int(min(256*1024, max(4096, info.Size()-tl.offset))))
 	for {
 		line, err := r.ReadBytes('\n')
 		if err != nil {

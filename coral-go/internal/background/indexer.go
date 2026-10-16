@@ -120,7 +120,7 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 			continue
 		}
 
-		if s.FTSBody != "" {
+		if s.FTSBody != "" && !s.FTSUnchanged {
 			if err := idx.store.UpsertFTS(ctx, s.SessionID, s.FTSBody); err != nil {
 				idx.logger.Warn("upsert FTS failed", "session", s.SessionID, "error", err)
 			}

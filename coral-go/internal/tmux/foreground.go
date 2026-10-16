@@ -2,12 +2,14 @@ package tmux
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // shellNames are the interactive shells an agent's terminal starts with. The
@@ -33,75 +35,106 @@ func IsShellCommand(name string) bool {
 // running one) is running in it, so the agent has exited (#3219). Checking for
 // children rather than the foreground name keeps a CLI started through a shell
 // wrapper script (which shows as 'bash' or 'sh') from looking exited. Unix only:
-// it uses ps and pgrep.
+// it reads the process table from ps, one snapshot shared by the checks of every
+// agent made within procTableTTL (#3728: three ps/pgrep runs per agent every 30 s).
 func ShellIdle(pid int) (idle bool, shell string, err error) {
 	if pid <= 0 {
 		return false, "", fmt.Errorf("no shell pid")
 	}
-	out, err := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid)).Output()
+	procs, err := readProcTable()
 	if err != nil {
 		return false, "", fmt.Errorf("read process %d: %w", pid, err)
 	}
-	shell = strings.TrimSpace(string(out))
+	p, ok := procs.byPID[pid]
+	if !ok {
+		return false, "", fmt.Errorf("read process %d: no such process", pid)
+	}
+	shell = p.comm
 	if !IsShellCommand(shell) {
 		return false, shell, nil // the terminal's process is the agent itself (it was exec'd)
 	}
-	children, err := exec.Command("pgrep", "-P", strconv.Itoa(pid)).Output()
-	var ee *exec.ExitError
-	switch {
-	case err == nil:
-		// Children: busy only if one of them is in the foreground of the terminal. A
-		// background job ('sleep &') left after the CLI exited is not the agent (#3268).
-		if foregroundChild(strings.Fields(string(children))) {
+	// Children: busy only if one of them is in the foreground of the terminal (a '+' in
+	// its ps state). A background job ('sleep &') left after the CLI exited is not the
+	// agent (#3268).
+	for _, c := range procs.children[pid] {
+		if strings.Contains(procs.byPID[c].stat, "+") {
 			return false, shell, nil
 		}
-		return true, shell, nil
-	case errors.As(err, &ee) && ee.ExitCode() == 1:
-		return true, shell, nil // pgrep found no child
-	default:
-		return false, shell, fmt.Errorf("list children of %d: %w", pid, err)
 	}
+	return true, shell, nil
 }
 
-// foregroundChild reports whether any of these processes is in its terminal's
-// foreground process group (a '+' in the ps state). When it cannot tell it says yes,
-// the old, safe reading: a child is running.
-func foregroundChild(pids []string) bool {
-	if len(pids) == 0 {
-		return false
+type procEntry struct {
+	ppid int
+	stat string
+	comm string
+}
+
+type procTable struct {
+	byPID    map[int]procEntry
+	children map[int][]int
+	at       time.Time
+}
+
+// procTableTTL is how long a process-table snapshot answers: long enough to serve one
+// reconciler pass over every agent, short enough that an exit is seen on the next pass.
+const procTableTTL = time.Second
+
+var (
+	procTableMu   sync.Mutex
+	procTableLast *procTable
+	// procTableRuns counts the ps runs, for tests.
+	procTableRuns atomic.Int64
+)
+
+// readProcTable returns a snapshot of every process (pid, parent, state, command) no older
+// than procTableTTL, from one 'ps' run.
+func readProcTable() (*procTable, error) {
+	procTableMu.Lock()
+	defer procTableMu.Unlock()
+	if t := procTableLast; t != nil && time.Since(t.at) < procTableTTL {
+		return t, nil
 	}
-	out, err := exec.Command("ps", append([]string{"-o", "stat=", "-p"}, strings.Join(pids, ","))...).Output()
+	procTableRuns.Add(1)
+	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,stat=,comm=").Output()
 	if err != nil {
-		// ps exits 1 when some pids are already gone: judge by the ones it printed.
-		if len(out) == 0 {
-			return err != nil && !isExit1(err)
-		}
+		return nil, err
 	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.Contains(line, "+") {
-			return true
-		}
-	}
-	return false
+	t := parseProcTable(string(out))
+	t.at = time.Now()
+	procTableLast = t
+	return t, nil
 }
 
-func isExit1(err error) bool {
-	var ee *exec.ExitError
-	return errors.As(err, &ee) && ee.ExitCode() == 1
+// parseProcTable reads 'ps -A -o pid=,ppid=,stat=,comm=': the command is the rest of the
+// line (a macOS command is a path, which may hold spaces).
+func parseProcTable(out string) *procTable {
+	t := &procTable{byPID: map[int]procEntry{}, children: map[int][]int{}}
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 4 {
+			continue
+		}
+		pid, err1 := strconv.Atoi(f[0])
+		ppid, err2 := strconv.Atoi(f[1])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		rest := strings.TrimLeft(line, " \t")
+		for k := 0; k < 3; k++ { // past pid, ppid and stat
+			rest = strings.TrimLeft(rest[strings.IndexAny(rest, " \t"):], " \t")
+		}
+		t.byPID[pid] = procEntry{ppid: ppid, stat: f[2], comm: strings.TrimSpace(rest)}
+		t.children[ppid] = append(t.children[ppid], pid)
+	}
+	return t
 }
 
 // AgentShellIdle reports whether the agent's own pane is back at its idle shell
 // prompt (ShellIdle on the pane's shell). It returns ErrTerminalGone when the
 // pane is gone.
 func (c *Client) AgentShellIdle(ctx context.Context, agentName, agentType, sessionID string) (bool, string, error) {
-	target, err := c.FindPaneTarget(ctx, agentName, agentType, sessionID)
-	if err != nil {
-		return false, "", err
-	}
-	if target == "" {
-		return false, "", fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
-	}
-	out, err := c.DisplayMessage(ctx, target, "#{pane_pid}")
+	out, err := c.DisplayForAgent(ctx, agentName, agentType, sessionID, "#{pane_pid}")
 	if err != nil {
 		return false, "", err
 	}

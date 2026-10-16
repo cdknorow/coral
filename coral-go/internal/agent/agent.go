@@ -102,6 +102,9 @@ type IndexedSession struct {
 	MessageCount   int
 	DisplaySummary string
 	FTSBody        string
+	// FTSUnchanged: FTSBody is the one this scanner returned for the file last time, so the
+	// indexer needn't write it again (#3728).
+	FTSUnchanged bool
 }
 
 // ftsBodyLimit caps how much of one session's text enters the search index.

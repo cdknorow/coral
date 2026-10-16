@@ -3,6 +3,7 @@ package tmux
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -98,4 +99,35 @@ func TestAgentShellIdleIgnoresBackgroundJobs(t *testing.T) {
 	require.Eventually(t, func() bool { v, ok := state(); return ok && !v }, shellWait, 25*time.Millisecond, "a foreground command keeps the shell busy")
 	require.NoError(t, c.SendRawKeys(ctx, name, []string{"C-c"}, "claude", sid))
 	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, shellWait, 25*time.Millisecond)
+}
+
+// #3728: the process table is read with one ps run; the command is the rest of the line, spaces
+// included (a macOS command is a path).
+func TestParseProcTable(t *testing.T) {
+	out := "    1     0 Ss   /sbin/launchd\n" +
+		"  500     1 S    /Applications/Some App.app/Contents/MacOS/Some App\n" +
+		"  600   500 Ss   -zsh\n" +
+		"  601   600 S+   claude\n" +
+		"  602   600 S    sleep\n" +
+		"garbage line\n"
+	tb := parseProcTable(out)
+	assert.Equal(t, "/Applications/Some App.app/Contents/MacOS/Some App", tb.byPID[500].comm)
+	assert.Equal(t, procEntry{ppid: 600, stat: "S+", comm: "claude"}, tb.byPID[601])
+	assert.ElementsMatch(t, []int{601, 602}, tb.children[600])
+	assert.Len(t, tb.byPID, 5)
+}
+
+// #3728: the checks of many agents made together share one ps run.
+func TestShellIdleSharesOneProcessSnapshot(t *testing.T) {
+	procTableMu.Lock()
+	procTableLast = nil
+	procTableMu.Unlock()
+	before := procTableRuns.Load()
+	for i := 0; i < 20; i++ {
+		_, _, err := ShellIdle(os.Getpid())
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int64(1), procTableRuns.Load()-before, "one ps run for twenty checks")
+	_, _, err := ShellIdle(1 << 30)
+	assert.ErrorContains(t, err, "no such process")
 }

@@ -428,7 +428,7 @@ func ReadFrom(path, agentType string, offset int64) ([]map[string]any, int64, er
 	return ReadFromContext(context.Background(), path, agentType, offset)
 }
 
-// ReadFromContext is ReadFrom whose wait for a large decode's turn (coldDecodes) ends with ctx.
+// ReadFromContext is ReadFrom whose wait for a large decode's turn (the decodelimit slots) ends with ctx.
 func ReadFromContext(ctx context.Context, path, agentType string, offset int64) ([]map[string]any, int64, error) {
 	f, err := openTranscript(path, agentType)
 	if err != nil {

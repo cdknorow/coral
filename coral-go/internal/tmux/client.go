@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
 	"github.com/cdknorow/coral/internal/testguard"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -301,7 +302,7 @@ func CheckSocketPath(coralDir string) error {
 func (c *Client) ListPanes(ctx context.Context) ([]Pane, error) {
 	panes := c.listPanesOnSocket(ctx, c.SocketPath)
 
-	if c.FallbackToDefault && c.SocketPath != "" {
+	if c.FallbackToDefault && c.SocketPath != "" && defaultServerMayRun() {
 		fallbackPanes := c.listPanesOnSocket(ctx, "")
 		// Deduplicate by session name (prefer primary socket)
 		seen := make(map[string]bool)
@@ -327,6 +328,22 @@ func (c *Client) ListPanes(ctx context.Context) ([]Pane, error) {
 	c.socketsMu.Unlock()
 
 	return panes, nil
+}
+
+// defaultServerMayRun reports whether tmux's default socket may have a server: false only
+// when its socket file is not there, so the fallback listing (a tmux run on every ListPanes,
+// #3728) is skipped on a computer with no default tmux server. Inside tmux ($TMUX), or when the
+// path can't be worked out or checked, it says yes, and the listing runs as before.
+func defaultServerMayRun() bool {
+	if os.Getenv("TMUX") != "" || runtime.GOOS == "windows" {
+		return true
+	}
+	dir := os.Getenv("TMUX_TMPDIR")
+	if dir == "" {
+		dir = "/tmp"
+	}
+	_, err := os.Lstat(filepath.Join(dir, fmt.Sprintf("tmux-%d", os.Getuid()), "default"))
+	return !errors.Is(err, fs.ErrNotExist)
 }
 
 func (c *Client) listPanesOnSocket(ctx context.Context, socketPath string) []Pane {
@@ -705,6 +722,37 @@ func (c *Client) CapturePaneRawTarget(ctx context.Context, target string, lines 
 // Returns the formatted output string.
 func (c *Client) DisplayMessage(ctx context.Context, target, format string) (string, error) {
 	return c.run(ctx, "display-message", "-t", target, "-p", format)
+}
+
+// DisplayForAgent is DisplayMessage on an agent's own pane, found through the pane-target
+// cache capturePane keeps (#3728): one tmux run while the pane stays where it was, instead of
+// listing every pane (twice with the default-socket fallback) first. It returns ErrTerminalGone
+// when the pane is gone.
+func (c *Client) DisplayForAgent(ctx context.Context, agentName, agentType, sessionID, format string) (string, error) {
+	key := agentName + "\x00" + agentType + "\x00" + sessionID
+	if sessionID != "" {
+		if cached, ok := c.captureTarget(key); ok {
+			if out, err := c.DisplayMessage(ctx, cached, format); err == nil {
+				return out, nil
+			}
+			c.setCaptureTarget(key, "") // the pane is gone or moved: look it up again
+		}
+	}
+	target, err := c.FindPaneTarget(ctx, agentName, agentType, sessionID)
+	if err != nil {
+		return "", err
+	}
+	if target == "" {
+		return "", fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
+	}
+	out, err := c.DisplayMessage(ctx, target, format)
+	if err != nil {
+		return "", err
+	}
+	if sessionID != "" {
+		c.setCaptureTarget(key, target)
+	}
+	return out, nil
 }
 
 // KillSession kills the tmux session for a given agent.

@@ -9,12 +9,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/decodelimit"
 )
 
 // #3715 (Security's review points): at most two large decodes run at once; a third waits, and
 // gives up when its context ends; a slot comes back on every path, a panic included.
 func TestColdDecodeLimitHoldsAndNeverLeaks(t *testing.T) {
-	big := []byte(strings.Repeat(`{"type":"x","v":"`+strings.Repeat("a", 1000)+`"}`+"\n", bigDecode/1000+10))
+	big := []byte(strings.Repeat(`{"type":"x","v":"`+strings.Repeat("a", 1000)+`"}`+"\n", decodelimit.Big/1000+10))
 	inside, release := make(chan struct{}, 4), make(chan struct{})
 	testDuringDecode = func() { inside <- struct{}{}; <-release }
 	t.Cleanup(func() { testDuringDecode = nil })
@@ -26,7 +28,7 @@ func TestColdDecodeLimitHoldsAndNeverLeaks(t *testing.T) {
 	}
 	<-inside
 	<-inside
-	assert.Len(t, coldDecodes, 2, "both slots taken")
+	assert.Equal(t, 2, decodelimit.InUse(), "both slots taken")
 
 	// A third waits; its context ends first: it gives up at once, takes nothing.
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -35,11 +37,11 @@ func TestColdDecodeLimitHoldsAndNeverLeaks(t *testing.T) {
 	_, err := decodeLimited(ctx, big)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, time.Since(start), 2*time.Second)
-	assert.Len(t, coldDecodes, 2)
+	assert.Equal(t, 2, decodelimit.InUse())
 
 	close(release)
 	wg.Wait()
-	assert.Len(t, coldDecodes, 0, "every slot back")
+	assert.Equal(t, 0, decodelimit.InUse(), "every slot back")
 
 	// A panic during a decode gives its slot back.
 	testDuringDecode = func() { panic("boom") }
@@ -47,10 +49,10 @@ func TestColdDecodeLimitHoldsAndNeverLeaks(t *testing.T) {
 		defer func() { require.NotNil(t, recover()) }()
 		_, _ = decodeLimited(context.Background(), big)
 	}()
-	assert.Len(t, coldDecodes, 0, "the panicking decode's slot is back")
+	assert.Equal(t, 0, decodelimit.InUse(), "the panicking decode's slot is back")
 
 	// A small decode takes no slot at all.
-	testDuringDecode = func() { assert.Len(t, coldDecodes, 0) }
+	testDuringDecode = func() { assert.Equal(t, 0, decodelimit.InUse()) }
 	_, err = decodeLimited(context.Background(), []byte(`{"a":1}`+"\n"))
 	assert.NoError(t, err)
 }

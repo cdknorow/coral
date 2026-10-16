@@ -6,29 +6,18 @@ import (
 	"io"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/decodelimit"
 )
-
-// coldDecodes bounds the large decodes that run at once in this process (#3715, Security's
-// NIT on #3710): a cold chat read, a goals read from the start, a tail scan. Each holds a
-// transcript's bytes and parses it, and several at once (a restart with many live agents) would
-// take every CPU from the server; the rest wait their turn.
-var coldDecodes = make(chan struct{}, 2)
-
-// bigDecode is the size from which a decode takes a coldDecodes slot.
-const bigDecode = 1 << 20
 
 // decodeLimited is decodeLines under the limit: a large decode waits for a slot, or gives up
 // when ctx ends (a cancelled Hub poll doesn't sit behind another session's decode), and the slot
 // is given back on every path out, a panic included.
 func decodeLimited(ctx context.Context, data []byte) ([]map[string]any, error) {
-	if len(data) >= bigDecode {
-		select {
-		case coldDecodes <- struct{}{}:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-		defer func() { <-coldDecodes }()
+	release, err := decodelimit.Acquire(ctx, int64(len(data)))
+	if err != nil {
+		return nil, err
 	}
+	defer release()
 	if testDuringDecode != nil {
 		testDuringDecode()
 	}
