@@ -147,7 +147,8 @@ export async function refreshCapture() {
         // Mark whether this is a real terminal buffer (vs an error placeholder)
         // so consumers such as the Mode label can tell "default mode" from
         // "nothing usable captured".
-        el.dataset.captureState = captureData.capture ? "ok" : "error";
+        const captureState = captureData.capture ? "ok" : "error";
+        if (el.dataset.captureState !== captureState) el.dataset.captureState = captureState; // an unchanged value is still a mutation
 
         if (el._lastCapture !== text) {
             if (state.isSelecting) return;

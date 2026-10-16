@@ -1,6 +1,7 @@
 /* Agent task bar — CRUD, rendering, drag reorder */
 
 import { state } from './state.js';
+import { morphHtml } from './dom_morph.js';
 import { closeOnBackdropAndEscape, releaseEscape } from './dialog_close.js';
 import { registerTaskView, redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
@@ -421,7 +422,7 @@ export function renderBoardTaskList() {
     if (allTasks.length === 0) {
         // Drop the previous agent's rows too; hiding alone leaves them in the DOM.
         const countEl = document.getElementById('task-bar-count');
-        if (countEl) countEl.textContent = '';
+        if (countEl && countEl.textContent !== '') countEl.textContent = '';
         const live = state.selectedTeam || (state.currentSession && state.currentSession.type === 'live');
         if (!live) {
             if (section) section.style.display = 'none';
@@ -431,14 +432,14 @@ export function renderBoardTaskList() {
         // A live agent always gets the section, so "+ Task" is reachable
         if (section) section.style.display = '';
         const headerLabel = section ? section.querySelector('.board-tasks-header > span:first-child') : null;
-        if (headerLabel) headerLabel.textContent = 'Tasks';
+        if (headerLabel && headerLabel.textContent !== 'Tasks') headerLabel.textContent = 'Tasks';
         const toggle = document.getElementById('board-task-hide-toggle-container');
-        if (toggle) toggle.innerHTML = '';
-        container.innerHTML = _boardList.busy
+        if (toggle && toggle.firstChild) toggle.innerHTML = '';
+        morphHtml(container, _boardList.busy
             ? `<div class="board-task-empty board-task-busy" role="status">${escapeHtml(_boardList.busy)}</div>`
             : state.selectedTeam
                 ? '<div class="board-task-empty">No tasks yet. Use + Task to add one for this team.</div>'
-                : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>';
+                : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>');
         return;
     }
     if (section) section.style.display = '';
@@ -448,14 +449,14 @@ export function renderBoardTaskList() {
     // Render hide-done toggle in the section header
     const toggleContainer = document.getElementById('board-task-hide-toggle-container');
     if (toggleContainer) {
-        toggleContainer.innerHTML = completedCount > 0
+        morphHtml(toggleContainer, completedCount > 0
             ? `<label class="board-task-hide-toggle"><input type="checkbox" ${_hideCompleted ? 'checked' : ''} data-on-change="task-hide-done"> Hide done (${completedCount})</label>`
-            : '';
+            : '');
     }
 
     // Update section header to "Tasks" instead of "Board Tasks"
     const headerLabel = section ? section.querySelector('.board-tasks-header > span:first-child') : null;
-    if (headerLabel) headerLabel.textContent = 'Tasks';
+    if (headerLabel && headerLabel.textContent !== 'Tasks') headerLabel.textContent = 'Tasks';
 
     const header = `
         <div class="board-task-item board-task-header">
@@ -560,7 +561,8 @@ export function renderBoardTaskList() {
     const more = _boardList.nextCursor && !_hideCompleted
         ? `<div class="board-task-more"><button type="button" class="btn board-task-load-more" data-on-click="task-load-more">Load more done tasks${notLoaded ? ` (${notLoaded} not shown)` : ''}</button></div>`
         : '';
-    container.innerHTML = header + rows + more;
+    // Unchanged rows keep their nodes: the list was rebuilt on every poll, a layout each time (#3881).
+    morphHtml(container, header + rows + more);
 
     // Update task count badge: done / all; the board's numbers are the server's totals.
     const countEl = document.getElementById('task-bar-count');
@@ -568,7 +570,8 @@ export function renderBoardTaskList() {
         const boardTotal = _boardList.totalOpen !== null && _boardList.totalCompleted !== null
             ? _boardList.totalOpen + _boardList.totalCompleted : boardTasks.length;
         const total = boardTotal + otherTasks.length;
-        countEl.textContent = total > 0 ? `${completedCount}/${total}` : '';
+        const countText = total > 0 ? `${completedCount}/${total}` : '';
+        if (countEl.textContent !== countText) countEl.textContent = countText; // same text: no new text node, no layout
     }
 }
 

@@ -6,6 +6,7 @@ import { loadChangedFiles } from './changed_files.js';
 import { selectFilesSource } from './team_artifacts.js';
 import { startBoardTaskPoll, stopBoardTaskPoll } from './tasks.js';
 import { escapeHtml, escapeAttr } from './utils.js';
+import { morphHtml } from './dom_morph.js';
 import { registerActions } from './actions.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 import { serverFetch, serverForSession } from './server_base.js';
@@ -54,11 +55,11 @@ export async function loadAgentEvents(agentName, sessionId, options) {
     const activeCount = FILTER_GROUPS.length - hidden.size;
     const badge = hidden.size > 0 ? `<span class="filter-btn-badge">${activeCount}/${FILTER_GROUPS.length}</span>` : '';
 
-    container.innerHTML = `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="live">
+    morphHtml(container, `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="live">
         <span class="event-filter-char">&#xe152;</span>
         <span class="filter-btn-label">Filter</span>
         ${badge}
-    </button>`;
+    </button>`);
 }
 
 // Track which mode the dropdown is open for
@@ -188,18 +189,18 @@ export function renderEventTimeline() {
     renderEventFilters();
 
     if (events.length === 0) {
-        container.innerHTML = '<div class="event-empty">No activity yet</div>';
+        morphHtml(container, '<div class="event-empty">No activity yet</div>');
         return;
     }
 
     const visible = events.filter(isEventVisible);
     if (visible.length === 0) {
-        container.innerHTML = '<div class="event-empty">All events filtered out</div>';
+        morphHtml(container, '<div class="event-empty">All events filtered out</div>');
         return;
     }
 
     // Events come newest-first from API, display newest at top
-    container.innerHTML = visible.map(ev => {
+    morphHtml(container, visible.map(ev => {
         const icon = getToolIcon(ev.tool_name, ev.event_type);
         const typeCls = (ev.event_type ? `event-type-${ev.event_type}` : '') + (eventFailed(ev) ? ' event-failed' : '');
         const extra = eventDetailText(ev);
@@ -211,7 +212,7 @@ export function renderEventTimeline() {
             ${durationChip(ev)}
             <span class="event-time">${formatClockTime(ev.created_at)}</span>
         </div>`;
-    }).join('');
+    }).join(''));
 
     renderLiveActivityChart();
 }
