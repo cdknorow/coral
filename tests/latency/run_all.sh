@@ -152,9 +152,10 @@ log "checking p95 budgets (hog)"
 python3 - "$WORK/hog.csv" <<'PY'
 import csv,sys
 # p95 budgets in ms, under the CPU hog (the stress case; idle is always lower). Set from the
-# #3740 after-run on 296439a2 with headroom. chat is 25 FOR NOW: #3723's redact-before-cut over
-# tool fields pushed chat p95 up; #3745 makes trimChatPage cheaper and chat returns to 15 then.
-BUD={'team_availability':50,'board_status':50,'sleep_status':10,'chat':25,'poll':30,'files':45}
+# #3740 after-run on 296439a2 with headroom. chat was 25 while #3723's redact-before-cut over tool
+# fields raised its p95; #3745 made trimChatPage cheaper, and the #3851 baseline (2026-10-16)
+# measured chat under-hog p95 = 8.2 ms, so the budget is back to 15 (still ~2x headroom).
+BUD={'team_availability':50,'board_status':50,'sleep_status':10,'chat':15,'poll':30,'files':45}
 rows={r['endpoint']:r for r in csv.DictReader(open(sys.argv[1]))}
 bad=0
 for ep,b in BUD.items():

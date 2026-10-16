@@ -32,7 +32,7 @@ server, the hogs, the tmux socket and the seeder copy.
 | team_availability | 50 | |
 | board_status | 50 | |
 | sleep_status | 10 | |
-| chat | 25 | **temporary**: #3723's redact-before-cut raised chat p95; #3745 lowers it and chat returns to 15 |
+| chat | 15 | #3745 made trimChatPage cheaper; the #3851 baseline measured chat under-hog p95 = 8.2 ms (~2x headroom) |
 | poll | 30 | |
 | files | 45 | |
 
