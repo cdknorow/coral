@@ -88,23 +88,7 @@ func OpenNoFollow(path string, flag int, perm os.FileMode) (*os.File, error) {
 // protectHandle is Protect on an open handle: full control for this user and SYSTEM, nothing
 // inherited.
 func protectHandle(h windows.Handle) error {
-	p, err := currentPrincipals()
-	if err != nil {
-		return err
-	}
-	entry := func(sid *windows.SID) windows.EXPLICIT_ACCESS {
-		return windows.EXPLICIT_ACCESS{
-			AccessPermissions: windows.GENERIC_ALL,
-			AccessMode:        windows.SET_ACCESS,
-			Inheritance:       windows.NO_INHERITANCE,
-			Trustee: windows.TRUSTEE{
-				TrusteeForm:  windows.TRUSTEE_IS_SID,
-				TrusteeType:  windows.TRUSTEE_IS_USER,
-				TrusteeValue: windows.TrusteeValueFromSID(sid),
-			},
-		}
-	}
-	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{entry(p.user), entry(p.system)}, nil)
+	acl, err := privateACL()
 	if err != nil {
 		return err
 	}
