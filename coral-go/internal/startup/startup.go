@@ -162,8 +162,12 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	}
 }
 
-// Close closes the database connection.
+// Close closes the databases and releases the instance lock.
 func (rs *RunningServer) Close() {
+	// The board database too: on Windows an open messageboard.db can't be removed (#3920 T2).
+	if rs.Server != nil && rs.Server.BoardStore() != nil {
+		rs.Server.BoardStore().Close()
+	}
 	if rs.DB != nil {
 		rs.DB.Close()
 	}
