@@ -159,6 +159,46 @@ function bundleInputErrors(e) {
     return errs;
 }
 
+// The packages' license texts that the release packages ship (licenses/vendor, listed in licenses/vendor/INDEX.tsv and
+// pinned in licenses/SHA256SUMS.vendor; see installers/third-party-notices.sh) must be exactly the vendored packages:
+// every ENTRIES package and every non-dev package in a bundle's lock, at the vendored version. Offline.
+export const LICENSES = path.resolve(here, '../../licenses');
+export function licenseErrors() {
+    const errs = [], want = new Set();
+    for (const e of ENTRIES) {
+        if (e.mode === 'bundle') {
+            const lock = JSON.parse(fs.readFileSync(path.resolve(here, '../..', e.input, 'package-lock.json'), 'utf8'));
+            for (const [k, v] of Object.entries(lock.packages)) if (k && !v.dev) want.add(`${k.replace(/^node_modules\//, '')}@${v.version}`);
+        } else if (e.pkg) want.add(`${e.pkg}@${e.version}`);
+    }
+    const rows = fs.readFileSync(path.join(LICENSES, 'vendor', 'INDEX.tsv'), 'utf8').trim().split('\n').slice(1).map(l => l.split('\t'));
+    const have = new Set();
+    for (const [pkg, version, , dir] of rows) {
+        if (!dir.startsWith('vendor/')) continue;
+        have.add(`${pkg}@${version}`);
+        if (dir !== `vendor/${pkg.replace('/', '__')}@${version}`) errs.push(`licenses/vendor/INDEX.tsv: ${pkg}@${version} points at ${dir}`);
+        const d = path.join(LICENSES, dir);
+        const lic = fs.existsSync(d) ? fs.readdirSync(d).filter(f => /^(licen[cs]e|copying)/i.test(f)) : [];
+        if (!lic.length) errs.push(`licenses/${dir}: no license file`);
+    }
+    for (const id of want) if (!have.has(id)) errs.push(`licenses/vendor: no license text for ${id} (vendored)`);
+    for (const id of have) if (!want.has(id)) errs.push(`licenses/vendor: ${id} is listed but not vendored`);
+    const sums = new Map(fs.readFileSync(path.join(LICENSES, 'SHA256SUMS.vendor'), 'utf8').trim().split('\n').map(l => [l.slice(66), l.slice(0, 64)]));
+    const files = [];
+    (function walk(rel) {
+        for (const ent of fs.readdirSync(path.join(LICENSES, rel), { withFileTypes: true })) {
+            const r = path.posix.join(rel, ent.name);
+            if (ent.isDirectory()) walk(r); else if (r !== 'vendor/INDEX.tsv') files.push(r);
+        }
+    })('vendor'); (function walk(rel) { for (const f of fs.readdirSync(path.join(LICENSES, rel))) files.push(path.posix.join(rel, f)); })('fonts');
+    for (const f of files) {
+        if (!sums.has(f)) errs.push(`licenses/SHA256SUMS.vendor: ${f} is not listed`);
+        else if (sums.get(f) !== sha256(fs.readFileSync(path.join(LICENSES, f)))) errs.push(`licenses/${f}: differs from SHA256SUMS.vendor`);
+    }
+    for (const f of sums.keys()) if (!files.includes(f)) errs.push(`licenses/SHA256SUMS.vendor: ${f} is listed but missing`);
+    return errs;
+}
+
 // Rebuild a bundle from its input into a temporary folder (the input folder's node_modules is not touched) and return the bytes.
 function rebuildBundle(e) {
     const src = path.resolve(here, '../..', e.input);
@@ -207,6 +247,8 @@ async function main() {
     }
     const inputErrs = ENTRIES.filter(e => e.mode === 'bundle').flatMap(bundleInputErrors);
     if (inputErrs.length) { console.error(inputErrs.join('\n')); process.exit(1); }
+    const licErrs = licenseErrors();
+    if (licErrs.length) { console.error(licErrs.join('\n')); process.exit(1); }
     const listed = new Set(ENTRIES.map(e => e.file));
     const unlisted = [];
     (function walk(d) {
