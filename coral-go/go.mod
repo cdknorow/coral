@@ -4,6 +4,10 @@ go 1.26.9
 
 require (
 	fyne.io/systray v1.12.0
+	// SQLCipher for the encrypted build. Kept as a plain dependency, not mirrored or vendored (#3677,
+	// #3679): go.sum pins these exact bytes, and tools/verify-sqlcipher-amalgamation.sh (CI:
+	// sqlcipher-amalgamation.yml, whenever go.mod or go.sum change) proves its bundled amalgamation is
+	// byte for byte the official SQLCipher release. On a bump, update its pin table and re-run that check.
 	github.com/0xCarbon/go-sqlite3 v1.15.1
 	github.com/UserExistsError/conpty v0.1.4
 	github.com/betterleaks/betterleaks v1.9.0

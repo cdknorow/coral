@@ -1,0 +1,38 @@
+name: sqlcipher-amalgamation
+# The SQLCipher C code inside the pinned github.com/0xCarbon/go-sqlite3 module (what the encrypted
+# build links) must equal what the official SQLCipher release builds to, byte for byte (#3679, from
+# the #3677 review). Runs whenever the module pins can change (go.mod, go.sum), when the check
+# itself changes, and on demand.
+on:
+  push:
+    branches: [main, "ci/**"]
+    paths:
+      - "coral-go/go.mod"
+      - "coral-go/go.sum"
+      - "tools/verify-sqlcipher-amalgamation.sh"
+      - ".github/workflows/sqlcipher-amalgamation.yml"
+  pull_request:
+    paths:
+      - "coral-go/go.mod"
+      - "coral-go/go.sum"
+      - "tools/verify-sqlcipher-amalgamation.sh"
+      - ".github/workflows/sqlcipher-amalgamation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: Build tools (tclsh and the OpenSSL headers, as the module's upgrade/sqlcipher.sh needs)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tcl libssl-dev
+      - name: Rebuild from the official SQLCipher tag and compare
+        run: bash tools/verify-sqlcipher-amalgamation.sh
