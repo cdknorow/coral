@@ -121,7 +121,7 @@ The transcript of a live (or sleeping/archived) agent, read from its JSONL log. 
 - `start` is the absolute index of the first returned message; pass it as the next `before` to get the page above. `has_more` is `start > 0`.
 - Gzip-compressed when the request sends `Accept-Encoding: gzip` and the body is at least 8 KB.
 
-**Poll response** (`after > 0`): `{"messages": [...], "total": N, "limit_notice": ...}`, never compressed, no `start`/`has_more`.
+**Poll response** (`after > 0`): `{"messages": [...], "total": N, "limit_notice": ..., "needs_login": false, "login_reason": null}`, never compressed, no `start`/`has_more`. Both responses carry `needs_login` and `login_reason` (see sessions.md: the agent waits for a sign-in in its terminal).
 
 ```bash
 # Newest 100 messages, then the 200 above them

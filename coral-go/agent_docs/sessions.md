@@ -27,6 +27,7 @@ List all live (running) agent sessions with enriched status. Archived agents are
     "icon": "🤖",
     "working_directory": "/home/user/project",
     "waiting_for_input": false,
+    "needs_login": false,
     "done": false,
     "waiting_reason": null,
     "waiting_summary": null,
@@ -72,7 +73,7 @@ Poll lifecycle and agent-turn state using only the stable session ID. The `state
 }
 ```
 
-`waiting_for_input` is true only while the agent has asked the user something directly, such as a permission or approval prompt, and is blocked on the answer. It is not set by every notification: the idle reminder an agent sends after finishing a turn reports `done` instead. `waiting_reason` and `waiting_summary` are `null` unless a request is pending.
+`waiting_for_input` is true only while the agent has asked the user something directly, such as a permission or approval prompt, and is blocked on the answer, or while its CLI waits for the user to sign in (then `needs_login` is true and `waiting_kind` is `"login"`). It is not set by every notification: the idle reminder an agent sends after finishing a turn reports `done` instead. `waiting_reason` and `waiting_summary` are `null` unless a request is pending.
 
 `done` means the agent completed its current turn but the session remains active. `awaiting_user` carries the same value under the name the session list uses. `finished` means the session itself has stopped and will not accept more input without being resumed.
 
@@ -200,7 +201,9 @@ Read the agent's JSONL conversation log with pagination. Works for sleeping and 
 }
 ```
 
-`start` is the absolute index of the first message returned; pass it as the next `before` to get the page above. History pages are gzip-compressed when the request sends `Accept-Encoding: gzip`. A poll (`after>0`) returns `{messages, total, limit_notice}`.
+`start` is the absolute index of the first message returned; pass it as the next `before` to get the page above. History pages are gzip-compressed when the request sends `Accept-Encoding: gzip`. A poll (`after>0`) returns `{messages, total, limit_notice, needs_login, login_reason}`.
+
+`needs_login` is true while a Claude agent waits for the user to sign in: its transcript's latest message is the CLI's authentication error (invalid API key, expired or revoked OAuth, not logged in), or, before it has a transcript, its login screen is open. `login_reason` is the CLI's message, or `null`. The sign-in happens in the agent's terminal. `limit_notice` is the CLI's own usage-limit message (Claude's rate-limit error, Codex's "You've hit your usage limit"), `""` otherwise and always while `needs_login` is true.
 
 **Needs-input fields (a request that has a session id, not an older-page `before` request).** Both a poll and a history page also carry what the dashboard shows for an open prompt, so it needs no separate poll:
 

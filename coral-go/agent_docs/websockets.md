@@ -130,7 +130,8 @@ activity, log status, notifications) arrives on the tick.
 | `summary` | string \| null | Current goal/activity summary, null when empty |
 | `display_name` | string | Custom name, `""` when unset |
 | `staleness_seconds` | number | Seconds since last log activity, rounded down to the unit the dashboard shows (whole seconds under 1 min, whole minutes under 1 h, then whole hours) |
-| `waiting_for_input` | bool | Agent is waiting for user input (notification event) |
+| `waiting_for_input` | bool | Agent is waiting for user input (notification event, or a sign-in) |
+| `needs_login` | bool | The agent's CLI waits for the user to sign in, in its terminal (`waiting_kind` is `"login"`) |
 | `done` | bool | Agent has stopped (stop event) |
 | `working` | bool | Agent is actively running tools |
 | `stuck` | bool | Reserved (currently always false) |
