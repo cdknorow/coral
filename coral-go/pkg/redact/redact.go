@@ -14,8 +14,8 @@ package redact
 // reply's size. A body redacted in one Write comes out byte for byte the same as any split of
 // it (tested).
 //
-// A live stream that goes quiet (a terminal, #3562) calls Flush, which settles the held tail
-// without ending the stream: see Flush.
+// The rules' live stream (NewLiveStream, #3958) calls Flush with force after every write, so it
+// holds nothing: see Flush.
 
 import (
 	"bytes"

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/pkg/redact"
 )
 
@@ -175,21 +176,32 @@ func (w *wsRecorder) binary() string {
 	return b.String()
 }
 
-// The terminal stream: a token split across frames is caught, settled output goes out with
-// its own frame, a held tail waits no longer than its budget, the terminal's control messages
-// are redacted whole, and the setting is read per frame.
+// The terminal stream holds nothing (#3958, the operator's decision), with the production
+// redactor (betterleaks): every frame goes out at once with its own frame, a token within one
+// frame is replaced, the part of a token that completes it in a later frame is replaced (what
+// came first is the accepted risk, TestWSRedactSplitFrameSecretIsTheAcceptedRisk), the
+// terminal's control messages are redacted whole, and the setting is read per frame.
 func TestWSRedactTerminal(t *testing.T) {
 	tok := fake("ghp_", 36, alnum)
 	on := atomic.Bool{}
 	on.Store(true)
 	dst := &wsRecorder{}
-	w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
+	w := newWSRedact(context.Background(), dst, secrets.Redactor(), on.Load, true)
 	bin := func(s string) { require.NoError(t, w.write(websocket.MessageBinary, []byte(s))) }
 
+	bin("$ g")
+	assert.Equal(t, "$ g", dst.binary(), "nothing is held, not even a letter a token could start with")
+	bin("it status")
+	assert.Equal(t, "$ git status", dst.binary())
+
+	bin("\r\nout: " + tok + " ok\r\n")
+	assert.NotContains(t, dst.binary(), tok[4:], "a token within one frame is replaced")
+	assert.Contains(t, dst.binary(), redact.Marker)
+
 	bin("out: " + tok[:10])
-	assert.Equal(t, "out: ", dst.binary(), "what can't be a token goes out with its frame")
+	assert.True(t, strings.HasSuffix(dst.binary(), "out: "+tok[:10]), "a frame goes out at once, the start of a token too")
 	bin(tok[10:] + "\r\n")
-	assert.Equal(t, "out: "+redact.Marker+"\r\n", dst.binary(), "a token split across two frames")
+	assert.NotContains(t, dst.binary(), tok[10:], "the part that completes it is found with what was shown")
 
 	// The feed's and the terminal's JSON: each text frame redacted whole, still JSON.
 	msg, _ := json.Marshal(map[string]string{"type": "terminal_input_failed", "error": "bad " + tok})
@@ -200,38 +212,17 @@ func TestWSRedactTerminal(t *testing.T) {
 	assert.NotContains(t, last.data, tok)
 	assert.True(t, json.Valid([]byte(last.data)), last.data)
 
-	// Latency: a frame ending in "g" (it could start "ghp_") shows its "g" within the idle
-	// budget; a whole prefix is held, then redacted within the hold budget.
-	n := len(dst.got())
-	start := time.Now()
-	bin("$ g")
-	require.Eventually(t, func() bool { return strings.HasSuffix(dst.binary(), "$ g") }, 2*time.Second, 5*time.Millisecond)
-	assert.Less(t, time.Since(start), wsIdleFlush+300*time.Millisecond, "the idle budget")
-	assert.Greater(t, len(dst.got()), n)
-
-	start = time.Now()
-	bin("h")
-	bin("p_" + tok[4:20])
-	time.Sleep(wsIdleFlush + 50*time.Millisecond)
-	assert.NotContains(t, dst.binary(), tok[4:9], "a value never shows on an idle flush")
-	require.Eventually(t, func() bool { return strings.HasSuffix(dst.binary(), redact.Marker) }, 3*time.Second, 5*time.Millisecond)
-	assert.Less(t, time.Since(start), wsHoldMax+400*time.Millisecond, "the hold budget")
-	bin(tok[20:] + " done")
-	assert.True(t, strings.HasSuffix(dst.binary(), "$ g"+redact.Marker+" done"), dst.binary())
-	assert.NotContains(t, dst.binary(), tok[20:25], "the rest of the token is dropped")
-
-	// The terminal ends: what was held goes out before terminal_closed.
+	// The terminal ends: frames before terminal_closed are already out, in order.
 	bin("bye s")
 	require.NoError(t, w.write(websocket.MessageText, []byte(`{"type":"terminal_closed"}`)))
 	f = dst.got()
-	assert.Equal(t, "s", f[len(f)-2].data)
+	assert.Equal(t, "bye s", f[len(f)-2].data)
 	assert.Equal(t, `{"type":"terminal_closed"}`, f[len(f)-1].data)
 
-	// The setting off: frames pass as they are, and what was held goes out first.
-	bin("a x")
+	// The setting off (or a viewer who can type): frames pass as they are.
 	on.Store(false)
 	bin(tok + "\n")
-	assert.True(t, strings.HasSuffix(dst.binary(), "a x"+tok+"\n"), "off: unchanged")
+	assert.True(t, strings.HasSuffix(dst.binary(), tok+"\n"), "off: unchanged")
 	on.Store(true)
 	bin(tok + "\n")
 	assert.True(t, strings.HasSuffix(dst.binary(), redact.Marker+"\n"), "on again")
@@ -332,6 +323,7 @@ func TestWSRedactThroughTheTunnel(t *testing.T) {
 	sess, _ := connect(t, hub, local, func(l *LocalHandler) {
 		l.RedactTokens = redactOn.Load
 		l.MaxMode = func() Mode { return TierInteract }
+		l.Redactor = secrets.Redactor() // the production rules (#3958)
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -362,7 +354,12 @@ func TestWSRedactThroughTheTunnel(t *testing.T) {
 	}
 
 	bin, text := readAll("/ws/terminal/a", 3)
-	assert.Equal(t, "\x1b[2J$ cat .env\r\nGITHUB_TOKEN="+redact.Marker+"\r\n$ ", bin)
+	// The token comes in two frames, each sent at once. Here the first is caught on its own too
+	// (GITHUB_TOKEN= and a value); the part that completes it is replaced in any case. A first
+	// part nothing can recognise is the accepted risk (TestWSRedactSplitFrameSecretIsTheAcceptedRisk).
+	assert.True(t, strings.HasPrefix(bin, "\x1b[2J$ cat .env\r\nGITHUB_TOKEN="), bin)
+	assert.NotContains(t, bin, tok[15:])
+	assert.Contains(t, bin, redact.Marker)
 	assert.Equal(t, `{"type":"terminal_hello","input_acks":true}`, text)
 
 	_, text = readAll("/ws/coral", 1)
@@ -440,16 +437,25 @@ func TestRedactAfterColourCodes(t *testing.T) {
 			require.Equal(t, string(got), out.String(), "JSON %s split at %d", j, split)
 		}
 	}
-	// Through the terminal stream, a frame boundary at every byte.
+	// Through the terminal stream, a frame boundary at every byte. The stream holds nothing
+	// (#3958): a secret whole in either frame is replaced, also when it ends the first one; a
+	// boundary inside the secret is the accepted risk, its first part shows but never all of it.
 	for _, c := range cases[:12] {
 		in := []byte(c.in)
+		start, end := secretSpan(c.in, c.want)
 		for split := 1; split < len(in); split++ {
 			dst := &wsRecorder{}
 			w := newWSRedact(context.Background(), dst, redact.Rules, func() bool { return true }, true)
 			require.NoError(t, w.write(websocket.MessageBinary, in[:split]))
 			require.NoError(t, w.write(websocket.MessageBinary, in[split:]))
 			w.close()
-			require.Equal(t, c.want, dst.binary(), "%q frames split at %d", c.in, split)
+			got := dst.binary()
+			if split <= start || split >= end {
+				require.Equal(t, c.want, got, "%q frames split at %d", c.in, split)
+				continue
+			}
+			require.NotContains(t, got, c.in[start:end], "%q frames split at %d", c.in, split)
+			require.True(t, strings.HasSuffix(got, c.in[end:]), "%q frames split at %d: %q", c.in, split, got)
 		}
 	}
 	// Still not caught, as the docs say: an escape code inside a token.

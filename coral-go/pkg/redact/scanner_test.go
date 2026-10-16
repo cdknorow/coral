@@ -154,35 +154,40 @@ func TestScannerStreamDropsAnOverlongKey(t *testing.T) {
 	out.Reset()
 	w = s.NewStream(&out)
 	_, _ = w.Write([]byte("-----BEGIN PRIVATE KEY-----\n" + body + "\n"))
-	assert.False(t, w.Holding(), "a key still arriving is not flushed")
-	require.NoError(t, w.Flush(true))
-	assert.Empty(t, out.String())
+	assert.Empty(t, out.String(), "a key still arriving is held")
 	require.NoError(t, w.Close())
 	assert.Equal(t, Marker, out.String())
 }
 
-// Flush: an unfinished line's last Overlap bytes stay held unless forced (a secret still
-// arriving is then scanned whole); forced, the line is shown, and a token-like tail is not.
-func TestScannerStreamFlush(t *testing.T) {
+// A live stream holds nothing (#3958, the operator's decision): an unfinished line is written
+// at once, a secret within one write is replaced, and one split across writes shows its first
+// part (the accepted risk) while the part that completes it is replaced.
+func TestScannerLiveStream(t *testing.T) {
 	s := fakeScanner()
 	var out bytes.Buffer
-	w := s.NewStream(&out)
+	w := s.NewLiveStream(&out)
 	_, _ = w.Write([]byte("$ "))
-	assert.True(t, w.Holding())
-	require.NoError(t, w.Flush(false))
-	assert.Empty(t, out.String(), "the last Overlap bytes wait")
-	require.NoError(t, w.Flush(true))
-	assert.Equal(t, "$ ", out.String())
-	assert.False(t, w.Holding())
+	assert.Equal(t, "$ ", out.String(), "an unfinished line is not held")
+	_, _ = w.Write([]byte("g"))
+	assert.Equal(t, "$ g", out.String(), "nor a key that could start a token")
 
 	out.Reset()
-	w = s.NewStream(&out)
+	w = s.NewLiveStream(&out)
+	_, _ = w.Write([]byte("key is sk_live_a1B2c3D4e5F6g7H8i9J0k1 ok"))
+	assert.Equal(t, "key is "+Marker+" ok", out.String(), "a secret within one write is replaced")
+
+	out.Reset()
+	w = s.NewLiveStream(&out)
 	_, _ = w.Write([]byte("key is sk_live_a1B2c3"))
-	require.NoError(t, w.Flush(true))
-	assert.Equal(t, "key is "+Marker, out.String(), "a token-like tail is not shown")
+	assert.Equal(t, "key is sk_live_a1B2c3", out.String(), "the accepted risk: what arrived first is shown")
 	_, _ = w.Write([]byte("D4e5F6g7H8i9J0k1 ok\n"))
+	assert.NotContains(t, out.String(), "D4e5F6", "the part that completes it is found with the context before it")
 	require.NoError(t, w.Close())
-	assert.NotContains(t, out.String(), "D4e5F6", "the rest is found with the context before it")
+
+	out.Reset()
+	w = s.NewLiveStream(&out)
+	_, _ = w.Write([]byte("-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----\n"))
+	assert.NotContains(t, out.String(), "MIIEvQ", "a key that arrives in one write is still found")
 }
 
 type slowDetector struct{}

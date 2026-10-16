@@ -436,6 +436,14 @@ func (n *jnode) scan(ctx context.Context, s *Scanner, key string, has bool) erro
 // The units depend on the text only, so any split into writes gives the same output.
 func (s *Scanner) NewStream(dst io.Writer) Stream { return &lineStream{s: s, dst: dst} }
 
+// NewLiveStream is NewStream holding nothing (#3958, the operator's decision): each write is
+// scanned whole, with the text shown before it as context (in windows of Frame+Overlap when it
+// is longer), and written on at once. A private key is scanned like any other text, so one
+// that arrives whole in a write is still found.
+// The shown text stays as the next write's context, so a secret completed by a later write is
+// replaced from where that write starts; its first part, already shown, is the accepted risk.
+func (s *Scanner) NewLiveStream(dst io.Writer) Stream { return &lineStream{s: s, dst: dst, live: true} }
+
 type lineStream struct {
 	s     *Scanner
 	dst   io.Writer
@@ -443,6 +451,7 @@ type lineStream struct {
 	pre   []byte // the last Overlap bytes shown of the line held continues (context)
 	inKey bool   // held starts with a key's BEGIN line
 	drop  bool   // a key over MaxKey: dropping it up to the end of its END line
+	live  bool   // NewLiveStream: nothing is held (no key blocks, no unfinished line)
 	err   error
 }
 
@@ -464,6 +473,21 @@ func (l *lineStream) Write(p []byte) (int, error) {
 
 // settle emits every whole unit at the start of held; final takes the rest as one unit too.
 func (l *lineStream) settle(final bool) error {
+	if l.live {
+		// A write is scanned whole (a key block in it is found as one), in windows when it is
+		// longer than one, and nothing is held.
+		frame, ov := l.s.frame(), l.s.overlap()
+		for len(l.held) > frame+ov {
+			w := l.held[:frame+ov]
+			if err := l.emit(len(w), cutPoint(w, frame, ov), false); err != nil {
+				return err
+			}
+		}
+		if len(l.held) == 0 {
+			return nil
+		}
+		return l.emitAll()
+	}
 	for len(l.held) > 0 {
 		if l.drop || l.inKey {
 			n, ok := l.keyUnit()
@@ -584,30 +608,9 @@ func (l *lineStream) write(out []byte) error {
 	return nil
 }
 
-// Flush settles what a stream that has gone quiet holds (#3562: a terminal must not sit on its
-// last characters), without letting a secret out in two pieces:
-//   - Without force, what is older than the last Overlap bytes of the unfinished line is shown
-//     (never cutting a secret the detector found); the rest stays held, so a secret still
-//     arriving is scanned whole with what follows.
-//   - With force, the rest is scanned and shown, except a run of token-like characters at its
-//     end (8 or more mixing letters and digits, or 20 or more), which may be the start of a
-//     secret: it is replaced by Marker. What was shown is kept as context, so the rest of a
-//     secret that arrives later is found with it.
-//   - A private key still arriving is never shown.
-func (l *lineStream) Flush(force bool) error {
-	if l.err != nil {
-		return l.err
-	}
-	if l.inKey || l.drop || len(l.held) == 0 {
-		return nil
-	}
-	ov := l.s.overlap()
-	if !force {
-		if len(l.held) <= ov {
-			return nil
-		}
-		return l.emit(len(l.held), cutPoint(l.held, len(l.held)-ov, ov), false)
-	}
+// emitAll scans everything held, with the text shown before it, and writes it on (a live
+// stream's unfinished line). It stays the next write's context.
+func (l *lineStream) emitAll() error {
 	ctx, cancel := l.s.budget()
 	out, _, err := l.s.window(ctx, l.pre, l.held, len(l.held), true)
 	cancel()
@@ -615,12 +618,10 @@ func (l *lineStream) Flush(force bool) error {
 		l.err = err
 		return err
 	}
-	l.pre = tail(append(append([]byte(nil), l.pre...), l.held...), ov)
+	l.pre = tail(append(append([]byte(nil), l.pre...), l.held...), l.s.overlap())
 	l.held = l.held[:0]
-	return l.write(maskTokenTail(out))
+	return l.write(out)
 }
-
-func (l *lineStream) Holding() bool { return !l.inKey && !l.drop && len(l.held) > 0 }
 
 // Close scans what is left; a key whose END line never came is replaced by Marker.
 func (l *lineStream) Close() error {
@@ -628,26 +629,4 @@ func (l *lineStream) Close() error {
 		return l.err
 	}
 	return l.settle(true)
-}
-
-// tokenLike: a character a token can hold (letters, digits and -_./+=).
-func tokenLike(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("-_./+=", c) >= 0
-}
-
-// maskTokenTail replaces a run of token-like characters at the end of out by Marker when it may
-// be the start of a secret: 8 or more that mix letters and digits, or 20 or more.
-func maskTokenTail(out []byte) []byte {
-	i := len(out)
-	letters, digits := false, false
-	for i > 0 && tokenLike(out[i-1]) {
-		c := out[i-1]
-		letters = letters || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
-		digits = digits || c >= '0' && c <= '9'
-		i--
-	}
-	if n := len(out) - i; n >= 20 || n >= 8 && letters && digits {
-		return append(out[:i:i], Marker...)
-	}
-	return out
 }
