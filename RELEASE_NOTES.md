@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.4.49 — Agents wake after a restart, and an accurate "Key rejected"
+
+### New
+
+- **Agents wake again after Coral restarts (pty).** With the pty terminal backend, Coral puts agents to sleep when it stops and now wakes them again when it starts, one at a time, up to the number set in Settings (8 by default; more after you confirm). They resume their conversation with their stored settings and permission mode; a tool that was running is not continued. You can turn this off, and Coral skips it if it has restarted several times in a row. Each woken agent gets a short notice from Coral.
+
+### Fixes
+
+- **"Key rejected" means the key was rejected.** A self-hosted hub showed "Key rejected" for a remote whose key was fine, for example one reached through an SSH port forward or one answering a call that needed an agent's own token. It now shows "Key rejected" only when the remote refused the key, says so when the remote refused the host name instead, and clears the status as soon as you edit or test the key.
+- **A remote that drops briefly no longer flashes offline.** Coral Hub keeps showing a remote server as online through a short drop and reconnect, and the live feed sends a keepalive every 30 seconds.
+
+### Security
+
+- **More Coral Hub limits (audit H1, H2, H4).** A board subscription's webhook URL can't be set through Coral Hub. Template names are checked against the repository's own listing before anything is fetched, with one fetch per address at a time and a bounded cache. Opening a file in your desktop editor is no longer reachable through the hub at all.
+
 ## v1.4.48 — Pinned folders, a terminal backend setting, and more hardening
 
 ### New
