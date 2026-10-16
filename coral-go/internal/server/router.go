@@ -142,6 +142,11 @@ func (s *Server) registerAuth(r *chi.Mux) {
 	// The password (#3949): never in Coral Hub's tunnel table; an agent's token gets none of
 	// them (operatorOnlyRoutes).
 	authRoutes.SetCLIVerified(cliauth.Verified)
+	authRoutes.SetAfterReset(func() { // a reset also replaces the command-line token (#4041)
+		if s.cloudHandler != nil {
+			s.cloudHandler.RotateCLIToken()
+		}
+	})
 	peerUser := func(r *http.Request) (bool, bool) {
 		if s.cloudHandler == nil {
 			return false, false

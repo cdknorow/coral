@@ -37,6 +37,9 @@ func refuseAgent(w http.ResponseWriter, r *http.Request) bool {
 // maxPasswordBody bounds a password request's body.
 const maxPasswordBody = 16 << 10
 
+// SetAfterReset sets what runs after `coral reset-password` changed or cleared the password.
+func (ar *Routes) SetAfterReset(f func()) { ar.afterReset = f }
+
 // SetCLIVerified tells the routes how to recognise a request whose command-line signature the
 // server checked (cliauth.Verified): the signed `coral set-password` and `coral reset-password`.
 func (ar *Routes) SetCLIVerified(f func(*http.Request) bool) {
@@ -349,6 +352,9 @@ func (ar *Routes) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[auth] couldn't end the sessions after a reset: %v", err)
 	}
 	log.Printf("[auth] password reset from the command line (cleared: %v); %d session(s) ended", body.Clear, n)
+	if ar.afterReset != nil {
+		ar.afterReset()
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "signed_out": n})
 }
 

@@ -140,9 +140,30 @@ func NewCloudHandler(ss *store.SessionStore, dataDir string) *CloudHandler {
 // shutdown: a stopped server leaves no token behind (a new one is written at
 // every start).
 func (h *CloudHandler) Close() {
-	if err := cloud.RemoveCLIToken(h.dataDir, h.cliToken); err != nil {
+	h.mu.RLock()
+	tok := h.cliToken
+	h.mu.RUnlock()
+	if err := cloud.RemoveCLIToken(h.dataDir, tok); err != nil {
 		slog.Warn("cloud: could not remove the command-line token", "error", err)
 	}
+}
+
+// RotateCLIToken writes a new command-line token and makes the server use it, after
+// `coral reset-password` (#4041): whatever read the old one (an agent, a copy) can no longer
+// sign as the Operator. Pending hellos are dropped; each command line reads the new token on
+// its next request.
+func (h *CloudHandler) RotateCLIToken() {
+	tok, err := cloud.WriteCLIToken(h.dataDir)
+	if err != nil {
+		// Fail closed: an old token that may be known must not keep signing.
+		slog.Warn("cloud: could not write a new command-line token after a password reset; the command line is off until Coral restarts", "error", err)
+		tok = ""
+	}
+	h.cliAuth.Rotate(tok)
+	h.mu.Lock()
+	h.cliToken = tok
+	h.mu.Unlock()
+	slog.Info("cloud: the command-line token was replaced after a password reset")
 }
 
 // SetPeerCheck replaces the same-user check (tests).

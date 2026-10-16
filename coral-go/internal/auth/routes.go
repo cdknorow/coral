@@ -21,7 +21,11 @@ type Routes struct {
 	throttle    *passwordThrottle
 	audit       *signInAudit
 	cliVerified func(*http.Request) bool
-	peerUser    func(*http.Request) (same, supported bool)
+	// afterReset runs once a reset from the command line has changed the password (#4041:
+	// the server rotates its command-line token, since a reset means "don't trust what was
+	// out there").
+	afterReset func()
+	peerUser   func(*http.Request) (same, supported bool)
 	// hub is Sign in with Coral Hub (#3966), nil when the server has none.
 	hub *HubSignin
 }
