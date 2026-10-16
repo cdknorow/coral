@@ -761,6 +761,7 @@ func (s *Server) buildRouter() chi.Router {
 		remoteResolver := routes.NewRemoteResolver(rsHandler.Store())
 		routes.MountRemoteProxy(r, remoteResolver)
 		s.remoteAgents = background.NewRemoteAgentHub(rsHandler.Store(), remoteResolver, remoteAgentHubConfig)
+		rsHandler.SetStatusListener(s.remoteAgents.Refresh) // an edited key shows at once (#3649)
 		remoteResolver.SetFailureSink(s.remoteAgents)
 		sessHandler.SetRemoteAgents(s.remoteAgents)
 	}

@@ -19,6 +19,7 @@ const (
 	RemoteStatusUnreachable     = "unreachable"
 	RemoteStatusUnauthorized    = "unauthorized"
 	RemoteStatusKeyUnreadable   = "key_unreadable"
+	RemoteStatusHostRefused     = "host_refused" // the remote refused the Host the hub uses for it (#3649)
 	RemoteStatusVersionMismatch = "version_mismatch"
 )
 

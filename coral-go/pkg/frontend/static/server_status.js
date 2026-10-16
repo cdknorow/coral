@@ -13,6 +13,7 @@ export const STATUS_META = {
     unreachable:      { label: 'Unreachable',      cls: 'unreachable',  hint: 'The hub cannot reach this server. Agents shown are the last known state.' },
     unauthorized:     { label: 'Key rejected',     cls: 'unauthorized', hint: 'The server rejected the stored API key. Edit the server and enter a new key.' },
     key_unreadable:   { label: 'Key unreadable',   cls: 'unauthorized', hint: 'The stored API key cannot be decrypted on this hub. Edit the server and re-enter the key.' },
+    host_refused:     { label: 'Host refused',     cls: 'unreachable',  hint: 'The server refused the host name the hub uses for it (its protection against DNS rebinding). Through a port forward, edit the server to use 127.0.0.1 or localhost.' },
     version_mismatch: { label: 'Version mismatch', cls: 'unreachable',  hint: 'This server runs a version older than the hub supports.' },
     offline:          { label: 'Offline',          cls: 'unreachable',  hint: 'This server is not connected to the hub. Agents shown are the last known state; it reconnects by itself when its network is back.' },
     stale:            { label: 'Offline',          cls: 'unreachable',  hint: 'This server is not connected to the hub. Agents shown are the last known state; it reconnects by itself when its network is back.' },
@@ -307,6 +308,7 @@ export function describeServerError(httpStatus, body) {
     if (httpStatus === 409) return msg || 'A server with that id already exists.';
     if (httpStatus === 502) {
         if (st === 'unauthorized') return 'The server rejected the API key. Check the key and try again.';
+        if (st === 'host_refused') return 'The server refused the host name in this URL. Through a port forward, use 127.0.0.1 or localhost.';
         if (st === 'unreachable') return `Could not reach the server${msg ? ' (' + msg + ')' : ''}. Check the URL, and tick "Allow private network" if it is on your LAN or tailnet.`;
         return msg ? `The server check failed: ${msg}` : 'The server check failed.';
     }

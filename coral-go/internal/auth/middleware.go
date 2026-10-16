@@ -67,7 +67,10 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 					next.ServeHTTP(w, withMethod(r, MethodLoopback))
 					return
 				}
-				// DNS rebinding attempt: localhost IP but external domain Host
+				// DNS rebinding attempt: localhost IP but external domain Host. Marked, so a hub
+				// that reaches this Coral through a port forward under another name can say
+				// "host refused" instead of "key rejected" (#3649).
+				w.Header().Set(RefusedHeader, "host")
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
@@ -85,6 +88,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			// Only FAILED attempts count against the rate limit. Counting valid
 			// keys too would throttle any legitimate programmatic client (such
 			// as a Coral hub polling this server every few seconds) into 429s.
+			keyRefused := false
 			if key := extractAPIKey(r); key != "" {
 				if ks.RateLimited(clientIP(r)) {
 					// Too many wrong keys from this address: a limit on signing in (#3434).
@@ -107,6 +111,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 				}
 				ks.RecordFailure(clientIP(r))
 				log.Printf("[auth] invalid API key from %s", clientIP(r))
+				keyRefused = true
 			}
 
 			// Check session cookie
@@ -119,6 +124,9 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 
 			// No valid auth — redirect browser requests, reject API requests
 			if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/ws/") {
+				if keyRefused {
+					w.Header().Set(RefusedHeader, "key") // a hub shows "key rejected" for this only (#3649)
+				}
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -211,3 +219,9 @@ func SafeReturnTo(p string) string {
 	}
 	return p
 }
+
+// RefusedHeader marks this Coral's own refusals that are about how a caller reaches it, not about
+// the request: "key" on the 401 for an API key that isn't this Coral's, "host" on the 403 for a
+// Host its DNS-rebinding check refuses. A Coral hub reads it (pkg/hubproxy.RefusedHeader, the same
+// name) to tell a rejected key and a refused host from an ordinary 401 or 403 (#3649).
+const RefusedHeader = "X-Coral-Refused"

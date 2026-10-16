@@ -16,11 +16,16 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
+	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 )
 
 // RemoteServersHandler implements the hub-local server registry API
 // (/api/servers). These routes are never proxied and never return API keys.
 type RemoteServersHandler struct {
+	// statusListener, when set, hears the status an edit or a Test just found, so the hub's
+	// worker shows it at once (#3649).
+	statusListener func(id, status string)
+
 	store         *store.RemoteServerStore
 	healthTimeout time.Duration
 }
@@ -133,9 +138,13 @@ func CheckRemoteHealth(ctx context.Context, baseURL, apiKey string, allowPrivate
 		return RemoteHealth{Status: store.RemoteStatusUnreachable, Err: msg}
 	}
 	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+	switch rerr := proxy.Refusal(resp); {
+	case errors.Is(rerr, proxy.ErrRemoteRejected):
 		return RemoteHealth{Status: store.RemoteStatusUnauthorized, Err: "remote rejected API key"}
+	case errors.Is(rerr, proxy.ErrHostRefused):
+		// Through a port forward under another name the remote's DNS-rebinding check refuses
+		// the Host: say that, not "key rejected" (#3649).
+		return RemoteHealth{Status: store.RemoteStatusHostRefused, Err: proxy.ErrHostRefused.Error() + ": register it as 127.0.0.1 or localhost (the address the forward listens on)"}
 	case resp.StatusCode != http.StatusOK:
 		return RemoteHealth{Status: store.RemoteStatusUnreachable, Err: fmt.Sprintf("remote returned HTTP %d", resp.StatusCode)}
 	}
@@ -308,6 +317,7 @@ func (h *RemoteServersHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.URL != nil || req.APIKey != nil {
 		h.store.SetStatus(r.Context(), id, store.RemoteStatusOnline, "")
+		h.tellStatus(id, store.RemoteStatusOnline)
 		srv, _ = h.store.Get(r.Context(), id)
 	}
 	writeJSON(w, http.StatusOK, srv)
@@ -348,6 +358,16 @@ func (h *RemoteServersHandler) Test(w http.ResponseWriter, r *http.Request) {
 		health = CheckRemoteHealth(r.Context(), cur.URL, key, cur.AllowPrivate, h.healthTimeout)
 	}
 	h.store.SetStatus(r.Context(), id, health.Status, health.Err)
+	h.tellStatus(id, health.Status)
 	srv, _ := h.store.Get(r.Context(), id)
 	writeJSON(w, http.StatusOK, srv)
+}
+
+// SetStatusListener sets who hears the status an edit or a Test found (the hub's remote workers).
+func (h *RemoteServersHandler) SetStatusListener(f func(id, status string)) { h.statusListener = f }
+
+func (h *RemoteServersHandler) tellStatus(id, status string) {
+	if h.statusListener != nil {
+		h.statusListener(id, status)
+	}
 }

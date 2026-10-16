@@ -159,12 +159,14 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			if timer != nil {
 				timer.Stop()
 			}
-			// Only 401 means the key was rejected. A remote 403 is an ordinary
-			// application answer (demo limit reached, forbidden path, ...) and
-			// is passed through; treating it as a key failure would mark a
-			// healthy server "unauthorized" and hide the real error.
-			if resp.StatusCode == http.StatusUnauthorized {
-				return ErrRemoteRejected
+			// Only the remote's own key refusal means the key was rejected (#3649): a
+			// 401 that is an application answer (session_token_required for a call
+			// without the remote's session token) or a 403 (demo limit reached,
+			// forbidden path, ...) is passed through; treating it as a key failure
+			// would mark a healthy server "unauthorized" and hide the real error. A
+			// refused Host is reported as such.
+			if err := Refusal(resp); err != nil {
+				return err
 			}
 			switch {
 			case h.opts.ResponseFilter != nil:
@@ -217,6 +219,9 @@ func (h *Handler) writeUpstreamErr(w http.ResponseWriter, ctx context.Context, i
 	case errors.Is(err, ErrRemoteRejected):
 		h.mark(ctx, id, StatusUnauthorized, "remote rejected API key")
 		h.writeErr(w, http.StatusBadGateway, "remote rejected API key", id)
+	case errors.Is(err, ErrHostRefused):
+		h.mark(ctx, id, StatusHostRefused, ErrHostRefused.Error())
+		h.writeErr(w, http.StatusBadGateway, ErrHostRefused.Error(), id)
 	case errors.Is(err, ErrBlocked):
 		h.writeErr(w, http.StatusBadGateway, ErrBlocked.Error(), id)
 	default:

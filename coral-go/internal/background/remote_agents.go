@@ -714,6 +714,8 @@ func (h *RemoteAgentHub) recordFailure(ctx context.Context, id string, err error
 		status = store.RemoteStatusUnauthorized
 	case errors.Is(err, proxy.ErrKeyUnreadable):
 		status = store.RemoteStatusKeyUnreadable
+	case errors.Is(err, proxy.ErrHostRefused):
+		status = store.RemoteStatusHostRefused
 	}
 	h.mu.Lock()
 	st, ok := h.current(id)
@@ -743,6 +745,30 @@ func (h *RemoteAgentHub) recordFailure(ctx context.Context, id string, err error
 		_ = h.reg.SetStatus(ctx, id, status, msg)
 	}
 	if changed {
+		h.notify()
+	}
+}
+
+// Refresh takes a server's status from an edit or a Test that just checked it (#3649): the
+// worker's own view, which is what the dashboard shows, becomes that status at once instead of
+// after its next probe (up to MaxBackoff away after a run of failures), and the worker probes
+// again now.
+func (h *RemoteAgentHub) Refresh(id, status string) {
+	h.mu.Lock()
+	st, ok := h.current(id)
+	if ok {
+		if st.status != status {
+			h.logTransition(id, st.status, status, "the server was edited or tested")
+		}
+		st.status, st.srv.Status = status, status
+		if status == store.RemoteStatusOnline {
+			st.lastErr = ""
+		}
+		h.snap = nil
+		st.kick()
+	}
+	h.mu.Unlock()
+	if ok {
 		h.notify()
 	}
 }

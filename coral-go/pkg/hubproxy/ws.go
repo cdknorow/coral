@@ -58,8 +58,8 @@ func dialWS(ctx context.Context, t HTTPTarget, base *url.URL, raw, rawQuery stri
 		Subprotocols: protocols,
 	})
 	if err != nil {
-		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
-			return nil, ErrRemoteRejected
+		if rerr := Refusal(resp); rerr != nil { // #3649: a key or Host refusal, not any 401/403
+			return nil, rerr
 		}
 		return nil, err
 	}

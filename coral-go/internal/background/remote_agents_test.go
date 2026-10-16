@@ -278,8 +278,9 @@ func TestHub_UnauthorizedAndRegistryChanges(t *testing.T) {
 	a.noFeed = true
 	reg := newFakeRegistry()
 	reg.put("a", a.URL)
-	// bad: a server that rejects our key
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "no", 403) }))
+	// bad: a server that rejects our key, as Coral's auth layer does (a plain 401; #3649: a bare
+	// 403 is an answer about the request, not about the key)
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "Unauthorized", 401) }))
 	defer bad.Close()
 	reg.put("bad", bad.URL)
 	h := fastHub(reg)

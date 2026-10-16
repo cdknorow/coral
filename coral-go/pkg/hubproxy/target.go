@@ -294,9 +294,9 @@ func Get(ctx context.Context, t Target, path, rawQuery string) (*http.Response, 
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+	if err := Refusal(resp); err != nil { // a key or Host refusal; any other answer is the caller's (#3649)
 		resp.Body.Close()
-		return nil, ErrRemoteRejected
+		return nil, err
 	}
 	return resp, nil
 }
