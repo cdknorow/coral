@@ -76,6 +76,24 @@ const {
     'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent']);
 const { showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } =
     lazyFns(loadCostDashboard, ['showCostDashboard', '_refreshCostDashboard', '_costTimeRangeChanged']);
+// The shared confirm dialog's close button, wherever its markup is built (#3645). The board's
+// export dialog called closeConfirmModal(), which never existed, so its Cancel and Close did
+// nothing; they close it now.
+registerActions({ 'confirm-close': () => hideConfirmModal() });
+// The board view's header, composer and subscribers sheet (#3645). Pause and deleting the board
+// behave as before: the board's delete still asks first (deleteMessageBoardProject).
+registerActions({
+    'mb-subscribers': () => openBoardSubscribers(),
+    'mb-subscribers-close': () => hideBoardSubscribers(),
+    'mb-subscribers-backdrop': (el, event) => { if (event.target === el) hideBoardSubscribers(); },
+    'mb-select-mode': () => toggleSelectMode(),
+    'mb-export': () => showExportBoardModal(),
+    'mb-pause': () => toggleBoardPause(),
+    'mb-delete-board': () => deleteMessageBoardProject(),
+    'mb-post': () => postBoardMessage(),
+    // Enter sends, Shift+Enter is a new line.
+    'mb-post-key': (el, event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); postBoardMessage(); } },
+});
 // The history view's header, tabs and summary editor (#3645). A tab must be one the view has.
 const HISTORY_TABS = new Set(['notes', 'chat', 'activity', 'tasks', 'agent-notes', 'commits', 'changes']);
 registerActions({

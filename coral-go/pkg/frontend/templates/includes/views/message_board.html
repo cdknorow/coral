@@ -8,11 +8,11 @@
         </div>
         <div class="mb-header-actions" style="margin-left:auto">
             <!-- At phone width the Subscribers column is hidden: this opens the same list as a sheet (#3610). -->
-            <button type="button" class="mb-action-btn mb-subscribers-btn" id="mb-subscribers-btn" onclick="openBoardSubscribers()" aria-haspopup="dialog" aria-controls="mb-subscribers-sheet" aria-expanded="false">Subscribers</button>
-            <button class="mb-action-btn" id="mb-select-btn" style="display:none" onclick="toggleSelectMode()" title="Select messages to export">Select</button>
-            <button class="mb-action-btn" id="mb-export-btn" style="display:none" onclick="showExportBoardModal()" title="Export — download board messages as Markdown">Export</button>
-            <button class="mb-action-btn" id="mb-pause-btn" style="display:none" onclick="toggleBoardPause()" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
-            <button class="mb-action-btn mb-action-danger" id="mb-delete-btn" style="display:none" onclick="confirmDeleteBoard()">Delete</button>
+            <button type="button" class="mb-action-btn mb-subscribers-btn" id="mb-subscribers-btn" data-on-click="mb-subscribers" aria-haspopup="dialog" aria-controls="mb-subscribers-sheet" aria-expanded="false">Subscribers</button>
+            <button class="mb-action-btn" id="mb-select-btn" style="display:none" data-on-click="mb-select-mode" title="Select messages to export">Select</button>
+            <button class="mb-action-btn" id="mb-export-btn" style="display:none" data-on-click="mb-export" title="Export — download board messages as Markdown">Export</button>
+            <button class="mb-action-btn" id="mb-pause-btn" style="display:none" data-on-click="mb-pause" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
+            <button class="mb-action-btn mb-action-danger" id="mb-delete-btn" style="display:none" data-on-click="mb-delete-board">Delete</button>
         </div>
     </div>
 
@@ -37,8 +37,8 @@
             <div class="mb-post-form">
                 <textarea id="mb-post-input" class="mb-post-input" placeholder="Post a message as Developer..." aria-label="Post message to board"
                        rows="2"
-                       onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();postBoardMessage()}"></textarea>
-                <button class="btn btn-primary mb-post-send-btn" onclick="postBoardMessage()">Send</button>
+                       data-on-keydown="mb-post-key"></textarea>
+                <button class="btn btn-primary mb-post-send-btn" data-on-click="mb-post">Send</button>
             </div>
         </div>
 
@@ -52,11 +52,11 @@
     <!-- The Subscribers sheet (phone width, #3610): a modal, so modal_chrome.js closes it on Escape and
          keeps Tab inside, and focus goes back to the Subscribers button. Inside this view, so it hides
          with it. -->
-    <div id="mb-subscribers-sheet" class="modal mb-subscribers-sheet" role="dialog" aria-modal="true" aria-labelledby="mb-subscribers-sheet-title" style="display:none" onclick="if (event.target === this) hideBoardSubscribers()">
+    <div id="mb-subscribers-sheet" class="modal mb-subscribers-sheet" role="dialog" aria-modal="true" aria-labelledby="mb-subscribers-sheet-title" style="display:none" data-on-click="mb-subscribers-backdrop">
         <div class="modal-content mb-subscribers-sheet-content">
             <div class="mb-subscribers-sheet-header">
                 <h3 class="mb-subscribers-title" id="mb-subscribers-sheet-title">Subscribers</h3>
-                <button type="button" class="mb-action-btn" onclick="hideBoardSubscribers()">Close</button>
+                <button type="button" class="mb-action-btn" data-on-click="mb-subscribers-close">Close</button>
             </div>
             <ul id="mb-subscribers-sheet-list" class="mb-subscribers-list"></ul>
         </div>

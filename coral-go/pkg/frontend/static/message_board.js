@@ -1,6 +1,7 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, getAgentColor, hexToRgba, showToast, jsStr, externalMessageBadge, hubUserBadge, boardMessageDisplayText, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
+import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, getAgentColor, hexToRgba, showToast, externalMessageBadge, hubUserBadge, boardMessageDisplayText, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
+import { registerActions, idOf, textOf } from './actions.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
@@ -106,7 +107,7 @@ function renderBoardSidebar(projects) {
     }
     list.innerHTML = projects.map(p => {
         const active = currentProject === p.project ? 'active' : '';
-        return `<li class="session-list-item ${active}" onclick="selectBoardProject('${jsStr(p.project)}')">
+        return `<li class="session-list-item ${escapeAttr(active)}" data-on-click="mb-project" data-project="${escapeAttr(p.project)}">
             <span class="session-name">${escapeHtml(keyLabel(p.project))}</span>
             <span class="mb-project-count">${p.message_count} msgs</span>
         </li>`;
@@ -217,7 +218,7 @@ async function loadBoardProjectList() {
         }
         empty.style.display = 'none';
         ul.innerHTML = projects.map(p => `
-            <li class="session-list-item" onclick="selectBoardProject('${jsStr(p.project)}')"
+            <li class="session-list-item" data-on-click="mb-project" data-project="${escapeAttr(p.project)}"
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px">
                 <div>
                     <strong>${escapeHtml(keyLabel(p.project))}</strong>
@@ -318,7 +319,7 @@ function renderMessages(messages) {
     if (_loadedOffset > 0) {
         const remaining = _loadedOffset;
         loadEarlierHtml = `<div style="text-align:center;padding:8px 0 12px">
-            <button class="btn btn-small" onclick="loadEarlierMessages()" class="mb-project-meta">
+            <button class="btn btn-small" data-on-click="mb-earlier" class="mb-project-meta">
                 Load ${Math.min(remaining, PAGE_SIZE)} earlier messages (${remaining} remaining)
             </button>
         </div>`;
@@ -343,7 +344,7 @@ function renderMessages(messages) {
         const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id);
         const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
         const selectedClass = _selectMode && _selectedIds.has(m.id) ? ' mb-message-selected' : '';
-        const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_selectedIds.has(m.id) ? 'checked' : ''} onclick="toggleMessageSelect(${Number(m.id)}, this.checked)">` : '';
+        const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_selectedIds.has(m.id) ? 'checked' : ''} data-on-click="mb-msg-select">` : '';
         return `
         <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}" style="${boardMessageColorStyle(color)}">
             ${boardAvatar(m, agent)}
@@ -352,7 +353,7 @@ function renderMessages(messages) {
                 <span class="mb-agent-name">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
                 ${externalMessageBadge(m)}${hubUserBadge(m)}
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
-                <button class="mb-delete-msg-btn" onclick="deleteBoardMessage(${Number(m.id)})" title="Delete message">&times;</button>
+                <button class="mb-delete-msg-btn" data-on-click="mb-msg-delete" data-msg-id="${Number(m.id)}" title="Delete message">&times;</button>
             </div>
             <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
         </div>`;
@@ -435,7 +436,7 @@ async function loadBoardSubscribers(project) {
             const sessionName = escapeAttr(s.session_name || '');
             const icon = s.icon ? `<span class="agent-icon">${escapeHtml(s.icon)}</span> ` : '';
             return `<li class="mb-subscriber">
-                <div class="mb-subscriber-name">${icon}<button type="button" class="subscriber-history-link" onclick="navigateToAgentSession('${jsStr(sessionName)}', '${jsStr(displayName)}')" title="View chat history">${escapeHtml(s.job_title)}</button></div>
+                <div class="mb-subscriber-name">${icon}<button type="button" class="subscriber-history-link" data-on-click="mb-subscriber-history" data-session="${escapeAttr(sessionName)}" data-name="${escapeAttr(displayName)}" title="View chat history">${escapeHtml(s.job_title)}</button></div>
                 <div class="mb-subscriber-id">${escapeHtml(s.subscriber_id)}</div>
             </li>`;
         }).join('');
@@ -759,8 +760,8 @@ export async function showExportBoardModal() {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <label style="font-weight:600;font-size:13px">Include agent chats:</label>
                 <div style="display:flex;gap:8px">
-                    <button class="mb-action-btn" onclick="document.querySelectorAll('.export-agent-cb').forEach(c=>c.checked=true)" style="font-size:11px;padding:2px 8px">All</button>
-                    <button class="mb-action-btn" onclick="document.querySelectorAll('.export-agent-cb').forEach(c=>c.checked=false)" style="font-size:11px;padding:2px 8px">None</button>
+                    <button class="mb-action-btn" data-on-click="mb-export-agents" data-checked="1" style="font-size:11px;padding:2px 8px">All</button>
+                    <button class="mb-action-btn" data-on-click="mb-export-agents" data-checked="0" style="font-size:11px;padding:2px 8px">None</button>
                 </div>
             </div>
             <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px 12px">
@@ -777,8 +778,8 @@ export async function showExportBoardModal() {
         </div>
     `;
     actions.innerHTML = `
-        <button class="btn" onclick="closeConfirmModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="doExportBoard()">Export</button>
+        <button class="btn" data-on-click="confirm-close">Cancel</button>
+        <button class="btn btn-primary" data-on-click="mb-export-do">Export</button>
     `;
     modal.style.display = 'flex';
 }
@@ -899,7 +900,7 @@ export async function doExportBoard() {
     } catch (e) {
         console.error('Export failed:', e);
         actions.innerHTML = `<span style="color:var(--error)">Export failed: ${escapeHtml(e.message)}</span>
-            <button class="btn" onclick="closeConfirmModal()">Close</button>`;
+            <button class="btn" data-on-click="confirm-close">Close</button>`;
     }
 }
 
@@ -1108,10 +1109,10 @@ function updateSelectBar() {
     const count = _selectedIds.size;
     bar.innerHTML = `
         <span class="mb-select-count">${count} selected</span>
-        <button class="btn mb-select-action-btn" onclick="selectAllMessages()">Select All</button>
-        <button class="btn mb-select-action-btn" onclick="selectNoneMessages()">None</button>
-        <button class="btn btn-primary mb-select-action-btn" onclick="exportSelectedAsMarkdown()" ${count === 0 ? 'disabled' : ''}>Export Markdown</button>
-        <button class="btn mb-select-action-btn" onclick="cancelSelectMode()">Cancel</button>
+        <button class="btn mb-select-action-btn" data-on-click="mb-select-all">Select All</button>
+        <button class="btn mb-select-action-btn" data-on-click="mb-select-none">None</button>
+        <button class="btn btn-primary mb-select-action-btn" data-on-click="mb-export-selected" ${count === 0 ? 'disabled' : ''}>Export Markdown</button>
+        <button class="btn mb-select-action-btn" data-on-click="mb-select-cancel">Cancel</button>
     `;
     bar.style.display = '';
 }
@@ -1163,3 +1164,23 @@ export function initMessageBoard() {
 }
 
 export { loadBoardProjects, showMessageBoardProjects as showBoardProjects };
+
+// The board's generated markup (#3645): data-on-* names, never code. Ids and names are checked
+// before use; a bad one does nothing. Deleting a message never asked first, and still doesn't.
+const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
+registerActions({
+    'mb-project': el => { const p = textOf(el.dataset.project); if (p) selectBoardProject(p); },
+    'mb-earlier': () => loadEarlierMessages(),
+    'mb-msg-select': el => withId(el.dataset.msgId, id => toggleMessageSelect(id, el.checked)),
+    'mb-msg-delete': el => withId(el.dataset.msgId, deleteBoardMessage),
+    'mb-subscriber-history': el => {
+        const s = textOf(el.dataset.session);
+        if (s) navigateToAgentSession(s, textOf(el.dataset.name) || '');
+    },
+    'mb-export-agents': el => document.querySelectorAll('.export-agent-cb').forEach(c => { c.checked = el.dataset.checked === '1'; }),
+    'mb-export-do': () => doExportBoard(),
+    'mb-select-all': () => selectAllMessages(),
+    'mb-select-none': () => selectNoneMessages(),
+    'mb-export-selected': () => exportSelectedAsMarkdown(),
+    'mb-select-cancel': () => cancelSelectMode(),
+});

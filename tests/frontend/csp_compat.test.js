@@ -37,7 +37,10 @@ const { pathToFileURL } = require('url');
             try { m.parse(h); } catch (e) { bad.push(`${path.relative(dir, f)}: ${h.slice(0, 100)} -> ${e.message}`); }
         }
     }
-    assert.ok(total > 400, `expected the corpus to be large, got ${total}`);
+    // The scan must find the shipped handlers (a regex that matched nothing would pass every check
+    // below): at least one per allowlisted shape. CSP stage 2 (#3645) moves them to data-on-*
+    // actions slice by slice, so the count shrinks; it is not a fixed number.
+    assert.ok(total > 0 && total >= shapesMod.SHAPES.size, `expected at least one handler per allowlisted shape (${shapesMod.SHAPES.size}), got ${total}`);
     assert.deepStrictEqual(bad, [], `${bad.length} of ${total} inline handlers are outside the CSP-safe grammar:\n` + bad.join('\n'));
 
     assert.deepStrictEqual([...shapesMod.EVENTS], ['change', 'click', 'contextmenu', 'input', 'keydown', 'mousedown', 'submit'], 'EVENTS is derived from the UI');
