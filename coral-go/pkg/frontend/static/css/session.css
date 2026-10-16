@@ -1627,7 +1627,8 @@
     color: var(--text-secondary);
 }
 
-.board-mention-item:hover {
+.board-mention-item:hover,
+.board-mention-item.active {
     background: var(--bg-hover);
     color: var(--text-primary);
 }

@@ -86,9 +86,10 @@ export function showBoardChatTab(boardName) {
                     </div>
                 </div>
                 <div class="board-chat-editor-wrap">
-                    <textarea class="board-chat-textarea" id="board-panel-input" placeholder="Message the team... (@ to mention)"
+                    <textarea class="board-chat-textarea" id="board-panel-input" placeholder="Message the team... (@ to mention)" aria-label="Message the team"
+                        role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="board-mention-dropdown"
                         data-on-keydown="board-chat-key" data-on-input="board-chat-mention" data-board="${escapeAttr(boardName)}"></textarea>
-                    <div class="board-mention-dropdown" id="board-mention-dropdown" style="display:none"></div>
+                    <div class="board-mention-dropdown" id="board-mention-dropdown" role="listbox" aria-label="Mention an agent" style="display:none"></div>
                 </div>
             </div>`;
 
@@ -474,7 +475,7 @@ export async function _boardMentionInput(event, boardName) {
 
     // Find @ trigger
     const atMatch = beforeCursor.match(/@(\w*)$/);
-    if (!atMatch) { dropdown.style.display = 'none'; return; }
+    if (!atMatch) { _closeBoardMentions(); return; }
     const query = atMatch[1].toLowerCase();
 
     // Fetch subscribers if not cached
@@ -489,17 +490,59 @@ export async function _boardMentionInput(event, boardName) {
         .map(s => s.job_title || s.session_id || 'unknown')
         .filter(name => name.toLowerCase().includes(query));
 
-    if (subs.length === 0) { dropdown.style.display = 'none'; return; }
+    if (subs.length === 0) { _closeBoardMentions(); return; }
 
-    dropdown.innerHTML = subs.map(name =>
-        `<div class="board-mention-item" data-on-mousedown="board-mention-pick" data-name="${escapeAttr(name)}">${escapeHtml(name)}</div>`
+    dropdown.innerHTML = subs.map((name, i) =>
+        `<div class="board-mention-item" id="board-mention-opt-${Number(i)}" role="option" aria-selected="false" data-on-mousedown="board-mention-pick" data-name="${escapeAttr(name)}">${escapeHtml(name)}</div>`
     ).join('');
+    const first = dropdown.querySelector('.board-mention-item');
+    first.classList.add('active');
+    first.setAttribute('aria-selected', 'true');
     dropdown.style.display = 'block';
+    _syncBoardMentions();
+}
+
+function _closeBoardMentions() {
+    const dropdown = document.getElementById('board-mention-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    _syncBoardMentions();
+}
+
+/** The combobox attributes follow the list: expanded while it shows, and the highlighted option is the active descendant. */
+function _syncBoardMentions() {
+    const input = document.getElementById('board-panel-input');
+    const dropdown = document.getElementById('board-mention-dropdown');
+    if (!input || !dropdown) return;
+    const open = dropdown.style.display !== 'none';
+    input.setAttribute('aria-expanded', String(open));
+    const active = open && dropdown.querySelector('.board-mention-item.active');
+    if (active) input.setAttribute('aria-activedescendant', active.id); else input.removeAttribute('aria-activedescendant');
+}
+
+/** Arrow keys move through the @mention list, Enter or Tab picks the highlighted name, Escape closes it. True when the key was used. */
+export function _boardMentionKey(event) {
+    const dropdown = document.getElementById('board-mention-dropdown');
+    if (!dropdown || dropdown.style.display === 'none') return false;
+    const items = [...dropdown.querySelectorAll('.board-mention-item')];
+    if (!items.length) return false;
+    const at = Math.max(0, items.findIndex(i => i.classList.contains('active')));
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const next = (at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+        items.forEach((it, i) => { it.classList.toggle('active', i === next); it.setAttribute('aria-selected', String(i === next)); });
+        items[next].scrollIntoView?.({ block: 'nearest' });
+        _syncBoardMentions();
+    } else if ((event.key === 'Enter' && !event.ctrlKey && !event.metaKey) || event.key === 'Tab') {
+        _insertBoardMention(items[at].dataset.name);
+    } else if (event.key === 'Escape') {
+        _closeBoardMentions();
+    } else return false;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
 }
 
 export function _insertBoardMention(name) {
     const input = document.getElementById('board-panel-input');
-    const dropdown = document.getElementById('board-mention-dropdown');
     if (!input) return;
     const text = input.value;
     const cursor = input.selectionStart;
@@ -510,5 +553,5 @@ export function _insertBoardMention(name) {
     input.value = beforeCursor.slice(0, atIdx) + '@' + name + ' ' + after;
     input.selectionStart = input.selectionEnd = atIdx + name.length + 2;
     input.focus();
-    if (dropdown) dropdown.style.display = 'none';
+    _closeBoardMentions();
 }

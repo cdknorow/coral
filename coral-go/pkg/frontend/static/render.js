@@ -21,7 +21,7 @@ import { isPinnedDir, emptyPins, notePinKeys, pinPathForKey, pinnedFolders } fro
 import { LOCAL_SERVER } from './server_base.js';
 import { formatTokens } from './format.js';
 import { registerLiveListRenderer, redrawLiveList } from './list_hooks.js';
-import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _cancelBoardChatSelect, _exportBoardChatSelected, _insertBoardMention, _toggleBoardChatMsgSelect, _toggleBoardChatPause } from './board_chat.js';
+import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _boardMentionKey, _cancelBoardChatSelect, _exportBoardChatSelected, _insertBoardMention, _toggleBoardChatMsgSelect, _toggleBoardChatPause } from './board_chat.js';
 import { _formatCost, _gitStateSummary, _repoBranch, _shortPath, buildSessionTooltip, deriveSessionState, formatShortTime, formatStaleness, getDotClass, resolveSessionIdentity, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 import { _getBoardColor } from './board_accents.js';
 import { _getGroupOrder, _sortByOrder, _sortGroups } from './list_order.js';
@@ -2048,8 +2048,8 @@ registerActions({
     'board-chat-select': () => window.__coral._toggleBoardChatSelect(),
     'board-chat-all': () => { const i = document.getElementById('board-panel-input'); if (i) { i.value = '@all ' + i.value; i.focus(); } },
     'board-chat-send': el => { const b = textOf(el.dataset.board); if (b) window.__coral._sendBoardChat(b); },
-    // Ctrl+Enter sends, as before.
-    'board-chat-key': (el, event) => { if (event.key === 'Enter' && event.ctrlKey) { event.preventDefault(); const b = textOf(el.dataset.board); if (b) window.__coral._sendBoardChat(b); } },
+    // Ctrl+Enter (or Cmd+Enter) sends; while the @mention list is open the arrow keys, Enter, Tab and Escape drive it.
+    'board-chat-key': (el, event) => { if (_boardMentionKey(event)) return; if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); const b = textOf(el.dataset.board); if (b) window.__coral._sendBoardChat(b); } },
     'board-chat-mention': (el, event) => { const b = textOf(el.dataset.board); if (b) _boardMentionInput(event, b); },
     'board-mention-pick': (el, event) => { event.preventDefault(); const n = textOf(el.dataset.name); if (n) _insertBoardMention(n); },
     'board-chat-earlier': () => window.__coral._loadEarlierBoardChat(),
