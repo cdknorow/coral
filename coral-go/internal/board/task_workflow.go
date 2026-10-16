@@ -457,10 +457,6 @@ func (s *Store) CompleteTaskWithArtifactsAtRevision(ctx context.Context, project
 	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, "")
 }
 
-func (s *Store) completeTaskWithArtifactsAtRevision(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
-	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, "")
-}
-
 // CompleteTaskWithArtifactsAtRevisionAndCandidate records the exact submitted
 // candidate revision and enforces all orchestrator-declared completion gates.
 func (s *Store) CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {

@@ -116,16 +116,6 @@ func insertLiveSession(t *testing.T, sessDB *sqlx.DB, sessionID, agentName, disp
 	require.NoError(t, err)
 }
 
-// insertProxyRequest is a test helper to insert a proxy request into the sessions DB.
-func insertProxyRequest(t *testing.T, sessDB *sqlx.DB, requestID, sessionID string, startedAt string, costUSD float64, inputTok, outputTok, cacheRead, cacheWrite int) {
-	t.Helper()
-	_, err := sessDB.Exec(
-		`INSERT INTO proxy_requests (request_id, session_id, provider, model_requested, model_used, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, started_at)
-		 VALUES (?, ?, 'anthropic', 'claude-3', 'claude-3', ?, ?, ?, ?, ?, ?)`,
-		requestID, sessionID, costUSD, inputTok, outputTok, cacheRead, cacheWrite, startedAt)
-	require.NoError(t, err)
-}
-
 func TestClaimTask_SessionIDResolution(t *testing.T) {
 	s, sessDB := testStoreWithSessionsDB(t)
 	ctx := context.Background()
