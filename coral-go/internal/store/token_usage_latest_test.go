@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -221,7 +222,7 @@ func TestTokenUsageRollupFollowsUpdatesAndDeletes(t *testing.T) {
 // Opening a database that predates the rollup fills it from the history.
 func TestTokenUsageRollupBackfillsExistingDatabase(t *testing.T) {
 	path := t.TempDir() + "/sessions.db"
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	ids := seedTokenUsage(t, db, 20, 50, 13)
 	for _, stmt := range []string{
@@ -237,7 +238,7 @@ func TestTokenUsageRollupBackfillsExistingDatabase(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	s := NewTokenUsageStore(db)
@@ -250,7 +251,7 @@ func TestTokenUsageRollupBackfillsExistingDatabase(t *testing.T) {
 
 	// A second open does not backfill again.
 	require.NoError(t, db.Close())
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	got, err = NewTokenUsageStore(db).GetLatestUsageBySessionIDs(t.Context(), ids)
 	require.NoError(t, err)

@@ -11,7 +11,7 @@ import (
 )
 
 func TestGoalMetricsStore_RecordSinceAndPrune(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	db, err := OpenWithKey(context.Background(), filepath.Join(t.TempDir(), "t.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	ms := NewGoalMetricsStore(db)

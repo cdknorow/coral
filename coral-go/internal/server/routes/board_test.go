@@ -24,7 +24,7 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 	t.Helper()
 
 	dbPath := t.TempDir() + "/board_test.db"
-	bs, err := board.NewStore(dbPath)
+	bs, err := board.NewStoreWithKey(dbPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 

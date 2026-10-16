@@ -20,7 +20,7 @@ import (
 func setupTask1670Server(t *testing.T) (*httptest.Server, *BoardHandler, *board.Store) {
 	t.Helper()
 	dbPath := t.TempDir() + "/task1670_board.db"
-	bs, err := board.NewStore(dbPath)
+	bs, err := board.NewStoreWithKey(dbPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 

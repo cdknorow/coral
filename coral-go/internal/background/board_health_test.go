@@ -24,7 +24,7 @@ func (p *healthRuntimeProbe) CaptureActivity(context.Context, string) (string, e
 
 func healthMonitorStore(t *testing.T) *board.Store {
 	t.Helper()
-	s, err := board.NewStore(filepath.Join(t.TempDir(), "board-health.db"))
+	s, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board-health.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	return s

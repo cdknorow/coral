@@ -76,7 +76,7 @@ func TestNoOutboundWebhookFromAStoredURL(t *testing.T) {
 	t.Cleanup(target.Close)
 
 	path := filepath.Join(t.TempDir(), "board.db")
-	bs, err := board.NewStore(path)
+	bs, err := board.NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	handler := NewBoardHandler(bs)

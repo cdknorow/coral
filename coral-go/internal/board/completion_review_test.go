@@ -14,7 +14,7 @@ import (
 func TestCompletionReviewRecovery(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	defer func() { s.Close() }()
 	_, err = s.Subscribe(ctx, "team", "reviewer", "Orchestrator", "reviewer-session", nil, "all")
@@ -67,7 +67,7 @@ func TestCompletionReviewRecovery(t *testing.T) {
 	_, err = s.SubmitCompletionReview(ctx, "team", up.ID, "reviewer", "overwrite", "failed", "new reason", nil)
 	require.Error(t, err)
 	require.NoError(t, s.Close())
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	task, err = s.GetTask(ctx, "team", up.ID)
 	require.NoError(t, err)

@@ -44,10 +44,10 @@ func TestSessionListPerf(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 	ctx := context.Background()
 
-	db, err := store.Open(filepath.Join(dir, "sessions.db"))
+	db, err := store.OpenWithKey(context.Background(), filepath.Join(dir, "sessions.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
-	bs, err := board.NewStore(filepath.Join(dir, "messageboard.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(dir, "messageboard.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	logDir := filepath.Join(dir, "logs")

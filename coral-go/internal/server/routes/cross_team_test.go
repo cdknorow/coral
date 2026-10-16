@@ -27,7 +27,7 @@ type crossTeamEnv struct {
 
 func newCrossTeamEnv(t *testing.T) *crossTeamEnv {
 	t.Helper()
-	bs, err := board.NewStore(t.TempDir() + "/board.db")
+	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	e := &crossTeamEnv{t: t, h: NewBoardHandler(bs), now: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}

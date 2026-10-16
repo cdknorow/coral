@@ -18,7 +18,7 @@ import (
 func TestWipeMCPConfigLeavesNoTraceInTheFiles(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sessions.db")
 	require.NoError(t, os.WriteFile(path, migratedTemplate(t), 0o644))
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	ctx := context.Background()

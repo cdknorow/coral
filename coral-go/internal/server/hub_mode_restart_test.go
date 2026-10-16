@@ -19,11 +19,11 @@ func TestHubModeOffKeepsTheServers(t *testing.T) {
 
 	off := *r.cfg
 	off.HubMode = false
-	require.Equal(t, 404, call(New(&off, r.db, r.backend, nil).Router(), "GET", "/api/servers", "", nil).Code, "not a hub: no /api/servers")
+	require.Equal(t, 404, call(NewWithKey(&off, r.db, r.backend, nil, "").Router(), "GET", "/api/servers", "", nil).Code, "not a hub: no /api/servers")
 
 	on := *r.cfg
 	on.HubMode = true
-	rec := call(New(&on, r.db, r.backend, nil).Router(), "GET", "/api/servers", "", nil)
+	rec := call(NewWithKey(&on, r.db, r.backend, nil, "").Router(), "GET", "/api/servers", "", nil)
 	require.Equal(t, 200, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), `"id":"box"`, "the server added before is still there")
 }

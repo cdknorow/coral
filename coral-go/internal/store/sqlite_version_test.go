@@ -32,7 +32,7 @@ func sqliteAtLeast(t *testing.T, v string, min [3]int) bool {
 
 // Both the writer and the read pool run an SQLite with the WAL-reset fix, in WAL mode.
 func TestSQLiteVersionHasTheWALResetFix(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "v.db"))
+	db, err := OpenWithKey(context.Background(), filepath.Join(t.TempDir(), "v.db"), "")
 	require.NoError(t, err)
 	defer db.Close()
 	ctx := context.Background()

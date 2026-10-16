@@ -19,7 +19,7 @@ func testStoreWithSessionsDB(t *testing.T) (*Store, *sqlx.DB) {
 
 	// Board DB
 	boardDBPath := filepath.Join(t.TempDir(), "board_test.db")
-	s, err := NewStore(boardDBPath)
+	s, err := NewStoreWithKey(boardDBPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 

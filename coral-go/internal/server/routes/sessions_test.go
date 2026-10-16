@@ -1232,7 +1232,7 @@ func TestSessionsLaunchTeam_PreservesToolsAndNeverMCP(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 
 	boardDBPath := t.TempDir() + "/board.db"
-	bs, err := board.NewStore(boardDBPath)
+	bs, err := board.NewStoreWithKey(boardDBPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 
@@ -2414,7 +2414,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	t.Cleanup(func() { db.Close() })
 
 	boardDBPath := t.TempDir() + "/board.db"
-	bs, err := board.NewStore(boardDBPath)
+	bs, err := board.NewStoreWithKey(boardDBPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 

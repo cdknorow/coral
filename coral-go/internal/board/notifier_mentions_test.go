@@ -100,7 +100,7 @@ func TestNotifierConfirmsMentions(t *testing.T) {
 // UseDatabase, where the reader is the writer's only connection) the mention checks must not
 // need a second connection while their candidates' cursor is open; that waited forever.
 func TestMentionChecksOnOneConnectionStore(t *testing.T) {
-	s, err := NewStore(":memory:")
+	s, err := NewStoreWithKey(":memory:", "")
 	if err != nil {
 		t.Fatal(err)
 	}

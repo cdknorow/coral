@@ -25,7 +25,7 @@ func setupChatSearchTestEnv(t *testing.T) (*store.DB, *store.SessionStore, *boar
 	require.NoError(t, err)
 
 	boardDBPath := filepath.Join(dir, "board.db")
-	bs, err := board.NewStore(boardDBPath)
+	bs, err := board.NewStoreWithKey(boardDBPath, "")
 	require.NoError(t, err)
 
 	ss := store.NewSessionStore(db)

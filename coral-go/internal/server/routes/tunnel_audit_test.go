@@ -30,7 +30,7 @@ func (peekTerminal) CaptureOutput(_ context.Context, name string, _ int, _, _ st
 // to be an orchestrator) and never touches task state. From this computer: unchanged.
 func TestPeekThroughTheTunnel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "board.db")
-	bs, err := board.NewStore(path)
+	bs, err := board.NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	ctx := context.Background()

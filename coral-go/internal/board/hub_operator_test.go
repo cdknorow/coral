@@ -63,7 +63,7 @@ func TestHubUserBackfillOnUpgrade(t *testing.T) {
 		 ('p','c','Dev','c','2026-01-01T00:00:02Z',NULL)`)
 	require.NoError(t, err)
 	raw.Close()
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	defer s.Close()
 	var got []string

@@ -15,7 +15,7 @@ func TestWALReadPoolNonBlocking(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "wal_test.db")
 
-	db, err := Open(dbPath)
+	db, err := OpenWithKey(context.Background(), dbPath, "")
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -85,7 +85,7 @@ func TestWALReadPoolQueryOnlyRejection(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "readonly_test.db")
 
-	db, err := Open(dbPath)
+	db, err := OpenWithKey(context.Background(), dbPath, "")
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -100,7 +100,7 @@ func TestWALReadPoolQueryOnlyRejection(t *testing.T) {
 }
 
 func TestWALReadPoolInMemoryFallback(t *testing.T) {
-	db, err := Open(":memory:")
+	db, err := OpenWithKey(context.Background(), ":memory:", "")
 	require.NoError(t, err)
 	defer db.Close()
 

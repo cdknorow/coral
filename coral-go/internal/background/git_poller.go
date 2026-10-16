@@ -113,11 +113,6 @@ func NewGitPoller(gitStore *store.GitStore, runtime AgentRuntime, interval time.
 	}
 }
 
-// SetDiscoverFn sets a custom agent discovery function (for dependency injection).
-func (p *GitPoller) SetDiscoverFn(fn func(ctx context.Context) ([]AgentInfo, error)) {
-	p.discoverFn = fn
-}
-
 // SetIntervalFn supplies a user-configured poll interval, re-read before every
 // wait. Return a non-positive duration to pause polling.
 func (p *GitPoller) SetIntervalFn(fn func() time.Duration) { p.intervalFn = fn }

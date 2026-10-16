@@ -14,7 +14,7 @@ import (
 
 func TestStandardBuildOpensPlaintextWithPureGoDriver(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sessions.db")
-	db, err := OpenWithContext(context.Background(), path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	if err != nil {
 		t.Fatalf("standard plaintext open failed: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestStandardBuildRejectsEncryptedFileUntouched(t *testing.T) {
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := OpenWithContext(context.Background(), path)
+	_, err := OpenWithKey(context.Background(), path, "")
 	if !errors.Is(err, dbcrypt.ErrEncryptionUnavailable) {
 		t.Fatalf("want ErrEncryptionUnavailable, got %v", err)
 	}

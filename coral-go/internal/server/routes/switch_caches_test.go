@@ -185,7 +185,7 @@ func BenchmarkBoardStatus(b *testing.B) {
 	db, err := storetest.Open(b, filepath.Join(b.TempDir(), "s.db"))
 	require.NoError(b, err)
 	defer db.Close()
-	bs, err := board.NewStore(filepath.Join(b.TempDir(), "board.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(b.TempDir(), "board.db"), "")
 	require.NoError(b, err)
 	defer bs.Close()
 	h := NewSessionsHandler(db, &config.Config{LogDir: b.TempDir()}, nil, newMockTerminal(), bs)

@@ -29,7 +29,7 @@ func setupHistoryVerificationServer(t *testing.T) (*httptest.Server, *HistoryHan
 	t.Cleanup(func() { db.Close() })
 
 	boardDBDir := t.TempDir()
-	bs, err := board.NewStore(filepath.Join(boardDBDir, "board.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(boardDBDir, "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 

@@ -14,7 +14,7 @@ func openTestDB(t *testing.T) *DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	require.NoError(t, os.WriteFile(dbPath, migratedTemplate(t), 0o644))
-	db, err := Open(dbPath)
+	db, err := OpenWithKey(context.Background(), dbPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	return db
@@ -170,11 +170,11 @@ func TestOpen_IdempotentSchema(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
 	// Open twice — schema creation should be idempotent
-	db1, err := Open(dbPath)
+	db1, err := OpenWithKey(context.Background(), dbPath, "")
 	require.NoError(t, err)
 	db1.Close()
 
-	db2, err := Open(dbPath)
+	db2, err := OpenWithKey(context.Background(), dbPath, "")
 	require.NoError(t, err)
 	db2.Close()
 }

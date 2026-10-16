@@ -25,7 +25,7 @@ import (
 // by board.NewNamePattern; a board that already exists keeps working under its old name.
 func TestNewBoardNamesFollowTheRule(t *testing.T) {
 	ctx := context.Background()
-	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	// An existing board with a name from before the rule.
@@ -80,7 +80,7 @@ func TestLaunchesRefuseANewBadBoardName(t *testing.T) {
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
-	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	terminal := newMockTerminal()

@@ -78,7 +78,7 @@ func uncachedSidebarUnread(t *testing.T, s *Store, sessionNames []string) map[st
 
 func TestGetUnreadCounts_IncrementalMatchesFullCount(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 

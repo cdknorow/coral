@@ -12,7 +12,7 @@ import (
 
 // A new path gets a fully migrated database, the same as store.Open's.
 func TestOpenNewPathIsMigrated(t *testing.T) {
-	fresh, err := store.Open(filepath.Join(t.TempDir(), "fresh.db"))
+	fresh, err := store.OpenWithKey(context.Background(), filepath.Join(t.TempDir(), "fresh.db"), "")
 	require.NoError(t, err)
 	defer fresh.Close()
 	copied, err := Open(t, filepath.Join(t.TempDir(), "nested", "copied.db"))

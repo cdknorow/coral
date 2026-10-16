@@ -13,7 +13,7 @@ import (
 // order and with the same BlockedBy, but without hydrating workflows.
 func TestListOpenTasks_MatchesOpenSubsetOfListTasks(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 

@@ -47,7 +47,7 @@ func newPruneRig(t *testing.T) *pruneRig {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	boardPath := filepath.Join(t.TempDir(), "board.db")
-	bs, err := board.NewStore(boardPath)
+	bs, err := board.NewStoreWithKey(boardPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	raw, err := sqlx.Open("sqlite", boardPath+"?_pragma=busy_timeout(10000)")

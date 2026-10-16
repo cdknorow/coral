@@ -19,7 +19,7 @@ func TestReviewSubmitAndCompleteRaceToExactlyOne(t *testing.T) {
 	for _, outcome := range []string{"success", "failed"} {
 		t.Run(outcome, func(t *testing.T) {
 			ctx := context.Background()
-			s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+			s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 			require.NoError(t, err)
 			defer s.Close()
 			_, err = s.Subscribe(ctx, "team", "lead", "Orchestrator", "lead-session", nil, "all")

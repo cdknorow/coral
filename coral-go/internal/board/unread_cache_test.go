@@ -50,7 +50,7 @@ func uncachedMentionsUnread(t *testing.T, s *Store, project, subscriberID string
 // step the incremental count must equal a full recount.
 func TestCheckUnread_IncrementalMentionsCountMatchesFullCount(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 
@@ -113,7 +113,7 @@ func TestCheckUnread_IncrementalMentionsCountMatchesFullCount(t *testing.T) {
 
 func TestUnreadCache_StrictBoundAndDeleteBrackets(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	_, err = s.Subscribe(ctx, "team", "Dev", "Developer", "sess-dev", nil, "mentions")

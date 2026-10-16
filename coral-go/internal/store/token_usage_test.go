@@ -704,7 +704,7 @@ func TestTokenUsageStore_ExistingReadsUnaffectedByModel(t *testing.T) {
 // their data and read as NULL: their model was never recorded and is not guessed.
 func TestTokenUsageSchema_ModelColumnIsMigratedIn(t *testing.T) {
 	path := t.TempDir() + "/older.db"
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, NewTokenUsageStore(db).RecordUsage(ctx, &TokenUsage{SessionID: "old", AgentName: "a",
@@ -713,7 +713,7 @@ func TestTokenUsageSchema_ModelColumnIsMigratedIn(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer db.Close()
 	s := NewTokenUsageStore(db)

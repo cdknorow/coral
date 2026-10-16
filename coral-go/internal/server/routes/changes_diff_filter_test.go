@@ -163,7 +163,7 @@ func TestChangesDiffDedupe(t *testing.T) {
 // in it) served through Coral Hub carries none of their bytes; locally it's served whole.
 // A tunneled live diff has no X-Coral-Working-Directory.
 func TestTunneledDiffsAreFiltered(t *testing.T) {
-	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	coral := t.TempDir()

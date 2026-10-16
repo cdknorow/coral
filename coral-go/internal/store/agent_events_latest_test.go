@@ -286,7 +286,7 @@ func TestAgentEventsLatestPerf(t *testing.T) {
 // being built at startup nor make the event's INSERT fail.
 func TestEditedFilesIndexToleratesMalformedDetailJSON(t *testing.T) {
 	path := t.TempDir() + "/sessions.db"
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	// A database from before the index, holding a malformed row.
 	_, err = db.Exec(`DROP INDEX idx_agent_events_edited_files`)
@@ -296,7 +296,7 @@ func TestEditedFilesIndexToleratesMalformedDetailJSON(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err, "startup must survive a malformed detail_json row")
 	t.Cleanup(func() { db.Close() })
 	ts := NewTaskStore(db)

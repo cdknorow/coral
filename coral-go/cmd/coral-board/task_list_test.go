@@ -56,7 +56,7 @@ func legacyTaskListOutput(tasks []board.Task) string {
 func TestTaskList_ListsEveryTaskAcrossPages(t *testing.T) {
 	isolateBoardEnv(t)
 	ctx := context.Background()
-	bs, err := board.NewStore(t.TempDir() + "/board.db")
+	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
 	require.NoError(t, err)
 	defer bs.Close()
 	priorities := []string{"low", "critical", "medium", "high"}

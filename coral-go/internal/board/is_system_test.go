@@ -41,7 +41,7 @@ func TestIsSystemBackfillOnUpgrade(t *testing.T) {
 		INSERT INTO board_messages (project, session_id, subscriber_id, content, created_at) VALUES ('p','x','Coral Task Queue','a','2026-01-01T00:00:00Z'), ('p','y','Dev','b','2026-01-01T00:00:01Z')`)
 	require.NoError(t, err)
 	raw.Close()
-	s2, err := NewStore(path2)
+	s2, err := NewStoreWithKey(path2, "")
 	require.NoError(t, err)
 	defer s2.Close()
 	var flags []int

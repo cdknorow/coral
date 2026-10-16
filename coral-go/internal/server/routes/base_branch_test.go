@@ -71,7 +71,7 @@ func TestLaunchTeamRefusesAnOptionAsBaseBranch(t *testing.T) {
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
-	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	cfg := &config.Config{LogDir: t.TempDir()}

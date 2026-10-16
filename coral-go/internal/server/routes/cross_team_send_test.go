@@ -59,7 +59,7 @@ type sendEnv struct {
 
 func newSendEnv(t *testing.T) *sendEnv {
 	t.Helper()
-	bs, err := board.NewStore(t.TempDir() + "/board.db")
+	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	e := &sendEnv{t: t, h: NewBoardHandler(bs), bs: bs, hub: &fakeHub{}}
