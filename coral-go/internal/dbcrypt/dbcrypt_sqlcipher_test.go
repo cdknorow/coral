@@ -25,7 +25,7 @@ func TestMigratePlaintextRetainsBackupAndData(t *testing.T) {
 	if err := src.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := MigratePlaintext(path, "migration-key-material-1234567890"); err != nil {
+	if err := MigratePlaintexts([]string{path}, "migration-key-material-1234567890"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path + ".plaintext-backup"); err != nil {

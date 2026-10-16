@@ -359,14 +359,6 @@ func EncryptedFile(path string) (bool, error) {
 	return n == 16 && string(header) != "SQLite format 3\x00", nil
 }
 
-// MigratePlaintext atomically exports one plaintext SQLite file into an
-// encrypted SQLCipher file. The caller must hold the per-home lock and ensure
-// no other process has the file open. Existing data is retained as a clearly
-// named plaintext backup; failures leave the source untouched.
-func MigratePlaintext(path, key string) error {
-	return MigratePlaintexts([]string{path}, key)
-}
-
 // MigratePlaintexts prepares and verifies every database before changing any
 // canonical path. If preparation fails, all sources remain untouched. During
 // the short install phase, any completed swaps are rolled back on error.
@@ -495,71 +487,6 @@ func exportPlaintext(path, tmp, key string) error {
 	}
 	if err := check.QueryRow("PRAGMA integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
 		return fmt.Errorf("encrypted integrity check failed: %v", err)
-	}
-	return nil
-}
-
-/*
-legacy implementation retained in history; pair migration above is the only
-
-	path used by startup.
-*/
-func migratePlaintextLegacy(path, key string) error {
-	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
-		return nil
-	} else if statErr != nil {
-		return statErr
-	}
-	encrypted, err := EncryptedFile(path)
-	if err != nil || encrypted {
-		return err
-	}
-	tmp := path + ".encrypted.tmp"
-	backup := path + ".plaintext-backup"
-	_ = os.Remove(tmp)
-	src, err := sql.Open("sqlite3", path)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	if err := src.Ping(); err != nil {
-		return fmt.Errorf("open plaintext database: %w", err)
-	}
-	if _, err := src.Exec("PRAGMA integrity_check"); err != nil {
-		return fmt.Errorf("plaintext integrity check: %w", err)
-	}
-	if _, err := src.Exec("ATTACH DATABASE ? AS encrypted KEY ?;", tmp, encryptedKeyLiteral(key)); err != nil {
-		return fmt.Errorf("attach encrypted database: %w", err)
-	}
-	_, exportErr := src.Exec("SELECT sqlcipher_export('encrypted'); DETACH DATABASE encrypted;")
-	if exportErr != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("export encrypted database: %w", exportErr)
-	}
-	check, err := sql.Open(EncryptedDriver, encryptedDSN(tmp, key))
-	if err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := check.Ping(); err != nil {
-		check.Close()
-		_ = os.Remove(tmp)
-		return fmt.Errorf("verify encrypted database: %w", err)
-	}
-	var result string
-	if err := check.QueryRow("PRAGMA integrity_check").Scan(&result); err != nil || result != "ok" {
-		check.Close()
-		_ = os.Remove(tmp)
-		return fmt.Errorf("encrypted integrity check failed: %v", err)
-	}
-	check.Close()
-	if err := os.Rename(path, backup); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("retain plaintext backup: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Rename(backup, path)
-		return fmt.Errorf("install encrypted database: %w", err)
 	}
 	return nil
 }
