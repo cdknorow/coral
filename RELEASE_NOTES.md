@@ -1,5 +1,28 @@
 # Release Notes
 
+## v1.4.66 — Agents can no longer use the Operator's controls, and the phone list can group by server
+
+### Security
+
+- **An agent's token is refused on the Operator's routes in every mode, and on commands that act on other agents (send, keys, kill, restart, sleep, wake, auto-accept) and on working-mode, groups and team knowledge writes.** On a hub, an agent's token is also refused on the hub proxy, so an agent can't act on another server. Run these yourself with the API key or from the dashboard; the agent docs say which calls are the Operator's.
+- **Logged request URLs hide login_token and any value whose name ends in _token, _key or _secret,** so a sign-in link's token can't end up in coral.log.
+- **Unix: a special file planted at a log path can't hang Coral.** Coral's log and cache writes open without blocking and refuse anything but a regular file.
+- **CORAL_DBCRYPT_TEST_EXIT_PHASE, a test switch that stops the database encryption migration, is now read only by test builds,** so a shipped Coral can't be made to exit mid-migration by an environment variable.
+
+### Fixes
+
+- **Turning off auto goals or turning on auto summarize through the settings API now takes effect.**
+- **A Coral running as a hub: the 'Coral was updated, reload to use the new version' banner goes away after a reload.** A connected server's build was added to the hub's own, so the dashboard never matched its build and the banner came back on every load.
+- **Phones: Group by server, Show server and Show summaries** are in the agent list's ≡ display menu. Below 768 px they used to be only in the sidebar, which phones don't show.
+
+### Performance
+
+- **The icon font is 119 KB smaller, and startup makes fewer requests.**
+
+### Other changes
+
+- **Code cleanup:** the server's route setup and the sessions handlers are split into smaller files, with no change in behaviour.
+
 ## v1.4.65 — Coral Hub: faster terminal, tier fixes agreed with Coral Hub, and Windows link hardening
 
 ### Security
