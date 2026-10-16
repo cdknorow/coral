@@ -330,6 +330,7 @@ func (p *GitPoller) writeChangedFiles(ctx context.Context, key, agentName, workd
 		return
 	}
 	p.written[key] = writtenFiles{hash: hash, stamp: stamp, count: len(files)}
+	NotifyFilesChanged(workdir) // a different list: the folder's files changed (#3721)
 }
 
 func (p *GitPoller) discoverAgents(ctx context.Context) ([]AgentInfo, error) {

@@ -27,7 +27,7 @@ import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalW
 import { loadXterm, xtermReady, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
 import { agentSwitchStarted, agentViewReady } from './ready.js';
 import { getRendererMode } from './renderers.js';
-import { invalidateFileCache, fetchFileList } from './file_mention.js';
+import { invalidateFileCache } from './file_mention.js';
 import { isPopout, popoutResolved, popoutUpdateFromSession, formatTerminalLabel } from './popout.js';
 import { joinSessionOwnership, leaveSessionOwnership } from './ownership.js';
 import { applySleepingView } from './sleeping_view.js';
@@ -303,7 +303,9 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         } else {
             loadChangedFiles(name, sessionId);
         }
-        fetchFileList();
+        // The repository's file list (search-files) is no longer fetched on every switch
+        // (#3721: the slowest request of a switch): the @-mention, the file search and the Files
+        // tab fetch it when used, and the server caches it.
     };
     Promise.resolve(transcriptReady).catch(() => {}).then(loadFiles);
 }

@@ -40,7 +40,34 @@ type availableAgent struct {
 var statusActivityANSI = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))`)
 
 // TeamAvailability reports observed runtime and queue state; it does not reserve work.
+// GET /api/board/{project}/status
 func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Request) {
+	if !boardStatusCacheable(r) {
+		h.teamAvailabilityUncached(w, r)
+		return
+	}
+	name := urlParam(r, "name")
+	if name == "" {
+		name = urlParam(r, "project")
+	}
+	// A sidebar render asks for a board's status three times at once, about 89 ms each
+	// (#3721): those share one computation. Nothing is kept afterwards, so a status read after
+	// a change is the fresh one. A request for agents' activity is the caller's own (authorized
+	// per subscriber) and always computed for it.
+	if h.boardStatus == nil {
+		h.teamAvailabilityUncached(w, r)
+		return
+	}
+	h.boardStatus.serve(w, r, name, func(rw http.ResponseWriter) { h.teamAvailabilityUncached(rw, r) })
+}
+
+// boardStatusCacheable: everything but a request for agents' activity (the caller's own).
+func boardStatusCacheable(r *http.Request) bool {
+	q := r.URL.Query().Get("activity")
+	return q != "1" && !strings.EqualFold(q, "true")
+}
+
+func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *http.Request) {
 	trace := newPhaseTrace("board-status")
 	defer trace.finish()
 	ctx := r.Context()

@@ -1,0 +1,102 @@
+package routes
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/gitutil"
+)
+
+// fileListTTL bounds how stale a cached file list can be when the git poller hasn't seen the
+// change yet (it polls less often than this).
+const fileListTTL = 15 * time.Second
+
+// fileLists caches each repository's file list for the file search (#3721): listing it (git
+// ls-files with the untracked files) was the slowest request of every agent switch, 124 to 302
+// ms. One listing per repository at a time (concurrent callers share it); a list is dropped
+// when the git poller sees the folder's changed files change, and after fileListTTL.
+var fileLists = newFileListCache(fileListTTL)
+
+func init() { background.OnFilesChanged(fileLists.invalidate) }
+
+type fileListEntry struct {
+	files []string
+	at    time.Time
+}
+
+type fileListCache struct {
+	ttl     time.Duration
+	mu      sync.Mutex
+	entries map[string]fileListEntry
+	flights map[string]chan struct{}
+	now     func() time.Time
+	list    func(ctx context.Context, workdir string) ([]string, error)
+}
+
+func newFileListCache(ttl time.Duration) *fileListCache {
+	return &fileListCache{ttl: ttl, entries: map[string]fileListEntry{}, flights: map[string]chan struct{}{}, now: time.Now, list: gitListFiles}
+}
+
+// gitListFiles lists a repository's tracked and untracked (not ignored) files.
+func gitListFiles(ctx context.Context, workdir string) ([]string, error) {
+	out, err := gitutil.Command(ctx, workdir, "ls-files", "--cached", "--others", "--exclude-standard").Output()
+	if err != nil {
+		return nil, err
+	}
+	files := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(files) == 1 && files[0] == "" {
+		files = nil
+	}
+	return files, nil
+}
+
+// get returns workdir's file list, listing it at most once at a time; the slice is shared, never
+// modify it. A failed listing isn't kept.
+func (c *fileListCache) get(ctx context.Context, workdir string) ([]string, error) {
+	for {
+		c.mu.Lock()
+		if e, ok := c.entries[workdir]; ok && c.now().Sub(e.at) < c.ttl {
+			c.mu.Unlock()
+			return e.files, nil
+		}
+		if wait, ok := c.flights[workdir]; ok {
+			c.mu.Unlock()
+			select {
+			case <-wait:
+				continue // the listing finished (or failed): look again
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		done := make(chan struct{})
+		c.flights[workdir] = done
+		c.mu.Unlock()
+
+		files, err := c.list(ctx, workdir)
+		c.mu.Lock()
+		delete(c.flights, workdir)
+		if err == nil {
+			c.entries[workdir] = fileListEntry{files: files, at: c.now()}
+		}
+		c.mu.Unlock()
+		close(done)
+		return files, err
+	}
+}
+
+// invalidate drops the lists of workdir and of any repository containing it or inside it (the
+// poller's folder can be an agent's subfolder of the repository the search lists).
+func (c *fileListCache) invalidate(workdir string) {
+	w := strings.TrimRight(workdir, "/") + "/"
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k := range c.entries {
+		key := strings.TrimRight(k, "/") + "/"
+		if strings.HasPrefix(w, key) || strings.HasPrefix(key, w) {
+			delete(c.entries, k)
+		}
+	}
+}

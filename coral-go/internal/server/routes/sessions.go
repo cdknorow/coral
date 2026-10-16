@@ -54,6 +54,9 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	// boardStatus shares one computation of a board's status among the requests that arrive
+	// together (#3721); it keeps nothing, so a status is never stale.
+	boardStatus *replyCache
 	// inOldTmux reports an agent session still running in Coral's private tmux server, for a
 	// pty Coral's wake (#3634). Tests replace it.
 	inOldTmux func(ctx context.Context, sessionName string) bool
@@ -301,6 +304,7 @@ func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.Ter
 		cfg:               cfg,
 		terminal:          terminal,
 		jsonl:             jsonl.NewSessionReader(),
+		boardStatus:       newReplyCache(0),
 		backend:           backend,
 		logStatusCache:    make(map[string]cachedLogStatus),
 		logWarm:           make(map[string]bool),
@@ -2490,21 +2494,17 @@ func (h *SessionsHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := gitutil.Command(ctx, workdir, "ls-files", "--cached", "--others", "--exclude-standard").Output()
+	// The list is cached per repository (#3721): it is shared, so filtered into a new slice.
+	allFiles, err := fileLists.get(ctx, workdir)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"files": []string{}})
 		return
-	}
-
-	allFiles := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(allFiles) == 1 && allFiles[0] == "" {
-		allFiles = nil
 	}
 	if strictBounds(r) {
 		if !rootAllowed(realPath(workdir)) {
 			allFiles = nil
 		}
-		kept := allFiles[:0]
+		kept := make([]string, 0, len(allFiles))
 		for _, fp := range allFiles {
 			if !sensitivePath(fp) {
 				kept = append(kept, fp)
