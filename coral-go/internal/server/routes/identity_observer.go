@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -346,25 +348,88 @@ var recordedAgentRoutes = map[string]string{
 	"POST /api/sessions/launch-team": "launch a team",
 }
 
-// guardedRoutePrefixes limit the (costly) route match to the paths the tables above can hold.
-var guardedRoutePrefixes = []string{"/api/workflows", "/api/scheduled/", "/api/tasks/", "/api/settings", "/api/sessions/launch", "/api/system/", "/api/cloud/", "/api/teams/"}
+// guardPrefixes limit the (costly) route match: per method, the static start of every entry of
+// the tables above (the pattern up to its first parameter), derived from the tables themselves,
+// so an entry is enforced wherever its path is (#3670: a hand-kept prefix list missed the
+// artifact routes).
+var guardPrefixes = buildGuardPrefixes()
+
+func buildGuardPrefixes() map[string][]string {
+	out := map[string][]string{}
+	for _, table := range []map[string]string{operatorOnlyRoutes, recordedAgentRoutes} {
+		for key := range table {
+			method, pattern, ok := splitGuardKey(key)
+			if !ok {
+				panic("identity guard: malformed route " + strconv.Quote(key) + `: want "METHOD /path"`)
+			}
+			pre := pattern
+			if i := strings.IndexAny(pre, "{*"); i >= 0 {
+				pre = pre[:i]
+			}
+			out[method] = append(out[method], pre)
+		}
+	}
+	return out
+}
+
+func splitGuardKey(key string) (method, pattern string, ok bool) {
+	method, pattern, ok = strings.Cut(key, " ")
+	switch method {
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+	default:
+		return "", "", false
+	}
+	return method, pattern, ok && strings.HasPrefix(pattern, "/") && !strings.ContainsAny(pattern, " \t")
+}
+
+// ValidateGuardedRoutes checks every entry of the tables above against the router: an entry the
+// router doesn't serve under exactly that method and pattern would never be matched, so it would
+// be silently unenforced. The server refuses to start on one (#3670).
+func ValidateGuardedRoutes(routes chi.Routes) error {
+	served := map[string]bool{}
+	if err := chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		served[method+" "+route] = true
+		return nil
+	}); err != nil {
+		return err
+	}
+	var missing []string
+	for _, table := range []map[string]string{operatorOnlyRoutes, recordedAgentRoutes} {
+		for key := range table {
+			if !served[key] {
+				missing = append(missing, key)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("identity guard: no such route for %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// OperatorOnlyRouteKeys lists operatorOnlyRoutes ("METHOD pattern"), sorted, for tests.
+func OperatorOnlyRouteKeys() []string {
+	keys := make([]string, 0, len(operatorOnlyRoutes))
+	for k := range operatorOnlyRoutes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
 
 // guardedRoute returns the route pattern of r when it is one of operatorOnlyRoutes (only is
 // true: an agent is refused in strict mode) or recordedAgentRoutes (recorded, never refused),
 // asking the router (the middleware runs before routing).
 func guardedRoute(r *http.Request) (route string, only, ok bool) {
 	hit := false
-	for _, pre := range guardedRoutePrefixes {
+	for _, pre := range guardPrefixes[r.Method] {
 		if strings.HasPrefix(r.URL.Path, pre) {
 			hit = true
 			break
 		}
 	}
-	// Board traffic is the busiest: only its DELETEs and PATCHes (delete a board or a message,
-	// rename a board) and its pause and resume can be a guarded route.
-	boardGuarded := strings.HasPrefix(r.URL.Path, "/api/board/") && (r.Method == http.MethodDelete || r.Method == http.MethodPatch ||
-		(r.Method == http.MethodPost && (strings.HasSuffix(r.URL.Path, "/pause") || strings.HasSuffix(r.URL.Path, "/resume"))))
-	if !hit && !boardGuarded {
+	if !hit {
 		return "", false, false
 	}
 	rc := chi.RouteContext(r.Context())
