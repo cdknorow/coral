@@ -412,6 +412,20 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 // Info returns enriched metadata for the session info modal.
 // GET /api/sessions/live/{name}/info
+// addTranscriptModel sets "model" to the model the session's transcript last recorded, when
+// one was read (#4065): the model the agent actually runs, after a /model switch too. Without
+// one, "model" stays the model it was launched or started with, if any. model_source says which.
+func (h *SessionsHandler) addTranscriptModel(entry map[string]any, sessionID string) {
+	if h.jsonl == nil || sessionID == "" {
+		return
+	}
+	if m := h.jsonl.TranscriptModel(sessionID); m != "" {
+		entry["model"], entry["model_source"] = m, "transcript"
+	} else if _, ok := entry["model"]; ok {
+		entry["model_source"] = "launch"
+	}
+}
+
 func (h *SessionsHandler) Info(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
@@ -448,7 +462,11 @@ func (h *SessionsHandler) Info(w http.ResponseWriter, r *http.Request) {
 			// Construct log path from agent type + session ID
 			logPath := naming.LogFile(h.cfg.LogDir, ls.AgentType, sessionID)
 			result["log_path"] = logPath
+			if ls.Model != nil && *ls.Model != "" {
+				result["model"] = *ls.Model
+			}
 		}
+		h.addTranscriptModel(result, sessionID)
 	}
 
 	// Look up git state by session_id first, then by name

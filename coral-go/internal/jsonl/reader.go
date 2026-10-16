@@ -58,6 +58,7 @@ type claudeTurnCache struct {
 	event   string
 	at      time.Time
 	version string         // the newest line's "version": the running Claude Code's own (#3573)
+	model   string         // the newest assistant entry's model (#4065)
 	apiErr  ClaudeAPIError // the latest message, when it is an API error (#3830)
 }
 
@@ -66,6 +67,7 @@ type codexTurnCache struct {
 	event  string
 	at     time.Time
 	active bool
+	model  string // the newest turn_context's model (#4065)
 }
 
 type agyTurnCache struct {
