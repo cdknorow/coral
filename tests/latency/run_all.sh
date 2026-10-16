@@ -50,7 +50,8 @@ log(){ echo "[run_all] $*"; }
 cleanup() {
   log "cleanup..."
   if [[ -n "${SRVPID}" ]] && kill -0 "$SRVPID" 2>/dev/null; then kill "$SRVPID" 2>/dev/null; sleep 2; kill -9 "$SRVPID" 2>/dev/null; fi
-  if [[ -f "$HOGPIDS" ]]; then while read -r p; do [[ -n "$p" ]] && kill -9 "$p" 2>/dev/null; done < "$HOGPIDS"; fi
+  # TERM, not -9: each $p is a `timeout` wrapper; TERM lets it kill its busy-loop child and exit (-9 would orphan it; Security on #3740).
+  if [[ -f "$HOGPIDS" ]]; then while read -r p; do [[ -n "$p" ]] && kill "$p" 2>/dev/null; done < "$HOGPIDS"; fi
   [[ -S "$SOCKET" ]] && "$TMUX_BIN" -S "$SOCKET" kill-server 2>/dev/null
   # Leave ~coral as found: the seeder is copied into the module only for the build (Security on #3740),
   # so drop it here too in case the script died between the copy and its own rm.
@@ -125,7 +126,7 @@ bash "$HERE/measure.sh" "$BASE" "$TARGETS" hog "$N" "$WORK"
 
 # ---- kill hog ----
 log "killing hog"
-while read -r p; do [[ -n "$p" ]] && kill -9 "$p" 2>/dev/null; done < "$HOGPIDS"
+while read -r p; do [[ -n "$p" ]] && kill "$p" 2>/dev/null; done < "$HOGPIDS"
 : > "$HOGPIDS"
 
 # ---- combined table ----
