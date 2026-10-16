@@ -97,7 +97,7 @@ export function syncMobileAgentList() {
 
         // Add header with New button
         const header = document.createElement('div');
-        header.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;padding:12px 16px;';
+        header.className = 'mobile-list-header';
         header.innerHTML = `
             <h2 class="mobile-list-title">Live Sessions</h2>
             <div class="server-switcher-host" data-server-switcher-host hidden></div>

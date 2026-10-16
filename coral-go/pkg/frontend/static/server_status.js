@@ -230,7 +230,7 @@ export function serverSwitcherHtml(open = false) {
     const down = list.filter(x => x.status !== 'online').length;
     const aria = single ? `Server ${e.label || e.id}: ${m.label}` : `${list.length} servers${down ? `, ${down} not online` : ''}`;
     const body = single
-        ? serverDetailsHtml(e) + `<button type="button" class="btn btn-small server-open-btn" data-server-open="${escHtml(e.id)}">Open in Servers</button>`
+        ? serverDetailsHtml(e) + `<button type="button" class="server-open-btn server-open-footer" data-server-open="${escHtml(e.id)}">Open in Servers</button>`
         : `<ul class="server-switcher-list">${list.map(x => {
             const xm = statusMeta(x.status);
             // Which server needs the update (#3059): a marker and the accessible name say so.
@@ -238,19 +238,21 @@ export function serverSwitcherHtml(open = false) {
             const upd = xn ? (xn.level === 'required' ? 'Update required' : 'Update available') : '';
             return `<li><button type="button" class="server-switcher-item server-${xm.cls}" data-server-open="${escHtml(x.id)}" aria-label="${escHtml(`${x.label || x.id}: ${xm.label}, ${serverAgentCount(x)} agents. Open in Servers${upd ? `. ${upd}` : ''}`)}">`
                 + `<span class="server-dot" aria-hidden="true"></span><span class="server-switcher-name">${escHtml(shortServerName(x))}</span>`
-                + (xn ? `<span class="server-update-marker server-update-${xn.level}">${xn.level === 'required' ? 'Update required' : 'Update'}</span>` : '')
+                // One column for the marker on every row: the same size and place whether the row has one or not.
+                + `<span class="server-switcher-update">${xn ? `<span class="server-update-marker server-update-${xn.level}">${xn.level === 'required' ? 'Update required' : 'Update'}</span>` : ''}</span>`
                 + `<span class="server-switcher-meta">${escHtml(xm.label)} · ${serverAgentCount(x)}</span></button></li>`;
         }).join('')}</ul>`
-            + `<button type="button" class="btn btn-small server-open-btn" data-server-open="">Open Servers</button>`;
+            + `<button type="button" class="server-open-btn server-open-footer" data-server-open="">Open Servers</button>`;
     // #3059: an update notice stays visible on the button; the link is in the panel.
     const notices = list.filter(x => normServer(x.id) !== LOCAL_SERVER).map(updateNotice).filter(Boolean);
     const level = notices.some(n => n.level === 'required') ? 'required' : (notices.length ? 'available' : '');
-    const marker = level ? `<span class="server-update-marker server-update-${level}">${level === 'required' ? 'Update required' : 'Update'}</span>` : '';
+    // On the button the marker is short ("Update"); the level is its colour and the button's accessible name says "Update required".
+    const marker = level ? `<span class="server-update-marker server-update-${level}">Update</span>` : '';
     return `<details class="server-switcher server-${m.cls}" data-server-switcher${open ? ' open' : ''}>`
         + `<summary class="server-switcher-btn" aria-label="${escHtml(aria + (level ? `. ${level === 'required' ? 'Update required' : 'Update available'}` : ''))}" title="${escHtml(single ? serverHoverText(e.id) : aria)}">`
         + `<span class="server-dot" aria-hidden="true"></span><span class="server-switcher-label">${escHtml(label)}</span>`
         + marker + `<span class="server-switcher-caret" aria-hidden="true">▾</span></summary>`
-        + `<div class="server-switcher-panel">${body}</div></details>`;
+        + `<div class="server-switcher-panel${single ? '' : ' server-switcher-panel-list'}">${body}</div></details>`;
 }
 
 /** A collapsible server group header for the agent list (2+ servers). */
