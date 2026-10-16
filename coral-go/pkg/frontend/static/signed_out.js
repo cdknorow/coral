@@ -70,6 +70,7 @@ function show() {
 export function enterSignedOut(win = window) {
     if (isSignedOut() || win.location.pathname.startsWith('/auth')) return;
     setSignedOut(true);
+    document.dispatchEvent(new CustomEvent('coral:signed-out')); // the terminal socket closes itself
     try { if (state.coralWs) state.coralWs.close(); } catch { /* already closed */ }
     show();
 }

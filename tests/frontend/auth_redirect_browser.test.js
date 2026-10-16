@@ -26,6 +26,11 @@ const BASE = require('./test_base').BASE;
         await Page.addScriptToEvaluateOnNewDocument({ source: `(() => { const real = window.fetch.bind(window);
             const json = (b, s) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } }));
             window.__api = 0;
+            // Count the terminal sockets the page opens, and run the terminal's 3 s reconnect delay in 0.2 s (this suite only).
+            const RealWS = window.WebSocket; window.__termWs = 0;
+            window.WebSocket = function (u, p) { if (String(u).includes('/ws/terminal')) window.__termWs++; return p === undefined ? new RealWS(u) : new RealWS(u, p); };
+            window.WebSocket.prototype = RealWS.prototype; for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) window.WebSocket[k] = RealWS[k];
+            const realSetTimeout = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms === 3000 ? 200 : ms, ...rest);
             window.fetch = (u, o) => {
                 const s = String(u);
                 if (s.includes('/api/qa-locked')) return json({ error: 'sign in', code: 'dashboard_auth_required' }, 401);
@@ -41,6 +46,11 @@ const BASE = require('./test_base').BASE;
         await ev(`(async () => { const o = await import(${S} + 'overload.js'); window.__ticks = 0; window.__poll = o.pollEvery(() => { window.__ticks++; }, 100); window.__o = o; return true; })()`);
         await waitFor(`window.__ticks >= 3`, 'a poller ticking while signed in', { timeout: 5000 });
         const here = await ev(`location.pathname + location.search + location.hash`);
+
+        // A terminal socket for an agent that is not there: the server refuses it and the terminal keeps trying to reconnect, as it does for any dropped socket.
+        await ev(`(async () => { const st = (await import(${S} + 'state.js')).state; st.currentSession = { type: 'live', name: 'qa-term', tmux_session: 'qa-term', agent_type: 'terminal', session_id: 'qa-term-sid' };
+            window.connectTerminalWs('qa-term', 'terminal', 'qa-term-sid', 'local'); return true; })()`);
+        await waitFor(`window.__termWs >= 3`, 'the terminal reconnecting while signed in', { timeout: 8000 });
 
         console.log('1. A 401 from another origin, or one that is not "signed out", changes nothing');
         await ev(`fetch('http://127.0.0.1:1/api/x').catch(() => 0); fetch('/api/qa-agent-only'); true`);
@@ -72,6 +82,13 @@ const BASE = require('./test_base').BASE;
         await sleep(1500); // sleep-ok: proves a negative, the page makes no /api request while signed out
         assert.equal(await ev(`window.__api`), calls, 'no /api request from the page while signed out');
         console.log(`   ✓ poller frozen at ${ticks} ticks, feed closed (was ${sock}), no /api calls in 4 s`);
+
+        console.log('3b. The terminal socket is closed and does not reconnect either');
+        const term = await ev(`window.__termWs`);
+        await sleep(1500); // sleep-ok: proves a negative, no terminal reconnect in 1.5 s (the retry delay is 0.2 s here)
+        assert.equal(await ev(`window.__termWs`), term, 'no new terminal socket while signed out');
+        assert.equal(await ev(`window.connectTerminalWs('qa-term', 'terminal', 'qa-term-sid', 'local') === undefined && window.__termWs`), term, 'and a new connect call does nothing');
+        console.log(`   ✓ ${term} terminal sockets before, none after`);
 
         console.log('4. Try again while still refused keeps the panel and says so');
         await ev(`document.getElementById('signed-out-retry').click(); true`);
