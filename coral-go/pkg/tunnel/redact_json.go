@@ -244,6 +244,24 @@ func writeJSONString(b *bytes.Buffer, s string) bool {
 	return true
 }
 
+// RedactJSON redacts a JSON document Coral stores (an agent event's detail, #3763): by its
+// structure when it is valid JSON that can be walked, as text otherwise. It never fails: what
+// can't be walked is redacted as text.
+func RedactJSON(raw []byte) []byte {
+	out := RedactTokens(raw)
+	if json.Valid(raw) {
+		if s, ok := redactJSONStructure(raw); ok {
+			out = s
+		}
+	}
+	// Redaction only ever puts the marker in: with no new one, nothing was found, and the
+	// document is kept as it was written (the walk re-encodes it, \u0026 and all).
+	if bytes.Count(out, []byte(RedactMarker)) == bytes.Count(raw, []byte(RedactMarker)) {
+		return raw
+	}
+	return out
+}
+
 // redactReply redacts a reply held whole: by its structure when it is JSON (declared and
 // valid), as text otherwise. A panic in either is a failure, so a reply is never sent unscanned.
 func redactReply(hdr http.Header, raw []byte) (out []byte, ok bool) {

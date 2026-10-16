@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // AgentTask represents a checklist item for an agent.
@@ -467,6 +469,20 @@ func (s *TaskStore) DeleteAgentNote(ctx context.Context, noteID int64) error {
 
 // ── Agent Events ──────────────────────────────────────────────────────
 
+// redactAgentEvent redacts an event before it is stored (#3763, secrets audit #3762 finding 1):
+// a tool call's summary and detail hold the whole command ("curl -H 'Authorization: Bearer
+// ...'", "export TOKEN=...", "psql postgres://user:pw@..."), and sessions.db is what gets
+// backed up and attached. Coral Hub's redactor runs once here, at the write, for every writer
+// (the hooks' events, goals, thinking, auto-accept): the summary as text, the detail by its JSON
+// structure (a value under a secret-named key is redacted whole).
+func redactAgentEvent(event *AgentEvent) {
+	event.Summary = string(tunnel.RedactTokens([]byte(event.Summary)))
+	if event.DetailJSON != nil {
+		d := string(tunnel.RedactJSON([]byte(*event.DetailJSON)))
+		event.DetailJSON = &d
+	}
+}
+
 // InsertAgentEvent inserts an event and auto-prunes to 500 per agent.
 // CreatedAt is stamped with the current time unless the caller set it, which
 // transcript-derived events do so they sort where they actually happened.
@@ -474,6 +490,7 @@ func (s *TaskStore) InsertAgentEvent(ctx context.Context, event *AgentEvent) (*A
 	if event.CreatedAt == "" {
 		event.CreatedAt = nowUTC()
 	}
+	redactAgentEvent(event)
 
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO agent_events (agent_name, session_id, event_type, tool_name, summary, detail_json, created_at, duration_ms, ref_id)

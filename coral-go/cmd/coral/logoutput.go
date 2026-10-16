@@ -5,6 +5,8 @@ import (
 	"io"
 	"sync/atomic"
 	"time"
+
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // terminalLogDepth is how many log lines may wait for a slow terminal before
@@ -34,12 +36,27 @@ type fileThenTerminal struct {
 }
 
 func (w *fileThenTerminal) Write(p []byte) (int, error) {
-	n, err := w.file.Write(p)
-	w.terminal.Write(p)
-	if err == nil && n < len(p) {
+	line := redactLogLine(p)
+	n, err := w.file.Write(line)
+	w.terminal.Write(line)
+	if err == nil && n < len(line) {
 		err = io.ErrShortWrite
 	}
 	return len(p), err
+}
+
+// redactLogLine is a log line with Coral Hub's redactor applied (#3763, secrets audit #3762
+// findings 3 and 4): every line coral.log and the terminal get, so an agent's launch line (its
+// flags), an error that quotes a configured URL with a password in it, or a panic's value can't
+// write a credential. Each line arrives whole (one Write per log call). A line the redactor
+// can't check is replaced by a note, never written unchecked.
+func redactLogLine(p []byte) (out []byte) {
+	defer func() {
+		if recover() != nil {
+			out = []byte("[log] a line could not be checked for secrets and was dropped\n")
+		}
+	}()
+	return tunnel.RedactTokens(p)
 }
 
 // terminalWriter copies log lines to a terminal from its own goroutine. Write

@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
 
@@ -372,7 +371,7 @@ func (s *Server) buildRouter() chi.Router {
 	r := chi.NewRouter()
 
 	// Middleware
-	r.Use(middleware.Recoverer)
+	r.Use(recoverer)        // logs through coral.log's redaction (#3763)
 	r.Use(httputil.GzipAPI) // /api/ JSON over 1 KB, gzipped for a client that accepts it (#3724)
 	r.Use(noStoreAPI)
 	r.Use(s.buildHeader)
