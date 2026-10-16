@@ -41,6 +41,7 @@ type routeHandlers struct {
 func (s *Server) useMiddleware(r *chi.Mux) {
 	// Middleware
 	r.Use(recoverer)        // logs through coral.log's redaction (#3763)
+	r.Use(routes.BodyLimit) // every request body capped (#3998)
 	r.Use(httputil.GzipAPI) // /api/ JSON over 1 KB, gzipped for a client that accepts it (#3724)
 	r.Use(noStoreAPI)
 	r.Use(s.buildHeader)
