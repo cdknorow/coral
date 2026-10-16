@@ -25,6 +25,7 @@ import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
 import './modal_chrome.js'; // modal backdrop/Escape/Tab handling for every dialog (#3140)
+import { attachAllDialogFocus } from './dialog_focus.js';
 import './board_choice.js'; // the duplicate-name choice used by the lazy modals.js (#3538): loaded at startup so a launch never fails on it
 import './dialog_focus.js'; // focus into a dialog and back to its opener (accessibility pass); used by lazy modals.js
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
@@ -1102,6 +1103,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     initMobile();
 
     initPrerequisiteChecks();
+    attachAllDialogFocus();   // focus in and back for every dialog in the shell (#4026)
 
     // ── Filter event wiring ─────────────────────────────────────────────
 
