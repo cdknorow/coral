@@ -121,6 +121,9 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         const mode = await ev(`(() => { const out = {}; for (const m of ['terminal', 'chat', 'terminal']) { document.querySelector('[data-on-click="live-view-mode"][data-mode="' + m + '"]').click();
             out[m + Object.keys(out).length] = localStorage.getItem('coral-live-view-mode'); } return out; })()`);
         check('the Chat/Terminal toggle switches the view', JSON.stringify(Object.values(mode)) === JSON.stringify(['terminal', 'chat', 'terminal']), JSON.stringify(mode));
+        // The side panel may start collapsed on a small runner (QA's run): open it first.
+        await ev(`window.toggleAgenticPanel(true); true`);
+        await until(`[...document.querySelectorAll('#live-session-view [data-on-click="agentic-tab"]')].some(b => b.offsetParent !== null)`, 'the side panel open', 3000);
         const tabs = await ev(`(() => { const out = {}; for (const b of document.querySelectorAll('#live-session-view [data-on-click="agentic-tab"]')) {
             if (b.offsetParent === null) continue; b.click(); out[b.dataset.tab] = b.classList.contains('active') || b.getAttribute('aria-selected') === 'true'; } return out; })()`);
         check('each visible side panel tab opens and is marked active', Object.keys(tabs).length >= 3 && Object.values(tabs).every(Boolean), JSON.stringify(tabs));
