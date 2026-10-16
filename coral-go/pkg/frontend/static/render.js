@@ -433,7 +433,6 @@ export function setBoardAccentColor(boardName) {
 // ── Board Chat (right-panel tab) ──────────────────────────────────────
 
 let _boardChatTimer = null;
-let _boardChatLastId = {};
 let _activeBoardChat = null;
 let _boardChatGen = 0;   // bumped whenever the board chat panel is rebuilt, to drop stale loads
 
@@ -442,7 +441,13 @@ export function getActiveBoardChat() { return _activeBoardChat; }
 let _boardChatMessages = [];
 let _boardChatTotal = 0;
 let _boardChatOffset = 0;   // older messages not loaded yet
-let _boardChatKeyset = false; // the board's server pages by message id (before_id)
+let _boardChatKeyset = false; // the board's server pages by message id (before_id / after_id)
+// The board the message state above belongs to, and whether its latest page has loaded. The state
+// outlives the panel, so switching between agents of one board doesn't load the page again (#3722).
+let _boardChatBoard = null;
+let _boardChatLoaded = false;
+let _boardChatInFlight = 0;   // the panel generation whose load is in flight (0: none)
+let _boardChatAgain = false;  // a load was asked for while one was in flight (after a send)
 const _BOARD_CHAT_PAGE = 50;
 let _boardChatSelectMode = false;
 let _boardChatSelectedIds = new Set();
@@ -490,14 +495,19 @@ export function showBoardChatTab(boardName) {
         if (pane && h >= 80) pane.style.height = h + 'px';
     }
 
-    // Reset pagination and select state for new board
-    _boardChatMessages = [];
-    _boardChatTotal = 0;
-    _boardChatOffset = 0;
-    _boardChatKeyset = false;
-    _boardChatLastId[boardName] = null;
+    // A new board starts afresh; the same board shows what it had at once, and the poll fetches
+    // only what came since.
+    if (_boardChatBoard !== boardName) {
+        _boardChatBoard = boardName;
+        _boardChatLoaded = false;
+        _boardChatMessages = [];
+        _boardChatTotal = 0;
+        _boardChatOffset = 0;
+        _boardChatKeyset = false;
+    }
     _boardChatSelectMode = false;
     _boardChatSelectedIds.clear();
+    if (_boardChatLoaded) _renderBoardPanelMessages(document.getElementById('board-panel-msgs'), true);
 
     _loadBoardPanelChat(boardName);
     _checkBoardPauseState(boardName);
@@ -523,49 +533,77 @@ function _formatTime(iso) {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-async function _loadBoardPanelChat(boardName) {
+// Loads what's new on the board into the panel. Once the latest page is in, a server that pages
+// by id is asked only for the messages after the newest one shown (after_id), so a steady poll
+// costs one small request that returns nothing (#3722). The latest page is loaded again when the
+// total says messages were deleted, or a page or more arrived at once. An older server is asked
+// for its total, and the latest page when that changed.
+async function _loadBoardPanelChat(boardName, { full = false } = {}) {
     if (!document.getElementById('board-panel-msgs')) return;
     // Rapid agent/team switching rebuilds the panel while requests are in flight;
     // a response for an older panel must never touch the shared message state.
     const gen = _boardChatGen;
     const stale = () => gen !== _boardChatGen || _activeBoardChat !== boardName;
+    if (_boardChatInFlight === gen) { _boardChatAgain = true; return; } // one at a time, then once more
+    _boardChatInFlight = gen;
+    _boardChatAgain = false;
     try {
-        // First call: get total count and load latest page
-        const countResp = await boardFetch(boardName, `/messages/all?limit=1&offset=0&format=dashboard`);
-        const countData = await countResp.json();
-        if (stale()) return;
-        const msgsEl = document.getElementById('board-panel-msgs');
-        if (!msgsEl) return;
-        const total = countData.total || (Array.isArray(countData) ? countData.length : 0);
-
-        if (total === 0) {
-            msgsEl.innerHTML = '<div class="board-chat-empty">No messages yet</div>';
-            msgsEl.dataset.rendered = '1';
-            _boardChatMessages = [];
-            _boardChatTotal = 0;
-            return;
+        const loaded = !full && _boardChatLoaded && _boardChatBoard === boardName;
+        if (loaded && _boardChatKeyset) {
+            const last = _boardChatMessages[_boardChatMessages.length - 1];
+            const afterId = last ? last.id : 0;
+            const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&after_id=${encodeURIComponent(afterId)}&format=dashboard`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (stale()) return;
+            const fresh = (Array.isArray(data?.messages) ? data.messages : []).filter(m => m.id > afterId);
+            const expected = _boardChatTotal + fresh.length;
+            if (data?.paging === 'keyset' && fresh.length < _BOARD_CHAT_PAGE && Number(data.total) >= expected) {
+                if (!fresh.length) return;
+                const byId = new Map([..._boardChatMessages, ...fresh].map(m => [m.id, m]));
+                _boardChatMessages = [...byId.values()].sort((a, b) => a.id - b.id);
+                // Counted as shown: one posted between the server's read and its count comes next poll.
+                _boardChatTotal = expected;
+                const el = document.getElementById('board-panel-msgs');
+                if (el) _renderBoardPanelMessages(el, false);
+                return;
+            }
+            // Deleted messages, a page or more at once, or a server that stopped paging by id.
+        } else if (loaded) {
+            const countResp = await boardFetch(boardName, `/messages/all?limit=1&offset=0&format=dashboard`);
+            if (!countResp.ok) return;
+            const countData = await countResp.json();
+            if (stale()) return;
+            const total = countData.total || (Array.isArray(countData) ? countData.length : 0);
+            if (total === _boardChatTotal) return; // nothing new since the panel last rendered
         }
 
-        // Nothing new since this panel last rendered
-        if (_boardChatTotal === total && _boardChatMessages.length > 0 && msgsEl.dataset.rendered === '1') return;
-
-        // Load the latest page: offset=0 returns it on every server version
+        // The latest page: offset=0 returns it on every server version
         // without the OFFSET scan that grows with board size.
         const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&offset=0&format=dashboard`);
+        if (!resp.ok) return; // a refusal is not an empty board
         const data = await resp.json();
         if (stale()) return;
         const messages = Array.isArray(data) ? data : (data.messages || []);
+        const total = Array.isArray(data) ? data.length : (Number(data.total) || 0);
+        const first = !(_boardChatLoaded && _boardChatBoard === boardName);
 
+        _boardChatBoard = boardName;
         _boardChatMessages = messages;
         _boardChatTotal = total;
         _boardChatKeyset = data?.paging === 'keyset';
         _boardChatOffset = _boardChatKeyset ? Number(data.before_count) || 0 : Math.max(0, total - messages.length);
+        _boardChatLoaded = true;
 
         const el = document.getElementById('board-panel-msgs');
         if (!el) return;
-        _renderBoardPanelMessages(el, true);
-        el.dataset.rendered = '1';
-    } catch { /* ignore */ }
+        _renderBoardPanelMessages(el, first);
+    } catch { /* ignore */ } finally {
+        if (_boardChatInFlight === gen) {
+            _boardChatInFlight = 0;
+            if (_boardChatAgain && !stale()) { _boardChatAgain = false; _loadBoardPanelChat(boardName); }
+        }
+    }
 }
 
 async function _loadEarlierBoardChat() {
@@ -602,7 +640,13 @@ async function _loadEarlierBoardChat() {
 window._loadEarlierBoardChat = _loadEarlierBoardChat;
 
 function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
+    if (!msgsEl) return;
     const messages = _boardChatMessages;
+    if (!messages.length && _boardChatOffset <= 0) {
+        msgsEl.innerHTML = '<div class="board-chat-empty">No messages yet</div>';
+        msgsEl.dataset.rendered = '1';
+        return;
+    }
     const wasAtBottom = scrollToBottom || msgsEl.scrollTop >= msgsEl.scrollHeight - msgsEl.clientHeight - 20;
 
     // "Load Earlier" button
@@ -645,6 +689,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
     }).join('');
     resolveBoardArtifacts(msgsEl, _activeBoardChat ? splitKey(_activeBoardChat).server : undefined);
     if (wasAtBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
+    msgsEl.dataset.rendered = '1';
     // Update select bar if in select mode
     if (_boardChatSelectMode) _updateBoardChatSelectBar();
 }
@@ -841,8 +886,7 @@ async function _clearBoardMessages(boardName) {
     showConfirmModal('Clear Messages', `Clear all messages from "${keyLabel(boardName)}"? This cannot be undone.`, async () => {
         try {
             await boardFetch(boardName, ``, { method: 'DELETE' });
-            _boardChatLastId[boardName] = null;
-            _loadBoardPanelChat(boardName);
+            _loadBoardPanelChat(boardName, { full: true });
             showToast(`Cleared messages from "${keyLabel(boardName)}"`);
         } catch { /* ignore */ }
     });

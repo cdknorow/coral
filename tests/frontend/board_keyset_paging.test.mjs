@@ -44,9 +44,13 @@ globalThis.fetch = window.fetch = async (url) => {
     const body = s.includes('/messages/all') ? serve(s) : s.includes('/subscribers') ? [] : s.includes('/projects') ? [] : {};
     return { ok: true, status: 200, json: async () => structuredClone(body), text: async () => '' };
 };
-let pollTick = null;
+let pollTick = null, chatTick = null;
 const realSetInterval = globalThis.setInterval;
-globalThis.setInterval = window.setInterval = (fn, ms) => { if (ms === 10000) { pollTick = fn; return 1; } return realSetInterval(fn, ms); };
+globalThis.setInterval = window.setInterval = (fn, ms) => {
+    if (ms === 10000) { pollTick = fn; return 1; }
+    if (ms === 3000) { chatTick = fn; return 2; } // the board chat panel's poll
+    return realSetInterval(fn, ms);
+};
 
 const mb = await importUi('message_board');
 const renderedIds = () => [...document.querySelectorAll('#mb-messages [data-message-id]')].map(e => Number(e.dataset.messageId));
@@ -156,6 +160,48 @@ for (let i = 0; i < 3; i++) await settle();
 assert.equal(query(requests.at(-1)).get('before_id'), String(board.at(-50).id), 'chat panel loads earlier by id');
 assert.match(document.getElementById('board-panel-msgs').textContent, new RegExp(`${board.length - 100} remaining`));
 
+// The panel's poll asks only for what follows its newest message (#3722).
+const panelIds = () => [...document.querySelectorAll('#board-panel-msgs .mb-message')].length;
+const tick = async () => { requests.length = 0; chatTick(); for (let i = 0; i < 6; i++) await settle(); return requests.map(query); };
+const shownBefore = panelIds();
+let q = await tick();
+assert.equal(q.length, 1, 'a quiet poll is one request');
+assert.equal(q[0].get('after_id'), String(board.at(-1).id), 'by the newest id shown');
+assert.equal(panelIds(), shownBefore, 'and changes nothing');
+board.push({ id: board.at(-1).id + 1, content: 'chat new 1', job_title: 'QA', created_at: '2026-10-01T00:04:00Z' },
+    { id: board.at(-1).id + 2, content: 'chat new 2', job_title: 'QA', created_at: '2026-10-01T00:04:00Z' });
+q = await tick();
+assert.equal(q.length, 1, 'new messages come in the same one request');
+assert.equal(panelIds(), shownBefore + 2, 'and are added, older pages kept');
+assert.match(document.getElementById('board-panel-msgs').textContent, /chat new 2/);
+q = await tick();
+assert.equal(q[0].get('after_id'), String(board.at(-1).id), 'the next poll starts after them');
+// Overlapping ticks on a slow server: one request, each message once.
+holdPolls = deferred();
+requests.length = 0;
+chatTick(); chatTick();
+await settle();
+assert.equal(requests.length, 1, 'a panel poll does not start while one is in flight');
+holdPolls.resolve(); holdPolls = null;
+for (let i = 0; i < 6; i++) await settle();
+// A deleted message (the total falls short): the latest page is loaded again.
+globalThis.__board = board = board.filter(m => m.content !== 'chat new 1');
+q = await tick();
+assert.deepEqual(q.map(x => x.has('after_id') ? 'after' : 'offset=' + x.get('offset')), ['after', 'offset=0'], 'a deletion reloads the latest page');
+assert.doesNotMatch(document.getElementById('board-panel-msgs').textContent, /chat new 1/);
+// A page or more at once: the latest page, not the oldest of the new ones.
+const base = board.at(-1).id;
+for (let i = 1; i <= 60; i++) board.push({ id: base + i, content: `burst ${i}`, job_title: 'Dev', created_at: '2026-10-01T00:05:00Z' });
+q = await tick();
+assert.equal(q.at(-1).get('offset'), '0', 'a burst of a page or more reloads the latest page');
+assert.match(document.getElementById('board-panel-msgs').textContent, /burst 60/);
+// Switching to another agent of the same board shows what it had, and fetches only what's new.
+requests.length = 0;
+render.showBoardChatTab('team');
+for (let i = 0; i < 6; i++) await settle();
+assert.deepEqual(requests.map(r => query(r).has('after_id')), [true], 'a same-board switch does not load the page again');
+assert.match(document.getElementById('board-panel-msgs').textContent, /burst 60/);
+
 // A chat-panel "load earlier" in flight across a board switch is dropped.
 holdEarlier = deferred();
 window._loadEarlierBoardChat();
@@ -168,6 +214,18 @@ window._toggleBoardChatSelect(); // re-renders the panel from its message state
 const chatText = document.getElementById('board-panel-msgs').textContent;
 assert.match(chatText, /o4/);
 assert.doesNotMatch(chatText, /\bm1\b|m10\b/, "team's earlier page never lands in another board's chat");
+
+// An older server (no paging field): the panel polls its total and loads the page when it changed.
+keysetServer = false;
+render.showBoardChatTab('legacy-chat');
+for (let i = 0; i < 6; i++) await settle();
+q = await tick();
+assert.deepEqual(q.map(x => x.get('limit')), ['1'], 'an older server: a count, nothing new');
+board.push({ id: board.at(-1).id + 1, content: 'legacy new', job_title: 'QA', created_at: '2026-10-01T00:06:00Z' });
+q = await tick();
+assert.deepEqual(q.map(x => x.get('limit')), ['1', '50'], 'then the page when the total changed');
+assert.ok(q.every(x => !x.has('after_id')));
+assert.match(document.getElementById('board-panel-msgs').textContent, /legacy new/);
 
 console.log('board_keyset_paging: ok');
 process.exit(0);
