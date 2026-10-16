@@ -50,9 +50,10 @@ func (h *SessionsHandler) InstallAutomatedInputHooks() {
 
 // GateSignalsClaudeSetting turns on gate phase 2 for Claude agents (#3578): automated input
 // follows the agent's own signals, so a routine board nudge or message waits for the turn to end
-// and a mention is typed in at once. Off unless "true" (the default goes on after the shadow
-// week). Set only on this computer: PUT /api/settings is Operator-only and never reachable
-// through Coral Hub. CORAL_GATE_MODE=screen overrides it (the kill switch).
+// and a mention is typed in at once. On unless "false" (#3662: the operator's go-live after the
+// post-relaunch shadow day); a settings read that fails means off, the screen rule. Set only on
+// this computer: PUT /api/settings is Operator-only and never reachable through Coral Hub.
+// CORAL_GATE_MODE=screen overrides it (the kill switch).
 const GateSignalsClaudeSetting = "gate_signals_claude"
 
 // gateSignalsFromSettings reads the setting at most once a second.
@@ -67,7 +68,7 @@ func gateSignalsFromSettings(ss *store.SessionStore) func() bool {
 			return on
 		}
 		s, err := ss.GetSettings(context.Background())
-		on, at = err == nil && s[GateSignalsClaudeSetting] == "true", time.Now()
+		on, at = err == nil && s[GateSignalsClaudeSetting] != "false", time.Now()
 		return on
 	}
 }
