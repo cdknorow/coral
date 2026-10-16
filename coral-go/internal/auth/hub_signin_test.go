@@ -618,3 +618,56 @@ func TestRevokeSessionByID(t *testing.T) {
 	w, _ = g.do(g.ar.RevokeSessionByID, g.req("DELETE", "/api/auth/sessions/"+strings.Repeat("0", 12), "", "10.0.0.5", pw))
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+// Security's ruling (a): a Hub session's reads of file content, diffs, transcripts, terminal
+// capture, history, peek and artifacts are recorded, once a minute per route; other reads not.
+func TestHubSessionSensitiveReadsAreRecordedOnceAMinute(t *testing.T) {
+	g := newHubRig(t)
+	sc := g.signIn(t)
+	guard := g.hs.HubSessionGuard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	get := func(path string) {
+		guard.ServeHTTP(httptest.NewRecorder(), g.req("GET", path, "", "10.0.0.5", sc))
+	}
+	for i := 0; i < 3; i++ {
+		get("/api/sessions/live/a/file-content?filepath=x")
+		get("/api/sessions/live/b/file-content?filepath=y")
+		get("/api/sessions/live/a/poll")
+		get("/api/artifacts/abc")
+		get("/api/sessions/live") // a plain list
+	}
+	count := func(line string) int {
+		n := 0
+		for _, a := range g.actions {
+			if a == line {
+				n++
+			}
+		}
+		return n
+	}
+	assert.Equal(t, 1, count("Coral Hub: Ann GET /api/sessions/live/{name}/file-content"), "one line a minute for the route")
+	assert.Equal(t, 1, count("Coral Hub: Ann GET /api/sessions/live/{name}/poll"))
+	assert.Equal(t, 1, count("Coral Hub: Ann GET /api/artifacts/*"))
+	assert.Zero(t, count("Coral Hub: Ann GET /api/sessions/live"))
+	g.now = g.now.Add(time.Minute)
+	get("/api/sessions/live/a/file-content")
+	assert.Equal(t, 2, count("Coral Hub: Ann GET /api/sessions/live/{name}/file-content"), "again after a minute")
+
+	for path, want := range map[string]string{
+		"/api/sessions/live/a/diff":             "/api/sessions/live/{name}/diff",
+		"/api/sessions/live/a/changes.diff":     "/api/sessions/live/{name}/changes.diff",
+		"/api/sessions/live/a/chat":             "/api/sessions/live/{name}/chat",
+		"/api/sessions/live/a/capture":          "/api/sessions/live/{name}/capture",
+		"/api/sessions/live/a/history/search":   "/api/sessions/live/{name}/history/search",
+		"/api/sessions/s1/changes.diff":         "/api/sessions/{id}/changes.diff",
+		"/api/sessions/history/s1":              "/api/sessions/history/*",
+		"/api/agent/history/search":             "/api/agent/history/*",
+		"/api/board/p/peek":                     "/api/board/{project}/peek",
+		"/api/board/p/tasks/7/artifact-content": "/api/board/{project}/tasks/{id}/artifact-content",
+		"/api/board/p/tasks/7/changes.diff":     "/api/board/{project}/tasks/{id}/changes.diff",
+		"/api/sessions/live/a/info":             "",
+		"/api/board/p/messages":                 "",
+	} {
+		assert.Equal(t, want, hubSensitiveRead("GET", path), path)
+	}
+	assert.Empty(t, hubSensitiveRead("POST", "/api/sessions/live/a/file-content"), "writes are recorded as writes")
+}

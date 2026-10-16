@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/auth"
+	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
 )
@@ -74,9 +75,25 @@ func TestHubSigninThroughTheRouter(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, do(p[0], p[1], hub).StatusCode, "%s %s", p[0], p[1])
 	}
 
-	// Turned off on this computer: the next request is signed out.
+	// Nor through the generic settings PUT (round 1's must-fix): refused, nothing stored.
+	for _, k := range []string{routes.MaxModeSetting, routes.AllowHubAutoAcceptSetting, routes.RedactTokensSetting} {
+		req, _ := http.NewRequest("PUT", local.URL+"/api/settings", strings.NewReader(`{"`+k+`":"launch"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", local.URL)
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.AddCookie(hub)
+		resp, err := noFollow.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, k)
+		st, _ := store.NewSessionStore(db).GetSettings(context.Background())
+		assert.Empty(t, st[k], k)
+	}
+
+	// Turned off on this computer (here behind its route's back): signed out within a second.
 	require.NoError(t, store.NewSessionStore(db).SetSetting(context.Background(), HubSigninEnabledSetting, "false"))
-	assert.Equal(t, http.StatusUnauthorized, do("GET", "/api/sessions/live", hub).StatusCode)
+	require.Eventually(t, func() bool { return do("GET", "/api/sessions/live", hub).StatusCode == http.StatusUnauthorized },
+		3*time.Second, 100*time.Millisecond)
 	require.NoError(t, store.NewSessionStore(db).SetSetting(context.Background(), HubSigninEnabledSetting, "true"))
 	assert.Equal(t, http.StatusUnauthorized, do("GET", "/api/sessions/live", hub).StatusCode, "it stays ended")
 }

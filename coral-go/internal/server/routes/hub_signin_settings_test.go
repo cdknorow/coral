@@ -36,3 +36,29 @@ func TestPutSettingsRefusesHubSigninSettings(t *testing.T) {
 	}
 	assert.Empty(t, s["theme"], "nothing in a refused request is saved")
 }
+
+// #3966 round 1 (Security's must-fix): the Coral Hub link's trust settings are written only by
+// their own routes, which a Coral Hub sign-in can't reach; the generic PUT refuses them for
+// every caller, a Hub session included, and stores nothing of the request.
+func TestPutSettingsRefusesHubTrustSettings(t *testing.T) {
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "c.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	h := NewSystemHandler(db, nil)
+	keys := []string{MaxModeSetting, AllowHubAutoAcceptSetting, RedactTokensSetting}
+	assert.Len(t, hubTrustSettingRoutes, len(keys), "the census: every trust key is listed here")
+	for _, k := range append(keys, "CLOUD_MAX_MODE", " hub_redact_tokens ") {
+		body := fmt.Sprintf(`{"theme":"dark",%q:"launch"}`, k)
+		r := httptest.NewRequest("PUT", "/api/settings", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.PutSettings(rec, r)
+		assert.Equal(t, 400, rec.Code, k)
+		assert.Contains(t, rec.Body.String(), "/api/cloud/", k)
+	}
+	s, _ := store.NewSessionStore(db).GetSettings(t.Context())
+	for _, k := range keys {
+		assert.Empty(t, s[k], k)
+	}
+	assert.Empty(t, s["theme"])
+}

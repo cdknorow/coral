@@ -133,6 +133,9 @@ type HubSignin struct {
 	disabledSeen time.Time
 	sockets      map[string]map[*hubReq]struct{} // live requests of each Hub session, by id hash
 	lastCheck    map[string]time.Time
+	readLogged   map[string]time.Time // session id hash + route: when a read was last recorded
+	allowedAt    time.Time            // allowed()'s cached answer, for a second
+	allowedVal   bool
 }
 
 type hubReq struct{ cancel context.CancelFunc }
@@ -153,6 +156,7 @@ func (ar *Routes) NewHubSignin(c HubSigninConfig) *HubSignin {
 		ks: ar.ks, ar: ar, hub: c.Hub, settings: c.Settings, operatorAllowed: c.OperatorAllowed,
 		loopbackOrigins: c.LoopbackOrigins, originsChanged: c.OriginsChanged, onAction: c.OnAction, now: time.Now,
 		starts: map[string][]time.Time{}, sockets: map[string]map[*hubReq]struct{}{}, lastCheck: map[string]time.Time{},
+		readLogged: map[string]time.Time{},
 	}
 	ar.hub = h
 	return h
@@ -168,6 +172,74 @@ func (h *HubSignin) record(ctx context.Context, who, what string) {
 // as the Operator, and linked. When it turns false, live Hub sessions end (the check loop).
 func (h *HubSignin) allowed() bool {
 	return h != nil && h.settings.SigninEnabled() && (h.operatorAllowed == nil || h.operatorAllowed()) && h.hub.Linked()
+}
+
+// allowedCached is allowed, read at most once a second: it is asked on every Hub-session
+// request. The routes that change it (the setting, #3404) also end the sessions themselves.
+func (h *HubSignin) allowedCached() bool {
+	h.mu.Lock()
+	if now := h.now(); now.Sub(h.allowedAt) < time.Second && !h.allowedAt.IsZero() {
+		v := h.allowedVal
+		h.mu.Unlock()
+		return v
+	}
+	h.mu.Unlock()
+	v := h.allowed()
+	h.mu.Lock()
+	h.allowedAt, h.allowedVal = h.now(), v
+	h.mu.Unlock()
+	return v
+}
+
+// hubSensitiveRead names the read routes whose use by a Hub session is recorded (Security's
+// ruling (a)): file content, diffs, transcripts, terminal capture, history, peek and artifact
+// downloads. It returns the route's pattern, or "".
+func hubSensitiveRead(method, path string) string {
+	if method != http.MethodGet && method != http.MethodHead {
+		return ""
+	}
+	seg := strings.Split(strings.Trim(path, "/"), "/")
+	switch {
+	case len(seg) >= 5 && seg[0] == "api" && seg[1] == "sessions" && seg[2] == "live":
+		switch rest := strings.Join(seg[4:], "/"); rest {
+		case "file-content", "file-original", "diff", "changes.diff", "chat", "capture", "poll", "history/search", "history/context":
+			return "/api/sessions/live/{name}/" + rest
+		}
+	case len(seg) == 4 && seg[0] == "api" && seg[1] == "sessions" && seg[3] == "changes.diff":
+		return "/api/sessions/{id}/changes.diff"
+	case len(seg) >= 3 && seg[0] == "api" && seg[1] == "sessions" && seg[2] == "history":
+		return "/api/sessions/history/*"
+	case len(seg) >= 3 && seg[0] == "api" && seg[1] == "agent" && seg[2] == "history":
+		return "/api/agent/history/*"
+	case len(seg) == 4 && seg[0] == "api" && seg[1] == "board" && seg[3] == "peek":
+		return "/api/board/{project}/peek"
+	case len(seg) == 6 && seg[0] == "api" && seg[1] == "board" && seg[3] == "tasks" && (seg[5] == "artifact-content" || seg[5] == "changes.diff"):
+		return "/api/board/{project}/tasks/{id}/" + seg[5]
+	case len(seg) >= 3 && seg[0] == "api" && seg[1] == "artifacts":
+		return "/api/artifacts/*"
+	}
+	return ""
+}
+
+// readToRecord reports whether a Hub session's read of route should go in the log now: once a
+// minute per session and route.
+func (h *HubSignin) readToRecord(id, route string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := h.now()
+	k := id + " " + route
+	if last, ok := h.readLogged[k]; ok && now.Sub(last) < time.Minute {
+		return false
+	}
+	if len(h.readLogged) > 4096 {
+		for key, t := range h.readLogged {
+			if now.Sub(t) >= time.Minute {
+				delete(h.readLogged, key)
+			}
+		}
+	}
+	h.readLogged[k] = now
+	return true
 }
 
 // requestOrigin is the origin r reached this server on: scheme://host[:port], lower case.
@@ -500,7 +572,7 @@ func (h *HubSignin) HubSessionGuard(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !h.allowed() {
+		if !h.allowedCached() {
 			// Turned off here, #3404 turned on or the link gone: it ends now, not at the next check.
 			h.endSession(r.Context(), s, "Sign in with Coral Hub is off on this computer")
 			authError(w, http.StatusUnauthorized, "signed_out", "Signed out: Sign in with Coral Hub is off on this computer")
@@ -529,9 +601,15 @@ func (h *HubSignin) HubSessionGuard(next http.Handler) http.Handler {
 		}()
 		rec := &hubStatus{ResponseWriter: w}
 		next.ServeHTTP(rec, r.WithContext(ctx))
-		if r.Method != http.MethodGet && r.Method != http.MethodHead || strings.HasPrefix(r.URL.Path, "/ws/") {
-			if h.onAction != nil {
-				h.onAction(r.Context(), s.Label, r.Method, r.URL.Path, rec.code())
+		if h.onAction == nil {
+			return
+		}
+		switch {
+		case r.Method != http.MethodGet && r.Method != http.MethodHead || strings.HasPrefix(r.URL.Path, "/ws/"):
+			h.onAction(r.Context(), s.Label, r.Method, r.URL.Path, rec.code())
+		default:
+			if route := hubSensitiveRead(r.Method, r.URL.Path); route != "" && h.readToRecord(s.IDHash, route) {
+				h.onAction(r.Context(), s.Label, r.Method, route, rec.code()) // the pattern: one line per route a minute
 			}
 		}
 	})
@@ -626,10 +704,12 @@ func (h *HubSignin) checkOnce(ctx context.Context) {
 	}
 	allowed := h.allowed()
 	now := h.now()
+	live := map[string]bool{}
 	for _, s := range list {
-		if s.Method != SessionByHub {
-			continue
+		if s.Method != SessionByHub || !now.Before(s.ExpiresAt) {
+			continue // another method, or already expired (its next lookup deletes it)
 		}
+		live[s.IDHash] = true
 		if !allowed {
 			h.endSession(ctx, s, "Sign in with Coral Hub is off on this computer")
 			continue
@@ -665,6 +745,13 @@ func (h *HubSignin) checkOnce(ctx context.Context) {
 			h.endSession(ctx, s, "Coral Hub ended it")
 		}
 	}
+	h.mu.Lock()
+	for id := range h.lastCheck {
+		if !live[id] {
+			delete(h.lastCheck, id) // ended or expired
+		}
+	}
+	h.mu.Unlock()
 }
 
 // ── Linking from the signed-out page (the unpaired path, note 1.2) ──────────
