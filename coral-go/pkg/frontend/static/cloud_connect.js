@@ -11,6 +11,7 @@
  * is only used if it is an http(s) URL. The server token is never sent to the page. */
 
 import { copyText } from './utils.js';
+import { importOnce } from './import_once.js';
 
 const STATUS_URL = '/api/cloud/status';
 // 'Let Coral Hub act as the Operator' (#3377): a local-only owner setting. The route answers only
@@ -44,6 +45,17 @@ function post(method, url, body) {
  *  'retrying' without an enrollment (no server id or label) is still not connected. */
 export function enrolledRetrying(st) {
     return !!st && st.state === 'retrying' && !!(st.server_id || st.label);
+}
+
+/** The secret key that seals the Hub token and the remote servers' API keys is refused (#3698):
+ *  what a re-key discards, said before the Operator confirms. */
+export function rekeyText(sk) {
+    const lost = [];
+    if (sk.hub_url) lost.push('the Coral Hub connection to ' + sk.hub_url + ' (connect again afterwards, and remove this computer in Coral Hub)');
+    if (sk.remote_server_keys) lost.push(sk.remote_server_keys === 1 ? "1 remote server's API key (enter it again)" : sk.remote_server_keys + " remote servers' API keys (enter them again)");
+    const why = sk.exposed ? 'Other accounts on this computer could read the secret key file, so what it protects must be treated as known.'
+        : "Coral can't use its secret key file" + (sk.message ? ' (' + sk.message + ')' : '') + '.';
+    return why + ' Replacing it makes a new key and discards ' + (lost.length ? lost.join(' and ') : 'nothing stored yet') + '.';
 }
 
 export function describe(st) {
@@ -97,6 +109,9 @@ class CloudPanel {
         this.onState = onState || (() => {});
         this.timer = null;
         this.enrolled = undefined; // unknown until the first status: the Operator row is read then
+        // The dashboard's confirm dialog (render.js is already loaded in the dashboard; imported
+        // here only when needed, so this module stays light). Tests replace it.
+        this.confirm = async (title, message, onYes) => (await importOnce('./render.js')).showConfirmModal(title, message, onYes);
     }
 
     part(role) { return this.root.querySelector(`[data-cloud="${role}"]`); }
@@ -144,6 +159,11 @@ class CloudPanel {
         show('cancel', enrolling);
         show('disconnect', ENROLLED.includes(st.state) || (enrolling && !hasCancel));
         show('mode-row', !!st.configured);
+        const sk = st.secret_key;
+        show('rekey-row', !!sk && sk.state === 'refused');
+        const rt = this.part('rekey-text');
+        if (rt) rt.textContent = sk ? rekeyText(sk) : '';
+        this.secretKey = sk || null;
         const mode = st.max_mode || 'view';
         const sel = this.part('max-mode');
         if (sel) sel.value = mode;
@@ -273,12 +293,31 @@ class CloudPanel {
         this.say(msg);
     }
 
+    // Replace a refused secret key (#3698), after a confirmation that lists what is discarded.
+    async rekey() {
+        if (!this.secretKey) return;
+        await this.confirm('Replace the secret key', rekeyText(this.secretKey) + ' This cannot be undone.', async () => {
+            const r = await post('POST', '/api/cloud/rekey', { confirm: true });
+            let out = null;
+            try { out = await r.json(); } catch { /* below */ }
+            if (r.ok && out && out.status) {
+                this.render(out.status);
+                this.say('The secret key was replaced. ' + (out.discarded_hub_enrollment ? 'Connect to Coral Hub again. ' : '') +
+                    (out.discarded_remote_server_keys ? "Enter the remote servers' API keys again." : ''));
+                return;
+            }
+            if (r.status === 403) { this.elsewhere(out); return; }
+            this.say((out && out.error) || 'The secret key could not be replaced');
+        });
+    }
+
     bind() {
         if (this.root.dataset.cloudBound) return;
         this.root.dataset.cloudBound = '1';
         this.part('connect')?.addEventListener('click', () => this.act('POST', '/api/cloud/connect'));
         this.part('disconnect')?.addEventListener('click', () => this.act('POST', '/api/cloud/disconnect'));
         this.part('cancel')?.addEventListener('click', () => this.cancel());
+        this.part('rekey')?.addEventListener('click', () => this.rekey());
         this.part('copy')?.addEventListener('click', async () => {
             const btn = this.part('copy');
             const ok = await copyText(this.command || CONNECT_COMMAND);

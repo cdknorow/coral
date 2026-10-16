@@ -610,6 +610,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/cloud/connect", s.cloudHandler.Connect)
 	r.Post("/api/cloud/connect/cancel", s.cloudHandler.CancelConnect)
 	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
+	r.Post("/api/cloud/rekey", s.cloudHandler.Rekey) // #3698
 	r.Get("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	s.cloudHandler.HubModeRunning, s.cloudHandler.HubModeForced = s.cfg.HubMode, s.cfg.HubModeForced
 	r.Get("/api/system/hub-mode", s.cloudHandler.HubMode)

@@ -332,6 +332,7 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/cloud/connect/cancel":                 "cancel connecting to Coral Hub",
 	"POST /api/cloud/disconnect":                     "disconnect from Coral Hub",
 	"POST /api/cloud/redeem":                         "redeem a Coral Hub credential",
+	"POST /api/cloud/rekey":                          "replace the secret key and discard what it sealed", // #3698
 	// #3553: the Operator removes an artifact (also refused to anyone but a person, in every mode).
 	"DELETE /api/artifacts/{id}": "delete an artifact",
 	// #3554: pruning, and the keep mark that protects an artifact from it.

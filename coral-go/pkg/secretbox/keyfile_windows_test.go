@@ -45,6 +45,7 @@ func TestWindowsKeyFileCreateReloadAndExposed(t *testing.T) {
 	_, err = LoadKey(dir)
 	assert.ErrorIs(t, err, ErrKeyPermissions)
 	assert.ErrorIs(t, err, secfile.ErrExposed)
+	assert.Contains(t, err.Error(), "Replace the secret key", "points to the dashboard's re-key")
 	assert.Contains(t, err.Error(), "delete "+KeyFilePath(dir), "says which file to delete")
 	assert.Contains(t, err.Error(), "connect to Coral Hub again")
 	assert.Contains(t, err.Error(), "re-enter the API keys")

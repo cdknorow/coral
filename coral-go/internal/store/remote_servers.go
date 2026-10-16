@@ -67,8 +67,9 @@ type RemoteServerStore struct {
 	db  *DB
 	dir string // Coral data dir holding .remote_secret_key
 
-	mu  sync.Mutex
-	box *secretbox.Box
+	mu     sync.Mutex
+	box    *secretbox.Box
+	boxGen int64 // masterKeyGen when box was loaded: a newer key makes it stale (#3698)
 
 	// rotateFailAfter, when > 0, makes RotateMasterKey fail after that many
 	// row updates (test hook for mid-rotation failure).
@@ -97,12 +98,14 @@ func (s *RemoteServerStore) rowCount(ctx context.Context) (int, error) {
 func (s *RemoteServerStore) getBox(ctx context.Context, allowCreate, forceCreate bool) (*secretbox.Box, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.box != nil {
+	gen := masterKeyGen.Load()
+	if s.box != nil && s.boxGen == gen {
 		return s.box, nil
 	}
+	s.box = nil
 	box, err := secretbox.LoadKey(s.dir)
 	if err == nil {
-		s.box = box
+		s.box, s.boxGen = box, gen
 		return box, nil
 	}
 	if !errors.Is(err, secretbox.ErrKeyMissing) || !allowCreate {
@@ -119,7 +122,7 @@ func (s *RemoteServerStore) getBox(ctx context.Context, allowCreate, forceCreate
 	if err != nil {
 		return nil, unreadable(err)
 	}
-	s.box = box
+	s.box, s.boxGen = box, gen
 	return box, nil
 }
 
@@ -365,7 +368,7 @@ func (s *RemoteServerStore) RotateMasterKey(ctx context.Context) error {
 		return fmt.Errorf("install rotated key: %w", err)
 	}
 	s.mu.Lock()
-	s.box = next
+	s.box, s.boxGen = next, masterKeyGen.Add(1) // every other store reloads the new key (#3698)
 	s.mu.Unlock()
 	return nil
 }

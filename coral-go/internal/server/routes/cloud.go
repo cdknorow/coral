@@ -173,6 +173,9 @@ type cloudStatus struct {
 	// OfferAtLaunch: the dashboard opens its first-launch Connect to Coral Hub
 	// screen only when this server was started to offer it (#3459).
 	OfferAtLaunch bool `json:"offer_at_launch"`
+	// SecretKey is present only when the key that seals the Hub token and the remote servers'
+	// API keys can't be used (#3698): the dashboard then offers the re-key, listing what it discards.
+	SecretKey *store.SecretKeyState `json:"secret_key,omitempty"`
 }
 
 func (h *CloudHandler) status() cloudStatus {
@@ -188,7 +191,72 @@ func (h *CloudHandler) status() cloudStatus {
 			boot = json.RawMessage(v)
 		}
 	}
-	return cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	if rs := h.secrets(); rs != nil {
+		if ks, err := rs.KeyState(context.Background()); err == nil && ks.State == "refused" {
+			out.SecretKey = &ks
+		}
+	}
+	return out
+}
+
+// secrets is the store of the key that seals the Hub token and the remote servers' API keys.
+func (h *CloudHandler) secrets() *store.RemoteServerStore {
+	if h.ss == nil {
+		return nil
+	}
+	return store.NewRemoteServerStore(h.ss.DB(), h.dataDir)
+}
+
+// Rekey replaces a secret key Coral refuses (for example one other accounts could read) with a
+// new one, discarding what the old one sealed: the Coral Hub enrollment (the tunnel stops first)
+// and the remote servers' API keys, which must be entered again (#3698). It is the Operator's,
+// on this computer only (never through Coral Hub), and needs {"confirm": true}. A usable key is
+// never replaced (409).
+// POST /api/cloud/rekey
+func (h *CloudHandler) Rekey(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Confirm bool `json:"confirm"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || !body.Confirm {
+		errBadRequest(w, `re-keying discards the Coral Hub connection and the remote servers' API keys: send {"confirm": true}`)
+		return
+	}
+	rs := h.secrets()
+	if rs == nil {
+		errInternalServer(w, "no store")
+		return
+	}
+	ks, err := rs.KeyState(r.Context())
+	if err != nil {
+		errInternalServer(w, "could not read the secret key's state")
+		return
+	}
+	if ks.State != "refused" {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": store.ErrRekeyNotNeeded.Error(), "code": "rekey_not_needed", "state": ks.State})
+		return
+	}
+	if m := h.manager(); m != nil {
+		if err := m.Disconnect(r.Context()); err != nil && !errors.Is(err, cloud.ErrNotConfigured) {
+			errInternalServer(w, "could not stop the Coral Hub connection")
+			return
+		}
+	}
+	if err := rs.Rekey(r.Context()); err != nil {
+		if errors.Is(err, store.ErrRekeyNotNeeded) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "rekey_not_needed"})
+			return
+		}
+		errInternalServer(w, "re-key failed: "+err.Error())
+		return
+	}
+	slog.Info("secret key replaced by a re-key; the Coral Hub enrollment and remote API keys were discarded",
+		"remote_server_keys", ks.RemoteServerKeys, "had_hub_enrollment", ks.HubURL != "")
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "discarded_remote_server_keys": ks.RemoteServerKeys,
+		"discarded_hub_enrollment": ks.HubURL != "", "status": h.status()})
 }
 
 // Who may use the /api/cloud routes. Never the Cloud Hub (they are not in the

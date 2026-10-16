@@ -34,6 +34,7 @@ func TestCloudRoutesSameUserGate(t *testing.T) {
 		{"POST", "/api/cloud/connect/cancel", `{}`, true, true},
 		{"POST", "/api/cloud/connect", `{}`, true, true},
 		{"POST", "/api/cloud/disconnect", `{}`, true, true},
+		{"POST", "/api/cloud/rekey", `{"confirm":true}`, true, true}, // #3698 (the key is usable here: 409)
 		{"PUT", "/api/cloud/max-mode", `{"mode":"view"}`, true, true},
 		{"PUT", "/api/cloud/allow-auto-accept", `{"allow":true}`, true, true},
 		{"POST", "/api/cloud/redeem", `{"check":true}`, false, true},

@@ -229,6 +229,7 @@ POST /api/cloud/connect never
 POST /api/cloud/connect/cancel never
 POST /api/cloud/disconnect never
 POST /api/cloud/redeem never
+POST /api/cloud/rekey never
 POST /api/folder-tags/{folderName} never
 POST /api/indexer/refresh never
 POST /api/notifications never
