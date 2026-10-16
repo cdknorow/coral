@@ -13,7 +13,7 @@ import { isGoneAsleep } from './terminal_gone.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
-import { localFirst, isStaleSession, staleReason, showServerLabels, serverLabel, serversShown, serverSwitcherHtml, serverGroupHeaderHtml, statusMeta } from './server_status.js';
+import { localFirst, isStaleSession, staleReason, showServerLabels, serverLabel, serversShown, serverGroupHeaderHtml, statusMeta } from './server_status.js';
 import { syncMobileAgentList } from './mobile.js';
 import { getCachedAgentAvailability, refreshTeamAvailabilityIfChanged } from './team_availability.js';
 import { liveListRendered } from './ready.js';
@@ -28,6 +28,8 @@ import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _cancelB
 import { SESSION_STATES, _WORKTREE_ICON, _formatCost, _gitStateSummary, _repoBranch, _shortPath, buildSessionTooltip, deriveSessionState, formatShortTime, formatStaleness, getDotClass, getMobileStatusChip, resolveSessionIdentity, sessionGoalText, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 import { _getBoardColor } from './board_accents.js';
 import { _getGroupOrder, _saveSessionOrder, _sortByOrder, _sortGroups } from './list_order.js';
+import { _isServerCollapsed, _openServerDetails, renderServerSwitcher } from './server_rows.js';
+export { renderServerSwitcher } from './server_rows.js';
 export { moveGroupDown, moveGroupUp, moveSessionDown, moveSessionUp } from './list_order.js';
 export { setBoardAccentColor } from './board_accents.js';
 export { buildSessionTooltip, commandPlaceholder, deriveSessionState, resolveSessionIdentity, sessionStateInfo, terminalDotClass } from './session_state.js';
@@ -717,58 +719,6 @@ export function toggleAgentArchive(name, agentType, sessionId, action) {
             async () => resolve(await doIt()), () => resolve(false)));
     }
     return doIt();
-}
-
-// ── Servers UI in the agent list (#3085) ─────────────────────────────────
-// Which disclosures are open survives the frequent list re-renders.
-let _switcherOpen = false;
-const _openServerDetails = new Set();
-
-function _isServerCollapsed(id) {
-    try { return localStorage.getItem(`coral-server-collapsed:${id}`) === 'true'; } catch { return false; }
-}
-
-/** Render the search-row server button (and its phone copy). */
-export function renderServerSwitcher() {
-    const html = serverSwitcherHtml(_switcherOpen);
-    for (const el of document.querySelectorAll('[data-server-switcher-host]')) {
-        if (el.dataset.html === html) continue; // unchanged: keep focus and scroll
-        el.dataset.html = html;
-        el.innerHTML = html;
-        el.hidden = !html;
-    }
-}
-
-if (typeof document !== 'undefined') {
-    document.addEventListener('click', (e) => {
-        const t = e.target.closest && e.target.closest('[data-server-toggle]');
-        if (!t) return;
-        e.preventDefault();
-        const id = t.dataset.serverToggle;
-        try { localStorage.setItem(`coral-server-collapsed:${id}`, _isServerCollapsed(id) ? 'false' : 'true'); } catch { /* per-viewer only */ }
-        _openServerDetails.delete(id);
-        redrawLiveList();
-        const again = document.querySelector(`#live-sessions-list .server-group-toggle[data-server-toggle="${CSS.escape(id)}"]`);
-        if (again) again.focus();
-    });
-    // <details> toggle does not bubble: listen in the capture phase.
-    document.addEventListener('toggle', (e) => {
-        const d = e.target;
-        if (!(d instanceof HTMLElement)) return;
-        if (d.matches('[data-server-switcher]')) _switcherOpen = d.open;
-        else if (d.matches('[data-server-details]')) {
-            if (d.open) _openServerDetails.add(d.dataset.serverDetails); else _openServerDetails.delete(d.dataset.serverDetails);
-        }
-    }, true);
-    // Escape closes an open server disclosure and returns focus to its button.
-    document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
-        const d = e.target.closest && e.target.closest('details[data-server-switcher][open], details[data-server-details][open]');
-        if (!d) return;
-        d.open = false;
-        const sum = d.querySelector('summary');
-        if (sum) sum.focus();
-    });
 }
 
 // ── Archived section (#3030) ─────────────────────────────────────────────
