@@ -7,6 +7,7 @@ start and when it ends. None of these tools is on epoch's default `PATH`; put th
 ```bash
 export PATH="$HOME/node-install/node/bin:$HOME/go-install/go/bin:$PATH"
 export CORAL_CHROME_BIN=/sd2/$USER/coralgo-tools/chrome-linux64/chrome
+export CORAL_TEST_NODE=$HOME/node-install/node/bin/node   # the Node every runner uses (tests/lib/find_node.sh)
 unset CORAL_CLOUD_URL CORAL_DATA_DIR CORAL_URL TMUX   # a test server must never reach the real Hub or a real data dir
 ```
 
@@ -48,6 +49,10 @@ cd "$D" && tar -xJf "dl/node-$V-linux-x64.tar.xz" && ln -sfn "node-$V-linux-x64"
 ```
 
 ## The stress runners that need Node and Chrome
+
+They find Node through tests/lib/find_node.sh: `CORAL_TEST_NODE` when set, else `node` on PATH, else
+`$HOME/node-install/node/bin/node`. So a non-login shell (no nvm on PATH) still finds the documented install.
+
 
 - `tests/stress/run_agent_tasks.sh`: its assignment editor check runs `run_assignment_browser.sh`.
 - `tests/stress/run_kill_all.sh`.

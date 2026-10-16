@@ -65,7 +65,8 @@ trap cleanup EXIT
 if lsof -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
     log "ERROR: port $PORT is in use; set CORAL_TEST_PORT to a free port."; exit 1
 fi
-for bin in go tmux node curl python3; do command -v "$bin" >/dev/null || { log "ERROR: $bin is required"; exit 1; }; done
+for bin in go tmux curl python3; do command -v "$bin" >/dev/null || { log "ERROR: $bin is required"; exit 1; }; done
+source "$SCRIPT_DIR/../lib/find_node.sh"; coral_find_node || { log "ERROR: no Node.js found"; exit 1; }
 
 log "Building coral (dev) and mock-agent from $CORAL_SRC ..."
 (cd "$CORAL_SRC" && go build -tags "dev fts5" -o "$TMP/coral" ./cmd/coral/ && go build -o "$TMP/mock-agent" ./cmd/mock-agent/)
@@ -155,7 +156,7 @@ kill_round() {  # label, group-by-team on|off
     local ids; ids=$(echo "$a,$b,$ARCH,$(echo $TEAM_SIDS | tr ' ' ',')")
     log "[$label] Kill all on folder '$FOLDER' in the dashboard (Group by Team $grouping) ..."
     local out
-    if ! out=$(node "$SCRIPT_DIR/kill_all_browser.js" "$BASE_URL" "$FOLDER" "$grouping" "$ids"); then
+    if ! out=$("$NODE" "$SCRIPT_DIR/kill_all_browser.js" "$BASE_URL" "$FOLDER" "$grouping" "$ids"); then
         fail "[$label] dashboard Kill all did not run"; return
     fi
     log "[$label] confirm: $(echo "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["confirm"])')"

@@ -4,11 +4,9 @@
 # Optional: CORAL_CHROME_BIN=/path/to/chrome. Installs no dependencies.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if ! command -v node >/dev/null 2>&1; then
-    echo '[assignment-browser] ERROR: Node.js is required' >&2
-    exit 1
-fi
-exec node - "$SCRIPT_DIR/../frontend/task_assignment_ui.test.js" <<'JS'
+source "$SCRIPT_DIR/../lib/find_node.sh"
+coral_find_node || { echo '[assignment-browser] ERROR: no Node.js found' >&2; exit 1; }
+exec "$NODE" - "$SCRIPT_DIR/../frontend/task_assignment_ui.test.js" <<'JS'
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
