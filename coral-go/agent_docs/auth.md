@@ -163,6 +163,10 @@ At startup Coral mints a single-use sign-in token, valid 10 minutes, writes it t
 
 `coral open` asks the running Coral for a fresh link (through the same handshake as `coral cloud`) and opens it, or prints it with `--print` or without a display. `--path` makes the link land on a dashboard page, for example `coral open --path /chats` or `coral open --path /team/<board>`. Without strict local auth the dashboard also works on this computer without the cookie; with it, the cookie is required.
 
+**Who can use a link** (#3970): only the user Coral runs as. A link opened by another user of this computer is refused like a used one, and stays good for its owner (an opener's command line can be read by other users in `ps`). Where the system can't tell which user opened it, links work as before and the log says so once. On Linux that is also the case for a browser on another computer, so that line can appear when you open a link from the network. Two consequences:
+- a reverse proxy on this computer that runs as another OS user gets its sign-in links refused: sign in there with the password or the API key instead;
+- `coral open --print` warns when it runs in an agent's terminal or a tmux pane, where anything that can read the pane can use the link.
+
 Coral's own apps sign in the same way, with no API key and no prompt (#3394). The tray and `launch-coral` run the server themselves and open every dashboard window or browser tab with a fresh link from it. The desktop window (`coral-app`) gets its first link from the tray in its environment (never on the command line, where other users could read it with `ps`), or, started on its own, asks Coral through the command-line handshake. If its session ends and the dashboard shows the sign-in page, it asks for a new link and signs in again (at most once every 30 seconds). Links are never written to logs; they appear as `login_token=REDACTED`. A Coral without sign-in links (before #3387) is opened at its plain address, as before.
 
 ### Identity report
