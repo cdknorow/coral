@@ -17,9 +17,10 @@ import (
 	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
-// #3424 (audit HIGH-01): workflows, scheduled jobs and task runs are the Operator's. With
-// strict local auth an agent's token gets 403 forbidden_for_agent; otherwise the call goes
-// through and is recorded in the identity report, by session and route.
+// #3424 (audit HIGH-01): workflows, scheduled jobs and task runs are the Operator's. An agent's
+// token gets 403 forbidden_for_agent in every mode (#3929; before, only with strict local
+// auth), and the call is recorded in the identity report, by session and route. A request with
+// no token is left to strict mode: in default mode it goes through, as before.
 func TestOperatorOnlyRoutes(t *testing.T) {
 	for _, strict := range []bool{false, true} {
 		db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
@@ -89,19 +90,13 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		}
 		for _, wr := range writes {
 			rec := do(wr.method, wr.path, agent)
-			if strict {
-				assert.Equal(t, http.StatusForbidden, rec.Code, wr.path)
-				var out map[string]any
-				_ = json.Unmarshal(rec.Body.Bytes(), &out)
-				assert.Equal(t, "forbidden_for_agent", out["code"], wr.path)
-			} else {
-				assert.Equal(t, http.StatusOK, rec.Code, "default mode: recorded, not refused: %s", wr.path)
-			}
+			assert.Equal(t, http.StatusForbidden, rec.Code, "strict=%v: %s", strict, wr.path)
+			var out map[string]any
+			_ = json.Unmarshal(rec.Body.Bytes(), &out)
+			assert.Equal(t, "forbidden_for_agent", out["code"], wr.path)
 		}
-		if strict {
-			forged := map[string]string{store.SessionTokenHeader: token, "User-Agent": "coral-agent/dev", "Origin": "http://example.com", "Sec-Fetch-Site": "same-origin"}
-			assert.Equal(t, http.StatusForbidden, do("POST", "/api/system/login-token", forged).Code, "an agent token with forged dashboard headers still can't mint a sign-in link")
-		}
+		forged := map[string]string{store.SessionTokenHeader: token, "User-Agent": "coral-agent/dev", "Origin": "http://example.com", "Sec-Fetch-Site": "same-origin"}
+		assert.Equal(t, http.StatusForbidden, do("POST", "/api/system/login-token", forged).Code, "an agent token with forged dashboard headers still can't mint a sign-in link")
 		// An agent launching agents (a team launch, a terminal agent) stays allowed in every mode and is
 		// recorded; a harmless UI preference (git-diff-mode) is not gated.
 		assert.Equal(t, http.StatusOK, do("POST", "/api/sessions/launch", agent).Code, "agent launches are allowed")
@@ -124,7 +119,9 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		assert.EqualValues(t, 1, calls["claude-dev POST /api/sessions/launch-team"], calls)
 		assert.Len(t, calls, len(writes)+2, "every agent write and launch recorded once, by route pattern (no ids)")
 		if !strict {
-			do("POST", "/api/scheduled/jobs", map[string]string{"User-Agent": "coral-agent/dev"})
+			// No token: left to strict mode, so in default mode it goes through (and is recorded).
+			assert.Equal(t, http.StatusOK, do("POST", "/api/scheduled/jobs", map[string]string{"User-Agent": "coral-agent/dev"}).Code)
+			assert.Equal(t, http.StatusOK, do("PUT", "/api/settings", nil).Code, "a tokenless local request in default mode")
 			calls = o.Report()["agent_operator_calls"].(map[string]int64)
 			assert.EqualValues(t, 1, calls["(no token) POST /api/scheduled/jobs"])
 		}

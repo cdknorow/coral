@@ -22,10 +22,10 @@ var guardParam = regexp.MustCompile(`\{[^}]*\}|\*`)
 // guardConcretePath fills each parameter of a route pattern with a plain value.
 func guardConcretePath(pattern string) string { return guardParam.ReplaceAllString(pattern, "x1") }
 
-// #3670: every entry of the tables is matched wherever its path is. Outside strict mode each
-// agent call to an Operator-only route is counted once, by route (the artifact routes of
-// #3553/#3554 never were: the hand-kept prefix list missed /api/artifacts/); in strict mode each
-// is refused.
+// #3670: every entry of the tables is matched wherever its path is, and each agent call to one
+// is counted once, by route (the artifact routes of #3553/#3554 never were: the hand-kept prefix
+// list missed /api/artifacts/). An Operator-only route is refused to an agent's token in every
+// mode (#3929); a recorded agent route is served.
 func TestGuardMatchesEveryTableEntry(t *testing.T) {
 	for _, strict := range []bool{false, true} {
 		db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
@@ -56,7 +56,7 @@ func TestGuardMatchesEveryTableEntry(t *testing.T) {
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 			_, only := operatorOnlyRoutes[k]
-			if strict && only {
+			if only {
 				assert.Equal(t, http.StatusForbidden, rec.Code, k)
 			} else {
 				assert.Equal(t, http.StatusOK, rec.Code, k)
