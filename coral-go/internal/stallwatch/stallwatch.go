@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // Probe is one health check. Check should return quickly when the part is healthy; it is
@@ -216,14 +218,15 @@ func (w *Watchdog) probe(ctx context.Context, p Probe, st *probeState) {
 	w.mu.Unlock()
 }
 
-// dump writes the goroutine dump with direct file calls (0600) and prunes old ones.
+// dump writes the goroutine dump with direct file calls (private: 0600, or this user only on
+// Windows) and prunes old ones.
 func (w *Watchdog) dump(now time.Time, stuck []string) (string, error) {
 	if w.cfg.Dir == "" {
 		return "", fmt.Errorf("no data folder")
 	}
 	name := FilePrefix + now.UTC().Format("20060102T150405.000Z") + ".txt"
 	path := filepath.Join(w.cfg.Dir, name)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	f, err := secfile.OpenNoFollow(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return "", err
 	}
