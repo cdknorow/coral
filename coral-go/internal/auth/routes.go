@@ -31,7 +31,7 @@ func NewRoutes(ks *KeyStore) *Routes {
 // GET /auth
 func (ar *Routes) AuthPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if ar.strictLocal && isDirectLocal(r) && !ar.ks.HasValidSession(r) {
+	if ar.strictLocal && localOperator(r) && !ar.ks.HasValidSession(r) {
 		// 200, so the Coral app's window renders it; the app signs in again from /auth.
 		w.Header().Set("Cache-Control", "no-store")
 		w.Write([]byte(LockedPageHTML))
@@ -94,7 +94,7 @@ func (ar *Routes) Logout(w http.ResponseWriter, r *http.Request) {
 // GetAPIKey returns the API key (localhost only).
 // GET /api/system/api-key
 func (ar *Routes) GetAPIKey(w http.ResponseWriter, r *http.Request) {
-	if !isDirectLocal(r) {
+	if !localOperator(r) {
 		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "localhost only"})
 		return
 	}
@@ -104,7 +104,7 @@ func (ar *Routes) GetAPIKey(w http.ResponseWriter, r *http.Request) {
 // RegenerateKey generates a new API key (localhost only).
 // POST /api/system/api-key/regenerate
 func (ar *Routes) RegenerateKey(w http.ResponseWriter, r *http.Request) {
-	if !isDirectLocal(r) {
+	if !localOperator(r) {
 		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "localhost only"})
 		return
 	}
@@ -123,7 +123,9 @@ func (ar *Routes) AuthStatus(w http.ResponseWriter, r *http.Request) {
 	method := "none"
 	authenticated := false
 
-	if isDirectLocal(r) {
+	// In strict mode (the default since #3936) locality alone is not a credential, so it is
+	// never reported as one.
+	if !ar.strictLocal && localOperator(r) {
 		method = "localhost"
 		authenticated = true
 	} else if key := extractAPIKey(r); key != "" && ar.ks.ValidateKey(key) {
