@@ -96,7 +96,7 @@ func (b *BrowserSessions) DeleteSessionsExcept(ctx context.Context, keep string)
 func (b *BrowserSessions) ListSessions(ctx context.Context) ([]auth.SessionRecord, error) {
 	var rows []browserSessionRow
 	if err := b.db.Reader().SelectContext(ctx, &rows, `SELECT id_hash, label, method, persistent, created_at, last_seen, expires_at, hub_grant, hub_account, hub_display, hub_last_ok
-		FROM browser_sessions ORDER BY last_seen DESC`); err != nil {
+		FROM browser_sessions ORDER BY last_seen DESC, rowid DESC`); err != nil {
 		return nil, err
 	}
 	out := make([]auth.SessionRecord, len(rows))
@@ -106,12 +106,13 @@ func (b *BrowserSessions) ListSessions(ctx context.Context) ([]auth.SessionRecor
 	return out, nil
 }
 
-// SweepSessions deletes expired rows, and the least recently used beyond max.
+// SweepSessions deletes expired rows, and the least recently used beyond max (last_seen is in
+// seconds, so equal times are broken by insertion order: the later sign-in is kept).
 func (b *BrowserSessions) SweepSessions(ctx context.Context, now time.Time, max int) error {
 	if _, err := b.db.ExecContext(ctx, `DELETE FROM browser_sessions WHERE expires_at <= ?`, now.Unix()); err != nil {
 		return err
 	}
 	_, err := b.db.ExecContext(ctx, `DELETE FROM browser_sessions WHERE id_hash NOT IN
-		(SELECT id_hash FROM browser_sessions ORDER BY last_seen DESC LIMIT ?)`, max)
+		(SELECT id_hash FROM browser_sessions ORDER BY last_seen DESC, rowid DESC LIMIT ?)`, max)
 	return err
 }

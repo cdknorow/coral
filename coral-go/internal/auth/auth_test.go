@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -565,4 +566,22 @@ func TestForwardedHostOnlyFromATrustedProxy(t *testing.T) {
 	assert.Equal(t, "", at("127.0.0.1:5000", ""), "no header")
 	var none *KeyStore
 	assert.Equal(t, "", none.ForwardedHost(httptest.NewRequest("POST", "/", nil)))
+}
+
+// Windows' clock is coarse: many sessions share a last-seen time. The sweep then keeps the later
+// sign-ins (insertion order breaks the tie), so "evict the oldest" is deterministic.
+func TestMemSessionsEvictTheEarliestOnATie(t *testing.T) {
+	m := newMemSessions()
+	ctx := context.Background()
+	at := time.Unix(1_700_000_000, 0)
+	for i := 0; i < 10; i++ {
+		require.NoError(t, m.PutSession(ctx, SessionRecord{IDHash: fmt.Sprintf("s%d", i), LastSeen: at, ExpiresAt: at.Add(time.Hour)}))
+	}
+	require.NoError(t, m.SweepSessions(ctx, at, 4))
+	list, _ := m.ListSessions(ctx)
+	var ids []string
+	for _, r := range list {
+		ids = append(ids, r.IDHash)
+	}
+	assert.Equal(t, []string{"s9", "s8", "s7", "s6"}, ids)
 }
