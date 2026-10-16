@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -89,4 +90,27 @@ func BenchmarkMaybePruneSessionCachesNotDue(b *testing.B) {
 			h.maybePruneSessionCaches()
 		}
 	})
+}
+
+// #3999 (the #3994 audit, finding 5): the sync.Map memos keyed by session id are swept of ended
+// sessions too, so they do not grow with every session the server ever ran.
+func TestPruneSessionCachesSweepsTheSessionMemos(t *testing.T) {
+	_, h, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	live := "00000000-0000-4000-8000-000000000001"
+	gone := "00000000-0000-4000-8000-000000000002"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: live, AgentName: "a", AgentType: "claude", WorkingDir: "/tmp"}))
+	terminal.addSession("claude-"+live, "/tmp")
+	for _, id := range []string{live, gone} {
+		h.cliVersionTried.Store(id, true)
+		h.hooksRev.Store(id, 3)
+		h.hooksNoRev.Store(id, true)
+	}
+	require.Equal(t, 3, h.pruneSessionCaches(ctx), "the ended session's three memos")
+	for _, m := range []*sync.Map{&h.cliVersionTried, &h.hooksRev, &h.hooksNoRev} {
+		_, hasLive := m.Load(live)
+		_, hasGone := m.Load(gone)
+		require.True(t, hasLive)
+		require.False(t, hasGone)
+	}
 }

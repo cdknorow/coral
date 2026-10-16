@@ -62,11 +62,43 @@ func (m *BoardHealthMonitor) Run(ctx context.Context) error {
 	}
 }
 
+// boardHealthForgetAfter is how long the monitor remembers it already reported a task: past it, a
+// task that is still idle is reported again and the memory does not grow with every task ever seen
+// (#3999, the #3994 audit finding 5).
+const boardHealthForgetAfter = 14 * 24 * time.Hour
+
+// forgetOld drops reports older than boardHealthForgetAfter and the issue text of boards that are
+// gone or have no open issue.
+func (m *BoardHealthMonitor) forgetOld(now time.Time, projects map[string]bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, at := range m.idleNotified {
+		if now.Sub(at) > boardHealthForgetAfter {
+			delete(m.idleNotified, id)
+		}
+	}
+	for key, v := range m.last {
+		if at, err := time.Parse(time.RFC3339, v); err != nil || now.Sub(at) > boardHealthForgetAfter {
+			delete(m.last, key)
+		}
+	}
+	for project, issue := range m.lastIssue {
+		if issue == "" || !projects[project] {
+			delete(m.lastIssue, project)
+		}
+	}
+}
+
 func (m *BoardHealthMonitor) scan(ctx context.Context) {
 	projects, err := m.store.ListProjects(ctx)
 	if err != nil {
 		return
 	}
+	known := make(map[string]bool, len(projects))
+	for _, p := range projects {
+		known[p.Project] = true
+	}
+	m.forgetOld(m.now(), known)
 	for _, p := range projects {
 		m.scanProject(ctx, p.Project)
 	}
