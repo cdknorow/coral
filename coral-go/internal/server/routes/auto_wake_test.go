@@ -209,10 +209,13 @@ func TestAutoWakeNoticeGoesToThatAgentOnly(t *testing.T) {
 	r := newWakeRig(t)
 	ctx := context.Background()
 	const team = "team-3636"
-	r.add(sid(1), "dev", store.SleepReasonCoralStopped, "", false)
+	// The agent's board row is the one its wake re-subscribes (subscriber ID and title: its
+	// display name), so the lookup after the wake can't pick another row of the same session.
+	const name = "Dev ‮One\x07"
+	r.add(sid(1), name, store.SleepReasonCoralStopped, "", false)
 	_, err := r.h.db.ExecContext(ctx, "UPDATE live_sessions SET board_name = ? WHERE session_id = ?", team, sid(1))
 	require.NoError(t, err)
-	_, err = r.h.bs.Subscribe(ctx, team, "dev-sub", "Dev ‮One\x07", naming.SessionName("claude", sid(1)), nil, nil, "mentions")
+	_, err = r.h.bs.Subscribe(ctx, team, naming.SubscriberID(name, "claude"), name, naming.SessionName("claude", sid(1)), nil, nil, "mentions")
 	require.NoError(t, err)
 	_, err = r.h.bs.Subscribe(ctx, team, "orch-sub", "Orchestrator", "claude-orchestrator", nil, nil, "all")
 	require.NoError(t, err)
