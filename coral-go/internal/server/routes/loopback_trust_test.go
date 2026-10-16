@@ -41,15 +41,15 @@ func TestRouteLocalChecksDenyProxiedAndSettingOn(t *testing.T) {
 	// Plain direct loopback: all four say local.
 	assert.True(t, localDashboard(dashboard(nil)), "localDashboard plain loopback")
 	assert.True(t, localCLI(cli(nil)), "localCLI plain loopback")
-	assert.True(t, isLocalClient(cli(nil)), "isLocalClient plain loopback")
-	assert.True(t, fromLoopback(cli(nil)), "fromLoopback plain loopback")
+	assert.True(t, auth.IsDirectLocal(cli(nil)), "isLocalClient plain loopback")
+	assert.True(t, auth.IsDirectLocal(cli(nil)), "fromLoopback plain loopback")
 
 	// A proxy header present: none say local (localCLI included: a proxy can't be the command line).
 	proxy := func(r *http.Request) { r.Header.Set("X-Forwarded-For", "100.64.0.9") }
 	assert.False(t, localDashboard(dashboard(proxy)), "localDashboard proxied")
 	assert.False(t, localCLI(cli(proxy)), "localCLI proxied")
-	assert.False(t, isLocalClient(cli(proxy)), "isLocalClient proxied")
-	assert.False(t, fromLoopback(cli(proxy)), "fromLoopback proxied")
+	assert.False(t, auth.IsDirectLocal(cli(proxy)), "isLocalClient proxied")
+	assert.False(t, auth.IsDirectLocal(cli(proxy)), "fromLoopback proxied")
 
 	// require_auth_on_loopback on: the setting-gated powers go non-local, but localCLI stays
 	// local for a direct peer — the signed `coral cloud connect` handshake's signature is the
@@ -58,6 +58,6 @@ func TestRouteLocalChecksDenyProxiedAndSettingOn(t *testing.T) {
 	assert.False(t, localDashboard(dashboard(nil)), "localDashboard with the setting on")
 	assert.True(t, localCLI(cli(nil)), "localCLI stays local for a direct peer with the setting on")
 	assert.False(t, localCLI(cli(proxy)), "localCLI still denies a proxied request with the setting on")
-	assert.False(t, isLocalClient(cli(nil)), "isLocalClient with the setting on")
-	assert.False(t, fromLoopback(cli(nil)), "fromLoopback with the setting on")
+	assert.False(t, auth.IsDirectLocal(cli(nil)), "isLocalClient with the setting on")
+	assert.False(t, auth.IsDirectLocal(cli(nil)), "fromLoopback with the setting on")
 }

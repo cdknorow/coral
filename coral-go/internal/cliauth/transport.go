@@ -9,12 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/safefs"
 )
 
@@ -112,7 +112,7 @@ type Transport struct {
 }
 
 func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if t.Token == "" || !loopbackHost(r.URL.Hostname()) || r.Header.Get(CLIAuthHeader) != "" {
+	if t.Token == "" || !auth.IsLoopbackHost(r.URL.Hostname()) || r.Header.Get(CLIAuthHeader) != "" {
 		return t.Base.RoundTrip(r)
 	}
 	var body []byte
@@ -184,14 +184,6 @@ func (t Transport) hello(ctx context.Context, base string) (clientNonce, serverN
 		return "", "", ErrNotCoral
 	}
 	return b64.EncodeToString(cn), h.Nonce, nil
-}
-
-func loopbackHost(h string) bool {
-	if strings.EqualFold(h, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(h)
-	return ip != nil && ip.IsLoopback()
 }
 
 // InstallOperatorSigning makes the default HTTP transport sign requests to a loopback

@@ -20,6 +20,7 @@ import (
 	"github.com/cdknorow/coral/pkg/tunnel"
 	"unicode"
 
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/config"
 )
 
@@ -92,21 +93,13 @@ func NormalizeHubURL(raw string) (string, error) {
 	switch u.Scheme {
 	case "https":
 	case "http":
-		if !config.AllowInsecureCloud || !isLoopback(u.Hostname()) {
+		if !config.AllowInsecureCloud || !auth.IsLoopbackHost(u.Hostname()) {
 			return "", errors.New("cloud url must use https")
 		}
 	default:
 		return "", errors.New("cloud url must use https")
 	}
 	return u.Scheme + "://" + u.Host, nil
-}
-
-func isLoopback(h string) bool {
-	if strings.EqualFold(h, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(h)
-	return ip != nil && ip.IsLoopback()
 }
 
 // NewHubHTTPClient returns the client used for enrollment calls: certificate

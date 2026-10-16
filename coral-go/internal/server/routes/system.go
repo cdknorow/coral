@@ -370,7 +370,7 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 func (h *SystemHandler) DeleteDebugInputLog(w http.ResponseWriter, r *http.Request) {
 	// Coral Hub tunnel traffic also arrives from loopback (the connector proxies to
 	// 127.0.0.1), so a tunnel-stamped request is refused too, not only by the table.
-	if viaTunnel(r) || !fromLoopback(r) {
+	if viaTunnel(r) || !auth.IsDirectLocal(r) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "Delete the terminal input log from the computer running Coral."})
 		return
 	}
@@ -384,13 +384,6 @@ func (h *SystemHandler) DeleteDebugInputLog(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": n, "debug_input_log": inputlog.State()})
-}
-
-// fromLoopback reports whether r is a direct local client, allowed to delete the input log from
-// this machine. It goes through auth.IsDirectLocal (#3585): a request a local proxy forwarded,
-// and every request while require_auth_on_loopback is on, is not treated as local.
-func fromLoopback(r *http.Request) bool {
-	return auth.IsDirectLocal(r)
 }
 
 // gitDiffModes are the comparison bases the changed-files panel offers.
