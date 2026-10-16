@@ -7,13 +7,9 @@ GET /api/board/projects redact
 GET /api/board/tasks redact
 GET /api/board/{project} redact
 GET /api/board/{project}/artifacts redact
-GET /api/board/{project}/groups redact
-GET /api/board/{project}/groups/{id}/members redact
 GET /api/board/{project}/messages redact
 GET /api/board/{project}/messages/all redact
-GET /api/board/{project}/messages/check redact
 GET /api/board/{project}/paused redact
-GET /api/board/{project}/peek redact
 GET /api/board/{project}/settings redact
 GET /api/board/{project}/status redact
 GET /api/board/{project}/subscribers redact
@@ -22,8 +18,6 @@ GET /api/board/{project}/tasks/{id} redact
 GET /api/board/{project}/tasks/{id}/artifact-content redact
 GET /api/board/{project}/tasks/{id}/changes.diff redact
 GET /api/board/{project}/tasks/{id}/cost redact
-GET /api/board/{project}/waits redact
-GET /api/board/{project}/waits/poll redact
 GET /api/board/{project}/working-mode redact
 GET /api/board/{project}/working-mode/presets redact
 GET /api/call-metrics/summary redact
@@ -71,7 +65,6 @@ GET /api/sessions/live/{name}/search-files redact
 GET /api/sessions/live/{name}/subagents redact
 GET /api/sessions/live/{name}/subagents/{id} redact
 GET /api/sessions/live/{name}/tasks redact
-GET /api/sessions/resolve redact
 GET /api/sessions/{id}/changes redact
 GET /api/sessions/{id}/changes.diff redact
 GET /api/sessions/{id}/resolve redact

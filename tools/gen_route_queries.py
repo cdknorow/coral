@@ -7,13 +7,21 @@ in coral-go/internal/server/routes that server.go registers, following helper ca
 receive the request. Parameters that name a file or directory are marked FILE and get the
 strict path normalisation in pkg/tunnel/routes.go.
 
-Run from the repository root:  python3 tools/gen_route_queries.py
+Only routes the tunnel lets through at some tier are listed: the generator asks the Go route
+table (coral-go/internal/tools/routeshapes, which needs Go), so a route the tunnel refuses has no
+entry and the table is never copied here (#3942).
+
+Run from the repository root:  python3 tools/gen_route_queries.py [--out PATH]
 Then review the diff: it is a security-relevant allowlist.
 """
 import glob, re, subprocess, sys
 
 ROOT = 'coral-go/internal/server'
 OUT = 'coral-go/pkg/tunnel/routes_query.go'
+if len(sys.argv) == 3 and sys.argv[1] == '--out':
+    OUT = sys.argv[2]  # the drift test writes to a scratch file instead
+elif len(sys.argv) != 1:
+    sys.exit('usage: python3 tools/gen_route_queries.py [--out PATH]')
 # Parameter names that carry a file or directory reference.
 FILE_PARAMS = {'filepath', 'dir', 'path', 'working_directory', 'file', 'ref', 'cwd', 'folder', 'directory', 'root'}
 
@@ -38,6 +46,19 @@ EXTRA = {
     # The artifact route is registered by SessionsHandler.RegisterAgentArtifacts (not followed by the scan above). Since v1.4.12
     # (#3168) every artifact link is /api/artifacts/<digest>?v=2; the handler reads v and accepts only absent or 2 (#3179).
     'GET /api/artifacts/{}': {'v'},
+}
+
+# Parameters a handler reads that Coral Hub never sends, refused through the tunnel (#3942, agreed with coral-hub):
+# the agents' own history options and two the hub's tools stopped using. Remove a name here, with the reason, only when the
+# hub needs it.
+DROP = {
+    # An agent's own history search (coral-agent): another session, its ancestors, the excerpt size.
+    'GET /api/sessions/live/{}/history/search': {'target_session_id', 'include_ancestors', 'max_excerpt_chars'},
+    'GET /api/sessions/live/{}/history/context': {'target_session_id'},
+    # The token-usage team filter; the hub filters by board_name.
+    'GET /api/token-usage': {'team_id'},
+    # The poll's event count; coral-hub's capacity tool drops it in the same release.
+    'GET /api/sessions/live/{}/poll': {'events_limit'},
 }
 
 # Parameters that accept only exact values. The spec token becomes name=a|b. The hub's machine feed connects with feed=hub
@@ -105,6 +126,15 @@ for m in reg.finditer(sv):
 
 for shape, extra in EXTRA.items():
     rows.setdefault(shape, set()).update(extra)
+for shape, drop in DROP.items():
+    assert drop <= rows.get(shape, set()), (shape, drop - rows.get(shape, set()))  # a stale entry fails loudly
+    rows[shape] -= drop
+
+# Only routes the tunnel allows at some tier: ask the Go table.
+allowed = subprocess.run(['go', 'run', './internal/tools/routeshapes'], cwd='coral-go', check=True, capture_output=True,
+                         text=True, input='\n'.join(sorted(rows)) + '\n').stdout.split('\n')
+allowed = {line for line in allowed if line}
+rows = {shape: ps for shape, ps in rows.items() if shape in allowed}
 
 lines = []
 for shape in sorted(rows):
