@@ -52,6 +52,7 @@ func realPath(t *testing.T, p string) string {
 }
 
 func TestDiscoveryOrderOverrideThenBundledThenSystem(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	b := newFakeBundle(t, "exit 0")
 	// A system tmux exists on PATH too.
 	sysDir := t.TempDir()
@@ -92,6 +93,7 @@ func TestDiscoveryOrderOverrideThenBundledThenSystem(t *testing.T) {
 }
 
 func TestBundledTmuxFoundThroughSymlinkedExecutableAndSymlinkedTmux(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	b := newFakeBundle(t, "exit 0")
 	link := filepath.Join(t.TempDir(), "coral") // like /usr/local/bin/coral -> the bundle
 	require.NoError(t, os.Symlink(b.coral, link))
@@ -125,6 +127,7 @@ func envMap(env []string) map[string]string {
 }
 
 func TestTmuxEnvOnlyTouchesTheBundledTmuxAndKeepsUserSettings(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	b := newFakeBundle(t, "exit 0")
 	// A system tmux gets our environment without Coral's server-only settings (#3389): the
 	// tmux server passes its environment to every agent pane. (Checked without printing it.)
@@ -159,6 +162,7 @@ func TestTmuxEnvOnlyTouchesTheBundledTmuxAndKeepsUserSettings(t *testing.T) {
 
 // Every tmux operation runs the selected binary with the bundled environment.
 func TestRealOperationsUseTheSelectedBundledBinaryAndEnvironment(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	logFile := filepath.Join(t.TempDir(), "calls.log")
 	b := newFakeBundle(t, `echo "$0|$1 $2 $3|TD=$TERMINFO_DIRS|BIN=$CORAL_TMUX_BIN" >> `+logFile+`
 case "$*" in
@@ -190,6 +194,7 @@ exit 0`)
 }
 
 func TestAttachCommandNamesTheSelectedBinaryWithTerminfo(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	b := newFakeBundle(t, "exit 0")
 	c := &Client{TmuxBin: b.tmuxBin, SocketPath: "/tmp/coral.sock"}
 	cmd := c.AttachCommand("claude-abc")
@@ -207,6 +212,7 @@ func TestAttachCommandNamesTheSelectedBinaryWithTerminfo(t *testing.T) {
 }
 
 func TestBinaryFromEnvForHelpersInsidePanes(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	t.Setenv("CORAL_TMUX_BIN", "")
 	t.Setenv("PATH", t.TempDir()) // no tmux anywhere on PATH
 	prev, prevGOOS := commonTmuxPaths, goos
@@ -245,6 +251,7 @@ func TestNoLiteralTmuxSubprocessesRemain(t *testing.T) {
 
 // A running server from a different tmux version must be surfaced, never killed.
 func TestProtocolMismatchIsSurfacedAndTheOldServerIsNeverKilled(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	resetIncompat()
 	t.Cleanup(resetIncompat)
 	logFile := filepath.Join(t.TempDir(), "calls.log")
@@ -306,6 +313,7 @@ func TestSessionSurvivesClientRestartThroughBundledTmux(t *testing.T) {
 // A helper inside the app bundle, talking to a pre-existing server that never
 // had CORAL_TMUX_BIN injected, still finds the bundled tmux.
 func TestBinaryFromEnvFallsBackToTheBundleThenPath(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	b := newFakeBundle(t, "exit 0")
 	assert.Equal(t, realPath(t, b.tmuxBin), realPath(t, BinaryFromEnv()))
 	goos = "linux"
@@ -317,6 +325,7 @@ func TestBinaryFromEnvFallsBackToTheBundleThenPath(t *testing.T) {
 }
 
 func TestAttachCommandQuotesEverythingAndKeepsTheUsersTerminfoList(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	b := newFakeBundle(t, "exit 0")
 	t.Setenv("TERMINFO_DIRS", "/user/a:"+b.terminfo+":/user/b") // bundle already listed
 	c := &Client{TmuxBin: b.tmuxBin, SocketPath: "/tmp/my dir/coral.sock"}
@@ -334,6 +343,7 @@ func resetIncompat() {
 // Both tmux phrasings are detected, the state clears once the same socket
 // works again, and a success on a different socket does not clear it.
 func TestVersionProblemIsPerSocketCoversBothMessagesAndClearsOnSuccess(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	resetIncompat()
 	t.Cleanup(resetIncompat)
 	state := filepath.Join(t.TempDir(), "mode")

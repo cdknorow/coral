@@ -69,6 +69,7 @@ func fastSubmit(t *testing.T) {
 }
 
 func TestSendPromptPastesOnceThenEnterWithoutScriptHandoff(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	fastSubmit(t)
 	c, dir := fakeTmux(t)
 	// Far beyond the 900-byte limit that SendKeys turns into a shell script.
@@ -95,6 +96,7 @@ func TestSendPromptPastesOnceThenEnterWithoutScriptHandoff(t *testing.T) {
 }
 
 func TestSendPromptRefusesWithoutBracketedPasteAndTypesNothing(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	fastSubmit(t)
 	c, dir := fakeTmux(t)
 	ctx := WithBracketedPasteHint(context.Background(), false)
@@ -107,6 +109,7 @@ func TestSendPromptRefusesWithoutBracketedPasteAndTypesNothing(t *testing.T) {
 }
 
 func TestSendPromptStripsEscapesBeforeLoadingTheBuffer(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	fastSubmit(t)
 	c, dir := fakeTmux(t)
 	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(context.Background(), true), "agent", "x\x1b[201~y\nz", "claude", "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f"))
@@ -189,6 +192,7 @@ func TestSendPromptCancelledBeforeStartRunsNothing(t *testing.T) {
 // Cancelled right after the paste ran: Enter still goes out and the call
 // succeeds, so the caller records delivery and nothing is replayed.
 func TestSendPromptCancelledAfterPasteStillSubmits(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	old := promptSubmitDelay
 	promptSubmitDelay = 150 * time.Millisecond
 	t.Cleanup(func() { promptSubmitDelay = old })
@@ -213,6 +217,7 @@ func TestSendPromptCancelledAfterPasteStillSubmits(t *testing.T) {
 }
 
 func TestSendPromptFailuresAfterInputStartedAreUnknownAndNotRetryable(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	fastSubmit(t)
 	for name, marker := range map[string]string{"paste-buffer fails": "fail-paste", "Enter fails": "fail-enter"} {
 		c, dir := fakeTmux(t)
@@ -232,6 +237,7 @@ func TestSendPromptFailuresAfterInputStartedAreUnknownAndNotRetryable(t *testing
 
 // Two prompts to one pane never interleave: paste, Enter, paste, Enter.
 func TestSendPromptSerializesConcurrentPromptsPerPane(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	old := promptSubmitDelay
 	promptSubmitDelay = 80 * time.Millisecond
 	t.Cleanup(func() { promptSubmitDelay = old })
@@ -254,6 +260,7 @@ func TestSendPromptSerializesConcurrentPromptsPerPane(t *testing.T) {
 }
 
 func TestSendPromptUnknownPasteModeWritesNothing(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	c, dir := fakeTmux(t)
 	err := c.SendPrompt(context.Background(), "agent", "a\nb", "claude", promptSID)
 	require.ErrorIs(t, err, ErrBracketedPasteUnavailable)

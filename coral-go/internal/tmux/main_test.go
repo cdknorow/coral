@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -18,4 +19,14 @@ func TestMain(m *testing.M) {
 	// Enter (production keeps it for agent TUIs).
 	SetSendKeysSettleForTest(20 * time.Millisecond)
 	os.Exit(m.Run())
+}
+
+// skipWithoutUnixTmux skips a test that needs a real tmux, its socket, a shell script standing in
+// for it, or ps: Coral doesn't use tmux on Windows (the pty backend runs agents there), so these
+// have nothing to test on it (#3920 T3).
+func skipWithoutUnixTmux(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Coral doesn't use tmux on Windows (the pty backend runs agents there)")
+	}
 }
