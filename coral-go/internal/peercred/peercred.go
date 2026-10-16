@@ -37,6 +37,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/netip"
@@ -45,10 +46,19 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // procNet is where the socket tables live (a test seam).
 var procNet = "/proc/net"
+
+// ErrLayout: the kernel's socket table isn't in a layout this build knows (macOS reads
+// xnu's private structs). SameUser then answers unsupported, never a guess.
+var ErrLayout = errors.New("peercred: the kernel's socket table has an unknown layout")
+
+// ownerCheck is ownerIsMe (a test seam).
+var ownerCheck = ownerIsMe
 
 // ErrNotFound: no live socket row for the connection.
 var ErrNotFound = errors.New("peercred: no socket row for the connection")
@@ -197,13 +207,48 @@ func SameUser(r *http.Request) (same, supported bool) {
 	}
 	client, server = unmap(client), unmap(server)
 	for attempt := 0; attempt < 2; attempt++ { // re-read once: the race with accept
-		me, err := ownerIsMe(client, server)
-		if err == nil {
+		var me bool
+		if me, err = ownerCheck(client, server); err == nil {
 			return me, true
 		}
 		if !errors.Is(err, ErrNotFound) {
 			break
 		}
 	}
+	if errors.Is(err, ErrLayout) {
+		logLayoutOnce(err)
+		return false, false // this OS version's table isn't one we know: as an unsupported system
+	}
+	logRefused(client, err)
 	return false, true
+}
+
+var layoutOnce sync.Once
+
+// logLayoutOnce says, once per process, that the kernel's socket table has a layout this
+// build doesn't know (a macOS update that changed xnu's private structs): requests are then
+// handled as on a system without the check, never refused as another user's or accepted as
+// Coral's own on a guess.
+func logLayoutOnce(err error) {
+	layoutOnce.Do(func() {
+		log.Printf("[peercred] peer user unknown on this OS version: %v (%s/%s); loopback requests get the rules for systems without a peer check", err, runtime.GOOS, runtime.GOARCH)
+	})
+}
+
+// refusedLog limits the fail-closed log line to one a minute.
+var refusedLog struct {
+	sync.Mutex
+	last time.Time
+}
+
+// logRefused says why a loopback request was refused as another user's when its owner could
+// not be determined.
+func logRefused(client netip.AddrPort, err error) {
+	refusedLog.Lock()
+	defer refusedLog.Unlock()
+	if time.Since(refusedLog.last) < time.Minute {
+		return
+	}
+	refusedLog.last = time.Now()
+	log.Printf("[peercred] could not tell which user owns the loopback connection from %s (%v): refused as another user", client, err)
 }
