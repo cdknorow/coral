@@ -527,12 +527,49 @@ func readPID(dataDir string) int {
 	if err != nil {
 		return 0
 	}
-	// Check if process is alive
-	if err := signalProcess(pid, 0); err != nil {
+	// The pid must still be a coral-tray: after a crash the file stays, and the pid can be
+	// reused by any other process, which --stop would then terminate and a start would take
+	// for a running tray (#3906, sweep item 7).
+	if !isTrayProcess(pid) {
 		removePID(dataDir)
 		return 0
 	}
 	return pid
+}
+
+// isTrayProcess reports whether pid is a running process of this same executable. Anything
+// it can't tell (the process is gone, its executable can't be read) is "no".
+func isTrayProcess(pid int) bool {
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return false
+	}
+	exe, err := p.Exe()
+	if err != nil || exe == "" {
+		return false
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	return sameExecutable(exe, self)
+}
+
+// sameExecutable compares two executable paths after resolving links; on Windows without
+// regard to case. Linux names a binary replaced since it started (an upgrade) "path (deleted)".
+func sameExecutable(a, b string) bool {
+	norm := func(p string) string {
+		p = strings.TrimSuffix(p, " (deleted)")
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			p = r
+		}
+		return filepath.Clean(p)
+	}
+	a, b = norm(a), norm(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // coralAppProcess tracks the running coral-app subprocess.
