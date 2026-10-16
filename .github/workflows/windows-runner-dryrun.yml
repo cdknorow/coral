@@ -1,0 +1,55 @@
+name: Windows runner dry run
+
+# Manual proof that tests/release/smoke_windows.ps1 - the packaged-build smoke
+# test wired into release.yml's build-windows job - passes against a real
+# published Windows portable ZIP, without cutting a release. It downloads the
+# release asset and runs the same script the release gate runs. No build, no
+# secrets, nothing published.
+#
+# It runs on demand (pick the released version) and automatically on a ci/
+# branch that touches the smoke script or the Windows release steps, so a change
+# to either is proven on a real Windows runner before it lands.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version to smoke test (no leading v), e.g. 1.4.69"
+        required: true
+        default: "1.4.69"
+  push:
+    branches: ["ci/**"]
+    paths:
+      - "tests/release/smoke_windows.ps1"
+      - ".github/workflows/windows-runner-dryrun.yml"
+      - ".github/workflows/release.yml"
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  smoke-windows-portable:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      # workflow_dispatch supplies the version; a push (no inputs) defaults to the current release.
+      VERSION: ${{ github.event.inputs.version || '1.4.69' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Download the published portable ZIP
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          gh release download "v$env:VERSION" --repo "${{ github.repository }}" --pattern "Coral-*-x64-portable.zip" --dir dist
+          $zip = Get-ChildItem dist\Coral-*-x64-portable.zip | Select-Object -First 1
+          if (-not $zip) { throw "no portable ZIP found for v$env:VERSION" }
+          echo "ZIP_PATH=$($zip.FullName)" >> $env:GITHUB_ENV
+
+      - name: Smoke test the portable package
+        shell: pwsh
+        run: ./tests/release/smoke_windows.ps1 -Zip $env:ZIP_PATH
