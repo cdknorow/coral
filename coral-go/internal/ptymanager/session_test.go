@@ -288,6 +288,10 @@ func TestParseCommand_ShellMetachars(t *testing.T) {
 		{"ls *.go", true},
 		{"echo test!", true},
 		{"simple-command --flag value", false},
+		// Quotes and a backslash are shell syntax too (#4013).
+		{"sh -c 'sleep 60'", true},
+		{`echo "a b"`, true},
+		{`printf a\ b`, true},
 	}
 
 	for _, tt := range tests {

@@ -571,8 +571,8 @@ func TestParseCommand(t *testing.T) {
 		want  []string
 	}{
 		{"echo hello", []string{"echo", "hello"}},
-		{"sh -c 'echo test'", []string{"sh", "-c", "'echo", "test'"}}, // no metachar, fields split
-		{"ls | grep foo", shellWrap("ls | grep foo")},                 // a metachar wraps via the platform shell (sh -c / powershell)
+		{"sh -c 'echo test'", shellWrap("sh -c 'echo test'")}, // quotes go to the shell (#4013), never split on spaces
+		{"ls | grep foo", shellWrap("ls | grep foo")},         // a metachar wraps via the platform shell (sh -c / powershell)
 		{"claude --session-id abc", []string{"claude", "--session-id", "abc"}},
 		{"", nil},
 	}
