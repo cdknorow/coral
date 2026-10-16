@@ -1102,7 +1102,8 @@ func (h *SystemHandler) QRCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// The URL it encodes can carry a sign-in token: never kept by a browser or a shared cache (#3682).
+	w.Header().Set("Cache-Control", "private, no-store")
 	w.Write(png)
 }
 

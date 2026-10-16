@@ -61,7 +61,7 @@ func TestAppsSignInWithoutTheAPIKey(t *testing.T) {
 	assert.Equal(t, http.StatusFound, resp.StatusCode)
 	var session *http.Cookie
 	for _, c := range resp.Cookies() {
-		if c.Name == "coral_session" {
+		if strings.HasPrefix(c.Name, "coral_session_") { // per server since #3682
 			session = c
 		}
 	}

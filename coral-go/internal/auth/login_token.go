@@ -171,7 +171,7 @@ func (ks *KeyStore) handleLoginToken(w http.ResponseWriter, r *http.Request) boo
 		return true
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name: cookieName, Value: session, Path: "/", MaxAge: int(sessionMaxAge.Seconds()),
+		Name: ks.cookieName(r), Value: session, Path: "/", MaxAge: int(sessionMaxAge.Seconds()),
 		HttpOnly: true, Secure: ks.overHTTPS(r), SameSite: http.SameSiteStrictMode,
 	})
 	// The same page without the token (a relative URL: never another host), its path exactly as

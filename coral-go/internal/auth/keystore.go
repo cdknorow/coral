@@ -3,6 +3,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
@@ -21,13 +22,16 @@ import (
 )
 
 const (
-	keyLength       = 32 // 32 hex chars = 128 bits
-	sessionLength   = 32 // 32 hex chars
-	cookieName      = "coral_session"
-	sessionMaxAge   = 24 * time.Hour
-	maxSessions     = 100
-	rateLimitWindow = time.Minute
-	rateLimitMax    = 10
+	keyLength     = 32 // 32 hex chars = 128 bits
+	sessionLength = 32 // 32 hex chars
+	// legacyCookieName is the session cookie of Coral before #3682: one name for every server on
+	// the host, so two Corals on localhost signed each other out. It is still read (a session
+	// is only ever valid on the server that made it), never written.
+	legacyCookieName = "coral_session"
+	sessionMaxAge    = 24 * time.Hour
+	maxSessions      = 100
+	rateLimitWindow  = time.Minute
+	rateLimitMax     = 10
 )
 
 // Session represents an authenticated session.
@@ -46,13 +50,14 @@ type rateLimitEntry struct {
 
 // KeyStore manages API keys and sessions.
 type KeyStore struct {
-	mu       sync.RWMutex
-	key      string
-	keyPath  string
-	sessions map[string]*Session
-	order    []string // LRU order (oldest first)
-	rateMap  map[string]*rateLimitEntry
-	trusted  []*net.IPNet // reverse proxies whose X-Forwarded-Proto is believed (#3356)
+	cookieBase string // the session cookie's name without a prefix (#3682)
+	mu         sync.RWMutex
+	key        string
+	keyPath    string
+	sessions   map[string]*Session
+	order      []string // LRU order (oldest first)
+	rateMap    map[string]*rateLimitEntry
+	trusted    []*net.IPNet // reverse proxies whose X-Forwarded-Proto is believed (#3356)
 	// loginTokens maps a login token's SHA-256 to its expiry (#3387).
 	loginTokens map[string]time.Time
 	// loginFile and loginFileHash: the login_token file and the hash of the token it holds,
@@ -63,9 +68,10 @@ type KeyStore struct {
 // NewKeyStore creates or loads an API key from the given directory.
 func NewKeyStore(coralDir string) (*KeyStore, error) {
 	ks := &KeyStore{
-		keyPath:  filepath.Join(coralDir, "api_key"),
-		sessions: make(map[string]*Session),
-		rateMap:  make(map[string]*rateLimitEntry),
+		cookieBase: sessionCookieBase(coralDir),
+		keyPath:    filepath.Join(coralDir, "api_key"),
+		sessions:   make(map[string]*Session),
+		rateMap:    make(map[string]*rateLimitEntry),
 	}
 	if err := ks.loadOrGenerate(); err != nil {
 		return nil, err
@@ -420,13 +426,45 @@ func extractAPIKey(r *http.Request) string {
 	return ""
 }
 
-// ExtractSessionCookie extracts the session token from the cookie.
-func extractSessionCookie(r *http.Request) string {
-	c, err := r.Cookie(cookieName)
-	if err != nil {
-		return ""
+// cookieName is this server's session cookie (#3682): coral_session_ and a short hash of its
+// data folder, so servers on one host name don't overwrite each other's (cookies ignore ports),
+// with the __Host- prefix over https (no Domain, Secure, Path /: no other host can set it).
+// Over plain http on loopback nothing a browser offers keeps the cookie from other ports; the
+// session's 24 h lifetime stays the bound there.
+func (ks *KeyStore) cookieName(r *http.Request) string {
+	if ks.overHTTPS(r) {
+		return "__Host-" + ks.cookieBase
 	}
-	return c.Value
+	return ks.cookieBase
+}
+
+// isSessionCookieName reports whether name is a session cookie Coral sets (any server's).
+func isSessionCookieName(name string) bool {
+	return strings.HasPrefix(name, legacyCookieName+"_") || strings.HasPrefix(name, "__Host-"+legacyCookieName+"_")
+}
+
+// SessionCookieName is the name of this server's session cookie for r (tests, tools).
+func (ks *KeyStore) SessionCookieName(r *http.Request) string { return ks.cookieName(r) }
+
+// extractSessionCookie returns the session token r carries for this server: this server's
+// cookie (https or http name), else the pre-#3682 shared one. Of several, the first that is a
+// valid session here wins; when none is, the first present (so a stale cookie is still seen as
+// one).
+func (ks *KeyStore) extractSessionCookie(r *http.Request) string {
+	first := ""
+	for _, name := range []string{"__Host-" + ks.cookieBase, ks.cookieBase, legacyCookieName} {
+		c, err := r.Cookie(name)
+		if err != nil || c.Value == "" {
+			continue
+		}
+		if ks.ValidateSession(c.Value) {
+			return c.Value
+		}
+		if first == "" {
+			first = c.Value
+		}
+	}
+	return first
 }
 
 // setSessionCookie sets the session cookie on the response. It is Secure when the browser
@@ -434,7 +472,7 @@ func extractSessionCookie(r *http.Request) string {
 // the cookie is never sent back over plain http.
 func (ks *KeyStore) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
+		Name:     ks.cookieName(r),
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(sessionMaxAge.Seconds()),
@@ -447,7 +485,7 @@ func (ks *KeyStore) setSessionCookie(w http.ResponseWriter, r *http.Request, tok
 // clearSessionCookie tells the browser to drop the session cookie.
 func (ks *KeyStore) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
+		Name:     ks.cookieName(r),
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -483,6 +521,17 @@ func (ks *KeyStore) HasValidSession(r *http.Request) bool {
 	if ks == nil {
 		return false
 	}
-	token := extractSessionCookie(r)
+	token := ks.extractSessionCookie(r)
 	return token != "" && ks.ValidateSession(token)
+}
+
+// sessionCookieBase is coral_session_ and the first 8 hex digits of the SHA-256 of the data
+// folder's absolute path: one name per server, stable across restarts (#3682).
+func sessionCookieBase(coralDir string) string {
+	abs, err := filepath.Abs(coralDir)
+	if err != nil {
+		abs = coralDir
+	}
+	sum := sha256.Sum256([]byte(abs))
+	return legacyCookieName + "_" + hex.EncodeToString(sum[:4])
 }

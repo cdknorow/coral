@@ -47,7 +47,7 @@ func TestLoginToken(t *testing.T) {
 	assert.Equal(t, "/?view=team", rec.Header().Get("Location"), "same page, token stripped")
 	c := rec.Result().Cookies()
 	require.Len(t, c, 1)
-	assert.Equal(t, cookieName, c[0].Name)
+	assert.True(t, isSessionCookieName(c[0].Name), c[0].Name)
 	assert.True(t, c[0].HttpOnly)
 	assert.Equal(t, http.SameSiteStrictMode, c[0].SameSite)
 	assert.True(t, ks.ValidateSession(c[0].Value))

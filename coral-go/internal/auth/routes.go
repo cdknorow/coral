@@ -87,7 +87,7 @@ func (ar *Routes) Logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if token := extractSessionCookie(r); token != "" {
+	if token := ar.ks.extractSessionCookie(r); token != "" {
 		ar.ks.RevokeSession(token)
 	}
 	ar.ks.clearSessionCookie(w, r)
@@ -132,7 +132,7 @@ func (ar *Routes) AuthStatus(w http.ResponseWriter, r *http.Request) {
 	} else if key := extractAPIKey(r); key != "" && ar.ks.ValidateKey(key) {
 		method = "key"
 		authenticated = true
-	} else if token := extractSessionCookie(r); token != "" && ar.ks.ValidateSession(token) {
+	} else if token := ar.ks.extractSessionCookie(r); token != "" && ar.ks.ValidateSession(token) {
 		method = "session"
 		authenticated = true
 	}

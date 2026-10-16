@@ -246,7 +246,7 @@ func TestAutoAcceptEnableFromALoggedInRemoteDashboard(t *testing.T) {
 	h.ServeHTTP(rr, req)
 	var phone string
 	for _, c := range rr.Result().Cookies() {
-		if c.Name == "coral_session" {
+		if strings.HasPrefix(c.Name, "coral_session_") { // per server since #3682
 			phone = c.Value
 		}
 	}

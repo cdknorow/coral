@@ -52,7 +52,7 @@ func TestIndexPurgesTheCacheOnceInASecureContext(t *testing.T) {
 		require.NotNil(t, c, "%s: marker set on loopback", host)
 		assert.True(t, c.HttpOnly, "HttpOnly")
 		assert.Equal(t, http.SameSiteLaxMode, c.SameSite)
-		assert.Greater(t, c.MaxAge, 365*24*3600, "long-lived")
+		assert.Equal(t, 30*24*3600, c.MaxAge, "a flag: 30 days (#3682)")
 
 		again := serve(host, false, nil, &http.Cookie{Name: cacheMarkerCookie, Value: c.Value})
 		assert.Empty(t, again.Header().Get("Clear-Site-Data"), "%s: no purge once marked", host)

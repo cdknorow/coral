@@ -266,7 +266,7 @@ func TestMiddleware_ValidAPIKeyQueryParam(t *testing.T) {
 	cookies := w.Result().Cookies()
 	found := false
 	for _, c := range cookies {
-		if c.Name == cookieName {
+		if isSessionCookieName(c.Name) {
 			found = true
 			break
 		}
@@ -290,7 +290,7 @@ func TestMiddleware_ValidSessionCookie(t *testing.T) {
 	require.NoError(t, err)
 	r := httptest.NewRequest("GET", "/api/sessions", nil)
 	r.RemoteAddr = "192.168.1.5:54321"
-	r.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	r.AddCookie(&http.Cookie{Name: legacyCookieName, Value: token})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -307,7 +307,7 @@ func TestMiddleware_ExpiredSessionCookie(t *testing.T) {
 
 	r := httptest.NewRequest("GET", "/api/sessions", nil)
 	r.RemoteAddr = "192.168.1.5:54321"
-	r.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	r.AddCookie(&http.Cookie{Name: legacyCookieName, Value: token})
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -396,7 +396,7 @@ func TestSetSessionCookie_Attributes(t *testing.T) {
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
 	c := cookies[0]
-	assert.Equal(t, cookieName, c.Name)
+	assert.True(t, isSessionCookieName(c.Name), c.Name)
 	assert.Equal(t, "test-token-123", c.Value)
 	assert.Equal(t, "/", c.Path)
 	assert.True(t, c.HttpOnly)

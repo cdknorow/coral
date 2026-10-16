@@ -115,7 +115,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			}
 
 			// Check session cookie
-			if token := extractSessionCookie(r); token != "" {
+			if token := ks.extractSessionCookie(r); token != "" {
 				if ks.ValidateSession(token) {
 					next.ServeHTTP(w, withMethod(r, MethodSession))
 					return

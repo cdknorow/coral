@@ -47,7 +47,7 @@ func TestLogout(t *testing.T) {
 		r := httptest.NewRequest(method, "http://coral.lan:8420"+path, nil)
 		r.RemoteAddr = "192.168.1.5:1000"
 		if token != "" {
-			r.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+			r.AddCookie(&http.Cookie{Name: legacyCookieName, Value: token})
 		}
 		if origin != "" {
 			r.Header.Set("Origin", origin)
@@ -67,7 +67,7 @@ func TestLogout(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	var cleared *http.Cookie
 	for _, c := range w.Result().Cookies() {
-		if c.Name == cookieName {
+		if isSessionCookieName(c.Name) {
 			cleared = c
 		}
 	}

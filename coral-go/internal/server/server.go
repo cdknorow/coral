@@ -372,6 +372,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Middleware
 	r.Use(middleware.Recoverer)
+	r.Use(noStoreAPI)
 
 	// Requests that came through the Cloud Hub tunnel (marked by the connector) are
 	// re-checked against the connector's route policy before anything else sees them.
@@ -1196,7 +1197,7 @@ func purgePreSandboxCache(w http.ResponseWriter, r *http.Request) {
 		Name:     cacheMarkerCookie,
 		Value:    "1412",
 		Path:     "/",
-		MaxAge:   10 * 365 * 24 * 60 * 60,
+		MaxAge:   30 * 24 * 60 * 60, // a flag, not an identity: if it lapses the purge runs once more (#3682)
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure,
@@ -1254,4 +1255,18 @@ func newTeamResolver(bs *board.Store) func(string) string {
 		mu.Unlock()
 		return team
 	}
+}
+
+// noStoreAPI marks every /api/ and /ws response Cache-Control: no-store unless its handler says
+// otherwise (#3682, the browser storage audit's finding 4): board content, file previews,
+// terminal captures and the rest of Coral's JSON are never kept by a browser or a shared cache.
+// It is set before the handler runs, so a handler that chooses its own caching (content-addressed
+// artifacts, an ETag-validated reply) replaces it.
+func noStoreAPI(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := r.URL.Path; strings.HasPrefix(p, "/api/") || p == "/ws" || strings.HasPrefix(p, "/ws/") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		next.ServeHTTP(w, r)
+	})
 }

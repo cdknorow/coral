@@ -136,7 +136,7 @@ check_link() { # check_link <link> <label>
     local hdr="$TMP/hdr" code loc
     code=$(curl -s -m 10 -o /dev/null -D "$hdr" -w "%{http_code}" "$1")
     loc=$(sed -n 's/^[Ll]ocation: //p' "$hdr" | tr -d '\r')
-    if [[ $code == 302 ]] && grep -qi "^set-cookie: coral_session=.*HttpOnly.*SameSite=Strict" "$hdr" && [[ $loc != *login_token* ]]; then
+    if [[ $code == 302 ]] && grep -qi "^set-cookie: coral_session_[0-9a-f]*=.*HttpOnly.*SameSite=Strict" "$hdr" && [[ $loc != *login_token* ]]; then
         pass "$2: one use gives the session cookie (HttpOnly, SameSite=Strict) and a redirect without the token"
     else
         fail "$2: code=$code location=$loc"

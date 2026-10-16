@@ -31,7 +31,7 @@ func TestMiddlewareRecordsTheMethod(t *testing.T) {
 	assert.Equal(t, MethodAPIKey, serve("10.0.0.2:5000", "/api/health?api_key="+ks.Key(), nil))
 	tok, err := ks.CreateSession("10.0.0.2", "t")
 	require.NoError(t, err)
-	assert.Equal(t, MethodSession, serve("10.0.0.2:5000", "/api/health", func(r *http.Request) { r.AddCookie(&http.Cookie{Name: cookieName, Value: tok}) }))
+	assert.Equal(t, MethodSession, serve("10.0.0.2:5000", "/api/health", func(r *http.Request) { r.AddCookie(&http.Cookie{Name: legacyCookieName, Value: tok}) }))
 	assert.Equal(t, MethodNone, serve("10.0.0.2:5000", "/api/health", nil), "refused: the handler never runs")
 	assert.Equal(t, MethodNone, MethodFrom(httptest.NewRequest("GET", "/", nil).Context()))
 }
