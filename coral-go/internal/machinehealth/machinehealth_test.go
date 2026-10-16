@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os/exec"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -156,4 +157,42 @@ func BenchmarkSample(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s.Sample(ctx)
 	}
+}
+
+// #3846: the walk finds a grandchild (a shell's background job), from the cheap process table.
+func TestDescendantsFindsGrandchildren(t *testing.T) {
+	sh := exec.Command("sh", "-c", "sleep 30 & wait")
+	require.NoError(t, sh.Start())
+	t.Cleanup(func() { sh.Process.Kill(); sh.Wait() })
+	require.Eventually(t, func() bool {
+		return len(descendants(context.Background(), []int{sh.Process.Pid})) >= 2
+	}, 5*time.Second, 20*time.Millisecond, "the shell and its sleep")
+	assert.Equal(t, int32(sh.Process.Pid), descendants(context.Background(), []int{sh.Process.Pid})[0])
+}
+
+// #3846: with nobody reading, sampling pauses; a read of an old sample asks for a new one.
+func TestSamplingPausesWhileNobodyReads(t *testing.T) {
+	var mu sync.Mutex
+	at := time.Unix(1_700_000_000, 0)
+	s := New(Source{DataDir: t.TempDir()})
+	s.now = func() time.Time { mu.Lock(); defer mu.Unlock(); return at }
+	advance := func(d time.Duration) { mu.Lock(); at = at.Add(d); mu.Unlock() }
+	s.Sample(context.Background())
+	_, _ = s.Current()
+	assert.True(t, s.watched(), "just read")
+	advance(IdleAfter + time.Second)
+	assert.False(t, s.watched(), "nobody read for IdleAfter")
+	select {
+	case <-s.kick:
+		t.Fatal("no request before a read")
+	default:
+	}
+	_, ok := s.Current()
+	require.True(t, ok, "the last sample is still given")
+	select {
+	case <-s.kick:
+	default:
+		t.Fatal("a read of an old sample asks for a new one")
+	}
+	assert.True(t, s.watched())
 }

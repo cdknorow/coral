@@ -85,16 +85,23 @@ const (
 	stalledWithin    = 60 * time.Second
 )
 
-// Interval is how often a sample is taken.
+// Interval is how often a sample is taken while someone reads them.
 const Interval = 15 * time.Second
+
+// IdleAfter: with no Current call for this long (no dashboard tab or Coral Hub feed shows the
+// health), sampling pauses; the next Current starts it again at once (#3846).
+const IdleAfter = 2 * Interval
 
 // Sampler takes a sample every Interval; see Current.
 type Sampler struct {
 	src Source
 	now func() time.Time
 
-	mu  sync.Mutex
-	cur *Health
+	mu        sync.Mutex
+	cur       *Health
+	sampledAt time.Time
+	lastRead  time.Time
+	kick      chan struct{} // a reader came back while sampling was paused
 
 	// CPU time seen at the previous sample, to turn cumulative seconds into % over the interval.
 	prevAt     time.Time
@@ -104,10 +111,11 @@ type Sampler struct {
 
 // New returns a sampler; Start runs it on a timer, Sample takes one sample now.
 func New(src Source) *Sampler {
-	return &Sampler{src: src, now: time.Now, prevAgents: map[int32]float64{}}
+	return &Sampler{src: src, now: time.Now, prevAgents: map[int32]float64{}, kick: make(chan struct{}, 1)}
 }
 
-// Start samples at once and then every Interval until ctx ends.
+// Start samples at once and then every Interval until ctx ends, pausing while nobody reads
+// the samples (IdleAfter).
 func Start(ctx context.Context, src Source) *Sampler {
 	s := New(src)
 	go func() {
@@ -119,6 +127,10 @@ func Start(ctx context.Context, src Source) *Sampler {
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				if s.watched() {
+					s.Sample(ctx)
+				}
+			case <-s.kick:
 				s.Sample(ctx)
 			}
 		}
@@ -126,13 +138,29 @@ func Start(ctx context.Context, src Source) *Sampler {
 	return s
 }
 
-// Current is the latest sample (false before the first).
+// watched reports whether a sample was read within IdleAfter.
+func (s *Sampler) watched() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.now().Sub(s.lastRead) < IdleAfter
+}
+
+// Current is the latest sample (false before the first). A read of a sample older than
+// Interval (sampling paused while nobody read) asks for a new one at once.
 func (s *Sampler) Current() (Health, bool) {
 	if s == nil {
 		return Health{}, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := s.now()
+	s.lastRead = now
+	if s.cur != nil && now.Sub(s.sampledAt) > Interval {
+		select {
+		case s.kick <- struct{}{}:
+		default:
+		}
+	}
 	if s.cur == nil {
 		return Health{}, false
 	}
@@ -219,7 +247,7 @@ func (s *Sampler) Sample(ctx context.Context) Health {
 
 	s.mu.Lock()
 	cp := h
-	s.cur = &cp
+	s.cur, s.sampledAt = &cp, now
 	s.mu.Unlock()
 	return h
 }
@@ -264,21 +292,17 @@ func round(v float64, places int) float64 {
 	return math.Round(v*p) / p
 }
 
-// descendants is every process under roots (the roots included), from one look at the process
-// table.
+// descendants is every process under roots (the roots included). It reads only the parent links
+// the walk needs, as cheaply as the OS allows (childrenFunc): building a gopsutil Process for every
+// process on the machine cost 0.3 s a sample on a box with 786 processes, 65% of an idle Coral's
+// CPU (#3833 item 2, #3846).
 func descendants(ctx context.Context, roots []int) []int32 {
 	if len(roots) == 0 {
 		return nil
 	}
-	procs, err := process.ProcessesWithContext(ctx)
+	children, err := childrenFunc(ctx)
 	if err != nil {
 		return nil
-	}
-	children := map[int32][]int32{}
-	for _, p := range procs {
-		if pp, err := p.PpidWithContext(ctx); err == nil {
-			children[pp] = append(children[pp], p.Pid)
-		}
 	}
 	seen := map[int32]bool{}
 	var out []int32
@@ -294,7 +318,16 @@ func descendants(ctx context.Context, roots []int) []int32 {
 		}
 		seen[pid] = true
 		out = append(out, pid)
-		queue = append(queue, children[pid]...)
+		queue = append(queue, children(pid)...)
 	}
 	return out
+}
+
+// childrenMap turns pid -> parent pairs into a children lookup.
+func childrenMap(parents map[int32]int32) func(int32) []int32 {
+	kids := make(map[int32][]int32, len(parents))
+	for pid, pp := range parents {
+		kids[pp] = append(kids[pp], pid)
+	}
+	return func(pid int32) []int32 { return kids[pid] }
 }
