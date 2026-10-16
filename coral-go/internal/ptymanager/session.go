@@ -2,11 +2,13 @@ package ptymanager
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -57,7 +59,11 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 	parts := parseCommand(command)
 	if len(parts) == 0 {
 		// Default to a shell if no command specified
-		parts = defaultShell()
+		sh, err := defaultShell()
+		if err != nil {
+			return nil, err
+		}
+		parts = sh
 	}
 
 	// Coral's own server settings never reach the agent (#3389).
@@ -298,27 +304,47 @@ func parseCommand(cmd string) []string {
 	return strings.Fields(cmd)
 }
 
-// defaultShell returns the platform default shell command.
-// Respects CORAL_SHELL env var for user shell preference, then
-// falls back to platform defaults.
-func defaultShell() []string {
-	// User override via CORAL_SHELL (e.g. "pwsh.exe", "/usr/bin/zsh", "bash")
-	if cs := os.Getenv("CORAL_SHELL"); cs != "" {
-		return []string{cs}
+// errNoPowerShell: a Windows agent starts only through PowerShell (#3692), and none is installed.
+var errNoPowerShell = errors.New("Coral starts Windows agents through PowerShell, and neither pwsh.exe nor powershell.exe was found on PATH: install PowerShell to launch agents")
+
+var cmdShellIgnored sync.Once
+
+// defaultShell returns the shell an agent's terminal starts (its launch line is typed into it).
+// CORAL_SHELL picks it, except cmd.exe: Coral's launch line (the prompt argument, the long-command
+// handoff) is PowerShell syntax on Windows, so cmd.exe is never an agent's shell (#3692) and a
+// CORAL_SHELL naming it is ignored, logged once. On Windows the default is PowerShell, and with
+// none installed the launch is refused rather than started in a shell it can't run in.
+func defaultShell() ([]string, error) {
+	sh, ignored, err := pickShell(runtime.GOOS, os.Getenv("CORAL_SHELL"), os.Getenv("SHELL"), exec.LookPath)
+	if ignored {
+		cmdShellIgnored.Do(func() {
+			log.Printf("[pty] CORAL_SHELL=%q is ignored for agents: Coral starts Windows agents through PowerShell, since cmd.exe can't run their launch line", os.Getenv("CORAL_SHELL"))
+		})
 	}
-	if runtime.GOOS == "windows" {
-		// Prefer PowerShell if available (more capable for CLI tools)
+	return sh, err
+}
+
+// pickShell is defaultShell's rule, with the environment and PATH lookup passed in.
+func pickShell(goos, coralShell, userShell string, lookPath func(string) (string, error)) (shell []string, cmdIgnored bool, err error) {
+	if coralShell != "" {
+		base := strings.TrimSuffix(strings.ToLower(filepath.Base(strings.ReplaceAll(coralShell, `\`, "/"))), ".exe")
+		if base != "cmd" {
+			return []string{coralShell}, false, nil
+		}
+		cmdIgnored = true
+	}
+	if goos == "windows" {
 		for _, ps := range []string{"pwsh.exe", "powershell.exe"} {
-			if _, err := exec.LookPath(ps); err == nil {
-				return []string{ps}
+			if _, err := lookPath(ps); err == nil {
+				return []string{ps}, cmdIgnored, nil
 			}
 		}
-		return []string{"cmd.exe"}
+		return nil, cmdIgnored, errNoPowerShell
 	}
-	if sh := os.Getenv("SHELL"); sh != "" {
-		return []string{sh}
+	if userShell != "" {
+		return []string{userShell}, cmdIgnored, nil
 	}
-	return []string{"/bin/sh"}
+	return []string{"/bin/sh"}, cmdIgnored, nil
 }
 
 var (

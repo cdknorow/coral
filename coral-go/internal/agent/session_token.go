@@ -35,8 +35,6 @@ func sessionTokenPrefix(p LaunchParams, agentType string) string {
 	switch detectShell() {
 	case ShellPowerShell:
 		return fmt.Sprintf("$env:%s = (Get-Content -Raw %s).Trim(); Remove-Item -Force %s;", SessionTokenEnv, q, q)
-	case ShellCmd:
-		return fmt.Sprintf(`set /p %s=<"%s" & del /q "%s" &`, SessionTokenEnv, path, path)
 	default:
 		return fmt.Sprintf(`export %s="$(cat %s)"; rm -f %s;`, SessionTokenEnv, q, q)
 	}
@@ -84,14 +82,6 @@ func coralEnvPrefix(p LaunchParams) string {
 		}
 		for _, kv := range set {
 			fmt.Fprintf(&b, "$env:%s = %s; ", kv[0], shellQuoteLiteral(kv[1]))
-		}
-		return strings.TrimSuffix(b.String(), " ")
-	case ShellCmd:
-		for _, k := range unset {
-			fmt.Fprintf(&b, `set "%s=" & `, k)
-		}
-		for _, kv := range set {
-			fmt.Fprintf(&b, `set "%s=%s" & `, kv[0], kv[1])
 		}
 		return strings.TrimSuffix(b.String(), " ")
 	default:
