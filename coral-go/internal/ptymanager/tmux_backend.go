@@ -200,7 +200,7 @@ func (b *TmuxBackend) SendInput(name string, data []byte) error {
 		return fmt.Errorf("%w: pane %q not found", ErrTerminalGone, name)
 	}
 
-	return b.client.SendTerminalInputToTarget(ctx, target, string(data))
+	return b.client.GoneAfter(ctx, name, agentType, sessionID, b.client.SendTerminalInputToTarget(ctx, target, string(data)))
 }
 
 func (b *TmuxBackend) Resize(name string, cols, rows uint16) error {
@@ -227,7 +227,7 @@ func (b *TmuxBackend) Resize(name string, cols, rows uint16) error {
 	if target == "" {
 		return fmt.Errorf("%w: pane %q not found", ErrTerminalGone, name)
 	}
-	return b.client.ResizePaneTarget(ctx, target, int(cols), int(rows))
+	return b.client.GoneAfter(ctx, name, agentType, sessionID, b.client.ResizePaneTarget(ctx, target, int(cols), int(rows)))
 }
 
 // PaneSize reports the session's pane size from tmux itself, so a resize by any client (another
