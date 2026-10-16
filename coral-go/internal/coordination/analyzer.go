@@ -1066,14 +1066,6 @@ func extractTaskIDs(content string) []int64 {
 	return ids
 }
 
-func extractTaskIDString(content string) string {
-	ids := extractTaskIDs(content)
-	if len(ids) > 0 {
-		return fmt.Sprintf("%d", ids[0])
-	}
-	return ""
-}
-
 func tokenize(s string, stopWords map[string]bool) []string {
 	lower := strings.ToLower(s)
 	fields := strings.FieldsFunc(lower, func(r rune) bool {
