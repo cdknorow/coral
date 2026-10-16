@@ -44,9 +44,9 @@ func subagentStatus(sa store.Subagent, mainAgentStopped bool) string {
 }
 
 // ListSubagents returns the subagents launched by one main agent, with their
-// spend. The session is identified by the session_id query parameter; the
-// {name} path segment is accepted for symmetry with the sibling task routes
-// but is not used, since agent names are shared by agents in one directory.
+// spend. The session is identified by the session_id query parameter, and {name}
+// must be that session's agent name or its "<type>-<id>" session name (#3870),
+// as for one subagent; otherwise 404.
 // GET /api/sessions/live/{name}/subagents?session_id=<id>
 func (h *SessionsHandler) ListSubagents(w http.ResponseWriter, r *http.Request) {
 	sid := r.URL.Query().Get("session_id")
@@ -56,16 +56,17 @@ func (h *SessionsHandler) ListSubagents(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	ls, ok := h.namedSubagentSession(w, r, sid)
+	if !ok {
+		return
+	}
 	rows, err := h.subagents.ListSubagentsBySession(r.Context(), sid)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
 
-	mainAgentStopped := false
-	if ls, err := h.ss.GetLiveSession(r.Context(), sid); err == nil && ls != nil {
-		mainAgentStopped = ls.StoppedAt != nil
-	}
+	mainAgentStopped := ls.StoppedAt != nil
 	for _, sa := range rows {
 		out = append(out, subagentView{Subagent: sa, Status: subagentStatus(sa, mainAgentStopped)})
 	}
@@ -92,17 +93,8 @@ func (h *SessionsHandler) GetSubagent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The subagent must be the named agent's (#3870, Security's sweep #3867): {name} is that
-	// agent's name or its "<type>-<id>" session name. Anything else is "not found", as a
-	// missing subagent is.
-	ls, err := h.ss.GetLiveSession(r.Context(), sid)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	name := chi.URLParam(r, "name")
-	if ls == nil || (name != ls.AgentName && name != naming.SessionName(ls.AgentType, ls.SessionID)) {
-		errNotFound(w, "subagent not found")
+	ls, ok := h.namedSubagentSession(w, r, sid)
+	if !ok {
 		return
 	}
 	sa, err := h.subagents.GetSubagent(r.Context(), sid, subagentID)
@@ -134,4 +126,22 @@ func (h *SessionsHandler) GetSubagent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// namedSubagentSession is the session sid when the path's {name} is its agent name or its
+// "<type>-<id>" session name (#3870, Security's sweep #3867); otherwise it answers 404 (the
+// body a missing subagent gets) and reports false, so a subagent is never read under another
+// agent's name.
+func (h *SessionsHandler) namedSubagentSession(w http.ResponseWriter, r *http.Request, sid string) (*store.LiveSession, bool) {
+	ls, err := h.ss.GetLiveSession(r.Context(), sid)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return nil, false
+	}
+	name := chi.URLParam(r, "name")
+	if ls == nil || (name != ls.AgentName && name != naming.SessionName(ls.AgentType, ls.SessionID)) {
+		errNotFound(w, "subagent not found")
+		return nil, false
+	}
+	return ls, true
 }

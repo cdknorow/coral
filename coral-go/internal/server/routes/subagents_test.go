@@ -97,7 +97,7 @@ func TestListSubagents_UnfinishedSubagentOfStoppedMainAgentIsNotInProgress(t *te
 func TestListSubagents_EmptyCases(t *testing.T) {
 	url, _, _ := setupSubagentRoute(t)
 	assert.Empty(t, getSubagents(t, url+"?session_id="+subRouteMainA), "main agent with no subagents")
-	assert.Empty(t, getSubagents(t, url+"?session_id=no-such-session"))
+	getJSON(t, url+"?session_id=no-such-session", http.StatusNotFound) // not a session of coral-go (#3870)
 	assert.Empty(t, getSubagents(t, url), "no session_id")
 }
 
@@ -209,4 +209,20 @@ func TestGetSubagent_OnlyUnderItsAgentsName(t *testing.T) {
 	getJSON(t, base+"/"+naming.SessionName("claude", subRouteMainA)+"/subagents/s9?session_id="+otherSID, http.StatusNotFound)
 	getJSON(t, url+"/s1?session_id="+subRouteMainA, http.StatusOK)
 	getJSON(t, url+"/s1?session_id=d4d4d4d4-0000-4000-8000-000000000004", http.StatusNotFound) // no such session
+}
+
+// The list follows the same rule (#3870): another agent's subagents are not listed under coral-go.
+func TestListSubagents_OnlyUnderItsAgentsName(t *testing.T) {
+	url, st, ss := setupSubagentRoute(t)
+	ctx := context.Background()
+	const otherSID = "c3c3c3c3-0000-4000-8000-000000000003"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: otherSID, AgentType: "claude", AgentName: "other-repo", WorkingDir: "/other"}))
+	require.NoError(t, st.UpsertSubagent(ctx, &store.Subagent{SessionID: otherSID, SubagentID: "s9", CostUSD: 1}))
+
+	getJSON(t, url+"?session_id="+otherSID, http.StatusNotFound)
+	base := strings.TrimSuffix(url, "/coral-go/subagents")
+	assert.Len(t, getSubagents(t, base+"/other-repo/subagents?session_id="+otherSID), 1)
+	assert.Len(t, getSubagents(t, base+"/"+naming.SessionName("claude", otherSID)+"/subagents?session_id="+otherSID), 1)
+	assert.Empty(t, getSubagents(t, url), "no session_id: an empty list, as before")
 }
