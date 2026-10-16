@@ -69,15 +69,33 @@ type SessionBackend interface {
 
 // memSessions is the in-memory SessionBackend (no database: tests, tools).
 type memSessions struct {
-	mu sync.Mutex
-	m  map[string]SessionRecord
+	mu   sync.Mutex
+	m    map[string]SessionRecord
+	seq  map[string]uint64 // insertion order: breaks ties between equal LastSeen times (Windows' clock is coarse)
+	next uint64
 }
 
-func newMemSessions() *memSessions { return &memSessions{m: map[string]SessionRecord{}} }
+// newerFirst orders sessions most recently seen first, the later sign-in first on a tie.
+func (s *memSessions) newerFirst(all []SessionRecord) {
+	sort.Slice(all, func(i, j int) bool {
+		if !all[i].LastSeen.Equal(all[j].LastSeen) {
+			return all[i].LastSeen.After(all[j].LastSeen)
+		}
+		return s.seq[all[i].IDHash] > s.seq[all[j].IDHash]
+	})
+}
+
+func newMemSessions() *memSessions {
+	return &memSessions{m: map[string]SessionRecord{}, seq: map[string]uint64{}}
+}
 
 func (s *memSessions) PutSession(_ context.Context, r SessionRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.m[r.IDHash]; !ok {
+		s.next++
+		s.seq[r.IDHash] = s.next
+	}
 	s.m[r.IDHash] = r
 	return nil
 }
@@ -103,6 +121,7 @@ func (s *memSessions) DeleteSession(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.m, id)
+	delete(s.seq, id)
 	return nil
 }
 
@@ -113,6 +132,7 @@ func (s *memSessions) DeleteSessionsExcept(_ context.Context, keep string) (int,
 	for id := range s.m {
 		if id != keep {
 			delete(s.m, id)
+			delete(s.seq, id)
 			n++
 		}
 	}
@@ -126,7 +146,7 @@ func (s *memSessions) ListSessions(context.Context) ([]SessionRecord, error) {
 	for _, r := range s.m {
 		out = append(out, r)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].LastSeen.After(out[j].LastSeen) })
+	s.newerFirst(out)
 	return out, nil
 }
 
@@ -136,6 +156,7 @@ func (s *memSessions) SweepSessions(_ context.Context, now time.Time, max int) e
 	for id, r := range s.m {
 		if !now.Before(r.ExpiresAt) {
 			delete(s.m, id)
+			delete(s.seq, id)
 		}
 	}
 	if len(s.m) > max {
@@ -143,9 +164,10 @@ func (s *memSessions) SweepSessions(_ context.Context, now time.Time, max int) e
 		for _, r := range s.m {
 			all = append(all, r)
 		}
-		sort.Slice(all, func(i, j int) bool { return all[i].LastSeen.After(all[j].LastSeen) })
+		s.newerFirst(all)
 		for _, r := range all[max:] {
 			delete(s.m, r.IDHash)
+			delete(s.seq, r.IDHash)
 		}
 	}
 	return nil

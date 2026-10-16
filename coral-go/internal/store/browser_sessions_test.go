@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -57,4 +58,25 @@ func TestBrowserSessions(t *testing.T) {
 	require.NoError(t, b.DeleteSession(ctx, "c"))
 	_, ok, _ = b.GetSession(ctx, "c")
 	assert.False(t, ok)
+}
+
+// last_seen is in seconds, so many sessions share it: the sweep keeps the later sign-ins.
+func TestBrowserSessionsEvictTheEarliestOnATie(t *testing.T) {
+	ctx := context.Background()
+	db, err := OpenWithKey(ctx, filepath.Join(t.TempDir(), "s.db"), "")
+	require.NoError(t, err)
+	defer db.Close()
+	b := NewBrowserSessions(db)
+	at := time.Unix(1_700_000_000, 0).UTC()
+	for i := 0; i < 10; i++ {
+		require.NoError(t, b.PutSession(ctx, auth.SessionRecord{IDHash: fmt.Sprintf("s%d", i), CreatedAt: at, LastSeen: at, ExpiresAt: at.Add(time.Hour)}))
+	}
+	require.NoError(t, b.SweepSessions(ctx, at, 4))
+	list, err := b.ListSessions(ctx)
+	require.NoError(t, err)
+	var ids []string
+	for _, r := range list {
+		ids = append(ids, r.IDHash)
+	}
+	assert.Equal(t, []string{"s9", "s8", "s7", "s6"}, ids)
 }
