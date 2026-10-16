@@ -3,10 +3,11 @@
 package agentprio
 
 import (
-	"os/exec"
+	"github.com/cdknorow/coral/internal/executil"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // lower sets pid's niceness to Nice. Raising niceness needs no privilege; a
@@ -41,9 +42,12 @@ func lowerGroup(pgid int) error {
 // returns 20 - nice, other systems the nice value itself.
 func niceness(v int) int { return rawToNice(v) }
 
+// psTimeout bounds a ps call: a stuck ps must not stop the loop that asked (#3999).
+var psTimeout = 5 * time.Second
+
 // psPairs runs ps for every process and returns (pid, second column) pairs.
 func psPairs(col string) [][2]int {
-	out, err := exec.Command("ps", "-A", "-o", "pid=,"+col+"=").Output()
+	out, err := executil.Output(psTimeout, "ps", "-A", "-o", "pid=,"+col+"=")
 	if err != nil {
 		return nil
 	}

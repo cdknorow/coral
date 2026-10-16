@@ -3,14 +3,14 @@
 package agentprio
 
 import (
-	"os/exec"
+	"github.com/cdknorow/coral/internal/executil"
 	"strconv"
 	"strings"
 )
 
 // parentOf returns pid's current parent, from ps.
 func parentOf(pid int) (int, bool) {
-	out, err := exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
+	out, err := executil.Output(psTimeout, "ps", "-o", "ppid=", "-p", strconv.Itoa(pid))
 	if err != nil {
 		return 0, false
 	}

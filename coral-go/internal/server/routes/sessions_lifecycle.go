@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/executil"
 	"log"
 	"log/slog"
 	"net/http"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -841,11 +841,15 @@ func (h *SessionsHandler) Attach(w http.ResponseWriter, r *http.Request) {
 	attachCmd := h.terminal.AttachCommand(pane.SessionName)
 	go func() {
 		defer safego.Recover("server/routes/sessions_lifecycle:840")
-		exec.Command("osascript", terminalAttachArgs(attachCmd)...).Run()
+		_ = executil.Run(osascriptTimeout, "osascript", terminalAttachArgs(attachCmd)...)
 	}()
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
+
+// osascriptTimeout bounds the Terminal attach: a macOS automation-permission dialog that nobody
+// answers must not hold the process and its goroutine for good (#3999).
+var osascriptTimeout = 30 * time.Second
 
 // Pass the shell command as data, so quotes and backslashes in app paths never
 // become AppleScript source.
