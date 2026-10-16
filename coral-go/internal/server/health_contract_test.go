@@ -26,7 +26,7 @@ func TestHealthEndpointContract(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { db.Close() })
 		stack := newTermStack(t)
-		srv := NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+		srv := newTestServer(t, cfg, db, stack.backend, stack.terminal)
 
 		ts := httptest.NewServer(srv.Router())
 		t.Cleanup(ts.Close)

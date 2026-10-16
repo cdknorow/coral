@@ -287,7 +287,7 @@ func newScaleHub(t *testing.T) *scaleHub {
 	require.NoError(t, err)
 	stack := newTermStack(t)
 	h := &e2eHub{t: t, dir: dir, cfg: cfg, db: db, backend: stack.backend, done: make(chan struct{}), env: &e2eEnv{logs: &lockedBuf{}}}
-	h.srv = NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+	h.srv = newTestServer(t, cfg, db, stack.backend, stack.terminal)
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS qa_write_log (n INTEGER);
 		CREATE TRIGGER IF NOT EXISTS qa_count_remote_writes AFTER UPDATE ON remote_servers BEGIN INSERT INTO qa_write_log VALUES (1); END;`)
 	require.NoError(t, err)
