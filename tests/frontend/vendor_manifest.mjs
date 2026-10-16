@@ -1,0 +1,175 @@
+// The vendored front-end libraries (coral-go/pkg/frontend/static/vendor), what each file is, and
+// where it came from (#3674, dependency audit #3673 finding 8). This list is the source of truth;
+// vendor/README.md is generated from it, so a vendored file can't drift unnoticed.
+//
+//   node vendor_manifest.mjs           check: every file's sha256 matches the list, and the
+//                                      README is what this list generates (run by test:cloud)
+//   node vendor_manifest.mjs --fetch   also fetch each package's npm tarball, check it against the
+//                                      registry's integrity and the sha256 recorded here, and
+//                                      check the vendored file against the file in it
+//   node vendor_manifest.mjs --write   rewrite the README from this list and the files' hashes
+//
+// "verbatim": the file is the package file byte for byte. "jsdelivr-header": jsDelivr's copy, the
+// package file's bytes after a comment header jsDelivr adds. "jsdelivr-minified": jsDelivr's
+// minification of the package file (not byte-comparable; the tarball is still checked). "bundle":
+// built here from several packages (no single upstream file).
+// A tarball is only read in memory (gunzip and the tar headers); nothing in it is run or written.
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import zlib from 'node:zlib';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+export const VENDOR = path.resolve(here, '../../coral-go/pkg/frontend/static/vendor');
+const README = path.join(VENDOR, 'README.md');
+
+export const ENTRIES = [
+    { file: 'purify.min.js', pkg: 'dompurify', version: '3.4.17', path: 'dist/purify.min.js', mode: 'verbatim',
+        tarball: '056cbdae276897208b88c21d1d779adfa09ad7be488a2f510a28e900d3bbffe7',
+        note: 'Sanitizes all agent-written HTML. Also byte-identical to dist/purify.min.js at the GitHub tag 3.4.17.' },
+    { file: 'marked.min.js', pkg: 'marked', version: '15.0.12', path: 'marked.min.js', mode: 'verbatim', tarball: '39a847a896af15b2846f927da55d444619ea55a55c236e10333056474b793aaa' },
+    { file: 'hljs/highlight.min.js', pkg: '@highlightjs/cdn-assets', version: '11.9.0', path: 'highlight.min.js', mode: 'verbatim', tarball: '62b15dbb4430b9692eb864e99393f4578646da1b25d437fc9e10a79786330dd0' },
+    { file: 'hljs/github-dark.min.css', pkg: '@highlightjs/cdn-assets', version: '11.9.0', path: 'styles/github-dark.min.css', mode: 'verbatim', tarball: '62b15dbb4430b9692eb864e99393f4578646da1b25d437fc9e10a79786330dd0' },
+    { file: 'xterm/xterm.min.js', pkg: '@xterm/xterm', version: '5.5.0', path: 'lib/xterm.js', mode: 'jsdelivr-header', tarball: 'bd954fa721872170188cc5d7e83e88db3c83c9a18a4e8d24c2783d26491f59d2' },
+    { file: 'xterm/xterm.min.css', pkg: '@xterm/xterm', version: '5.5.0', path: 'css/xterm.css', mode: 'jsdelivr-minified', tarball: 'bd954fa721872170188cc5d7e83e88db3c83c9a18a4e8d24c2783d26491f59d2' },
+    { file: 'xterm/addon-fit.min.js', pkg: '@xterm/addon-fit', version: '0.10.0', path: 'lib/addon-fit.js', mode: 'jsdelivr-header', tarball: '917ac44972453d5eed52edc1e50260c76398ce48cf2290c2e60671102bba0b33' },
+    { file: 'xterm/addon-web-links.min.js', pkg: '@xterm/addon-web-links', version: '0.11.0', path: 'lib/addon-web-links.js', mode: 'jsdelivr-header', tarball: 'cad54687a1447f87cd8dd9ce454d4d657d18cc7179e9179908f391b4512f74a0' },
+    { file: 'xterm/addon-unicode-graphemes.min.js', pkg: '@xterm/addon-unicode-graphemes', version: '0.4.0', path: 'lib/addon-unicode-graphemes.js', mode: 'verbatim', tarball: '293ff2ccc3f8fb0297606f2a135e7649fb20bc6d99806f8615d3a19fbcf16fc6' },
+    { file: 'xterm/addon-canvas.min.js', pkg: '@xterm/addon-canvas', version: '0.7.0', path: 'lib/addon-canvas.js', mode: 'verbatim', tarball: 'f8004a9c444289c686ac9b58df98505f3e027fcfea411b6845f9279cc281a774',
+        note: 'Upstream deprecates it in later xterm lines; pinned, revisit at the next xterm bump.' },
+    { file: 'xterm/addon-canvas.LICENSE', pkg: '@xterm/addon-canvas', version: '0.7.0', path: 'LICENSE', mode: 'verbatim', tarball: 'f8004a9c444289c686ac9b58df98505f3e027fcfea411b6845f9279cc281a774' },
+    { file: 'codemirror/codemirror-bundle.js', mode: 'bundle', built: '2026-03-23',
+        note: 'An esbuild IIFE (window.CoralCM) of CodeMirror 6, last built 2026-03-23 18:06 UTC from the packages below (and their @lezer '
+            + 'parsers); the build input was not recorded. The versions are the npm releases current at that time (codemirror by its '
+            + 'latest tag: 6.65.7 is an old CodeMirror 5 publish). Not byte-verified: rebuild it from a pinned package.json to replace it.',
+        packages: [
+            { pkg: 'codemirror', version: '6.0.2' }, { pkg: '@codemirror/state', version: '6.6.0' }, { pkg: '@codemirror/view', version: '6.40.0' },
+            { pkg: '@codemirror/language', version: '6.12.2' }, { pkg: '@codemirror/commands', version: '6.10.3' },
+            { pkg: '@codemirror/autocomplete', version: '6.20.1' }, { pkg: '@codemirror/lint', version: '6.9.5' },
+            { pkg: '@codemirror/search', version: '6.6.0' }, { pkg: '@codemirror/merge', version: '6.12.1' },
+            { pkg: '@codemirror/theme-one-dark', version: '6.1.3' }, { pkg: '@codemirror/lang-cpp', version: '6.0.3' },
+            { pkg: '@codemirror/lang-css', version: '6.3.1' }, { pkg: '@codemirror/lang-go', version: '6.0.1' },
+            { pkg: '@codemirror/lang-html', version: '6.4.11' }, { pkg: '@codemirror/lang-java', version: '6.0.2' },
+            { pkg: '@codemirror/lang-javascript', version: '6.2.5' }, { pkg: '@codemirror/lang-json', version: '6.0.2' },
+            { pkg: '@codemirror/lang-markdown', version: '6.5.0' }, { pkg: '@codemirror/lang-python', version: '6.2.1' },
+            { pkg: '@codemirror/lang-rust', version: '6.0.2' }, { pkg: '@codemirror/lang-sql', version: '6.10.0' },
+            { pkg: '@codemirror/lang-xml', version: '6.1.0' }, { pkg: '@codemirror/lang-yaml', version: '6.1.2' },
+        ] },
+];
+
+export function sha256(b) { return crypto.createHash('sha256').update(b).digest('hex'); }
+
+// The bytes of `name` (under package/) in a gzipped npm tarball, or null.
+export function tarFile(tgz, name) {
+    const tar = zlib.gunzipSync(tgz);
+    for (let off = 0; off + 512 <= tar.length;) {
+        const h = tar.subarray(off, off + 512);
+        if (h.every(b => b === 0)) break;
+        const field = (a, n) => h.subarray(a, a + n).toString('latin1').replace(/\0.*$/s, '');
+        const size = parseInt(field(124, 12).trim() || '0', 8);
+        const full = (field(345, 155) ? field(345, 155) + '/' : '') + field(0, 100);
+        const body = off + 512;
+        if (full.replace(/^[^/]+\//, '') === name && (h[156] === 0x30 || h[156] === 0)) return tar.subarray(body, body + size);
+        off = body + Math.ceil(size / 512) * 512;
+    }
+    return null;
+}
+
+// jsDelivr's copy: a leading /** ... */ header (and the newline after it), then the package file.
+export function stripJsdelivrHeader(b) {
+    const s = b.toString('utf8');
+    const m = /^\/\*\*[\s\S]*?\*\/\r?\n/.exec(s);
+    return m ? Buffer.from(s.slice(m[0].length), 'utf8') : b;
+}
+
+function readmeText(rows) {
+    const out = [
+        '# Vendored front-end libraries',
+        '',
+        'Served from Coral\'s own origin (`/static/vendor/`); the dashboard CSP allows scripts from `\'self\'` only.',
+        'Generated by `tests/frontend/vendor_manifest.mjs --write`; `node tests/frontend/vendor_manifest.mjs` (in `npm run test:cloud`)',
+        'fails if a file or this table drifts, and `--fetch` re-derives every row from the npm registry.',
+        'To update a library: replace the file, set its version and tarball sha256 in the script, run `--fetch`, then `--write`.',
+        'The fonts are listed in `fonts/README.md`.',
+        '',
+        '| File | Package | Version | SHA-256 of the file here | Upstream | npm tarball SHA-256 |',
+        '|---|---|---|---|---|---|',
+    ];
+    for (const r of rows) {
+        if (r.mode === 'bundle') continue;
+        const how = { verbatim: `\`${r.path}\`, byte for byte`, 'jsdelivr-header': `\`${r.path}\` after jsDelivr's comment header`,
+            'jsdelivr-minified': `jsDelivr's minification of \`${r.path}\` (not byte-comparable)` }[r.mode];
+        out.push(`| \`${r.file}\` | [\`${r.pkg}\`](https://www.npmjs.com/package/${r.pkg}) | ${r.version} | \`${r.sha}\` | ${how} | \`${r.tarball || 'not recorded'}\` |`);
+    }
+    for (const r of rows.filter(x => x.mode === 'bundle')) {
+        out.push('', `## \`${r.file}\``, '', `SHA-256 \`${r.sha}\`. ${r.note}`, '', '| Package | Version |', '|---|---|');
+        for (const p of r.packages) out.push(`| \`${p.pkg}\` | ${p.version} |`);
+    }
+    const notes = rows.filter(r => r.note && r.mode !== 'bundle');
+    if (notes.length) {
+        out.push('', '## Notes', '');
+        for (const r of notes) out.push(`- \`${r.file}\`: ${r.note}`);
+    }
+    return out.join('\n') + '\n';
+}
+
+function rowsNow() {
+    return ENTRIES.map(e => ({ ...e, sha: sha256(fs.readFileSync(path.join(VENDOR, e.file))) }));
+}
+
+async function fetchCheck(e) {
+    const meta = await (await fetch(`https://registry.npmjs.org/${e.pkg.replace('/', '%2f')}`)).json();
+    const v = meta.versions && meta.versions[e.version];
+    if (!v) return [`${e.file}: ${e.pkg}@${e.version} is not on npm`];
+    const tgz = Buffer.from(await (await fetch(v.dist.tarball)).arrayBuffer());
+    const errs = [];
+    const [alg, want] = String(v.dist.integrity || '').split('-');
+    if (!alg || crypto.createHash(alg).update(tgz).digest('base64') !== want) errs.push(`${e.file}: the tarball fails the registry's integrity`);
+    const tsha = sha256(tgz);
+    if (e.tarball && e.tarball !== tsha) errs.push(`${e.file}: tarball sha256 ${tsha}, recorded ${e.tarball}`);
+    const inner = tarFile(tgz, e.path);
+    if (!inner) errs.push(`${e.file}: ${e.path} is not in the tarball`);
+    const mine = fs.readFileSync(path.join(VENDOR, e.file));
+    if (inner && e.mode === 'verbatim' && !inner.equals(mine)) errs.push(`${e.file}: differs from ${e.path} in the tarball`);
+    if (inner && e.mode === 'jsdelivr-header' && !inner.equals(stripJsdelivrHeader(mine))) errs.push(`${e.file}: after the jsDelivr header, differs from ${e.path}`);
+    return { errs, tsha };
+}
+
+async function main() {
+    const args = new Set(process.argv.slice(2));
+    const rows = rowsNow();
+    if (args.has('--fetch')) {
+        let bad = 0;
+        for (const e of ENTRIES.filter(x => x.mode !== 'bundle')) {
+            const { errs, tsha } = await fetchCheck(e);
+            for (const m of errs) { console.log('FAIL ' + m); bad++; }
+            if (!errs.length) console.log(`ok   ${e.file}: ${e.pkg}@${e.version} (${e.mode}), tarball ${tsha}`);
+        }
+        if (bad) process.exit(1);
+    }
+    if (args.has('--write')) {
+        fs.writeFileSync(README, readmeText(rows));
+        console.log('wrote ' + path.relative(process.cwd(), README));
+        return;
+    }
+    const want = readmeText(rows);
+    const have = fs.existsSync(README) ? fs.readFileSync(README, 'utf8') : '';
+    if (have !== want) {
+        console.error('vendor/README.md does not match the vendored files: a file changed without its row, or the row without the file.\n'
+            + 'Check the file, then run: node tests/frontend/vendor_manifest.mjs --fetch && node tests/frontend/vendor_manifest.mjs --write');
+        process.exit(1);
+    }
+    const listed = new Set(ENTRIES.map(e => e.file));
+    const unlisted = [];
+    (function walk(d) {
+        for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+            const p = path.join(d, ent.name), rel = path.relative(VENDOR, p);
+            if (ent.isDirectory()) { if (ent.name !== 'fonts') walk(p); } else if (rel !== 'README.md' && !listed.has(rel)) unlisted.push(rel);
+        }
+    })(VENDOR);
+    if (unlisted.length) { console.error('vendored but not in the manifest: ' + unlisted.join(', ')); process.exit(1); }
+    console.log(`vendor_manifest: ok (${ENTRIES.length} files match vendor/README.md)`);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) await main();
