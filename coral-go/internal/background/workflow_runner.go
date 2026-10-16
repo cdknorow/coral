@@ -6,6 +6,7 @@ package background
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
 	"io"
@@ -99,7 +100,13 @@ type WorkflowRunner struct {
 	// running counts runs in progress; at maxRuns a new trigger is refused (#3424, MED-02).
 	running int
 	maxRuns int
+	// stopped: Shutdown ran, so no new run starts (#3997); runs waits for those in progress.
+	stopped bool
+	runs    sync.WaitGroup
 }
+
+// ErrRunnerStopped: Coral is stopping, so no workflow run starts.
+var ErrRunnerStopped = errors.New("Coral is stopping: the workflow can't start now")
 
 // maxConcurrentWorkflowRuns caps workflow runs in progress, like the job scheduler.
 const maxConcurrentWorkflowRuns = 5
@@ -126,17 +133,23 @@ func NewWorkflowRunner(wfStore *store.WorkflowStore, launcher *AgentLauncher, ru
 // A run beyond maxRuns in progress is refused with ConcurrencyLimitError (#3424, MED-02).
 func (wr *WorkflowRunner) TriggerWorkflow(ctx context.Context, workflow *store.Workflow, triggerType string, triggerContext *string) (*store.WorkflowRun, error) {
 	wr.mu.Lock()
+	if wr.stopped {
+		wr.mu.Unlock()
+		return nil, ErrRunnerStopped
+	}
 	if wr.maxRuns > 0 && wr.running >= wr.maxRuns {
 		limit := wr.maxRuns
 		wr.mu.Unlock()
 		return nil, &ConcurrencyLimitError{Limit: limit}
 	}
 	wr.running++
+	wr.runs.Add(1)
 	wr.mu.Unlock()
 	done := func() {
 		wr.mu.Lock()
 		wr.running--
 		wr.mu.Unlock()
+		wr.runs.Done()
 	}
 
 	run, err := wr.store.CreateWorkflowRun(ctx, workflow.ID, triggerType, triggerContext)
@@ -151,6 +164,39 @@ func (wr *WorkflowRunner) TriggerWorkflow(ctx context.Context, workflow *store.W
 		wr.executeRun(run.ID, workflow)
 	}()
 	return run, nil
+}
+
+// Shutdown ends every run in progress when Coral stops (#3997): no new run starts, each shell
+// step's whole process group is killed (Unix: the step's group; Windows: its job), every run's
+// context is cancelled and the run is recorded as killed. It then waits for the runs to finish,
+// or for ctx. Before, nothing stopped them: a step in its own process group outlived the server.
+// Agent steps' sessions are not killed: an agent survives a restart of Coral.
+func (wr *WorkflowRunner) Shutdown(ctx context.Context) {
+	wr.mu.Lock()
+	wr.stopped = true
+	ids := make([]int64, 0, len(wr.runCancels))
+	for id, cancel := range wr.runCancels {
+		wr.killed[id] = true
+		if c := wr.activeChildren[id]; c != nil && c.stepType == "shell" && c.cmd != nil && c.cmd.Process != nil {
+			killChildProcess(c.cmd)
+		}
+		cancel()
+		ids = append(ids, id)
+	}
+	wr.mu.Unlock()
+	for _, id := range ids {
+		wr.markRunKilled(id)
+	}
+	done := make(chan struct{})
+	go func() { wr.runs.Wait(); close(done) }()
+	select {
+	case <-done:
+		if len(ids) > 0 {
+			wr.logger.Info("stopped the workflow runs in progress", "runs", len(ids))
+		}
+	case <-ctx.Done():
+		wr.logger.Warn("workflow runs still finishing at shutdown", "runs", len(ids))
+	}
 }
 
 // WorkflowRunsKept is how many runs (records and run directories) each
@@ -487,6 +533,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start command: %w", err)
 	}
+	trackChildProcess(cmd)                // Windows: its job, so a kill ends everything it started (#3997)
 	agentprio.ApplyGroup(cmd.Process.Pid) // the step's process group at the agents' priority (#3437)
 
 	// Track active child for kill
@@ -495,6 +542,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	wr.mu.Unlock()
 
 	err = cmd.Wait()
+	releaseChildProcess(cmd)
 
 	wr.mu.Lock()
 	delete(wr.activeChildren, runID)
@@ -705,6 +753,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start agent: %w", err)
 	}
+	trackChildProcess(cmd)
 	agentprio.ApplyGroup(cmd.Process.Pid) // #3437
 
 	// Track active child for kill
@@ -713,6 +762,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	wr.mu.Unlock()
 
 	err = cmd.Wait()
+	releaseChildProcess(cmd)
 
 	wr.mu.Lock()
 	delete(wr.activeChildren, runID)
@@ -1307,8 +1357,10 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 			configureChildProcess(cmd)
 			err := cmd.Start()
 			if err == nil {
+				trackChildProcess(cmd)
 				agentprio.ApplyGroup(cmd.Process.Pid) // #3437
 				err = cmd.Wait()
+				releaseChildProcess(cmd)
 			}
 			if err != nil {
 				wr.logger.Warn("hook execution failed", "event", event, "command", command, "error", err)
