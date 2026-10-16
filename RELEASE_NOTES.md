@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.4.68 — Every request needs a credential, a password for the browser, and Sign in with Coral Hub
+
+v1.4.67 was tagged but never released (its release checks failed on the test scripts, not the product); this release carries all of it.
+
+### Security
+
+- **Coral now requires a credential for every request, also from this computer.** This update turns it on for existing installs too: an open tab or a bookmark lands on the sign-in page once; the Mac app, the tray and coral open sign you in as before, and Coral Hub keeps working. Open it from the app or tray or with coral open; scripts send the API key in a header (coral api-key prints it; the ?api_key= parameter is deprecated). The key keeps out other accounts and sandboxed agents, not programs you run yourself. CORAL_STRICT_LOCAL_AUTH=0 turns this off (weaker).
+- **A password for the browser.** Any password you choose is accepted. On this computer, the sign-in page offers to create one. From another computer you need the one-time setup code: coral setup-code prints it on this computer (so does the console, if you started Coral from a terminal); it is never written to a log. "Keep me signed in" lasts 30 days. Wrong passwords slow down but never lock you out, and coral open and the API key keep working. Change it or sign other browsers out in Settings > Browser sign-in. coral set-password sets it from the command line, and coral reset-password replaces it, even with Coral stopped, and signs every browser out.
+- **Sign in with Coral Hub (off by default).** It lets your Coral Hub account sign in to this computer's dashboard. It gives that account full control of this computer, so turn it on only for an account you trust: in Settings and in Coral Hub. If this computer can't reach Coral Hub, a Hub sign-in can last up to 10 more minutes. To turn it off, switch off Sign in with Coral Hub in Settings > Browser sign-in, which signs out every Hub sign-in at once. Hub sign-in is off on every computer until the owner turns it on in Settings and in Coral Hub, so an update changes nothing for existing links. Ending a browser session (signing out, a password change or reset, a new API key) also closes its open terminals and live views.
+- **Browser sign-ins survive a restart** (they are kept in Coral's database, hashed), **and every sign-in cookie is now SameSite=Strict,** so a link into the dashboard from another site's page arrives without the cookie.
+- **A sign-in link opened by another user of this computer is refused,** and the link stays good for its owner. coral open warns when it prints a link in an agent's terminal or in tmux.
+- **Shell quoting:** a data folder with a space, an apostrophe or a shell character could break or alter a workflow's shell step, the terminal log path or a tools path; now they are quoted. A key name that starts with "-" is always sent as a key, never read as a tmux option.
+
+### Fixes
+
+- **Saving a file in the dashboard's editor works again (broken since v1.4.60).**
+- **The API-key sign-in form works from another computer again:** it was redirected to the sign-in page instead of signing in.
+- **A dashboard tab that is no longer signed in says so** and waits, instead of showing broken views.
+- **coral-agent's artifact upload fails loudly when Coral refuses it** (including a 429 with its Retry-After), and never prints a dead coral:// link.
+- **Settings and Servers:** checkbox rows have their box on the left, the Database encryption menu fits its text, and a server's error says what to do once, with the raw error under Details.
+
 ## v1.4.67 — Every request needs a credential, a password for the browser, and Sign in with Coral Hub
 
 ### Security
