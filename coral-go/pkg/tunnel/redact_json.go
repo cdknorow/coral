@@ -105,7 +105,20 @@ func namesAuthorization(s string) bool {
 
 // redact redacts n's strings in place; key (when has) is the key its strings are redacted with,
 // and auth means they are under an Authorization member (redacted as its value).
-func (n *jnode) redact(key string, has, auth bool) {
+//
+// Under a member whose key names a secret (isSecretKey, #3733), secret is set: every value in
+// its subtree, string or number or true/false, is the marker (a string, so the reply stays
+// JSON); an empty string and null stay, since they hold nothing.
+func (n *jnode) redact(key string, has, auth, secret bool) {
+	if secret {
+		switch {
+		case n.kind == 's' && n.str != "", n.kind == 'l' && n.lit != "null":
+			n.kind, n.str, n.lit = 's', RedactMarker, ""
+			return
+		case n.kind == 's' || n.kind == 'l':
+			return
+		}
+	}
 	switch n.kind {
 	case 's':
 		switch {
@@ -118,7 +131,7 @@ func (n *jnode) redact(key string, has, auth bool) {
 		}
 	case '[':
 		for _, c := range n.vals {
-			c.redact(key, has, auth)
+			c.redact(key, has, auth, secret)
 		}
 	case '{':
 		name, hasName := "", false
@@ -147,7 +160,7 @@ func (n *jnode) redact(key string, has, auth bool) {
 			}
 			childAuth := auth || strings.Contains(strings.ToLower(k), "authorization") ||
 				other > 0 && n.vals[i].kind == 's'
-			n.vals[i].redact(ctx, true, childAuth)
+			n.vals[i].redact(ctx, true, childAuth, secret || isSecretKey(ctx))
 			n.keys[i] = string(RedactTokens([]byte(k)))
 		}
 	}
@@ -197,7 +210,7 @@ func redactJSONStructure(raw []byte) (out []byte, ok bool) {
 	if _, err := dec.Token(); err != io.EOF {
 		return nil, false // one JSON value only
 	}
-	root.redact("", false, false)
+	root.redact("", false, false, false)
 	var b bytes.Buffer
 	b.Grow(len(raw))
 	if !root.write(&b) {
@@ -246,4 +259,40 @@ func redactReply(hdr http.Header, raw []byte) (out []byte, ok bool) {
 		// Too deep to walk: redacted as text, as before #3732 (and still checked to parse).
 	}
 	return RedactTokens(raw), true
+}
+
+// isSecretKey reports whether a JSON key names a secret (#3733): one of secretNames or its
+// plural, or a key ending in one after '_' (db_password, access_token, client_secret, x_api_key,
+// aws_secret_access_key, secrets). Case, camel case, '-', '.' and spaces are read as '_' (apiKey,
+// refreshToken, X-Api-Key). "tokens" is not a plural of a secret: Coral's replies count model
+// tokens under it (input_tokens). A word that only starts like one is not ("secretary",
+// "author", "total_token_usage").
+func isSecretKey(key string) bool {
+	var b strings.Builder
+	for i := 0; i < len(key); i++ {
+		c := key[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+			if i > 0 && (key[i-1] >= 'a' && key[i-1] <= 'z' || key[i-1] >= '0' && key[i-1] <= '9') {
+				b.WriteByte('_')
+			}
+			b.WriteByte(c + 'a' - 'A')
+		case c == '-' || c == ' ' || c == '.':
+			b.WriteByte('_')
+		default:
+			b.WriteByte(c)
+		}
+	}
+	k := b.String()
+	for _, n := range secretNames {
+		for _, form := range [2]string{n, n + "s"} {
+			if form == "tokens" || form == "auths" {
+				continue
+			}
+			if k == form || strings.HasSuffix(k, "_"+form) {
+				return true
+			}
+		}
+	}
+	return false
 }

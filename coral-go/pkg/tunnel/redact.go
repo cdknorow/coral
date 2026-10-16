@@ -20,6 +20,7 @@ package tunnel
 import (
 	"bytes"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -35,6 +36,37 @@ type tokenRule struct {
 	keep     bool                     // keep the prefix and glue, replace only the value (Bearer, Authorization)
 	notAfter func(byte) bool          // a character that may not come right before the prefix
 	params   bool                     // the value may be an auth-param list (Digest's key="value", ...): redacted to its end
+	bare     func([]byte) bool        // when glue reports no scheme: whether the value is a credential (nil: mixedValue)
+	toQuote  bool                     // a value after an opening quote runs to its closing quote, spaces and all (#3733)
+}
+
+// prefixLen is the length of the longest of the rule's prefixes b starts with (SECRET_KEY, not
+// SECRET; credentials, not credential), 0 when none. The secret names are a set, looked up per
+// length (#3733: about a hundred spellings).
+func (ru *tokenRule) prefixLen(b []byte) int {
+	if ru == secretRule {
+		for _, n := range secretNameLens {
+			if n <= len(b) && secretNameSet[string(b[:n])] {
+				return n
+			}
+		}
+		return 0
+	}
+	at := 0
+	for _, pre := range ru.prefixes {
+		if len(pre) > at && bytes.HasPrefix(b, []byte(pre)) {
+			at = len(pre)
+		}
+	}
+	return at
+}
+
+// bareOK: an unqualified value (no scheme, not quoted) counts as a credential.
+func (ru *tokenRule) bareOK(v []byte) bool {
+	if ru.bare != nil {
+		return ru.bare(v)
+	}
+	return mixedValue(v)
 }
 
 func isAlnum(c byte) bool {
@@ -245,6 +277,220 @@ var tokenRules = []tokenRule{
 	{prefixes: []string{"xoxa-", "xoxb-", "xoxp-", "xoxr-", "xoxs-"}, class: isAlnumDash, min: 10, max: 255, notAfter: isWord},
 	{prefixes: []string{"Bearer", "bearer", "BEARER"}, glue: bearerGlue, class: isCredValue, min: 20, max: 512, keep: true, notAfter: isWord},
 	{prefixes: []string{"Authorization", "authorization", "AUTHORIZATION"}, glue: authGlue, class: isCredValue, min: 8, max: 512, keep: true, notAfter: isWord, params: true},
+	{prefixes: secretNamePrefixes, glue: secretGlue, class: isSecretValue, min: 1, max: 512, keep: true, notAfter: isAlnum, bare: secretBare, toQuote: true},
+}
+
+// Secret-named values (#3733, Security on #3731): "password": "...", api_key=..., TOKEN=... in
+// text the structural JSON walk doesn't see (streamed replies, text replies, JSON too deep to
+// walk). The name is kept and its value redacted. A name may follow '_' or '-' (DB_PASSWORD,
+// x-auth-token, access_token), never a letter or digit ("mytoken"), and must be followed by its
+// separator, so "tokens", "secretary" and "author" are words. The structural walk redacts by
+// key exactly (isSecretKey); this is the text form of the same list.
+var secretNames = []string{"password", "passwd", "passphrase", "secret", "secret_key", "secret_access_key",
+	"access_key", "token", "auth", "api_key", "apikey", "private_key", "credential", "credentials"}
+
+// Limits, on purpose (Security on #3733): in text, an unquoted letters-only value after ':'
+// ("password: correcthorse") is kept, since prose reads the same way; quote it, or use
+// KEY=value, and it is redacted. Credentials inside a URL (mysql://user:pw@host) are not a rule
+// of their own. In a JSON reply held whole the key decides, so neither limit applies there.
+//
+// The text rule looks for every name but "auth": that starts "Authorization", so a stream cut
+// inside that word would end at "Auth", the rule would fail there and the Authorization rule
+// would lose its start; and in text, auth is the Authorization rule's case.
+
+// secretNamePrefixes: each name lower case, upper case and capitalised, the two-word ones also
+// with '-' and in camel case, and the camel-case compounds a '_' wouldn't separate
+// (accessToken, refreshToken, clientSecret).
+var secretNamePrefixes = func() []string {
+	var out []string
+	add := func(s ...string) { out = append(out, s...) }
+	for _, n := range secretNames {
+		if n == "auth" {
+			continue // see secretNames
+		}
+		add(n, strings.ToUpper(n), strings.ToUpper(n[:1])+n[1:])
+		if parts := strings.Split(n, "_"); len(parts) > 1 {
+			title := func(s string) string { return strings.ToUpper(s[:1]) + s[1:] }
+			titled := make([]string, len(parts))
+			for i, w := range parts {
+				titled[i] = title(w)
+			}
+			dashed := strings.Join(parts, "-")
+			camel := parts[0] + strings.Join(titled[1:], "")
+			add(dashed, strings.ToUpper(dashed), strings.Join(titled, "-"), strings.Join(titled, "_"), camel, title(camel))
+		}
+	}
+	for _, c := range []string{"accessToken", "refreshToken", "clientSecret"} {
+		add(c, strings.ToUpper(c[:1])+c[1:])
+	}
+	return out
+}()
+
+// secretGlue measures what follows a secret name up to its value: an optional closing quote,
+// spaces, ':' or '=', spaces and an optional opening quote (quoteLen: raw, or as JSON writes
+// it). certain (glue's "scheme") is true when the value is quoted, or follows '=' with no space
+// around it (KEY=value): then any value is redacted; otherwise only one that looks like a
+// credential (secretBare). -1: not a secret value; -2: more bytes are needed to tell.
+func secretGlue(b []byte) (n int, certain bool) {
+	i := 0
+	if q := quoteLen(b); q < 0 {
+		return q, false
+	} else {
+		i += q
+	}
+	sep := i
+	if sep = skipGap(b, i); sep < 0 {
+		return sep, false
+	}
+	if sep >= len(b) {
+		return -2, false
+	}
+	if b[sep] != ':' && b[sep] != '=' {
+		return -1, false
+	}
+	v := skipGap(b, sep+1)
+	if v < 0 {
+		return v, false
+	}
+	q := quoteLen(b[min(v, len(b)):])
+	if q < 0 || v+q >= len(b) {
+		return -2, false
+	}
+	tight := b[sep] == '=' && sep == i && v == sep+1
+	return v + q, q > 0 || tight
+}
+
+// seekSecretName finds the first secret name at or after from: one pass for the separators
+// (':' and '='), and at each a look back over a closing quote and spaces to the word before it,
+// which must end in a name (checked first by its last letter).
+// A word at the very end may still get its separator: it is returned too (match then holds it).
+func seekSecretName(data []byte, from int) int {
+	next := func(c byte, at int) int {
+		if k := bytes.IndexByte(data[at:], c); k >= 0 {
+			return at + k
+		}
+		return len(data)
+	}
+	colon, eq := next(':', from), next('=', from)
+	for {
+		j := min(colon, eq)
+		if j >= len(data) {
+			break
+		}
+		if st := secretNameBefore(data, j, from); st >= 0 {
+			return st
+		}
+		if j == colon {
+			colon = next(':', j+1)
+		} else {
+			eq = next('=', j+1)
+		}
+	}
+	// At the end, a closing quote may be half written (a \ of \", or \u002 of \u0022): the word
+	// before it is held until the rest arrives.
+	k := len(data)
+	for k > from && len(data)-k < maxGap+maxQuoteEscape+6 && strings.IndexByte(" \"'\\u027", data[k-1]) >= 0 {
+		k--
+	}
+	for ; k <= len(data); k++ {
+		if st := secretNameBefore(data, k, from); st >= 0 {
+			return st
+		}
+	}
+	return -1
+}
+
+// secretNameBefore is where a secret name starts that ends right before data[j] (past a closing
+// quote, however written, and spaces), at or after from; -1 when there is none.
+func secretNameBefore(data []byte, j, from int) int {
+	k := j
+	for k > from && j-k <= maxGap && data[k-1] == ' ' {
+		k--
+	}
+	if k-6 >= from && data[k-6] == '\\' && (data[k-5]|0x20) == 'u' && string(data[k-4:k-2]) == "00" && (data[k-2] == '2') && (data[k-1] == '2' || data[k-1] == '7') {
+		k -= 6 // \u0022, \u0027
+	} else if k > from && (data[k-1] == '"' || data[k-1] == '\'') {
+		k--
+		for k > from && j-k <= maxQuoteEscape+maxGap && data[k-1] == '\\' {
+			k--
+		}
+	}
+	end := k
+	if end <= from {
+		return -1
+	}
+	if !secretNameLast[data[end-1]] {
+		return -1
+	}
+	// The longest name first: its start is the earliest. The byte before the name is checked by
+	// starts.next (boundaryOK), which also sees the bytes before data and a JSON escape there.
+	for _, n := range secretNameLens {
+		if st := end - n; st >= from && secretNameFirst[n][data[st]] && secretNameSet[string(data[st:end])] {
+			return st
+		}
+	}
+	return -1
+}
+
+// secretRule is the secret names' rule; secretNameStarts every proper beginning of a name (a
+// stream ending in one may be cut inside the name).
+var secretRule = &tokenRules[7]
+
+var secretNameStarts = func() map[string]bool {
+	out := map[string]bool{}
+	for _, p := range secretNamePrefixes {
+		for k := 1; k < len(p); k++ {
+			out[p[:k]] = true
+		}
+	}
+	return out
+}()
+
+// secretNameLast marks the bytes a name ends with; secretNameFirst[n] those a name n long starts
+// with: two table reads rule out most words before the set is hashed.
+var secretNameLast, secretNameFirst = func() (last [256]bool, first [][256]bool) {
+	for _, p := range secretNamePrefixes {
+		last[p[len(p)-1]] = true
+		for len(first) <= len(p) {
+			first = append(first, [256]bool{})
+		}
+		first[len(p)][p[0]] = true
+	}
+	return last, first
+}()
+
+// secretNameSet holds secretNamePrefixes; secretNameLens their lengths, longest first.
+var secretNameSet, secretNameLens = func() (map[string]bool, []int) {
+	set, seen := map[string]bool{}, map[int]bool{}
+	var lens []int
+	for _, p := range secretNamePrefixes {
+		set[p] = true
+		if !seen[len(p)] {
+			seen[len(p)] = true
+			lens = append(lens, len(p))
+		}
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(lens)))
+	return set, lens
+}()
+
+// isSecretValue: a secret value's characters, up to a space, a quote, a backslash (JSON's
+// escape: the string's end, or a quote written \") or a delimiter of the text around it.
+func isSecretValue(c byte) bool {
+	return c > ' ' && c < 0x7f && strings.IndexByte("\"'\\&,;<>(){}[]", c) < 0
+}
+
+// secretBare: an unquoted value after ':' is a credential only if it mixes letters with digits
+// or symbols: a JSON number, true, false or null, and prose ("token: expired") are left.
+func secretBare(v []byte) bool {
+	letter := false
+	for _, c := range v {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			letter = true
+			break
+		}
+	}
+	return letter && mixedValue(v)
 }
 
 // PEM private-key blocks: "-----BEGIN <LABEL>PRIVATE KEY-----" ... "-----END <LABEL>-----".
@@ -351,6 +597,9 @@ func (r *Redactor) Flush(force bool) error {
 		}
 		out = append(out, RedactMarker...)
 		r.inToken = rule.class
+		if rule.toQuote && openingQuote(r.pending, valueAt) != nil {
+			r.inToken = notQuoteEnd // a quoted value's rest runs to its quote, spaces and all
+		}
 		r.settleAll()
 	} else {
 		// No value in it: it redacts to itself (checked, so a tail this misjudged is settled
@@ -385,23 +634,21 @@ func (r *Redactor) settleAll() {
 func heldValue(b []byte) (*tokenRule, int) {
 	for k := range tokenRules {
 		ru := &tokenRules[k]
-		for _, pre := range ru.prefixes {
-			if !bytes.HasPrefix(b, []byte(pre)) {
-				continue
-			}
-			at := len(pre)
-			if ru.glue != nil {
-				g, _ := ru.glue(b[at:])
-				if g < 0 {
-					return nil, 0 // the glue is still arriving (or isn't one): no value yet
-				}
-				at += g
-			}
-			if at < len(b) && ru.class(b[at]) {
-				return ru, at
-			}
-			return nil, 0
+		at := ru.prefixLen(b)
+		if at == 0 {
+			continue
 		}
+		if ru.glue != nil {
+			g, _ := ru.glue(b[at:])
+			if g < 0 {
+				return nil, 0 // the glue is still arriving (or isn't one): no value yet
+			}
+			at += g
+		}
+		if at < len(b) && (ru.class(b[at]) || ru.toQuote && openingQuote(b, at) != nil) {
+			return ru, at // a quoted value's first character may be a space
+		}
+		return nil, 0
 	}
 	return nil, 0
 }
@@ -537,6 +784,9 @@ type startLit struct {
 	rule   *tokenRule // nil: a PEM BEGIN
 	at     int        // the next occurrence's start, -1 none
 	looked bool
+	// seek, when set, finds the next start itself (anchor and full unused): the secret names,
+	// found from their separator in one pass rather than one search per spelling (#3733).
+	seek func(data []byte, from int) int
 }
 
 // startAnchors pairs each anchor with the rule whose prefixes it finds.
@@ -565,6 +815,8 @@ var startAnchors = func() []startLit {
 	add("EARER", 1, &tokenRules[5])
 	add("uthorization", 1, &tokenRules[6])
 	add("UTHORIZATION", 1, &tokenRules[6])
+	// Secret names (#3733), after the rules above so Authorization wins a start they share.
+	out = append(out, startLit{rule: secretRule, seek: seekSecretName})
 	add("-----BEGIN ", 0, nil)
 	return out
 }()
@@ -582,6 +834,10 @@ func (s *starts) reset(data, prev []byte) {
 // find sets l.at to the first start at or after from whose full prefix matches there.
 func (s *starts) find(l *startLit, from int) {
 	l.looked = true
+	if l.seek != nil {
+		l.at = l.seek(s.data, from)
+		return
+	}
 	for search := from + l.back; search <= len(s.data); {
 		j := bytes.Index(s.data[search:], l.anchor)
 		if j < 0 {
@@ -688,13 +944,7 @@ func (s *starts) escapeEndsBefore(at int) bool {
 // when final: the body ends there), and whether it runs past the rule's ceiling (it is then a
 // token whose rest is dropped as it arrives; the ceiling only bounds what is held back).
 func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long bool) {
-	at := 0
-	for _, pre := range ru.prefixes {
-		if bytes.HasPrefix(b, []byte(pre)) {
-			at = len(pre)
-			break
-		}
-	}
+	at := ru.prefixLen(b)
 	scheme := true
 	if ru.glue != nil {
 		g, sch := ru.glue(b[at:])
@@ -705,6 +955,11 @@ func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long
 			return 0, 0, false, false, false
 		}
 		at, scheme = at+g, sch
+	}
+	if ru.toQuote {
+		if form := openingQuote(b, at); form != nil {
+			return quotedValue(b, at, form, ru.max, final)
+		}
 	}
 	if ru.params {
 		// Digest (and any scheme with parameters): username="bob", nonce="...", response="..."
@@ -723,7 +978,7 @@ func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long
 			if ru.exact {
 				return 0, 0, false, false, false // longer than the fixed length: not this kind
 			}
-			if !scheme && !mixedValue(b[at:at+run]) {
+			if !scheme && !ru.bareOK(b[at:at+run]) {
 				return 0, 0, false, false, false
 			}
 			return at + run, at, true, false, true
@@ -735,11 +990,70 @@ func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long
 	if run < ru.min || (ru.exact && run != ru.min) {
 		return 0, 0, false, false, false
 	}
-	if !scheme && !mixedValue(b[at:at+run]) {
+	if !scheme && !ru.bareOK(b[at:at+run]) {
 		// "Authorization: unavailable": a bare value of letters only is a word, not a credential.
 		return 0, 0, false, false, false
 	}
 	return at + run, at, true, false, false
+}
+
+// notQuoteEnd: inside a quoted value whose start was flushed as the marker, every byte is
+// dropped up to a quote (or the backslash before an escaped one).
+func notQuoteEnd(c byte) bool { return c != '"' && c != '\'' && c != '\\' }
+
+// openingQuote is the quote (however written: quoteLen) that ends right at b[at], or nil. The
+// longest spelling wins: \" is one quote, not a backslash and a raw ".
+func openingQuote(b []byte, at int) []byte {
+	for s := max(0, at-maxQuoteEscape-6); s < at; s++ {
+		if q := quoteLen(b[s:]); q > 0 && s+q == at {
+			return b[s:at]
+		}
+	}
+	return nil
+}
+
+// quotedValue measures a value that starts after its opening quote (form) at b[at]: it runs to
+// its closing quote (the same spelling), so PASSWORD="my pass phrase" is redacted whole, or to the
+// end of the JSON string around the text if that comes first (quotedEnd, the #3731 rules), never
+// past it. A value with no end within max is redacted to there and the rest of its run dropped
+// (long); one that may still end in the next bytes is held (need).
+func quotedValue(b []byte, at int, form []byte, max int, final bool) (n, valueAt int, ok, need, long bool) {
+	if len(form) == 1 && form[0] == '"' {
+		// A raw '"' followed by '}', ',', ']', ':' or the end closes the JSON string around the
+		// text ({"content":"token ="}): it opens no value.
+		if at == len(b) {
+			return 0, 0, false, !final, false
+		}
+		if strings.IndexByte("},]:", b[at]) >= 0 {
+			return 0, 0, false, false, false
+		}
+	}
+	rest := b[at:]
+	if len(rest) > max {
+		rest = rest[:max]
+	}
+	end, stop := quotedEnd(form, rest, final && len(b)-at <= max)
+	switch {
+	case end >= 0:
+		v := end - len(form) // the value, up to its closing quote
+		if v == 0 {
+			return 0, 0, false, false, false
+		}
+		return at + v, at, true, false, false
+	case stop >= 0:
+		if stop == 0 {
+			return 0, 0, false, false, false
+		}
+		return at + stop, at, true, false, false
+	case stop == -2 || len(b)-at <= max && !final:
+		return 0, 0, false, true, false
+	case len(b)-at > max:
+		return at + max, at, true, false, true
+	}
+	if len(b) == at {
+		return 0, 0, false, false, false
+	}
+	return len(b), at, true, false, false // the body ends inside the value: all of it (fail closed)
 }
 
 // maxParamList bounds an auth-param list (a Digest header is about 300 bytes); one that runs on
@@ -1000,6 +1314,17 @@ func (s *starts) partialTail(i int) int {
 	n := partialSuffix(b, pemBegin)
 	for k := range tokenRules {
 		ru := &tokenRules[k]
+		if ru == secretRule {
+			// The secret names' beginnings are a set: a lookup per tail length, not a search
+			// per spelling (#3733).
+			for m := min(secretNameLens[0]-1, len(b)); m > n; m-- {
+				if secretNameStarts[string(b[len(b)-m:])] && s.boundaryOK(len(s.data)-m, ru) {
+					n = m
+					break
+				}
+			}
+			continue
+		}
 		for _, pre := range ru.prefixes {
 			for m := min(len(pre)-1, len(b)); m > n; m-- {
 				if bytes.HasSuffix(b, []byte(pre[:m])) && s.boundaryOK(len(s.data)-m, ru) {

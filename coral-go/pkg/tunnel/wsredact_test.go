@@ -476,7 +476,10 @@ func TestRedactHoldsOnlyWordStarts(t *testing.T) {
 		return h.String()
 	}
 	// Each '.' echoed at once; a letter is held while it could start a token.
-	assert.Equal(t, "......b....a.", held("class bash ax"), "only word-initial b (bearer) and a (authorization) wait; mid-word s, a, h and x echo at once")
+	// #3733: a word-initial "cl" could start clientSecret, so it waits for the 'a' that rules it
+	// out (a quiet stream shows it at once: Flush).
+	assert.Equal(t, "cl....b....a.", held("class bash ax"), "only word starts that could begin a token wait (cl: clientSecret, b: bearer, a: authorization or api_key); mid-word s, a, h and x echo at once")
+	assert.Equal(t, "t....p..", held("tab  pen"), "t (token) and p (password) wait at a word start until ruled out")
 	assert.Equal(t, "g.", held("go"), "a word-initial 'g' could start ghp_")
 	assert.Equal(t, ".....s", held("\x1b[32ms"), "after a colour code a letter starts a word")
 }

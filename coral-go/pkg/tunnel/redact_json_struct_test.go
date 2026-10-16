@@ -18,9 +18,22 @@ var jsonHdr = http.Header{"Content-Type": {"application/json"}}
 
 // redactStrings is v with every key redacted as text and every value with its key (an array's
 // strings with the key of the member holding it): what the structural redaction must give.
-func redactStrings(v any) any { return redactUnder(v, "", false, false) }
+func redactStrings(v any) any { return redactUnder(v, "", false, false, false) }
 
-func redactUnder(v any, key string, has, auth bool) any {
+func redactUnder(v any, key string, has, auth, secret bool) any {
+	if secret { // under a secret-named key (#3733): every value but "" and null is the marker
+		switch x := v.(type) {
+		case string:
+			if x == "" {
+				return x
+			}
+			return RedactMarker
+		case nil:
+			return nil
+		case bool, float64, json.Number:
+			return RedactMarker
+		}
+	}
 	switch x := v.(type) {
 	case string:
 		switch {
@@ -33,7 +46,7 @@ func redactUnder(v any, key string, has, auth bool) any {
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
-			out[i] = redactUnder(e, key, has, auth)
+			out[i] = redactUnder(e, key, has, auth, secret)
 		}
 		return out
 	case map[string]any:
@@ -63,7 +76,7 @@ func redactUnder(v any, key string, has, auth bool) any {
 				other--
 			}
 			childAuth := auth || strings.Contains(strings.ToLower(k), "authorization") || other > 0 && isStr
-			out[string(RedactTokens([]byte(k)))] = redactUnder(e, ctx, true, childAuth)
+			out[string(RedactTokens([]byte(k)))] = redactUnder(e, ctx, true, childAuth, secret || isSecretKey(ctx))
 		}
 		return out
 	}
