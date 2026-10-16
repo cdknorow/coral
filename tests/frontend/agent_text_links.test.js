@@ -20,7 +20,7 @@ const MARKED_PARSE = {
 };
 const DOMPURIFY_SANITIZE = {
     'utils.js': 'sanitizeHtml itself',
-    'tasks.js': 'a second pass over renderMarkdown(..., "board") output',
+    'subagents.js': 'a second pass over renderMarkdown(..., "board") output',
 };
 
 function walk(dir, out = []) {
