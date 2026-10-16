@@ -38,7 +38,9 @@ func TestAppsSignInWithoutTheAPIKey(t *testing.T) {
 	cfg.Port = freePort(t)
 	rs, err := startup.Start(context.Background(), cfg, startup.Options{BackendType: "pty"})
 	require.NoError(t, err)
-	t.Cleanup(func() { rs.Shutdown(5 * time.Second) })
+	// Shutdown stops serving; Close releases the instance lock and the databases, as coral does,
+	// or Windows can't remove the test's folder with coral-server.lock open (#3920 T2).
+	t.Cleanup(func() { rs.Shutdown(5 * time.Second); rs.Close() })
 	base := "http://127.0.0.1:" + strconv.Itoa(cfg.Port)
 
 	noFollow := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}

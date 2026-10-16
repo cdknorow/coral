@@ -56,6 +56,10 @@ func countQueries(t *testing.T, s *Store, path string) *atomic.Int64 {
 	require.NoError(t, err)
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
+	// The store's own writer is replaced; it is closed too, or Windows can't remove the
+	// test's folder with board.db still open (#3920 T2).
+	orig := s.db
+	t.Cleanup(func() { orig.Close() })
 	s.db = sqlx.NewDb(db, "sqlite")
 	return &countingQueries
 }
