@@ -2193,11 +2193,9 @@
 }
 .hub-readonly-chip[hidden] { display: none; }
 /* View only through Coral Hub (#3411): Send looks unavailable and the terminal doesn't offer typing. */
-/* The selector named the inline onclick of Send until #3645 moved it to data-on-click: it matched nothing after that (#3735). */
-.command-pane.hub-view-only [data-on-click="cmd-send"],
-.command-pane.hub-view-only [data-on-click="cmd-send-menu"],
-.command-pane.hub-view-only [data-on-click="cmd-send-team"],
-.command-pane.hub-view-only .mobile-send-btn { opacity: 0.4; pointer-events: none; }
+/* A control the Hub's tier does not allow (hub_blocked_controls.js, #3769): dimmed, with the reason as its title. It stays
+   clickable, so a click still says why. (Until #3645 the Send rule here named an inline onclick; it matched nothing after.) */
+.hub-blocked { opacity: 0.45; cursor: not-allowed; }
 .xterm-container.hub-view-only .xterm-focus-hint,
 .xterm-container.agent-sleeping .xterm-focus-hint { display: none; }
 

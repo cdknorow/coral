@@ -1,5 +1,6 @@
 import './update_banner.js'; // first: it wraps fetch before the other modules ask for anything (#3751)
 import { importOnce } from './import_once.js';
+import './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
 import { initPrerequisiteChecks } from './prerequisites.js';
 import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';

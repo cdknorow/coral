@@ -47,20 +47,20 @@ const BASE = require('./test_base').BASE;
         await ev(`window.setLiveViewMode('chat'); true`);
         console.log('   ✓ sleeping and archived: wake bar and its buttons shown, hint hidden; awake: unchanged');
 
-        console.log('2. View-only through the Hub dims Send and its menu');
+        console.log('2. View-only through the Hub dims Send and its menu, with the reason (#3769 marks the rest)');
         await select('cs-awake');
-        const dim = () => ev(`(() => { const o = {}; for (const a of ['cmd-send', 'cmd-send-menu']) { const n = document.querySelector('#command-pane [data-on-click=' + a + ']'); const cs = getComputedStyle(n); o[a] = [cs.opacity, cs.pointerEvents]; } const k = document.querySelector('#command-pane [data-on-click=cmd-raw-keys]'); return o; })()`);
-        assert.deepEqual(await dim(), { 'cmd-send': ['1', 'auto'], 'cmd-send-menu': ['1', 'auto'] }, 'normally Send is a normal control');
-        await ev(`import(${MOD} + 'hub_access.js').then(async h => { const { state } = await import(${MOD} + 'state.js'); h.setHubReadOnly(state.currentSession, { hub: 'view', local: 'launch', effective: 'view', limitedBy: 'hub', label: 'qa-server' }); return true; })`);
+        const dim = () => ev(`(() => { const o = {}; for (const a of ['cmd-send', 'cmd-send-menu']) { const n = document.querySelector('#command-pane [data-on-click=' + a + ']'); const cs = getComputedStyle(n); o[a] = [n.classList.contains('hub-blocked'), cs.opacity, cs.pointerEvents, n.title.startsWith('Blocked:')]; } return o; })()`);
+        assert.deepEqual(await dim(), { 'cmd-send': [false, '1', 'auto', false], 'cmd-send-menu': [false, '1', 'auto', false] }, 'normally Send is a normal control');
+        await ev(`import(${MOD} + 'hub_access.js').then(async h => { const { state } = await import(${MOD} + 'state.js'); h.setHubReadOnly(state.currentSession, { hub: 'view', local: 'launch', effective: 'view', limitedBy: 'hub', label: 'qa-server' }, 'interact', true); return true; })`); // fromFrame: the hub said so on the terminal socket
         await waitFor(`document.getElementById('command-pane').classList.contains('hub-view-only')`, 'the view-only mark', 4000);
         // The buttons fade (a CSS transition): wait for the end of it before reading the opacity.
-        await waitFor(`getComputedStyle(document.querySelector('#command-pane [data-on-click=cmd-send]')).opacity === '0.4'`, 'Send to finish dimming', 4000);
-        assert.deepEqual(await dim(), { 'cmd-send': ['0.4', 'none'], 'cmd-send-menu': ['0.4', 'none'] }, 'view-only: Send and its menu are dimmed and inert');
+        await waitFor(`getComputedStyle(document.querySelector('#command-pane [data-on-click=cmd-send]')).opacity === '0.45'`, 'Send to finish dimming', 4000);
+        assert.deepEqual(await dim(), { 'cmd-send': [true, '0.45', 'auto', true], 'cmd-send-menu': [true, '0.45', 'auto', true] }, 'view-only: Send and its menu are dimmed, clickable, and say why');
         await ev(`import(${MOD} + 'hub_access.js').then(async h => { const { state } = await import(${MOD} + 'state.js'); h.setHubReadOnly(state.currentSession, null); return true; })`);
         await waitFor(`!document.getElementById('command-pane').classList.contains('hub-view-only')`, 'the mark to clear', 4000);
         await waitFor(`getComputedStyle(document.querySelector('#command-pane [data-on-click=cmd-send]')).opacity === '1'`, 'Send to finish un-dimming', 4000);
-        assert.deepEqual(await dim(), { 'cmd-send': ['1', 'auto'], 'cmd-send-menu': ['1', 'auto'] }, 'cleared: Send is normal again');
-        console.log('   ✓ view-only: opacity 0.4 and no pointer events on Send and Send options; cleared: back to normal');
+        assert.deepEqual(await dim(), { 'cmd-send': [false, '1', 'auto', false], 'cmd-send-menu': [false, '1', 'auto', false] }, 'cleared: Send is normal again');
+        console.log('   ✓ view-only: Send and Send options dimmed with the reason and still clickable; cleared: back to normal');
 
         console.log('\nAll agent-control-state checks passed');
     } finally {

@@ -50,15 +50,19 @@ function _warmAccess(server) {
         .finally(() => { _warming = null; });
 }
 
-/** Why this account cannot kill a whole team or delete a board on `server` through the Coral Hub:
- *  the "Blocked: … needs Launch" text, or '' when it can, outside the hub, or when that is not
- *  known yet. */
-export function launchBlockedReason(server) {
+/** Why this account cannot do an action needing `tier` ('interact' or 'launch') on `server` through the
+ *  Coral Hub: the "Blocked: … needs Interact/Launch" text, or '' when it can, outside the hub, or when
+ *  that is not known yet (the list is asked for, and the menus redraw once it is in). */
+export function blockedReason(server, tier) {
     if (!isCloud() || !server || server === 'local') return '';
     const a = _cloudServers ? _cloudServers.cachedServerAccess(server) : null;
     if (!a) { _warmAccess(server); return ''; }
-    return a.mayLaunch ? '' : accessBlockedMessage(a, 'launch');
+    return (tier === 'launch' ? a.mayLaunch : a.mayInteract) ? '' : accessBlockedMessage(a, tier);
 }
+
+/** Why this account cannot kill a whole team or delete a board on `server` through the Coral Hub
+ *  (both need Launch): the reason, or '' (see blockedReason). */
+export function launchBlockedReason(server) { return blockedReason(server, 'launch'); }
 
 /** Header chip text, e.g. "Read-only: Hub: View". */
 export function readOnlyChipText(a) {
