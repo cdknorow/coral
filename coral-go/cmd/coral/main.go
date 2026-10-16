@@ -26,6 +26,7 @@ import (
 	"github.com/cdknorow/coral/internal/license"
 	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/logrotate"
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/store"
@@ -139,7 +140,14 @@ func main() {
 		}
 	})
 	cfg.BootstrapFile, cfg.ProofFile = *bootstrapFile, *proofFile
+	// The secret detector, built once before anything is logged or served (#3808): every coral.log
+	// line and every Coral Hub reply goes through it. Without it Coral does not start.
+	if err := secrets.Init(); err != nil {
+		fmt.Fprintf(os.Stderr, "coral: the secret detector could not be built: %v\n", err)
+		os.Exit(1)
+	}
 	setupCrashLogging(cfg.CoralDir())
+	log.Printf("[startup] secret redaction: %s", secrets.RulesVersion)
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "cloud-connect" {
 			cfg.CloudConnect = strings.ToLower(strings.TrimSpace(*cloudConnect))

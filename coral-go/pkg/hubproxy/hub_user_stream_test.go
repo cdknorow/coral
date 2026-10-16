@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
@@ -70,7 +71,7 @@ func TestHubUserGoesWithEveryStream(t *testing.T) {
 		}
 	}))
 	defer ths.Close()
-	rec := &recordingHandler{next: &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: allowAll}}
+	rec := &recordingHandler{next: &tunnel.LocalHandler{Redactor: redact.Rules, BaseURL: ls.URL, AllowPath: allowAll}}
 	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
 		Handler: rec, AllowInsecure: true,
 	})

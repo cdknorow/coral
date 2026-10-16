@@ -1,6 +1,9 @@
 package routes
 
-import "github.com/cdknorow/coral/pkg/redact"
+import (
+	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/cdknorow/coral/pkg/redact"
+)
 
 // A chat page asked for with ?trim=N (#3723) carries at most N bytes of each long tool field:
 // a tool's output, a written file, an edit's old and new text, a patch. These are folded away in
@@ -109,8 +112,12 @@ func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
 }
 
 // trimField is s, longer than n, redacted and then cut to at most n bytes where no token can
-// be split.
+// be split. Text that can't be checked is not shown.
 func trimField(s string, n int) string {
-	r := string(redact.Tokens([]byte(s)))
+	b, err := secrets.Redactor().Text([]byte(s))
+	if err != nil {
+		return redact.Marker
+	}
+	r := string(b)
 	return r[:redact.Cut(r, n)]
 }

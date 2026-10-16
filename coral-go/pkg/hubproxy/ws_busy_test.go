@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
@@ -37,7 +38,7 @@ func TestABusyMachinesTerminalClosesWithItsReason(t *testing.T) {
 	}))
 	defer ths.Close()
 	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
-		Handler: &tunnel.LocalHandler{BaseURL: local.URL, AllowPath: allowAll, HubLimits: tunnel.HubLimits{Long: 1}}, AllowInsecure: true,
+		Handler: &tunnel.LocalHandler{Redactor: redact.Rules, BaseURL: local.URL, AllowPath: allowAll, HubLimits: tunnel.HubLimits{Long: 1}}, AllowInsecure: true,
 	})
 	require.NoError(t, err)
 	defer cs.Close()

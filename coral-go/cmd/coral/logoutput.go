@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/cdknorow/coral/internal/secrets"
 )
 
 // terminalLogDepth is how many log lines may wait for a slow terminal before
@@ -51,12 +51,16 @@ func (w *fileThenTerminal) Write(p []byte) (int, error) {
 // write a credential. Each line arrives whole (one Write per log call). A line the redactor
 // can't check is replaced by a note, never written unchecked.
 func redactLogLine(p []byte) (out []byte) {
+	const dropped = "[log] a line could not be checked for secrets and was dropped\n"
 	defer func() {
 		if recover() != nil {
-			out = []byte("[log] a line could not be checked for secrets and was dropped\n")
+			out = []byte(dropped)
 		}
 	}()
-	out = redact.Tokens(p)
+	out, err := secrets.LogRedactor().Text(p)
+	if err != nil {
+		return []byte(dropped)
+	}
 	// A key's start ("-----BEGIN ... PRIVATE KEY-----") swallows the rest of the text, the line's
 	// newline too: the next line would run on after it (#3783, Security's SHOULD on #3763).
 	if len(p) > 0 && p[len(p)-1] == '\n' && (len(out) == 0 || out[len(out)-1] != '\n') {
