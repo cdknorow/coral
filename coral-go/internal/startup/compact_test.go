@@ -53,7 +53,11 @@ func TestCompactShrinksAndBacksUp(t *testing.T) {
 	db, err := store.OpenWithKey(context.Background(), cfg.DBPath, "")
 	require.NoError(t, err, "the database still opens")
 	db.Close()
-	assert.NoFileExists(t, filepath.Join(cfg.CoralDir(), "coral-server.lock"), "the lock is released")
+	// The lock is released: it can be taken again (on Windows the file itself stays, for the next server).
+	lockPath := filepath.Join(cfg.CoralDir(), "coral-server.lock")
+	lock, err := acquireInstanceLock(lockPath)
+	require.NoError(t, err, "the lock is released")
+	lock.close(lockPath)
 }
 
 // Never while a server runs on the same data folder (it holds the lock).
