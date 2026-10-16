@@ -131,7 +131,9 @@
 .mobile-agent-list {
     display: none;
     flex-direction: column;
-    height: 100%;
+    /* Shares the main area with the banners above it (#3729), where 100% pushed them below the fold. */
+    flex: 1 1 0;
+    min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }

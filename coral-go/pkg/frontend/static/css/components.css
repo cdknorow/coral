@@ -4024,11 +4024,29 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 .leftover-tmux-banner .material-icons { color: var(--color-warning, #d29922); }
 .leftover-tmux-text { flex: 1; min-width: 0; }
 @media (max-width: 767px) { .leftover-tmux-banner { flex-wrap: wrap; } }
-/* Agents on an older hook set (#3665) */
-.hooks-list { list-style: none; margin: var(--space-sm) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-xs, 4px); }
-.hooks-list li { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-sm, 13px); }
-.hooks-list .hooks-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hooks-list .hooks-state { color: var(--text-secondary); }
+/* Agents on an older hook set (#3665). One line (the count and three buttons); the list opens below it, bounded
+   in height and scrollable, grouped by team (#3729). */
+/* The banners sit at the top of the main area, above whichever view is showing (#3729). */
+.main-content > .leftover-tmux-banner { flex: none; order: -1; }
+.hooks-banner { flex-direction: column; align-items: stretch; gap: var(--space-sm); }
+.hooks-bar { display: flex; align-items: center; gap: var(--space-lg); flex-wrap: wrap; }
+.hooks-bar .leftover-tmux-text { flex: 1 1 12rem; }
+.hooks-panel { display: flex; flex-direction: column; gap: var(--space-sm); }
+.hooks-panel[hidden] { display: none; }
+.hooks-detail { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm, 13px); }
+.hooks-list { display: flex; flex-direction: column; gap: var(--space-sm); max-height: min(40vh, 320px); overflow-y: auto; padding-right: var(--space-xs, 4px); }
+.hooks-team { margin: 0; }
+.hooks-team h4 { margin: 0 0 var(--space-xs, 4px); font-size: var(--fs-sm, 13px); font-weight: 600; color: var(--text-secondary); }
+.hooks-team ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-xs, 4px); }
+.hooks-team li { display: grid; grid-template-columns: minmax(8rem, 1fr) auto auto; align-items: center; column-gap: var(--space-md); font-size: var(--fs-sm, 13px); }
+.hooks-team .hooks-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hooks-team .hooks-state { color: var(--text-secondary); text-align: right; }
+@media (max-width: 767px) {
+    /* name over state, the button to the right of both */
+    .hooks-team li { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; padding: 2px 0; }
+    .hooks-team .hooks-state { grid-column: 1; grid-row: 2; text-align: left; }
+    .hooks-team li .btn { grid-column: 2; grid-row: 1 / span 2; }
+}
 
 /* Auto-wake on pty (#3636) */
 .tb-autowake { border-top: 1px solid var(--border); margin-top: var(--space-md); padding-top: var(--space-md); display: flex; flex-direction: column; gap: var(--space-sm); }

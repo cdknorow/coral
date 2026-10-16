@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,9 +79,11 @@ func TestHooksStatusListsOlderAndUnknownAgents(t *testing.T) {
 	got := hooksStatus(t, r.h)
 	var lines []string
 	for _, a := range got {
-		lines = append(lines, a.Team+"/"+a.Name+":"+a.Status)
+		lines = append(lines, a.Team+"/"+a.Name+":"+a.Status+":"+strconv.Itoa(a.Rev))
 	}
-	assert.Equal(t, []string{"t0/norev:older", "t1/older:older", "t1/unknown:unknown"}, lines)
+	// The revision is there when one is recorded (older: 2); an agent whose events carry none, and one never
+	// heard from, have 0, which is what lets the dashboard say which is which.
+	assert.Equal(t, []string{"t0/norev:older:0", "t1/older:older:2", "t1/unknown:unknown:0"}, lines)
 
 	// An event with the current revision moves it off the list.
 	r.h.hooksRev.Store("aaaaaaaa-3665-4000-8000-00000000000d", agent.ClaudeHooksRev)

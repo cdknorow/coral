@@ -171,14 +171,20 @@
                 <button class="btn btn-primary" type="button" id="auto-wake-go" data-on-click="m-wake-pending-agents">Wake them</button>
             </div>
 
-            <!-- #3665: Claude agents on an older hook set (terminal_backend.js wires the buttons) -->
+            <!-- #3665: Claude agents on an older hook set (terminal_backend.js wires the buttons). One line by default;
+                 the per-agent list opens under it (#3729). -->
             <div id="hooks-banner" class="leftover-tmux-banner hooks-banner" role="alert" hidden>
-                <span class="material-icons" aria-hidden="true">update</span>
-                <div class="leftover-tmux-text"><b id="hooks-count"></b> <span id="hooks-detail">Resume them on the current hooks: one at a time, and each keeps its conversation. An agent in a turn is skipped; try it again when it is idle.</span>
-                    <ul id="hooks-list" class="hooks-list"></ul>
+                <div class="hooks-bar">
+                    <span class="material-icons" aria-hidden="true">update</span>
+                    <div class="leftover-tmux-text"><b id="hooks-count"></b></div>
+                    <button class="btn" type="button" id="hooks-toggle" aria-expanded="false" aria-controls="hooks-panel">Show agents</button>
+                    <button class="btn" type="button" id="hooks-dismiss">Not now</button>
+                    <button class="btn btn-primary" type="button" id="hooks-go">Resume all</button>
                 </div>
-                <button class="btn" type="button" id="hooks-dismiss">Not now</button>
-                <button class="btn btn-primary" type="button" id="hooks-go">Resume all</button>
+                <div id="hooks-panel" class="hooks-panel" hidden>
+                    <p id="hooks-detail" class="hooks-detail">Resume them on the current hooks: one at a time, and each keeps its conversation. An agent in a turn is skipped; try it again when it is idle.</p>
+                    <div id="hooks-list" class="hooks-list"></div>
+                </div>
             </div>
 
             <div id="welcome-screen" class="welcome">

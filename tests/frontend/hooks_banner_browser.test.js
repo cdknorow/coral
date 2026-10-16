@@ -1,7 +1,11 @@
 // Agents on an older hook set (#3665): Claude reads its hooks once, at launch, so an agent started
 // before a hook-set change keeps the old one. The dashboard lists them and resumes each through the
 // per-agent refresh-hooks route (Sleep then Wake, the conversation kept):
-//  - the banner lists each agent with its state and a per-agent button;
+//  - the banner is one line (the count, Show agents, Not now, Resume all); Show agents opens the list below it,
+//    bounded in height and scrollable, grouped by team, each agent with its state and a per-agent button (#3729);
+//  - the states say what is true: "older hooks (rev N, current is M)", "older hooks (no version reported)" for
+//    an agent whose events carry no revision, "started before hook versions were tracked" when nothing is known;
+//  - the banner sits above the home content or the phone's list and never overlaps them, at desktop and 390 px;
 //  - Resume all calls the route for each in order, at least 2 s apart; an agent in a turn (409 busy)
 //    is skipped and stays listed;
 //  - a per-agent button resumes that one; Not now hides the banner.
@@ -25,7 +29,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
     const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
     const until = (expr, what, ms = 15000) => waitFor(expr, what, { timeout: ms, soft: true });
     const AGENTS = [
-        { session_id: '0b2f6c1e-3d4a-4b5c-8d6e-0000000036a1', name: 'Lead', team: 'core', status: 'older' },
+        { session_id: '0b2f6c1e-3d4a-4b5c-8d6e-0000000036a1', name: 'Lead', team: 'core', status: 'older', rev: 2 },
         { session_id: '0b2f6c1e-3d4a-4b5c-8d6e-0000000036a2', name: 'Dev', team: 'core', status: 'unknown' },
         { session_id: '0b2f6c1e-3d4a-4b5c-8d6e-0000000036a3', name: 'QA', team: 'core', status: 'older' },
     ];
@@ -57,14 +61,25 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await l;
         await coralReady();
 
-        // ── The banner ─────────────────────────────────────────────────────
+        // ── The banner: one line, the list opens under it ──────────────────
         await until(`!document.getElementById('hooks-banner').hidden`, 'the banner');
-        const view = await ev(`({ count: document.getElementById('hooks-count').textContent,
+        check('the banner counts the agents on an older hook set', (await ev(`document.getElementById('hooks-count').textContent`)) === '3 agents run an older hook set', await ev(`document.getElementById('hooks-count').textContent`));
+        check('the list is closed by default, behind a Show agents button',
+            await ev(`document.getElementById('hooks-panel').hidden && document.getElementById('hooks-toggle').textContent === 'Show agents' && document.getElementById('hooks-toggle').getAttribute('aria-expanded') === 'false'`));
+        check('the closed banner is one line (not much taller than a button row)', (await ev(`document.getElementById('hooks-banner').getBoundingClientRect().height`)) < 90);
+        await ev(`document.getElementById('hooks-toggle').click(); true`);
+        check('Show agents opens the list and becomes Hide agents',
+            await ev(`!document.getElementById('hooks-panel').hidden && document.getElementById('hooks-toggle').textContent === 'Hide agents' && document.getElementById('hooks-toggle').getAttribute('aria-expanded') === 'true'`));
+        const view = await ev(`({ groups: [...document.querySelectorAll('#hooks-list .hooks-team h4')].map(h => h.textContent),
             rows: [...document.querySelectorAll('#hooks-list li')].map(li => li.textContent.replace(/\\s+/g, ' ').trim()) })`);
-        check('the banner counts the agents on an older hook set', view.count === '3 agents run an older hook set.', view.count);
-        check('each agent is listed with its team, its state and a button',
-            view.rows.length === 3 && ['Lead (core)', 'older hooks', 'Resume on current hooks'].every(x => view.rows[0].includes(x)) && view.rows[1].includes('not heard from since Coral started'),
+        check('the agents are grouped by team', JSON.stringify(view.groups) === JSON.stringify(['core (3)']), JSON.stringify(view.groups));
+        check('each agent shows its name, what is true of its hooks and a button',
+            view.rows.length === 3 && view.rows[0].includes('Lead') && view.rows[0].includes('older hooks (rev 2, current is 3)') && view.rows[0].includes('Resume')
+            && view.rows[1].includes('Dev') && view.rows[1].includes('started before hook versions were tracked')
+            && view.rows[2].includes('QA') && view.rows[2].includes('older hooks (no version reported)'),
             JSON.stringify(view.rows));
+        check('no row claims an agent was "not heard from" (it cannot be told)', !view.rows.some(r => /not heard from/.test(r)));
+        await ev(`document.getElementById('hooks-toggle').click(); true`);
 
         // ── Resume all ─────────────────────────────────────────────────────
         await ev(`document.getElementById('hooks-go').click(); true`);
@@ -90,6 +105,41 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await until(`!document.getElementById('hooks-banner').hidden`, 'the banner again');
         await ev(`document.getElementById('hooks-dismiss').click(); true`);
         check('Not now hides it and resumes nothing', await ev(`document.getElementById('hooks-banner').hidden && window.__hk.calls.length === 1`));
+
+        // ── Never over the home content (the operator's screenshot: 16 agents drawn across the home page) ──
+        const MANY = Array.from({ length: 16 }, (_, i) => ({ session_id: '0b2f6c1e-3d4a-4b5c-8d6e-00000000' + String(3790 + i), name: ['Lead Developer', 'Backend Dev', 'Frontend Dev', 'QA Engineer'][i % 4],
+            team: ['core', 'platform', 'mobile', 'docs'][i % 4], status: i % 3 === 1 ? 'older' : 'unknown', rev: i % 3 === 1 ? 2 : 0 }));
+        for (const [label, width, height, mobile] of [['desktop', 1400, 900, false], ['390 px', 390, 844, true]]) {
+            await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: 1, mobile });
+            const loaded = Page.loadEventFired();
+            await Page.navigate({ url: BASE + '/' });
+            await loaded;
+            await coralReady();
+            await ev(`window.__hk.agents = ${JSON.stringify(MANY)}; import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.watchHooksStatus()).then(() => true)`);
+            await until(`!document.getElementById('hooks-banner').hidden`, `the banner at ${label}`);
+            // What is on screen under it: the home page on a desktop, the phone's agent list on a phone.
+            const under = mobile ? 'mobile-agent-list' : 'welcome-screen';
+            const geometry = () => ev(`(() => { const b = document.getElementById('hooks-banner').getBoundingClientRect(), u = document.getElementById(${JSON.stringify(under)}).getBoundingClientRect(),
+                m = document.querySelector('.main-content').getBoundingClientRect(), panel = document.getElementById('hooks-list');
+                return { bannerTop: Math.round(b.top), bannerBottom: Math.round(b.bottom), height: Math.round(b.height), underTop: Math.round(u.top), underBottom: Math.round(u.bottom),
+                    mainTop: Math.round(m.top), mainBottom: Math.round(m.bottom), listClient: panel.clientHeight, listScroll: panel.scrollHeight,
+                    buttonsInside: ['hooks-go', 'hooks-dismiss', 'hooks-toggle'].every(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.left >= b.left - 1 && r.right <= b.right + 1 && r.top >= b.top - 1 && r.bottom <= b.bottom + 1; }) }; })()`);
+            let g = await geometry();
+            check(`${label}: the banner is above the content, not over it (banner bottom ${g.bannerBottom} <= content top ${g.underTop})`, g.bannerBottom <= g.underTop + 1, JSON.stringify(g));
+            check(`${label}: closed it is compact (${g.height} px)`, g.height <= (mobile ? 130 : 80), String(g.height));
+            check(`${label}: its buttons sit inside the banner`, g.buttonsInside);
+            await ev(`document.getElementById('hooks-toggle').click(); true`);
+            g = await geometry();
+            check(`${label}: open, the banner stays above the content and inside the main area`, g.bannerBottom <= g.underTop + 1 && g.bannerBottom <= g.mainBottom + 1 && g.bannerTop >= g.mainTop - 1, JSON.stringify(g));
+            check(`${label}: open, the list is bounded (${g.listClient} px) and scrolls (${g.listScroll} px of rows)`, g.listClient <= 330 && g.listScroll > g.listClient);
+            check(`${label}: open, 4 team groups`, (await ev(`document.querySelectorAll('#hooks-list .hooks-team').length`)) === 4);
+            check(`${label}: open, the content below it can still be reached (it is in the scroll area or visible)`, g.underBottom > g.underTop);
+            if (!mobile) {
+                // The home page's heading is reachable and not covered by the banner.
+                const covered = await ev(`(() => { const h = document.querySelector('#welcome-screen h1'); h.scrollIntoView({ block: 'center' }); const r = h.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!hit && !hit.closest('#hooks-banner'); })()`);
+                check('desktop: the home heading is not covered by the banner', covered);
+            }
+        }
     } catch (e) {
         check('no exception', false, e.message);
     } finally {

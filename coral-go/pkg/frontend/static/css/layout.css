@@ -798,8 +798,11 @@ body.panel-dragging .sidebar {
 /* ── Welcome Screen ────────────────────────────────────────── */
 
 .welcome {
-    position: absolute;
-    inset: 0;
+    /* In normal flow, filling what is left of the main area: the banners above it (hook set, auto-wake, leftover tmux)
+       take their own room instead of being drawn under, or over, a screen that covers everything (#3729). */
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
     --welcome-preset-card-width: 190px;
     --welcome-preset-gap: 14px;
     --welcome-preset-columns: 3;
@@ -813,12 +816,16 @@ body.panel-dragging .sidebar {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    /* Centered when there is room, from the top (and scrollable) when there is not: justify-content: center would
+       push the top of a too-tall screen out of reach, as when a banner above takes room (#3729). */
+    justify-content: flex-start;
     overflow-y: auto;
     color: var(--text-secondary);
     gap: 8px;
     padding: 24px 0;
 }
+.welcome > :first-child { margin-top: auto; }
+.welcome > :last-child { margin-bottom: auto; }
 
 .welcome h2 {
     font-size: 20px;

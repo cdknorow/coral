@@ -39,15 +39,22 @@ const (
 	hooksUnknown = "unknown" // nothing recorded and no event since this server started
 )
 
-// hooksStatusOf classifies one session: the recorded revision (the column, or what its events
-// said since this server started), else whether its events carried none.
-func (h *SessionsHandler) hooksStatusOf(sessionID string, recorded map[string]int) string {
+// hooksRevOf is the newest hook-set revision known for a session: the recorded one (the column, set
+// at every launch Coral made) or what its events said since this server started. 0 means none.
+func (h *SessionsHandler) hooksRevOf(sessionID string, recorded map[string]int) int {
 	rev := recorded[sessionID]
 	if v, ok := h.hooksRev.Load(sessionID); ok {
 		if n, _ := v.(int); n > rev {
 			rev = n
 		}
 	}
+	return rev
+}
+
+// hooksStatusOf classifies one session: the recorded revision (the column, or what its events
+// said since this server started), else whether its events carried none.
+func (h *SessionsHandler) hooksStatusOf(sessionID string, recorded map[string]int) string {
+	rev := h.hooksRevOf(sessionID, recorded)
 	switch {
 	case rev >= agent.ClaudeHooksRev:
 		return hooksCurrent
@@ -60,11 +67,15 @@ func (h *SessionsHandler) hooksStatusOf(sessionID string, recorded map[string]in
 	return hooksUnknown
 }
 
+// A status says what Coral can tell: "older" with a rev is a recorded lower revision; "older" without
+// one is an agent whose events carry no revision (a hook set before they did); "unknown" is none of
+// these: no revision recorded and no event heard since this server started (so it may well be current).
 type hooksAgent struct {
 	SessionID string `json:"session_id"`
 	Name      string `json:"name"`
 	Team      string `json:"team,omitempty"`
 	Status    string `json:"status"`
+	Rev       int    `json:"rev,omitempty"` // the revision it runs, when one is recorded; the current one is "current"
 }
 
 // HooksStatus lists the running Claude agents that aren't on the current hook set, by team.
@@ -91,7 +102,7 @@ func (h *SessionsHandler) HooksStatus(w http.ResponseWriter, r *http.Request) {
 			if name == "" {
 				name = ls.AgentName
 			}
-			agents = append(agents, hooksAgent{SessionID: ls.SessionID, Name: name, Team: derefStrPtr(ls.BoardName), Status: st})
+			agents = append(agents, hooksAgent{SessionID: ls.SessionID, Name: name, Team: derefStrPtr(ls.BoardName), Status: st, Rev: h.hooksRevOf(ls.SessionID, recorded)})
 		}
 	}
 	sort.SliceStable(agents, func(i, j int) bool {

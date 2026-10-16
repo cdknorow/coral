@@ -279,7 +279,6 @@ export async function dismissAutoWake() {
 
 const HOOKS_DISMISS_KEY = 'coral.hooksBanner.dismissed';
 let _hooksWired = false;
-let _hooksDetailText = '';
 
 async function hooksStatus() {
     const resp = await fetch('/api/system/hooks-status');
@@ -294,12 +293,18 @@ function hooksDismissed() {
 function wireHooksBanner() {
     if (_hooksWired) return;
     _hooksWired = true;
-    _hooksDetailText = $('hooks-detail')?.textContent || '';
     $('hooks-go')?.addEventListener('click', () => resumeAllOnCurrentHooks());
     $('hooks-dismiss')?.addEventListener('click', () => {
         try { sessionStorage.setItem(HOOKS_DISMISS_KEY, '1'); } catch { /* it just hides for now */ }
         const banner = $('hooks-banner');
         if (banner) banner.hidden = true;
+    });
+    $('hooks-toggle')?.addEventListener('click', () => {
+        const panel = $('hooks-panel'), btn = $('hooks-toggle');
+        if (!panel || !btn) return;
+        panel.hidden = !panel.hidden;
+        btn.setAttribute('aria-expanded', String(!panel.hidden));
+        btn.textContent = panel.hidden ? 'Show agents' : 'Hide agents';
     });
     $('hooks-list')?.addEventListener('click', ev => {
         const btn = ev.target.closest('button[data-session-id]');
@@ -307,22 +312,53 @@ function wireHooksBanner() {
     });
 }
 
-function hooksRow(agent) {
+/** What Coral can truthfully say about one agent's hook set. An agent on a hook set from before the revision
+ *  existed never reports one, so "older" without a revision is all the server can tell; "unknown" is an agent
+ *  with no revision recorded and no event heard since Coral started, which may well be current. */
+export function hooksStateText(agent, current) {
+    if (agent.status === 'unknown') return 'started before hook versions were tracked';
+    if (agent.rev > 0) return `older hooks (rev ${agent.rev}, current is ${current})`;
+    return 'older hooks (no version reported)';
+}
+
+function hooksRow(agent, current) {
     const li = document.createElement('li');
     const name = document.createElement('span');
     name.className = 'hooks-name';
-    name.textContent = agent.team ? `${agent.name} (${agent.team})` : agent.name;
+    name.textContent = agent.name;
+    name.title = agent.team ? `${agent.name} (${agent.team})` : agent.name;
     const status = document.createElement('span');
     status.className = 'hooks-state';
-    status.textContent = agent.status === 'unknown' ? 'not heard from since Coral started' : 'older hooks';
+    status.textContent = hooksStateText(agent, current);
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-small';
-    btn.textContent = 'Resume on current hooks';
+    btn.textContent = 'Resume';
+    btn.title = `Resume ${agent.name} on the current hooks`;
     btn.dataset.sessionId = agent.session_id;
     btn.dataset.name = agent.name;
     li.append(name, status, btn);
     return li;
+}
+
+/** The agents grouped by team (the server sorts them by team, then name). */
+function hooksGroups(agents, current) {
+    const groups = new Map();
+    for (const a of agents) {
+        const team = a.team || 'No team';
+        if (!groups.has(team)) groups.set(team, []);
+        groups.get(team).push(a);
+    }
+    return [...groups].map(([team, list]) => {
+        const section = document.createElement('section');
+        section.className = 'hooks-team';
+        const h = document.createElement('h4');
+        h.textContent = `${team} (${list.length})`;
+        const ul = document.createElement('ul');
+        ul.append(...list.map(a => hooksRow(a, current)));
+        section.append(h, ul);
+        return section;
+    });
 }
 
 function showHooksBanner(st) {
@@ -332,8 +368,8 @@ function showHooksBanner(st) {
     banner.hidden = agents.length === 0 || hooksDismissed();
     if (!agents.length) return;
     wireHooksBanner();
-    $('hooks-count').textContent = agents.length === 1 ? '1 agent runs an older hook set.' : `${agents.length} agents run an older hook set.`;
-    $('hooks-list').replaceChildren(...agents.map(hooksRow));
+    $('hooks-count').textContent = agents.length === 1 ? '1 agent runs an older hook set' : `${agents.length} agents run an older hook set`;
+    $('hooks-list').replaceChildren(...hooksGroups(agents, st.current));
 }
 
 /** After a start, list the agents on an older hook set (Operator only: not through Coral Hub). */
@@ -369,14 +405,16 @@ export async function resumeAllOnCurrentHooks() {
     let st;
     try { st = await hooksStatus(); } catch { return; }
     const agents = (st.agents || []).slice();
-    const detail = $('hooks-detail');
+    // Progress shows in the banner's one line (the detail sits in the collapsed list).
+    const count = $('hooks-count');
+    const countText = count ? count.textContent : '';
     const buttons = [$('hooks-go'), $('hooks-dismiss')];
     for (const btn of buttons) if (btn) btn.disabled = true;
     let resumed = 0;
     let busy = 0;
     for (let i = 0; i < agents.length; i++) {
         if (i) await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000)); // sleep-ok: the stagger between resumes
-        if (detail) detail.textContent = `Resuming ${i + 1} of ${agents.length}…`;
+        if (count) count.textContent = `Resuming ${i + 1} of ${agents.length}…`;
         try {
             const r = await refreshHooksOf(agents[i].session_id, false);
             if (r.data.ok) resumed++;
@@ -384,7 +422,7 @@ export async function resumeAllOnCurrentHooks() {
         } catch { /* the next one */ }
     }
     for (const btn of buttons) if (btn) btn.disabled = false;
-    if (detail) detail.textContent = _hooksDetailText;
+    if (count) count.textContent = countText;
     showToast(busy
         ? `Resumed ${resumed}; ${busy} in a turn were skipped. Resume all again when they are idle.`
         : `Resumed ${resumed} of ${agents.length} agents on the current hooks`);
