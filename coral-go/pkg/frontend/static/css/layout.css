@@ -985,9 +985,6 @@ body.panel-dragging .sidebar {
 }
 .sidebar-collapse-btn.active { color: var(--accent); }
 
-/* Agent counts on team, folder and sub-group headers are hidden. */
-.sidebar .session-group-count { display: none; }
-
 /* Coral Hub connection indicator in the header (#3544) */
 .hub-indicator[hidden] { display: none; }
 .hub-indicator[data-state="connected"] { color: var(--success); } /* a status, not a selected button (the accent) */
