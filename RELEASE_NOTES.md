@@ -15,6 +15,7 @@
     - A secret directly after another keyword (`token: Authorization: Basic ...`).
     - Everything nested under a secret-named JSON key (`{"secrets":{...}}`), and a number under one (`{"password": 12345678}`).
     - AWS access key IDs that don't decode as real ones, the AWS documentation example key, and shorter or looser token shapes than the providers issue (a 30-character `github_pat_`, a 40-character `sk-ant-` key, `sk-` keys, a loose `xoxb-`).
+    - A secret-named query parameter followed by another parameter (?api_key=...&limit=5; the last parameter is caught), and a URL password whose host is example.com or example.org (the rules treat it as a placeholder).
   - Text the rules can't check in time (3 s for a Coral Hub reply or stream unit, 0.25 s for a coral.log line; input dense with keywords) is not passed on: Coral Hub shows "could not be checked", and coral.log has a note in place of the line.
   - A secret in terminal output is checked line by line; a line longer than 8 KiB is checked in overlapping pieces. An unfinished line is held until it ends, or for up to a second when the output goes quiet; then it is shown, except a token-like tail.
 
