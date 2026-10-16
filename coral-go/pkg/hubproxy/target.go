@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/httputil"
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 // Target is a resolved remote server the proxy can send requests to.

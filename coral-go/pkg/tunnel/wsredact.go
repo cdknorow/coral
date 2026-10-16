@@ -32,7 +32,7 @@ import (
 	"sync"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 // How long a terminal's held tail may wait for the next frame: the first letters of a prefix

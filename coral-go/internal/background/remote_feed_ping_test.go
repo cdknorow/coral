@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
-	"nhooyr.io/websocket"
 )
 
 // pingConn is a feed socket whose pings fail as the test says.

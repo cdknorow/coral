@@ -6,6 +6,7 @@ require (
 	fyne.io/systray v1.12.0
 	github.com/0xCarbon/go-sqlite3 v1.15.1
 	github.com/UserExistsError/conpty v0.1.4
+	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gen2brain/beeep v0.11.2
@@ -22,7 +23,6 @@ require (
 	golang.org/x/term v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.43.0
-	nhooyr.io/websocket v1.8.17
 )
 
 require (

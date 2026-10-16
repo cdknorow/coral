@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/go-chi/chi/v5"
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
@@ -24,7 +24,7 @@ import (
 // wsAcceptOptions returns WebSocket accept options with origin validation: only
 // this server's own page (the Origin's host is the request's Host). Other ports of
 // localhost are not allowed: a page there could open /ws/terminal and type into an
-// agent (#3511). The nhooyr.io/websocket library allows same-origin by itself; the
+// agent (#3511). The websocket library (github.com/coder/websocket) allows same-origin by itself; the
 // request host is added for remote access by IP or hostname.
 func (h *SessionsHandler) wsAcceptOptions(r *http.Request) *websocket.AcceptOptions {
 	var patterns []string

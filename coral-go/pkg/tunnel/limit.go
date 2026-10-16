@@ -237,16 +237,24 @@ func (lm *limiter) refused(c requestClass, path string, perUser bool) {
 	}
 }
 
+// The reasons a WebSocket refused for load carries (the StreamError message): the user's share
+// of the pool, or the machine's whole pool (#3663). The hub maps each to a fixed text.
+const (
+	BusyUser    = "hub_busy:user"
+	BusyMachine = "hub_busy:machine"
+)
+
 // busy answers a stream whose pool is full: a 429 with Retry-After and the limit marker for an
 // HTTP request; a WebSocket open is refused as too many streams (the hub answers 503, Retry-After).
 func busy(s *Stream, perUser bool) {
 	if s.Header.Kind == KindWS {
-		// The hub shows this text in the terminal (#3663), so it says which limit and what to do.
-		msg := "This computer has too many terminals open through Coral Hub at once; close one, or try again shortly."
+		// A token, not text: the hub shows its own fixed text for each (#3663), so no string of
+		// this machine's reaches a browser.
+		token := BusyMachine
 		if perUser {
-			msg = "You have too many terminals open on this computer through Coral Hub; close one, or try again shortly."
+			token = BusyUser
 		}
-		s.Reject(CodeTooManyStreams, msg, 0)
+		s.Reject(CodeTooManyStreams, token, 0)
 		return
 	}
 	msg := `{"error":"this computer is answering too many Coral Hub requests at once; try again shortly","code":"hub_busy"}`

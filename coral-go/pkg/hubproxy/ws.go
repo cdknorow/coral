@@ -11,10 +11,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/cdknorow/coral/pkg/tunnel"
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 const wsReadLimit = 16 << 20
@@ -137,13 +138,13 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 	// Dial the remote first so failures can still be reported as HTTP errors.
 	up, err := t.DialWS(r.Context(), raw, stripAPIKey(r.URL.RawQuery), requestedProtocols(r))
 	if err != nil {
-		if msg, busy := tooManyStreams(err); busy {
+		if token, busy := tooManyStreams(err); busy {
 			// A browser can't read a refused handshake's status, so a busy machine's refusal
 			// would only look like a dropped terminal that keeps reconnecting. The socket is
-			// accepted and closed at once with StatusTooManyStreams and the machine's reason,
-			// which the terminal shows (#3663).
+			// accepted and closed at once, with one close frame, StatusTooManyStreams and the
+			// fixed text for the machine's token, which the terminal shows (#3663).
 			if down, aerr := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: patterns}); aerr == nil {
-				down.Close(StatusTooManyStreams, closeReason(msg))
+				down.Close(StatusTooManyStreams, busyText(token))
 			}
 			return
 		}
@@ -161,6 +162,10 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 		return
 	}
 	down.SetReadLimit(wsReadLimit)
+	// Each side is closed once (#3663, coral-hub): the pump that sees one side end closes the
+	// other, and the second pump's exit, or a close the peer already sent, must not send another
+	// close frame (Chrome: "Close received after close", and the code and reason are lost).
+	upC, downC := &onceConn{WSConn: up}, &onceConn{WSConn: down}
 
 	ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
 	defer cancel()
@@ -170,8 +175,8 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 			select {
 			case <-pol.Closed:
 				// Access was withdrawn: end both sides with a code the UI can recognise.
-				down.Close(StatusAccessChanged, "access changed")
-				up.Close(websocket.StatusGoingAway, "")
+				downC.Close(StatusAccessChanged, "access changed")
+				upC.Close(websocket.StatusGoingAway, "")
 				cancel()
 			case <-ctx.Done():
 			}
@@ -181,11 +186,11 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		pumpFrom(ctx, cancel, down, up, "remote connection lost", clientGate{pol.AllowClientFrame, pol.ReadOnlyNotice}, pol.Closed)
+		pumpFrom(ctx, cancel, downC, upC, "remote connection lost", clientGate{pol.AllowClientFrame, pol.ReadOnlyNotice}, pol.Closed)
 	}()
 	go func() {
 		defer wg.Done()
-		pumpFrom(ctx, cancel, up, down, "browser connection lost", clientGate{}, pol.Closed)
+		pumpFrom(ctx, cancel, upC, downC, "browser connection lost", clientGate{}, pol.Closed)
 	}()
 	wg.Wait()
 }
@@ -253,6 +258,9 @@ func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, l
 			var ce websocket.CloseError
 			if errors.As(err, &ce) {
 				reason = ce.Reason
+				if oc, ok := src.(*onceConn); ok {
+					oc.peerClosed() // the library answered src's close: it gets no other
+				}
 			}
 			switch {
 			case ctx.Err() != nil && code == -1:
@@ -263,10 +271,7 @@ func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, l
 			case code == websocket.StatusNoStatusRcvd || code == websocket.StatusAbnormalClosure || code == websocket.StatusTLSHandshake:
 				dst.Close(websocket.StatusNormalClosure, "")
 			default:
-				if len(reason) > 123 {
-					reason = reason[:123]
-				}
-				dst.Close(code, reason)
+				dst.Close(code, closeReasonFor(code, reason))
 			}
 			return
 		}
@@ -312,14 +317,63 @@ func tooManyStreams(err error) (string, bool) {
 	return "", false
 }
 
-// closeReason is msg fit for a close frame (at most 123 bytes, whole runes), or a default.
-func closeReason(msg string) string {
-	if msg == "" {
-		msg = "Too many terminals are open through Coral Hub on this computer; close one, or try again shortly."
+// onceConn sends at most one close frame on a connection: the first Close wins, and a close
+// the peer sent (which the library already answered) counts as one.
+type onceConn struct {
+	WSConn
+	once sync.Once
+}
+
+func (c *onceConn) Close(code websocket.StatusCode, reason string) error {
+	var err error
+	c.once.Do(func() { err = c.WSConn.Close(code, reason) })
+	return err
+}
+
+func (c *onceConn) peerClosed() { c.once.Do(func() {}) }
+
+// The fixed texts a busy refusal shows, by the machine's token (tunnel.BusyUser,
+// tunnel.BusyMachine): no machine string reaches the browser on StatusTooManyStreams.
+const (
+	busyUserText    = "You have too many terminals open on this computer through Coral Hub. Close one, or try again shortly."
+	busyMachineText = "This computer has too many terminals open through Coral Hub. Close one, or try again shortly."
+)
+
+// busyText is the fixed text for a machine's busy token (anything else: the machine is full).
+func busyText(token string) string {
+	if token == tunnel.BusyUser {
+		return busyUserText
 	}
-	for len(msg) > 123 {
-		_, size := utf8.DecodeLastRuneInString(msg)
-		msg = msg[:len(msg)-size]
+	return busyMachineText
+}
+
+// closeReasonFor is a relayed close's reason: the fixed text on StatusTooManyStreams (keyed by
+// the token in the reason), otherwise the reason normalised.
+func closeReasonFor(code websocket.StatusCode, reason string) string {
+	if code == StatusTooManyStreams {
+		return busyText(reason)
 	}
-	return msg
+	return normalizeCloseReason(reason)
+}
+
+// normalizeCloseReason makes a relayed reason safe for a close frame: valid UTF-8 first (an
+// invalid byte becomes U+FFFD), C0 and C1 controls become spaces, Unicode format characters
+// (bidi overrides, zero-width characters, ...) and the line and paragraph separators are
+// dropped (Security), then at most 123 bytes, cut on a rune boundary (#3663, coral-hub: a byte
+// cut could split a character).
+func normalizeCloseReason(reason string) string {
+	reason = strings.Map(func(r rune) rune {
+		switch {
+		case r < 0x20 || (r >= 0x7f && r <= 0x9f):
+			return ' '
+		case unicode.Is(unicode.Cf, r) || r == 0x2028 || r == 0x2029:
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(reason, "\uFFFD"))
+	for len(reason) > 123 {
+		_, size := utf8.DecodeLastRuneInString(reason)
+		reason = reason[:len(reason)-size]
+	}
+	return reason
 }

@@ -43,7 +43,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 
 	"github.com/cdknorow/coral/internal/store"
 	proxy "github.com/cdknorow/coral/pkg/hubproxy"

@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 // Meter throttles the bytes a TunnelTarget moves, so one tenant cannot saturate a tunnel or

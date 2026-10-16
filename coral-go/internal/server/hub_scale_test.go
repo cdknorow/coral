@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
-	"nhooyr.io/websocket"
 
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/store"

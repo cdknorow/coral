@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
-	"nhooyr.io/websocket"
 )
 
 const (

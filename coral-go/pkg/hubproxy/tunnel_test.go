@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"nhooyr.io/websocket"
 )
 
 type tunnelResolver struct{ sess *tunnel.Session }

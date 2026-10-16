@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"nhooyr.io/websocket"
 )
 
 const (
@@ -78,7 +78,7 @@ func TestOneHubUserCannotFillTheLongOrSearchPool(t *testing.T) {
 	var se *StreamError
 	require.ErrorAs(t, err, &se, "user A's terminal over their long share")
 	assert.Equal(t, CodeTooManyStreams, se.Code)
-	assert.Contains(t, se.Message, "You have too many terminals open", "the refusal says it is the user's own share (the hub shows it)")
+	assert.Equal(t, BusyUser, se.Message, "the refusal says it is the user's own share (the hub maps it to its text)")
 	resp, body = rig.getAs(userB, "/api/board/p/waits/poll?now=1")
 	assert.Equal(t, 200, resp.StatusCode, "user B's long poll passes: %s", body)
 

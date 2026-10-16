@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"nhooyr.io/websocket"
 )
 
 // markingTunnelResolver is tunnelResolver that also records MarkStatus calls.

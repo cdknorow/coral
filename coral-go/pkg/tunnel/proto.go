@@ -16,8 +16,9 @@
 // Half-closing a stream from the hub side after the request has been sent
 // means "cancel".
 //
-// Follow-up: nhooyr.io/websocket is deprecated upstream in favour of
-// github.com/coder/websocket (same API); migrate pkg/tunnel and pkg/hubproxy together.
+// WebSockets use github.com/coder/websocket, the maintained successor of nhooyr.io/websocket
+// (same API), since #3663: nhooyr answered a close frame it had already sent, so a relayed
+// close reached the browser twice.
 
 package tunnel
 

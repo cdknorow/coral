@@ -3,7 +3,7 @@ package hubproxy
 import (
 	"context"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 // StatusAccessChanged closes a proxied WebSocket whose access was withdrawn (the server was

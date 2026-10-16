@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"nhooyr.io/websocket"
 )
 
 // fakeWS is a scripted WSConn: Read returns the queued frames, then an error; Write

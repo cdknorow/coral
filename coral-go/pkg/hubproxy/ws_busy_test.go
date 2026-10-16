@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"nhooyr.io/websocket"
 )
 
 // #3663: a terminal the machine refuses because too many are open through the hub reaches the

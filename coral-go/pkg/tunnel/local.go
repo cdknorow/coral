@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 // ── Path guard ──────────────────────────────────────────────────────

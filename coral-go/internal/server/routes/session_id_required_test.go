@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"nhooyr.io/websocket"
 )
 
 // #3211 part 2: every per-agent route that reaches a terminal names its session. A bare agent
