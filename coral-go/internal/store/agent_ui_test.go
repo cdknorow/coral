@@ -11,7 +11,7 @@ import (
 func TestAgentUIPersistenceAndEventCursor(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "ui.db")
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	p, err := db.PutAgentUI(ctx, "session", "diagram", "Diagram", "<svg/>")
 	require.NoError(t, err)
@@ -21,7 +21,7 @@ func TestAgentUIPersistenceAndEventCursor(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, count)
 	require.NoError(t, db.Close())
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer db.Close()
 	got, err := db.GetAgentUI(ctx, "session", "diagram")

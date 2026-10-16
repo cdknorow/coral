@@ -149,7 +149,7 @@ func seedBatchBoard(t *testing.T, s *Store, n int) {
 
 func TestListTasks_BatchedMatchesUnbatched(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	defer s.Close()
 	seedBatchBoard(t, s, 120)
@@ -174,7 +174,7 @@ func TestListTasks_BatchedMatchesUnbatched(t *testing.T) {
 func TestListTasks_QueryCountIndependentOfTaskCount(t *testing.T) {
 	queriesFor := func(n int) int64 {
 		path := filepath.Join(t.TempDir(), "board.db")
-		s, err := NewStore(path)
+		s, err := NewStoreWithKey(path, "")
 		require.NoError(t, err)
 		defer s.Close()
 		seedBatchBoard(t, s, n)

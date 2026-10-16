@@ -64,7 +64,7 @@ func TestBoardStatusLoad(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	boardPath := filepath.Join(dataDir, "messageboard.db")
-	bs, err := board.NewStore(boardPath)
+	bs, err := board.NewStoreWithKey(boardPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	terminal := newMockTerminal()

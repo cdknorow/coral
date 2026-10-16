@@ -49,7 +49,7 @@ func TestBoardPollAndSeedPerf(t *testing.T) {
 		buildPerfBoard(t, path, n, cursors == "zero")
 
 		// The startup seed, as at a start: a fresh store, nothing cached.
-		s, err := NewStore(path)
+		s, err := NewStoreWithKey(path, "")
 		require.NoError(t, err)
 		seedCtx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 		start := time.Now()
@@ -126,7 +126,7 @@ func TestBoardPollAndSeedPerf(t *testing.T) {
 func buildPerfBoard(t *testing.T, path string, n int, zeroCursors bool) {
 	t.Helper()
 	_ = os.Remove(path)
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()

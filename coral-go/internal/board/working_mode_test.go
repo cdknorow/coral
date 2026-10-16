@@ -10,7 +10,7 @@ import (
 func TestWorkingModeClaimSnapshot(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	defer func() { s.Close() }()
 	mode, err := s.GetWorkingMode(ctx, "team")
@@ -38,7 +38,7 @@ func TestWorkingModeClaimSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, original, reclaimed.Workflow.Instructions)
 	s.Close()
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	mode, err = s.GetWorkingMode(ctx, "team")
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestWorkingModeClaimSnapshot(t *testing.T) {
 }
 
 func TestNoneModeAddsNoInstructions(t *testing.T) {
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()

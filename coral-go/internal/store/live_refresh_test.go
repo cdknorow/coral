@@ -44,7 +44,7 @@ func TestLiveRefreshScopedCountsAndGitFallback(t *testing.T) {
 }
 
 func BenchmarkLiveRefreshFileCounts(b *testing.B) {
-	db, err := Open(filepath.Join(b.TempDir(), "profile.db"))
+	db, err := OpenWithKey(context.Background(), filepath.Join(b.TempDir(), "profile.db"), "")
 	if err != nil {
 		b.Fatal(err)
 	}

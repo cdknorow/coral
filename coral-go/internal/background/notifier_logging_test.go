@@ -150,7 +150,7 @@ func TestBoardNotifier_RoutinePassesLogNothingAtInfo(t *testing.T) {
 func TestBoardNotifier_UnreadLookupFailureIsWarn(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")
-	bs, err := board.NewStore(path)
+	bs, err := board.NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	sid := "11111111-2222-3333-4444-555555555555"

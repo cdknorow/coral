@@ -316,7 +316,7 @@ func TestSubagentStore_GetSubagentSpendEmptyInput(t *testing.T) {
 // An existing database gains the table on open, without disturbing its data.
 func TestSubagentSchema_CreatedOnReopenOfExistingDB(t *testing.T) {
 	path := t.TempDir() + "/existing.db"
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, NewSessionStore(db).RegisterLiveSession(ctx, &LiveSession{
@@ -325,7 +325,7 @@ func TestSubagentSchema_CreatedOnReopenOfExistingDB(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer db.Close()
 	require.NoError(t, NewSubagentStore(db).UpsertSubagent(ctx, &Subagent{SessionID: mainAgentA, SubagentID: "s1"}))
@@ -349,7 +349,7 @@ func TestSubagentStore_FinishedRoundTripsAndCanReopen(t *testing.T) {
 // finished column must gain the column on open, keeping its rows.
 func TestSubagentSchema_FinishedColumnIsMigratedIn(t *testing.T) {
 	path := t.TempDir() + "/older.db"
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, NewSessionStore(db).RegisterLiveSession(ctx, &LiveSession{
@@ -359,7 +359,7 @@ func TestSubagentSchema_FinishedColumnIsMigratedIn(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer db.Close()
 	st := NewSubagentStore(db)

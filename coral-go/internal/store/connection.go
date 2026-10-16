@@ -59,22 +59,11 @@ func (d *DB) Close() error {
 	return firstErr
 }
 
-// Open creates a new DB connection to the given SQLite path.
-// It ensures the parent directory exists, sets WAL mode, and runs migrations.
-func Open(dbPath string) (*DB, error) {
-	return OpenWithKey(context.Background(), dbPath, "")
-}
-
 // OpenWithKey opens a plaintext database when key is empty, or a SQLCipher
 // database when key is present. The caller must resolve the key before this
 // function is called so no startup path can silently fall back to plaintext.
 func OpenWithKey(ctx context.Context, dbPath, key string) (*DB, error) {
 	return openWithDriver(ctx, dbPath, key)
-}
-
-// OpenWithContext creates a new DB connection with context support.
-func OpenWithContext(ctx context.Context, dbPath string) (*DB, error) {
-	return OpenWithKey(ctx, dbPath, "")
 }
 
 func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {

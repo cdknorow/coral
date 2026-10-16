@@ -15,7 +15,7 @@ import (
 func seedUnreadBoard(tb testing.TB, n int) *Store {
 	tb.Helper()
 	ctx := context.Background()
-	s, err := NewStore(filepath.Join(tb.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(tb.TempDir(), "board.db"), "")
 	require.NoError(tb, err)
 	tb.Cleanup(func() { s.Close() })
 	_, err = s.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "claude-orch", nil, "all")

@@ -509,7 +509,7 @@ func TestHubOperatorSetting(t *testing.T) {
 	defer db.Close()
 	ss := store.NewSessionStore(db)
 	h := NewCloudHandler(ss, t.TempDir())
-	bs, err := board.NewStore(filepath.Join(t.TempDir(), "b.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "b.db"), "")
 	require.NoError(t, err)
 	defer bs.Close()
 	h.SetBoardStore(bs)

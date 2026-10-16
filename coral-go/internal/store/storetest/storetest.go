@@ -8,6 +8,7 @@
 package storetest
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func templateImage() ([]byte, error) {
 		}
 		defer os.RemoveAll(dir)
 		path := filepath.Join(dir, "template.db")
-		db, e := store.Open(path)
+		db, e := store.OpenWithKey(context.Background(), path, "")
 		if e != nil {
 			err = fmt.Errorf("storetest: migrate template: %w", e)
 			return
@@ -71,5 +72,5 @@ func Open(tb testing.TB, path string) (*store.DB, error) {
 			return nil, err
 		}
 	}
-	return store.Open(path)
+	return store.OpenWithKey(context.Background(), path, "")
 }

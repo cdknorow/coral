@@ -83,7 +83,7 @@ func TestEditedFileCountsMatchTheAggregate(t *testing.T) {
 // A database from before #3846 gets the table filled from its events on open.
 func TestEditedFileCountsAreFilledOnUpgrade(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.db")
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	ctx := context.Background()
 	for i := 0; i < 30; i++ {
@@ -97,7 +97,7 @@ func TestEditedFileCountsAreFilledOnUpgrade(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.NoError(t, db.Close())
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	got, err := NewTaskStore(db).GetEditedFileCounts(ctx, []string{"s0", "s1", "s2"})

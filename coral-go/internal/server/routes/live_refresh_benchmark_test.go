@@ -26,7 +26,7 @@ func BenchmarkLiveRefreshList(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer db.Close()
-	bs, err := board.NewStore(filepath.Join(root, "board.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(root, "board.db"), "")
 	if err != nil {
 		b.Fatal(err)
 	}

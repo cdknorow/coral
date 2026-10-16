@@ -199,11 +199,6 @@ func (s *Store) SetCompletionChecksEnabled(enabled bool) {
 
 func (s *Store) CompletionChecksEnabled() bool { return s.completionChecksEnabled }
 
-// NewStore creates a new board Store with its own database.
-func NewStore(dbPath string) (*Store, error) {
-	return NewStoreWithKey(dbPath, "")
-}
-
 // NewStoreWithKey opens the board database with SQLCipher when key is set.
 func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	testguard.CheckDataPath(dbPath)

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -29,7 +30,7 @@ func migratedTemplate(t *testing.T) []byte {
 		}
 		defer os.RemoveAll(dir)
 		path := filepath.Join(dir, "template.db")
-		db, err := Open(path)
+		db, err := OpenWithKey(context.Background(), path, "")
 		if err != nil {
 			templateErr = err
 			return

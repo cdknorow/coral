@@ -26,7 +26,7 @@ func TestStandardBoardStoreRejectsKeyAndEncryptedFileWithoutMutation(t *testing.
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewStore(path); !errors.Is(err, dbcrypt.ErrEncryptionUnavailable) {
+	if _, err := NewStoreWithKey(path, ""); !errors.Is(err, dbcrypt.ErrEncryptionUnavailable) {
 		t.Fatalf("encrypted file: want ErrEncryptionUnavailable, got %v", err)
 	}
 	got, _ := os.ReadFile(path)
@@ -40,7 +40,7 @@ func TestStandardBoardStoreRejectsKeyAndEncryptedFileWithoutMutation(t *testing.
 }
 
 func TestStandardBoardStorePlaintextStillWorks(t *testing.T) {
-	s, err := NewStore(filepath.Join(t.TempDir(), "messageboard.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "messageboard.db"), "")
 	if err != nil {
 		t.Fatalf("standard plaintext board open failed: %v", err)
 	}

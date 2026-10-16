@@ -827,13 +827,6 @@ func (b *byteBudget) give(n int64) {
 	b.mu.Unlock()
 }
 
-// inUse is the bytes reserved now (tests).
-func (b *byteBudget) inUse() int64 {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.used
-}
-
 type jsonReadResult int
 
 const (

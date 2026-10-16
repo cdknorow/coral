@@ -78,12 +78,6 @@ var remoteAgentHubConfig background.RemoteAgentHubConfig
 // templateData is passed to Go templates during rendering.
 type templateData = frontend.PageData
 
-// New creates a Server with all routes registered.
-// If backend is nil, the server will use tmux-based terminal management.
-func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal) *Server {
-	return NewWithKey(cfg, db, backend, terminal, "")
-}
-
 // NewWithKey constructs the server and opens its separate board database with
 // the same optional SQLCipher key used by the primary store.
 func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, dbKey string) *Server {

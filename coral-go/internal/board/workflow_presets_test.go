@@ -13,7 +13,7 @@ import (
 func TestWorkflowPresetPersistenceAndSnapshots(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	defer func() { s.Close() }()
 	_, err = s.SaveWorkflowPreset(ctx, "team", "review", "Review", "Review changes carefully.", true)
@@ -37,7 +37,7 @@ func TestWorkflowPresetPersistenceAndSnapshots(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, original, task.Workflow.Instructions)
 	require.NoError(t, s.Close())
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	presets, err := s.ListWorkflowPresets(ctx, "team")
 	require.NoError(t, err)
@@ -57,7 +57,7 @@ func TestWorkflowPresetPersistenceAndSnapshots(t *testing.T) {
 }
 
 func TestWorkflowPresetResetAndCompatibility(t *testing.T) {
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
@@ -108,7 +108,7 @@ func TestWorkflowPresetResetAndCompatibility(t *testing.T) {
 }
 
 func TestWorkflowPresetValidationAndConcurrentCreation(t *testing.T) {
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
@@ -151,7 +151,7 @@ func TestWorkflowPresetValidationAndConcurrentCreation(t *testing.T) {
 }
 
 func TestWorkflowPresetBoardDeletion(t *testing.T) {
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()

@@ -21,7 +21,7 @@ func newRemoteStore(t *testing.T) (*RemoteServerStore, *DB, string, string) {
 	t.Setenv(secretbox.EnvKey, "")
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "sessions.db")
-	db, err := Open(dbPath)
+	db, err := OpenWithKey(context.Background(), dbPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	return NewRemoteServerStore(db, dir), db, dir, dbPath
@@ -213,7 +213,7 @@ func TestRemoteServers_PermissionRefusal(t *testing.T) {
 func TestRemoteServers_EnvOverride(t *testing.T) {
 	t.Setenv(secretbox.EnvKey, strings.Repeat("ab", 32))
 	dir := t.TempDir()
-	db, err := Open(filepath.Join(dir, "s.db"))
+	db, err := OpenWithKey(context.Background(), filepath.Join(dir, "s.db"), "")
 	require.NoError(t, err)
 	defer db.Close()
 	s := NewRemoteServerStore(db, dir)

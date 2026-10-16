@@ -16,7 +16,7 @@ import (
 // byte of the file or its WAL after the wipe; a second run changes nothing.
 func TestWipeWebhookURLsLeavesNoTraceInTheFiles(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "messageboard.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	ctx := context.Background()

@@ -14,7 +14,7 @@ import (
 func testStore(t *testing.T) *Store {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "board_test.db")
-	s, err := NewStore(dbPath)
+	s, err := NewStoreWithKey(dbPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	return s

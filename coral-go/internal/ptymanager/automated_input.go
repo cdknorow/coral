@@ -734,15 +734,6 @@ type inputGate struct {
 var gate = &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, shadowLast: map[string]string{}, delivered: map[string]map[string]time.Time{}, now: time.Now,
 	timings: gateTimings{tooLong: 2 * time.Minute, expiry: time.Hour, every: 2 * time.Second}}
 
-// setTimings replaces the gate's intervals and returns the previous ones (tests).
-func (g *inputGate) setTimings(t gateTimings) gateTimings {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	prev := g.timings
-	g.timings = t
-	return prev
-}
-
 func (g *inputGate) lockSession(name string) func() {
 	m, _ := g.sending.LoadOrStore(name, &sync.Mutex{})
 	mu := m.(*sync.Mutex)

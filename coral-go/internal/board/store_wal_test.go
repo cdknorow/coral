@@ -15,7 +15,7 @@ func TestBoardWALReadPoolNonBlocking(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "board_wal_test.db")
 
-	store, err := NewStore(dbPath)
+	store, err := NewStoreWithKey(dbPath, "")
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -112,7 +112,7 @@ func TestBoardWALReadPoolQueryOnlyRejection(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "board_readonly_test.db")
 
-	store, err := NewStore(dbPath)
+	store, err := NewStoreWithKey(dbPath, "")
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -127,7 +127,7 @@ func TestBoardWALReadPoolQueryOnlyRejection(t *testing.T) {
 }
 
 func TestBoardWALReadPoolInMemoryFallback(t *testing.T) {
-	store, err := NewStore(":memory:")
+	store, err := NewStoreWithKey(":memory:", "")
 	require.NoError(t, err)
 	defer store.Close()
 

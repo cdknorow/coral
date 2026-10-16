@@ -67,7 +67,7 @@ func TestListRoutesAreBounded(t *testing.T) {
 	db, err := storetest.Open(t, filepath.Join(dir, "sessions.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
-	bs, err := board.NewStore(filepath.Join(dir, "board.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(dir, "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	cfg := &config.Config{LogDir: t.TempDir()}

@@ -40,7 +40,7 @@ func (m *mockRuntime) ListAgents(_ context.Context) ([]AgentInfo, error) {
 func testBoardStore(t *testing.T) *board.Store {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "notifier_test.db")
-	s, err := board.NewStore(dbPath)
+	s, err := board.NewStoreWithKey(dbPath, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	return s

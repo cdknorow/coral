@@ -17,7 +17,7 @@ import (
 func TestBoardsMigrationKeepsNamesAsIDs(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	_, err = s.Subscribe(ctx, "Coral Go-To-Market Team", "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
@@ -30,7 +30,7 @@ func TestBoardsMigrationKeepsNamesAsIDs(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	for _, name := range []string{"Coral Go-To-Market Team", "alpha", "tasks-only"} {
 		b, err := s.GetBoard(ctx, name)
@@ -41,7 +41,7 @@ func TestBoardsMigrationKeepsNamesAsIDs(t *testing.T) {
 	}
 	require.NoError(t, s.RenameBoard(ctx, "alpha", "Alpha Team"))
 	require.NoError(t, s.Close())
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	b, err := s.GetBoard(ctx, "alpha")
@@ -54,7 +54,7 @@ func TestBoardsMigrationKeepsNamesAsIDs(t *testing.T) {
 
 func TestBoardsCreateResolveRename(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	// A legacy board "sprint" (id = name).
@@ -111,7 +111,7 @@ func TestBoardsCreateResolveRename(t *testing.T) {
 // A new id never equals an existing id or label, nor a key a board table uses.
 func TestNewBoardIDAvoidsTakenKeys(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	seen := map[string]bool{}
@@ -138,7 +138,7 @@ func TestUsableBoardKey(t *testing.T) {
 // still empty (its launch is subscribing the agents), but not an older empty row.
 func TestBoardsLabelledForLaunch(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	fresh, err := s.CreateBoard(ctx, "team", "Operator")
@@ -160,7 +160,7 @@ func TestBoardsLabelledForLaunch(t *testing.T) {
 func TestUnusableLegacyBoardIsRekeyed(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	_, err = s.Subscribe(ctx, ".", "Lead", "Lead", "claude-x", nil, "all")
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestUnusableLegacyBoardIsRekeyed(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	rekeys, err := s.BoardRekeys(ctx)
 	require.NoError(t, err)
@@ -205,7 +205,7 @@ func TestUnusableLegacyBoardIsRekeyed(t *testing.T) {
 	}
 	require.NoError(t, s.Close())
 
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	again, err := s.BoardRekeys(ctx)
@@ -222,12 +222,12 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 	ctx := context.Background()
 	// Nothing to re-key: no copy.
 	clean := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(clean)
+	s, err := NewStoreWithKey(clean, "")
 	require.NoError(t, err)
 	_, err = s.Subscribe(ctx, "fine", "Dev", "Dev", "", nil, "all")
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
-	s, err = NewStore(clean)
+	s, err = NewStoreWithKey(clean, "")
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 	_, err = os.Stat(clean + ".pre-rekey")
@@ -235,7 +235,7 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 
 	// A re-key that fails: the store still opens, the board keeps its key, no record.
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	_, err = s.Subscribe(ctx, "..", "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
@@ -243,7 +243,7 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 	require.NoError(t, os.Chmod(path, 0o600))
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err, "a failed re-key never stops the store from opening")
 	_, err = s.GetBoard(ctx, "..")
 	assert.NoError(t, err, "the board stays as it was")
@@ -261,7 +261,7 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 	_, err = s.db.Exec(`DROP TRIGGER block_rekey`)
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	rekeys, err = s.BoardRekeys(ctx)

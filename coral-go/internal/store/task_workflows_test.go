@@ -13,7 +13,7 @@ import (
 
 func TestPersonalWorkflowPersistenceAndIsolation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "coral.db")
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer func() { db.Close() }()
 	s := NewTaskStore(db)
@@ -38,7 +38,7 @@ func TestPersonalWorkflowPersistenceAndIsolation(t *testing.T) {
 	require.NoError(t, s.FinishAgentTaskWithArtifacts(ctx, build.ID, AgentTaskDone, "built", "success", evidence))
 	require.Error(t, s.FinishAgentTask(ctx, build.ID, AgentTaskDone, "overwrite"))
 	require.NoError(t, db.Close())
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	s = NewTaskStore(db)
 	ready, err := s.GetAgentTask(ctx, child.ID)
@@ -78,7 +78,7 @@ func TestPersonalWorkflowConcurrentClaims(t *testing.T) {
 
 func TestPersonalWorkflowLegacyMigration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.db")
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	// Raw legacy rows simulate an installation before the workflow engine.
 	_, err = db.Exec(`INSERT INTO agent_tasks(id,agent_name,session_id,title,body,completed,sort_order,created_at,updated_at,started_at,completed_at,completion_message,cost_usd)
@@ -88,7 +88,7 @@ func TestPersonalWorkflowLegacyMigration(t *testing.T) {
 	_, err = db.Exec("UPDATE sqlite_sequence SET seq=200 WHERE name='agent_tasks'")
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer func() { db.Close() }()
 	s := NewTaskStore(db)
@@ -104,7 +104,7 @@ func TestPersonalWorkflowLegacyMigration(t *testing.T) {
 	require.Equal(t, "in_progress", active.Status)
 	require.Equal(t, "2025-01-03", *active.StartedAt)
 	require.NoError(t, db.Close())
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	var n int
 	require.NoError(t, db.Get(&n, "SELECT COUNT(*) FROM board_tasks"))

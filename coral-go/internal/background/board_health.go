@@ -33,13 +33,6 @@ func NewBoardHealthMonitor(store *board.Store, interval time.Duration) *BoardHea
 	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), lastIssue: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now, postMessage: store.PostSystemMessage}
 }
 
-// SetPostMessageFn provides an isolated delivery seam for retry tests.
-func (m *BoardHealthMonitor) SetPostMessageFn(fn func(context.Context, string, string, string, *string) (*board.Message, error)) {
-	if fn != nil {
-		m.postMessage = fn
-	}
-}
-
 // SetRuntime is retained for callers that share a monitor runtime. Health
 // monitoring never sends terminal input or captures terminal output.
 func (m *BoardHealthMonitor) SetRuntime(_ AgentRuntime) {}

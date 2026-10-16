@@ -51,7 +51,7 @@ func setupTestServerWithHub(t *testing.T, hub bool) *httptest.Server {
 
 	ptyBackend := ptymanager.NewPTYBackend()
 	terminal := ptymanager.NewPTYSessionTerminal(ptyBackend)
-	srv := server.New(cfg, db, ptyBackend, terminal)
+	srv := server.NewWithKey(cfg, db, ptyBackend, terminal, "")
 
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)

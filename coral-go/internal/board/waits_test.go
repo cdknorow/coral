@@ -12,7 +12,7 @@ import (
 
 func TestRegisteredWaitsLifecycle(t *testing.T) {
 	tmp := t.TempDir()
-	s, err := NewStore(filepath.Join(tmp, "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(tmp, "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
@@ -51,7 +51,7 @@ func TestRegisteredWaitsLifecycle(t *testing.T) {
 
 func TestResolveMatchingMessageWaits(t *testing.T) {
 	tmp := t.TempDir()
-	s, err := NewStore(filepath.Join(tmp, "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(tmp, "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
@@ -84,7 +84,7 @@ func TestResolveMatchingMessageWaits(t *testing.T) {
 
 func TestResolveMatchingMessageWaits_ExplicitMention(t *testing.T) {
 	tmp := t.TempDir()
-	s, err := NewStore(filepath.Join(tmp, "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(tmp, "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
@@ -104,7 +104,7 @@ func TestResolveMatchingMessageWaits_ExplicitMention(t *testing.T) {
 
 func TestResolveMatchingMessageWaits_IgnoresMessageAddressedToAnotherAgent(t *testing.T) {
 	tmp := t.TempDir()
-	s, err := NewStore(filepath.Join(tmp, "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(tmp, "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
@@ -125,7 +125,7 @@ func TestResolveMatchingMessageWaits_IgnoresMessageAddressedToAnotherAgent(t *te
 
 func TestResolveMatchingTaskWaits(t *testing.T) {
 	tmp := t.TempDir()
-	s, err := NewStore(filepath.Join(tmp, "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(tmp, "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
@@ -148,7 +148,7 @@ func TestResolveMatchingTaskWaits(t *testing.T) {
 
 func TestResolveMatchingCommitWaits(t *testing.T) {
 	tmp := t.TempDir()
-	s, err := NewStore(filepath.Join(tmp, "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(tmp, "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
@@ -171,7 +171,7 @@ func TestResolveMatchingCommitWaits(t *testing.T) {
 
 func TestRegisteredWait_Expiration(t *testing.T) {
 	tmp := t.TempDir()
-	s, err := NewStore(filepath.Join(tmp, "board.db"))
+	s, err := NewStoreWithKey(filepath.Join(tmp, "board.db"), "")
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()

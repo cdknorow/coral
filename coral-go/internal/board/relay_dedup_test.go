@@ -12,7 +12,7 @@ import (
 // #3489: relayed message ids are remembered for de-duplication for 30 days; older ones are
 // pruned when a new relayed message is stored.
 func TestRelayDedupIdsArePruned(t *testing.T) {
-	s, err := NewStore(t.TempDir() + "/board.db")
+	s, err := NewStoreWithKey(t.TempDir()+"/board.db", "")
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	ctx := context.Background()

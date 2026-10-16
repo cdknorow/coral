@@ -115,7 +115,7 @@ func TestCloseFlushesQueuedCallMetrics(t *testing.T) {
 	setCallMetricLimits(t, time.Hour, 1000, 1000)
 	path := filepath.Join(t.TempDir(), "sessions.db")
 	for _, started := range []bool{true, false} {
-		db, err := Open(path)
+		db, err := OpenWithKey(context.Background(), path, "")
 		require.NoError(t, err)
 		if started {
 			db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/x"})
@@ -124,7 +124,7 @@ func TestCloseFlushesQueuedCallMetrics(t *testing.T) {
 		require.NoError(t, db.Close())
 		db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/after-close"}) // dropped, no panic
 	}
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer db.Close()
 	assert.Equal(t, 3, countCallMetrics(t, db))
@@ -145,7 +145,7 @@ func TestCallMetricQueueIsBounded(t *testing.T) {
 func TestCallMetricsConcurrentEnqueueFlushAndClose(t *testing.T) {
 	setCallMetricLimits(t, time.Millisecond, 7, 100_000)
 	path := filepath.Join(t.TempDir(), "sessions.db")
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	insertLiveSession(t, db, "s1", "agent", "Display")
 
@@ -166,7 +166,7 @@ func TestCallMetricsConcurrentEnqueueFlushAndClose(t *testing.T) {
 	wg.Wait()
 	require.NoError(t, db.Close())
 
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer db.Close()
 	assert.Equal(t, workers*each, countCallMetrics(t, db))

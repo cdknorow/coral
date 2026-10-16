@@ -86,14 +86,14 @@ func TestCallMetricsQueriesUseTheCreatedIndex(t *testing.T) {
 // An existing database loses the two indexes nothing queries (#3261).
 func TestOpenDropsTheUnusedCallMetricsIndexes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.db")
-	db, err := Open(path)
+	db, err := OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	_, err = db.Exec(`CREATE INDEX idx_call_metrics_agent ON call_metrics(agent_name, created_at);
 		CREATE INDEX idx_call_metrics_board ON call_metrics(board_name, created_at)`)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	db, err = Open(path)
+	db, err = OpenWithKey(context.Background(), path, "")
 	require.NoError(t, err)
 	defer db.Close()
 	var names []string

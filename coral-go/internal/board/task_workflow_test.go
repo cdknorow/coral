@@ -21,7 +21,7 @@ func TestWorkflowReadinessSurvivesRestart(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			ctx := context.Background()
 			path := filepath.Join(t.TempDir(), "board.db")
-			s, err := NewStore(path)
+			s, err := NewStoreWithKey(path, "")
 			require.NoError(t, err)
 			defer func() { s.Close() }()
 			up, err := s.CreateTask(ctx, "upstream", "Build", "", "medium", "lead")
@@ -51,7 +51,7 @@ func TestWorkflowReadinessSurvivesRestart(t *testing.T) {
 			}
 			check() // No notifier was invoked: readiness is already committed.
 			require.NoError(t, s.Close())
-			s, err = NewStore(path)
+			s, err = NewStoreWithKey(path, "")
 			require.NoError(t, err)
 			check()
 			notices, err := s.ResolveDownstreamTasks(ctx, "", 0)
@@ -100,7 +100,7 @@ func TestCancelStallsPendingDescendantsAndTheyCannotBeClaimed(t *testing.T) {
 func TestWorkflowStartupRepairsLegacyBlockedTasks(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	defer func() { s.Close() }()
 	up, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead")
@@ -111,7 +111,7 @@ func TestWorkflowStartupRepairsLegacyBlockedTasks(t *testing.T) {
 	_, err = s.db.ExecContext(ctx, "UPDATE board_tasks SET status = 'completed' WHERE id = ?", up.ID)
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	got, err := s.GetTask(ctx, "team", child.ID)
 	require.NoError(t, err)
@@ -430,7 +430,7 @@ func TestRecoverRewiresDependentsPinnedToSupersededAttempt(t *testing.T) {
 func TestWorkflowValidationAndPersistence(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")
-	s, err := NewStore(path)
+	s, err := NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	build, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead")
 	require.NoError(t, err)
@@ -451,7 +451,7 @@ func TestWorkflowValidationAndPersistence(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "blocked", child.Status)
 	require.NoError(t, s.Close())
-	s, err = NewStore(path)
+	s, err = NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	defer s.Close()
 	got, err := s.GetTask(ctx, "team", build.ID)
