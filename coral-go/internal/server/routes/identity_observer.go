@@ -338,6 +338,21 @@ var operatorOnlyRoutes = map[string]string{
 	"PATCH /api/board/{project}":  "rename a board",
 	// #3583 (Security's sweep item 4): a team import reads files from a folder the request names.
 	"POST /api/teams/import": "import a team from a folder",
+	// #3685 (Security's #3670 follow-up): the hub's server registry (each entry holds a remote
+	// Coral's address and API key, and the hub forwards to it), and the board's remote
+	// subscriptions (which remote boards this Coral reads and relays).
+	"POST /api/servers":           "add a remote server",
+	"PATCH /api/servers/{id}":     "change a remote server",
+	"DELETE /api/servers/{id}":    "remove a remote server",
+	"POST /api/servers/{id}/test": "test a remote server",
+	"POST /api/board/remotes":     "subscribe to a remote board",
+	"DELETE /api/board/remotes":   "unsubscribe from a remote board",
+}
+
+// hubModeRoutes are entries the router serves only in hub mode (--hub): ValidateGuardedRoutes
+// lets them be absent otherwise.
+var hubModeRoutes = map[string]bool{
+	"POST /api/servers": true, "PATCH /api/servers/{id}": true, "DELETE /api/servers/{id}": true, "POST /api/servers/{id}/test": true,
 }
 
 // recordedAgentRoutes are allowed to an agent in every mode (an agent launches the agents of
@@ -384,8 +399,9 @@ func splitGuardKey(key string) (method, pattern string, ok bool) {
 
 // ValidateGuardedRoutes checks every entry of the tables above against the router: an entry the
 // router doesn't serve under exactly that method and pattern would never be matched, so it would
-// be silently unenforced. The server refuses to start on one (#3670).
-func ValidateGuardedRoutes(routes chi.Routes) error {
+// be silently unenforced. The server refuses to start on one (#3670). Outside hub mode the
+// hubModeRoutes may be absent.
+func ValidateGuardedRoutes(routes chi.Routes, hubMode bool) error {
 	served := map[string]bool{}
 	if err := chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		served[method+" "+route] = true
@@ -396,7 +412,7 @@ func ValidateGuardedRoutes(routes chi.Routes) error {
 	var missing []string
 	for _, table := range []map[string]string{operatorOnlyRoutes, recordedAgentRoutes} {
 		for key := range table {
-			if !served[key] {
+			if !served[key] && (hubMode || !hubModeRoutes[key]) {
 				missing = append(missing, key)
 			}
 		}

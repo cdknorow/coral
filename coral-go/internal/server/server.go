@@ -977,7 +977,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Bare /team and /board name no view: they go to /agents (QA, one rule with the slashes).
 	r.Get("/team", s.servePagePath)
 	r.Get("/board", s.servePagePath)
-	if err := routes.ValidateGuardedRoutes(r); err != nil {
+	if err := routes.ValidateGuardedRoutes(r, s.cfg.HubMode); err != nil {
 		panic(err) // an Operator-only route the guard could never match (#3670)
 	}
 	return r

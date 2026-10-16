@@ -48,7 +48,7 @@ func TestGuardMatchesEveryTableEntry(t *testing.T) {
 			method, pattern, _ := strings.Cut(k, " ")
 			r.MethodFunc(method, pattern, ok)
 		}
-		require.NoError(t, ValidateGuardedRoutes(r))
+		require.NoError(t, ValidateGuardedRoutes(r, true))
 		for _, k := range keys {
 			method, pattern, _ := strings.Cut(k, " ")
 			req := httptest.NewRequest(method, guardConcretePath(pattern), strings.NewReader("{}"))
@@ -87,9 +87,23 @@ func TestValidateGuardedRoutesNamesAnUnservedEntry(t *testing.T) {
 		method, pattern, _ := strings.Cut(k, " ")
 		r.MethodFunc(method, pattern, ok)
 	}
-	err := ValidateGuardedRoutes(r)
+	err := ValidateGuardedRoutes(r, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "POST /api/artifacts/prune")
+
+	// Hub mode's registry routes may be absent outside hub mode, never in it.
+	plain := chi.NewRouter()
+	for _, k := range append(OperatorOnlyRouteKeys(), "POST /api/sessions/launch", "POST /api/sessions/launch-team") {
+		if hubModeRoutes[k] {
+			continue
+		}
+		method, pattern, _ := strings.Cut(k, " ")
+		plain.MethodFunc(method, pattern, ok)
+	}
+	assert.NoError(t, ValidateGuardedRoutes(plain, false))
+	err = ValidateGuardedRoutes(plain, true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "POST /api/servers")
 
 	for _, bad := range []string{"/api/x", "post /api/x", "POST api/x", "POST /api/x y", "FETCH /api/x", "POST\t/api/x"} {
 		_, _, ok := splitGuardKey(bad)
