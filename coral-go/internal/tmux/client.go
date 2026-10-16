@@ -66,9 +66,10 @@ type Client struct {
 	// paneStates is every pane's pid and size from one list-panes, kept for paneStateTTL
 	// (#3847): the status pass asked each agent's pane for its pid and the feed each pane for
 	// its size, one tmux run per agent each time.
-	paneStatesMu sync.Mutex
-	paneStatesAt time.Time
-	paneStates   map[string]paneState // target (#S:#I.#P) -> state
+	paneStatesMu  sync.Mutex
+	paneStatesAt  time.Time
+	paneStates    map[string]paneState // target (#S:#I.#P) -> state
+	paneStatesGen uint64               // bumped by every command that changes a pane: a list started before it is not kept
 }
 
 // paneState is a pane's shell pid and size.
@@ -76,6 +77,22 @@ type paneState struct{ pid, cols, rows int }
 
 // paneStateTTL is how long one list-panes answers the agents' pane pid and size questions.
 const paneStateTTL = time.Second
+
+// paneChanging are the tmux commands after which the shared pane list is stale: a pane's size
+// (Coral's own resize must read back at once, v1.4.63's terminal size checks), its pid (a
+// respawn) or the set of panes.
+var paneChanging = map[string]bool{
+	"resize-window": true, "resize-pane": true, "respawn-pane": true, "new-session": true,
+	"new-window": true, "split-window": true, "kill-session": true, "kill-window": true, "kill-pane": true,
+}
+
+// forgetPaneStates drops the shared pane list after a command that changed a pane.
+func (c *Client) forgetPaneStates() {
+	c.paneStatesMu.Lock()
+	c.paneStates = nil
+	c.paneStatesGen++
+	c.paneStatesMu.Unlock()
+}
 
 // resolveTmuxBin returns the path used to invoke tmux, re-checking the
 // filesystem if the cached binary isn't reachable. This lets a tmux that
@@ -765,10 +782,12 @@ func (c *Client) DisplayForAgent(ctx context.Context, agentName, agentType, sess
 // every paneStateTTL.
 func (c *Client) allPaneStates(ctx context.Context) map[string]paneState {
 	c.paneStatesMu.Lock()
-	defer c.paneStatesMu.Unlock()
 	if c.paneStates != nil && time.Since(c.paneStatesAt) < paneStateTTL {
+		defer c.paneStatesMu.Unlock()
 		return c.paneStates
 	}
+	gen := c.paneStatesGen
+	c.paneStatesMu.Unlock()
 	out, err := c.run(ctx, "list-panes", "-a", "-F", "#S:#I.#P|#{pane_pid}|#{pane_width}|#{pane_height}")
 	if err != nil {
 		return nil
@@ -787,7 +806,11 @@ func (c *Client) allPaneStates(ctx context.Context) map[string]paneState {
 		}
 		states[f[0]] = paneState{pid: pid, cols: cols, rows: rows}
 	}
-	c.paneStates, c.paneStatesAt = states, time.Now()
+	c.paneStatesMu.Lock()
+	if c.paneStatesGen == gen { // no pane changed while it ran: keep it for the next callers
+		c.paneStates, c.paneStatesAt = states, time.Now()
+	}
+	c.paneStatesMu.Unlock()
 	return states
 }
 
@@ -1213,6 +1236,10 @@ func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 	recordSendKeys(args)
 	if runObserver != nil {
 		runObserver(args)
+	}
+	if len(args) > 0 && paneChanging[args[0]] {
+		// After it has run, so a list taken while it ran isn't kept either (the generation).
+		defer c.forgetPaneStates()
 	}
 	// Check if this command targets a session — route via cache
 	if c.FallbackToDefault && c.SocketPath != "" {
