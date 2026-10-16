@@ -1,5 +1,6 @@
 /* Rendering functions for session lists, chat history, and status updates */
 
+import { modelLabel } from './model_labels.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { launchBlockedReason } from './hub_access.js';
@@ -1873,6 +1874,16 @@ function _syncHeaderFolder() {
 export function updateSessionFolder(dir) {
     _headerDir = dir || "";
     _syncHeaderFolder();
+}
+
+/** The terminal header's model chip: "Claude · Opus 4.1", hidden when the agent has no model on record (#4066). */
+export function updateSessionModel(agentType, model, server) {
+    const el = document.getElementById("terminal-header-model");
+    if (!el) return;
+    const text = modelLabel(agentType, model, server);
+    el.hidden = !text;
+    el.textContent = text;
+    el.title = text ? model : "";
 }
 
 export function updateSessionBranch(branch, repoName, gitState) {

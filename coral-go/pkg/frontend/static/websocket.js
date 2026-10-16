@@ -4,7 +4,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { signInUrl } from './cloud.js';
 import { feedRetryDelay, isStalenessDrift, DRIFT_RENDER_MAX_AGE_MS } from './feed_pacing.js';
-import { scheduleLiveSessionsRender, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
+import { scheduleLiveSessionsRender, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateSessionModel, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -314,6 +314,7 @@ export function handleCoralMessage(data) {
                     updateSessionSummary(s.summary);
                     updateSessionBranch(s.branch, s.repo_name, s.git_state);
                     updateSessionFolder(s.working_directory || "");
+                    updateSessionModel(s.agent_type, s.model || "", sessionServer(s));
                     updateWaitingIndicator(s);
                     updateChangedFileCount(s.changed_file_count || 0);
                     // Update terminal header status dot

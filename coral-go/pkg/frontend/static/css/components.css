@@ -2219,6 +2219,7 @@ button.subscriber-history-link {
 
 .acf-name,
 .acf-model,
+.acf-model-select,
 .acf-prompt,
 .acf-agent-type,
 #launch-dir,
@@ -3973,3 +3974,24 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
     /* A switch row whose label holds its own text is a target the height of a touch control. */
     .settings-hub-mode-toggle { display: flex; align-items: center; gap: var(--space-sm, 8px); min-height: var(--control-touch-height, 44px); }
 }
+
+/* The Model picker of the launch and restart forms (#4066): a list with the free-text box behind "Other…". */
+.acf-model-picker[hidden], .acf-model-picker [hidden] { display: none; }
+.acf-model-picker { display: block; margin-top: var(--space-xs); }
+.acf-model-row { display: flex; gap: var(--space-sm); align-items: center; }
+.acf-model-select { flex: 1; min-width: 0; }
+.acf-model-refresh {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; padding: 0;
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+    background: none; color: var(--text-secondary); cursor: pointer;
+}
+.acf-model-refresh .material-icons { font-size: 16px; }
+.acf-model-refresh:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.acf-model-refresh:disabled { opacity: .5; cursor: progress; }
+.acf-model-id { display: block; margin-top: 2px; font-family: var(--font-mono); font-size: var(--fs-sm, 11px); font-weight: 400; color: var(--text-muted); overflow-wrap: anywhere; }
+.acf-model-id:empty { display: none; }
+.acf-model-note { display: block; margin-top: 2px; font-size: var(--fs-sm, 11px); font-weight: 400; color: var(--text-secondary); }
+.acf-model-note:empty { display: none; }
+.acf-model-picker:not([hidden]) + .acf-model:not([hidden]) { margin-top: var(--space-sm); }
+@media (pointer: coarse), (max-width: 767px) { .acf-model-refresh { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); } }

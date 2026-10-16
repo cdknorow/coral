@@ -10,6 +10,7 @@ import { isStaleSession, staleReason, serversShown } from './server_status.js';
 import { sessionServer, keyLabel, sessionTeamKey } from './server_base.js';
 import { redrawLiveList } from './list_hooks.js';
 import { state } from './state.js';
+import { modelLabel } from './model_labels.js';
 import { terminalGoneChip } from './terminal_gone.js';
 import { browserLocal } from './safe_storage.js';
 
@@ -308,6 +309,7 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
             </div>
             <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
             ${(stateInfo.key !== 'ended' && (goalLine || unreadChip)) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
+            ${(!isCompact && s.model && modelLabel(s.agent_type, s.model, sessionServer(s))) ? `<div class="session-model" title="${escapeAttr(s.model)}">${escapeHtml(modelLabel(s.agent_type, s.model, sessionServer(s)))}</div>` : ''}
             ${branchTag}
         </div>
         <div class="session-tooltip">${tooltip}</div>

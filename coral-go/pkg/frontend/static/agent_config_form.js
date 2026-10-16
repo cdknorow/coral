@@ -5,6 +5,7 @@ const { PERMISSION_MODE_DESCRIPTIONS, _hasPermFlag, _normalizePermFlagsForAgent,
 const { _acfServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _settingsFor } = await importOnce('./launch_models.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
+const { modelPickerHtml, loadModelPicker, wireModelPicker, syncModelPicker } = await importOnce('./model_picker.js');
 const { _renderPresetButtons } = await importOnce('./persona_store.js');
 import { escapeHtml, escapeAttr } from './utils.js';
 
@@ -189,6 +190,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                 </select>
             </label>
             <label class="acf-model-wrap">Model <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                ${modelPickerHtml()}
                 <input type="text" class="acf-model" list="acf-models-${uid}" placeholder="Leave blank to use default" autocomplete="off" value="${escapeAttr(modelVal)}">
                 <datalist id="acf-models-${escapeAttr(uid)}"></datalist>
             </label>
@@ -289,10 +291,13 @@ export function _syncACFModelField(container) {
     if (datalist) {
         _getAgentModels(_acfServer(container)).then(models => _fillModelDatalist(datalist, agentType, models));
     }
+    wireModelPicker(container);
+    loadModelPicker(container, agentType);   // the cached list at once, then the server's (#4066)
     if (!modelInput) return;
     if (container.dataset.acfModelClassifying === 'true' || container.dataset.acfModelDirty === 'true') return; // user owns or we are classifying the value
     if (agentType === 'terminal') {
         modelInput.value = '';
+        syncModelPicker(container);
         return;
     }
     _getDefaultModels(_acfServer(container)).then(defaults => {
@@ -302,9 +307,11 @@ export function _syncACFModelField(container) {
         const currentType = typeSel?.value || 'claude';
         if (currentType === 'terminal') {
             modelInput.value = '';
+            syncModelPicker(container);
             return;
         }
         modelInput.value = defaults[currentType] || '';
+        syncModelPicker(container);
     });
 }
 window.renderAgentConfigForm = renderAgentConfigForm;
@@ -358,6 +365,7 @@ export function setAgentConfig(containerId, values) {
     const modelEl = container.querySelector('.acf-model');
     if (modelEl) {
         modelEl.value = v.model || '';
+        syncModelPicker(container);
         container.dataset.acfModelClassifying = v.model ? 'true' : 'false';
         container.dataset.acfModelDirty = 'false';
         if (v.model) _classifyLoadedACFModel(container, typeEl?.value || 'claude', v.model);

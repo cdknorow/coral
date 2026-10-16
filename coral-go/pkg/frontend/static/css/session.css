@@ -2322,3 +2322,6 @@
     .health-form .health-rule-head input { margin-top: 0; }
     .health-form input[type="number"], .health-form input[type="text"], .health-form select { min-height: var(--control-touch-height, 44px); }
 }
+
+/* The agent's model under its row in the list: "Claude · Opus 4.1" (#4066) */
+.session-model { margin-top: 1px; font-size: var(--fs-sm, 11px); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
