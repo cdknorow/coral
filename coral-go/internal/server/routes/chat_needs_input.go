@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,9 +17,67 @@ import (
 // promptHints holds, per session, whether its latest state-changing hook event leaves a prompt open. A session
 // with no such event since this server started is unknown, and unknown means "may be open": the options are
 // then read as before, so an agent without hooks, or a restarted server, costs what it did.
+//
+// A read of the options answers the session's chat polls for promptReadTTL (#3745): an agent whose hook state
+// is unknown, or that has no prompt hooks, was read on every poll (a pane capture each time, the chat p95 rise
+// in #3740), and the popout's poll doubled it. One read now serves every poll in that window, and a hook event
+// or a pending tool for the session, or an answer to its prompt, drops it, so a prompt that opens shows on the
+// next poll.
 type promptHints struct {
-	mu sync.Mutex
-	m  map[string]bool // session_id -> a request to the user is open
+	mu    sync.Mutex
+	m     map[string]bool        // session_id -> a request to the user is open
+	reads map[string]*promptRead // exact target (session_id, name, agent type) -> its latest read
+}
+
+// promptReadTTL is how long one read of a session's prompt options answers its polls (a var for tests).
+var promptReadTTL = 2 * time.Second
+
+// promptRead is one read of a session's prompt options; done closes when it is complete.
+type promptRead struct {
+	at     time.Time
+	done   chan struct{}
+	screen promptScreen
+	shown  bool // the reply carries the options (the exact target checked out)
+}
+
+func promptReadKey(sessionID, name, agentType string) string {
+	return sessionID + "\x00" + name + "\x00" + agentType
+}
+
+// read returns the session's prompt options: those of a read made in the last promptReadTTL, or a new one from
+// fetch. One read at a time per target: a poll that comes while one is under way waits for it.
+func (p *promptHints) read(key string, now time.Time, fetch func() (promptScreen, bool)) (promptScreen, bool) {
+	p.mu.Lock()
+	if e, ok := p.reads[key]; ok && now.Sub(e.at) < promptReadTTL {
+		p.mu.Unlock()
+		<-e.done
+		return e.screen, e.shown
+	}
+	if p.reads == nil || len(p.reads) >= promptHintsMax {
+		p.reads = map[string]*promptRead{}
+	}
+	e := &promptRead{at: now, done: make(chan struct{})}
+	p.reads[key] = e
+	p.mu.Unlock()
+	defer close(e.done)
+	e.screen, e.shown = fetch()
+	return e.screen, e.shown
+}
+
+// forget drops the session's reads: what its terminal shows may have changed.
+func (p *promptHints) forget(sessionID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.forgetLocked(sessionID)
+}
+
+func (p *promptHints) forgetLocked(sessionID string) {
+	prefix := sessionID + "\x00"
+	for k := range p.reads {
+		if strings.HasPrefix(k, prefix) {
+			delete(p.reads, k)
+		}
+	}
 }
 
 // Enough for every live session many times over; past it the table is dropped, which only turns every
@@ -37,6 +96,7 @@ func (p *promptHints) note(sessionID, eventType string) {
 	case "session_end":
 		p.mu.Lock()
 		delete(p.m, sessionID)
+		p.forgetLocked(sessionID)
 		p.mu.Unlock()
 		return
 	default:
@@ -44,6 +104,7 @@ func (p *promptHints) note(sessionID, eventType string) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.forgetLocked(sessionID)
 	if p.m == nil || len(p.m) >= promptHintsMax {
 		p.m = map[string]bool{}
 	}
@@ -84,15 +145,22 @@ func (h *SessionsHandler) addNeedsInput(r *http.Request, reply map[string]any, n
 	if !hasPending && !readsPromptsFromScreen(agentType) && !h.hints.mayBeOpen(sessionID) {
 		return
 	}
-	// The check GET /prompt-options used to make: the pane read is the exact target's, never another agent's.
-	if shouldValidateExactTarget(agentType, sessionID) {
-		if _, status, _ := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
-			return
+	// One read per target per promptReadTTL, keyed on the exact target it checked, so a poll naming another
+	// terminal never gets this one's screen.
+	screen, shown := h.hints.read(promptReadKey(sessionID, name, agentType), time.Now(), func() (promptScreen, bool) {
+		// The check GET /prompt-options used to make: the pane read is the exact target's, never another agent's.
+		if shouldValidateExactTarget(agentType, sessionID) {
+			if _, status, _ := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
+				return promptScreen{}, false
+			}
 		}
+		s, ok := h.capturePromptScreen(r, name, agentType, sessionID)
+		if !ok {
+			s = promptScreen{Options: []promptOption{}}
+		}
+		return s, true
+	})
+	if shown {
+		reply["prompt_options"] = screen
 	}
-	screen, ok := h.capturePromptScreen(r, name, agentType, sessionID)
-	if !ok {
-		screen = promptScreen{Options: []promptOption{}}
-	}
-	reply["prompt_options"] = screen
 }

@@ -270,5 +270,6 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	h.hints.forget(body.SessionID) // the prompt was answered: the next poll reads what replaced it
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answered": opt.Label})
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -160,4 +161,78 @@ func TestPromptHintsAreBounded(t *testing.T) {
 	assert.True(t, p.mayBeOpen("gone"))
 	p.note("gone", "session_end")
 	assert.True(t, p.mayBeOpen("gone"), "an ended session is forgotten, so unknown again")
+}
+
+// #3745: one read of a session's prompt options answers its polls for promptReadTTL. A session whose hook
+// state is unknown (or with no prompt hooks) was read on every poll, a pane capture each.
+func TestChatReplyReadsThePaneOncePerWindow(t *testing.T) {
+	server, handler, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-00000000c4b1"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "claude-win", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-win", "/tmp/test")
+	terminal.mu.Lock()
+	terminal.outputs["claude-win"] = screenPermission
+	terminal.mu.Unlock()
+	keep := promptReadTTL
+	promptReadTTL = 300 * time.Millisecond
+	t.Cleanup(func() { promptReadTTL = keep })
+	base := server.URL + "/api/sessions/live/claude-win"
+	q := url.Values{"session_id": {sid}, "agent_type": {"claude"}, "after": {"1"}}
+	captures := func() int { terminal.mu.Lock(); defer terminal.mu.Unlock(); return len(terminal.captures) }
+	options := func(r map[string]any) int {
+		po, ok := r["prompt_options"].(map[string]any)
+		if !ok {
+			return -1
+		}
+		o, _ := po["options"].([]any)
+		return len(o)
+	}
+
+	before := captures()
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, 4, options(chatReply(t, base, q)), "poll %d has the options", i)
+	}
+	assert.Equal(t, before+1, captures(), "five polls inside the window: one capture")
+
+	// Concurrent polls in a new window share one read.
+	time.Sleep(promptReadTTL + 50*time.Millisecond) // sleep-ok: the window has to run out
+	before = captures()
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); assert.Equal(t, 4, options(chatReply(t, base, q))) }()
+	}
+	wg.Wait()
+	assert.Equal(t, before+1, captures(), "eight polls at once: one capture")
+
+	// A hook event drops the read: the next poll reads the screen again, inside the window.
+	before = captures()
+	handler.hints.note(sid, "notification")
+	assert.Equal(t, 4, options(chatReply(t, base, q)))
+	assert.Equal(t, before+1, captures(), "a hook event: read again at once")
+	// So do a pending tool and an answer (forget), the paths SetPendingTool and AnswerPrompt take.
+	before = captures()
+	handler.hints.forget(sid)
+	chatReply(t, base, q)
+	assert.Equal(t, before+1, captures(), "forgotten: read again")
+}
+
+// A read is cached for its exact target only: a poll that names another terminal for the same session id is
+// checked on its own and gets no screen.
+func TestChatReplyCachedReadIsTheExactTargets(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-00000000c4b2"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "claude-own", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-own", "/tmp/test")
+	terminal.addSession("claude-else", "/tmp/test")
+	terminal.mu.Lock()
+	terminal.outputs["claude-own"] = screenPermission
+	terminal.mu.Unlock()
+	q := url.Values{"session_id": {sid}, "agent_type": {"claude"}, "after": {"1"}}
+	r := chatReply(t, server.URL+"/api/sessions/live/claude-own", q)
+	_, has := r["prompt_options"]
+	require.True(t, has, "its own terminal: read and cached")
+	r = chatReply(t, server.URL+"/api/sessions/live/claude-else", q)
+	_, has = r["prompt_options"]
+	assert.False(t, has, "another terminal with this session's id: not given the cached screen")
 }

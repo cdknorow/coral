@@ -159,6 +159,7 @@ func (h *SessionsHandler) SetPendingTool(w http.ResponseWriter, r *http.Request)
 	}
 	body.ToolName = truncateUTF8(body.ToolName, 200)
 	body.ToolUseID = truncateUTF8(body.ToolUseID, 200)
+	h.hints.forget(body.SessionID) // a blocking tool may open a prompt: read the screen again
 	h.pending.set(body.SessionID, pendingTool{
 		ToolUseID: body.ToolUseID,
 		ToolName:  body.ToolName,
