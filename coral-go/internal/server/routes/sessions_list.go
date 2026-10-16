@@ -326,6 +326,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 			addCapabilities(entry, extra.Capabilities)
 		}
+		h.addTranscriptModel(entry, sid)
 
 		// Include token usage data if available
 		if usage, ok := tokenUsageMap[sid]; ok {

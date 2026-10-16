@@ -54,11 +54,14 @@ func (r *SessionReader) scanClaudeTranscript(sessionID, workingDir string) claud
 		return claudeTurnCache{}
 	}
 	scanTranscriptAppend(c.path, &c.claudeState.transcriptReadState, func() {
-		c.claudeState.event, c.claudeState.at, c.claudeState.version = "", time.Time{}, ""
+		c.claudeState.event, c.claudeState.at, c.claudeState.version, c.claudeState.model = "", time.Time{}, "", ""
 		c.claudeState.apiErr = ClaudeAPIError{}
 	}, func(line []byte) {
 		if v := claudeLineVersion(line); v != "" {
 			c.claudeState.version = v
+		}
+		if m := claudeLineModel(line); m != "" {
+			c.claudeState.model = m
 		}
 		updateClaudeTurnState(&c.claudeState, line)
 		updateClaudeAPIError(&c.claudeState.apiErr, line)
