@@ -293,37 +293,32 @@
         flex-shrink: 0;
     }
 
-    .top-nav-tabs {
-        flex: 1;
-        min-width: 0;
-        gap: 8px;
-        margin: 0 8px;
-        overflow-x: auto;
-        overscroll-behavior-x: contain;
-        scrollbar-width: none; /* an empty scrollbar track wasted space (#3152) */
-    }
-    .top-nav-tabs::-webkit-scrollbar {
-        display: none;
-    }
-    /* Clipped tabs: the edge with more tabs fades out (mobile.js sets the classes). */
-    .top-nav-tabs.fade-right {
-        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-        mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-    }
-    .top-nav-tabs.fade-left {
-        -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
-        mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
-    }
-    .top-nav-tabs.fade-left.fade-right {
-        -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
-        mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
-    }
-
-    .top-nav-tab,
+    /* The tab row gives way to one current-view dropdown (nav_tabs.js, #3816): it names the view and opens the list of all; 44 px tall on a touch screen (touch.css). */
+    .top-nav-tabs { display: none; }
     .top-bar-brand,
     .top-bar-actions {
         flex-shrink: 0;
     }
+    .nav-select {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: var(--control-height);
+        margin: 0 8px;
+        padding: 0 12px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        color: var(--text-primary);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .nav-select-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nav-more-menu.nav-all { left: 8px !important; right: 8px !important; }
 
     /* Show mobile back button in session header */
     .mobile-back-btn {
@@ -1185,12 +1180,6 @@
         display: none !important;
     }
 
-    /* Top nav tabs: smaller text */
-    .top-nav-tab {
-        font-size: 12px;
-        padding: 6px 8px;
-    }
-
     /* Modal padding: tighter on small phones */
     .modal-content {
         padding: 16px !important;
@@ -1286,12 +1275,6 @@
     .modal-content,
     .modal-content-wide {
         max-width: 85vw;
-    }
-
-    /* Top nav tabs: allow wrapping if needed */
-    .top-nav-tabs {
-        flex-wrap: wrap;
-        gap: 2px;
     }
 
     /* Message board: adjust subscribers panel for tablet */

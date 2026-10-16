@@ -54,6 +54,8 @@
             </button>
             <span class="top-bar-title"></span>
         </div>
+        <!-- #3816: on a phone this replaces the tab row: it names the current view and opens the list of all (nav_tabs.js) -->
+        <button type="button" id="nav-select" class="nav-select" data-on-click="m-nav-more" data-nav-all="1" aria-haspopup="menu" aria-expanded="false" aria-controls="nav-more-menu" aria-label="Current view"><span id="nav-select-label" class="nav-select-label"></span><span class="material-icons" aria-hidden="true">expand_more</span></button>
         <nav class="top-nav-tabs" aria-label="Main navigation">
             <button class="top-nav-tab active" id="nav-tab-agents" data-on-click="m-switch-nav-tab" data-arg="agents" aria-current="page">Agents</button>
             <!-- Servers right after Agents (#3507, the operator's order: Agents, Servers, ..., Docs). -->
@@ -283,6 +285,9 @@
             {{ template "includes/views/servers.html" . }}
         </main>
     </div>
+
+    <!-- #3816: the list the phone's current-view dropdown and the row's More button open (nav_tabs.js draws it from the tabs) -->
+    <div id="nav-more-menu" class="nav-more-menu" role="menu" aria-label="Views" hidden></div>
 
     {{ template "includes/modals.html" . }}
 

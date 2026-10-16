@@ -196,24 +196,14 @@ const BASE = require('./test_base').BASE;
         fakeHub = false; heldReleased = false;
         console.log('PASS (15) a hash set before the first list load is not restored again');
 
-        // ── (10)(11) Phone: nav strip with no scrollbar and an edge fade; team-send button.
+        // ── (10)(11) Phone: team-send button. (The nav strip and its edge fade are gone: the phone has a bottom tab bar, nav_tabs_browser, #3785.)
         await open(390, 844, true);
-        const nav = await ev(`(() => { const n = document.querySelector('.top-nav-tabs'); return { sw: getComputedStyle(n).scrollbarWidth, clipped: n.scrollWidth > n.clientWidth + 2, left: n.classList.contains('fade-left'), right: n.classList.contains('fade-right'), barH: n.offsetHeight - n.clientHeight }; })()`);
-        assert.equal(nav.sw, 'none', 'no scrollbar track');
-        assert.equal(nav.barH, 0, 'no space taken by a scrollbar');
-        if (nav.clipped) {
-            assert.deepEqual([nav.left, nav.right], [false, true], 'at the start only the right edge fades');
-            await ev(`(() => { const n = document.querySelector('.top-nav-tabs'); n.scrollLeft = n.scrollWidth; n.dispatchEvent(new Event('scroll')); })()`);
-            await waitFor(`document.querySelector('.top-nav-tabs').classList.contains('fade-left') && !document.querySelector('.top-nav-tabs').classList.contains('fade-right')`, 'at the end only the left edge fades');
-        } else {
-            assert.deepEqual([nav.left, nav.right], [false, false], 'nothing clipped: no fade');
-        }
         const team = await ev(`(() => { const b = document.querySelector('.mobile-send-team-btn'); return b && { label: b.getAttribute('aria-label'), title: b.title, icon: !!b.querySelector('.material-icons'), text: b.textContent.trim() }; })()`);
         assert.ok(team, 'the team-send button exists');
         assert.equal(team.label, 'Send with team reminder');
         assert.ok(team.icon, 'an icon, not "+T"');
         assert.ok(!/\\+T/.test(team.text), 'no cryptic +T text');
-        console.log(`PASS (10)(11) phone: no scrollbar, edge fade (${nav.clipped ? 'clipped' : 'fits'}), labelled team-send icon`);
+        console.log(`PASS (10)(11) phone: labelled team-send icon`);
     } finally {
         await Fetch.disable().catch(() => {});
         await client.close();

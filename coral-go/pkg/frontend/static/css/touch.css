@@ -30,6 +30,7 @@
     }
 
     /* Tabs and inline selects keep their width; only short ones grow wider. */
+    .nav-select,
     .top-nav-tab,
     .agentic-tab {
         min-width: var(--control-touch-height);

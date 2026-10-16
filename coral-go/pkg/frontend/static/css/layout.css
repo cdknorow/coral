@@ -30,6 +30,9 @@
     gap: 24px;
     margin-left: 24px;
     margin-right: auto;
+    flex: 1 1 auto;
+    min-width: 0; /* the row takes the room the bar leaves; tabs that do not fit go under More (nav_tabs.js, #3816) */
+    position: relative;
 }
 
 .top-nav-tab {
@@ -44,6 +47,7 @@
     padding: 4px 0 6px;
     transition: color 0.15s, border-color 0.15s;
     white-space: nowrap;
+    flex: 0 0 auto;
     min-height: var(--control-height);
 }
 
@@ -56,6 +60,47 @@
     border-bottom-color: var(--accent);
     font-weight: 600;
 }
+
+.top-nav-tab.nav-overflowed { display: none; }
+.nav-more-wrap { display: flex; flex: 0 0 auto; }
+/* The row is text only; More shows a small chevron. */
+.top-nav-tab .material-icons { display: none; }
+.nav-more-btn .material-icons { display: inline-block; font-size: 16px; vertical-align: -3px; margin-left: 2px; }
+
+/* The More menu (the row's, when tabs do not fit) and the phone's view list share one element. */
+.nav-more-menu {
+    position: fixed;
+    z-index: 60;
+    min-width: 180px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.nav-more-menu[hidden] { display: none; }
+.nav-more-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+.nav-more-item:hover, .nav-more-item.active { background: var(--bg-tertiary); }
+.nav-more-item .material-icons { color: var(--text-secondary); font-size: 20px; }
+/* Icons only in the phone's list of views. */
+.nav-more-menu:not(.nav-all) .nav-more-item .material-icons { display: none; }
+
+/* The phone's current-view dropdown (<= 767 px: mobile.css shows it in place of the row). */
+.nav-select { display: none; }
 
 /* ── Top Bar Search ────────────────────────────────────────── */
 
