@@ -209,7 +209,7 @@ func formatEnvExport(key, value string) string {
 func formatCatSubstitution(path string) string {
 	switch detectShell() {
 	case ShellPowerShell:
-		return fmt.Sprintf("$((Get-Content -Raw %s) -replace '\"', '\\\"')", shellQuoteLiteral(path))
+		return fmt.Sprintf("$((Get-Content -Raw -LiteralPath %s) -replace '\"', '\\\"')", shellQuoteLiteral(path))
 	default:
 		return fmt.Sprintf("$(cat %s)", shellQuoteLiteral(path))
 	}
@@ -330,7 +330,7 @@ func FormatPromptFileArg(promptFile string) string {
 	shell := detectShell()
 	switch shell {
 	case ShellPowerShell:
-		return fmt.Sprintf(`"$((Get-Content -Raw %s) -replace '"', '\"')"`, shellQuoteLiteral(promptFile))
+		return fmt.Sprintf(`"$((Get-Content -Raw -LiteralPath %s) -replace '"', '\"')"`, shellQuoteLiteral(promptFile))
 	default:
 		// bash, zsh, sh. The path is quoted like any value (#3362): it is Coral's own temp
 		// file, but its name carries a session id.
