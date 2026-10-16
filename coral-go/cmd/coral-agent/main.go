@@ -155,26 +155,33 @@ func cmdArtifact(args []string) {
 	fs.Parse(args[2:])
 	*name = mediatype.EnsureExtension(*name, file)
 	*mediaType = mediatype.Resolve(*mediaType, file, *name)
+	if err := uploadArtifact(serverURL, file, *name, *mediaType, resolveSessionID(), os.Stdout, os.Stderr); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// uploadArtifact streams file to Coral's artifact store and, on success, prints the coral:// reply
+// to stdout. A refused or failed upload (any non-2xx; the Retry-After is surfaced on a 429) returns
+// an error and prints NO link, so a caller that misses the exit code can't take a refusal for a
+// success (#4004: the CLI used to exit 0 on a refused upload, so dead links were posted).
+func uploadArtifact(serverURL, file, name, mediaType, sid string, stdout, stderr io.Writer) error {
 	f, err := os.Open(file) // streamed to Coral, not read into memory (#3553)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 	defer f.Close()
-	sid := resolveSessionID()
 	req, err := http.NewRequest(http.MethodPost, serverURL+"/api/agent/artifacts?session_id="+url.QueryEscape(sid), f)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
-	req.Header.Set("X-Artifact-Name", *name)
-	if *mediaType != "" {
-		req.Header.Set("X-Artifact-Media-Type", *mediaType)
+	req.Header.Set("X-Artifact-Name", name)
+	if mediaType != "" {
+		req.Header.Set("X-Artifact-Media-Type", mediaType)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 	defer resp.Body.Close()
 	body, _ := readServer(resp.Body)
@@ -185,18 +192,26 @@ func cmdArtifact(args []string) {
 	}
 	_ = json.Unmarshal(body, &reply)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if reply.Error != "" {
-			// Coral's own words (#3553): too large, an hourly or store limit, or image metadata.
-			fmt.Fprintf(os.Stderr, "Artifact upload refused: %s\n", reply.Error)
-		} else {
-			fmt.Fprintf(os.Stderr, "Artifact upload failed: %s\n", strings.TrimSpace(string(body)))
+		reason := reply.Error // Coral's own words (#3553): too large, an hourly or store limit, image metadata.
+		if reason == "" {
+			reason = strings.TrimSpace(string(body))
 		}
-		os.Exit(1)
+		if reason == "" {
+			reason = resp.Status
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if ra := strings.TrimSpace(resp.Header.Get("Retry-After")); ra != "" {
+				return fmt.Errorf("artifact upload refused (rate limited): %s (Retry-After: %s)", reason, ra)
+			}
+			return fmt.Errorf("artifact upload refused (rate limited): %s", reason)
+		}
+		return fmt.Errorf("artifact upload failed (HTTP %d): %s", resp.StatusCode, reason)
 	}
 	if reply.Stripped {
-		fmt.Fprintln(os.Stderr, "Note: Coral removed this image's metadata (camera, location) before storing it, so its id is the SHA-256 of the stored bytes, not of your file.")
+		fmt.Fprintln(stderr, "Note: Coral removed this image's metadata (camera, location) before storing it, so its id is the SHA-256 of the stored bytes, not of your file.")
 	}
-	fmt.Println(string(body))
+	fmt.Fprintln(stdout, string(body))
+	return nil
 }
 
 func taskUsageText() string {
