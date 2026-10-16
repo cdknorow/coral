@@ -88,6 +88,36 @@ GET /api/agent-models
 Returns the curated model-name suggestions keyed by agent type. These are UI
 suggestions; launch requests may still provide a free-form model string.
 
+### Models each agent CLI offers
+
+```
+GET  /api/agents/models?type=claude|codex|agy|antigravity|gemini|pi
+POST /api/agents/models/refresh?type=...
+```
+
+The models the agent's own CLI lists for the user's login (Coral never asks for a vendor key):
+
+| Type | Where the list comes from |
+|---|---|
+| Claude Code | the CLI's initialize reply (the `/model` picker's list); nothing else from that reply is kept |
+| Codex | `codex debug models`, or the catalog shipped with codex when that fails |
+| agy, antigravity, gemini | `agy models` |
+| pi | `pi --list-models` |
+
+The GET answers at once from a cache and never runs a CLI itself:
+`{agent_type, models: [{value, display_name, description?, efforts?}], fetched_at, refreshing, source, error?}`.
+
+- `value` is what to send as a launch's `model`.
+- While the CLI hasn't listed its own models (or can't), `models` is the curated list above, with `source: "builtin"`.
+- A missing or day-old list is fetched in the background: `refreshing: true` means ask again shortly.
+- `error` is a short reason, never the CLI's output.
+
+The refresh fetches now (202). It is the Operator's (not an agent token, not Coral Hub), and a second refresh of the same CLI within 30 seconds answers 429 `models_refresh_limit` (`X-Coral-Limit: action`). Lists are cached per CLI build (path, modification time, size), so updating a CLI refreshes its list.
+
+A launch's `model` must be a model id: letters, digits and `. _ : / @ [ ] + -`, at most 128 characters, not starting with `-`. Anything else is answered 400.
+
+The session list and `GET /api/sessions/live/{name}/info` carry `model`, the model the agent actually uses as its own transcript records it (Claude Code's assistant entries, Codex's `turn_context`), so it follows a `/model` switch: `model_source: "transcript"`. Until a turn has been read, and for agy, whose transcript doesn't name the model, it is the launch's model (`model_source: "launch"`).
+
 ---
 
 ## Health & Status

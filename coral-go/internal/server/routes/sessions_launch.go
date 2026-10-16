@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentmodels"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
@@ -137,6 +138,11 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve model: request wins, else per-type default from settings.
 	effectiveModel := h.resolveModel(r.Context(), body.AgentType, body.Model)
+	if effectiveModel != "" && !agentmodels.ValidModelValue(effectiveModel) {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errInvalidModel, "field": "model"})
+		return
+	}
 
 	// Add model flag if resolved to non-empty
 	launchFlags := body.Flags
@@ -167,6 +173,10 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+// errInvalidModel: a model goes to the CLI as --model's one argument, so it must be a model id
+// (#4065, Security's condition 3).
+const errInvalidModel = "model must be a model id: letters, digits and . _ : / @ [ ] + -, at most 128, not starting with -"
 
 // launchTeamAgent is one member of a team launch.
 type launchTeamAgent struct {
@@ -322,6 +332,11 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, err))
 			return
 		}
+		if a.Model != "" && !agentmodels.ValidModelValue(a.Model) {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
+			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, errInvalidModel))
+			return
+		}
 	}
 
 	ctx := r.Context()
@@ -414,6 +429,11 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			agentFlags = agentDef.Flags
 		} else {
 			agentFlags = stripAgentPermissionFlags(body.Flags)
+		}
+		if effectiveModel != "" && !agentmodels.ValidModelValue(effectiveModel) {
+			// Only a saved default can get here (each member's own model was checked above).
+			launched = append(launched, map[string]any{"name": agentDef.Name, "error": "the default model in Settings: " + errInvalidModel})
+			continue
 		}
 		if effectiveModel != "" {
 			agentFlags = append(agentFlags, "--model", effectiveModel)

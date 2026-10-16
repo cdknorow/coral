@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/agentmodels"
 	"github.com/cdknorow/coral/internal/agentprio"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/updatecheck"
@@ -47,6 +48,8 @@ type Indexer interface {
 
 // SystemHandler handles settings, tags, and filesystem endpoints.
 type SystemHandler struct {
+	// models lists each agent CLI's models (#4065).
+	models  *agentmodels.Service
 	db      *store.DB
 	ss      *store.SessionStore
 	cfg     *config.Config
@@ -138,6 +141,7 @@ func NewSystemHandler(db *store.DB, cfg *config.Config) *SystemHandler {
 			h.generateJobsMu.Unlock()
 		}
 	}()
+	h.models = h.newAgentModels()
 	return h
 }
 

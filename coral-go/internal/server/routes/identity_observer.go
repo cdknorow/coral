@@ -328,6 +328,10 @@ var operatorOnlyRoutes = map[string]string{
 	// #3460: Settings > Run as a hub, and restarting Coral (Security's review).
 	"PUT /api/system/hub-mode": "change whether Coral runs as a hub",
 	"POST /api/system/restart": "restart Coral",
+	// #4065: the models each agent CLI offers. Reading runs no CLI, but agents have no use for
+	// it; a refresh runs the user's CLIs (rate limited) and is the Operator's.
+	"GET /api/agents/models":          "list the models each agent CLI offers",
+	"POST /api/agents/models/refresh": "refresh the agent CLIs' model lists",
 	// #3634: the terminal backend, and ending agents left in Coral's old tmux server.
 	"PUT /api/system/terminal-backend":               "change the terminal backend",
 	"POST /api/system/terminal-backend/end-leftover": "end agents left in Coral's old tmux server",
