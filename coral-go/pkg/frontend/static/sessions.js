@@ -1,3 +1,4 @@
+import { showTerminalStatusbar } from './terminal_statusbar.js';
 import { importOnce } from './import_once.js';
 import { refreshAgentUI } from './agent_ui.js';
 /* Session selection and management */
@@ -246,6 +247,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         document.getElementById("pane-capture").style.display = "none";
         const container = document.getElementById("xterm-container");
         container.style.display = "flex";
+        showTerminalStatusbar(true);
         container.querySelector(':scope > .vendor-load-notice')?.remove(); // a previous agent's failed load
         const tmuxName = popoutTarget ? popoutTarget.tmux_session : (agentData ? (agentData.tmux_session || name) : name);
         if (generation === switchGeneration && state.currentSession) state.currentSession.tmux_session = tmuxName;
@@ -287,6 +289,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     } else {
         dbg('switching to capture mode, disposing terminal');
         document.getElementById("xterm-container").style.display = "none";
+        showTerminalStatusbar(false);
         document.getElementById("pane-capture").style.display = "";
         disposeTerminal();
         resetSyncedCols();

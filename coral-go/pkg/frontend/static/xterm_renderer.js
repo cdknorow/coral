@@ -1,5 +1,6 @@
 /* xterm.js terminal renderer — streams raw ANSI output via WebSocket */
 
+import { setTerminalFocused, setTerminalSize, setTerminalState } from './terminal_statusbar.js';
 import { state } from './state.js';
 import { isInteractiveOwner, claimOwnership, ownershipSessionId } from './ownership.js';
 import { dbg, showToast } from './utils.js';
@@ -173,8 +174,8 @@ function _followPane() {
 }
 
 // FitAddon counts rows from the container's computed height, which includes its padding (the page is border-box), so the last row
-// could end inside the bottom padding, right on the edge. Count the rows that fit inside the padding instead; the columns are the
-// addon's, as before.
+// landed in the bottom padding and, with the bar under the terminal (#4044), could touch it. Count the rows that fit inside the
+// padding instead; the columns are the addon's, as before.
 function _fit() {
     const dims = typeof fitAddon.proposeDimensions === 'function' ? fitAddon.proposeDimensions() : null;
     if (!dims) { fitAddon.fit(); return; }
@@ -313,6 +314,7 @@ export function setRestarting(value) {
 function _setSessionEndedOverlay(visible) {
     const overlay = document.getElementById("session-ended-overlay");
     if (!overlay) return;
+    if (visible) setTerminalState('ended');
 
     if (visible && !_restarting) {
         // Before showing "Session ended", check if we can reach the server.
@@ -346,6 +348,7 @@ function _setSessionEndedOverlay(visible) {
 }
 
 function _setDisconnectedBadge(visible) {
+    if (visible) setTerminalState('reconnecting');
     const badge = document.getElementById("xterm-disconnected-badge");
     if (badge) {
         badge.style.display = visible ? "" : "none";
@@ -594,15 +597,19 @@ export function createTerminal(containerEl) {
         terminal.textarea.addEventListener('focus', () => {
             _terminalFocused = true;
             containerEl.classList.add('xterm-focused');
+            setTerminalFocused(true);
         });
         terminal.textarea.addEventListener('blur', () => {
             _terminalFocused = false;
             containerEl.classList.remove('xterm-focused');
+            setTerminalFocused(false);
         });
     }
 
     // Sync tmux pane dimensions when xterm resizes (e.g. after fitAddon.fit())
+    setTerminalSize(terminal.cols, terminal.rows);
     _onResizeDisposable = terminal.onResize(({ cols, rows }) => {
+        setTerminalSize(cols, rows);
         // Only a window that may set the pane's size resizes it, and never while it is only
         // following the pane's own size (#3422).
         if (!_following && mayResizePane()) _sendResize(cols, rows);
@@ -635,6 +642,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
     _seq = 0;
     _needsScrollToBottom = true;
     _setSessionEndedOverlay(false);
+    setTerminalState('connecting');
 
     const params = new URLSearchParams();
     if (agentType) params.set("agent_type", agentType);
@@ -653,6 +661,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
         dbg('terminalWs OPEN', { sessionId, url: terminalWs.url });
         _termFailures = 0;
         _setDisconnectedBadge(false);
+        setTerminalState('connected');
         document.dispatchEvent(new CustomEvent('coral:terminal-reconnected'));
         if (terminal && !_following && mayResizePane()) _sendResize(terminal.cols, terminal.rows);
         // Flush any input queued while disconnected

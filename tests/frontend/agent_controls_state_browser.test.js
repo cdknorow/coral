@@ -36,14 +36,14 @@ const BASE = require('./test_base').BASE;
             await waitFor(`!!document.getElementById('xterm-container') && getComputedStyle(document.getElementById('xterm-container')).display !== 'none'`, 'the terminal view', 8000);
             assert.equal(await ev(shown('#sleeping-composer')), true, `${name}: the sleeping bar is visible in the Terminal view`);
             for (const b of buttons) assert.equal(await ev(shown(b)), true, `${name}: ${b} is visible`);
-            assert.equal(await ev(`getComputedStyle(document.querySelector('#xterm-container .xterm-focus-hint')).display`), 'none', `${name}: no "Click to type" over a terminal that takes no typing`);
+            assert.equal(await ev(`getComputedStyle(document.querySelector('#terminal-statusbar .xterm-focus-hint')).display`), 'none', `${name}: no "Click to type" over a terminal that takes no typing`);
             await ev(`window.setLiveViewMode('chat'); true`);
         }
         await select('cs-awake');
         await ev(`window.setLiveViewMode('terminal'); true`);
         await waitFor(`!!document.getElementById('xterm-container') && getComputedStyle(document.getElementById('xterm-container')).display !== 'none'`, 'the awake terminal view', 8000);
         assert.equal(await ev(shown('#command-pane')), false, 'an awake agent\'s Terminal view still hides the composer pane (typing goes into the terminal)');
-        assert.notEqual(await ev(`getComputedStyle(document.querySelector('#xterm-container .xterm-focus-hint')).display`), 'none', 'and still offers "Click to type"');
+        assert.notEqual(await ev(`getComputedStyle(document.querySelector('#terminal-statusbar .xterm-focus-hint')).display`), 'none', 'and still offers "Click to type"');
         await ev(`window.setLiveViewMode('chat'); true`);
         console.log('   ✓ sleeping and archived: wake bar and its buttons shown, hint hidden; awake: unchanged');
 

@@ -32,7 +32,7 @@ const BASE = require('./test_base').BASE;
                 const cs = getComputedStyle(chip);
                 const input = document.getElementById('command-input');
                 const send = document.querySelector('#command-pane .mobile-send-btn');
-                const hint = document.querySelector('#xterm-container .xterm-focus-hint');
+                const hint = document.querySelector('#terminal-statusbar .xterm-focus-hint');
                 return { shown: !chip.hidden && r.width > 0, inside: r.left >= h.left - 1 && r.right <= h.right + 1 && r.right <= innerWidth + 1,
                     ellipsis: cs.textOverflow, title: chip.title, text: chip.textContent, tab: chip.tabIndex,
                     disabled: input.disabled, placeholder: input.placeholder,
