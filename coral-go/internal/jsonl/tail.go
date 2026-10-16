@@ -30,6 +30,20 @@ var testDuringDecode func()
 // tailChunk is the first window ReadTail decodes; it doubles until enough is satisfied.
 var tailChunk int64 = 1 << 20
 
+// tailMax bounds the window (8 MiB): a transcript whose end
+// never satisfies enough (no two requests in a long tool run, say) was decoded whole, all of it
+// in memory at once: 40 MB of the heap with 40 agents was such reads of 40 MB transcripts
+// (#3847, #3833 item 8). The goals need only the latest messages; past the bound they get
+// what the window holds.
+var tailMax int64 = 8 << 20
+
+// SetTailMaxForTest bounds ReadTail's window at n bytes and returns a func that restores it.
+func SetTailMaxForTest(n int64) (restore func()) {
+	old := tailMax
+	tailMax = n
+	return func() { tailMax = old }
+}
+
 // SetTailChunkForTest makes ReadTail's first window n bytes and returns a func that restores it.
 func SetTailChunkForTest(n int64) (restore func()) {
 	old := tailChunk
@@ -41,8 +55,8 @@ func SetTailChunkForTest(n int64) (restore func()) {
 // latest messages (#3715: the goals tracker's first read after a start decoded every live
 // transcript from the beginning). It decodes a window ending at the last complete line, starting
 // at a line boundary, and doubles the window until enough(messages) is true or the window is
-// the whole file; the messages are those of a full read of that window, in order. end is the
-// offset just past the last complete line, where an incremental reader goes on (ReadFromContext).
+// the whole file or tailMax; the messages are those of a full read of that window, in order. end is
+// the offset just past the last complete line, where an incremental reader goes on (ReadFromContext).
 func ReadTail(ctx context.Context, path, agentType string, enough func([]map[string]any) bool) (messages []map[string]any, end int64, err error) {
 	f, err := openTranscript(path, agentType)
 	if err != nil {
@@ -76,7 +90,7 @@ func ReadTail(ctx context.Context, path, agentType string, enough func([]map[str
 			return nil, 0, err
 		}
 		end = start + int64(last) + 1
-		if start == 0 || enough(messages) {
+		if start == 0 || enough(messages) || window >= tailMax {
 			return messages, end, nil
 		}
 	}
