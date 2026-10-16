@@ -25,7 +25,7 @@ func TestHubKillAndUploadAnswers(t *testing.T) {
 		t.Skip("needs git")
 	}
 	r := newE2ERemote(t, "kill-upload", nil)
-	t.Setenv("HOME", r.dir)
+	setHome(t, r.dir)
 	git := func(args ...string) {
 		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.test"}, args...)...)
 		cmd.Dir = r.work
@@ -41,10 +41,7 @@ func TestHubKillAndUploadAnswers(t *testing.T) {
 	name := r.sessionNameFor(sid)
 	h := r.srv.Router()
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"launch"}`, map[string]string{"Content-Type": "application/json"}).Code)
-	homes := []string{r.dir}
-	if real, err := filepath.EvalSymlinks(r.dir); err == nil && real != r.dir {
-		homes = append(homes, real)
-	}
+	homes := homeForms(r.dir) // as given, resolved, and JSON-escaped (#3914)
 	send := func(method, path, ctype string, body []byte) (int, string) {
 		req := httptest.NewRequest(method, path, bytes.NewReader(body))
 		req.Host = "127.0.0.1:8420"

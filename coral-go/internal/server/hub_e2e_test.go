@@ -890,7 +890,11 @@ func TestHubE2E_ChatAndTerminalViaProxy(t *testing.T) {
 	c, _, err := websocket.Dial(ctx, wsURLFor(hub.ts, wsPath), nil)
 	require.NoError(t, err)
 	defer c.CloseNow()
-	require.NoError(t, wsjson.Write(ctx, c, map[string]any{"type": "terminal_input", "data": "echo hub-e2e-$((20+22))\n"}))
+	enter := "\n"
+	if runtime.GOOS == "windows" {
+		enter = "\r" // Enter, as the dashboard's terminal sends it: PowerShell's line editor runs the line on CR (#3914)
+	}
+	require.NoError(t, wsjson.Write(ctx, c, map[string]any{"type": "terminal_input", "data": "echo hub-e2e-$((20+22))" + enter}))
 	var got strings.Builder
 	for !strings.Contains(strings.ReplaceAll(got.String(), "\r", ""), "hub-e2e-42\n") {
 		typ, data, err := c.Read(ctx)
