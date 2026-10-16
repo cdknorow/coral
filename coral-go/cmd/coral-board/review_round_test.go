@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -93,3 +94,24 @@ func captureExit(t *testing.T, f func()) (exited bool) {
 }
 
 type exitCalled struct{}
+
+// Security's NITs on #3805: the round file's name is a hash, never the session name itself (one
+// with a path in it stays in the data folder), and it is written whole.
+func TestSeenRoundsFileNameIsAHash(t *testing.T) {
+	dir := isolateBoardEnv(t)
+	t.Setenv("CORAL_SESSION_NAME", "../../escape/x")
+	noteSeenRound("team", map[string]any{"id": float64(5), "workflow": map[string]any{"review_rounds": []any{map[string]any{"round": float64(3)}}}})
+	p := seenRoundsPath()
+	if filepath.Dir(p) != filepath.Clean(dir) || strings.Contains(filepath.Base(p), "escape") {
+		t.Fatalf("round file at %s, want a hashed name in %s", p, dir)
+	}
+	if lastSeenRound("team", 5) != 3 {
+		t.Fatal("the round was not recorded")
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".board_review_rounds_") {
+			t.Fatalf("a temp file was left: %s", e.Name())
+		}
+	}
+}

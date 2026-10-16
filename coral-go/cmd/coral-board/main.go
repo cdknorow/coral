@@ -3,6 +3,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -3011,9 +3013,12 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	}
 }
 
-// seenRoundsPath holds, per board task, the review round this agent was last shown (#3805).
+// seenRoundsPath holds, per board task, the review round this agent was last shown (#3805). The
+// name comes from a hash of the session name, never the raw value (Security's NIT: an env value
+// with a path separator or ".." can't place the file elsewhere).
 func seenRoundsPath() string {
-	return filepath.Join(coralDir(), fmt.Sprintf("board_review_rounds_%s.json", resolveSessionName()))
+	sum := sha256.Sum256([]byte(resolveSessionName()))
+	return filepath.Join(coralDir(), "board_review_rounds_"+hex.EncodeToString(sum[:8])+".json")
 }
 
 func loadSeenRounds() map[string]int {
@@ -3055,7 +3060,16 @@ func noteSeenRound(project string, task map[string]any) {
 	data, _ := json.Marshal(seen)
 	path := seenRoundsPath()
 	os.MkdirAll(filepath.Dir(path), 0o700)
-	_ = os.WriteFile(path, data, 0o600)
+	// A temp file and a rename (Security's NIT): two commands at once never leave half a file.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".board_review_rounds_*")
+	if err != nil {
+		return
+	}
+	_, werr := tmp.Write(data)
+	cerr := tmp.Close()
+	if werr != nil || cerr != nil || os.Chmod(tmp.Name(), 0o600) != nil || os.Rename(tmp.Name(), path) != nil {
+		os.Remove(tmp.Name())
+	}
 }
 
 // lastSeenRound is the review round recorded for a task, 0 when none was (the server then takes
