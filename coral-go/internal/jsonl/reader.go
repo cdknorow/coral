@@ -23,6 +23,7 @@ import (
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/transcriptlink"
 	"github.com/cdknorow/coral/pkg/redact"
 )
@@ -1998,7 +1999,7 @@ func decodeLines(data []byte) []map[string]any {
 	for lo := 0; lo < len(lines); lo += per {
 		hi := min(lo+per, len(lines))
 		wg.Add(1)
-		go func() { defer wg.Done(); decode(lo, hi) }()
+		go func() { defer safego.Recover("jsonl/reader:2001"); defer wg.Done(); decode(lo, hi) }()
 	}
 	wg.Wait()
 	return out

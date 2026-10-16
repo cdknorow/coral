@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/safego"
 	"html/template"
 	"io"
 	"log"
@@ -195,6 +196,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 func (s *Server) goBackground(f func(ctx context.Context)) {
 	s.bg.Add(1)
 	go func() {
+		defer safego.Recover("server/server:189")
 		defer s.bg.Done()
 		f(s.bgCtx)
 	}()
@@ -212,6 +214,7 @@ func (s *Server) Close() {
 			s.bgStop()
 			done := make(chan struct{})
 			go func() {
+				defer safego.Recover("server/server:206")
 				s.bg.Wait()
 				close(done)
 			}()

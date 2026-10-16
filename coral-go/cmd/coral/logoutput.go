@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/secrets"
 )
 
@@ -88,6 +89,7 @@ type terminalItem struct {
 func newTerminalWriter(w io.Writer, depth int) *terminalWriter {
 	t := &terminalWriter{ch: make(chan terminalItem, depth)}
 	go func() {
+		defer safego.Recover("coral/logoutput:90")
 		for item := range t.ch {
 			if n := t.dropped.Swap(0); n > 0 {
 				fmt.Fprintf(w, "[log] %d line(s) were not shown here while the terminal was not reading; they are in coral.log\n", n)

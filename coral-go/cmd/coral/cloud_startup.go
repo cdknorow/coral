@@ -17,6 +17,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // The startup "Connect to Coral Hub" step (#3285). Off unless asked for (#3459):
@@ -79,6 +80,7 @@ func newInterruptRouter(shutdown context.CancelFunc) *interruptRouter {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 	go func() {
+		defer safego.Recover("coral/cloud_startup:81")
 		for s := range ch {
 			ir.handle(s)
 		}
@@ -161,6 +163,7 @@ func runCloudStartupStep(ctx context.Context, cfg *config.Config, mode string, i
 
 	if mode == "log" {
 		go func() {
+			defer safego.Recover("coral/cloud_startup:163")
 			ui := connectUI{out: logLines{}, in: bufio.NewReader(strings.NewReader("")), how: "coral cloud connect"}
 			end := time.Now().Add(cloudLogWindow)
 			for ctx.Err() == nil {

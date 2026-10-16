@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/google/uuid"
 )
@@ -183,6 +184,7 @@ func emitEvent(eventName string, extraProps map[string]string, eventUUID, timest
 func asyncGo(fn func()) {
 	asyncWG.Add(1)
 	go func() {
+		defer safego.Recover("tracking/posthog:185")
 		defer asyncWG.Done()
 		defer func() {
 			if r := recover(); r != nil {

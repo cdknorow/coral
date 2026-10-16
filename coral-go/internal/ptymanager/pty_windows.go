@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/cdknorow/coral/internal/safego"
 	"strings"
 	"sync"
 
@@ -50,6 +51,7 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 	}
 
 	go func() {
+		defer safego.Recover("ptymanager/pty_windows:52")
 		p.cpty.Wait(context.Background())
 		close(p.done)
 	}()

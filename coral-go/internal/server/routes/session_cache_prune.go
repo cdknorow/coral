@@ -8,6 +8,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/ptr"
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // sessionCachePruneEvery is how often per-session caches are swept of sessions
@@ -31,6 +32,7 @@ func (h *SessionsHandler) maybePruneSessionCaches() {
 	}
 	p.last.Store(now)
 	go func() {
+		defer safego.Recover("server/routes/session_cache_prune:33")
 		defer p.running.Store(false)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // configureChildProcess puts cmd in its own process group and makes a context
@@ -29,6 +31,7 @@ func killChildProcess(cmd *exec.Cmd) {
 	}
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
 	go func() {
+		defer safego.Recover("background/process_unix:31")
 		time.Sleep(5 * time.Second)
 		if err := syscall.Kill(-pgid, 0); err == nil {
 			_ = syscall.Kill(-pgid, syscall.SIGKILL)

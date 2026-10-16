@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/updatecheck"
 	"net"
 	"net/http"
@@ -125,6 +126,7 @@ func NewSystemHandler(db *store.DB, cfg *config.Config) *SystemHandler {
 	}
 	// Cleanup expired generation jobs every minute
 	go func() {
+		defer safego.Recover("server/routes/system:127")
 		for {
 			time.Sleep(time.Minute)
 			h.generateJobsMu.Lock()
@@ -1353,6 +1355,7 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 	coralDir := h.cfg.CoralDir()
 
 	go func() {
+		defer safego.Recover("server/routes/system:1327")
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 

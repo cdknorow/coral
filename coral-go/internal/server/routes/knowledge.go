@@ -20,6 +20,7 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // knowledgeJobs tracks distillation runs: the running one, or the last one to finish, per
@@ -196,6 +197,7 @@ func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Reques
 	// Run distillation in background — use a detached context since the
 	// HTTP request context is cancelled once the 202 response is sent.
 	go func() {
+		defer safego.Recover("server/routes/knowledge:198")
 		progressFn := func(p background.DistillProgress) {
 			knowledgeJobsMu.Lock()
 			job.Progress = p

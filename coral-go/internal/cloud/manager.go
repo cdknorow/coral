@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -421,7 +422,7 @@ func (m *Manager) startPolling(dc *DeviceCode) {
 	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateEnrolling,
 		UserCode: dc.UserCode, VerificationURL: dc.VerificationURL, ExpiresAt: dc.ExpiresAt}
 	m.mu.Unlock()
-	go m.pollEnrollment(ectx, gen, dc)
+	go func() { defer safego.Recover("cloud/manager:m.pollEnrollment"); m.pollEnrollment(ectx, gen, dc) }()
 }
 
 // CancelEnrollment stops an enrollment in progress: the user code is dropped and
@@ -533,7 +534,7 @@ func (m *Manager) startTunnel(conn *store.CloudConnection) {
 	m.hubMoved = false // enrolled with the configured hub: it's where the tunnel goes
 	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateConnecting, Label: conn.Label, ServerID: conn.ServerID}
 	m.mu.Unlock()
-	go m.runTunnel(tctx, gen)
+	go func() { defer safego.Recover("cloud/manager:m.runTunnel"); m.runTunnel(tctx, gen) }()
 }
 
 func (m *Manager) runTunnel(ctx context.Context, gen int) {
