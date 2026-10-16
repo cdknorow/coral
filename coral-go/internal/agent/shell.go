@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cdknorow/coral/internal/psquote"
 )
 
 // cmdShellIgnored logs once that a CORAL_SHELL naming cmd.exe is ignored (#3692).
@@ -176,11 +178,12 @@ func singleQuote(s string) string {
 
 // shellQuoteLiteral wraps s in the platform shell's literal quoting style.
 // On POSIX shells this is single-quoting with escaped apostrophes; on
-// PowerShell it is single-quoting with doubled apostrophes.
+// PowerShell it is single-quoting with every single-quote character doubled, the curly ones
+// too (psquote, #3904).
 func shellQuoteLiteral(s string) string {
 	switch detectShell() {
 	case ShellPowerShell:
-		return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+		return psquote.Literal(s)
 	default:
 		return singleQuote(s)
 	}
