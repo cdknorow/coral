@@ -2,5 +2,4 @@
 
 package main
 
-func showInDock()      {}
-func dockRaiseWindow() {}
+func showInDock() {}
