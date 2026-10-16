@@ -116,7 +116,8 @@ if (passwordSet) {
     });
 }
 
-// The API key fallback; also the QR-code link (?api_key=...), which fills and sends it, then drops it from the address.
+// The API key fallback; also the QR-code link, which fills and sends it, then drops it from the address. The key comes
+// in the fragment (#api_key=...), which no server or log sees; ?api_key= from older QR codes still works (#3949).
 const keyForm = $('key-form');
 async function sendKey() {
     const key = $('api-key').value.trim();
@@ -129,7 +130,8 @@ async function sendKey() {
     setError($('key-err'), res.data.error || 'Invalid API key.');
 }
 keyForm.addEventListener('submit', e => { e.preventDefault(); sendKey(); });
-const urlKey = params.get('api_key');
+const hashParams = new URLSearchParams(window.location.hash.slice(1));
+const urlKey = hashParams.get('api_key') || params.get('api_key');
 if (urlKey) {
     $('api-key').value = urlKey;
     params.delete('api_key');

@@ -329,3 +329,40 @@ func TestPasswordNeverStoredInPlaintext(t *testing.T) {
 		return nil
 	})
 }
+
+// Security's conditions on the page (#3948/#3949): every state of GET /auth carries no-store, a
+// CSP with frame-ancestors 'none' and scripts from this server only, X-Frame-Options DENY and
+// no-referrer; the setup-code field is shown only when the server says it is needed.
+func TestAuthPageHeadersInEveryState(t *testing.T) {
+	for name, tc := range map[string]struct {
+		set, sameUser bool
+		addr          string
+		wantCode      bool
+	}{
+		"create, this computer":    {false, true, "127.0.0.1", false},
+		"create, another computer": {false, true, "10.0.0.5", true},
+		"create, unknown peer":     {false, false, "127.0.0.1", true},
+		"sign in":                  {true, true, "10.0.0.5", false},
+	} {
+		g := newPwRig(t)
+		same := tc.sameUser
+		g.ar.SetPeerUser(func(*http.Request) (bool, bool) { return same, same })
+		g.ar.SetStrictLocal(true)
+		if tc.set {
+			g.setPassword("pw")
+		}
+		w := httptest.NewRecorder()
+		g.ar.AuthPage(w, g.req("GET", "/auth", "", tc.addr, nil))
+		h := w.Header()
+		assert.Equal(t, http.StatusOK, w.Code, name)
+		assert.Equal(t, "no-store", h.Get("Cache-Control"), name)
+		csp := h.Get("Content-Security-Policy")
+		assert.Contains(t, csp, "default-src 'self'", name)
+		assert.Contains(t, csp, "frame-ancestors 'none'", name)
+		assert.NotContains(t, csp, "script-src", name+": scripts fall back to 'self'")
+		assert.Equal(t, "DENY", h.Get("X-Frame-Options"), name)
+		assert.Equal(t, "no-referrer", h.Get("Referrer-Policy"), name)
+		assert.Equal(t, tc.wantCode, strings.Contains(w.Body.String(), `id="setup-code"`), name)
+		assert.NotContains(t, w.Body.String(), "<script>", name+": no inline script")
+	}
+}

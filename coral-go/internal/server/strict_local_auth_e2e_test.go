@@ -83,11 +83,12 @@ func TestStrictLocalAuthEndToEnd(t *testing.T) {
 	code, _, hdr := get(plain, "/", nil)
 	assert.Equal(t, http.StatusTemporaryRedirect, code)
 	assert.True(t, strings.HasPrefix(hdr.Get("Location"), "/auth?locked=1&return_to="), hdr.Get("Location"))
-	// /auth on this computer is the locked page (no key form, no script).
-	code, body, _ = get(plain, "/auth?locked=1&return_to=%2F", nil)
+	// /auth is the one sign-in page (#3948/#3949): strict marked, no inline script, never framed.
+	code, body, hdr = get(plain, "/auth?locked=1&return_to=%2F", nil)
 	assert.Equal(t, http.StatusOK, code)
-	assert.Contains(t, string(body), `name="coral-locked"`)
-	assert.NotContains(t, string(body), "api-key")
+	assert.Contains(t, string(body), `data-strict="true"`)
+	assert.NotContains(t, string(body), "<script>")
+	assert.Contains(t, hdr.Get("Content-Security-Policy"), "frame-ancestors 'none'")
 	code, _, _ = get(plain, "/api/health", nil)
 	assert.Equal(t, http.StatusOK, code, "the liveness check stays open")
 	// WebSocket upgrades are locked too.

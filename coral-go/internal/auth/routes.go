@@ -36,16 +36,23 @@ func NewRoutes(ks *KeyStore) *Routes {
 // AuthPage serves the authentication page.
 // GET /auth
 func (ar *Routes) AuthPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if ar.strictLocal && localOperator(r) && !ar.ks.HasValidSession(r) {
-		// 200, so the Coral app's window renders it; the app signs in again from /auth.
-		w.Header().Set("Cache-Control", "no-store")
-		w.Write([]byte(LockedPageHTML))
-		return
-	}
-	// PasswordSet and Local come from #3949's password store and peer check, which Backend wires in on the same branch.
-	w.Write([]byte(AuthPage(PageState{Strict: ar.strictLocal, Local: isDirectLocal(r)})))
+	// One page for every state (#3948/#3949): sign in, or create the password (with the setup code
+	// from another computer). The server decides the state; the create route checks it again per
+	// request. 200 in every state, so the Coral app's window renders it and signs in again.
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Cache-Control", "no-store")
+	h.Set("Content-Security-Policy", authPageCSP)
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "no-referrer")
+	set, local, strict := ar.PageState(r)
+	w.Write([]byte(AuthPage(PageState{PasswordSet: set, Local: local, Strict: strict})))
 }
+
+// authPageCSP: scripts only from this server (the page has no inline script), never framed;
+// inline style is allowed for the page's own <style> block.
+const authPageCSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+	"base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
 
 // ValidateKey validates an API key and sets a session cookie.
 // POST /auth/key

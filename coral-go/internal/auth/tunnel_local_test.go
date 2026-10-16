@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,7 +54,8 @@ func TestTunnelStampIsNeverLocal(t *testing.T) {
 	ar.SetStrictLocal(true)
 	w := httptest.NewRecorder()
 	ar.AuthPage(w, req("GET", "/auth", true))
-	assert.False(t, strings.Contains(w.Body.String(), LockedPageHTML) && LockedPageHTML != "", "the locked page is for this computer only")
+	_, local, _ := ar.PageState(req("GET", "/auth", true))
+	assert.False(t, local, "a tunnel-stamped request is never this computer on the sign-in page")
 
 	status := func(r *http.Request) map[string]any {
 		w := httptest.NewRecorder()
