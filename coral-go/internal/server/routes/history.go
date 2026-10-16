@@ -24,7 +24,6 @@ type HistoryHandler struct {
 	gs          *store.GitStore
 	bs          *board.Store
 	cfg         *config.Config
-	jsonl       *jsonl.SessionReader
 	summarizeFn func(ctx context.Context, sessionID string) error
 }
 
@@ -35,12 +34,11 @@ func (h *HistoryHandler) SetSummarizeFn(fn func(ctx context.Context, sessionID s
 
 func NewHistoryHandler(db *store.DB, cfg *config.Config, bs *board.Store) *HistoryHandler {
 	return &HistoryHandler{
-		ss:    store.NewSessionStore(db),
-		ts:    store.NewTaskStore(db),
-		gs:    store.NewGitStore(db),
-		bs:    bs,
-		cfg:   cfg,
-		jsonl: jsonl.NewSessionReader(),
+		ss:  store.NewSessionStore(db),
+		ts:  store.NewTaskStore(db),
+		gs:  store.NewGitStore(db),
+		bs:  bs,
+		cfg: cfg,
 	}
 }
 
@@ -438,26 +436,31 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Use the JSONL reader to load messages.
-	messages, _ := h.jsonl.ReadNewMessages(sid, workingDir, agentType)
+	// Each request reads through its own reader (#3651). The reader is incremental: one shared
+	// by concurrent requests hands the transcript to whichever reads first, and the others find
+	// no new messages and answered 404 (or cleared the cache under each other's fallbacks).
+	// A history view needs the whole transcript once, so nothing is worth caching between
+	// requests here.
+	rd := jsonl.NewSessionReader()
+	messages, _ := rd.ReadNewMessages(sid, workingDir, agentType)
 	if len(messages) == 0 && agentType != "claude" {
 		// Fallback to claude
-		h.jsonl.ClearSession(sid)
-		messages, _ = h.jsonl.ReadNewMessages(sid, workingDir, "claude")
+		rd.ClearSession(sid)
+		messages, _ = rd.ReadNewMessages(sid, workingDir, "claude")
 	}
 	if len(messages) == 0 {
 		// Try Codex, whose transcript filename uses its native session ID and
 		// therefore may need the embedded Coral session marker for lookup.
-		h.jsonl.ClearSession(sid)
-		messages, _ = h.jsonl.ReadNewMessages(sid, workingDir, "codex")
+		rd.ClearSession(sid)
+		messages, _ = rd.ReadNewMessages(sid, workingDir, "codex")
 		if len(messages) > 0 {
 			agentType = "codex"
 		}
 	}
 	if len(messages) == 0 {
 		// Try Agy / Antigravity as fallback.
-		h.jsonl.ClearSession(sid)
-		messages, _ = h.jsonl.ReadNewMessages(sid, workingDir, "agy")
+		rd.ClearSession(sid)
+		messages, _ = rd.ReadNewMessages(sid, workingDir, "agy")
 		if len(messages) > 0 {
 			agentType = "agy"
 		}
@@ -466,9 +469,6 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 		errNotFound(w, "Session '"+sid+"' not found")
 		return
 	}
-
-	// Clear cached state so the reader doesn't hold stale history data
-	defer h.jsonl.ClearSession(sid)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id": sid,

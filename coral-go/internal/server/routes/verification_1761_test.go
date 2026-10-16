@@ -273,7 +273,7 @@ func TestTask1761_HistoryResumeDetailAndResumeInfo(t *testing.T) {
 // 2. SessionReader cache cleaning after GetSessionDetail call.
 // 3. Handling of missing source files (returns 404 gracefully).
 func TestTask1761_IsolationAndPoisonedCache(t *testing.T) {
-	server, h, ss, codexHome, _, _ := setupHistoryVerificationServer(t)
+	server, _, ss, codexHome, _, _ := setupHistoryVerificationServer(t)
 	ctx := context.Background()
 
 	// Two sessions in the SAME workspace "/workspace/shared"
@@ -332,8 +332,7 @@ func TestTask1761_IsolationAndPoisonedCache(t *testing.T) {
 	assert.Contains(t, string(msgsBBytes), "Beta message body")
 	assert.NotContains(t, string(msgsBBytes), "Alpha message body")
 
-	// Verify reader cache was cleared
-	// h.jsonl.ClearSession(sid) is called in defer of GetSessionDetail
+	// Each request reads through its own reader (#3651), so nothing is cached between them.
 	// Requesting an unknown / deleted session cleanly returns 404 without stale cache interference
 	respMissing, err := http.Get(server.URL + "/api/sessions/history/non-existent-session-id")
 	require.NoError(t, err)
@@ -351,10 +350,6 @@ func TestTask1761_IsolationAndPoisonedCache(t *testing.T) {
 	require.NoError(t, err)
 	defer respMissingFile.Body.Close()
 	assert.Equal(t, http.StatusNotFound, respMissingFile.StatusCode)
-
-	// Ensure h.jsonl is not holding residual state
-	h.jsonl.ClearSession(sessAID)
-	h.jsonl.ClearSession(sessBID)
 }
 
 // TestTask1761_ConcurrentAccess verifies safe concurrent reads under race detection.
