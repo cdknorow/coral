@@ -22,8 +22,9 @@ for p in "$PORT" "$HUBPORT" "$PPROF"; do
 done
 MINUTES="${MINUTES:-15}"; WARMUP="${WARMUP:-300}"; PROFILE="${PROFILE:-120}"; AGENTS="${AGENTS:-20}"
 BASE_TMP="$([ -d "/sd2/$USER" ] && echo "/sd2/$USER/lead-tmp" || echo "${TMPDIR:-/tmp}")"
-mkdir -p "$BASE_TMP"
-WORK="$(mktemp -d "$BASE_TMP/perf4028.XXXXXX")"
+mkdir -p "$BASE_TMP" || exit 1
+WORK="$(mktemp -d "$BASE_TMP/perf4028.XXXXXX")" || exit 1
+[[ -n "$WORK" && -d "$WORK" && "$WORK" != / ]] || { echo "[perf] no work folder" >&2; exit 1; }
 OUT="${OUT:-$WORK/results}"
 mkdir -p "$OUT" "$WORK/bin" "$WORK/d1" "$WORK/d2" "$WORK/home"
 log(){ echo "[perf $(date +%H:%M:%S)] $*"; }
@@ -37,7 +38,8 @@ cleanup() {
   for d in "$WORK/d1" "$WORK/d2"; do
     [[ -S "$d/tmux.sock" ]] && tmux -S "$d/tmux.sock" kill-server 2>/dev/null
   done
-  if [[ "${KEEP_TEST_DATA:-0}" != 1 ]]; then
+  # Only inside this run's own mktemp folder: never with an empty or root WORK.
+  if [[ "${KEEP_TEST_DATA:-0}" != 1 && -n "$WORK" && -d "$WORK" && "$WORK" != / ]]; then
     rm -rf -- "$WORK/d1" "$WORK/d2" "$WORK/home" "$WORK/repo" "$WORK/chrome"
   fi
   log "results in $OUT"
