@@ -421,12 +421,34 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/system/auto-wake/dismiss":                               "dismiss the auto-wake notice",
 	"POST /api/cloud/cli-hello":                                        "start a command-line signature",
 	"POST /api/scheduled/validate-cron":                                "check a schedule",
+	// #3929 (the Orchestrator's call on Backend's question): on a hub, an agent's token never acts
+	// on another server through the hub proxy, as it never acts on another team's board.
+	"CONNECT /api/remote/{server}/*": "act on another server through the hub",
+	"DELETE /api/remote/{server}/*":  "act on another server through the hub",
+	"GET /api/remote/{server}/*":     "act on another server through the hub",
+	"HEAD /api/remote/{server}/*":    "act on another server through the hub",
+	"OPTIONS /api/remote/{server}/*": "act on another server through the hub",
+	"PATCH /api/remote/{server}/*":   "act on another server through the hub",
+	"POST /api/remote/{server}/*":    "act on another server through the hub",
+	"PUT /api/remote/{server}/*":     "act on another server through the hub",
+	"QUERY /api/remote/{server}/*":   "act on another server through the hub",
+	"TRACE /api/remote/{server}/*":   "act on another server through the hub",
 }
 
 // hubModeRoutes are entries the router serves only in hub mode (--hub): ValidateGuardedRoutes
 // lets them be absent otherwise.
 var hubModeRoutes = map[string]bool{
 	"POST /api/servers": true, "PATCH /api/servers/{id}": true, "DELETE /api/servers/{id}": true, "POST /api/servers/{id}/test": true,
+	"CONNECT /api/remote/{server}/*": true,
+	"DELETE /api/remote/{server}/*":  true,
+	"GET /api/remote/{server}/*":     true,
+	"HEAD /api/remote/{server}/*":    true,
+	"OPTIONS /api/remote/{server}/*": true,
+	"PATCH /api/remote/{server}/*":   true,
+	"POST /api/remote/{server}/*":    true,
+	"PUT /api/remote/{server}/*":     true,
+	"QUERY /api/remote/{server}/*":   true,
+	"TRACE /api/remote/{server}/*":   true,
 }
 
 // recordedAgentRoutes are allowed to an agent in every mode (an agent launches the agents of
@@ -464,7 +486,8 @@ func buildGuardPrefixes() map[string][]string {
 func splitGuardKey(key string) (method, pattern string, ok bool) {
 	method, pattern, ok = strings.Cut(key, " ")
 	switch method {
-	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete,
+		http.MethodHead, http.MethodOptions, http.MethodConnect, http.MethodTrace, "QUERY": // the hub proxy is served under every method chi knows
 	default:
 		return "", "", false
 	}
