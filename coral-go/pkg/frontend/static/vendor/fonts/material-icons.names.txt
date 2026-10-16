@@ -46,6 +46,7 @@ dns
 done
 done_all
 download
+drag_indicator
 edit
 edit_note
 email
@@ -83,6 +84,8 @@ insights
 inventory_2
 javascript
 key
+keyboard_arrow_down
+keyboard_arrow_up
 label
 language
 launch

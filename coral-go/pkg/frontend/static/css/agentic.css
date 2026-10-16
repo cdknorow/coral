@@ -168,6 +168,56 @@ body.panel-dragging .agentic-state {
     text-align: center;
 }
 
+/* ── Customize tabs (#4103) ────────────────────────────────── */
+
+/* A tab the user hid; !important so it wins over the scope rules that show tabs. */
+.agentic-tab.tab-hidden { display: none !important; }
+.agentic-tab-customize { flex: 0 0 auto; min-width: 40px; }
+.agentic-tab-customize[aria-expanded="true"] { background: var(--bg-hover); color: var(--text-primary); }
+
+.tab-customize {
+    position: fixed;
+    z-index: 600;
+    width: min(20rem, calc(100vw - 16px));
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    box-shadow: var(--shadow-lg);
+    padding: 8px;
+}
+.tc-title { margin: 4px 8px 6px; font-size: 0.8125rem; } /* rem, not the px tokens: the heading, note and button follow the text size like the tab names do */
+.tc-list { list-style: none; margin: 0; padding: 0; }
+.tc-row { display: flex; align-items: center; gap: 4px; padding: 2px 4px; border-radius: 6px; }
+.tc-row:hover { background: var(--bg-hover); }
+.tc-row.dragging { opacity: 0.5; }
+.tc-grip { font-size: 18px; color: var(--text-secondary); cursor: grab; }
+.tc-label { display: flex; align-items: center; gap: 8px; cursor: pointer; min-height: 32px; min-width: 0; }
+.tc-label .tc-icon { font-size: 18px; color: var(--text-secondary); }
+.tc-row:has(.tc-check:not(:checked)) .tc-name,
+.tc-row:has(.tc-check:not(:checked)) .tc-icon { opacity: 0.5; }
+.tc-lock { font-size: 15px; color: var(--text-secondary); }
+.tc-sp { flex: 1; }
+.tc-move {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
+    background: none; color: var(--text-secondary); cursor: pointer;
+}
+.tc-move:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tc-move[aria-disabled="true"] { opacity: 0.35; cursor: default; }
+.tc-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border); margin-top: 6px; padding: 8px 8px 2px; }
+.tc-note { font-size: 0.6875rem; color: var(--text-secondary); }
+.tab-customize .tc-reset { font-size: 0.8125rem; }
+
+@media (max-width: 767px) {
+    /* A bottom sheet; the up/down buttons are the way to reorder (no drag) at the touch size. */
+    .tab-customize { left: 0; right: 0 !important; top: auto !important; bottom: 0; width: auto; max-height: 80vh; border-radius: 14px 14px 0 0; }
+    .tc-grip { display: none; }
+    .tc-move { width: var(--control-touch-height); height: var(--control-touch-height); }
+    .tc-label { min-height: var(--control-touch-height); }
+}
+
 /* ── Panels ────────────────────────────────────────────────── */
 
 .agentic-panel {

@@ -168,7 +168,7 @@
                         </button>
                         <!-- Top block: Files, Tasks, Stats, Transcript, Notes -->
                         <div class="agentic-block" id="agentic-block-top">
-                            <div class="agentic-state-tabs" role="tablist" aria-label="Session panels">
+                            <div class="agentic-state-tabs" role="tablist" aria-label="Session panels" data-on-contextmenu="tabs-customize-menu">
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="board" data-where="top" id="agentic-tab-board" title="Board Chat — team message board" aria-label="Board Chat" style="display:none">
                                     <span class="material-icons">forum</span>
                                 </button>
@@ -210,6 +210,9 @@
                                 </button>
                                 <!-- Custom view tabs (disabled for now) -->
                                 <span id="custom-view-tabs" style="display:none"></span>
+                                <button class="agentic-tab agentic-tab-customize" id="agentic-tab-customize" data-on-click="tabs-customize" aria-haspopup="dialog" aria-expanded="false" aria-controls="tab-customize" title="Customize tabs" aria-label="Customize tabs">
+                                    <span class="material-icons">tune</span>
+                                </button>
                                 <button class="agentic-tab agentic-tab-close" id="agentic-mobile-close-btn" data-on-click="agentic-panel-toggle" data-open="0" title="Back to Chat" aria-label="Close side panel and return to chat">
                                     <span class="material-icons">close</span>
                                 </button>

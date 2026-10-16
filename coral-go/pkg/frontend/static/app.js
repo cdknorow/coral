@@ -40,6 +40,7 @@ import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
 import { loadCustomViews, activateCustomView } from './custom_views.js';
+import { initTabCustomize } from './tab_customize.js';
 import { startNav, go, note, onRoute, currentRoute } from './nav.js';
 import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } from './routes.js';
 import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
@@ -1087,6 +1088,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!popout) loadPinnedFolders();
     if (!popout) importOnce('./terminal_backend.js').then(m => { m.checkLeftoverTmux(); m.watchAutoWake(); m.watchHooksStatus(); }).catch(() => {}); // #3634, #3636, #3665
     loadCustomViews();
+    initTabCustomize();
     initAgentUI();
     connectCoralWs();
     if (!popout) checkForUpdates();

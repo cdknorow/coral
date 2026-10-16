@@ -12,6 +12,7 @@ import { durationChip, eventDetailText, eventFailed, renderActivityChart } from 
 import { serverFetch, serverForSession } from './server_base.js';
 import { formatClockTime } from './format.js';
 import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './event_icons.js';
+import { openableTab } from './tab_customize.js';
 import { filterItemHtml, refillFilterList, syncFilterExpanded, wireFilterDropdown } from './filter_dropdown.js';
 import { browserLocal } from './safe_storage.js';
 
@@ -277,6 +278,7 @@ export function hideFilterPopup() {
 }
 
 export function switchAgenticTab(tabName, blockId) {
+    tabName = openableTab(tabName); // a tab the user hid opens the always-shown one instead
     // Scope tab/panel switching to the containing block
     const block = blockId
         ? document.getElementById(`agentic-block-${blockId}`)
