@@ -879,6 +879,17 @@ export async function refreshLiveHistory() {
         }
         if (generation !== historyGeneration) return;
 
+        // What the server says about an open prompt rides on this reply (#3720): the pending tool call, and the options
+        // of a prompt that may be open on the terminal. A reply without "pending" is from a server that predates
+        // this: the two routes are then asked as before (below).
+        const needsInputInReply = Object.hasOwn(data, "pending");
+        if (needsInputInReply) {
+            pendingToolBySession.set(session.session_id, data.pending || null);
+            const po = data.prompt_options;
+            if (po) promptOptionsBySession.set(session.session_id, { question: po.question || "", options: po.options || [], review: po.review || [] });
+            else promptOptionsBySession.delete(session.session_id);
+        }
+
         if (data.messages && data.messages.length > 0) {
             if (!initialLoadDone) {
                 container.innerHTML = "";
@@ -920,9 +931,11 @@ export async function refreshLiveHistory() {
         syncNeedsInputCard(container, session);
         syncWorkingIndicator(container, session);
         syncEmptyState(container);
-        refreshPendingTool(session);
-        if (container.querySelector(":scope > .chat-needs-input") || readsPromptsFromScreen(session)) refreshPromptOptions(session);
-        else promptOptionsBySession.delete(session.session_id);
+        if (!needsInputInReply) {
+            refreshPendingTool(session);
+            if (container.querySelector(":scope > .chat-needs-input") || readsPromptsFromScreen(session)) refreshPromptOptions(session);
+            else promptOptionsBySession.delete(session.session_id);
+        }
         if (state.autoScroll) {
             container.scrollTop = container.scrollHeight;
         }

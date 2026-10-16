@@ -190,6 +190,7 @@ func (h *SessionsHandler) notePendingToolEvent(sessionID, eventType, toolUseID s
 	if sessionID == "" {
 		return
 	}
+	h.hints.note(sessionID, eventType)
 	switch eventType {
 	case "tool_use":
 		if toolUseID != "" {

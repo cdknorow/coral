@@ -4,7 +4,7 @@ import { refreshAgentUI } from './agent_ui.js';
 
 import { state, sessionKey, saveSessionDraft } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
-import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
+import { loadHistoryMessages } from './api.js';
 import { HISTORY_PAGE, setHistoryWindow } from './history_pages.js';
 import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey, keyLabel } from './server_base.js';
 import { updateHeaderContext } from './header_context.js';
@@ -14,10 +14,10 @@ import { renderQuickActions, updateSidebarActive, renderAttachments } from './co
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
 import { loadSessionCommits } from './commits.js';
-import { loadAgentTasks, loadBoardTasks, loadSubagents, renderTaskList } from './tasks.js';
+import { loadBoardTasks, loadSubagents, renderTaskList } from './tasks.js';
 import { loadChangedFiles, refreshChangedFiles, syncFilesViewerSession } from './changed_files.js';
 import { loadAgentNotes } from './agent_notes.js';
-import { loadAgentEvents, switchAgenticTab } from './agentic_state.js';
+import { renderEventTimeline, switchAgenticTab } from './agentic_state.js';
 import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './history_tabs.js';
 import { loadHistoryChanges } from './history_changes.js';
 import { note, currentRoute } from './nav.js';
@@ -192,17 +192,6 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     updateWaitingIndicator(agent || {});
     updateTokenUsage(sessionId);
 
-    // Fetch full detail in background (non-blocking) for pane capture
-    loadLiveSessionDetail(name, agentType, sessionId, { server: srv }).then(detail => {
-        if (generation !== switchGeneration) return;
-        if (detail && detail.pane_capture) {
-            const paneEl = document.getElementById("pane-capture");
-            paneEl.textContent = detail.pane_capture;
-            paneEl.dataset.captureState = "ok";
-            document.dispatchEvent(new CustomEvent('coral:terminal-updated'));
-        }
-    });
-
     // Set up quick action buttons
     state.currentCommands = (agent && agent.commands) || [
         { name: "compact", command: "/compact", description: "Compress conversation history" },
@@ -239,6 +228,8 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     state.currentAgentTasks = [];
     state.currentBoardTasks = [];
     renderTaskList();
+    state.currentAgentEvents = []; // the previous agent's activity goes now; the first poll fills the new one
+    renderEventTimeline();
     const mode = getRendererMode(agentType, sessionId);
     dbg('renderer mode:', mode, 'xterm loaded:', xtermReady());
     // Always start capture refresh — it polls tasks and events for any mode
@@ -312,12 +303,12 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     });
 
     // Load secondary data in background (non-blocking, after terminal is connected)
-    loadAgentTasks(name, sessionId);
+    // The agent's tasks and events come with the first capture poll (startCaptureRefresh, above): GET /poll carries both,
+    // so they are not fetched again here (#3720).
     loadSubagents(name, sessionId);
     const boardProject = agentData && agentData.board_project;
     loadBoardTasks(boardProject ? identityKey(srv, boardProject) : null);
     loadAgentNotes(name, sessionId);
-    loadAgentEvents(name, sessionId);
     // The git queries wait for the transcript: on a large repo they take
     // seconds, and the browser's per-origin connection budget is small enough
     // that they would hold up the chat request behind them (task: chat stuck

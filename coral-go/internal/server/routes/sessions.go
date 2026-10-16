@@ -94,6 +94,7 @@ type SessionsHandler struct {
 	machineHealth MachineHealthSource // nil until StartMachineHealth (#3444)
 
 	pending pendingTools // tool calls started but not finished (PreToolUse hook)
+	hints   promptHints  // whether a prompt may be open on a session's terminal (its latest hook events), for the chat reply
 	// hooksRev is the hook set each session's agent loaded at its launch, from its events
 	// (session id → revision, #3655 F3). In memory: until a session's next event after a
 	// restart it is unknown, and the gate takes the screen rule (the safe side).
@@ -1571,17 +1572,21 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
 			page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
 		}
-		httputil.WriteJSONCompressed(w, r, http.StatusOK, map[string]any{
+		reply := map[string]any{
 			"messages":     page,
 			"total":        total,
 			"start":        start,
 			"has_more":     start > 0,
 			"limit_notice": limitNotice,
-		})
+		}
+		h.addNeedsInput(r, reply, name, agentType, sessionID)
+		httputil.WriteJSONCompressed(w, r, http.StatusOK, reply)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"messages": messages, "total": total, "limit_notice": limitNotice})
+	reply := map[string]any{"messages": messages, "total": total, "limit_notice": limitNotice}
+	h.addNeedsInput(r, reply, name, agentType, sessionID)
+	writeJSON(w, http.StatusOK, reply)
 }
 
 // Info returns enriched metadata for the session info modal.
