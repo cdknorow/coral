@@ -333,7 +333,7 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 		key = "session:" + owner.SessionID
 	}
 	if ok, retry := st.admitUpload(key); !ok {
-		artifactRefusal(w, http.StatusRequestEntityTooLarge, "artifact_quota", "hourly",
+		artifactHourlyLimited(w, retry,
 			fmt.Sprintf("this agent's upload limit for the hour is used up (%d uploads or %d MiB); try again in %s", uploadWindowCount, uploadWindowBytes>>20, retry.Round(time.Minute)))
 		return
 	}
@@ -365,7 +365,7 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if !withinWindow {
-		artifactRefusal(w, http.StatusRequestEntityTooLarge, "artifact_quota", "hourly",
+		artifactHourlyLimited(w, 0, // the byte window's reset time isn't tracked here; no Retry-After.
 			fmt.Sprintf("this agent's upload limit for the hour is used up (%d MiB); try again later", uploadWindowBytes>>20))
 		return
 	}
@@ -488,6 +488,16 @@ func artifactRefusal(w http.ResponseWriter, status int, code, limit, msg string)
 		body["limit"] = limit
 	}
 	writeJSON(w, status, body)
+}
+
+// artifactHourlyLimited refuses an upload that hit an hourly rate cap with 429 Too Many Requests
+// (#4007: a count/byte window is a rate limit, not a too-large file; 413 stays for one oversized
+// file and for the store cap). Retry-After (whole seconds) is set when the reset time is known.
+func artifactHourlyLimited(w http.ResponseWriter, retryIn time.Duration, msg string) {
+	if retryIn > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int((retryIn+time.Second-1)/time.Second)))
+	}
+	artifactRefusal(w, http.StatusTooManyRequests, "artifact_quota", "hourly", msg)
 }
 
 // humanBytes shows a size rounded down (so a store just under its cap never reads as full):
