@@ -88,18 +88,15 @@ const BASE = require('./test_base').BASE;
         reqs.length = 0;
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
         await coralReady('startup', 'liveList', 'liveListLoaded', 'settings');
-        const restart = await ev(`(async () => {
+        await ev(`(async () => {
             const { state } = await import((window.__coralStatic || '/static/') + 'state.js');
             state.currentSession = { type: 'live', name: 'rs', session_id: 'rs-id', agent_type: 'claude', display_name: 'Restart me', prompt: 'p' };
             (await import((window.__coralStatic || '/static/') + 'controls.js')).restartSession();
-            const t = Date.now();
-            while (Date.now() - t < 5000) {
-                const m = document.getElementById('restart-modal');
-                if (m && m.style.display !== 'none' && document.querySelector('#restart-acf *')) break;
-                await new Promise(r => requestAnimationFrame(r));
-            }
-            return { shown: document.getElementById('restart-modal').style.display !== 'none', form: !!document.querySelector('#restart-acf *'), config: typeof window.getAgentConfig };
+            return true;
         })()`);
+        await waitFor(`(() => { const m = document.getElementById('restart-modal'); return !!m && m.style.display !== 'none' && !!document.querySelector('#restart-acf *'); })()`,
+            'the restart dialog and its config form', { timeout: 5000, soft: true });
+        const restart = await ev(`({ shown: document.getElementById('restart-modal').style.display !== 'none', form: !!document.querySelector('#restart-acf *'), config: typeof window.getAgentConfig })`);
         assert.deepEqual(restart, { shown: true, form: true, config: 'function' }, 'restart dialog shows its config form: ' + JSON.stringify(restart));
         assert.equal(count('modals.js'), 1, 'modals.js loaded for the restart dialog');
         await escape();

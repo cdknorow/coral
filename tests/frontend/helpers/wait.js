@@ -67,12 +67,22 @@ async function coralReady(ev, step = null, ...args) {
         ` (parts: ${JSON.stringify(await ev(`window.__coralReady.parts || null`).catch(() => null))})`);
 }
 
+// Animation frames, bounded. A page that is not visible (document.visibilityState 'hidden') runs no
+// requestAnimationFrame callbacks: on the Mac, headless Chrome hides the page after an Escape key press sent
+// through Input.dispatchKeyEvent, and a wait made of frames then never finishes (#3703, #3705). So a frame
+// wait here gives up after maxMs and resolves false instead of hanging; it resolves true when the frames ran.
+// framesJs(n, maxMs) is the in-page expression (a Promise), for use inside a suite's own page script:
+//   await ${framesJs(2)};          // inside an ev(`...`) template
+// n may be a number or the name of an in-page variable. Test files never call requestAnimationFrame
+// themselves: raf_hygiene.test.js refuses it, and a wait on a condition is waitFor.
+const framesJs = (n = 2, maxMs = 250) => `new Promise(r => { let k = ${n}; const step = () => (--k > 0 ? requestAnimationFrame(step) : r(true)); requestAnimationFrame(step); setTimeout(() => r(false), ${maxMs}); })`;
+
 // Two animation frames: enough for anything the app applied synchronously (live-list diffs, fixtures) or
-// deferred to requestAnimationFrame to be on screen and laid out. Not a timer.
-const nextFrame = ev => ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
+// deferred to requestAnimationFrame to be on screen and laid out. Bounded, see above.
+const nextFrame = ev => ev(framesJs(2));
 
 module.exports = {
-    waitFor, waitStable, coralReady, nextFrame,
+    waitFor, waitStable, coralReady, nextFrame, framesJs,
     bind: ev => ({
         nextFrame: () => nextFrame(ev),
         waitFor: (expression, what, opts) => waitFor(ev, expression, what, opts),

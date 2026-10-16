@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
 
 // The first page must be smaller than the old 400-message page.
 const MAX_FIRST_PAGE = 200;
@@ -391,7 +392,7 @@ const MAX_FIRST_PAGE = 200;
                 const t0 = performance.now();
                 await T.sessions.selectLiveSession('${name}', 'claude', '${name}-id', 'local');
                 void document.getElementById('live-history-messages').scrollHeight;
-                await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+                await ${framesJs(1)};
                 T.liveChat.stopLiveHistoryPoll();
                 return performance.now() - t0;
             })()`));

@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
 
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -98,7 +99,7 @@ const BASE = require('./test_base').BASE;
         for (const theme of ['light', 'dark']) {
             const r = await ev(`(async () => {
                 const sc = await import(${S}+'settings_core.js'); sc.clearCustomThemeVars(); sc.applyTheme(${JSON.stringify(theme)});
-                await new Promise(requestAnimationFrame);
+                await ${framesJs(1)};
                 const parse = c => { const m = c.match(/[\\d.]+/g).map(Number); return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 }; };
                 const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
                 const lum = c => { const l = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * l(c.r) + 0.7152 * l(c.g) + 0.0722 * l(c.b); };

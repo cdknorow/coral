@@ -12,6 +12,7 @@ const path = require('node:path');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
 
 const SERVERS = [
     // The hub limits (View) while the machine allows Launch: Raise offered.
@@ -168,7 +169,7 @@ const contrast = (a, b) => {
             await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
         };
         const noDialog = what => waitFor(`!document.querySelector('dialog.cs-confirm')`, `the dialog gone after ${what}`, 3000);
-        const settled = () => ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
+        const settled = () => ev(framesJs(2));
         // After a cancel the row re-renders; focus goes back to the control the user came from, not the heading.
         const focusIs = (sel, what) => waitFor(`document.activeElement === document.querySelector(${JSON.stringify(sel)})`, what, 3000,
             `(() => { const a = document.activeElement; return a ? a.tagName + '#' + a.id + '.' + a.className : null; })()`);

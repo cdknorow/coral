@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
 
 (async () => {
     const { client, Page, ev, PRELOAD, install } = await connect();
@@ -51,7 +52,7 @@ const BASE = require('./test_base').BASE;
             // A burst of feed messages renders once.
             const before = window.__renders;
             for (let k = 0; k < 20; k++) ws.handleCoralMessage({ type: 'coral_diff', changed: [{ name: 'p-3', session_id: 'p-3', server: servers[3], summary: 'burst ' + k }] });
-            await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+            await ${framesJs(2)};
             return { rows: list.querySelectorAll('.session-group-item[data-session-id]').length, nodes: list.getElementsByTagName('*').length,
                 fullMs: median(fullMs), oneMs: median(oneMs), replacedPerChange: replaced / 9, fullRebuilds: full, burstRenders: window.__renders - before };
         })()`);

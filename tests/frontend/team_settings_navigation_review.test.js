@@ -21,7 +21,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
   for(const [name,width,height] of [['desktop',1280,800],['mobile',390,844]]) {
    await Emulation.setDeviceMetricsOverride({width,height,deviceScaleFactor:1,mobile:false});
    console.log(name,'opening');await ev(`window.openSettings('navigation-review')`);
-   // Polled with timers, not requestAnimationFrame: a browser window in the background (the Mac) pauses animation frames and the old rAF loop never saw the button enabled (#3703).
+   // Polled with timers, not animation frames: after the pass's Escape key press the Mac's headless Chrome reports the page hidden and runs no animation frames, so the old frame loop never saw the button enabled (#3703, #3705).
    await waitFor(`!!document.querySelector('[type=submit]') && !document.querySelector('[type=submit]').disabled`,'the settings to load',{timeout:10000,diag:`({status:(document.querySelector('.working-mode-status')||{}).textContent})`});
    results.push({name,stage:'workflow-initial',...await geometry()});await shot(`${name}-workflow`);
    await ev(`(() => {const f=document.querySelector('form.working-mode-form');f.elements.preset_instructions.value='Unsaved preset draft';f.elements.custom_instructions.value='Unsaved extra';document.querySelector('[data-settings-tab=workflow]').focus()})()`);

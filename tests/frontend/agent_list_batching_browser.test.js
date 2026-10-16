@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
 
 (async () => {
     const { client, Page, ev, PRELOAD, install } = await connect();
@@ -23,7 +24,7 @@ const BASE = require('./test_base').BASE;
             const st = window.__coralStatic || '/static/';
             const ws = await import(st + 'websocket.js');
             const render = await import(st + 'render.js');
-            const frames = n => new Promise(res => { const step = k => k ? requestAnimationFrame(() => step(k - 1)) : res(); step(n); });
+            const frames = n => ${framesJs('n')};
             const mk = i => ({ name: 'batch-' + i, session_id: 'batch-' + i, agent_type: 'claude', server: 'local', status: 'working', summary: 's' + i, display_name: 'B' + i });
             ws.handleCoralMessage({ type: 'coral_update', sessions: Array.from({ length: 20 }, (_, i) => mk(i)) });
             await frames(2);

@@ -10,6 +10,7 @@ const CDP = require('chrome-remote-interface');
 const fs = require('node:fs');
 const path = require('node:path');
 const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
 
 const results = [];
 const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 'PASS' : 'FAIL'}] ${label}${detail !== undefined ? ' — ' + detail : ''}`); };
@@ -138,7 +139,7 @@ const STATES = {
                 await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars(); m.applyTheme('${theme}'); return true; })()`);
                 for (const name of ['connected', 'connecting', 'revoked']) {
                     await show(name);
-                    await ev(`new Promise(r => requestAnimationFrame(() => r(true)))`);
+                    await ev(framesJs(1));
                     const clip = await ev(`(() => { const r = document.querySelector('.top-bar-actions').getBoundingClientRect(); return { x: Math.max(0, r.left - 140), y: 0, width: Math.min(innerWidth, r.width + 160), height: Math.max(48, r.bottom + 8), scale: 1 }; })()`);
                     const shot = await Page.captureScreenshot({ format: 'png', clip });
                     fs.writeFileSync(path.join(shots, `hub-indicator-${name}-${theme}.png`), Buffer.from(shot.data, 'base64'));

@@ -10,6 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Visible, on-screen interactive elements smaller than 44px in either dimension.
@@ -130,7 +131,7 @@ const UNDERSIZED = `(() => {
             const body = document.getElementById('servers-tab-body');
             showView(body.closest('.view, [id$=-view]')?.id || 'servers-view');
             await cs.renderCloudServersInto(body);
-            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            await ${framesJs(2)};
             const hasSelect = !!body.querySelector('.cs-row select');
             const small = ${UNDERSIZED};
             cs.hideCloudServers();
@@ -152,7 +153,7 @@ const UNDERSIZED = `(() => {
             await Page.setDocumentContent({ frameId: frameTree.frame.id, html: tpl });
             // Every stylesheet loaded (or failed) and the fonts in, then one laid-out frame.
             await ev(`Promise.all(Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.sheet ? true : new Promise(r => { l.addEventListener('load', r, { once: true }); l.addEventListener('error', r, { once: true }); })))
-                .then(() => document.fonts.ready).then(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))).then(() => true)`);
+                .then(() => document.fonts.ready).then(() => ${framesJs(2)}).then(() => true)`);
             // Show every step; a link inside a sentence is exempt (WCAG 2.5.8 inline
             // exception), so it is taken out of the sweep.
             const small = await ev(`(() => {

@@ -162,11 +162,14 @@ const BOARD = 'tasks-3645';
         check('the artifact link opens only a coral:// artifact, and never navigates', JSON.stringify(art.seen) === JSON.stringify(['coral://artifacts/' + 'b'.repeat(64)]) && art.p1 && art.p2, JSON.stringify(art));
 
         // ── The dependency picker (the create-task dialog) ─────────────────
-        const picker = await ev(`(async () => { ${MODS}
+        await ev(`(async () => { ${MODS}
             if (typeof window.showCreateTaskModal === 'function') await window.showCreateTaskModal();
+            return true;
+        })()`);
+        // The picker renders after the dialog loads its tasks: wait for its link (up to 3 s).
+        await waitFor(`!!document.querySelector('#create-task-deps [data-on-click="dep-picker-toggle"]')`, 'the dependency picker link', { timeout: 3000, soft: true });
+        const picker = await ev(`(async () => { ${MODS}
             const box = document.getElementById('create-task-deps');
-            // The picker renders after the dialog loads its tasks: wait for its link (up to 3 s).
-            for (let i = 0; i < 60 && box && !box.querySelector('[data-on-click="dep-picker-toggle"]'); i++) await new Promise(r => requestAnimationFrame(() => setTimeout(r, 50)));
             const add = box && box.querySelector('[data-on-click="dep-picker-toggle"]');
             if (!add) return { box: !!box };
             const list = document.getElementById('create-task-deps-list');

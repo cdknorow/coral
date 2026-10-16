@@ -222,7 +222,7 @@ const BASE = require('./test_base').BASE;
             // Click the deep hit (index 85) using the REAL click handler
             hits[1].click();
 
-            // Wait for selectHistorySession and requestAnimationFrame to settle
+            // Wait for selectHistorySession and the next frame to settle
             await new Promise(r => setTimeout(r, 200));
 
             window.fetch = origFetch;

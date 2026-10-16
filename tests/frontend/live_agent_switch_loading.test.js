@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
 
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -42,7 +43,7 @@ const BASE = require('./test_base').BASE;
             };
             window.__qaSettle = () => new Promise((resolve, reject) => {
                 const end = Date.now() + 5000;
-                const check = () => window.__pend.n === 0 ? requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
+                const check = () => window.__pend.n === 0 ? ${framesJs(2)}.then(() => resolve(true))
                     : Date.now() > end ? reject(new Error('mocked requests still pending: ' + window.__pend.n)) : setTimeout(check, 10);
                 check();
             });
