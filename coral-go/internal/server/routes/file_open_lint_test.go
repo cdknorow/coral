@@ -36,7 +36,7 @@ var reviewedFileOpens = map[string]string{
 	"log_tail.go:readLogTail:Open":                                "a log named from a tmux session matching UUIDSessionRE",
 	"sessions.go:writeBoardStateFile:WriteFile":                   "server data folder, board_state_<Coral's session name>.json, 0600",
 	"system.go:runTeamGeneration:WriteFile":                       "server data folder, a fixed name",
-	"system_bounds.go:readImportFile:OpenFile":                    "#3583: bounded import (O_NOFOLLOW, regular file, size cap)",
+	"system_bounds.go:readImportFile:OpenNoFollow":                "#3583: bounded import (no link followed, regular file, size cap)",
 	"team_artifacts.go:enrichTeamArtifact:ReadFile":               "a managed artifact's hex name, lower-cased and checked",
 	"team_artifacts.go:uploadDirCache.list:ReadFile":              "names read from the server's uploads folder",
 	"themes.go:ThemesHandler.GetTheme:ReadFile":                   "the theme name keeps only [A-Za-z0-9-_ ] (safeNameRE)",
@@ -93,6 +93,11 @@ func TestFileOpensInRoutesAreReviewed(t *testing.T) {
 					case "Open", "OpenFile", "ReadFile", "WriteFile", "Create":
 						found[f+":"+name+":"+sel.Sel.Name] = true
 					}
+				}
+				// secfile.OpenNoFollow follows no link (#3920), but its path can still be steered,
+				// so it is reviewed like os.OpenFile.
+				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "secfile" && sel.Sel.Name == "OpenNoFollow" {
+					found[f+":"+name+":"+sel.Sel.Name] = true
 				}
 				return true
 			})

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/google/uuid"
 )
 
@@ -322,7 +323,7 @@ func logDeliveryFailure(event string, status int, detail string) {
 	if fi, err := os.Stat(path); err == nil && fi.Size() > deliveryLogMaxBytes {
 		os.Remove(path)
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f, err := secfile.OpenNoFollow(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return
 	}

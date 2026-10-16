@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 type instanceLock struct {
@@ -13,7 +15,7 @@ type instanceLock struct {
 }
 
 func acquireInstanceLock(path string) (*instanceLock, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := secfile.OpenNoFollow(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -82,7 +83,7 @@ func rekeyStateFiles(coralDir, old, id string) {
 
 // readNoFollow reads a file without following a symlink at its last element.
 func readNoFollow(path string) ([]byte, error) {
-	fh, err := os.OpenFile(path, os.O_RDONLY|noFollowFlag, 0)
+	fh, err := secfile.OpenNoFollow(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
