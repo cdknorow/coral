@@ -450,21 +450,13 @@ func buildDependencyInputs(rows []dependencyInputRow, workflow func(id int64) (T
 // CompleteTaskWithArtifacts commits the outcome and evidence atomically. A
 // terminal task cannot be edited or reassigned, so downstream inputs stay pinned.
 func (s *Store) CompleteTaskWithArtifacts(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact) (*Task, error) {
-	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, nil, "")
+	return s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, nil, "")
 }
 
-// CompleteTaskWithArtifactsAtRevision rejects stale work after an amendment.
-func (s *Store) CompleteTaskWithArtifactsAtRevision(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
-	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, "")
-}
-
-// CompleteTaskWithArtifactsAtRevisionAndCandidate records the exact submitted
-// candidate revision and enforces all orchestrator-declared completion gates.
+// CompleteTaskWithArtifactsAtRevisionAndCandidate records the exact submitted candidate
+// revision and enforces all orchestrator-declared completion gates; a non-nil expectedRevision
+// rejects stale work after an amendment.
 func (s *Store) CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
-	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, candidateRevision)
-}
-
-func (s *Store) completeTaskWithArtifactsAtRevisionAndCandidate(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
 	if outcome == "" {
 		outcome = "success"
 	}

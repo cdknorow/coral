@@ -42,7 +42,7 @@ func SetTailChunkForTest(n int64) (restore func()) {
 // transcript from the beginning). It decodes a window ending at the last complete line, starting
 // at a line boundary, and doubles the window until enough(messages) is true or the window is
 // the whole file; the messages are those of a full read of that window, in order. end is the
-// offset just past the last complete line, where an incremental reader goes on (ReadFrom).
+// offset just past the last complete line, where an incremental reader goes on (ReadFromContext).
 func ReadTail(ctx context.Context, path, agentType string, enough func([]map[string]any) bool) (messages []map[string]any, end int64, err error) {
 	f, err := openTranscript(path, agentType)
 	if err != nil {
@@ -82,7 +82,7 @@ func ReadTail(ctx context.Context, path, agentType string, enough func([]map[str
 	}
 }
 
-// parseLines turns complete JSONL lines into messages, in order, as ReadFrom does.
+// parseLines turns complete JSONL lines into messages, in order, as ReadFromContext does.
 func parseLines(ctx context.Context, data []byte, agentType string) ([]map[string]any, error) {
 	entries, err := decodeLimited(ctx, data)
 	if err != nil {

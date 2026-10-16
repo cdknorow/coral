@@ -1,6 +1,7 @@
 package jsonl
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ func TestCodexLinkReplacesCachedTranscriptAndResumeIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := NewSessionReader()
-	if _, n := r.ReadAllMessagesForLive(sid, "", "codex"); n != 1 {
+	if _, n := r.ReadAllMessagesForLiveContext(context.Background(), sid, "", "codex"); n != 1 {
 		t.Fatalf("old count=%d", n)
 	}
 	if got := r.FirstUserPrompt(sid, "", "codex"); got != "old conversation" {
@@ -41,14 +42,14 @@ func TestCodexLinkReplacesCachedTranscriptAndResumeIdentity(t *testing.T) {
 	}
 	// Lifecycle refresh can see the mapping before the chat reader does.
 	r.ReadCodexTurnEvent(sid, "")
-	msgs, n := r.ReadAllMessagesForLive(sid, "", "codex")
+	msgs, n := r.ReadAllMessagesForLiveContext(context.Background(), sid, "", "codex")
 	if n != 1 || msgs[0]["content"] != "current conversation" {
 		t.Fatalf("stale chat: %v", msgs)
 	}
 	if got := r.FirstUserPrompt(sid, "", "codex"); got != "current conversation" {
 		t.Fatal(got)
 	}
-	if _, n := NewSessionReader().ReadAllMessagesForLive(sid, "", "codex"); n != 1 {
+	if _, n := NewSessionReader().ReadAllMessagesForLiveContext(context.Background(), sid, "", "codex"); n != 1 {
 		t.Fatalf("cold restart count=%d", n)
 	}
 	cmd, err := (&agent.CodexAgent{}).LaunchCommand(agent.LaunchParams{ResumeSessionID: sid})

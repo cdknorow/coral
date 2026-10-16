@@ -35,7 +35,7 @@ func TestPersonalWorkflowPersistenceAndIsolation(t *testing.T) {
 	_, err = s.ClaimNextAgentTask(ctx, "agent", &sid)
 	require.Error(t, err)
 	evidence := []board.TaskArtifact{{Name: "build", Content: "candidate", Revision: "rev-1"}}
-	require.NoError(t, s.FinishAgentTaskWithArtifacts(ctx, build.ID, AgentTaskDone, "built", "success", evidence))
+	require.NoError(t, s.FinishAgentTaskWithArtifactsAndCandidate(ctx, build.ID, AgentTaskDone, "built", "success", evidence, ""))
 	require.Error(t, s.FinishAgentTask(ctx, build.ID, AgentTaskDone, "overwrite"))
 	require.NoError(t, db.Close())
 	db, err = OpenWithKey(context.Background(), path, "")

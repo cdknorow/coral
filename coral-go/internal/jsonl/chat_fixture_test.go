@@ -1,6 +1,7 @@
 package jsonl
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -53,7 +54,7 @@ func TestChatReplyFromHostileTranscriptParses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs, _ := NewSessionReader().ReadAllMessages(sessionID, "", "claude")
+	msgs, _ := NewSessionReader().ReadAllMessagesContext(context.Background(), sessionID, "", "claude")
 	reply, err := json.Marshal(map[string]any{"messages": msgs, "total": len(msgs)})
 	if err != nil {
 		t.Fatalf("the reply must encode: %v", err)

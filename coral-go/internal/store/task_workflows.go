@@ -114,10 +114,6 @@ func (s *TaskStore) CreateAgentTaskWithWorkflow(ctx context.Context, name, title
 	return s.GetAgentTask(ctx, task.ID)
 }
 
-func (s *TaskStore) FinishAgentTaskWithArtifacts(ctx context.Context, id int64, state int, message, outcome string, artifacts []board.TaskArtifact) error {
-	return s.FinishAgentTaskWithArtifactsAndCandidate(ctx, id, state, message, outcome, artifacts, "")
-}
-
 func (s *TaskStore) FinishAgentTaskWithArtifactsAndCandidate(ctx context.Context, id int64, state int, message, outcome string, artifacts []board.TaskArtifact, candidateRevision string) error {
 	task, err := s.WorkflowTask(ctx, id)
 	if err != nil {

@@ -43,18 +43,12 @@ func (s *Store) RequireTaskReviewer(ctx context.Context, project, actor string) 
 // free the worker slot. The immutable candidate can be submitted before a
 // completion attempt, or separately after an externally rejected attempt.
 func (s *Store) SubmitCompletionReview(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact) (*Task, error) {
-	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, nil, "")
+	return s.SubmitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, nil, "")
 }
 
-func (s *Store) SubmitCompletionReviewAtRevision(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
-	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision, "")
-}
-
+// SubmitCompletionReviewAtRevisionAndCandidate is SubmitCompletionReview against an expected
+// task revision (nil: any) and a submitted candidate revision ("" for none).
 func (s *Store) SubmitCompletionReviewAtRevisionAndCandidate(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
-	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision, candidateRevision)
-}
-
-func (s *Store) submitCompletionReviewAtRevisionAndCandidate(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
 	if strings.TrimSpace(reason) == "" || len(reason) > 4096 || len(message) > 65536 {
 		return nil, fmt.Errorf("a review reason is required (maximum 4096 characters); message maximum is 65536")
 	}

@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"strings"
@@ -81,7 +82,7 @@ func (h *HistoryHandler) SearchChats(w http.ResponseWriter, r *http.Request) {
 					unavailable++
 					continue
 				}
-				messages, _, err := jsonl.ReadFrom(idx.SourceFile, idx.SourceType, 0)
+				messages, _, err := jsonl.ReadFromContext(context.Background(), idx.SourceFile, idx.SourceType, 0)
 				if err != nil {
 					unavailable++
 					continue

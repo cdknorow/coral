@@ -1,6 +1,7 @@
 package jsonl
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -369,7 +370,7 @@ func TestReadAllMessages_CodexRolloutToolCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs, total := NewSessionReader().ReadAllMessages(sessionID, "", "codex")
+	msgs, total := NewSessionReader().ReadAllMessagesContext(context.Background(), sessionID, "", "codex")
 
 	type row struct{ kind, text, tool, id string }
 	var got []row
@@ -770,7 +771,7 @@ func TestReadFrom_ConsumesOnlyCompleteLines(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs, off, err := ReadFrom(path, "claude", 0)
+	msgs, off, err := ReadFromContext(context.Background(), path, "claude", 0)
 	if err != nil || len(msgs) != 1 || msgs[0]["content"] != "first" {
 		t.Fatalf("first read: msgs=%v err=%v", msgs, err)
 	}
@@ -781,12 +782,12 @@ func TestReadFrom_ConsumesOnlyCompleteLines(t *testing.T) {
 	if err := os.WriteFile(path, []byte(full+partial+`ond"},"timestamp":"2026-09-21T11:00:01Z"}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	msgs, off2, err := ReadFrom(path, "claude", off)
+	msgs, off2, err := ReadFromContext(context.Background(), path, "claude", off)
 	if err != nil || len(msgs) != 1 || msgs[0]["content"] != "second" {
 		t.Fatalf("second read: msgs=%v err=%v", msgs, err)
 	}
 
-	msgs, _, err = ReadFrom(path, "claude", off2+1000)
+	msgs, _, err = ReadFromContext(context.Background(), path, "claude", off2+1000)
 	if err != nil || len(msgs) != 2 {
 		t.Fatalf("an offset past the end starts over: msgs=%v err=%v", msgs, err)
 	}
@@ -1298,13 +1299,13 @@ func TestSessionReader_CodexLiveResumeLineage(t *testing.T) {
 	ancestorPath := filepath.Join(day, "rollout-2026-10-01T00-00-00-native-ancestor.jsonl")
 	writeCodex(ancestorPath, ancestorID, "ancestor")
 	r := NewSessionReader()
-	msgs, total := r.ReadAllMessagesForLiveWithLineage(currentID, "/workspace/death-or-trade", at.Codex, ancestorID)
+	msgs, total := r.ReadAllMessagesForLiveWithLineageContext(context.Background(), currentID, "/workspace/death-or-trade", at.Codex, ancestorID)
 	if total != 1 || len(msgs) != 1 || msgs[0]["content"] != "ancestor" {
 		t.Fatalf("lineage fallback = total %d messages %#v", total, msgs)
 	}
 	currentPath := filepath.Join(day, "rollout-2026-10-01T00-00-01-native-current.jsonl")
 	writeCodex(currentPath, currentID, "current")
-	msgs, total = r.ReadAllMessagesForLiveWithLineage(currentID, "/workspace/death-or-trade", at.Codex, ancestorID)
+	msgs, total = r.ReadAllMessagesForLiveWithLineageContext(context.Background(), currentID, "/workspace/death-or-trade", at.Codex, ancestorID)
 	if total != 2 || len(msgs) != 2 || msgs[0]["content"] != "ancestor" || msgs[1]["content"] != "current" {
 		t.Fatalf("lineage merge = total %d messages %#v", total, msgs)
 	}
