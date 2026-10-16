@@ -25,7 +25,7 @@ func TestDemoSeedCanBeTurnedOff(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { db.Close() })
 			stack := newTermStack(t)
-			NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+			newTestServer(t, cfg, db, stack.backend, stack.terminal)
 
 			ctx := context.Background()
 			var jobs, workflows int
@@ -64,14 +64,14 @@ func TestWelcomePendingOnFirstLaunchOnly(t *testing.T) {
 				require.NoError(t, err)
 			}
 			stack := newTermStack(t)
-			NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+			newTestServer(t, cfg, db, stack.backend, stack.terminal)
 			assert.Equal(t, tc.want, setting(t, db, "welcome_pending"))
 			// The dashboard answers the screen; a restart does not bring it back.
 			if tc.want == "True" {
 				_, err := db.Exec(`INSERT INTO user_settings (key, value) VALUES ('welcome_choice', 'coral'), ('welcome_pending', 'False')
 					ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
 				require.NoError(t, err)
-				NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+				newTestServer(t, cfg, db, stack.backend, stack.terminal)
 				assert.Equal(t, "False", setting(t, db, "welcome_pending"))
 			}
 		})

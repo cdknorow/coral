@@ -69,6 +69,13 @@ type Server struct {
 	goalMetrics     *routes.GoalMetricsHandler
 	systemHandler   *routes.SystemHandler
 	workflowHandler *routes.WorkflowHandler
+
+	// The server's own background work (recoveries, the auto-accept loop) runs on bgCtx and
+	// is waited for by Close, before the board database closes (#3914).
+	bgCtx     context.Context
+	bgStop    context.CancelFunc
+	bg        sync.WaitGroup
+	closeOnce sync.Once
 }
 
 // remoteAgentHubConfig tunes the hub's remote poller. Zero values mean the
@@ -162,6 +169,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 		terminal:   terminal,
 		keyStore:   keyStore,
 	}
+	s.bgCtx, s.bgStop = context.WithCancel(context.Background())
 
 	// Parse Go templates from embedded FS
 	indexTmpl, err := frontend.ParseIndex()
@@ -173,6 +181,44 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	s.router = s.buildRouter()
 
 	return s
+}
+
+// goBackground runs f on the server's background context, tracked for Close.
+func (s *Server) goBackground(f func(ctx context.Context)) {
+	s.bg.Add(1)
+	go func() {
+		defer s.bg.Done()
+		f(s.bgCtx)
+	}()
+}
+
+// closeWait bounds how long Close waits for the background work to stop.
+const closeWait = 5 * time.Second
+
+// Close stops the server's own background work and closes its board database (#3914). The
+// sessions database belongs to the caller, which closes it after this. Call it after the HTTP
+// server has stopped; it is safe to call more than once.
+func (s *Server) Close() {
+	s.closeOnce.Do(func() {
+		if s.bgStop != nil {
+			s.bgStop()
+			done := make(chan struct{})
+			go func() {
+				s.bg.Wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(closeWait):
+				log.Printf("[server] background work still running after %s; closing the board database anyway", closeWait)
+			}
+		}
+		if s.boardStore != nil {
+			if err := s.boardStore.Close(); err != nil {
+				log.Printf("[server] closing the board database: %v", err)
+			}
+		}
+	})
 }
 
 // Router returns the configured chi.Router for use with http.Server.
@@ -811,12 +857,12 @@ func (s *Server) buildRouter() chi.Router {
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	sessStore := store.NewSessionStore(s.db)
 	boardHandler.SetAutoAttacher(routes.NewAutoAttacher(s.cfg.CoralDir(), routes.AutoAttachEnabled(sessStore), routes.SessionDirs(sessStore)))
-	go boardHandler.RecoverTaskNotifications(context.Background())
-	go func() {
-		if err := boardHandler.RestoreSubscriberReminders(context.Background()); err != nil {
+	s.goBackground(boardHandler.RecoverTaskNotifications)
+	s.goBackground(func(ctx context.Context) {
+		if err := boardHandler.RestoreSubscriberReminders(ctx); err != nil {
 			log.Printf("restore subscriber reminders: %v", err)
 		}
-	}()
+	})
 	s.boardHandler = boardHandler
 	sessHandler.SetBoardHandler(boardHandler)
 	sessHandler.SetScheduleStore(store.NewScheduleStore(s.db))
@@ -828,11 +874,11 @@ func (s *Server) buildRouter() chi.Router {
 	notifStore := routes.NewNotificationStore()
 	sessHandler.SetNotificationStore(notifStore)
 	autoAccept := routes.NewAutoAcceptor(sessHandler)
-	autoAccept.Start(context.Background())
-	go autoAccept.Run(context.Background())
-	go sessHandler.RecoverPersonalTaskNotifications(context.Background())
+	autoAccept.Start(s.bgCtx)
+	s.goBackground(autoAccept.Run)
+	s.goBackground(sessHandler.RecoverPersonalTaskNotifications)
 	// Sessions launched before their CLI version was recorded get it now (#3573).
-	go sessHandler.BackfillCLIVersions(context.Background())
+	s.goBackground(sessHandler.BackfillCLIVersions)
 	notifHandler := routes.NewNotificationHandler(notifStore)
 	r.Post("/api/notifications", notifHandler.Create)
 	r.Get("/api/board/projects", boardHandler.ListProjects)
