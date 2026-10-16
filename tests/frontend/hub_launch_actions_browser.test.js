@@ -58,7 +58,7 @@ const HUB_PRELOAD = `(() => {
     const team = `@m1/${BOARD}`;
     const killAll = () => ev(`(() => {
         const b = [...document.querySelectorAll('.overflow-menu-item')].find(x => /Kill All/.test(x.textContent));
-        return b ? { disabled: b.disabled, text: b.textContent.replace(/\\s+/g, ' ').trim(), title: b.getAttribute('title') || '', onclick: !!b.getAttribute('onclick') } : null;
+        return b ? { disabled: b.disabled, text: b.textContent.replace(/\\s+/g, ' ').trim(), title: b.getAttribute('title') || '', onclick: !!(b.getAttribute('onclick') || b.getAttribute('data-on-click')) } : null;
     })()`);
     const access = mode => ev(`(async () => {
         window.__mode = ${JSON.stringify(mode)};

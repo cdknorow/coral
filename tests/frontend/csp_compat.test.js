@@ -43,7 +43,8 @@ const { pathToFileURL } = require('url');
     assert.ok(total > 0 && total >= shapesMod.SHAPES.size, `expected at least one handler per allowlisted shape (${shapesMod.SHAPES.size}), got ${total}`);
     assert.deepStrictEqual(bad, [], `${bad.length} of ${total} inline handlers are outside the CSP-safe grammar:\n` + bad.join('\n'));
 
-    assert.deepStrictEqual([...shapesMod.EVENTS], ['change', 'click', 'contextmenu', 'input', 'keydown', 'mousedown', 'submit'], 'EVENTS is derived from the UI');
+    // The events the remaining inline handlers use (CSP stage 2, #3645, moves them away slice by slice).
+    assert.deepStrictEqual([...shapesMod.EVENTS], ['change', 'click', 'contextmenu', 'input', 'keydown', 'submit'], 'EVENTS is derived from the UI');
 
     // ── 1b. the real allowlist refuses anything not shaped like a shipped handler ──
     {

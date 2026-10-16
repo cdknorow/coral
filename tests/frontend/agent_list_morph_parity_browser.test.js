@@ -86,10 +86,10 @@ async function session(noMorph) {
         await step('initial');
         await step('search "agent 1"', `window.filterLiveAgents('agent 1'); true`);
         await step('search cleared', `window.filterLiveAgents(''); true`);
-        await step('collapse the first group', click('#live-sessions-list [onclick^="toggleGroupCollapse"]'));
-        await step('expand it again', click('#live-sessions-list [onclick^="toggleGroupCollapse"]'));
-        await step('expand sleeping', click('#live-sessions-list [onclick^="expandSleepingGroup"]'));
-        await step('open archived', click('#live-sessions-list [onclick^="toggleArchivedSection"]'));
+        await step('collapse the first group', click('#live-sessions-list [data-on-click="group-collapse"]'));
+        await step('expand it again', click('#live-sessions-list [data-on-click="group-collapse"]'));
+        await step('expand sleeping', click('#live-sessions-list [data-on-click="group-sleeping-expand"]'));
+        await step('open archived', click('#live-sessions-list [data-on-click="archived-toggle"]'));
         await step('select sid-12', `window.selectLiveSession('team-b', 'claude', 'sid-12'); true`);
         await step('Move Down sid-12', `window.moveSessionDown('sid-12'); true`);
         for (let k = 0; k < 6; k++) await step('feed tick ' + k, tick('sid-' + k, { summary: `tick ${k} <b>&"'`, working: k % 2 === 0 }));

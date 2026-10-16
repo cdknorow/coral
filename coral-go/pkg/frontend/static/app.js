@@ -94,6 +94,18 @@ registerActions({
     // Enter sends, Shift+Enter is a new line.
     'mb-post-key': (el, event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); postBoardMessage(); } },
 });
+// The sidebar's own controls (#3645): rail, search, launch, display toggles, the Jobs subtabs.
+registerActions({
+    'sidebar-rail-toggle': () => window.toggleSidebarRail(),
+    'agent-search-focus': () => window.focusAgentSearch(),
+    'launch-show': () => window.showLaunchModal(),
+    'agent-search-filter': el => window.filterLiveAgents(el.value),
+    'agent-search-key': (el, event) => window.agentSearchKey(event),
+    'toggle-session-summary': () => window.toggleSessionSummary(),
+    'toggle-show-server': () => window.toggleShowServer(),
+    'toggle-group-by-server': () => window.toggleGroupByServer(),
+    'jobs-subtab': el => { if (el.dataset.tab === 'active' || el.dataset.tab === 'scheduled') window.switchJobsSubtab(el.dataset.tab); },
+});
 // The live agent view's header, view toggle, side panel tabs and command row (#3645). Restart is
 // destructive (actions.js DESTRUCTIVE_ACTIONS: a popout hides it) and still asks first
 // (restartSession's own confirmation). A side panel tab must be one the panel has.

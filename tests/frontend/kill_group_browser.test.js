@@ -37,7 +37,7 @@ const BASE = require('./test_base').BASE;
     const killAll = async group => {
         await clearReqs();
         const found = await ev(`(() => {
-            const b = [...document.querySelectorAll('#live-sessions-list .overflow-menu-item')].find(x => x.getAttribute('onclick')?.includes("killGroup('${group}')"));
+            const b = [...document.querySelectorAll('#live-sessions-list .overflow-menu-item')].find(x => x.getAttribute('onclick')?.includes("killGroup('${group}')") || (x.getAttribute('data-on-click') === 'group-kill' && x.dataset.group === ${JSON.stringify(group)}));
             if (!b) return false;
             b.click();
             return true;
@@ -97,7 +97,7 @@ const BASE = require('./test_base').BASE;
         await seed();
         const nested = await ev(`(() => ({
             shown: !!document.querySelector('#live-sessions-list li[data-session-id="t1"]'),
-            killTeam: !!document.querySelector('#live-sessions-list [onclick*="killBoard("]'),
+            killTeam: !!document.querySelector('#live-sessions-list [onclick*="killBoard("], #live-sessions-list [data-on-click="team-kill"]'),
         }))()`);
         assert.ok(nested.shown, 'the team member is listed in folder mode');
         assert.ok(nested.killTeam, 'its team section offers Kill Team');

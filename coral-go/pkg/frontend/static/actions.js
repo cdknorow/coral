@@ -40,7 +40,10 @@ export function registerActions(map) {
 // last slice's census checks that.
 // mb-delete-board: deleting the board was never on the popout's old onclick list, so a popout kept
 // it (found by agent_popout's independent probe when slice 5 moved it).
-export const DESTRUCTIVE_ACTIONS = new Set(['session-restart', 'mb-delete-board']);
+// Slice 6 adds the sidebar's: an agent's Kill / Restart / Rename, a group's and a team's Kill, and
+// Reset team.
+export const DESTRUCTIVE_ACTIONS = new Set(['session-restart', 'mb-delete-board',
+    'agent-kill', 'agent-restart', 'agent-rename', 'group-kill', 'team-kill', 'team-reset']);
 export const SEND_ACTIONS = new Set(['cmd-send', 'cmd-send-team', 'cmd-mode-toggle', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro',
     'cmd-send-menu', 'send-menu-send', 'send-menu-team', 'send-menu-resend', 'send-menu-protocol']);
 

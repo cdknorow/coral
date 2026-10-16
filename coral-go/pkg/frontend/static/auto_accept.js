@@ -13,7 +13,8 @@
  */
 import { state } from './state.js';
 import { serverFetch, serverForSession, sessionServer, isCloud } from './server_base.js';
-import { showToast, escapeAttr, jsStr } from './utils.js';
+import { showToast, escapeAttr } from './utils.js';
+import { registerActions, textOf } from './actions.js';
 import { responseErrorText } from './server_status.js';
 import { scheduleLiveSessionsRender } from './render.js';
 import { isPopout } from './popout.js';
@@ -94,7 +95,7 @@ export function autoAcceptMenuItem(s) {
     const stateText = on ? (s.auto_accept_until ? `On until ${clock(s.auto_accept_until)}` : 'On') : 'Off';
     return `<button type="button" class="overflow-menu-item auto-accept-menu-item" role="menuitemcheckbox" aria-checked="${on}"`
         + `${supported ? '' : ' disabled aria-disabled="true"'}${why ? ` title="${escapeAttr(why)}"` : ''}`
-        + ` onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAutoAccept('${jsStr(s.name)}', '${jsStr(sid)}')">`
+        + ` data-on-click="agent-auto-accept" data-name="${escapeAttr(s.name)}" data-session-id="${escapeAttr(sid)}">`
         + '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3 3 7-7"/></svg>'
         + `Auto-accept prompts<span class="auto-accept-state">${stateText}</span></button>`;
 }
@@ -324,4 +325,14 @@ export async function stopAllAutoAccept() {
 }
 
 window.toggleAutoAccept = toggleAutoAccept;
+
+// The agent menu's Auto-accept item (#3645): a menu item stops the click and closes the menus first.
+registerActions({
+    'agent-auto-accept': (el, event) => {
+        event.stopPropagation();
+        window.closeSidebarKebabs();
+        const name = textOf(el.dataset.name), sid = textOf(el.dataset.sessionId);
+        if (name && sid) toggleAutoAccept(name, sid);
+    },
+});
 window.stopAllAutoAccept = stopAllAutoAccept;
