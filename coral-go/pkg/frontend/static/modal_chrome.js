@@ -23,7 +23,7 @@ export function lastFocusOutsideDialogs() {
 // without `hide` is closed by hiding its element (display none), which is also what an unlisted dialog gets. The lazy dialogs' hide
 // functions are looked up on window when used, since they exist by the time such a dialog can be visible.
 const byWindow = name => () => window[name]?.();
-const DIALOGS = {
+const DIALOGS = Object.assign(Object.create(null), { // no prototype: an element id like "constructor" finds nothing
     'launch-modal': { hide: byWindow('hideLaunchModal'), backdrop: true },
     'info-modal': { hide: byWindow('hideInfoModal'), backdrop: true },
     'resume-modal': { hide: byWindow('hideResumeModal'), backdrop: true },
@@ -39,7 +39,7 @@ const DIALOGS = {
     'team-wizard-modal': { hide: byWindow('hideTeamWizardModal') },
     'add-agent-board-modal': { hide: byWindow('hideAddAgentBoardModal') },
     'mobile-connect-modal': { hide: () => window._hideMobileConnectModal() },
-};
+});
 
 function hideDialog(modal) {
     const d = DIALOGS[modal.id];
