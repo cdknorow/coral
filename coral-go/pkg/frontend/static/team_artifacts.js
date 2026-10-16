@@ -167,11 +167,20 @@ let focusKey = null;
 function focusKeyOf(root) {
     const a = document.activeElement;
     if (!a || a === root || !root.contains(a) || a.tagName === 'BODY') return null;
+    if (a.classList.contains('team-artifacts-more')) return { more: true, count: caches[source].items.length };   // Load more: the focus follows to the first new row
     const row = a.closest('tr.team-artifact-row');
     return { row: row ? [...row.parentElement.children].indexOf(row) : -1, label: (a.getAttribute('aria-label') || a.textContent || '').trim() };
 }
 function restoreFocus(root) {
     if (!focusKey) return;
+    if (focusKey.more) {
+        const more = root.querySelector('.team-artifacts-more');
+        if (more) { if (!more.disabled) { more.focus(); focusKey = null; } return; }   // still loading: wait
+        const first = root.querySelectorAll('tr.team-artifact-row')[focusKey.count]?.querySelector('button, a[href], summary');
+        focusKey = null;
+        if (first) first.focus();
+        return;
+    }
     const pool = focusKey.row >= 0 ? (root.querySelectorAll('tr.team-artifact-row')[focusKey.row]?.querySelectorAll('button, a[href], summary') || []) : root.querySelectorAll('.team-artifacts-heading button, .team-artifacts-status ~ button, .team-artifacts-more');
     const hit = [...pool].find(e => (e.getAttribute('aria-label') || e.textContent || '').trim() === focusKey.label);
     if (!hit) { focusKey = null; return; }   // the row or the control is gone
