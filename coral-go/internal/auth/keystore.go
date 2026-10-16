@@ -458,7 +458,7 @@ func (ks *KeyStore) signOut(w http.ResponseWriter, r *http.Request) {
 		}
 		ks.RevokeSession(c.Value)
 		if name == legacyCookieName {
-			http.SetCookie(w, &http.Cookie{Name: legacyCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+			http.SetCookie(w, &http.Cookie{Name: legacyCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 		}
 	}
 	ks.clearSessionCookie(w, r)
@@ -473,7 +473,7 @@ func (ks *KeyStore) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   ks.overHTTPS(r),
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode, // as the cookie it clears (#4032)
 	})
 }
 
