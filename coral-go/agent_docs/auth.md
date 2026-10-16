@@ -14,9 +14,26 @@ Coral uses a layered authentication system:
 GET /auth
 ```
 
-Serves the HTML authentication page where users can enter their API key.
+Serves the sign-in page. The server decides what it shows: the password sign-in once a password is set; otherwise "Create a password" (from another computer it also asks for the setup code, below). Every state also offers the API key. The page is never framed and is not cached.
 
 **Response:** HTML document.
+
+## Browser password
+
+A browser signs in to Coral with a password (#3949). The Coral app, the tray and `coral open` sign in by themselves with a single-use link and never need it. Any non-empty password is accepted, up to 4 KiB; a strength meter only advises. Only an argon2id hash is kept, in `<data>/password` (0600). It is never logged.
+
+- **Creating it.** When no password is set, the sign-in page offers to create one.
+  - From this computer, no code is needed. "This computer" means a direct loopback request with a localhost Host, no proxy header, no Coral Hub stamp, `require_auth_on_loopback` off, and the system confirming that the request comes from the same OS user.
+  - From anywhere else, the page also asks for a one-time **setup code**: 8 characters shown as `XXXX-XXXX`, valid 60 minutes, single use. It is replaced when a password is set, on every restart and after 20 wrong codes.
+  - Coral prints the code on its console (not in `coral.log`), and `coral setup-code` prints it on the computer that runs Coral.
+- **From a script or a headless install:** `coral set-password` (prompts on the terminal; `--stdin` reads one line), or `CORAL_INITIAL_PASSWORD_FILE=<file>`, which Coral reads once at startup when no password is set. The file must be private (0600) and is deleted after reading. **Never pass a password in an environment variable or on the command line:** other programs of the same user can read both.
+- **Signing in:** `POST /auth/password {"password", "keep"}`. "Keep me signed in" (off by default) keeps the browser signed in for 30 days; otherwise it lasts until the browser closes, and at most 24 hours. Wrong passwords are slowed, never locked out: five are free from an address, then each waits 1, 2, 4 ... seconds, up to 15 minutes. The app, the tray, `coral open`, the command line and the API key are never slowed. Behind a reverse proxy, every remote browser shares the proxy's address.
+- **Changing it, and other browsers:** Settings > Browser sign-in changes the password (every other browser is signed out), lists the signed-in browsers and recent sign-ins, and signs out the others.
+- **Forgot it:** run `coral reset-password` (or `--clear` to remove it) on the computer that runs Coral, as the user Coral runs as. It works with Coral stopped too, and every browser is signed out.
+- **Sessions** are kept in `sessions.db` (only a hash of each cookie), so a restart doesn't sign anyone out. The cookie is HttpOnly and SameSite=Strict, and Secure over TLS.
+- **Coral Hub** never reaches any of this: Hub users sign in to the Hub.
+- **Exposing Coral through a reverse proxy on the same computer:** set the password first, or turn on `require_auth_on_loopback`. A proxy that adds no forwarding header makes a remote browser look like this computer, and the setup code can't help there.
+- **Plain HTTP:** over plain HTTP on a network, the password and the cookie can be read by someone on that network, as the API key can. Use TLS (`--tls-cert`) or a private network for remote access.
 
 ## Validate API Key
 
@@ -105,13 +122,15 @@ Returns the current authentication status and method used.
 ```json
 {
   "authenticated": true,
-  "method": "localhost"
+  "method": "session",
+  "password_set": true,
+  "local": false
 }
 ```
 
 | Method | Description |
 |--------|-------------|
-| `"localhost"` | Request came from localhost |
+| `"localhost"` | Request came from localhost (only with strict local auth off) |
 | `"key"` | Authenticated via API key header |
 | `"session"` | Authenticated via session cookie |
 | `"none"` | Not authenticated |
@@ -165,7 +184,7 @@ With it on, a request **from this computer** needs one of:
 | An agent's tools (`coral-board`, `coral-agent`, the `coral-hook-*` hooks) | the agent's session token, which Coral gives them automatically (nothing to do) |
 | The dashboard in a browser | its sign-in cookie: open Coral from the app or tray, or run `coral open` |
 | You at the command line (`coral-board`/`coral-agent` in your own terminal, `coral auto-accept off --all`, `coral open`, `coral cloud`, the tray's Shutdown, `coral-coordination-report`) | a signature made with Coral's command-line token (`<data>/cli-token`, 0600): automatic when you run them as the user Coral runs as. They act as the local Operator. |
-| A script | the API key (`Authorization: Bearer <key>` or `X-API-Key: <key>`; `coral api-key` prints it), or one of the above |
+| A script | the API key (`Authorization: Bearer <key>` or `X-API-Key: <key>`; `coral api-key` prints it), or one of the above. The key is a machine credential, not a person or an agent: it can't call the routes that belong to one agent's session (for example `POST /api/sessions/live/{name}/tasks`, answered 401 `session_token_required`), nor the dashboard-only Operator actions. For those, use the agent's own tools (its session token), or sign in as the Operator: a `coral open` link or the password, which give a dashboard cookie. |
 
 Always open: `GET /api/health`, the command line's hello (`POST /api/cloud/cli-hello`), the sign-in page (`/auth`), static files. Coral Hub (the tunnel) and other computers (API key or sign-in) keep their own rules.
 
