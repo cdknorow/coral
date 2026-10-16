@@ -67,6 +67,53 @@
         opacity: 1;
     }
 
+    /* Phone layout pass (#4081): the small controls left at 320 to 414 px: the Chat/Terminal toggle and the header's Find button, a chat
+       bubble's Copy, the Copy in the Info dialog, a dialog's close button (it was 32 wide), the job type buttons, and the Show/Hide of a
+       password field (it floated at half the field's height). */
+    .live-view-toggle-btn,
+    #chat-find-btn,
+    .chat-copy-btn,
+    .copy-btn,
+    .modal-close-btn,
+    .job-type-btn,
+    .board-chat-toolbar .btn-nav,
+    #board-chat-pause-btn,
+    .board-select-btn,
+    .board-chat-title {
+        min-width: var(--control-touch-height);
+        min-height: var(--control-touch-height);
+    }
+    .board-chat-title {
+        display: inline-flex;
+        align-items: center;
+    }
+    .terminal-header {
+        height: auto;
+        min-height: var(--control-touch-height);
+    }
+    .live-view-toggle-btn,
+    #chat-find-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .pw-toggle {
+        top: 0;
+        bottom: 0;
+        transform: none;
+        display: flex;
+        align-items: center;
+        min-width: var(--control-touch-height);
+        justify-content: center;
+    }
+    /* A disclosure row in a dialog ("Advanced", "Custom view code") is a whole-row tap target. */
+    .modal-content summary {
+        display: list-item;   /* keeps the disclosure marker */
+        box-sizing: border-box;
+        min-height: var(--control-touch-height);
+        padding-block: 12px;
+    }
+
     /* Dropdown rows (#3131): the top-bar settings menu, the Cloud Hub account
        menu (Servers / Sign out) and the agent row menus share this class. */
     .overflow-menu-item {
