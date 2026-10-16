@@ -1,5 +1,35 @@
 # Release Notes
 
+## v1.4.69 — Stability, agent launch limits, and the dashboard by keyboard
+
+### Security
+
+- **An agent can no longer start another agent with fewer restrictions: an agent's launch keeps only --model, and a saved team template keeps its choices only when launched as saved. Pages on another port of this computer can no longer read Coral's API.**
+- **Every request body is capped** (8 MiB by default; uploads, agent artifacts and the editor's file save keep their larger limits), so one large request can't take the server's memory: it gets 413.
+- **The opt-in profiler (pprof) says plainly that it has no credential,** in the log and in the docs.
+
+### Stability
+
+- **A panic in a background task no longer stops Coral:** every goroutine the server starts recovers it and logs it once with its stack; the server and its agents keep running, and services restart with backoff.
+- **When Coral stops, workflow runs in progress end, with every process their shell steps started** (on Windows, a step's children end with it).
+- **A stuck ps, tmux or osascript can no longer block Coral for good:** each runs with a deadline.
+- **Long-running caches stay bounded,** and a scheduled run's first prompt ends with the run.
+
+### Fixes
+
+- **After a restart, Coral wakes the agents that were running once,** instead of repeating the wake and its "agents were running when Coral stopped" notice every few seconds (a bug since v1.4.49).
+- **Through Coral Hub, a short busy moment no longer ends your sign-in:** a busy answer to a sign-in check is retried for up to 10 minutes, and sign-in has its own capacity.
+- **Artifact uploads over the hourly cap now answer 429 Too Many Requests with Retry-After** (was 413); 413 stays for a file that's too large.
+- **Windows: a burst of requests through Coral Hub no longer fails some of them,** and the process-tree check reads one snapshot.
+- **A pty agent command with quotes or a backslash runs as written** (for example sh -c 'sleep 60').
+- **With TLS on Coral's own port, an https dashboard on this computer gets the Sign in with Coral Hub button.**
+- **The agent count shows on folder, team and server group headers in the sidebar too,** collapsed or not.
+
+### Accessibility
+
+- **The dashboard works by keyboard in more places:** every dialog moves focus in and back; the Docs list, the board's @mention list, the Tasks list and Notes, the Activity filter and the file tree work by keyboard; controls that appear on hover also appear on keyboard focus; and in the Chat composer Tab reaches the text box first.
+- **19 dialogs and the Settings and prompt boxes have names for screen readers,** and seven contrast and focus fixes, including the sign-in page's links and Show button in the light theme.
+
 ## v1.4.68 — Every request needs a credential, a password for the browser, and Sign in with Coral Hub
 
 v1.4.67 was tagged but never released (its release checks failed on the test scripts, not the product); this release carries all of it.
