@@ -114,3 +114,14 @@ let installed = false;
 }
 
 installActions();
+
+// A non-native control that acts on click (a task row, a sort heading) is reachable and operable by keyboard when its markup carries
+// role="button", tabindex="0" and data-key-click: Enter or Space on the element itself clicks it, as a <button> does. Keys that a
+// handler already used (defaultPrevented) and keys pressed on something inside the element (a link, an input) are left alone.
+document.addEventListener('keydown', event => {
+    const el = event.target;
+    if (event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
+    if (!(el instanceof Element) || !el.hasAttribute('data-key-click')) return;
+    event.preventDefault();
+    el.click();
+});
