@@ -52,6 +52,16 @@ func TestRekeyThroughTheDashboard(t *testing.T) {
 	code, _ = do("POST", "/api/cloud/rekey", `{"confirm":true}`)
 	assert.Equal(t, http.StatusConflict, code, "a usable key is never replaced")
 
+	if os.Geteuid() != 0 { // an unreadable file (not a refusal): no offer, 409 (#3698, Security's SHOULD)
+		require.NoError(t, os.Chmod(secretbox.KeyFilePath(dir), 0o000))
+		code, st = do("GET", "/api/cloud/status", "")
+		require.Equal(t, http.StatusOK, code)
+		assert.Nil(t, st["secret_key"], "no re-key offered for a read error")
+		code, out := do("POST", "/api/cloud/rekey", `{"confirm":true}`)
+		assert.Equal(t, http.StatusConflict, code)
+		assert.Equal(t, "key_unreadable", out["code"])
+	}
+
 	require.NoError(t, os.Chmod(secretbox.KeyFilePath(dir), 0o644))
 	code, st = do("GET", "/api/cloud/status", "")
 	require.Equal(t, http.StatusOK, code)

@@ -235,7 +235,12 @@ func (h *CloudHandler) Rekey(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, "could not read the secret key's state")
 		return
 	}
-	if ks.State != "refused" {
+	switch ks.State {
+	case "refused":
+	case "unreadable": // an I/O or access error, not a refusal of the key: no re-key (#3698)
+		writeJSON(w, http.StatusConflict, map[string]any{"error": store.ErrKeyNotRefused.Error() + ": " + ks.Message, "code": "key_unreadable", "state": ks.State})
+		return
+	default:
 		writeJSON(w, http.StatusConflict, map[string]any{"error": store.ErrRekeyNotNeeded.Error(), "code": "rekey_not_needed", "state": ks.State})
 		return
 	}
@@ -248,6 +253,10 @@ func (h *CloudHandler) Rekey(w http.ResponseWriter, r *http.Request) {
 	if err := rs.Rekey(r.Context()); err != nil {
 		if errors.Is(err, store.ErrRekeyNotNeeded) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "rekey_not_needed"})
+			return
+		}
+		if errors.Is(err, store.ErrKeyNotRefused) { // it changed between the check and the re-key
+			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "key_unreadable"})
 			return
 		}
 		errInternalServer(w, "re-key failed: "+err.Error())

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/pkg/secretbox"
@@ -19,11 +21,29 @@ var masterKeyGen atomic.Int64
 // only throw secrets away.
 var ErrRekeyNotNeeded = errors.New("the secret key is usable; nothing to re-key")
 
+// ErrKeyNotRefused: the key file couldn't be read (an I/O or access error), which says nothing
+// against the key itself: it may read again once that is fixed, so no re-key is offered.
+var ErrKeyNotRefused = errors.New("the secret key file can't be read right now; fix that and try again (a re-key is only for a key Coral refuses)")
+
+// keyRefused tells a refusal of the key itself from a failure to read it (Security's SHOULD on
+// #3698): exposed or not private (secfile), a wrong mode, owner or file type (a refusal with no
+// OS error inside), or a malformed or wrong-size key. An OS error reaching the file (EACCES, an
+// I/O error), on any system, is not a refusal.
+func keyRefused(err error) bool {
+	if errors.Is(err, secfile.ErrExposed) || errors.Is(err, secfile.ErrNotPrivate) || errors.Is(err, secretbox.ErrKeyInvalid) {
+		return true
+	}
+	var pe *os.PathError
+	var errno syscall.Errno
+	return errors.Is(err, secretbox.ErrKeyPermissions) && !errors.As(err, &pe) && !errors.As(err, &errno)
+}
+
 // SecretKeyState says whether the master key that seals the Coral Hub token and the remote
 // servers' API keys loads, and what a re-key would discard.
 type SecretKeyState struct {
 	// State: "ok" (it loads), "missing" (none yet: one is made when needed), "env" (it comes from
-	// CORAL_SECRET_KEY and is managed outside Coral), or "refused" (the file can't be used).
+	// CORAL_SECRET_KEY and is managed outside Coral), "refused" (Coral refuses the key: a re-key
+	// is offered) or "unreadable" (the file couldn't be read: no re-key).
 	State   string `json:"state"`
 	Exposed bool   `json:"exposed"`           // refused because other accounts could read it
 	Message string `json:"message,omitempty"` // why it is refused (no key material)
@@ -44,9 +64,11 @@ func (s *RemoteServerStore) KeyState(ctx context.Context) (SecretKeyState, error
 		st.State = "ok"
 	case errors.Is(err, secretbox.ErrKeyMissing):
 		st.State = "missing"
-	default:
+	case keyRefused(err):
 		st.State, st.Message = "refused", err.Error()
 		st.Exposed = errors.Is(err, secfile.ErrExposed)
+	default:
+		st.State, st.Message = "unreadable", err.Error()
 	}
 	if err := s.db.GetContext(ctx, &st.RemoteServerKeys, "SELECT COUNT(*) FROM remote_servers WHERE api_key != ''"); err != nil {
 		return st, err
@@ -61,7 +83,8 @@ func (s *RemoteServerStore) KeyState(ctx context.Context) (SecretKeyState, error
 	return st, nil
 }
 
-// Rekey replaces a master key that can't be used (refused, unreadable or malformed) with a new
+// Rekey replaces a master key Coral refuses (keyRefused: exposed, not private, a wrong mode or
+// owner, malformed) with a new
 // one, and discards every secret sealed with the old one: the remote servers' API keys (each
 // server stays, marked for its key to be entered again), the Coral Hub enrollment and any
 // enrollment in progress. A usable key is never replaced this way (ErrRekeyNotNeeded); one from
@@ -75,6 +98,10 @@ func (s *RemoteServerStore) Rekey(ctx context.Context) error {
 		return fmt.Errorf("the secret key comes from %s; change it there", secretbox.EnvKey)
 	case err == nil:
 		return ErrRekeyNotNeeded
+	case errors.Is(err, secretbox.ErrKeyMissing):
+		return ErrRekeyNotNeeded // none yet: one is made when needed
+	case !keyRefused(err):
+		return fmt.Errorf("%w: %v", ErrKeyNotRefused, err)
 	}
 	next, commitKey, abortKey, err := secretbox.StageRotatedKey(s.dir)
 	if err != nil {

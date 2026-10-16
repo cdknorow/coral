@@ -83,3 +83,33 @@ func TestRekeyLeavesAnEnvironmentKeyAlone(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "env", st.State)
 }
+
+// A key file this user can't open (an access error, not a refusal of the key) is "unreadable":
+// no re-key, nothing discarded. A malformed key is refused and re-keyed.
+func TestRekeyOnlyForARefusalNotAReadError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode-000 file")
+	}
+	rs, db, dir, _ := newRemoteStore(t)
+	ctx := context.Background()
+	_, err := rs.Add(ctx, "r1", "Remote", "https://r1.example.com", plainKey, false)
+	require.NoError(t, err)
+	path := secretbox.KeyFilePath(dir)
+	require.NoError(t, os.Chmod(path, 0o000))
+	t.Cleanup(func() { os.Chmod(path, 0o600) })
+
+	st, err := rs.KeyState(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "unreadable", st.State)
+	assert.ErrorIs(t, rs.Rekey(ctx), ErrKeyNotRefused)
+	var apiKey string
+	require.NoError(t, db.GetContext(ctx, &apiKey, "SELECT api_key FROM remote_servers WHERE id = 'r1'"))
+	assert.NotEmpty(t, apiKey, "nothing discarded")
+
+	require.NoError(t, os.Chmod(path, 0o600))
+	require.NoError(t, os.WriteFile(path, []byte("not a key\n"), 0o600))
+	st, err = rs.KeyState(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "refused", st.State, "a malformed key is refused")
+	require.NoError(t, rs.Rekey(ctx))
+}
