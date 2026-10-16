@@ -160,24 +160,49 @@ func BenchmarkSample(b *testing.B) {
 	}
 }
 
-// #3846: the walk finds a grandchild (a shell's background job), from the cheap process table.
+// treeHelperEnv makes this test binary a helper process: "parent" starts a "child" (the test
+// binary again) and waits for it; "child" sleeps. Real parent links on every OS: on Windows,
+// Git's sh started its background sleep through a short-lived MSYS stub, so the sleep's parent
+// was sometimes already gone and the walk could not reach it (#4011).
+const treeHelperEnv = "CORAL_MACHINEHEALTH_TREE_HELPER"
+
+func init() {
+	switch os.Getenv(treeHelperEnv) {
+	case "parent":
+		c := exec.Command(os.Args[0], "-test.run=^$")
+		c.Env = append(os.Environ(), treeHelperEnv+"=child")
+		if c.Start() == nil {
+			_ = c.Wait()
+		}
+		os.Exit(0)
+	case "child":
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
+	}
+}
+
+// #3846: the walk finds a grandchild (a child's own child), from the cheap process table.
 func TestDescendantsFindsGrandchildren(t *testing.T) {
-	sh := exec.Command("sh", "-c", "sleep 30 & wait")
-	require.NoError(t, sh.Start())
-	// The sleep too, not only the shell (#3997): the shell's descendants found now, by pid.
+	parent := exec.Command(os.Args[0], "-test.run=^$")
+	parent.Env = append(os.Environ(), treeHelperEnv+"=parent")
+	require.NoError(t, parent.Start())
+	root := parent.Process.Pid
+	var found []int32
+	// The child too, not only the parent: the descendants found, by pid (#3997).
 	t.Cleanup(func() {
-		for _, pid := range descendants(context.Background(), []int{sh.Process.Pid}) {
-			if p, err := os.FindProcess(int(pid)); err == nil && int(pid) != sh.Process.Pid {
+		for _, pid := range found {
+			if p, err := os.FindProcess(int(pid)); err == nil && int(pid) != root {
 				_ = p.Kill()
 			}
 		}
-		sh.Process.Kill()
-		sh.Wait()
+		parent.Process.Kill()
+		parent.Wait()
 	})
 	require.Eventually(t, func() bool {
-		return len(descendants(context.Background(), []int{sh.Process.Pid})) >= 2
-	}, 5*time.Second, 20*time.Millisecond, "the shell and its sleep")
-	assert.Equal(t, int32(sh.Process.Pid), descendants(context.Background(), []int{sh.Process.Pid})[0])
+		found = descendants(context.Background(), []int{root})
+		return len(found) >= 2
+	}, 5*time.Second, 20*time.Millisecond, "the helper and its child")
+	assert.Equal(t, int32(root), found[0])
 }
 
 // #3846: with nobody reading, sampling pauses; a read of an old sample asks for a new one.
