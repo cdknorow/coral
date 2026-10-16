@@ -43,12 +43,9 @@ import (
 // To serve the real Python frontend, copy src/coral/static/ and
 // src/coral/templates/ into these directories before building.
 
-// staticFS and templateFS are the shared UI assets from pkg/frontend, so the
-// Cloud Hub serves the identical frontend.
-var (
-	staticFS   = frontend.Static
-	templateFS = frontend.Templates
-)
+// staticFS is the shared UI assets from pkg/frontend, so the Cloud Hub serves
+// the identical frontend.
+var staticFS = frontend.Static
 
 // Server holds dependencies and exposes the HTTP router.
 type Server struct {
