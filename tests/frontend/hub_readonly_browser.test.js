@@ -176,6 +176,26 @@ const CLOUD_PRELOAD = `(() => {
         assert.ok(!t.some(x => /^Sent/.test(x.text)), 'still no Sent toast');
         console.log(`   ✓ Enter + 9 paths${typed ? ' + typing' : ''}: 0 posts, 0 frames, draft kept, exact Blocked toast with Open Servers, chip '${c.text}'`);
 
+        // Chat view opens no terminal socket (#3719), so a typed command and a quick key go through POST /send and /keys;
+        // a View-only hub must refuse them exactly as it refuses the socket.
+        console.log('1b. Chat view (no terminal socket, POST /send and /keys the only route): the same refusal');
+        await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); true`);
+        await select('ro-hub', 'm1');
+        assert.ok(await ev(`document.getElementById('capture-wrapper').classList.contains('chat-mode')`), 'the agent is shown in Chat view');
+        await clearSends(); await clearToasts();
+        await typeDraft('chat view draft');
+        await pressEnter(); await afterEnter();
+        const typedInChat = await allPaths();
+        s = await sends();
+        assert.equal(s.posts, 0, `Chat view: no /send or /keys from any path (got ${s.posts})`);
+        assert.deepEqual(s.frames, [], 'Chat view: no terminal frames either');
+        assert.equal(await draft(), 'chat view draft', 'Chat view: the draft survives');
+        t = await toasts();
+        assert.ok(t.some(x => x.text === hubMsg), `Chat view: the exact Blocked toast (${JSON.stringify(t)})`);
+        assert.ok(!t.some(x => /^Sent/.test(x.text)), 'Chat view: no Sent toast');
+        console.log(`   ✓ Chat view: Enter + 9 paths${typedInChat ? ' + typing' : ''}: 0 posts, 0 frames, draft kept, exact Blocked toast`);
+        await ev(`localStorage.setItem('coral-live-view-mode', 'terminal'); true`);
+
         console.log('2. Machine-limited: different text, no Open Servers');
         await select('ro-mach', 'm2');
         c = await chip();
