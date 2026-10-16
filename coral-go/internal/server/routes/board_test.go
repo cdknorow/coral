@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
@@ -82,6 +84,15 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 func TestBoardCompleteTask_PersistsChangesArtifact(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	registerTaskPlanner(t, handler, "eval", "Orchestrator")
+	// The claimant is a live agent session, as in production: a task with no session has no
+	// changes to persist (#4098).
+	const sess = "77777777-4098-0000-0000-000000000001"
+	sessDB, err := storetest.Open(t, t.TempDir()+"/sessions.db")
+	require.NoError(t, err)
+	t.Cleanup(func() { sessDB.Close() })
+	require.NoError(t, store.NewSessionStore(sessDB).RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sess, AgentType: "claude", AgentName: "lead", WorkingDir: "/tmp"}))
+	handler.bs.SetSessionsDB(sessDB.DB)
+	subscribeSession(t, handler, "eval", "Lead", sess)
 	coralDir := t.TempDir()
 	handler.SetTaskArtifactWriter(coralDir, func(_ context.Context, _ *board.Task, path string) error {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

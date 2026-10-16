@@ -146,6 +146,13 @@ func (h *BoardHandler) persistTaskArtifact(ctx context.Context, task *board.Task
 	if task == nil || h.coralDir == "" || h.writeTaskArtifact == nil {
 		return
 	}
+	// A task completed by the API key, the command line or the dashboard has no agent session,
+	// so no working tree to take the changes from: nothing to persist, which is normal (#4098:
+	// the soak logged this as a warning for every such task).
+	if task.SessionID == nil || *task.SessionID == "" {
+		slog.Debug("task changes not persisted: the task has no agent session", "task_id", task.ID, "board", task.BoardID)
+		return
+	}
 	if err := h.writeTaskArtifact(ctx, task, h.taskArtifactPath(task.ID)); err != nil {
 		slog.Warn("persist task changes artifact failed", "task_id", task.ID, "board", task.BoardID, "error", err)
 	}
