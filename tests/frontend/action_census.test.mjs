@@ -113,7 +113,6 @@ const NOT_POPOUT_RELEVANT = new Map(Object.entries({
     'm-hide-restart-modal': 'the restart dialog\'s Cancel: closes it, restarts nothing',
     'm-reset-default-prompt': 'Settings > default prompts (top bar only); resets an editor field',
     'macro-delete': 'removes a saved quick-action button (the operator\'s own setting); command toolbar, gated with it',
-    'mb-msg-delete': 'Message board view and board tab (hidden in a popout); deletes one board message',
     'mb-select-cancel': 'leaves the board\'s selection mode (UI state)',
     'notes-cancel': 'history view: discards unsaved note edits',
     'session-tag-remove': 'history view: removes a label from a session',
@@ -126,7 +125,6 @@ const NOT_POPOUT_RELEVANT = new Map(Object.entries({
     'theme-delete': 'theme editor (top bar only), after showConfirmModal',
     'theme-reset': 'theme editor: reverts unsaved colour edits',
     'wf-delete': 'Workflows view (dashboard nav only), after confirm',
-    'wf-kill-run': 'Workflows view (dashboard nav only): stops a workflow run, not an agent session',
     'wf-step-remove': 'removes a step from the workflow editor\'s unsaved draft',
     // QA's list: launch, import, save, apply settings (dialogs opened from the top bar, sidebar or views)
     'm-launch-agent-to-board': 'launch dialog: starts a new agent (opened from the sidebar or top bar)',
