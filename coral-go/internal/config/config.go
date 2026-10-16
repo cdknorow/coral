@@ -3,6 +3,7 @@
 package config
 
 import (
+	"fmt"
 	"github.com/cdknorow/coral/internal/testguard"
 	"log"
 	"os"
@@ -42,11 +43,12 @@ type Config struct {
 	// TLS is true when the server also speaks HTTPS on its port (--tls-cert/--tls-key,
 	// #3355); set at startup once the certificate has loaded.
 	TLS bool
-	// StrictLocalAuth (--strict-local-auth or CORAL_STRICT_LOCAL_AUTH=1, #3418): a request
-	// from this computer needs a credential (an agent's session token, the dashboard's
-	// sign-in cookie or the command-line signature), and an identity that doesn't match
-	// its token is refused instead of logged. Off by default; never settable through the
-	// API, so neither Coral Hub nor an agent can turn it off.
+	// StrictLocalAuth (#3418): a request from this computer needs a credential (an agent's
+	// session token, the dashboard's sign-in cookie, the command-line signature or the API
+	// key), and an identity that doesn't match its token is refused instead of logged. On
+	// by default since #3936 (startup.Start sets it; CORAL_STRICT_LOCAL_AUTH=0 or
+	// --strict-local-auth=false turns it off); never settable through the API, so neither
+	// Coral Hub nor an agent can turn it off.
 	StrictLocalAuth bool
 
 	// Directories
@@ -288,6 +290,20 @@ func cloudConnectFromEnv(v string) string {
 	}
 	log.Printf("[config] WARNING: CORAL_CLOUD_CONNECT=%q is not prompt, auto or off: taken as off", v)
 	return "off"
+}
+
+// StrictLocalAuthFromEnv reads CORAL_STRICT_LOCAL_AUTH (#3936): strict local auth is on
+// unless it says off (0, false, no or off, in any case). Unset is on; a value that is neither
+// on nor off is taken as on, with a warning for the log, so a typo never weakens it.
+func StrictLocalAuthFromEnv() (on bool, warning string) {
+	v := os.Getenv("CORAL_STRICT_LOCAL_AUTH")
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "0", "false", "no", "off":
+		return false, ""
+	case "", "1", "true", "yes", "on":
+		return true, ""
+	}
+	return true, fmt.Sprintf("[auth] WARNING: CORAL_STRICT_LOCAL_AUTH=%q is not on or off: taken as on", v)
 }
 
 // Truthy reads an on/off value, from the environment or a stored setting: 1, true, yes or on, in

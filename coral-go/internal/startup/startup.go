@@ -92,8 +92,9 @@ type Options struct {
 	// accepts only HTTPS from other computers. Only one, or a pair that does not load,
 	// stops startup.
 	TLSCert, TLSKey string
-	// StrictLocalAuth turns on strict local auth (--strict-local-auth, #3418).
-	StrictLocalAuth bool
+	// StrictLocalAuth overrides strict local auth (--strict-local-auth, #3418). nil: on unless
+	// CORAL_STRICT_LOCAL_AUTH says off (#3936), the same for coral, coral-tray and launch-coral.
+	StrictLocalAuth *bool
 }
 
 // RunningServer holds all resources created during startup.
@@ -351,7 +352,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		return nil, err
 	}
 	cfg.TLS = tlsConfig != nil
-	cfg.StrictLocalAuth = opts.StrictLocalAuth
+	cfg.StrictLocalAuth = strictLocalAuth(cfg.CoralDir(), opts.StrictLocalAuth)
 
 	// Bind the port now and keep the listeners open to avoid a TOCTOU race
 	// (another process grabbing the port between check and serve). One listener per --host

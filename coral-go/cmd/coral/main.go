@@ -96,7 +96,7 @@ func main() {
 	proofFile := flag.String("proof-file", "", "Optional proof file to send with the bootstrap credential (at most 16 KiB of JSON from a provider helper)")
 	cloudConnect := flag.String("cloud-connect", "", "Offer to connect to Coral Hub on a server not yet connected (also CORAL_CLOUD_CONNECT): prompt (the dashboard's first-launch screen, and a prompt in the terminal at startup; without a terminal, log the link and code), auto (the screen, and only log them) or off. Unset: prompt when --cloud-url/CORAL_CLOUD_URL is given, otherwise off (the build's default URL alone offers nothing; Coral Hub stays in Settings, on the home screen and in 'coral cloud connect')")
 	tlsCert := flag.String("tls-cert", os.Getenv("CORAL_TLS_CERT"), "PEM certificate file: serve HTTPS (and WSS) on the port, and accept only HTTPS from other computers. Needs --tls-key (also CORAL_TLS_CERT)")
-	strictLocalAuth := flag.Bool("strict-local-auth", config.Truthy(os.Getenv("CORAL_STRICT_LOCAL_AUTH")), "Require a credential for every request from this computer: an agent's session token, the dashboard's sign-in (run 'coral open' to sign in) or a command-line signature; refuse an agent acting as someone else (also CORAL_STRICT_LOCAL_AUTH=1)")
+	strictLocalAuth := flag.Bool("strict-local-auth", true, "Require a credential for every request from this computer: an agent's session token, the dashboard's sign-in (run 'coral open' to sign in), a command-line signature or the API key ('coral api-key'); refuse an agent acting as someone else. On by default; --strict-local-auth=false or CORAL_STRICT_LOCAL_AUTH=0 turns it off, which lets any program on this computer use Coral without a credential")
 	tlsKey := flag.String("tls-key", os.Getenv("CORAL_TLS_KEY"), "PEM private key file for --tls-cert (also CORAL_TLS_KEY)")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	showVersion := flag.Bool("version", false, "Print the version and exit (also -v, or coral version)")
@@ -220,6 +220,13 @@ func main() {
 		tlsOn := strings.TrimSpace(*tlsCert) != "" && strings.TrimSpace(*tlsKey) != ""
 		remotePrompt = func() bool { return promptRemoteAccess(os.Stdin, os.Stdout, tlsOn) }
 	}
+	// Only a --strict-local-auth given on the command line overrides the default (#3936).
+	var strictFlag *bool
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "strict-local-auth" {
+			strictFlag = strictLocalAuth
+		}
+	})
 	rs, err := startup.Start(ctx, cfg, startup.Options{
 		BackendType:        *backendFlag,
 		PasswordPrompt:     promptDatabasePassword,
@@ -230,7 +237,7 @@ func main() {
 		AgentPriority:      *agentPriority,
 		TLSCert:            *tlsCert,
 		TLSKey:             *tlsKey,
-		StrictLocalAuth:    *strictLocalAuth,
+		StrictLocalAuth:    strictFlag,
 	})
 	if err != nil {
 		logexit.Fatalf("Failed to start: %v", err)
