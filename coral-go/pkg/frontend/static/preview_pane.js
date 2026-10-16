@@ -622,7 +622,8 @@ async function _mountDiff(tab, body, current) {
                 cm.EditorView.editable.of(false), cm.EditorState.readOnly.of(true),
                 cm.EditorView.theme({ '&': { height: '100%' }, '.cm-scroller': { overflow: 'auto' } }),
                 // diffConfig: the merge view's own scanLimit would otherwise return one chunk.
-                cm.unifiedMergeView({ original: cm.Text.of(tab.originalContent.split('\n')), diffConfig: DIFF_CONFIG }),
+                // mergeControls off: the view is read-only, so its Accept and Reject buttons would do nothing when clicked.
+                cm.unifiedMergeView({ original: cm.Text.of(tab.originalContent.split('\n')), diffConfig: DIFF_CONFIG, mergeControls: false }),
             ];
             const langExt = getLangExtension(cm, getLangFromPath(tab.filepath));
             if (langExt) extensions.push(langExt);
