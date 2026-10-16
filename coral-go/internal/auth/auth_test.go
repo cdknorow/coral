@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -77,7 +79,9 @@ func TestKeyStore_CreateAndValidateSession(t *testing.T) {
 	ks := newTestKeyStore(t)
 	token, err := ks.CreateSession("192.168.1.5", "Mozilla/5.0")
 	require.NoError(t, err)
-	assert.Len(t, token, sessionLength)
+	b, err := base64.RawURLEncoding.DecodeString(token)
+	require.NoError(t, err)
+	assert.Len(t, b, 32, "256 random bits (#3949)")
 	assert.True(t, ks.ValidateSession(token))
 }
 
@@ -93,9 +97,7 @@ func TestKeyStore_SessionExpiry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Manually expire the session
-	ks.mu.Lock()
-	ks.sessions[token].CreatedAt = time.Now().Add(-25 * time.Hour)
-	ks.mu.Unlock()
+	expireSession(t, ks, token)
 
 	assert.False(t, ks.ValidateSession(token))
 }
@@ -139,7 +141,8 @@ func TestKeyStore_RevokeSession(t *testing.T) {
 	ks.RevokeSession("no-such-token")
 	assert.False(t, ks.ValidateSession(a))
 	assert.True(t, ks.ValidateSession(b), "only that session ends")
-	assert.NotContains(t, ks.order, a)
+	n, _ := ks.backend().ListSessions(context.Background())
+	assert.Len(t, n, 1)
 }
 
 // ── Rate Limiting Tests ─────────────────────────────────────
@@ -206,6 +209,16 @@ func TestExtractAPIKey_BearerHeader(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Set("Authorization", "Bearer my-api-key-123")
 	assert.Equal(t, "my-api-key-123", extractAPIKey(r))
+}
+
+// #3936: X-API-Key, as agent_docs/auth.md documents it; Bearer wins, then X-API-Key, then the
+// query.
+func TestExtractAPIKey_XAPIKeyHeader(t *testing.T) {
+	r := httptest.NewRequest("GET", "/?api_key=query-key", nil)
+	r.Header.Set("X-API-Key", "x-key")
+	assert.Equal(t, "x-key", extractAPIKey(r))
+	r.Header.Set("Authorization", "Bearer bearer-key")
+	assert.Equal(t, "bearer-key", extractAPIKey(r))
 }
 
 func TestExtractAPIKey_QueryParam(t *testing.T) {
@@ -301,9 +314,7 @@ func TestMiddleware_ExpiredSessionCookie(t *testing.T) {
 	token, err := ks.CreateSession("192.168.1.5", "test")
 	require.NoError(t, err)
 	// Expire the session
-	ks.mu.Lock()
-	ks.sessions[token].CreatedAt = time.Now().Add(-25 * time.Hour)
-	ks.mu.Unlock()
+	expireSession(t, ks, token)
 
 	r := httptest.NewRequest("GET", "/api/sessions", nil)
 	r.RemoteAddr = "192.168.1.5:54321"
@@ -357,6 +368,21 @@ func TestMiddleware_AuthPageAccessible(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// #3948: the logo on the sign-in page is a /static file, so it must load for a browser that is not signed in.
+func TestMiddleware_LogoLoadsBeforeSignIn(t *testing.T) {
+	_, handler := newMiddlewareTest(t)
+	for _, from := range []string{"192.168.1.5:54321", "127.0.0.1:54321"} {
+		r := httptest.NewRequest("GET", "/static/coral.png", nil)
+		r.RemoteAddr = from
+		if strings.HasPrefix(from, "127.") {
+			r.Host = "localhost:8420" // a browser on this computer names it; another Host from loopback is refused as DNS rebinding
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		assert.Equal(t, http.StatusOK, w.Code, "no credential needed for the logo, from "+from)
+	}
+}
+
 func TestMiddleware_StaticAssetsAccessible(t *testing.T) {
 	_, handler := newMiddlewareTest(t)
 	r := httptest.NewRequest("GET", "/static/style.css", nil)
@@ -392,7 +418,7 @@ func TestSetSessionCookie_Attributes(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/", nil)
 	r.RemoteAddr = "127.0.0.1:12345"
-	newTestKeyStore(t).setSessionCookie(w, r, "test-token-123")
+	newTestKeyStore(t).setSessionCookie(w, r, "test-token-123", false)
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
 	c := cookies[0]
@@ -401,8 +427,22 @@ func TestSetSessionCookie_Attributes(t *testing.T) {
 	assert.Equal(t, "/", c.Path)
 	assert.True(t, c.HttpOnly)
 	assert.False(t, c.Secure, "localhost requests should not set Secure")
-	assert.Equal(t, http.SameSiteLaxMode, c.SameSite)
-	assert.Equal(t, int(sessionMaxAge.Seconds()), c.MaxAge)
+	assert.Equal(t, http.SameSiteStrictMode, c.SameSite, "#3949")
+	assert.Equal(t, 0, c.MaxAge, "without keep: a browser-session cookie")
+	w = httptest.NewRecorder()
+	newTestKeyStore(t).setSessionCookie(w, r, "test-token-123", true)
+	assert.Equal(t, int(sessionKeepAge.Seconds()), w.Result().Cookies()[0].MaxAge, "keep me signed in: 30 days")
+}
+
+// expireSession moves a session's expiry into the past.
+func expireSession(t *testing.T, ks *KeyStore, token string) {
+	t.Helper()
+	ctx := context.Background()
+	s, ok, err := ks.backend().GetSession(ctx, sessionHash(token))
+	require.NoError(t, err)
+	require.True(t, ok)
+	s.ExpiresAt = time.Now().Add(-time.Second)
+	require.NoError(t, ks.backend().PutSession(ctx, s))
 }
 
 func TestSetSessionCookie_SecureOnTLS(t *testing.T) {
@@ -410,7 +450,7 @@ func TestSetSessionCookie_SecureOnTLS(t *testing.T) {
 	r := httptest.NewRequest("GET", "https://192.168.1.100/", nil)
 	r.TLS = &tls.ConnectionState{} // simulate TLS
 	r.RemoteAddr = "192.168.1.100:12345"
-	newTestKeyStore(t).setSessionCookie(w, r, "test-token-456")
+	newTestKeyStore(t).setSessionCookie(w, r, "test-token-456", false)
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
 	assert.True(t, cookies[0].Secure, "TLS requests should set Secure")
@@ -420,7 +460,7 @@ func TestSetSessionCookie_NotSecureOnPlainHTTP(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "http://192.168.1.100/", nil)
 	r.RemoteAddr = "192.168.1.100:12345"
-	newTestKeyStore(t).setSessionCookie(w, r, "test-token-789")
+	newTestKeyStore(t).setSessionCookie(w, r, "test-token-789", false)
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
 	assert.False(t, cookies[0].Secure, "plain HTTP requests should not set Secure")
@@ -478,7 +518,7 @@ func TestSetSessionCookie_SecureBehindATrustedProxy(t *testing.T) {
 		if proto != "" {
 			r.Header.Set("X-Forwarded-Proto", proto)
 		}
-		ks.setSessionCookie(w, r, "tok")
+		ks.setSessionCookie(w, r, "tok", false)
 		return w.Result().Cookies()[0].Secure
 	}
 	assert.True(t, secure("127.0.0.1:5000", "https"), "a proxy on this machine")

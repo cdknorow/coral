@@ -44,6 +44,13 @@ func recordHubOperatorAction(ctx context.Context, bs *board.Store, hubUser, meth
 	}
 }
 
+// RecordHubSigninAction records what a Coral Hub sign-in did, or happened to it (#3966), in the
+// same Operator-actions log: who is "Coral Hub: <name>" or "this computer"; an event has
+// method "EVENT" and its text as the path.
+func RecordHubSigninAction(ctx context.Context, bs *board.Store, who, method, path string, status int) {
+	recordHubOperatorAction(ctx, bs, who, method, path, "", status)
+}
+
 // statusRecorder remembers the status a handler wrote.
 type statusRecorder struct {
 	http.ResponseWriter

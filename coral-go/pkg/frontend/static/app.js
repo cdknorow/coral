@@ -851,6 +851,7 @@ function pollStartupStatus() {
                 el.classList.add('hidden');
                 if (data.security_warning) showSecurityWarning(data.security_warning); // #3637
                 dashboardStartupComplete();
+                importOnce('./password_ui.js').then(m => m.maybePromptSetPassword()).catch(() => {}); // #3948: once, while no password is set
                 loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded).finally(_settlePollListLoad);
                 return;
             }

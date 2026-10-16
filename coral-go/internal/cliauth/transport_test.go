@@ -156,3 +156,43 @@ func TestInstallOperatorSigningNeverInsideAnAgent(t *testing.T) {
 	_, inner := http.DefaultTransport.(Transport).Base.(Transport)
 	assert.False(t, inner, "not wrapped twice")
 }
+
+// #3936: a tool that can't sign says why when this computer's Coral answers 401, once, and
+// says nothing for any other reply.
+func TestUnsignedRequestExplainsA401Once(t *testing.T) {
+	code := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(code) }))
+	defer srv.Close()
+	prev := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = prev })
+	for _, k := range agentMarkers {
+		t.Setenv(k, "")
+	}
+	t.Setenv("CORAL_DATA_DIR", t.TempDir()) // no cli-token there
+
+	assert.False(t, InstallOperatorSigning())
+	h, ok := http.DefaultTransport.(unsignedHint)
+	require.True(t, ok)
+	var out bytes.Buffer
+	h.out = &out
+	http.DefaultTransport = h
+	get := func() {
+		resp, err := http.Get(srv.URL)
+		require.NoError(t, err)
+		resp.Body.Close()
+	}
+	get()
+	assert.Empty(t, out.String(), "a 200 says nothing")
+	code = http.StatusUnauthorized
+	get()
+	get()
+	assert.Equal(t, 1, strings.Count(out.String(), "couldn't read Coral's command-line token"), out.String())
+
+	// Inside an agent with no session token: restart the agent.
+	http.DefaultTransport = prev
+	t.Setenv("CORAL_SESSION_NAME", "claude-old")
+	assert.False(t, InstallOperatorSigning())
+	h, ok = http.DefaultTransport.(unsignedHint)
+	require.True(t, ok)
+	assert.Contains(t, h.hint, "restart the agent")
+}

@@ -25,6 +25,10 @@ type attacher struct{ m *cloud.Manager }
 
 func (a *attacher) SetCloud(m *cloud.Manager) { a.m = m }
 
+func (a *attacher) HubSigninOrigins() []string                        { return nil }
+func (a *attacher) HubSigninEvent(context.Context, cloud.SigninEvent) {}
+func (a *attacher) EndHubSessions(context.Context, string)            {}
+
 func cloudEnv(t *testing.T, cloudURL string) (*cloud.Manager, *atomic.Int64) {
 	t.Helper()
 	t.Setenv(secretbox.EnvKey, "")

@@ -2,7 +2,7 @@
 
 Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unless noted otherwise.
 
-**Authentication:** Localhost requests bypass auth. Remote requests require an API key (`Authorization: Bearer <key>` or `X-API-Key` header) or a valid session cookie. See [auth.md](auth.md).
+**Authentication:** Every request needs a credential, including from this computer ([strict local auth](auth.md#strict-local-auth-the-default), the default since #3936): agents' tools send their session token automatically, the dashboard signs in (open it from the app or tray, or run `coral open`), the `coral` command line signs its requests, and a script sends the API key (`Authorization: Bearer <key>` or `X-API-Key` header; `coral api-key` prints it). `CORAL_STRICT_LOCAL_AUTH=0` turns this off for requests from this computer (weaker). See [auth.md](auth.md).
 
 
 ## API Documentation

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+#
+# STRICT-OFF SECTION (#3936, Security): this suite reuses SESS_A/SESS_B under other board roles
+# (asg_orch = SESS_A as "Orchestrator"), which strict local auth refuses as impersonation
+# (#3495). run_agent_tasks sources it only when CORAL_STRICT_LOCAL_AUTH=0; under strict (the
+# default) it is skipped. Run it as its own strict-off invocation when this file is next changed.
 # Sourced by run_agent_tasks.sh after agent_task_workflows.sh: explicit task
 # assignment is exclusive. Uses a fresh board, the real coral-board CLI and the
 # two live mock agents' terminals. Needs: as_board, api, jget, capture, check,

@@ -346,9 +346,23 @@ var operatorOnlyRoutes = map[string]string{
 	// #3513 (Security's #3509 finding 3): the API key is the Operator's credential (with it an
 	// agent drops its token and is the Operator, settings included), and deleting a board
 	// deletes the team's whole history.
-	"GET /api/system/api-key":     "read the API key",
-	"DELETE /api/board/{project}": "delete a board",
-	"PATCH /api/board/{project}":  "rename a board",
+	"GET /api/system/api-key": "read the API key",
+	// #3949: the browser password and its sessions are the Operator's.
+	"POST /api/auth/password/set":             "set the dashboard password",
+	"POST /api/auth/password/change":          "change the dashboard password",
+	"POST /api/auth/password/reset":           "reset the dashboard password",
+	"GET /api/auth/sessions":                  "list the signed-in browsers",
+	"GET /api/auth/setup-code":                "read the password setup code",
+	"POST /api/auth/sessions/sign-out-others": "sign out other browsers",
+	"DELETE /api/auth/sessions/{id}":          "sign one browser out",
+	// Sign in with Coral Hub (#3966): its local settings.
+	"GET /api/auth/hub-signin":          "read the Sign in with Coral Hub setting",
+	"PUT /api/auth/hub-signin":          "turn Sign in with Coral Hub on or off",
+	"POST /api/auth/hub-signin/dismiss": "dismiss the Sign in with Coral Hub notice",
+	"GET /api/auth/hub-origins":         "read the Coral Hub sign-in addresses",
+	"PUT /api/auth/hub-origins":         "change the Coral Hub sign-in addresses",
+	"DELETE /api/board/{project}":       "delete a board",
+	"PATCH /api/board/{project}":        "rename a board",
 	// #3583 (Security's sweep item 4): a team import reads files from a folder the request names.
 	"POST /api/teams/import": "import a team from a folder",
 	// #3685 (Security's #3670 follow-up): the hub's server registry (each entry holds a remote

@@ -6,6 +6,7 @@ import { dbg, showToast } from './utils.js';
 import { normServer, serverWsBase, sessionServer } from './server_base.js';
 import { hubBlocksKeystrokes, applyHubReadOnlyFrame } from './hub_access.js';
 import { feedRetryDelay } from './feed_pacing.js';
+import { isSignedOut } from './overload.js';
 
 let terminal = null;
 let fitAddon = null;
@@ -590,6 +591,7 @@ export function createTerminal(containerEl) {
 }
 
 export function connectTerminalWs(name, agentType, sessionId, server) {
+    if (isSignedOut()) return; // the sign-in panel is up (#3939)
     // `server` routes the socket through the hub proxy for agents on a remote
     // (/api/remote/{server}/ws/terminal/...). Default: the hub itself.
     const srv = normServer(server !== undefined ? server : (state.currentSession && state.currentSession.server));
@@ -736,12 +738,14 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             }
             _setDisconnectedBadge(true);
             document.dispatchEvent(new CustomEvent('coral:terminal-disconnected'));
+            if (isSignedOut()) return; // the sign-in panel is up (#3939): no reconnecting until the page is signed in
             if (_termFailureSession !== sessionId) { _termFailureSession = sessionId; _termFailures = 0; }
             _termFailures++;
             const delay = busy ? TERMINAL_BUSY_RETRY_MS : feedRetryDelay(_termFailures);
             terminalHooks.schedule(() => {
                 // Re-check: generation still current AND session still matches
                 if (myGeneration === _wsGeneration
+                    && !isSignedOut()
                     && state.currentSession
                     && state.currentSession.session_id === sessionId) {
                     connectTerminalWs(
@@ -774,6 +778,9 @@ export function disconnectTerminalWs() {
         terminalWs = null;
     }
 }
+
+// The page is signed out (#3939): close the terminal socket; its reconnect is not scheduled while the sign-in panel is up.
+document.addEventListener('coral:signed-out', () => disconnectTerminalWs());
 
 export function disposeTerminal() {
     dbg('disposeTerminal', { hadTerminal: !!terminal });

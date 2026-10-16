@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -24,25 +25,16 @@ import (
 )
 
 const (
-	keyLength     = 32 // 32 hex chars = 128 bits
-	sessionLength = 32 // 32 hex chars
+	keyLength = 32 // 32 hex chars = 128 bits
 	// legacyCookieName is the session cookie of Coral before #3682: one name for every server on
 	// the host, so two Corals on localhost signed each other out. It is still read (a session
 	// is only ever valid on the server that made it), never written.
 	legacyCookieName = "coral_session"
-	sessionMaxAge    = 24 * time.Hour
-	maxSessions      = 100
 	rateLimitWindow  = time.Minute
 	rateLimitMax     = 10
 )
 
 // Session represents an authenticated session.
-type Session struct {
-	Token     string
-	CreatedAt time.Time
-	ClientIP  string
-	UserAgent string
-}
 
 // rateLimitEntry tracks failed auth attempts per IP.
 type rateLimitEntry struct {
@@ -56,8 +48,8 @@ type KeyStore struct {
 	mu         sync.RWMutex
 	key        string
 	keyPath    string
-	sessions   map[string]*Session
-	order      []string // LRU order (oldest first)
+	sessions   SessionBackend // browser sign-ins (#3949): memory, or sessions.db once the server sets it
+	live       liveRequests   // the requests in flight for each session, closed when it ends (#3966)
 	rateMap    map[string]*rateLimitEntry
 	trusted    []*net.IPNet // reverse proxies whose X-Forwarded-Proto is believed (#3356)
 	// loginTokens maps a login token's SHA-256 to its expiry (#3387).
@@ -65,6 +57,14 @@ type KeyStore struct {
 	// loginFile and loginFileHash: the login_token file and the hash of the token it holds,
 	// so the file is removed once that token is used or expires (#3628 F7).
 	loginFile, loginFileHash string
+	// setupCode creates the first password from another computer (#3949); "" once used.
+	setupCode    string
+	setupExpires time.Time
+	setupWrong   int
+	// peerUser is the peer-user check (#3970): a sign-in link opened by another OS user of this
+	// computer is refused. nil, or "unsupported", keeps today's behaviour.
+	peerUser    func(*http.Request) (same, supported bool)
+	unknownPeer sync.Once
 }
 
 // NewKeyStore creates or loads an API key from the given directory.
@@ -72,7 +72,7 @@ func NewKeyStore(coralDir string) (*KeyStore, error) {
 	ks := &KeyStore{
 		cookieBase: sessionCookieBase(coralDir),
 		keyPath:    filepath.Join(coralDir, "api_key"),
-		sessions:   make(map[string]*Session),
+		sessions:   newMemSessions(),
 		rateMap:    make(map[string]*rateLimitEntry),
 	}
 	if err := ks.loadOrGenerate(); err != nil {
@@ -108,6 +108,21 @@ func (ks *KeyStore) loadOrGenerate() error {
 		log.Printf("[auth] warning: failed to persist API key to disk: %v", err)
 	}
 	return nil
+}
+
+// ReadAPIKey reads the API key Coral keeps in coralDir (`coral api-key`, #3936), with the
+// same checks as the server: a regular file, private to this user. It never makes a key: a
+// data folder without one gets an fs.ErrNotExist error.
+func ReadAPIKey(coralDir string) (string, error) {
+	data, err := readKeyFile(filepath.Join(coralDir, "api_key"))
+	if err != nil {
+		return "", err
+	}
+	key := strings.TrimSpace(string(data))
+	if key == "" {
+		return "", fmt.Errorf("the API key file in %s is empty: %w", coralDir, fs.ErrNotExist)
+	}
+	return key, nil
 }
 
 // readKeyFile reads the API key file: a regular file (never through a symlink or another kind
@@ -214,25 +229,13 @@ func (ks *KeyStore) RegenerateKey() (string, error) {
 		return "", fmt.Errorf("regenerate API key: can't save it: %w", err)
 	}
 	ks.key = key
-	ks.sessions = make(map[string]*Session)
-	ks.order = nil
+	if _, err := ks.sessions.DeleteSessionsExcept(context.Background(), ""); err != nil {
+		log.Printf("[auth] new API key: couldn't end the browser sessions: %v", err)
+	}
+	// Their open WebSockets close too (#3966 (c)). RevokeAllSessions would take ks.mu again;
+	// ks.live has its own lock.
+	ks.live.close("", "")
 	return ks.key, nil
-}
-
-// RevokeSession ends one session (sign out). An unknown token is a no-op.
-func (ks *KeyStore) RevokeSession(token string) {
-	ks.mu.Lock()
-	defer ks.mu.Unlock()
-	if _, ok := ks.sessions[token]; !ok {
-		return
-	}
-	delete(ks.sessions, token)
-	for i, t := range ks.order {
-		if t == token {
-			ks.order = append(ks.order[:i], ks.order[i+1:]...)
-			break
-		}
-	}
 }
 
 // SetTrustedProxies sets the reverse proxies (comma-separated IPs or CIDRs) whose
@@ -330,49 +333,6 @@ func (ks *KeyStore) ValidateKey(key string) bool {
 	return subtle.ConstantTimeCompare([]byte(key), []byte(ks.key)) == 1
 }
 
-// CreateSession creates a new authenticated session and returns the token.
-func (ks *KeyStore) CreateSession(clientIP, userAgent string) (string, error) {
-	ks.mu.Lock()
-	defer ks.mu.Unlock()
-
-	token, err := generateToken(sessionLength)
-	if err != nil {
-		return "", fmt.Errorf("create session token: %w", err)
-	}
-	ks.sessions[token] = &Session{
-		Token:     token,
-		CreatedAt: time.Now(),
-		ClientIP:  clientIP,
-		UserAgent: userAgent,
-	}
-	ks.order = append(ks.order, token)
-
-	// LRU eviction
-	for len(ks.sessions) > maxSessions {
-		oldest := ks.order[0]
-		ks.order = ks.order[1:]
-		delete(ks.sessions, oldest)
-	}
-
-	return token, nil
-}
-
-// ValidateSession checks if a session token is valid and not expired.
-// Expired sessions are removed lazily on access.
-func (ks *KeyStore) ValidateSession(token string) bool {
-	ks.mu.Lock()
-	defer ks.mu.Unlock()
-	s, ok := ks.sessions[token]
-	if !ok {
-		return false
-	}
-	if time.Since(s.CreatedAt) > sessionMaxAge {
-		delete(ks.sessions, token)
-		return false
-	}
-	return true
-}
-
 // CheckRateLimit returns true if the IP is within rate limits.
 func (ks *KeyStore) CheckRateLimit(ip string) bool {
 	ks.mu.Lock()
@@ -427,12 +387,16 @@ func isLocalhost(r *http.Request) bool {
 	return host == "127.0.0.1" || host == "::1"
 }
 
-// ExtractAPIKey extracts the API key from the request.
-// Checks Authorization header first, then query parameter.
+// ExtractAPIKey extracts the API key from the request: the Authorization header (Bearer),
+// then X-API-Key (as agent_docs/auth.md documents it, #3936), then the api_key query parameter.
+// Coral Hub's tunnel forwards none of these headers.
 func extractAPIKey(r *http.Request) string {
 	// Authorization: Bearer <key>
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	if key := r.Header.Get("X-API-Key"); key != "" {
+		return key
 	}
 	// Query parameter
 	if key := r.URL.Query().Get("api_key"); key != "" {
@@ -480,21 +444,6 @@ func (ks *KeyStore) extractSessionCookie(r *http.Request) string {
 		}
 	}
 	return first
-}
-
-// setSessionCookie sets the session cookie on the response. It is Secure when the browser
-// reached Coral over https (overHTTPS: TLS here, or a trusted proxy's X-Forwarded-Proto), so
-// the cookie is never sent back over plain http.
-func (ks *KeyStore) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     ks.cookieName(r),
-		Value:    token,
-		Path:     "/",
-		MaxAge:   int(sessionMaxAge.Seconds()),
-		HttpOnly: true,
-		Secure:   ks.overHTTPS(r),
-		SameSite: http.SameSiteLaxMode,
-	})
 }
 
 // signOut ends every session of this server that r's cookies carry (#3682, Security: a browser

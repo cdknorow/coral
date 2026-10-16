@@ -10,7 +10,9 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { createRequire } = require('node:module');
 
-const [base, folder, grouping, idsCsv] = process.argv.slice(2);
+// signInLink: a single-use 'coral open --print' link, opened first so the tab has the dashboard's
+// sign-in cookie (strict local auth, the default since #3936).
+const [base, folder, grouping, idsCsv, signInLink] = process.argv.slice(2);
 const log = m => console.error(`[kill-all-browser] ${m}`);
 const delay = ms => new Promise(r => setTimeout(r, ms));
 if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(base || '') || Number(new URL(base).port) === 8420) {
@@ -52,6 +54,10 @@ function findChrome() {
             throw Error(`timed out waiting for ${what}`);
         };
         await Page.enable();
+        if (signInLink) {
+            await Page.navigate({ url: signInLink });
+            await Page.loadEventFired();
+        }
         await Page.navigate({ url: base });
         await Page.loadEventFired();
         await ev(`localStorage.setItem('coral-group-by-team', ${JSON.stringify(grouping === 'off' ? 'false' : 'true')}); true`);

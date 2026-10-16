@@ -3874,3 +3874,43 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 #settings-modal .tb-autowake label { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-base); color: var(--text-primary); }
 #settings-modal .tb-autowake input[type="checkbox"] { flex: none; width: 16px; height: 16px; min-height: 0; margin: 0; }
 #settings-modal .tb-autowake input[type="number"] { width: 4.5em; min-height: 0; padding: 2px 6px; }
+
+/* "Coral now requires sign-in" (#3939): the modal shown when the page has no sign-in session */
+dialog.signed-out-panel { margin: auto; /* the base reset's margin:0 would pin it top-left */ width: min(460px, calc(100vw - 32px)); box-sizing: border-box; padding: 22px 24px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); }
+dialog.signed-out-panel::backdrop { background: rgba(0, 0, 0, .6); }
+dialog.signed-out-panel h2 { margin: 0 0 10px; font-size: var(--fs-lg, 17px); }
+dialog.signed-out-panel p { margin: 0 0 12px; color: var(--text-secondary); font-size: var(--fs-sm, 13px); line-height: 1.5; }
+dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; color: var(--text-primary); }
+.signed-out-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+.signed-out-actions .btn { text-decoration: none; }
+.signed-out-status { min-height: 1.2em; margin: 0; }
+
+/* ── Browser password (#3948): the set-password prompt and Settings > Browser sign-in ─────────────────────────── */
+.pw-lead { margin: 8px 0 14px; line-height: 1.5; color: var(--text-secondary); font-size: 14px; }
+.pw-field { display: block; margin: 0 0 12px; font-size: 13px; }
+.pw-label { display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-primary); }
+.pw-input-row { display: block; position: relative; }
+.pw-input { width: 100%; box-sizing: border-box; padding: 9px 64px 9px 11px; font-size: 14px; border-radius: 8px;
+    border: 1px solid var(--border-light); background: var(--bg-primary); color: var(--text-primary); }
+.pw-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--accent);
+    font-size: 13px; cursor: pointer; padding: 6px 8px; }
+.pw-meter { height: 6px; border-radius: 3px; background: var(--bg-tertiary); overflow: hidden; margin: 2px 0 4px; }
+.pw-meter > i { display: block; height: 100%; width: 0; border-radius: 3px; background: #d4a72c; transition: width .15s; }
+.pw-strength[data-level="strong"] .pw-meter > i { background: #3fb950; }
+.pw-strength[data-level="weak"] .pw-meter > i { background: #e5534b; }
+.pw-hint { font-size: 12px; color: var(--text-secondary); margin: 0 0 12px; min-height: 1.3em; line-height: 1.45; }
+.pw-hint b { color: var(--text-primary); font-weight: 600; }
+.pw-error { color: #e5534b; font-size: 13px; margin: 0 0 10px; }
+.pw-note { font-size: 12px; color: var(--text-secondary); margin: 8px 0 0; line-height: 1.5; }
+.sec-row details { margin: 10px 0; }
+.sec-row summary { cursor: pointer; font-weight: 600; font-size: 13px; margin-bottom: 10px; }
+.sec-sessions { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+.sec-sub-head { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.sec-count { color: var(--text-secondary); font-weight: 400; }
+.sec-list { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
+.sec-item { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.sec-who { overflow-wrap: anywhere; }
+.sec-when { color: var(--text-secondary); text-align: right; flex: none; }
+.sec-failed .sec-who { color: #e5534b; }
+@media (max-width: 480px) { .sec-item { flex-direction: column; gap: 0; } .sec-when { text-align: left; } }

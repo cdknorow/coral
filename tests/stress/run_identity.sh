@@ -16,6 +16,8 @@
 #            (HttpOnly, SameSite=Strict), token stripped by the redirect, reuse refused
 #   scale    3 teams x 4 agents plus 2 restart rounds of all 12, within IDENTITY_BUDGET_S
 #
+# Without --strict the server runs with --strict-local-auth=false: strict local auth is Coral's default since
+# #3936, so that mode now checks the opt-out (agents' tokens still attributed, impersonation detected).
 # With --strict (or IDENTITY_STRICT=1) the server runs with --strict-local-auth (phase 2, #3418) and the same
 # team run must work end to end with ZERO refusals, while impersonation, cross-board, untokened and
 # dashboard-without-cookie calls are refused (403 identity_mismatch, 401 session_token_required,
@@ -126,7 +128,7 @@ env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" "${HOSTILE_ENV[@]}" 
     MOCK_AGENT_CORAL_BOARD="$BIN/coral-board" MOCK_AGENT_ENV_DUMP="$DUMP" MOCK_AGENT_BLIND_PREFIX=id-blind \
     CORAL_TEST_LOGIN_TOKEN_TTL=3s \
     "$BIN/coral" --home "$DATA" --no-browser --cloud-url off --host 127.0.0.1 --port "$PORT" --backend tmux \
-    $([[ $STRICT == 1 ]] && echo --strict-local-auth) >"$TMP/server.log" 2>&1 &
+    $([[ $STRICT == 1 ]] && echo --strict-local-auth || echo --strict-local-auth=false) >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 wait_until 30 "the server" curl -fsS -m 2 "$BASE/api/health" -o /dev/null || exit 1
 coral_open() { env -u DISPLAY "$BIN/coral" open --print --url "$BASE" --home "$DATA" | sed -n 's/^ *\(http[^ ]*login_token=[^ ]*\).*/\1/p' | head -1; }

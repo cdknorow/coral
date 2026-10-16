@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -45,6 +46,9 @@ var staticFS = frontend.Static
 // Server holds dependencies and exposes the HTTP router.
 type Server struct {
 	cloudHandler    *routes.CloudHandler
+	cloudMgr        atomic.Pointer[cloud.Manager] // the connector, once SetCloud runs (#3966)
+	hubSignin       *auth.HubSignin               // Sign in with Coral Hub (#3966)
+	authRoutes      *auth.Routes                  // made in useMiddleware (the Hub sign-in guard needs it), routed in registerAuth
 	cfg             *config.Config
 	db              *store.DB
 	boardStore      *board.Store
@@ -133,6 +137,15 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	}
 	// Never log any part of the key (#3356): Settings > Remote Access shows it on this machine.
 	log.Printf("API key loaded (Settings > Remote Access shows it on this computer)")
+	// Browser sign-ins live in sessions.db, so they survive a restart (#3949).
+	if db != nil {
+		keyStore.SetSessionBackend(store.NewBrowserSessions(db))
+		keyStore.ApplyRevokeMarker()
+	}
+	if p := os.Getenv("CORAL_INITIAL_PASSWORD_FILE"); p != "" {
+		keyStore.ApplyInitialPasswordFile(p)
+	}
+	keyStore.SetupCode() // no password yet: the setup code goes to the console (never coral.log)
 	if err := keyStore.SetTrustedProxies(os.Getenv("CORAL_TRUSTED_PROXIES")); err != nil {
 		log.Printf("[auth] CORAL_TRUSTED_PROXIES ignored: %v", err)
 	}
@@ -248,6 +261,7 @@ func (s *Server) CloseCloud() {
 }
 
 func (s *Server) SetCloud(m *cloud.Manager) {
+	s.cloudMgr.Store(m)
 	if s.cloudHandler != nil {
 		s.cloudHandler.SetManager(m)
 	}
