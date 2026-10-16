@@ -31,10 +31,11 @@ assert.deepEqual(durationsFromResults([
     { test: 'a.test.js', attempts: [{ status: 'pass', secs: '12.34' }] },
     { test: 'b.test.js', attempts: [{ status: 'fail', secs: '3.0' }, { status: 'pass', secs: '9.0' }] }, // failed first: not a duration
     { test: 'c.test.js', attempts: [{ status: 'timeout', secs: '120.0' }] },
-    { test: 'strict: d.test.js', attempts: [{ status: 'pass', secs: '1.04' }] },
+    { test: 'strict: d.test.js', attempts: [{ status: 'pass', secs: '1.04' }] }, // the strict phase's run is not the queue's
+    { test: 'sequence: a.test.js > b.test.js', attempts: [] },
     { test: 'e.test.js', attempts: [{ status: 'pass', secs: 'x' }] },
     null,
-]), { 'a.test.js': 12.3, 'd.test.js': 1 }, 'passing first attempts only, one decimal');
+]), { 'a.test.js': 12.3 }, 'main-queue passing first attempts only, one decimal');
 assert.deepEqual(durationsFromResults({ results: [{ test: 'z.test.js', attempts: [{ status: 'pass', secs: '2' }] }] }), { 'z.test.js': 2 }, 'a { results } wrapper works');
 assert.deepEqual(durationsFromResults(null), {});
 console.log('suite_order: ok');

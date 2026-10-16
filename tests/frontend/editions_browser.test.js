@@ -38,7 +38,11 @@ const VERIFY = 'https://app.coralhub.dev/enroll?code=ABCD-EFGH';
 
 // A scripted connector: window.__cloud is the status (window.__cloudStart seeds it before the
 // app runs); window.__cloudCalls records actions.
+// The connect panel polls the status every 3 s (cloud_connect.js schedule): every step that waits for the next poll cost 3 s, six times in
+// this suite (desktop and phone). The suite shortens exactly that timer to 0.3 s, so a step waits for the poll, not for the clock; the
+// app code and every assertion are unchanged.
 const STUB = `
+  { const realSetTimeout = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms === 3000 ? 300 : ms, ...rest); }
   window.__cloudForbidden = !!window.__cloudStartForbidden; window.__cloudCalls = [];
   window.__cloudForbiddenBody = window.__cloudStartForbiddenBody || { error: 'Cloud connector settings are only available from the Coral dashboard on this computer' };
   window.__cloud = Object.assign({ state: 'idle', hub_url: 'https://app.coralhub.dev', configured: true, max_mode: 'view', allow_hub_auto_accept: true, offer_at_launch: true }, window.__cloudStart || {});

@@ -24,7 +24,7 @@
   "task_completion_modal.test.js": 1,
   "team_availability.test.js": 1,
   "team_view_responsive_rows.test.js": 2,
-  "terminal_scroll.test.js": 7,
+  "terminal_scroll.test.js": 1,
   "topbar_overlay_browser.test.js": 5,
   "transcript_codex.test.js": 2
 }
