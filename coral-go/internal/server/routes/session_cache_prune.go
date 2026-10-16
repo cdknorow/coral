@@ -39,7 +39,8 @@ func (h *SessionsHandler) maybePruneSessionCaches() {
 
 // pruneSessionCaches drops per-session cache entries (parsed transcripts,
 // first prompts, transcript warm-up marks) for sessions that are neither
-// registered as live (sleeping included) nor running in the terminal backend.
+// registered as live (sleeping included), the ancestor a live one resumed from, nor running in
+// the terminal backend.
 // If either source cannot be read, nothing is dropped.
 func (h *SessionsHandler) pruneSessionCaches(ctx context.Context) int {
 	live, err := h.ss.GetAllLiveSessions(ctx)
@@ -49,6 +50,11 @@ func (h *SessionsHandler) pruneSessionCaches(ctx context.Context) int {
 	keep := make(map[string]bool, len(live))
 	for _, s := range live {
 		keep[s.SessionID] = true
+		// A resumed session's chat reads its ancestor's transcript too (the lineage, Chat):
+		// dropping the ancestor made the next poll re-parse it whole, every minute (#3710).
+		if a := derefStrPtr(s.ResumeFromID); a != "" {
+			keep[a] = true
+		}
 	}
 	if h.terminal != nil {
 		panes, err := h.terminal.ListSessions(ctx)

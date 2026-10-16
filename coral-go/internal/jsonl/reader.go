@@ -11,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -38,9 +40,13 @@ type sessionCache struct {
 	offset       int64
 	messages     []map[string]any
 	toolUseNames map[string]string // tool_use_id → tool_name
-	codexState   codexTurnCache
-	agyState     agyTurnCache
-	claudeState  claudeTurnCache
+	// The transcript as last read: a different file, a shorter one, or other first bytes mean
+	// it was replaced or rewritten, and the messages are read again from the start (#3710).
+	info        os.FileInfo
+	head        string
+	codexState  codexTurnCache
+	agyState    agyTurnCache
+	claudeState claudeTurnCache
 }
 
 // claudeTurnCache tracks the latest end of a turn in a Claude transcript (#3481).
@@ -163,6 +169,13 @@ func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workin
 		return nil, len(c.messages)
 	}
 	defer f.Close()
+	if info, err := f.Stat(); err == nil {
+		head := transcriptHead(f)
+		if transcriptReplaced(c.info, info, c.head, head) {
+			c.offset, c.messages, c.toolUseNames = 0, nil, make(map[string]string)
+		}
+		c.info, c.head = info, head
+	}
 
 	if _, err := f.Seek(c.offset, io.SeekStart); err != nil {
 		return nil, len(c.messages)
@@ -188,15 +201,12 @@ func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workin
 		return nil, len(c.messages)
 	}
 
-	// Parse new lines
+	// Parse new lines: decoding the JSON is the cost of a large read (a long transcript read cold,
+	// after a restart or an eviction), so it runs in parallel; turning entries into messages
+	// stays in order, since a tool result is named from the tool call before it (#3710).
 	var newMessages []map[string]any
-	for _, line := range strings.Split(string(newData), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var entry map[string]any
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+	for _, entry := range decodeLines(newData) {
+		if entry == nil {
 			continue
 		}
 		parsed := parseTranscriptEntry(entry, c.toolUseNames, agentType)
@@ -1954,4 +1964,60 @@ func parseCodexAssistantEntry(content any, timestamp string, toolUseNames map[st
 		"tool_uses": toolUses,
 	}
 	return []map[string]any{result}
+}
+
+// decodedLines counts the lines decodeLines has decoded (tests: concurrent readers share a read).
+var decodedLines atomic.Int64
+
+// parallelDecodeMin is the read size from which decodeLines decodes on every CPU (a var for tests).
+var parallelDecodeMin = 1 << 20
+
+// decodeLines decodes each non-blank line of data as a JSON object, in order; a line that isn't
+// one is nil. Large data is decoded by one worker per CPU, each on a contiguous run of lines.
+func decodeLines(data []byte) []map[string]any {
+	var lines [][]byte
+	for len(data) > 0 {
+		i := bytes.IndexByte(data, '\n')
+		var line []byte
+		if i < 0 {
+			line, data = data, nil
+		} else {
+			line, data = data[:i], data[i+1:]
+		}
+		if line = bytes.TrimSpace(line); len(line) > 0 {
+			lines = append(lines, line)
+		}
+	}
+	out := make([]map[string]any, len(lines))
+	decodedLines.Add(int64(len(lines)))
+	decode := func(lo, hi int) {
+		for i := lo; i < hi; i++ {
+			var entry map[string]any
+			if json.Unmarshal(lines[i], &entry) == nil {
+				out[i] = entry
+			}
+		}
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if total := len(lines); workers < 2 || total < 2*workers || sumLen(lines) < parallelDecodeMin {
+		decode(0, total)
+		return out
+	}
+	var wg sync.WaitGroup
+	per := (len(lines) + workers - 1) / workers
+	for lo := 0; lo < len(lines); lo += per {
+		hi := min(lo+per, len(lines))
+		wg.Add(1)
+		go func() { defer wg.Done(); decode(lo, hi) }()
+	}
+	wg.Wait()
+	return out
+}
+
+func sumLen(lines [][]byte) int {
+	n := 0
+	for _, l := range lines {
+		n += len(l)
+	}
+	return n
 }

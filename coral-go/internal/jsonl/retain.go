@@ -38,3 +38,11 @@ func (r *SessionReader) CachedSessions() int {
 	}
 	return n
 }
+
+// IsCached reports whether sessionID's parsed transcript is in the cache.
+func (r *SessionReader) IsCached(sessionID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.cache[sessionID]
+	return ok
+}
