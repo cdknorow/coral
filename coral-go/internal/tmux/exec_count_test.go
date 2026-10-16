@@ -18,3 +18,21 @@ func TestExecCounts(t *testing.T) {
 	wg.Wait()
 	assert.Equal(t, before+50, ExecCounts()["test-cmd-4049"])
 }
+
+// #4077: a capture is also counted under the code that asked for it.
+func TestCapturePaneCountedByCaller(t *testing.T) {
+	key := "capture-pane<tmux.captureFromTest4077"
+	before := ExecCounts()[key]
+	captureFromTest4077()
+	assert.Equal(t, before, ExecCounts()[key], "frames in the tmux package are skipped")
+	got := ExecCounts()
+	found := false
+	for k := range got {
+		if k == "capture-pane<testing.tRunner" {
+			found = true
+		}
+	}
+	assert.True(t, found, "the first frame outside tmux names the caller: %v", got)
+}
+
+func captureFromTest4077() { countExec("capture-pane") }

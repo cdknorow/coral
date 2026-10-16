@@ -1422,11 +1422,37 @@ func sessionFromTarget(target string) string {
 var execCounts sync.Map // string -> *atomic.Int64
 
 func countExec(name string) {
+	addExecCount(name)
+	if name == "capture-pane" {
+		// Which code captured (#4077): capture-pane is the top tmux exec, from many callers.
+		addExecCount("capture-pane<" + execCaller())
+	}
+}
+
+func addExecCount(name string) {
 	v, ok := execCounts.Load(name)
 	if !ok {
 		v, _ = execCounts.LoadOrStore(name, new(atomic.Int64))
 	}
 	v.(*atomic.Int64).Add(1)
+}
+
+// execCaller names the first function outside the tmux client and the thin backend wrappers
+// that only forward a capture, e.g. "routes.(*SessionsHandler).TeamAvailability".
+func execCaller() string {
+	var pcs [24]uintptr
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(3, pcs[:])])
+	for {
+		f, more := frames.Next()
+		fn := strings.TrimPrefix(f.Function, "github.com/cdknorow/coral/internal/")
+		if fn != "" && !strings.HasPrefix(fn, "tmux.") && !strings.HasPrefix(fn, "ptymanager.(*TmuxSessionTerminal).") &&
+			!strings.HasPrefix(fn, "background.(*TmuxRuntime).") {
+			return fn
+		}
+		if !more {
+			return "?"
+		}
+	}
 }
 
 // ExecCounts is how many of each tmux command Coral has run since it started.
