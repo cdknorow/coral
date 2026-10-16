@@ -3,23 +3,45 @@
 package startup
 
 import (
+	"errors"
 	"fmt"
 	"os"
+
+	"golang.org/x/sys/windows"
 )
 
 type instanceLock struct {
 	file *os.File
 }
 
+// lockOffsetHigh places the byte the instance lock holds: far past the pid the file records, so
+// another process can still read that (a locked range can't be read by other handles).
+const lockOffsetHigh = 0x40000000
+
+// acquireInstanceLock takes a LockFileEx lock on the lock file, as Unix takes flock: the
+// kernel releases it when the process ends, however it ends. The file itself was the lock
+// before (created with O_EXCL), so a crash or a power cut left it behind and Coral refused
+// to start until it was deleted by hand (#3906, sweep item 6). A leftover file is now just
+// reused.
 func acquireInstanceLock(path string) (*instanceLock, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		if os.IsExist(err) {
-			return nil, fmt.Errorf("another Coral server is already running for this data directory")
-		}
 		return nil, err
 	}
-	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
+	ol := &windows.Overlapped{OffsetHigh: lockOffsetHigh}
+	err = windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, ol)
+	if err != nil {
+		f.Close()
+		if errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
+			return nil, fmt.Errorf("another Coral server is already running for this data directory")
+		}
+		return nil, fmt.Errorf("lock %s: %w", path, err)
+	}
+	if err := f.Truncate(0); err == nil {
+		_, _ = f.Seek(0, 0)
+		_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
+		_ = f.Sync()
+	}
 	return &instanceLock{file: f}, nil
 }
 
@@ -27,6 +49,10 @@ func (l *instanceLock) close(path string) {
 	if l == nil || l.file == nil {
 		return
 	}
+	ol := &windows.Overlapped{OffsetHigh: lockOffsetHigh}
+	_ = windows.UnlockFileEx(windows.Handle(l.file.Fd()), 0, 1, 0, ol)
 	_ = l.file.Close()
+	// Fails harmlessly if a new server already has it open (Go opens without
+	// FILE_SHARE_DELETE); that server's lock is on its handle, not the name.
 	_ = os.Remove(path)
 }
