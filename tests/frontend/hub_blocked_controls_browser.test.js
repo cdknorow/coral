@@ -1,7 +1,8 @@
 // #3769 (from the #3735 sweep): through the Coral Hub a machine can be limited to View or Interact. A control the tier
 // does not allow is dimmed with the reason as its title (it stays clickable, so a click still says why):
 //   - the command pane's Send, Send options, quick commands, macros and raw keys, and an agent menu's Kill, Rename, Sleep
-//     and Archive need Interact; Restart (and Wake / Restart on the sleeping bar) need Launch;
+//     and Archive need Interact; Restart (and Wake / Restart on the sleeping bar), Sleep all, a team's sleep, a board's pause and
+//     a board message's delete need Launch (#3942, #3943);
 //   - at View both groups are dimmed, at Interact only the Launch ones, at Launch none;
 //   - controls that read or only rearrange the list (Session Info, Move Up) are never dimmed;
 //   - a local dashboard is unchanged.
@@ -133,6 +134,37 @@ const HUB_PRELOAD = `(() => {
         s = await state();
         assert.equal(s.bar.wake.blocked, true, 'Wake still needs Launch at Interact');
         console.log('   ✓ Wake / Restart: Launch; Unarchive: Interact');
+
+        console.log("4b. What #3942 moved to Launch: Sleep all, team sleep, a board's pause and a message's delete (single-agent sleep stays Interact)");
+        await ev(`(() => {
+            document.getElementById('qa-hub-controls')?.remove();
+            const d = document.createElement('div'); d.id = 'qa-hub-controls';
+            const mk = (name, data = {}) => { const b = document.createElement('button'); b.dataset.onClick = name; Object.assign(b.dataset, data); b.textContent = name; d.appendChild(b); };
+            mk('team-sleep', { board: '@m1/team1', mode: 'sleep' }); mk('team-sleep', { board: '@m1/team1', mode: 'wake' });
+            mk('board-chat-pause', { board: '@m1/team1' }); mk('mb-msg-delete', { msgId: '7' }); mk('team-sleep', { board: 'team-local', mode: 'sleep' });
+            document.body.appendChild(d);
+            T.state.currentBoardServer = 'm1';   // the board that is open lives on Box One (the board view's own pause button follows it)
+            return true; })()`);
+        const hubControls = () => ev(`(() => { const q = sel => { const el = document.querySelector(sel); return el ? { blocked: el.classList.contains('hub-blocked'), aria: el.getAttribute('aria-disabled'), disabled: el.disabled, title: el.getAttribute('title') || '' } : null; };
+            return { sleepAll: q('[data-on-click="m-close-top-bar-settings-then-sleep-all-agents"]'), teamSleep: q('#qa-hub-controls [data-mode=sleep][data-board="@m1/team1"]'), teamWake: q('#qa-hub-controls [data-mode=wake]'),
+                boardPanelPause: q('#qa-hub-controls [data-on-click=board-chat-pause]'), boardViewPause: q('[data-on-click=mb-pause]'), msgDelete: q('#qa-hub-controls [data-on-click=mb-msg-delete]'),
+                localTeamSleep: q('#qa-hub-controls [data-board="team-local"]'), agentSleep: q('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-sleep]') }; })()`);
+        const LAUNCH_ONLY = ['sleepAll', 'teamSleep', 'teamWake', 'boardPanelPause', 'boardViewPause', 'msgDelete'];
+        for (const mode of ['view', 'interact']) {
+            await access(mode);
+            await waitFor(`document.querySelector('[data-on-click="m-close-top-bar-settings-then-sleep-all-agents"]').classList.contains('hub-blocked')`, `Sleep all dimmed at ${mode}`, 8000);
+            await marked();
+            const h = await hubControls();
+            blockedAs(h, LAUNCH_ONLY, true, 'Launch', `${mode}`);
+            assert.equal(h.localTeamSleep.blocked, false, `${mode}: a team on the hub's own machine is not dimmed`);
+            assert.equal(h.agentSleep.blocked, mode === 'view', `${mode}: single-agent sleep ${mode === 'view' ? 'needs Interact, dimmed at View' : 'stays at Interact, normal'}`);
+        }
+        await access('launch');
+        await marked();
+        const hl = await hubControls();
+        for (const k of [...LAUNCH_ONLY, 'localTeamSleep', 'agentSleep']) assert.equal(hl[k].blocked, false, `launch: ${k} is not dimmed`);
+        console.log('   ✓ at View and Interact all six are dimmed with "needs Launch" (aria-disabled, still clickable); a local team is not; single-agent sleep dimmed at View only; at Launch none');
+        await ev(`document.getElementById('qa-hub-controls')?.remove(); true`);
 
         console.log('5. A local dashboard is unchanged');
         await cloudMode(false);
