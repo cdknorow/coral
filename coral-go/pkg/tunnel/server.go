@@ -362,6 +362,7 @@ func (s *Session) RoundTrip(req *http.Request) (*http.Response, error) {
 	hdr := Header{
 		Kind: KindHTTP, Method: req.Method, Path: req.URL.EscapedPath(), Query: req.URL.RawQuery,
 		Headers: req.Header.Clone(), ContentLength: req.ContentLength, HubUser: hubUserFrom(ctx),
+		HubTier: hubTierFrom(ctx),
 	}
 	hs, err := s.OpenStream(ctx, hdr)
 	if err != nil {
@@ -429,7 +430,7 @@ func (b *hubBody) Close() error {
 // path under /ws/ or /api/. A failed handshake returns *StreamError (with the
 // upstream status in Status when there was one).
 func (s *Session) DialWS(ctx context.Context, path, rawQuery string, protocols []string) (*WSConn, error) {
-	hs, err := s.OpenStream(ctx, Header{Kind: KindWS, Method: http.MethodGet, Path: path, Query: rawQuery, Protocols: protocols, HubUser: hubUserFrom(ctx)})
+	hs, err := s.OpenStream(ctx, Header{Kind: KindWS, Method: http.MethodGet, Path: path, Query: rawQuery, Protocols: protocols, HubUser: hubUserFrom(ctx), HubTier: hubTierFrom(ctx)})
 	if err != nil {
 		return nil, err
 	}
