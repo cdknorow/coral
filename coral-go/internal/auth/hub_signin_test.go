@@ -707,3 +707,15 @@ func TestHubSigninHubURL(t *testing.T) {
 	var none *HubSignin
 	assert.Empty(t, none.HubURL())
 }
+
+// GET /api/auth/hub-origins carries this server's loopback origins beside the configured ones,
+// for the Settings rows (UX's #4003).
+func TestHubOriginsListsLoopback(t *testing.T) {
+	g := newHubRig(t)
+	g.set.origins = []string{"https://coral.example"}
+	pw := g.passwordSession(t)
+	w, out := g.do(g.hs.GetOrigins, g.req("GET", "/api/auth/hub-origins", "", "10.0.0.5", pw))
+	require.Equal(t, 200, w.Code, w.Body.String())
+	assert.Equal(t, []any{"https://coral.example"}, out["origins"])
+	assert.Equal(t, []any{"http://localhost:8420"}, out["loopback"])
+}
