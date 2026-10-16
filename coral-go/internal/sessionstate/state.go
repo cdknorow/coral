@@ -216,6 +216,12 @@ func Derive(in Input) State {
 				}
 				continue
 			}
+			if event.Summary == HeldInputSummary && state.NeedsInput && state.WaitingSummary != HeldInputSummary {
+				// Coral's held notice while the agent's own request is open: the request is
+				// what the agent waits on, so it stays as it is (#3655). Replacing its summary
+				// made OwnRequest false, and the gate read the agent as idle with its menu open.
+				continue
+			}
 			class := Classify(event.Summary)
 			if event.Kind != "" {
 				class = ClassifyType(event.Kind)
