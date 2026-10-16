@@ -116,7 +116,7 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 	// The hub can read the setting: on by default.
 	code, out = viaHub("GET", "/api/system/hub-operator", nil)
 	require.Equal(t, http.StatusOK, code, out)
-	assert.Equal(t, map[string]any{"enabled": true, "disabled": false}, out)
+	assert.Equal(t, map[string]any{"disabled": false}, out)
 
 	// A chat post as the Operator: the Operator, attributed, and agents can tell.
 	code, out = viaHub("POST", "/api/board/team/messages", map[string]any{"subscriber_id": "Operator", "as": "Operator", "content": "@Dev ship it"}, user)
@@ -173,7 +173,7 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, out)
 	code, out = viaHub("GET", "/api/system/hub-operator", nil)
 	require.Equal(t, http.StatusOK, code)
-	assert.Equal(t, map[string]any{"enabled": false, "disabled": true}, out)
+	assert.Equal(t, map[string]any{"disabled": true}, out)
 	code, out = viaHub("POST", "/api/board/team/tasks", map[string]any{"subscriber_id": "Operator", "created_by": "Operator", "title": "x"}, user)
 	assert.Equal(t, http.StatusForbidden, code, out)
 	assert.Equal(t, "operator_identity_required", out["code"])

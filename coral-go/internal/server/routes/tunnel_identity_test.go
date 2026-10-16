@@ -551,7 +551,7 @@ func TestHubOperatorSetting(t *testing.T) {
 	peer = [2]bool{false, false} // macOS, Windows: the dashboard rules alone
 	require.Equal(t, http.StatusOK, local("GET", "").Code)
 	peer = [2]bool{true, true}
-	assert.JSONEq(t, `{"enabled":true,"disabled":false}`, tunneled("GET", "").Body.String(), "the hub can read it")
+	assert.JSONEq(t, `{"disabled":false}`, tunneled("GET", "").Body.String(), "the hub can read it")
 
 	// Honoured only while linked, and only on an authentic tunnel request.
 	assert.False(t, h.HubOperatorAllowed(authentic()), "not linked")
@@ -567,7 +567,7 @@ func TestHubOperatorSetting(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.JSONEq(t, `{"disabled":true,"linked":true,"recent_actions":[]}`, rec.Body.String())
 	assert.False(t, h.HubOperatorAllowed(authentic()))
-	assert.JSONEq(t, `{"enabled":false,"disabled":true}`, tunneled("GET", "").Body.String())
+	assert.JSONEq(t, `{"disabled":true}`, tunneled("GET", "").Body.String())
 	require.Equal(t, http.StatusOK, local("PUT", `{"disabled":false}`).Code)
 	assert.True(t, h.HubOperatorAllowed(authentic()))
 	require.Equal(t, http.StatusOK, local("PUT", `{"disabled":true}`).Code)

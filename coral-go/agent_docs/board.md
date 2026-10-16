@@ -118,7 +118,6 @@ Subscribes a client to a board with a stable identity.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `subscriber_id` | string | Yes | Stable identity for the subscriber |
-| `session_id` | string | No | Legacy fallback for `subscriber_id` |
 | `session_name` | string | No | Current tmux/pty session name |
 | `job_title` | string | No | Display name (default: `"Agent"`) |
 | `receive_mode` | string | No | `"none"`, `"all"`, `"mentions"` (default), or a group ID |
@@ -952,7 +951,7 @@ GET /api/board/remotes/proxy/{remote_server}/{project}/subscribers
 ### Proxy Remote Unread Check
 
 ```
-GET /api/board/remotes/proxy/{remote_server}/{project}/messages/check?session_id={id}
+GET /api/board/remotes/proxy/{remote_server}/{project}/messages/check?subscriber_id={id}
 ```
 
 ## Task workflows

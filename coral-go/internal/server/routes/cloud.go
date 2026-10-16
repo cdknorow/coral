@@ -487,8 +487,7 @@ func (h *CloudHandler) HubOperatorAllowed(r *http.Request) bool {
 // HubOperator: GET/PUT /api/system/hub-operator. On this computer, from the dashboard:
 // {"disabled": bool} turns the opt-out on or off; the answer adds whether a Hub link exists and
 // the recent Operator actions taken through Coral Hub. Through the tunnel only GET, read only,
-// and only {"enabled", "disabled"}, so the Hub can show it (Coral Hub reads it; the dashboard
-// reads only "disabled").
+// and only {"disabled"}.
 func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 	if cloud.Tunneled(r) {
 		if r.Method != http.MethodGet {
@@ -497,7 +496,7 @@ func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 		}
 		s, _ := h.ss.GetSettings(r.Context())
 		off := hubOperatorDisabled(s)
-		writeJSON(w, http.StatusOK, map[string]any{"enabled": !off, "disabled": off})
+		writeJSON(w, http.StatusOK, map[string]any{"disabled": off})
 		return
 	}
 	if h.refuseCloud(w, r, allowDashboard) {
