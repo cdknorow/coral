@@ -341,7 +341,11 @@ function renderOneMessage(msg, container, agentType) {
             const bubble = makeBubble(`chat-bubble assistant${msg.phase === "commentary" ? " commentary" : ""}`,
                 `<div class="message-text">${renderMarkdown(msg.text, undefined, 'chat')}</div>${COPY_BUTTON}`);
             bubbleSource.set(bubble, msg.text);
-            if (adapter.assistantPlacement(msg) === "work") appendWork(container, bubble);
+            // Prose in a message that also makes tool calls is a one-line preamble ("Checking the CSS first."): it goes
+            // in the steps group with the calls. Prose in a message with no tool calls (a question card is not a step)
+            // is a reply: it always shows and it ends the group (#4105).
+            const preamble = (msg.tool_uses || []).some(t => !adapter.toolView(t).isQuestion);
+            if (preamble || adapter.assistantPlacement(msg) === "work") appendWork(container, bubble);
             else appendTurnFinal(container, bubble);
         }
         for (const tool of msg.tool_uses || []) {

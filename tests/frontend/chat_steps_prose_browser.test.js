@@ -7,8 +7,10 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const tool = (id, name, summary, label) => ({ name, tool_use_id: id, input_summary: summary, description: label });
+const preCall = (id, name, label, pre) => [{ type: 'assistant', text: pre, tool_uses: [tool(id, name, label, label)] }, { type: 'tool_result', tool_use_id: id, tool_name: name, content: 'ok' }];
 const call = (id, name, label) => [{ type: 'assistant', text: '', tool_uses: [tool(id, name, label, label)] }, { type: 'tool_result', tool_use_id: id, tool_name: name, content: 'ok' }];
 const A1 = 'Yes, that is the bug Backend Dev has as task #4104. The cause is the bug report box in the agent terminal.';
+const PRE = 'Checking the CSS first.';
 const A2 = 'Checking the new ones myself before passing them on.';
 const A3 = 'Done: the notification is held until the box closes.';
 const fixture = withHook => [
@@ -16,9 +18,9 @@ const fixture = withHook => [
     ...call('t1', 'Bash', 'Download the reposted mockups'), ...call('t2', 'Bash', 'Clarify the #4104 trigger for Backend'),
     { type: 'assistant', text: A1 },
     ...(withHook ? [{ type: 'user', content: 'Stop hook feedback:\n- [board check]: New board messages' }] : []),
-    ...call('t3', 'Bash', 'Read new board messages'),
+    ...preCall('t3', 'Bash', 'Read new board messages', PRE), ...call('t4', 'Read', 'static/render.js'),
     { type: 'assistant', text: A2 },
-    ...call('t4', 'Read', 'static/render.js'), ...call('t5', 'Grep', 'collapse'),
+    ...call('t5', 'Grep', 'collapse'),
     { type: 'assistant', text: A3 },
 ];
 
@@ -50,17 +52,18 @@ const fixture = withHook => [
         for (const withHook of [true, false]) { await render(fixture(withHook), withHook ? 'steps-hook' : 'steps-plain'); await shot(withHook ? 'hook' : 'plain'); } // pictures first, so a failing run still leaves them
         for (const withHook of [true, false]) {
             const id = withHook ? 'steps-hook' : 'steps-plain';
-            await render(fixture(withHook), id);
             const t = await shape(id);
             const kinds = t.map(x => x.kind).join(',');
-            assert.equal(kinds, withHook ? 'user,group,reply,user,group,reply,group,reply' : 'user,group,reply,group,reply,group,reply', `${id}: groups and answers alternate: ${kinds}`);
-            const replies = t.filter(x => x.kind === 'reply' && x.text.startsWith('Yes') || x.text?.startsWith('Checking') || x.text?.startsWith('Done'));
-            assert.equal(replies.length, 3, `${id}: all three answers are on the page, outside any group`);
-            assert.ok(replies.every(r => r.visible), `${id}: every answer is visible with nothing expanded`);
-            assert.ok(t.filter(x => x.kind === 'group').every(g => !g.open && g.bubbles === 0), `${id}: groups are collapsed and hold only tool calls`);
-            const counts = t.filter(x => x.kind === 'group').map(g => g.steps);
-            assert.deepEqual(counts, withHook ? ['2 steps', '1 step', '2 steps'] : ['2 steps', '1 step', '2 steps'], `${id}: step counts ${counts}`);
-            console.log(`   ✓ ${id}: ${kinds}; counts ${counts.join(', ')}`);
+            assert.equal(kinds, withHook ? 'user,group,reply,user,group,reply,group,reply' : 'user,group,reply,group,reply,group,reply', `${id}: groups and replies alternate: ${kinds}`);
+            const replies = t.filter(x => x.kind === 'reply');
+            assert.deepEqual(replies.map(r => r.text.slice(0, 12)), [A1, A2, A3].map(x => x.slice(0, 12)), `${id}: the three replies, in order`);
+            assert.ok(replies.every(r => r.visible), `${id}: every reply is visible with nothing expanded, the one after the Stop hook continuation too`);
+            const groups = t.filter(x => x.kind === 'group');
+            assert.ok(groups.every(g => !g.open), `${id}: groups are collapsed`);
+            assert.deepEqual(groups.map(g => g.bubbles), [0, 1, 0], `${id}: only the one-line preamble (a message that also makes a tool call) is folded in with its calls`);
+            assert.deepEqual(groups.map(g => g.steps), ['2 steps', '3 steps', '1 step'], `${id}: step counts`);
+            assert.equal(await ev(`document.getElementById(${JSON.stringify(id)}).innerText.includes(${JSON.stringify(PRE)})`), false, `${id}: the preamble is not shown while collapsed`);
+            console.log(`   ✓ ${id}: ${kinds}; counts ${groups.map(g => g.steps).join(', ')}`);
         }
 
         // Today's look for a plain run of tool calls: one group, collapsed, then the answer.

@@ -29,8 +29,8 @@ class PiChatAdapter extends ChatAgentAdapter {}
 class CodexChatAdapter extends ChatAgentAdapter {
     assistantPlacement(message) {
         // Codex records this distinction in the rollout, so its progress commentary
-        // is a work step and its answers are replies (the other agents' prose is
-        // always shown as a reply, #4105).
+        // is a work step and its answers are replies (for the other agents, prose
+        // in a message with tool calls is a work step and prose without them a reply, #4105).
         return message.phase === "commentary" ? "work" : "final";
     }
 

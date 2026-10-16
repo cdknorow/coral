@@ -16,8 +16,9 @@ export function htmlToElement(html) {
     return t.content.firstElementChild;
 }
 
-// A run of tool calls (with their results) is folded into one collapsed "work group". Only tool calls
-// fold (#4105): the agent's own prose is never put in a group. A reply, a message from the user or a
+// A run of tool calls (with their results) is folded into one collapsed "work group", with the one-line
+// preamble of a message that makes them (live_chat.js). Prose in a message with no tool calls, a reply, is
+// never put in a group (#4105). A reply, a message from the user or a
 // notice from Coral ends the run, so a turn that goes on after an answer reads as steps, the answer,
 // more steps. (Before, more work after an answer folded the answer back into the next group, and a
 // reply the operator wanted to read sat behind "5 steps".)
