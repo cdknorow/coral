@@ -44,7 +44,7 @@ var allowedSenders = map[string]string{
 	"internal/server/routes/sessions_input.go\tSessionsHandler.Send\tSendInput":           "human, else gated",
 	"internal/server/routes/sessions_input.go\tSessionsHandler.Keys\tSendRawInput":        "human, else gated",
 	// Launch commands typed into a fresh shell, before any agent CLI runs.
-	"internal/server/routes/sessions.go\tsendLaunchCommand\tSendToTarget":           "launch command",
+	"internal/server/routes/sessions_lifecycle.go\tsendLaunchCommand\tSendToTarget": "launch command",
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SpawnAgent\tSendKeysToTarget": "launch command",
 	"cmd/launch-coral/main.go\tlaunchAgentSessions\tSendKeysToTarget":               "launch command",
 	"internal/ptymanager/tmux_backend.go\tTmuxBackend.Spawn\tSendKeysToTarget":      "launch command",
