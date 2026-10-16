@@ -95,9 +95,12 @@ func coralEnvPrefix(p LaunchParams) string {
 		}
 		return strings.TrimSuffix(b.String(), " ")
 	default:
-		if len(unset) > 0 {
-			fmt.Fprintf(&b, "unset %s; ", strings.Join(unset, " "))
-		}
+		// TMUX and TMUX_PANE always go (#3635): with them, the agent and every command it runs
+		// can drive Coral's tmux server (its socket is in TMUX), and so every other agent's
+		// pane. Coral identifies an agent by CORAL_SESSION_NAME, not by tmux. (PowerShell and
+		// cmd run without tmux.)
+		unset = append(unset, "TMUX", "TMUX_PANE")
+		fmt.Fprintf(&b, "unset %s; ", strings.Join(unset, " "))
 		if len(set) > 0 {
 			b.WriteString("export")
 			for _, kv := range set {

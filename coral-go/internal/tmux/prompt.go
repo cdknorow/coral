@@ -184,7 +184,7 @@ func (c *Client) loadPromptBuffer(ctx context.Context, text string) (string, err
 	buffer := "coral-prompt-" + hex.EncodeToString(nonce[:])
 	args := []string{"load-buffer", "-b", buffer, "-"}
 	if c.SocketPath != "" {
-		args = append([]string{"-S", c.SocketPath}, args...)
+		args = append(socketArgs(c.SocketPath), args...)
 	}
 	bin := c.resolveTmuxBin()
 	cmd := exec.CommandContext(ctx, bin, args...)

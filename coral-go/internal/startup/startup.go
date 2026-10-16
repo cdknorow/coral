@@ -794,6 +794,8 @@ func selectBackend(backendType, logDir, coralDir string) (ptymanager.TerminalBac
 	if n := tmuxClient.LowerExistingPanes(context.Background()); n > 0 {
 		log.Printf("Lowered the priority of %d existing agent processes (agent_priority=%s)", n, agentprio.Level())
 	}
+	// How many agents only the default-socket merge finds (#3635; it goes off by default next release).
+	tmuxClient.LogDefaultSocketMerges(context.Background())
 	tmuxBackend := ptymanager.NewTmuxBackend(tmuxClient, logDir)
 	log.Println("Using tmux terminal backend")
 	return tmuxBackend, background.NewTmuxRuntime(tmuxClient), ptymanager.NewTmuxSessionTerminal(tmuxClient)

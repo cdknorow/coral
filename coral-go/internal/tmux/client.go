@@ -337,7 +337,7 @@ func (c *Client) listPanesOnSocket(ctx context.Context, socketPath string) []Pan
 	// of shifting the session name and making the agent look dead.
 	args := []string{"list-panes", "-a", "-F", "#{session_name}|#S:#I.#P|#{pane_current_path}|#{pane_title}"}
 	if socketPath != "" {
-		args = append([]string{"-S", socketPath}, args...)
+		args = append(socketArgs(socketPath), args...)
 	}
 	if runObserver != nil {
 		runObserver([]string{"list-panes"})
@@ -591,7 +591,7 @@ func (c *Client) pasteToTarget(ctx context.Context, target, text string) error {
 	args := []string{"load-buffer", "-"}
 	socketPath := c.SocketPath
 	if socketPath != "" {
-		args = append([]string{"-S", socketPath}, args...)
+		args = append(socketArgs(socketPath), args...)
 	}
 	bin := c.resolveTmuxBin()
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -1159,7 +1159,7 @@ func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 // runOnSocket runs a tmux command on a specific socket. Empty socketPath uses the default.
 func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...string) (string, error) {
 	if socketPath != "" {
-		args = append([]string{"-S", socketPath}, args...)
+		args = append(socketArgs(socketPath), args...)
 	}
 	bin := c.resolveTmuxBin()
 	cmd := exec.CommandContext(ctx, bin, args...)

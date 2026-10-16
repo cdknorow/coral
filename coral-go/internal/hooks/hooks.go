@@ -34,11 +34,20 @@ func CoralBase() string {
 }
 
 // ResolveSessionID gets the Coral session ID, in order of preference, from
-// the tmux session name, the CORAL_SESSION_NAME env var Coral exports into
-// every agent, or finally the hook payload. The payload's session_id is the
+// the CORAL_SESSION_NAME env var Coral exports into every agent, the tmux
+// session name, or finally the hook payload. The payload's session_id is the
 // agent's own ID (e.g. a Codex thread ID) which Coral does not know about, so
 // events posted under it would never show up in the dashboard.
+//
+// CORAL_SESSION_NAME comes first (#3635): Coral sets it for every agent on
+// both backends, and new launches unset TMUX, so the agent and its tools can't
+// reach Coral's tmux server. The tmux lookup stays one release for agents
+// launched before that, which still have TMUX and may predate the variable;
+// remove it after.
 func ResolveSessionID(payloadSessionID string) string {
+	if id := sessionIDFromName(strings.TrimSpace(os.Getenv("CORAL_SESSION_NAME"))); id != "" {
+		return id
+	}
 	if os.Getenv("TMUX") != "" {
 		out, err := exec.Command(tmux.BinaryFromEnv(), "display-message", "-p", "#{session_name}").Output()
 		if err == nil {
@@ -46,9 +55,6 @@ func ResolveSessionID(payloadSessionID string) string {
 				return id
 			}
 		}
-	}
-	if id := sessionIDFromName(strings.TrimSpace(os.Getenv("CORAL_SESSION_NAME"))); id != "" {
-		return id
 	}
 	return payloadSessionID
 }
