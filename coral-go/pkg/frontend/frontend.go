@@ -43,6 +43,12 @@ type PageData struct {
 	// PageData, ever). The standalone server uses /static/b/<build>/, deliberately
 	// distinct from the Cloud Hub's /static/v/<hash>/, so the two never collide.
 	StaticBase string
+	// ModulePreloads are the startup modules (paths relative to StaticBase), rendered as
+	// <link rel="modulepreload"> so the browser fetches the whole import graph at once instead of
+	// one level at a time (#3900). StartupModules() computes it from the embedded files: it is
+	// the same for every viewer and every request, never from input. Empty (the Cloud Hub's own
+	// pages, a test) means no hints.
+	ModulePreloads []string
 }
 
 // IndexTemplateFiles lists the template files that make up the app shell.

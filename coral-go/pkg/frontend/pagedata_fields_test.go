@@ -21,6 +21,7 @@ var reviewedPageDataFields = map[string]string{
 	"TargetServer":    "popout's remote server slug from the URL, validated, not a credential",
 	"BootJSON":        "{\"mode\":\"local\"|\"cloud\"}; built by the server from constants",
 	"StaticBase":      "static URL prefix for the build (/static/b/<build>/); constant, never from the request",
+	"ModulePreloads":  "module paths of the embedded build's startup import graph; computed once from the embedded files, same for every viewer, never from the request",
 }
 
 func TestPageDataFieldsAreReviewed(t *testing.T) {

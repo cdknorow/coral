@@ -41,6 +41,10 @@
     <link rel="stylesheet" href="{{ $base }}css/native.css">
     <link rel="stylesheet" href="{{ $base }}css/native-macos.css">
     <link rel="stylesheet" href="{{ $base }}css/native-windows.css">
+    <!-- The startup module graph, hinted after the stylesheets so the render-blocking CSS is asked for first (#3900) -->
+    {{- range .ModulePreloads }}
+    <link rel="modulepreload" href="{{ $base }}{{ . }}">
+    {{- end }}
     <!-- CodeMirror, xterm.js and highlight.js load on first use: static/vendor_loader.js (#3083, #3117) -->
 </head>
 
