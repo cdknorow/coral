@@ -27,11 +27,12 @@
  *   - static assets, service worker, artifact previews of hub files
  */
 
-import { state } from './state.js';
+import { state, loadSessionDrafts } from './state.js';
 import { renderLiveSessions, renderHistorySessions } from './render.js';
 import { buildApiParams } from './search_filters.js';
 import { serverUrl, serverForSession, initHub, fetchValidated } from './server_base.js';
 import { updateServersTabVisibility } from './servers_tab.js';
+import { ageOutStored } from './local_store.js';
 
 export {
     LOCAL_SERVER, initHub, isHub, normServer, isLocalServer, serverBase, serverWsBase, serverUrl,
@@ -102,6 +103,9 @@ async function _loadLiveSessions(onFailure) {
         state.servers = (state.hub && raw && !Array.isArray(raw) && Array.isArray(raw.servers)) ? raw.servers : [];
         updateServersTabVisibility();
         state.liveSessions = sessions;
+        // Drafts of sessions that have ended (and were left a day) go (#3681), at most hourly.
+        const kept = ageOutStored({ liveIds: new Set(sessions.map(s => s && s.session_id).filter(Boolean)) });
+        if (kept) loadSessionDrafts(kept);
         rendering = true;
         renderLiveSessions(state.liveSessions);
         return true;

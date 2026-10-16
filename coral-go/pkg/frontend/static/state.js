@@ -1,24 +1,34 @@
-const STORAGE_KEY_DRAFTS = "coral-input-drafts";
+import { readDrafts, writeDrafts } from './local_store.js';
 
-function loadDrafts() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY_DRAFTS);
-        return raw ? JSON.parse(raw) : {};
-    } catch {
-        return {};
+// Drafts are kept with when each was last typed in (local_store.js ages them out, #3681); the
+// page itself works with the text only (state.sessionInputText).
+let _draftAt = {};
+let _draftsLoaded = false;
+
+/** Load the stored drafts (once the store knows whose they are, and after an age-out). */
+export function loadSessionDrafts(drafts = readDrafts()) {
+    state.sessionInputText = {};
+    _draftAt = {};
+    _draftsLoaded = true;
+    for (const [k, d] of Object.entries(drafts)) {
+        state.sessionInputText[k] = d.t;
+        _draftAt[k] = d.at;
     }
 }
 
 export function saveSessionDraft(key, text) {
     if (!key) return;
+    if (!_draftsLoaded) loadSessionDrafts(); // never write over drafts not read yet
     if (text) {
         state.sessionInputText[key] = text;
+        _draftAt[key] = Date.now();
     } else {
         delete state.sessionInputText[key];
+        delete _draftAt[key];
     }
-    try {
-        localStorage.setItem(STORAGE_KEY_DRAFTS, JSON.stringify(state.sessionInputText));
-    } catch {}
+    const out = {};
+    for (const [k, t] of Object.entries(state.sessionInputText)) out[k] = { t, at: _draftAt[k] || Date.now() };
+    writeDrafts(out);
 }
 
 export const state = {
@@ -30,7 +40,7 @@ export const state = {
     liveSessions: [],           // cached live session list
     historySessionsList: [],    // cached history session list (from last paginated fetch)
     currentCommands: {},        // commands for current session's agent type
-    sessionInputText: loadDrafts(), // per-session draft text: { "sessionKey": "partial text" }
+    sessionInputText: {},       // per-session draft text: { "sessionKey": "partial text" } (loadSessionDrafts)
     currentAgentTasks: [],      // tasks for the currently selected live agent
     currentSubagents: [],       // subagents launched by the currently selected live agent
     currentAgentNotes: [],      // user notes for the currently selected live agent

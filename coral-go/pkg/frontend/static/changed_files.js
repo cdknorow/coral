@@ -7,6 +7,7 @@ import { fetchFileList, fuzzyFilter, getDirBrowseResults } from './file_mention.
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
 import { fileIconHtml } from './file_explorer.js';
 import { openPreviewTab, openArtifactTab, setPreviewSession } from './preview_pane.js';
+import { storeKey, readStars, writeStars } from './local_store.js';
 import { serverFetch, serverForSession, sessionServer, currentServer, isCloud } from './server_base.js';
 
 let _currentFiles = [];
@@ -15,20 +16,21 @@ let _renderTimer = null;
 
 /* ── Starred files (persisted in localStorage per session) ── */
 
+// The signed-in account's (local_store.js, #3681), stored with when they were last changed, so an
+// untouched list ages out.
 function _starKey() {
     const sid = state.currentSession && state.currentSession.session_id;
-    return sid ? `coral-starred-files-${sid}` : null;
+    return sid ? storeKey(`coral-starred-files-${sid}`) : null;
 }
 
 function _getStarredFiles() {
     const key = _starKey();
-    if (!key) return [];
-    try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+    return key ? readStars(key).files : [];
 }
 
 function _setStarredFiles(files) {
     const key = _starKey();
-    if (key) localStorage.setItem(key, JSON.stringify(files));
+    if (key) writeStars(key, files);
 }
 
 export function isFileStarred(filepath) {

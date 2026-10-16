@@ -11,6 +11,7 @@ import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from '.
 import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
 import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from './overload.js';
+import { storeKey } from './local_store.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -1235,9 +1236,11 @@ const pendingBySession = new Map(); // session_id -> [{ id, text, at, queued }]
 let pendingSeq = 0;
 const recentUserEntriesBySession = new Map();
 
-function loadPendingFromStorage() {
+// Loaded by app.js once the store knows whose they are (#3681).
+export function loadPendingFromStorage() {
+    pendingBySession.clear();
     try {
-        const raw = localStorage.getItem(STORAGE_KEY_PENDING);
+        const raw = localStorage.getItem(storeKey(STORAGE_KEY_PENDING));
         if (!raw) return;
         const obj = JSON.parse(raw);
         const now = Date.now();
@@ -1267,14 +1270,12 @@ function savePendingToStorage() {
                 obj[sid] = valid;
             }
         }
-        localStorage.setItem(STORAGE_KEY_PENDING, JSON.stringify(obj));
+        localStorage.setItem(storeKey(STORAGE_KEY_PENDING), JSON.stringify(obj));
     } catch (e) {
         console.warn("[coral] Failed to save pending messages to storage", e);
     }
 }
 
-
-loadPendingFromStorage();
 
 const normalizeMsg = (t) => String(t || "").replace(/\s+/g, " ").trim();
 

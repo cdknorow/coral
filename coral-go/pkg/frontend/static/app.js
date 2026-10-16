@@ -7,7 +7,8 @@ import { showTeamAvailability, showTeamAvailabilityWorkspace } from './team_avai
 import { enterTeamContext, exitTeamContext, renderTeamSettingsTab } from './team_context.js';
 /* Coral Dashboard — Entry Point */
 
-import { state, sessionKey, saveSessionDraft } from './state.js';
+import { state, sessionKey, saveSessionDraft, loadSessionDrafts } from './state.js';
+import { accountTag, setStoreOwner, ageOutStored, DAY_MS } from './local_store.js';
 import { loadLiveSessions, loadHistorySessions, loadHistorySessionsPaged } from './api.js';
 import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
          hasActiveFilters, countActiveFilters, resetFilters }
@@ -38,7 +39,7 @@ import { startNav, go, note, onRoute, currentRoute } from './nav.js';
 import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } from './routes.js';
 import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
 import { isInteractiveOwner, claimOwnership } from './ownership.js';
-import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize } from './live_chat.js';
+import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize, loadPendingFromStorage } from './live_chat.js';
 import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
 import { copyBranchName, escapeHtml, showView, showToast, viewChanges } from './utils.js';
@@ -1112,6 +1113,17 @@ function showHome() {
 }
 
 // ── Initialization ────────────────────────────────────────────────────────
+// What was typed and where people worked, kept in this browser (local_store.js, #3681): owned by the
+// signed-in Coral Hub account (none locally), aged out at start and daily in a tab left open.
+async function initLocalStore() {
+    let tag = '';
+    try { tag = state.account ? await accountTag(state.account.email) : ''; } catch { tag = ''; }
+    setStoreOwner(tag);
+    loadSessionDrafts(ageOutStored());
+    loadPendingFromStorage();
+    setInterval(() => loadSessionDrafts(ageOutStored()), DAY_MS); // interval-ok: daily, browser storage only, no request
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
     beginDashboardAnalytics();
     try {
@@ -1141,6 +1153,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     installOverloadWatch();
 
     await initCloud();   // no-op unless the page's boot data says mode "cloud"
+    await initLocalStore();
     loadSettings().then(initEditions).catch(e => console.error('ways to run Coral:', e)).finally(() => markReady('settings'));
     initServersUi();   // reveals hub-only entry points when /api/health reports hub:true
 

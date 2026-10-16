@@ -15,6 +15,7 @@
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { LOCAL_SERVER, normServer, isLocalServer, serverFetch, splitKey } from './server_base.js';
+import { storeKey } from './local_store.js';
 
 /** Statuses that make a registered remote unusable as a launch target, with
  *  the reason shown next to it in the dropdown. */
@@ -79,10 +80,11 @@ export function coerceSelection(server, hub, servers) {
 }
 
 /** localStorage key of the recent-directories list of `server`. Local keeps the
- *  pre-hub key so existing history stays; a remote's paths never mix into it. */
+ *  pre-hub key so existing history stays; a remote's paths never mix into it. On Coral Hub it is
+ *  the signed-in account's (local_store.js, #3681). */
 export function recentDirsKey(server) {
     const id = normServer(server);
-    return id === LOCAL_SERVER ? 'coral-recent-dirs' : `coral-recent-dirs:${id}`;
+    return storeKey(id === LOCAL_SERVER ? 'coral-recent-dirs' : `coral-recent-dirs:${id}`);
 }
 
 /** Bare board/team name from a UI key ("@srv/team" -> "team"). Payloads sent to

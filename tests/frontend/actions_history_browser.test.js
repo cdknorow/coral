@@ -159,7 +159,8 @@ const PATHS = ["src/a&b <x>.go", "docs/it's here.md"];
 
         const before = await ev(`document.querySelectorAll('#preview-tabs .preview-tab').length`);
         await ev(`${rowFor(PATHS[0])}.querySelector('[data-on-click="file-star"]').click(); true`);
-        const starred = await ev(`JSON.parse(localStorage.getItem('coral-starred-files-${SID}') || '[]')`);
+        // Stored as { files, at } since #3681 (a list untouched for 30 days ages out).
+        const starred = await ev(`(v => Array.isArray(v) ? v : (v && v.files) || [])(JSON.parse(localStorage.getItem('coral-starred-files-${SID}') || '[]'))`);
         check('Star stars the exact path, and its click doesn\'t also open the row', JSON.stringify(starred) === JSON.stringify([PATHS[0]])
             && (await ev(`document.querySelectorAll('#preview-tabs .preview-tab').length`)) === before, JSON.stringify(starred));
         await until(`!!document.querySelector('.file-starred[data-on-click="file-open"]')`, 'the starred list', 3000);
