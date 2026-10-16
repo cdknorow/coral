@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,4 +67,39 @@ func TestResetPasswordRotatesTheCLIToken(t *testing.T) {
 	require.NoError(t, err)
 	r2.Body.Close()
 	assert.Equal(t, http.StatusOK, r2.StatusCode)
+}
+
+// #4041: a coral command from before the query was signed (its MAC leaves the query out) is
+// refused on a request with a query, and the refusal says to use the coral of this version.
+func TestOlderCLISignatureIsRefusedWithAnUpdateHint(t *testing.T) {
+	dir := t.TempDir()
+	cfg := newE2EConfig(t, dir)
+	cfg.StrictLocalAuth = true
+	db, err := storetest.Open(t, cfg.DBPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	stack := newTermStack(t)
+	srv := NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+	t.Cleanup(srv.Close)
+	local := httptest.NewServer(srv.Router())
+	t.Cleanup(local.Close)
+	tok, err := cloud.ReadCLIToken(cfg.CoralDir())
+	require.NoError(t, err)
+
+	send := func(sig string) (int, string) {
+		req, err := http.NewRequest("GET", local.URL+"/api/sessions/live?limit=5", nil)
+		require.NoError(t, err)
+		req.Header.Set(cliauth.CLIAuthHeader, sig)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode, string(b)
+	}
+	code, body := send(cliSignServer(t, local.URL, tok, "GET", "/api/sessions/live", "")) // the old MAC: no query
+	assert.Equal(t, http.StatusUnauthorized, code)
+	assert.Contains(t, body, "cli_signature_required")
+	assert.Contains(t, body, "Use the coral command that came with this Coral")
+	code, _ = send(cliSignServer(t, local.URL, tok, "GET", "/api/sessions/live?limit=5", ""))
+	assert.Equal(t, http.StatusOK, code, "this version's signature")
 }
