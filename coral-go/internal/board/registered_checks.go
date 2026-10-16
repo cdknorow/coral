@@ -179,9 +179,7 @@ func runBoundedCommand(ctx context.Context, workdir string, args ...string) boun
 	}
 	cmd := exec.CommandContext(ctx, name, rest...)
 	cmd.Dir = workdir
-	// The runner receives only a minimal controlled environment. In particular,
-	// no provider keys or arbitrary task environment are inherited.
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir(), "GOWORK=off", "GOPROXY=off", "GOTOOLCHAIN=local"}
+	cmd.Env = checkRunnerEnv()
 	if name == "git" {
 		cmd.Env = append(cmd.Env, gitutil.Env()...)
 	}
@@ -253,3 +251,12 @@ func finishRun(e RegisteredCheckEvidence, result boundedCommandResult) Registere
 }
 
 var _ io.Writer = (*boundedBuffer)(nil)
+
+// checkRunnerEnv is the registered check's whole environment: only a minimal controlled one, so
+// no provider keys or arbitrary task environment are inherited. The home and cache folders are
+// the temp folder (Windows: LOCALAPPDATA and USERPROFILE too, where go keeps its build cache,
+// #3920 R4: without them every go test check failed there).
+func checkRunnerEnv() []string {
+	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir(), "GOWORK=off", "GOPROXY=off", "GOTOOLCHAIN=local"}
+	return append(env, platformCheckRunnerEnv()...)
+}
