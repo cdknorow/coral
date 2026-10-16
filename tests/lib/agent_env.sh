@@ -29,7 +29,7 @@ curl() {
         _k="$(tr -d '[:space:]' < "$CORAL_DATA_DIR/api_key")"
     fi
     for _a in "$@"; do
-        case "$_a" in [Aa]uthorization:*|X-Coral-Session-Token:*|X-API-Key:*) _k="" ;; esac
+        case "$_a" in [Aa]uthorization:*|X-Coral-Session-Token:*|X-API-Key:*|[Cc]ookie:*) _k="" ;; esac
     done
     if [[ -n "$_k" ]]; then
         command curl -H "Authorization: Bearer $_k" "$@"

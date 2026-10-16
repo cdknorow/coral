@@ -172,6 +172,17 @@ env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u C
 SERVER_PID=$!
 wait_for_server
 
+# Strict local auth is the default (#3936): the per-session task routes take an agent's token or
+# the dashboard Operator, not the API key, so this harness signs in as the dashboard does: a
+# single-use 'coral open' link traded for the session cookie, sent on every dashboard call.
+JAR="$TMPDIR_AT/cookies.txt"
+LINK=$("$TMPDIR_AT/coral" open --print --url "$BASE_URL" --home "$CORAL_DATA_DIR" | sed -n 's/^ *\(http[^ ]*login_token=[^ ]*\).*/\1/p' | head -1)
+[[ -n "$LINK" ]] || { log "ERROR: coral open printed no sign-in link"; exit 1; }
+command curl -s -m 10 -o /dev/null -c "$JAR" "$LINK"
+COOKIE=$(awk '$6 ~ /^coral_session/ {print $6 "=" $7}' "$JAR" | tail -1)
+[[ -n "$COOKIE" ]] || { log "ERROR: the sign-in link gave no session cookie"; exit 1; }
+DASHBOARD_HEADERS+=(-H "Cookie: $COOKIE")
+
 # The dummy agent stands in for the Claude CLI
 api PUT "/api/settings" -d "{\"cli_path_claude\": \"$TMPDIR_AT/mock-agent\"}" >/dev/null
 
