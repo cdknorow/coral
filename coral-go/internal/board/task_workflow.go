@@ -95,6 +95,7 @@ func resolveReadyTasks(ctx context.Context, tx *sqlx.Tx, ids []int64) error {
 		if !ready {
 			continue
 		}
+		// By id alone: a dependent task may be on another board, and ids come from the dependency table.
 		res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'pending' WHERE id = ? AND status = 'blocked'", id)
 		if err != nil {
 			return err
@@ -570,7 +571,7 @@ func (s *Store) completeTaskWithArtifactsAtRevisionAndCandidate(ctx context.Cont
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	s.computeAndStoreTaskCost(ctx, taskID)
+	s.computeAndStoreTaskCost(ctx, project, taskID)
 	return s.getTaskByID(ctx, project, taskID)
 }
 

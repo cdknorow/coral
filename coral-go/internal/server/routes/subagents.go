@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/subagent"
 )
@@ -91,6 +92,19 @@ func (h *SessionsHandler) GetSubagent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The subagent must be the named agent's (#3870, Security's sweep #3867): {name} is that
+	// agent's name or its "<type>-<id>" session name. Anything else is "not found", as a
+	// missing subagent is.
+	ls, err := h.ss.GetLiveSession(r.Context(), sid)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	name := chi.URLParam(r, "name")
+	if ls == nil || (name != ls.AgentName && name != naming.SessionName(ls.AgentType, ls.SessionID)) {
+		errNotFound(w, "subagent not found")
+		return
+	}
 	sa, err := h.subagents.GetSubagent(r.Context(), sid, subagentID)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -101,10 +115,7 @@ func (h *SessionsHandler) GetSubagent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mainAgentStopped := false
-	if ls, err := h.ss.GetLiveSession(r.Context(), sid); err == nil && ls != nil {
-		mainAgentStopped = ls.StoppedAt != nil
-	}
+	mainAgentStopped := ls.StoppedAt != nil
 	out := subagentDetail{subagentView: subagentView{Subagent: *sa, Status: subagentStatus(*sa, mainAgentStopped)}}
 
 	// The path is never taken from the request: it is the one the poller

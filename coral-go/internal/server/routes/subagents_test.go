@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -187,4 +188,25 @@ func TestGetSubagent_NotFoundAndScoping(t *testing.T) {
 	getJSON(t, url+"/nope?session_id="+subRouteMainA, http.StatusNotFound)
 	getJSON(t, url+"/s1?session_id="+subRouteMainB, http.StatusNotFound) // another main agent's subagent is not reachable
 	getJSON(t, url+"/s1", http.StatusBadRequest)
+}
+
+// #3870 (Security's sweep #3867): the path's {name} is checked. A subagent is reached only
+// under its main agent's name or that agent's "<type>-<id>" session name; under another
+// agent's name it is "not found", like a missing one.
+func TestGetSubagent_OnlyUnderItsAgentsName(t *testing.T) {
+	url, st, ss := setupSubagentRoute(t) // url is under "coral-go"
+	ctx := context.Background()
+	const otherSID = "c3c3c3c3-0000-4000-8000-000000000003"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: otherSID, AgentType: "claude", AgentName: "other-repo", WorkingDir: "/other"}))
+	require.NoError(t, st.UpsertSubagent(ctx, &store.Subagent{SessionID: otherSID, SubagentID: "s9", CostUSD: 1}))
+	require.NoError(t, st.UpsertSubagent(ctx, &store.Subagent{SessionID: subRouteMainA, SubagentID: "s1", CostUSD: 1}))
+
+	getJSON(t, url+"/s9?session_id="+otherSID, http.StatusNotFound) // other-repo's subagent under coral-go
+	base := strings.TrimSuffix(url, "/coral-go/subagents")
+	getJSON(t, base+"/other-repo/subagents/s9?session_id="+otherSID, http.StatusOK)
+	getJSON(t, base+"/"+naming.SessionName("claude", otherSID)+"/subagents/s9?session_id="+otherSID, http.StatusOK)
+	getJSON(t, base+"/"+naming.SessionName("claude", subRouteMainA)+"/subagents/s9?session_id="+otherSID, http.StatusNotFound)
+	getJSON(t, url+"/s1?session_id="+subRouteMainA, http.StatusOK)
+	getJSON(t, url+"/s1?session_id=d4d4d4d4-0000-4000-8000-000000000004", http.StatusNotFound) // no such session
 }

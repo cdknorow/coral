@@ -1956,7 +1956,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 		}
 		if err := s.AddTaskDependencies(ctx, project, taskID, opts.BlockedBy, maxDepth); err != nil {
 			s.db.ExecContext(ctx, "DELETE FROM task_workflows WHERE task_id = ?", taskID)
-			s.db.ExecContext(ctx, "DELETE FROM board_tasks WHERE id = ?", taskID)
+			s.db.ExecContext(ctx, "DELETE FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
 			return nil, err
 		}
 	}
@@ -2249,7 +2249,7 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, req
 		}
 		if !ready {
 			// Reconcile stale queue metadata and continue searching this claim.
-			if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND status = 'pending'", taskID); err != nil {
+			if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND board_id = ? AND status = 'pending'", taskID, project); err != nil {
 				tx.Rollback()
 				return nil, err
 			}
@@ -2308,7 +2308,7 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, req
 				sessionUUID := naming.SessionIDFromName(sessionName)
 				var exists int
 				if err := s.sessionsDB.GetContext(ctx, &exists, `SELECT 1 FROM live_sessions WHERE session_id = ? AND status = 'active' LIMIT 1`, sessionUUID); err == nil {
-					s.db.ExecContext(ctx, `UPDATE board_tasks SET session_id = ? WHERE id = ?`, sessionUUID, taskID)
+					s.db.ExecContext(ctx, `UPDATE board_tasks SET session_id = ? WHERE id = ? AND board_id = ?`, sessionUUID, taskID, project)
 				}
 			}
 		}
@@ -2359,7 +2359,7 @@ func (s *Store) IdleTasks(ctx context.Context, project string, before time.Time)
 
 // computeAndStoreTaskCost queries the sessions DB for proxy request costs
 // incurred during the task's lifetime and stores them on the task.
-func (s *Store) computeAndStoreTaskCost(ctx context.Context, taskID int64) {
+func (s *Store) computeAndStoreTaskCost(ctx context.Context, project string, taskID int64) {
 	if s.sessionsDB == nil {
 		return
 	}
@@ -2370,7 +2370,7 @@ func (s *Store) computeAndStoreTaskCost(ctx context.Context, taskID int64) {
 		CompletedAt *string `db:"completed_at"`
 	}
 	if err := s.reader().GetContext(ctx, &task,
-		`SELECT session_id, claimed_at, completed_at FROM board_tasks WHERE id = ?`, taskID); err != nil {
+		`SELECT session_id, claimed_at, completed_at FROM board_tasks WHERE id = ? AND board_id = ?`, taskID, project); err != nil {
 		return
 	}
 	if task.SessionID == nil || task.ClaimedAt == nil || task.CompletedAt == nil {
@@ -2401,9 +2401,9 @@ func (s *Store) computeAndStoreTaskCost(ctx context.Context, taskID int64) {
 		`UPDATE board_tasks
 		 SET cost_usd = ?, input_tokens = ?, output_tokens = ?,
 		     cache_read_tokens = ?, cache_write_tokens = ?
-		 WHERE id = ?`,
+		 WHERE id = ? AND board_id = ?`,
 		costs.CostUSD, costs.InputTokens, costs.OutputTokens,
-		costs.CacheReadTokens, costs.CacheWriteTokens, taskID)
+		costs.CacheReadTokens, costs.CacheWriteTokens, taskID, project)
 }
 
 // CompleteTask marks a task as completed. Pending tasks can be completed
@@ -2586,7 +2586,7 @@ func (s *Store) CancelTask(ctx context.Context, project string, taskID int64, su
 		return nil, err
 	}
 
-	s.computeAndStoreTaskCost(ctx, taskID)
+	s.computeAndStoreTaskCost(ctx, project, taskID)
 
 	return s.getTaskByID(ctx, project, taskID)
 }
@@ -2926,7 +2926,8 @@ func (s *Store) ReblockDownstreamTasks(ctx context.Context, project string, regr
 			continue
 		}
 
-		// Has unresolved blockers — set back to blocked if currently pending
+		// Has unresolved blockers — set back to blocked if currently pending. By id alone: a
+		// downstream task may be on another board, and tid comes from the dependency table.
 		result, err := s.db.ExecContext(ctx,
 			"UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND status = 'pending'", tid)
 		if err != nil {
