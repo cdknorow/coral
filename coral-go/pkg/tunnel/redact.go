@@ -828,6 +828,40 @@ func (r *Redactor) process(data []byte, final bool) (out []byte, consumed int) {
 			out = append(out, data[start])
 			i = start + 1
 		default:
+			// A value that holds another rule's start ends before it, so that rule redacts what
+			// follows: in "token:  Authorization: Basic ..." or "token: DB_PASSWORD=\"...\"" the
+			// keyword was taken as token's value and redacted, and the credential after it went
+			// out (#3761, found by FuzzRedactStream). A value that would be shorter than the
+			// rule's least (or empty) is not this rule's value at all.
+			// Only a start whose own rule matches there counts (near the end of the data a start
+			// is only possible); when that can't be told yet, the whole match waits for more.
+			cut, wait := -1, false
+			for k, kr := st.next(start + valueAt); k >= 0 && k < start+n; k, kr = st.next(k + 1) {
+				if kr == nil { // a PEM BEGIN
+					cut = k
+					break
+				}
+				_, _, kok, kneed, _ := kr.match(data[k:], final)
+				if kneed && !final {
+					wait = true
+					break
+				}
+				if kok {
+					cut = k
+					break
+				}
+			}
+			if wait {
+				return out, start
+			}
+			if cut >= 0 {
+				if cut-(start+valueAt) < max(rule.min, 1) {
+					out = append(out, data[start])
+					i = start + 1
+					continue
+				}
+				n, long = cut-start, false
+			}
 			if rule.keep {
 				out = append(out, data[start:start+valueAt]...)
 			}

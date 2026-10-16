@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -48,15 +49,37 @@ func TestSecURLProbes(t *testing.T) {
 	}
 }
 
-// Adversarial input stays linear: 4 MiB of each takes under 500 ms (Security on #3756 v2: the
-// first look-ahead took 4.1 s on "://" repeated).
+// urlAdversarial are inputs that made the URL rule's look-ahead quadratic (Security on #3756 v2:
+// "://" repeated over 4 MiB took 4.1 s; now well under 100 ms on the Mac).
+var urlAdversarial = []string{"://", "a://:", "://u:", "://:" + strings.Repeat("x", 1000), "://:x@",
+	"://:" + strings.Repeat("x", 1000) + "@", "@:@:", strings.Repeat("a", 900) + "://:"}
+
+// Adversarial input stays linear. The bound is loose (3 s for 4 MiB, against 11.6 s for the
+// quadratic look-ahead) so slow machines pass, and the test is skipped under -race and -short,
+// as wsredact_test.go's is; BenchmarkRedactURLAdversarial gives the real figure.
 func TestSecURLPerf(t *testing.T) {
-	for _, unit := range []string{"://", "a://:", "://u:", "://:" + strings.Repeat("x", 1000), "://:x@",
-		"://:" + strings.Repeat("x", 1000) + "@", "@:@:", strings.Repeat("a", 900) + "://:"} {
+	if raceEnabled || testing.Short() {
+		t.Skip("timing bound: not under -race or -short (see BenchmarkRedactURLAdversarial)")
+	}
+	for _, unit := range urlAdversarial {
 		data := []byte(strings.Repeat(unit, 4<<20/len(unit)))
 		st := time.Now()
 		RedactTokens(data)
-		assert.Less(t, time.Since(st), 500*time.Millisecond, "unit %.20q", unit)
+		took := time.Since(st)
+		t.Logf("%.20q: %v for 4 MiB", unit, took)
+		assert.Less(t, took, 3*time.Second, "unit %.20q", unit)
+	}
+}
+
+func BenchmarkRedactURLAdversarial(b *testing.B) {
+	for _, unit := range urlAdversarial {
+		data := []byte(strings.Repeat(unit, 1<<20/len(unit)))
+		b.Run(fmt.Sprintf("%.8q", unit), func(b *testing.B) {
+			b.SetBytes(int64(len(data)))
+			for i := 0; i < b.N; i++ {
+				RedactTokens(data)
+			}
+		})
 	}
 }
 
