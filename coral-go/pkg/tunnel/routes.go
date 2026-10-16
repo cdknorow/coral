@@ -104,6 +104,10 @@ func cat(groups ...[]route) []route {
 //	/api/agent/*                       endpoints for agents on the machine; /api/agent/ui* serves agent-authored HTML
 //	/api/cloud/*                       the connector's own settings
 //	/api/indexer/*, /api/notifications, /api/call-metrics (POST)
+//	the agents' own board calls (#3942, coral-hub): mark-read, messages/check, peek,
+//	tasks/claim, tasks/current, submit-review, release-review, waits, groups, DELETE
+//	subscribe, and /api/sessions/resolve (an agent finding itself by its process ids).
+//	The dashboard's POST subscribe stays (Interact).
 var routeTable = cat(
 	// ── explicit never rules ────────────────────────────────────────────
 	// First match wins, so a static route that a later parametric rule would otherwise
@@ -145,7 +149,6 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/events",
 		"/api/sessions/live/{name}/events/counts",
 		"/api/sessions/live/team/{board}/sleep-status",
-		"/api/sessions/resolve",
 		"/api/sessions/{id}/resolve",
 		"/api/sessions/{id}/status",
 		"/api/sessions/{id}/changes",
@@ -170,15 +173,9 @@ var routeTable = cat(
 		"/api/board/{project}",
 		"/api/board/{project}/messages",
 		"/api/board/{project}/messages/all",
-		"/api/board/{project}/messages/check",
 		"/api/board/{project}/subscribers",
-		"/api/board/{project}/peek",
 		"/api/board/{project}/paused",
 		"/api/board/{project}/settings",
-		"/api/board/{project}/groups",
-		"/api/board/{project}/groups/{id}/members",
-		"/api/board/{project}/waits",
-		"/api/board/{project}/waits/poll",
 		"/api/board/{project}/tasks",
 		"/api/board/{project}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}/cost",
@@ -238,8 +235,6 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/notes",
 		"/api/sessions/live/{name}/tasks",
 		"/api/sessions/live/{name}/tasks/reorder",
-		"/api/sessions/live/team/{board}/sleep",
-		"/api/sessions/live/sleep-all",
 		"/api/sessions/live/{id}/sleep",
 		// Archive stops a running agent like sleep; unarchive starts nothing (it stays asleep).
 		"/api/sessions/live/{id}/archive",
@@ -247,21 +242,13 @@ var routeTable = cat(
 		"/api/tasks/runs/{id}/kill",
 		"/api/workflows/runs/{id}/kill",
 		"/api/board/{project}/messages",
-		"/api/board/{project}/messages/mark-read",
 		"/api/board/{project}/external-messages",
 		// Coral Hub's notice about a team link (#3489): only with its stamped header.
 		"/api/board/{project}/hub-notice",
 		"/api/board/{project}/subscribe",
-		"/api/board/{project}/pause",
 		"/api/board/{project}/reminder",
-		"/api/board/{project}/groups/{id}/members",
-		"/api/board/{project}/waits",
 		"/api/board/{project}/tasks",
-		"/api/board/{project}/tasks/claim",
-		"/api/board/{project}/tasks/current",
 		"/api/board/{project}/tasks/{id}/complete",
-		"/api/board/{project}/tasks/{id}/submit-review",
-		"/api/board/{project}/tasks/{id}/release-review",
 		// Not .../review, .../approve or .../reject (#3725): a review verdict is given by the
 		// reviewer agent named in subscriber_id, and Coral Hub can't prove it is that agent
 		// (Security's #3725 review), so they stay off this table and are refused.
@@ -293,11 +280,7 @@ var routeTable = cat(
 	rules(http.MethodDelete, TierInteract,
 		"/api/sessions/live/{name}/notes/{id}",
 		"/api/sessions/live/{name}/tasks/{id}",
-		"/api/board/{project}/messages/{id}",
-		"/api/board/{project}/subscribe",
 		"/api/board/{project}/reminder",
-		"/api/board/{project}/waits",
-		"/api/board/{project}/groups/{group}/members/{id}",
 		"/api/board/{project}/tasks/{id}/reminder",
 	),
 	// Deleting a whole board (its messages, tasks and members) can't be undone: Launch, not
@@ -306,6 +289,15 @@ var routeTable = cat(
 	// Killing every agent of a team at once ends all their work in progress: Launch (#3433).
 	// Stopping one agent stays Interact (a safety stop).
 	rules(http.MethodPost, TierLaunch, "/api/sessions/live/team/{board}/kill"),
+	// Sleeping a whole team or every agent, pausing a board and deleting a board message are
+	// Launch, like what undoes them (wake, wake-all, resume) (#3942, coral-hub's tiers;
+	// Security's #3901 item 2). One agent's sleep stays Interact.
+	rules(http.MethodPost, TierLaunch,
+		"/api/sessions/live/team/{board}/sleep",
+		"/api/sessions/live/sleep-all",
+		"/api/board/{project}/pause",
+	),
+	rules(http.MethodDelete, TierLaunch, "/api/board/{project}/messages/{id}"),
 
 	// ── launch: starts or wakes processes, browses folders, opens editors ─
 	rules(http.MethodPost, TierLaunch,
