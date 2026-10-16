@@ -3576,9 +3576,9 @@ export async function showSettingsModal() {
         gitPollSelect.value = secs;
     }
 
-    // Agent priority (#3437): low unless set to normal.
-    const agentPrioritySelect = document.getElementById("settings-agent-priority");
-    if (agentPrioritySelect) agentPrioritySelect.value = s.agent_priority === 'normal' ? 'normal' : 'low';
+    // Run agents at lower priority (#3437, a checkbox since #3712): on unless set to normal.
+    const agentLowPriority = document.getElementById("settings-agent-low-priority");
+    if (agentLowPriority) agentLowPriority.checked = s.agent_priority !== 'normal';
 
     // A partner build's name (Coral has no paid licence, #3221)
     if (!isCloud()) _loadTierBranding();
@@ -3637,7 +3637,8 @@ export async function applySettings() {
     const gitDiffMode = document.getElementById("settings-git-diff-mode")?.value || "branch_point";
     const gitPollIntervalS = document.getElementById("settings-git-poll-interval")?.value ?? "120";
     // The server takes only "low" or "normal" (#3470): a value stored before that check is sent as low.
-    const agentPriority = document.getElementById("settings-agent-priority")?.value ?? (state.settings?.agent_priority === "normal" ? "normal" : "low");
+    const lowBox = document.getElementById("settings-agent-low-priority");
+    const agentPriority = lowBox ? (lowBox.checked ? "low" : "normal") : (state.settings?.agent_priority === "normal" ? "normal" : "low");
     const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
     const boardAutoAttach = document.getElementById("settings-board-auto-attach")?.checked ?? settingBool(state.settings?.board_auto_attach || undefined, false);
     const autoResume = document.getElementById("settings-auto-resume")?.checked ?? settingBool(state.settings?.auto_resume_after_api_error || undefined, false);
