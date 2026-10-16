@@ -4,7 +4,10 @@
 //   * every inline handler has the same SHAPE (functions, statements, argument kinds) as with
 //     benign data, so attacker text can only ever be an argument VALUE;
 //   * running the handlers through csp_compat calls only the intended functions, and the exact
-//     payload from the #2785 review never reaches sendKeys.
+//     payload from the #2785 review never reaches sendKeys;
+//   * delegated actions (data-on-<event>="name", #3645) keep the same names as with benign data,
+//     and firing each one through the real dispatcher never reaches a dangerous function: attacker
+//     text can only ever be a data-* VALUE.
 //   node renderer_payloads.test.mjs
 import assert from 'node:assert';
 import { installDom, importUi, STATIC } from './helpers/jsdom_env.mjs';
@@ -68,15 +71,16 @@ function calleeNames(ast) {
 const sigOf = src => JSON.stringify(sig(compat.parse(src)));
 
 function snapshot(root = document.body) {
-    const attrs = new Set(), tagsSeen = new Set(), handlers = [];
+    const attrs = new Set(), tagsSeen = new Set(), handlers = [], actions = [];
     for (const el of root.querySelectorAll('*')) {
         tagsSeen.add(el.tagName);
         for (const a of el.attributes) {
             attrs.add(a.name);
             if (/^on/.test(a.name)) handlers.push({ el, name: a.name, src: a.value });
+            if (/^data-on-/.test(a.name)) actions.push({ el, name: a.name, action: a.value });
         }
     }
-    return { attrs, tagsSeen, handlers };
+    return { attrs, tagsSeen, handlers, actions };
 }
 
 function check(label, base, now) {
@@ -88,6 +92,9 @@ function check(label, base, now) {
         try { s = sigOf(h.src); } catch (e) { assert.fail(`${label}: handler not in the grammar: ${h.src.slice(0, 120)}`); }
         assert.ok(okShapes.has(h.name + '|' + s), `${label}: handler shape changed: ${h.src.slice(0, 160)}`);
     }
+    // A delegated action's name is a constant: the payload can't add or change one.
+    const okActions = new Set(base.actions.map(a => a.name + '|' + a.action));
+    for (const a of now.actions) assert.ok(okActions.has(a.name + '|' + a.action), `${label}: action changed or injected: ${a.name}="${a.action}"`);
 }
 
 function scenario(label, setup, run, clear) {
@@ -95,7 +102,7 @@ function scenario(label, setup, run, clear) {
     const empty = snapshot();
     setup(BENIGN); run();
     const base = snapshot(); clear();
-    assert.ok(base.handlers.length > empty.handlers.length, `${label}: the renderer produced no handlers with benign data, so the test would prove nothing`);
+    assert.ok(base.handlers.length + base.actions.length > empty.handlers.length + empty.actions.length, `${label}: the renderer produced no handlers or actions with benign data, so the test would prove nothing`);
     for (const h of base.handlers) {
         const shape = parseMod.shapeOf(h.src);
         assert.ok(shapesMod.SHAPES.has(shape), `${label}: a handler the renderer really produces is missing from the generated allowlist: ${h.src.slice(0, 120)}`);
@@ -114,9 +121,15 @@ function scenario(label, setup, run, clear) {
             const extra = called.filter(c => !allowed.has(c[0]));
             assert.deepStrictEqual(extra, [], `${label}: handler called a function it does not name (payload ${JSON.stringify(p)}): ${h.src.slice(0, 120)} -> ${JSON.stringify(extra)}`);
         }
+        // Fire every delegated action through the real dispatcher (actions.js) as its event would.
+        for (const a of now.actions) {
+            called.length = 0;
+            a.el.dispatchEvent(new window.Event(a.name.slice('data-on-'.length), { bubbles: true, cancelable: true }));
+            assert.deepStrictEqual(called, [], `${label}: action ${a.action} reached a dangerous function (payload ${JSON.stringify(p)}): ${JSON.stringify(called)}`);
+        }
         clear();
     }
-    return base.handlers.length;
+    return base.handlers.length + base.actions.length;
 }
 
 let total = 0;

@@ -1,7 +1,8 @@
 /* Agent task bar — CRUD, rendering, drag reorder */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
+import { registerActions, idOf, tokenOf, textOf } from './actions.js';
 import { addPendingMessage } from './live_chat.js';
 import { serverUrl, artifactPath, contextServer, keyLabel, boardKeyName, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
 import { platform } from './platform/detect.js';
@@ -342,7 +343,7 @@ export function showSubagentDetailModal(subagentId) {
 
     // The footer is shared with board tasks, which put action buttons in it.
     const footer = document.getElementById('task-detail-modal-footer');
-    if (footer) footer.innerHTML = `<button class="btn" onclick="window.hideTaskDetailModal()">Close</button>`;
+    if (footer) footer.innerHTML = `<button class="btn" data-on-click="task-close">Close</button>`;
 
     modal.style.display = '';
     modal.onclick = (e) => { if (e.target === modal) hideTaskDetailModal(); };
@@ -774,7 +775,7 @@ export function renderBoardTaskList() {
     const toggleContainer = document.getElementById('board-task-hide-toggle-container');
     if (toggleContainer) {
         toggleContainer.innerHTML = completedCount > 0
-            ? `<label class="board-task-hide-toggle"><input type="checkbox" ${_hideCompleted ? 'checked' : ''} onchange="_toggleHideCompleted()"> Hide done (${completedCount})</label>`
+            ? `<label class="board-task-hide-toggle"><input type="checkbox" ${_hideCompleted ? 'checked' : ''} data-on-change="task-hide-done"> Hide done (${completedCount})</label>`
             : '';
     }
 
@@ -785,13 +786,13 @@ export function renderBoardTaskList() {
     const header = `
         <div class="board-task-item board-task-header">
             <span class="board-task-status-col">Status</span>
-            <span class="board-task-id board-task-sort" onclick="_toggleTaskSort('id')">ID${arrow('id')}</span>
-            <span class="board-task-priority board-task-sort" onclick="_toggleTaskSort('priority')">Priority${arrow('priority')}</span>
-            <span class="board-task-type board-task-sort" onclick="_toggleTaskSort('type')">Type${arrow('type')}</span>
-            <span class="board-task-assignee board-task-sort" onclick="_toggleTaskSort('assignee')">Agent${arrow('assignee')}</span>
-            <span class="board-task-desc board-task-sort" onclick="_toggleTaskSort('created_at')">Task${arrow('created_at')}</span>
-            <span class="board-task-cost board-task-sort" onclick="_toggleTaskSort('cost')">Cost${arrow('cost')}</span>
-            <span class="board-task-time board-task-sort" onclick="_toggleTaskSort('created_at')">Created${arrow('created_at')}</span>
+            <span class="board-task-id board-task-sort" data-on-click="task-sort" data-sort="id">ID${arrow('id')}</span>
+            <span class="board-task-priority board-task-sort" data-on-click="task-sort" data-sort="priority">Priority${arrow('priority')}</span>
+            <span class="board-task-type board-task-sort" data-on-click="task-sort" data-sort="type">Type${arrow('type')}</span>
+            <span class="board-task-assignee board-task-sort" data-on-click="task-sort" data-sort="assignee">Agent${arrow('assignee')}</span>
+            <span class="board-task-desc board-task-sort" data-on-click="task-sort" data-sort="created_at">Task${arrow('created_at')}</span>
+            <span class="board-task-cost board-task-sort" data-on-click="task-sort" data-sort="cost">Cost${arrow('cost')}</span>
+            <span class="board-task-time board-task-sort" data-on-click="task-sort" data-sort="created_at">Created${arrow('created_at')}</span>
         </div>`;
 
     const rows = tasks.map(t => {
@@ -852,11 +853,10 @@ export function renderBoardTaskList() {
             costClass += ' board-task-cost-live';
             if (lc.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
         }
-        // The subagent id is read from the data attribute rather than inlined
-        // into the handler, so it never has to be escaped as a JS string.
-        const clickHandler = isSubagent ? ` onclick="showSubagentDetailModal(this.dataset.subagentId)" style="cursor:pointer"`
-            : isAgent ? ` onclick="showAgentTaskDetailModal(${Number(t.id)})" style="cursor:pointer"`
-            : ` onclick="showTaskDetailModal(${Number(t.id)})" style="cursor:pointer"`;
+        // The subagent id stays in its data-subagent-id attribute; the action reads it from there.
+        const clickHandler = isSubagent ? ` data-on-click="task-subagent-open" style="cursor:pointer"`
+            : isAgent ? ` data-on-click="task-open" data-kind="agent" data-task-id="${Number(t.id)}" style="cursor:pointer"`
+            : ` data-on-click="task-open" data-kind="board" data-task-id="${Number(t.id)}" style="cursor:pointer"`;
         const typeCell = isSubagent
             ? `<span class="board-task-type board-task-type-subagent" title="Subagent launched by ${escapeAttr(assignee)}"><span class="material-icons">account_tree</span>sub</span>`
             : `<span class="board-task-type">${isAgent ? 'agent' : 'board'}</span>`;
@@ -884,7 +884,7 @@ export function renderBoardTaskList() {
     // Older done tasks come a page at a time (#3269).
     const notLoaded = Math.max(0, boardDoneTotal - boardDoneLoaded);
     const more = _boardList.nextCursor && !_hideCompleted
-        ? `<div class="board-task-more"><button type="button" class="btn board-task-load-more" onclick="window.loadMoreBoardTasks()">Load more done tasks${notLoaded ? ` (${notLoaded} not shown)` : ''}</button></div>`
+        ? `<div class="board-task-more"><button type="button" class="btn board-task-load-more" data-on-click="task-load-more">Load more done tasks${notLoaded ? ` (${notLoaded} not shown)` : ''}</button></div>`
         : '';
     container.innerHTML = header + rows + more;
 
@@ -909,14 +909,14 @@ function _renderDepPicker(containerId, selectedIds = [], excludeTaskId = null) {
     const selected = new Set(selectedIds.map(Number));
 
     let html = `<div class="dep-picker-selected" id="${escapeAttr(containerId)}-tags"></div>`;
-    html += `<div class="dep-picker-toggle"><a class="dep-picker-add-link" onclick="document.getElementById('${jsStr(containerId)}-list').style.display = document.getElementById('${jsStr(containerId)}-list').style.display === 'none' ? '' : 'none'">+ Add dependency</a></div>`;
+    html += `<div class="dep-picker-toggle"><a class="dep-picker-add-link" data-on-click="dep-picker-toggle" data-container="${escapeAttr(containerId)}">+ Add dependency</a></div>`;
     html += `<div class="dep-picker-list" id="${escapeAttr(containerId)}-list" style="display:none">`;
     if (tasks.length === 0) {
         html += `<div class="dep-picker-empty">No eligible tasks</div>`;
     } else {
         tasks.forEach(t => {
             const checked = selected.has(t.id) ? ' checked' : '';
-            html += `<label class="dep-picker-item"><input type="checkbox" value="${Number(t.id)}"${checked} onchange="window._updateDepTags('${jsStr(containerId)}')"> #${t.id} — ${escapeHtml(t.title || '')}</label>`;
+            html += `<label class="dep-picker-item"><input type="checkbox" value="${Number(t.id)}"${checked} data-on-change="dep-picker-change" data-container="${escapeAttr(containerId)}"> #${t.id} — ${escapeHtml(t.title || '')}</label>`;
         });
     }
     html += `</div>`;
@@ -936,7 +936,7 @@ window._updateDepTags = function(containerId) {
     }
     const tags = Array.from(checked).map(cb => {
         const label = cb.parentElement.textContent.trim();
-        return `<span class="dep-tag">${escapeHtml(label)} <a onclick="document.querySelector('#${jsStr(containerId)} input[value=\\'${jsStr(cb.value)}\\']').click()">&times;</a></span>`;
+        return `<span class="dep-tag">${escapeHtml(label)} <a data-on-click="dep-tag-remove" data-container="${escapeAttr(containerId)}" data-task-id="${Number(cb.value)}">&times;</a></span>`;
     }).join('');
     tagsEl.innerHTML = tags;
 };
@@ -1199,15 +1199,15 @@ export function showTaskDetailModal(taskId) {
             const showPublish = task.status === 'draft';
             const canNudge = (task.status === 'pending' || task.status === 'in_progress') && !!task.assigned_to;
             footer.innerHTML = `
-                <button class="btn btn-danger-text" onclick="window.cancelBoardTask(${Number(task.id)})">Cancel Task</button>
+                <button class="btn btn-danger-text" data-on-click="task-cancel" data-task-id="${Number(task.id)}">Cancel Task</button>
                 <span style="flex:1"></span>
-                <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
-                ${canNudge ? `<button class="btn" onclick="window.nudgeBoardTask(${Number(task.id)})" title="Remind ${escapeAttr(task.assigned_to)} about this task in their terminal">Nudge</button><button class="btn" onclick="window.remindBoardTask(${Number(task.id)})" title="Send periodic reminders to ${escapeAttr(task.assigned_to)}">Remind</button><button class="btn" onclick="window.stopBoardTaskReminder(${Number(task.id)})" title="Stop periodic reminders">Stop reminders</button>` : ''}
-                <button class="btn" onclick="window.enableTaskEditMode(${Number(task.id)})">Edit</button>
-                ${showPublish ? `<button class="btn btn-primary" onclick="window.publishBoardTask(${Number(task.id)})">Publish</button>` : ''}
-                ${canComplete ? `<button class="btn btn-success" onclick="window.completeBoardTask(${Number(task.id)})">Complete</button>` : ''}`;
+                <button class="btn" data-on-click="task-close">Close</button>
+                ${canNudge ? `<button class="btn" data-on-click="task-nudge" data-task-id="${Number(task.id)}" title="Remind ${escapeAttr(task.assigned_to)} about this task in their terminal">Nudge</button><button class="btn" data-on-click="task-remind" data-task-id="${Number(task.id)}" title="Send periodic reminders to ${escapeAttr(task.assigned_to)}">Remind</button><button class="btn" data-on-click="task-remind-stop" data-task-id="${Number(task.id)}" title="Stop periodic reminders">Stop reminders</button>` : ''}
+                <button class="btn" data-on-click="task-edit" data-task-id="${Number(task.id)}">Edit</button>
+                ${showPublish ? `<button class="btn btn-primary" data-on-click="task-publish" data-task-id="${Number(task.id)}">Publish</button>` : ''}
+                ${canComplete ? `<button class="btn btn-success" data-on-click="task-complete" data-task-id="${Number(task.id)}">Complete</button>` : ''}`;
         } else {
-            footer.innerHTML = `<button class="btn" onclick="window.hideTaskDetailModal()">Close</button>`;
+            footer.innerHTML = `<button class="btn" data-on-click="task-close">Close</button>`;
         }
     }
 
@@ -1246,8 +1246,8 @@ export function showAgentTaskDetailModal(taskId) {
         const open = task.status === 'pending' || task.status === 'in_progress';
         footer.innerHTML = `
             <span style="flex:1"></span>
-            <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
-            ${open ? `<button class="btn btn-success" onclick="window.completeBoardTask(${Number(task.id)}, true)">Complete</button>` : ''}`;
+            <button class="btn" data-on-click="task-close">Close</button>
+            ${open ? `<button class="btn btn-success" data-on-click="task-complete" data-task-id="${Number(task.id)}" data-personal="1">Complete</button>` : ''}`;
     }
 
     _openTaskDetailModal(modal);
@@ -1329,7 +1329,7 @@ function _taskDetailHtml(task, liveCost) {
             const coralMatch = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(uri);
             const href = coralMatch ? serverUrl(artifactPath(coralMatch[1]), contextServer()) : uri;
             const uriDisplay = (/^https?:\/\//i.test(uri) || coralMatch)
-                ? `<a href="${escapeAttr(coralMatch ? '#' : escapeAttr(href))}" data-artifact-uri="${escapeAttr(uri)}"${coralMatch ? ` onclick="event.preventDefault(); window.hideTaskDetailModal?.(); window.openFilePreview?.('${jsStr(uri)}')"` : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(uri)}</a>`
+                ? `<a href="${escapeAttr(coralMatch ? '#' : escapeAttr(href))}" data-artifact-uri="${escapeAttr(uri)}"${coralMatch ? ' data-on-click="task-artifact-open"' : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(uri)}</a>`
                 : escapeHtml(uri);
             return `<div class="task-detail-body"><strong>${escapeHtml(a.name)}</strong>${a.revision ? ` · ${escapeHtml(a.revision)}` : ''}${a.digest ? ` · ${escapeHtml(a.digest)}` : ''}${uri ? `<div>${uriDisplay}</div>` : ''}${a.content ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(a.content)}</pre>` : ''}</div>`;
         };
@@ -1422,7 +1422,7 @@ function _taskDetailHtml(task, liveCost) {
             const isCrossBoard = task._source !== 'agent' && dep.board_id && dep.board_id !== boardKeyName(boardProject); // keys, not labels
             const boardPrefix = isCrossBoard ? `${escapeHtml(dep.board_label || keyLabel(identityKey(splitKey(boardProject).server, dep.board_id)))} ` : '';
             const depTitle = dep.title ? ` — ${escapeHtml(dep.title)}` : '';
-            const clickable = !isCrossBoard ? ` onclick="${task._source === 'agent' ? 'showAgentTaskDetailModal' : 'showTaskDetailModal'}(${Number(dep.task_id)})" style="cursor:pointer"` : '';
+            const clickable = !isCrossBoard ? ` data-on-click="task-open" data-kind="${escapeAttr(task._source === 'agent' ? 'agent' : 'board')}" data-task-id="${Number(dep.task_id)}" style="cursor:pointer"` : '';
             return `<div class="task-dep-item">
                 <span class="task-dep-status ${depStatusClass}">${depStatusLabel}</span>
                 <a class="task-dep-link"${clickable}>${boardPrefix}#${dep.task_id}${depTitle}</a>
@@ -1586,8 +1586,8 @@ export async function enableTaskEditMode(taskId) {
     const footer = document.getElementById('task-detail-modal-footer');
     if (footer) {
         footer.innerHTML = `
-            <button class="btn" onclick="window.cancelTaskEdit()">Cancel</button>
-            <button class="btn btn-primary" onclick="window.saveTaskEdit(${Number(taskId)})">Save</button>`;
+            <button class="btn" data-on-click="task-edit-cancel">Cancel</button>
+            <button class="btn btn-primary" data-on-click="task-edit-save" data-task-id="${Number(taskId)}">Save</button>`;
     }
 }
 
@@ -1715,9 +1715,9 @@ export function completeBoardTask(taskId, personal = false) {
             </div>
         </section>`);
     footer.innerHTML = `
-        <button class="btn" onclick="window.${personal ? 'showAgentTaskDetailModal' : '_restoreTaskFooter'}(${Number(taskId)})">Back</button>
+        <button class="btn" data-on-click="task-complete-back" data-task-id="${Number(taskId)}" data-personal="${Number(personal ? 1 : 0)}">Back</button>
         <span style="flex:1"></span>
-        <button class="btn btn-success" onclick="window._doCompleteTask(${Number(taskId)}, ${personal ? 'true' : 'false'})">Complete</button>`;
+        <button class="btn btn-success" data-on-click="task-complete-do" data-task-id="${Number(taskId)}" data-personal="${Number(personal ? 1 : 0)}">Complete</button>`;
     document.getElementById('task-complete-message').focus();
 }
 
@@ -1838,8 +1838,8 @@ export function cancelBoardTask(taskId) {
         <div class="task-confirm-inline">
             <span class="task-confirm-text">Cancel this task? This cannot be undone.</span>
             <div class="task-confirm-buttons">
-                <button class="btn" onclick="window._restoreTaskFooter(${Number(taskId)})">No, Go Back</button>
-                <button class="btn btn-danger" onclick="window._doCancelTask(${Number(taskId)})">Yes, Cancel</button>
+                <button class="btn" data-on-click="task-cancel-back" data-task-id="${Number(taskId)}">No, Go Back</button>
+                <button class="btn btn-danger" data-on-click="task-cancel-do" data-task-id="${Number(taskId)}">Yes, Cancel</button>
             </div>
         </div>`;
 }
@@ -1933,3 +1933,50 @@ async function saveTaskOrder() {
         // silent fail for reorder
     }
 }
+
+// The task list and task dialogs' markup (#3645): data-on-* names, never code. Each action calls
+// the same function the inline handler did, after checking its values (a bad one does nothing).
+// Cancelling and completing a task still go through their confirm footers (task-cancel shows
+// "Yes, Cancel"; task-complete shows the completion form), as before.
+const TASK_SORTS = new Set(['id', 'priority', 'type', 'assignee', 'created_at', 'cost']);
+const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
+const isPersonal = el => el.dataset.personal === '1';
+const depContainer = el => { const id = tokenOf(el.dataset.container); return id ? document.getElementById(id) : null; };
+registerActions({
+    'task-close': () => window.hideTaskDetailModal(),
+    'task-hide-done': () => window._toggleHideCompleted(),
+    'task-sort': el => { if (TASK_SORTS.has(el.dataset.sort)) window._toggleTaskSort(el.dataset.sort); },
+    'task-open': el => withId(el.dataset.taskId, id => (el.dataset.kind === 'agent' ? window.showAgentTaskDetailModal(id) : window.showTaskDetailModal(id))),
+    'task-subagent-open': el => { const sid = textOf(el.dataset.subagentId); if (sid) window.showSubagentDetailModal(sid); },
+    'task-load-more': () => window.loadMoreBoardTasks(),
+    'dep-picker-toggle': el => {
+        const list = depContainer(el) && document.getElementById(el.dataset.container + '-list');
+        if (list) list.style.display = list.style.display === 'none' ? '' : 'none';
+    },
+    'dep-picker-change': el => { if (depContainer(el)) window._updateDepTags(el.dataset.container); },
+    'dep-tag-remove': el => {
+        const box = depContainer(el), id = idOf(el.dataset.taskId);
+        if (box && id) box.querySelector(`input[type="checkbox"][value="${id}"]`)?.click();
+    },
+    'task-cancel': el => withId(el.dataset.taskId, id => window.cancelBoardTask(id)),
+    'task-cancel-back': el => withId(el.dataset.taskId, id => window._restoreTaskFooter(id)),
+    'task-cancel-do': el => withId(el.dataset.taskId, id => window._doCancelTask(id)),
+    'task-nudge': el => withId(el.dataset.taskId, id => window.nudgeBoardTask(id)),
+    'task-remind': el => withId(el.dataset.taskId, id => window.remindBoardTask(id)),
+    'task-remind-stop': el => withId(el.dataset.taskId, id => window.stopBoardTaskReminder(id)),
+    'task-edit': el => withId(el.dataset.taskId, id => window.enableTaskEditMode(id)),
+    'task-edit-cancel': () => window.cancelTaskEdit(),
+    'task-edit-save': el => withId(el.dataset.taskId, id => window.saveTaskEdit(id)),
+    'task-publish': el => withId(el.dataset.taskId, id => window.publishBoardTask(id)),
+    'task-complete': el => withId(el.dataset.taskId, id => (isPersonal(el) ? window.completeBoardTask(id, true) : window.completeBoardTask(id))),
+    'task-complete-back': el => withId(el.dataset.taskId, id => (isPersonal(el) ? window.showAgentTaskDetailModal(id) : window._restoreTaskFooter(id))),
+    'task-complete-do': el => withId(el.dataset.taskId, id => window._doCompleteTask(id, isPersonal(el))),
+    // A task's coral:// artifact opens in the preview (only an artifact URI; the link doesn't navigate).
+    'task-artifact-open': (el, event) => {
+        event.preventDefault();
+        const uri = el.dataset.artifactUri || '';
+        if (!/^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(uri)) return;
+        window.hideTaskDetailModal?.();
+        window.openFilePreview?.(uri);
+    },
+});
