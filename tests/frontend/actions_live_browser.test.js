@@ -55,7 +55,8 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         const sent = () => ev(`window.__sent.slice()`);
         const clear = () => ev(`window.__sent.length = 0; true`);
         const click = sel => ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return false; el.click(); return true; })()`);
-        const settle = what => until(`window.__sent.length > 0`, what, 4000);
+        // Wait for input to reach the agent (a resize frame can come first; it isn't input).
+        const settle = what => until(`window.__sent.some(s => s.kind !== 'ws' || /"type":"terminal_input"/.test(s.data))`, what, 4000);
         // What reached the agent: keys and commands sent by fetch, and text written to its terminal
         // socket (a JSON frame's string fields, or the raw frame).
         const SEQ = { Escape: '\x1b', Up: '\x1b[A', Down: '\x1b[B', Enter: '\r', BTab: '\x1b[Z' };
