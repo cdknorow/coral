@@ -1,117 +1,44 @@
 ---
 name: release
-description: Prepare and publish a new release of Coral to PyPI with changelog, GitHub Release, and automated publishing.
+description: Tag a Coral release (vX.Y.Z) after a green main, then verify what the release workflow published.
 user_invocable: true
-arguments: version number (e.g. "2.2.0")
+arguments: version number (e.g. "1.4.61")
 ---
 
 # Release Skill
 
-Prepare and publish a new release of agent-coral. The user provides the version number as `$ARGUMENTS`.
+Coral is released by pushing a version tag: `.github/workflows/release.yml` builds Linux (amd64 and arm64), Windows (MSI and portable ZIP) and macOS (a signed, notarized DMG), creates the GitHub Release with `SHA256SUMS.txt` and Sigstore bundles, attests provenance, and updates the Homebrew tap. Tag names and tiers are in CLAUDE.md ("Tagged Release (CI)"). The version is `$ARGUMENTS`.
 
-Follow these steps in order. **Stop and ask for confirmation before any destructive or public-facing step** (pushing, uploading, creating a GitHub release).
+**Stop and ask for confirmation before any public step**: pushing a commit to main, pushing a tag, editing the release.
 
-## 1. Determine what changed
+## 1. Check main
+- Main's CI (gofmt, cross-build, windows-tests) is green on the commit you will tag.
+- The changes since the last tag have their reviews and one relevant green test run.
 
-Review commits since the last release tag:
+## 2. Release notes
+Add a `## v$ARGUMENTS — <title>` section at the top of `RELEASE_NOTES.md` (below `# Release Notes`), in the style of the earlier sections (Security, Fixes, Other changes). Commit it on main as `release notes: v$ARGUMENTS`.
 
+## 3. Tag
 ```bash
-git log $(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --oneline --no-merges
+git tag -a v$ARGUMENTS -m "v$ARGUMENTS" <notes-commit>
+git push origin refs/tags/v$ARGUMENTS
 ```
+`tools/release.sh` does the same for the next patch version (`--dry-run` to preview).
 
-Categorize changes into **Added**, **Changed**, **Fixed**, **Removed** buckets following [Keep a Changelog](https://keepachangelog.com/) conventions.
-
-## 2. Update the changelog
-
-Add a new section at the top of `CHANGELOG.md` (below the header) for the new version:
-
-```markdown
-## <version> — <YYYY-MM-DD>
-
-### Added
-- ...
-
-### Fixed
-- ...
-```
-
-Use today's date. Only include categories that have entries.
-
-## 3. Bump the version
-
-Update the `version` field in `pyproject.toml` to the provided version number.
-
-## 4. Run the tests
-
+## 4. Wait for the workflow, then set the release body
+Wait until the run is `completed` (poll `gh run view <id> --json status,conclusion`; `gh run watch` can exit early), and act only on `success`. Then set the body from the notes section:
 ```bash
-.venv/bin/python -m pytest tests/ -v
+awk -v h="## v$ARGUMENTS " 'index($0,h)==1{f=1;next} f&&/^## v[0-9]/{exit} f' RELEASE_NOTES.md | awk 'NF{p=1} p' \
+  | gh release edit v$ARGUMENTS --notes-file -
 ```
 
-If any tests fail, stop and fix them before proceeding.
+## 5. Verify what was published
+Download the assets into an empty folder (`gh release download v$ARGUMENTS`), then:
+- `cosign verify-blob` of `SHA256SUMS.txt` and both Linux tarballs against their `.sigstore.json` bundles (identity `https://github.com/cdknorow/coral/.github/workflows/release.yml@refs/tags/v…`, issuer `https://token.actions.githubusercontent.com`), and `shasum -a 256 -c SHA256SUMS.txt`.
+- `gh attestation verify <file> --repo cdknorow/coral` for every package and `SHA256SUMS.txt`.
+- The DMG: `spctl -a -vv -t exec` on the app (Notarized Developer ID), `xcrun stapler validate`, `coral --version` prints the version, no entitlements.
+- The tap (`cdknorow/homebrew-coral`, `Casks/coral.rb`) has the new version and the DMG's sha256; bump the in-repo `Casks/coral.rb` to match.
+- Run the "Published Standard Linux runtime verification" workflow with `-f tag=v$ARGUMENTS`.
 
-## 5. Build and verify the package
-
-```bash
-.venv/bin/pip install build twine
-.venv/bin/python -m build
-.venv/bin/python -m twine check dist/agent_coral-<version>*
-```
-
-Verify the correct version appears in the filenames under `dist/`.
-
-## 6. Commit the release
-
-Stage `pyproject.toml` and `CHANGELOG.md`, then commit:
-
-```
-chore: bump version to <version>
-```
-
-## 7. Ask the user before publishing
-
-Before proceeding, confirm with the user that they want to:
-- Push the commit and tag to the remote
-- Upload to PyPI
-- Create a GitHub Release
-
-**Do not proceed without explicit confirmation.**
-
-## 8. Tag and push
-
-```bash
-git tag v<version>
-git push && git push origin v<version>
-```
-
-## 9. Upload to PyPI
-
-```bash
-.venv/bin/python -m twine upload dist/agent_coral-<version>*
-```
-
-Note: If `.github/workflows/publish.yml` is configured with trusted publishing, the GitHub Release creation (step 10) will trigger an automatic publish. In that case, skip this manual upload step and tell the user.
-
-## 10. Create GitHub Release
-
-Extract the changelog section for this version and create a GitHub Release:
-
-```bash
-gh release create v<version> \
-  --title "v<version>" \
-  --notes "$(sed -n '/^## '"<version>"'/,/^## [0-9]/{/^## [0-9]/!p}' CHANGELOG.md)" \
-  dist/agent_coral-<version>*
-```
-
-## 11. Clean up
-
-```bash
-rm -rf dist/ build/ src/*.egg-info
-```
-
-## 12. Summary
-
-Report back with:
-- The version released
-- The git tag created
-- Link to the GitHub Release
-- Link to PyPI: https://pypi.org/project/agent-coral/
+## 6. Report
+Post the release URL, the tag and the results of step 5.

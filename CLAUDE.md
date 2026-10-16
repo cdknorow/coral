@@ -2,10 +2,10 @@
 
 ## Mission
 
-The Go codebase (`coral-go/`) is the **primary implementation** of Coral. The `coral-python/` is a legacy reference that is no longer authoritative.
+The Go codebase (`coral-go/`) is Coral's implementation.
 
 **RULES:**
-1. The Go codebase is the source of truth. Improve it freely without deferring to Python patterns.
+1. The Go codebase is the source of truth. Improve it freely.
 2. Only modify code under `coral-go/` and `tests/`.
 
 ## Testing
@@ -15,24 +15,11 @@ The Go codebase (`coral-go/`) is the **primary implementation** of Coral. The `c
 cd coral-go && go test ./...
 ```
 
-### Legacy Parity Tools (historical reference)
-These tools were used during the Python-to-Go migration and may still be useful for comparison:
-
-```bash
-# Parity harness (requires both Python and Go servers)
-python tests/parity_harness.py
-
-# DB compare tool
-cd coral-go && go build -o db-compare ./cmd/db-compare/
-./db-compare <python-db> <go-db> [board-py-db] [board-go-db]
-```
-
 ## Project Structure
 
 ```
-coral/                  # Legacy Python implementation (historical reference only)
-coral-go/               # Primary Go implementation
-  cmd/                  # CLI entry points (coral, launch-coral, coral-board, db-compare)
+coral-go/               # The Go implementation
+  cmd/                  # Entry points (coral, launch-coral, coral-board, coral-agent, coral-tray, coral-app, the hooks, mock-agent)
   internal/             # Core packages
     agent/              # Agent implementations (claude, gemini)
     background/         # Background services (git poller, indexer, scheduler, etc.)
@@ -46,14 +33,16 @@ coral-go/               # Primary Go implementation
     store/              # SQLite storage layer
     tmux/               # Tmux client
   go.mod / go.sum       # Go module dependencies
-tests/                  # Parity test harness
-  parity_harness.py     # Main harness — starts both servers, runs scenarios, compares DBs
-  parity/
-    test_scenarios.py   # API scenario tests (tags, settings, webhooks, board, etc.)
+tests/                  # Suites outside the Go module
+  frontend/             # Dashboard tests: CDP browser suites (run_cdp_suites.mjs) and node tests (npm run test:cloud)
+  stress/               # Stress and workflow runners against an isolated server
+  release/              # Package checks the release workflow runs
+  latency/              # Opt-in dashboard latency-budget guard (epoch only)
 Casks/                  # Homebrew Cask definition
-Formula/                # Homebrew Formula
-scripts/                # macOS build script
-icons/                  # App icons and screenshots
+installers/             # Local build scripts per platform
+tools/                  # Build, release and maintenance scripts
+licenses/               # Third-party license texts
+assets/                 # App icons and screenshots
 ```
 
 ## Development Workflow
