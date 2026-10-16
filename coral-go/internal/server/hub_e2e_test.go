@@ -38,6 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -85,7 +86,13 @@ func (l *lockedBuf) String() string {
 
 func newE2EEnv(t *testing.T) *e2eEnv {
 	t.Helper()
-	t.Setenv("CORAL_SHELL", "/bin/sh")
+	if runtime.GOOS == "windows" {
+		// Coral's own default there: PowerShell (/bin/sh doesn't exist, so every launch failed
+		// with "file not found"). Its echo prints hub-e2e-$((20+22)) as hub-e2e-42 too (#3914).
+		t.Setenv("CORAL_SHELL", "")
+	} else {
+		t.Setenv("CORAL_SHELL", "/bin/sh")
+	}
 	t.Logf("terminal backend: real PTY=%v (false means in-memory fake; sandbox forbids fork/exec)", realPTYUsable())
 	t.Setenv("TMPDIR", t.TempDir())
 	t.Setenv("CLAUDE_PROJECTS_DIR", filepath.Join(t.TempDir(), "projects"))
@@ -701,9 +708,7 @@ func TestHubE2E_RegisterOutcomesAndKeyHygiene(t *testing.T) {
 	_, err = hub.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	require.NoError(t, err)
 	env.assertNoPlaintext(t, hub.dir, a.key(), b.key())
-	keyFile, err := os.Stat(filepath.Join(hub.dir, ".remote_secret_key"))
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), keyFile.Mode().Perm())
+	requirePrivateFile(t, filepath.Join(hub.dir, ".remote_secret_key")) // mode 0600, or the Windows access list
 }
 
 // ── 3. merged list, same-named agents, live updates ─────────────────
