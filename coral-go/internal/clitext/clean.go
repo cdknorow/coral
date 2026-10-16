@@ -97,16 +97,33 @@ func isInvisible(r rune) bool {
 }
 
 // CleanName returns s safe to show as one name or title: Clean, then every other Unicode format
-// character too (the zero-width joiner and non-joiner, the soft hyphen, ...), which can make two
-// different names look the same, with whitespace folded to single spaces on one line.
+// character too (the zero-width joiner and non-joiner, the soft hyphen, ...) and the invisible
+// characters that aren't format characters (see invisibleInName), which can make two different
+// names look the same or a name look empty, with whitespace folded to single spaces on one line.
 func CleanName(s string) string {
 	s = strings.Map(func(r rune) rune {
-		if unicode.Is(unicode.Cf, r) {
+		if unicode.Is(unicode.Cf, r) || invisibleInName(r) {
 			return -1
 		}
 		return r
 	}, Clean(s))
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// invisibleInName reports whether r draws nothing in a name though it isn't a format character
+// (#3656): the variation selectors (U+FE00 to U+FE0F and U+E0100 to U+E01EF), the Hangul fillers
+// (U+115F, U+1160, U+3164, U+FFA0) and the braille blank (U+2800). Clean keeps them, since text
+// needs some (U+FE0F asks for an emoji's colour form); a name doesn't.
+func invisibleInName(r rune) bool {
+	switch {
+	case r >= 0xfe00 && r <= 0xfe0f, r >= 0xe0100 && r <= 0xe01ef:
+		return true
+	case r == 0x115f, r == 0x1160, r == 0x3164, r == 0xffa0:
+		return true
+	case r == 0x2800:
+		return true
+	}
+	return false
 }
 
 // clean reports whether s has nothing Clean would remove (the common case: no copy).
