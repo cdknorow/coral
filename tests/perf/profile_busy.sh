@@ -9,7 +9,8 @@
 # the whole run, and tears everything down, killing only the PIDs it started.
 #
 # Env: PERF_RUN=1 (required), REPO (default: this checkout), GO, CHROME, PORT (8491), HUBPORT (8492),
-# PPROF (8493), MINUTES (15), WARMUP (300 s), PROFILE (120 s), AGENTS (20), OUT (results folder).
+# PPROF (8493), MINUTES (15), WARMUP (300 s), PROFILE (120 s), AGENTS (20), OUT (results folder),
+# MOCK_TRANSCRIPT (1: the mock agents write transcripts; needs a mock-agent with --mock-transcript).
 set -u
 set -o pipefail
 if [[ "${PERF_RUN:-}" != "1" ]]; then echo "[perf] opt-in: set PERF_RUN=1" >&2; exit 2; fi
@@ -40,7 +41,10 @@ cleanup() {
   done
   # Only inside this run's own mktemp folder: never with an empty or root WORK.
   if [[ "${KEEP_TEST_DATA:-0}" != 1 && -n "$WORK" && -d "$WORK" && "$WORK" != / ]]; then
-    rm -rf -- "$WORK/d1" "$WORK/d2" "$WORK/home" "$WORK/repo" "$WORK/chrome"
+    # The panes' shells may still be writing their history as tmux stops them: try again once.
+    rm -rf -- "$WORK/d1" "$WORK/d2" "$WORK/home" "$WORK/repo" "$WORK/chrome" "$WORK/bin" 2>/dev/null ||
+      { sleep 2; rm -rf -- "$WORK/d1" "$WORK/d2" "$WORK/home" "$WORK/repo" "$WORK/chrome" "$WORK/bin"; }
+    [[ "$OUT" == "$WORK"/* ]] || rmdir -- "$WORK" 2>/dev/null
   fi
   log "results in $OUT"
 }
@@ -68,7 +72,9 @@ start_server() { # $1 data dir, $2 port, $3 log, rest: extra flags
 }
 
 log "starting the busy server on $PORT (pprof on $PPROF)"
-start_server "$WORK/d1" "$PORT" "$OUT/server.log" CORAL_PPROF_ADDR="127.0.0.1:$PPROF" GODEBUG=gctrace=1
+# MOCK_TRANSCRIPT=1: the mock agents write Claude Code transcripts, as real agents do after their first turn.
+MOCK_ENV=(); [[ "${MOCK_TRANSCRIPT:-0}" == 1 ]] && MOCK_ENV=(MOCK_AGENT_TRANSCRIPT=1)
+start_server "$WORK/d1" "$PORT" "$OUT/server.log" CORAL_PPROF_ADDR="127.0.0.1:$PPROF" GODEBUG=gctrace=1 "${MOCK_ENV[@]}"
 SRV=${PIDS[$((${#PIDS[@]} - 1))]}
 KEY="$(cat "$WORK/d1/api_key")"
 api(){ local m="$1" p="$2"; shift 2; curl -s -m 20 -X "$m" "http://127.0.0.1:$PORT$p" -H "X-API-Key: $KEY" -H "Content-Type: application/json" "$@"; }
@@ -127,6 +133,7 @@ REST=$(( MINUTES * 60 - WARMUP - PROFILE ))
 T1=$(date +%s); C1=$(cpu_seconds)
 curl -s -m 30 "http://127.0.0.1:$PPROF/debug/pprof/heap" -o "$OUT/heap.pprof"
 curl -s -m 30 "http://127.0.0.1:$PPROF/debug/pprof/goroutine?debug=1" -o "$OUT/goroutines.txt"
+log "agent transcripts written: $(find "$WORK/home/.claude/projects" -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')"
 
 PROFILE="$PROFILE" python3 -I - "$OUT" "$T0" "$T1" "$C0" "$C1" <<'PY' | tee "$OUT/summary.txt"
 import re, sys
@@ -138,7 +145,8 @@ try:
     a = json.load(open(f"{out}/tmux-execs-start.json")); b = json.load(open(f"{out}/tmux-execs-end.json"))
     win = float(os.environ.get("PROFILE", "120")) / 60
     per = {k: (b.get(k, 0) - a.get(k, 0)) / win for k in b}
-    print("tmux execs per minute (profile window): total %.0f; %s" % (sum(per.values()),
+    # "capture-pane<caller>" splits capture-pane by the code that asked (#4077): not in the total.
+    print("tmux execs per minute (profile window): total %.0f; %s" % (sum(v for k, v in per.items() if "<" not in k),
           ", ".join(f"{k} {v:.0f}" for k, v in sorted(per.items(), key=lambda kv: -kv[1]) if v)))
 except Exception as e:
     print(f"tmux execs: not available ({e})")
