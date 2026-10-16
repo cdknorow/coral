@@ -120,6 +120,8 @@ start_server() {
     sleep 1
   done
   [[ -n "$up" ]] || { log "server ($label) never served health"; return 1; }
+  # Strict local auth is the default (#3936): load.py sends this server's own API key.
+  export CORAL_API_KEY; CORAL_API_KEY="$(tr -d '[:space:]' < "$DATADIR/api_key")"
   awk "BEGIN{printf \"%.2f\", $t1-$t0}" > "$OUT/startup_${label}.txt"
   log "server ($label) pid=$SRVPID startup-to-serving=$(cat "$OUT/startup_${label}.txt")s"
 }

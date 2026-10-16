@@ -344,7 +344,10 @@ async function startShard(n, gen = 0, strict = false) {
   const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1', CORAL_NO_DEMO_SEED: '1', CORAL_NO_WELCOME: '1' };
   const log = path.join(dir, 'coral.log');
   const hostHome = path.join(dir, 'home'); fs.mkdirSync(hostHome);
-  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome };
+  // Strict local auth is the default (#3936). The suites' own node-side setup calls send no
+  // credential (and some check the same-origin local dashboard, which a key would change), so the
+  // regular shards run with it off; the strict phase runs the suites that matter there, signed in.
+  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, ...(strict ? {} : { CORAL_STRICT_LOCAL_AUTH: '0' }) };
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
     ...(strict ? ['--strict-local-auth'] : []), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],

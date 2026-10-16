@@ -18,3 +18,22 @@ for _coral_v in $(compgen -e); do
     esac
 done
 unset _coral_v
+
+# Strict local auth is Coral's default (#3936): every request to the test server needs a
+# credential. curl here sends the test server's own API key, read from the runner's
+# CORAL_DATA_DIR once the server has written it, and never the production key (~/.coral). A
+# request that already names its own Authorization or session token is left as it is.
+curl() {
+    local _k="" _a
+    if [[ -n "${CORAL_DATA_DIR:-}" && "${CORAL_DATA_DIR%/}" != "$HOME/.coral" && -r "$CORAL_DATA_DIR/api_key" ]]; then
+        _k="$(tr -d '[:space:]' < "$CORAL_DATA_DIR/api_key")"
+    fi
+    for _a in "$@"; do
+        case "$_a" in [Aa]uthorization:*|X-Coral-Session-Token:*|X-API-Key:*) _k="" ;; esac
+    done
+    if [[ -n "$_k" ]]; then
+        command curl -H "Authorization: Bearer $_k" "$@"
+    else
+        command curl "$@"
+    fi
+}

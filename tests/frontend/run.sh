@@ -101,7 +101,9 @@ echo "Starting Coral dev server on :$CORAL_PORT (home=$CORAL_HOME)..."
 # The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
 # ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
 mkdir -p "$CORAL_HOME/host-home"
-env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$CORAL_HOME/host-home" \
+# Strict local auth is the default (#3936); these suites' node-side calls send no credential, as
+# in run_cdp_suites.mjs's regular shards, so it is off here (its strict phase covers strict).
+env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR CORAL_STRICT_LOCAL_AUTH=0 HOME="$CORAL_HOME/host-home" \
     "$CORAL_BIN" --host 127.0.0.1 --port "$CORAL_PORT" --home "$CORAL_HOME" --no-browser --cloud-url off \
     > "$CORAL_HOME/server.log" 2>&1 &
 CORAL_PID=$!

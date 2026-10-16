@@ -110,7 +110,10 @@ go build -p 1 -o "$TMPDIR_STRESS/coral-agent" ./cmd/coral-agent/
 
 start_server() {
 log "Starting coral server on port $PORT..."
-env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_STRESS/home" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux --no-browser --cloud-url off >>"$TMPDIR_STRESS/server.log" 2>&1 &
+# This runner tests board logic, and its coral-board "agents" (run_cli) have no session token,
+# which strict local auth (the default since #3936) refuses by design; so its server runs with
+# strict local auth off. run_identity.sh covers auth. Its own curls still send the API key.
+env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR CORAL_STRICT_LOCAL_AUTH=0 HOME="$TMPDIR_STRESS/home" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux --no-browser --cloud-url off >>"$TMPDIR_STRESS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 }

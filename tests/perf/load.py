@@ -15,6 +15,10 @@ BOARD = T["board_id"]
 host = urllib.parse.urlparse(BASE).hostname or "127.0.0.1"
 port = urllib.parse.urlparse(BASE).port or 80
 H = {"Origin": BASE, "Referer": BASE + "/", "Sec-Fetch-Site": "same-origin"}
+# Strict local auth is the default (#3936): the test server's API key, from run_perf.sh.
+KEY = os.environ.get("CORAL_API_KEY", "")
+if KEY:
+    H["Authorization"] = "Bearer " + KEY
 stats = collections.defaultdict(lambda: [0, 0.0, 0, 0])  # n, total_s, bytes, errors
 lock = threading.Lock()
 stop = threading.Event()
@@ -46,8 +50,8 @@ def ws_tab():
         return
     key = base64.b64encode(os.urandom(16)).decode()
     s.sendall(("GET /ws/coral HTTP/1.1\r\nHost: %s:%d\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-               "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\nOrigin: %s\r\n\r\n"
-               % (host, port, key, BASE)).encode())
+               "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\nOrigin: %s\r\n%s\r\n"
+               % (host, port, key, BASE, ("Authorization: Bearer %s\r\n" % KEY) if KEY else "")).encode())
     s.settimeout(5); buf = b""
     try:
         while b"\r\n\r\n" not in buf:

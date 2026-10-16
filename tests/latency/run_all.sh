@@ -102,6 +102,9 @@ for i in $(seq 1 60); do
   sleep 1
 done
 curl -s "$BASE/api/health"; echo
+# Strict local auth is the default (#3936): measure.sh and the checks below send this server's
+# own API key.
+export CORAL_API_KEY; CORAL_API_KEY="$(tr -d '[:space:]' < "$DATADIR/api_key")"
 log "server up. tmux sessions alive: $("$TMUX_BIN" -S "$SOCKET" list-sessions 2>/dev/null | wc -l)"
 
 # sanity: confirm endpoints answer 2xx from loopback (operator)
@@ -109,7 +112,7 @@ BOARD_ID=$(python3 -c "import json;print(json.load(open('$TARGETS'))['board_id']
 for u in \
   "/api/teams/detail/$BOARD_ID/availability" \
   "/api/board/$BOARD_ID/status" ; do
-  code=$(curl -s -o /dev/null -w '%{http_code}' -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" "$BASE$u")
+  code=$(curl -s -o /dev/null -w '%{http_code}' -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" -H "Authorization: Bearer $CORAL_API_KEY" "$BASE$u")
   log "sanity $u -> $code"
 done
 
