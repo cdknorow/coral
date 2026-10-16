@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -38,6 +40,7 @@ func TestGateStateFromTheAgentsSignals(t *testing.T) {
 	require.NoError(t, ss.SetCLIVersion(ctx, sid, "2.1.300"))
 	tok := agentToken(t, h, sid, name)
 	post := func(body string) {
+		body = strings.Replace(body, "{", `{"hooks_rev":`+strconv.Itoa(agent.ClaudeHooksRev)+`,`, 1) // a current agent's hooks (#3655)
 		req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/delta/events", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set(store.SessionTokenHeader, tok)

@@ -1548,7 +1548,7 @@ func TestBuildMergedSettings_AgentHooksAppended(t *testing.T) {
 		if gMap, ok := g.(map[string]interface{}); ok {
 			if hooks, ok := gMap["hooks"].([]map[string]interface{}); ok {
 				for _, h := range hooks {
-					if h["command"] == "coral-hook-agentic-state" {
+					if h["command"] == agenticStateCommand {
 						coralFound = true
 					}
 				}
@@ -1783,7 +1783,7 @@ func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
 			t.Fatalf("%s: %d hook groups, want 1", event, len(groups))
 		}
 		b, _ := json.Marshal(groups[0])
-		if !strings.Contains(string(b), `"command":"coral-hook-agentic-state"`) {
+		if !strings.Contains(string(b), `"command":"`+agenticStateCommand+`"`) {
 			t.Errorf("%s: %s", event, b)
 		}
 	}

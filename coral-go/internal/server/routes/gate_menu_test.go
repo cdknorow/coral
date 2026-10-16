@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -22,6 +23,7 @@ func TestGateStateBlocksOnAnOpenQuestionOrPlanMenu(t *testing.T) {
 	ctx := context.Background()
 	sid := "00000000-0000-4000-8000-000000003655"
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "folder-3655", AgentType: "claude", WorkingDir: t.TempDir()}))
+	h.hooksRev.Store(sid, agent.ClaudeHooksRev) // a current agent's hooks
 	id := sid
 	event := func(typ, tool string) {
 		_, err := h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "folder-3655", SessionID: &id, EventType: typ, ToolName: &tool, Summary: typ})

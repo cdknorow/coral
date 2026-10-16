@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -348,6 +349,21 @@ func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {
 	}
 }
 
+// ClaudeHooksRev is the revision of the hooks Coral installs in Claude (coralHooks). It goes up
+// whenever they change. Every coral-hook-agentic-state command carries it (--hooks-rev), so the
+// server knows which set a running agent loaded at its launch: Claude reads its hooks only then,
+// and agents outlive upgrades (#3655 F3). Revision 2 has the request and turn signals
+// (PermissionRequest, Elicitation, UserPromptSubmit, StopFailure, SessionEnd: #3481); a command
+// without a revision is from before.
+const ClaudeHooksRev = 2
+
+// ClaudeSignalsHooksRev is the first revision with the request and turn signals: an agent on an
+// older set can't say it is idle, so the automated-input gate keeps the screen rule for it.
+const ClaudeSignalsHooksRev = 2
+
+// agenticStateCommand is Coral's state hook, with the hook set's revision.
+var agenticStateCommand = "coral-hook-agentic-state --hooks-rev " + strconv.Itoa(ClaudeHooksRev)
+
 // Coral hooks to inject into every Claude session.
 var coralHooks = map[string][]map[string]interface{}{
 	// Before a tool runs: lets the chat show what an open permission prompt,
@@ -355,7 +371,7 @@ var coralHooks = map[string][]map[string]interface{}{
 	// only after it completes).
 	"PreToolUse": {
 		{"hooks": []map[string]interface{}{
-			{"type": "command", "command": "coral-hook-agentic-state"},
+			{"type": "command", "command": agenticStateCommand},
 		}},
 	},
 	"PostToolUse": {
@@ -363,7 +379,7 @@ var coralHooks = map[string][]map[string]interface{}{
 			{"type": "command", "command": "coral-hook-task-sync"},
 		}},
 		{"hooks": []map[string]interface{}{
-			{"type": "command", "command": "coral-hook-agentic-state"},
+			{"type": "command", "command": agenticStateCommand},
 		}},
 		{"hooks": []map[string]interface{}{
 			{"type": "command", "command": "coral-hook-message-check"},
@@ -372,22 +388,22 @@ var coralHooks = map[string][]map[string]interface{}{
 	// A tool that errors or is interrupted fires this instead of PostToolUse.
 	"PostToolUseFailure": {
 		{"hooks": []map[string]interface{}{
-			{"type": "command", "command": "coral-hook-agentic-state"},
+			{"type": "command", "command": agenticStateCommand},
 		}},
 	},
 	"Stop": {
 		{"hooks": []map[string]interface{}{
-			{"type": "command", "command": "coral-hook-agentic-state"},
+			{"type": "command", "command": agenticStateCommand},
 		}},
 	},
 	"Notification": {
 		{"hooks": []map[string]interface{}{
-			{"type": "command", "command": "coral-hook-agentic-state"},
+			{"type": "command", "command": agenticStateCommand},
 		}},
 	},
 	"SessionStart": {
 		{"hooks": []map[string]interface{}{
-			{"type": "command", "command": "coral-hook-agentic-state"},
+			{"type": "command", "command": agenticStateCommand},
 		}},
 		{"hooks": []map[string]interface{}{
 			{"type": "command", "command": "coral-hook-session-start"},
@@ -408,7 +424,7 @@ var coralHooks = map[string][]map[string]interface{}{
 
 // agenticStateHook is the hook group that sends an event to Coral's state.
 var agenticStateHook = map[string]interface{}{"hooks": []map[string]interface{}{
-	{"type": "command", "command": "coral-hook-agentic-state"},
+	{"type": "command", "command": agenticStateCommand},
 }}
 
 // buildMergedSettings is the settings file Coral passes with --settings: the user's global

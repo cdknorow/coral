@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -57,6 +58,7 @@ func TestGateStateFillsAMissingCLIVersion(t *testing.T) {
 	sid := "00000000-0000-4000-8000-000000003573"
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "folder-3573", AgentType: "claude", WorkingDir: t.TempDir()}))
 	id := sid
+	h.hooksRev.Store(sid, agent.ClaudeHooksRev) // a current agent\'s hooks (#3655)
 	_, err := h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "folder-3573", SessionID: &id, EventType: "stop", Summary: "done"})
 	require.NoError(t, err)
 
@@ -85,6 +87,7 @@ func TestGateStateTakesClaudesRunningVersion(t *testing.T) {
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "folder-3574", AgentType: "claude", WorkingDir: t.TempDir()}))
 	require.NoError(t, ss.SetCLIVersion(ctx, sid, "2.1.250"))
 	id := sid
+	h.hooksRev.Store(sid, agent.ClaudeHooksRev) // a current agent\'s hooks (#3655)
 	_, err := h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "folder-3574", SessionID: &id, EventType: "stop", Summary: "done"})
 	require.NoError(t, err)
 	transcript := filepath.Join(projects, "x", sid+".jsonl")

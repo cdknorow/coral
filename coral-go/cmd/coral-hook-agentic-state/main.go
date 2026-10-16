@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/cdknorow/coral/internal/hooks"
@@ -39,16 +40,11 @@ func main() {
 	}
 
 	// --session-clear flag injects marker for /clear detection
-	agyEvent := ""
-	args := os.Args[1:]
-	for i, arg := range args {
-		if arg == "--session-clear" {
-			d["_coral_session_clear"] = true
-		}
-		if arg == "--agy" && i+1 < len(args) {
-			agyEvent = args[i+1]
-		}
+	opts := parseArgs(os.Args[1:])
+	if opts.sessionClear {
+		d["_coral_session_clear"] = true
 	}
+	agyEvent, hooksRev := opts.agyEvent, opts.hooksRev
 	if agyEvent != "" {
 		// Antigravity CLI (agy) hooks (#3481): its payload names neither the event nor
 		// the tool the way Claude's does; it is translated, and an event Coral doesn't
@@ -123,6 +119,9 @@ func main() {
 		return
 	}
 
+	if hooksRev > 0 {
+		event["hooks_rev"] = hooksRev // which hook set this agent loaded at launch (#3655 F3)
+	}
 	if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/events"), event); err != nil {
 		hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", base, agentName, event["event_type"], err))
 		return
@@ -141,6 +140,30 @@ func main() {
 	}
 
 	hooks.DebugLog(fmt.Sprintf("DONE: agent=%s event_type=%s", agentName, event["event_type"]))
+}
+
+// hookArgs are the hook's own arguments, from the command Coral installed.
+type hookArgs struct {
+	sessionClear bool   // --session-clear: a /clear
+	agyEvent     string // --agy <event>: an Antigravity hook
+	hooksRev     int    // --hooks-rev N: the hook set's revision (#3655 F3); 0 when absent or not a positive number
+}
+
+func parseArgs(args []string) hookArgs {
+	var o hookArgs
+	for i, arg := range args {
+		switch {
+		case arg == "--session-clear":
+			o.sessionClear = true
+		case arg == "--agy" && i+1 < len(args):
+			o.agyEvent = args[i+1]
+		case arg == "--hooks-rev" && i+1 < len(args):
+			if n, err := strconv.Atoi(args[i+1]); err == nil && n > 0 {
+				o.hooksRev = n
+			}
+		}
+	}
+	return o
 }
 
 // turnEndHandoff asks Coral whether to keep the agent going with its board messages,

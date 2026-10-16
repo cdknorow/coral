@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -137,6 +138,12 @@ func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessio
 	if sessionID == "" || h.ts == nil {
 		return ptymanager.AgentState{}, false
 	}
+	if agentType == at.Claude && !h.claudeHasRequestSignals(name, sessionID) {
+		// An agent launched with an older hook set (or one not heard from since this server
+		// started) has no request or turn signals of its own, so they can't say it is idle:
+		// the gate keeps its screen rule for it (#3655 F3; QA: fail-safe).
+		return ptymanager.AgentState{}, false
+	}
 	byID, err := h.ts.GetSessionStateEvents(ctx, []string{sessionID})
 	events := byID[sessionID]
 	if err != nil || len(events) == 0 {
@@ -190,6 +197,29 @@ func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessio
 	}
 	return as, true
 }
+
+// claudeHasRequestSignals reports whether a Claude session's hooks include the request and turn
+// signals (revision agent.ClaudeSignalsHooksRev or later), from the revision its events carry.
+// Unknown (no event since this server started) is not: the screen rule decides until one comes.
+// An event without a revision, or an older one, is an older hook set, logged once per session:
+// the agent needs a relaunch or resume.
+func (h *SessionsHandler) claudeHasRequestSignals(name, sessionID string) bool {
+	v, known := h.hooksRev.Load(sessionID)
+	rev, _ := v.(int)
+	if rev >= agent.ClaudeSignalsHooksRev {
+		return true
+	}
+	if known {
+		if _, logged := oldHookSets.LoadOrStore(sessionID, true); !logged {
+			slog.Info("automated input: this agent's hooks are out of date; the gate keeps the screen rule for it until it is relaunched or resumed",
+				"session", name, "hooks_rev", rev, "want", agent.ClaudeSignalsHooksRev)
+		}
+	}
+	return false
+}
+
+// oldHookSets are the sessions already logged as having an old hook set.
+var oldHookSets sync.Map
 
 // menuKinds are Claude's tools that open a menu for the user, by what it asks (#3655). Their
 // PreToolUse fires before the menu is drawn, in every hook set Coral has installed, while the

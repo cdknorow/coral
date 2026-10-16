@@ -92,6 +92,10 @@ type SessionsHandler struct {
 	machineHealth MachineHealthSource // nil until StartMachineHealth (#3444)
 
 	pending pendingTools // tool calls started but not finished (PreToolUse hook)
+	// hooksRev is the hook set each session's agent loaded at its launch, from its events
+	// (session id → revision, #3655 F3). In memory: until a session's next event after a
+	// restart it is unknown, and the gate takes the screen rule (the safe side).
+	hooksRev sync.Map
 
 	autoAccept *AutoAcceptor // answers approval prompts for auto-accept sessions (auto_accept.go)
 
@@ -4698,6 +4702,7 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		DetailJSON any    `json:"detail_json"`
 		DurationMs *int64 `json:"duration_ms"`
 		ToolUseID  string `json:"tool_use_id"`
+		HooksRev   int    `json:"hooks_rev"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -4739,6 +4744,10 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	if !postableEventTypes[body.EventType] {
 		errBadRequest(w, "unknown event_type "+strconv.Quote(body.EventType))
 		return
+	}
+	if hasToken && body.EventType != "goal" {
+		// The agent's own hooks say which set they are; none is an older set (0).
+		h.hooksRev.Store(body.SessionID, max(body.HooksRev, 0))
 	}
 	if len(body.Summary) > maxEventSummaryBytes {
 		body.Summary = truncateUTF8(body.Summary, maxEventSummaryBytes)
