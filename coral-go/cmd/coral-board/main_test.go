@@ -65,13 +65,14 @@ func TestIsolateBoardEnv_RedirectsStateFile(t *testing.T) {
 
 // --- resolveSessionName tests ---
 
-// #3864: outside an agent session there is no board. The hostname fallback gave every
+// #3864: outside an agent session an agent has no board. The hostname fallback gave every
 // sessionless process one shared state file, so each read whichever board one of them joined
-// last. Now: no session name, no state file, nothing saved or loaded; a session the server
-// verifies by the process tree still counts.
+// last. A process holding an agent's token but no session name loads and saves nothing; a
+// session the server verifies by the process tree still counts.
 func TestResolveSessionName_NoSessionMeansNoBoard(t *testing.T) {
 	dataDir := isolateBoardEnv(t)
 	t.Setenv("CORAL_SESSION_NAME", "")
+	t.Setenv("CORAL_SESSION_TOKEN", "an-agent-token")
 
 	if name := resolveSessionName(); name != "" {
 		t.Fatalf("resolveSessionName() = %q, want \"\" (never the hostname)", name)
@@ -98,6 +99,27 @@ func TestResolveSessionName_NoSessionMeansNoBoard(t *testing.T) {
 	cachedPIDResolution = &pidResolution{SubscriberID: "QA Engineer", Project: "team", SessionName: "claude-11111111-1111-4111-8111-111111111111"}
 	if name := resolveSessionName(); name != cachedPIDResolution.SessionName {
 		t.Fatalf("resolveSessionName() = %q, want the verified session", name)
+	}
+}
+
+// The Operator's coral-board in a plain terminal (no session, not in tmux, no token) keeps its
+// board: one fixed state file, not the hostname's.
+func TestResolveSessionName_OperatorTerminalKeepsItsBoard(t *testing.T) {
+	dataDir := isolateBoardEnv(t)
+	t.Setenv("CORAL_SESSION_NAME", "")
+	t.Setenv("CORAL_SESSION_TOKEN", "")
+
+	if name := resolveSessionName(); name != operatorSessionName {
+		t.Fatalf("resolveSessionName() = %q, want %q", name, operatorSessionName)
+	}
+	host, _ := os.Hostname()
+	if want := filepath.Join(dataDir, "board_state_operator.json"); stateFilePath() != want || strings.Contains(stateFilePath(), host) {
+		t.Fatalf("stateFilePath() = %q, want %q", stateFilePath(), want)
+	}
+	saveState(&boardState{Project: "team", JobTitle: "Operator"})
+	st := loadState()
+	if st == nil || st.Project != "team" {
+		t.Fatalf("loadState() = %+v, want the Operator's board", st)
 	}
 }
 

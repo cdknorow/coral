@@ -174,14 +174,23 @@ func resolveSessionName() string {
 		}
 	}
 	// Where the environment was stripped (a sandbox), the server can name the session from
-	// this process's ancestors (verified against the session's live process). Otherwise
-	// there is no session: never the hostname, which every such process shared, so they all
-	// read whichever board one of them joined last (#3864).
+	// this process's ancestors (verified against the session's live process).
 	if resolved := resolveViaPID(); resolved != nil && resolved.SessionName != "" {
 		return resolved.SessionName
 	}
+	// The Operator's own coral-board in a plain terminal: no agent session in this process's
+	// tree and no session token, so one fixed name (#3864). Never the hostname, which every
+	// sessionless process shared, and never for a process holding an agent's token: that one
+	// has no board rather than the Operator's.
+	if strings.TrimSpace(os.Getenv("CORAL_SESSION_TOKEN")) == "" {
+		return operatorSessionName
+	}
 	return ""
 }
+
+// operatorSessionName names the Operator's command-line board state; no agent session has
+// it (theirs are "<type>-<uuid>").
+const operatorSessionName = "operator"
 
 // resolveSubscriberID returns the stable board identity for this agent.
 // Priority: env var > board_state file > PID resolution > session name.
