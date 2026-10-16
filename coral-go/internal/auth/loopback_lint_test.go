@@ -23,9 +23,6 @@ func TestIsLocalhostOnlyInAllowedPlaces(t *testing.T) {
 			"func isDirectLocal(r *http.Request) bool {", // the one wrapper
 			"if !isLocalhost(r) {",
 		},
-		"middleware.go": {
-			"if r.Method == http.MethodConnect && isLocalhost(r) {", // CONNECT stays IP-only
-		},
 	}
 	call := regexp.MustCompile(`\bisLocalhost\s*\(`)
 	files, err := filepath.Glob("*.go")

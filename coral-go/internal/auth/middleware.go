@@ -46,13 +46,8 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			if ks.handleLoginToken(w, r) {
 				return
 			}
-			// CONNECT requests (the local MITM proxy for agent browsing) carry the target
-			// host in r.Host (e.g. "chatgpt.com:443"), not a proxy host, and no forwarding
-			// header; they are trusted by loopback IP alone, as before (#3585 keeps this).
-			if r.Method == http.MethodConnect && isLocalhost(r) {
-				next.ServeHTTP(w, withMethod(r, MethodLoopback))
-				return
-			}
+			// (#4032: a loopback CONNECT no longer skips the Host check below. It was for a local
+			// browsing proxy Coral no longer has; every method now gets the same check.)
 			// A direct local client (a loopback peer with no reverse-proxy header) reaches the
 			// handlers as MethodLoopback. A request a local reverse proxy forwarded is not direct
 			// and falls through to key/session auth, so a proxy that rewrites Host to localhost

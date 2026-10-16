@@ -585,3 +585,18 @@ func TestMemSessionsEvictTheEarliestOnATie(t *testing.T) {
 	}
 	assert.Equal(t, []string{"s9", "s8", "s7", "s6"}, ids)
 }
+
+// #4032 (Security's #4031 finding 3): a CONNECT from this computer gets the same Host check as
+// any other method; it used to skip it, for a local browsing proxy Coral no longer has.
+func TestLoopbackConnectGetsTheHostCheck(t *testing.T) {
+	ks := newTestKeyStore(t)
+	h := Middleware(ks)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(299) }))
+	for host, want := range map[string]int{"evil.example:443": http.StatusForbidden, "localhost:8420": 299} {
+		r := httptest.NewRequest(http.MethodConnect, "/api/remote/x/y", nil)
+		r.RemoteAddr = "127.0.0.1:5000"
+		r.Host = host
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		assert.Equal(t, want, w.Code, host)
+	}
+}
