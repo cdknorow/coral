@@ -95,6 +95,7 @@ Download the latest binary from [GitHub Releases](https://github.com/cdknorow/co
 
 - **macOS**: `Coral.v<version>.dmg` (universal binary), or `brew install --cask cdknorow/coral/coral`
 - **Linux**: `coral-linux-amd64-<version>.tar.gz` (x86-64) or `coral-linux-arm64-<version>.tar.gz` (ARM64, e.g. Graviton or Docker on Apple silicon)
+- **Windows**: `Coral-<version>-x64.msi` (installer) or `Coral-<version>-x64-portable.zip`. These are currently **not code-signed**, so Windows SmartScreen warns that the publisher is unknown. Verify the file with the attestation check below before you run it.
 
 #### Verify your download
 
@@ -117,6 +118,15 @@ sha256sum --check --ignore-missing SHA256SUMS.txt   # macOS: shasum -a 256 --che
 ```
 
 The checksum command must print `<your file>: OK` for the file you downloaded; if it prints nothing, nothing was checked.
+
+On Windows, check the MSI or the portable ZIP you downloaded the same way (PowerShell, with the GitHub CLI); it must report the attestation as verified for `release.yml` on a tag of `cdknorow/coral`:
+
+```powershell
+gh attestation verify Coral-<version>-x64.msi --repo cdknorow/coral `
+  --signer-workflow cdknorow/coral/.github/workflows/release.yml
+```
+
+This proves the file came from Coral's release workflow. It is not Windows code signing: the MSI and the programs in it carry no Authenticode signature yet. The `SHA256SUMS.txt` check above covers the Windows files too.
 
 Each Linux tarball also has its own bundle (`coral-linux-<amd64|arm64>-<version>.tar.gz.sigstore.json`), verified the same way. The bundles are in Sigstore's current bundle format: cosign 2.x reads them only with `--new-bundle-format` (without it, it fails with "bundle does not contain cert for verification"); cosign 3 reads them either way. Either check failing means the file is not an official build: don't run it.
 
