@@ -198,6 +198,16 @@ func TestManyConcurrentStreams(t *testing.T) {
 	})
 	var wg sync.WaitGroup
 	var failures atomic.Int32
+	var mu sync.Mutex
+	var first []string // the first failures, so a failure says what happened (#4011)
+	fail := func(what string) {
+		failures.Add(1)
+		mu.Lock()
+		if len(first) < 5 {
+			first = append(first, what)
+		}
+		mu.Unlock()
+	}
 	for i := 0; i < 300; i++ {
 		wg.Add(1)
 		go func() {
@@ -205,18 +215,18 @@ func TestManyConcurrentStreams(t *testing.T) {
 			req, _ := http.NewRequest("POST", fmt.Sprintf("http://x/api/n/%d", i), strings.NewReader(fmt.Sprint("b", i)))
 			resp, err := sess.RoundTrip(req)
 			if err != nil {
-				failures.Add(1)
+				fail(fmt.Sprintf("%d: round trip: %v", i, err))
 				return
 			}
 			b, err := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if err != nil || string(b) != fmt.Sprintf("/api/n/%d|b%d", i, i) {
-				failures.Add(1)
+				fail(fmt.Sprintf("%d: status %d, body %q, err %v", i, resp.StatusCode, b, err))
 			}
 		}()
 	}
 	wg.Wait()
-	assert.Zero(t, failures.Load())
+	assert.Zero(t, failures.Load(), "first failures: %q", first)
 	require.Eventually(t, func() bool { return sess.NumStreams() == 0 }, 3*time.Second, 10*time.Millisecond)
 }
 
