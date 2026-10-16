@@ -17,6 +17,7 @@ import (
 // failed and logged an exec error, then retried on the fallback, once a second
 // per open terminal of a session on the default socket (#3243 review).
 func TestRunRoutesExactMatchTargetsToTheSessionSocket(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	dir := t.TempDir()
 	calls := filepath.Join(dir, "calls")
 	stub := filepath.Join(dir, "tmux")

@@ -15,6 +15,7 @@ import (
 // #3728: with the default-socket fallback on, ListPanes reads tmux's default socket only when
 // its socket file is there; with none, one tmux run instead of two.
 func TestListPanesSkipsAnAbsentDefaultServer(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	tmpdir := t.TempDir()
 	t.Setenv("TMUX_TMPDIR", tmpdir)
 	t.Setenv("TMUX", "")

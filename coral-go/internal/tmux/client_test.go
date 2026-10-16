@@ -71,6 +71,7 @@ func TestNewClient_Defaults(t *testing.T) {
 }
 
 func TestIsAvailable_UsesExplicitTmuxBin(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	dir := t.TempDir()
 	tmuxPath := filepath.Join(dir, "tmux")
 	require.NoError(t, os.WriteFile(tmuxPath, []byte("#!/bin/sh\nexit 0\n"), 0755))
@@ -86,6 +87,7 @@ func TestIsAvailable_UsesExplicitTmuxBin(t *testing.T) {
 }
 
 func TestResolveTmuxBin_RechecksAvailability(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	dir := t.TempDir()
 	tmuxPath := filepath.Join(dir, "tmux")
 	require.NoError(t, os.WriteFile(tmuxPath, []byte("#!/bin/sh\nexit 0\n"), 0755))

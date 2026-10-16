@@ -125,6 +125,7 @@ func TestParseProcTable(t *testing.T) {
 
 // #3728: the checks of many agents made together share one ps run.
 func TestShellIdleSharesOneProcessSnapshot(t *testing.T) {
+	skipWithoutUnixTmux(t)
 	procTableMu.Lock()
 	procTableLast = nil
 	procTableMu.Unlock()
