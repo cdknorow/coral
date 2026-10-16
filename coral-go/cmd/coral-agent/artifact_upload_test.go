@@ -63,6 +63,35 @@ func TestUploadArtifactRefusalIsAnError(t *testing.T) {
 	}
 }
 
+// #4004 (b): a 2xx reply that carries no artifact id (a success-shaped refusal) is a failure too,
+// so the exit code is the only thing a caller can get wrong. No coral:// link is printed.
+func TestUploadArtifactTwoXXWithoutIdIsAFailure(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(file, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, body string }{
+		{"200 with an error body", `{"error":"hourly upload limit reached"}`},
+		{"201 with an empty object", `{}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			var out, errOut bytes.Buffer
+			err := uploadArtifact(srv.URL, file, "note.txt", "text/plain", "sess-1", &out, &errOut)
+			if err == nil {
+				t.Fatalf("a 2xx with no artifact id must be an error, got nil (out=%q)", out.String())
+			}
+			if strings.Contains(out.String(), "coral://") || out.Len() != 0 {
+				t.Errorf("no link may be printed, got stdout=%q", out.String())
+			}
+		})
+	}
+}
+
 // A 2xx upload prints the server's reply (the coral:// link) to stdout and returns no error.
 func TestUploadArtifactSuccessPrintsTheLink(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "note.txt")
