@@ -326,7 +326,7 @@
         transition: border-color 0.15s;
     }
     #command-pane:focus-within {
-        border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+        border-color: var(--accent);   /* a 55% mix was 2.7:1 on the light card, under the 3:1 a focus indicator needs (#4023) */
     }
     #command-pane .command-pane-body {
         order: 0;
