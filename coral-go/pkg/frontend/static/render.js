@@ -1939,7 +1939,7 @@ export function updateWaitingIndicator(s) {
         banner.style.display = (bannerKey === 'needs_input' || bannerKey === 'check_terminal') ? "" : "none";
         if (bannerKey === 'needs_input') {
             banner.className = "waiting-banner";
-            banner.textContent = "⏳ Agent is waiting for input";
+            banner.textContent = s.waiting_kind === 'login' ? "⏳ Agent needs you to sign in (in its terminal)" : "⏳ Agent is waiting for input";
         } else if (bannerKey === 'check_terminal') {
             banner.className = "waiting-banner waiting-banner-not-started";
             banner.textContent =

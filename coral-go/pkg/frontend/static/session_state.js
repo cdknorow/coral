@@ -149,7 +149,7 @@ export function sessionStateInfo(s, opts) {
 }
 
 /** waiting_kind (from the agent's own request) → the word shown after Needs input. */
-const WAITING_KINDS = { permission: 'Permission', question: 'Question', plan: 'Plan', elicitation: 'Input' };
+const WAITING_KINDS = { permission: 'Permission', question: 'Question', plan: 'Plan', elicitation: 'Input', login: 'Sign in' };
 
 function getStateLabel(s) {
     return sessionStateInfo(s).label;

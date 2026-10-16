@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -198,7 +199,7 @@ func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *htt
 		for _, e := range events[s.SessionID] {
 			input.Events = append(input.Events, e.StateEvent())
 		}
-		h.applyTranscriptState(&input, events[s.SessionID], s.AgentType, s.SessionID, s.WorkingDir)
+		h.applyTranscriptState(&input, events[s.SessionID], s.AgentType, naming.SessionName(s.AgentType, s.SessionID), s.SessionID, s.WorkingDir)
 		var activeWait *board.RegisteredWait
 		if a.SubscriberID != "" {
 			activeWait = waitsBySubscriber[a.SubscriberID]

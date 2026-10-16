@@ -56,7 +56,8 @@ type claudeTurnCache struct {
 	transcriptReadState
 	event   string
 	at      time.Time
-	version string // the newest line's "version": the running Claude Code's own (#3573)
+	version string         // the newest line's "version": the running Claude Code's own (#3573)
+	apiErr  ClaudeAPIError // the latest message, when it is an API error (#3830)
 }
 
 type codexTurnCache struct {

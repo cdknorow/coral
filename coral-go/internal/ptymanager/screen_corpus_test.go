@@ -29,6 +29,7 @@ type screenLabel struct {
 	InputBox       bool   `json:"input_box"`       // InputBoxOnScreen
 	Box            string `json:"box"`             // inputBoxState for a one-line nudge: unknown, empty, ours, other
 	SuggestionOnly bool   `json:"suggestion_only"` // suggestionOnly on the styled screen
+	Login          bool   `json:"login,omitempty"` // ClaudeLoginOnScreen: one of Claude's sign-in screens (#3830)
 	Note           string `json:"note,omitempty"`
 	// KnownGap: what the detectors get wrong on this screen today. The labels are the
 	// right reading; the test logs the difference instead of failing, and fails once
@@ -43,7 +44,7 @@ const corpusNudge = "You have 1 unread message on the message board. Run 'coral-
 var boxStateNames = map[boxState]string{boxUnknown: "unknown", boxEmpty: "empty", boxOurs: "ours", boxOther: "other"}
 
 // whyPrefixes are the reasons PromptOnScreen gives, by their fixed start.
-var whyPrefixes = []string{"selection menu", "prompt question", footerWhy, busyWhy}
+var whyPrefixes = []string{"selection menu", "prompt question", footerWhy, busyWhy, loginWhy}
 
 func whyPrefix(why string) string {
 	for _, p := range whyPrefixes {
@@ -70,6 +71,7 @@ func readScreen(styled string) screenLabel {
 		Box:            boxStateNames[inputBoxState(screen, corpusNudge, false)],
 		SuggestionOnly: suggestionOnly(styled),
 	}
+	l.Login, _ = ClaudeLoginOnScreen(screen)
 	if open {
 		l.WhyPrefix = whyPrefix(why)
 		l.PromptHold = isPromptHold(why)

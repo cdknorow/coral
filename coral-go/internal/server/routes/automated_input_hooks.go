@@ -178,7 +178,7 @@ func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessio
 			agentType = ls.AgentType
 		}
 	}
-	h.applyTranscriptState(&in, events, agentType, sessionID, workingDir)
+	h.applyTranscriptState(&in, events, agentType, name, sessionID, workingDir)
 	st := sessionstate.Derive(in)
 	cliVersion := h.runningCLIVersion(ctx, agentType, sessionID, workingDir)
 	as := ptymanager.AgentState{

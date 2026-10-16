@@ -15,7 +15,7 @@ import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from 
 import { storeKey, onAccountForgotten } from './local_store.js';
 import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, lastContent, updateWorkGroupSummary } from './chat_content.js';
 import { flashCopied, makeBubble } from './chat_bubbles.js';
-import { ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
+import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 import { INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, isCoralNudge, normalizeNudgeText, noteAgentActivity, noteInterrupt, rememberUserMessage, syncPendingBubbles, syncWorkingIndicator } from './pending_messages.js';
 export { addPendingMessage, loadPendingFromStorage, removePendingMessage } from './pending_messages.js';
 export { linkifyRefs } from './chat_bubbles.js';
@@ -531,6 +531,8 @@ export async function refreshLiveHistory() {
         const po = data.prompt_options;
         if (po) promptOptionsBySession.set(session.session_id, { question: po.question || "", options: po.options || [], review: po.review || [] });
         else promptOptionsBySession.delete(session.session_id);
+        // A sign-in the CLI waits on (#3830): the reply is fresher than the session row.
+        if (typeof data.needs_login === "boolean") loginBySession.set(session.session_id, data.needs_login ? { reason: String(data.login_reason || "") } : null);
 
         if (data.messages && data.messages.length > 0) {
             if (!initialLoadDone) {

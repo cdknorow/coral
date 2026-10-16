@@ -1,0 +1,24 @@
+{
+ "login_method.ansi": {
+  "state": "login_method",
+  "prompt": true,
+  "why_prefix": "selection menu",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "login": true,
+  "note": "first run: Select login method (#3830)"
+ },
+ "login_oauth_code.ansi": {
+  "state": "login_oauth_code",
+  "prompt": true,
+  "why_prefix": "login screen: ",
+  "prompt_hold": true,
+  "input_box": false,
+  "box": "unknown",
+  "suggestion_only": false,
+  "login": true,
+  "note": "OAuth step: the sign-in URL and Paste code here if prompted (#3830); the URL's state and code_challenge are redacted"
+ }
+}

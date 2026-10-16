@@ -493,7 +493,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		for _, event := range stateEvents[sid] {
 			stateInput.Events = append(stateInput.Events, event.StateEvent())
 		}
-		h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, sid, agent.WorkingDir)
+		h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, agent.TmuxSession, sid, agent.WorkingDir)
 		state := DeriveSessionState(stateInput)
 
 		var waitingReason, waitingSummary any
@@ -526,6 +526,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"name_color":            nilIfEmpty(nameColors[sid]),
 			"working_directory":     agent.WorkingDir,
 			"waiting_for_input":     state.NeedsInput,
+			"needs_login":           state.NeedsLogin,
 			"awaiting_user":         state.AwaitingUser,
 			"not_started":           state.NotStarted,
 			"done":                  state.Done,

@@ -184,8 +184,16 @@ func PromptOnScreen(screen string) (bool, string) {
 			return true, "prompt question: " + t
 		}
 	}
+	// Claude's OAuth step waits for a pasted code with no menu: a send would be typed into it
+	// (#3830).
+	if on, why := ClaudeLoginOnScreen(screen); on {
+		return true, loginWhy + why
+	}
 	return false, ""
 }
+
+// loginWhy starts PromptOnScreen's reason for one of Claude's sign-in screens.
+const loginWhy = "login screen: "
 
 // tailLines returns the last n non-blank-trailing lines of s.
 func tailLines(s string, n int) []string {

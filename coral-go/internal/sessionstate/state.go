@@ -60,7 +60,19 @@ type Input struct {
 	// Archived agents never report a pending request: nobody is meant to answer
 	// it until the agent is unarchived, even if its terminal outlived the archive.
 	Archived bool
+	// NeedsLogin: the agent's CLI waits for the user to sign in (#3830): its transcript's
+	// latest message is an authentication error, or, before it has a transcript, its login
+	// screen is open. LoginReason is the CLI's own message, when it gave one.
+	NeedsLogin  bool
+	LoginReason string
 }
+
+// KindLogin is the WaitingKind of an agent that needs the user to sign in (#3830).
+const KindLogin = "login"
+
+// LoginSummary is the WaitingSummary of an agent that needs the user to sign in, when its
+// CLI gave no message of its own.
+const LoginSummary = "The agent needs you to sign in (in its terminal)"
 
 // State is the authoritative live-state contract. Done is retained as a
 // deprecated compatibility field and is always false: ended/history rows are
@@ -78,6 +90,9 @@ type State struct {
 	Sleeping    bool
 	Stuck       bool
 	Done        bool
+	// NeedsLogin: the agent waits for the user to sign in (Input.NeedsLogin). It is also
+	// NeedsInput, kind KindLogin, so every surface that shows a request shows this one.
+	NeedsLogin bool
 
 	// For the automated-input gate (#3481, #3475 phase 1), from the agent's events:
 	// InTurn: its turn is running (a prompt or a tool event is the latest), however
@@ -251,7 +266,20 @@ func Derive(in Input) State {
 	// field explicit and false rather than inventing a timeout heuristic.
 	state.Stuck = false
 	state.Done = false
+	if in.NeedsLogin {
+		// Nothing runs until the user signs in: whatever the events say, the agent waits
+		// on this, and automated input is held (an Enter would answer the login screen).
+		state.NeedsLogin = true
+		state.NeedsInput, state.AwaitingUser, state.Working, state.InTurn, state.NotStarted = true, false, false, false, false
+		state.WaitingReason, state.WaitingKind = "login", KindLogin
+		state.WaitingSummary = in.LoginReason
+		if state.WaitingSummary == "" {
+			state.WaitingSummary = LoginSummary
+		}
+		state.OwnRequest = true
+	}
 	if in.Archived {
+		state.NeedsLogin = false
 		clearRequest()
 		state.AwaitingUser = false
 		state.Working = false
@@ -259,6 +287,24 @@ func Derive(in Input) State {
 		state.OwnRequest = false
 	}
 	return state
+}
+
+// SignedInSince reports whether an event after t shows an agent is past a sign-in its CLI
+// asked for at t (#3830): Claude Code's auth_success notification, or a prompt or tool run
+// since. Its transcript's next message clears the error too; these cover the time before it
+// is written.
+func SignedInSince(events []Event, t time.Time) bool {
+	for _, ev := range events {
+		if ev.At.IsZero() || !ev.At.Truncate(time.Second).After(t.Truncate(time.Second)) {
+			continue
+		}
+		switch {
+		case ev.Type == "notification" && ev.Kind == "auth_success",
+			ev.Type == "prompt_submit", ev.Type == "tool_use":
+			return true
+		}
+	}
+	return false
 }
 
 // HeldInputSummary is the notification Coral records when automated input has

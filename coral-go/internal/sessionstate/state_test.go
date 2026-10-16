@@ -349,3 +349,53 @@ func TestUnknownRequestKindsAreIgnored(t *testing.T) {
 		t.Errorf("plan: %q", e.Kind)
 	}
 }
+
+// #3830: an agent that needs a sign-in waits on it whatever its events say: a request of kind
+// login (so the gate holds automated input), never at work or done. Archived wins.
+func TestNeedsLoginIsARequest(t *testing.T) {
+	at := time.Now()
+	in := Input{Events: []Event{{Type: "prompt_submit", At: at}}, NeedsLogin: true, LoginReason: "Invalid API key \u00b7 Please run /login"}
+	st := Derive(in)
+	if !st.NeedsLogin || !st.NeedsInput || st.WaitingKind != KindLogin || !st.OwnRequest || st.InTurn || st.Working {
+		t.Fatalf("got %+v", st)
+	}
+	if st.WaitingSummary != "Invalid API key \u00b7 Please run /login" {
+		t.Fatalf("summary %q", st.WaitingSummary)
+	}
+	in.LoginReason = ""
+	if st := Derive(in); st.WaitingSummary != LoginSummary {
+		t.Fatalf("no reason: summary %q", st.WaitingSummary)
+	}
+	in.NotStarted = true
+	if st := Derive(in); st.NotStarted {
+		t.Fatal("a login screen is not a launch that never started")
+	}
+	in.Archived = true
+	if st := Derive(in); st.NeedsLogin || st.NeedsInput {
+		t.Fatalf("archived: %+v", st)
+	}
+}
+
+// #3830: what shows an agent got past a sign-in its CLI asked for: a later auth_success, prompt
+// or tool, a whole second after the error (hook times can have second precision).
+func TestSignedInSince(t *testing.T) {
+	errAt := time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC)
+	later := errAt.Add(2 * time.Second)
+	for _, c := range []struct {
+		name string
+		ev   Event
+		want bool
+	}{
+		{"auth_success after", Event{Type: "notification", Kind: "auth_success", At: later}, true},
+		{"prompt after", Event{Type: "prompt_submit", At: later}, true},
+		{"tool after", Event{Type: "tool_use", At: later}, true},
+		{"the failed stop itself", Event{Type: "stop", At: later}, false},
+		{"another notification", Event{Type: "notification", Kind: "idle_prompt", At: later}, false},
+		{"auth_success in the same second", Event{Type: "notification", Kind: "auth_success", At: errAt.Add(300 * time.Millisecond)}, false},
+		{"prompt before", Event{Type: "prompt_submit", At: errAt.Add(-time.Minute)}, false},
+	} {
+		if got := SignedInSince([]Event{c.ev}, errAt); got != c.want {
+			t.Errorf("%s: got %v", c.name, got)
+		}
+	}
+}

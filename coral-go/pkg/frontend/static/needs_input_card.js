@@ -13,6 +13,7 @@ export const pendingToolBySession = new Map(); // session_id -> pending tool or 
 // The prompt's options as the terminal shows them right now (numbered, with
 // the digit that answers each), read by the server from a pane capture.
 export const promptOptionsBySession = new Map(); // session_id -> { question, options: [{ n, label, action }], review }
+export const loginBySession = new Map(); // session_id -> { reason } while the CLI waits for a sign-in, null when it doesn't (#3830)
 
 // Tools whose whole purpose is to wait for the user
 const BLOCKING_TOOLS = {
@@ -38,10 +39,13 @@ function needsInputInfo(session) {
     const row = (state.liveSessions || []).find(s => s.session_id === session.session_id) || session;
     const key = deriveSessionState(row);
     if (key === "ended" || key === "sleeping") return null;
+    // Waiting for a sign-in (#3830): the chat reply says so when it has; otherwise the row.
+    const login = loginBySession.has(session.session_id) ? loginBySession.get(session.session_id) : (row.needs_login ? { reason: "" } : null);
+    if (login) return { kind: "login", reason: login.reason };
     const pt = pendingToolBySession.get(session.session_id) || null;
     const screen = promptOptionsBySession.get(session.session_id) || null;
     if (pt && BLOCKING_TOOLS[pt.tool_name]) return { kind: BLOCKING_TOOLS[pt.tool_name], tool: pt, screen };
-    if (row.waiting_for_input) return { kind: "permission", tool: pt, screen, summary: String(row.waiting_summary || "").replace(/^Notification:\s*/, "") };
+    if (row.waiting_for_input && row.waiting_kind !== "login") return { kind: "permission", tool: pt, screen, summary: String(row.waiting_summary || "").replace(/^Notification:\s*/, "") };
     if (readsPromptsFromScreen(session) && screen && screen.options.length) return { kind: pt ? "permission" : "prompt", tool: pt, screen };
     if (key === "check_terminal") return { kind: "startup" };
     return null;
@@ -59,6 +63,7 @@ const KICKERS = {
     plan: "Plan ready for your review",
     permission: "Permission needed",
     startup: "Waiting in the terminal",
+    login: "Sign-in needed",
     prompt: "Needs your input",
 };
 
@@ -175,6 +180,8 @@ function needsInputHtml(info, session) {
         context = `<div class="cni-context-text">For example, trusting this folder or logging in. Answer it in the terminal.</div>`;
     }
 
+    if (info.kind === "login") return loginCardHtml(info, name, kicker);
+
     const controls = answerControlsHtml(info, descriptions, fullLabels);
     const hint = !onScreen && info.kind !== "startup" ? `<span class="cni-hint">Answer in the terminal</span>` : "";
     return `<div class="cni-head"><span class="cni-dot" aria-hidden="true"></span><span class="cni-kicker">${kicker}</span></div>`
@@ -183,6 +190,17 @@ function needsInputHtml(info, session) {
         + reviewHtml(info)
         + controls.body
         + `<div class="cni-foot"><button type="button" class="cni-link" data-on-click="terminal-view-open">Open terminal</button>${hint}<span class="cni-foot-spacer"></span>${controls.foot}</div>`;
+}
+
+// The sign-in card (#3830): the login happens in the agent's terminal (a browser link and a code
+// to paste back, or /login), so the card's one action opens it. reason is the CLI's own message.
+function loginCardHtml(info, name, kicker) {
+    const reason = info.reason ? `<div class="cni-context-text cni-login-reason">${escapeHtml(info.reason)}</div>` : "";
+    return `<div class="cni-head"><span class="cni-dot" aria-hidden="true"></span><span class="cni-kicker">${kicker}</span></div>`
+        + `<div class="cni-question">${escapeHtml(name)} needs you to sign in</div>`
+        + reason
+        + `<div class="cni-context-text">Sign in from the terminal. Nothing runs until you do.</div>`
+        + `<div class="cni-foot"><button type="button" class="btn btn-sm btn-primary cni-login-open" data-on-click="terminal-view-open">Open terminal</button></div>`;
 }
 
 // The prompt cards Coral itself made (#3622 F1). Only a control inside one of these, and outside

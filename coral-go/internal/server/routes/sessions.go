@@ -95,6 +95,8 @@ type SessionsHandler struct {
 
 	pending pendingTools // tool calls started but not finished (PreToolUse hook)
 	hints   promptHints  // whether a prompt may be open on a session's terminal (its latest hook events), for the chat reply
+	// loginScreens: whether a Claude agent with no transcript yet shows its login screen (#3830).
+	loginScreens loginScreens
 	// hooksRev is the hook set each session's agent loaded at its launch, from its events
 	// (session id → revision, #3655 F3). In memory: until a session's next event after a
 	// restart it is unknown, and the gate takes the screen rule (the safe side).
@@ -534,21 +536,6 @@ func getLogStatus(logPath string) map[string]any {
 	return status
 }
 
-func usageLimitNotice(logPath string) string {
-	return usageLimitNoticeFromStatus(getLogStatus(logPath))
-}
-
-func usageLimitNoticeFromStatus(info map[string]any) string {
-	lines, _ := info["recent_lines"].([]string)
-	for _, line := range lines {
-		lower := strings.ToLower(line)
-		if strings.Contains(lower, "usage limit") || strings.Contains(lower, "weekly limit") {
-			return "This agent reached its weekly usage limit and cannot continue until the limit resets."
-		}
-	}
-	return ""
-}
-
 // cachedResumeFromID performs the authoritative lookup once per live session
 // ID. The client never supplies or overrides this value; it only supplies the
 // session ID used to select the cache entry. Session IDs are unique and a
@@ -824,7 +811,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		transcriptStarted := time.Now()
 		if !skipExpensive {
-			h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, sid, agent.WorkingDir)
+			h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, agent.TmuxSession, sid, agent.WorkingDir)
 		}
 		trace.agentDetail("transcript_state", sid, time.Since(transcriptStarted))
 		state := DeriveSessionState(stateInput)
@@ -867,6 +854,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"repo_name":             repoNameVal,
 			"git_state":             worktreeVal,
 			"waiting_for_input":     state.NeedsInput,
+			"needs_login":           state.NeedsLogin,
 			"awaiting_user":         state.AwaitingUser,
 			"not_started":           state.NotStarted,
 			"done":                  state.Done,
@@ -1534,7 +1522,19 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// Reuse the bounded log-status cache used by the live-session list. Chat
 	// polls run every second; reparsing the same 256KB log tail on each poll
 	// adds avoidable filesystem and parsing work when the log is unchanged.
-	limitNotice := usageLimitNoticeFromStatus(h.cachedLogStatus(h.findLogPath(agentType, sessionID)))
+	// A pending sign-in is said by its own card; the limit notice only when there is none (#3830).
+	var needsLogin bool
+	var loginReason string
+	if agentType == at.Claude {
+		needsLogin, loginReason = h.claudeLoginState(name, sessionID, workingDir, func() []store.AgentEvent {
+			byID, _ := h.ts.GetSessionStateEvents(r.Context(), []string{sessionID})
+			return byID[sessionID]
+		})
+	}
+	limitNotice := ""
+	if !needsLogin {
+		limitNotice = h.usageLimitText(agentType, sessionID, workingDir, h.cachedLogStatus(h.findLogPath(agentType, sessionID)))
+	}
 	trace.end("log_status")
 	if after > 0 {
 		messages = messages[min(after, len(messages)):]
@@ -1578,13 +1578,16 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			"start":        start,
 			"has_more":     start > 0,
 			"limit_notice": limitNotice,
+			"needs_login":  needsLogin,
+			"login_reason": nilIf(!needsLogin || loginReason == "", loginReason),
 		}
 		h.addNeedsInput(r, reply, name, agentType, sessionID)
 		httputil.WriteJSONCompressed(w, r, http.StatusOK, reply)
 		return
 	}
 
-	reply := map[string]any{"messages": messages, "total": total, "limit_notice": limitNotice}
+	reply := map[string]any{"messages": messages, "total": total, "limit_notice": limitNotice,
+		"needs_login": needsLogin, "login_reason": nilIf(!needsLogin || loginReason == "", loginReason)}
 	h.addNeedsInput(r, reply, name, agentType, sessionID)
 	writeJSON(w, http.StatusOK, reply)
 }

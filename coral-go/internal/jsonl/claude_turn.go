@@ -29,6 +29,15 @@ func (r *SessionReader) ReadClaudeVersion(sessionID, workingDir string) string {
 	return r.scanClaudeTranscript(sessionID, workingDir).version
 }
 
+// ReadClaudeAPIError returns the API error that is a Claude session's latest transcript message
+// (the zero value when the latest message is not one), and whether the session has a transcript
+// at all (#3830). It is the CLI's own record of why a turn failed: an authentication error
+// means the agent needs the user to sign in, a rate_limit error that it hit its usage limit.
+func (r *SessionReader) ReadClaudeAPIError(sessionID, workingDir string) (ClaudeAPIError, bool) {
+	st := r.scanClaudeTranscript(sessionID, workingDir)
+	return st.apiErr, st.initialized
+}
+
 // scanClaudeTranscript reads what a Claude transcript gained since the last call and returns the
 // turn and version state; the zero state when no transcript is found.
 func (r *SessionReader) scanClaudeTranscript(sessionID, workingDir string) claudeTurnCache {
@@ -46,11 +55,13 @@ func (r *SessionReader) scanClaudeTranscript(sessionID, workingDir string) claud
 	}
 	scanTranscriptAppend(c.path, &c.claudeState.transcriptReadState, func() {
 		c.claudeState.event, c.claudeState.at, c.claudeState.version = "", time.Time{}, ""
+		c.claudeState.apiErr = ClaudeAPIError{}
 	}, func(line []byte) {
 		if v := claudeLineVersion(line); v != "" {
 			c.claudeState.version = v
 		}
 		updateClaudeTurnState(&c.claudeState, line)
+		updateClaudeAPIError(&c.claudeState.apiErr, line)
 	})
 	return c.claudeState
 }
@@ -131,4 +142,104 @@ func claudeInterruptText(raw json.RawMessage) bool {
 		}
 	}
 	return false
+}
+
+// ClaudeAPIError is an API error Claude Code recorded as a transcript message (#3830): an
+// assistant entry with isApiErrorMessage, the error's kind and the CLI's text, e.g.
+// {"error":"authentication_failed", text "Invalid API key · Please run /login"}.
+type ClaudeAPIError struct {
+	Kind string // "authentication_failed", "oauth_org_not_allowed", "rate_limit", "billing_error", ...
+	Text string // the CLI's message, capped
+	At   time.Time
+}
+
+// NeedsLogin reports whether the error means the user must sign in. Older CLIs wrote no kind:
+// their text names /login.
+func (e ClaudeAPIError) NeedsLogin() bool {
+	switch e.Kind {
+	case "authentication_failed", "oauth_org_not_allowed":
+		return true
+	case "":
+		return e.Text != "" && (strings.Contains(e.Text, "Please run /login") || strings.HasPrefix(e.Text, "Invalid API key") ||
+			strings.HasPrefix(e.Text, "OAuth token has expired") || strings.HasPrefix(e.Text, "OAuth token revoked"))
+	}
+	return false
+}
+
+// UsageLimit reports whether the error is the CLI's rate-limit error (a usage limit, or the
+// server limiting requests), whose text then says which.
+func (e ClaudeAPIError) UsageLimit() bool {
+	return e.Kind == "rate_limit" || e.Kind == "" && strings.HasPrefix(e.Text, "Claude AI usage limit reached")
+}
+
+const claudeAPIErrorTextMax = 300
+
+var (
+	claudeUserType      = []byte(`"type":"user"`)
+	claudeAssistantType = []byte(`"type":"assistant"`)
+)
+
+// updateClaudeAPIError keeps the latest user or assistant message's API error: an error line
+// sets it, any other message clears it (the user sent something, or a turn ran since).
+func updateClaudeAPIError(e *ClaudeAPIError, line []byte) {
+	if !bytes.Contains(line, claudeUserType) && !bytes.Contains(line, claudeAssistantType) {
+		return // cheap filter: system, summary and progress lines are neither
+	}
+	var entry struct {
+		Type       string          `json:"type"`
+		IsAPIError bool            `json:"isApiErrorMessage"`
+		Error      json.RawMessage `json:"error"`
+		Status     int             `json:"apiErrorStatus"`
+		Timestamp  string          `json:"timestamp"`
+	}
+	if json.Unmarshal(line, &entry) != nil || entry.Type != "user" && entry.Type != "assistant" {
+		return
+	}
+	if entry.Type != "assistant" || !entry.IsAPIError {
+		*e = ClaudeAPIError{}
+		return
+	}
+	var kind string
+	_ = json.Unmarshal(entry.Error, &kind) // a kind other than a string is no kind
+	if kind == "" && entry.Status == 401 {
+		kind = "authentication_failed"
+	}
+	var msg struct {
+		Message struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	_ = json.Unmarshal(line, &msg)
+	text := claudeMessageText(msg.Message.Content)
+	if len(text) > claudeAPIErrorTextMax {
+		text = strings.ToValidUTF8(text[:claudeAPIErrorTextMax], "")
+	}
+	ts, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
+	*e = ClaudeAPIError{Kind: kind, Text: strings.TrimSpace(text), At: ts}
+}
+
+// claudeMessageText is a message's text: the content itself when it is a string, or its text
+// blocks joined.
+func claudeMessageText(raw json.RawMessage) string {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text
+	}
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &parts) != nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, p := range parts {
+		if p.Type == "text" && p.Text != "" {
+			if b.Len() > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(p.Text)
+		}
+	}
+	return b.String()
 }

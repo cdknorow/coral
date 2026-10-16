@@ -5,6 +5,7 @@ import (
 	"time"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
 
 	"github.com/cdknorow/coral/internal/sessionstate"
@@ -36,14 +37,15 @@ func (h *SessionsHandler) deriveSingleSessionState(ctx context.Context, sessionI
 		}
 		if session, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && session != nil {
 			in.Archived = session.IsArchived == 1
-			h.applyTranscriptState(&in, events[sessionID], session.AgentType, sessionID, session.WorkingDir)
+			h.applyTranscriptState(&in, events[sessionID], session.AgentType, naming.SessionName(session.AgentType, sessionID), sessionID, session.WorkingDir)
 		}
 	}
 	return DeriveSessionState(in)
 }
 
 // All session payloads use the same transcript fallback when hooks are missing.
-func (h *SessionsHandler) applyTranscriptState(input *SessionStateInput, events []store.AgentEvent, agentType, sessionID, workingDir string) {
+// name is the agent's terminal, read for a login screen while a Claude agent has no transcript.
+func (h *SessionsHandler) applyTranscriptState(input *SessionStateInput, events []store.AgentEvent, agentType, name, sessionID, workingDir string) {
 	switch agentType {
 	case at.Codex:
 		kind, atTime := h.jsonl.ReadCodexTurnEvent(sessionID, workingDir)
@@ -59,6 +61,8 @@ func (h *SessionsHandler) applyTranscriptState(input *SessionStateInput, events 
 			kind, atTime := h.jsonl.ReadClaudeTurnEvent(sessionID, workingDir)
 			mergeTranscriptTurnEvent(input, events, kind, atTime)
 		}
+		// A failed sign-in ends a turn like any API error; the transcript says which (#3830).
+		input.NeedsLogin, input.LoginReason = h.claudeLoginState(name, sessionID, workingDir, func() []store.AgentEvent { return events })
 	}
 }
 
