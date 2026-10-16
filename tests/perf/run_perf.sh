@@ -14,7 +14,7 @@
 #   QA_PERF_RUN=1 bash tests/perf/run_perf.sh                 # against ~/coral
 #   QA_PERF_RUN=1 REPO=/path/to/worktree WORK=$HOME/perf-run bash tests/perf/run_perf.sh
 # Env overrides: GO, REPO, WORK, QA, PORT, PPROF_PORT, N, NSESS, NBIG, BIGMB, SMALLKB,
-#   FILESN, NMSG, NEVENT, TABS, WARMUP_S, CPU_S, LOAD_S, STRACE_S.
+#   FILESN, NMSG, NEVENT, TABS, WARMUP_S, CPU_S, LOAD_S, STRACE_S, STRACE_SETTLE_S.
 # The script re-execs itself under `nice -n 10` (one documented command, nice +10).
 set -u
 
@@ -54,6 +54,7 @@ WARMUP_S="${WARMUP_S:-150}"
 CPU_S="${CPU_S:-60}"
 LOAD_S="${LOAD_S:-180}"
 STRACE_S="${STRACE_S:-120}"
+STRACE_SETTLE_S="${STRACE_SETTLE_S:-90}"   # let startup churn (per-agent login/uname probes) finish before the idle execve window
 BASE="http://127.0.0.1:$PORT"
 PPROF="http://127.0.0.1:$PPROF_PORT"
 SOCKET="$DATADIR/tmux.sock"
@@ -71,12 +72,11 @@ log(){ echo "[perf] $*"; }
 
 cleanup() {
   log "cleanup (recorded PIDs only)..."
-  for v in LOADPID SAMPLEPID STRACEPID SRVPID; do
+  for v in LOADPID SAMPLEPID STRACEPID; do
     p="${!v}"
-    [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null && { kill "$p" 2>/dev/null; }
+    [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null && kill "$p" 2>/dev/null
   done
-  sleep 2
-  [[ -n "$SRVPID" ]] && kill -0 "$SRVPID" 2>/dev/null && kill -9 "$SRVPID" 2>/dev/null
+  stop_server   # kills the server's whole process group (reaps the coral child under strace too)
   [[ -S "$SOCKET" ]] && "$TMUX_BIN" -S "$SOCKET" kill-server 2>/dev/null
   rm -rf "$CORALGO/cmd/qa3851seed" 2>/dev/null   # leave the repo as found (seeder copy)
 }
@@ -114,7 +114,13 @@ start_server() {
 }
 
 stop_server() {
-  [[ -n "$SRVPID" ]] && kill -0 "$SRVPID" 2>/dev/null && { kill "$SRVPID" 2>/dev/null; sleep 3; kill -9 "$SRVPID" 2>/dev/null; }
+  # setsid made SRVPID the process-group leader, so kill the whole group, not just SRVPID:
+  # under strace, SRVPID is the strace wrapper and the real coral is its traced child in the
+  # same group, so killing only SRVPID would orphan coral. The server runs in its own session
+  # (setsid), separate from this script's group, so this never signals the harness itself.
+  if [[ -n "$SRVPID" ]] && kill -0 "$SRVPID" 2>/dev/null; then
+    kill -TERM -- "-$SRVPID" 2>/dev/null; sleep 3; kill -KILL -- "-$SRVPID" 2>/dev/null
+  fi
   SRVPID=""
 }
 
@@ -167,10 +173,15 @@ stop_server
 # ============ Phase C: fork/exec census (server under strace) ============
 log "=== Phase C (execve census under strace, idle ${STRACE_S}s + load ${STRACE_S}s) ==="
 start_server C "$OUT/strace_C.txt" || exit 1
-log "idle execve window ${STRACE_S}s"; m1=$(wc -l < "$OUT/strace_C.txt"); sleep "$STRACE_S"; m2=$(wc -l < "$OUT/strace_C.txt")
+# strace -f writes more than execve lines (attach notes, "+++ exited +++", "--- SIGCHLD ---",
+# "<... resumed>"), so count only the real execve calls, not every line.
+nexecve(){ grep -c 'execve(' "$OUT/strace_C.txt" 2>/dev/null || true; }
+# Let per-agent startup churn (login/uname/version probes) settle so the idle window is steady state.
+log "settle ${STRACE_SETTLE_S}s before the idle execve window"; sleep "$STRACE_SETTLE_S"
+log "idle execve window ${STRACE_S}s"; m1=$(nexecve); sleep "$STRACE_S"; m2=$(nexecve)
 echo "idle $((m2-m1))" > "$OUT/execve_counts.txt"
 python3 "$HERE/load.py" "$BASE" "$TARGETS" "$TABS" "$STRACE_S" > "$OUT/tabs_C.txt" 2>&1 & LOADPID=$!
-m3=$(wc -l < "$OUT/strace_C.txt"); wait "$LOADPID" 2>/dev/null; LOADPID=""; m4=$(wc -l < "$OUT/strace_C.txt")
+m3=$(nexecve); wait "$LOADPID" 2>/dev/null; LOADPID=""; m4=$(nexecve)
 echo "load $((m4-m3))" >> "$OUT/execve_counts.txt"
 stop_server
 
