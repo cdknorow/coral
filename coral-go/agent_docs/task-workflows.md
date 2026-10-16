@@ -483,12 +483,8 @@ Requires Go, tmux, curl, Python 3 and lsof. Override the default test port with
 retain their temporary data and server log; `KEEP_TEST_DATA=1` retains successful
 runs too. Mock sessions and the test server are cleaned up on exit.
 
-To run just the API checks, build a dev binary and
-run `CORAL_BIN=/path/to/coral python3 tests/stress/test_task_workflow_api.py` from
-the repository root. This covers immediate readiness, restart recovery, and
-required-artifact limits. Standalone runs retain the test database and server
-log; runs through the stress harness follow its retention settings and include
-the API checks in its final pass/fail summary.
+Immediate readiness, restart recovery, required-artifact limits and concurrent
+completion review are covered by the Go tests in `coral-go/internal/board`.
 
 ## Why a completed prerequisite can still block a task
 

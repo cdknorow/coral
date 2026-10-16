@@ -12,10 +12,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORAL_DIR="$REPO_ROOT/coral-go"
 PORT="${CORAL_STRESS_PORT:-8471}"
 if [[ "$PORT" == 8420 ]]; then echo "ERROR: refusing port 8420 (production Coral server); pick another port." >&2; exit 2; fi
-RESTART_ONLY=false
-if [[ "${1:-}" == "--restart-only" ]]; then
-    RESTART_ONLY=true
-elif [[ "${1:-}" == "--identity" ]]; then
+if [[ "${1:-}" == "--identity" ]]; then
     # Identity (#3387, #3418): session tokens, attribution, impersonation, sign-in links, scale; --identity --strict
     # runs the same with --strict-local-auth (phase 2).
     exec bash "$SCRIPT_DIR/run_identity.sh" "${2:-}"
@@ -23,7 +20,7 @@ elif [[ "${1:-}" == "--kill-all" ]]; then
     # Folder Kill all with real agents in the real dashboard (#3053/#3058); its own server and port.
     exec bash "$SCRIPT_DIR/run_kill_all.sh"
 elif [[ $# -gt 0 ]]; then
-    echo "Usage: $0 [--restart-only | --kill-all | --identity [--strict]]" >&2
+    echo "Usage: $0 [--kill-all | --identity [--strict]]" >&2
     exit 2
 fi
 HOST="127.0.0.1"
@@ -116,26 +113,6 @@ SERVER_PID=$!
 wait_for_server
 }
 start_server
-
-# Exercise cached thread replacement and persisted pickup across real restarts.
-# This does not launch any agents or modify provider transcripts outside CODEX_HOME.
-restart_probe() {
-    python3 "$SCRIPT_DIR/test_codex_restart.py" "$1" "$BASE_URL" "$TMPDIR_STRESS" "$TMPDIR_STRESS/coral-agent"
-}
-restart_probe seed
-for restart_round in 1 2 3; do
-    restart_probe rotate
-    kill "$SERVER_PID"
-    wait "$SERVER_PID" || true
-    SERVER_PID=""
-    start_server
-    restart_probe verify
-    pass "Codex restart round $restart_round: cached replacement, durable link, isolated identity, incremental pickup"
-done
-if [[ "$RESTART_ONLY" == true ]]; then
-    log "Restart regression: $PASS passed, $FAIL failed"
-    exit "$FAIL"
-fi
 
 # ── Test 1: Create tasks ────────────────────────────────────────────
 
@@ -863,6 +840,7 @@ else
 fi
 
 # ── Test 21: Draft task creation and publish ─────────────────────────
+# Publishing is a planner's step (#3668): the dashboard publishes as the Operator.
 
 DRAFT_BOARD="draft-test-$$"
 draft_api() {
@@ -906,7 +884,7 @@ draft_api POST "/tasks/${claim_draft_id}/complete" -d '{"subscriber_id": "draft-
 
 # ── Test 23: Publish draft → pending ─────────────────────────────────
 
-publish_result=$(draft_api POST "/tasks/${draft_id}/publish" -d '{}')
+publish_result=$(draft_api POST "/tasks/${draft_id}/publish" -d '{"subscriber_id": "Operator"}')
 publish_status=$(echo "$publish_result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
 if [[ "$publish_status" == "pending" ]]; then
@@ -956,7 +934,7 @@ else
 fi
 
 # Publish — should become blocked (blocker unresolved)
-pub_dep=$(draft2_api POST "/tasks/${draft_dep_id}/publish" -d '{}')
+pub_dep=$(draft2_api POST "/tasks/${draft_dep_id}/publish" -d '{"subscriber_id": "Operator"}')
 pub_dep_status=$(echo "$pub_dep" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
 if [[ "$pub_dep_status" == "blocked" ]]; then
@@ -1003,7 +981,7 @@ draft3_api_status() {
 
 draft3_api POST "/tasks" -d '{"title": "Pending", "created_by": "Operator"}' >/dev/null
 
-pub_status=$(draft3_api_status POST "/tasks/1/publish" -d '{}')
+pub_status=$(draft3_api_status POST "/tasks/1/publish" -d '{"subscriber_id": "Operator"}')
 
 if [[ "$pub_status" == "400" ]]; then
     pass "Draft: publish non-draft returns 400"

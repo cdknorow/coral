@@ -110,7 +110,7 @@ builder task complete "$SUCCESSOR" >/dev/null
 CANCELLED_BUILD=$(planner task add "Cancelled candidate" | task_id)
 CANCEL_SUCCESS=$(planner task add "Do not ship cancellation" --blocked-by "[$CANCELLED_BUILD]" | task_id)
 CANCEL_CLEANUP=$(planner task add "Clean cancelled candidate" --blocked-by "[{\"task_id\":$CANCELLED_BUILD,\"condition\":\"termination\"}]" | task_id)
-builder task cancel "$CANCELLED_BUILD" >/dev/null
+planner task cancel "$CANCELLED_BUILD" >/dev/null # unassigned: the orchestrator's to cancel
 check "cancellation unlocks cleanup but never success" 'wait_task_status "$CANCEL_CLEANUP" pending && [[ $(workflow_status "$CANCEL_SUCCESS") == blocked ]]'
 check "cancellation notifies orchestrator about stalled success consumer" 'wait_board_message "[Task #$CANCEL_SUCCESS stalled]"'
 

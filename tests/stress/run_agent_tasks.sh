@@ -10,8 +10,8 @@
 # Assignment isolation uses real CLI/API requests and a headless browser edit
 # regression. Requires tmux, Python 3, Node, Chrome/Chromium (or CORAL_CHROME_BIN),
 # and tests/frontend dependencies installed beforehand (npm ci there).
-# Also runs real HTTP API regressions for atomic readiness, abrupt restart
-# recovery, and the 32-artifact configuration boundary using the same build.
+# Readiness, restart recovery, the artifact limits and concurrent completion review are
+# covered by the Go tests in coral-go/internal/board.
 #
 set -euo pipefail
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
@@ -88,9 +88,24 @@ wait_for_server() {
 
 # Run coral-agent as an agent: its identity is CORAL_SESSION_NAME (TMUX unset
 # so the caller's own tmux session, if any, is not picked up).
+# token_of <session name>: the session token Coral gave that agent at launch, as the agent itself
+# has it (the mock agent writes what it inherited to MOCK_AGENT_ENV_DUMP, in this test's folder).
+# Since #3495 an agent's tools carry it on every call. Empty for a name that isn't an agent.
+token_of() {
+    local sid="${1#claude-}" f attempt
+    [[ "$1" == claude-* ]] || return 0 # not an agent's session (the suite's own roles)
+    f="$TMPDIR_AT/env-dump/$sid.env"
+    for attempt in $(seq 1 40); do
+        [[ -s "$f" ]] && break
+        sleep 0.25
+    done
+    [[ -s "$f" ]] && sed -n 's/^CORAL_SESSION_TOKEN=//p' "$f"
+}
+
 as_agent() {
     local session_name="$1"; shift
-    env -u TMUX -u CORAL_PORT CORAL_URL="$BASE_URL" CORAL_SESSION_NAME="$session_name" "$TMPDIR_AT/coral-agent" "$@"
+    env -u TMUX -u CORAL_PORT CORAL_URL="$BASE_URL" CORAL_SESSION_NAME="$session_name" \
+        CORAL_SESSION_TOKEN="$(token_of "$session_name")" "$TMPDIR_AT/coral-agent" "$@"
 }
 
 # The agent's terminal as text
@@ -100,9 +115,12 @@ capture() {
 
 # Wait until the agent's terminal shows a line, up to ~10s. The pane wraps
 # long lines, so they are joined back before searching.
+# Up to 150 s: a notice is typed by the automated-input gate, which holds it while the agent is
+# in a turn. A mock agent posts no hook events, so its turn ends only when the gate takes it as
+# stale (staleInTurn, 2 minutes); a check that passes returns as soon as the text is there.
 wait_for_input() {
     local name="$1" sid="$2" needle="$3" i
-    for i in $(seq 1 40); do
+    for i in $(seq 1 600); do
         if capture "$name" "$sid" | tr -d '\n' | grep -F -q -- "$needle"; then return 0; fi
         sleep 0.25
     done
@@ -146,7 +164,10 @@ log "Starting coral server on port $PORT..."
 # The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
 # ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
 mkdir -p "$TMPDIR_AT/host-home"
-env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_AT/host-home" "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
+mkdir -p "$TMPDIR_AT/env-dump"
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR -u CORAL_CLOUD_URL HOME="$TMPDIR_AT/host-home" \
+    MOCK_AGENT_ENV_DUMP="$TMPDIR_AT/env-dump" \
+    "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --cloud-url off --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 
@@ -219,7 +240,7 @@ STATES=$(task_states "$NAME_A" "$SID_A")
 check "the dashboard sees done / in progress / pending / cancelled" 'echo " $STATES " | grep -q " $ID1:1 " && echo " $STATES " | grep -q " $ID2:2 " && echo " $STATES " | grep -q " $ID3:0 " && echo " $STATES " | grep -q " $ID4:3 "' "$STATES"
 OUT=$(as_agent "$SESS_A" task list)
 check "list shows completed, in_progress, pending and skipped" 'echo "$OUT" | grep -qE "^#$ID1 +completed " && echo "$OUT" | grep -qE "^#$ID2 +in_progress " && echo "$OUT" | grep -qE "^#$ID3 +pending " && echo "$OUT" | grep -qE "^#$ID4 +skipped "' "$OUT"
-MSG=$(api GET "/api/agent/tasks?session_id=$SID_A" | jget "next(t.get('completion_message','') for t in d['tasks'] if t['id']==$ID1)")
+MSG=$(api GET "/api/agent/tasks?session_id=$SID_A" -H "X-Coral-Session-Token: $(token_of "$SESS_A")" | jget "next(t.get('completion_message','') for t in d['tasks'] if t['id']==$ID1)")
 check "the completion message is stored" '[[ "$MSG" == "Logged in battle_log.go" ]]' "$MSG"
 
 # ── Test 6: claim order follows priority, like a board ───────────────
@@ -311,7 +332,7 @@ tester join claim-regressions --as Tester >/dev/null
 planner join claim-regressions --as Orchestrator >/dev/null
 
 CANCELLED_FIFO=$(planner task add "Cancelled FIFO row" --priority critical | task_id)
-builder task cancel "$CANCELLED_FIFO" >/dev/null
+planner task cancel "$CANCELLED_FIFO" >/dev/null # unassigned: the orchestrator's to cancel
 ASSIGNED_FIFO=$(planner task add "Assigned ready row" --priority low --assignee Builder | task_id)
 GLOBAL_FIFO=$(planner task add "Global critical row" --priority critical | task_id)
 OUT=$(builder task claim)
@@ -350,7 +371,7 @@ log "Test 14b: canceled prerequisites stall descendants and FIFO skips them..."
 CANCEL_ROOT=$(planner task add "Canceled prerequisite root" --priority critical | task_id)
 CANCEL_CHILD=$(planner task add "Stalled dependent" --priority critical --blocked-by "[$CANCEL_ROOT]" --assignee Tester | task_id)
 CANCEL_GRANDCHILD=$(planner task add "Stalled grandchild" --priority critical --blocked-by "[$CANCEL_CHILD]" --assignee Tester | task_id)
-builder task cancel "$CANCEL_ROOT" --message "superseded" >/dev/null
+planner task cancel "$CANCEL_ROOT" --message "superseded" >/dev/null
 CHILD_STATUS=$(api GET "/api/board/claim-regressions/tasks/$CANCEL_CHILD" | jget "d['status']")
 GRANDCHILD_STATUS=$(api GET "/api/board/claim-regressions/tasks/$CANCEL_GRANDCHILD" | jget "d['status']")
 check "canceling a prerequisite leaves the direct dependent blocked" '[[ "$CHILD_STATUS" == blocked ]]' "$CHILD_STATUS"
@@ -365,17 +386,6 @@ CODE=$?
 set -e
 check "direct-ID claim refuses a stalled dependent" '[[ $CODE -ne 0 ]] && echo "$OUT" | grep -qiE "blocked|available|dependency"' "$OUT"
 
-# Repeated concurrent requests cover evidence submissions, authorized releases,
-# claims, and final outcomes on isolated boards in this live server.
-log "Concurrent completion-review recovery (multiple rounds)..."
-if python3 "$SCRIPT_DIR/test_completion_review.py" "$BASE_URL" >"$TMPDIR_AT/completion-review.log" 2>&1; then
-    cat "$TMPDIR_AT/completion-review.log"
-    pass "concurrent completion-review recovery across multiple rounds"
-else
-    cat "$TMPDIR_AT/completion-review.log"
-    fail "concurrent completion-review recovery"
-fi
-
 # Assignment ownership regressions use their own board and mock identities.
 source "$SCRIPT_DIR/agent_task_assignment.sh"
 
@@ -386,23 +396,6 @@ if CORAL_TEST_URL="$BASE_URL" bash "$SCRIPT_DIR/run_assignment_browser.sh" >"$TM
 else
     cat "$TMPDIR_AT/assignment-browser.log"
     fail "assignment editor browser regressions; see $TMPDIR_AT/assignment-browser.log"
-fi
-
-# ── Test 15: readiness recovery and artifact configuration limits ──────
-# This helper owns a separate server/database because it kills and restarts
-# its server and seeds a legacy crash state. Keep the live mock agents intact.
-log "Test 15: API regressions for restart recovery and artifact limits..."
-if CORAL_BIN="$TMPDIR_AT/coral" \
-    CORAL_TEST_ARTIFACT_DIR="$TMPDIR_AT" \
-    CORAL_TEST_RESULT_FILE="$TMPDIR_AT/workflow-api-result.json" \
-    python3 "$SCRIPT_DIR/test_task_workflow_api.py" >"$TMPDIR_AT/workflow-api.log" 2>&1; then
-    cat "$TMPDIR_AT/workflow-api.log"
-    API_PASSED=$(jget "d['passed'] if d['success'] else 0" <"$TMPDIR_AT/workflow-api-result.json")
-    PASS=$((PASS + API_PASSED))
-    log "API regression phase: $API_PASSED checks passed"
-else
-    cat "$TMPDIR_AT/workflow-api.log"
-    fail "API regression phase failed; see $TMPDIR_AT/workflow-api.log"
 fi
 
 # ── Cleanup ──────────────────────────────────────────────────────────

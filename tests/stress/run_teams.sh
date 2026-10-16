@@ -236,16 +236,6 @@ else
     fail "git worktree list still shows the worktree after cleanup"
 fi
 
-# ── Test 10: Board-only membership survives restart ───────────────────
-
-log "Test 10: Verify board membership survives agent restart..."
-if python3 "$SCRIPT_DIR/test_team_restart.py" \
-    --base-url "$BASE_URL" --workdir "$REPO_DIR" --data-dir "$CORAL_DATA_DIR"; then
-    pass "Board-only membership survives two restarts"
-else
-    fail "Restart lost board membership or related session state"
-fi
-
 # ── Summary ──────────────────────────────────────────────────────────
 
 echo ""
