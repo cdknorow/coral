@@ -1,0 +1,151 @@
+package routes
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/ptymanager"
+)
+
+// #3887: one capture answers the read-only pollers for screenSnapTTL; concurrent pollers share
+// one capture; a failure isn't kept; a poller that gives up doesn't spoil it for the others.
+func TestScreenSnapsShareOneCapture(t *testing.T) {
+	var c screenSnaps
+	var fetches atomic.Int32
+	fetch := func(context.Context) (string, error) { fetches.Add(1); return "screen", nil }
+	ctx := context.Background()
+	t0 := time.Now()
+
+	out, _, err := c.capture(ctx, "claude-a", 40, t0, fetch)
+	require.NoError(t, err)
+	assert.Equal(t, "screen", out)
+	_, _, _ = c.capture(ctx, "claude-a", 40, t0.Add(screenSnapTTL/2), fetch)
+	assert.EqualValues(t, 1, fetches.Load(), "within the TTL: the same capture")
+	_, _, _ = c.capture(ctx, "claude-b", 40, t0, fetch)
+	_, _, _ = c.capture(ctx, "claude-a", 20, t0, fetch)
+	assert.EqualValues(t, 3, fetches.Load(), "another terminal or line count is its own capture")
+	_, _, _ = c.capture(ctx, "claude-a", 40, t0.Add(screenSnapTTL), fetch)
+	assert.EqualValues(t, 4, fetches.Load(), "after the TTL: a new capture")
+
+	// Many pollers at once: one capture.
+	var slow screenSnaps
+	release := make(chan struct{})
+	var slowFetches atomic.Int32
+	slowFetch := func(context.Context) (string, error) { slowFetches.Add(1); <-release; return "busy", nil }
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out, _, err := slow.capture(ctx, "claude-c", 40, t0, slowFetch)
+			assert.NoError(t, err)
+			assert.Equal(t, "busy", out)
+		}()
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	assert.EqualValues(t, 1, slowFetches.Load())
+
+	// A failure isn't kept.
+	var failing screenSnaps
+	var tries atomic.Int32
+	_, _, err = failing.capture(ctx, "claude-d", 40, t0, func(context.Context) (string, error) { tries.Add(1); return "", errors.New("gone") })
+	require.Error(t, err)
+	out, _, err = failing.capture(ctx, "claude-d", 40, t0, func(context.Context) (string, error) { tries.Add(1); return "back", nil })
+	require.NoError(t, err)
+	assert.Equal(t, "back", out)
+	assert.EqualValues(t, 2, tries.Load())
+
+	// A poller that gives up gets its own error; the capture still completes for the next one.
+	var patient screenSnaps
+	hold := make(chan struct{})
+	short, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancel()
+	_, _, err = patient.capture(short, "claude-e", 40, t0, func(context.Context) (string, error) { <-hold; return "late", nil })
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	close(hold)
+	out, _, err = patient.capture(ctx, "claude-e", 40, t0, func(context.Context) (string, error) { return "never called", nil })
+	require.NoError(t, err)
+	assert.Equal(t, "late", out)
+}
+
+// stampingBackend reports an output stamp the test sets (ptymanager.OutputStamper).
+type stampingBackend struct {
+	ptymanager.TerminalBackend
+	mu    sync.Mutex
+	stamp string
+}
+
+func (b *stampingBackend) OutputStamp(string, string) (string, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.stamp, true
+}
+
+func (b *stampingBackend) set(stamp string) {
+	b.mu.Lock()
+	b.stamp = stamp
+	b.mu.Unlock()
+}
+
+// #3887: the agent poll is the read-only path QA's census found (122 of 175 capture-panes): two
+// tabs polling one agent share a capture. A shared capture older than the output stamp is shown
+// but never kept against that stamp, so new output can't hide behind the stamp reuse.
+func TestPollSharesCapturesAcrossTabs(t *testing.T) {
+	defer func(old time.Duration) { screenSnapTTL = old }(screenSnapTTL)
+	screenSnapTTL = 150 * time.Millisecond
+	_, h, terminal, _ := setupSessionsTestServer(t)
+	ctx := context.Background()
+	const name, sid = "claude-11111111-2222-4333-8444-555555555555", "11111111-2222-4333-8444-555555555555"
+	terminal.addSession(name, "/tmp")
+	terminal.setOutput(name, "first screen")
+	captures := func() int {
+		terminal.mu.Lock()
+		defer terminal.mu.Unlock()
+		return len(terminal.captures)
+	}
+
+	// A backend without output stamps: the two tabs' polls share one capture until the TTL.
+	h.backend = nil
+	for i := 0; i < 2; i++ {
+		text, err := h.captureForPoll(ctx, name, "claude", sid)
+		require.NoError(t, err)
+		assert.Equal(t, "first screen", text)
+	}
+	assert.Equal(t, 1, captures(), "two tabs, one capture")
+	time.Sleep(screenSnapTTL + 20*time.Millisecond)
+	_, _ = h.captureForPoll(ctx, name, "claude", sid)
+	assert.Equal(t, 2, captures(), "after the TTL, a new capture")
+
+	// With output stamps: a capture is kept against its stamp only if it started after the stamp.
+	b := &stampingBackend{stamp: "a"}
+	h.backend = b
+	time.Sleep(screenSnapTTL + 20*time.Millisecond)
+	text, err := h.captureForPoll(ctx, name, "claude", sid)
+	require.NoError(t, err)
+	assert.Equal(t, "first screen", text)
+	n := captures()
+	terminal.setOutput(name, "second screen")
+	b.set("b") // the pane printed: the stamp moves, the shared capture is still the old one
+	text, _ = h.captureForPoll(ctx, name, "claude", sid)
+	assert.Equal(t, "first screen", text, "within the TTL the shared capture answers")
+	h.captureMu.Lock()
+	_, kept := h.captureCache[name+"\x00claude\x00"+sid]
+	h.captureMu.Unlock()
+	assert.False(t, kept, "an older shared capture is not kept against the new stamp")
+	time.Sleep(screenSnapTTL + 20*time.Millisecond)
+	text, _ = h.captureForPoll(ctx, name, "claude", sid)
+	assert.Equal(t, "second screen", text)
+	assert.Equal(t, n+1, captures())
+	text, _ = h.captureForPoll(ctx, name, "claude", sid)
+	assert.Equal(t, "second screen", text, "now kept: the stamp is unchanged, no capture")
+	assert.Equal(t, n+1, captures())
+}
