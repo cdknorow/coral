@@ -190,7 +190,11 @@ func (wr *WorkflowRunner) Shutdown(ctx context.Context) {
 		wr.markRunKilled(id)
 	}
 	done := make(chan struct{})
-	go func() { wr.runs.Wait(); close(done) }()
+	go func() {
+		defer safego.Recover("background/workflow_runner:stopRuns")
+		wr.runs.Wait()
+		close(done)
+	}()
 	select {
 	case <-done:
 		if len(ids) > 0 {

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/go-chi/chi/v5"
@@ -494,10 +495,12 @@ func artifactRefusal(w http.ResponseWriter, status int, code, limit, msg string)
 // (#4007: a count/byte window is a rate limit, not a too-large file; 413 stays for one oversized
 // file and for the store cap). Retry-After (whole seconds) is set when the reset time is known.
 func artifactHourlyLimited(w http.ResponseWriter, retryIn time.Duration, msg string) {
+	secs := 0
 	if retryIn > 0 {
-		w.Header().Set("Retry-After", strconv.Itoa(int((retryIn+time.Second-1)/time.Second)))
+		secs = int((retryIn + time.Second - 1) / time.Second)
 	}
-	artifactRefusal(w, http.StatusTooManyRequests, "artifact_quota", "hourly", msg)
+	// A per-action limit (X-Coral-Limit: action), so a dashboard never takes it for an overloaded server.
+	httputil.WriteActionLimitBody(w, secs, map[string]string{"error": msg, "code": "artifact_quota", "message": msg, "limit": "hourly"})
 }
 
 // humanBytes shows a size rounded down (so a store just under its cap never reads as full):
