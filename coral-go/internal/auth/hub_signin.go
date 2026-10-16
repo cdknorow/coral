@@ -397,8 +397,8 @@ func (h *HubSignin) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.takeStart(clientIP(r)) {
-		w.Header().Set("Retry-After", "60")
-		authError(w, http.StatusTooManyRequests, "too_many_attempts", "Too many sign-ins started. Try again in a minute.")
+		// A per-action limit (X-Coral-Limit: action), so a dashboard never takes it for an overloaded server.
+		httputil.WriteActionLimitBody(w, 60, map[string]any{"error": "Too many sign-ins started. Try again in a minute.", "code": "too_many_attempts"})
 		return
 	}
 	verifier, _, err1 := random32()

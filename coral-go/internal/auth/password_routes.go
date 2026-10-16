@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -89,8 +88,8 @@ func tooMany(w http.ResponseWriter, wait time.Duration) {
 	if secs < 1 {
 		secs = 1
 	}
-	w.Header().Set("Retry-After", strconv.Itoa(secs))
-	httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]any{
+	// A per-action limit (X-Coral-Limit: action), so a dashboard never takes it for an overloaded server.
+	httputil.WriteActionLimitBody(w, secs, map[string]any{
 		"error": fmt.Sprintf("Too many attempts. Try again in %d s.", secs), "code": "too_many_attempts", "retry_after": secs,
 	})
 }
