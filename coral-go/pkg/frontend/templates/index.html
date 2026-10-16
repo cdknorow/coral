@@ -171,6 +171,16 @@
                 <button class="btn btn-primary" type="button" id="auto-wake-go" data-on-click="m-wake-pending-agents">Wake them</button>
             </div>
 
+            <!-- #3665: Claude agents on an older hook set (terminal_backend.js wires the buttons) -->
+            <div id="hooks-banner" class="leftover-tmux-banner hooks-banner" role="alert" hidden>
+                <span class="material-icons" aria-hidden="true">update</span>
+                <div class="leftover-tmux-text"><b id="hooks-count"></b> <span id="hooks-detail">Resume them on the current hooks: one at a time, and each keeps its conversation. An agent in a turn is skipped; try it again when it is idle.</span>
+                    <ul id="hooks-list" class="hooks-list"></ul>
+                </div>
+                <button class="btn" type="button" id="hooks-dismiss">Not now</button>
+                <button class="btn btn-primary" type="button" id="hooks-go">Resume all</button>
+            </div>
+
             <div id="welcome-screen" class="welcome">
                 <div class="welcome-shell">
                     <header class="welcome-header">

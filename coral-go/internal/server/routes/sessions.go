@@ -3404,6 +3404,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		Tools:         storedToolsJSON,
 		PID:           restartPID,
 	})
+	h.noteLaunchedHooks(ctx, newSessionID, agentType) // #3665
 	h.ss.MigrateDisplayName(ctx, body.SessionID, newSessionID)
 	h.ss.MigrateSessionTags(ctx, body.SessionID, newSessionID) // and its tags (#3216)
 	if sleeping != nil {
@@ -3628,6 +3629,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		BoardType:    strPtr(storedBoardType),
 		PID:          resumePID,
 	})
+	h.noteLaunchedHooks(ctx, newSessionID, agentType) // #3665
 
 	// The agent keeps its name and tags, like a restart (#3216).
 	if body.CurrentSessionID != "" {
@@ -4748,6 +4750,7 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hasToken && body.HooksRev > 0 {
+		_ = h.ss.SetHooksRev(r.Context(), body.SessionID, body.HooksRev) // kept across restarts (#3665)
 		// The agent's own hooks say which set they are. Only a revision is stored: an event
 		// without one (an older set, or an old Coral hook left in the user's global Claude
 		// settings next to the current ones) must never turn a current set back (Security's
@@ -5294,6 +5297,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		Tools:         store.MarshalCapabilities(tools),
 		PID:           shellPID,
 	})
+	h.noteLaunchedHooks(ctx, sessionID, agentType) // #3665
 	if agentType != at.Terminal {
 		go h.recordCLIVersion(sessionID, agentType, userSettings) // #3481
 	}
@@ -6496,7 +6500,13 @@ func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 
 // wakeExistingSession recreates the tmux/pty session for a sleeping agent
 // using the EXISTING session ID. Preserves display name, board subscriptions, and history.
-func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.LiveSession) error {
+func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.LiveSession) (err error) {
+	launched := false // the agent CLI was started again: it loaded the current hook set
+	defer func() {
+		if err == nil && launched {
+			h.noteLaunchedHooks(ctx, ls.SessionID, ls.AgentType)
+		}
+	}()
 	flags := store.UnmarshalFlags(ls.Flags)
 	prompt := derefStrPtr(ls.Prompt)
 	boardName := derefStrPtr(ls.BoardName)
@@ -6582,6 +6592,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 			if err != nil {
 				return err
 			}
+			launched = true
 			target := sessionName + ".0"
 			if backend == "pty" {
 				target = sessionName
@@ -6598,6 +6609,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		if err != nil {
 			return err
 		}
+		launched = true
 		log.Printf("[wake] session=%s agent=%s backend=%s cmd=%s", sessionName, ls.AgentType, backend, cmd)
 
 		if backend == "pty" && h.backend != nil {

@@ -1169,7 +1169,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }).finally(() => { _startListLoadSettled(); _liveListLoaded(); });
     loadAllFolderTags();
     if (!popout) loadPinnedFolders();
-    if (!popout) importOnce('./terminal_backend.js').then(m => { m.checkLeftoverTmux(); m.watchAutoWake(); }).catch(() => {}); // #3634, #3636
+    if (!popout) importOnce('./terminal_backend.js').then(m => { m.checkLeftoverTmux(); m.watchAutoWake(); m.watchHooksStatus(); }).catch(() => {}); // #3634, #3636, #3665
     loadCustomViews();
     initAgentUI();
     connectCoralWs();

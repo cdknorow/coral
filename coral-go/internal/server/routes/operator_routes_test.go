@@ -46,6 +46,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		r.Post("/api/system/restart", ok)
 		r.Put("/api/settings/git-diff-mode", ok)
 		r.Get("/api/system/api-key", ok)
+		r.Get("/api/system/hooks-status", ok)
+		r.Post("/api/sessions/live/{sessionID}/refresh-hooks", ok)
 		r.Delete("/api/board/{project}", ok)
 		r.Patch("/api/board/{project}", ok)
 		r.Delete("/api/board/{project}/subscribe", ok)
@@ -82,6 +84,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 			// #3668: deleting a board message, pausing and resuming a board
 			{"DELETE", "/api/board/coral-go-team/messages/42"}, {"POST", "/api/board/coral-go-team/pause"},
 			{"POST", "/api/board/coral-go-team/resume"},
+			// #3665: which agents run an older hook set, and resuming one on the current set
+			{"GET", "/api/system/hooks-status"}, {"POST", "/api/sessions/live/abc/refresh-hooks"},
 		}
 		for _, wr := range writes {
 			rec := do(wr.method, wr.path, agent)

@@ -177,7 +177,8 @@ func (h *SessionsHandler) coralStoppedSessions(ctx context.Context) []store.Live
 	}
 	var out []store.LiveSession
 	for _, ls := range all {
-		if ls.IsSleeping == 1 && ls.IsArchived == 0 && ls.SleepReason != nil && *ls.SleepReason == store.SleepReasonCoralStopped {
+		// hooks_update: Coral stopped it to resume it on the current hooks (#3665) and didn't get to.
+		if ls.IsSleeping == 1 && ls.IsArchived == 0 && ls.SleepReason != nil && (*ls.SleepReason == store.SleepReasonCoralStopped || *ls.SleepReason == store.SleepReasonHooksUpdate) {
 			out = append(out, ls)
 		}
 	}

@@ -4049,6 +4049,11 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 .leftover-tmux-banner .material-icons { color: var(--color-warning, #d29922); }
 .leftover-tmux-text { flex: 1; min-width: 0; }
 @media (max-width: 767px) { .leftover-tmux-banner { flex-wrap: wrap; } }
+/* Agents on an older hook set (#3665) */
+.hooks-list { list-style: none; margin: var(--space-sm) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-xs, 4px); }
+.hooks-list li { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-sm, 13px); }
+.hooks-list .hooks-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hooks-list .hooks-state { color: var(--text-secondary); }
 
 /* Auto-wake on pty (#3636) */
 .tb-autowake { border-top: 1px solid var(--border); margin-top: var(--space-md); padding-top: var(--space-md); display: flex; flex-direction: column; gap: var(--space-sm); }

@@ -950,6 +950,34 @@ func (s *SessionStore) SetCLIVersion(ctx context.Context, sessionID, version str
 	return err
 }
 
+// SetHooksRev records the hook set a session's agent runs (#3665): at launch, from the set Coral
+// installed, and from the revision its own hook events carry. It only ever goes up: an older or
+// missing value never replaces a newer one (an old Coral hook left in the user's global
+// settings would otherwise flip it).
+func (s *SessionStore) SetHooksRev(ctx context.Context, sessionID string, rev int) error {
+	if rev <= 0 {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET hooks_rev = ? WHERE session_id = ? AND (hooks_rev IS NULL OR hooks_rev < ?)", rev, sessionID, rev)
+	return err
+}
+
+// HooksRevs returns the recorded hook set of every live session that has one.
+func (s *SessionStore) HooksRevs(ctx context.Context) (map[string]int, error) {
+	var rows []struct {
+		ID  string `db:"session_id"`
+		Rev int    `db:"hooks_rev"`
+	}
+	if err := s.db.Reader().SelectContext(ctx, &rows, "SELECT session_id, hooks_rev FROM live_sessions WHERE hooks_rev IS NOT NULL"); err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.Rev
+	}
+	return out, nil
+}
+
 // CLIVersion returns the recorded CLI version of one session, or "".
 func (s *SessionStore) CLIVersion(ctx context.Context, sessionID string) string {
 	var v sql.NullString
@@ -1348,6 +1376,11 @@ const SleepReasonTerminalGone = "terminal_gone"
 // found at the next start), so Coral may wake it again at its next start (#3636). Only Coral's
 // own shutdown and startup code writes it; no request can (an Operator's Sleep is reason "").
 const SleepReasonCoralStopped = "coral_stopped"
+
+// SleepReasonHooksUpdate: Coral is resuming the agent on the current hook set (#3665): Sleep
+// then Wake. Only that route writes it; a crash between the two leaves it for the next start's
+// auto-wake, as an agent Coral stopped.
+const SleepReasonHooksUpdate = "hooks_update"
 
 // SetSessionSleepingFor puts an agent to sleep for a reason Coral found (#3344), shown in the
 // dashboard instead of a plain "Sleeping". Waking clears it.

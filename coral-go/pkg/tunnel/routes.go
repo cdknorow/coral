@@ -318,6 +318,8 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/restart",
 		"/api/sessions/live/{name}/attach",
 		"/api/sessions/live/{id}/wake",
+		// Resuming an agent on the current hook set stops and restarts it (#3665).
+		"/api/sessions/live/{id}/refresh-hooks",
 		"/api/sessions/live/team/{board}/wake",
 		"/api/sessions/live/team/{board}/reset",
 		"/api/sessions/live/wake-all",
@@ -333,6 +335,8 @@ var routeTable = cat(
 		"/api/workflows/by-name/{name}/trigger",
 	),
 	rules(http.MethodGet, TierLaunch, "/api/filesystem/list", "/api/filesystem/is-git"),
+	// Which agents run an older hook set: for the Operator who would resume them (#3665).
+	rules(http.MethodGet, TierLaunch, "/api/system/hooks-status"),
 	// Pinning a folder to the Agents list names a folder to launch into (#3630): Launch, like
 	// browsing for one. Reading the pins is View (above).
 	rules(http.MethodPost, TierLaunch, "/api/pinned-folders"),

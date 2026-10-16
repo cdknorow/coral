@@ -271,3 +271,122 @@ export async function dismissAutoWake() {
     if (!resp.ok) { showToast('Could not dismiss this', true); return; }
     showAutoWakeBanner(await resp.json());
 }
+
+// ── Agents on an older hook set (#3665) ──────────────────────────────────
+// Claude reads its hooks once, at launch: an agent started before a hook-set change keeps the old
+// set until it is resumed. The banner lists them (or ones not heard from since Coral started) and
+// resumes each through Sleep then Wake: the same session, its conversation and its settings.
+
+const HOOKS_DISMISS_KEY = 'coral.hooksBanner.dismissed';
+let _hooksWired = false;
+let _hooksDetailText = '';
+
+async function hooksStatus() {
+    const resp = await fetch('/api/system/hooks-status');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+}
+
+function hooksDismissed() {
+    try { return sessionStorage.getItem(HOOKS_DISMISS_KEY) === '1'; } catch { return false; }
+}
+
+function wireHooksBanner() {
+    if (_hooksWired) return;
+    _hooksWired = true;
+    _hooksDetailText = $('hooks-detail')?.textContent || '';
+    $('hooks-go')?.addEventListener('click', () => resumeAllOnCurrentHooks());
+    $('hooks-dismiss')?.addEventListener('click', () => {
+        try { sessionStorage.setItem(HOOKS_DISMISS_KEY, '1'); } catch { /* it just hides for now */ }
+        const banner = $('hooks-banner');
+        if (banner) banner.hidden = true;
+    });
+    $('hooks-list')?.addEventListener('click', ev => {
+        const btn = ev.target.closest('button[data-session-id]');
+        if (btn) resumeOneOnCurrentHooks(btn.dataset.sessionId, btn.dataset.name || 'the agent');
+    });
+}
+
+function hooksRow(agent) {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'hooks-name';
+    name.textContent = agent.team ? `${agent.name} (${agent.team})` : agent.name;
+    const status = document.createElement('span');
+    status.className = 'hooks-state';
+    status.textContent = agent.status === 'unknown' ? 'not heard from since Coral started' : 'older hooks';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-small';
+    btn.textContent = 'Resume on current hooks';
+    btn.dataset.sessionId = agent.session_id;
+    btn.dataset.name = agent.name;
+    li.append(name, status, btn);
+    return li;
+}
+
+function showHooksBanner(st) {
+    const banner = $('hooks-banner');
+    if (!banner) return;
+    const agents = (st && st.agents) || [];
+    banner.hidden = agents.length === 0 || hooksDismissed();
+    if (!agents.length) return;
+    wireHooksBanner();
+    $('hooks-count').textContent = agents.length === 1 ? '1 agent runs an older hook set.' : `${agents.length} agents run an older hook set.`;
+    $('hooks-list').replaceChildren(...agents.map(hooksRow));
+}
+
+/** After a start, list the agents on an older hook set (Operator only: not through Coral Hub). */
+export async function watchHooksStatus() {
+    if (isCloud()) return;
+    try { showHooksBanner(await hooksStatus()); } catch { /* not shown */ }
+}
+
+async function refreshHooksOf(sessionId, force) {
+    const resp = await fetch(`/api/sessions/live/${encodeURIComponent(sessionId)}/refresh-hooks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: !!force }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    return { status: resp.status, data };
+}
+
+/** One agent: in a turn, it asks before stopping that turn. */
+async function resumeOneOnCurrentHooks(sessionId, name) {
+    let r = await refreshHooksOf(sessionId, false);
+    if (r.status === 409 && r.data.code === 'busy') {
+        const ok = await confirmWith(`Resume ${name} now?`,
+            'It is in a turn or waiting on a prompt. Resuming stops that turn; its conversation is kept.', 'Resume now');
+        if (!ok) return;
+        r = await refreshHooksOf(sessionId, true);
+    }
+    if (r.data.ok) showToast(`${name} resumed on the current hooks`);
+    else showToast(r.data.error || 'Could not resume it', true);
+    watchHooksStatus();
+}
+
+/** All of them, one at a time, 2 s plus up to 1 s apart; an agent in a turn is skipped and stays listed. */
+export async function resumeAllOnCurrentHooks() {
+    let st;
+    try { st = await hooksStatus(); } catch { return; }
+    const agents = (st.agents || []).slice();
+    const detail = $('hooks-detail');
+    const buttons = [$('hooks-go'), $('hooks-dismiss')];
+    for (const btn of buttons) if (btn) btn.disabled = true;
+    let resumed = 0;
+    let busy = 0;
+    for (let i = 0; i < agents.length; i++) {
+        if (i) await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000)); // sleep-ok: the stagger between resumes
+        if (detail) detail.textContent = `Resuming ${i + 1} of ${agents.length}…`;
+        try {
+            const r = await refreshHooksOf(agents[i].session_id, false);
+            if (r.data.ok) resumed++;
+            else if (r.status === 409 && r.data.code === 'busy') busy++;
+        } catch { /* the next one */ }
+    }
+    for (const btn of buttons) if (btn) btn.disabled = false;
+    if (detail) detail.textContent = _hooksDetailText;
+    showToast(busy
+        ? `Resumed ${resumed}; ${busy} in a turn were skipped. Resume all again when they are idle.`
+        : `Resumed ${resumed} of ${agents.length} agents on the current hooks`);
+    watchHooksStatus();
+}
