@@ -109,6 +109,8 @@ type RunningServer struct {
 	LoginToken string
 	instance   *instanceLock
 	lockPath   string
+	// workflows runs workflow steps; Shutdown stops what is in progress (#3997).
+	workflows *background.WorkflowRunner
 }
 
 // NewLoginLink returns a fresh single-use dashboard sign-in link on this computer
@@ -133,6 +135,11 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	defer cancel()
 	if err := rs.HTTPServer.Shutdown(ctx); err != nil {
 		log.Printf("Shutdown error: %v", err)
+	}
+	// A workflow's shell steps run in their own process group, so they don't stop with the
+	// server by themselves: end them here (#3997).
+	if rs.workflows != nil {
+		rs.workflows.Shutdown(ctx)
 	}
 	if rs.Server != nil {
 		rs.Server.CloseCloud()       // no command-line token outlives the server (#3285)
@@ -452,7 +459,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	}
 
 	// Start all background services
-	startBackgroundServices(ctx, db, cfg, srv, agentRT)
+	workflows := startBackgroundServices(ctx, db, cfg, srv, agentRT)
 	startPprof(ctx)
 	wd := startStallWatch(ctx, cfg.CoralDir(), srv.Router(), db, srv.BoardStore())
 	srv.StartMachineHealth(ctx, wd)
@@ -485,6 +492,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 
 	releaseOnError = false
 	return &RunningServer{
+		workflows:  workflows,
 		HTTPServer: httpServer,
 		Server:     srv,
 		LoginToken: loginToken,
@@ -893,7 +901,7 @@ func safeGo(ctx context.Context, name string, fn func()) {
 	}()
 }
 
-func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Config, srv *server.Server, agentRT background.AgentRuntime) {
+func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Config, srv *server.Server, agentRT background.AgentRuntime) *background.WorkflowRunner {
 	gitStore := store.NewGitStore(db)
 	taskStore := store.NewTaskStore(db)
 	sessStore := store.NewSessionStore(db)
@@ -1061,6 +1069,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	scheduler.SetWorkflowRunner(wfRunner, wfStore)
 
 	log.Printf("Started 8 background services + workflow runner (git poller, indexer, scheduler, board notifier, remote board poller, batch summarizer, session reconciler, token poller)")
+	return wfRunner
 }
 
 // startCloudConnector wires the optional Cloud Hub connector. A bad --cloud-url is

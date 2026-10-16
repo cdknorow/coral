@@ -35,3 +35,8 @@ func killChildProcess(cmd *exec.Cmd) {
 		}
 	}()
 }
+
+// trackChildProcess and releaseChildProcess are Windows' job object (process_windows.go); the
+// process group set by configureChildProcess does their work here.
+func trackChildProcess(*exec.Cmd)   {}
+func releaseChildProcess(*exec.Cmd) {}
