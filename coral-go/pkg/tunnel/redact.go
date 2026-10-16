@@ -38,6 +38,10 @@ type tokenRule struct {
 	params   bool                     // the value may be an auth-param list (Digest's key="value", ...): redacted to its end
 	bare     func([]byte) bool        // when glue reports no scheme: whether the value is a credential (nil: mixedValue)
 	toQuote  bool                     // a value after an opening quote runs to its closing quote, spaces and all (#3733)
+	// value, when set, measures the value itself (in place of class, min and max): its length, or
+	// need when b ends before that can be told (never when final). A URL's password ends at the
+	// last '@' before its host.
+	value func(b []byte, final bool) (n int, need bool)
 }
 
 // prefixLen is the length of the longest of the rule's prefixes b starts with (SECRET_KEY, not
@@ -278,6 +282,9 @@ var tokenRules = []tokenRule{
 	{prefixes: []string{"Bearer", "bearer", "BEARER"}, glue: bearerGlue, class: isCredValue, min: 20, max: 512, keep: true, notAfter: isWord},
 	{prefixes: []string{"Authorization", "authorization", "AUTHORIZATION"}, glue: authGlue, class: isCredValue, min: 8, max: 512, keep: true, notAfter: isWord, params: true},
 	{prefixes: secretNamePrefixes, glue: secretGlue, class: isSecretValue, min: 1, max: 512, keep: true, notAfter: isAlnum, bare: secretBare, toQuote: true},
+	// A URL with a password, scheme://user:password@host (#3756): postgres, mysql, redis, mongodb(+srv),
+	// amqp, https, git+https and the rest. The scheme, the user and the host stay; the password goes.
+	{prefixes: []string{"://"}, glue: urlUserGlue, class: urlRunByte, min: 1, max: maxURLRun, keep: true, notAfter: never, value: urlPassword},
 }
 
 // Secret-named values (#3733, Security on #3731): "password": "...", api_key=..., TOKEN=... in
@@ -436,6 +443,9 @@ func secretNameBefore(data []byte, j, from int) int {
 // stream ending in one may be cut inside the name).
 var secretRule = &tokenRules[7]
 
+// urlCredRule is the URL credentials rule (#3756), named so a rule added later can't move it.
+var urlCredRule = &tokenRules[8]
+
 var secretNameStarts = func() map[string]bool {
 	out := map[string]bool{}
 	for _, p := range secretNamePrefixes {
@@ -491,6 +501,75 @@ func secretBare(v []byte) bool {
 		}
 	}
 	return letter && mixedValue(v)
+}
+
+func never(byte) bool { return false }
+
+// maxURLUser bounds a URL's user name, and maxURLRun its password and host together: past them
+// the text is not taken for a URL's credentials.
+const (
+	maxURLUser = 256
+	maxURLRun  = 1024
+)
+
+// urlUserByte: a character of a URL's user name (not ':', which ends it).
+func urlUserByte(c byte) bool {
+	return c > ' ' && c < 0x7f && strings.IndexByte("@/?#\\\"'<>[]{}|`:", c) < 0
+}
+
+// urlRunByte: a character of what follows the user name's ':' up to the next space or quote: the
+// password ('@', ':' and even a raw '/', '?' or '#' included, Security on #3756) and the host.
+// Printable ASCII only: a URL percent-encodes anything else, and taking any other byte would make
+// a run of non-ASCII prose one token.
+func urlRunByte(c byte) bool {
+	return c > ' ' && c < 0x7f && strings.IndexByte("\"'<>`", c) < 0
+}
+
+// urlUserGlue measures, after "://", the user name and the ':' after it (redis://:pw@host has
+// none). -1: not a password here (an '@', a '/', a space or a quote comes first); -2: b ends first.
+func urlUserGlue(b []byte) (int, bool) {
+	for i := 0; i < len(b) && i <= maxURLUser; i++ {
+		switch c := b[i]; {
+		case c == ':':
+			return i + 1, false
+		case !urlUserByte(c):
+			return -1, false
+		}
+	}
+	if len(b) <= maxURLUser {
+		return -2, false
+	}
+	return -1, false
+}
+
+// urlPassword measures a URL's password: up to the last '@' before the next space, quote or
+// "://" (so "p@ss@host" takes "p@ss", and "ab/cd@host" takes "ab/cd"); none without an '@'. The
+// run ends at the next "://", where another URL starts: each URL's scan then covers only the text
+// up to the next, so a line of them costs linear time (Security on #3756 v2: "://" repeated over
+// 4 MiB took 4 s). Digits that end at a '/', '?', '#' or the run's end are a port
+// (https://host:8080/path, https://h:80/x/@user).
+func urlPassword(b []byte, final bool) (n int, need bool) {
+	last := -1
+	i := 0
+	for ; i < len(b) && i < maxURLRun && urlRunByte(b[i]); i++ {
+		if b[i] == ':' && i+2 < len(b) && b[i+1] == '/' && b[i+2] == '/' {
+			break
+		}
+		if b[i] == '@' {
+			last = i
+		}
+	}
+	if i == len(b) && i < maxURLRun && !final {
+		return 0, true // the run may go on in the next chunk
+	}
+	d := 0
+	for d < i && b[d] >= '0' && b[d] <= '9' {
+		d++
+	}
+	if d > 0 && (d == i || b[d] == '/' || b[d] == '?' || b[d] == '#') {
+		return 0, false // a port
+	}
+	return max(last, 0), false
 }
 
 // PEM private-key blocks: "-----BEGIN <LABEL>PRIVATE KEY-----" ... "-----END <LABEL>-----".
@@ -817,6 +896,7 @@ var startAnchors = func() []startLit {
 	add("UTHORIZATION", 1, &tokenRules[6])
 	// Secret names (#3733), after the rules above so Authorization wins a start they share.
 	out = append(out, startLit{rule: secretRule, seek: seekSecretName})
+	add("://", 0, urlCredRule)
 	add("-----BEGIN ", 0, nil)
 	return out
 }()
@@ -970,6 +1050,16 @@ func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long
 		case n > 0 && k >= 2 || n > 0 && bytes.IndexByte(b[at:at+n], '"') >= 0:
 			return at + n, at, true, false, false
 		}
+	}
+	if ru.value != nil {
+		n, need := ru.value(b[at:], final)
+		switch {
+		case need:
+			return 0, 0, false, true, false
+		case n < ru.min:
+			return 0, 0, false, false, false
+		}
+		return at + n, at, true, false, false
 	}
 	run := 0
 	for at+run < len(b) && ru.class(b[at+run]) {

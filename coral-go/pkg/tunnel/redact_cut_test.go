@@ -21,7 +21,9 @@ func TestTokenByteCoversEveryRule(t *testing.T) {
 		}
 		for _, pre := range ru.prefixes {
 			for i := 0; i < len(pre); i++ {
-				if !strings.ContainsRune(" :", rune(pre[i])) {
+				// A cut at a space, ':' or '/' of a prefix ("Authorization: ", "://") leaves no
+				// part of the value: what follows the cut is dropped whole.
+				if !strings.ContainsRune(" :/", rune(pre[i])) {
 					assert.True(t, tokenByte(pre[i]), "prefix %q byte %q", pre, pre[i])
 				}
 			}
@@ -68,6 +70,8 @@ func redactorTokens() []struct{ text, secret string } {
 		tok("bearer "+fake("", 25, alnum), fake("", 25, alnum)),
 		tok(`Authorization: Digest username="bob", nonce="`+fake("", 32, "0123456789abcdef")+`"`, fake("", 32, "0123456789abcdef")),
 		tok(fake("ghp_", 400, alnum), fake("ghp_", 400, alnum)[4:]),
+		tok("postgres://app:"+fake("", 20, alnum)+"@db/main", fake("", 20, alnum)),
+		tok("redis://:p@ss"+fake("", 16, alnum)+"@cache:6379", "p@ss"+fake("", 16, alnum)),
 	}
 	return out
 }
