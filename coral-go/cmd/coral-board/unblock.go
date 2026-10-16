@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 )
@@ -33,7 +34,7 @@ func cmdTaskUnblock(st *boardState, args []string) {
 	} else {
 		body["remove_blocker"] = *blocker
 	}
-	data, status, err := apiCallRaw(http.MethodPatch, fmt.Sprintf("/%s/tasks/%d", st.Project, id), body)
+	data, status, err := apiCallRaw(http.MethodPatch, fmt.Sprintf("/%s/tasks/%d", url.PathEscape(st.Project), id), body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

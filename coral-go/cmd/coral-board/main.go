@@ -755,7 +755,7 @@ func cmdPost() {
 
 	subscriberID := resolveSubscriberID()
 
-	result, status, err := apiCall("POST", "/"+st.Project+"/messages", map[string]string{
+	result, status, err := apiCall("POST", "/"+url.PathEscape(st.Project)+"/messages", map[string]string{
 		"subscriber_id": subscriberID,
 		"content":       message,
 	})
@@ -814,13 +814,13 @@ func cmdRead() {
 	subscriberID := resolveSubscriberID()
 	var path string
 	if messageID > 0 {
-		path = fmt.Sprintf("/%s/messages/all?id=%d", st.Project, messageID)
+		path = fmt.Sprintf("/%s/messages/all?id=%d", url.PathEscape(st.Project), messageID)
 	} else if useLast {
-		path = fmt.Sprintf("/%s/messages/all?limit=%d", st.Project, lastN)
+		path = fmt.Sprintf("/%s/messages/all?limit=%d", url.PathEscape(st.Project), lastN)
 	} else if readAll {
-		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50&all=true", st.Project, url.QueryEscape(subscriberID))
+		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50&all=true", url.PathEscape(st.Project), url.QueryEscape(subscriberID))
 	} else {
-		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50", st.Project, url.QueryEscape(subscriberID))
+		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50", url.PathEscape(st.Project), url.QueryEscape(subscriberID))
 	}
 
 	data, err := getBoard(path)
@@ -876,7 +876,7 @@ func cmdRead() {
 				throughID = id
 			}
 		}
-		result, _, err := apiCall("POST", "/"+st.Project+"/messages/mark-read", map[string]any{
+		result, _, err := apiCall("POST", "/"+url.PathEscape(st.Project)+"/messages/mark-read", map[string]any{
 			"subscriber_id": subscriberID,
 			"through_id":    int64(throughID),
 			"from_id":       int64(fromID),
@@ -917,7 +917,7 @@ func cmdPeek() {
 
 	subscriberID := resolveSubscriberID()
 	path := fmt.Sprintf("/%s/peek?target=%s&subscriber_id=%s&lines=%d",
-		st.Project, url.QueryEscape(target), url.QueryEscape(subscriberID), lines)
+		url.PathEscape(st.Project), url.QueryEscape(target), url.QueryEscape(subscriberID), lines)
 
 	resp, err := http.Get(serverURL + "/api/board" + path)
 	if err != nil {
@@ -958,7 +958,7 @@ func cmdCheck() {
 		os.Exit(1)
 	}
 	subscriberID := resolveSubscriberID()
-	result, status, err := apiCall("GET", fmt.Sprintf("/%s/messages/check?subscriber_id=%s", st.Project, url.QueryEscape(subscriberID)), nil)
+	result, status, err := apiCall("GET", fmt.Sprintf("/%s/messages/check?subscriber_id=%s", url.PathEscape(st.Project), url.QueryEscape(subscriberID)), nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1011,7 +1011,7 @@ func cmdSubscribers() {
 		os.Exit(1)
 	}
 
-	data, err := getBoard("/" + st.Project + "/subscribers")
+	data, err := getBoard("/" + url.PathEscape(st.Project) + "/subscribers")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1038,7 +1038,7 @@ func cmdLeave() {
 		os.Exit(1)
 	}
 	subscriberID := resolveSubscriberID()
-	result, status, err := apiCall("DELETE", "/"+st.Project+"/subscribe", map[string]string{
+	result, status, err := apiCall("DELETE", "/"+url.PathEscape(st.Project)+"/subscribe", map[string]string{
 		"subscriber_id": subscriberID,
 	})
 	if err != nil {
@@ -1059,7 +1059,7 @@ func cmdDelete() {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
 		os.Exit(1)
 	}
-	result, status, err := apiCall("DELETE", "/"+st.Project, nil)
+	result, status, err := apiCall("DELETE", "/"+url.PathEscape(st.Project), nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1188,7 +1188,7 @@ func cmdExport() {
 	}
 
 	// Fetch all messages
-	data, err := getBoard("/" + st.Project + "/messages/all?limit=10000")
+	data, err := getBoard("/" + url.PathEscape(st.Project) + "/messages/all?limit=10000")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1237,7 +1237,7 @@ func cmdExport() {
 
 	// Get subscribers for context (best-effort: the export still goes out without them)
 	var rawSubs []map[string]any
-	if subsData, err := getBoard("/" + st.Project + "/subscribers"); err == nil {
+	if subsData, err := getBoard("/" + url.PathEscape(st.Project) + "/subscribers"); err == nil {
 		json.Unmarshal(subsData, &rawSubs)
 	}
 	var subs []exportSubscriber
@@ -1600,7 +1600,7 @@ Subcommands:
 			fmt.Fprintln(os.Stderr, "task detail requires a positive task ID")
 			os.Exit(1)
 		}
-		data, status, err := apiCallRaw("GET", fmt.Sprintf("/%s/tasks/%d", st.Project, id), nil)
+		data, status, err := apiCallRaw("GET", fmt.Sprintf("/%s/tasks/%d", url.PathEscape(st.Project), id), nil)
 		if err != nil || status != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "Unable to read task: %v %s\n", err, data)
 			os.Exit(1)
@@ -1729,7 +1729,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 	}
 	reqBody["workflow"] = workflowBody
 
-	data, status, err := apiCallRaw("POST", "/"+st.Project+"/tasks", reqBody)
+	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(st.Project)+"/tasks", reqBody)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1777,7 +1777,7 @@ func fetchAllTasks(st *boardState) []map[string]any {
 	var tasks []map[string]any
 	cursor := ""
 	for {
-		path := "/" + st.Project + "/tasks?status=all&limit=200"
+		path := "/" + url.PathEscape(st.Project) + "/tasks?status=all&limit=200"
 		if cursor != "" {
 			path += "&cursor=" + url.QueryEscape(cursor)
 		}
@@ -1836,7 +1836,7 @@ func cmdTaskClaim(st *boardState, args ...string) {
 		body["task_id"] = id
 	}
 
-	data, status, err := apiCallRaw("POST", "/"+st.Project+"/tasks/claim", body)
+	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(st.Project)+"/tasks/claim", body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1870,7 +1870,7 @@ func cmdTaskCurrent(st *boardState) {
 	subscriberID := resolveSubscriberID()
 	body := map[string]string{"subscriber_id": subscriberID}
 
-	data, status, err := apiCallRaw("POST", "/"+st.Project+"/tasks/current", body)
+	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(st.Project)+"/tasks/current", body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1948,7 +1948,7 @@ func cmdTaskComplete(st *boardState, args []string) {
 		body["message"] = *message
 	}
 
-	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/complete", st.Project, taskID), body)
+	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/complete", url.PathEscape(st.Project), taskID), body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1997,7 +1997,7 @@ func cmdTaskCancel(st *boardState, args []string) {
 		body["message"] = *message
 	}
 
-	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/cancel", st.Project, taskID), body)
+	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/cancel", url.PathEscape(st.Project), taskID), body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -2055,7 +2055,7 @@ func cmdTaskReassign(st *boardState, args []string) {
 		"assignee":      *assignee,
 	}
 
-	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/reassign", st.Project, taskID), body)
+	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/reassign", url.PathEscape(st.Project), taskID), body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -2115,7 +2115,7 @@ func cmdTaskAmend(st *boardState, args []string) {
 		fmt.Fprintln(os.Stderr, "at least --body or --workflow-instructions is required")
 		os.Exit(1)
 	}
-	data, status, err := apiCallRaw("PATCH", fmt.Sprintf("/%s/tasks/%d/amend", st.Project, taskID), map[string]any{"subscriber_id": resolveSubscriberID(), "base_revision": *revision, "reason": *reason, "changes": changes})
+	data, status, err := apiCallRaw("PATCH", fmt.Sprintf("/%s/tasks/%d/amend", url.PathEscape(st.Project), taskID), map[string]any{"subscriber_id": resolveSubscriberID(), "base_revision": *revision, "reason": *reason, "changes": changes})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -2879,7 +2879,7 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 		}
 		body["artifacts"] = artifacts
 	}
-	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", st.Project, id, action), body)
+	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", url.PathEscape(st.Project), id, action), body)
 	if err != nil || status != http.StatusOK {
 		fmt.Fprintln(os.Stderr, "Review action failed:", err, string(data))
 		os.Exit(1)
