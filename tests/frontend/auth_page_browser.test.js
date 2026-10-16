@@ -37,6 +37,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
             await Page.navigate({ url: BASE + '/auth' + query }); await Page.loadEventFired();
             await waitFor(`!!document.getElementById('submit') || !!document.getElementById('key-submit')`, 'the page');
             await sleep(100);   // the module script runs after load
+            assert.equal(await ev(`(() => { const i = document.querySelector('.brand img'); return !!i && i.complete && i.naturalWidth > 0; })()`), true, `${name}: Coral's logo loads (from /static, with no credential)`);
         };
         const $ = (id, prop = 'value') => ev(`document.getElementById('${id}').${prop}`);
         const type = (id, v) => ev(`(() => { const i = document.getElementById('${id}'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);

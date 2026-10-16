@@ -51,6 +51,7 @@ func TestAuthPageCarriesNoSecretAndNoInlineScript(t *testing.T) {
 		assert.Equal(t, 2, strings.Count(p, "<script"), "two external scripts and nothing inline: %+v", s)
 		assert.False(t, regexp.MustCompile(`<script[^>]*>[^<]+</script>`).MatchString(p), "no inline script body")
 		assert.False(t, regexp.MustCompile(`(?i)\son[a-z]+=`).MatchString(p), "no inline event handler")
+		assert.Contains(t, p, `<img src="/static/coral.png" alt="" width="44" height="44">Coral`, "Coral's logo at the top, from /static (served before sign-in, and covered by img-src 'self')")
 		assert.Contains(t, p, `name="viewport"`, "works on phones")
 		assert.Contains(t, p, `name="referrer" content="no-referrer"`)
 		assert.Contains(t, p, "~/.coral/api_key", "the key panel says where the key is, never its value")

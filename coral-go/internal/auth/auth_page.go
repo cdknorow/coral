@@ -50,7 +50,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`<!DOCTYPE html>
     display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
   .card { width: 100%; max-width: 440px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 32px 30px; box-sizing: border-box; }
   .brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 600; margin: 0 0 6px; }
-  .brand .dot { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #ff7a59, #f0506e); display: inline-block; }
+  .brand img { width: 44px; height: 44px; border-radius: 10px; flex: none; display: block; }
   h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
   .sub { color: var(--text-secondary); font-size: 14px; line-height: 1.5; margin: 0 0 20px; }
   .err { display: flex; gap: 8px; align-items: flex-start; background: rgba(229, 83, 75, .12); border: 1px solid rgba(229, 83, 75, .5); border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.45; margin: 0 0 16px; }
@@ -77,7 +77,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`<!DOCTYPE html>
 </head>
 <body data-password-set="{{.PasswordSet}}" data-local="{{.Local}}" data-strict="{{.Strict}}">
 <main class="card">
-  <div class="brand"><span class="dot"></span>Coral</div>
+  <div class="brand"><img src="/static/coral.png" alt="" width="44" height="44">Coral</div>
   <div id="live" class="panel" role="status" aria-live="polite"></div>
 {{if .PasswordSet}}
   <section id="panel-signin" class="panel">

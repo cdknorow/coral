@@ -368,6 +368,21 @@ func TestMiddleware_AuthPageAccessible(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// #3948: the logo on the sign-in page is a /static file, so it must load for a browser that is not signed in.
+func TestMiddleware_LogoLoadsBeforeSignIn(t *testing.T) {
+	_, handler := newMiddlewareTest(t)
+	for _, from := range []string{"192.168.1.5:54321", "127.0.0.1:54321"} {
+		r := httptest.NewRequest("GET", "/static/coral.png", nil)
+		r.RemoteAddr = from
+		if strings.HasPrefix(from, "127.") {
+			r.Host = "localhost:8420" // a browser on this computer names it; another Host from loopback is refused as DNS rebinding
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		assert.Equal(t, http.StatusOK, w.Code, "no credential needed for the logo, from "+from)
+	}
+}
+
 func TestMiddleware_StaticAssetsAccessible(t *testing.T) {
 	_, handler := newMiddlewareTest(t)
 	r := httptest.NewRequest("GET", "/static/style.css", nil)
