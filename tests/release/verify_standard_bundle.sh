@@ -10,7 +10,9 @@ case "$linux_arch" in
   arm64) elf_machine='ARM aarch64' ;;
   *) echo "unknown Linux architecture: $linux_arch" >&2; exit 2 ;;
 esac
-commands=(coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync)
+# The shipped command-line programs: commands.txt beside this script (#3855).
+commands=(); while IFS= read -r c; do commands+=("$c"); done < <(grep -vE '^[[:space:]]*(#|$)' "$(dirname "$0")/commands.txt")
+[ "${#commands[@]}" -gt 0 ] || { echo "verify_standard_bundle.sh: commands.txt lists no programs" >&2; exit 2; }
 
 search_roots=("$package_dir")
 resources_dir="$(dirname "$package_dir")/Resources"

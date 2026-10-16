@@ -1,9 +1,11 @@
 param([Parameter(Mandatory=$true)][string]$PackageDir)
 $ErrorActionPreference = 'Stop'
 
-$commands = @('coral', 'launch-coral', 'coral-board', 'coral-agent',
-  'coral-hook-agentic-state', 'coral-hook-message-check',
-  'coral-hook-session-start', 'coral-hook-task-sync', 'coral-tray', 'coral-app')
+# The shipped programs: commands.txt and gui_commands.txt beside this script (#3855).
+$commands = @(foreach ($f in 'commands.txt', 'gui_commands.txt') {
+  Get-Content (Join-Path $PSScriptRoot $f) | Where-Object { $_ -notmatch '^\s*(#|$)' } | ForEach-Object { $_.Trim() }
+})
+if ($commands.Count -lt 2) { throw "commands.txt and gui_commands.txt list no programs" }
 foreach ($cmd in $commands) {
   if (!(Test-Path (Join-Path $PackageDir "$cmd.exe"))) {
     throw "Standard package is missing $cmd.exe"

@@ -27,9 +27,11 @@ if architecture not in native[arch]:
     raise SystemExit(f'Native {arch} Docker is required; emulation is not acceptance evidence')
 platform = 'linux/' + arch
 name = 'coral-standard-smoke-' + uuid.uuid4().hex[:10]
-commands = ('coral', 'launch-coral', 'coral-board', 'coral-agent',
-            'coral-hook-agentic-state', 'coral-hook-message-check',
-            'coral-hook-session-start', 'coral-hook-task-sync')
+# The shipped command-line programs: commands.txt beside this script (#3855).
+commands = tuple(line.strip() for line in (pathlib.Path(__file__).parent / 'commands.txt').read_text().splitlines()
+                 if line.strip() and not line.strip().startswith('#'))
+if not commands:
+    raise SystemExit('commands.txt lists no programs')
 with tempfile.TemporaryDirectory(prefix='coral-standard-smoke-') as directory:
     context = pathlib.Path(directory)
     (context / 'bin').mkdir()

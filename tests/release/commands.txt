@@ -1,0 +1,12 @@
+# The command-line programs every Coral package ships, one per line, in build order (#3855).
+# release.yml (through its resolve job), linux-runner-dryrun.yml and the release checks read
+# this list; the GUI programs, which need cgo and ship only on macOS and Windows, are in
+# gui_commands.txt. A line that is empty or starts with # is ignored.
+coral
+launch-coral
+coral-board
+coral-agent
+coral-hook-agentic-state
+coral-hook-message-check
+coral-hook-session-start
+coral-hook-task-sync

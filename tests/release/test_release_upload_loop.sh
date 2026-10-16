@@ -28,6 +28,9 @@ mkdir -p "$WORK/bin"
 cat > "$WORK/bin/gh" <<'GH'
 #!/usr/bin/env bash
 echo "gh $*" >> "$GH_LOG"
+# release view: the release exists unless NO_RELEASE is set; release create fails if FAIL_CREATE is.
+if [[ "$1 $2" == "release view" && -n "${NO_RELEASE:-}" ]]; then exit 1; fi
+if [[ "$1 $2" == "release create" && -n "${FAIL_CREATE:-}" ]]; then echo "simulated create failure" >&2; exit 1; fi
 if [[ "$1 $2" == "release upload" && -n "${FAIL_UPLOAD:-}" && "$4" == *"$FAIL_UPLOAD"* ]]; then
   echo "simulated upload failure for $4" >&2
   exit 1
@@ -62,7 +65,7 @@ run_case() {
   export GH_LOG="$dir/gh.log"; : > "$GH_LOG"
   export COSIGN_LOG="$dir/cosign.log"; : > "$COSIGN_LOG"
   local rc=0
-  ( cd "$dir" && PATH="$WORK/bin:$PATH" GITHUB_REF_NAME=v0.0.0-test GITHUB_SERVER_URL=https://github.com \
+  ( cd "$dir" && PATH="$WORK/bin:$PATH" PRERELEASE="${PRERELEASE:-false}" GITHUB_REF_NAME=v0.0.0-test GITHUB_SERVER_URL=https://github.com \
       GITHUB_WORKFLOW_REF=cdknorow/coral/.github/workflows/release.yml@refs/tags/v0.0.0-test \
       bash --noprofile --norc -eo pipefail "$WORK/step.sh" ) > "$dir/out.log" 2>&1 || rc=$?
   local uploads signs
@@ -100,6 +103,16 @@ run_case amd64-missing nonzero 0 0 "$LINUX_ARM" "$DMG" "$MSI" "$ZIP"
 run_case windows-missing nonzero 3 0 "$LINUX" "$LINUX_ARM" "$DMG"
 # A failed upload fails the step, before signing.
 FAIL_UPLOAD=Coral.dmg run_case upload-fails nonzero 3 0 "${ALL[@]}"
+
+# #3855: the release is created only when gh release view says it doesn't exist; a re-run keeps it.
+# A failed create fails the step at once (it used to be "|| true", and the upload failed later).
+creates() { grep -c '^gh release create' "$WORK/case-$1/gh.log" || true; }
+[[ "$(creates all-present)" == 0 ]] || { echo "FAIL all-present: an existing release was created again" >&2; failures=$((failures + 1)); }
+NO_RELEASE=1 run_case new-release 0 7 3 "${ALL[@]}"
+[[ "$(creates new-release)" == 1 ]] && ! grep -q -- '--prerelease' "$WORK/case-new-release/gh.log" || { echo "FAIL new-release: want one create, not a prerelease" >&2; failures=$((failures + 1)); }
+NO_RELEASE=1 PRERELEASE=true run_case new-prerelease 0 7 3 "${ALL[@]}"
+grep -q -- '^gh release create .*--prerelease --latest=false' "$WORK/case-new-prerelease/gh.log" || { echo "FAIL new-prerelease: created without --prerelease --latest=false" >&2; failures=$((failures + 1)); }
+NO_RELEASE=1 FAIL_CREATE=1 run_case create-fails nonzero 0 0 "${ALL[@]}"
 
 if [[ "$failures" -ne 0 ]]; then
   echo "$failures case(s) failed" >&2
