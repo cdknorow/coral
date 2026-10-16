@@ -23,6 +23,7 @@ import { terminalGoneChip } from './terminal_gone.js';
 import { isPinnedDir, emptyPins, notePinKeys, pinPathForKey, pinnedFolders } from './pinned_folders.js';
 import { LOCAL_SERVER } from './server_base.js';
 import { formatTokens } from './format.js';
+import { registerLiveListRenderer, redrawLiveList } from './list_hooks.js';
 import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _cancelBoardChatSelect, _exportBoardChatSelected, _insertBoardMention, _toggleBoardChatMsgSelect, _toggleBoardChatPause } from './board_chat.js';
 import { SESSION_STATES, _WORKTREE_ICON, _formatCost, _gitStateSummary, _repoBranch, _shortPath, buildSessionTooltip, deriveSessionState, formatShortTime, formatStaleness, getDotClass, getMobileStatusChip, resolveSessionIdentity, sessionGoalText, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 export { buildSessionTooltip, commandPlaceholder, deriveSessionState, resolveSessionIdentity, sessionStateInfo, terminalDotClass } from './session_state.js';
@@ -109,7 +110,7 @@ export function setBoardAccentColor(boardName) {
 
     const apply = (color) => {
         _setBoardColor(boardName, color);
-        renderLiveSessions(state.liveSessions);
+        redrawLiveList();
         picker.remove();
     };
 
@@ -129,7 +130,7 @@ export function setBoardAccentColor(boardName) {
     picker.querySelector('.color-picker-reset').addEventListener('click', (e) => {
         e.stopPropagation();
         _setBoardColor(boardName, null);
-        renderLiveSessions(state.liveSessions);
+        redrawLiveList();
         picker.remove();
     });
 
@@ -233,7 +234,7 @@ export async function moveGroupUp(groupName) {
     if (idx <= 0) return;
     [names[idx - 1], names[idx]] = [names[idx], names[idx - 1]];
     await _saveGroupOrder(names);
-    renderLiveSessions(state.liveSessions || []);
+    redrawLiveList();
 }
 
 export async function moveGroupDown(groupName) {
@@ -242,7 +243,7 @@ export async function moveGroupDown(groupName) {
     if (idx < 0 || idx >= names.length - 1) return;
     [names[idx], names[idx + 1]] = [names[idx + 1], names[idx]];
     await _saveGroupOrder(names);
-    renderLiveSessions(state.liveSessions || []);
+    redrawLiveList();
 }
 
 // ── Session reorder (Move Up/Down) ───────────────────────────────────
@@ -266,7 +267,7 @@ function _moveSession(sessionId, direction) {
     if (targetIdx < 0 || targetIdx >= ids.length) return;
     [ids[idx], ids[targetIdx]] = [ids[targetIdx], ids[idx]];
     _saveSessionOrder(ids);
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
 }
 
 // ── Group collapse state ─────────────────────────────────────────────
@@ -304,7 +305,7 @@ export function toggleGroupCollapse(groupName) {
     if (idx >= 0) groups.splice(idx, 1);
     else groups.push(groupName);
     localStorage.setItem('coral_collapsed_groups', JSON.stringify(groups));
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
 }
 
 export function killSessionDirect(name, agentType, sessionId) {
@@ -337,7 +338,7 @@ export function killSessionDirect(name, agentType, sessionId) {
             state.currentSession = null;
             showView("welcome-screen");
         }
-        renderLiveSessions(state.liveSessions);
+        redrawLiveList();
     } catch (e) {
         showToast("Failed to kill session", true);
     } });
@@ -481,7 +482,7 @@ export function hideAlertModal() {
 export function dismissKilledSession(sessionId) {
     delete state.killedSessions[sessionId];
     state.liveSessions = state.liveSessions.filter(s => s.session_id !== sessionId);
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
 }
 
 export function dismissBoardKilled(boardName) {
@@ -493,7 +494,7 @@ export function dismissBoardKilled(boardName) {
         delete state.killedSessions[sid];
     }
     state.liveSessions = state.liveSessions.filter(s => !killedIds.includes(s.session_id));
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
 }
 
 export function copyFolderPath(path) {
@@ -545,7 +546,7 @@ export async function killGroup(groupName) {
             }
             const killedIds = new Set(groupSessions.map(s => s.session_id));
             state.liveSessions = state.liveSessions.filter(s => !killedIds.has(s.session_id));
-            renderLiveSessions(state.liveSessions);
+            redrawLiveList();
         }
     );
 }
@@ -568,7 +569,7 @@ function killAllItem(boardName) {
 }
 
 // Redraw the team menus once the Coral Hub's access list is in (#3443).
-document.addEventListener('coral:server-access-loaded', () => { if (state.liveSessions) renderLiveSessions(state.liveSessions); });
+document.addEventListener('coral:server-access-loaded', () => { if (state.liveSessions) redrawLiveList(); });
 
 export async function killBoard(boardName) {
     const boardSessions = state.liveSessions.filter(s => inTeam(s, boardName));
@@ -601,7 +602,7 @@ export async function killBoard(boardName) {
             }
             const killedIds = new Set(boardSessions.map(s => s.session_id));
             state.liveSessions = state.liveSessions.filter(s => !killedIds.has(s.session_id));
-            renderLiveSessions(state.liveSessions);
+            redrawLiveList();
         }
     );
 }
@@ -773,7 +774,7 @@ export function toggleTeamSleep(boardName, action) {
                 // Team wake leaves archived agents asleep (#3030).
                 if (inTeam(s, boardName) && !s.archived) s.sleeping = sleeping;
             }
-            renderLiveSessions(state.liveSessions);
+            redrawLiveList();
             showToast(sleeping ? `Team "${keyLabel(boardName)}" is now sleeping` : `Team "${keyLabel(boardName)}" is awake`);
         } catch (e) {
             showToast('Failed to toggle team sleep', true);
@@ -811,7 +812,7 @@ export function sleepAllAgents() {
             const r = await _cloudBulk('/api/sessions/live/sleep-all', 'sleep', 'sessions_affected');
             if (r.reached) {
                 for (const s of state.liveSessions) if (!s.archived) s.sleeping = true;
-                renderLiveSessions(state.liveSessions);
+                redrawLiveList();
                 showToast(`Agents are now sleeping (${r.affected} affected on ${r.reached} server${r.reached === 1 ? '' : 's'})`);
             }
         });
@@ -823,7 +824,7 @@ export function sleepAllAgents() {
             const data = await resp.json();
             if (data.ok) {
                 for (const s of state.liveSessions) if (!s.archived) s.sleeping = true;
-                renderLiveSessions(state.liveSessions);
+                redrawLiveList();
                 showToast(`All agents are now sleeping (${data.sessions_affected} affected)`);
             }
         } catch (e) {
@@ -838,7 +839,7 @@ export function wakeAllAgents() {
             const r = await _cloudBulk('/api/sessions/live/wake-all', 'wake', 'sessions_relaunched');
             if (r.reached) {
                 for (const s of state.liveSessions) if (!s.archived) s.sleeping = false; // archived stay asleep (#3030)
-                renderLiveSessions(state.liveSessions);
+                redrawLiveList();
                 showToast(`Agents are awake (${r.affected} relaunched on ${r.reached} server${r.reached === 1 ? '' : 's'})`);
             }
         });
@@ -850,7 +851,7 @@ export function wakeAllAgents() {
             const data = await resp.json();
             if (data.ok) {
                 for (const s of state.liveSessions) if (!s.archived) s.sleeping = false; // archived stay asleep (#3030)
-                renderLiveSessions(state.liveSessions);
+                redrawLiveList();
                 showToast(`All agents are awake (${data.sessions_relaunched} relaunched)`);
             }
         } catch (e) {
@@ -873,7 +874,7 @@ export function toggleAgentSleep(name, agentType, sessionId, action) {
                 s.sleeping = sleeping;
                 if (!sleeping) s.archived = false; // waking unarchives (#3030)
             }
-            renderLiveSessions(state.liveSessions);
+            redrawLiveList();
             showToast(sleeping ? `"${name}" is now sleeping` : `"${name}" is awake`);
             return true;
         } catch (e) {
@@ -903,7 +904,7 @@ export function toggleAgentArchive(name, agentType, sessionId, action) {
             if (!resp.ok || !data.ok) { showToast(data.error || `Failed to ${action} agent`, true); return false; }
             const s = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
             if (s) { s.archived = !!data.archived; s.sleeping = !!data.sleeping; }
-            renderLiveSessions(state.liveSessions);
+            redrawLiveList();
             // The agent on screen follows now, not on the next feed tick.
             const cur = state.currentSession;
             if (cur && cur.type === 'live' && cur.session_id === sessionId && sessionServer(cur) === server) {
@@ -958,7 +959,7 @@ if (typeof document !== 'undefined') {
         const id = t.dataset.serverToggle;
         try { localStorage.setItem(`coral-server-collapsed:${id}`, _isServerCollapsed(id) ? 'false' : 'true'); } catch { /* per-viewer only */ }
         _openServerDetails.delete(id);
-        renderLiveSessions(state.liveSessions);
+        redrawLiveList();
         const again = document.querySelector(`#live-sessions-list .server-group-toggle[data-server-toggle="${CSS.escape(id)}"]`);
         if (again) again.focus();
     });
@@ -1014,7 +1015,7 @@ function _renderArchivedSection(archived) {
 
 export function toggleArchivedSection() {
     try { localStorage.setItem('coral-archived-expanded', _isArchivedExpanded() ? 'false' : 'true'); } catch { /* per-viewer only */ }
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
 }
 
 function _isArchivedExpanded() {
@@ -1366,7 +1367,7 @@ export async function toggleShowServer() {
     const previous = state.settings?.show_session_server;
     const next = !isServerShownOnRows();
     state.settings = { ...state.settings, show_session_server: next ? 'True' : 'False' };
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
     try {
         const resp = await fetch('/api/settings', {
             method: 'PUT',
@@ -1377,13 +1378,13 @@ export async function toggleShowServer() {
     } catch (e) {
         console.error('Failed to save server display setting:', e);
         state.settings = { ...state.settings, show_session_server: previous };
-        renderLiveSessions(state.liveSessions);
+        redrawLiveList();
     }
 }
 
 export function toggleGroupByServer() {
     try { localStorage.setItem('coral-group-by-server', isGroupedByServer() ? 'false' : 'true'); } catch { /* per-viewer only */ }
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
 }
 
 // A folder icon on folder groups, as teams have the people icon (#3507 v4, the operator's
@@ -1447,14 +1448,14 @@ export function toggleGroupByTeam() {
     localStorage.setItem('coral-group-by-team', !current ? 'true' : 'false');
     const check = document.getElementById('group-by-team-check-top');
     if (check) check.style.opacity = !current ? '1' : '0.2';
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
 }
 
 export function expandSleepingGroup(groupName) {
     const key = `coral-sleeping-expanded:${groupName}`;
     const current = localStorage.getItem(key) === 'true';
     localStorage.setItem(key, current ? 'false' : 'true');
-    renderLiveSessions(state.liveSessions);
+    redrawLiveList();
 }
 
 function _isSleepingExpanded(groupName) {
@@ -1592,7 +1593,7 @@ function _agentMatches(s, q) {
 
 export function filterLiveAgents(value) {
     _agentFilter = (value || '').trim().toLowerCase();
-    renderLiveSessions(state.liveSessions || []);
+    redrawLiveList();
 }
 
 export function focusAgentSearch() {
@@ -1642,6 +1643,8 @@ export function scheduleLiveSessionsRender() {
 export function flushLiveSessionsRender() {
     if (_scheduledRender) renderLiveSessions(state.liveSessions || []);
 }
+
+registerLiveListRenderer(renderLiveSessions); // the hook other modules redraw through (list_hooks.js)
 
 function _renderLiveSessions(sessions) {
     // Single-agent popout: the sidebar is chrome. Never render rows there —
@@ -2179,7 +2182,7 @@ function _renderLiveSessions(sessions) {
 
 // Hidden tabs skip availability polls; catch up as soon as the tab is shown.
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.liveSessions?.length) renderLiveSessions(state.liveSessions); // also drops a frame scheduled while hidden
+    if (!document.hidden && state.liveSessions?.length) redrawLiveList(); // also drops a frame scheduled while hidden
 });
 
 /** Elements matching `sel` among `roots` and their descendants. */
@@ -2281,7 +2284,7 @@ function _attachDragListeners(list, roots = [list]) {
 
             // Save and re-render
             _saveSessionOrder(merged);
-            renderLiveSessions(state.liveSessions);
+            redrawLiveList();
         });
     }
 }
