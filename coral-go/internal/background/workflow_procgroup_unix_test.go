@@ -84,3 +84,80 @@ func TestHooksRunInTheirDirectoryAndProcessGroup(t *testing.T) {
 	assert.Equal(t, want, lines[0], "the hook ran in its directory")
 	assert.Equal(t, lines[2], lines[1], "the hook's shell leads its own process group")
 }
+
+// groupGone reports whether no process is left in process group pgid.
+func groupGone(pgid int) bool { return syscall.Kill(-pgid, 0) != nil }
+
+// stepGroupsGone is what a workflow test asserts when it ends: every step process group it
+// started is gone (#3997).
+func stepGroupsGone(t *testing.T, pgids []int) {
+	t.Helper()
+	for _, g := range pgids {
+		assert.Eventually(t, func() bool { return groupGone(g) }, 10*time.Second, 20*time.Millisecond,
+			"the step's process group %d is still running", g)
+	}
+}
+
+// startHangingRun starts a run whose shell step backgrounds a sleep and waits; it returns the
+// run, the step's process group and the sleep's pid.
+func startHangingRun(t *testing.T) (*WorkflowRunner, *store.WorkflowStore, *store.WorkflowRun, int, int) {
+	t.Helper()
+	db := setupTestDB(t)
+	wfStore := store.NewWorkflowStore(db)
+	rt := newWfMockRuntime()
+	runner := NewWorkflowRunner(wfStore, &AgentLauncher{runtime: rt}, rt, nil, nil, t.TempDir(), "localhost", 8420)
+	pidFile := filepath.Join(t.TempDir(), "grandchild.pid")
+	steps := `[{"name":"hang","type":"shell","command":"sleep 600 & echo $! > '` + pidFile + `'; wait"}]`
+	wf := createTestWorkflow(t, wfStore, t.TempDir(), steps)
+	run, err := runner.TriggerWorkflow(context.Background(), wf, "api", nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { runner.Shutdown(context.Background()) })
+	grandchild := readPID(t, pidFile)
+	var pgid int
+	require.Eventually(t, func() bool {
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		if c := runner.activeChildren[run.ID]; c != nil && c.cmd != nil && c.cmd.Process != nil {
+			pgid = c.cmd.Process.Pid
+		}
+		return pgid > 0
+	}, 5*time.Second, 10*time.Millisecond)
+	// A safety net if the test fails: only this step's recorded group, never by name.
+	t.Cleanup(func() {
+		if !groupGone(pgid) {
+			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		}
+	})
+	return runner, wfStore, run, pgid, grandchild
+}
+
+// #3997: killing a run takes the step's whole process group, a backgrounded grandchild too.
+func TestKillRunKillsTheStepsProcessGroup(t *testing.T) {
+	runner, _, run, pgid, grandchild := startHangingRun(t)
+	require.True(t, runner.KillRun(context.Background(), run.ID))
+	assert.Eventually(t, func() bool { return !alive(grandchild) }, 10*time.Second, 20*time.Millisecond, "the backgrounded sleep survived KillRun")
+	stepGroupsGone(t, []int{pgid})
+}
+
+// #3997: Coral stopping ends every run in progress with its process group (before, a step in its
+// own process group outlived the server), records them killed, and starts no new run.
+func TestShutdownKillsRunningSteps(t *testing.T) {
+	runner, wfStore, run, pgid, grandchild := startHangingRun(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	start := time.Now()
+	runner.Shutdown(ctx)
+	assert.Less(t, time.Since(start), 15*time.Second, "Shutdown returned once the run ended")
+	assert.False(t, alive(grandchild), "the backgrounded sleep survived Shutdown")
+	stepGroupsGone(t, []int{pgid})
+	got, err := wfStore.GetWorkflowRunDirect(context.Background(), run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "killed", got.Status)
+	wf, err := wfStore.GetWorkflow(context.Background(), got.WorkflowID)
+	require.NoError(t, err)
+	late, err := runner.TriggerWorkflow(context.Background(), wf, "api", nil)
+	assert.ErrorIs(t, err, ErrRunnerStopped)
+	if late != nil { // a run that should not have started ends here
+		runner.KillRun(context.Background(), late.ID)
+	}
+}
