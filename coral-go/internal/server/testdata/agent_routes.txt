@@ -7,6 +7,7 @@ b CONNECT /api/remote/{server}/*
 a DELETE /api/agent/ui/{id}
 b DELETE /api/artifacts/{id}
 b DELETE /api/artifacts/{id}/keep
+b DELETE /api/auth/sessions/{id}
 b DELETE /api/board/remotes
 b DELETE /api/board/{project}
 b DELETE /api/board/{project}/groups/{groupID}/members/{sessionID}
@@ -43,6 +44,10 @@ a GET /api/agent/ui
 a GET /api/agent/ui/{id}/content
 a GET /api/agent/ui/{id}/events
 a GET /api/artifacts/{id}
+b GET /api/auth/hub-origins
+b GET /api/auth/hub-signin
+b GET /api/auth/sessions
+b GET /api/auth/setup-code
 a GET /api/board/projects
 c GET /api/board/remotes
 c GET /api/board/remotes/proxy/{remoteServer}/projects
@@ -208,6 +213,11 @@ a POST /api/agent/ui-request
 a POST /api/agent/ui/{id}/events
 b POST /api/artifacts/prune
 b POST /api/artifacts/retention/ack
+b POST /api/auth/hub-signin/dismiss
+b POST /api/auth/password/change
+b POST /api/auth/password/reset
+b POST /api/auth/password/set
+b POST /api/auth/sessions/sign-out-others
 c POST /api/auto-accept/disable-all
 b POST /api/board/remotes
 a POST /api/board/{project}/external-messages
@@ -315,6 +325,8 @@ b POST /api/workflows/runs/{runID}/kill
 b POST /api/workflows/{workflowID}/trigger
 a PUT /api/agent/ui/{id}
 b PUT /api/artifacts/{id}/keep
+b PUT /api/auth/hub-origins
+b PUT /api/auth/hub-signin
 b PUT /api/board/{project}/settings
 b PUT /api/board/{project}/working-mode
 b PUT /api/board/{project}/working-mode/presets/{presetID}
