@@ -1,19 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Minimal entitlements (#3659, update/install audit item 2): none. Coral's binaries are pure Go
+  (CGO_ENABLED=0) apart from coral-tray and coral-app, and none of them needs a hardened-runtime
+  exception: no JIT of their own (WKWebView's JIT runs in Apple's WebContent process), no
+  unsigned executable memory, and no third-party libraries to load. The network keys were App
+  Sandbox entitlements, which don't apply because the app isn't sandboxed. release.yml smoke-tests
+  the SIGNED app (hardened runtime, webview included) so a missing entitlement fails the release.
+-->
 <plist version="1.0">
-<dict>
-    <!-- Required for network access (HTTP server) -->
-    <key>com.apple.security.network.client</key>
-    <true/>
-    <key>com.apple.security.network.server</key>
-    <true/>
-
-    <!-- Required for PTY backend (spawning shell/agent processes) -->
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
-</dict>
+<dict/>
 </plist>

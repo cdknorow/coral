@@ -522,7 +522,15 @@ jobs:
       # The webview is forced on: coral-app is the one most likely to need one (#3659).
       - name: Smoke test the signed Coral.app (hardened runtime, minimal entitlements)
         run: |
-          codesign -d --entitlements - dist/Coral.app/Contents/MacOS/coral-app 2>/dev/null | grep -E 'allow-jit|allow-unsigned|disable-library' && { echo "::error::an exception entitlement is still set"; exit 1; } || true
+          # No signed binary carries a hardened-runtime exception (the tray and the app included).
+          for bin in dist/Coral.app/Contents/MacOS/*; do
+            [ -x "$bin" ] && [ ! -d "$bin" ] || continue
+            if codesign -d --entitlements - "$bin" 2>/dev/null | grep -qE 'allow-jit|allow-unsigned|disable-library'; then
+              echo "::error::$(basename "$bin") still has an exception entitlement"; exit 1
+            fi
+          done
+          # Then run the signed app: the tray (cgo) starts the server and must answer, and the
+          # webview (coral-app, cgo) is launched and must not crash. A failure here fails the job.
           CI=true SMOKE_TEST_WEBVIEW=1 TEST_PORT=8498 tools/test-macos-app.sh dist/Coral.app
 
       - name: Smoke test Coral.app
