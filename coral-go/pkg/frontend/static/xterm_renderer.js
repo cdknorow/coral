@@ -327,6 +327,41 @@ function _setDisconnectedBadge(visible) {
 /** Reuse the existing terminal if possible — just disconnect WS and clear buffer.
  *  Destroying and recreating the xterm canvas causes blank renders in macOS
  *  WebKit webview (webview_go). Only create a new Terminal when none exists. */
+// Controls a paste may not carry (#3686, terminal audit finding 1): ESC and the other C0 controls
+// but tab, newline and CR, DEL, and the C1 controls. A pasted ESC[201~ would end bracketed paste
+// early and turn the rest into typed input; without ESC it stays text inside the paste.
+const PASTE_CONTROLS = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g;
+
+export function sanitizePaste(text) {
+    return String(text == null ? '' : text).replace(PASTE_CONTROLS, '');
+}
+
+function _onPaste(e) {
+    if (!terminal) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    pasteText(e.clipboardData ? e.clipboardData.getData('text/plain') : '');
+}
+
+// Paste text into the terminal, cleaned. Output can switch bracketed paste off (ESC[?2004l), and
+// then each line of a multi-line paste is sent as typed and runs on its own: so that case asks
+// first. The answer applies to the terminal the paste was made in.
+export function pasteText(text) {
+    const t = terminal;
+    const clean = sanitizePaste(text);
+    if (!t || !clean) return;
+    const go = () => { if (terminal === t) { t.paste(clean); t.focus(); } };
+    if (t.modes.bracketedPasteMode || !/[\r\n]/.test(clean)) {
+        go();
+        return;
+    }
+    const lines = clean.replace(/(\r\n|\r|\n)$/, '').split(/\r\n|\r|\n/).length;
+    const confirm = window.showConfirmModal;
+    if (typeof confirm !== 'function') return; // no way to ask: don't paste blind
+    confirm(`Paste ${lines} line${lines === 1 ? '' : 's'}?`,
+        'This terminal isn\u2019t in paste mode, so each line is sent as if typed and runs on its own.', go);
+}
+
 export function createTerminal(containerEl) {
     dbg('createTerminal called, existing terminal:', !!terminal);
 
@@ -407,7 +442,28 @@ export function createTerminal(containerEl) {
         }
     }
 
+    // xterm answers some queries in the output itself (device attributes, cursor and status
+    // reports, mode and colour queries, focus reports) and emits those answers through onData as
+    // if typed (#3686, terminal audit finding 3). tmux has already answered the pane's program, so
+    // they are not forwarded, and they never take the pane or resize it. xterm marks real input
+    // (keys, paste, IME, mouse reports): its core service fires onUserInput just before onData for
+    // those. That is xterm's internal API (the vendored 5.5.0); without it, input is forwarded as
+    // before and terminal_escape_browser's query check fails, so an upgrade can't drop this quietly.
+    let _userInput = false;
+    const _coreService = terminal._core && terminal._core.coreService;
+    const _marksInput = !!(_coreService && typeof _coreService.onUserInput === 'function');
+    if (_marksInput) {
+        _coreService.onUserInput(() => {
+            _userInput = true;
+            queueMicrotask(() => { _userInput = false; }); // onData follows in the same call
+        });
+    } else {
+        console.warn('[coral] xterm does not mark user input: its query replies reach the pane');
+    }
+
     _onDataDisposable = terminal.onData((data) => {
+        if (_marksInput && !_userInput) return; // xterm's own reply to a query in the output
+        _userInput = false;
         if (!state.currentSession || state.currentSession.type !== "live") return;
         // A View-only server (Cloud Hub) would drop it anyway: say so instead (#3068).
         if (hubBlocksKeystrokes()) return;
@@ -462,6 +518,8 @@ export function createTerminal(containerEl) {
     }
     // Clicking into a viewer window's terminal takes interactive control.
     containerEl.addEventListener('mousedown', () => claimOwnership());
+    // Paste goes through pasteText (#3686): taken before xterm's own handler sees it.
+    containerEl.addEventListener('paste', _onPaste, true);
     dbg('terminal.open() done, container:', containerEl.offsetWidth, 'x', containerEl.offsetHeight,
         'display:', containerEl.style.display, 'cols:', terminal.cols, 'rows:', terminal.rows);
 
