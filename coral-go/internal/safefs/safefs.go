@@ -437,6 +437,3 @@ func IsSafeID(id string) bool {
 	}
 	return true
 }
-
-// String forms for messages.
-func (r *Root) String() string { return fmt.Sprintf("safefs.Root(%s)", r.dir) }
