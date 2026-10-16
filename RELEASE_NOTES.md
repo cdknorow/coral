@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.4.52 — The agent's team in its header, and fewer inline scripts
+
+### New
+
+- **The agent header names its team.** Under the agent's name, on a phone and on the desktop, the header shows the agent's team, and on a hub with remote servers its server ("Local" for this computer, as in the sidebar).
+
+### Security
+
+- **Fewer inline scripts in the dashboard.** The Cost, Workflows, scheduled jobs, History and message board views no longer use inline event handlers; their buttons and fields are wired up by Coral's own scripts instead. Content an agent writes can't name one of those actions. This is a step toward a dashboard policy that allows no inline scripts at all.
+- **Invisible characters are removed from board posts.** Zero-width spaces, invisible operators and tag characters, which can hide or fake what you read, are dropped from board posts, task titles and agent screens in the command line, and the agent names in Coral's notices lose every Unicode format character too. Joiners that emoji and some scripts need are kept in posts.
+- **The command line escapes board names.** Every `coral-board` command now escapes the board name in its requests, so a board name with `?` or `#` in it can't send a command to the wrong place.
+
 ## v1.4.51 — Fairer hub limits, and tidier tmux
 
 ### Security
