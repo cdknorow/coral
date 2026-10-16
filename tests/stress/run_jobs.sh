@@ -71,6 +71,13 @@ export CORAL_DATA_DIR="$TMPDIR_JOBS"
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job: a test server never runs a real agent on its own
 export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)
 
+# A prompt job's repo_path must be a git repository (the server refuses a non-repo). Use a
+# dedicated repo dir, not the data dir, so the server's own files aren't under git.
+REPO_JOBS="$TMPDIR_JOBS/repo"
+mkdir -p "$REPO_JOBS"
+git -C "$REPO_JOBS" init -q
+git -C "$REPO_JOBS" -c user.email=stress@coral.test -c user.name=stress commit -q --allow-empty -m init
+
 log "Building coral (dev mode)..."
 cd "$CORAL_DIR"
 go build -tags "dev fts5" -o "$TMPDIR_JOBS/coral" ./cmd/coral/
@@ -89,7 +96,7 @@ log "Test 1: Create a workflow..."
 WF_RESULT=$(api POST "/api/workflows" -d '{
     "name": "test-scheduled-wf",
     "description": "Test workflow for scheduled jobs",
-    "repo_path": "'"$TMPDIR_JOBS"'",
+    "repo_path": "'"$REPO_JOBS"'",
     "steps": [
         {"name": "echo-step", "type": "shell", "command": "echo hello"}
     ]
@@ -108,7 +115,7 @@ log "Test 2: Create a prompt-type scheduled job..."
 PROMPT_JOB=$(api POST "/api/scheduled/jobs" -d '{
     "name": "test-prompt-job",
     "cron_expr": "0 0 31 2 *",
-    "repo_path": "'"$TMPDIR_JOBS"'",
+    "repo_path": "'"$REPO_JOBS"'",
     "prompt": "echo test"
 }')
 
@@ -162,7 +169,7 @@ log "Test 5: Prompt job validation..."
 STATUS_NO_PROMPT=$(api_status POST "/api/scheduled/jobs" -d '{
     "name": "bad-prompt-job",
     "cron_expr": "0 0 31 2 *",
-    "repo_path": "'"$TMPDIR_JOBS"'"
+    "repo_path": "'"$REPO_JOBS"'"
 }')
 
 if [[ "$STATUS_NO_PROMPT" == "400" ]]; then

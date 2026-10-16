@@ -144,14 +144,17 @@ check_link() { # check_link <link> <label>
     code=$(curl -s -m 10 -o /dev/null -w "%{http_code}" "$1")
     [[ $code == 403 ]] && pass "$2: a second use is refused" || fail "$2: reuse answered $code"
 }
-check_link "$BASE/?login_token=$(tr -d '\n' < "$DATA/login_token")" "startup link"
+# Capture the startup token before it is used: the server removes the login_token file after the
+# token is consumed (#3628 F7 / #3743), so a later read of the file would fail.
+STARTUP_TOKEN="$(tr -d '\n' < "$DATA/login_token")"
+check_link "$BASE/?login_token=$STARTUP_TOKEN" "startup link"
 open_link=$(coral_open)
 [[ -n "$open_link" ]] && check_link "$open_link" "coral open" || fail "coral open printed no link"
 # Expiry (this dev build runs with CORAL_TEST_LOGIN_TOKEN_TTL=3s; the real TTL is 10 min).
 late_link=$(coral_open); sleep 4
 code=$(curl -s -m 10 -o /dev/null -w "%{http_code}" "$late_link")
 [[ $code == 403 ]] && pass "an expired sign-in link is refused" || fail "expired link answered $code"
-LOGIN_TOKENS="$(tr -d '\n' < "$DATA/login_token") ${open_link##*=} ${late_link##*=}"
+LOGIN_TOKENS="$STARTUP_TOKEN ${open_link##*=} ${late_link##*=}"
 
 # ── Scale: 3 teams x 4 agents ─────────────────────────────────────────
 STARTED=$SECONDS
