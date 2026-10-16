@@ -156,6 +156,13 @@
             <!-- Mobile Agent List (shown on mobile instead of sidebar) -->
             <div id="mobile-agent-list" class="mobile-agent-list"></div>
 
+            <!-- #3751: this tab loaded before a server update (update_banner.js); an idle tab reloads by itself -->
+            <div id="update-banner" class="leftover-tmux-banner update-banner" role="status" hidden>
+                <span class="material-icons" aria-hidden="true">system_update</span>
+                <div class="leftover-tmux-text"><b>Coral was updated.</b> <span id="update-banner-detail">Reloading in a few seconds.</span></div>
+                <button class="btn btn-primary" type="button" data-on-click="update-reload">Reload</button>
+            </div>
+
             <!-- #3634: under pty, agents still running in Coral's old tmux server (terminal_backend.js) -->
             <div id="leftover-tmux-banner" class="leftover-tmux-banner" role="alert" hidden>
                 <span class="material-icons" aria-hidden="true">warning</span>

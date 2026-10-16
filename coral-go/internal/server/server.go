@@ -375,6 +375,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Use(middleware.Recoverer)
 	r.Use(httputil.GzipAPI) // /api/ JSON over 1 KB, gzipped for a client that accepts it (#3724)
 	r.Use(noStoreAPI)
+	r.Use(s.buildHeader)
 
 	// Requests that came through the Cloud Hub tunnel (marked by the connector) are
 	// re-checked against the connector's route policy before anything else sees them.
@@ -1269,6 +1270,21 @@ func noStoreAPI(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p := r.URL.Path; strings.HasPrefix(p, "/api/") || p == "/ws" || strings.HasPrefix(p, "/ws/") {
 			w.Header().Set("Cache-Control", "no-store")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// buildHeaderName carries this server's static build (the /static/b/<build>/ id) on every /api/ answer.
+// A dashboard tab left open across a server update still runs the old scripts; it compares the header
+// with the build it loaded from and offers a reload (update_banner.js, #3751). Nothing is sent while the
+// build is unknown, and it is the same id the page's own URLs carry, so it says nothing new.
+const buildHeaderName = "X-Coral-Build"
+
+func (s *Server) buildHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if v := s.staticVersion; v != "" && strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set(buildHeaderName, v)
 		}
 		next.ServeHTTP(w, r)
 	})

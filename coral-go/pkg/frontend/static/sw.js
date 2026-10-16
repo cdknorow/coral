@@ -63,8 +63,16 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // HTML pages: network-first (fall back to cache for offline shell)
+    // HTML pages: network-first. The cached shell is only the offline fallback, so every good
+    // answer for the page replaces it: a shell left from install time would name the build
+    // of a version long gone (#3751).
     event.respondWith(
-        fetch(event.request).catch(() => caches.match('/'))
+        fetch(event.request).then((response) => {
+            if (event.request.mode === 'navigate' && url.pathname === '/' && response.ok) {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put('/', clone));
+            }
+            return response;
+        }).catch(() => caches.match('/'))
     );
 });

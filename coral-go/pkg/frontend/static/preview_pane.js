@@ -1,6 +1,7 @@
 /* Bottom preview pane — tabbed file/artifact viewer below the terminal/chat area */
 
 import { state } from './state.js';
+import { registerUnsavedWork } from './update_banner.js';
 import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG, sanitizeHtml, renderMarkdownStrict, highlightCodeIn, keepFragmentsInside } from './utils.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
 import { loadCodeMirror, loadHighlight, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
@@ -202,6 +203,9 @@ function _activeTab() {
 function _isDirty(tab) {
     return tab.kind === 'file' && tab.content !== null && tab.savedContent !== null && tab.content !== tab.savedContent;
 }
+
+// A reload after a server update waits for unsaved file edits (update_banner.js, #3751).
+registerUnsavedWork(() => _tabs.some(_isDirty));
 
 /* ── Tab bar ───────────────────────────────────────────────── */
 
