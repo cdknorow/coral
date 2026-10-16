@@ -415,7 +415,8 @@ export async function selectHistorySession(sessionId, locator = null) {
             const offset = Math.max(0, data.total - end);
             const focused = await loadHistoryMessages(sessionId, { limit, offset });
             if (generation !== switchGeneration) return;
-            if (focused?.messages?.length) { data = focused; messageBaseIndex = Math.max(0, data.total - end); }
+            // The page's first message is at start (the reply says so), not at its offset from the end.
+            if (focused?.messages?.length) { data = focused; messageBaseIndex = focused.start; }
         }
         // Resume reads the type from here when the history list has no entry.
         if (data.agent_type) state.currentSession.agent_type = data.agent_type;

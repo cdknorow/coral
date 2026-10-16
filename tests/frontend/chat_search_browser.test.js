@@ -195,11 +195,14 @@ const BASE = require('./test_base').BASE;
                 }
 
                 if (u.includes('/api/sessions/history/sid-agent-deep')) {
-                    // History detail endpoint returns full transcript (total absent in response)
+                    // History detail pages as the server does (#3718): limit/offset from the end, with total and start.
+                    const q = new URL(u, location.origin).searchParams;
+                    const limit = Number(q.get('limit')) || transcript.length, offset = Number(q.get('offset')) || 0;
+                    const end = Math.max(transcript.length - offset, 0), start = Math.max(end - limit, 0);
                     return new Response(JSON.stringify({
                         session_id: 'sid-agent-deep',
                         agent_type: 'claude',
-                        messages: transcript
+                        messages: transcript.slice(start, end), total: transcript.length, start
                     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
                 }
 
