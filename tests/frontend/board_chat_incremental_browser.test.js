@@ -64,6 +64,10 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
         // ── Opening the panel ──────────────────────────────────────────────
         await ev(`(async () => {
+            // The panel is part of the agent view, whose polls keep only a slow beat while it is
+            // off screen (#3719): show it, as when the panel is in use.
+            const agentView = document.getElementById('live-session-view');
+            if (agentView) agentView.style.display = '';
             if (!document.getElementById('agentic-panel-board')) {
                 const p = document.createElement('div'); p.id = 'agentic-panel-board'; document.body.appendChild(p);
             }
