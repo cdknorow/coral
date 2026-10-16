@@ -116,6 +116,14 @@ func TestPasswordSignIn(t *testing.T) {
 	w, _ = g.do(g.ar.SignInWithPassword, r)
 	assert.Equal(t, http.StatusForbidden, w.Code)
 
+	// An agent's tool never signs a browser in (Security, #3949 round 1).
+	r = g.req("POST", "/auth/password", body, "127.0.0.1", nil)
+	r.Header.Set(agentTokenHeader, "an-agent-token")
+	w, out = g.do(g.ar.SignInWithPassword, r)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, "forbidden_for_agent", out["code"])
+	assert.Empty(t, w.Result().Cookies())
+
 	// Too long: refused before any hash.
 	w, out = g.do(g.ar.SignInWithPassword, g.req("POST", "/auth/password", `{"password":"`+strings.Repeat("x", MaxPasswordBytes+1)+`"}`, "10.0.0.9", nil))
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -274,9 +282,15 @@ func TestCreatePasswordOnTheSignInPage(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 	assert.Equal(t, "password_set", out["code"])
 
-	// This computer (same user, positively): no code needed.
+	// This computer (same user, positively): no code needed, unless it is an agent's tool.
 	g2 := newPwRig(t)
 	g2.ar.SetPeerUser(func(*http.Request) (bool, bool) { return true, true })
+	r = g2.req("POST", "/auth/password/create", `{"password":"pw"}`, "127.0.0.1", nil)
+	r.Header.Set(agentTokenHeader, "an-agent-token")
+	w, out = g2.do(g2.ar.CreatePassword, r)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, "forbidden_for_agent", out["code"])
+	assert.False(t, g2.ks.PasswordSet())
 	w, _ = g2.do(g2.ar.CreatePassword, g2.req("POST", "/auth/password/create", `{"password":"pw"}`, "127.0.0.1", nil))
 	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
 

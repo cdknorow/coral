@@ -221,8 +221,23 @@ func TestSessionLabelIsPlainText(t *testing.T) {
 	assert.Equal(t, "Unknown browser", sessionLabel("\x00\x01"))
 }
 
+// Security, #3949 round 1: the code is printed only when stderr is a terminal; the tray and the
+// app send stderr to tray.log.
+func TestSetupCodeNeverPrintedToANonTerminal(t *testing.T) {
+	out := &strings.Builder{}
+	setupConsole = out
+	defer func(f func() bool) { setupConsoleIsTerminal = f }(setupConsoleIsTerminal)
+	setupConsoleIsTerminal = func() bool { return false }
+	ks := newTestKeyStore(t)
+	c := ks.SetupCode()
+	require.Len(t, c, setupCodeLen)
+	assert.Empty(t, out.String(), "nothing printed to a log file")
+}
+
 func TestSetupCode(t *testing.T) {
 	setupConsole = &strings.Builder{}
+	defer func(f func() bool) { setupConsoleIsTerminal = f }(setupConsoleIsTerminal)
+	setupConsoleIsTerminal = func() bool { return true }
 	ks := newTestKeyStore(t)
 	c := ks.SetupCode()
 	require.Len(t, c, setupCodeLen)

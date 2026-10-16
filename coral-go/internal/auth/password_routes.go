@@ -22,6 +22,19 @@ import (
 // same-origin); the cookie-authenticated ones also need an Origin naming this server (Security
 // 2). None is in Coral Hub's tunnel table, and an agent's token never signs into any of them.
 
+// agentTokenHeader is an agent session's token (store.SessionTokenHeader; store imports this
+// package). A request carrying one is an agent's tool and never signs a browser in or creates
+// the password (Security, #3949 round 1: on Linux the peer check would call it this computer).
+const agentTokenHeader = "X-Coral-Session-Token"
+
+func refuseAgent(w http.ResponseWriter, r *http.Request) bool {
+	if r.Header.Get(agentTokenHeader) == "" {
+		return false
+	}
+	authError(w, http.StatusForbidden, "forbidden_for_agent", "An agent can't sign in or set the password: that is for the Operator, in a browser or with coral set-password")
+	return true
+}
+
 // maxPasswordBody bounds a password request's body.
 const maxPasswordBody = 16 << 10
 
@@ -113,6 +126,9 @@ func (ar *Routes) checkPassword(w http.ResponseWriter, r *http.Request, pw strin
 // SignInWithPassword signs a browser in with the password.
 // POST /auth/password {"password": "...", "keep": bool}
 func (ar *Routes) SignInWithPassword(w http.ResponseWriter, r *http.Request) {
+	if refuseAgent(w, r) {
+		return
+	}
 	// A script may send it without an Origin (it carries the password itself); a browser page
 	// on another site never gets a cookie.
 	if !sameOriginWrite(r, false) {

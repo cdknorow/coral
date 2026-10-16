@@ -77,7 +77,7 @@ func TestPasswordEndToEnd(t *testing.T) {
 	token, err := db.MintSessionToken(context.Background(), "sid-agent", "claude-agent")
 	require.NoError(t, err)
 	agent := &http.Client{}
-	for _, p := range []string{"/api/auth/password/set", "/api/auth/password/change", "/api/auth/password/reset", "/api/auth/sessions/sign-out-others"} {
+	for _, p := range []string{"/auth/password", "/auth/password/create", "/api/auth/password/set", "/api/auth/password/change", "/api/auth/password/reset", "/api/auth/sessions/sign-out-others"} {
 		r := post(agent, local.URL, p, `{"password":"x"}`, map[string]string{store.SessionTokenHeader: token, "User-Agent": "coral-board/dev"})
 		assert.Equal(t, http.StatusForbidden, r.StatusCode, p)
 	}

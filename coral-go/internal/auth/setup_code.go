@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/cdknorow/coral/internal/httputil"
 )
 
@@ -32,8 +34,14 @@ const (
 	setupWrongMax = 20
 )
 
-// setupConsole is where a new setup code is printed (stderr; tests replace it).
-var setupConsole io.Writer = os.Stderr
+// setupConsole is where a new setup code is printed (stderr; tests replace it), and
+// setupConsoleIsTerminal says whether it is a terminal. The tray and the app send the server's
+// stderr to a log file (tray.log) that people attach to bug reports, so the code is printed only
+// to a terminal; otherwise 'coral setup-code' is the way to get it (Security, #3949 round 1).
+var (
+	setupConsole           io.Writer = os.Stderr
+	setupConsoleIsTerminal           = func() bool { return term.IsTerminal(int(os.Stderr.Fd())) }
+)
 
 func newSetupCode() string {
 	b := make([]byte, setupCodeLen)
@@ -70,8 +78,10 @@ func (ks *KeyStore) setupCodeLocked(now time.Time) string {
 		ks.setupCode = newSetupCode()
 		ks.setupExpires = now.Add(setupCodeTTL)
 		ks.setupWrong = 0
-		fmt.Fprintf(setupConsole, "Coral: no dashboard password yet. To create one from another computer, the sign-in page asks for this one-time setup code: %s (valid %d minutes; 'coral setup-code' prints a fresh one). Do not share it.\n",
-			FormatSetupCode(ks.setupCode), int(setupCodeTTL.Minutes()))
+		if setupConsoleIsTerminal() {
+			fmt.Fprintf(setupConsole, "Coral: no dashboard password yet. To create one from another computer, the sign-in page asks for this one-time setup code: %s (valid %d minutes; 'coral setup-code' prints a fresh one). Do not share it.\n",
+				FormatSetupCode(ks.setupCode), int(setupCodeTTL.Minutes()))
+		}
 	}
 	return ks.setupCode
 }
@@ -143,6 +153,9 @@ func (ar *Routes) PageState(r *http.Request) (passwordSet, local, strict bool) {
 // CreatePassword creates the first password from the sign-in page and signs this browser in.
 // POST /auth/password/create {"password": "...", "keep": bool, "code": "ABCD-EFGH"}
 func (ar *Routes) CreatePassword(w http.ResponseWriter, r *http.Request) {
+	if refuseAgent(w, r) {
+		return
+	}
 	if !sameOriginWrite(r, true) {
 		authError(w, http.StatusForbidden, "cross_origin", "Create the password from Coral's own page")
 		return
