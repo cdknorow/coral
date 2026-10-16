@@ -246,15 +246,7 @@ func (b *TmuxBackend) PaneSize(name string) (int, int, error) {
 		agentType = sess.info.AgentType
 		sessionID = sess.info.SessionID
 	}
-	out, err := b.client.DisplayForAgent(ctx, name, agentType, sessionID, "#{pane_width} #{pane_height}")
-	if err != nil {
-		return 0, 0, err
-	}
-	var cols, rows int
-	if _, err := fmt.Sscanf(strings.TrimSpace(out), "%d %d", &cols, &rows); err != nil || cols <= 0 || rows <= 0 {
-		return 0, 0, fmt.Errorf("pane size %q: unexpected tmux output", strings.TrimSpace(out))
-	}
-	return cols, rows, nil
+	return b.client.PaneSizeForAgent(ctx, name, agentType, sessionID)
 }
 
 // OutputStamp is the size and modification time of the session's output log, which pipe-pane
