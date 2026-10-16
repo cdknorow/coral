@@ -24,6 +24,7 @@ PORT=${CORAL_TEST_PORT:-8474}
 if [[ "$PORT" == 8420 ]]; then echo "ERROR: refusing port 8420 (production Coral server); pick another port." >&2; exit 2; fi
 HOST="127.0.0.1"
 BASE_URL="http://${HOST}:${PORT}"
+DASHBOARD_HEADERS=(-H "Origin: ${BASE_URL}" -H "Sec-Fetch-Site: same-origin")
 PASS=0
 FAIL=0
 SERVER_PID=""
@@ -61,10 +62,13 @@ pass() { PASS=$((PASS + 1)); log "PASS: $*"; }
 fail() { FAIL=$((FAIL + 1)); log "FAIL: $*"; }
 check() { if eval "$2"; then pass "$1"; else fail "$1${3:+ — $3}"; fi; }
 
+# The dashboard's requests: same-origin browser headers. Since #3495 (2ff934f4) a route an agent's
+# tools call accepts a token-less request only from the Operator (the dashboard), so the suite's
+# "dashboard" calls say they are (DASHBOARD_HEADERS, set with BASE_URL).
 api() {
     local method="$1" path="$2"
     shift 2
-    curl -s -m 10 -X "$method" "${BASE_URL}${path}" -H "Content-Type: application/json" "$@"
+    curl -s -m 10 -X "$method" "${BASE_URL}${path}" -H "Content-Type: application/json" "${DASHBOARD_HEADERS[@]}" "$@"
 }
 
 # Read a field from JSON on stdin: jget <python-expression over d>
@@ -113,7 +117,7 @@ launch_agent() {
 
 create_task() {  # name sid title body notify
     python3 -c "import json,sys; print(json.dumps({'title': sys.argv[1], 'body': sys.argv[2], 'session_id': sys.argv[3], 'notify': sys.argv[4] == 'true'}))" "$3" "$4" "$2" "$5" \
-        | curl -s -m 15 -X POST "${BASE_URL}/api/sessions/live/$1/tasks" -H "Content-Type: application/json" -d @-
+        | curl -s -m 15 -X POST "${BASE_URL}/api/sessions/live/$1/tasks" -H "Content-Type: application/json" "${DASHBOARD_HEADERS[@]}" -d @-
 }
 
 task_states() {  # name sid -> "id:completed id:completed ..."
