@@ -291,7 +291,7 @@ func (ks *KeyStore) RevokeSession(token string) {
 	if token == "" {
 		return
 	}
-	if err := ks.backend().DeleteSession(context.Background(), sessionHash(token)); err != nil {
+	if err := ks.endSession(context.Background(), sessionHash(token)); err != nil {
 		log.Printf("[auth] couldn't end a session: %v", err)
 	}
 }
@@ -303,12 +303,16 @@ func (ks *KeyStore) RevokeOtherSessions(r *http.Request) (int, error) {
 	if t := ks.extractSessionCookie(r); t != "" && ks.ValidateSession(t) {
 		keep = sessionHash(t)
 	}
-	return ks.backend().DeleteSessionsExcept(context.Background(), keep)
+	n, err := ks.backend().DeleteSessionsExcept(context.Background(), keep)
+	ks.live.close("", keep) // the others' open WebSockets close too
+	return n, err
 }
 
 // RevokeAllSessions ends every browser session.
 func (ks *KeyStore) RevokeAllSessions() (int, error) {
-	return ks.backend().DeleteSessionsExcept(context.Background(), "")
+	n, err := ks.backend().DeleteSessionsExcept(context.Background(), "")
+	ks.live.close("", "")
+	return n, err
 }
 
 // currentSessionHash is the hash of the live session r carries, or "".

@@ -131,14 +131,11 @@ type HubSignin struct {
 	startsAll    []time.Time
 	links        []*hubLink
 	disabledSeen time.Time
-	sockets      map[string]map[*hubReq]struct{} // live requests of each Hub session, by id hash
 	lastCheck    map[string]time.Time
 	readLogged   map[string]time.Time // session id hash + route: when a read was last recorded
 	allowedAt    time.Time            // allowed()'s cached answer, for a second
 	allowedVal   bool
 }
-
-type hubReq struct{ cancel context.CancelFunc }
 
 // HubSigninConfig wires a HubSignin.
 type HubSigninConfig struct {
@@ -155,7 +152,7 @@ func (ar *Routes) NewHubSignin(c HubSigninConfig) *HubSignin {
 	h := &HubSignin{
 		ks: ar.ks, ar: ar, hub: c.Hub, settings: c.Settings, operatorAllowed: c.OperatorAllowed,
 		loopbackOrigins: c.LoopbackOrigins, originsChanged: c.OriginsChanged, onAction: c.OnAction, now: time.Now,
-		starts: map[string][]time.Time{}, sockets: map[string]map[*hubReq]struct{}{}, lastCheck: map[string]time.Time{},
+		starts: map[string][]time.Time{}, lastCheck: map[string]time.Time{},
 		readLogged: map[string]time.Time{},
 	}
 	ar.hub = h
@@ -559,8 +556,8 @@ func hubSessionDenied(method, path string) bool {
 }
 
 // HubSessionGuard runs after Middleware: a request signed in with a Hub session is refused the
-// denied routes (403 hub_session_not_allowed), its writes are recorded in the Operator-actions
-// log, and its context ends when the session does, which closes its WebSockets.
+// denied routes (403 hub_session_not_allowed) and its writes are recorded in the
+// Operator-actions log. (SessionRequests closes its WebSockets when it ends.)
 func (h *HubSignin) HubSessionGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h == nil {
@@ -582,25 +579,8 @@ func (h *HubSignin) HubSessionGuard(next http.Handler) http.Handler {
 			authError(w, http.StatusForbidden, hubDeniedCode, "A Coral Hub sign-in can't do this: use the password on this computer")
 			return
 		}
-		ctx, cancel := context.WithCancel(r.Context())
-		hr := &hubReq{cancel: cancel}
-		h.mu.Lock()
-		if h.sockets[s.IDHash] == nil {
-			h.sockets[s.IDHash] = map[*hubReq]struct{}{}
-		}
-		h.sockets[s.IDHash][hr] = struct{}{}
-		h.mu.Unlock()
-		defer func() {
-			cancel()
-			h.mu.Lock()
-			delete(h.sockets[s.IDHash], hr)
-			if len(h.sockets[s.IDHash]) == 0 {
-				delete(h.sockets, s.IDHash)
-			}
-			h.mu.Unlock()
-		}()
 		rec := &hubStatus{ResponseWriter: w}
-		next.ServeHTTP(rec, r.WithContext(ctx))
+		next.ServeHTTP(rec, r)
 		if h.onAction == nil {
 			return
 		}
@@ -645,11 +625,8 @@ func (s *hubStatus) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // endSession ends one Hub session and closes its live requests (WebSockets).
 func (h *HubSignin) endSession(ctx context.Context, s SessionRecord, why string) {
-	_ = h.ks.backend().DeleteSession(ctx, s.IDHash)
+	_ = h.ks.endSession(ctx, s.IDHash)
 	h.mu.Lock()
-	for hr := range h.sockets[s.IDHash] {
-		hr.cancel()
-	}
 	delete(h.lastCheck, s.IDHash)
 	h.mu.Unlock()
 	log.Printf("[auth] a Coral Hub sign-in ended: %s", why)

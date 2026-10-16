@@ -49,6 +49,7 @@ type KeyStore struct {
 	key        string
 	keyPath    string
 	sessions   SessionBackend // browser sign-ins (#3949): memory, or sessions.db once the server sets it
+	live       liveRequests   // the requests in flight for each session, closed when it ends (#3966)
 	rateMap    map[string]*rateLimitEntry
 	trusted    []*net.IPNet // reverse proxies whose X-Forwarded-Proto is believed (#3356)
 	// loginTokens maps a login token's SHA-256 to its expiry (#3387).

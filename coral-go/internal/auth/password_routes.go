@@ -401,8 +401,8 @@ func (ar *Routes) SignOutOthers(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "signed_out": n})
 }
 
-// RevokeSessionByID ends one listed session by its id (the 12-character prefix Sessions lists); a
-// Hub session's open WebSockets close with it.
+// RevokeSessionByID ends one listed session by its id (the 12-character prefix Sessions lists);
+// its open WebSockets close with it.
 // DELETE /api/auth/sessions/{id}
 func (ar *Routes) RevokeSessionByID(w http.ResponseWriter, r *http.Request) {
 	if !sameOriginWrite(r, true) {
@@ -436,7 +436,7 @@ func (ar *Routes) RevokeSessionByID(w http.ResponseWriter, r *http.Request) {
 	s := match[0]
 	if s.Method == SessionByHub && ar.hub != nil {
 		ar.hub.endSession(r.Context(), s, "signed out from Settings")
-	} else if err := ar.ks.backend().DeleteSession(r.Context(), s.IDHash); err != nil {
+	} else if err := ar.ks.endSession(r.Context(), s.IDHash); err != nil {
 		authError(w, http.StatusInternalServerError, "revoke_failed", "The session could not be ended")
 		return
 	}

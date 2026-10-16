@@ -461,6 +461,8 @@ func (s *Server) buildRouter() chi.Router {
 	authRoutes := auth.NewRoutes(s.keyStore)
 	if s.keyStore != nil {
 		r.Use(auth.Middleware(s.keyStore))
+		// Ending a browser session closes its open WebSockets too (#3966 (c)).
+		r.Use(s.keyStore.SessionRequests)
 		s.hubSignin = s.newHubSignin(authRoutes)
 		r.Use(s.hubSignin.HubSessionGuard)
 	}

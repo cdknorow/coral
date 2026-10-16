@@ -443,11 +443,11 @@ func TestHubSessionEndClosesItsRequests(t *testing.T) {
 	g := newHubRig(t)
 	sc := g.signIn(t)
 	entered, done := make(chan struct{}), make(chan struct{})
-	h := g.hs.HubSessionGuard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := g.ks.SessionRequests(g.hs.HubSessionGuard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		close(entered)
 		<-r.Context().Done() // a WebSocket's read loop
 		close(done)
-	}))
+	})))
 	go h.ServeHTTP(httptest.NewRecorder(), g.req("GET", "/ws/terminal/a", "", "10.0.0.5", sc))
 	<-entered
 	assert.Equal(t, 1, g.hs.EndAll(context.Background(), "test"))
