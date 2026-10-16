@@ -103,7 +103,15 @@ func (h *SessionsHandler) claudeLoginState(name, sessionID, workingDir string, e
 	on, _ := h.loginScreens.read(promptReadKey(sessionID, name, at.Claude), stamp, time.Now(), func() (bool, string) {
 		ctx, cancel := context.WithTimeout(context.Background(), loginScreenTimeout)
 		defer cancel()
-		screen, err := reader.AgentScreen(ctx, name, at.Claude, sessionID)
+		var screen string
+		var err error
+		if stamp != "" {
+			// A stamped (tmux) screen is the pane's last 40 lines, as AgentScreen reads it: through
+			// the capture the poll and the team status share (#4077).
+			screen, err = h.sharedCapture(ctx, name, 40, at.Claude, sessionID)
+		} else {
+			screen, err = reader.AgentScreen(ctx, name, at.Claude, sessionID)
+		}
 		if err != nil {
 			return false, ""
 		}

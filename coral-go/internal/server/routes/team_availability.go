@@ -189,7 +189,9 @@ func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *htt
 		}
 		if includeActivity && len(a.Tasks) > 0 && subscribed && sub.SessionName != "" && h.terminal != nil {
 			captureCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
-			output, captureErr := h.terminal.CaptureOutput(captureCtx, sub.SessionName, 40, "", "")
+			// The session's own pane (bySession matched it by type and id), through the shared,
+			// stamp-keyed capture the poll and the login check use (#4077).
+			output, captureErr := h.sharedCapture(captureCtx, sub.SessionName, 40, s.AgentType, s.SessionID)
 			cancel()
 			if captureErr == nil {
 				a.Activity = latestStatusActivity(output)
