@@ -1,5 +1,41 @@
 # Release Notes
 
+## v1.4.55 — Chat history through Coral Hub, Windows key files, and no inline scripts
+
+### New
+
+- **Resume agents on the current hooks.** The dashboard lists the Claude agents still running an older hook set, by team, and resumes one on the current set while keeping its conversation, settings, worktree and board. An agent in the middle of a turn or waiting on a prompt is skipped unless you confirm.
+- **coral-board post - reads the message from input.** A lone `-` as the message of `coral-board post` or `send`, or as a task's `--message` or `--body`, reads the text from standard input, as written: `coral-board post - <<'EOF'` posts multi-line text with backticks and `$( )` untouched. Empty input is refused and nothing is sent.
+
+### Fixes
+
+- **Chat history through Coral Hub loads again.** A long Claude conversation that quoted a private key inside code failed to load through Coral Hub; the reply was cut in the middle of the JSON. It loads again.
+- **Windows: Coral Hub enrollment and remote API keys work.** On Windows, Coral refused every existing key file, because it checked a Unix file mode Windows never reports. Since v1.3.42 that broke storing the Coral Hub token and remote servers' API keys (an enrollment could be left half done), and since v1.3.14 the same check applied to the database key. Key files are now checked by their Windows access list: readable only by you, SYSTEM and Administrators. A key file other accounts could read is refused, with the steps to recover by hand. Enrollment now checks the token can be stored before enrolling.
+- **Confirmations work after a board Export.** The board Export dialog no longer reuses the shared confirmation dialog, so later confirmations work. Deleting a board message and killing a workflow run now ask first, and the last browser-native confirm prompts use Coral's own dialog.
+- **SQLite 3.53.4.** The database engine moves from SQLite 3.50.4 to 3.53.4, which carries SQLite's fix for a WAL-reset corruption bug.
+- **Messages that start with "-" reach tmux agents.** A message or nudge starting with `-` (a bullet) was read by tmux as an option and dropped, and Enter was still sent. It's now typed as text, and no Enter follows a failed send.
+
+### Security
+
+- **No inline scripts in the dashboard.** The dashboard no longer runs inline scripts or handlers; Coral Hub's copy already had the same policy.
+- **The token redactor no longer leaks an escaped key.** The Coral Hub View-reply redactor could leave part of a private key in a reply when the key was preceded by a backslash. It now ends a key only at an unescaped quote, and a JSON reply (up to 16 MiB) that redaction would leave invalid is never sent.
+- **Operator-only routes are enforced everywhere.** Five artifact routes (delete an artifact since v1.4.35; retention acknowledgement, prune, and keep/unkeep since v1.4.39) were missing from the agent guard, though their own handlers refused agents anyway. Every Operator-only route is now enforced from one table, and the server won't start if the table names a route it doesn't serve. The hub's remote-server registry and the board's remote subscriptions are now the Operator's too. These routes are refused to agents when strict local auth is on, and recorded in the identity report otherwise.
+- **Board actions need the right person.** Deleting a board message works only through its own board. Deleting messages and pausing or resuming a board are the Operator's (refused to agents when strict local auth is on, and recorded in the identity report otherwise); a pause survives a restart. Cancelling a task, editing its title or priority, nudges, reminders and snoozes need a planner or the assignee, and publishing needs a planner. Every board request body is capped at 4 MiB.
+- **Safer file paths.** A network (UNC) path in a request is refused before Coral touches it. File previews read through a held-open folder: a FIFO or socket is refused for everyone, and a hard link to a file elsewhere is refused for Coral Hub and remote requests; the agent CLIs' credential files are denied by name. Themes, workflows and knowledge folders can't be named like a Windows device (`CON`, `NUL`, `COM1` and the rest); a theme or workflow already named that way becomes unusable and needs a new name.
+- **Terminal pastes.** Pastes are cleaned of control characters; a multi-line paste asks first when an app has turned bracketed paste off; and the terminal no longer types its own query replies or focus reports into the agent (an app that asked for focus reports won't get them).
+- **tmux panes are found by session only.** Coral finds an agent's pane by its session id or exact session name, never by a bare name or a pane title an agent can set.
+- **Safer commands on Windows.** The Windows handoff script quotes an apostrophe in its path, and opening a browser never goes through `cmd.exe`.
+- **A flag-like prompt stays a prompt.** A prompt that is only a flag (for example --dangerously-skip-permissions) is passed to Claude and Codex after --, so it is the prompt and not an option.
+- **DOMPurify 3.4.17.** The HTML sanitizer moves from 3.3.3 to 3.4.17, and every vendored library is listed in a manifest a check re-derives.
+
+### Windows
+
+- **A colour icon everywhere.** The tray, the coral, launch-coral, coral-tray and coral-app programs, the Start Menu shortcut and the Apps & features entry show Coral's colour icon in every size.
+
+### Other changes
+
+- **Coral Hub routing.** Coral Hub can give this computer a route key, which Coral sends back only on its next connections to that hub.
+
 ## v1.4.54 — More terminals through Coral Hub, a rotating log, and safer hooks and updates
 
 **After upgrading, relaunch or resume your Claude agents.** Coral's hooks now name their tools by absolute path, and Claude reads its hooks only when an agent starts, so agents started before this release keep the older hooks until they're relaunched or resumed.
