@@ -35,6 +35,8 @@ export function applySleepingView(sleeping, { manageInput = true, archived } = {
         pane.classList.toggle('agent-sleeping', sleeping);
         pane.classList.toggle('agent-archived', archived);
     }
+    // A sleeping agent's terminal takes no typing: no "Click to type" hint over it (#3735).
+    document.getElementById('xterm-container')?.classList.toggle('agent-sleeping', sleeping);
     const bar = document.getElementById('sleeping-composer');
     if (bar) bar.hidden = !sleeping;
     // Asleep because its terminal session is gone (#3344): say that, not "sleeping".

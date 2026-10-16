@@ -2193,9 +2193,13 @@
 }
 .hub-readonly-chip[hidden] { display: none; }
 /* View only through Coral Hub (#3411): Send looks unavailable and the terminal doesn't offer typing. */
-.command-pane.hub-view-only [onclick^="sendCommand"],
+/* The selector named the inline onclick of Send until #3645 moved it to data-on-click: it matched nothing after that (#3735). */
+.command-pane.hub-view-only [data-on-click="cmd-send"],
+.command-pane.hub-view-only [data-on-click="cmd-send-menu"],
+.command-pane.hub-view-only [data-on-click="cmd-send-team"],
 .command-pane.hub-view-only .mobile-send-btn { opacity: 0.4; pointer-events: none; }
-.xterm-container.hub-view-only .xterm-focus-hint { display: none; }
+.xterm-container.hub-view-only .xterm-focus-hint,
+.xterm-container.agent-sleeping .xterm-focus-hint { display: none; }
 
 /* ── Servers in the agent list (#3085) ─────────────────────────────── */
 .server-switcher-host { position: relative; flex: 0 0 auto; }

@@ -1520,7 +1520,9 @@
    is redundant on desktop. Mobile keeps it (no hardware keyboard to type into
    the terminal). */
 @media (min-width: 768px) {
-    #command-pane:not(.chat-mode) {
+    /* A sleeping or archived agent keeps its pane: the Wake / Restart / Unarchive bar lives in it,
+       and without it the Terminal view is an empty box with no way back (#3735). */
+    #command-pane:not(.chat-mode):not(.agent-sleeping) {
         display: none;
     }
 }
