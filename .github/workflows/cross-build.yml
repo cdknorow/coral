@@ -35,12 +35,34 @@ jobs:
         with:
           go-version-file: coral-go/go.mod
           cache: false
+      - name: Go cache paths
+        id: gopaths
+        run: |
+          echo "gocache=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "gomodcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      # Restored on every run; saved only by a push to main (below), so a branch or pull request
+      # never writes the cache main reads. The key changes with go.mod (the Go version) and go.sum.
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: gocache
+        with:
+          path: |
+            ${{ steps.gopaths.outputs.gocache }}
+            ${{ steps.gopaths.outputs.gomodcache }}
+          key: cross-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('coral-go/go.mod', 'coral-go/go.sum') }}
+          restore-keys: cross-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-
       - name: go build ./... (${{ matrix.target }}, no cgo)
         working-directory: coral-go
         env:
           TARGET: ${{ matrix.target }}
           CGO_ENABLED: "0"
         run: GOOS="${TARGET%/*}" GOARCH="${TARGET#*/}" go build -o /dev/null ./...
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gocache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ${{ steps.gopaths.outputs.gocache }}
+            ${{ steps.gopaths.outputs.gomodcache }}
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
 
   darwin:
     runs-on: macos-14
@@ -54,12 +76,34 @@ jobs:
         with:
           go-version-file: coral-go/go.mod
           cache: false
+      - name: Go cache paths
+        id: gopaths
+        run: |
+          echo "gocache=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "gomodcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      # Restored on every run; saved only by a push to main (below), so a branch or pull request
+      # never writes the cache main reads. The key changes with go.mod (the Go version) and go.sum.
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: gocache
+        with:
+          path: |
+            ${{ steps.gopaths.outputs.gocache }}
+            ${{ steps.gopaths.outputs.gomodcache }}
+          key: cross-build-${{ runner.os }}-${{ runner.arch }}-darwin-${{ matrix.arch }}-${{ hashFiles('coral-go/go.mod', 'coral-go/go.sum') }}
+          restore-keys: cross-build-${{ runner.os }}-${{ runner.arch }}-darwin-${{ matrix.arch }}-
       - name: go build ./... (darwin/${{ matrix.arch }}, cgo)
         working-directory: coral-go
         env:
           ARCH: ${{ matrix.arch }}
           CGO_ENABLED: "1"
         run: GOOS=darwin GOARCH="$ARCH" go build -o /dev/null ./...
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gocache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ${{ steps.gopaths.outputs.gocache }}
+            ${{ steps.gopaths.outputs.gomodcache }}
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
 
   # The peer-user check reads xnu's private TCP table (net.inet.tcp.pcblist_n, #3905). Its real
   # loopback tests run on both macOS runner kinds, so a macOS image whose structs changed turns
