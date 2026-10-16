@@ -258,3 +258,18 @@ func TestRedactJSONStructureAuthorizationNearMisses(t *testing.T) {
 		assert.Equal(t, raw, string(out))
 	}
 }
+
+// A key that is itself a token: redaction changes the key, so where its value starts in "key:
+// value" is unknown, and the value is replaced with the marker (fail closed; QA on #3732).
+func TestRedactJSONStructureTokenKeyFailsClosed(t *testing.T) {
+	key := fake("ghp_", 36, alnum)
+	secret := "Basic " + fake("", 24, alnum+"=")
+	raw, err := json.Marshal(map[string]any{key: secret, "other": "kept as it is"})
+	require.NoError(t, err)
+	out, ok := redactReply(jsonHdr, raw)
+	require.True(t, ok)
+	var got map[string]string
+	require.NoError(t, json.Unmarshal(out, &got), string(out))
+	assert.Equal(t, map[string]string{RedactMarker: RedactMarker, "other": "kept as it is"}, got)
+	assert.Equal(t, RedactMarker, redactMember(key, "anything at all"))
+}
