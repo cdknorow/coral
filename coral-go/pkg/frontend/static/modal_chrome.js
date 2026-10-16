@@ -19,38 +19,38 @@ export function lastFocusOutsideDialogs() {
     return _lastFocusOutside && _lastFocusOutside.isConnected ? _lastFocusOutside : null;
 }
 
+// How each dialog closes. `backdrop` marks the ones a click on their backdrop closes; Escape closes any visible one. A dialog
+// without `hide` is closed by hiding its element (display none), which is also what an unlisted dialog gets. The lazy dialogs' hide
+// functions are looked up on window when used, since they exist by the time such a dialog can be visible.
+const byWindow = name => () => window[name]?.();
+const DIALOGS = {
+    'launch-modal': { hide: byWindow('hideLaunchModal'), backdrop: true },
+    'info-modal': { hide: byWindow('hideInfoModal'), backdrop: true },
+    'resume-modal': { hide: byWindow('hideResumeModal'), backdrop: true },
+    'settings-modal': { hide: byWindow('hideSettingsModal'), backdrop: true },
+    'restart-modal': { hide: () => hideRestartModal(), backdrop: true },
+    'macro-modal': { backdrop: true },
+    'alert-modal': { hide: byWindow('hideAlertModal'), backdrop: true },
+    'confirm-modal': { hide: byWindow('hideConfirmModal'), backdrop: true },
+    'mb-export-modal': { backdrop: true },
+    'prompt-modal': { hide: byWindow('hidePromptModal') },
+    'team-agent-modal': { hide: byWindow('hideTeamAgentModal') },
+    'default-prompts-modal': { hide: byWindow('hideDefaultPromptsModal') },
+    'team-wizard-modal': { hide: byWindow('hideTeamWizardModal') },
+    'add-agent-board-modal': { hide: byWindow('hideAddAgentBoardModal') },
+    'mobile-connect-modal': { hide: () => window._hideMobileConnectModal() },
+};
+
+function hideDialog(modal) {
+    const d = DIALOGS[modal.id];
+    if (d && d.hide) d.hide();
+    else modal.style.display = 'none';
+}
+
 // Close modals on outside click
 document.addEventListener("click", (e) => {
-    const launchModal = document.getElementById("launch-modal");
-    const infoModal = document.getElementById("info-modal");
-    const resumeModal = document.getElementById("resume-modal");
-    const settingsModal = document.getElementById("settings-modal");
-    const restartModal = document.getElementById("restart-modal");
-    if (e.target === launchModal) {
-        window.hideLaunchModal?.();
-    }
-    if (e.target === infoModal) {
-        window.hideInfoModal?.();
-    }
-    if (e.target === resumeModal) {
-        window.hideResumeModal?.();
-    }
-    if (e.target === settingsModal) {
-        window.hideSettingsModal?.();
-    }
-    if (e.target === restartModal) {
-        hideRestartModal();
-    }
-    const macroModal = document.getElementById("macro-modal");
-    if (e.target === macroModal) {
-        macroModal.style.display = "none";
-    }
-    const alertModal = document.getElementById("alert-modal");
-    if (e.target === alertModal) window.hideAlertModal?.();
-    const confirmModal = document.getElementById("confirm-modal");
-    if (e.target === confirmModal) window.hideConfirmModal?.();
-    const exportModal = document.getElementById("mb-export-modal");
-    if (e.target === exportModal) exportModal.style.display = "none";
+    const t = e.target;
+    if (t && DIALOGS[t.id] && DIALOGS[t.id].backdrop) hideDialog(t);
 });
 
 // Close topmost visible modal on Escape and trap focus inside it
@@ -60,28 +60,7 @@ document.addEventListener("keydown", (e) => {
         const modals = document.querySelectorAll('.modal');
         for (let i = modals.length - 1; i >= 0; i--) {
             if (modals[i].style.display !== 'none' && modals[i].getClientRects().length > 0) {
-                const id = modals[i].id;
-                if (id === 'launch-modal') window.hideLaunchModal?.();
-                else if (id === 'info-modal') window.hideInfoModal?.();
-                else if (id === 'resume-modal') window.hideResumeModal?.();
-                else if (id === 'settings-modal') window.hideSettingsModal?.();
-                else if (id === 'restart-modal') hideRestartModal();
-                else if (id === 'macro-modal') modals[i].style.display = 'none';
-                else if (id === 'alert-modal') window.hideAlertModal?.();
-                else if (id === 'confirm-modal') window.hideConfirmModal?.();
-                else if (id === 'mb-export-modal') modals[i].style.display = 'none';
-                else if (id === 'prompt-modal') window.hidePromptModal?.();
-                else if (id === 'team-agent-modal') window.hideTeamAgentModal?.();
-                else if (id === 'default-prompts-modal') window.hideDefaultPromptsModal?.();
-                else if (id === 'team-wizard-modal') window.hideTeamWizardModal?.();
-                else if (id === 'save-template-modal') modals[i].style.display = 'none';
-                else if (id === 'job-modal') modals[i].style.display = 'none';
-                else if (id === 'quick-launch-modal') modals[i].style.display = 'none';
-                else if (id === 'add-agent-board-modal') window.hideAddAgentBoardModal?.();
-                else if (id === 'custom-view-modal') modals[i].style.display = 'none';
-                else if (id === 'mobile-connect-modal') window._hideMobileConnectModal();
-                else if (id === 'theme-configurator-modal') modals[i].style.display = 'none';
-                else modals[i].style.display = 'none';
+                hideDialog(modals[i]);
                 e.preventDefault();
                 return;
             }
