@@ -54,7 +54,6 @@ func main() {
 	foreground := flag.Bool("foreground", false, "Run in foreground (used internally)")
 	stop := flag.Bool("stop", false, "Stop a running tray instance")
 	noBrowser := flag.Bool("no-browser", false, "Don't open the browser on startup")
-	devMode := flag.Bool("dev", false, "Deprecated, no effect: Coral has no licence check, and only builds made with -tags dev skip the EULA")
 	debugMode := flag.Bool("debug", false, "Enable debug logging to ~/.coral/tray.log")
 	// "" = not given: Settings > Terminal backend, else tmux (pty on Windows) (#3634).
 	backendFlag := flag.String("backend", "", "Terminal backend: pty or tmux (default: Settings > Terminal backend, else tmux; pty on Windows)")
@@ -89,7 +88,7 @@ func main() {
 			os.MkdirAll(*homeDir, 0755)
 			os.Chdir(*homeDir)
 		}
-		runForeground(*host, *port, *noBrowser, *devMode, *debugMode, *backendFlag, dataDir)
+		runForeground(*host, *port, *noBrowser, *debugMode, *backendFlag, dataDir)
 		return
 	}
 
@@ -115,9 +114,6 @@ func main() {
 	if *noBrowser {
 		args = append(args, "--no-browser")
 	}
-	// -dev is accepted for old launchers but not passed on: coral has no --dev flag and
-	// would refuse to start (#3221).
-	_ = *devMode
 	if *debugMode {
 		args = append(args, "--debug")
 	}
@@ -144,7 +140,7 @@ func main() {
 	fmt.Printf("  Stop: coral-tray --stop\n")
 }
 
-func runForeground(host string, port int, noBrowser, devMode, debugMode bool, backendType, dataDir string) {
+func runForeground(host string, port int, noBrowser, debugMode bool, backendType, dataDir string) {
 	// Setup log file FIRST — when launched from .app there's no terminal,
 	// so log.Fatalf messages would disappear silently without this.
 	logFile := filepath.Join(dataDir, "tray.log")

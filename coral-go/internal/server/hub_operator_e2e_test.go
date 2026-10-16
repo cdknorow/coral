@@ -137,8 +137,8 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 	code, out = viaHub("POST", "/api/board/team/tasks", map[string]any{"subscriber_id": "Operator", "created_by": "Operator", "title": "x"}, user, "hub-user-5678abcd")
 	assert.Equal(t, http.StatusBadRequest, code, out)
 	code, out = viaHub("POST", "/api/board/team/messages", map[string]any{"subscriber_id": "Operator", "content": "x"})
-	require.Equal(t, http.StatusOK, code, out)
-	assert.Equal(t, "Coral Hub", out["subscriber_id"])
+	require.Equal(t, http.StatusBadRequest, code, out)
+	assert.Equal(t, "hub_user_required", out["code"], "no Hub user: refused, never posted as anyone (#3743)")
 
 	// Changing the team's working mode (what every agent is told) is the Operator's and is
 	// recorded with the Hub user like any board write (#3433).
@@ -148,16 +148,14 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 	code, out = onComputer("GET", "/api/system/hub-operator", nil)
 	require.Equal(t, http.StatusOK, code, out)
 	recent, _ := out["recent_actions"].([]any)
-	require.Len(t, recent, 4, out) // every board write through the tunnel is recorded (#3428), the post without a Hub user too
+	require.Len(t, recent, 3, out) // every board write through the tunnel is recorded (#3428); the post without a Hub user was refused
 	paths := []string{}
 	for _, a := range recent {
 		m := a.(map[string]any)
-		if m["hub_user"] != "unknown" {
-			assert.Equal(t, user, m["hub_user"])
-		}
+		assert.Equal(t, user, m["hub_user"])
 		paths = append(paths, m["path"].(string))
 	}
-	assert.ElementsMatch(t, []string{"/api/board/team/messages", "/api/board/team/tasks", "/api/board/team/messages", "/api/board/team/working-mode"}, paths)
+	assert.ElementsMatch(t, []string{"/api/board/team/messages", "/api/board/team/tasks", "/api/board/team/working-mode"}, paths)
 
 	// #3646: a webhook URL is refused (Coral sends no webhooks), through the hub too.
 	code, out = viaHub("POST", "/api/board/team/subscribe", map[string]any{"subscriber_id": "Operator", "job_title": "Operator", "webhook_url": "https://93.184.216.34/hook"}, user)

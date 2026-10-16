@@ -1114,13 +1114,6 @@ func TestTranslateToAgyPermissions_Default(t *testing.T) {
 	}
 }
 
-func TestTranslateToGeminiPermissions_Compat(t *testing.T) {
-	result := TranslateToGeminiPermissions(&Capabilities{Allow: []string{CapShell, CapFileWrite}})
-	if result == nil || result.ApprovalMode != "yolo" {
-		t.Error("expected yolo via deprecated alias")
-	}
-}
-
 func TestTranslateToClaudePermissions_ShellPattern(t *testing.T) {
 	result := TranslateToClaudePermissions(&Capabilities{Allow: []string{"shell:npm test"}})
 	if result == nil {

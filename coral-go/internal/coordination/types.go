@@ -138,7 +138,6 @@ type TaskCounts struct {
 }
 
 type TimingMetrics struct {
-	ClaimLatency        DurationStats `json:"claim_latency"`          // Kept for compatibility: CreatedAt to ClaimedAt
 	ReadyToClaimLatency DurationStats `json:"ready_to_claim_latency"` // Unblocked/Ready to ClaimedAt (true pickup responsiveness)
 	TotalPreClaimWait   DurationStats `json:"total_pre_claim_wait"`   // CreatedAt to ClaimedAt (explicitly includes prerequisite blocking time)
 	ExecutionDuration   DurationStats `json:"execution_duration"`     // ClaimedAt to CompletedAt

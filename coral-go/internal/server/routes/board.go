@@ -792,12 +792,10 @@ func (h *BoardHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 // Subscribe subscribes to a board.
 // POST /api/board/{project}/subscribe
 // Accepts subscriber_id (stable identity) with optional session_name.
-// Falls back to session_id for backwards compatibility.
 func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID string  `json:"subscriber_id"`
-		SessionID    string  `json:"session_id"` // legacy compat
 		SessionName  string  `json:"session_name"`
 		JobTitle     string  `json:"job_title"`
 		WebhookURL   *string `json:"webhook_url"`
@@ -817,9 +815,6 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	subscriberID := body.SubscriberID
-	if subscriberID == "" {
-		subscriberID = body.SessionID // legacy fallback
-	}
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return
@@ -841,16 +836,12 @@ func (h *BoardHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
-		SessionID    string `json:"session_id"` // legacy compat
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
 	subscriberID := body.SubscriberID
-	if subscriberID == "" {
-		subscriberID = body.SessionID
-	}
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return
@@ -873,7 +864,6 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID  string  `json:"subscriber_id"`
-		SessionID     string  `json:"session_id"` // legacy compat
 		Content       string  `json:"content"`
 		TargetGroupID *string `json:"target_group_id,omitempty"`
 		As            string  `json:"as,omitempty"` // display name for auto-subscribe (e.g. "Operator")
@@ -894,8 +884,11 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subscriberID := body.SubscriberID
-	if subscriberID == "" {
-		subscriberID = body.SessionID
+	if subscriberID == "" && !cloud.Tunneled(r) {
+		// A post names its sender (#3743: the session_id fallback is gone, and a post with
+		// neither went out with an empty sender). Through Coral Hub the Hub user is the sender.
+		errBadRequest(w, "subscriber_id required")
+		return
 	}
 
 	// Through Coral Hub, a chat post's sender is the Coral Hub user named by the
@@ -960,13 +953,8 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cloud.Tunneled(r) {
-		// Every board write through the tunnel is recorded, not only the Operator's (#3428):
-		// a chat post as the Hub user, or from a hub that sent no Hub user ("unknown").
-		who := hubUser
-		if who == "" {
-			who = "unknown"
-		}
-		recordHubOperatorAction(r.Context(), h.bs, who, r.Method, r.URL.Path, project, http.StatusOK)
+		// Every board write through the tunnel is recorded, not only the Operator's (#3428).
+		recordHubOperatorAction(r.Context(), h.bs, hubUser, r.Method, r.URL.Path, project, http.StatusOK)
 	}
 	// A message from an assignee is evidence of progress on its active task.
 	// Keep this separate from task state so posting never completes work.
@@ -988,17 +976,13 @@ var hubUserRe = regexp.MustCompile(`^hub-user-[0-9a-f]{8}$`)
 
 // tunnelChatSender returns the Coral Hub user for a tunnel chat post, or an HTTP
 // status and message: 400 when the header is malformed or repeated (never a fallback
-// to the Operator), 409 when the name is already a member or a role on this board.
-//
-// Version skew, for one release: a hub still on an older pkg/hubproxy sends no header at
-// all. Its post is accepted as the reserved sender "Coral Hub" with origin
-// hub_user_unknown (never the Operator or a member), and a deprecation line is logged at
-// most every 10 minutes. A header that is present but malformed is still 400.
+// to the Operator), 409 when the name is already a member or a role on this board. A post with
+// no header is 400 too (#3743: the release that accepted one as "Coral Hub" for older hubs is
+// past).
 func (h *BoardHandler) tunnelChatSender(r *http.Request, project string) (user, origin string, status int, msg string) {
 	user, present, status, msg := tunnelHubUser(r, h.bs, project)
 	if !present {
-		logHubUserMissing()
-		return board.HubUnknownSender, board.OriginHubUserUnknown, 0, ""
+		return "", "", http.StatusBadRequest, "A board write through Coral Hub needs exactly one Coral Hub user (" + tunnel.HubUserHeader + ": hub-user-<8 hex>)"
 	}
 	if status != 0 {
 		return "", "", status, msg
@@ -1033,23 +1017,6 @@ func tunnelHubUser(r *http.Request, bs *board.Store, project string) (user strin
 	return user, true, 0, ""
 }
 
-var hubUserMissingLog struct {
-	sync.Mutex
-	last time.Time
-}
-
-// logHubUserMissing logs, at most every 10 minutes, that a Coral Hub chat post named
-// no Hub user: the hub should move to a pkg/hubproxy that forwards X-Coral-Hub-User.
-func logHubUserMissing() {
-	hubUserMissingLog.Lock()
-	defer hubUserMissingLog.Unlock()
-	if time.Since(hubUserMissingLog.last) < 10*time.Minute {
-		return
-	}
-	hubUserMissingLog.last = time.Now()
-	slog.Warn("[cloud] deprecated: a Coral Hub chat post without X-Coral-Hub-User was posted as 'Coral Hub'; the hub should update its pkg/hubproxy (the header will be required in a later release)")
-}
-
 // ReadMessages reads new messages (cursor-based).
 // GET /api/board/{project}/messages
 func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
@@ -1072,9 +1039,6 @@ func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	subscriberID := r.URL.Query().Get("subscriber_id")
-	if subscriberID == "" {
-		subscriberID = r.URL.Query().Get("session_id") // legacy compat
-	}
 	limit := clampLimit(queryInt(r, "limit", 50), 50, 500)
 	allParam := r.URL.Query().Get("all")
 	readAll := allParam == "true" || allParam == "1"
@@ -1177,9 +1141,6 @@ func (h *BoardHandler) CheckUnread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	subscriberID := r.URL.Query().Get("subscriber_id")
-	if subscriberID == "" {
-		subscriberID = r.URL.Query().Get("session_id") // legacy compat
-	}
 	count, err := h.bs.CheckUnread(r.Context(), project, subscriberID)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -1373,16 +1334,12 @@ func (h *BoardHandler) AddGroupMember(w http.ResponseWriter, r *http.Request) {
 	groupID := chi.URLParam(r, "groupID")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
-		SessionID    string `json:"session_id"` // legacy compat
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
 	subscriberID := body.SubscriberID
-	if subscriberID == "" {
-		subscriberID = body.SessionID
-	}
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return

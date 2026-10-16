@@ -170,15 +170,15 @@ func TestBoardPause_ReadMessagesReturnsEmpty(t *testing.T) {
 
 	// Subscribe a session
 	resp := postJSON(t, base+"/subscribe", map[string]string{
-		"session_id": "sess-1",
-		"job_title":  "Dev",
+		"subscriber_id": "sess-1",
+		"job_title":     "Dev",
 	})
 	resp.Body.Close()
 
 	// Post a message
 	resp2 := postJSON(t, base+"/messages", map[string]string{
-		"session_id": "sess-1",
-		"content":    "Hello world",
+		"subscriber_id": "sess-1",
+		"content":       "Hello world",
 	})
 	resp2.Body.Close()
 
@@ -187,7 +187,7 @@ func TestBoardPause_ReadMessagesReturnsEmpty(t *testing.T) {
 	resp3.Body.Close()
 
 	// ReadMessages should return empty array when paused
-	resp4, err := http.Get(base + "/messages?session_id=sess-1")
+	resp4, err := http.Get(base + "/messages?subscriber_id=sess-1")
 	require.NoError(t, err)
 	defer resp4.Body.Close()
 
@@ -202,20 +202,20 @@ func TestBoardPause_CheckUnreadReturnsZero(t *testing.T) {
 
 	// Subscribe two sessions
 	resp := postJSON(t, base+"/subscribe", map[string]string{
-		"session_id": "sess-1",
-		"job_title":  "Dev",
+		"subscriber_id": "sess-1",
+		"job_title":     "Dev",
 	})
 	resp.Body.Close()
 	resp2 := postJSON(t, base+"/subscribe", map[string]string{
-		"session_id": "sess-2",
-		"job_title":  "QA",
+		"subscriber_id": "sess-2",
+		"job_title":     "QA",
 	})
 	resp2.Body.Close()
 
 	// Post from sess-1
 	resp3 := postJSON(t, base+"/messages", map[string]string{
-		"session_id": "sess-1",
-		"content":    "Hello",
+		"subscriber_id": "sess-1",
+		"content":       "Hello",
 	})
 	resp3.Body.Close()
 
@@ -224,7 +224,7 @@ func TestBoardPause_CheckUnreadReturnsZero(t *testing.T) {
 	resp4.Body.Close()
 
 	// CheckUnread for sess-2 should return 0 when paused
-	resp5, err := http.Get(base + "/messages/check?session_id=sess-2")
+	resp5, err := http.Get(base + "/messages/check?subscriber_id=sess-2")
 	require.NoError(t, err)
 	defer resp5.Body.Close()
 
@@ -342,8 +342,8 @@ func TestBoardSubscribeAndPost(t *testing.T) {
 
 	// Subscribe
 	resp := postJSON(t, base+"/subscribe", map[string]string{
-		"session_id": "sess-abc",
-		"job_title":  "Backend Dev",
+		"subscriber_id": "sess-abc",
+		"job_title":     "Backend Dev",
 	})
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -360,8 +360,8 @@ func TestBoardSubscribeAndPost(t *testing.T) {
 
 	// Post message
 	resp3 := postJSON(t, base+"/messages", map[string]string{
-		"session_id": "sess-abc",
-		"content":    "Test message",
+		"subscriber_id": "sess-abc",
+		"content":       "Test message",
 	})
 	defer resp3.Body.Close()
 	assert.Equal(t, http.StatusOK, resp3.StatusCode)
@@ -379,6 +379,13 @@ func TestBoardSubscribeAndPost(t *testing.T) {
 	var allBody map[string]any
 	json.NewDecoder(resp4.Body).Decode(&allBody)
 	assert.Equal(t, float64(1), allBody["total"])
+
+	// #3743: session_id no longer names the sender or subscriber.
+	for _, path := range []string{"/subscribe", "/messages"} {
+		r := postJSON(t, base+path, map[string]string{"session_id": "sess-abc", "job_title": "x", "content": "y"})
+		r.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, r.StatusCode, path)
+	}
 }
 
 func TestBoardPostMessage_EmptyContent(t *testing.T) {
@@ -386,8 +393,8 @@ func TestBoardPostMessage_EmptyContent(t *testing.T) {
 	base := server.URL + "/api/board/myproject"
 
 	resp := postJSON(t, base+"/messages", map[string]string{
-		"session_id": "sess-1",
-		"content":    "",
+		"subscriber_id": "sess-1",
+		"content":       "",
 	})
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -409,13 +416,13 @@ func TestBoardListProjects(t *testing.T) {
 
 	// Subscribe to two different projects
 	resp := postJSON(t, server.URL+"/api/board/project1/subscribe", map[string]string{
-		"session_id": "s1",
-		"job_title":  "Dev",
+		"subscriber_id": "s1",
+		"job_title":     "Dev",
 	})
 	resp.Body.Close()
 	resp2 := postJSON(t, server.URL+"/api/board/project2/subscribe", map[string]string{
-		"session_id": "s2",
-		"job_title":  "QA",
+		"subscriber_id": "s2",
+		"job_title":     "QA",
 	})
 	resp2.Body.Close()
 

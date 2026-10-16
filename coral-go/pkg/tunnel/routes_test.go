@@ -440,7 +440,7 @@ func TestRealUIQueriesAreNotRefused(t *testing.T) {
 		{"GET", "/api/sessions/live/001/tasks", "session_id=abc&limit=50"},
 		{"GET", "/api/sessions/live/001/git", "session_id=abc&limit=10"},
 		{"GET", "/api/sessions/live/001/history/search", "q=x&limit=10&offset=0&session_id=abc"},
-		{"GET", "/api/board/proj/messages", "session_id=abc&limit=50&subscriber_id=ops"},
+		{"GET", "/api/board/proj/messages", "limit=50&subscriber_id=ops"}, // no session_id since #3743
 		{"GET", "/api/board/proj/messages/all", "limit=100&offset=0&before_id=5"},
 		{"GET", "/api/board/proj/tasks", "limit=50&status=open&session_id=abc"},
 		{"GET", "/api/sessions/history/search", "q=x&page=1&page_size=50"},

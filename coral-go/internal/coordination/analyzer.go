@@ -216,7 +216,6 @@ func computeDurations(cohortTasks []Task, allTasks []Task) TimingMetrics {
 	}
 
 	return TimingMetrics{
-		ClaimLatency:        calcStats(readyToClaimLats),
 		ReadyToClaimLatency: calcStats(readyToClaimLats),
 		TotalPreClaimWait:   calcStats(preClaimWaits),
 		ExecutionDuration:   calcStats(execDurs),
@@ -936,9 +935,9 @@ func generateKeyFindings(f ObservableFacts, h HeuristicSignals) []string {
 	findings = append(findings, fmt.Sprintf("Total tasks in window: %d (Completed: %d, In Progress: %d, Pending: %d, Blocked: %d, Cancelled: %d)",
 		f.TaskCounts.TotalCreated, f.TaskCounts.Completed, f.TaskCounts.InProgress, f.TaskCounts.Pending, f.TaskCounts.Blocked, f.TaskCounts.Cancelled))
 
-	if f.Durations.ClaimLatency.Count > 0 {
+	if f.Durations.ReadyToClaimLatency.Count > 0 {
 		findings = append(findings, fmt.Sprintf("Median claim latency: %.1fs (P90: %.1fs, Mean: %.1fs across %d claims)",
-			f.Durations.ClaimLatency.MedSec, f.Durations.ClaimLatency.P90Sec, f.Durations.ClaimLatency.MeanSec, f.Durations.ClaimLatency.Count))
+			f.Durations.ReadyToClaimLatency.MedSec, f.Durations.ReadyToClaimLatency.P90Sec, f.Durations.ReadyToClaimLatency.MeanSec, f.Durations.ReadyToClaimLatency.Count))
 	}
 	if f.Durations.ExecutionDuration.Count > 0 {
 		findings = append(findings, fmt.Sprintf("Median execution duration: %.1fs (P90: %.1fs across %d completed tasks)",

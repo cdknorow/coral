@@ -264,13 +264,11 @@ func TestTunnelChatPostIsTheHubUser(t *testing.T) {
 	require.NotNil(t, last.Origin)
 	assert.Equal(t, board.OriginHubUser, *last.Origin)
 
-	// A hub still on an older pkg/hubproxy sends no header at all (one release of skew):
-	// posted as the reserved 'Coral Hub' with origin hub_user_unknown, never the body's
-	// Operator or any member.
+	// A post with no header at all (a hub on an older pkg/hubproxy, accepted as 'Coral Hub' for
+	// one release) is refused (#3743), and never the body's Operator or any member.
 	code, out = post(true, noHeader, `{"subscriber_id":"Operator","as":"Operator","content":"from an old hub"}`)
-	require.Equal(t, http.StatusOK, code)
-	assert.Equal(t, board.HubUnknownSender, out["subscriber_id"])
-	assert.Equal(t, board.OriginHubUserUnknown, out["origin"])
+	require.Equal(t, http.StatusBadRequest, code)
+	assert.Equal(t, "hub_user_required", out["code"])
 	sub, _ = handler.bs.GetProjectSubscription(context.Background(), "p", "Operator")
 	assert.Nil(t, sub)
 	assert.True(t, board.IsReservedName("Coral Hub"), "no member can take that name")
@@ -413,10 +411,8 @@ func TestTunnelChatPostAsTheOperator(t *testing.T) {
 
 	// Never the Operator without a valid Hub user.
 	code, out = post(one(noHeader), asOperator)
-	require.Equal(t, http.StatusOK, code)
-	assert.Equal(t, board.HubUnknownSender, out["subscriber_id"])
-	assert.Equal(t, board.OriginHubUserUnknown, out["origin"])
-	assert.Nil(t, out["hub_user"])
+	require.Equal(t, http.StatusBadRequest, code)
+	assert.Equal(t, "hub_user_required", out["code"])
 	for _, bad := range [][]string{one(""), one("Operator"), one("hub-user-XYZ"), {"hub-user-1234abcd", "hub-user-1234abcd"}, {"hub-user-1234abcd", "hub-user-5678abcd"}} {
 		code, out = post(bad, asOperator)
 		assert.Equal(t, http.StatusBadRequest, code, bad)
@@ -432,7 +428,7 @@ func TestTunnelChatPostAsTheOperator(t *testing.T) {
 	assert.Equal(t, "hub-user-1234abcd", out["subscriber_id"])
 	assert.Equal(t, "@Dev please look at the build", out["content"])
 	recent, _ = handler.bs.RecentHubOperatorActions(ctx, 10)
-	assert.Len(t, recent, 4, "every board write through the tunnel is recorded (#3428): the Operator post, the Hub user's, the one from a hub that sent no Hub user, and the post under the opt-out")
+	assert.Len(t, recent, 3, "every board write through the tunnel is recorded (#3428): the Operator post, the Hub user's and the post under the opt-out (the one with no Hub user was refused)")
 
 	// A forged stamp (not this connector's) is never the Operator either.
 	allowed = true
@@ -544,7 +540,7 @@ func TestHubOperatorSetting(t *testing.T) {
 
 	rec := local("GET", "")
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.JSONEq(t, `{"enabled":true,"disabled":false,"linked":false,"recent_actions":[]}`, rec.Body.String())
+	assert.JSONEq(t, `{"disabled":false,"linked":false,"recent_actions":[]}`, rec.Body.String())
 	// Another OS user on this computer can neither read nor change it.
 	peer = [2]bool{false, true}
 	for _, m := range []string{"GET", "PUT"} {
@@ -569,15 +565,15 @@ func TestHubOperatorSetting(t *testing.T) {
 	// The opt-out.
 	rec = local("PUT", `{"disabled":true}`)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.JSONEq(t, `{"enabled":false,"disabled":true,"linked":true,"recent_actions":[]}`, rec.Body.String())
+	assert.JSONEq(t, `{"disabled":true,"linked":true,"recent_actions":[]}`, rec.Body.String())
 	assert.False(t, h.HubOperatorAllowed(authentic()))
 	assert.JSONEq(t, `{"enabled":false,"disabled":true}`, tunneled("GET", "").Body.String())
-	// v1.4.18's form is its inverse.
-	require.Equal(t, http.StatusOK, local("PUT", `{"enabled":true}`).Code)
+	require.Equal(t, http.StatusOK, local("PUT", `{"disabled":false}`).Code)
 	assert.True(t, h.HubOperatorAllowed(authentic()))
-	require.Equal(t, http.StatusOK, local("PUT", `{"enabled":false}`).Code)
+	require.Equal(t, http.StatusOK, local("PUT", `{"disabled":true}`).Code)
 	assert.False(t, h.HubOperatorAllowed(authentic()))
-	for _, bad := range []string{`{}`, `{"disabled":true,"enabled":true}`, `{"disabled":"yes"}`} {
+	// v1.4.18's {"enabled": ...} is no longer read (#3743): only "disabled" sets it.
+	for _, bad := range []string{`{}`, `{"enabled":true}`, `{"enabled":false}`, `{"disabled":"yes"}`} {
 		assert.Equal(t, http.StatusBadRequest, local("PUT", bad).Code, bad)
 	}
 

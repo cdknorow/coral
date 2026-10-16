@@ -222,9 +222,6 @@ type AgyPermissions struct {
 	Sandbox                    bool   `json:"sandbox,omitempty"`
 }
 
-// Deprecated: use AgyPermissions.
-type GeminiPermissions = AgyPermissions
-
 // TranslateToAgyPermissions converts Coral capabilities to Antigravity CLI (agy) flags.
 func TranslateToAgyPermissions(caps *Capabilities) *AgyPermissions {
 	if caps.IsEmpty() {
@@ -263,11 +260,6 @@ func TranslateToAgyPermissions(caps *Capabilities) *AgyPermissions {
 
 	// Default
 	return &AgyPermissions{ApprovalMode: "default"}
-}
-
-// Deprecated: use TranslateToAgyPermissions.
-func TranslateToGeminiPermissions(caps *Capabilities) *GeminiPermissions {
-	return TranslateToAgyPermissions(caps)
 }
 
 // Preset permission profiles for built-in agent roles.

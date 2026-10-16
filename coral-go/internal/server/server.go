@@ -455,7 +455,6 @@ func (s *Server) buildRouter() chi.Router {
 	authRoutes := auth.NewRoutes(s.keyStore)
 	authRoutes.SetStrictLocal(s.cfg.StrictLocalAuth) // /auth here shows the locked page (#3418)
 	r.Get("/auth", authRoutes.AuthPage)
-	r.Post("/auth", authRoutes.ValidateKey)
 	r.Post("/auth/key", authRoutes.ValidateKey)
 	r.Post("/auth/logout", authRoutes.Logout)
 	r.Get("/api/system/api-key", authRoutes.GetAPIKey)

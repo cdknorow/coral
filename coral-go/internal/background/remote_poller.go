@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
@@ -96,8 +97,8 @@ func (p *RemoteBoardPoller) RunOnce(ctx context.Context) error {
 		}
 
 		// Check unread on remote server
-		url := fmt.Sprintf("%s/api/board/%s/messages/check?session_id=%s",
-			sub.RemoteServer, sub.Project, sub.SessionID)
+		url := fmt.Sprintf("%s/api/board/%s/messages/check?subscriber_id=%s",
+			sub.RemoteServer, neturl.PathEscape(sub.Project), neturl.QueryEscape(sub.SessionID))
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			p.logger.Warn("failed to create remote poll request", "server", sub.RemoteServer, "error", err)

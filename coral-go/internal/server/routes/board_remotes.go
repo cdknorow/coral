@@ -152,8 +152,8 @@ func (h *BoardRemotesHandler) ProxySubscribers(w http.ResponseWriter, r *http.Re
 func (h *BoardRemotesHandler) ProxyCheckUnread(w http.ResponseWriter, r *http.Request) {
 	remoteServer := chi.URLParam(r, "remoteServer")
 	project := urlParam(r, "project")
-	sessionID := r.URL.Query().Get("session_id")
-	path := fmt.Sprintf("/%s/messages/check?session_id=%s", project, sessionID)
+	// subscriber_id, escaped: it was sent on as typed (#3743), so an '&' in it added parameters.
+	path := fmt.Sprintf("/%s/messages/check?subscriber_id=%s", project, url.QueryEscape(r.URL.Query().Get("subscriber_id")))
 	result, code, err := h.proxyGet(r.Context(), remoteServer, path)
 	if err != nil {
 		writeJSON(w, code, map[string]string{"error": err.Error()})

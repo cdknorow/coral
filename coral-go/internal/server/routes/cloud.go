@@ -485,10 +485,10 @@ func (h *CloudHandler) HubOperatorAllowed(r *http.Request) bool {
 }
 
 // HubOperator: GET/PUT /api/system/hub-operator. On this computer, from the dashboard:
-// {"disabled": bool} turns the opt-out on or off ({"enabled": bool}, the v1.4.18 form,
-// is its inverse); the answer adds whether a Hub link exists and the recent Operator
-// actions taken through Coral Hub. Through the tunnel only GET, read only, and only
-// {"enabled", "disabled"}, so the Hub can show it.
+// {"disabled": bool} turns the opt-out on or off; the answer adds whether a Hub link exists and
+// the recent Operator actions taken through Coral Hub. Through the tunnel only GET, read only,
+// and only {"enabled", "disabled"}, so the Hub can show it (Coral Hub reads it; the dashboard
+// reads only "disabled").
 func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 	if cloud.Tunneled(r) {
 		if r.Method != http.MethodGet {
@@ -509,13 +509,12 @@ func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 		}
 		var body struct {
 			Disabled *bool `json:"disabled"`
-			Enabled  *bool `json:"enabled"`
 		}
-		if err := decodeJSON(r, &body); err != nil || (body.Disabled == nil) == (body.Enabled == nil) {
+		if err := decodeJSON(r, &body); err != nil || body.Disabled == nil {
 			errBadRequest(w, "disabled (true or false) is required")
 			return
 		}
-		off := body.Disabled != nil && *body.Disabled || body.Enabled != nil && !*body.Enabled
+		off := *body.Disabled
 		if err := h.ss.SetSetting(r.Context(), HubOperatorDisabledSetting, strconv.FormatBool(off)); err != nil {
 			errInternalServer(w, err.Error())
 			return
@@ -524,7 +523,7 @@ func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 	}
 	s, _ := h.ss.GetSettings(r.Context())
 	off := hubOperatorDisabled(s)
-	out := map[string]any{"enabled": !off, "disabled": off, "linked": h.hubLinked(), "recent_actions": []board.HubOperatorAction{}}
+	out := map[string]any{"disabled": off, "linked": h.hubLinked(), "recent_actions": []board.HubOperatorAction{}}
 	if h.bs != nil {
 		if recent, err := h.bs.RecentHubOperatorActions(r.Context(), 50); err == nil {
 			out["recent_actions"] = recent

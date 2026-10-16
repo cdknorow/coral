@@ -70,7 +70,7 @@ func TestTimingStats_CalculationAndDenominator(t *testing.T) {
 	assert.Equal(t, 1, report.ObservableFacts.TaskCounts.Pending)
 
 	// Verify durations
-	claimLatency := report.ObservableFacts.Durations.ClaimLatency
+	claimLatency := report.ObservableFacts.Durations.ReadyToClaimLatency
 	assert.Equal(t, 3, claimLatency.Count) // Tasks 1, 2, 4 had ClaimedAt
 	assert.Equal(t, 5.0, claimLatency.MinSec)
 	assert.Equal(t, 20.0, claimLatency.MaxSec)

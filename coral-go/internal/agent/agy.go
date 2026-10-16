@@ -17,9 +17,6 @@ type AgyAgent struct {
 	customType string
 }
 
-// Deprecated: use AgyAgent.
-type GeminiAgent = AgyAgent
-
 func (a *AgyAgent) AgentType() string {
 	if a.customType != "" {
 		return a.customType
