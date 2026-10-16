@@ -191,7 +191,17 @@ func start(t *testing.T, m *Manager) context.CancelFunc {
 	done := make(chan struct{})
 	go func() { m.Run(ctx); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
-	require.Eventually(t, func() bool { m.mu.Lock(); defer m.mu.Unlock(); return m.root != nil || m.o.HubURL == "" }, 2*time.Second, 5*time.Millisecond)
+	if m.o.HubURL == "" {
+		return cancel // Run returns at once: nothing to wait for
+	}
+	// Wait for Run to have read the stored enrollment (m.loaded), not for a moment: the tests
+	// read the state it sets right after (#3778: m.root is set before that, and testify 1.12's
+	// Eventually no longer waits a tick before its first check, which had hidden the gap).
+	select {
+	case <-m.loaded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the manager never read its stored enrollment")
+	}
 	return cancel
 }
 
