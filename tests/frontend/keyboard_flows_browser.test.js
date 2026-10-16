@@ -3,6 +3,7 @@
 //   2. Reduced motion: with prefers-reduced-motion set, no animation runs forever (the pulsing dots and spinners stop).
 //   3. Reflow: at 640 px (a 1280 px screen at 200% zoom) and 320 px (400%) the home page, an agent's Chat view and Settings have
 //      no horizontal page scroll and nothing wider than the screen.
+//   4. The Chat composer's tab order: the text box first, then Stop, Send and Send options (the toolbar used to come first in the DOM).
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -60,6 +61,32 @@ const { connect } = require('./agent_view_harness');
             }
         }
         console.log('   ✓ home, Chat and Settings reflow at 640 and 320 px');
-        console.log('\nPASS keyboard flows: docs list, reduced motion, reflow');
+
+        console.log('4. Chat composer tab order');
+        const focusLabel = `(() => { const a = document.activeElement; return a ? (a.getAttribute('aria-label') || a.id || a.tagName) : ''; })()`;
+        const tabs = async (n, shift = false) => { const seen = []; for (let i = 0; i < n; i++) { await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: shift ? 8 : 0 }); await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: shift ? 8 : 0 }); seen.push(await ev(focusLabel)); } return seen; };
+        for (const [w, mobile] of [[1280, false], [390, true]]) {
+            await load(w, 844, mobile);
+            await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`);
+            await waitFor(`!!document.querySelector('#command-input') && document.querySelector('#command-toolbar button, .mobile-send-btn')`, 'the composer', 8000);
+            await sleep(800); // sleep-ok: the toolbar fills after the first live answers
+            // Tab into the composer from the control before it: the first stop in the pane is the text box
+            await ev(`(() => { const t = document.getElementById('command-input'); const f = [...document.querySelectorAll('button, a[href], input, textarea, select, [tabindex="0"]')].filter(e => e.offsetParent && !e.disabled && e.tabIndex >= 0); const i = f.indexOf(t); f[i - 1].focus(); return true; })()`);
+            const into = await tabs(1);
+            assert.equal(into[0], 'Enter command or paste image', `${w} px: Tab from the control before the composer reaches the text box first (got ${into[0]})`);
+            const after = await tabs(mobile ? 2 : 12);
+            if (mobile) {
+                assert.deepEqual(after, ['Send with team reminder', 'Send'], `${w} px: after the text box come the two send buttons`);
+            } else {
+                const iStop = after.indexOf('Stop (Escape)'), iSend = after.indexOf('Send command'), iOpts = after.indexOf('Send options');
+                assert.ok(iStop >= 0 && iSend > iStop && iOpts > iSend, `${w} px: after the text box Tab reaches Stop, then Send, then Send options (got ${JSON.stringify(after)})`);
+            }
+            // Shift+Tab from the text box leaves the composer instead of landing on its toolbar
+            await ev(`document.getElementById('command-input').focus(); true`);
+            const back = await tabs(1, true);
+            assert.equal(await ev(`!!document.activeElement.closest('#command-toolbar')`), false, `${w} px: Shift+Tab from the text box does not land on the toolbar (got ${back[0]})`);
+        }
+        console.log('   ✓ the text box comes first, then Stop, Send and Send options, at 1280 and 390 px');
+        console.log('\nPASS keyboard flows: docs list, reduced motion, reflow, composer tab order');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
