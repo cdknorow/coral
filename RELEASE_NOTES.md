@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.57 — Redaction fixes, lighter chat pages, and PowerShell for Windows agents
+
+### Fixes
+
+- **Chat search hits in older history are highlighted again.** A search hit in an older part of a long history opened its page but wasn't highlighted or scrolled to (a regression in v1.4.56).
+- **Lighter chat pages.** A chat opens with its latest 30 messages instead of 100, and long tool fields (a tool's output, a written file, an edit) are cut to 2 KB on the page; opening a card shows the full text. Through Coral Hub this needs a Coral Hub built with the v1.4.57 library; the dashboard a Hub serves always matches its library. A switch back to an agent you saw in the last 5 minutes shows its kept page at once and fetches only what came after.
+- **The board chat panel asks only for new messages;** deleted messages disappear within a poll.
+- **The pending tool call and prompt options now come with the chat reply;** GET /pending-tool and GET /prompt-options no longer exist, so a Coral Hub or dashboard older than this build will not find them.
+- **Lower CPU use.** The session indexer reads a growing transcript from where it stopped, and the git poller runs one `git status` per repository per pass instead of two.
+- **The older-hooks banner no longer covers the home page.**
+- **Windows agents start through PowerShell.** An agent's terminal never starts cmd.exe: Windows starts pwsh.exe, then Windows PowerShell, and with neither the launch is refused with "install PowerShell to launch agents". A `CORAL_SHELL` naming cmd is ignored.
+
+### Security
+
+- **Authorization headers are redacted however they're quoted.** A quoted Authorization header with a Basic credential in agent output, and a Digest Authorization header, are now redacted through Coral Hub (they could pass in earlier releases, including v1.4.54 and v1.4.55).
+- **Cut chat fields never show part of a secret.** A tool output cut short in a chat page never ends in the start of a secret.
+- **Kept chat pages are forgotten on sign-out** and when the Coral Hub account changes.
+- **Terminal sessions are found by session only.** With the pty terminal backend, Coral finds an agent's session by its session id or exact name, never by its folder, so teammates working in one folder can't reach each other's terminal.
+
+### Other changes
+
+- **Pinned test dependencies and wider vulnerability scans.** CI installs the frontend test dependencies exactly from a tracked lockfile without running install scripts, scans the whole module for reachable vulnerabilities in every build tier, and checks that `go.mod` is tidy.
+- **API: the chat route takes a trim parameter** (the dashboard sends trim=2048); a Coral Hub in front of this build must allow it.
+
 ## v1.4.56 — Faster chat history, sends that no longer stall, and replacing a refused key
 
 ### New
