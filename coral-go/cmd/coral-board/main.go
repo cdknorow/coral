@@ -103,13 +103,21 @@ func resolveCoralDir() string {
 	return filepath.Join(home, ".coral")
 }
 
+// stateFilePath is this agent session's board state file, or "" outside an agent session.
 func stateFilePath() string {
 	sessionName := resolveSessionName()
+	if sessionName == "" {
+		return ""
+	}
 	return filepath.Join(coralDir(), fmt.Sprintf("board_state_%s.json", sessionName))
 }
 
 func loadState() *boardState {
-	data, err := os.ReadFile(stateFilePath())
+	path := stateFilePath()
+	if path == "" {
+		return nil // no agent session: no board, never a shared default (#3864)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		// Fallback: PID-based resolution (for sandboxed environments)
 		if resolved := resolveViaPID(); resolved != nil && resolved.Project != "" {
@@ -135,6 +143,9 @@ func loadState() *boardState {
 func saveState(s *boardState) {
 	data, _ := json.Marshal(s)
 	path := stateFilePath()
+	if path == "" {
+		return
+	}
 	os.MkdirAll(filepath.Dir(path), 0o700)
 	if os.WriteFile(path, data, 0o600) == nil {
 		os.Chmod(path, 0o600) // a file an older version wrote 0644
@@ -142,7 +153,9 @@ func saveState(s *boardState) {
 }
 
 func deleteState() {
-	os.Remove(stateFilePath())
+	if path := stateFilePath(); path != "" {
+		os.Remove(path)
+	}
 }
 
 func resolveSessionName() string {
@@ -160,8 +173,14 @@ func resolveSessionName() string {
 			}
 		}
 	}
-	host, _ := os.Hostname()
-	return host
+	// Where the environment was stripped (a sandbox), the server can name the session from
+	// this process's ancestors (verified against the session's live process). Otherwise
+	// there is no session: never the hostname, which every such process shared, so they all
+	// read whichever board one of them joined last (#3864).
+	if resolved := resolveViaPID(); resolved != nil && resolved.SessionName != "" {
+		return resolved.SessionName
+	}
+	return ""
 }
 
 // resolveSubscriberID returns the stable board identity for this agent.
@@ -651,6 +670,10 @@ func cmdJoin() {
 
 	subscriberID := resolveSubscriberID()
 	sessionName := resolveSessionName()
+	if sessionName == "" {
+		fmt.Fprintln(os.Stderr, "coral-board: not in a Coral agent session (CORAL_SESSION_NAME is not set and Coral doesn't know this process), so there is nothing to join the board with")
+		os.Exit(1)
+	}
 	result, status, err := apiCall("POST", "/"+url.PathEscape(project)+"/subscribe", map[string]string{
 		"subscriber_id": subscriberID,
 		"session_name":  sessionName,
@@ -3017,13 +3040,19 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 // name comes from a hash of the session name, never the raw value (Security's NIT: an env value
 // with a path separator or ".." can't place the file elsewhere).
 func seenRoundsPath() string {
-	sum := sha256.Sum256([]byte(resolveSessionName()))
+	name := resolveSessionName()
+	if name == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(name))
 	return filepath.Join(coralDir(), "board_review_rounds_"+hex.EncodeToString(sum[:8])+".json")
 }
 
 func loadSeenRounds() map[string]int {
 	seen := map[string]int{}
-	if data, err := os.ReadFile(seenRoundsPath()); err == nil {
+	if path := seenRoundsPath(); path == "" {
+		return seen
+	} else if data, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(data, &seen)
 	}
 	return seen
@@ -3059,6 +3088,9 @@ func noteSeenRound(project string, task map[string]any) {
 	}
 	data, _ := json.Marshal(seen)
 	path := seenRoundsPath()
+	if path == "" {
+		return
+	}
 	os.MkdirAll(filepath.Dir(path), 0o700)
 	// A temp file and a rename (Security's NIT): two commands at once never leave half a file.
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".board_review_rounds_*")

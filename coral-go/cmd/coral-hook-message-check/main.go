@@ -95,10 +95,8 @@ func loadBoardState() map[string]any {
 			sessionName = strings.TrimSpace(out)
 		}
 	}
-	if sessionName == "" {
-		host, _ := os.Hostname()
-		sessionName = host
-	}
+	// No session, no board: never the hostname, which every sessionless process shared, so
+	// it would report whichever board one of them joined (#3864).
 	if sessionName == "" {
 		return nil
 	}

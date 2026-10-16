@@ -65,19 +65,39 @@ func TestIsolateBoardEnv_RedirectsStateFile(t *testing.T) {
 
 // --- resolveSessionName tests ---
 
-func TestResolveSessionName_FallsBackToHostname(t *testing.T) {
-	// Without CORAL_SESSION_NAME or TMUX, should fall back to hostname.
-	// Both are set in every agent shell, so clear them explicitly.
+// #3864: outside an agent session there is no board. The hostname fallback gave every
+// sessionless process one shared state file, so each read whichever board one of them joined
+// last. Now: no session name, no state file, nothing saved or loaded; a session the server
+// verifies by the process tree still counts.
+func TestResolveSessionName_NoSessionMeansNoBoard(t *testing.T) {
+	dataDir := isolateBoardEnv(t)
 	t.Setenv("CORAL_SESSION_NAME", "")
-	t.Setenv("TMUX", "")
 
-	name := resolveSessionName()
-	if name == "" {
-		t.Error("resolveSessionName returned empty string")
+	if name := resolveSessionName(); name != "" {
+		t.Fatalf("resolveSessionName() = %q, want \"\" (never the hostname)", name)
 	}
-	host, _ := os.Hostname()
-	if name != host {
-		t.Errorf("expected hostname %q, got %q", host, name)
+	if p := stateFilePath(); p != "" {
+		t.Fatalf("stateFilePath() = %q, want \"\"", p)
+	}
+	saveState(&boardState{Project: "someone-elses-board", JobTitle: "Security Reviewer"})
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Errorf("nothing may be written without a session, found %s", e.Name())
+	}
+	if st := loadState(); st != nil {
+		t.Fatalf("loadState() = %+v, want nil", st)
+	}
+	if p := seenRoundsPath(); p != "" {
+		t.Fatalf("seenRoundsPath() = %q, want \"\"", p)
+	}
+
+	// The server named this process's session (verified against its live process).
+	cachedPIDResolution = &pidResolution{SubscriberID: "QA Engineer", Project: "team", SessionName: "claude-11111111-1111-4111-8111-111111111111"}
+	if name := resolveSessionName(); name != cachedPIDResolution.SessionName {
+		t.Fatalf("resolveSessionName() = %q, want the verified session", name)
 	}
 }
 
