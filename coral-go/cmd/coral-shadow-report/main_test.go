@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -61,5 +64,29 @@ func TestParseKV(t *testing.T) {
 	kv := parseKV(`state_disagreement: the signals say idle session=s-1 why="a \"quoted\" why" cli_version=2.1.300`)
 	if kv["session"] != "s-1" || kv["why"] != `a "quoted" why` || kv["cli_version"] != "2.1.300" {
 		t.Errorf("%v", kv)
+	}
+}
+
+// #3628: coral.log rotates, so the report reads each log's rotated copies too, oldest first, and
+// never a file twice.
+func TestWithRotatedCopies(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"coral.log", "coral.log.1", "coral.log.2", "coral.log.10", "coral.log.bak", "other.log"} {
+		if err := os.WriteFile(filepath.Join(dir, n), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := func(n string) string { return filepath.Join(dir, n) }
+	for _, c := range []struct {
+		in, want []string
+	}{
+		{[]string{p("coral.log")}, []string{p("coral.log.10"), p("coral.log.2"), p("coral.log.1"), p("coral.log")}},
+		{[]string{p("coral.log.2")}, []string{p("coral.log.2")}}, // a copy named alone is read alone
+		{[]string{p("coral.log.1"), p("coral.log"), p("other.log")}, // no file twice
+			[]string{p("coral.log.1"), p("coral.log.10"), p("coral.log.2"), p("coral.log"), p("other.log")}},
+	} {
+		if got := withRotatedCopies(c.in); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("withRotatedCopies(%v) = %v, want %v", c.in, got, c.want)
+		}
 	}
 }

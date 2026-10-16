@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,11 +27,11 @@ func main() {
 	since := flag.String("since", "", "only lines on or after this date (YYYY-MM-DD)")
 	flag.Parse()
 	if flag.NArg() == 0 {
-		fmt.Fprintln(os.Stderr, "usage: coral-shadow-report [-top N] [-since YYYY-MM-DD] <coral.log> [more logs]")
+		fmt.Fprintln(os.Stderr, "usage: coral-shadow-report [-top N] [-since YYYY-MM-DD] <coral.log> [more logs]  (each log's rotated copies, <log>.1 ..., are read too)")
 		os.Exit(2)
 	}
 	r := newReport(strings.ReplaceAll(*since, "-", "/"))
-	for _, path := range flag.Args() {
+	for _, path := range withRotatedCopies(flag.Args()) {
 		f, err := os.Open(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -40,6 +41,55 @@ func main() {
 		f.Close()
 	}
 	r.print(os.Stdout, *top)
+}
+
+// withRotatedCopies adds each log's rotated copies (coral.log rotates by size: coral.log.1 is
+// the newest copy, coral.log.5 the oldest; #3628), oldest first and before the log itself, so a
+// day that spans a rotation loses no decision. A path that is itself a numbered copy is read as
+// given, and no file is read twice.
+func withRotatedCopies(paths []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	for _, p := range paths {
+		if isRotatedCopy(p) {
+			add(p)
+			continue
+		}
+		matches, _ := filepath.Glob(p + ".*")
+		var copies []string
+		for _, m := range matches {
+			if isRotatedCopy(m) && strings.TrimRight(m, "0123456789") == p+"." {
+				copies = append(copies, m)
+			}
+		}
+		sort.Slice(copies, func(i, j int) bool { return copyNumber(copies[i]) > copyNumber(copies[j]) })
+		for _, c := range copies {
+			add(c)
+		}
+		add(p)
+	}
+	return out
+}
+
+// isRotatedCopy reports whether p ends in .<number> (coral.log.3).
+func isRotatedCopy(p string) bool { return copyNumber(p) > 0 }
+
+func copyNumber(p string) int {
+	i := strings.LastIndexByte(p, '.')
+	if i < 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(p[i+1:])
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
 }
 
 // decision is one parsed "automated input decision" line.
