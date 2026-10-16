@@ -1,7 +1,8 @@
 /* Moved out of modals.js as it was (#3836): no behaviour change. */
+import { importOnce } from './import_once.js';
 import { serverFetch, currentServer, isHub, isCloud, normServer, LOCAL_SERVER } from './server_base.js';
 import { escapeAttr } from './utils.js';
-import { launch } from './launch_state.js';
+const { launch } = await importOnce('./launch_state.js');
 import { state } from './state.js';
 
 export function _effectiveServer(server) {

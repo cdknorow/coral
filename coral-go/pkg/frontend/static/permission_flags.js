@@ -1,5 +1,6 @@
 /* Moved out of modals.js as it was (#3844): no behaviour change. */
-import { _acfServer, _settingsFor } from './launch_models.js';
+import { importOnce } from './import_once.js';
+const { _acfServer, _settingsFor } = await importOnce('./launch_models.js');
 import { getEngineName } from './renderers.js';
 import { state } from './state.js';
 

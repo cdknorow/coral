@@ -1,5 +1,6 @@
 /* Moved out of modals.js as it was (#3844): no behaviour change. */
-import { AGENT_PRESETS } from './agent_presets.js';
+import { importOnce } from './import_once.js';
+const { AGENT_PRESETS } = await importOnce('./agent_presets.js');
 import { escapeHtml, escapeAttr } from './utils.js';
 import { state } from './state.js';
 

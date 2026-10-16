@@ -1,5 +1,6 @@
 /* Moved out of modals.js as it was (#3844): no behaviour change. */
-import { _acfServer } from './launch_models.js';
+import { importOnce } from './import_once.js';
+const { _acfServer } = await importOnce('./launch_models.js');
 import { checkAgentCLI } from './prerequisites.js';
 
 // ── CLI Availability Check ────────────────────────────────────────────────
