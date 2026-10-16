@@ -2,6 +2,7 @@ package startup
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/safego"
+	"github.com/cdknorow/coral/internal/tmux"
 )
 
 // startPprof serves Go profiling endpoints when CORAL_PPROF_ADDR is set, e.g.
@@ -68,6 +70,11 @@ func startPprofOn(ctx context.Context, addr string) (net.Addr, error) {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	// The tmux commands run so far, by name (#4049): execs per minute for tests/perf.
+	mux.HandleFunc("/debug/coral/tmux-execs", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(tmux.ExecCounts())
+	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		defer safego.Recover("startup/pprof:65")

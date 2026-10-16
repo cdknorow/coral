@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -382,6 +383,7 @@ func (c *Client) listPanesOnSocket(ctx context.Context, socketPath string) []Pan
 	if runObserver != nil {
 		runObserver([]string{"list-panes"})
 	}
+	countExec("list-panes")
 	bin := c.resolveTmuxBin()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = tmuxEnv(bin)
@@ -610,6 +612,7 @@ func (c *Client) pasteToTarget(ctx context.Context, target, text string) error {
 	inputlog.Record(target, inputlog.Paste, text)
 	// Load text into tmux buffer via stdin
 	args := []string{"load-buffer", "-"}
+	countExec("load-buffer")
 	socketPath := c.SocketPath
 	if socketPath != "" {
 		args = append(socketArgs(socketPath), args...)
@@ -1291,6 +1294,9 @@ func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 
 // runOnSocket runs a tmux command on a specific socket. Empty socketPath uses the default.
 func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...string) (string, error) {
+	if len(args) > 0 {
+		countExec(args[0])
+	}
 	if socketPath != "" {
 		args = append(socketArgs(socketPath), args...)
 	}
@@ -1336,4 +1342,26 @@ func sessionFromTarget(target string) string {
 		return target[:i]
 	}
 	return target
+}
+
+// execCounts counts the tmux commands Coral ran, by command name (#4049): the busy-server
+// profile reads them (ExecCounts, served on the loopback pprof port) for execs per minute.
+var execCounts sync.Map // string -> *atomic.Int64
+
+func countExec(name string) {
+	v, ok := execCounts.Load(name)
+	if !ok {
+		v, _ = execCounts.LoadOrStore(name, new(atomic.Int64))
+	}
+	v.(*atomic.Int64).Add(1)
+}
+
+// ExecCounts is how many of each tmux command Coral has run since it started.
+func ExecCounts() map[string]int64 {
+	out := map[string]int64{}
+	execCounts.Range(func(k, v any) bool {
+		out[k.(string)] = v.(*atomic.Int64).Load()
+		return true
+	})
+	return out
 }
