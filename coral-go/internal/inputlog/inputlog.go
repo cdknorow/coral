@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 const (
@@ -308,7 +309,7 @@ func (fw *fileWriter) write(line string) {
 		}
 		// No following a symlink planted at the path, and 0600 even if the file was
 		// created with other permissions: it holds typed text.
-		f, err := os.OpenFile(fw.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|openNoFollow, 0o600)
+		f, err := secfile.OpenNoFollow(fw.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
 			fw.f = nil
 			return

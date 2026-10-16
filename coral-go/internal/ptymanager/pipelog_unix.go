@@ -7,9 +7,9 @@ import (
 	"syscall"
 )
 
-// oNoFollowLog makes opening an agent log fail on a symlink as its last name, and never wait
-// on a FIFO planted in its place.
-const oNoFollowLog = syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+// oNonBlockLog: opening an agent log never waits on a FIFO planted in its place (a link there is
+// refused by secfile.OpenNoFollow).
+const oNonBlockLog = syscall.O_NONBLOCK
 
 // ownedByMe reports whether this process's user owns the file (an old log in the shared temp dir).
 func ownedByMe(fi os.FileInfo) bool {

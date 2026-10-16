@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/cdknorow/coral/internal/linktest"
 )
 
 // Path-shaped task IDs an agent could send (#3571).
@@ -121,30 +123,36 @@ func TestCacheModes(t *testing.T) {
 	}
 }
 
-func TestCacheNeverFollowsASymlink(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("symlinks need privileges on Windows")
-	}
-	root, data, secret := cacheRig(t)
+// A link planted at a cache file's name or at debug.log (a symbolic link; on Windows also a
+// junction) is never written, read or followed (#3920: on Windows it was).
+func TestCacheNeverFollowsAPlantedLink(t *testing.T) {
+	_, _, _ = cacheRig(t)
 	cache, err := CacheDir()
 	if err != nil {
 		t.Fatal(err)
 	}
 	name, _ := taskCacheName("7")
-	for _, f := range []string{name, "debug.log"} {
-		if err := os.Symlink(secret, filepath.Join(cache, f)); err != nil {
-			t.Fatal(err)
+	linktest.Each(t, filepath.Join(cache, name), func(t *testing.T, p linktest.Planted) {
+		if err := TaskCacheWrite("7", "pwned"); err == nil {
+			t.Error("wrote through a link at the cache entry")
 		}
+		if got := TaskCacheRead("7"); got != "" {
+			t.Errorf("read %q through a link at the cache entry", got)
+		}
+	})
+	linktest.Each(t, filepath.Join(cache, "debug.log"), func(t *testing.T, p linktest.Planted) {
+		DebugLog("through a link")
+	})
+}
+
+func TestCacheNeverFollowsASymlinkedFolder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a symlinked cache folder is Lstat-checked; on Windows a folder symlink needs privileges this test doesn't assume")
 	}
-	if err := TaskCacheWrite("7", "pwned"); err == nil {
-		t.Error("wrote through a symlinked cache entry")
-	}
-	if got := TaskCacheRead("7"); got != "" {
-		t.Errorf("read %q through a symlinked cache entry", got)
-	}
-	DebugLog("through a symlink")
-	if b, _ := os.ReadFile(secret); string(b) != "SECRET" {
-		t.Fatalf("the symlink's target changed: %q", b)
+	root, data, _ := cacheRig(t)
+	cache, err := CacheDir()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// The cache folder itself a symlink: refused.

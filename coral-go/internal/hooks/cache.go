@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/testguard"
 )
 
@@ -79,7 +80,7 @@ func openCacheFile(name string, flag int) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(filepath.Join(dir, name), flag|openNoFollow, 0o600)
+	f, err := secfile.OpenNoFollow(filepath.Join(dir, name), flag, 0o600)
 	if err != nil {
 		return nil, err
 	}

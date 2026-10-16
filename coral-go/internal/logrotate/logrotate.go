@@ -14,6 +14,8 @@ import (
 	"os"
 	"strconv"
 	"sync"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // File is an append-only log file that rotates at MaxSize, keeping Keep older copies.
@@ -48,7 +50,7 @@ func Open(path string, maxSize int64, keep int, trimTo int64) (*File, error) {
 func (r *File) copyName(i int) string { return r.path + "." + strconv.Itoa(i) }
 
 func (r *File) open() error {
-	f, err := os.OpenFile(r.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|openNoFollow, 0o600)
+	f, err := secfile.OpenNoFollow(r.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -102,7 +104,7 @@ func (r *File) rotate() {
 
 // copyTail writes the file's last trimTo bytes to dst, from the first whole line in them.
 func (r *File) copyTail(dst string) error {
-	src, err := os.OpenFile(r.path, os.O_RDONLY|openNoFollow, 0)
+	src, err := secfile.OpenNoFollow(r.path, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
@@ -122,7 +124,7 @@ func (r *File) copyTail(dst string) error {
 			return err
 		}
 	}
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|openNoFollow, 0o600)
+	out, err := secfile.OpenNoFollow(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}

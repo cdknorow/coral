@@ -33,6 +33,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/loginlink"
+	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/cdknorow/coral/internal/updatecheck"
@@ -120,7 +121,7 @@ func main() {
 	cmd := exec.Command(exe, args...)
 
 	logFile := filepath.Join(dataDir, "tray.log")
-	lf, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	lf, err := secfile.OpenNoFollow(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		log.Fatalf("Cannot open log file: %v", err)
 	}
@@ -144,7 +145,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	// Setup log file FIRST — when launched from .app there's no terminal,
 	// so log.Fatalf messages would disappear silently without this.
 	logFile := filepath.Join(dataDir, "tray.log")
-	if lf, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+	if lf, err := secfile.OpenNoFollow(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
 		log.SetOutput(lf)
 		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
