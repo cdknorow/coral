@@ -67,6 +67,10 @@ func TestReviewFlowWithoutAnOrchestratorCompletes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "completed", got.Status)
 	assert.Equal(t, "worker", *got.CompletedBy)
+	board := strings.TrimSuffix(base(0, "x"), "/tasks/0/x")
+	require.Eventually(t, func() bool {
+		return boardMessagesContain(t, board, fmt.Sprintf("[Task #%d completed by worker (completed without review: no orchestrator on the team)]", task.ID))
+	}, 2*time.Second, 50*time.Millisecond, "the notice says it was not reviewed")
 }
 
 // (1)-(4) submit-review gives the task to the orchestrator and frees the author; only the
@@ -140,6 +144,10 @@ func TestReviewFlowApproval(t *testing.T) {
 	assert.Equal(t, "lead", *got.CompletedBy)
 	assert.Equal(t, "success", got.Workflow.Outcome)
 	assert.Equal(t, "approved", got.Workflow.ReviewRounds[0].Result)
+	board := strings.TrimSuffix(base(0, "x"), "/tasks/0/x")
+	require.Eventually(t, func() bool {
+		return boardMessagesContain(t, board, fmt.Sprintf("[Task #%d completed by lead (approved by Security Reviewer, QA Engineer)]", task.ID))
+	}, 2*time.Second, 50*time.Millisecond, "the completion notice names the approvers")
 }
 
 // (3) A rejection sends the task back to its author (pending, with the note), ends the round's

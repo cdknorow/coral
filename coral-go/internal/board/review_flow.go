@@ -161,6 +161,7 @@ type ReviewVerdict struct {
 	Rejected     bool   // sent back to its author
 	Author       string // the original author
 	Orchestrator string
+	Approvers    []string // when Complete: the round's reviewers, in the order they were named
 }
 
 // ApproveReview records actor's approval, on the review task actor has claimed (id may name the
@@ -268,6 +269,9 @@ func (s *Store) reviewVerdict(ctx context.Context, project string, id int64, act
 		if all {
 			round.Result = "approved"
 			v.Complete = true
+			for _, r := range round.Reviewers {
+				v.Approvers = append(v.Approvers, r.Reviewer)
+			}
 		}
 	}
 	if err := saveWorkflow(ctx, tx, id, w); err != nil {

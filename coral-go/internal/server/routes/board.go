@@ -1804,22 +1804,26 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusOK, task)
 		return
 	}
-	h.afterTaskCompleted(project, body.SubscriberID, task, completionMsg)
+	h.afterTaskCompleted(project, body.SubscriberID, task, completionMsg, "")
 	writeJSON(w, http.StatusOK, task)
 }
 
 // afterTaskCompleted posts the completion notice and runs what a completion sets off: the
 // orchestrators' notice, the tasks it unblocks, the waits on it, and the completer's next task.
 // Shared by a completion and by a review's last approval (#3725), which completes the task as its
-// orchestrator.
-func (h *BoardHandler) afterTaskCompleted(project, subscriberID string, completedTask *board.Task, completionMsg string) {
+// orchestrator. how, when set, says how it was accepted ("approved by ...") and goes in the notice.
+func (h *BoardHandler) afterTaskCompleted(project, subscriberID string, completedTask *board.Task, completionMsg, how string) {
 	h.goBG(func() {
 		ctx := context.Background()
 		msg := completedTask.Title
 		if completionMsg != "" {
 			msg = completionMsg
 		}
-		notification := fmt.Sprintf("[Task #%d completed by %s] Outcome: %s; %d artifacts. %s", completedTask.ID, subscriberID, completedTask.Workflow.Outcome, len(completedTask.Workflow.Artifacts), msg)
+		by := subscriberID
+		if how != "" {
+			by += " (" + how + ")"
+		}
+		notification := fmt.Sprintf("[Task #%d completed by %s] Outcome: %s; %d artifacts. %s", completedTask.ID, by, completedTask.Workflow.Outcome, len(completedTask.Workflow.Artifacts), msg)
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
 		h.notifyOrchestratorsTaskCompleted(ctx, project, subscriberID, completedTask, fmt.Sprintf("Outcome: %s. %s", completedTask.Workflow.Outcome, msg))
 

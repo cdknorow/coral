@@ -98,6 +98,7 @@ func TestCloudAllowlistHasNoDeadOrDangerousRules(t *testing.T) {
 		"GET /api/system/editors", "POST /api/sessions/live/x/open-in-editor", // opens an editor here: local only (#3619, H4)
 		"POST /api/webhooks", "PUT /api/system/database-security",
 		"GET /api/cloud/status", "POST /api/cloud/connect", "POST /api/cloud/disconnect", "PUT /api/cloud/max-mode",
+		"POST /api/board/p/tasks/7/review", "POST /api/board/p/tasks/7/approve", "POST /api/board/p/tasks/7/reject", // #3725
 		"POST /api/board/remotes", "PUT /api/agent/ui/x", "DELETE /api/agent/ui/x", "POST /api/agent/artifacts", "GET /api/agent/tasks", "POST /api/workflows", "POST /api/scheduled/jobs",
 	} {
 		method, path, _ := strings.Cut(never, " ")
@@ -151,6 +152,28 @@ func TestGuardRefusesOpenInEditorAtLaunch(t *testing.T) {
 	rec := call(h, "POST", "/api/sessions/live/x/open-in-editor", `{"filepath":"a.txt"}`, mergeHdr(tunneled, js))
 	require.Equal(t, 403, rec.Code)
 	require.Contains(t, rec.Body.String(), "not available through the Coral Hub", "refused by the Guard, not the handler")
+}
+
+// #3725 (Security's review): a review verdict names its reviewer in subscriber_id, and Coral
+// Hub can't prove it is that agent, so delegating, approving and rejecting are refused through
+// the tunnel at every mode, before the handler runs; locally the handler answers.
+func TestGuardRefusesTunneledReviewVerdicts(t *testing.T) {
+	r := newE2ERemote(t, "verdicts", nil)
+	h := r.srv.Router()
+	js := map[string]string{"Content-Type": "application/json"}
+	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"launch"}`, js).Code)
+	for _, p := range [][2]string{
+		{"approve", `{"subscriber_id":"Security Reviewer"}`},
+		{"reject", `{"subscriber_id":"QA Engineer","note":"no"}`},
+		{"review", `{"subscriber_id":"Orchestrator","reviewers":["Security Reviewer"]}`},
+	} {
+		target := "/api/board/team/tasks/1/" + p[0]
+		rec := call(h, "POST", target, p[1], mergeHdr(tunneled, js))
+		require.Equal(t, 403, rec.Code, p[0])
+		require.Contains(t, rec.Body.String(), "not available through the Coral Hub", "refused by the Guard, not the handler: %s", p[0])
+		local := call(h, "POST", target, p[1], js)
+		require.NotContains(t, local.Body.String(), "not available through the Coral Hub", "locally the handler decides: %s", p[0])
+	}
 }
 
 func mergeHdr(a, b map[string]string) map[string]string {

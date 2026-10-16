@@ -38,6 +38,9 @@ func TestClassifyTiers(t *testing.T) {
 		{"POST", "/api/sessions/live/a/kill", "", TierInteract},
 		{"POST", "/api/sessions/launch", "", TierLaunch},
 		{"POST", "/api/sessions/live/a/open-in-editor", "", TierNever}, // local only (#3619, H4)
+		{"POST", "/api/board/p/tasks/7/approve", "", TierNever},        // a reviewer's verdict (#3725)
+		{"POST", "/api/board/p/tasks/7/reject", "", TierNever},
+		{"POST", "/api/board/p/tasks/7/review", "", TierNever},
 		{"POST", "/api/board/p/resume", "", TierLaunch},
 		{"POST", "/api/sessions/live/team/t/reset", "", TierLaunch},
 		{"GET", "/api/filesystem/list", "path=/Users/x", TierLaunch},

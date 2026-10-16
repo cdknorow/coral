@@ -56,7 +56,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 			errBadRequest(w, cerr.Error())
 			return
 		}
-		h.afterTaskCompleted(project, author, done, msg)
+		h.afterTaskCompleted(project, author, done, msg, "completed without review: no orchestrator on the team")
 		writeJSON(w, http.StatusOK, done)
 		return
 	}
@@ -186,7 +186,7 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d approved, but it could not be completed: %s] complete it with 'coral-board task complete %d'", v.Orchestrator, task.ID, cerr.Error(), task.ID), nil)
 		} else {
 			task = done
-			h.afterTaskCompleted(project, v.Orchestrator, done, msg)
+			h.afterTaskCompleted(project, v.Orchestrator, done, msg, "approved by "+strings.Join(v.Approvers, ", "))
 		}
 	default:
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d approved by %s] waiting for the other reviewers%s", task.ID, body.SubscriberID, note), nil)

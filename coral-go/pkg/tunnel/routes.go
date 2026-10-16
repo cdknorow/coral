@@ -264,9 +264,9 @@ var routeTable = cat(
 		"/api/board/{project}/tasks/{id}/complete",
 		"/api/board/{project}/tasks/{id}/submit-review",
 		"/api/board/{project}/tasks/{id}/release-review",
-		"/api/board/{project}/tasks/{id}/review",  // #3725: delegate a review (the orchestrator)
-		"/api/board/{project}/tasks/{id}/approve", // #3725: a reviewer's verdict
-		"/api/board/{project}/tasks/{id}/reject",
+		// Not .../review, .../approve or .../reject (#3725): a review verdict is given by the
+		// reviewer agent named in subscriber_id, and Coral Hub can't prove it is that agent
+		// (Security's #3725 review), so they stay off this table and are refused.
 		"/api/board/{project}/tasks/{id}/cancel",
 		"/api/board/{project}/tasks/{id}/reassign",
 		"/api/board/{project}/tasks/{id}/nudge",
