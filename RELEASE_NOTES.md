@@ -1,5 +1,30 @@
 # Release Notes
 
+## v1.4.54 — More terminals through Coral Hub, a rotating log, and safer hooks and updates
+
+**After upgrading, relaunch or resume your Claude agents.** Coral's hooks now name their tools by absolute path, and Claude reads its hooks only when an agent starts, so agents started before this release keep the older hooks until they're relaunched or resumed.
+
+### Fixes
+
+- **More terminals through Coral Hub.** When Coral Hub names the viewer, one user can now keep up to 32 long-lived connections (terminals and live views) open on a computer instead of 4, and Coral Hub's own feed of the computer keeps a small reserve no user can take. The default pool sizes are now 64, 64 and 4 (general, long-lived and search). A terminal refused for too many open streams says which limit it hit and waits 15 seconds before retrying instead of 3; the dashboard shows that reason once Coral Hub runs this release's hub proxy.
+- **coral.log rotates.** The server's log now rotates at 20 MB and keeps 5 copies, so it uses about 120 MB at most. An older, oversized log keeps only its last 5 MB when it first rotates. `coral-shadow-report` reads the rotated copies too, oldest first.
+- **Update offers are checked.** The server and the tray share one update check: it offers a release only when it's strictly newer than this build (a dev or beta build is no longer told to move to an older release), and it ignores error replies, oversized replies and tags that don't look like a version.
+
+### Security
+
+- **Hooks are run by absolute path.** Claude, Codex and agy run Coral's hooks by their full path in Coral's tools folder, so a program with the same name in an agent's folder or earlier on `PATH` doesn't run in its place.
+- **No exception entitlements on macOS.** Every signed binary in Coral.app now runs under the hardened runtime with no entitlements at all (no JIT, no unsigned executable memory, no exemption from library validation), and the release build smoke-tests the signed app before publishing it.
+- **Private files in the data folder.** Coral's other logs, the instance lock, board state, the generated team, and the knowledge, workflow, pi session and theme folders are now created and kept readable by your user only (files 0600, folders 0700). coral.log and its copies are 0600 and, on macOS and Linux, never written through a symlink.
+- **The sign-in token file doesn't linger.** The startup sign-in token's file is removed once its token is used or expires, a leftover is removed at startup, and the file is removed at a clean shutdown.
+- **A retired table is wiped.** The unused `connected_apps` table, which could still hold sign-in tokens from a retired feature, is securely deleted and dropped at startup.
+- **Fewer inline scripts in the dashboard.** The live agent view, its command pane, the sidebar and its menus, the history list, the board chat panel and the dialogs (the scheduled job dialog's flag shortcuts included) no longer use inline event handlers. Restarting, killing, renaming and resetting agents, groups and teams are on the shared list of destructive actions a popout guards.
+
+### Other changes
+
+- **The Windows downloads in the README.** The README lists the Windows MSI and portable ZIP, says they aren't code-signed yet (SmartScreen warns), and gives the `gh attestation verify` command for them.
+- **Pinned build actions.** Every GitHub Actions step in Coral's workflows is pinned by commit, and Dependabot proposes updates.
+- **Steadier Windows tests.** Two tests that failed intermittently on Windows are fixed; the remote feed's keepalive no longer counts a ping cut short by its own shutdown as a miss.
+
 ## v1.4.53 — Coral reads Claude's question and plan menus correctly
 
 **After upgrading, relaunch or resume your Claude agents.** Claude reads Coral's hooks only when an agent starts, so agents started before this release keep the older behaviour until they're relaunched or resumed.
