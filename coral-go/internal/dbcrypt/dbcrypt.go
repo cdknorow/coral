@@ -343,6 +343,9 @@ func GenerateKeyFile(dir string, b Bootstrap) (string, error) {
 }
 
 func EncryptedFile(path string) (bool, error) {
+	if inMemoryDB(path) {
+		return false, nil // no file to read
+	}
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return false, nil
@@ -524,4 +527,18 @@ func Save(dir string, b Bootstrap) error {
 		return err
 	}
 	return os.Rename(name, filepath.Join(dir, BootstrapName))
+}
+
+// inMemoryDB reports whether a SQLite name is an in-memory database, not a file: ":memory:", or a
+// "file:" URI for one (file::memory:..., or mode=memory). On Windows ":memory:" isn't even a
+// valid file name, so opening it to read a header failed instead of finding nothing (#3920 R3).
+func inMemoryDB(path string) bool {
+	p := strings.TrimSpace(path)
+	if p == ":memory:" {
+		return true
+	}
+	if rest, ok := strings.CutPrefix(p, "file:"); ok {
+		return strings.HasPrefix(rest, ":memory:") || strings.Contains(rest, "mode=memory")
+	}
+	return false
 }
