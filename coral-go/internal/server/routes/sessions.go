@@ -98,6 +98,8 @@ type SessionsHandler struct {
 	hints   promptHints  // whether a prompt may be open on a session's terminal (its latest hook events), for the chat reply
 	// loginScreens: whether a Claude agent with no transcript yet shows its login screen (#3830).
 	loginScreens loginScreens
+	// screens: captures the read-only pollers (the agent poll) share for a moment (#3887)
+	screens screenSnaps
 	// hooksRev is the hook set each session's agent loaded at its launch, from its events
 	// (session id → revision, #3655 F3). In memory: until a session's next event after a
 	// restart it is unknown, and the gate takes the screen rule (the safe side).
@@ -1359,12 +1361,21 @@ const captureCacheMax = 256
 // and nothing was written since the last capture (and that is recent), the last capture is
 // reused. The stamp is taken before capturing, so output printed meanwhile is seen next time.
 func (h *SessionsHandler) captureForPoll(ctx context.Context, name, agentType, sessionID string) (string, error) {
+	key := name + "\x00" + agentType + "\x00" + sessionID
+	// Every tab polling this agent shares one capture for a moment (#3887); the exact target is
+	// the key, as for the terminal.
+	capture := func() (string, time.Time, error) {
+		return h.screens.capture(ctx, key, 200, time.Now(), func(c context.Context) (string, error) {
+			return h.terminal.CaptureOutput(c, name, 200, agentType, sessionID)
+		})
+	}
 	stamper, _ := h.backend.(ptymanager.OutputStamper)
 	if stamper == nil {
-		return h.terminal.CaptureOutput(ctx, name, 200, agentType, sessionID)
+		text, _, err := capture()
+		return text, err
 	}
+	stampedAt := time.Now()
 	stamp, ok := stamper.OutputStamp(agentType, sessionID)
-	key := name + "\x00" + agentType + "\x00" + sessionID
 	if ok {
 		h.captureMu.Lock()
 		c, hit := h.captureCache[key]
@@ -1373,10 +1384,12 @@ func (h *SessionsHandler) captureForPoll(ctx context.Context, name, agentType, s
 			return c.text, nil
 		}
 	}
-	text, err := h.terminal.CaptureOutput(ctx, name, 200, agentType, sessionID)
+	text, capturedAt, err := capture()
 	h.captureMu.Lock()
 	defer h.captureMu.Unlock()
-	if ok && err == nil && text != "" {
+	// Kept against the stamp only when the capture started after the stamp was read: a shared
+	// capture from before it may miss output the stamp already counts.
+	if ok && err == nil && text != "" && !capturedAt.Before(stampedAt) {
 		if h.captureCache == nil || len(h.captureCache) >= captureCacheMax {
 			h.captureCache = map[string]cachedCapture{}
 		}
