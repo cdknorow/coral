@@ -228,6 +228,18 @@ func (l *AgentLauncher) SendPrompt(ctx context.Context, sessionID, sessionName, 
 	return nil
 }
 
+// startPromptDelivery sends prompt in the background and returns a channel that closes when the
+// delivery is over. It runs on ctx, so cancelling ctx (the run ended) ends it too.
+func (l *AgentLauncher) startPromptDelivery(ctx context.Context, sessionID, sessionName, agentType, prompt string) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer safego.Recover("background/launcher:startPromptDelivery")
+		defer close(done)
+		_ = l.SendPrompt(ctx, sessionID, sessionName, agentType, prompt)
+	}()
+	return done
+}
+
 // BuildSchedulerLaunchFn returns a function suitable for scheduler.SetLaunchFn.
 // It integrates agent launching with the scheduler's job/run lifecycle.
 func (l *AgentLauncher) BuildSchedulerLaunchFn(schedStore *store.ScheduleStore) func(ctx context.Context, job store.ScheduledJob, runID int64) error {
@@ -248,12 +260,9 @@ func (l *AgentLauncher) BuildSchedulerLaunchFn(schedStore *store.ScheduleStore) 
 		// Register auto-accept if applicable (checked by the run config)
 		// Note: auto-accept is set per-run in FireOneshot, not per-job
 
-		// Send prompt to the agent after delay
-		go func() {
-			defer safego.Recover("background/launcher:248")
-			sendCtx := context.Background()
-			l.SendPrompt(sendCtx, result.SessionID, result.SessionName, job.AgentType, job.Prompt)
-		}()
+		// Send prompt to the agent after delay, on the run's own context: when the run ends the
+		// delivery (and an initial prompt held for a screen nobody answers) ends with it (#3999).
+		l.startPromptDelivery(ctx, result.SessionID, result.SessionName, job.AgentType, job.Prompt)
 
 		// Monitor the tmux session — return when agent finishes or context expires
 		return l.watchSession(ctx, result.SessionName)
