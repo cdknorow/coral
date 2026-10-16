@@ -752,14 +752,10 @@ export async function showExportBoardModal() {
         </label>`;
     }).join('');
 
-    const modal = document.getElementById('confirm-modal');
-    const content = modal.querySelector('.modal-content');
-    if (content) content.classList.add('modal-content-wide');
-    const title = modal.querySelector('.modal-title') || modal.querySelector('h3');
-    const body = modal.querySelector('.modal-body') || modal.querySelector('.confirm-body');
-    const actions = modal.querySelector('.modal-actions') || modal.querySelector('.confirm-actions');
+    const modal = document.getElementById('mb-export-modal');
+    const body = document.getElementById('mb-export-body');
+    const actions = document.getElementById('mb-export-actions');
 
-    title.textContent = 'Export Board Chat';
     body.innerHTML = `
         <div style="margin-bottom:16px">
             <p style="margin:0 0 8px;font-size:14px">Export <strong>${escapeHtml(keyLabel(currentProject))}</strong> board messages.</p>
@@ -787,10 +783,16 @@ export async function showExportBoardModal() {
         </div>
     `;
     actions.innerHTML = `
-        <button class="btn" data-on-click="confirm-close">Cancel</button>
+        <button class="btn" data-on-click="mb-export-close">Cancel</button>
         <button class="btn btn-primary" data-on-click="mb-export-do">Export</button>
     `;
+    attachDialogFocus(modal);
     modal.style.display = 'flex';
+}
+
+export function hideExportBoardModal() {
+    const modal = document.getElementById('mb-export-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 export async function doExportBoard() {
@@ -798,9 +800,8 @@ export async function doExportBoard() {
     const selectedAgents = Array.from(document.querySelectorAll('.export-agent-cb:checked'))
         .map(cb => ({ sessionId: cb.value, role: cb.dataset.role }));
 
-    // Close modal and show progress
-    const modal = document.getElementById('confirm-modal');
-    const actions = modal.querySelector('.modal-actions') || modal.querySelector('.confirm-actions');
+    // Show progress in the export dialog's own footer
+    const actions = document.getElementById('mb-export-actions');
     actions.innerHTML = '<span style="color:var(--text-muted);font-size:13px">Exporting...</span>';
 
     try {
@@ -904,12 +905,12 @@ export async function doExportBoard() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        modal.style.display = 'none';
+        hideExportBoardModal();
         showToast(`Exported ${entries.length} messages as ${format}`);
     } catch (e) {
         console.error('Export failed:', e);
         actions.innerHTML = `<span style="color:var(--error)">Export failed: ${escapeHtml(e.message)}</span>
-            <button class="btn" data-on-click="confirm-close">Close</button>`;
+            <button class="btn" data-on-click="mb-export-close">Close</button>`;
     }
 }
 
@@ -1188,6 +1189,7 @@ registerActions({
     },
     'mb-export-agents': el => document.querySelectorAll('.export-agent-cb').forEach(c => { c.checked = el.dataset.checked === '1'; }),
     'mb-export-do': () => doExportBoard(),
+    'mb-export-close': () => hideExportBoardModal(),
     'mb-select-all': () => selectAllMessages(),
     'mb-select-none': () => selectNoneMessages(),
     'mb-export-selected': () => exportSelectedAsMarkdown(),

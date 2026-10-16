@@ -76,12 +76,14 @@ const JOB_RUNS = { runs: [{ id: 44, status: 'completed', scheduled_at: '2026-10-
         await click('#wf-detail-container [data-on-click="wf-trigger"]');
         check('Run now triggers it', await sent('POST /api/workflows/7/trigger', 'the trigger'));
 
-        await ev(`window.confirm = m => { window.__confirm = m; return false; }; true`);
         await clear();
         await click('#wf-detail-container [data-on-click="wf-delete"]');
+        await until(`!!document.getElementById('confirm-modal') && getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the delete confirmation');
+        const delAsked = await ev(`({ title: document.getElementById('confirm-modal-title').textContent, message: document.getElementById('confirm-modal-message').textContent })`);
+        await click('#confirm-modal .btn:not(#confirm-modal-yes)');
         await sleep(300); // sleep-ok: shows that nothing is sent (no condition to wait for)
-        check('Delete still asks first (with the name), and a No sends nothing',
-            /Nightly "build"/.test(await ev(`window.__confirm || ''`)) && !(await reqs()).some(r => r.startsWith('DELETE')), JSON.stringify(await reqs()));
+        check('Delete still asks first (in the confirm dialog, with the name), and Cancel sends nothing',
+            delAsked.title === 'Delete Workflow' && /Nightly "build"/.test(delAsked.message) && !(await reqs()).some(r => r.startsWith('DELETE')), JSON.stringify({ delAsked, reqs: await reqs() }));
 
         await clear();
         await click('#wf-detail-container [data-on-click="wf-edit"]');

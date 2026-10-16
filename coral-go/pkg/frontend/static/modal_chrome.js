@@ -49,6 +49,8 @@ document.addEventListener("click", (e) => {
     if (e.target === alertModal) window.hideAlertModal?.();
     const confirmModal = document.getElementById("confirm-modal");
     if (e.target === confirmModal) window.hideConfirmModal?.();
+    const exportModal = document.getElementById("mb-export-modal");
+    if (e.target === exportModal) exportModal.style.display = "none";
 });
 
 // Close topmost visible modal on Escape and trap focus inside it
@@ -67,6 +69,7 @@ document.addEventListener("keydown", (e) => {
                 else if (id === 'macro-modal') modals[i].style.display = 'none';
                 else if (id === 'alert-modal') window.hideAlertModal?.();
                 else if (id === 'confirm-modal') window.hideConfirmModal?.();
+                else if (id === 'mb-export-modal') modals[i].style.display = 'none';
                 else if (id === 'prompt-modal') window.hidePromptModal?.();
                 else if (id === 'team-agent-modal') window.hideTeamAgentModal?.();
                 else if (id === 'default-prompts-modal') window.hideDefaultPromptsModal?.();

@@ -37,9 +37,6 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await Page.navigate({ url: BASE + '/' });
         await loaded;
         await coralReady();
-        // The board's Export dialog rewrites the shared confirm dialog and never puts it back (a bug, reported
-        // separately), so keep a pristine copy to restore before the confirmation checks below.
-        await ev(`window.__confirmHTML = document.querySelector('#confirm-modal .modal-content').innerHTML; true`);
 
         agent = await ev(`fetch('/api/sessions/launch-team', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ board_name: 'board-3645', working_dir: '/tmp', agent_type: 'terminal', agents: [{ name: 'Board QA', prompt: 'x' }] }) })
@@ -101,9 +98,20 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('Export downloads the board', (await ev(`window.__downloads.length`)) > 0, JSON.stringify(await ev(`window.__downloads`)));
         await ev(`(() => { const b = document.getElementById('mb-export-btn'); b.click(); return true; })()`);
         await until(`!!document.querySelector('[data-on-click="mb-export-do"]')`, 'the export dialog again');
-        await ev(`document.querySelector('[data-on-click="confirm-close"]').click(); true`);
-        check('its Cancel closes it', await until(`!document.querySelector('[data-on-click="mb-export-do"]') || getComputedStyle(document.querySelector('[data-on-click="mb-export-do"]').closest('.modal')).display === 'none'`, 'closed', 3000)
-            .then(() => ev(`!document.querySelector('[data-on-click="mb-export-do"]') || getComputedStyle(document.querySelector('[data-on-click="mb-export-do"]').closest('.modal')).display === 'none'`)));
+        const exportOpen = () => ev(`getComputedStyle(document.getElementById('mb-export-modal')).display !== 'none'`);
+        check('Export has its own dialog, not the shared confirm dialog', (await exportOpen()) && await ev(`document.getElementById('mb-export-modal').contains(document.querySelector('[data-on-click="mb-export-do"]')) && getComputedStyle(document.getElementById('confirm-modal')).display === 'none'`));
+        await ev(`document.querySelector('[data-on-click="mb-export-close"]').click(); true`);
+        check('its Cancel closes it', !(await exportOpen()));
+        await ev(`document.getElementById('mb-export-btn').click(); true`);
+        await until(`getComputedStyle(document.getElementById('mb-export-modal')).display !== 'none'`, 'the export dialog a third time');
+        await ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+        check('Escape closes it', !(await exportOpen()));
+        await ev(`document.getElementById('mb-export-btn').click(); true`);
+        await until(`getComputedStyle(document.getElementById('mb-export-modal')).display !== 'none'`, 'the export dialog a fourth time');
+        await ev(`document.getElementById('mb-export-modal').dispatchEvent(new MouseEvent('click', { bubbles: true })); true`);
+        check('a click on its backdrop closes it', !(await exportOpen()));
+        // The shared confirm dialog is untouched by all that: it still has its message and its Yes (#3701).
+        check('after Export, the shared confirm dialog still has its message and Yes button', await ev(`!!document.getElementById('confirm-modal-message') && !!document.getElementById('confirm-modal-yes') && !!document.getElementById('confirm-modal-title')`));
 
         // ── Subscribers sheet ──────────────────────────────────────────────
         const sheetOpen = () => ev(`getComputedStyle(document.getElementById('mb-subscribers-sheet')).display !== 'none'`);
@@ -137,7 +145,6 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('a delete with a bad id does nothing', (await ev(`document.querySelectorAll('#mb-messages [data-on-click="mb-msg-delete"]').length`)) === before);
         // A message's × asks first (#3696): the dialog names the sender and the text, Cancel deletes
         // nothing, and only Yes deletes. The real confirm dialog is used, not a stub.
-        await ev(`document.querySelector('#confirm-modal .modal-content').innerHTML = window.__confirmHTML; document.getElementById('confirm-modal').style.display = 'none'; true`);
         const modalState = () => ev(`(() => { const m = document.getElementById('confirm-modal'); if (!m) return { open: false, title: '', message: '' }; return { open: getComputedStyle(m).display !== 'none', title: document.getElementById('confirm-modal-title').textContent, message: document.getElementById('confirm-modal-message').textContent }; })()`);
         const countMsgs = () => ev(`document.querySelectorAll('#mb-messages [data-on-click="mb-msg-delete"]').length`);
         await ev(`document.querySelector('#mb-messages [data-on-click="mb-msg-delete"]').click(); true`);

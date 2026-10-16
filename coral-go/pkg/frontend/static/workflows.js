@@ -548,15 +548,16 @@ export async function killWorkflowRun(runId) {
 
 // ── Delete ─────────────────────────────────────────────────────────────
 
-export async function deleteWorkflow(id, name) {
-    if (!confirm(`Delete workflow "${name}"? This will also delete all run history.`)) return;
-    try {
-        await apiFetch(`/api/workflows/${id}`, { method: 'DELETE' });
-        showToast(`Deleted workflow "${name}"`);
-        workflowsBackToList();
-    } catch (e) {
-        showToast('Failed to delete: ' + e.message, true);
-    }
+export function deleteWorkflow(id, name) {
+    window.showConfirmModal('Delete Workflow', `Delete workflow "${name}"? This will also delete all run history.`, async () => {
+        try {
+            await apiFetch(`/api/workflows/${id}`, { method: 'DELETE' });
+            showToast(`Deleted workflow "${name}"`);
+            workflowsBackToList();
+        } catch (e) {
+            showToast('Failed to delete: ' + e.message, true);
+        }
+    });
 }
 
 // ── Create / Edit modal ────────────────────────────────────────────────
@@ -756,7 +757,7 @@ registerActions({
     'wf-trigger': el => withId(el.dataset.workflowId, triggerWorkflow),
     'wf-edit': el => withId(el.dataset.workflowId, editWorkflow),
     'wf-edit-agent': el => withId(el.dataset.workflowId, editWorkflowWithAgent),
-    // Deleting still asks first (deleteWorkflow's confirm); the name is only shown in it.
+    // Deleting still asks first (deleteWorkflow's confirmation dialog); the name is only shown in it.
     'wf-delete': el => withId(el.dataset.workflowId, id => deleteWorkflow(id, String(el.dataset.name || ''))),
     'wf-kill-run': el => withId(el.dataset.runId, confirmKillWorkflowRun),
     'wf-output-toggle': el => {
