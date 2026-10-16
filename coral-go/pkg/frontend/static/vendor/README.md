@@ -22,7 +22,7 @@ The fonts are listed in `fonts/README.md`.
 
 ## `codemirror/codemirror-bundle.js`
 
-SHA-256 `c29346ba657ab4e120ec5110f55cf4d9162286b54b9ef6bc850fe3f0a41f66bc`. An esbuild IIFE (window.CoralCM) of CodeMirror 6, last built 2026-03-23 18:06 UTC from the packages below (and their @lezer parsers); the build input was not recorded. The versions are the npm releases current at that time (codemirror by its latest tag: 6.65.7 is an old CodeMirror 5 publish). Not byte-verified: rebuild it from a pinned package.json to replace it.
+SHA-256 `7f76b559e3c98a67e47f0c601856c1bb85f25025ab443e836d7997325da37295`. An esbuild 0.27.4 IIFE (window.CoralCM) of CodeMirror 6 and its @lezer parsers, built from the input in `tests/vendor-build/codemirror` (package.json with exact versions, package-lock.json, entry.js). Byte-verified: `node vendor_manifest.mjs --rebuild` runs `npm ci --ignore-scripts` there and `esbuild entry.js --bundle --format=iife --global-name=CoralCM --minify`, and the output must equal this file. The lock was resolved with `npm install --before=2026-03-23T18:06:23Z`, the date of the earlier build, whose output this file replaces: the two have the same size and differ in 8 bytes, all minified variable names (the lang-sql dialect tables and yaml-frontmatter); the earlier build's input was never recorded, so that difference is not traced to a package. (codemirror by its latest tag: 6.65.7 is an old CodeMirror 5 publish.)
 
 | Package | Version |
 |---|---|

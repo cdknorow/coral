@@ -7,6 +7,8 @@
 //   node vendor_manifest.mjs --fetch   also fetch each package's npm tarball, check it against the
 //                                      registry's integrity and the sha256 recorded here, and
 //                                      check the vendored file against the file in it
+//   node vendor_manifest.mjs --rebuild also rebuild each bundle from its recorded input (npm ci, esbuild; needs the npm
+//                                      registry or its cache) and check the output equals the vendored file
 //   node vendor_manifest.mjs --write   rewrite the README from this list and the files' hashes
 //
 // "verbatim": the file is the package file byte for byte. "jsdelivr-header": jsDelivr's copy, the
@@ -16,8 +18,10 @@
 // A tarball is only read in memory (gunzip and the tar headers); nothing in it is run or written.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -39,10 +43,14 @@ export const ENTRIES = [
     { file: 'xterm/addon-canvas.min.js', pkg: '@xterm/addon-canvas', version: '0.7.0', path: 'lib/addon-canvas.js', mode: 'verbatim', tarball: 'f8004a9c444289c686ac9b58df98505f3e027fcfea411b6845f9279cc281a774',
         note: 'Upstream deprecates it in later xterm lines; pinned, revisit at the next xterm bump.' },
     { file: 'xterm/addon-canvas.LICENSE', pkg: '@xterm/addon-canvas', version: '0.7.0', path: 'LICENSE', mode: 'verbatim', tarball: 'f8004a9c444289c686ac9b58df98505f3e027fcfea411b6845f9279cc281a774' },
-    { file: 'codemirror/codemirror-bundle.js', mode: 'bundle', built: '2026-03-23',
-        note: 'An esbuild IIFE (window.CoralCM) of CodeMirror 6, last built 2026-03-23 18:06 UTC from the packages below (and their @lezer '
-            + 'parsers); the build input was not recorded. The versions are the npm releases current at that time (codemirror by its '
-            + 'latest tag: 6.65.7 is an old CodeMirror 5 publish). Not byte-verified: rebuild it from a pinned package.json to replace it.',
+    { file: 'codemirror/codemirror-bundle.js', mode: 'bundle', built: '2026-03-23', input: 'tests/vendor-build/codemirror',
+        note: 'An esbuild 0.27.4 IIFE (window.CoralCM) of CodeMirror 6 and its @lezer parsers, built from the input in `tests/vendor-build/codemirror` '
+            + '(package.json with exact versions, package-lock.json, entry.js). Byte-verified: `node vendor_manifest.mjs --rebuild` runs '
+            + '`npm ci --ignore-scripts` there and `esbuild entry.js --bundle --format=iife --global-name=CoralCM --minify`, and the output must '
+            + 'equal this file. The lock was resolved with `npm install --before=2026-03-23T18:06:23Z`, the date of the earlier build, whose output '
+            + 'this file replaces: the two have the same size and differ in 8 bytes, all minified variable names (the lang-sql dialect tables and '
+            + 'yaml-frontmatter); the earlier build\'s input was never recorded, so that difference is not traced to a package. '
+            + '(codemirror by its latest tag: 6.65.7 is an old CodeMirror 5 publish.)',
         packages: [
             { pkg: 'codemirror', version: '6.0.2' }, { pkg: '@codemirror/state', version: '6.6.0' }, { pkg: '@codemirror/view', version: '6.40.0' },
             { pkg: '@codemirror/language', version: '6.12.2' }, { pkg: '@codemirror/commands', version: '6.10.3' },
@@ -136,6 +144,34 @@ async function fetchCheck(e) {
     return { errs, tsha };
 }
 
+// A bundle's recorded input must be the packages the README lists: the exact versions in its package.json, and each one in the lock.
+function bundleInputErrors(e) {
+    const dir = path.resolve(here, '../..', e.input), errs = [];
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(dir, 'package-lock.json'), 'utf8'));
+    for (const p of e.packages) {
+        if (pkg.dependencies[p.pkg] !== p.version) errs.push(`${e.file}: package.json has ${p.pkg} ${pkg.dependencies[p.pkg]}, the list says ${p.version}`);
+        const l = lock.packages['node_modules/' + p.pkg];
+        if (!l || l.version !== p.version || !l.integrity) errs.push(`${e.file}: package-lock.json has ${p.pkg} ${l && l.version}, the list says ${p.version}`);
+    }
+    for (const n of Object.keys(pkg.dependencies)) if (!e.packages.some(p => p.pkg === n)) errs.push(`${e.file}: package.json has ${n}, which the list does not`);
+    if (!pkg.devDependencies || !/^\d+\.\d+\.\d+$/.test(pkg.devDependencies.esbuild || '')) errs.push(`${e.file}: esbuild must be pinned to an exact version in package.json`);
+    return errs;
+}
+
+// Rebuild a bundle from its input into a temporary folder (the input folder's node_modules is not touched) and return the bytes.
+function rebuildBundle(e) {
+    const src = path.resolve(here, '../..', e.input);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-vendor-build-'));
+    try {
+        for (const f of ['package.json', 'package-lock.json', 'entry.js']) fs.copyFileSync(path.join(src, f), path.join(tmp, f));
+        execFileSync('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: tmp, stdio: 'pipe', shell: process.platform === 'win32' });
+        execFileSync(path.join(tmp, 'node_modules', '.bin', 'esbuild' + (process.platform === 'win32' ? '.cmd' : '')),
+            ['entry.js', '--bundle', '--format=iife', '--global-name=CoralCM', '--minify', '--outfile=out.js', '--log-level=error'], { cwd: tmp, stdio: 'pipe', shell: process.platform === 'win32' });
+        return fs.readFileSync(path.join(tmp, 'out.js'));
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
 async function main() {
     const args = new Set(process.argv.slice(2));
     const rows = rowsNow();
@@ -145,6 +181,15 @@ async function main() {
             const { errs, tsha } = await fetchCheck(e);
             for (const m of errs) { console.log('FAIL ' + m); bad++; }
             if (!errs.length) console.log(`ok   ${e.file}: ${e.pkg}@${e.version} (${e.mode}), tarball ${tsha}`);
+        }
+        if (bad) process.exit(1);
+    }
+    if (args.has('--rebuild')) {
+        let bad = 0;
+        for (const e of ENTRIES.filter(x => x.mode === 'bundle')) {
+            const built = rebuildBundle(e), mine = fs.readFileSync(path.join(VENDOR, e.file));
+            if (built.equals(mine)) console.log(`ok   ${e.file}: rebuilt from ${e.input}, byte for byte (${sha256(built)})`);
+            else { console.log(`FAIL ${e.file}: the rebuild (${sha256(built)}, ${built.length} bytes) differs from the vendored file (${sha256(mine)}, ${mine.length} bytes)`); bad++; }
         }
         if (bad) process.exit(1);
     }
@@ -160,6 +205,8 @@ async function main() {
             + 'Check the file, then run: node tests/frontend/vendor_manifest.mjs --fetch && node tests/frontend/vendor_manifest.mjs --write');
         process.exit(1);
     }
+    const inputErrs = ENTRIES.filter(e => e.mode === 'bundle').flatMap(bundleInputErrors);
+    if (inputErrs.length) { console.error(inputErrs.join('\n')); process.exit(1); }
     const listed = new Set(ENTRIES.map(e => e.file));
     const unlisted = [];
     (function walk(d) {
