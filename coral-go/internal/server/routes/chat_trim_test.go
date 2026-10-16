@@ -76,10 +76,19 @@ func TestSessionsChat_TrimShortensLongToolFields(t *testing.T) {
 	assert.Nil(t, page[0]["trimmed"], "a message with no long field is unmarked")
 	assert.Equal(t, true, page[1]["trimmed"], "a message with a shortened tool is marked")
 	tl := tools(page[1])
-	assert.Len(t, tl["Edit"]["old_string"], 301)
+	// Cut at or before 301 bytes, never inside a word (a token could be one).
+	cutBefore := func(field, whole string) {
+		t.Helper()
+		assert.LessOrEqual(t, len(field), 301)
+		assert.Greater(t, len(field), 280)
+		assert.True(t, strings.HasPrefix(whole, field))
+		letter := func(c byte) bool { return c >= 'a' && c <= 'z' }
+		assert.False(t, letter(field[len(field)-1]) && letter(whole[len(field)]), "not inside a word: %q|%q", field[len(field)-5:], whole[len(field):len(field)+5])
+	}
+	cutBefore(tl["Edit"]["old_string"].(string), edit)
 	assert.Equal(t, "new", tl["Edit"]["new_string"], "a short field is kept")
 	assert.Equal(t, true, tl["Edit"]["trimmed"])
-	assert.Len(t, tl["Write"]["write_content"], 301)
+	cutBefore(tl["Write"]["write_content"].(string), write)
 	assert.Equal(t, true, tl["Write"]["trimmed"])
 	assert.Nil(t, tl["Bash"]["trimmed"], "a tool with nothing long is unmarked")
 	assert.Equal(t, "Editing.", page[1]["text"], "the message's own text is never shortened")

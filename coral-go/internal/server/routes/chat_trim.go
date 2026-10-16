@@ -1,6 +1,6 @@
 package routes
 
-import "unicode/utf8"
+import "github.com/cdknorow/coral/pkg/tunnel"
 
 // A chat page asked for with ?trim=N (#3723) carries at most N bytes of each long tool field:
 // a tool's output, a written file, an edit's old and new text, a patch. These are folded away in
@@ -8,6 +8,11 @@ import "unicode/utf8"
 // field is marked: a tool_result message gets "trimmed": true, a tool in tool_uses gets
 // "trimmed": true, and the message too. The dashboard loads that message in full (the same page
 // request for that one message, without trim) when its card is opened.
+//
+// N is the caller's, and a View-tier Coral Hub user is a caller: a cut that left the start of a
+// token would pass the Hub's redactor (it knows whole tokens only), and sliding N would read the
+// token a character at a time (Security, #3723). So a field is redacted before it is cut, and the
+// cut never splits a run that could belong to a token (tunnel.CutOutsideToken).
 
 // trimMin and trimMax bound a requested trim (bytes).
 const (
@@ -51,7 +56,7 @@ func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
 	if m["type"] == "tool_result" {
 		if s, ok := m["content"].(string); ok && len(s) > n {
 			clone()
-			c["content"] = cutUTF8(s, n)
+			c["content"] = trimField(s, n)
 			c["trimmed"] = true
 		}
 	}
@@ -80,7 +85,7 @@ func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
 						tc[k] = v
 					}
 				}
-				tc[f] = cutUTF8(s, n)
+				tc[f] = trimField(s, n)
 				tc["trimmed"] = true
 			}
 		}
@@ -103,13 +108,9 @@ func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
 	return c, true
 }
 
-// cutUTF8 is s cut to at most n bytes, at a character boundary.
-func cutUTF8(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
+// trimField is s, longer than n, redacted and then cut to at most n bytes where no token can
+// be split.
+func trimField(s string, n int) string {
+	r := string(tunnel.RedactTokens([]byte(s)))
+	return r[:tunnel.CutOutsideToken(r, n)]
 }
