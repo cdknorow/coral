@@ -22,6 +22,7 @@ func TestCapturePaneCachesTheTarget(t *testing.T) {
 	t.Cleanup(func() { runObserver = nil })
 	reset := func() []string { mu.Lock(); defer mu.Unlock(); out := cmds; cmds = nil; return out }
 
+	c.forgetPaneStates() // the setup's list is the shared snapshot (#4049): start without one
 	_, err := c.CapturePane(ctx, sibling, 50, "claude", siblingSID)
 	require.NoError(t, err)
 	first := reset()
