@@ -512,10 +512,12 @@ Set `CORAL_PPROF_ADDR` to a loopback address, e.g.
 `CORAL_PPROF_ADDR=127.0.0.1:6060 coral`, and Go's profiler is served at
 `http://127.0.0.1:6060/debug/pprof/` (`go tool pprof http://127.0.0.1:6060/debug/pprof/profile`).
 It is off by default, runs on its own port (never the dashboard's), and
-refuses anything but a loopback IP such as `127.0.0.1` or `[::1]`. Loopback
-is not per-user: while it is on, any local account can read heap and
-goroutine dumps, which can contain prompts and other session data. Turn it
-off when you are done.
+refuses anything but a loopback IP such as `127.0.0.1` or `[::1]`. **It asks
+for no password, key or token, so it bypasses strict local auth**, and
+loopback is not per-user: while it is on, any local account can read heap
+and goroutine dumps, which hold prompts and other session data and also the
+API key and browser session cookies as they sit in memory. Use it only on a
+computer you alone use, and turn it off when you are done.
 
 ### Coral froze: stall dumps
 
