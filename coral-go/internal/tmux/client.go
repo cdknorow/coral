@@ -539,7 +539,27 @@ func (c *Client) SendKeys(ctx context.Context, agentName, command, agentType, se
 		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 
-	return c.SendKeysToTarget(ctx, target, command)
+	return c.GoneAfter(ctx, agentName, agentType, sessionID, c.SendKeysToTarget(ctx, target, command))
+}
+
+// errEmptyDisplay stands for a display-message that answered nothing, for GoneAfter.
+var errEmptyDisplay = errors.New("tmux display-message answered nothing")
+
+// GoneAfter is err, the failure of a command on the agent's pane, unless the pane is gone now:
+// then ErrTerminalGone, as the lookup itself reported before the shared pane list (#4049). The
+// target can come from that list, up to a second old, so a pane killed since still resolves and
+// only the command fails; the list is dropped and the pane looked up again. A delivery whose
+// state is unknown, a withheld Enter or a cancelled ctx stays what it was.
+func (c *Client) GoneAfter(ctx context.Context, agentName, agentType, sessionID string, err error) error {
+	if err == nil || ctx.Err() != nil || errors.Is(err, ErrTerminalGone) || errors.Is(err, ErrDeliveryUnknown) ||
+		errors.Is(err, ErrEnterWithheld) {
+		return err
+	}
+	c.forgetPaneStates()
+	if target, ferr := c.FindPaneTarget(ctx, agentName, agentType, sessionID); ferr == nil && target == "" {
+		return fmt.Errorf("%w: pane %q not found in any tmux session (%v)", ErrTerminalGone, agentName, err)
+	}
+	return err
 }
 
 // ErrEnterWithheld is returned when a send typed its text but withheld the
@@ -662,7 +682,7 @@ func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []strin
 		// "--": a key from the request that starts with "-" is a key, never a tmux option (-X, -F,
 		// -H...) (#3930, Security's #3927 finding 5).
 		if _, err := c.run(ctx, "send-keys", "-t", target, "--", key); err != nil {
-			return fmt.Errorf("send-keys %q failed: %w", key, err)
+			return c.GoneAfter(ctx, agentName, agentType, sessionID, fmt.Errorf("send-keys %q failed: %w", key, err))
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -792,10 +812,11 @@ func (c *Client) DisplayForAgent(ctx context.Context, agentName, agentType, sess
 	key := agentName + "\x00" + agentType + "\x00" + sessionID
 	if sessionID != "" {
 		if cached, ok := c.captureTarget(key); ok {
-			if out, err := c.DisplayMessage(ctx, cached, format); err == nil {
+			// tmux answers a target that is gone with nothing and success: empty is checked.
+			if out, err := c.DisplayMessage(ctx, cached, format); err == nil && strings.TrimSpace(out) != "" {
 				return out, nil
 			}
-			c.setCaptureTarget(key, "") // the pane is gone or moved: look it up again
+			c.setCaptureTarget(key, "") // the pane is gone or moved (or said nothing): look it up again
 		}
 	}
 	target, err := c.FindPaneTarget(ctx, agentName, agentType, sessionID)
@@ -807,7 +828,14 @@ func (c *Client) DisplayForAgent(ctx context.Context, agentName, agentType, sess
 	}
 	out, err := c.DisplayMessage(ctx, target, format)
 	if err != nil {
-		return "", err
+		return "", c.GoneAfter(ctx, agentName, agentType, sessionID, err)
+	}
+	if strings.TrimSpace(out) == "" {
+		// Gone since the shared pane list was taken (tmux says nothing, with success), or a
+		// format that is empty for this pane: only a fresh lookup tells them apart.
+		if err := c.GoneAfter(ctx, agentName, agentType, sessionID, errEmptyDisplay); errors.Is(err, ErrTerminalGone) {
+			return "", err
+		}
 	}
 	if sessionID != "" {
 		c.setCaptureTarget(key, target)
@@ -942,7 +970,7 @@ func (c *Client) killTmuxSession(ctx context.Context, agentName, agentType, sess
 
 	_, err = c.run(ctx, "kill-session", "-t", pane.SessionName)
 	if err != nil {
-		return fmt.Errorf("kill-session failed: %w", err)
+		return c.GoneAfter(ctx, agentName, agentType, sessionID, fmt.Errorf("kill-session failed: %w", err))
 	}
 	return nil
 }
@@ -958,7 +986,7 @@ func (c *Client) ResizePane(ctx context.Context, agentName string, columns int, 
 	}
 
 	_, err = c.run(ctx, "resize-window", "-t", target, "-x", fmt.Sprintf("%d", columns))
-	return err
+	return c.GoneAfter(ctx, agentName, agentType, sessionID, err)
 }
 
 // HasSession checks if a tmux session with the given name exists.
