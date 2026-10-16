@@ -46,7 +46,6 @@ type LaunchParams struct {
 	BoardType       string
 	Capabilities    *Capabilities
 	Tools           []string               // allowed tools (e.g. ["TodoWrite", "Bash(npm *)"])
-	MCPServers      map[string]any         // MCP server configs keyed by name
 	Hooks           map[string]interface{} // per-agent hooks to merge into settings (Claude-native) or fire via runner (Antigravity/Codex)
 	CLIPath         string                 // custom path to agent binary (empty = default from PATH)
 	PermissionMode  string                 // --permission-mode value (empty or "default" means omit the flag)

@@ -443,12 +443,15 @@ Launch a new agent session.
   "board_type": "default",
   "model": "claude-sonnet-4-20250514",
   "capabilities": ["tool_use"],
-  "tools": ["Read", "Write"],
-  "mcpServers": {"server1": {"command": "npx", "args": ["-y", "@server/mcp"]}}
+  "tools": ["Read", "Write"]
 }
 ```
 
 Required: `working_dir`. All other fields are optional.
+
+**MCP servers:** Coral doesn't configure MCP servers for an agent. Set them up in the agent CLI's
+own configuration. A request that includes `mcpServers` is refused with 400
+(`mcpServers is not supported`).
 
 **Boards (#3536):** `board_id` joins that existing board (the non-interactive way for scripts
 and agents; `coral-agent launch --board <id>` sends it). `board_name` starts a **new** board
@@ -492,8 +495,7 @@ as `/api/sessions/launch` applies (see above).
       "agent_type": "claude",
       "model": "claude-sonnet-4-20250514",
       "capabilities": ["tool_use"],
-      "tools": ["Read", "Grep"],
-      "mcpServers": {}
+      "tools": ["Read", "Grep"]
     },
     {
       "name": "developer",

@@ -3159,8 +3159,6 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	var storedCapsJSON *string
 	var storedTools []string
 	var storedToolsJSON *string
-	var storedMCPServers map[string]any
-	var storedMCPServersJSON *string
 	if body.SessionID != "" {
 		if ls, err := h.ss.GetLiveSession(ctx, body.SessionID); err == nil && ls != nil {
 			storedFlags = store.UnmarshalFlags(ls.Flags)
@@ -3173,9 +3171,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 			storedContextWindow = ls.ContextWindow
 			storedCapsJSON = ls.Capabilities
 			storedToolsJSON = ls.Tools
-			storedMCPServersJSON = ls.MCPServers
 			storedTools = store.UnmarshalFlags(ls.Tools)
-			storedMCPServers = store.UnmarshalMCPServers(ls.MCPServers)
 			if ls.Capabilities != nil && *ls.Capabilities != "" {
 				storedCaps = &agent.Capabilities{}
 				json.Unmarshal([]byte(*ls.Capabilities), storedCaps)
@@ -3251,7 +3247,6 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		BoardType:       storedBoardType,
 		Capabilities:    storedCaps,
 		Tools:           storedTools,
-		MCPServers:      storedMCPServers,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
@@ -3373,7 +3368,6 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		Model:         storedModelPtr,
 		ContextWindow: storedContextWindow,
 		Tools:         storedToolsJSON,
-		MCPServers:    storedMCPServersJSON,
 		PID:           restartPID,
 	})
 	h.ss.MigrateDisplayName(ctx, body.SessionID, newSessionID)
@@ -3518,7 +3512,6 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	storedDisplayName := derefStrPtr(ls.DisplayName)
 	storedBoardType := derefStrPtr(ls.BoardType)
 	storedTools := store.UnmarshalFlags(ls.Tools)
-	storedMCPServers := store.UnmarshalMCPServers(ls.MCPServers)
 
 	role := naming.SubscriberID(storedDisplayName, agentType)
 
@@ -3540,7 +3533,6 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		PromptOverrides: promptOverrides(userSettings),
 		BoardType:       storedBoardType,
 		Tools:           storedTools,
-		MCPServers:      storedMCPServers,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
@@ -3712,11 +3704,15 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		ResumeSessionID string                 `json:"resume_session_id"`
 		Capabilities    *agent.Capabilities    `json:"capabilities"`
 		Tools           []string               `json:"tools"`
-		MCPServers      map[string]any         `json:"mcpServers"`
+		MCPServers      json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
 		Hooks           map[string]interface{} `json:"hooks"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if mcpGiven(body.MCPServers) {
+		errBadRequest(w, errMCPNotSupported)
 		return
 	}
 	// No agent_type (e.g. `coral-agent launch`) means the operator's default,
@@ -3793,7 +3789,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.launchSession(r.Context(), body.WorkingDir, body.AgentType, body.DisplayName,
 		body.ResumeSessionID, launchFlags, body.Prompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, body.Capabilities,
-		body.Tools, body.MCPServers, body.Hooks)
+		body.Tools, body.Hooks)
 	if err != nil {
 		attempt.Finish(tracking.OutcomeFailure, classifyLaunchError(err), 0, 1)
 		errInternalServer(w, err.Error())
@@ -3840,7 +3836,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			Model        string                 `json:"model"`
 			Flags        []string               `json:"flags"`
 			Tools        []string               `json:"tools"`
-			MCPServers   map[string]any         `json:"mcpServers"`
+			MCPServers   json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
 			Hooks        map[string]interface{} `json:"hooks"`
 			Knowledge    string                 `json:"knowledge"`
 		} `json:"agents"`
@@ -3860,6 +3856,12 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
+	}
+	for _, a := range body.Agents {
+		if mcpGiven(a.MCPServers) {
+			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, errMCPNotSupported))
+			return
+		}
 	}
 	// Which board the team joins or starts (#3536), decided before anything is written
 	// (knowledge files, working mode, presets, worktrees, the teams row). From here on
@@ -4053,7 +4055,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 
 		result, err := h.launchSession(ctx, workingDir, agentType, agentDef.Name,
 			"", agentFlags, agentPrompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, agentDef.Capabilities,
-			agentDef.Tools, agentDef.MCPServers, agentDef.Hooks)
+			agentDef.Tools, agentDef.Hooks)
 		if err != nil {
 			log.Printf("[launch-team] failed to launch agent %s: %v", agentDef.Name, err)
 			if firstFailure == "" {
@@ -4175,7 +4177,6 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		Capabilities *string
 		Model        *string
 		Tools        *string
-		MCPServers   *string
 	}
 	configs := make([]agentConfig, 0, len(sessions))
 	for _, s := range sessions {
@@ -4198,7 +4199,6 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 			Capabilities: s.Capabilities,
 			Model:        s.Model,
 			Tools:        s.Tools,
-			MCPServers:   s.MCPServers,
 		})
 	}
 
@@ -4262,11 +4262,10 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 			flags = append(flags, "--model", modelStr)
 		}
 		tools := store.UnmarshalFlags(cfg.Tools)
-		mcpServers := store.UnmarshalMCPServers(cfg.MCPServers)
 		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, displayName, prompt)
 		result, err := h.launchSession(bgCtx, cfg.WorkingDir, cfg.AgentType, displayName,
 			"", flags, prompt, boardName, boardServer, "", boardType, modelStr, caps,
-			tools, mcpServers, nil)
+			tools, nil)
 		if err != nil {
 			log.Printf("[reset-team] failed to re-launch %s: %v", displayName, err)
 			launched = append(launched, map[string]any{"name": displayName, "error": err.Error()})
@@ -4986,7 +4985,7 @@ func generateUUID() string {
 // launchSession creates a new agent session using the specified backend (tmux or pty).
 func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType, displayName, resumeSessionID string,
 	flags []string, prompt, boardName, boardServer, backend, boardType, model string, capabilities *agent.Capabilities,
-	tools []string, mcpServers map[string]any, hooks map[string]interface{}) (_ map[string]any, retErr error) {
+	tools []string, hooks map[string]interface{}) (_ map[string]any, retErr error) {
 
 	if msg := launchDirError(workDir); msg != "" {
 		return nil, errors.New(msg)
@@ -5093,7 +5092,6 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		BoardType:       boardType,
 		Capabilities:    capabilities,
 		Tools:           tools,
-		MCPServers:      mcpServers,
 		Hooks:           hooks,
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
@@ -5250,7 +5248,6 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		Model:         strPtr(model),
 		ContextWindow: proxy.LookupContextWindow(model),
 		Tools:         store.MarshalCapabilities(tools),
-		MCPServers:    store.MarshalCapabilities(mcpServers),
 		PID:           shellPID,
 	})
 	if agentType != at.Terminal {
@@ -6287,7 +6284,6 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			AgentType    string                 `json:"agent_type"`
 			Model        string                 `json:"model"`
 			Tools        []string               `json:"tools"`
-			MCPServers   map[string]any         `json:"mcpServers"`
 			Hooks        map[string]interface{} `json:"hooks"`
 		}
 		if err := json.Unmarshal([]byte(m.AgentConfigJSON), &agentCfg); err != nil {
@@ -6306,7 +6302,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 
 		result, err := h.launchSession(ctx, workingDir, agentType, m.AgentName,
 			"", nil, resurrectPrompt, team.Name, "", "", "", agentCfg.Model, agentCfg.Capabilities,
-			agentCfg.Tools, agentCfg.MCPServers, agentCfg.Hooks)
+			agentCfg.Tools, agentCfg.Hooks)
 		if err != nil {
 			log.Printf("[resurrect] failed to launch %s: %v", m.AgentName, err)
 			launched = append(launched, map[string]any{"name": m.AgentName, "error": err.Error()})
@@ -6510,7 +6506,6 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		BoardType:       boardType,
 		Capabilities:    nil,
 		Tools:           store.UnmarshalFlags(ls.Tools),
-		MCPServers:      store.UnmarshalMCPServers(ls.MCPServers),
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),

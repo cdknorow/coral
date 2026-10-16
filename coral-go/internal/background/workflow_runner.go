@@ -46,8 +46,9 @@ type AgentStepConfig struct {
 	Model        string          `json:"model,omitempty"`
 	Capabilities json.RawMessage `json:"capabilities,omitempty"`
 	Tools        []string        `json:"tools,omitempty"`
-	MCPServers   json.RawMessage `json:"mcpServers,omitempty"`
 	Flags        []string        `json:"flags,omitempty"`
+	// mcpServers is not read: Coral doesn't configure MCP servers (#3644); saving a workflow
+	// that names it is refused, and one stored before is run without it.
 }
 
 // StepResult tracks the outcome of a single step execution.
@@ -632,10 +633,10 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 
 	// Claude gets the step's prompt on stdin, never in argv, where any local user could
 	// read it in the process list: it can carry earlier steps' output or board content
-	// (#3521). With tools, capabilities or MCP servers, the settings come from the agent
+	// (#3521). With tools or capabilities, the settings come from the agent
 	// package as real argv (ClaudeAgent.PrintArgs); splitting the launch command's shell
 	// line on spaces gave Claude env-var names and a "$(cat ...)" fragment instead.
-	hasCfg := len(agentCfg.Tools) > 0 || agentCfg.Capabilities != nil || agentCfg.MCPServers != nil
+	hasCfg := len(agentCfg.Tools) > 0 || agentCfg.Capabilities != nil
 	var args []string
 	var stdin io.Reader
 
@@ -653,11 +654,6 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 			}
 			if len(agentCfg.Tools) > 0 {
 				params.Tools = agentCfg.Tools
-			}
-			if agentCfg.MCPServers != nil {
-				var servers map[string]any
-				json.Unmarshal(agentCfg.MCPServers, &servers)
-				params.MCPServers = servers
 			}
 			var settingsFile string
 			args, settingsFile, err = (&agent.ClaudeAgent{}).PrintArgs(params)
@@ -1111,9 +1107,6 @@ func mergeAgentConfig(defaultCfg, stepCfg *AgentStepConfig) *AgentStepConfig {
 	}
 	if len(stepCfg.Tools) > 0 {
 		merged.Tools = stepCfg.Tools
-	}
-	if stepCfg.MCPServers != nil {
-		merged.MCPServers = stepCfg.MCPServers
 	}
 	if len(stepCfg.Flags) > 0 {
 		merged.Flags = stepCfg.Flags

@@ -1219,7 +1219,9 @@ func TestSessionsLaunchTeam_StripsForeignPermissionFlags(t *testing.T) {
 	assert.Contains(t, commands, "--verbose")
 }
 
-func TestSessionsLaunchTeam_PreservesToolsAndMCPServers(t *testing.T) {
+// A team member's tools reach its settings; MCP servers never do: Coral doesn't configure them
+// (#3644).
+func TestSessionsLaunchTeam_PreservesToolsAndNeverMCP(t *testing.T) {
 	cfg := &config.Config{LogDir: t.TempDir()}
 	dbPath := t.TempDir() + "/test.db"
 	db, err := storetest.Open(t, dbPath)
@@ -1244,12 +1246,6 @@ func TestSessionsLaunchTeam_PreservesToolsAndMCPServers(t *testing.T) {
 				"name":   "Backend Dev",
 				"prompt": "Build APIs",
 				"tools":  []string{"TodoWrite", "Bash(npm test)"},
-				"mcpServers": map[string]any{
-					"github": map[string]any{
-						"command": "npx",
-						"args":    []any{"-y", "@modelcontextprotocol/server-github"},
-					},
-				},
 			},
 		},
 	})
@@ -1269,9 +1265,7 @@ func TestSessionsLaunchTeam_PreservesToolsAndMCPServers(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ls)
 	require.NotNil(t, ls.Tools)
-	require.NotNil(t, ls.MCPServers)
 	assert.JSONEq(t, `["TodoWrite","Bash(npm test)"]`, *ls.Tools)
-	assert.JSONEq(t, `{"github":{"args":["-y","@modelcontextprotocol/server-github"],"command":"npx"}}`, *ls.MCPServers)
 
 	commands := strings.Join(terminal.sentCommands(), "\n")
 	require.NotEmpty(t, commands)
@@ -1287,7 +1281,7 @@ func TestSessionsLaunchTeam_PreservesToolsAndMCPServers(t *testing.T) {
 	settingsJSON, err := os.ReadFile(settingsPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(settingsJSON), `"allowedTools"`)
-	assert.Contains(t, string(settingsJSON), `"mcpServers"`)
+	assert.NotContains(t, string(settingsJSON), `"mcpServers"`)
 }
 
 func TestSessionsSetDisplayName(t *testing.T) {

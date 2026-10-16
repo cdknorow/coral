@@ -457,8 +457,7 @@ The Operator's only: an agent's token gets 403 `operator_only`. The path must be
       "role": "orchestrator",
       "prompt": "...",
       "description": "...",
-      "tools": ["tool1"],
-      "mcpServers": {}
+      "tools": ["tool1"]
     }
   ]
 }

@@ -69,7 +69,6 @@ type LiveSession struct {
 	Model         *string `db:"model" json:"model,omitempty"`
 	ContextWindow int     `db:"context_window" json:"context_window,omitempty"`
 	Tools         *string `db:"tools" json:"tools,omitempty"`
-	MCPServers    *string `db:"mcp_servers" json:"mcp_servers,omitempty"`
 	PID           int     `db:"pid" json:"pid,omitempty"`
 	WorktreePath  *string `db:"worktree_path" json:"worktree_path,omitempty"`
 	WorktreeRepo  *string `db:"worktree_repo" json:"worktree_repo,omitempty"`
@@ -980,12 +979,12 @@ func (s *SessionStore) RegisterLiveSession(ctx context.Context, ls *LiveSession)
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT OR REPLACE INTO live_sessions
-		 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, board_type, capabilities, model, context_window, tools, mcp_servers, pid, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+		 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, board_type, capabilities, model, context_window, tools, pid, status, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
 		ls.SessionID, ls.AgentType, ls.AgentName, ls.WorkingDir,
 		ls.DisplayName, ls.ResumeFromID, ls.Flags, ls.IsJob,
 		ls.Prompt, ls.BoardName, ls.BoardServer, ls.Backend, ls.Icon, ls.IsSleeping, ls.BoardType,
-		ls.Capabilities, ls.Model, ls.ContextWindow, ls.Tools, ls.MCPServers, ls.PID, ls.CreatedAt)
+		ls.Capabilities, ls.Model, ls.ContextWindow, ls.Tools, ls.PID, ls.CreatedAt)
 	return err
 }
 
@@ -1040,7 +1039,7 @@ func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, e
 	var sessions []LiveSession
 	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE status = 'active' ORDER BY created_at`)
 	return sessions, err
 }
@@ -1058,7 +1057,7 @@ func (s *SessionStore) GetBoardSessions(ctx context.Context, boardName string) (
 	var sessions []LiveSession
 	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, is_archived, board_type, capabilities, model, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, is_archived, board_type, capabilities, model, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE board_name = ? AND status = 'active' ORDER BY created_at`, boardName)
 	return sessions, err
 }
@@ -1128,7 +1127,7 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 	var ls LiveSession
 	err := s.reader().GetContext(ctx, &ls,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, status
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, status
 		 FROM live_sessions WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1146,7 +1145,7 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		// Carry forward flags, prompt, board from old session if not set
 		var old LiveSession
 		err := tx.GetContext(ctx, &old,
-			"SELECT agent_type, flags, prompt, board_name, board_server, icon, name_color, is_sleeping, board_type, display_name, is_job, backend, capabilities, model, context_window, tools, mcp_servers FROM live_sessions WHERE session_id = ?",
+			"SELECT agent_type, flags, prompt, board_name, board_server, icon, name_color, is_sleeping, board_type, display_name, is_job, backend, capabilities, model, context_window, tools FROM live_sessions WHERE session_id = ?",
 			oldSessionID)
 		if err == nil {
 			sameProvider := newSession.AgentType == "" || newSession.AgentType == old.AgentType
@@ -1186,9 +1185,6 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 			if newSession.Tools == nil {
 				newSession.Tools = old.Tools
 			}
-			if newSession.MCPServers == nil {
-				newSession.MCPServers = old.MCPServers
-			}
 			if newSession.Backend == nil {
 				newSession.Backend = old.Backend
 			}
@@ -1209,13 +1205,13 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		now := nowUTC()
 		_, err = tx.ExecContext(ctx,
 			`INSERT OR REPLACE INTO live_sessions
-			 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, context_window, tools, mcp_servers, pid, status, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+			 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, context_window, tools, pid, status, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
 			newSession.SessionID, newSession.AgentType, newSession.AgentName,
 			newSession.WorkingDir, newSession.DisplayName, newSession.ResumeFromID,
 			newSession.Flags, newSession.IsJob, newSession.Prompt, newSession.BoardName,
 			newSession.BoardServer, newSession.Backend, newSession.Icon, newSession.NameColor, newSession.IsSleeping, newSession.BoardType,
-			newSession.Capabilities, newSession.Model, newSession.ContextWindow, newSession.Tools, newSession.MCPServers, newSession.PID, now)
+			newSession.Capabilities, newSession.Model, newSession.ContextWindow, newSession.Tools, newSession.PID, now)
 		return err
 	})
 }
@@ -1535,18 +1531,6 @@ func UnmarshalFlags(flags *string) []string {
 	}
 	var result []string
 	if err := json.Unmarshal([]byte(*flags), &result); err != nil {
-		return nil
-	}
-	return result
-}
-
-// UnmarshalMCPServers deserializes a JSON string to a map of MCP server configs.
-func UnmarshalMCPServers(s *string) map[string]any {
-	if s == nil || *s == "" {
-		return nil
-	}
-	var result map[string]any
-	if err := json.Unmarshal([]byte(*s), &result); err != nil {
 		return nil
 	}
 	return result

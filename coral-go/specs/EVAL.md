@@ -76,7 +76,7 @@ echo "$TEAM" | jq
 TEAM_ID=$(jq -r '.team_id' <<<"$TEAM")
 ```
 
-Per-agent `agent_type`, `model`, `capabilities`, `tools`, `mcpServers`, and `hooks` may be supplied. Team-wide `flags` apply to every member, so CLI-specific flags generally belong in a homogeneous team. The launch response contains each member's `session_id`.
+Per-agent `agent_type`, `model`, `capabilities`, `tools`, and `hooks` may be supplied (`mcpServers` is refused, #3644). Team-wide `flags` apply to every member, so CLI-specific flags generally belong in a homogeneous team. The launch response contains each member's `session_id`.
 
 After the team is live, create the evaluation as a board task assigned to the orchestrator. `assigned_to` must exactly match the orchestrator's agent name (`Lead` here). Creating an assigned task posts an `@Lead` board notification and nudges its terminal to run `coral-board task claim`.
 

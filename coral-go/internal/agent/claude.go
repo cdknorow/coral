@@ -196,7 +196,8 @@ func (a *ClaudeAgent) LaunchCommand(params LaunchParams) (string, error) {
 }
 
 // claudeSettingsFile writes the agent's merged settings (hooks, system prompt, permissions,
-// tools, MCP servers, Coral's environment) to a temp file and returns its path.
+// tools, Coral's environment) to a temp file and returns its path. MCP servers are never among
+// them: Coral doesn't configure MCP servers (#3644); the CLI's own configuration does.
 func claudeSettingsFile(files *launchFiles, params LaunchParams, effectiveID string) string {
 	// Build merged settings with hooks and system prompt
 	merged := buildMergedSettings(params.Hooks)
@@ -232,10 +233,7 @@ func claudeSettingsFile(files *launchFiles, params LaunchParams, effectiveID str
 		merged["allowedTools"] = params.Tools
 	}
 
-	// Inject MCP server configs
-	if len(params.MCPServers) > 0 {
-		merged["mcpServers"] = params.MCPServers
-	}
+	delete(merged, "mcpServers") // never from anything Coral was given (#3644)
 
 	// Coral environment so coral-board and the hooks can find, and identify
 	// themselves to, the server that launched this agent. Built by CoralEnv so

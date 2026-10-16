@@ -106,6 +106,14 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	}
 	applyBoardRekeys(context.Background(), boardStore, db, cfg.CoralDir())
 
+	// Coral doesn't configure MCP servers (#3644): every stored MCP configuration, with the
+	// tokens in its env and headers, is removed from the database, and removed for real.
+	if n, err := store.WipeMCPConfig(context.Background(), db); err != nil {
+		log.Printf("[mcp] clearing stored MCP server settings: %v", err)
+	} else if n > 0 {
+		log.Printf("[mcp] cleared stored MCP server settings from %d records (Coral no longer configures MCP servers)", n)
+	}
+
 	// Initialize API key auth
 	keyStore, err := auth.NewKeyStore(cfg.CoralDir())
 	if err != nil {

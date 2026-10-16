@@ -697,6 +697,9 @@ func canonicalizeRepoPath(p string) (string, error) {
 // validateSteps validates step definitions per the spec rules.
 func validateSteps(steps []json.RawMessage, defaultAgent json.RawMessage) string {
 	stepNames := make(map[string]bool)
+	if agentNamesMCP(defaultAgent) {
+		return "default_agent: " + errMCPNotSupported
+	}
 
 	for i, stepRaw := range steps {
 		var step struct {
@@ -713,6 +716,9 @@ func validateSteps(steps []json.RawMessage, defaultAgent json.RawMessage) string
 		}
 		if err := json.Unmarshal(stepRaw, &step); err != nil {
 			return fmt.Sprintf("step %d: invalid JSON", i)
+		}
+		if agentNamesMCP(step.Agent) {
+			return fmt.Sprintf("step %d: agent: %s", i, errMCPNotSupported)
 		}
 		// output_artifact stays inside the step's folder (#3423, CRIT-02).
 		if step.OutputArtifact != "" && (!filepath.IsLocal(step.OutputArtifact) || strings.ContainsRune(step.OutputArtifact, 0)) {

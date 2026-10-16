@@ -57,8 +57,7 @@ Launches a Claude Code (or Gemini/Codex) agent with a prompt. The agent runs in 
       "allow": ["file_read", "file_write", "shell"],
       "deny": ["git_write"]
     },
-    "tools": ["Read", "Edit", "Bash"],
-    "mcpServers": {}
+    "tools": ["Read", "Edit", "Bash"]
   }
 }
 ```
@@ -83,7 +82,7 @@ The `agent` object uses the same schema as `POST /api/sessions/launch`:
 | `model` | string | no | Model override (e.g., `"claude-sonnet-4-6"`) |
 | `capabilities` | object | no | `{"allow": [...], "deny": [...]}` — see `internal/agent/permissions.go` |
 | `tools` | []string | no | Allowed tools (e.g., `["Read", "Edit", "Bash(npm *)"]`) |
-| `mcpServers` | object | no | MCP server configurations |
+| ~~`mcpServers`~~ | | | Not supported (#3644): saving a workflow that names it is refused; configure MCP servers in the agent CLI |
 | `flags` | []string | no | Additional CLI flags |
 
 ### Workflow-Level Default Agent
@@ -514,7 +513,7 @@ coral-board workflow kill 42
    - `repo_path`: workflow's repo_path
    - `flags`: from agent config `flags` + model flag
    - `max_duration_s`: from step's `timeout_s`
-   - Agent config: capabilities, tools, mcpServers passed through
+   - Agent config: capabilities and tools passed through (MCP servers are not, #3644)
 7. `FireOneshot` launches agent via `AgentLauncher`, calls `watchSession` which polls every **5 seconds** (reduced from 30s for workflow steps to minimize inter-step latency)
 8. When agent exits (tmux session dies), step is complete. **Release concurrency slot.**
 9. Check session exit status — if error, mark step as `"failed"`
