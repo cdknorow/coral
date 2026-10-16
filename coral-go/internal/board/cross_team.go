@@ -443,11 +443,11 @@ func (s *Store) RelayMirrorID(ctx context.Context, project, relayMessageID strin
 // RelayedOrigin returns the envelope of message id on board if it is a cross-team
 // message received from another Coral (#3489): ok is false otherwise.
 func (s *Store) RelayedOrigin(ctx context.Context, project string, id int64) (MessageOrigin, bool, error) {
-	m, err := s.GetMessageByID(ctx, id)
+	m, err := s.GetMessageByID(ctx, project, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MessageOrigin{}, false, nil
 	}
-	if err != nil || m == nil || m.Project != project || len(m.External) == 0 {
+	if err != nil || m == nil || len(m.External) == 0 {
 		return MessageOrigin{}, false, err
 	}
 	var o MessageOrigin

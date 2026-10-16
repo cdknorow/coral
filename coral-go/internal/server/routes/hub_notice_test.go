@@ -87,7 +87,7 @@ func TestHubNoticePostsTheTemplate(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(body), &b))
 		code, out := notice(t, srv, auth, b)
 		require.Equal(t, http.StatusOK, code, out)
-		m, err := bs.GetMessageByID(context.Background(), int64(out["message_id"].(float64)))
+		m, err := bs.GetMessageByID(context.Background(), "qa", int64(out["message_id"].(float64)))
 		require.NoError(t, err)
 		assert.Equal(t, want, m.Content)
 		assert.Equal(t, board.HubUnknownSender, m.SubscriberID)

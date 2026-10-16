@@ -1070,7 +1070,8 @@ func (h *BoardHandler) ListAllMessages(w http.ResponseWriter, r *http.Request) {
 			errBadRequest(w, "invalid message id")
 			return
 		}
-		msg, err := h.bs.GetMessageByID(r.Context(), msgID)
+		// Only this board's message: another board's id is "not found" like a missing one.
+		msg, err := h.bs.GetMessageByID(r.Context(), urlParam(r, "project"), msgID)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "message not found"})
 			return
