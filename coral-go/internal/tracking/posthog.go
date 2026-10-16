@@ -87,11 +87,6 @@ func TelemetryEnvDisabled() bool {
 // opt-out takes effect immediately and queued work is dropped, never replayed.
 func telemetryEnabled() bool { return !telemetryDisabled.Load() && !TelemetryEnvDisabled() }
 
-// CoralDir returns the data directory tracking state is written to, or "" if
-// it has not been configured. Exposed so the telemetry disclosure can show the
-// user exactly where their install ID and failure log live.
-func CoralDir() string { return resolveCoralDir() }
-
 // getInstallID returns the install ID, reading from disk once and caching.
 func getInstallID() string {
 	installIDOnce.Do(func() {

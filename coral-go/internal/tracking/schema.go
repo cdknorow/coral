@@ -79,7 +79,6 @@ func intRange(lo, hi int) propSpec   { return propSpec{kind: kindInt, min: lo, m
 
 var (
 	slugProp    = propSpec{kind: kindSlug}
-	labelProp   = propSpec{kind: kindLabel}
 	boolProp    = propSpec{kind: kindBool}
 	providerEnu = enum("claude", "codex", "gemini", "other", "mixed")
 	backendEnu  = enum("tmux", "pty", "unknown")
