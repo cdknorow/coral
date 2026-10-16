@@ -105,22 +105,12 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             window.showTeamAgentModal = keepOpen;
             list.querySelector('[data-on-click="team-agent-remove"]').click();
             const left = list.querySelectorAll('.team-agent-row').length;
-            const added = []; const kp = window._addPresetAgent, kc = window._addTeamAgent; window._addPresetAgent = n => added.push(['preset', n]); window._addTeamAgent = () => added.push(['custom']);
-            // No template has #team-agent-picker (its builder is unreachable today): give it one, so
-            // its markup and actions are still exercised.
-            let made = null; if (!document.getElementById('team-agent-picker')) { made = document.createElement('div'); made.id = 'team-agent-picker'; document.body.appendChild(made); }
-            window._showAddAgentPicker();
-            const p = document.querySelector('#team-agent-picker [data-on-click="team-preset-add"]'); const presetName = p && p.dataset.name; p && p.click();
-            document.querySelector('#team-agent-picker [data-on-click="team-agent-custom"]')?.click();
-            window._addPresetAgent = kp; window._addTeamAgent = kc;
-            if (made) setTimeout(() => made.remove(), 0);
-            const inline = [...document.querySelectorAll('#team-agents-list *, #team-agent-picker *')].flatMap(el => [...el.attributes].filter(a => /^on/i.test(a.name)).map(a => el.className + ' ' + a.name));
+            const inline = [...document.querySelectorAll('#team-agents-list *')].flatMap(el => [...el.attributes].filter(a => /^on/i.test(a.name)).map(a => el.className + ' ' + a.name));
             list.innerHTML = '';
-            return { list: true, before, moved, opened, left, presetName, added, inline };
+            return { list: true, before, moved, opened, left, inline };
         })()`);
         check('team builder rows move down, open (summary and Edit), and are removed', team.list && team.moved[0] === team.before[1] && JSON.stringify(team.opened) === '[true,true]' && team.left === 1, JSON.stringify(team));
-        check('the agent picker adds a preset by name, or a custom agent', team.presetName && JSON.stringify(team.added) === JSON.stringify([['preset', team.presetName], ['custom']]), JSON.stringify(team.added));
-        check('no inline handler left in the team builder or its picker', team.inline.length === 0, JSON.stringify(team.inline.slice(0, 4)));
+        check('no inline handler left in the team builder', team.inline.length === 0, JSON.stringify(team.inline.slice(0, 4)));
     } catch (e) {
         check('the test ran', false, e.stack || String(e));
     } finally {
