@@ -18,7 +18,8 @@ PIDs it started** (no pattern-kills) and removes its temp dirs on exit.
 QA_PERF_RUN=1 bash tests/perf/run_perf.sh
 
 # or against an isolated worktree at a specific commit (recommended)
-QA_PERF_RUN=1 GO=$HOME/go-install/go/bin/go REPO=/path/to/worktree WORK=$HOME/perf-run bash tests/perf/run_perf.sh
+QA_PERF_RUN=1 GO=$HOME/go-install/go/bin/go REPO=/path/to/worktree bash tests/perf/run_perf.sh
+# On epoch the data lands under /sd2/$USER/qa-tmp and is removed on exit (tests/EPOCH.md); KEEP_PERF_DATA=1 keeps it.
 ```
 
 The script re-execs itself under `nice -n 10`. Env overrides: `GO, REPO, WORK, QA, PORT,

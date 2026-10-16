@@ -13,7 +13,8 @@
 # Usage (epoch):
 #   QA_PERF_RUN=1 bash tests/perf/run_perf.sh                 # against ~/coral
 #   QA_PERF_RUN=1 REPO=/path/to/worktree WORK=$HOME/perf-run bash tests/perf/run_perf.sh
-# Env overrides: GO, REPO, WORK, QA, PORT, PPROF_PORT, N, NSESS, NBIG, BIGMB, SMALLKB,
+# Data lands under /sd2/$USER/qa-tmp on epoch (QA_BASE), removed on exit; KEEP_PERF_DATA=1 keeps it.
+# Env overrides: GO, REPO, WORK, QA, QA_BASE, KEEP_PERF_DATA, PORT, PPROF_PORT, N, NSESS, NBIG, BIGMB, SMALLKB,
 #   FILESN, NMSG, NEVENT, TABS, WARMUP_S, CPU_S, LOAD_S, STRACE_S, STRACE_SETTLE_S.
 # The script re-execs itself under `nice -n 10` (one documented command, nice +10).
 set -u
@@ -35,8 +36,12 @@ fi
 GO="${GO:-$HOME/go-install/go/bin/go}"
 REPO="${REPO:-$HOME/coral}"
 CORALGO="$REPO/coral-go"
-WORK="${WORK:-$HOME/qa3851-run}"
-QA="${QA:-/tmp/qa3851}"                 # binaries + data dir (short path for tmux socket)
+# Epoch rule (tests/EPOCH.md): keep temp + seeded data under /sd2/$USER/qa-tmp (830 GB free,
+# not the ~92%-full /), delete on exit. Fall back to /tmp when /sd2 is absent (a non-epoch box).
+QA_BASE="${QA_BASE:-$([ -d "/sd2/$USER" ] && echo "/sd2/$USER/qa-tmp" || echo /tmp)}"
+mkdir -p "$QA_BASE" 2>/dev/null || true
+WORK="${WORK:-$QA_BASE/qa3851-run}"
+QA="${QA:-$QA_BASE/qa3851}"             # binaries + data dir (short path for tmux socket)
 DATADIR="$QA/data"
 PROJECTS="$QA/claude-projects"
 PORT="${PORT:-8487}"
@@ -79,6 +84,12 @@ cleanup() {
   stop_server   # kills the server's whole process group (reaps the coral child under strace too)
   [[ -S "$SOCKET" ]] && "$TMUX_BIN" -S "$SOCKET" kill-server 2>/dev/null
   rm -rf "$CORALGO/cmd/qa3851seed" 2>/dev/null   # leave the repo as found (seeder copy)
+  # Delete the run's data on exit (tests/EPOCH.md); the table is on stdout. Keep with KEEP_PERF_DATA=1.
+  if [[ "${KEEP_PERF_DATA:-}" != "1" ]]; then
+    rm -rf "$QA" "$WORK" 2>/dev/null
+  else
+    log "KEEP_PERF_DATA=1: left $QA and $WORK"
+  fi
 }
 trap cleanup EXIT
 
@@ -188,4 +199,4 @@ stop_server
 # ============ The table ============
 log "========================= BASELINE TABLE ========================="
 GO="$GO" python3 "$HERE/table.py" "$OUT" "$QA/coral" "$STRACE_S" "$TABS" "$NSESS" "$NMSG" "$NEVENT" "$(cat /proc/loadavg)"
-log "artifacts in $OUT (cpu_*.pprof, *.csv, strace_C.txt, tabs_*.txt, ps_*.txt)"
+log "artifacts in $OUT (cpu_*.pprof, *.csv, strace_C.txt, tabs_*.txt, ps_*.txt) — removed on exit unless KEEP_PERF_DATA=1"
