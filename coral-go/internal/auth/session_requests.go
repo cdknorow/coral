@@ -58,7 +58,7 @@ func (l *liveRequests) close(only, except string) {
 
 // SessionRequests runs after Middleware, on every route: a request that carries a live browser
 // session (any method: password, link, key form, Coral Hub) gets a context that ends when the
-// session ends.
+// session ends, whether it is ended or reaches its own expiry.
 func (ks *KeyStore) SessionRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t := ks.extractSessionCookie(r)
@@ -71,7 +71,7 @@ func (ks *KeyStore) SessionRequests(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ctx, cancel := context.WithCancel(r.Context())
+		ctx, cancel := context.WithDeadline(r.Context(), s.ExpiresAt) // expiry closes it too
 		lr := &liveReq{cancel: cancel}
 		ks.live.add(s.IDHash, lr)
 		defer func() {

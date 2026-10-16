@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -104,4 +105,30 @@ func TestRegenerateKeyClosesOpenRequests(t *testing.T) {
 		t.Fatal("the open request survived the key rotation")
 	}
 	assert.False(t, g.ks.ValidateSession(tok))
+}
+
+// Security's fix-forward 2: a session that reaches its own expiry closes its open requests too.
+func TestAnExpiringSessionClosesItsOpenRequests(t *testing.T) {
+	g := newPwRig(t)
+	r := g.req("GET", "/", "", "10.0.0.5", nil)
+	tok, err := g.ks.NewSession(r, SessionByPassword, false)
+	require.NoError(t, err)
+	rec, ok, err := g.ks.backend().GetSession(context.Background(), sessionHash(tok))
+	require.True(t, ok)
+	require.NoError(t, err)
+	rec.ExpiresAt = time.Now().Add(300 * time.Millisecond)
+	require.NoError(t, g.ks.backend().PutSession(context.Background(), rec))
+	entered, done := make(chan struct{}), make(chan struct{})
+	h := g.ks.SessionRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-r.Context().Done()
+		close(done)
+	}))
+	go h.ServeHTTP(httptest.NewRecorder(), g.req("GET", "/ws/coral", "", "10.0.0.5", &http.Cookie{Name: g.ks.cookieName(r), Value: tok}))
+	<-entered
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the open request outlived its session")
+	}
 }
