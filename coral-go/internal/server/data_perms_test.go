@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// #3552: a data folder an older Coral left world-readable is made this user's only at
-// startup: folders 0700, the databases, coral.log and artifact files 0600. A symlink is
+// #3552, #3628 F6: a data folder an older Coral left world-readable is made this user's only at
+// startup: folders 0700, the databases, the logs, artifact files and the rest 0600. A symlink is
 // never followed, and a tighter mode is never loosened.
 func TestTightenDataPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -31,6 +31,13 @@ func TestTightenDataPermissions(t *testing.T) {
 		mk("coral.log", 0o644), mk("artifacts/objects/abc", 0o644), mk("artifacts/objects/abc.json", 0o644),
 		mk("artifacts/uploads/sess/abc.json", 0o644), mk("artifacts/sessions/s1/changes.diff", 0o644),
 		mk("uploads/abc_shot.png", 0o644), // #3602 W28: the dashboard's uploads too
+		// #3628 F6: the other logs, the rotated copies, the generated team, the lock, older board
+		// state files, and the knowledge, workflow, pi and theme folders' files.
+		mk("coral.log.1", 0o644), mk("app.log", 0o644), mk("tray.log", 0o644),
+		mk("last_generated_team.json", 0o644), mk("coral-server.lock", 0o644),
+		mk("board_state_claude-0000.json", 0o644),
+		mk("agent_knowledge/team/index.md", 0o644), mk("workflows/runs/r1/step.txt", 0o644),
+		mk("pi-sessions/s1/session.jsonl", 0o644), mk("themes/dark.json", 0o644),
 	}
 	tight := mk("artifacts/objects/def", 0o400)
 	outside := filepath.Join(t.TempDir(), "elsewhere")
@@ -41,7 +48,8 @@ func TestTightenDataPermissions(t *testing.T) {
 
 	mode := func(p string) os.FileMode { fi, err := os.Stat(p); require.NoError(t, err); return fi.Mode().Perm() }
 	assert.Equal(t, os.FileMode(0o700), mode(dir))
-	for _, d := range []string{"artifacts", "artifacts/objects", "artifacts/uploads", "artifacts/uploads/sess", "artifacts/sessions/s1", "uploads"} {
+	for _, d := range []string{"artifacts", "artifacts/objects", "artifacts/uploads", "artifacts/uploads/sess", "artifacts/sessions/s1", "uploads",
+		"agent_knowledge", "agent_knowledge/team", "workflows", "workflows/runs", "workflows/runs/r1", "pi-sessions", "pi-sessions/s1", "themes"} {
 		assert.Equal(t, os.FileMode(0o700), mode(filepath.Join(dir, d)), d)
 	}
 	for _, f := range files {

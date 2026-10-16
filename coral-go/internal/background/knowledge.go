@@ -440,11 +440,11 @@ func WriteKnowledgeFile(coralDir, teamName, agentName, content string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	slug := slugify(agentName)
-	return os.WriteFile(filepath.Join(dir, slug+".md"), []byte(content), 0644)
+	return os.WriteFile(filepath.Join(dir, slug+".md"), []byte(content), 0o600)
 }
 
 // WriteKnowledgeIndex writes the team's index.md knowledge file.
@@ -453,10 +453,10 @@ func WriteKnowledgeIndex(coralDir, teamName, content string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "index.md"), []byte(content), 0644)
+	return os.WriteFile(filepath.Join(dir, "index.md"), []byte(content), 0o600)
 }
 
 const (
@@ -544,12 +544,12 @@ func writeKnowledgeBundle(coralDir string, bundle *KnowledgeBundle) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 
 	// Write index.md
-	if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte(bundle.IndexMD), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte(bundle.IndexMD), 0o600); err != nil {
 		return err
 	}
 
@@ -557,7 +557,7 @@ func writeKnowledgeBundle(coralDir string, bundle *KnowledgeBundle) error {
 	for name, concept := range bundle.Agents {
 		slug := slugify(name)
 		path := filepath.Join(dir, slug+".md")
-		if err := os.WriteFile(path, []byte(concept.FinalMD), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(concept.FinalMD), 0o600); err != nil {
 			return err
 		}
 	}

@@ -36,7 +36,7 @@ func NewThemesHandler(cfg *config.Config) *ThemesHandler {
 var safeNameRE = regexp.MustCompile(`[^a-zA-Z0-9\-_ ]`)
 
 func (h *ThemesHandler) ensureDir() {
-	os.MkdirAll(h.themesDir, 0755)
+	os.MkdirAll(h.themesDir, 0o700)
 }
 
 // bundledThemes maps theme name → JSON content for themes shipped with Coral.
@@ -308,7 +308,7 @@ func (h *ThemesHandler) SeedBundledThemes() {
 			if !wasShippedVersion(name, existing) {
 				continue // the user's own version, or already current
 			}
-			if err := os.WriteFile(dest, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(dest, []byte(content), 0o600); err != nil {
 				log.Printf("Warning: failed to update bundled theme %s: %v", name, err)
 			} else {
 				log.Printf("Updated bundled theme: %s", name)
@@ -317,7 +317,7 @@ func (h *ThemesHandler) SeedBundledThemes() {
 		} else if !os.IsNotExist(err) {
 			continue // unreadable: leave it alone
 		}
-		if err := os.WriteFile(dest, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(dest, []byte(content), 0o600); err != nil {
 			log.Printf("Warning: failed to seed bundled theme %s: %v", name, err)
 			continue
 		}
@@ -415,7 +415,7 @@ func (h *ThemesHandler) SaveTheme(w http.ResponseWriter, r *http.Request) {
 		"variables":   body["variables"],
 	}
 	data, _ := json.MarshalIndent(themeData, "", "  ")
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
@@ -472,7 +472,7 @@ func (h *ThemesHandler) ImportTheme(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "Failed to encode theme")
 		return
 	}
-	if err := os.WriteFile(filepath.Join(h.themesDir, safe+".json"), out, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(h.themesDir, safe+".json"), out, 0o600); err != nil {
 		http.Error(w, "Failed to save theme", http.StatusInternalServerError)
 		return
 	}

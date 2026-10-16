@@ -11,9 +11,10 @@ import (
 )
 
 // tightenDataPermissions makes Coral's data readable by this user only (#3552, Security's
-// #3551 audit): the data folder and the artifacts tree's folders 0700; the databases (and
-// their -wal/-shm, which SQLite creates with the database's own mode), coral.log and every
-// artifact file (objects, sidecars, upload records, changes diffs) 0600. New ones are
+// #3551 audit; #3628 F6): the data folder and the folders of dataTrees 0700; dataFiles (the
+// databases and their -wal/-shm, which SQLite creates with the database's own mode, the logs,
+// ...) and every file in dataTrees (artifact objects, sidecars, upload records, changes diffs,
+// knowledge notes, workflow runs, themes) 0600. New ones are
 // created that way; this pass fixes what an older Coral left, at every start (it only
 // touches what is looser, and logs once when it changed something). Symlinks are never
 // followed; Windows has no such modes and is skipped.
@@ -43,14 +44,15 @@ func tightenDataPermissions(coralDir string) {
 		}
 	}
 	tighten(coralDir, 0o700)
-	for _, pattern := range []string{"*.db", "*.db-wal", "*.db-shm", "coral.log"} {
+	for _, pattern := range dataFiles {
 		matches, _ := filepath.Glob(filepath.Join(coralDir, pattern))
 		for _, m := range matches {
 			tighten(m, 0o600)
 		}
 	}
-	// The artifacts tree and the dashboard's uploads (#3602 W28: they were 0755 and 0644).
-	for _, tree := range []string{"artifacts", "uploads"} {
+	// The artifacts tree and the dashboard's uploads (#3602 W28: they were 0755 and 0644), and
+	// the folders of text distilled from transcripts and of agents' working data (#3628 F6).
+	for _, tree := range dataTrees {
 		_ = filepath.WalkDir(filepath.Join(coralDir, tree), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
@@ -69,6 +71,18 @@ func tightenDataPermissions(coralDir string) {
 		log.Printf("[data] made %d files and folders in the data folder readable by this user only (folders 0700, files 0600)", changed)
 	}
 }
+
+// dataFiles are the data folder's files kept this user's only: the databases, the logs and their
+// rotated copies, the last generated team, the server's lock and the board state files (#3628 F6:
+// the logs, the team, the lock and older board state files were 0644).
+var dataFiles = []string{
+	"*.db", "*.db-wal", "*.db-shm",
+	"coral.log", "coral.log.*", "app.log", "tray.log",
+	"last_generated_team.json", "coral-server.lock", "board_state_*.json",
+}
+
+// dataTrees are the data folder's folders whose every folder is 0700 and every file 0600.
+var dataTrees = []string{"artifacts", "uploads", "agent_knowledge", "workflows", "pi-sessions", "themes"}
 
 // warnBroadDataFolder: on Windows the data folder's access list is the protection for the API
 // key, the command-line token and the databases; a folder others can read is reported loudly at

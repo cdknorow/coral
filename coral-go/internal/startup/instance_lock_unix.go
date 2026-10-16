@@ -13,7 +13,7 @@ type instanceLock struct {
 }
 
 func acquireInstanceLock(path string) (*instanceLock, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}

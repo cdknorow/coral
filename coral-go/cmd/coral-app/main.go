@@ -368,9 +368,9 @@ func main() {
 // Coral logs with that Coral (#3463).
 func setupDebugLogging(dataDir string) {
 	logDir := config.ResolveCoralDir(dataDir)
-	os.MkdirAll(logDir, 0755)
+	os.MkdirAll(logDir, 0o700)
 	logFile := filepath.Join(logDir, "app.log")
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // this user only (#3628 F6)
 	if err != nil {
 		return
 	}

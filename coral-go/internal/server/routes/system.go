@@ -1398,7 +1398,7 @@ func runTeamGeneration(ctx context.Context, claudePath, prompt, coralDir string)
 
 	// Write raw response to ~/.coral/last_generated_team.json for debugging
 	if coralDir != "" {
-		_ = os.WriteFile(filepath.Join(coralDir, "last_generated_team.json"), output, 0644)
+		_ = os.WriteFile(filepath.Join(coralDir, "last_generated_team.json"), output, 0o600)
 	}
 
 	// Strip markdown fences if present

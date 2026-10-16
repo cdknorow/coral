@@ -12,7 +12,7 @@ type instanceLock struct {
 }
 
 func acquireInstanceLock(path string) (*instanceLock, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
 	if err != nil {
 		if os.IsExist(err) {
 			return nil, fmt.Errorf("another Coral server is already running for this data directory")

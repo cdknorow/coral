@@ -183,7 +183,7 @@ func (a *PiAgent) LaunchCommand(params LaunchParams) (string, error) {
 			effectiveID = resumeID
 		}
 		sessionDir := filepath.Join(coralDir, "pi-sessions", effectiveID)
-		os.MkdirAll(sessionDir, 0755)
+		os.MkdirAll(sessionDir, 0o700)
 		parts = append(parts, "--session-dir", sessionDir)
 		if resumeID != "" {
 			parts = append(parts, "--continue")
