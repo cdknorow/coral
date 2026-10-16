@@ -478,8 +478,13 @@ func TestLastDeliveredIsOnlyWhenTyped(t *testing.T) {
 	afterHold := time.Now()
 	a.show(idleInputBox)
 	require.Eventually(t, func() bool { return len(a.sent()) == 2 }, 5*time.Second, 10*time.Millisecond)
-	require.Eventually(t, func() bool { return LastDelivered(name, key).After(afterHold) }, 5*time.Second, 10*time.Millisecond,
-		"a held send typed on a later turn: recorded")
+	// Not .After(afterHold): on Windows' coarse clock the record can read exactly afterHold
+	// (#4096). It is new (not the first send's time, 60 ms and more earlier) and not before
+	// afterHold, so it was recorded by the held send's later turn.
+	require.Eventually(t, func() bool {
+		got := LastDelivered(name, key)
+		return !got.Equal(typed) && !got.Before(afterHold)
+	}, 5*time.Second, 10*time.Millisecond, "a held send typed on a later turn: recorded")
 
 	a.show(permissionMenu)
 	_, _ = DeliverAutomated(ctx, a.input(name, key, "You have 4 unread messages", false))
