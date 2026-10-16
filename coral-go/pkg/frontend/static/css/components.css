@@ -3343,6 +3343,14 @@ button.subscriber-history-link {
     background: var(--bg-tertiary);
 }
 
+/* The first card cannot move up and the last cannot move down (#3770). */
+.team-agent-reorder-btn:disabled {
+    opacity: 0.2;
+    cursor: default;
+    background: none;
+    color: var(--text-muted);
+}
+
 /* ── CLI Check Warning ───────────────────────────────────── */
 
 .cli-check-warning {

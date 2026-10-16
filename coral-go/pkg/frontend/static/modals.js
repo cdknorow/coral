@@ -2667,6 +2667,12 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
         </div>
     `;
     list.appendChild(row);
+    // Cards come and go (add, remove, drag, move): keep the ends' buttons in step with the order.
+    if (!list.dataset.moveSync) {
+        list.dataset.moveSync = '1';
+        new MutationObserver(() => _syncTeamMoveButtons(list)).observe(list, { childList: true });
+    }
+    _syncTeamMoveButtons(list);
 
     // Render ACF inside the card
     const caps = defaultCapabilities || _findPersona(defaultName)?.capabilities || null;
@@ -2723,6 +2729,17 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
     });
 
     row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// The first card cannot move up and the last cannot move down: those buttons are disabled (#3770).
+function _syncTeamMoveButtons(list) {
+    const rows = [...list.querySelectorAll(':scope > .team-agent-row')];
+    rows.forEach((row, i) => {
+        const up = row.querySelector('.team-agent-reorder-btn[data-dir="up"]');
+        const down = row.querySelector('.team-agent-reorder-btn[data-dir="down"]');
+        if (up) up.disabled = i === 0;
+        if (down) down.disabled = i === rows.length - 1;
+    });
 }
 
 // Move a team agent card up or down

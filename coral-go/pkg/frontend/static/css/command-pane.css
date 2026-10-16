@@ -504,3 +504,10 @@
     .composer-error { margin: 0 8px 6px; }
     .composer-error-restart, .composer-error-dismiss { min-height: 44px; min-width: 44px; }
 }
+
+/* Send with nothing to send: the box takes focus and flashes once, so the click is not silent (#3770). */
+@keyframes empty-send-nudge {
+    0%, 100% { box-shadow: none; }
+    35% { box-shadow: 0 0 0 2px var(--accent-primary); }
+}
+#command-input.empty-send-nudge { animation: empty-send-nudge 0.5s ease-out; }

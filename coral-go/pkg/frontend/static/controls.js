@@ -61,7 +61,19 @@ function sleepingBlocked(silent = false) {
     return true;
 }
 
-export async function sendCommand() {
+/** Send was pressed with nothing to send: focus the box and flash it once (#3770). */
+function nudgeEmptyInput() {
+    const input = document.getElementById("command-input");
+    if (!input || input.disabled) return;
+    input.focus();
+    input.classList.remove("empty-send-nudge");
+    void input.offsetWidth; // restart the animation if it is still running
+    input.classList.add("empty-send-nudge");
+    input.addEventListener("animationend", () => input.classList.remove("empty-send-nudge"), { once: true });
+}
+
+// nudge: the Send button was pressed (Enter on an empty box stays quiet).
+export async function sendCommand({ nudge = false } = {}) {
     if (_isSending) return;
     const targetSession = state.currentSession;
     if (!targetSession || targetSession.type !== "live") {
@@ -113,7 +125,7 @@ export async function sendCommand() {
         if (textPart) parts.push(textPart);
 
         const command = parts.join(" ");
-        if (!command) return;
+        if (!command) { if (nudge) nudgeEmptyInput(); return; }
         if (targetAgentType !== 'terminal') dashboardPromptRequested();
         const sentSessionId = targetSessionId;
         const sentAt = Date.now();
@@ -1092,10 +1104,10 @@ registerActions({
     },
     'macro-delete': el => { const i = indexOf(el.dataset.index); if (i !== null) deleteMacro(i); },
     'macro-show': () => showMacroModal(),
-    'cmd-send': () => sendCommand(),
+    'cmd-send': () => sendCommand({ nudge: true }),
     'cmd-send-team': () => sendCommandWithTeam(),
     'cmd-send-menu': el => window.toggleSendMenu(el),
-    'send-menu-send': () => { sendCommand(); window.closeSendMenu(); },
+    'send-menu-send': () => { sendCommand({ nudge: true }); window.closeSendMenu(); },
     'send-menu-team': () => { sendCommandWithTeam(); window.closeSendMenu(); },
     'send-menu-resend': () => { resendInputPrompt(); window.closeSendMenu(); },
     'send-menu-protocol': () => { sendBoardProtocol(); window.closeSendMenu(); },
