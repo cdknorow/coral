@@ -3,7 +3,7 @@
 # Operator's, refused for an agent token in every mode (operatorOnlyRoutes); c: reachable, left
 # open for now (reads, review verdicts, cosmetic names, hub-only routes). A new route fails
 # TestAgentRouteCensus until it gets a line here: decide, then add it.
-c CONNECT /api/remote/{server}/*
+b CONNECT /api/remote/{server}/*
 a DELETE /api/agent/ui/{id}
 b DELETE /api/artifacts/{id}
 b DELETE /api/artifacts/{id}/keep
@@ -17,7 +17,7 @@ a DELETE /api/board/{project}/tasks/{taskID}/reminder
 a DELETE /api/board/{project}/waits
 b DELETE /api/folder-tags/{folderName}/{tagID}
 b DELETE /api/pinned-folders
-c DELETE /api/remote/{server}/*
+b DELETE /api/remote/{server}/*
 b DELETE /api/scheduled/jobs/{jobID}
 b DELETE /api/servers/{id}
 b DELETE /api/sessions/history/{sessionID}/tags/{tagID}
@@ -81,7 +81,7 @@ c GET /api/folder-tags/{folderName}
 c GET /api/goals/metrics
 c GET /api/health
 c GET /api/pinned-folders
-c GET /api/remote/{server}/*
+b GET /api/remote/{server}/*
 c GET /api/scheduled/jobs
 c GET /api/scheduled/jobs/{jobID}
 c GET /api/scheduled/jobs/{jobID}/runs
@@ -187,13 +187,13 @@ c GET /api/workflows/{workflowID}
 c GET /api/workflows/{workflowID}/runs
 c GET /ws/coral
 c GET /ws/terminal/{name}
-c HEAD /api/remote/{server}/*
-c OPTIONS /api/remote/{server}/*
+b HEAD /api/remote/{server}/*
+b OPTIONS /api/remote/{server}/*
 a PATCH /api/agent/tasks/{taskID}
 b PATCH /api/board/{project}
 a PATCH /api/board/{project}/tasks/{taskID}
 a PATCH /api/board/{project}/tasks/{taskID}/amend
-c PATCH /api/remote/{server}/*
+b PATCH /api/remote/{server}/*
 b PATCH /api/servers/{id}
 a PATCH /api/sessions/live/{name}/notes/{noteID}
 a PATCH /api/sessions/live/{name}/tasks/{taskID}
@@ -249,7 +249,7 @@ b POST /api/folder-tags/{folderName}
 b POST /api/indexer/refresh
 a POST /api/notifications
 b POST /api/pinned-folders
-c POST /api/remote/{server}/*
+b POST /api/remote/{server}/*
 b POST /api/scheduled/jobs
 b POST /api/scheduled/jobs/{jobID}/toggle
 b POST /api/scheduled/validate-cron
@@ -321,7 +321,7 @@ b PUT /api/board/{project}/working-mode/presets/{presetID}
 b PUT /api/cloud/allow-auto-accept
 b PUT /api/cloud/max-mode
 b PUT /api/cloud/redact-tokens
-c PUT /api/remote/{server}/*
+b PUT /api/remote/{server}/*
 b PUT /api/scheduled/jobs/{jobID}
 b PUT /api/sessions/history/{sessionID}/notes
 c PUT /api/sessions/live/{name}/display-name
@@ -338,5 +338,5 @@ b PUT /api/teams/detail/{name}/knowledge/{agentName}
 b PUT /api/themes/{name}
 b PUT /api/views/{id}
 b PUT /api/workflows/{workflowID}
-c QUERY /api/remote/{server}/*
-c TRACE /api/remote/{server}/*
+b QUERY /api/remote/{server}/*
+b TRACE /api/remote/{server}/*

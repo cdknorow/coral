@@ -45,8 +45,11 @@ func TestEveryOperatorOnlyRouteRefusesAnAgent(t *testing.T) {
 			n := 0
 			for _, k := range keys {
 				method, pattern, _ := strings.Cut(k, " ")
-				if !hub && strings.HasPrefix(pattern, "/api/servers") {
+				if !hub && (strings.HasPrefix(pattern, "/api/servers") || strings.HasPrefix(pattern, "/api/remote/")) {
 					continue
+				}
+				if method == "CONNECT" || method == "QUERY" || method == "TRACE" {
+					continue // not plain requests for net/http's client; the table and the census cover them
 				}
 				n++
 				req, err := http.NewRequest(method, ts.URL+param.ReplaceAllString(pattern, "x1"), strings.NewReader("{}"))
@@ -60,7 +63,9 @@ func TestEveryOperatorOnlyRouteRefusesAnAgent(t *testing.T) {
 				resp.Body.Close()
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusForbidden, resp.StatusCode, "%s: %s", k, body)
-				assert.Equal(t, "forbidden_for_agent", codeOfBody(body), k)
+				if method != http.MethodHead { // a HEAD reply has no body
+					assert.Equal(t, "forbidden_for_agent", codeOfBody(body), k)
+				}
 			}
 			refused := srv.identity.Report()["refused"].(map[string]int64)
 			assert.EqualValues(t, n, refused["forbidden_for_agent"], "each refused by the guard, none by a handler")
@@ -70,7 +75,8 @@ func TestEveryOperatorOnlyRouteRefusesAnAgent(t *testing.T) {
 			key := srv.keyStore.Key()
 			for _, k := range keys {
 				method, pattern, _ := strings.Cut(k, " ")
-				if (!hub && strings.HasPrefix(pattern, "/api/servers")) || k == "POST /api/system/restart" || k == "POST /api/system/api-key/regenerate" {
+				if (!hub && (strings.HasPrefix(pattern, "/api/servers") || strings.HasPrefix(pattern, "/api/remote/"))) || k == "POST /api/system/restart" ||
+					k == "POST /api/system/api-key/regenerate" || method == "CONNECT" || method == "QUERY" || method == "TRACE" {
 					continue
 				}
 				req, err := http.NewRequest(method, ts.URL+param.ReplaceAllString(pattern, "x1"), strings.NewReader("{}"))
