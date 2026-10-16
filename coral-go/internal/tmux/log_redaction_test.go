@@ -1,0 +1,65 @@
+//go:build !windows
+
+package tmux
+
+import (
+	"bytes"
+	"context"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// failingTmux is a tmux that fails every command, the way tmux does when its server or pane is
+// gone, and repeats a key it doesn't know (as real tmux does).
+func failingTmux(t *testing.T) *Client {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "tmux")
+	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\ncat >/dev/null 2>&1 &\necho 'unknown key: HUNTER2-KEY' >&2\nexit 1\n"), 0o700))
+	return &Client{TmuxBin: bin, SocketPath: filepath.Join(t.TempDir(), "s")}
+}
+
+// #4112 (Security's #4107 audit, finding 1): a failed tmux command logs its subcommand, target,
+// error and stderr, never what was typed, pasted or launched. Before, every failed send logged
+// its whole argument list, so terminal keystrokes, prompts and board notices reached coral.log.
+func TestFailedTmuxCommandsNeverLogWhatWasTyped(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	c := failingTmux(t)
+	ctx := context.Background()
+	const secret = "typed-secret-4112"
+
+	_ = c.SendTerminalInputToTarget(ctx, "claude-x:0.0", "echo "+secret)                     // a person's keystrokes
+	_ = c.SendKeysToTarget(ctx, "claude-x:0.0", "please run "+secret)                        // a typed command
+	_ = c.SendRawKeys(ctx, "claude-x", []string{"HUNTER2-KEY"}, "claude", "x")               // a raw key the request named
+	_, _ = c.run(ctx, "new-session", "-d", "-s", "claude-x", "claude --prompt '"+secret+"'") // a launch line
+	_, _ = c.run(ctx, "set-buffer", "-b", "coral-x", secret)
+
+	out := buf.String()
+	require.Contains(t, out, "[tmux] exec failed", "the failures are still logged")
+	assert.Contains(t, out, "cmd=send-keys")
+	assert.Contains(t, out, `target="claude-x:0.0"`)
+	assert.Contains(t, out, "cmd=new-session")
+	assert.NotContains(t, out, secret, "no typed, pasted or launched text")
+	assert.NotContains(t, out, "HUNTER2-KEY", "no key name, not even tmux's own repeat of it")
+	assert.NotContains(t, out, "please run")
+
+	err := c.SendRawKeys(ctx, "claude-x", []string{"HUNTER2-KEY"}, "claude", "x")
+	if err != nil {
+		assert.NotContains(t, err.Error(), "HUNTER2-KEY", "the error (which callers log) doesn't carry the key either")
+	}
+}
+
+func TestDescribeTmuxCommand(t *testing.T) {
+	got := describeTmuxCommand([]string{"-S", "/s", "-f", "/dev/null", "send-keys", "-t", "a:0.0", "-l", "--", "hello"})
+	assert.Equal(t, `cmd=send-keys target="a:0.0" other_args=3 bytes=9`, got)
+	assert.Equal(t, `cmd=list-panes target="" other_args=0 bytes=0`, describeTmuxCommand([]string{"list-panes"}))
+	assert.Equal(t, "cmd=none", describeTmuxCommand(nil))
+	assert.False(t, strings.Contains(describeTmuxCommand([]string{"set-buffer", "-b", "b", "SECRET"}), "SECRET"))
+}

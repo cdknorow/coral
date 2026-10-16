@@ -678,11 +678,12 @@ func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []strin
 		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 
-	for _, key := range keys {
+	for i, key := range keys {
 		// "--": a key from the request that starts with "-" is a key, never a tmux option (-X, -F,
 		// -H...) (#3930, Security's #3927 finding 5).
 		if _, err := c.run(ctx, "send-keys", "-t", target, "--", key); err != nil {
-			return c.GoneAfter(ctx, agentName, agentType, sessionID, fmt.Errorf("send-keys %q failed: %w", key, err))
+			// Never the key itself: errors reach the log, and keys are what was typed (#4112).
+			return c.GoneAfter(ctx, agentName, agentType, sessionID, fmt.Errorf("send-keys failed (key %d of %d): %w", i+1, len(keys), err))
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -1379,10 +1380,36 @@ func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...str
 	out, err := cmd.Output()
 	noteTmuxResult(err, bin, socketPath)
 	if err != nil {
-		log.Printf("[tmux] exec failed: bin=%q socket=%q args=%q err=%v stderr=%q", bin, socketPath, args, err, execStderr(err))
+		log.Printf("[tmux] exec failed: bin=%q socket=%q %s err=%v stderr=%q", bin, socketPath, describeTmuxCommand(args), err, execStderr(err))
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// describeTmuxCommand names a tmux command for a failure log line without its values (#4112,
+// Security's #4107 audit): the subcommand, its -t target, and how many other arguments it had
+// and their bytes. The other values are typed keystrokes and text (send-keys -l), buffer
+// contents and names, a session's launch command line and format strings: a failed send
+// logged what was typed. The socket arguments are logged on their own.
+func describeTmuxCommand(args []string) string {
+	i := 0
+	for i+1 < len(args) && (args[i] == "-S" || args[i] == "-f" || args[i] == "-L") {
+		i += 2
+	}
+	if i >= len(args) {
+		return "cmd=none"
+	}
+	target, n, size := "", 0, 0
+	for j := i + 1; j < len(args); j++ {
+		if args[j] == "-t" && j+1 < len(args) {
+			target = args[j+1]
+			j++
+			continue
+		}
+		n++
+		size += len(args[j])
+	}
+	return fmt.Sprintf("cmd=%s target=%q other_args=%d bytes=%d", args[i], target, n, size)
 }
 
 // execStderrMax caps how much of tmux's stderr a failure log line carries.
@@ -1397,6 +1424,10 @@ func execStderr(err error) string {
 		return ""
 	}
 	s := strings.Join(strings.Fields(string(ee.Stderr)), " ")
+	// tmux repeats a key it doesn't know ("unknown key: <key>"): the key is what was typed.
+	if strings.HasPrefix(s, "unknown key:") {
+		s = "unknown key"
+	}
 	if len(s) > execStderrMax {
 		cut := execStderrMax
 		for cut > 0 && !utf8.RuneStart(s[cut]) {
