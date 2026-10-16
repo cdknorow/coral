@@ -61,14 +61,32 @@ const BASE = require('./test_base').BASE;
         console.log('   ✓ launch dialog opens on first click (stub), modals.js loaded once, Escape closes it');
 
         // 4. Every other dialog opens; no refetch.
-        for (const [open, id] of [['window.showSettingsModal()', 'settings-modal'], ['window.showDefaultPromptsModal()', 'default-prompts-modal'], ['window._showMobileConnectModal()', 'mobile-connect-modal']]) {
+        for (const [open, id] of [['window.showSettingsModal()', 'settings-modal'], ['window._showMobileConnectModal()', 'mobile-connect-modal']]) {
             await ev(`(${open}, true)`);
             await waitFor(`(() => { const m = document.getElementById(${JSON.stringify(id)}); return m && m.style.display !== 'none'; })()`, id, 5000);
             await escape();
             await waitFor(`(() => { const m = document.getElementById(${JSON.stringify(id)}); return !m || m.style.display === 'none'; })()`, id + ' closed', 3000);
         }
         assert.equal(count('modals.js'), 1, 'no refetch of modals.js');
-        console.log('   ✓ settings, default prompts and mobile QR dialogs open and close; no refetch');
+        console.log('   ✓ settings and mobile QR dialogs open and close; no refetch');
+
+        // 4b. The Default Prompts and Resume dialogs are modules of their own (#3836): opening one loads that module only.
+        assert.equal(count('default_prompts_dialog.js'), 0, 'not requested before it is opened');
+        assert.equal(count('resume_dialog.js'), 0, 'not requested before it is opened');
+        await ev(`(window.showDefaultPromptsModal(), true)`);
+        await waitFor(`(() => { const m = document.getElementById('default-prompts-modal'); return m && m.style.display !== 'none'; })()`, 'default-prompts-modal', 5000);
+        await escape();
+        await waitFor(`(() => { const m = document.getElementById('default-prompts-modal'); return !m || m.style.display === 'none'; })()`, 'default-prompts-modal closed', 3000);
+        assert.equal(count('default_prompts_dialog.js'), 1, 'default_prompts_dialog.js loaded once, on first use');
+        assert.equal(count('resume_dialog.js'), 0, 'opening Default Prompts does not load the Resume dialog');
+        assert.equal(count('modals.js'), 1, 'and does not refetch modals.js');
+        await ev(`(async () => { const { state } = await import((window.__coralStatic || '/static/') + 'state.js'); state.currentSession = { type: 'history', name: 'rs-hist', agent_type: 'claude' }; state.historySessionsList = [{ session_id: 'rs-hist', source_type: 'claude' }]; window.showResumeModal(); return true; })()`);
+        await waitFor(`(() => { const m = document.getElementById('resume-modal'); return m && m.style.display !== 'none'; })()`, 'resume-modal', 5000);
+        await escape();
+        await waitFor(`(() => { const m = document.getElementById('resume-modal'); return !m || m.style.display === 'none'; })()`, 'resume-modal closed', 3000);
+        assert.equal(count('resume_dialog.js'), 1, 'resume_dialog.js loaded once, on first use');
+        assert.equal(count('modals.js'), 1, 'modals.js still loaded once');
+        console.log('   ✓ Default Prompts and Resume load their own module on first use, each once, without touching modals.js');
 
         // 5. A fresh page where the first load fails: toast, then the next click retries (?retry=1) and opens.
         reqs.length = 0; block = 1;

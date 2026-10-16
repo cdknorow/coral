@@ -36,6 +36,9 @@ export const loadChatSearch = panel('chat search', './chat_search.js');
 // The launch, settings, resume, info and team dialogs (#3140). settings_core.js keeps
 // what runs at startup (loadSettings, the theme).
 export const loadModals = panel('this dialog', './modals.js');
+// The Resume and Default Prompts dialogs are modules of their own (#3836), so opening one does not load the rest of modals.js.
+export const loadResumeDialog = panel('this dialog', './resume_dialog.js');
+export const loadDefaultPromptsDialog = panel('this dialog', './default_prompts_dialog.js');
 
 /** Stubs for `names` exported by the module `load` imports. A stub loads the
  *  module and calls through. However the module loads (a stub, or switchNavTab

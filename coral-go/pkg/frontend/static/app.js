@@ -67,7 +67,7 @@ import { initHubIndicator } from './hub_indicator.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import { registerActions, tokenOf } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
-import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals } from './lazy_panels.js';
+import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
 
 // Panels off the landing view load on first use (#3083 phase 2, lazy_panels.js).
 const {
@@ -277,12 +277,13 @@ const { searchChats } = lazyFns(loadChatSearch, ['searchChats']);
 // The dialogs (#3140): their window functions are stubs until one opens.
 const {
     showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand,
-    showResumeModal, hideResumeModal, resumeLaunchNew, showSettingsModal, hideSettingsModal, applySettings,
+    showSettingsModal, hideSettingsModal, applySettings,
     toggleFlag, showAddAgentToBoard, hideAddAgentBoardModal, launchAgentToBoard, launchTerminalToBoard, launchDefaultAgent,
     showAddStandaloneAgent, launchStandaloneTerminal, exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates,
-    showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts,
 } = lazyFns(loadModals, [
-    'showLaunchModal', 'hideLaunchModal', 'launchSession', 'showInfoModal', 'hideInfoModal', 'copyInfoCommand', 'showResumeModal', 'hideResumeModal', 'resumeLaunchNew', 'showSettingsModal', 'hideSettingsModal', 'applySettings', 'toggleFlag', 'showAddAgentToBoard', 'hideAddAgentBoardModal', 'launchAgentToBoard', 'launchTerminalToBoard', 'launchDefaultAgent', 'showAddStandaloneAgent', 'launchStandaloneTerminal', 'exportPersonas', 'importPersonas', 'exportTeamTemplates', 'importTeamTemplates', 'showDefaultPromptsModal', 'hideDefaultPromptsModal', 'resetDefaultPrompt', 'saveDefaultPrompts']);
+    'showLaunchModal', 'hideLaunchModal', 'launchSession', 'showInfoModal', 'hideInfoModal', 'copyInfoCommand', 'showSettingsModal', 'hideSettingsModal', 'applySettings', 'toggleFlag', 'showAddAgentToBoard', 'hideAddAgentBoardModal', 'launchAgentToBoard', 'launchTerminalToBoard', 'launchDefaultAgent', 'showAddStandaloneAgent', 'launchStandaloneTerminal', 'exportPersonas', 'importPersonas', 'exportTeamTemplates', 'importTeamTemplates']);
+const { showResumeModal, hideResumeModal, resumeLaunchNew } = lazyFns(loadResumeDialog, ['showResumeModal', 'hideResumeModal', 'resumeLaunchNew']);
+const { showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts } = lazyFns(loadDefaultPromptsDialog, ['showDefaultPromptsModal', 'hideDefaultPromptsModal', 'resetDefaultPrompt', 'saveDefaultPrompts']);
 // Called from the home view's buttons before any dialog has loaded; modals.js sets them on window itself.
 Object.assign(window, lazyWindowFns(loadModals, ['_selectLaunchType', '_showMobileConnectModal']));
 import { initCloud } from './cloud.js';
