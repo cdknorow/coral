@@ -679,9 +679,6 @@ function applyAgentTemplate(template, target, btn) {
         }
     }
 }
-window.browseAgentTemplatesNew = function() {
-    showTemplateBrowser('agents', (t) => applyAgentTemplate(t, 'team-new'));
-};
 window.browseAgentTemplatesForModal = function() {
     showTemplateBrowser('agents', (t) => applyAgentTemplate(t, 'modal'));
 };

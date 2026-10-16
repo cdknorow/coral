@@ -2738,65 +2738,8 @@ function _moveTeamAgent(btn, direction) {
 }
 window._moveTeamAgent = _moveTeamAgent;
 
-function _showAddAgentPicker() {
-    const picker = document.getElementById("team-agent-picker");
-    if (!picker) return;
-
-    // Get names of agents already added
-    const existingNames = new Set();
-    document.querySelectorAll("#team-agents-list .team-agent-name").forEach(input => {
-        const n = input.value.trim().toLowerCase();
-        if (n) existingNames.add(n);
-    });
-
-    // Build picker items: presets not already in the list
-    const available = AGENT_PRESETS.filter(p => !existingNames.has(p.name.toLowerCase()));
-    const savedAvailable = _getSavedPersonas().filter(p => !existingNames.has(p.name.toLowerCase()));
-
-    let html = '';
-    for (const preset of available) {
-        html += `<button class="agent-picker-item" data-on-click="team-preset-add" data-name="${escapeAttr(preset.name)}">${escapeHtml(preset.name)}</button>`;
-    }
-    if (savedAvailable.length > 0) {
-        if (available.length > 0) html += '<div class="agent-picker-divider"></div>';
-        for (const persona of savedAvailable) {
-            html += `<button class="agent-picker-item agent-preset-saved" data-on-click="team-preset-add" data-name="${escapeAttr(persona.name)}">${escapeHtml(persona.name)}</button>`;
-        }
-    }
-    if (available.length > 0 || savedAvailable.length > 0) {
-        html += '<div class="agent-picker-divider"></div>';
-    }
-    html += `<button class="agent-picker-item agent-picker-custom" data-on-click="team-agent-custom">+ Create Custom</button>`;
-    html += '<div class="agent-picker-divider"></div>';
-    html += `<button class="agent-picker-item agent-picker-browse" data-on-click="templates-browse-new">Browse Community Templates</button>`;
-
-    picker.innerHTML = html;
-    picker.style.display = "";
-
-    // Close picker on outside click
-    const closeHandler = (e) => {
-        if (!picker.contains(e.target) && !e.target.closest('.team-add-agent-btn')) {
-            picker.style.display = "none";
-            document.removeEventListener("click", closeHandler);
-        }
-    };
-    setTimeout(() => document.addEventListener("click", closeHandler), 0);
-}
-window._showAddAgentPicker = _showAddAgentPicker;
-
-function _addPresetAgent(name) {
-    const persona = _findPersona(name);
-    if (persona) {
-        _addTeamAgent(persona.name, persona.prompt, persona.capabilities);
-    }
-    const picker = document.getElementById("team-agent-picker");
-    if (picker) picker.style.display = "none";
-}
-window._addPresetAgent = _addPresetAgent;
 window._addTeamAgent = (name, prompt) => {
     _addTeamAgent(name || "", prompt || "");
-    const picker = document.getElementById("team-agent-picker");
-    if (picker) picker.style.display = "none";
 };
 
 function _validateTeamName() {
@@ -3995,11 +3938,4 @@ registerActions({
     'team-agent-edit': (el, event) => { event.stopPropagation(); const r = teamRow(el); if (r) window.showTeamAgentModal(r); },
     'team-agent-move': (el, event) => { event.stopPropagation(); if (el.dataset.dir === 'up' || el.dataset.dir === 'down') window._moveTeamAgent(el, el.dataset.dir === 'up' ? -1 : 1); },
     'team-agent-remove': (el, event) => { event.stopPropagation(); teamRow(el)?.remove(); },
-    'team-preset-add': el => { const n = textOf(el.dataset.name); if (n) window._addPresetAgent(n); },
-    'team-agent-custom': () => window._addTeamAgent(),
-    'templates-browse-new': () => {
-        window.browseAgentTemplatesNew();
-        const picker = document.getElementById('team-agent-picker');
-        if (picker) picker.style.display = 'none';
-    },
 });

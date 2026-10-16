@@ -2658,11 +2658,6 @@ button.subscriber-history-link {
     min-width: 0;
 }
 
-.agent-picker-browse {
-    color: var(--accent) !important;
-    font-style: italic;
-}
-
 .team-agents-scroll {
     max-height: 360px;
     overflow-y: auto;
@@ -2920,35 +2915,6 @@ button.subscriber-history-link {
 .team-agent-row textarea {
     resize: vertical;
     min-height: 48px;
-}
-
-.agent-picker-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: none;
-    border: none;
-    color: var(--text-primary);
-    padding: 8px 12px;
-    font-size: 13px;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: background 0.1s;
-}
-
-.agent-picker-item:hover {
-    background: var(--bg-hover);
-}
-
-.agent-picker-custom {
-    color: var(--accent-primary);
-    font-weight: 500;
-}
-
-.agent-picker-divider {
-    height: 1px;
-    background: var(--border);
-    margin: 4px 8px;
 }
 
 .agent-preset-selector {
