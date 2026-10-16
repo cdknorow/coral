@@ -431,7 +431,7 @@ const MAX_FIRST_PAGE = 200;
         await ev(`(() => { T.sessions.selectLiveSession('qa-keep', 'claude', 'qa-keep-id', 'local'); return true; })()`);
         await ev(`(() => { T.sessions.selectLiveSession('qa-other', 'claude', 'qa-other-id', 'local'); return true; })()`);
         await waitFor(`window.__rendered().length === 5`, 'the other agent alone', 8000);
-        await sleep(600);
+        await sleep(600); // sleep-ok: waiting for a stale build to wrongly appear; there is no condition to wait for
         const finalIds = await rendered();
         assert.ok(finalIds.every(id => id.startsWith('O')), `nothing of the agent that was left shows (got ${finalIds.length} items, first ${finalIds[0]})`);
         await stopPoll();
