@@ -558,11 +558,12 @@ async function _loadBoardPanelChat(boardName, { full = false } = {}) {
             if (stale()) return;
             const fresh = (Array.isArray(data?.messages) ? data.messages : []).filter(m => m.id > afterId);
             const expected = _boardChatTotal + fresh.length;
-            if (data?.paging === 'keyset' && fresh.length < _BOARD_CHAT_PAGE && Number(data.total) >= expected) {
+            // The total must be exactly what the panel counts plus the new ones: a message deleted in
+            // the same tick as one arrives (a secret, say) still makes it reload, and goes within a poll.
+            if (data?.paging === 'keyset' && fresh.length < _BOARD_CHAT_PAGE && Number(data.total) === expected) {
                 if (!fresh.length) return;
                 const byId = new Map([..._boardChatMessages, ...fresh].map(m => [m.id, m]));
                 _boardChatMessages = [...byId.values()].sort((a, b) => a.id - b.id);
-                // Counted as shown: one posted between the server's read and its count comes next poll.
                 _boardChatTotal = expected;
                 const el = document.getElementById('board-panel-msgs');
                 if (el) _renderBoardPanelMessages(el, false);

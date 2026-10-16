@@ -189,6 +189,15 @@ globalThis.__board = board = board.filter(m => m.content !== 'chat new 1');
 q = await tick();
 assert.deepEqual(q.map(x => x.has('after_id') ? 'after' : 'offset=' + x.get('offset')), ['after', 'offset=0'], 'a deletion reloads the latest page');
 assert.doesNotMatch(document.getElementById('board-panel-msgs').textContent, /chat new 1/);
+// A deletion and a new message in the same tick (the total unchanged): reloaded too, so the
+// deleted one is gone within a poll.
+const secret = board.at(-1);
+globalThis.__board = board = board.filter(m => m !== secret);
+board.push({ id: secret.id + 1, content: 'after the secret', job_title: 'QA', created_at: '2026-10-01T00:04:30Z' });
+q = await tick();
+assert.deepEqual(q.map(x => x.has('after_id') ? 'after' : 'offset=' + x.get('offset')), ['after', 'offset=0'], 'a deletion hidden by a new message reloads the latest page');
+assert.doesNotMatch(document.getElementById('board-panel-msgs').textContent, new RegExp(secret.content));
+assert.match(document.getElementById('board-panel-msgs').textContent, /after the secret/);
 // A page or more at once: the latest page, not the oldest of the new ones.
 const base = board.at(-1).id;
 for (let i = 1; i <= 60; i++) board.push({ id: base + i, content: `burst ${i}`, job_title: 'Dev', created_at: '2026-10-01T00:05:00Z' });
