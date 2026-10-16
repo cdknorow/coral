@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"os"
+
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // Credential files are read with descriptor-level checks on Linux and macOS.
@@ -34,14 +36,18 @@ func HoldCredentialFile(string) ([]byte, bool, *HeldCredential, error) {
 	return nil, false, nil, ErrUnsafeCredentialFile
 }
 
-// readSecretFile reads a file of at most max bytes. Without the descriptor
-// checks, it relies on the folder's own access control (the user's profile).
+// readSecretFile reads a file of at most max bytes. On Windows the file's access
+// list is checked first (secfile.CheckOpen: owner, readers, one name, #3905);
+// elsewhere it relies on the folder's own access control.
 func readSecretFile(path string, max int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	if err := secfile.CheckOpen(f); err != nil {
+		return nil, err
+	}
 	b, err := io.ReadAll(io.LimitReader(f, max+1))
 	if err != nil {
 		return nil, err

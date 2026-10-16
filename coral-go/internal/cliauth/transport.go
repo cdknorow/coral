@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // Strict local auth (#3418): with --strict-local-auth, a request from this computer needs
@@ -86,6 +87,10 @@ func ReadToken(dir string) (string, error) {
 	}
 	if !privateMode(fi) || fi.Size() > 256 || !ownedByMe(fi) {
 		return "", fmt.Errorf("%s is not a private regular file of this user", p)
+	}
+	// Windows: the access list instead of the mode and owner (#3905); nothing elsewhere.
+	if err := secfile.CheckOpen(f); err != nil {
+		return "", fmt.Errorf("%s is not a private regular file of this user: %w", p, err)
 	}
 	b, err := io.ReadAll(io.LimitReader(f, 257))
 	if err != nil {

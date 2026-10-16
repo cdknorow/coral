@@ -202,3 +202,41 @@ func TestWindowsMissingFileIsNotExist(t *testing.T) {
 	_, err := ReadPrivate(filepath.Join(t.TempDir(), "none"), 4096)
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
+
+// #3905: CheckOpen applies the same rule to a file the caller opened (os.Open), and Explicit
+// tells a file Protect made from one that only inherits a private DACL.
+func TestWindowsCheckOpen(t *testing.T) {
+	p := me(t)
+	check := func(path string) error {
+		f, err := os.Open(path)
+		require.NoError(t, err)
+		defer f.Close()
+		return CheckOpen(f)
+	}
+
+	path := secretFile(t)
+	require.NoError(t, Protect(path))
+	assert.NoError(t, check(path))
+	explicit, err := Explicit(path)
+	require.NoError(t, err)
+	assert.True(t, explicit)
+
+	setDACL(t, path, grant{sid: p.user, mask: windows.GENERIC_ALL}, grant{sid: wellKnown(t, windows.WinBuiltinUsersSid), mask: windows.GENERIC_READ})
+	assert.ErrorIs(t, check(path), ErrExposed)
+	_, err = Explicit(path)
+	assert.ErrorIs(t, err, ErrExposed)
+
+	dir := t.TempDir()
+	setDACL(t, dir, grant{sid: p.user, mask: windows.GENERIC_ALL, inherits: true}, grant{sid: p.system, mask: windows.GENERIC_ALL, inherits: true})
+	inherited := filepath.Join(dir, "token")
+	require.NoError(t, os.WriteFile(inherited, []byte("secret"), 0o600))
+	explicit, err = Explicit(inherited)
+	require.NoError(t, err)
+	assert.False(t, explicit, "inherited to begin with")
+	assert.NoError(t, check(inherited))
+	assert.True(t, protected(t, inherited), "repaired")
+
+	hard := filepath.Join(dir, "hard")
+	require.NoError(t, os.Link(inherited, hard))
+	assert.ErrorIs(t, check(inherited), ErrNotPrivate, "two names")
+}
