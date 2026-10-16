@@ -15,9 +15,17 @@ import (
 )
 
 // a log output that stops reading, like the terminal in #3226.
-type stuckWriter struct{ release chan struct{} }
+// stuckWriter blocks every write until release is closed; entered (when set) is told that a
+// write has started.
+type stuckWriter struct{ release, entered chan struct{} }
 
 func (s stuckWriter) Write(p []byte) (int, error) {
+	if s.entered != nil {
+		select {
+		case s.entered <- struct{}{}:
+		default:
+		}
+	}
 	<-s.release
 	return len(p), nil
 }
@@ -46,12 +54,20 @@ func TestDumpWhenTheLoggerIsStuck(t *testing.T) {
 	dir := t.TempDir()
 	release := make(chan struct{})
 	prev := log.Writer()
-	log.SetOutput(stuckWriter{release: release})
+	entered := make(chan struct{}, 1)
+	log.SetOutput(stuckWriter{release: release, entered: entered})
 	defer func() {
 		close(release)
 		log.SetOutput(prev)
 	}()
 	go log.Print("this write never finishes") // holds the logger, as the stalled terminal did
+	// The write must be blocked before the dump, or the dump can't show it: testify 1.12's
+	// Eventually checks at once, without the tick that used to give this goroutine its turn.
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the log write never started")
+	}
 
 	c := newClock()
 	w := New(Config{Dir: dir, Threshold: 30 * time.Second, Probes: []Probe{LoggerProbe()}, now: c.now})
