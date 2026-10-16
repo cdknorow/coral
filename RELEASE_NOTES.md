@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.4.65 — Coral Hub: faster terminal, tier fixes agreed with Coral Hub, and Windows link hardening
+
+### Security
+
+- **Coral Hub's terminal no longer waits to show output, and viewers who can type (Interact or Launch) now see everything as it is.** Viewers who can only look still get tokens hidden, but a secret typed key by key, or split across two pieces of terminal output, can be visible to them in part (or, when typed, in full); a secret that arrives in one piece is still hidden. This changes only what is hidden in replies and the terminal: files named like secrets (.env) and routes a tier may not use stay refused at every tier, and logs and stored data are unchanged. Affected: v1.4.61 to v1.4.63 delayed the terminal echo; the split-secret exposure for View viewers applies from this release.
+- **Coral Hub tiers, agreed with Coral Hub.** Through Coral Hub, a team's sleep, Sleep all, a board's pause and deleting a board message now need Launch, like their undo (wake, wake all, resume); one agent's sleep stays Interact. The agents' own board and task calls (mark-read, messages/check, peek, tasks/claim, tasks/current, submit-review, release-review, waits and waits/poll, groups and members, unsubscribe, and GET /api/sessions/resolve) can no longer be reached through Coral Hub at any tier. The query parameters target_session_id, include_ancestors, max_excerpt_chars, team_id and events_limit are no longer accepted through Coral Hub. A board subscribe through Coral Hub now subscribes the Coral Hub user, never the board's Operator. The dashboard dims Sleep all, a team's sleep, a board's pause and Delete message below Launch.
+- **Windows: Coral's logs and caches are no longer written through a link or junction planted at their path** (inputlog's terminal debug log, logrotate, the hook cache, the pipe log, usage and stall files). Affected: Windows builds before v1.4.65, only where an agent can write the folder.
+
+### Fixes
+
+- **Coral Hub shows your home folder as ~ however it is typed.** On Windows and macOS the home folder is matched without regard to case, and on Windows with either slash.
+- **Same-instant timestamps (common on Windows) no longer drop a usage report or bring back an agent stopped on its own when its team stops.**
+
+### Performance
+
+- **Terminals reconnect with backoff.** After a server restart, open terminals retry after 1 to 2 s, then longer (up to 15 s, with jitter), instead of all at once every 3 s.
+- **Pulsing status dots cost no main-thread paints** on an idle dashboard.
+
 ## v1.4.64 — Windows: a crash no longer blocks the next start, and the server's security checks now run on Windows
 
 ### Security
