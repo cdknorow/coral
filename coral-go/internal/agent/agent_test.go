@@ -1548,7 +1548,7 @@ func TestBuildMergedSettings_AgentHooksAppended(t *testing.T) {
 		if gMap, ok := g.(map[string]interface{}); ok {
 			if hooks, ok := gMap["hooks"].([]map[string]interface{}); ok {
 				for _, h := range hooks {
-					if h["command"] == agenticStateCommand {
+					if h["command"] == ResolveHookCommand(agenticStateCommand) {
 						coralFound = true
 					}
 				}
@@ -1783,7 +1783,8 @@ func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
 			t.Fatalf("%s: %d hook groups, want 1", event, len(groups))
 		}
 		b, _ := json.Marshal(groups[0])
-		if !strings.Contains(string(b), `"command":"`+agenticStateCommand+`"`) {
+		want, _ := json.Marshal(ResolveHookCommand(agenticStateCommand)) // by absolute path when the tools folder has it (#3660)
+		if !strings.Contains(string(b), `"command":`+string(want)) {
 			t.Errorf("%s: %s", event, b)
 		}
 	}
@@ -1809,7 +1810,8 @@ func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
 	}
 	for _, event := range []string{"SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"} {
 		b, _ := json.Marshal(spec["coral"][event])
-		if !strings.Contains(string(b), `coral-hook-agentic-state --agy `+event) {
+		want, _ := json.Marshal(ResolveHookCommand("coral-hook-agentic-state --agy " + event))
+		if !strings.Contains(string(b), string(want)) {
 			t.Errorf("%s: %s", event, b)
 		}
 	}

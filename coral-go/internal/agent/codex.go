@@ -260,7 +260,7 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 	// hook directly in its config. Without these hooks Codex sessions can still
 	// appear active, but no tool/thinking/stop events reach the activity view.
 	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
-		parts = append(parts, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`, event))
+		parts = append(parts, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(ResolveHookCommand("coral-hook-agentic-state"))))
 	}
 
 	// Note: Codex's sandbox may strip env vars from child processes.

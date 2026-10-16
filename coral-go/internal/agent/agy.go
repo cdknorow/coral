@@ -391,7 +391,7 @@ func agyHooksDir(sessionID string) (string, error) {
 	}
 	spec := map[string]any{}
 	for _, event := range agyHookEvents {
-		handler := map[string]any{"type": "command", "command": "coral-hook-agentic-state --agy " + event, "timeout": 10}
+		handler := map[string]any{"type": "command", "command": ResolveHookCommand("coral-hook-agentic-state --agy " + event), "timeout": 10}
 		switch event {
 		case "PreToolUse", "PostToolUse":
 			spec[event] = []any{map[string]any{"matcher": ".*", "hooks": []any{handler}}}

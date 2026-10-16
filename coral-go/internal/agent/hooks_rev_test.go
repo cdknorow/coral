@@ -14,7 +14,10 @@ func TestClaudeStateHooksCarryTheRevision(t *testing.T) {
 	if ClaudeSignalsHooksRev > ClaudeHooksRev {
 		t.Fatal("the current set must have the request signals")
 	}
-	want := "coral-hook-agentic-state --hooks-rev " + strconv.Itoa(ClaudeHooksRev)
+	want := `coral-hook-agentic-state\" --hooks-rev ` + strconv.Itoa(ClaudeHooksRev) // by absolute path, quoted in JSON (#3660)
+	if ResolveHookCommand("coral-hook-agentic-state") == "coral-hook-agentic-state" {
+		want = "coral-hook-agentic-state --hooks-rev " + strconv.Itoa(ClaudeHooksRev) // no tools folder here: the bare name
+	}
 	b, _ := json.Marshal(buildMergedSettings(nil)["hooks"])
 	total := strings.Count(string(b), "coral-hook-agentic-state")
 	withRev := strings.Count(string(b), want)

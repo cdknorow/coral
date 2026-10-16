@@ -467,10 +467,11 @@ func buildMergedSettings(agentHooks map[string]interface{}) map[string]interface
 		}
 	}
 
-	// Append Coral hooks
+	// Append Coral hooks, each naming its tool by absolute path (#3660)
 	for event, groups := range coralHooks {
 		existing := mergedHooks[event]
 		for _, group := range groups {
+			group := resolvedHookGroup(group)
 			command := ""
 			if hooks, ok := group["hooks"].([]map[string]interface{}); ok && len(hooks) > 0 {
 				if cmd, ok := hooks[0]["command"].(string); ok {

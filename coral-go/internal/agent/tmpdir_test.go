@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
@@ -9,6 +10,13 @@ import (
 // prompt files and agy's hooks folder (#3481) there, and it is removed afterwards
 // instead of leaving them in the system temp folder.
 func TestMain(m *testing.M) {
+	if os.Getenv(hookEchoEnv) == "1" {
+		// A copy of this test binary run as a Coral hook (TestHookCommandRunsTheToolsFolder):
+		// it says which file it is, before any test flag is parsed.
+		exe, _ := os.Executable()
+		fmt.Print(exe)
+		os.Exit(0)
+	}
 	dir, err := os.MkdirTemp("", "coral-agent-test-")
 	if err == nil {
 		os.Setenv("TMPDIR", dir)
