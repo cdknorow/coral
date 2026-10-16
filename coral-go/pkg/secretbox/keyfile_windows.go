@@ -20,6 +20,11 @@ func readExistingKeyFile(name string) ([]byte, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
+		if errors.Is(err, secfile.ErrExposed) {
+			// Until there is a re-key action (#3698), say how to recover by hand.
+			return nil, fmt.Errorf("%w: %w. To recover: stop Coral, delete %s, start Coral, then connect to Coral Hub again and re-enter the API keys of your remote servers (the old ones can't be read without that key)",
+				ErrKeyPermissions, err, name)
+		}
 		return nil, fmt.Errorf("%w: %w", ErrKeyPermissions, err)
 	}
 	return data, nil
