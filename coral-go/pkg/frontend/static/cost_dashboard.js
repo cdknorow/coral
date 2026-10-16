@@ -1,7 +1,7 @@
 /* Token Usage Dashboard — token usage and cost UI */
 
 import { showView, escapeHtml, escapeAttr } from './utils.js';
-import { registerActions } from './actions.js';
+import { registerActions, idOf, uuidOf, tokenOf, textOf } from './actions.js';
 import { state } from './state.js';
 import { pollEvery } from './overload.js';
 import { keyLabel } from './server_base.js';
@@ -173,9 +173,9 @@ function _sortHeader(table, field, label, extraClass, filterable, valueExtractor
     let filterIcon = '';
     if (filterable) {
         const active = _hasActiveFilter(table, field) ? ' cost-filter-active' : '';
-        filterIcon = `<span class="cost-col-filter${active}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter"><span class="material-icons" style="font-size:13px">filter_list</span></span>`;
+        filterIcon = `<span class="cost-col-filter${escapeAttr(active)}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter"><span class="material-icons" style="font-size:13px">filter_list</span></span>`;
     }
-    return `<th class="${cls}" data-on-click="cost-sort" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}">${label}${arrow}${filterIcon}</th>`;
+    return `<th class="${escapeAttr(cls)}" data-on-click="cost-sort" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}">${label}${arrow}${filterIcon}</th>`;
 }
 
 // Open/close the column filter dropdown
@@ -308,21 +308,32 @@ function _getFilterExtractor(table, field) {
 }
 
 // Expose to window for onclick handlers
+// A sort or filter header's table and column: one this view has.
+function _sortable(el) {
+    const { table, field } = el.dataset;
+    return Object.prototype.hasOwnProperty.call(_sortState, table) && /^[a-z_]{1,40}$/.test(field || '');
+}
+
 // The table's actions (#3645): its markup carries data-on-click names, never code.
 registerActions({
-    'cost-sort': el => _toggleSort(el.dataset.table, el.dataset.field),
-    'cost-filter': (el, event) => { event.stopPropagation(); _openFilter(el.dataset.table, el.dataset.field, el); },
+    // Only the tables and columns this view has (an unknown one would make a new sort state).
+    'cost-sort': el => { if (_sortable(el)) _toggleSort(el.dataset.table, el.dataset.field); },
+    'cost-filter': (el, event) => { event.stopPropagation(); if (_sortable(el)) _openFilter(el.dataset.table, el.dataset.field, el); },
     'cost-open-live': (el, event) => {
         event.preventDefault();
+        const name = textOf(el.dataset.name), type = tokenOf(el.dataset.agentType), sid = uuidOf(el.dataset.sessionId);
+        if (!name || !type || !sid) return;
         window.switchNavTab('agents');
-        window.selectLiveSession(el.dataset.name, el.dataset.agentType, el.dataset.sessionId);
+        window.selectLiveSession(name, type, sid);
     },
     'cost-open-history': (el, event) => {
         event.preventDefault();
+        const sid = uuidOf(el.dataset.sessionId);
+        if (!sid) return;
         window.switchNavTab('history');
-        window.selectHistorySession(el.dataset.sessionId);
+        window.selectHistorySession(sid);
     },
-    'cost-task': el => _showCostTaskDetail(Number(el.dataset.taskId)),
+    'cost-task': el => { const id = idOf(el.dataset.taskId); if (id) _showCostTaskDetail(id); },
 });
 
 export async function showCostDashboard() {

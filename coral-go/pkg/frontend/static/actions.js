@@ -33,6 +33,32 @@ export function registerActions(map) {
     }
 }
 
+// An action's data-* values are input, never trusted (Security's requirement 2): an action converts
+// and checks each one with these before use, and does nothing when one is not what it should be.
+
+/** idOf: a positive whole number (a row, task, workflow or job id), or null. */
+export function idOf(v) {
+    const n = Number(v);
+    return Number.isSafeInteger(n) && n > 0 && String(v).trim() === String(n) ? n : null;
+}
+
+/** uuidOf: a session id (a UUID, any case), or null. */
+export function uuidOf(v) {
+    return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v) ? v : null;
+}
+
+/** tokenOf: an agent type or other identifier (letters, digits, - _ . :), or null. */
+export function tokenOf(v) {
+    return typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,200}$/.test(v) ? v : null;
+}
+
+/** textOf: a name (a session's, a workflow's): a string of 1 to max characters with no control
+ *  characters, or null. Names come from folders and people, so no narrower check fits them. */
+export function textOf(v, max = 200) {
+    // eslint-disable-next-line no-control-regex
+    return typeof v === 'string' && v.length > 0 && v.length <= max && !/[\u0000-\u001f\u007f]/.test(v) ? v : null;
+}
+
 /** hasAction reports whether name is registered (tests and the census use it). */
 export function hasAction(name) { return actions.has(name); }
 

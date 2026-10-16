@@ -9,6 +9,10 @@
 //      other (javascript:, data:, file:, //host, /api/...) shows the label as text and goes nowhere.
 //  F4  the Docs tab renders through the same sanitizer and link policy: a link to another doc is a
 //      router link (no javascript: href), a remote image doesn't load, a javascript: link is text.
+//  #3645 (Security's requirement 1 for CSP stage 2): delegated actions are named in markup by
+//      data-on-<event>, so content must never carry one. Content with a data-on-* for every event the
+//      dispatcher listens to comes out of every renderer, the Docs tab and a notification with none,
+//      and clicking what renders never runs the registered action it named.
 'use strict';
 
 const CDP = require('chrome-remote-interface');
@@ -98,6 +102,72 @@ const PAYLOAD = [
             check(`${k}: a class only for code highlighting`, r.classes.every(c => /^(language-|hljs|blocked-)/.test(c)), JSON.stringify(r.classes));
             check(`${k}: the text survives`, r.text && !r.shadowed, JSON.stringify(r));
         }
+        // ── #3645: no data-on-* action survives from content ─────────────────
+        const act = await ev(`(async () => {
+            const u = await ${U};
+            const { ACTION_EVENTS, registerActions } = await import((window.__coralStatic || '/static/') + 'actions.js');
+            window.__probe3645 = 0;
+            try { registerActions({ 'probe-3645': () => { window.__probe3645++; } }); } catch { /* registered by an earlier run */ }
+            const on = ACTION_EVENTS.map(e => 'data-on-' + e + '="probe-3645"').join(' ');
+            const md = ['# T <span ' + on + '>head</span>', '',
+                '<p ' + on + '>para</p>', '<a href="https://example.test/" ' + on + '>link</a>',
+                '<img src="x.png" alt="i" ' + on + '>', '<code ' + on + '>c</code>', '<div ' + on + '><span ' + on + '>nested</span></div>',
+                '', '[md link](https://example.test/ "t")', ''].join('\\n');
+            const html = marked.parse(md);
+            const outs = {
+                'chat (renderMarkdown)': u.renderMarkdown(md, undefined, 'chat'),
+                'board (renderMarkdown)': u.renderMarkdown(md, undefined, 'board'),
+                'notes (sanitizeMarkdown, no config)': u.sanitizeMarkdown(md, undefined, 'board'),
+                'summary (sanitizeHtml, no config)': u.sanitizeHtml(html, undefined, { links: 'board' }),
+                'knowledge (its own config)': u.sanitizeHtml(html, { ADD_ATTR: ['data-knowledge-link'] }, { links: 'board', knowledgeLinks: true }),
+                'file (renderMarkdownStrict)': u.renderMarkdownStrict(md),
+                'file pane (sanitizeHtml raw HTML)': u.sanitizeHtml(html, u.DOMPURIFY_CONFIG, { links: 'file' }),
+            };
+            const host = document.createElement('div');
+            document.body.appendChild(host);
+            // No rendered link may move the page: default actions are stopped before they run (the
+            // document's dispatcher still sees every event), and window.open is a stub meanwhile.
+            host.addEventListener('click', e => e.preventDefault(), true);
+            const realOpen = window.open;
+            window.open = () => null;
+            const out = { events: ACTION_EVENTS, renderers: {} };
+            for (const [k, h] of Object.entries(outs)) {
+                const box = document.createElement('div');
+                box.innerHTML = h;
+                host.appendChild(box);
+                const left = [...box.querySelectorAll('*')].flatMap(e => [...e.attributes].map(a => a.name)).filter(n => n.startsWith('data-on-'));
+                for (const el of box.querySelectorAll('*')) {
+                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                out.renderers[k] = { left, text: box.textContent.includes('para') && box.textContent.includes('nested') };
+            }
+            // A notification's title, message and link label.
+            u.showAlertNotification('T <span ' + on + '>x</span>', 'M <b ' + on + '>y</b>', 'info', { label: 'L <i ' + on + '>z</i>', url: 'https://example.test/' });
+            const ov = [...document.querySelectorAll('.alert-notification-overlay')].pop();
+            out.notification = ov ? [...ov.querySelectorAll('*')].flatMap(e => [...e.attributes].map(a => a.name)).filter(n => n.startsWith('data-on-')) : ['no overlay'];
+            if (ov) ov.remove();
+            host.remove();
+            window.open = realOpen;
+            out.probe = window.__probe3645;
+            // The control: the same name on the dashboard's own markup does run.
+            const ctl = document.createElement('span');
+            ctl.setAttribute('data-on-click', 'probe-3645');
+            document.body.appendChild(ctl);
+            ctl.click();
+            out.control = window.__probe3645 - out.probe;
+            ctl.remove();
+            return out;
+        })()`);
+        check('#3645: the content carried a data-on-* for every event the dispatcher listens to', act.events.length >= 7, JSON.stringify(act.events));
+        for (const [k, r] of Object.entries(act.renderers)) {
+            check(`#3645 ${k}: no data-on-* survives, and the text does`, r.left.length === 0 && r.text, JSON.stringify(r));
+        }
+        check('#3645 a notification (title, message, link label): no data-on-*', act.notification.length === 0, JSON.stringify(act.notification));
+        check('#3645 clicking, changing or typing in rendered content never runs the action it named', act.probe === 0, String(act.probe));
+        check('#3645 (control) the same action name on the dashboard\'s own markup does run', act.control === 1, String(act.control));
+
         // ids: only in file mode, prefixed; a #fragment still scrolls inside the file.
         const ids = await ev(`${U}.then(u => {
             const out = {};
@@ -160,7 +230,7 @@ const PAYLOAD = [
         check('no notification link ran script or moved the page', !shown.pwned && shown.urlSame, JSON.stringify(shown));
 
         // ── F4: the Docs tab ─────────────────────────────────────────────────
-        const DOC = '# QA doc\n\nSee [the board](board.md#tasks), [auth](auth.md), [the web](https://example.test/), [bad](javascript:alert(1)).\n\n![remote](https://evil.test/beacon.png)\n\n<button class="cni-answer" data-n="1">Yes</button>\n';
+        const DOC = '# QA doc\n\nSee [the board](board.md#tasks), [auth](auth.md), [the web](https://example.test/), [bad](javascript:alert(1)).\n\n![remote](https://evil.test/beacon.png)\n\n<button class="cni-answer" data-n="1">Yes</button>\n\n<p data-on-click="probe-3645" data-on-change="probe-3645">docs para</p>\n';
         await Fetch.enable({ patterns: [{ urlPattern: '*/api/agent-docs/qa-3622*' }] });
         Fetch.requestPaused(({ requestId }) => Fetch.fulfillRequest({ requestId, responseCode: 200,
             responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
@@ -173,10 +243,12 @@ const PAYLOAD = [
         const doc = await ev(`(() => { const c = document.getElementById('docs-content');
             return { links: [...c.querySelectorAll('a')].map(a => [a.textContent, a.getAttribute('href'), a.hasAttribute('data-route')]),
                 js: !!c.querySelector('a[href^="javascript:"]'), imgs: [...c.querySelectorAll('img')].map(i => i.getAttribute('src')),
-                buttons: c.querySelectorAll('button').length, blocked: [...c.querySelectorAll('.blocked-link')].map(s => s.textContent) }; })()`);
+                buttons: c.querySelectorAll('button').length, blocked: [...c.querySelectorAll('.blocked-link')].map(s => s.textContent),
+                dataOn: [...c.querySelectorAll('*')].flatMap(e => [...e.attributes].map(a => a.name)).filter(n => n.startsWith('data-on-')) }; })()`);
         check('Docs: a link to another doc is a router link to its page', JSON.stringify(doc.links.filter(l => l[2])) === JSON.stringify([['the board', '/docs/board', true], ['auth', '/docs/auth', true]]), JSON.stringify(doc.links));
         check('Docs: a web link stays a link, a javascript: link is text, no javascript: href anywhere',
             doc.links.some(l => l[1] === 'https://example.test/') && !doc.js && doc.blocked.some(t => t.includes('bad')), JSON.stringify(doc));
+        check('#3645 Docs: no data-on-* from a doc survives', doc.dataOn.length === 0, JSON.stringify(doc.dataOn));
         check('Docs: a remote image never loads, and no button renders', doc.imgs.every(s => !s || !/^https?:/.test(s)) && doc.buttons === 0, JSON.stringify(doc));
         await ev(`document.querySelector('#docs-content a[href="/docs/auth"]').click(); true`);
         await waitFor(`location.pathname === '/docs/auth'`, 'the doc link opens that doc through the router', { timeout: 8000, soft: true });
