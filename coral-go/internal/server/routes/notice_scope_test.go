@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -90,8 +89,8 @@ func TestBoardNoticesReachOnlyThatBoardsSessions(t *testing.T) {
 	}
 	quietB("direct send to another board's session")
 	refusals := 0
-	h.refusedNotices.Range(func(k, _ any) bool {
-		if strings.HasPrefix(k.(string), "team-a\x00") {
+	refusedNotices.Range(func(k, _ any) bool {
+		if k.(string) == "team-a\x00"+reviewerB {
 			refusals++
 		}
 		return true

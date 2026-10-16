@@ -14,9 +14,15 @@ import (
 // "codex-cli 0.155.1", "1.3.5".
 var cliVersionRe = regexp.MustCompile(`\d+\.\d+\.\d+[0-9A-Za-z.+-]*`)
 
-// cliVersions caches versions by binary path, modification time and size, so an
-// update of the CLI is noticed and an unchanged one is asked only once.
-var cliVersions sync.Map
+// cliVersions caches each CLI path's version with the binary's modification time and size,
+// so an update of the CLI is noticed and an unchanged one is asked only once. One entry per
+// path: an update replaces it, so the cache doesn't grow with every version ever seen (#4057).
+var cliVersions sync.Map // path -> cliVersion
+
+type cliVersion struct {
+	stamp   string // modification time and size
+	version string
+}
 
 // CLIVersion returns the version agentType's CLI reports (its --version), found the
 // way launch finds it (FindCLI), or "" when the CLI or its version is unknown
@@ -34,9 +40,9 @@ func CLIVersion(settings map[string]string, agentType string) string {
 	if err != nil {
 		return ""
 	}
-	key := fmt.Sprintf("%s|%d|%d", path, info.ModTime().UnixNano(), info.Size())
-	if v, ok := cliVersions.Load(key); ok {
-		return v.(string)
+	stamp := fmt.Sprintf("%d|%d", info.ModTime().UnixNano(), info.Size())
+	if v, ok := cliVersions.Load(path); ok && v.(cliVersion).stamp == stamp {
+		return v.(cliVersion).version
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -47,7 +53,7 @@ func CLIVersion(settings map[string]string, agentType string) string {
 	out, _ := cmd.Output()
 	v := cliVersionRe.FindString(string(out))
 	if ctx.Err() == nil {
-		cliVersions.Store(key, v)
+		cliVersions.Store(path, cliVersion{stamp: stamp, version: v})
 	}
 	return v
 }

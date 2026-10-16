@@ -16,6 +16,14 @@ var exitLogged sync.Map
 // terminalLogged holds the terminal agents whose skipped input was already logged.
 var terminalLogged sync.Map
 
+// Both are forgotten when the session ends (#4057).
+func init() {
+	ptymanager.OnSessionEnd(func(name string) {
+		exitLogged.Delete(name)
+		terminalLogged.Delete(name)
+	})
+}
+
 // skipIfAgentExited reports whether automated input for an agent's terminal must
 // be skipped because its CLI has exited and left a plain shell there (#3219): a
 // shell would run the text as a command. It logs once per exit.

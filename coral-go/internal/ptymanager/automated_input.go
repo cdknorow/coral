@@ -982,6 +982,7 @@ func DropHeld(name, why string) {
 	gate.mu.Unlock()
 	noteDisagreement(name, "", time.Now()) // its disagreement window, if any, ends with it (#3655)
 	gate.checkEnded(name)
+	forgetSessionMemos(name)
 	if n > 0 {
 		slog.Info("automated input: dropped held sends", "session", name, "count", n, "why", why)
 		inputlog.Record(name, inputlog.Text, "[DROPPED "+strconv.Itoa(n)+" held, "+why+"]")
@@ -996,6 +997,33 @@ func sessionOfTarget(target string) string {
 		target = target[:i]
 	}
 	return strings.TrimSuffix(target, ".0")
+}
+
+// sessionEndHooks clear what other packages remember per session (a log line already
+// written for it, and the like) when DropHeld ends that session's state, so those memos
+// don't grow with every session the server has ever run (#4057).
+var (
+	sessionEndMu    sync.Mutex
+	sessionEndHooks []func(name string)
+)
+
+// OnSessionEnd registers f to be called with a session's terminal name ("<type>-<id>")
+// whenever its agent is killed, restarted, resumed or launched again (DropHeld). Register
+// once, at package init: hooks are never removed.
+func OnSessionEnd(f func(name string)) {
+	sessionEndMu.Lock()
+	defer sessionEndMu.Unlock()
+	sessionEndHooks = append(sessionEndHooks, f)
+}
+
+func forgetSessionMemos(name string) {
+	tmux.ForgetBareNameWarning(name)
+	sessionEndMu.Lock()
+	hooks := append([]func(string){}, sessionEndHooks...)
+	sessionEndMu.Unlock()
+	for _, f := range hooks {
+		f(name)
+	}
 }
 
 // HeldCount is the number of sends held for a session (tests and diagnostics).
