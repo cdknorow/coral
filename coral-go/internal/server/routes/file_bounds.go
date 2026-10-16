@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/gitutil"
@@ -214,7 +215,63 @@ var sensitiveExact = map[string]bool{
 	".bashrc": true, ".zshrc": true, ".profile": true, ".bash_profile": true, ".zprofile": true, ".zshenv": true,
 	".bash_login": true, ".lesshst": true, ".viminfo": true, ".wget-hsts": true, "known_hosts": true,
 	"authorized_keys": true, "cookies.sqlite": true, "login data": true,
+	// The agent CLIs' credential files (#3672, path audit #3669 finding 3), anywhere: Claude's
+	// (.claude.json; .credentials.json on Linux and Windows), Codex's and Gemini's.
+	".claude.json": true, ".credentials.json": true, "auth.json": true, "oauth_creds.json": true,
 }
+
+// agentHomeDirs are the agent CLIs' own folders (credentials, sessions, settings). They are
+// denied in the user's home folder only (#3672): a repository's checked-in .claude/
+// (settings.json, commands, hooks) stays readable, and the credential files in them are denied
+// anywhere by name (sensitiveExact). If the home folder can't be found they are denied anywhere.
+var agentHomeDirs = []string{".claude", ".codex", ".gemini"}
+
+// resolvedHome is realPath(home), remembered for the last home seen (sensitivePath runs for
+// every entry of a folder listing).
+var homeCache struct {
+	sync.Mutex
+	home, real string
+}
+
+func resolvedHome(home string) string {
+	homeCache.Lock()
+	defer homeCache.Unlock()
+	if homeCache.home != home {
+		homeCache.home, homeCache.real = home, realPath(home)
+	}
+	return homeCache.real
+}
+
+// inAgentHomeDir reports whether p is one of agentHomeDirs in the home folder, or inside one.
+// Compared without case (macOS and Windows file systems ignore it), on the home folder as
+// given and resolved.
+func inAgentHomeDir(p string, lower []string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		for _, c := range lower {
+			for _, d := range agentHomeDirs {
+				if c == d {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	homes := []string{home}
+	if rh := resolvedHome(home); rh != "" && rh != home {
+		homes = append(homes, rh)
+	}
+	lp := strings.ToLower(filepath.Clean(p))
+	for _, h := range homes {
+		for _, d := range agentHomeDirs {
+			if within(strings.ToLower(filepath.Join(h, d)), lp) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 var sensitiveSuffixes = []string{".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".kdbx", ".ppk", ".tfstate", "_history", ".history"}
 
 // sensitivePath reports whether p names a credential-bearing or history location. It
@@ -241,6 +298,9 @@ func sensitivePath(p string) bool {
 				return true
 			}
 		}
+	}
+	if inAgentHomeDir(p, lower) {
+		return true
 	}
 	base := lower[len(lower)-1]
 	if sensitiveExact[base] {

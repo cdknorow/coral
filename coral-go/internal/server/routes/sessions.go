@@ -5805,29 +5805,36 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	info, err := os.Stat(fullPath)
-	if err != nil || info.IsDir() {
+	// Read through a folder held open (#3672, path audit #3669 finding 2), as SaveFileContent
+	// writes: the open is non-blocking (a FIFO or socket in the work tree can't hang the
+	// request), the file must be a regular file on the open handle, a symlink swapped in after
+	// the checks above isn't followed, and a file with another name (a hard link to a file
+	// outside the tree) is refused. The working tree is the root; a local dashboard's absolute
+	// read outside it opens the file's own folder.
+	rootDir, rel := workdir, ""
+	if tempFile {
+		rootDir, rel = filepath.Dir(fullPath), filepath.Base(fullPath)
+	}
+	root, err := safefs.OpenRoot(rootDir)
+	if err != nil {
 		errNotFound(w, "File not found")
 		return
 	}
-	if info.Size() > maxFileBytes() {
+	defer root.Close()
+	if rel == "" {
+		if rel, err = safefs.Within(root.Dir(), fullPath); err != nil || rel == "." {
+			errNotFound(w, "File not found")
+			return
+		}
+	}
+	content, err := root.ReadFileOneLink(rel, maxFileBytes())
+	if errors.Is(err, safefs.ErrTooLarge) {
 		errPayloadTooLarge(w, "File too large to preview")
 		return
 	}
-
-	f, err := os.Open(fullPath)
 	if err != nil {
-		errInternalServer(w, "could not read file")
-		return
-	}
-	content, err := io.ReadAll(io.LimitReader(f, maxFileBytes()+1))
-	f.Close()
-	if err != nil {
-		errInternalServer(w, "could not read file")
-		return
-	}
-	if int64(len(content)) > maxFileBytes() {
-		errPayloadTooLarge(w, "File too large to preview")
+		// Missing, a folder, not a regular file, or linked: all look like a missing file.
+		errNotFound(w, "File not found")
 		return
 	}
 	if r.URL.Query().Get("raw") == "1" {

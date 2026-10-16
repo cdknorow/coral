@@ -31,7 +31,6 @@ var reviewedFileOpens = map[string]string{
 	"changes_diff_filter.go:isBinaryFile:Open":                    "an untracked name git lists, under diffPathHidden and an Lstat regular-file check",
 	"file_explorer.go:serveExplorerDirectory:Open":                "the explorer: no abs or '..', EvalSymlinks + Rel inside the root, strict roots",
 	"sessions.go:SessionsHandler.Diff:ReadFile":                   "isPathWithinDir on the resolved path; strict callers get diffPathRefused",
-	"sessions.go:SessionsHandler.GetFileContent:Open":             "isPathWithinDir; strict callers: withinAny(sessionFileRoots) + rootAllowed + sensitivePath",
 	"sessions.go:SessionsHandler.SessionChanges:ReadFile":         "the session id is safefs.IsSafeID (W4)",
 	"sessions.go:SessionsHandler.SessionChangesArtifact:ReadFile": "the session id is safefs.IsSafeID (W4)",
 	"sessions.go:getLogStatus:Open":                               "a log named from a tmux session matching UUIDSessionRE",

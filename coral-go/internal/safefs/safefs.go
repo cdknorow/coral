@@ -260,6 +260,32 @@ func (r *Root) ReadFile(rel string, max int64) ([]byte, error) {
 	return data, nil
 }
 
+// ReadFileOneLink is ReadFile for a file that must have no other name (#3672): one with more
+// than one hard link, or whose link count the platform can't report, is ErrLinked, as for a
+// write. A hard link inside the root to a file outside it (a credential file, say) is the same
+// file under an innocent name, so a read through the root would otherwise reach it.
+func (r *Root) ReadFileOneLink(rel string, max int64) ([]byte, error) {
+	f, fi, err := r.Open(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if n, ok := LinkCount(f, fi); !ok || n > 1 {
+		return nil, ErrLinked
+	}
+	if fi.Size() > max {
+		return nil, ErrTooLarge
+	}
+	data, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > max {
+		return nil, ErrTooLarge
+	}
+	return data, nil
+}
+
 // WriteFile writes data to rel inside the root, creating it (perm) or replacing the content of
 // an existing regular file with one link. It is truncated only after those checks pass.
 func (r *Root) WriteFile(rel string, data []byte, perm os.FileMode) error {

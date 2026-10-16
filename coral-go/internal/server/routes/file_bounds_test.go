@@ -452,6 +452,36 @@ func TestSensitivePathExtendedList(t *testing.T) {
 	}
 }
 
+// The agent CLIs' credentials (#3672, path audit #3669 finding 3): their files are denied
+// anywhere by name, their folders in the home folder (and only there: a repository's checked-in
+// .claude/ stays readable).
+func TestSensitivePathAgentCredentials(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, name := range []string{".claude.json", ".credentials.json", "auth.json", "oauth_creds.json", ".CLAUDE.JSON"} {
+		assert.True(t, sensitivePath(filepath.Join(home, name)), "in home: "+name)
+		assert.True(t, sensitivePath(filepath.Join("/r", "devcontainer", name)), "anywhere: "+name)
+	}
+	for _, dir := range []string{".claude", ".codex", ".gemini"} {
+		assert.True(t, sensitivePath(filepath.Join(home, dir)), dir)
+		assert.True(t, sensitivePath(filepath.Join(home, dir, "settings.json")), dir+"/settings.json")
+		assert.True(t, sensitivePath(filepath.Join(home, dir, "sessions", "x.jsonl")), dir+"/sessions/x.jsonl")
+		assert.True(t, sensitivePath(filepath.Join(home, strings.ToUpper(dir), "settings.json")), "case: "+dir)
+		// A repository's own folder of the same name is project configuration, not the user's.
+		assert.False(t, sensitivePath(filepath.Join("/r", "repo", dir, "settings.json")), "repo "+dir+"/settings.json")
+		assert.False(t, sensitivePath(filepath.Join(home, "projects", "repo", dir, "commands", "x.md")), "repo under home "+dir)
+	}
+	assert.False(t, sensitivePath(filepath.Join(home, ".claudeignore")), "a name that only starts like one")
+	assert.False(t, sensitivePath(filepath.Join(home, "projects", "authorize.json")))
+	// The home folder through a symlink is the same folder.
+	link := filepath.Join(t.TempDir(), "home-link")
+	require.NoError(t, os.Symlink(home, link))
+	t.Setenv("HOME", link)
+	assert.True(t, sensitivePath(filepath.Join(realPath(home), ".codex", "config.toml")), "the resolved home")
+	assert.True(t, sensitivePath(filepath.Join(link, ".codex", "config.toml")), "the home as given")
+}
+
 // A token in a remote URL lives in .git/config; no caller reads or lists the .git directory.
 func TestGitDirectoryIsNeverServed(t *testing.T) {
 	e := newBoundsEnv(t)

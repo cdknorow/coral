@@ -218,3 +218,33 @@ func TestWriteFileUnlessSeesASwapAfterTheCheck(t *testing.T) {
 	require.NoError(t, r.MkdirAll("plain", 0o755))
 	require.NoError(t, r.WriteFileUnless(filepath.Join("plain", "f.txt"), []byte("ok"), 0o644, denyGit))
 }
+
+// ReadFileOneLink (#3672): a hard link to a file outside the root is refused for a read too; a
+// FIFO is refused at once; a plain file reads, and a too-big one is ErrTooLarge.
+func TestReadFileOneLink(t *testing.T) {
+	root := t.TempDir()
+	_, secret := outside(t)
+	require.NoError(t, os.Link(secret, filepath.Join(root, "notes.txt")))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "plain.txt"), []byte("hello"), 0o644))
+	require.NoError(t, syscall.Mkfifo(filepath.Join(root, "fifo"), 0o600))
+	r, err := OpenRoot(root)
+	require.NoError(t, err)
+	defer r.Close()
+
+	_, err = r.ReadFileOneLink("notes.txt", 1<<20)
+	assert.ErrorIs(t, err, ErrLinked)
+	b, err := r.ReadFileOneLink("plain.txt", 1<<20)
+	require.NoError(t, err)
+	assert.Equal(t, "hello", string(b))
+	_, err = r.ReadFileOneLink("plain.txt", 3)
+	assert.ErrorIs(t, err, ErrTooLarge)
+
+	done := make(chan error, 1)
+	go func() { _, err := r.ReadFileOneLink("fifo", 1<<20); done <- err }()
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, ErrNotRegular)
+	case <-time.After(5 * time.Second):
+		t.Fatal("reading a FIFO blocked")
+	}
+}
