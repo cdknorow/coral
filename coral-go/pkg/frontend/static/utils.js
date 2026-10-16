@@ -519,9 +519,34 @@ export function sanitizeMarkdown(md, config, links) {
     return sanitizeHtml(marked.parse(md), config, links ? { links } : undefined);
 }
 
+// Rendered markdown by (link policy, options, text) (#3866). The same message is rendered again on every agent switch, board panel
+// redraw and chat page re-render (DOMPurify was 15% of the main thread over five agent switches in the dashboard profile). The
+// result is a pure function of those three: the sanitizer reads no page state. A block with a language is not remembered until
+// highlight.js has loaded, so the plain version is not kept once the highlighted one is possible.
+const MD_CACHE_MAX = 400, MD_CACHE_MAX_LENGTH = 20000;
+const _mdCache = new Map();
+
 // { breaks: true } to keep single newlines as line breaks. links: the link policy for
 // agent-written text, 'board' or 'chat' (applyLinkPolicy, #3542); omit it only for Coral's own text.
 export function renderMarkdown(content, options, links) {
+    if (!content) return '';
+    if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined' && content.length <= MD_CACHE_MAX_LENGTH
+        && (typeof hljs !== 'undefined' || !FENCED_WITH_LANG.test(content))) {
+        const key = (links || '') + '\u0001' + (options ? JSON.stringify(options) : '') + '\u0001' + content;
+        let html = _mdCache.get(key);
+        if (html === undefined) {
+            html = _renderMarkdownUncached(content, options, links);
+            _mdCache.set(key, html);
+            if (_mdCache.size > MD_CACHE_MAX) _mdCache.delete(_mdCache.keys().next().value);
+        } else {
+            _mdCache.delete(key); _mdCache.set(key, html); // most recently used last
+        }
+        return html;
+    }
+    return _renderMarkdownUncached(content, options, links);
+}
+
+function _renderMarkdownUncached(content, options, links) {
     if (!content) return '';
     if (typeof marked !== 'undefined') {
         try {
