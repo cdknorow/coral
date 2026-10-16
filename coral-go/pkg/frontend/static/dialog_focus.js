@@ -71,7 +71,20 @@ export function attachDialogFocus(dialog) {
         const now = isShown(dialog);
         if (now === open) return;
         open = now;
-        if (now) onOpen(); else onClose();
+        if (now) { noteOpener(dialog); onOpen(); } else onClose();
     }).observe(dialog, { attributes: true, attributeFilter: ['style', 'hidden', 'class'] });
     if (isShown(dialog)) { open = true; onOpen(); }
+}
+
+// A dialog whose code never called attachDialogFocus is opened by showing it: the control that has focus at that moment is the opener.
+function noteOpener(dialog) {
+    const a = document.activeElement;
+    if (a && a !== document.body && !dialog.contains(a)) dialog._focusOpener = a;
+    else if (!dialog.contains(a) && !dialog._focusOpener) dialog._focusOpener = lastFocusOutsideDialogs();
+}
+
+/** Every dialog in the page shell (#4026): focus moves in when it opens and back to the opener when it closes, however its own code
+ *  opens it. Only a handful of dialogs called attachDialogFocus themselves; this covers the rest the same way. */
+export function attachAllDialogFocus(root = document) {
+    for (const d of root.querySelectorAll('.modal[role="dialog"]')) attachDialogFocus(d);
 }
