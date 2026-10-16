@@ -262,7 +262,7 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		n.logger.Info("sending nudge", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "mention", mention)
 		// One line (#3376), through the automated-input gate (#3431): a newer
 		// unread count for this board replaces a held one.
-		skipped, err := deliverAutomated(ctx, n.runtime, n.logger, sessName, "", "", "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention)
+		skipped, err := deliverAutomated(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention)
 		if skipped {
 			continue
 		}

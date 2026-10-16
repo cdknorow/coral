@@ -2,6 +2,8 @@ package routes
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strings"
 	"sync"
@@ -48,11 +50,18 @@ func (g *gatedReminderTerminal) messages() []string {
 	return append([]string(nil), g.sent...)
 }
 
+// boardSessionName is an agent session name ("claude-<uuid>") of its own for each board: board
+// notices go only to real agent sessions subscribed on the board (#3864).
+func boardSessionName(board string) string {
+	h := hex.EncodeToString(func() []byte { s := sha256.Sum256([]byte(board)); return s[:16] }())
+	return "claude-" + h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
+}
+
 func reminderTestHandler(t *testing.T, projects ...string) (*BoardHandler, *gatedReminderTerminal) {
 	t.Helper()
 	_, h := setupBoardTestServer(t)
 	for _, p := range projects {
-		_, err := h.bs.Subscribe(context.Background(), p, "agent", "Dev", "claude-"+p, nil, "all")
+		_, err := h.bs.Subscribe(context.Background(), p, "agent", "Dev", boardSessionName(p), nil, "all")
 		require.NoError(t, err)
 	}
 	term := &gatedReminderTerminal{}
@@ -73,7 +82,7 @@ func waitClosed(t *testing.T, done <-chan struct{}, within time.Duration) bool {
 func TestReminderDeleteFailurePreservesActiveReminderAndRow(t *testing.T) {
 	server, h := setupBoardTestServer(t)
 	base := server.URL + "/api/board/myproject"
-	resp := postJSON(t, base+"/subscribe", map[string]string{"subscriber_id": "Orchestrator", "job_title": "Orchestrator", "session_name": "claude-orchestrator"})
+	resp := postJSON(t, base+"/subscribe", map[string]string{"subscriber_id": "Orchestrator", "job_title": "Orchestrator", "session_name": "claude-0000000f-3864-4864-8864-00000000000f"})
 	resp.Body.Close()
 	resp = postJSON(t, base+"/reminder", map[string]any{"subscriber_id": "Orchestrator", "message": "Check the board", "interval_seconds": 30})
 	resp.Body.Close()

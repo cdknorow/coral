@@ -813,6 +813,7 @@ func (s *Server) buildRouter() chi.Router {
 		return s.cloudHandler != nil && s.cloudHandler.HubOperatorAllowed(r)
 	})
 	boardHandler.SetArchivedSessionLookup(routes.ArchivedSessionLookup(store.NewSessionStore(s.db)))
+	boardHandler.SetLiveSessionLookup(routes.LiveSessionLookup(store.NewSessionStore(s.db)))
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	sessStore := store.NewSessionStore(s.db)
 	boardHandler.SetAutoAttacher(routes.NewAutoAttacher(s.cfg.CoralDir(), routes.AutoAttachEnabled(sessStore), routes.SessionDirs(sessStore)))

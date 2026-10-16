@@ -20,7 +20,7 @@ func TestBoardWaitRoutes_RegisterAndRetrieve(t *testing.T) {
 	project := "wait-test"
 
 	// Subscribe agent
-	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "tmux-w1", nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "claude-0000000c-3864-4864-8864-00000000000c", nil, "all")
 	require.NoError(t, err)
 
 	// 1. Initially no active wait
@@ -88,10 +88,10 @@ func TestBoardWaitRoutes_Cancel(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	project := "wait-cancel"
 
-	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "tmux-w1", nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "claude-0000000c-3864-4864-8864-00000000000c", nil, "all")
 	require.NoError(t, err)
 
-	_, err = handler.bs.RegisterWait(context.Background(), project, "worker-1", "tmux-w1", "message", "Lead", "waiting for approval", time.Hour)
+	_, err = handler.bs.RegisterWait(context.Background(), project, "worker-1", "claude-0000000c-3864-4864-8864-00000000000c", "message", "Lead", "waiting for approval", time.Hour)
 	require.NoError(t, err)
 
 	// Cancel via DELETE
@@ -112,18 +112,18 @@ func TestBoardWaitRoutes_Cancel(t *testing.T) {
 func TestBoardWaitRoutes_MessageResolutionNotifiesTerminal(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	mockTerm := newMockTerminal()
-	mockTerm.addSession("tmux-w1", "/tmp/worker")
+	mockTerm.addSession("claude-0000000c-3864-4864-8864-00000000000c", "/tmp/worker")
 	handler.SetTerminal(mockTerm)
 
 	project := "wait-notify"
 
-	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "claude-0000000c-3864-4864-8864-00000000000c", nil, "all")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(context.Background(), project, "Orchestrator", "Lead", "tmux-orch", nil, "all")
+	_, err = handler.bs.Subscribe(context.Background(), project, "Orchestrator", "Lead", "claude-0000000d-3864-4864-8864-00000000000d", nil, "all")
 	require.NoError(t, err)
 
 	// Worker registers wait for Orchestrator
-	_, err = handler.bs.RegisterWait(context.Background(), project, "Worker", "tmux-w1", "message", "Orchestrator", "waiting for review", time.Hour)
+	_, err = handler.bs.RegisterWait(context.Background(), project, "Worker", "claude-0000000c-3864-4864-8864-00000000000c", "message", "Orchestrator", "waiting for review", time.Hour)
 	require.NoError(t, err)
 
 	// Orchestrator posts message
@@ -144,11 +144,11 @@ func TestBoardWaitRoutes_MessageResolutionNotifiesTerminal(t *testing.T) {
 		}
 		mockTerm.mu.Lock()
 		defer mockTerm.mu.Unlock()
-		return len(mockTerm.sent["tmux-w1"]) > 0
+		return len(mockTerm.sent["claude-0000000c-3864-4864-8864-00000000000c"]) > 0
 	}, 2*time.Second, 20*time.Millisecond)
 
 	mockTerm.mu.Lock()
-	inputs := mockTerm.sent["tmux-w1"]
+	inputs := mockTerm.sent["claude-0000000c-3864-4864-8864-00000000000c"]
 	mockTerm.mu.Unlock()
 
 	require.NotEmpty(t, inputs, "Worker should have received a terminal wake-up nudge")
@@ -161,14 +161,14 @@ func TestBoardWaitRoutes_MessageResolutionNotifiesTerminal(t *testing.T) {
 func TestBoardWaitRoutes_TaskResolutionNotifiesTerminal(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	mockTerm := newMockTerminal()
-	mockTerm.addSession("tmux-w1", "/tmp/worker")
+	mockTerm.addSession("claude-0000000c-3864-4864-8864-00000000000c", "/tmp/worker")
 	handler.SetTerminal(mockTerm)
 
 	project := "wait-task-notify"
 
-	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "claude-0000000c-3864-4864-8864-00000000000c", nil, "all")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(context.Background(), project, "Lead", "Lead", "tmux-lead", nil, "all")
+	_, err = handler.bs.Subscribe(context.Background(), project, "Lead", "Lead", "claude-0000000e-3864-4864-8864-00000000000e", nil, "all")
 	require.NoError(t, err)
 
 	// Create and claim a task
@@ -179,7 +179,7 @@ func TestBoardWaitRoutes_TaskResolutionNotifiesTerminal(t *testing.T) {
 
 	// Worker registers wait for task
 	taskIDStr := fmt.Sprintf("%d", task.ID)
-	_, err = handler.bs.RegisterWait(context.Background(), project, "Worker", "tmux-w1", "task", taskIDStr, "waiting for design completion", time.Hour)
+	_, err = handler.bs.RegisterWait(context.Background(), project, "Worker", "claude-0000000c-3864-4864-8864-00000000000c", "task", taskIDStr, "waiting for design completion", time.Hour)
 	require.NoError(t, err)
 
 	// Complete task
@@ -201,11 +201,11 @@ func TestBoardWaitRoutes_TaskResolutionNotifiesTerminal(t *testing.T) {
 		}
 		mockTerm.mu.Lock()
 		defer mockTerm.mu.Unlock()
-		return len(mockTerm.sent["tmux-w1"]) > 0
+		return len(mockTerm.sent["claude-0000000c-3864-4864-8864-00000000000c"]) > 0
 	}, 2*time.Second, 20*time.Millisecond)
 
 	mockTerm.mu.Lock()
-	inputs := mockTerm.sent["tmux-w1"]
+	inputs := mockTerm.sent["claude-0000000c-3864-4864-8864-00000000000c"]
 	mockTerm.mu.Unlock()
 
 	require.NotEmpty(t, inputs, "Worker should have received a task completion terminal wake-up nudge")
@@ -219,13 +219,13 @@ func TestBoardWaitRoutes_PollWait(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	project := "wait-poll"
 
-	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "claude-0000000c-3864-4864-8864-00000000000c", nil, "all")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(context.Background(), project, "Lead", "Lead", "tmux-lead", nil, "all")
+	_, err = handler.bs.Subscribe(context.Background(), project, "Lead", "Lead", "claude-0000000e-3864-4864-8864-00000000000e", nil, "all")
 	require.NoError(t, err)
 
 	// Register wait
-	_, err = handler.bs.RegisterWait(context.Background(), project, "Worker", "tmux-w1", "message", "Lead", "waiting for response", time.Hour)
+	_, err = handler.bs.RegisterWait(context.Background(), project, "Worker", "claude-0000000c-3864-4864-8864-00000000000c", "message", "Lead", "waiting for response", time.Hour)
 	require.NoError(t, err)
 
 	done := make(chan struct{})

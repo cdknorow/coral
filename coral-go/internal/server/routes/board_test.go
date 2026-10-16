@@ -546,14 +546,14 @@ func TestBoardUpdateTask_AssigneeChangeNudgesNewOwner(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	registerTaskPlanner(t, handler, "assignment-nudge", "Orchestrator")
 	mockTerm := newMockTerminal()
-	mockTerm.addSession("tmux-frontend", "/tmp/frontend")
+	mockTerm.addSession("claude-00000002-3864-4864-8864-000000000002", "/tmp/frontend")
 	handler.SetTerminal(mockTerm)
 	base := server.URL + "/api/board/assignment-nudge"
 
 	resp := postJSON(t, base+"/subscribe", map[string]string{
 		"subscriber_id": "Frontend Dev",
 		"job_title":     "Frontend Dev",
-		"session_name":  "tmux-frontend",
+		"session_name":  "claude-00000002-3864-4864-8864-000000000002",
 	})
 	resp.Body.Close()
 	resp = postJSON(t, base+"/tasks", map[string]string{
@@ -572,7 +572,7 @@ func TestBoardUpdateTask_AssigneeChangeNudgesNewOwner(t *testing.T) {
 	require.Eventually(t, func() bool {
 		mockTerm.mu.Lock()
 		defer mockTerm.mu.Unlock()
-		for _, input := range mockTerm.sent["tmux-frontend"] {
+		for _, input := range mockTerm.sent["claude-00000002-3864-4864-8864-000000000002"] {
 			if input == taskClaimNudge(task.ID) {
 				return true
 			}
@@ -698,13 +698,13 @@ func TestBoardCompleteTask_NotifiesOrchestrator(t *testing.T) {
 	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 	terminal := newMockTerminal()
-	terminal.addSession("claude-orchestrator", "/tmp/test")
+	terminal.addSession("claude-00000001-3864-4864-8864-000000000001", "/tmp/test")
 	handler.SetTerminal(terminal)
 
 	resp := postJSON(t, base+"/subscribe", map[string]string{
 		"subscriber_id": "Orchestrator",
 		"job_title":     "Orchestrator",
-		"session_name":  "claude-orchestrator",
+		"session_name":  "claude-00000001-3864-4864-8864-000000000001",
 	})
 	resp.Body.Close()
 
@@ -1377,17 +1377,17 @@ func TestBoardTaskNudge_UsesTheTasksBoard(t *testing.T) {
 	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	registerTaskPlanner(t, handler, "other", "Orchestrator")
 	terminal := newMockTerminal()
-	terminal.addSession("claude-mine", "/tmp/a")
-	terminal.addSession("claude-other", "/tmp/b")
+	terminal.addSession("claude-00000004-3864-4864-8864-000000000004", "/tmp/a")
+	terminal.addSession("claude-00000005-3864-4864-8864-000000000005", "/tmp/b")
 	handler.SetTerminal(terminal)
 
 	// The same name on two boards; the other board's subscription is newer
 	postJSON(t, server.URL+"/api/board/myproject/subscribe", map[string]string{
-		"subscriber_id": "Frontend Dev", "job_title": "Frontend Dev", "session_name": "claude-mine",
+		"subscriber_id": "Frontend Dev", "job_title": "Frontend Dev", "session_name": "claude-00000004-3864-4864-8864-000000000004",
 	}).Body.Close()
 	time.Sleep(1100 * time.Millisecond) // subscribed_at has second resolution
 	postJSON(t, server.URL+"/api/board/other/subscribe", map[string]string{
-		"subscriber_id": "Frontend Dev", "job_title": "Frontend Dev", "session_name": "claude-other",
+		"subscriber_id": "Frontend Dev", "job_title": "Frontend Dev", "session_name": "claude-00000005-3864-4864-8864-000000000005",
 	}).Body.Close()
 
 	resp := postJSON(t, server.URL+"/api/board/myproject/tasks", map[string]string{
@@ -1396,9 +1396,9 @@ func TestBoardTaskNudge_UsesTheTasksBoard(t *testing.T) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-mine")) > 0 }, 2*time.Second, 20*time.Millisecond)
-	assert.Contains(t, terminal.sentTo("claude-mine")[0], "coral-board task claim")
-	assert.Empty(t, terminal.sentTo("claude-other"), "no nudge to the same name on another board")
+	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-00000004-3864-4864-8864-000000000004")) > 0 }, 2*time.Second, 20*time.Millisecond)
+	assert.Contains(t, terminal.sentTo("claude-00000004-3864-4864-8864-000000000004")[0], "coral-board task claim")
+	assert.Empty(t, terminal.sentTo("claude-00000005-3864-4864-8864-000000000005"), "no nudge to the same name on another board")
 }
 
 func TestBoardNudgeTask(t *testing.T) {
@@ -1406,11 +1406,11 @@ func TestBoardNudgeTask(t *testing.T) {
 	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 	terminal := newMockTerminal()
-	terminal.addSession("claude-backend", "/tmp/a")
+	terminal.addSession("claude-00000003-3864-4864-8864-000000000003", "/tmp/a")
 	handler.SetTerminal(terminal)
 
 	postJSON(t, base+"/subscribe", map[string]string{
-		"subscriber_id": "Backend Dev", "job_title": "Backend Dev", "session_name": "claude-backend",
+		"subscriber_id": "Backend Dev", "job_title": "Backend Dev", "session_name": "claude-00000003-3864-4864-8864-000000000003",
 	}).Body.Close()
 	postJSON(t, base+"/tasks", map[string]string{
 		"title": "Add the loader", "created_by": "Orchestrator", "assigned_to": "Backend Dev",
@@ -1420,7 +1420,7 @@ func TestBoardNudgeTask(t *testing.T) {
 	// read the last send, so a pool notice landing after one would be read instead (#3788).
 	require.Eventually(t, func() bool {
 		var claim, pool bool
-		for _, s := range terminal.sentTo("claude-backend") {
+		for _, s := range terminal.sentTo("claude-00000003-3864-4864-8864-000000000003") {
 			claim = claim || strings.Contains(s, "coral-board task claim 1")
 			pool = pool || s == taskNudge
 		}
@@ -1428,10 +1428,10 @@ func TestBoardNudgeTask(t *testing.T) {
 	}, 2*time.Second, 20*time.Millisecond)
 
 	nudge := func(id int) (int, string) {
-		before := len(terminal.sentTo("claude-backend"))
+		before := len(terminal.sentTo("claude-00000003-3864-4864-8864-000000000003"))
 		resp := postJSON(t, fmt.Sprintf("%s/tasks/%d/nudge?subscriber_id=Operator", base, id), map[string]string{})
 		defer resp.Body.Close()
-		sent := terminal.sentTo("claude-backend")
+		sent := terminal.sentTo("claude-00000003-3864-4864-8864-000000000003")
 		if len(sent) > before {
 			return resp.StatusCode, sent[len(sent)-1]
 		}
@@ -1462,23 +1462,23 @@ func TestBoardReassignTask_NudgesNewAssignee(t *testing.T) {
 	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 	terminal := newMockTerminal()
-	terminal.addSession("claude-backend", "/tmp/a")
+	terminal.addSession("claude-00000003-3864-4864-8864-000000000003", "/tmp/a")
 	handler.SetTerminal(terminal)
 
 	postJSON(t, base+"/subscribe", map[string]string{
-		"subscriber_id": "Backend Dev", "job_title": "Backend Dev", "session_name": "claude-backend",
+		"subscriber_id": "Backend Dev", "job_title": "Backend Dev", "session_name": "claude-00000003-3864-4864-8864-000000000003",
 	}).Body.Close()
 	postJSON(t, base+"/tasks", map[string]string{"title": "Pool task", "created_by": "Orchestrator"}).Body.Close()
 	// The pool notice goes out after the reply; counted before it lands, it would pass for the
 	// reassignment's nudge (#3788).
-	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-backend")) > 0 }, 2*time.Second, 20*time.Millisecond)
-	before := len(terminal.sentTo("claude-backend"))
+	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-00000003-3864-4864-8864-000000000003")) > 0 }, 2*time.Second, 20*time.Millisecond)
+	before := len(terminal.sentTo("claude-00000003-3864-4864-8864-000000000003"))
 
 	resp := postJSON(t, base+"/tasks/1/reassign", map[string]string{"subscriber_id": "Orchestrator", "assignee": "Backend Dev"})
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Eventually(t, func() bool {
-		sent := terminal.sentTo("claude-backend")
+		sent := terminal.sentTo("claude-00000003-3864-4864-8864-000000000003")
 		return len(sent) > before && strings.Contains(sent[len(sent)-1], "task claim 1")
 	}, 2*time.Second, 20*time.Millisecond)
 }
@@ -1488,10 +1488,10 @@ func TestBoardRemindTask_StartsAndStopsPeriodicReminder(t *testing.T) {
 	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 	terminal := newMockTerminal()
-	terminal.addSession("claude-backend", "/tmp/a")
+	terminal.addSession("claude-00000003-3864-4864-8864-000000000003", "/tmp/a")
 	handler.SetTerminal(terminal)
 	postJSON(t, base+"/subscribe", map[string]string{
-		"subscriber_id": "Backend Dev", "job_title": "Backend Dev", "session_name": "claude-backend",
+		"subscriber_id": "Backend Dev", "job_title": "Backend Dev", "session_name": "claude-00000003-3864-4864-8864-000000000003",
 	}).Body.Close()
 	postJSON(t, base+"/tasks", map[string]string{
 		"title": "Periodic work", "created_by": "Orchestrator", "assigned_to": "Backend Dev",
@@ -1520,7 +1520,7 @@ func TestBoardRemindSubscriber_DeletePersistsAndRequiresIdentity(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	base := server.URL + "/api/board/myproject"
 	resp := postJSON(t, base+"/subscribe", map[string]string{
-		"subscriber_id": "Orchestrator", "job_title": "Orchestrator", "session_name": "claude-orchestrator",
+		"subscriber_id": "Orchestrator", "job_title": "Orchestrator", "session_name": "claude-00000001-3864-4864-8864-000000000001",
 	})
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)

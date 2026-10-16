@@ -18,13 +18,13 @@ func TestOrchestratorTaskAssignmentIsolation(t *testing.T) {
 	server, h := setupBoardTestServer(t)
 	registerTaskPlanner(t, h, "team", "Orchestrator")
 	terminal := newMockTerminal()
-	terminal.addSession("orchestrator-session", "/tmp")
-	terminal.addSession("worker-session", "/tmp")
+	terminal.addSession("claude-00000009-3864-4864-8864-000000000009", "/tmp")
+	terminal.addSession("claude-0000000a-3864-4864-8864-00000000000a", "/tmp")
 	h.SetTerminal(terminal)
 	ctx := context.Background()
-	_, err := h.bs.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "orchestrator-session", nil, "all", true)
+	_, err := h.bs.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "claude-00000009-3864-4864-8864-000000000009", nil, "all", true)
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, "team", "Worker", "Worker", "worker-session", nil, "all", false)
+	_, err = h.bs.Subscribe(ctx, "team", "Worker", "Worker", "claude-0000000a-3864-4864-8864-00000000000a", nil, "all", false)
 	require.NoError(t, err)
 	base := server.URL + "/api/board/team"
 	resp := postJSON(t, base+"/tasks", map[string]string{"title": "Orchestrator only", "created_by": "Orchestrator", "assigned_to": "Orchestrator"})
@@ -32,8 +32,8 @@ func TestOrchestratorTaskAssignmentIsolation(t *testing.T) {
 	var task board.Task
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&task))
 	resp.Body.Close()
-	require.Eventually(t, func() bool { return len(terminal.sentTo("orchestrator-session")) > 0 }, 2*time.Second, 10*time.Millisecond)
-	require.Empty(t, terminal.sentTo("worker-session"))
+	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-00000009-3864-4864-8864-000000000009")) > 0 }, 2*time.Second, 10*time.Millisecond)
+	require.Empty(t, terminal.sentTo("claude-0000000a-3864-4864-8864-00000000000a"))
 	for _, id := range []int64{0, task.ID} {
 		resp = postJSON(t, base+"/tasks/claim", map[string]any{"subscriber_id": "Worker", "task_id": id})
 		require.NotEqual(t, http.StatusOK, resp.StatusCode)
@@ -46,5 +46,5 @@ func TestOrchestratorTaskAssignmentIsolation(t *testing.T) {
 	resp = postJSON(t, base+"/tasks/claim", map[string]any{"subscriber_id": "Orchestrator", "task_id": task.ID})
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
-	require.Contains(t, terminal.sentTo("orchestrator-session")[0], fmt.Sprintf("claim %d", task.ID))
+	require.Contains(t, terminal.sentTo("claude-00000009-3864-4864-8864-000000000009")[0], fmt.Sprintf("claim %d", task.ID))
 }

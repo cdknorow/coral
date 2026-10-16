@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,7 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 )
@@ -57,21 +60,35 @@ func (f *fgSessionTerminal) sentTo(name string) []string {
 
 const exitedTestSID = "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d"
 
+// noticeBoard is a board handler whose store has the session name subscribed on "team":
+// board notices go only into a board's own sessions (#3864).
+func noticeBoard(t *testing.T, term ptymanager.SessionTerminal, name string) *BoardHandler {
+	t.Helper()
+	bs, err := board.NewStore(filepath.Join(t.TempDir(), "board.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	_, err = bs.Subscribe(context.Background(), "team", "Dev", "Dev", name, nil, "")
+	require.NoError(t, err)
+	h := NewBoardHandler(bs)
+	h.terminal = term
+	return h
+}
+
 // Board notifications and nudges are not typed into the shell an exited CLI left.
 func TestBoardSendAutomatedSkipsABareShell(t *testing.T) {
 	term := newFGTerminal(newMockTerminal())
-	h := &BoardHandler{terminal: term}
 	ctx := context.Background()
 	name := naming.SessionName("claude", exitedTestSID)
+	h := noticeBoard(t, term, name)
 	term.addSession(name, "/tmp/test")
 
 	term.setFG(name, "zsh")
-	err := h.sendAutomated(ctx, name, "You have 1 unread message")
+	err := h.sendAutomated(ctx, "team", name, "You have 1 unread message")
 	assert.True(t, errors.Is(err, errAgentExited), "err = %v", err)
 	assert.Empty(t, term.sentTo(name), "nothing typed into the shell")
 
 	term.setFG(name, "node")
-	require.NoError(t, h.sendAutomated(ctx, name, "You have 1 unread message"))
+	require.NoError(t, h.sendAutomated(ctx, "team", name, "You have 1 unread message"))
 	assert.Equal(t, []string{"You have 1 unread message"}, term.sentTo(name), "a running agent gets it")
 }
 
@@ -79,11 +96,11 @@ func TestBoardSendAutomatedSkipsABareShell(t *testing.T) {
 // text is never typed into a terminal agent's shell, where $( ) and backticks run.
 func TestBoardSendAutomatedNeverTypesIntoATerminalAgent(t *testing.T) {
 	term := newFGTerminal(newMockTerminal())
-	h := &BoardHandler{terminal: term}
 	name := naming.SessionName("terminal", exitedTestSID)
+	h := noticeBoard(t, term, name)
 	term.addSession(name, "/tmp/test")
 	term.setFG(name, "zsh")
-	require.Error(t, h.sendAutomated(context.Background(), name, "hello $(id)"))
+	require.Error(t, h.sendAutomated(context.Background(), "team", name, "hello $(id)"))
 	assert.Empty(t, term.sentTo(name))
 }
 

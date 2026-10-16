@@ -55,18 +55,18 @@ func TestAutomatedMessagesAreHeldWhileAPermissionMenuIsOpen(t *testing.T) {
 	_, handler, mock, ss := setupSessionsTestServer(t)
 	term := &screenTerminal{fgSessionTerminal: newFGTerminal(mock), screen: permissionMenu}
 	handler.terminal = term
-	board := &BoardHandler{terminal: term}
 	ctx := context.Background()
 	name := naming.SessionName("claude", gateSID)
+	board := noticeBoard(t, term, name)
 	mock.addSession(name, "/tmp/test")
 	term.setFG(name, "node")
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: gateSID, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
 
-	require.NoError(t, board.sendAutomated(ctx, name, "[Lead] please review the patch"))
+	require.NoError(t, board.sendAutomated(ctx, "team", name, "[Lead] please review the patch"))
 	prompt, errMsg := handler.notifyTaskCreated(ctx, name, gateSID, &store.AgentTask{ID: 7, Title: "Fix the flake"})
 	require.Empty(t, errMsg)
 	require.NotEmpty(t, prompt)
-	require.NoError(t, board.sendAutomated(ctx, name, "You have 2 unread messages on the message board."))
+	require.NoError(t, board.sendAutomated(ctx, "team", name, "You have 2 unread messages on the message board."))
 
 	time.Sleep(300 * time.Millisecond)
 	assert.Empty(t, term.sentTo(name), "nothing typed while the permission menu is open")

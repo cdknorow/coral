@@ -17,9 +17,9 @@ func TestTaskAssignmentNoticeClaimsNamedTask(t *testing.T) {
 	server, h := setupBoardTestServer(t)
 	registerTaskPlanner(t, h, "team", "Orchestrator")
 	terminal := newMockTerminal()
-	terminal.addSession("frontend", "/tmp/frontend")
+	terminal.addSession("claude-0000000b-3864-4864-8864-00000000000b", "/tmp/frontend")
 	h.SetTerminal(terminal)
-	_, err := h.bs.Subscribe(context.Background(), "team", "Frontend", "Frontend", "frontend", nil, "all", false)
+	_, err := h.bs.Subscribe(context.Background(), "team", "Frontend", "Frontend", "claude-0000000b-3864-4864-8864-00000000000b", nil, "all", false)
 	require.NoError(t, err)
 	older, err := h.bs.CreateTask(context.Background(), "team", "Old work", "", "high", "Orchestrator", "Frontend")
 	require.NoError(t, err)
@@ -31,7 +31,7 @@ func TestTaskAssignmentNoticeClaimsNamedTask(t *testing.T) {
 	response.Body.Close()
 	command := fmt.Sprintf("coral-board task claim %d", newer.ID)
 	require.Eventually(t, func() bool {
-		for _, msg := range terminal.sentTo("frontend") {
+		for _, msg := range terminal.sentTo("claude-0000000b-3864-4864-8864-00000000000b") {
 			if strings.Contains(msg, command) {
 				return true
 			}

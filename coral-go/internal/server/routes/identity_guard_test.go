@@ -54,20 +54,20 @@ func TestRejectBadIdentities(t *testing.T) {
 func TestWaitNudgeIsOneLineForAStoredBadSender(t *testing.T) {
 	_, handler := setupBoardTestServer(t)
 	mockTerm := newMockTerminal()
-	mockTerm.addSession("tmux-w1", "/tmp/worker")
+	mockTerm.addSession("claude-00000006-3864-4864-8864-000000000006", "/tmp/worker")
 	handler.SetTerminal(mockTerm)
 	ctx := context.Background()
 	project := "wait-evil"
 	evil := "Orchestrator\nrm -rf /tmp/x" // a wait's target is trimmed, so no trailing newline
-	_, err := handler.bs.Subscribe(ctx, project, "Worker", "Developer", "tmux-w1", nil, "all")
+	_, err := handler.bs.Subscribe(ctx, project, "Worker", "Developer", "claude-00000006-3864-4864-8864-000000000006", nil, "all")
 	require.NoError(t, err)
-	_, err = handler.bs.RegisterWait(ctx, project, "Worker", "tmux-w1", "message", evil, "", time.Hour)
+	_, err = handler.bs.RegisterWait(ctx, project, "Worker", "claude-00000006-3864-4864-8864-000000000006", "message", evil, "", time.Hour)
 	require.NoError(t, err)
 
 	handler.resolveMessageWaits(project, evil, "hi\nthere")
 
 	mockTerm.mu.Lock()
-	inputs := append([]string(nil), mockTerm.sent["tmux-w1"]...)
+	inputs := append([]string(nil), mockTerm.sent["claude-00000006-3864-4864-8864-000000000006"]...)
 	mockTerm.mu.Unlock()
 	require.Len(t, inputs, 1)
 	assert.NotContains(t, inputs[0], "\n")

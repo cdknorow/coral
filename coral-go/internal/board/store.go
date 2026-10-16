@@ -729,6 +729,16 @@ func (s *Store) GetSubscriptionBySessionName(ctx context.Context, sessionName st
 	return &sub, err
 }
 
+// SessionSubscribedOn reports whether the agent session sessionName has an active
+// subscription on project: what a notice about that board must find before it is typed into
+// the session (#3864).
+func (s *Store) SessionSubscribedOn(ctx context.Context, project, sessionName string) (bool, error) {
+	var n int
+	err := s.reader().GetContext(ctx, &n,
+		"SELECT COUNT(*) FROM board_subscribers WHERE project = ? AND session_name = ? AND is_active = 1", project, sessionName)
+	return n > 0, err
+}
+
 // GetAllSubscriptions returns all active subscriptions keyed by session_name
 // (the tmux session identifier) for compatibility with live session lookups.
 func (s *Store) GetAllSubscriptions(ctx context.Context) (map[string]*Subscriber, error) {

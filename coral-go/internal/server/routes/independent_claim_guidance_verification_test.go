@@ -23,14 +23,14 @@ func TestIndependentClaimGuidanceAndQueueSafety(t *testing.T) {
 	server, h := setupBoardTestServer(t)
 	registerTaskPlanner(t, h, "team", "Orchestrator")
 	terminal := newMockTerminal()
-	terminal.addSession("dev1", "/tmp/dev1")
-	terminal.addSession("dev2", "/tmp/dev2")
+	terminal.addSession("claude-00000007-3864-4864-8864-000000000007", "/tmp/dev1")
+	terminal.addSession("claude-00000008-3864-4864-8864-000000000008", "/tmp/dev2")
 	h.SetTerminal(terminal)
 
 	ctx := context.Background()
-	_, err := h.bs.Subscribe(ctx, "team", "Dev1", "Developer", "dev1", nil, "all", false)
+	_, err := h.bs.Subscribe(ctx, "team", "Dev1", "Developer", "claude-00000007-3864-4864-8864-000000000007", nil, "all", false)
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, "team", "Dev2", "Developer", "dev2", nil, "all", false)
+	_, err = h.bs.Subscribe(ctx, "team", "Dev2", "Developer", "claude-00000008-3864-4864-8864-000000000008", nil, "all", false)
 	require.NoError(t, err)
 
 	base := server.URL + "/api/board/team"
@@ -54,7 +54,7 @@ func TestIndependentClaimGuidanceAndQueueSafety(t *testing.T) {
 	// Check terminal nudge sent to Dev1 terminal contains explicit ID
 	expectedClaimCmd := fmt.Sprintf("coral-board task claim %d", newerTask.ID)
 	require.Eventually(t, func() bool {
-		for _, msg := range terminal.sentTo("dev1") {
+		for _, msg := range terminal.sentTo("claude-00000007-3864-4864-8864-000000000007") {
 			if strings.Contains(msg, expectedClaimCmd) {
 				return true
 			}
@@ -76,7 +76,7 @@ func TestIndependentClaimGuidanceAndQueueSafety(t *testing.T) {
 	require.Equal(t, http.StatusOK, nudgeResp.StatusCode)
 	nudgeResp.Body.Close()
 	require.Eventually(t, func() bool {
-		for _, msg := range terminal.sentTo("dev1") {
+		for _, msg := range terminal.sentTo("claude-00000007-3864-4864-8864-000000000007") {
 			if strings.Contains(msg, fmt.Sprintf("[Task #%d reminder]", newerTask.ID)) && strings.Contains(msg, expectedClaimCmd) {
 				return true
 			}

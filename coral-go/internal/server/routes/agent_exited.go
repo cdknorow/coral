@@ -3,11 +3,14 @@ package routes
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/ptymanager"
 )
 
@@ -54,8 +57,49 @@ func automatedInputBlocked(ctx context.Context, term any, name, agentType, sessi
 // agent's terminal, unless its CLI has exited (#3219). Always as one line: a newline in
 // a name or preview would be an Enter keystroke (#3376). It goes through the
 // automated-input gate: held while the agent waits on a prompt (#3431).
-func (h *BoardHandler) sendAutomated(ctx context.Context, sessionName, text string) error {
-	return deliverAutomated(ctx, h.terminal, sessionName, "", "", "", board.OneLine(text), "board message")
+//
+// project is the board the text is about. It is typed only into a session subscribed on that
+// board, and only into exactly that session: its agent type and id go to the terminal, which
+// then never resolves the name another way (#3864).
+func (h *BoardHandler) sendAutomated(ctx context.Context, project, sessionName, text string) error {
+	agentType, sessionID, err := h.noticeTarget(ctx, project, sessionName)
+	if err != nil {
+		if _, seen := h.refusedNotices.LoadOrStore(project+"\x00"+sessionName, true); !seen {
+			slog.Warn("board notice refused", "board", project, "session", sessionName, "error", err)
+		}
+		return err
+	}
+	return deliverAutomated(ctx, h.terminal, sessionName, agentType, sessionID, "", board.OneLine(text), "board message")
+}
+
+// errNoticeTarget is why a board notice was not typed into a session.
+var errNoticeTarget = errors.New("not this board's agent session")
+
+// noticeTarget is the exact session a notice about project may be typed into: sessionName
+// must be an agent session ("<type>-<id>"), subscribed on project, and live as that type.
+// Anything else, or a failed lookup, refuses.
+func (h *BoardHandler) noticeTarget(ctx context.Context, project, sessionName string) (string, string, error) {
+	agentType, sessionID := logparse.ParseSessionName(sessionName)
+	if sessionID == "" || h.bs == nil {
+		return "", "", fmt.Errorf("%w: %q is not an agent session", errNoticeTarget, sessionName)
+	}
+	on, err := h.bs.SessionSubscribedOn(ctx, project, sessionName)
+	if err != nil {
+		return "", "", err
+	}
+	if !on {
+		return "", "", fmt.Errorf("%w: the session is not subscribed on this board", errNoticeTarget)
+	}
+	if h.liveSessionType != nil {
+		liveType, ok, err := h.liveSessionType(ctx, sessionID)
+		if err != nil {
+			return "", "", err
+		}
+		if !ok || !strings.EqualFold(liveType, agentType) {
+			return "", "", fmt.Errorf("%w: no live %s session with that id", errNoticeTarget, agentType)
+		}
+	}
+	return agentType, sessionID, nil
 }
 
 // deliverAutomated is how every automated sender in this package types into an
