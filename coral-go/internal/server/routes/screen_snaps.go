@@ -28,6 +28,10 @@ var screenSnapTimeout = 2 * time.Second
 // screenSnapsMax bounds the map; past it, the map starts over.
 const screenSnapsMax = 512
 
+// screenSnapKeep: a capture older than this is dropped when a new one is stored, so a stopped
+// session's last screen doesn't stay in memory (Security's note on #3887).
+const screenSnapKeep = time.Minute
+
 type screenSnap struct {
 	at   time.Time
 	done chan struct{}
@@ -46,6 +50,11 @@ func (c *screenSnaps) capture(ctx context.Context, name string, lines int, now t
 	if !ok || now.Sub(e.at) >= screenSnapTTL {
 		if c.m == nil || len(c.m) >= screenSnapsMax {
 			c.m = map[string]*screenSnap{}
+		}
+		for k, old := range c.m {
+			if now.Sub(old.at) >= screenSnapKeep {
+				delete(c.m, k)
+			}
 		}
 		e = &screenSnap{at: now, done: make(chan struct{})}
 		c.m[key] = e

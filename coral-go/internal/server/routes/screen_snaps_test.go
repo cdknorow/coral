@@ -77,6 +77,21 @@ func TestScreenSnapsShareOneCapture(t *testing.T) {
 	assert.Equal(t, "late", out)
 }
 
+// A capture older than screenSnapKeep is dropped when another is stored: a stopped session's
+// screen doesn't stay in memory (Security's note on #3887).
+func TestScreenSnapsDropOldCaptures(t *testing.T) {
+	var c screenSnaps
+	fetch := func(context.Context) (string, error) { return "screen", nil }
+	t0 := time.Now()
+	_, _, _ = c.capture(context.Background(), "claude-gone", 40, t0, fetch)
+	_, _, _ = c.capture(context.Background(), "claude-live", 40, t0.Add(screenSnapKeep), fetch)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, kept := c.m["claude-gone\x0040"]
+	assert.False(t, kept, "the stopped session's capture is gone")
+	assert.Len(t, c.m, 1)
+}
+
 // stampingBackend reports an output stamp the test sets (ptymanager.OutputStamper).
 type stampingBackend struct {
 	ptymanager.TerminalBackend
