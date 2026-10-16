@@ -53,3 +53,13 @@ func TestWSCoral_ConnectionsShareTicks(t *testing.T) {
 	assert.LessOrEqual(t, got, int64(intervals+1), "one build per interval for both connections, not one each")
 	assert.GreaterOrEqual(t, got, int64(intervals-1), "the list is still built every interval")
 }
+
+// clearOfTick returns once the next wall-clock tick (#3846) is at least need away, waiting
+// until just after it when it is closer. Ticks fall on multiples of the poll interval, not
+// a whole interval after a test connects, so a test that counts on no tick for a while
+// (a remote burst coalescing into one diff, a kick's build count) must place itself (#3932).
+func clearOfTick(interval, need time.Duration) {
+	if d := untilTick(time.Now(), interval); d < need {
+		time.Sleep(d + 50*time.Millisecond)
+	}
+}

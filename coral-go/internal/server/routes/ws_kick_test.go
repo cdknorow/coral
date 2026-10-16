@@ -18,7 +18,8 @@ import (
 
 // A state change is on /ws/coral at once, not on the next tick: archive and
 // unarchive reach a dashboard and a hub feed as a coral_diff well inside the
-// poll interval (set to 10s here, so the ticker cannot be what delivers it).
+// poll interval (set to 10s here, and the test keeps clear of the next wall-clock tick, so the
+// ticker cannot be what delivers it).
 // A burst of kicks costs one shared build.
 func TestWSCoral_KickPushesStateChangesImmediately(t *testing.T) {
 	var builds atomic.Int64
@@ -57,6 +58,9 @@ func TestWSCoral_KickPushesStateChangesImmediately(t *testing.T) {
 		require.Equal(t, "coral_update", first.Type)
 		conns = append(conns, conn)
 	}
+	// No tick during the archive round trips and the burst: a tick would deliver a change
+	// (the kick must) and add a build to the count (#3932).
+	clearOfTick(handler.cfg.WSPollInterval, 5*time.Second)
 
 	// awaitArchived reads conn until a coral_diff carries sid with archived=want,
 	// failing if that takes longer than a generous bound (the tick is 10s away).

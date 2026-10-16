@@ -138,6 +138,9 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	defer cancel()
 	conn := dialFeed(t, ctx, server.URL)
 	time.Sleep(h.cfg.WSRemoteDebounce + 100*time.Millisecond) // past the remote limit since the first build
+	// A tick inside the burst would carry the change pending then (b-2, b-8) as its own diff,
+	// as it should: keep the next one out of the burst and the read window (#3932).
+	clearOfTick(h.cfg.WSPollInterval, 3*time.Second)
 
 	src.set(remoteSnap("b-1"))
 	first := awaitStatus(t, ctx, conn, "b-1", time.Second)
