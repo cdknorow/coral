@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const PAGE = 30; // live_chat.js FIRST_PAGE: the size of the first page the dashboard asks for
 
 (async () => {
     const { client, Page, Runtime, ev, waitFor, PRELOAD, install, select, reqs, clearReqs, firstPage, settled } = await connect();
@@ -31,7 +32,7 @@ const BASE = require('./test_base').BASE;
         await clearReqs();
         await select('qa-kept-a');
         const firstA = await firstPage();
-        assert.equal(firstA.length, 100, 'the first visit loads a first page of 100');
+        assert.equal(firstA.length, PAGE, `the first visit loads a first page of ${PAGE}`);
         await quiet();
         await select('qa-kept-b');
         await firstPage();
@@ -41,8 +42,8 @@ const BASE = require('./test_base').BASE;
         await clearReqs();
         await select('qa-kept-a');
         // Before any reply: the kept page is already on screen.
-        assert.deepEqual((await ids()).slice(0, 100), firstA, 'the kept page is shown at once, before the server has answered');
-        await waitFor(`window.__rendered().length === 103`, 'the three new messages');
+        assert.deepEqual((await ids()).slice(0, PAGE), firstA, 'the kept page is shown at once, before the server has answered');
+        await waitFor(`window.__rendered().length === ${PAGE + 3}`, 'the three new messages');
         await quiet();
         const back = await chat();
         assert.equal(back.filter(r => r.first || r.older).length, 0, `no first page and no older page on the way back (got ${JSON.stringify(back.map(r => ({ after: r.after, first: r.first })))})`);
@@ -52,27 +53,27 @@ const BASE = require('./test_base').BASE;
 
         console.log('2. A transcript that got shorter loads again from its start');
         await select('qa-kept-b');
-        await waitFor(`window.__rendered().length === 100`, 'B shown');
+        await waitFor(`window.__rendered().length === ${PAGE}`, 'B shown');
         await quiet();
         await ev(`window.__m.agents['qa-kept-b-id'].msgs.length = 200`); // B was cut from 250 to 200 messages while away
         await select('qa-kept-a');
-        await waitFor(`window.__rendered().length === 103`, 'A shown again');
+        await waitFor(`window.__rendered().length === ${PAGE + 3}`, 'A shown again');
         await quiet();
         await clearReqs();
         await select('qa-kept-b');
         await waitFor(`window.__m.requests.some(r => r.first && r.settled)`, 'a first page for the shortened transcript', 5000);
         await quiet();
         const nowB = await ids();
-        assert.equal(nowB.length, 100, 'B is shown again from its start');
+        assert.equal(nowB.length, PAGE, 'B is shown again from its start');
         assert.equal(nowB[nowB.length - 1], 'B199', `the newest message is B199 (got ${nowB[nowB.length - 1]})`);
         console.log('   ✓ a shorter transcript: the kept page is dropped and the first page is loaded again');
 
         console.log('3. A kept page older than its time limit is not used');
         await select('qa-kept-a');
-        await waitFor(`window.__rendered().length === 103`, 'A shown');
+        await waitFor(`window.__rendered().length === ${PAGE + 3}`, 'A shown');
         await quiet();
         await select('qa-kept-b');
-        await waitFor(`window.__rendered().length === 100`, 'B shown');
+        await waitFor(`window.__rendered().length === ${PAGE}`, 'B shown');
         await quiet();
         // Six minutes pass (the limit is five).
         await ev(`window.__realNow = Date.now.bind(Date); Date.now = () => window.__realNow() + 6 * 60 * 1000; true`);
@@ -82,7 +83,7 @@ const BASE = require('./test_base').BASE;
         await ev(`Date.now = window.__realNow; true`);
         await quiet();
         const afterLimit = await ids();
-        assert.equal(afterLimit.length, 100, 'a fresh first page: the newest 100 of the 253 messages');
+        assert.equal(afterLimit.length, PAGE, `a fresh first page: the newest ${PAGE} of the 253 messages`);
         assert.equal(afterLimit[afterLimit.length - 1], 'A252', 'ending at the newest message');
         console.log('   ✓ after the time limit the first page is fetched');
 
@@ -103,10 +104,10 @@ const BASE = require('./test_base').BASE;
         for (const [how, forget] of [['an account change (setStoreOwner)', `import(${MOD}).then(m => { m.setStoreOwner('0123456789abcdef'); return true; })`],
             ['sign-out (forgetAccountMemory, which cloud.js runs next to purgeStored)', `import(${MOD}).then(m => { m.forgetAccountMemory(); return true; })`]]) {
             await select('qa-kept-a');
-            await waitFor(`window.__rendered().length >= 100`, 'A shown');
+            await waitFor(`window.__rendered().length >= ${PAGE}`, 'A shown');
             await quiet();
             await select('qa-kept-b');
-            await waitFor(`window.__rendered().length >= 100`, 'B shown');
+            await waitFor(`window.__rendered().length >= ${PAGE}`, 'B shown');
             await quiet();
             await ev(forget);
             await clearReqs();
