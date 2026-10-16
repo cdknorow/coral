@@ -64,7 +64,12 @@ LS.setItem(recentDirsKey('srv2'), JSON.stringify(['/r/bo']));
 LS.setItem(store.storeKey('coral-pending-messages'), JSON.stringify({ s3: [] }));
 store.writeStars(store.storeKey('coral-starred-files-s3'), ['b.go']);
 LS.setItem(`coral-input-drafts@${a}`, '{}'); // a stray of another account
+const SS = globalThis.sessionStorage; // the agent UI's panel-request draft (#4116) goes too; other session keys stay
+SS.setItem('coral-panel-request:s3', JSON.stringify({ draft: 'a panel request bo typed' }));
+SS.setItem('coral-panel-request:s4', '{}');
+SS.setItem('coral-update-reloaded', 'v1');
 const removed = store.purgeStored();
+assert.deepEqual(Object.keys(SS).sort(), ['coral-update-reloaded'], 'sign-out removes the panel-request drafts in sessionStorage, and nothing else there');
 assert.ok(removed >= 5, `sign-out removed ${removed}`);
 assert.deepEqual(keys(), ['coral-sidebar-collapsed', 'coral-store-owner'], 'sign-out removes every kind for every account, and nothing else');
 

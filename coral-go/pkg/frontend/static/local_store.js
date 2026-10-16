@@ -7,7 +7,7 @@
  *     (storeKey: "<kind>@<tag>", the tag a hash of the account's email, never the email), so a
  *     different account never reads another's even if a tab missed a cleanup; and when the
  *     account changes, the previous account's are removed (setStoreOwner).
- *   - Sign-out removes all of them (purgeStored), for every account.
+ *   - Sign-out removes all of them (purgeStored), for every account, and the panel-request drafts a tab keeps in sessionStorage (#4116).
  *   - At start, then once a day in a tab left open (ageOutStored), drafts untouched for DRAFT_MAX_AGE_MS go, the draft of a live
  *     session that has ended and was untouched for a day goes (checked when a live list arrives,
  *     at most hourly), the drafts are capped at
@@ -15,10 +15,13 @@
  *     folders are already a short list (6 per server); they go on sign-out and account change.
  *   - A local dashboard has no account: its keys stay as they were (nothing is lost on update). */
 
-import { browserLocal } from './safe_storage.js';
+import { browserLocal, browserSession } from './safe_storage.js';
 
 const STORED_KINDS = ['coral-input-drafts', 'coral-pending-messages', 'coral-recent-dirs', 'coral-starred-files-'];
 const OWNER_KEY = 'coral-store-owner';
+// What a page keeps in sessionStorage of what people typed (#4116): the agent UI's panel-request draft, per session id. Not tied to an
+// account (the tab is), so sign-out and an account change remove it like the kinds above.
+const SESSION_KINDS = ['coral-panel-request:'];
  const DRAFT_MAX_AGE_MS = 3 * 24 * 3600 * 1000;
  const ENDED_GRACE_MS = 24 * 3600 * 1000;
 export const DRAFTS_MAX_BYTES = 256 * 1024;
@@ -69,7 +72,9 @@ export function forgetAccountMemory() {
 export function purgeStored(which = () => true) {
     const keys = browserLocal.keys().filter(k => isStored(k) && which(k, ownerOf(k)));
     for (const k of keys) browserLocal.remove(k);
-    return keys.length;
+    const drafts = browserSession.keys().filter(k => SESSION_KINDS.some(p => k.startsWith(p)) && which(k, ''));
+    for (const k of drafts) browserSession.remove(k);
+    return keys.length + drafts.length;
 }
 
 /** Set the account whose data this page reads and writes. A change of account (or the first Hub
