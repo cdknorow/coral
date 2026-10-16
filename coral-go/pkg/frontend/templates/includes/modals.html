@@ -416,7 +416,7 @@
             </div>
             <div class="modal-body">
                 <label id="prompt-modal-label" for="prompt-modal-input" style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px"></label>
-                <input type="text" id="prompt-modal-input" style="width:100%" autofocus>
+                <input type="text" id="prompt-modal-input" style="width:100%" aria-labelledby="prompt-modal-title prompt-modal-label" autofocus>
                 <div id="prompt-modal-colors" class="prompt-modal-colors" style="display:none">
                     <div class="prompt-modal-colors-label">Name color</div>
                     <div class="color-swatches" role="group" aria-label="Name color"></div>
@@ -633,7 +633,7 @@
                 </dd>
                 <dt>Default Working Directory</dt>
                 <dd>
-                    <input type="text" id="settings-working-dir" class="settings-input" data-coral-root="{{ .CoralRoot }}" placeholder="{{ .CoralRoot }}">
+                    <input type="text" id="settings-working-dir" class="settings-input" aria-label="Default working directory" data-coral-root="{{ .CoralRoot }}" placeholder="{{ .CoralRoot }}">
                 </dd>
                 <dt>API Key</dt>
                 <dd>
@@ -1001,14 +1001,14 @@
                 </p>
                 <div class="prompt-field">
                     <div class="prompt-field-header">
-                        <label class="prompt-field-label">Orchestrator Prompt</label>
+                        <label class="prompt-field-label" for="settings-prompt-orchestrator">Orchestrator Prompt</label>
                         <button class="btn prompt-field-reset" data-on-click="m-reset-default-prompt" data-arg="orchestrator">Reset to Default</button>
                     </div>
                     <textarea id="settings-prompt-orchestrator" class="settings-input prompt-textarea" rows="5"></textarea>
                 </div>
                 <div class="prompt-field">
                     <div class="prompt-field-header">
-                        <label class="prompt-field-label">Worker Prompt</label>
+                        <label class="prompt-field-label" for="settings-prompt-worker">Worker Prompt</label>
                         <button class="btn prompt-field-reset" data-on-click="m-reset-default-prompt" data-arg="worker">Reset to Default</button>
                     </div>
                     <textarea id="settings-prompt-worker" class="settings-input prompt-textarea" rows="5"></textarea>
@@ -1019,14 +1019,14 @@
                 </p>
                 <div class="prompt-field">
                     <div class="prompt-field-header">
-                        <label class="prompt-field-label">Team Reminder (Orchestrator)</label>
+                        <label class="prompt-field-label" for="settings-team-reminder-orchestrator">Team Reminder (Orchestrator)</label>
                         <button class="btn prompt-field-reset" data-on-click="m-reset-default-prompt" data-arg="team_orchestrator">Reset to Default</button>
                     </div>
                     <textarea id="settings-team-reminder-orchestrator" class="settings-input prompt-textarea" rows="2"></textarea>
                 </div>
                 <div class="prompt-field">
                     <div class="prompt-field-header">
-                        <label class="prompt-field-label">Team Reminder (Worker)</label>
+                        <label class="prompt-field-label" for="settings-team-reminder-worker">Team Reminder (Worker)</label>
                         <button class="btn prompt-field-reset" data-on-click="m-reset-default-prompt" data-arg="team_worker">Reset to Default</button>
                     </div>
                     <textarea id="settings-team-reminder-worker" class="settings-input prompt-textarea" rows="2"></textarea>
