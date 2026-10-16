@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/cdknorow/coral/internal/updatecheck"
 	"net"
 	"net/http"
 	"os"
@@ -629,33 +630,16 @@ func tmuxInstallCommand() string {
 	}
 }
 
-var githubReleasesAPI = "https://api.github.com/repos/cdknorow/coral/releases/latest"
+// githubReleasesAPI is where the update check asks (tests point it at their own server).
+var githubReleasesAPI = updatecheck.ReleasesAPI
 
-const githubReleasesURL = "https://github.com/cdknorow/coral/releases"
+const githubReleasesURL = updatecheck.ReleasesURL
 
-// FetchLatestVersion queries GitHub for the latest release version tag (without "v" prefix).
-// Returns empty string on any error.
+// FetchLatestVersion is the latest release's version (without "v"), or "" on any error: a reply
+// that isn't a 200, too large, or a tag that isn't a version (updatecheck, #3660).
 func FetchLatestVersion() string {
-	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", githubReleasesAPI, nil)
-	if err != nil {
-		return ""
-	}
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-	var data struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return ""
-	}
-	return strings.TrimPrefix(data.TagName, "v")
+	v, _ := updatecheck.Latest(context.Background(), githubReleasesAPI)
+	return v
 }
 
 // UpdateCheck returns update availability info.
@@ -669,7 +653,8 @@ func (h *SystemHandler) UpdateCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	latest := FetchLatestVersion()
-	available := latest != "" && latest != config.Version && config.Version != ""
+	// Only a strictly newer release: a dev, beta or newer build is never sent to an older one.
+	available := updatecheck.Newer(latest, config.Version)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"available":   available,
 		"current":     config.Version,

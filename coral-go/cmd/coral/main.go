@@ -30,6 +30,7 @@ import (
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/cdknorow/coral/internal/updatecheck"
 )
 
 const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
@@ -226,7 +227,7 @@ func main() {
 		go func() {
 			time.Sleep(5 * time.Second)
 			latest := routes.FetchLatestVersion()
-			if latest != "" && latest != config.Version {
+			if updatecheck.Newer(latest, config.Version) {
 				log.Printf("[UPDATE] New version available: v%s (you have v%s) — %s", latest, config.Version, "https://github.com/cdknorow/coral/releases")
 			}
 		}()

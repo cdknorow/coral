@@ -35,16 +35,12 @@ import (
 	"github.com/cdknorow/coral/internal/loginlink"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/cdknorow/coral/internal/updatecheck"
 	"github.com/gen2brain/beeep"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
 // iconData is embedded per-platform in icon_unix.go (.png) and icon_windows.go (.ico).
-
-const (
-	githubReleasesAPI = "https://api.github.com/repos/cdknorow/coral/releases/latest"
-	githubReleasesURL = "https://github.com/cdknorow/coral/releases"
-)
 
 var version = "dev"
 
@@ -474,46 +470,36 @@ func killAllAgents(baseURL, dataDir string) int {
 	return killed
 }
 
-// checkForUpdatesOnStartup checks for updates silently on startup.
+// checkForUpdatesOnStartup tells the user, once, when a newer release is out. A build whose tier
+// opted out of update checks (dev, beta, partner) never asks (#3660, as the server does).
 func checkForUpdatesOnStartup(port int) {
+	if !config.TierChecksForUpdates {
+		return
+	}
 	time.Sleep(5 * time.Second) // Wait for server to be ready
-	latest := fetchLatestVersion()
-	if latest != "" && latest != version && version != "dev" {
+	if latest, _ := updatecheck.Available(context.Background(), updatecheck.ReleasesAPI, version); latest != "" {
 		beeep.Notify("Coral", fmt.Sprintf("Update available: v%s (you have v%s)", latest, version), "")
 	}
 }
 
-// checkForUpdates checks for updates and notifies.
+// checkForUpdates checks for updates and notifies (the tray's "Check for Updates"). Only a
+// strictly newer release, with a version-shaped tag, is offered (updatecheck).
 func checkForUpdates() {
-	latest := fetchLatestVersion()
-	if latest == "" {
+	if !config.TierChecksForUpdates {
+		beeep.Notify("Coral", "This build doesn't check for updates.", "")
+		return
+	}
+	latest, err := updatecheck.Latest(context.Background(), updatecheck.ReleasesAPI)
+	if err != nil {
 		beeep.Notify("Coral", "Could not check for updates.", "")
 		return
 	}
-	if latest != version && version != "dev" {
+	if updatecheck.Newer(latest, version) {
 		beeep.Notify("Coral", fmt.Sprintf("Update available: v%s\nYou have v%s", latest, version), "")
-		executil.OpenBrowser(githubReleasesURL)
+		executil.OpenBrowser(updatecheck.ReleasesURL)
 	} else {
 		beeep.Notify("Coral", "You're on the latest version.", "")
 	}
-}
-
-// fetchLatestVersion queries GitHub for the latest release version.
-func fetchLatestVersion() string {
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(githubReleasesAPI)
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-
-	var data struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return ""
-	}
-	return strings.TrimPrefix(data.TagName, "v")
 }
 
 // PID file management

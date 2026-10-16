@@ -173,3 +173,20 @@ func skipWhenUpdateCheckIsOff(t *testing.T) {
 		t.Skip("dev and beta builds skip the update check; run without -tags dev to exercise it")
 	}
 }
+
+// #3660: a build ahead of the latest release (or a release candidate of the next one) is never
+// told to move to the older release.
+func TestUpdateCheck_NeverOffersAnOlderRelease(t *testing.T) {
+	skipWhenUpdateCheckIsOff(t)
+	mockGitHubAPI(t, "v0.14.0", http.StatusOK)
+	origVersion := config.Version
+	t.Cleanup(func() { config.Version = origVersion })
+	for _, current := range []string{"0.15.0", "0.14.1-rc1", "0.14.0"} {
+		config.Version = current
+		w := httptest.NewRecorder()
+		(&SystemHandler{}).UpdateCheck(w, httptest.NewRequest("GET", "/api/system/update-check", nil))
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.Equal(t, false, resp["available"], "current %s", current)
+	}
+}
