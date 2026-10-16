@@ -22,13 +22,20 @@ const (
 	inpcbVFlag = 44 // INP_IPV4 1, INP_IPV6 2
 	inpcbFAddr = 48 // 16 bytes: in6_addr, or an IPv4 address in the last 4
 	inpcbLAddr = 64
-	inpcbMin   = 80
 
 	socketUID = 64 // so_uid, u32
-	socketMin = 68
 
 	inpIPv4 = 0x1
 	inpIPv6 = 0x2
+)
+
+// The item sizes this layout is known at (sizeof xinpcb_n and xsocket_n: read on Darwin 25
+// arm64; cross-build.yml runs the real-table tests on the macOS arm64 and Intel runners).
+// Any other size means the structs changed: ErrLayout, never a guess at where the fields
+// moved.
+var (
+	knownInpcbLens  = map[int]bool{104: true}
+	knownSocketLens = map[int]bool{104: true}
 )
 
 // errAmbiguous: two sockets with the client's addresses and different users.
@@ -54,19 +61,19 @@ func parsePCBList(b []byte, client, server netip.AddrPort, le bool) (int, error)
 		}
 		item := b[off : off+n]
 		switch kind {
-		case xsoInpcb:
-			if n < inpcbMin {
-				return -1, fmt.Errorf("peercred: inpcb item of %d bytes", n)
+		case xsoInpcb: // every item is checked: one changed struct changes them all
+			if !knownInpcbLens[n] {
+				return -1, fmt.Errorf("%w: an inpcb item of %d bytes", ErrLayout, n)
 			}
 			local, ok1 := pcbAddr(item, inpcbLAddr, inpcbLPort)
 			remote, ok2 := pcbAddr(item, inpcbFAddr, inpcbFPort)
 			pending = ok1 && ok2 && local == client && remote == server
 		case xsoSocket:
+			if !knownSocketLens[n] {
+				return -1, fmt.Errorf("%w: a socket item of %d bytes", ErrLayout, n)
+			}
 			if pending {
 				pending = false
-				if n < socketMin {
-					return -1, fmt.Errorf("peercred: socket item of %d bytes", n)
-				}
 				u := int(order.Uint32(item[socketUID:]))
 				if found && u != uid {
 					return -1, errAmbiguous
