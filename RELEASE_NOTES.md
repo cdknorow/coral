@@ -1,5 +1,28 @@
 # Release Notes
 
+## v1.4.56 — Faster chat history, sends that no longer stall, and replacing a refused key
+
+### New
+
+- **Replace a refused secret key.** When Coral refuses its secret key file (other accounts could read it), Settings > Coral Hub offers Replace the secret key. After a confirmation that lists what it discards (the Coral Hub connection and the remote servers' API keys), it makes a new key; the steps to recover by hand are also in the message. It's offered only when Coral refuses the key, never when the file just can't be read.
+- **Set Coral Hub's access at launch.** `coral --cloud-max-mode view|interact|launch`, or `CORAL_CLOUD_MAX_MODE`, sets the most Coral Hub may do on this computer at every start; an invalid value stops Coral with exit code 2. While the flag or variable is set, a cap changed in the dashboard is replaced at the next start.
+- **Task reviews on the board.** submit-review hands a task to the team's orchestrator, who completes it or delegates the review with coral-board task review; each reviewer runs task approve or task reject --note. The last approval completes the task, a rejection returns it to its author with the note, and a team with no orchestrator completes on submit. Review commands are not available through Coral Hub.
+- **"Run agents at lower priority".** The agent priority setting is now a checkbox, on by default: agents and everything they start run below Coral itself, so the dashboard, Coral Hub and your own apps stay quick. It changes scheduling only and applies to agents started afterwards.
+
+### Fixes
+
+- **Sends no longer stall behind a long paste.** A long automated paste that reached the agent's input box could be read as one that didn't, and every later board message and nudge then waited behind it. Coral now reads the whole pane for the input box, and a held paste of its own that it can't confirm gives up after a minute (10 seconds with an @-mention behind it), with a notice, instead of blocking every later send.
+- **Chat history loads faster.** A resumed session's earlier transcript stays cached instead of being re-read every minute, a cold read decodes in parallel, and the goals tracker reads a transcript from its end, so a long Claude session's chat is no longer re-parsed whole every minute.
+- **Lower CPU use.** Agent log status is read incrementally, with a one-pass cleaner for terminal escape codes.
+- **Quicker agent switches.** The dashboard no longer loads the file search list on every agent switch; a board's status is computed once for requests that arrive together. The selected agent's polls and terminal stop when you go back to the list, open another view or hide the tab.
+
+### Security
+
+- **Browser storage per Coral Hub account.** Drafts, pending messages, recent folders and starred files are kept per Coral Hub account, removed on sign-out, and old drafts and star lists age out (3 and 30 days).
+- **One session cookie per Coral.** Over plain HTTP on this computer (localhost), browsers send Coral's session cookie to every other web server on the same host name, whatever its port; Coral now names the cookie per server so two Corals don't sign each other out, and the session lasts 24 hours. Existing sign-ins keep working until they expire. Use HTTPS (the cookie is then a __Host- cookie) or the strict local auth setting where other people run servers on the same computer. Signing out ends this server's session under every cookie name. API replies are marked no-store by default (artifacts and ETag-validated replies keep their own caching), and the QR code's reply, whose address can carry a sign-in token, is no longer cached for an hour.
+- **Large replies through Coral Hub.** Through Coral Hub, a reply over 2 MiB is refused instead of streamed (the dashboard pages history and the board export), and the computer checks at most 32 MiB of replies at once, answering busy beyond that. The dashboard says when a reply was too large instead of showing an empty view.
+- **Review verdicts and strict local auth.** Review verdicts are as strong as strict local auth: with it off, a local caller without a token can name any subscriber on board routes.
+
 ## v1.4.55 — Chat history through Coral Hub, Windows key files, and no inline scripts
 
 ### New
