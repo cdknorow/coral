@@ -24,6 +24,7 @@ import (
 	"github.com/cdknorow/coral/internal/agentenv"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/inputlog"
+	"github.com/cdknorow/coral/internal/logdedupe"
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
 )
@@ -1380,10 +1381,48 @@ func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...str
 	out, err := cmd.Output()
 	noteTmuxResult(err, bin, socketPath)
 	if err != nil {
-		log.Printf("[tmux] exec failed: bin=%q socket=%q %s err=%v stderr=%q", bin, socketPath, describeTmuxCommand(args), err, execStderr(err))
+		logExecFailure(bin, socketPath, args, err)
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// execFailures coalesces repeated tmux failures (#4112): the same command failing the same way
+// on the same pane (a send to a pane that is gone, again and again) logs once, then once every
+// execFailureEvery with how many were held back.
+var execFailures = logdedupe.New(execFailureEvery)
+
+const execFailureEvery = 5 * time.Minute
+
+func logExecFailure(bin, socketPath string, args []string, err error) {
+	stderr := execStderr(err)
+	sub, target := tmuxCommandName(args)
+	ok, heldBack := execFailures.Allow(socketPath + "\x00" + sub + "\x00" + target + "\x00" + err.Error() + "\x00" + stderr)
+	if !ok {
+		return
+	}
+	more := ""
+	if heldBack > 0 {
+		more = fmt.Sprintf(" (and %d more like it in the last %s)", heldBack, execFailureEvery)
+	}
+	log.Printf("[tmux] exec failed: bin=%q socket=%q %s err=%v stderr=%q%s", bin, socketPath, describeTmuxCommand(args), err, stderr, more)
+}
+
+// tmuxCommandName is a tmux command's subcommand and -t target, past the socket arguments.
+func tmuxCommandName(args []string) (sub, target string) {
+	i := 0
+	for i+1 < len(args) && (args[i] == "-S" || args[i] == "-f" || args[i] == "-L") {
+		i += 2
+	}
+	if i >= len(args) {
+		return "", ""
+	}
+	for j := i + 1; j+1 < len(args); j++ {
+		if args[j] == "-t" {
+			return args[i], args[j+1]
+		}
+	}
+	return args[i], ""
 }
 
 // describeTmuxCommand names a tmux command for a failure log line without its values (#4112,

@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,4 +64,31 @@ func TestDescribeTmuxCommand(t *testing.T) {
 	assert.Equal(t, `cmd=list-panes target="" other_args=0 bytes=0`, describeTmuxCommand([]string{"list-panes"}))
 	assert.Equal(t, "cmd=none", describeTmuxCommand(nil))
 	assert.False(t, strings.Contains(describeTmuxCommand([]string{"set-buffer", "-b", "b", "SECRET"}), "SECRET"))
+}
+
+// #4112 fix 2: the same failure again and again (a send to a pane that is gone) logs one line,
+// then one with the count after the window, instead of a line per send (100 sends gave 200 lines).
+func TestRepeatedTmuxFailuresAreCoalesced(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	at := time.Now()
+	var mu sync.Mutex
+	execFailures.SetClock(func() time.Time { mu.Lock(); defer mu.Unlock(); return at })
+	t.Cleanup(func() { execFailures.SetClock(time.Now) })
+	c := failingTmux(t)
+	ctx := context.Background()
+
+	for i := 0; i < 100; i++ {
+		_ = c.SendTerminalInputToTarget(ctx, "claude-gone:0.0", "x")
+	}
+	assert.Equal(t, 1, strings.Count(buf.String(), "[tmux] exec failed"), "one line for 100 identical failures")
+	_ = c.SendTerminalInputToTarget(ctx, "claude-other:0.0", "x")
+	assert.Equal(t, 2, strings.Count(buf.String(), "[tmux] exec failed"), "another pane's failure is its own line")
+
+	mu.Lock()
+	at = at.Add(execFailureEvery)
+	mu.Unlock()
+	_ = c.SendTerminalInputToTarget(ctx, "claude-gone:0.0", "x")
+	assert.Contains(t, buf.String(), "(and 99 more like it in the last 5m0s)")
 }
