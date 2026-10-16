@@ -4,6 +4,7 @@ package ptymanager
 
 import (
 	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/cdknorow/coral/internal/safego"
 	"os"
 	"os/exec"
 	"syscall"
@@ -53,6 +54,7 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 	}
 
 	go func() {
+		defer safego.Recover("ptymanager/pty_unix:55")
 		cmd.Wait()
 		close(p.done)
 	}()

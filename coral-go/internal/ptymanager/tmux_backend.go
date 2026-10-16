@@ -15,6 +15,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
@@ -555,12 +556,16 @@ func (b *TmuxBackend) startTail(name, tmuxName, logPath string) *logTail {
 	}
 
 	go func() {
+		defer safego.Recover("ptymanager/tmux_backend:557")
 		defer close(tail.done)
 		defer watcher.Close()
 		defer f.Close()
 		b.tailLoop(ctx, name, tail, f, offset, watcher)
 	}()
-	go b.watchSession(ctx, name, tmuxName, tail)
+	go func() {
+		defer safego.Recover("ptymanager/tmux_backend:b.watchSession")
+		b.watchSession(ctx, name, tmuxName, tail)
+	}()
 
 	return tail
 }

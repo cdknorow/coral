@@ -12,6 +12,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
@@ -199,7 +200,7 @@ func (n *notifier) post(f func()) {
 	n.q = append(n.q, f)
 	if !n.running {
 		n.running = true
-		go n.run()
+		go func() { defer safego.Recover("ptymanager/automated_input:n.run"); n.run() }()
 	}
 	n.mu.Unlock()
 }
@@ -216,7 +217,12 @@ func (n *notifier) run() {
 		n.q[0] = nil
 		n.q = n.q[1:]
 		n.mu.Unlock()
-		f()
+		// One notice's panic must not stop the queue: running would stay true and no later
+		// notice would ever be sent (#3998).
+		func() {
+			defer safego.Recover("automated input: a notice")
+			f()
+		}()
 	}
 }
 
@@ -652,7 +658,7 @@ func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted bool, kind s
 		g.logHeld(in, why, "paste held")
 	}
 	if start {
-		go g.loop()
+		go func() { defer safego.Recover("ptymanager/automated_input:g.loop"); g.loop() }()
 	}
 }
 
@@ -685,7 +691,7 @@ func (g *inputGate) holdEnter(in AutomatedInput, kind string) {
 	g.mu.Unlock()
 	g.logHeld(enter, "a prompt opened between its text and its Enter", "Enter withheld")
 	if start {
-		go g.loop()
+		go func() { defer safego.Recover("ptymanager/automated_input:g.loop"); g.loop() }()
 	}
 }
 
@@ -776,7 +782,7 @@ func (g *inputGate) hold(in AutomatedInput, why, kind string) {
 	g.logHeld(in, why, "held")
 	if !g.running {
 		g.running = true
-		go g.loop()
+		go func() { defer safego.Recover("ptymanager/automated_input:g.loop"); g.loop() }()
 	}
 }
 
@@ -915,11 +921,16 @@ func (g *inputGate) loop() {
 		g.expireAndReportLocked()
 		g.mu.Unlock()
 		for _, n := range names {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			unlock := g.lockSession(n)
-			g.flush(ctx, n)
-			unlock()
-			cancel()
+			// One session's panic must not stop the loop, or held input would stay held for every
+			// session (running stays true) (#3998).
+			func() {
+				defer safego.Recover("automated input: flush " + n)
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				unlock := g.lockSession(n)
+				defer unlock()
+				g.flush(ctx, n)
+			}()
 		}
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/google/uuid"
 )
@@ -165,7 +166,10 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 		}
 		l.sessDB.RegisterLiveSession(ctx, ls)
 		if !isTerminal {
-			go recordCLIVersion(l.sessDB, sessionID, agentType)
+			go func() {
+				defer safego.Recover("background/launcher:recordCLIVersion")
+				recordCLIVersion(l.sessDB, sessionID, agentType)
+			}()
 		}
 	}
 
@@ -246,6 +250,7 @@ func (l *AgentLauncher) BuildSchedulerLaunchFn(schedStore *store.ScheduleStore) 
 
 		// Send prompt to the agent after delay
 		go func() {
+			defer safego.Recover("background/launcher:248")
 			sendCtx := context.Background()
 			l.SendPrompt(sendCtx, result.SessionID, result.SessionName, job.AgentType, job.Prompt)
 		}()

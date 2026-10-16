@@ -22,6 +22,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/pkg/redact"
 )
 
@@ -1105,8 +1106,12 @@ func pumpWS(ctx context.Context, a, b wsEnd, gate func([]byte) bool, toHub *wsRe
 	defer cancel()
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); pump(ctx, cancel, a, b, nil, toHub) }()
-	go func() { defer wg.Done(); pump(ctx, cancel, b, a, gate, nil) }()
+	go func() {
+		defer safego.Recover("tunnel/local:1080")
+		defer wg.Done()
+		pump(ctx, cancel, a, b, nil, toHub)
+	}()
+	go func() { defer safego.Recover("tunnel/local:1081"); defer wg.Done(); pump(ctx, cancel, b, a, gate, nil) }()
 	wg.Wait()
 }
 

@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/secfile"
 )
 
@@ -112,7 +113,7 @@ func (w *Watchdog) Stats() Stats {
 // Start runs the watchdog until ctx ends.
 func Start(ctx context.Context, cfg Config) *Watchdog {
 	w := New(cfg)
-	go w.run(ctx)
+	safego.Restart("stallwatch/stallwatch:w.run", func() { w.run(ctx) })
 	return w
 }
 
@@ -172,7 +173,7 @@ func (w *Watchdog) Tick(ctx context.Context) string {
 			continue
 		}
 		st.running, st.started, st.reported = true, now, false
-		go w.probe(ctx, p, st)
+		go func() { defer safego.Recover("stallwatch/stallwatch:w.probe"); w.probe(ctx, p, st) }()
 	}
 	dueGap := w.lastDump.IsZero() || now.Sub(w.lastDump) >= w.cfg.MinGap
 	if len(stuck) > 0 {

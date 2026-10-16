@@ -18,6 +18,7 @@ import (
 	"github.com/cdknorow/coral/internal/agentenv"
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // session represents a single running PTY session.
@@ -106,7 +107,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 	}
 
 	// Start output reader goroutine
-	go s.readLoop()
+	go func() { defer safego.Recover("ptymanager/session:s.readLoop"); s.readLoop() }()
 
 	return s, nil
 }

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // Editor is a desktop code editor Coral can open a file in.
@@ -136,6 +138,6 @@ func OpenInEditor(id, absPath string, line int) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("launch %s: %w", id, err)
 	}
-	go cmd.Wait()
+	go func() { defer safego.Recover("executil/editor:cmd.Wait"); cmd.Wait() }()
 	return nil
 }

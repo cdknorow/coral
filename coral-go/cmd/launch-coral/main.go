@@ -33,6 +33,7 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/loginlink"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -117,6 +118,7 @@ func main() {
 	// Open the browser
 	if !*noBrowser && !isSSH() {
 		go func() {
+			defer safego.Recover("launch-coral/main:119")
 			time.Sleep(time.Second)
 			executil.OpenBrowser(loginlink.Or(fmt.Sprintf("http://localhost:%d", cfg.Port), mintLink))
 		}()
@@ -276,6 +278,7 @@ func startWebServer(ctx context.Context, cfg *config.Config) *startup.RunningSer
 	tracking.TrackInstallAsync()
 
 	go func() {
+		defer safego.Recover("launch-coral/main:278")
 		<-ctx.Done()
 		rs.Shutdown(10 * time.Second)
 		rs.Close()
