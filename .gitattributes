@@ -13,3 +13,4 @@ tests/windows/windows_only_tests.sh text eol=lf
 # as on the Windows runners) failed them on Windows (pkg/tunnel's view_redaction census and route-query table).
 *.golden text eol=lf
 coral-go/pkg/tunnel/routes_query.go text eol=lf
+coral-go/internal/auth/testdata/*.html text eol=lf
