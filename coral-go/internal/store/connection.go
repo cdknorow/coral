@@ -766,6 +766,8 @@ CREATE INDEX IF NOT EXISTS idx_session_index_first_ts ON session_index(first_tim
 CREATE INDEX IF NOT EXISTS idx_agent_events_session_time ON agent_events(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_agent_events_session_type_time ON agent_events(session_id, event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_agent_events_agent ON agent_events(agent_name, session_id);
+-- An agent's events newest first without sorting all of them (the agent poll, #3846).
+CREATE INDEX IF NOT EXISTS idx_agent_events_agent_time ON agent_events(agent_name, created_at);
 -- Named by INDEXED BY in the edited-file queries; keep the WHERE in step with them.
 -- json_valid keeps a malformed detail_json row out of the index: json_extract
 -- would otherwise fail the CREATE (and so startup) and the row's INSERT.
