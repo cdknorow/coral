@@ -210,9 +210,6 @@ func (s *TaskStore) FinishAgentTask(ctx context.Context, taskID int64, state int
 	return s.FinishAgentTaskWithArtifacts(ctx, taskID, state, message, "success", nil)
 }
 
-// Claim order, as for board tasks: highest priority first, then oldest.
-const agentTaskClaimOrder = `CASE COALESCE(priority, 'medium') WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END, id ASC`
-
 // ClaimNextAgentTask uses the shared workflow engine to claim one ready task.
 // It rejects additional claims until the session's active task is finished.
 func (s *TaskStore) ClaimNextAgentTask(ctx context.Context, agentName string, sessionID *string, requested ...int64) (*AgentTask, error) {
