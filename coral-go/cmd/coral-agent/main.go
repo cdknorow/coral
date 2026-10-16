@@ -186,6 +186,7 @@ func uploadArtifact(serverURL, file, name, mediaType, sid string, stdout, stderr
 	defer resp.Body.Close()
 	body, _ := readServer(resp.Body)
 	var reply struct {
+		URI      string `json:"uri"`
 		Error    string `json:"error"`
 		Code     string `json:"code"`
 		Stripped bool   `json:"stripped"`
@@ -206,6 +207,15 @@ func uploadArtifact(serverURL, file, name, mediaType, sid string, stdout, stderr
 			return fmt.Errorf("artifact upload refused (rate limited): %s", reason)
 		}
 		return fmt.Errorf("artifact upload failed (HTTP %d): %s", resp.StatusCode, reason)
+	}
+	// A 2xx with no coral:// id is not a stored artifact: never print it as a link (#4004 (b):
+	// defends against a success-shaped refusal, so the exit code is the only thing that can be wrong).
+	if reply.URI == "" {
+		reason := strings.TrimSpace(string(body))
+		if reason == "" {
+			reason = resp.Status
+		}
+		return fmt.Errorf("artifact upload returned no artifact id (HTTP %d): %s", resp.StatusCode, reason)
 	}
 	if reply.Stripped {
 		fmt.Fprintln(stderr, "Note: Coral removed this image's metadata (camera, location) before storing it, so its id is the SHA-256 of the stored bytes, not of your file.")
