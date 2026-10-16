@@ -3147,20 +3147,7 @@ export function renderPaginationControls(total, page, pageSize) {
 export function renderHistoryChat(messages, agentType = "claude", baseIndex = 0, focusIndex = null) {
     const container = document.getElementById("history-messages");
     container.innerHTML = "";
-
-    // Same renderer as the live Chat view: replies as prose, tool calls and
-    // their output folded into collapsed "N steps" groups.
-    const normalized = messages.map((entry, index) => {
-        const value = normalizeHistoryEntry(entry);
-        if (value) value.__coralMessageIndex = baseIndex + index;
-        return value;
-    }).filter(Boolean);
-    renderTranscript(normalized, container, agentType);
-
-    for (const bubble of container.querySelectorAll(".chat-bubble.human")) {
-        bubble.insertAdjacentHTML("beforeend",
-            `<button class="edit-btn" data-on-click="msg-edit-resubmit">Edit & Resubmit</button>`);
-    }
+    container.append(...renderHistoryNodes(messages, agentType, baseIndex));
     container.scrollTop = container.scrollHeight;
     if (focusIndex != null) {
         requestAnimationFrame(() => {
@@ -3178,6 +3165,25 @@ export function renderHistoryChat(messages, agentType = "claude", baseIndex = 0,
             }
         });
     }
+}
+
+/** A page of the history transcript as nodes, not yet in the page (history_pages.js inserts
+ *  pages above or below what is shown, #3718). Same renderer as the live Chat view: replies as
+ *  prose, tool calls and their output folded into collapsed "N steps" groups. baseIndex is the
+ *  first message's index in the whole transcript. */
+export function renderHistoryNodes(messages, agentType = "claude", baseIndex = 0) {
+    const holder = document.createElement("div");
+    const normalized = messages.map((entry, index) => {
+        const value = normalizeHistoryEntry(entry);
+        if (value) value.__coralMessageIndex = baseIndex + index;
+        return value;
+    }).filter(Boolean);
+    renderTranscript(normalized, holder, agentType);
+    for (const bubble of holder.querySelectorAll(".chat-bubble.human")) {
+        bubble.insertAdjacentHTML("beforeend",
+            `<button class="edit-btn" data-on-click="msg-edit-resubmit">Edit & Resubmit</button>`);
+    }
+    return [...holder.childNodes];
 }
 
 // The reader returns normalized entries; older raw JSONL entries (content

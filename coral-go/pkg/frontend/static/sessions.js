@@ -5,6 +5,7 @@ import { refreshAgentUI } from './agent_ui.js';
 import { state, sessionKey, saveSessionDraft } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
+import { HISTORY_PAGE, setHistoryWindow } from './history_pages.js';
 import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey, keyLabel } from './server_base.js';
 import { updateHeaderContext } from './header_context.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
@@ -399,7 +400,8 @@ export async function selectHistorySession(sessionId, locator = null) {
     // Open the transcript by default; summaries may not exist yet.
     switchHistoryTab('chat');
 
-    let data = await loadHistoryMessages(sessionId);
+    // The newest page (#3718: a whole transcript can be too big for one reply through Coral Hub).
+    let data = await loadHistoryMessages(sessionId, { limit: HISTORY_PAGE });
     let messageBaseIndex = 0;
     if (generation !== switchGeneration) return;
     if (data && data.messages) {
@@ -417,7 +419,9 @@ export async function selectHistorySession(sessionId, locator = null) {
         }
         // Resume reads the type from here when the history list has no entry.
         if (data.agent_type) state.currentSession.agent_type = data.agent_type;
-        renderHistoryChat(data.messages, data.agent_type || historyEntry?.source_type || "claude", messageBaseIndex, locator?.message_index);
+        const historyType = data.agent_type || historyEntry?.source_type || "claude";
+        renderHistoryChat(data.messages, historyType, messageBaseIndex, locator?.message_index);
+        setHistoryWindow(sessionId, historyType, messageBaseIndex, messageBaseIndex + data.messages.length, data.total);
         // A session opened before the history list has it (a /chats/<id> link,
         // or one beyond the loaded page) still gets Resume from its own record.
         if (!historyEntry && (data.agent_type === "claude" || data.agent_type === "codex")) {

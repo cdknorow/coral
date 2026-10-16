@@ -2,11 +2,16 @@ package tunnel
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -170,20 +175,60 @@ func TestRedactedChatReplyParsesThroughTheTunnel(t *testing.T) {
 	assert.Len(t, parsed.Messages, len(msgs))
 }
 
-// A JSON reply over jsonWholeMax isn't held: what was read ahead and the rest stream through the
-// Redactor, redacted exactly as a whole reply would be (the cap lowered so the test stays small).
-func TestRedactedJSONOverTheCapStreams(t *testing.T) {
-	keep := jsonWholeMax
-	jsonWholeMax = 4 << 10
-	t.Cleanup(func() { jsonWholeMax = keep })
-	tok := fake("ghp_", 36, alnum)
+// #3718: a JSON reply over jsonWholeMax is refused, never streamed unchecked; one that can't get
+// room in jsonBudget is answered busy; the budget is never exceeded and is given back on every
+// path; a reply under the cap is still redacted and checked (the cap and budget lowered so the
+// tests stay small).
+func smallJSONLimits(t *testing.T, cap int, budget int64) {
+	t.Helper()
+	keepCap, keepBudget, keepInitial := jsonWholeMax, jsonBudget, jsonInitialHold
+	jsonWholeMax, jsonBudget, jsonInitialHold = cap, newByteBudget(budget), min(jsonInitialHold, cap)
+	t.Cleanup(func() { jsonWholeMax, jsonBudget, jsonInitialHold = keepCap, keepBudget, keepInitial })
+}
+
+func jsonOf(t *testing.T, n int, tok string) []byte {
+	t.Helper()
 	var msgs []any
-	for i := 0; i < 300; i++ {
-		msgs = append(msgs, map[string]any{"type": "assistant", "content": "line " + strings.Repeat("x", i%97) + " " + tok})
+	for len(msgs) < n {
+		msgs = append(msgs, map[string]any{"type": "assistant", "content": "line " + strings.Repeat("x", len(msgs)%97) + " " + tok})
 	}
-	body, err := json.Marshal(map[string]any{"messages": msgs})
+	b, err := json.Marshal(map[string]any{"messages": msgs})
 	require.NoError(t, err)
-	require.Greater(t, len(body), jsonWholeMax*4)
+	return b
+}
+
+func TestRedactedJSONOverTheCapIsRefused(t *testing.T) {
+	smallJSONLimits(t, 4<<10, 1<<20)
+	tok := fake("ghp_", 36, alnum)
+	big := jsonOf(t, 300, tok)
+	require.Greater(t, len(big), jsonWholeMax*4)
+	for _, withLength := range []bool{false, true} {
+		local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if withLength {
+				w.Header().Set("Content-Length", strconv.Itoa(len(big)))
+			}
+			w.Write(big)
+		})
+		hub := newHub(t, fastCfg())
+		sess, _ := connect(t, hub, local, nil)
+		resp := do(t, sess, "GET", "/api/sessions/live/a/chat", "", strings.NewReader(""), nil)
+		got, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadGateway, resp.StatusCode, "length known: %v", withLength)
+		assert.Contains(t, string(got), "hub_reply_too_large")
+		assert.NotContains(t, string(got), tok, "nothing of the reply is sent")
+		assert.Zero(t, jsonBudget.inUse(), "the budget is given back")
+	}
+}
+
+// A reply under the cap is still redacted and checked; the budget is back to zero after it.
+func TestRedactedJSONUnderTheCapIsChecked(t *testing.T) {
+	smallJSONLimits(t, 64<<10, 1<<20)
+	tok := fake("ghp_", 36, alnum)
+	body := jsonOf(t, 40, tok)
+	require.Less(t, len(body), jsonWholeMax)
 	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(body)
@@ -191,11 +236,119 @@ func TestRedactedJSONOverTheCapStreams(t *testing.T) {
 	hub := newHub(t, fastCfg())
 	sess, _ := connect(t, hub, local, nil)
 	resp := do(t, sess, "GET", "/api/sessions/live/a/chat", "", strings.NewReader(""), nil)
-	defer resp.Body.Close()
 	got, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	assert.Equal(t, string(RedactTokens(body)), string(got), "the read-ahead and the rest, redacted as one")
+	assert.Equal(t, string(RedactTokens(body)), string(got))
 	assert.NotContains(t, string(got), tok)
-	assert.True(t, json.Valid(got))
+	assert.Zero(t, jsonBudget.inUse())
+}
+
+// Concurrent replies never hold more than the budget: those that can't get room are answered
+// busy (503, Retry-After), the others go through, and every reservation is given back. A reply
+// whose body fails mid-way gives its reservation back too.
+func TestJSONBudgetBoundsConcurrentReplies(t *testing.T) {
+	smallJSONLimits(t, 64<<10, 200<<10) // each reserves 2 x 64 KB up front: room for one at a time
+	body := jsonOf(t, 500, "no token")
+	require.Greater(t, len(body), 30<<10)
+	require.Less(t, len(body), jsonWholeMax)
+	var peak atomic.Int64
+	release := make(chan struct{})
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		half := len(body) / 2
+		w.Write(body[:half])
+		w.(http.Flusher).Flush()
+		<-release // every reply holds its first half until all have started
+		if u := jsonBudget.inUse(); u > peak.Load() {
+			peak.Store(u)
+		}
+		w.Write(body[half:])
+	})
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, local, nil)
+	const n = 6
+	codes := make(chan int, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp := do(t, sess, "GET", "/api/sessions/live/a/chat", "", strings.NewReader(""), nil)
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusServiceUnavailable {
+				assert.Contains(t, string(b), "hub_busy")
+				assert.Equal(t, busyRetryAfter, resp.Header.Get("Retry-After"))
+			} else if resp.StatusCode == 200 {
+				assert.True(t, json.Valid(b))
+			}
+			codes <- resp.StatusCode
+		}()
+	}
+	time.Sleep(300 * time.Millisecond) // sleep-ok: let every reply reach its first half
+	assert.LessOrEqual(t, jsonBudget.inUse(), int64(200<<10), "never over the budget")
+	close(release)
+	wg.Wait()
+	close(codes)
+	got := map[int]int{}
+	for c := range codes {
+		got[c]++
+	}
+	assert.Equal(t, n, got[200]+got[http.StatusServiceUnavailable], "each is served or answered busy: %v", got)
+	assert.Positive(t, got[http.StatusServiceUnavailable], "some had to wait: %v", got)
+	assert.Positive(t, got[200], "and some went through: %v", got)
+	assert.LessOrEqual(t, peak.Load(), int64(200<<10))
+	require.Eventually(t, func() bool { return jsonBudget.inUse() == 0 }, 2*time.Second, 10*time.Millisecond, "every reservation is given back")
+}
+
+// A body that fails mid-way, and a request the hub cancels, give their reservations back.
+func TestJSONBudgetReleasedOnErrorAndCancel(t *testing.T) {
+	smallJSONLimits(t, 64<<10, 1<<20)
+	body := jsonOf(t, 500, "no token")
+	require.Greater(t, len(body), wholeReplyMax, "past the small whole-reply path")
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(body[:len(body)/2])
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler) // the body ends mid-way: the read fails
+	})
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, local, nil)
+	req, _ := http.NewRequest("GET", "http://ignored/api/sessions/live/a/chat", nil)
+	if resp, err := sess.RoundTrip(req); err == nil {
+		_, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
+	require.Eventually(t, func() bool { return jsonBudget.inUse() == 0 }, 2*time.Second, 10*time.Millisecond, "released after a failed read")
+
+	stuck := make(chan struct{})
+	t.Cleanup(func() { close(stuck) })
+	slow := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(body[:len(body)/2])
+		w.(http.Flusher).Flush()
+		select {
+		case <-stuck:
+		case <-r.Context().Done():
+		}
+	})
+	hub2 := newHub(t, fastCfg())
+	sess2, _ := connect(t, hub2, slow, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req, _ := http.NewRequestWithContext(ctx, "GET", "http://ignored/api/sessions/live/a/chat", nil)
+		resp, err := sess2.RoundTrip(req)
+		if err == nil {
+			_, _ = io.ReadAll(resp.Body)
+			resp.Body.Close()
+		}
+	}()
+	require.Eventually(t, func() bool { return jsonBudget.inUse() > 0 }, 2*time.Second, 10*time.Millisecond, "the reply is being held")
+	cancel()
+	<-done
+	require.Eventually(t, func() bool { return jsonBudget.inUse() == 0 }, 3*time.Second, 10*time.Millisecond, "released when the request is cancelled")
 }

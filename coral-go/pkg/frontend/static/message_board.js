@@ -80,6 +80,68 @@ async function fetchMessages(project, limit = PAGE_SIZE, page = {}) {
     };
 }
 
+// The export reads whole boards and transcripts in pages (#3718): through Coral Hub a JSON reply
+// is held whole to be checked for secrets and refused over 2 MiB, so it never asks for all of one
+// at once. A server that doesn't page sends everything in its first reply, and the loops stop.
+const EXPORT_PAGE = 200;
+const EXPORT_CHAT_PAGE = 100;
+
+export async function fetchAllBoardMessages(project) {
+    const first = await fetchMessages(project, EXPORT_PAGE);
+    let all = first.messages;
+    if (first.keyset) {
+        let before = first.beforeCount;
+        while (before > 0 && all.length) {
+            const r = await fetchMessages(project, EXPORT_PAGE, { before_id: all[0].id });
+            if (!r.messages.length) break;
+            all = mergeMessages(r.messages, all);
+            before = r.beforeCount;
+        }
+    } else {
+        let offset = Math.max(0, first.total - all.length);
+        while (offset > 0) {
+            const next = Math.max(0, offset - EXPORT_PAGE);
+            const r = await fetchMessages(project, offset - next, { offset: next });
+            if (!r.messages.length) break;
+            all = mergeMessages(r.messages, all);
+            offset = next;
+        }
+    }
+    return all;
+}
+
+export async function fetchAllLiveChat(live) {
+    const messages = [];
+    for (let offset = 0; ; offset += EXPORT_CHAT_PAGE) {
+        const params = new URLSearchParams({
+            agent_type: live.agent_type || 'claude', session_id: live.session_id,
+            working_directory: live.working_directory || '', after: '0',
+            limit: String(EXPORT_CHAT_PAGE), offset: String(offset),
+        });
+        const resp = await serverFetch(sessionServer(live), `/api/sessions/live/${encodeURIComponent(live.name)}/chat?${params}`);
+        if (!resp.ok) throw new Error(`chat: HTTP ${resp.status}`);
+        const data = await resp.json();
+        const page = Array.isArray(data.messages) ? data.messages : [];
+        messages.unshift(...page);
+        if (!page.length || !Number.isInteger(data.total) || messages.length >= data.total) break;
+    }
+    return { messages };
+}
+
+export async function fetchAllHistory(sessionId) {
+    const messages = [];
+    for (let offset = 0; ; offset += EXPORT_CHAT_PAGE) {
+        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}?limit=${EXPORT_CHAT_PAGE}&offset=${offset}`);
+        if (!resp.ok) throw new Error(`history: HTTP ${resp.status}`);
+        const data = await resp.json();
+        const page = Array.isArray(data.messages) ? data.messages : [];
+        messages.unshift(...page);
+        // No total: a server that doesn't page sent the whole transcript.
+        if (!page.length || !Number.isInteger(data.total) || !data.start) break;
+    }
+    return { messages };
+}
+
 async function fetchSubscribers(project) {
     const resp = await boardFetch(project, `/subscribers`);
     return await resp.json();
@@ -805,9 +867,8 @@ export async function doExportBoard() {
     actions.innerHTML = '<span style="color:var(--text-muted);font-size:13px">Exporting...</span>';
 
     try {
-        // 1. Fetch all board messages
-        const boardResp = await boardFetch(currentProject, `/messages/all?limit=10000`);
-        const boardMessages = await boardResp.json();
+        // 1. Fetch all board messages (in pages, #3718)
+        const boardMessages = await fetchAllBoardMessages(currentProject);
 
         // 2. Fetch subscribers
         const subsResp = await boardFetch(currentProject, `/subscribers`);
@@ -833,23 +894,9 @@ export async function doExportBoard() {
             try {
                 // Find the live session for this subscriber to get name + working_directory
                 const live = liveSessions.find(s => s.display_name === agent.role);
-                let histData;
-                if (live) {
-                    // Use live chat endpoint (has working_directory for JSONL resolution)
-                    const params = new URLSearchParams({
-                        agent_type: live.agent_type || 'claude',
-                        session_id: live.session_id,
-                        working_directory: live.working_directory || '',
-                        after: '0',
-                        limit: '10000',
-                    });
-                    const chatResp = await serverFetch(sessionServer(live), `/api/sessions/live/${encodeURIComponent(live.name)}/chat?${params}`);
-                    histData = await chatResp.json();
-                } else {
-                    // Fallback to history endpoint for completed sessions
-                    const histResp = await fetch(`/api/sessions/history/${encodeURIComponent(agent.sessionId)}`);
-                    histData = await histResp.json();
-                }
+                // Live: the chat endpoint (it has working_directory for JSONL resolution); ended:
+                // the history endpoint. Both in pages (#3718).
+                const histData = live ? await fetchAllLiveChat(live) : await fetchAllHistory(agent.sessionId);
                 if (histData.messages && histData.messages.length) {
                     const parsed = parseAgentHistory(histData.messages, agent.role);
                     entries.push(...parsed);

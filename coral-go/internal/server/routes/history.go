@@ -470,10 +470,23 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// A page (#3718): ?limit=N&offset=M is the N messages ending M before the newest, as the
+	// live chat pages, with the total and the page's first index. Through Coral Hub a JSON reply
+	// is held whole to be checked for secrets, and one over 2 MiB is refused, so the dashboard
+	// asks for pages; without a limit the whole transcript, as before.
+	total, start := len(messages), 0
+	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		end := max(total-max(offset, 0), 0)
+		start = max(end-limit, 0)
+		messages = messages[start:end]
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id": sid,
 		"agent_type": agentType,
 		"messages":   messages,
+		"total":      total,
+		"start":      start,
 	})
 }
 
