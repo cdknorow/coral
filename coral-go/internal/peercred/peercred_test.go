@@ -176,10 +176,10 @@ func TestParseAddrBigEndian(t *testing.T) {
 	assert.Equal(t, netip.MustParseAddrPort("127.0.0.1:8080"), got)
 }
 
-// Off Linux the kernel cannot be asked: callers keep their own rules.
+// Where the kernel cannot be asked, callers keep their own rules.
 func TestSameUserUnsupportedElsewhere(t *testing.T) {
 	if Supported {
-		t.Skip("linux: covered by the real-request test")
+		t.Skip("covered by the real-request test")
 	}
 	same, supported := SameUser(httptestRequest())
 	assert.False(t, same)
