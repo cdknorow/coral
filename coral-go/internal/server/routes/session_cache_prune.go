@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -84,8 +85,27 @@ func (h *SessionsHandler) pruneSessionCaches(ctx context.Context) int {
 		}
 	}
 	h.transcriptWarmMu.Unlock()
+	// The sync.Map memos keyed by session (#3999, the #3994 audit finding 5): the CLI-version
+	// lookups already tried and the hook-set revisions.
+	dropped += pruneSessionMap(&h.cliVersionTried, isLive)
+	dropped += pruneSessionMap(&h.hooksRev, isLive)
+	dropped += pruneSessionMap(&h.hooksNoRev, isLive)
 	if dropped > 0 {
 		slog.Debug("pruned caches of ended sessions", "entries", dropped, "live", len(keep))
 	}
 	return dropped
+}
+
+// pruneSessionMap deletes the entries of m (keyed by session id) whose session is not live and
+// returns how many it dropped.
+func pruneSessionMap(m *sync.Map, isLive func(string) bool) int {
+	n := 0
+	m.Range(func(k, _ any) bool {
+		if id, ok := k.(string); ok && !isLive(id) {
+			m.Delete(k)
+			n++
+		}
+		return true
+	})
+	return n
 }
