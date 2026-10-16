@@ -9,8 +9,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -155,7 +157,7 @@ type linkShape struct {
 }
 
 // connectShaped dials h through a throttled uplink with the scheduler tuned (or off).
-func connectShaped(t *testing.T, h *hubHarness, local http.Handler, shape linkShape, up uplinkConfig) *Session {
+func connectShaped(t testing.TB, h *hubHarness, local http.Handler, shape linkShape, up uplinkConfig) *Session {
 	ls := httptest.NewServer(local)
 	t.Cleanup(ls.Close)
 	tr := &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -206,7 +208,7 @@ func get(s *Session, path, query string) (*http.Response, error) {
 
 // smallReplyP95 runs bulk downloads (read as fast as the link allows) and measures a
 // 2 KB reply's latency meanwhile.
-func smallReplyP95(t *testing.T, s *Session, bulk int) (p50, p95 time.Duration) {
+func smallReplyP95(t testing.TB, s *Session, bulk int) (p50, p95 time.Duration) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	for i := 0; i < bulk; i++ {
@@ -247,36 +249,64 @@ func smallReplyP95(t *testing.T, s *Session, bulk int) (p50, p95 time.Duration) 
 
 var hol = linkShape{mbit: 5, rtt: 60 * time.Millisecond}
 
+// smallReplyBefore and smallReplyAfter measure a small reply's latency behind bulk streams on the
+// throttled link: without the scheduler and with the OS's long send queue, and with both.
+func smallReplyBefore(t testing.TB, bulk int) (p50, p95 time.Duration) {
+	before := hol
+	before.queue = 512 << 10 // an OS send queue without TCP_NOTSENT_LOWAT
+	return smallReplyP95(t, connectShaped(t, newHub(t, SessionConfig{}), localApp(), before, uplinkConfig{Off: true}), bulk)
+}
+
+func smallReplyAfter(t testing.TB, bulk int) (p50, p95 time.Duration) {
+	after := hol
+	after.queue = sendLowWater
+	return smallReplyP95(t, connectShaped(t, newHub(t, SessionConfig{}), localApp(), after, uplinkConfig{}), bulk)
+}
+
+// hubCriterion is coral-hub's: a small reply's p95 behind bulk streams, with the scheduler.
+const hubCriterion = 200 * time.Millisecond
+
+// loadavg is the host's load average where it can be read (Linux), for the log.
+func loadavg() string {
+	if b, err := os.ReadFile("/proc/loadavg"); err == nil {
+		return strings.Join(strings.Fields(string(b))[:3], " ")
+	}
+	return "n/a"
+}
+
 // coral-hub's reproduction (60 ms RTT, 5 Mbit uplink): with 1 and 4 bulk streams in
 // flight, a small reply's p95 drops below 0.2 s with the scheduler and a short send
 // queue; without them it is longer, several times longer with 4 streams.
+//
+// The scheduler's gain is measured against an unscheduled baseline in the same run, so it holds
+// however busy the host is. The 0.2 s bound is absolute, and other CPU work on the host (a full
+// go test ./..., which this test runs alongside) eats into its ~30 ms of headroom: it is
+// re-measured once if missed, with the reason and the load logged (#3716). A real regression
+// misses it twice; BenchmarkUplinkSmallReplyP95 reports the figure on its own.
 func TestUplinkSmallRepliesOvertakeBulk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("throttled-link measurement (~20 s)")
 	}
 	for _, bulk := range []int{1, 4} {
 		t.Run(fmt.Sprintf("bulk=%d", bulk), func(t *testing.T) {
-			before := hol
-			before.queue = 512 << 10 // an OS send queue without TCP_NOTSENT_LOWAT
-			h := newHub(t, SessionConfig{})
-			b50, b95 := smallReplyP95(t, connectShaped(t, h, localApp(), before, uplinkConfig{Off: true}), bulk)
-
-			after := hol
-			after.queue = sendLowWater
-			h2 := newHub(t, SessionConfig{})
-			a50, a95 := smallReplyP95(t, connectShaped(t, h2, localApp(), after, uplinkConfig{}), bulk)
+			b50, b95 := smallReplyBefore(t, bulk)
+			a50, a95 := smallReplyAfter(t, bulk)
 			t.Logf("bulk=%d small 2 KB reply: before p50 %v p95 %v; after p50 %v p95 %v", bulk, b50.Round(time.Millisecond), b95.Round(time.Millisecond), a50.Round(time.Millisecond), a95.Round(time.Millisecond))
-			assert.Less(t, a95, 200*time.Millisecond, "small-reply p95 with the scheduler")
 			// One bulk stream has at most a yamux window (256 KiB) in flight, less than the
 			// unscheduled send queue, so how far it fills the queue (the baseline's delay) depends
 			// on the WebSocket library's writes: 280-570 ms on the same host (#3663's
-			// coder/websocket). The bound above is coral-hub's criterion; here it must only gain.
-			// Four streams fill the queue whatever the library, so there it must at least halve.
+			// coder/websocket); here it must only gain. Four streams fill the queue whatever the
+			// library, so there it must at least halve.
 			if bulk == 1 {
 				assert.Less(t, a95, b95, "faster than before")
 			} else {
 				assert.Less(t, a95*2, b95, "at least twice as fast as before")
 			}
+			if a95 >= hubCriterion {
+				t.Logf("bulk=%d: p95 %v missed the %v criterion with load average %s: measuring once more (#3716)", bulk, a95.Round(time.Millisecond), hubCriterion, loadavg())
+				_, a95 = smallReplyAfter(t, bulk)
+			}
+			assert.Less(t, a95, hubCriterion, "small-reply p95 with the scheduler (coral-hub's criterion)")
 		})
 	}
 }
@@ -602,4 +632,23 @@ func TestSchedulerSwitch(t *testing.T) {
 	defer cs.Close()
 	h.next(t)
 	assert.Nil(t, cs.up)
+}
+
+// BenchmarkUplinkSmallReplyP95 reports coral-hub's criterion on its own (#3716): a small reply's
+// p95 behind 1 and 4 bulk streams with the scheduler, as p95-ms, failing above 0.2 s. Run it on
+// a quiet host: go test -run '^$' -bench UplinkSmallReplyP95 -benchtime 1x ./pkg/tunnel
+func BenchmarkUplinkSmallReplyP95(b *testing.B) {
+	for _, bulk := range []int{1, 4} {
+		b.Run(fmt.Sprintf("bulk=%d", bulk), func(b *testing.B) {
+			var worst time.Duration
+			for i := 0; i < b.N; i++ {
+				_, p95 := smallReplyAfter(b, bulk)
+				worst = max(worst, p95)
+			}
+			b.ReportMetric(float64(worst.Milliseconds()), "p95-ms")
+			if worst >= hubCriterion {
+				b.Errorf("p95 %v, criterion %v (load average %s)", worst, hubCriterion, loadavg())
+			}
+		})
+	}
 }

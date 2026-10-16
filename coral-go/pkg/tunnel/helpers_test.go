@@ -24,7 +24,7 @@ type hubHarness struct {
 	Cfg      SessionConfig
 }
 
-func newHub(t *testing.T, cfg SessionConfig) *hubHarness {
+func newHub(t testing.TB, cfg SessionConfig) *hubHarness {
 	t.Helper()
 	h := &hubHarness{Sessions: make(chan *Session, 16), Cfg: cfg}
 	h.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +45,7 @@ func newHub(t *testing.T, cfg SessionConfig) *hubHarness {
 
 func (h *hubHarness) URL() string { return "ws" + strings.TrimPrefix(h.Server.URL, "http") }
 
-func (h *hubHarness) next(t *testing.T) *Session {
+func (h *hubHarness) next(t testing.TB) *Session {
 	t.Helper()
 	select {
 	case s := <-h.Sessions:
