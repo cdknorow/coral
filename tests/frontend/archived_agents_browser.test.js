@@ -171,6 +171,8 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         await clearReqs();
         await scrollToTop();
         await waitFor(`window.__m.requests.some(r => r.older && r.settled)`, 'older page');
+        // The older page is built in slices after its reply arrives (#3866): wait for it to show.
+        await waitFor(`window.__rendered().length > ${first.length}`, 'older history to show');
         assert.ok((await ev('window.__rendered()')).length > first.length, 'older history loads');
         await clearReqs();
         await ev(`document.getElementById('sleeping-unarchive-btn').click()`);
