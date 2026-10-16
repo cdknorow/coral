@@ -1,4 +1,5 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
+import { formatHourMinute } from './format.js';
 import { OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, getAgentColor, externalMessageBadge, hubUserBadge, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { splitKey, keyLabel, boardFetch } from './server_base.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
@@ -101,8 +102,7 @@ export function hideBoardChatTab() {
 
 function _formatTime(iso) {
     if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return formatHourMinute(new Date(iso));
 }
 
 // Loads what's new on the board into the panel. Once the latest page is in, the board is asked

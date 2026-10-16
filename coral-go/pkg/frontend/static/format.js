@@ -18,3 +18,21 @@ export function formatClockTime(isoStr) {
         return '';
     }
 }
+
+// Date and time formatters (#3866). Date.prototype.toLocale*String builds a new Intl formatter on every call, which was the top
+// idle cost in the dashboard profile (the task list and the board panel format a time per row on every redraw). These keep one
+// Intl.DateTimeFormat per format and use it. Like toLocale*String they answer "Invalid Date" for a bad date rather than throwing.
+const _formatters = {};
+const _dtf = (key, opts) => _formatters[key] || (_formatters[key] = new Intl.DateTimeFormat(undefined, opts));
+const _fmt = (key, opts, d) => (isNaN(d) ? 'Invalid Date' : _dtf(key, opts).format(d));
+
+/** A Date as the local hour and minute (hh:mm). */
+export function formatHourMinute(d) { return _fmt('hm', { hour: '2-digit', minute: '2-digit' }, d); }
+
+/** A Date as "Oct 16 10:31": month, day, hour and minute. */
+export function formatMonthDayHourMinute(d) {
+    return _fmt('md', { month: 'short', day: 'numeric' }, d) + ' ' + formatHourMinute(d);
+}
+
+/** A Date as the locale's month, day, hour and minute (the task detail's dates). */
+export function formatMonthDayTime(d) { return _fmt('mdt', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }, d); }

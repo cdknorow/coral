@@ -1,4 +1,5 @@
 /* Moved out of tasks.js as it was (#3837): the task list and dialog format helpers; no behaviour change. */
+import { formatMonthDayHourMinute, formatMonthDayTime } from './format.js';
 
 export const _priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
 const _priorityRank = { critical: 1, high: 2, medium: 3, low: 4 };
@@ -28,9 +29,7 @@ export function _formatTokenCount(n) {
 export function _formatTaskTime(ts) {
     if (!ts) return '';
     try {
-        const d = new Date(ts);
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-            + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        return formatMonthDayHourMinute(new Date(ts));
     } catch { return ''; }
 }
 
@@ -41,11 +40,7 @@ export function _agentTaskStatus(t) {
 
 export function formatTaskDate(isoStr) {
     try {
-        const d = new Date(isoStr);
-        return d.toLocaleString(undefined, {
-            month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-        });
+        return formatMonthDayTime(new Date(isoStr));
     } catch {
         return isoStr;
     }
