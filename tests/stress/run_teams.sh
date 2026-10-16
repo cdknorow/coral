@@ -26,6 +26,14 @@ cleanup() {
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
+    # The tmux server on this test's isolated socket outlives the coral server, and its panes are
+    # the mock-agents; kill it (and any stray mock-agent) so the run leaves nothing behind (#3812).
+    # Guard the vars: the trap is armed before they are set, and an unset path in pkill -f would
+    # match every mock-agent on the box.
+    if [[ -n "${CORAL_DATA_DIR:-}" && -S "$CORAL_DATA_DIR/tmux.sock" ]]; then
+        tmux -S "$CORAL_DATA_DIR/tmux.sock" kill-server 2>/dev/null || true
+    fi
+    [[ -n "${TMPDIR_TEAMS:-}" ]] && pkill -f "$TMPDIR_TEAMS/mock-agent" 2>/dev/null || true
     if [[ $exit_code -ne 0 || $FAIL -gt 0 || ${KEEP_TEST_DATA:-0} == 1 ]]; then
         log "Test data and server log: $TMPDIR_TEAMS"
     else
@@ -105,8 +113,10 @@ wait_for_server
 api PUT "/api/settings" -d "{\"cli_path_claude\": \"$TMPDIR_TEAMS/mock-agent\"}" >/dev/null
 
 TEAM_NAME="wt-test-$$"
-WORKTREE_PATH="$CORAL_DATA_DIR/worktrees/$TEAM_NAME"
-WORKTREE_BRANCH="coral-team/$TEAM_NAME"
+# WORKTREE_PATH and WORKTREE_BRANCH are discovered from the launch result below: the product
+# names the worktree worktrees/b-<hash> (branch coral-team/b-<hash>), not after the team (#3812).
+WORKTREE_PATH=""
+WORKTREE_BRANCH=""
 
 # ── Test 1: Launch team with worktree ────────────────────────────────
 
@@ -132,6 +142,10 @@ fi
 
 # Wait for agents to start
 sleep 3
+
+# Discover the real worktree from the launch result (the product names it worktrees/b-<hash>).
+WORKTREE_PATH=$(echo "$launch_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next((a.get('worktree_path','') for a in d.get('agents',[]) if a.get('worktree_path')), ''))" 2>/dev/null)
+WORKTREE_BRANCH="coral-team/$(basename "$WORKTREE_PATH")"
 
 # ── Test 2: Worktree directory created ───────────────────────────────
 
@@ -159,7 +173,7 @@ fi
 # ── Test 4: git worktree list shows the worktree ─────────────────────
 
 log "Test 4: Verify git worktree list..."
-wt_listed=$(git -C "$REPO_DIR" worktree list 2>/dev/null | grep "$TEAM_NAME" | wc -l | tr -d ' ')
+wt_listed=$(git -C "$REPO_DIR" worktree list 2>/dev/null | grep "coral-team/" | wc -l | tr -d ' ')
 if [[ "$wt_listed" -ge 1 ]]; then
     pass "git worktree list includes the team worktree"
 else
@@ -173,7 +187,7 @@ agents_with_worktree=$(echo "$launch_result" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 agents = data.get('agents', [])
-count = sum(1 for a in agents if '$TEAM_NAME' in (a.get('worktree_path') or ''))
+count = sum(1 for a in agents if (a.get('worktree_path') or ''))
 print(count)
 " 2>/dev/null || echo "0")
 
@@ -228,7 +242,7 @@ fi
 # ── Test 9: git worktree list no longer shows worktree ───────────────
 
 log "Test 9: Verify git worktree list after cleanup..."
-wt_after=$(git -C "$REPO_DIR" worktree list 2>/dev/null | grep -c "$TEAM_NAME" 2>/dev/null || true)
+wt_after=$(git -C "$REPO_DIR" worktree list 2>/dev/null | grep -c "coral-team/" 2>/dev/null || true)
 wt_after=${wt_after:-0}
 if [[ "$wt_after" -eq 0 ]]; then
     pass "git worktree list no longer shows the team worktree"
