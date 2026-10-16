@@ -24,11 +24,19 @@ func TestWorkflowRunsAreCapped(t *testing.T) {
 	runner := NewWorkflowRunner(wfStore, &AgentLauncher{runtime: rt}, rt, nil, nil, t.TempDir(), "localhost", 8420)
 	gate := filepath.Join(t.TempDir(), "go")
 	// Quoted, with forward slashes: on Windows the step runs in Git's sh, where an unquoted
-	// C:\Users\... loses its backslashes and the loop never ends (#3631). Opened on cleanup too,
-	// so a failed assertion never leaves the loops running.
-	t.Cleanup(func() { _ = os.WriteFile(gate, nil, 0o644) })
+	// C:\Users\... loses its backslashes and the loop never ends (#3631).
 	steps, _ := json.Marshal([]StepDef{{Name: "wait", Type: "shell", Command: "while [ ! -e '" + filepath.ToSlash(gate) + "' ]; do sleep 0.05; done"}})
 	wf := createTestWorkflow(t, wfStore, t.TempDir(), string(steps))
+	// Every step this test starts ends with it, whatever happens (#3997: a failed run left the
+	// loops polling forever, because the gate's folder was removed before they saw the gate).
+	// Registered after the temp folders, so it runs before they are removed.
+	var stepPIDs []int
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		runner.Shutdown(ctx)
+		stepGroupsGone(t, stepPIDs)
+	})
 	ctx := context.Background()
 	var runs []*store.WorkflowRun
 	for i := 0; i < maxConcurrentWorkflowRuns; i++ {
@@ -36,6 +44,17 @@ func TestWorkflowRunsAreCapped(t *testing.T) {
 		require.NoError(t, err, i)
 		runs = append(runs, run)
 	}
+	require.Eventually(t, func() bool {
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		stepPIDs = stepPIDs[:0]
+		for _, c := range runner.activeChildren {
+			if c.cmd != nil && c.cmd.Process != nil {
+				stepPIDs = append(stepPIDs, c.cmd.Process.Pid)
+			}
+		}
+		return len(stepPIDs) == maxConcurrentWorkflowRuns
+	}, 10*time.Second, 10*time.Millisecond, "every run's step started")
 	_, err := runner.TriggerWorkflow(ctx, wf, "api", nil)
 	var limit *ConcurrencyLimitError
 	require.True(t, errors.As(err, &limit), "the 6th run: %v", err)

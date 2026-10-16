@@ -3,6 +3,7 @@ package machinehealth
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"sort"
 	"sync"
@@ -163,7 +164,16 @@ func BenchmarkSample(b *testing.B) {
 func TestDescendantsFindsGrandchildren(t *testing.T) {
 	sh := exec.Command("sh", "-c", "sleep 30 & wait")
 	require.NoError(t, sh.Start())
-	t.Cleanup(func() { sh.Process.Kill(); sh.Wait() })
+	// The sleep too, not only the shell (#3997): the shell's descendants found now, by pid.
+	t.Cleanup(func() {
+		for _, pid := range descendants(context.Background(), []int{sh.Process.Pid}) {
+			if p, err := os.FindProcess(int(pid)); err == nil && int(pid) != sh.Process.Pid {
+				_ = p.Kill()
+			}
+		}
+		sh.Process.Kill()
+		sh.Wait()
+	})
 	require.Eventually(t, func() bool {
 		return len(descendants(context.Background(), []int{sh.Process.Pid})) >= 2
 	}, 5*time.Second, 20*time.Millisecond, "the shell and its sleep")
