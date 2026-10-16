@@ -151,7 +151,7 @@ func TestHubDropsASilentRelayStream(t *testing.T) {
 	require.NoError(t, err)
 	defer st.Close()
 	_, _ = st.Write([]byte{0}) // half a length prefix, then nothing
-	_ = st.SetReadDeadline(time.Now().Add(relayReadDeadline + 5*time.Second))
+	_ = st.SetReadDeadline(time.Now().Add(inboundReadDeadline + 5*time.Second))
 	_, err = io.ReadAll(st)
 	assert.NoError(t, err, "the hub closed it (EOF)")
 	assert.Equal(t, int32(0), calls.Load())
@@ -201,7 +201,7 @@ func TestVersion1PeerGetsNoCapabilities(t *testing.T) {
 	assert.Equal(t, 1, w.AcceptedVersion)
 	assert.Empty(t, w.Capabilities)
 	s := h.next(t)
-	assert.False(t, s.relayOn)
+	assert.Empty(t, s.hooks)
 }
 
 // The per-tunnel stream limit is taken before any goroutine or read: with MaxRelayStreams
@@ -228,16 +228,16 @@ func TestRelayStreamFloodStaysBounded(t *testing.T) {
 	require.NoError(t, err)
 	_, _ = extra.Write([]byte{0})
 	start := time.Now()
-	_ = extra.SetReadDeadline(time.Now().Add(relayReadDeadline + 5*time.Second))
+	_ = extra.SetReadDeadline(time.Now().Add(inboundReadDeadline + 5*time.Second))
 	_, _ = io.ReadAll(extra)
-	assert.Less(t, time.Since(start), relayReadDeadline/2, "the stream over the limit is closed at once")
+	assert.Less(t, time.Since(start), inboundReadDeadline/2, "the stream over the limit is closed at once")
 	for _, c := range silent {
 		_ = c.Close()
 	}
 	require.Eventually(t, func() bool {
 		r, err := cs.Relay(context.Background(), RelayMessagePath, []byte(`{}`))
 		return err == nil && r.Status == http.StatusOK
-	}, 2*relayReadDeadline, 200*time.Millisecond, "relays work again once the slots free up")
+	}, 2*inboundReadDeadline, 200*time.Millisecond, "relays work again once the slots free up")
 }
 
 // A panicking OnRelay answers 502 target_error, and the hub keeps serving the tunnel.

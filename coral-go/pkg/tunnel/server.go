@@ -31,8 +31,8 @@ type SessionConfig struct {
 	Limits         Limits
 
 	// Capabilities decides, per authenticated tunnel, which capabilities the hub
-	// advertises in Welcome (version 2 peers only); nil advertises none. Only "relay" is
-	// known, and only with OnRelay set.
+	// advertises in Welcome (version 2 peers only); nil advertises none. Only "relay" (with
+	// OnRelay set) and "hub-signin" (with OnSignin set) are known.
 	Capabilities func(identity any) []string
 	// RouteKey gives, per authenticated tunnel, the route key the hub sends in Welcome
 	// (#3683); nil or a malformed value sends none.
@@ -40,7 +40,11 @@ type SessionConfig struct {
 	// OnRelay handles a relay request the connector opens (#3489, relay.go). Nil: every
 	// connector-opened stream is closed, as in version 1.
 	OnRelay RelayFunc
-	// MaxRelayInFlight caps concurrent OnRelay calls per tunnel (default 4); more get 429.
+	// OnSignin handles a Hub sign-in request the connector opens (#3966, signin.go). Nil: the
+	// capability is never advertised.
+	OnSignin SigninFunc
+	// MaxRelayInFlight caps concurrent OnRelay and OnSignin calls per tunnel (default 4); more
+	// get 429.
 	MaxRelayInFlight int
 	// MaxRelayStreams caps connector-opened streams being read per tunnel (default 8). It is
 	// taken before any goroutine or read; a stream over it is closed at once.
@@ -108,9 +112,9 @@ type Session struct {
 	localMode Mode
 	active    atomic.Int32
 	closeOnce sync.Once
-	relayOn   bool          // the hub advertised the relay to this tunnel
-	relays    atomic.Int32  // OnRelay calls in progress
-	relaySlot chan struct{} // connector-opened streams being handled (MaxRelayStreams)
+	hooks     map[Kind]inboundHook // the connector-opened kinds advertised to this tunnel
+	inflight  atomic.Int32         // hook calls in progress
+	relaySlot chan struct{}        // connector-opened streams being handled (MaxRelayStreams)
 }
 
 // Accept performs the server handshake on an upgraded WebSocket and returns a
@@ -153,15 +157,12 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	if v < MinProtocolVersion {
 		return reject(CodeUnsupportedVersion, ErrUnsupportedVersion)
 	}
-	// Capabilities only for a version 2 peer, only the ones this package knows, and the
-	// relay only when the hub can handle it.
+	// Capabilities only for a version 2 peer, only the ones this package knows, and each
+	// only when the hub has its hook.
 	var caps []string
+	var hooks map[Kind]inboundHook
 	if v >= 2 && cfg.Capabilities != nil {
-		for _, c := range cfg.Capabilities(identity) {
-			if c == CapabilityRelay && cfg.OnRelay != nil {
-				caps = append(caps, c)
-			}
-		}
+		caps, hooks = cfg.advertisedHooks(cfg.Capabilities(identity))
 	}
 	var routeKey string
 	if cfg.RouteKey != nil {
@@ -185,7 +186,7 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 		return nil, err
 	}
 	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode),
-		relayOn: len(caps) > 0, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
+		hooks: hooks, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
 	go s.rejectInbound()
 	go func() { <-ys.CloseChan(); s.Close() }()
 	return s, nil
@@ -207,16 +208,16 @@ func AcceptHTTP(w http.ResponseWriter, r *http.Request, auth AuthFunc, cfg Sessi
 }
 
 // rejectInbound closes any stream the connector opens: only the hub opens streams.
-// The one exception (#3489) is a relay request, and only on a tunnel the hub advertised
-// the relay to: serveRelay checks its header, cap and deadline before OnRelay, and
-// closes anything else unanswered.
+// The exceptions are the connector-opened kinds (inbound.go: the relay #3489, Hub sign-in
+// #3966), and only on a tunnel the hub advertised one to: serveInbound checks its header,
+// cap and deadline before the hook, and closes anything else unanswered.
 func (s *Session) rejectInbound() {
 	for {
 		st, err := s.ys.AcceptStream()
 		if err != nil {
 			return
 		}
-		if !s.relayOn {
+		if len(s.hooks) == 0 {
 			_ = st.Close()
 			continue
 		}
@@ -230,7 +231,7 @@ func (s *Session) rejectInbound() {
 		}
 		go func() {
 			defer func() { <-s.relaySlot }()
-			s.serveRelay(st, st.SetDeadline)
+			s.serveInbound(st, st.SetDeadline)
 		}()
 	}
 }
