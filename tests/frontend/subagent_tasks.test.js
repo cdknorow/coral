@@ -87,7 +87,7 @@ async function run() {
       type: (q('.board-task-type')||{}).textContent, typeIsChip: !!q('.board-task-type-subagent'), typeIcon: (q('.board-task-type-subagent .material-icons')||{}).textContent || null, typeTitle: q('.board-task-type') ? q('.board-task-type').getAttribute('title') : null,
       badge: (q('.board-task-subagent-badge')||{}).textContent || null, desc: (q('.board-task-desc')||{}).textContent, descHasImg: !!q('.board-task-desc img'), tooltip: q('.board-task-desc') ? q('.board-task-desc').getAttribute('title') : null,
       assignee: (q('.board-task-assignee')||{}).textContent, cost: (q('.board-task-cost')||{}).textContent.trim(), costLive: !!q('.board-task-cost-live'),
-      spinner: !!q('.task-spinner'), icon: (q('.board-task-status-icon')||{}).textContent || null, clickable: el.hasAttribute('onclick'),
+      spinner: !!q('.task-spinner'), icon: (q('.board-task-status-icon')||{}).textContent || null, clickable: el.getAttribute('data-on-click') === 'task-subagent-open' || el.hasAttribute('onclick'),
       descW: q('.board-task-desc') ? q('.board-task-desc').getBoundingClientRect().width : 0, rowW: el.getBoundingClientRect().width, listScrollW: document.getElementById('board-task-list').scrollWidth,
       boxShadow: cs.boxShadow, bgImage: cs.backgroundImage, chipColor: q('.board-task-type') ? getComputedStyle(q('.board-task-type')).color : null }; })`);
   const bySub = (rs, id) => rs.find(r => r.subagentId === id);
@@ -122,6 +122,7 @@ async function run() {
   check('tooltip: type, model, calls, tokens', /Subagent \(Explore\)/.test(done.tooltip) && /claude-opus-5/.test(done.tooltip) && /25 API calls/.test(done.tooltip) && /tokens/.test(done.tooltip), done.tooltip);
   check('tooltip singular "1 API call"', /1 API call(?!s)/.test(running.tooltip), running.tooltip);
   check('no metadata: generic title, no badge', bare.desc === 'Subagent' && !bare.badge, bare.desc);
+  // A row names its action (data-on-click, #3645 slice 4b); clickRow below opens one for real.
   check('subagent rows are clickable', done.clickable && running.clickable && bare.clickable);
 
   // Status + spend
