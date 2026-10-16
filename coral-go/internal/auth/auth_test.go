@@ -208,6 +208,16 @@ func TestExtractAPIKey_BearerHeader(t *testing.T) {
 	assert.Equal(t, "my-api-key-123", extractAPIKey(r))
 }
 
+// #3936: X-API-Key, as agent_docs/auth.md documents it; Bearer wins, then X-API-Key, then the
+// query.
+func TestExtractAPIKey_XAPIKeyHeader(t *testing.T) {
+	r := httptest.NewRequest("GET", "/?api_key=query-key", nil)
+	r.Header.Set("X-API-Key", "x-key")
+	assert.Equal(t, "x-key", extractAPIKey(r))
+	r.Header.Set("Authorization", "Bearer bearer-key")
+	assert.Equal(t, "bearer-key", extractAPIKey(r))
+}
+
 func TestExtractAPIKey_QueryParam(t *testing.T) {
 	r := httptest.NewRequest("GET", "/?api_key=my-key-456", nil)
 	assert.Equal(t, "my-key-456", extractAPIKey(r))

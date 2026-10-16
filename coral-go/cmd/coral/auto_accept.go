@@ -82,6 +82,9 @@ func subcommand(args []string) (int, bool) {
 	if len(args) > 0 && args[0] == "db" {
 		return runDB(args[1:], os.Stdout, os.Stderr), true
 	}
+	if len(args) > 0 && args[0] == "api-key" {
+		return runAPIKey(args[1:], os.Stdout, os.Stderr), true
+	}
 	if len(args) > 0 && args[0] == "open" {
 		return runOpen(args[1:], os.Stdout, os.Stderr), true
 	}

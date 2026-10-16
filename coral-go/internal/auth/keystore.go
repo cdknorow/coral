@@ -115,6 +115,21 @@ func (ks *KeyStore) loadOrGenerate() error {
 // is tightened to 0600 first, as it should always have been (#3627 F2). Windows has no mode bits:
 // there the file's access list is checked instead (secfile.CheckOpen, #3905): one that lets
 // another account read it is secfile.ErrExposed.
+// ReadAPIKey reads the API key Coral keeps in coralDir (`coral api-key`, #3936), with the
+// same checks as the server: a regular file, private to this user. It never makes a key: a
+// data folder without one gets an fs.ErrNotExist error.
+func ReadAPIKey(coralDir string) (string, error) {
+	data, err := readKeyFile(filepath.Join(coralDir, "api_key"))
+	if err != nil {
+		return "", err
+	}
+	key := strings.TrimSpace(string(data))
+	if key == "" {
+		return "", fmt.Errorf("the API key file in %s is empty: %w", coralDir, fs.ErrNotExist)
+	}
+	return key, nil
+}
+
 func readKeyFile(path string) ([]byte, error) {
 	li, err := os.Lstat(path)
 	if err != nil {
@@ -427,12 +442,16 @@ func isLocalhost(r *http.Request) bool {
 	return host == "127.0.0.1" || host == "::1"
 }
 
-// ExtractAPIKey extracts the API key from the request.
-// Checks Authorization header first, then query parameter.
+// ExtractAPIKey extracts the API key from the request: the Authorization header (Bearer),
+// then X-API-Key (as agent_docs/auth.md documents it, #3936), then the api_key query parameter.
+// Coral Hub's tunnel forwards none of these headers.
 func extractAPIKey(r *http.Request) string {
 	// Authorization: Bearer <key>
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	if key := r.Header.Get("X-API-Key"); key != "" {
+		return key
 	}
 	// Query parameter
 	if key := r.URL.Query().Get("api_key"); key != "" {
