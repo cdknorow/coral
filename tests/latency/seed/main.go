@@ -87,12 +87,12 @@ func main() {
 	must(os.MkdirAll(workRoot, 0o755))
 
 	// Open stores (ensureSchema runs on Open).
-	db, err := store.Open(filepath.Join(*dataDir, "sessions.db"))
+	db, err := store.OpenWithKey(ctx, filepath.Join(*dataDir, "sessions.db"), "")
 	must(err)
 	defer db.Close()
 	ss := store.NewSessionStore(db)
 
-	bs, err := board.NewStore(filepath.Join(*dataDir, "messageboard.db"))
+	bs, err := board.NewStoreWithKey(filepath.Join(*dataDir, "messageboard.db"), "")
 	must(err)
 	defer bs.Close()
 
