@@ -1019,9 +1019,11 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	metricsRetention := background.NewCallMetricsRetention(db)
 	safeGo(ctx, "call_metrics_retention", func() { metricsRetention.Run(ctx) })
 
-	// A pty Coral wakes the agents that were running when it last stopped (#3636).
+	// A pty Coral wakes the agents that were running when it last stopped (#3636): one pass per
+	// start. Restart, not safeGo: safeGo restarts a service that returns, so the pass (and its
+	// "agents were running" notice) ran again every few seconds (#4033).
 	if cfg.TerminalBackend == "pty" {
-		safeGo(ctx, "auto_wake", func() { srv.AutoWakeAfterRestart(ctx) })
+		safego.Restart("startup/auto_wake", func() { srv.AutoWakeAfterRestart(ctx) })
 	}
 
 	// Uploads retention: pasted/dropped images expire after uploads_retention_days
