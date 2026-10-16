@@ -2,11 +2,15 @@
 // grew without bound (457 MB on the operator's computer), and it records launch commands,
 // paths and board activity. When a write would take the file past its size, it is renamed to
 // <path>.1 (the older copies move up to .2 ... .keep, the oldest is removed) and a new file is
-// started. Every file is 0600 and opened without following a symlink planted at the path.
+// started. Every file is 0600 and opened without following a symlink planted at the path. A log
+// from before rotation, over twice the size, keeps only its last trimTo bytes when it rotates
+// (the operator's choice: 5 MB for coral.log); the rest is removed.
 package logrotate
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"sync"
@@ -17,6 +21,7 @@ type File struct {
 	path    string
 	maxSize int64
 	keep    int
+	trimTo  int64 // an oversized file (over 2×maxSize) keeps only its last trimTo bytes; 0: all
 
 	mu   sync.Mutex
 	f    *os.File
@@ -24,12 +29,13 @@ type File struct {
 }
 
 // Open opens (or creates) path for appending. A file already over maxSize rotates on the next
-// write. Copies beyond keep, from an earlier setting, are removed.
-func Open(path string, maxSize int64, keep int) (*File, error) {
-	if maxSize <= 0 || keep < 1 {
-		return nil, fmt.Errorf("logrotate: size %d and keep %d must be positive", maxSize, keep)
+// write; one over twice maxSize keeps only its last trimTo bytes then (0 keeps it whole). Copies
+// beyond keep, from an earlier setting, are removed.
+func Open(path string, maxSize int64, keep int, trimTo int64) (*File, error) {
+	if maxSize <= 0 || keep < 1 || trimTo < 0 {
+		return nil, fmt.Errorf("logrotate: size %d, keep %d and trim %d must be positive", maxSize, keep, trimTo)
 	}
-	r := &File{path: path, maxSize: maxSize, keep: keep}
+	r := &File{path: path, maxSize: maxSize, keep: keep, trimTo: trimTo}
 	if err := r.open(); err != nil {
 		return nil, err
 	}
@@ -79,14 +85,53 @@ func (r *File) Write(p []byte) (int, error) {
 // rotate closes the file and shifts the copies: path.keep is removed, path.i becomes path.i+1,
 // path becomes path.1. The file is closed first, so this works on Windows too.
 func (r *File) rotate() {
+	oversized := r.trimTo > 0 && r.size > 2*r.maxSize
 	r.f.Close()
 	r.f = nil
 	os.Remove(r.copyName(r.keep))
 	for i := r.keep - 1; i >= 1; i-- {
 		os.Rename(r.copyName(i), r.copyName(i+1))
 	}
-	os.Rename(r.path, r.copyName(1))
+	if !oversized || r.copyTail(r.copyName(1)) != nil {
+		os.Rename(r.path, r.copyName(1)) // whole (or the tail couldn't be written: keep it all)
+	} else {
+		os.Remove(r.path)
+	}
 	_ = r.open()
+}
+
+// copyTail writes the file's last trimTo bytes to dst, from the first whole line in them.
+func (r *File) copyTail(dst string) error {
+	src, err := os.OpenFile(r.path, os.O_RDONLY|openNoFollow, 0)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	st, err := src.Stat()
+	if err != nil {
+		return err
+	}
+	in := bufio.NewReader(src)
+	if start := st.Size() - r.trimTo; start > 0 {
+		// From the byte before the cut: up to and including its newline is skipped, so the
+		// tail starts on a whole line (and a cut on a line's start keeps that line).
+		if _, err := src.Seek(start-1, io.SeekStart); err != nil {
+			return err
+		}
+		if _, err := in.ReadString('\n'); err != nil {
+			return err
+		}
+	}
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|openNoFollow, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	return out.Close()
 }
 
 // Close closes the file.

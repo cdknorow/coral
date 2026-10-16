@@ -35,10 +35,12 @@ import (
 const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
 
 // coral.log rotates by size (#3628 F5): at coralLogMaxSize it becomes coral.log.1, and
-// coralLogKeep older copies are kept (about 120 MB at most).
+// coralLogKeep older copies are kept (about 120 MB at most). A log from before rotation over
+// twice that size keeps only its last coralLogTrim on its first rotation (the operator's choice).
 const (
 	coralLogMaxSize = 20 << 20
 	coralLogKeep    = 5
+	coralLogTrim    = 5 << 20
 )
 
 // setupCrashLogging logs to <coralDir>/coral.log and copies each line to the
@@ -48,7 +50,7 @@ const (
 func setupCrashLogging(coralDir string) {
 	_ = config.EnsureDataDir(coralDir) // this user only (#3637); the log open below reports a failure
 	logFile := filepath.Join(coralDir, "coral.log")
-	f, err := logrotate.Open(logFile, coralLogMaxSize, coralLogKeep)
+	f, err := logrotate.Open(logFile, coralLogMaxSize, coralLogKeep, coralLogTrim)
 	if err != nil {
 		return
 	}

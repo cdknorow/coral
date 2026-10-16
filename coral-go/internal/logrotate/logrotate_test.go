@@ -1,6 +1,7 @@
 package logrotate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,7 +17,7 @@ import (
 func TestRotatesAtItsSizeAndKeepsCopies(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "coral.log")
-	r, err := Open(path, 100, 3)
+	r, err := Open(path, 100, 3, 0)
 	require.NoError(t, err)
 	defer r.Close()
 	line := strings.Repeat("x", 39) + "\n" // 40 bytes: two lines fit, the third rotates
@@ -47,7 +48,7 @@ func TestOpenTakesOverAnOldLog(t *testing.T) {
 	for _, extra := range []string{"coral.log.6", "coral.log.9"} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, extra), []byte("x"), 0o600))
 	}
-	r, err := Open(path, 100, 2)
+	r, err := Open(path, 100, 2, 0)
 	require.NoError(t, err)
 	defer r.Close()
 	if runtime.GOOS != "windows" {
@@ -76,8 +77,55 @@ func TestOpenDoesNotFollowASymlink(t *testing.T) {
 	require.NoError(t, os.WriteFile(target, []byte("keep"), 0o644))
 	path := filepath.Join(dir, "coral.log")
 	require.NoError(t, os.Symlink(target, path))
-	_, err := Open(path, 100, 2)
+	_, err := Open(path, 100, 2, 0)
 	assert.Error(t, err)
 	b, _ := os.ReadFile(target)
 	assert.Equal(t, "keep", string(b))
+}
+
+// The operator's choice (#3628): a log from before rotation, over twice the size, keeps only its
+// last trimTo bytes on its first rotation, from a whole line; one under twice the size moves
+// whole.
+func TestAnOversizedOldLogKeepsOnlyItsTail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "coral.log")
+	var old strings.Builder
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(&old, "line %04d\n", i) // 10 bytes each: 1000 bytes
+	}
+	require.NoError(t, os.WriteFile(path, []byte(old.String()), 0o600))
+	r, err := Open(path, 100, 3, 40) // over 2×100: trimmed to its last 40 bytes
+	require.NoError(t, err)
+	defer r.Close()
+	_, err = r.Write([]byte("new\n"))
+	require.NoError(t, err)
+	tail, err := os.ReadFile(path + ".1")
+	require.NoError(t, err)
+	assert.Equal(t, "line 0096\nline 0097\nline 0098\nline 0099\n", string(tail), "the last 40 bytes, whole lines")
+	if runtime.GOOS != "windows" {
+		st, _ := os.Stat(path + ".1")
+		assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
+	}
+	cur, _ := os.ReadFile(path)
+	assert.Equal(t, "new\n", string(cur))
+
+	// A cut in the middle of a line starts at the next whole one.
+	require.NoError(t, os.WriteFile(path, []byte(old.String()), 0o600))
+	r2, err := Open(path, 100, 3, 45)
+	require.NoError(t, err)
+	defer r2.Close()
+	_, err = r2.Write([]byte("new\n"))
+	require.NoError(t, err)
+	tail, _ = os.ReadFile(path + ".1")
+	assert.Equal(t, "line 0096\nline 0097\nline 0098\nline 0099\n", string(tail))
+
+	// Under twice the size: moved whole, as any rotation.
+	require.NoError(t, os.WriteFile(path, []byte(old.String()[:150]), 0o600))
+	r3, err := Open(path, 100, 3, 40)
+	require.NoError(t, err)
+	defer r3.Close()
+	_, err = r3.Write([]byte("new\n"))
+	require.NoError(t, err)
+	tail, _ = os.ReadFile(path + ".1")
+	assert.Equal(t, old.String()[:150], string(tail))
 }
