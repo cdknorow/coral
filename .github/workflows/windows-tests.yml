@@ -1,5 +1,5 @@
 name: windows-tests
-# Runs go test on Windows for the packages with Windows-specific code paths (#3614), so the paths
+# Runs go test on Windows for every package (since 2026-10-16; before, a hand-kept list from #3614), so the paths
 # Security flagged as compile-only actually run: reparse points and link counts
 # (GetFileInformationByHandle) in safefs, routes, agent and background; UNC and device-path refusal
 # in auto-attach; the no-hooks path in gitutil; the token owner check in cliauth; ptymanager's
@@ -15,10 +15,12 @@ on:
     branches: [main]
     paths:
       - "coral-go/**"
+      - "tests/windows/**"
       - ".github/workflows/windows-tests.yml"
   pull_request:
     paths:
       - "coral-go/**"
+      - "tests/windows/**"
       - ".github/workflows/windows-tests.yml"
   workflow_dispatch:
 
@@ -51,18 +53,55 @@ jobs:
           cache-dependency-path: coral-go/go.sum
       - name: vet (the whole module, natively on Windows)
         run: go vet -tags fts5 ./...
-      - name: packages with Windows-specific code paths
-        run: >-
-          go test -count=1 -timeout 30m -tags fts5
-          ./internal/safefs/... ./internal/agent/... ./internal/cliauth/...
-          ./internal/gitutil/... ./internal/background/... ./internal/ptymanager/...
-          ./internal/config/...
-          ./internal/secfile/... ./pkg/secretbox/... ./internal/cloud/...
+      # Every package runs on Windows (go list ./...), so a new package or a new Windows test can't be skipped by a
+      # hand-kept list (internal/psquote's Windows test was, #3904). internal/server/routes runs in the next step with
+      # its filter. The packages below fail on Windows today, none of them because of Windows code we ship, and they
+      # had never been run there before 2026-10-16 (probe run 38909914965). Each runs only the tests in its
+      # Windows-only test files (or is compiled, when there are none) until its task (#3914 or #3920) makes it pass whole; take it off
+      # this list then. The step fails if an entry here no longer exists, so the list can't go stale.
+      - name: every package (routes in the next step), with the known Windows failures run by their Windows-only tests
+        run: |
+          set -euo pipefail
+          root=$(go list -m)
+          excluded=(
+            cmd/coral                  # #3920: first start with a non-TTY stdin
+            internal/board             # #3920: rekey backup, WAL read pool, check runner (go test), counts
+            internal/dbcrypt           # #3914: key file checks assume Unix permissions
+            internal/inputlog          # #3920: debug-file tests assume Unix modes and paths
+            internal/loginlink         # #3920
+            internal/logrotate         # #3920: an oversized old log (file in use on Windows)
+            internal/machinehealth     # #3920: process tree (grandchildren) on Windows
+            internal/server            # #3914: 70 tests, open messageboard.db at TempDir cleanup and board ids
+            internal/stallwatch        # #3920
+            internal/startup           # #3914: log dir mode, open sessions.db/coral-server.lock at cleanup, PATH checks
+            internal/store             # #3920: WAL read pool, remote servers, team store
+            internal/tmux              # #3920: tmux is not used on Windows (the pty backend is); bundled-tmux tests
+            internal/tracking          # #3920: 20 tests
+          )
+          all=(); while IFS= read -r p; do all+=("${p#"$root"/}"); done < <(go list -tags fts5 ./...)
+          for e in "${excluded[@]}"; do
+            printf '%s\n' "${all[@]}" | grep -qxF "$e" || { echo "::error::excluded package $e no longer exists: drop it from windows-tests.yml"; exit 1; }
+          done
+          pkgs=(); for p in "${all[@]}"; do
+            [ "$p" = internal/server/routes ] && continue
+            printf '%s\n' "${excluded[@]}" | grep -qxF "$p" && continue
+            pkgs+=("./$p")
+          done
+          echo "go test on Windows: ${#pkgs[@]} packages (all but routes and ${#excluded[@]} known failures)"
+          go test -count=1 -timeout 40m -tags fts5 "${pkgs[@]}"
+          while IFS=$'\t' read -r pkg names; do
+            printf '%s\n' "${excluded[@]}" | grep -qxF "${pkg#./}" || continue
+            if [ -n "$names" ]; then run="^($names)\$"; else run='^$'; fi
+            echo "known Windows failure $pkg: only its Windows-only tests, -run '$run'"
+            go test -count=1 -timeout 30m -tags fts5 -run "$run" "$pkg"
+          done < <(bash ../tests/windows/windows_only_tests.sh --tests)
       - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
         if: ${{ !cancelled() }} # report the routes results even when the packages step failed
         env:
           ROUTES_RUN: "AutoAttach|Attach|UNC|Device|HardLink|Symlink|Junction|EvalSymlinks|NeverFollow|SaveFileContent|PathInside|SearchFilesDir|ImportTeam|Upload"
         run: |
+          # Every Windows-only test in routes must match the filter (a new one outside it would never run here).
+          bash ../tests/windows/windows_only_tests.sh --check-routes "$ROUTES_RUN"
           # A -run pattern that matches no test passes silently, so a rename could hide this coverage:
           # require at least 40 matching tests (51 when this was written).
           n=$(go test -tags fts5 -list "$ROUTES_RUN" ./internal/server/routes | grep -c '^Test' || true)
