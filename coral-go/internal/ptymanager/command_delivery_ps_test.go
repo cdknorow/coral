@@ -15,3 +15,13 @@ func TestPSHandoffQuotesAnApostropheInThePath(t *testing.T) {
 	assert.Equal(t, `'it''s ''quoted'''`, psLiteral(`it's 'quoted'`))
 	assert.Equal(t, `'$env:X; whoami'`, psLiteral(`$env:X; whoami`), "single quotes: nothing expands")
 }
+
+// #3904: a curly apostrophe in the handoff path is doubled like ', so it can't end the string.
+func TestPSHandoffDoublesCurlyQuotes(t *testing.T) {
+	for _, q := range []string{"\u2018", "\u2019", "\u201a", "\u201b"} {
+		script, inv := psHandoff(`C:\\Users\\Jane`+q+`s\\Temp\\coral-command-1.ps1`, "Write-Output ok")
+		quoted := `'C:\\Users\\Jane` + q + q + `s\\Temp\\coral-command-1.ps1'`
+		assert.Equal(t, "Remove-Item -Force "+quoted+"\nWrite-Output ok\n", script, "%U", []rune(q)[0])
+		assert.Equal(t, "& "+quoted, inv, "%U", []rune(q)[0])
+	}
+}
