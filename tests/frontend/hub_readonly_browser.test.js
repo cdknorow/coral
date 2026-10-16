@@ -42,7 +42,14 @@ const CLOUD_PRELOAD = `(() => {
         window.__wsTerm = this;
         setTimeout(() => { this.readyState = 1; this.onopen && this.onopen({}); }, 0);
     }
-    FakeTerm.prototype.send = function (d) { window.__wsSent.push(typeof d === 'string' ? d : '[binary]'); };
+    // As the server does (#3276): every terminal_input carries an id, and the server acknowledges it; "Sent" waits for the acks.
+    FakeTerm.prototype.send = function (d) {
+        window.__wsSent.push(typeof d === 'string' ? d : '[binary]');
+        try {
+            const m = typeof d === 'string' ? JSON.parse(d) : null;
+            if (m && m.type === 'terminal_input' && Number.isInteger(m.id)) setTimeout(() => window.__wsInject(JSON.stringify({ type: 'terminal_input_ack', id: m.id })), 0);
+        } catch (e) { /* not JSON: nothing to acknowledge */ }
+    };
     FakeTerm.prototype.close = function () { this.readyState = 3; };
     FakeTerm.prototype.addEventListener = function () {}; FakeTerm.prototype.removeEventListener = function () {};
     window.__wsInject = data => window.__wsTerm && window.__wsTerm.onmessage && window.__wsTerm.onmessage({ data });

@@ -470,19 +470,20 @@ const { framesJs } = require('./helpers/wait');
             window.fetch = async (url, opts) => {
                 const signal = opts?.signal;
                 if (url.includes('/api/sessions/live/agent-alpha/chat')) {
-                    if (url.includes('offset=0') || url.includes('after=')) {
-                        // Initial chat load for Alpha
+                    if (!url.includes('before=')) {
+                        // Initial chat load for Alpha (a page carries its start, the keyset cursor load-more asks before)
                         return {
                             ok: true,
                             status: 200,
                             json: async () => ({
                                 messages: [{ type: 'assistant', text: 'ALPHA RECENT MESSAGE' }],
                                 total: 10,
+                                start: 9,
                                 has_more: true,
                             }),
                         };
                     }
-                    if (url.includes('offset=1')) {
+                    if (url.includes('before=9')) {
                         // Slow load-more for older messages
                         return new Promise((resolve, reject) => {
                             const timer = setTimeout(() => {
@@ -492,6 +493,7 @@ const { framesJs } = require('./helpers/wait');
                                     json: async () => ({
                                         messages: [{ type: 'assistant', text: 'ALPHA OLDER MESSAGE' }],
                                         total: 10,
+                                        start: 8,
                                         has_more: false,
                                     }),
                                 });
