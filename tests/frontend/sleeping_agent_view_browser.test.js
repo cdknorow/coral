@@ -93,7 +93,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
 
         console.log('A4. Wake: one POST, one re-select, input back with the awake placeholder and the draft');
         await ev(`window.__m.wakeDelay = 300`);
-        // Chat stays the view after waking, so the one re-select shows as one first-page /chat.
+        // Chat stays the view after waking, so the one re-select shows the kept page and asks only for what came after (#3726).
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat')`);
         await clearReqs();
         await ev(`(() => { const b = document.getElementById('sleeping-wake-btn'); b.click(); b.click(); })()`);
@@ -106,7 +106,8 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         let r = await reqs();
         assert.equal(r.filter(x => x.kind === 'wake').length, 1, 'one POST /wake for three clicks');
         assert.equal(await ev('window.__selCalls'), 1, 'exactly one re-select after wake');
-        assert.equal(r.filter(x => x.first).length, 1, `exactly one first-page /chat after wake (got ${r.filter(x => x.first).length})`);
+        assert.equal(r.filter(x => x.first).length, 0, `no first-page /chat after wake: the kept page is shown (got ${r.filter(x => x.first).length})`);
+        assert.ok(r.filter(x => x.kind === 'chat' && x.after > 0).length >= 1, 'it asks only for what came after the kept page');
         let v = await view();
         assert.equal(v.composer, false, 'sleeping composer hidden after wake');
         assert.equal(v.paneSleeping, false, 'agent-sleeping class removed');
@@ -116,7 +117,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         assert.equal(v.wakeText, 'Wake', 'Wake button label restored');
         const afterWake = await ev('window.__rendered()');
         assert.equal(new Set(afterWake).size, afterWake.length, 'history not duplicated by the wake');
-        console.log('   ✓ 1 POST /wake, 1 first-page /chat, input + draft back');
+        console.log('   ✓ 1 POST /wake, the kept page and no first-page /chat, input + draft back');
         await ev(`window.__m.wakeDelay = 0`);
 
         console.log('A5. Wake failure keeps the agent asleep');
@@ -195,7 +196,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         await settled();
         r = await reqs();
         assert.equal(await ev('window.__selCalls'), 1, `wake + feed flip together: one re-select (got ${await ev('window.__selCalls')})`);
-        assert.equal(r.filter(x => x.first).length, 1, `wake + feed flip together: one first-page /chat (got ${r.filter(x => x.first).length})`);
+        assert.equal(r.filter(x => x.first).length, 0, `wake + feed flip together: no first-page /chat, the kept page is shown (got ${r.filter(x => x.first).length})`);
         const ids = await ev('window.__rendered()');
         assert.equal(new Set(ids).size, ids.length, 'history not duplicated');
         await ev(`window.__m.wakeDelay = 0`);
@@ -233,7 +234,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         assert.equal(wakes.length, 1, 'one remote POST /wake');
         assert.equal(wakes[0].remote, 'qa-remote-1', 'wake goes through /api/remote/<id>');
         assert.equal(await ev('window.__selCalls'), 1, 'one re-select after the remote wake');
-        assert.equal(r.filter(x => x.first).length, 1, 'one first-page /chat after the remote wake');
+        assert.equal(r.filter(x => x.first).length, 0, 'no first-page /chat after the remote wake: the kept page is shown (#3726)');
         console.log('   ✓ remote wake via /api/remote/qa-remote-1, one re-select');
 
         console.log('C. Phone-width viewport');

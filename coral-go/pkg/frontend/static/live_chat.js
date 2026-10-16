@@ -21,6 +21,46 @@ let historyStart = 0;       // absolute index of the oldest rendered message (ke
 let historyHasMore = false;  // whether older messages exist
 let initialLoadDone = false; // whether the initial full load has completed
 let loadingMore = false;     // an older page is being fetched
+
+// The chat page of each recently seen agent, kept so a switch back shows it at once and fetches only what came after
+// (#3726), instead of the whole first page again. A page is kept for a few minutes after the agent was last on screen,
+// for the last few agents, and only its newest messages (what the first page and the polls rendered).
+const KEPT_TTL_MS = 5 * 60 * 1000;
+const KEPT_MAX_AGENTS = 6;
+const KEPT_MAX_MESSAGES = 600;
+const keptPages = new Map(); // session_id -> { messages, total, start, at }; the newest-used last
+
+function keepFirstPage(sessionId, messages, total, start) {
+    keptPages.delete(sessionId);
+    keptPages.set(sessionId, { messages: messages.slice(), total, start, at: Date.now() });
+    while (keptPages.size > KEPT_MAX_AGENTS) keptPages.delete(keptPages.keys().next().value);
+}
+
+function keepMore(sessionId, messages, total) {
+    const kept = keptPages.get(sessionId);
+    if (!kept) return;
+    kept.messages.push(...messages);
+    kept.total = total;
+    kept.at = Date.now();
+    if (kept.messages.length > KEPT_MAX_MESSAGES) {
+        const drop = kept.messages.length - KEPT_MAX_MESSAGES;
+        kept.messages.splice(0, drop);
+        kept.start += drop;
+    }
+    keptPages.delete(sessionId);
+    keptPages.set(sessionId, kept);
+}
+
+/** Forget every kept page (a suite that reuses an agent id with different content between its cases). */
+export function clearKeptChatPages() { keptPages.clear(); }
+
+/** The kept page of a session seen within the last few minutes, or null (an older one is dropped). */
+function freshKeptPage(sessionId) {
+    const kept = keptPages.get(sessionId);
+    if (!kept) return null;
+    if (Date.now() - kept.at > KEPT_TTL_MS || kept.messages.length === 0) { keptPages.delete(sessionId); return null; }
+    return kept;
+}
 // Messages per page. Tool calls and results each count as one and are folded
 // away in the chat, so a page covers fewer turns than its size suggests. The
 // first page is small so a switch paints quickly (the payload crosses the hub
@@ -813,6 +853,23 @@ export async function refreshLiveHistory() {
     const container = document.getElementById("live-history-messages");
     if (!container) return;
 
+    // An agent seen in the last few minutes: its kept page shows at once, and only what came after is asked for
+    // below (a poll from the page's end), not the first page again (#3726).
+    if (!initialLoadDone) {
+        const kept = freshKeptPage(session.session_id);
+        if (kept) {
+            container.innerHTML = "";
+            for (const msg of kept.messages) renderMessage(msg, container, session.agent_type);
+            historyHasMore = kept.start > 0;
+            historyOffset = kept.messages.length;
+            historyStart = kept.start;
+            historyMessageCount = kept.total;
+            _updateLoadMoreButton(container);
+            initialLoadDone = true;
+            if (state.autoScroll) container.scrollTop = container.scrollHeight;
+        }
+    }
+
     // Show loading indicator on first load
     if (!initialLoadDone && !container.querySelector('.loading-indicator') && !container.querySelector('.chat-load-error') && container.children.length === 0) {
         container.innerHTML = '<div class="loading-indicator">Loading chat history</div>';
@@ -879,6 +936,20 @@ export async function refreshLiveHistory() {
         }
         if (generation !== historyGeneration) return;
 
+        // The transcript is shorter than what this client holds (it was cut or replaced while the agent was away, or a kept
+        // page outlived it): forget what is shown and load it again from its start.
+        if (initialLoadDone && Number.isInteger(data.total) && data.total < historyMessageCount) {
+            keptPages.delete(session.session_id);
+            container.innerHTML = "";
+            historyMessageCount = 0;
+            historyOffset = 0;
+            historyStart = 0;
+            historyHasMore = false;
+            initialLoadDone = false;
+            setTimeout(refreshLiveHistory, 0); // after this refresh has ended
+            return;
+        }
+
         // What the server says about an open prompt rides on this reply (#3720): the pending tool call, and the options
         // of a prompt that may be open on the terminal.
         pendingToolBySession.set(session.session_id, data.pending || null);
@@ -899,6 +970,7 @@ export async function refreshLiveHistory() {
                 historyStart = pageStart(data);
                 _updateLoadMoreButton(container);
                 initialLoadDone = true;
+                keepFirstPage(session.session_id, data.messages, data.total, historyStart);
             } else {
                 // Poll — append new messages at the bottom. They count toward
                 // offset, which a server without keyset paging measures from
@@ -907,6 +979,7 @@ export async function refreshLiveHistory() {
                     renderMessage(msg, container, session.agent_type);
                 }
                 historyOffset += data.messages.length;
+                keepMore(session.session_id, data.messages, data.total);
             }
             for (const msg of data.messages) {
                 if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) noteInterrupt(session.session_id, msg);
@@ -921,6 +994,9 @@ export async function refreshLiveHistory() {
             _updateLoadMoreButton(container);
         }
         syncUsageLimitNotice(container, data.limit_notice || '');
+        // The agent is still on screen: its kept page is as fresh as this reply, so the time limit counts from when it left.
+        const keptNow = keptPages.get(session.session_id);
+        if (keptNow && Number.isInteger(data.total)) keptNow.at = Date.now();
 
         // Pending first: it settles its place at the bottom, then the working row goes above it
         syncPendingBubbles(container, session.session_id);

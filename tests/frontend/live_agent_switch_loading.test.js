@@ -522,7 +522,8 @@ const { framesJs } = require('./helpers/wait');
                 return origFetch(url, opts);
             };
 
-            // 1. Load Alpha
+            // 1. Load Alpha (the earlier cases used this id with other content: no kept page of theirs, #3726)
+            window.testLiveChat.clearKeptChatPages();
             window.__qaTrack();
             window.testSessions.selectLiveSession('agent-alpha', 'codex', 'agent-alpha-id');
             // Only Alpha's first page: settling every request here would also let the app's own autoload of
