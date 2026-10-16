@@ -176,13 +176,14 @@ const fs = require('fs'), vm = require('vm');
 const src = fs.readFileSync(process.argv[1], 'utf8');
 const a = src.indexOf('const CORAL_NUDGE_RES');
 const b = src.indexOf('/** Record a message just sent');
-if (a < 0 || b < a) { console.error('could not locate classifier in live_chat.js'); process.exit(2); }
+if (a < 0 || b < a) { console.error('could not locate classifier in pending_messages.js'); process.exit(2); }
 const ctx = vm.createContext({});
-vm.runInContext(src.slice(a, b) + '\nthis.isCoralNudge = isCoralNudge; this.isCoralHealthNudge = isCoralHealthNudge;', ctx);
+vm.runInContext(src.slice(a, b).replace(/^export /gm, '') + '\nthis.isCoralNudge = isCoralNudge; this.isCoralHealthNudge = isCoralHealthNudge;', ctx);
 const msg = fs.readFileSync(process.argv[2], 'utf8');
 console.log(JSON.stringify({ coral: ctx.isCoralNudge(msg), health: ctx.isCoralHealthNudge(msg), plainUser: ctx.isCoralNudge('Make a cost chart please') }));
 `
-	chat, err := filepath.Abs("../../../pkg/frontend/static/live_chat.js")
+	// The classifier moved out of live_chat.js with the pending messages (#3837); its functions are exports there.
+	chat, err := filepath.Abs("../../../pkg/frontend/static/pending_messages.js")
 	require.NoError(t, err)
 	out, err := exec.Command(node, "-e", script, chat, msgPath).CombinedOutput()
 	require.NoError(t, err, string(out))
