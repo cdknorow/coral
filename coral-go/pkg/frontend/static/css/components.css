@@ -3916,8 +3916,9 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 @media (max-width: 480px) { .sec-item { flex-direction: column; gap: 0; } .sec-when { text-align: left; } }
 .sec-gap { margin-top: 14px; }
 .sec-muted { color: var(--text-secondary); font-weight: 400; }
-.sec-switch { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; margin: 6px 0; cursor: pointer; }
-.sec-switch input[type="checkbox"] { width: 16px; height: 16px; flex: none; margin: 2px 0 0; padding: 0; }
+#settings-modal .sec-switch { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; font-size: 13px; margin: 6px 0; cursor: pointer; }
+#settings-modal .sec-switch input[type="checkbox"] { width: 16px; height: 16px; flex: none; margin: 2px 0 0; padding: 0; }
 .sec-warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(212, 167, 44, .13); border: 1px solid rgba(212, 167, 44, .55); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; margin: 8px 0; }
 .sec-add { display: flex; gap: 8px; align-items: center; }
 .sec-add .btn { margin: 0; }
+#settings-modal .sec-sessions .btn { margin: 0; }   /* .btn-small's 20 px side margin pushed these buttons off their row */
