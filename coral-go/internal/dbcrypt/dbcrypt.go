@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"testing"
 
 	"github.com/cdknorow/coral/internal/secfile"
 )
@@ -108,9 +109,10 @@ func writeMigrationState(path, phase string, paths []string) error {
 }
 
 // migrationFaultInjection is intentionally environment-gated and exists only
-// so an isolated subprocess test can terminate at a swap boundary.
+// so an isolated subprocess test can terminate at a swap boundary. Only a test binary reads
+// the variable: a shipped Coral never aborts its migration because of it (#3825 G).
 func migrationFaultInjection(phase string) {
-	if os.Getenv("CORAL_DBCRYPT_TEST_EXIT_PHASE") == phase {
+	if testing.Testing() && os.Getenv("CORAL_DBCRYPT_TEST_EXIT_PHASE") == phase {
 		os.Exit(91)
 	}
 }
