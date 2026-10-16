@@ -16,6 +16,7 @@
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
+const wait = require('./helpers/wait');
 
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
@@ -38,9 +39,12 @@ async function run() {
         return r.result.value;
     }
 
-    async function sleep(ms) {
-        return new Promise(r => setTimeout(r, ms));
-    }
+    // Waits are on conditions (helpers/wait.js), not on a guessed number of seconds (#3916: this suite slept 12 s).
+    const until = (expr, what, timeout = 10000) => wait.waitFor(evalInPage, expr, what, { timeout });
+    // The terminal's last 60 lines contain `text`: the output has reached xterm.
+    const shown = text => `(() => { const t = window.getTerminal && window.getTerminal(); if (!t) return false; const b = t.buffer.active;
+        for (let i = b.length - 1; i >= Math.max(0, b.length - 60); i--) { const l = b.getLine(i); if (l && l.translateToString().includes(${JSON.stringify(text)})) return true; } return false; })()`;
+    const scrollKey = `(() => { const t = window.getTerminal && window.getTerminal(); if (!t) return null; const b = t.buffer.active; return [b.viewportY, b.baseY, b.length]; })()`;
 
     // Helper: read xterm scroll state via window.getTerminal() (exposed by app.js)
     async function getScrollState() {
@@ -63,7 +67,8 @@ async function run() {
     // Navigate to Coral UI and wait for bundle to load
     await Page.navigate({ url: BASE + '/' });
     await Page.loadEventFired();
-    await sleep(2000);
+    await until('!!window.__coralReady', 'the app readiness hook');
+    await evalInPage('window.__coralReady');
 
     // ── Launch a terminal session via API ────────────────────────────
     console.log('Launching terminal session...');
@@ -91,12 +96,12 @@ async function run() {
     console.log(`Session launched: ${sessionName} (${sessionId})`);
 
     // Wait for session to appear in the WebSocket session list
-    await sleep(2000);
+    await until(`(window._coralGetLiveSessions() || []).some(s => s.session_id === '${sessionId}')`, 'the session in the live list');
 
     // ── Select the session in the UI ─────────────────────────────────
     console.log('Selecting session in UI...');
     await evalInPage(`window.selectLiveSession('${sessionName}', 'terminal', '${sessionId}')`);
-    await sleep(1500);
+    await evalInPage(`Promise.race([window.__coralReady.agentSelected('${sessionId}').then(() => true), new Promise(r => setTimeout(() => r(false), 10000))])`);
 
     // ── Produce many lines of output ─────────────────────────────────
     console.log('Producing output (seq 1 200)...');
@@ -114,8 +119,9 @@ async function run() {
         })()
     `);
 
-    // Wait for output to render in xterm
-    await sleep(3000);
+    // Wait for output to render in xterm, then for the scroll position to stop moving
+    await until(shown('scroll_line_200'), 'the output in xterm');
+    await wait.waitStable(evalInPage, scrollKey, 'the scroll position', 300, { timeout: 8000 });
 
     // ── S1: After initial connect with output, viewport is at bottom ──
     const s1 = await getScrollState();
@@ -179,11 +185,12 @@ async function run() {
                 document.getElementById("pane-capture").style.display = "";
             })()
         `);
-        await sleep(500);
+        await until(`document.getElementById("xterm-container").style.display === "none"`, 'the terminal hidden');
 
         // Switch back via the real selectLiveSession flow (createTerminal + connectTerminalWs + fitTerminal)
         await evalInPage(`window.selectLiveSession('${sessionName}', 'terminal', '${sessionId}')`);
-        await sleep(3000);
+        await until(shown('scroll_line_200'), 'the replayed output in xterm');
+        await wait.waitStable(evalInPage, scrollKey, 'the scroll position after the replay', 300, { timeout: 8000 });
 
         const s3 = await getScrollState();
         if (s3) {

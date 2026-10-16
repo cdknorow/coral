@@ -27,6 +27,10 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await Page.enable();
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
         // The fake goes in before the page's own code runs, so watchAutoWake sees it.
+        // The over-the-cap pass looks 6 s after a start and again every 5 s (terminal_backend.js watchAutoWake): two steps of this suite waited that
+        // long. Those two timers (and only those) run in 0.2 s here; the 2 s plus up to 1 s stagger between wakes is not touched, so the
+        // "each wake at least 2 s after the one before" check still measures the real stagger.
+        await Page.addScriptToEvaluateOnNewDocument({ source: `{ const realSetTimeout = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms === 6000 || ms === 5000 ? 200 : ms, ...rest); }` });
         await Page.addScriptToEvaluateOnNewDocument({ source: `(() => {
             window.__aw = { pending: ${JSON.stringify(PENDING)}, wakes: [], dismissed: false, puts: [] };
             const inner = window.fetch;

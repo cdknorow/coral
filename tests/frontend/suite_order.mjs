@@ -21,15 +21,16 @@ export function orderLongestFirst(tests, durations) {
     return tests.map((t, i) => ({ t, i })).sort((a, b) => secs(b.t) - secs(a.t) || a.i - b.i).map(x => x.t);
 }
 
-/** Durations from a runner results.json: each suite's first attempt, only when it passed, in seconds with one decimal. */
+/** Durations from a runner results.json: each main-queue suite's first attempt, only when it passed, in seconds with one decimal. */
 export function durationsFromResults(results) {
     const out = {};
     for (const r of Array.isArray(results) ? results : (results && results.results) || []) {
         const name = r && (r.test || r.name);
         const a = r && Array.isArray(r.attempts) && r.attempts.length ? r.attempts[0] : null;
         const secs = a ? Number(a.secs) : Number(r && r.secs);
-        if (!name || (a ? a.status : r.status) !== 'pass' || !Number.isFinite(secs)) continue;
-        out[String(name).replace(/^strict: /, '')] = Math.round(secs * 10) / 10;
+        // The strict phase's runs ('strict: x') and the sequence group are not the main queue's entries.
+        if (!name || /^(strict|sequence): /.test(String(name)) || (a ? a.status : r.status) !== 'pass' || !Number.isFinite(secs)) continue;
+        out[String(name)] = Math.round(secs * 10) / 10;
     }
     return out;
 }
