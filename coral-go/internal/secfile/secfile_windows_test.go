@@ -157,14 +157,30 @@ func TestWindowsLinksAreRefused(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotPrivate, "a symlink")
 }
 
-// A DENY entry for anyone takes access away: ignored. Another named account is exposed.
+// A DENY entry for anyone takes access away: ignored. It denies only writing (GENERIC_WRITE
+// would also deny READ_CONTROL and SYNCHRONIZE, which reading the file needs: that case is the
+// next test).
 func TestWindowsDenyEntriesAreIgnored(t *testing.T) {
 	p := me(t)
 	path := secretFile(t)
-	setDACL(t, path, grant{sid: wellKnown(t, windows.WinWorldSid), mask: windows.GENERIC_WRITE, deny: true},
+	setDACL(t, path, grant{sid: wellKnown(t, windows.WinWorldSid), mask: windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA, deny: true},
 		grant{sid: p.user, mask: windows.GENERIC_ALL}, grant{sid: p.system, mask: windows.GENERIC_ALL})
-	_, err := ReadPrivate(path, 4096)
-	assert.NoError(t, err)
+	data, err := ReadPrivate(path, 4096)
+	require.NoError(t, err)
+	assert.Equal(t, "secret", string(data))
+}
+
+// A file this user can't read is refused cleanly: an error that isn't "missing", and no data.
+func TestWindowsUnreadableFileIsRefused(t *testing.T) {
+	p := me(t)
+	path := secretFile(t)
+	setDACL(t, path, grant{sid: p.user, mask: windows.GENERIC_READ, deny: true},
+		grant{sid: p.user, mask: windows.GENERIC_ALL}, grant{sid: p.system, mask: windows.GENERIC_ALL})
+	t.Cleanup(func() { _ = Protect(path) }) // the owner may always change the DACL: let TempDir remove it
+	data, err := ReadPrivate(path, 4096)
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, os.ErrNotExist), "not \"no key yet\": %v", err)
+	assert.Nil(t, data)
 }
 
 // A failure to read the access list refuses the file: never "no check".
