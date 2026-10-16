@@ -1,5 +1,27 @@
 # Release Notes
 
+## v1.4.62 — Agents stay on their own boards, a sign-in card, and a lighter server and dashboard
+
+### Security
+
+- **An agent's board requests work only on boards its session is subscribed to.** Before, an agent with a session token could read another team's board by name (for example `GET /api/board/<other>/messages/all`) unless strict local auth was on. Now any request on a board the session isn't subscribed to gets 403 `identity_mismatch` in every mode, including `coral-board status`, `working-mode` and `wait --board`. Joining a board and cross-team sends still work. Affected: v1.0.0 through v1.4.61, servers with more than one board.
+- **Notices and identity are tied to the right session.** coral-board's process-tree identity (used when an agent's environment is stripped) is accepted only for a process the session's terminal backend reports as its own now, nearest ancestor first, so a reused process number can no longer hand an agent another session's board and role; and a board notice (mention, task assignment, wait, nudge) is typed only into a live agent session subscribed on that board, by its exact type and id.
+- **coral-board outside an agent session.** The Operator's plain-terminal `coral-board` keeps its board in one fixed state file, and a process that carries an agent's markers but no session gets no board. There is no longer a state file per host name. Without a state file, `join` says it isn't in an agent session and exits 1.
+- **Corrections to v1.4.61's notes**, also made in its release body: the betterleaks rules do not redact a secret-named query parameter followed by another parameter (`?api_key=...&limit=5`; the last parameter is usually caught), a URL password whose host is example.com or example.org (the rules treat it as a placeholder), OpenAI keys (sk-, sk-proj-, sk-svcacct-) written on their own, or project keys of the current 150+ character form even after a name (`OPENAI_API_KEY=...`).
+
+### Fixes
+
+- **A Claude agent waiting for a sign-in says so.** Its chat shows a sign-in card that opens the terminal, the agent list labels it "Sign in", and the usage-limit notice comes from the CLI's own error instead of any "usage limit" text on the screen.
+
+### Performance
+
+- **Server.** Idle CPU about 78% lower with 40 agents (machine health 0.85 s -> 0.06 s a minute); a board poll with nothing new 60 ms -> 0.4 ms on a 300,000-message board; a server on a large board serves in 1.9 s instead of minutes, and the unread notifier is ready in about 3 s on a large board; an unread mention more than 2,000 board messages old no longer nudges or flags the agent (coral-board read still shows it). Machine health samples only while a dashboard or Coral Hub feed shows it, and reads only the agents' own process trees; each session's count of edited files is kept as events arrive; and every dashboard tab and Coral Hub feed shares one build of the session list per interval.
+- **Dashboard.** An agent switch settles in about 160 ms instead of about 340 ms, and idle layout work is down about 77% (one seeded setup: 40 agents, two tabs). Time formats, rendered markdown and the composer's size are reused instead of rebuilt; a long chat page is drawn in slices so it never blocks the page; the board panel keeps its messages across agent switches; and the pollers no longer rewrite an unchanged task list or activity timeline.
+
+### Other changes
+
+- **API.** `/api/sessions/resolve` returns `session_name` as `<type>-<id>` (it was the bare id). `GET /api/sessions/live/{name}/subagents` and `/subagents/{id}` answer 404, not an empty list, for an unknown session and under a name that isn't that session's.
+
 ## v1.4.61 — Secret redaction from a maintained rule set
 
 ### Security
