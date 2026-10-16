@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/sessionstate"
@@ -125,7 +126,8 @@ func (h *SessionsHandler) recordHeldNote(name, sessionID, summary string) {
 //   - Gone: the session ended (SessionEnd).
 //   - Blocked: a request the agent itself made is open (PermissionRequest, Elicitation,
 //     its permission notification), with what it waits on. Coral's own held notice is
-//     not the agent's request and never blocks.
+//     not the agent's request and never blocks. For Claude, a question or plan menu is
+//     open from its PreToolUse on (menuKinds, #3655), before any notification.
 //   - InTurn: a prompt or a tool event is the latest.
 //   - Idle: otherwise (a stop, the session's start).
 func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessionID string) (ptymanager.AgentState, bool) {
@@ -161,6 +163,15 @@ func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessio
 		LastStop:   st.LastStop,
 		CLIVersion: cliVersion,
 	}
+	pt, pending := h.pending.get(sessionID, time.Now())
+	as.ToolPending = pending
+	menu := ""
+	if pending && agentType == at.Claude && !st.LastStop.After(pt.At) {
+		// A menu's PreToolUse counts until its PostToolUse, a stop, a prompt or a reset clears
+		// it; Esc closes one with no hook at all, so an end of turn (the transcript's, too)
+		// after it means it is closed.
+		menu = menuKinds[pt.ToolName]
+	}
 	switch {
 	case st.Gone:
 		as.State = ptymanager.StateGone
@@ -170,9 +181,18 @@ func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessio
 		if as.Kind == "" {
 			as.Kind = "permission"
 		}
+	case menu != "":
+		as.State = ptymanager.StateBlocked
+		as.Kind = menu
+		as.Since = pt.At
 	case st.InTurn:
 		as.State = ptymanager.StateInTurn
 	}
-	_, as.ToolPending = h.pending.get(sessionID, time.Now())
 	return as, true
 }
+
+// menuKinds are Claude's tools that open a menu for the user, by what it asks (#3655). Their
+// PreToolUse fires before the menu is drawn, in every hook set Coral has installed, while the
+// PermissionRequest hook is missing from agents launched before v1.4.27 and the permission
+// notification comes some 6 s after the menu opens.
+var menuKinds = map[string]string{"AskUserQuestion": "question", "ExitPlanMode": "plan"}
