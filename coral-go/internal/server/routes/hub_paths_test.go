@@ -281,3 +281,43 @@ func TestHubPathsInCommands(t *testing.T) {
 	assert.Equal(t, "ls "+home+"x/y", m["cmd"])
 	assert.Equal(t, "check "+home+"/proj", m["prompt"], "prompts are shown as written")
 }
+
+// #3935: where the file system ignores case (Windows, macOS by default) a home typed in another
+// case is the home, and on Windows "/" and "\" are the same separator; elsewhere the match is
+// exact. Run on any OS through the seams.
+func TestHubHomeMatchFoldsCaseAndSeparators(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "Alice-Home")
+	require.NoError(t, os.MkdirAll(home, 0o700))
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	fold, slashes := hubFold, hubSlashes
+	t.Cleanup(func() { hubFold, hubSlashes = fold, slashes })
+	upper := strings.ToUpper(home)
+	backslashed := strings.ReplaceAll(home, "/", `\`)
+
+	hubFold, hubSlashes = true, false // macOS
+	assert.Equal(t, "~/proj", hubDisplayPath(upper+"/proj"), "another case")
+	assert.Equal(t, "~", hubDisplayPath(strings.ToLower(home)))
+	assert.Equal(t, upper+"x/proj", hubDisplayPath(upper+"x/proj"), "a sibling stays")
+	assert.Equal(t, "open ~/nope: no such file", hubDisplayText("open "+upper+"/nope: no such file"))
+	assert.Equal(t, "two: ~/a and ~/b", hubDisplayText("two: "+upper+"/a and "+home+"/b"))
+
+	hubFold, hubSlashes = true, true // Windows
+	assert.Equal(t, `~\proj`, hubDisplayPath(strings.ToUpper(backslashed)+`\proj`), "another case and the other separator")
+	assert.Equal(t, "~/proj", hubDisplayPath(upper+"/proj"))
+	assert.Equal(t, `cd ~\proj && make`, hubDisplayText(`cd `+backslashed+`\proj && make`))
+
+	hubFold, hubSlashes = false, false // Linux
+	assert.Equal(t, upper+"/proj", hubDisplayPath(upper+"/proj"), "case matters there")
+	assert.Equal(t, "~/proj", hubDisplayPath(home+"/proj"))
+}
+
+func TestHubKeyKeepsLengths(t *testing.T) {
+	fold, slashes := hubFold, hubSlashes
+	t.Cleanup(func() { hubFold, hubSlashes = fold, slashes })
+	hubFold, hubSlashes = true, true
+	for _, s := range []string{`C:/Users/Zoë/Proj`, "ÄÖÜ/ß/İ", ""} {
+		assert.Len(t, hubKey(s), len(s), s)
+	}
+	assert.Equal(t, `c:\users\zoë\proj`, hubKey(`C:/Users/Zoë/Proj`))
+}

@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,13 +98,42 @@ func hubHomes() []string {
 	return hubHome.homes
 }
 
+// hubFold and hubSlashes are how a path is compared with the home directory: without regard
+// to ASCII case where the file system ignores it (Windows, and macOS by default), and with "/"
+// and "\" the same on Windows, so "c:/users/alice/proj" is the home too (#3935). Test seams.
+var (
+	hubFold    = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+	hubSlashes = runtime.GOOS == "windows"
+)
+
+// hubKey is s as the home comparison sees it: ASCII letters folded and "/" as "\" where those
+// apply, byte for byte the same length, so an index in it is an index in s. A letter outside
+// ASCII still has to match exactly.
+func hubKey(s string) string {
+	if !hubFold && !hubSlashes {
+		return s
+	}
+	b := []byte(s)
+	for i, c := range b {
+		switch {
+		case hubFold && 'A' <= c && c <= 'Z':
+			b[i] = c + ('a' - 'A')
+		case hubSlashes && c == '/':
+			b[i] = '\\'
+		}
+	}
+	return string(b)
+}
+
 // hubDisplayPath shows p with a leading home directory as "~"; any other value is unchanged.
 func hubDisplayPath(p string) string {
+	kp := hubKey(p)
 	for _, home := range hubHomes() {
-		if p == home {
+		kh := hubKey(home)
+		if kp == kh {
 			return "~"
 		}
-		if len(p) > len(home) && strings.HasPrefix(p, home) && (p[len(home)] == '/' || p[len(home)] == '\\') {
+		if len(p) > len(home) && strings.HasPrefix(kp, kh) && (p[len(home)] == '/' || p[len(home)] == '\\') {
 			return "~" + p[len(home):]
 		}
 	}
@@ -119,10 +149,11 @@ func hubDisplayText(s string) string {
 	order := append([]string(nil), homes...)
 	sort.Slice(order, func(i, j int) bool { return len(order[i]) > len(order[j]) })
 	for _, home := range order {
+		ks, kh := hubKey(s), hubKey(home) // the same lengths as s and home (#3935)
 		var b strings.Builder
 		last := 0 // s[:last] is written
 		for from := 0; ; {
-			j := strings.Index(s[from:], home)
+			j := strings.Index(ks[from:], kh)
 			if j < 0 {
 				break
 			}
