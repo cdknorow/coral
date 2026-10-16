@@ -171,6 +171,26 @@ function _followPane() {
     _applyFitWidth();
 }
 
+// FitAddon counts rows from the container's computed height, which includes its padding (the page is border-box), so the last row
+// could end inside the bottom padding, right on the edge. Count the rows that fit inside the padding instead; the columns are the
+// addon's, as before.
+function _fit() {
+    const dims = typeof fitAddon.proposeDimensions === 'function' ? fitAddon.proposeDimensions() : null;
+    if (!dims) { fitAddon.fit(); return; }
+    if (!(dims.cols > 0) || !(dims.rows > 0)) return;
+    let rows = dims.rows;
+    const screen = terminal.element && terminal.element.querySelector('.xterm-screen');
+    const cell = screen && terminal.rows > 0 ? screen.getBoundingClientRect().height / terminal.rows : 0;
+    if (_containerEl && cell > 0) {
+        const cs = getComputedStyle(_containerEl);
+        const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+        rows = Math.max(1, Math.floor((parseFloat(cs.height) - pad) / cell + 0.001));
+    }
+    if (dims.cols === terminal.cols && rows === terminal.rows) return;
+    if (terminal._core && terminal._core._renderService) terminal._core._renderService.clear(); // as FitAddon.fit() does
+    terminal.resize(dims.cols, rows);
+}
+
 // Something on this side changed: fit and set the pane's size when this window may, otherwise
 // follow the pane's. `observed` is the container's ResizeObserver, which also fires when nothing
 // the user did changed its size (the tab hidden or shown): while following, only a real change of
@@ -188,7 +208,7 @@ function _sizeLocal(observed = false) {
     _setFont(_baseFont); // fitting this window measures at the Settings font
     _updateFitButton(false);
     const before = terminal.cols + 'x' + terminal.rows;
-    fitAddon.fit();
+    _fit();
     // fit() reports a change through onResize, which sends it. Taking the size back at an unchanged
     // size is sent here.
     if (wasFollowing && before === terminal.cols + 'x' + terminal.rows && mayResizePane()) {
