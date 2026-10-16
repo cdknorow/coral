@@ -100,6 +100,9 @@ function check(label, base, now) {
 function scenario(label, setup, run, clear) {
     clear();
     const empty = snapshot();
+    // The page's own markup (its templates' buttons) is there before the renderer runs: only what
+    // the renderer produced is fired (firing the page's Send or Restart would change the page).
+    const pageEls = new Set(empty.actions.map(a => a.el));
     setup(BENIGN); run();
     const base = snapshot(); clear();
     assert.ok(base.handlers.length + base.actions.length > empty.handlers.length + empty.actions.length, `${label}: the renderer produced no handlers or actions with benign data, so the test would prove nothing`);
@@ -123,6 +126,7 @@ function scenario(label, setup, run, clear) {
         }
         // Fire every delegated action through the real dispatcher (actions.js) as its event would.
         for (const a of now.actions) {
+            if (pageEls.has(a.el)) continue;
             called.length = 0;
             a.el.dispatchEvent(new window.Event(a.name.slice('data-on-'.length), { bubbles: true, cancelable: true }));
             assert.deepStrictEqual(called, [], `${label}: action ${a.action} reached a dangerous function (payload ${JSON.stringify(p)}): ${JSON.stringify(called)}`);

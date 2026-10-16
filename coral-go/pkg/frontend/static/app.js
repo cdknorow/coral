@@ -94,6 +94,23 @@ registerActions({
     // Enter sends, Shift+Enter is a new line.
     'mb-post-key': (el, event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); postBoardMessage(); } },
 });
+// The live agent view's header, view toggle, side panel tabs and command row (#3645). Restart is
+// destructive (actions.js DESTRUCTIVE_ACTIONS: a popout hides it) and still asks first
+// (restartSession's own confirmation). A side panel tab must be one the panel has.
+const AGENTIC_TABS = new Set(['board', 'files', 'browse', 'artifacts', 'team-view', 'team-settings', 'team-artifacts', 'knowledge', 'tasks', 'notes', 'activity', 'agent-ui']);
+registerActions({
+    'mobile-back': () => window.mobileBack(),
+    'goal-refresh': () => window.refreshGoal(),
+    'goal-edit': () => window.editGoal(),
+    'live-view-mode': el => { if (el.dataset.mode === 'chat' || el.dataset.mode === 'terminal') window.setLiveViewMode(el.dataset.mode); },
+    'chat-find-toggle': () => window.toggleChatFind(),
+    'agentic-panel-toggle': el => (el.dataset.open === '0' ? window.toggleAgenticPanel(false) : window.toggleAgenticPanel()),
+    'agentic-tab': el => { if (AGENTIC_TABS.has(el.dataset.tab)) window.switchAgenticTab(el.dataset.tab, 'top'); },
+    'session-restart': () => window.restartSession(),
+    'popout-retry': () => window.popoutRetry(),
+    'files-refresh': () => window.refreshChangedFiles(),
+    'task-create-show': () => window.showCreateTaskModal(),
+});
 // The history view's header, tabs and summary editor (#3645). A tab must be one the view has.
 const HISTORY_TABS = new Set(['notes', 'chat', 'activity', 'tasks', 'agent-notes', 'commits', 'changes']);
 registerActions({

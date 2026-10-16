@@ -16,6 +16,7 @@ import { resolveSessionIdentity, deriveSessionState } from './render.js';
 import { toggleAgenticPanel } from './sidebar.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { showView } from './utils.js';
+import { DESTRUCTIVE_ACTIONS, SEND_ACTIONS, actionSelector } from './actions.js';
 import { normServer, serverFetch, sessionServer, agentPath, parseAgentPath, isLocalServer } from './server_base.js';
 import { isInteractiveOwner, claimOwnership, releaseOwnership } from './ownership.js';
 import { applySleepingView, sleepingPlaceholder } from './sleeping_view.js';
@@ -45,7 +46,9 @@ let _restartedId = '';
 let _terminalDown = false;
 let _attached = false;          // terminal attached for the current target
 let _waking = false;
-const DESTRUCTIVE_SELECTOR = '[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"],[data-action="restart"]';
+// The controls a popout hides: the destructive actions (one shared list, actions.js), plus the
+// inline handlers that haven't moved to actions yet (#3645 removes these as their slices land).
+const DESTRUCTIVE_SELECTOR = actionSelector(DESTRUCTIVE_ACTIONS) + ',[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"],[data-action="restart"]';
 
 /** States in which the target is attached and may receive input. */
 const LIVE_STATES = new Set(['working', 'waiting', 'check', 'stuck', 'your-turn', 'idle']);
@@ -299,7 +302,7 @@ function _gateTerminalControls(blocked) {
     if (!pane) return;
     pane.querySelectorAll('button, [role="button"], .send-menu-item').forEach(b => {
         const handler = b.getAttribute('onclick') || '';
-        const sends = SEND_CAPABLE.test(handler) || b.classList.contains('mobile-send-btn')
+        const sends = SEND_ACTIONS.has(b.getAttribute('data-on-click')) || SEND_CAPABLE.test(handler) || b.classList.contains('mobile-send-btn')
             || b.classList.contains('btn-send') || b.classList.contains('btn-send-dropdown')
             || b.classList.contains('send-menu-item') || b.closest('.command-pane-toolbar');
         if (!sends) return;

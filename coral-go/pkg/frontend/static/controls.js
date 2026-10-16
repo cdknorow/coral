@@ -5,7 +5,8 @@ import { dashboardPromptRequested } from './dashboard_analytics.js';
 import { state, sessionKey, saveSessionDraft } from './state.js';
 import { claimOwnership } from './ownership.js';
 import { popoutTerminalBlocked } from './popout.js';
-import { escapeHtml, escapeAttr, showToast, showView, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
+import { registerActions, idOf } from './actions.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
@@ -356,24 +357,24 @@ export function renderQuickActions() {
 
     const modeInfo = _modeLabelInfo();
     const modeButtons = `
-        <button class="btn-nav btn-mode" id="btn-mode-toggle" onclick="cycleModeToggle()" data-tooltip="${escapeAttr(modeInfo.tooltip)}" aria-label="${escapeAttr(modeInfo.aria)}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><line x1="6" y1="5" x2="10" y2="5"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="11" x2="8" y2="11"/></svg><span class="btn-label">${escapeHtml(modeInfo.label)}</span></button>
-        <button class="btn-nav btn-mode" onclick="sendQuickCommand('!')" aria-label="Bash command" data-tooltip="Prefixes your input with ! so Claude runs it as a shell command instead of a prompt."><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="4 7 6 9 4 11"/><line x1="8" y1="11" x2="12" y2="11"/></svg><span class="btn-label">Bash</span></button>
-        <button class="btn-nav btn-mode" onclick="sendRawKeys(['Escape','Escape'])" aria-label="Undo" data-tooltip="Sends two Escape keys to Claude. Interrupts the current response, rejects a pending tool call, or backs out of a permission prompt."><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg><span class="btn-label">Undo</span></button>
+        <button class="btn-nav btn-mode" id="btn-mode-toggle" data-on-click="cmd-mode-toggle" data-tooltip="${escapeAttr(modeInfo.tooltip)}" aria-label="${escapeAttr(modeInfo.aria)}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><line x1="6" y1="5" x2="10" y2="5"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="11" x2="8" y2="11"/></svg><span class="btn-label">${escapeHtml(modeInfo.label)}</span></button>
+        <button class="btn-nav btn-mode" data-on-click="cmd-quick" data-cmd="!" aria-label="Bash command" data-tooltip="Prefixes your input with ! so Claude runs it as a shell command instead of a prompt."><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="4 7 6 9 4 11"/><line x1="8" y1="11" x2="12" y2="11"/></svg><span class="btn-label">Bash</span></button>
+        <button class="btn-nav btn-mode" data-on-click="cmd-raw-keys" data-keys="Escape,Escape" aria-label="Undo" data-tooltip="Sends two Escape keys to Claude. Interrupts the current response, rejects a pending tool call, or backs out of a permission prompt."><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg><span class="btn-label">Undo</span></button>
     `;
 
     const macroButtons = macros.map((m, i) => {
         const cls = m.danger ? "btn-nav btn-danger" : "btn-nav";
         return `<span class="macro-btn-wrap">
-            <button class="${cls}" onclick="executeMacro('${jsStr(m.command)}')" data-tooltip="${escapeAttr(m.command)}">${escapeHtml(m.label)}</button>
-            <button class="macro-delete-btn" onclick="deleteMacro(${Number(i)})" title="Remove macro">&times;</button>
+            <button class="${escapeAttr(cls)}" data-on-click="cmd-macro" data-index="${Number(i)}" data-tooltip="${escapeAttr(m.command)}">${escapeHtml(m.label)}</button>
+            <button class="macro-delete-btn" data-on-click="macro-delete" data-index="${Number(i)}" title="Remove macro">&times;</button>
         </span>`;
     }).join("");
 
     const navButtons = `
-        <button class="btn-nav btn-esc" onclick="sendRawKeys(['Escape'])" title="Stop — sends Escape to interrupt the agent or dismiss its prompt" aria-label="Stop (Escape)"><span class="esc-label-terminal" aria-hidden="true">Esc</span><span class="esc-label-chat" aria-hidden="true"><span class="material-icons">stop</span></span></button>
-        <button class="btn-nav btn-nav-key" onclick="sendRawKeys(['Up'])" title="Arrow Up" aria-label="Arrow Up">&uarr;</button>
-        <button class="btn-nav btn-nav-key" onclick="sendRawKeys(['Down'])" title="Arrow Down" aria-label="Arrow Down">&darr;</button>
-        <button class="btn-nav btn-enter btn-nav-key" onclick="sendRawKeys(['Enter'])" data-tooltip="Sends an Enter keypress to the terminal" aria-label="Enter">&#9166;</button>
+        <button class="btn-nav btn-esc" data-on-click="cmd-raw-keys" data-keys="Escape" title="Stop — sends Escape to interrupt the agent or dismiss its prompt" aria-label="Stop (Escape)"><span class="esc-label-terminal" aria-hidden="true">Esc</span><span class="esc-label-chat" aria-hidden="true"><span class="material-icons">stop</span></span></button>
+        <button class="btn-nav btn-nav-key" data-on-click="cmd-raw-keys" data-keys="Up" title="Arrow Up" aria-label="Arrow Up">&uarr;</button>
+        <button class="btn-nav btn-nav-key" data-on-click="cmd-raw-keys" data-keys="Down" title="Arrow Down" aria-label="Arrow Down">&darr;</button>
+        <button class="btn-nav btn-enter btn-nav-key" data-on-click="cmd-raw-keys" data-keys="Enter" data-tooltip="Sends an Enter keypress to the terminal" aria-label="Enter">&#9166;</button>
     `;
 
     toolbar.innerHTML = `
@@ -383,31 +384,31 @@ export function renderQuickActions() {
         <span class="toolbar-divider"></span>
         <div class="toolbar-group toolbar-group-macros">
             ${macroButtons}
-            <button class="btn-nav btn-add-macro" onclick="showMacroModal()" title="Add macro" aria-label="Add macro">+</button>
+            <button class="btn-nav btn-add-macro" data-on-click="macro-show" title="Add macro" aria-label="Add macro">+</button>
         </div>
         <span class="toolbar-spacer"></span>
         <div class="toolbar-group toolbar-group-nav">
             ${navButtons}
             <div class="toolbar-send-split">
-                <button class="btn-nav btn-send" onclick="sendCommand()" data-tooltip="Sends the text from the input box below to the terminal" aria-label="Send command"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
-                <button class="btn-nav btn-send-dropdown" onclick="toggleSendMenu(this)" aria-label="Send options" title="Send options">
+                <button class="btn-nav btn-send" data-on-click="cmd-send" data-tooltip="Sends the text from the input box below to the terminal" aria-label="Send command"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+                <button class="btn-nav btn-send-dropdown" data-on-click="cmd-send-menu" aria-label="Send options" title="Send options">
                     <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4z"/></svg>
                 </button>
                 <div class="send-btn-menu" style="display:none">
-                    <button class="send-menu-item" onclick="sendCommand(); closeSendMenu()">
+                    <button class="send-menu-item" data-on-click="send-menu-send">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                         Send
                         <span class="send-menu-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>
                     </button>
-                    <button class="send-menu-item" onclick="sendCommandWithTeam(); closeSendMenu()">
+                    <button class="send-menu-item" data-on-click="send-menu-team">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg>
                         Send + Team Reminder
                     </button>
-                    <button class="send-menu-item" onclick="resendInputPrompt(); closeSendMenu()">
+                    <button class="send-menu-item" data-on-click="send-menu-resend">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                         Resend Prompt
                     </button>
-                    <button class="send-menu-item" onclick="sendBoardProtocol(); closeSendMenu()">
+                    <button class="send-menu-item" data-on-click="send-menu-protocol">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>
                         Send Board Protocol
                     </button>
@@ -1032,7 +1033,7 @@ export function renderAttachments(session = state.currentSession) {
         <div class="image-attachment" title="${escapeAttr(att.path)}">
             <img src="${escapeAttr(att.previewUrl)}" alt="${escapeAttr(att.filename)}" />
             <span class="image-attachment-name">${escapeHtml(att.filename)}</span>
-            <button class="image-attachment-remove" onclick="removeAttachment(${Number(i)})" title="Remove">&times;</button>
+            <button class="image-attachment-remove" data-on-click="attachment-remove" data-index="${Number(i)}" title="Remove">&times;</button>
         </div>
     `).join("");
 }
@@ -1072,3 +1073,31 @@ export function updateSidebarActive() {
         });
     }
 }
+
+// The command pane's toolbar, send menu and attachments (#3645): data-on-* names, never code. Keys
+// and the quick command come from allowlists; a macro runs by its index in the saved list, so its
+// command never sits in an attribute; an index is checked (a bad one does nothing).
+const RAW_KEYS = new Set(['Escape', 'Up', 'Down', 'Enter']);
+const indexOf = v => (v === '0' ? 0 : idOf(v));
+registerActions({
+    'cmd-mode-toggle': () => cycleModeToggle(),
+    'cmd-quick': el => { if (el.dataset.cmd === '!') sendQuickCommand('!'); },
+    'cmd-raw-keys': el => {
+        const keys = String(el.dataset.keys || '').split(',');
+        if (keys.length && keys.length <= 4 && keys.every(k => RAW_KEYS.has(k))) sendRawKeys(keys);
+    },
+    'cmd-macro': el => {
+        const i = indexOf(el.dataset.index), m = i === null ? null : getMacros()[i];
+        if (m) executeMacro(m.command);
+    },
+    'macro-delete': el => { const i = indexOf(el.dataset.index); if (i !== null) deleteMacro(i); },
+    'macro-show': () => showMacroModal(),
+    'cmd-send': () => sendCommand(),
+    'cmd-send-team': () => sendCommandWithTeam(),
+    'cmd-send-menu': el => window.toggleSendMenu(el),
+    'send-menu-send': () => { sendCommand(); window.closeSendMenu(); },
+    'send-menu-team': () => { sendCommandWithTeam(); window.closeSendMenu(); },
+    'send-menu-resend': () => { resendInputPrompt(); window.closeSendMenu(); },
+    'send-menu-protocol': () => { sendBoardProtocol(); window.closeSendMenu(); },
+    'attachment-remove': el => { const i = indexOf(el.dataset.index); if (i !== null) removeAttachment(i); },
+});

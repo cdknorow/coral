@@ -33,6 +33,22 @@ export function registerActions(map) {
     }
 }
 
+// Actions grouped by what they do, one list for everyone who needs to know (Security's popout
+// requirement on #3645): a popout hides the DESTRUCTIVE ones (it is a second window on one agent,
+// so killing or restarting it from there is refused), and gates the SEND ones (anything that types
+// into the agent) while the agent can't take input. Names here must be registered somewhere; the
+// last slice's census checks that.
+// mb-delete-board: deleting the board was never on the popout's old onclick list, so a popout kept
+// it (found by agent_popout's independent probe when slice 5 moved it).
+export const DESTRUCTIVE_ACTIONS = new Set(['session-restart', 'mb-delete-board']);
+export const SEND_ACTIONS = new Set(['cmd-send', 'cmd-send-team', 'cmd-mode-toggle', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro',
+    'cmd-send-menu', 'send-menu-send', 'send-menu-team', 'send-menu-resend', 'send-menu-protocol']);
+
+/** actionSelector: a CSS selector matching any element whose data-on-click names one of names. */
+export function actionSelector(names) {
+    return [...names].map(n => '[data-on-click=' + JSON.stringify(n) + ']').join(',');
+}
+
 // An action's data-* values are input, never trusted (Security's requirement 2): an action converts
 // and checks each one with these before use, and does nothing when one is not what it should be.
 

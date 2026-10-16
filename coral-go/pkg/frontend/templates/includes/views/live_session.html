@@ -2,19 +2,19 @@
             <!-- Live Session View -->
             <div id="live-session-view" class="session-view" style="display:none">
                 <div class="session-header">
-                    <button class="mobile-back-btn" onclick="mobileBack()" title="Back to agents">&larr;</button>
+                    <button class="mobile-back-btn" data-on-click="mobile-back" title="Back to agents">&larr;</button>
                     <div class="session-title">
                         <div id="session-summary" class="summary-line summary-inline" style="display:none">
                             <span class="goal-label">Goal</span>
                             <span class="summary-text"></span>
-                            <button class="goal-action-btn" onclick="refreshGoal()" title="Ask agent to update goal" aria-label="Refresh goal"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8a7 7 0 0 1 12.9-3.8"/><path d="M15 8a7 7 0 0 1-12.9 3.8"/><polyline points="13 1 14 4.2 10.5 4.2"/><polyline points="3 15 2 11.8 5.5 11.8"/></svg></button>
-                            <button class="goal-action-btn" onclick="editGoal()" title="Edit goal" aria-label="Edit goal"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg></button>
+                            <button class="goal-action-btn" data-on-click="goal-refresh" title="Ask agent to update goal" aria-label="Refresh goal"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8a7 7 0 0 1 12.9-3.8"/><path d="M15 8a7 7 0 0 1-12.9 3.8"/><polyline points="13 1 14 4.2 10.5 4.2"/><polyline points="3 15 2 11.8 5.5 11.8"/></svg></button>
+                            <button class="goal-action-btn" data-on-click="goal-edit" title="Edit goal" aria-label="Edit goal"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg></button>
                         </div>
                         <span id="session-branch" class="branch-chip" style="display:none">
                             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg>
                             <span class="branch-text"></span>
                             <span class="branch-git-state"></span>
-                            <button class="copy-branch-btn" onclick="copyBranchName(this)" title="Copy branch name" aria-label="Copy branch name"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 0 1 2 9.5V3.5A1.5 1.5 0 0 1 3.5 2h6A1.5 1.5 0 0 1 11 3.5V5"/></svg></button>
+                            <button class="copy-branch-btn" data-on-click="copy-branch" title="Copy branch name" aria-label="Copy branch name"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 0 1 2 9.5V3.5A1.5 1.5 0 0 1 3.5 2h6A1.5 1.5 0 0 1 11 3.5V5"/></svg></button>
                         </span>
                         <span id="session-type-badge" class="badge" style="display:none">claude</span>
                         <h2 id="session-name" style="display:none"></h2>
@@ -41,10 +41,10 @@
                             <div class="terminal-header">
                                     <!-- Center view toggle: raw terminal vs. rendered chat transcript -->
                                     <div class="live-view-toggle" role="group" aria-label="Center view">
-                                        <button type="button" class="live-view-toggle-btn active" id="live-view-btn-chat" onclick="setLiveViewMode('chat')" aria-pressed="true" title="Chat view" aria-label="Chat view">
+                                        <button type="button" class="live-view-toggle-btn active" id="live-view-btn-chat" data-on-click="live-view-mode" data-mode="chat" aria-pressed="true" title="Chat view" aria-label="Chat view">
                                             <span class="material-icons">chat</span><span>Chat</span>
                                         </button>
-                                        <button type="button" class="live-view-toggle-btn" id="live-view-btn-terminal" onclick="setLiveViewMode('terminal')" aria-pressed="false" title="Terminal view" aria-label="Terminal view">
+                                        <button type="button" class="live-view-toggle-btn" id="live-view-btn-terminal" data-on-click="live-view-mode" data-mode="terminal" aria-pressed="false" title="Terminal view" aria-label="Terminal view">
                                             <span class="material-icons">terminal</span><span>Terminal</span>
                                         </button>
                                     </div>
@@ -70,7 +70,7 @@
                                         <span class="branch-git-state"></span>
                                     </span>
                                     <!-- Find in conversation (chat view only) -->
-                                    <button class="terminal-header-btn" id="chat-find-btn" type="button" onclick="toggleChatFind()" title="Find in conversation (Ctrl/Cmd+F)" aria-label="Find in conversation">
+                                    <button class="terminal-header-btn" id="chat-find-btn" type="button" data-on-click="chat-find-toggle" title="Find in conversation (Ctrl/Cmd+F)" aria-label="Find in conversation">
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
                                     </button>
                                     <!-- Terminal view, while it shows a pane wider than this window: scale the font to fit (#3455, xterm_renderer.js) -->
@@ -83,7 +83,7 @@
                                     </a>
                                     <!-- Popout: back to the full dashboard (noopener new tab). -->
                                     <!-- Side panel expand/collapse control -->
-                                    <button class="terminal-header-btn session-panel-toggle-btn" id="popout-panel-toggle-btn" type="button" onclick="toggleAgenticPanel()" title="Toggle side panel" aria-label="Toggle side panel" aria-pressed="false">
+                                    <button class="terminal-header-btn session-panel-toggle-btn" id="popout-panel-toggle-btn" type="button" data-on-click="agentic-panel-toggle" title="Toggle side panel" aria-label="Toggle side panel" aria-pressed="false">
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M10 2.5v11"/></svg>
                                     </button>
                                 </div>
@@ -99,7 +99,7 @@
                             <div id="session-ended-overlay" class="session-ended-overlay" style="display:none">
                                 <div class="session-ended-content" id="session-ended-default">
                                     <p>Session ended</p>
-                                    <button class="btn btn-primary" onclick="restartSession()">Restart Agent</button>
+                                    <button class="btn btn-primary" data-on-click="session-restart">Restart Agent</button>
                                 </div>
                                 <div class="session-ended-content" id="session-restarting" style="display:none">
                                     <span class="restart-spinner"></span>
@@ -116,7 +116,7 @@
                                 </div>
                                 <div class="session-ended-content" id="popout-not-found" style="display:none">
                                     <p>No agent with this id</p>
-                                    <button class="btn btn-primary" id="popout-retry-btn" type="button" onclick="popoutRetry()">Retry</button>
+                                    <button class="btn btn-primary" id="popout-retry-btn" type="button" data-on-click="popout-retry">Retry</button>
                                     <a class="btn btn-secondary" id="popout-open-dashboard" href="/">Open Coral</a>
                                 </div>
                             </div>
@@ -142,8 +142,8 @@
                                 <div class="command-editor">
                                     <textarea id="command-input" placeholder="Type a command or paste an image..." rows="3" autocomplete="off" aria-label="Enter command or paste image"></textarea>
                                 </div>
-                                <button class="mobile-send-btn mobile-send-team-btn" onclick="sendCommandWithTeam()" aria-label="Send with team reminder" title="Send with a team reminder"><span class="material-icons" aria-hidden="true">groups</span></button>
-                                <button class="mobile-send-btn" onclick="sendCommand()" aria-label="Send">
+                                <button class="mobile-send-btn mobile-send-team-btn" data-on-click="cmd-send-team" aria-label="Send with team reminder" title="Send with a team reminder"><span class="material-icons" aria-hidden="true">groups</span></button>
+                                <button class="mobile-send-btn" data-on-click="cmd-send" aria-label="Send">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                                 </button>
                             </div>
@@ -168,48 +168,48 @@
                         <!-- Top block: Files, Tasks, Stats, Transcript, Notes -->
                         <div class="agentic-block" id="agentic-block-top">
                             <div class="agentic-state-tabs" role="tablist" aria-label="Session panels">
-                                <button class="agentic-tab" onclick="switchAgenticTab('board', 'top')" id="agentic-tab-board" title="Board Chat — team message board" aria-label="Board Chat" style="display:none">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="board" data-where="top" id="agentic-tab-board" title="Board Chat — team message board" aria-label="Board Chat" style="display:none">
                                     <span class="material-icons">forum</span>
                                 </button>
-                                <button class="agentic-tab active" onclick="switchAgenticTab('files', 'top')" data-scope="agent" id="agentic-tab-files" title="Files — changed files in this session" aria-label="Files">
+                                <button class="agentic-tab active" data-on-click="agentic-tab" data-tab="files" data-where="top" data-scope="agent" id="agentic-tab-files" title="Files — changed files in this session" aria-label="Files">
                                     <span class="material-icons">description</span>
                                     <span class="agentic-tab-count" id="files-bar-count"></span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('browse', 'top')" data-scope="agent" id="agentic-tab-browse" title="Browse — repository file tree" aria-label="Browse">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="browse" data-where="top" data-scope="agent" id="agentic-tab-browse" title="Browse — repository file tree" aria-label="Browse">
                                     <span class="material-icons">folder_open</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('artifacts', 'top')" data-scope="agent" id="agentic-tab-artifacts" title="Artifacts — this agent's artifacts" aria-label="Artifacts">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="artifacts" data-where="top" data-scope="agent" id="agentic-tab-artifacts" title="Artifacts — this agent's artifacts" aria-label="Artifacts">
                                     <span class="material-icons">inventory_2</span>
                                 </button>
-                                <button class="agentic-tab" data-scope="team" onclick="switchAgenticTab('team-view', 'top')" id="agentic-tab-team-view" title="Team View — agent availability and assigned work" aria-label="Team View">
+                                <button class="agentic-tab" data-scope="team" data-on-click="agentic-tab" data-tab="team-view" data-where="top" id="agentic-tab-team-view" title="Team View — agent availability and assigned work" aria-label="Team View">
                                     <span class="material-icons">dashboard</span>
                                 </button>
-                                <button class="agentic-tab" data-scope="team" onclick="switchAgenticTab('team-settings', 'top')" id="agentic-tab-team-settings" title="Team Settings — workflow, working mode and prompts" aria-label="Team Settings">
+                                <button class="agentic-tab" data-scope="team" data-on-click="agentic-tab" data-tab="team-settings" data-where="top" id="agentic-tab-team-settings" title="Team Settings — workflow, working mode and prompts" aria-label="Team Settings">
                                     <span class="material-icons">tune</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('team-artifacts', 'top')" data-scope="team" id="agentic-tab-team-artifacts" title="Team Artifacts — artifacts from the whole team" aria-label="Team Artifacts">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="team-artifacts" data-where="top" data-scope="team" id="agentic-tab-team-artifacts" title="Team Artifacts — artifacts from the whole team" aria-label="Team Artifacts">
                                     <span class="material-icons">groups</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('knowledge', 'top')" data-scope="team" id="agentic-tab-knowledge" title="Team Knowledge — distilled team knowledge" aria-label="Team Knowledge">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="knowledge" data-where="top" data-scope="team" id="agentic-tab-knowledge" title="Team Knowledge — distilled team knowledge" aria-label="Team Knowledge">
                                     <span class="material-icons">psychology</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('tasks', 'top')" id="agentic-tab-tasks" title="Tasks — agent task list and progress" aria-label="Tasks">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="tasks" data-where="top" id="agentic-tab-tasks" title="Tasks — agent task list and progress" aria-label="Tasks">
                                     <span class="material-icons">checklist</span>
                                     <span class="agentic-tab-count" id="task-bar-count"></span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('notes', 'top')" id="agentic-tab-notes" title="Notes — agent notes and observations" aria-label="Notes">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="notes" data-where="top" id="agentic-tab-notes" title="Notes — agent notes and observations" aria-label="Notes">
                                     <span class="material-icons">edit_note</span>
                                     <span class="agentic-tab-count" id="note-bar-count"></span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('activity', 'top')" data-scope="agent" id="agentic-tab-activity" title="Activity — tool use and event timeline" aria-label="Activity">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="activity" data-where="top" data-scope="agent" id="agentic-tab-activity" title="Activity — tool use and event timeline" aria-label="Activity">
                                     <span class="material-icons">timeline</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('agent-ui', 'top')" data-scope="agent" id="agentic-tab-agent-ui" title="Agent UI" aria-label="Agent UI">
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="agent-ui" data-where="top" data-scope="agent" id="agentic-tab-agent-ui" title="Agent UI" aria-label="Agent UI">
                                     <span class="material-icons">widgets</span><span class="agentic-tab-count" id="agent-ui-count"></span>
                                 </button>
                                 <!-- Custom view tabs (disabled for now) -->
                                 <span id="custom-view-tabs" style="display:none"></span>
-                                <button class="agentic-tab agentic-tab-close" id="agentic-mobile-close-btn" onclick="toggleAgenticPanel(false)" title="Back to Chat" aria-label="Close side panel and return to chat">
+                                <button class="agentic-tab agentic-tab-close" id="agentic-mobile-close-btn" data-on-click="agentic-panel-toggle" data-open="0" title="Back to Chat" aria-label="Close side panel and return to chat">
                                     <span class="material-icons">close</span>
                                 </button>
                             </div>
@@ -217,7 +217,7 @@
                             <div id="agentic-panel-files" class="agentic-panel active">
                                 <div class="changed-files-header" id="changed-files-header">
                                     <span class="changed-files-title" id="changed-files-title">0 files changed</span>
-                                    <button class="refresh-files-btn" onclick="refreshChangedFiles()" title="Refresh git diff" aria-label="Refresh file changes">&#x21bb;</button>
+                                    <button class="refresh-files-btn" data-on-click="files-refresh" title="Refresh git diff" aria-label="Refresh file changes">&#x21bb;</button>
                                 </div>
                                 <div id="files-search-results" class="changed-files-list" style="display:none"></div>
                                 <div id="starred-files-list" class="changed-files-list" style="display:none"></div>
@@ -245,7 +245,7 @@
                                     <div class="board-tasks-header">
                                         <span>Board Tasks</span>
                                         <span id="board-task-hide-toggle-container"></span>
-                                        <button class="btn btn-sm btn-create-task" onclick="showCreateTaskModal()" title="Create Task">+ Task</button>
+                                        <button class="btn btn-sm btn-create-task" data-on-click="task-create-show" title="Create Task">+ Task</button>
                                     </div>
                                     <div id="board-task-list" class="board-task-list"></div>
                                 </div>
