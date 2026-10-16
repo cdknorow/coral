@@ -95,7 +95,8 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
         break
     fi
 
-    if curl -sf "http://localhost:$TEST_PORT/api/system/status" >/dev/null 2>&1; then
+    # /api/health needs no credential (the app polls it); every other route does since #3936.
+    if curl -sf "http://localhost:$TEST_PORT/api/health" >/dev/null 2>&1; then
         SERVER_UP=1
         pass "HTTP server responded after ${ELAPSED}s"
         break
@@ -114,8 +115,24 @@ echo ""
 if [ "$SERVER_UP" -eq 1 ]; then
     info "Running API smoke checks..."
 
+    # Strict local auth is on by default (#3936): a request with no credential is refused, and a
+    # script sends the API key, which coral api-key reads from the data folder. Never printed.
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$TEST_PORT/api/system/status" 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "401" ]; then
+        pass "GET /api/system/status with no credential returned 401 (strict local auth)"
+    else
+        fail "GET /api/system/status with no credential returned $HTTP_CODE (expected 401)"
+    fi
+    API_KEY=$("$APP/Contents/MacOS/coral" api-key 2>/dev/null || true)
+    if [ -n "$API_KEY" ]; then
+        pass "coral api-key read the API key"
+    else
+        fail "coral api-key printed no key"
+    fi
+    AUTH=(-H "X-API-Key: $API_KEY")
+
     # GET /api/system/status -- response contains "startup_complete"
-    STATUS_BODY=$(curl -sf "http://localhost:$TEST_PORT/api/system/status" 2>/dev/null || echo "")
+    STATUS_BODY=$(curl -sf "${AUTH[@]}" "http://localhost:$TEST_PORT/api/system/status" 2>/dev/null || echo "")
     if echo "$STATUS_BODY" | grep -q "startup_complete"; then
         pass "GET /api/system/status contains 'startup_complete'"
     else
@@ -123,7 +140,7 @@ if [ "$SERVER_UP" -eq 1 ]; then
     fi
 
     # GET /api/sessions/live -- HTTP 200 (or 403 if license-gated in prod builds)
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$TEST_PORT/api/sessions/live" 2>/dev/null || echo "000")
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${AUTH[@]}" "http://localhost:$TEST_PORT/api/sessions/live" 2>/dev/null || echo "000")
     if [ "$HTTP_CODE" = "200" ]; then
         pass "GET /api/sessions/live returned 200"
     elif [ "$HTTP_CODE" = "403" ]; then
@@ -133,7 +150,7 @@ if [ "$SERVER_UP" -eq 1 ]; then
     fi
 
     # GET /api/settings -- HTTP 200 (or 403 if license-gated in prod builds)
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$TEST_PORT/api/settings" 2>/dev/null || echo "000")
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${AUTH[@]}" "http://localhost:$TEST_PORT/api/settings" 2>/dev/null || echo "000")
     if [ "$HTTP_CODE" = "200" ]; then
         pass "GET /api/settings returned 200"
     elif [ "$HTTP_CODE" = "403" ]; then
