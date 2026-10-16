@@ -79,7 +79,9 @@ func (s *Store) HandToOrchestrator(ctx context.Context, project string, id int64
 	if err != nil {
 		return "", nil, err
 	}
-	res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='review_pending', assigned_to=? WHERE id=? AND board_id=? AND status='in_progress'", orch, id, project)
+	// In progress, or pending with its author after a rejection (resubmitted unclaimed, #3889).
+	res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='review_pending', assigned_to=? WHERE id=? AND board_id=? AND (status='in_progress' OR (? AND status='pending' AND assigned_to=?))",
+		orch, id, project, lastRoundRejected(w), author)
 	if err != nil {
 		return "", nil, err
 	}
@@ -90,7 +92,7 @@ func (s *Store) HandToOrchestrator(ctx context.Context, project string, id int64
 	if w.CompletionReview != nil {
 		w.CompletionReview.ReleasedBy, w.CompletionReview.ReleasedAt, w.CompletionReview.ReleaseReason = "Coral", nowUTC(), "submitted for review: given to the orchestrator"
 	}
-	if n := len(w.ReviewRounds); n > 0 && w.ReviewRounds[n-1].Result == "rejected" {
+	if lastRoundRejected(w) {
 		if reopened, err = reopenReviews(ctx, tx, project, id, &w); err != nil {
 			return "", nil, err
 		}
@@ -372,4 +374,11 @@ func finishReviewTask(ctx context.Context, tx *sqlx.Tx, project string, reviewTa
 	}
 	rw.Outcome = outcome
 	return saveWorkflow(ctx, tx, reviewTaskID, rw)
+}
+
+// lastRoundRejected: the task's latest review round ended in a rejection, so it is back with its
+// author for a new candidate.
+func lastRoundRejected(w TaskWorkflow) bool {
+	n := len(w.ReviewRounds)
+	return n > 0 && w.ReviewRounds[n-1].Result == "rejected"
 }

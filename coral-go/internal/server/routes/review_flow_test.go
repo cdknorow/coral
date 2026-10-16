@@ -272,3 +272,52 @@ func TestReviewFlowOpenReviewsInTheHealthCheck(t *testing.T) {
 	assert.Contains(t, lines, "1h30m0s")
 	assert.NotContains(t, lines, "not yet completed or delegated", "delegated now")
 }
+
+// #3889: a rejected task is back with its author, pending. An author already busy with another
+// task (the claim is refused: one task at a time) resubmits the fix without claiming it, and its
+// reviewers' round reopens as after a re-claim. Only the author may, and only after a rejection.
+func TestReviewFlowResubmitWithoutClaiming(t *testing.T) {
+	base, h, task := reviewTeam(t, "busy", true)
+	ctx := context.Background()
+	submit(t, base, task.ID)
+	code, out := postCode(t, base(task.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": []string{"Security Reviewer", "QA Engineer"}})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	got, _ := h.bs.GetTask(ctx, "busy", task.ID)
+	secReview := got.Workflow.ReviewRounds[0].Reviewers[0].ReviewTaskID
+	_, err := h.bs.ClaimTask(ctx, "busy", "Security Reviewer", secReview)
+	require.NoError(t, err)
+	code, out = postCode(t, base(task.ID, "reject"), map[string]any{"subscriber_id": "Security Reviewer", "note": "unsafe default", "round": 1})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+
+	// Meanwhile the author took task B, so claiming the rejected task back is refused.
+	other, err := h.bs.CreateTask(ctx, "busy", "Task B", "", "medium", "lead", "worker")
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, "busy", "worker", other.ID)
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, "busy", "worker", task.ID)
+	require.Error(t, err, "one task in progress at a time")
+
+	// Someone else can't resubmit the author's task.
+	code, _ = postCode(t, base(task.ID, "submit-review"), map[string]any{"subscriber_id": "QA Engineer", "reason": "ready"})
+	assert.Equal(t, http.StatusBadRequest, code)
+
+	// The author resubmits it unclaimed: in review again, round 2 for the same reviewers.
+	submit(t, base, task.ID)
+	got, _ = h.bs.GetTask(ctx, "busy", task.ID)
+	require.Equal(t, "review_pending", got.Status)
+	require.Len(t, got.Workflow.ReviewRounds, 2)
+	assert.Equal(t, "resubmitted", got.Workflow.ReviewRounds[1].DelegatedBy)
+	for _, rv := range got.Workflow.ReviewRounds[1].Reviewers {
+		rt, _ := h.bs.GetTask(ctx, "busy", rv.ReviewTaskID)
+		assert.Equal(t, "pending", rt.Status, "%s's review task reopens", rv.Reviewer)
+	}
+	b, _ := h.bs.GetTask(ctx, "busy", other.ID)
+	assert.Equal(t, "in_progress", b.Status, "task B is untouched")
+
+	// A pending task that was never reviewed still needs a claim first.
+	fresh, err := h.bs.CreateTask(ctx, "busy", "Task C", "", "medium", "lead", "worker")
+	require.NoError(t, err)
+	code, out = postCode(t, base(fresh.ID, "submit-review"), map[string]any{"subscriber_id": "worker", "reason": "ready"})
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, out["error"], "in-progress")
+}
