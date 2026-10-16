@@ -55,6 +55,9 @@ type KeyStore struct {
 	trusted  []*net.IPNet // reverse proxies whose X-Forwarded-Proto is believed (#3356)
 	// loginTokens maps a login token's SHA-256 to its expiry (#3387).
 	loginTokens map[string]time.Time
+	// loginFile and loginFileHash: the login_token file and the hash of the token it holds,
+	// so the file is removed once that token is used or expires (#3628 F7).
+	loginFile, loginFileHash string
 }
 
 // NewKeyStore creates or loads an API key from the given directory.

@@ -35,6 +35,10 @@ func loginTokenTTL() time.Duration {
 	return LoginTokenTTL
 }
 
+// loginFileExpiry is when the login_token file of an unused token is removed: when the token
+// expires. Tests shorten it.
+var loginFileExpiry = loginTokenTTL
+
 // LoginTokenParam is the query parameter that carries a login token.
 const LoginTokenParam = "login_token"
 
@@ -78,11 +82,28 @@ func (ks *KeyStore) consumeLoginToken(token string) bool {
 	h := hashLoginToken(token)
 	exp, ok := ks.loginTokens[h]
 	delete(ks.loginTokens, h)
+	if ok && h == ks.loginFileHash {
+		ks.removeLoginFileLocked() // used: the file's token is worth nothing now
+	}
 	return ok && time.Now().Before(exp)
 }
 
+// removeLoginFileLocked removes the login_token file when it still holds the token Coral
+// wrote (a newer file, or one a person replaced, stays), and forgets it. ks.mu is held.
+func (ks *KeyStore) removeLoginFileLocked() {
+	path, h := ks.loginFile, ks.loginFileHash
+	ks.loginFile, ks.loginFileHash = "", ""
+	if path == "" {
+		return
+	}
+	if b, err := os.ReadFile(path); err == nil && hashLoginToken(strings.TrimSpace(string(b))) == h {
+		os.Remove(path)
+	}
+}
+
 // WriteLoginTokenFile mints a token and writes it to <dir>/login_token (0600),
-// replacing an older one.
+// replacing an older one. The file is removed once its token is used or has expired
+// (#3628 F7): a spent token on disk only invites a look.
 func (ks *KeyStore) WriteLoginTokenFile(dir string) (string, error) {
 	token, err := ks.MintLoginToken()
 	if err != nil {
@@ -106,6 +127,17 @@ func (ks *KeyStore) WriteLoginTokenFile(dir string) (string, error) {
 		os.Remove(tmp.Name())
 		return "", err
 	}
+	h := hashLoginToken(token)
+	ks.mu.Lock()
+	ks.loginFile, ks.loginFileHash = path, h
+	ks.mu.Unlock()
+	time.AfterFunc(loginFileExpiry(), func() {
+		ks.mu.Lock()
+		defer ks.mu.Unlock()
+		if ks.loginFileHash == h {
+			ks.removeLoginFileLocked() // expired unused
+		}
+	})
 	return token, nil
 }
 
