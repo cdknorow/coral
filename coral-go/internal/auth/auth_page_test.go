@@ -63,9 +63,13 @@ func TestAuthPageCarriesNoSecretAndNoInlineScript(t *testing.T) {
 // so what the browser exercises is what the server renders. UPDATE_GOLDEN=1 go test ./internal/auth rewrites them.
 func TestAuthPageGolden(t *testing.T) {
 	for name, s := range map[string]PageState{
-		"signin": {PasswordSet: true, Local: true, Strict: true},
-		"create": {Local: true},
-		"setup":  {},
+		"signin":              {PasswordSet: true, Local: true, Strict: true},
+		"create":              {Local: true},
+		"setup":               {},
+		"hub-ready":           {PasswordSet: true, Local: true, HubSignin: "ready", HubURL: "https://app.coralhub.dev"},
+		"hub-unpaired":        {PasswordSet: true, Local: true, HubSignin: "unpaired"},
+		"hub-unpaired-remote": {PasswordSet: true, HubSignin: "unpaired"},
+		"hub-disabled":        {PasswordSet: true, Local: true, HubSignin: "disabled_in_hub", HubURL: "https://app.coralhub.dev"},
 	} {
 		path := filepath.Join("testdata", "auth_page_"+name+".html")
 		got := AuthPage(s)
@@ -77,4 +81,52 @@ func TestAuthPageGolden(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, string(want), got, "%s changed: run UPDATE_GOLDEN=1 go test ./internal/auth", path)
 	}
+}
+
+// #3966: what the page offers beside the password is the server's word (HubSignin); nothing else turns a Hub option on.
+func TestAuthPageHubStates(t *testing.T) {
+	none := AuthPage(PageState{PasswordSet: true, Local: true})
+	for _, id := range []string{"hub-start-form", "hub-link-open", "panel-hublink", "panel-hubwait", "hub-disabled", "Sign in with Coral Hub"} {
+		assert.NotContains(t, none, id, "no Hub UI when the server offers none: "+id)
+	}
+	for _, st := range []PageState{{HubSignin: "ready"}, {HubSignin: "unpaired"}} {
+		assert.Contains(t, AuthPage(PageState{PasswordSet: st.PasswordSet, Local: true, HubSignin: st.HubSignin}), "or</div>", "an or divider")
+	}
+
+	ready := AuthPage(PageState{PasswordSet: true, Local: true, HubSignin: "ready", HubURL: "https://app.coralhub.dev"})
+	assert.Contains(t, ready, `<form method="post" action="/auth/hub/start" id="hub-start-form">`, "a plain form POST, no script needed")
+	assert.Contains(t, ready, "Sign in with Coral Hub")
+	assert.Contains(t, ready, "Gives full control of it", "the button says what it gives")
+	assert.NotContains(t, ready, `id="panel-hublink"`)
+	assert.Regexp(t, `id="hub-disabled" role="status" hidden`, ready, "the disabled note is there for ?hub=disabled, hidden until then")
+
+	unpaired := AuthPage(PageState{PasswordSet: true, Local: true, HubSignin: "unpaired"})
+	assert.Contains(t, unpaired, `id="hub-link-open"`)
+	assert.Contains(t, unpaired, "Link this computer to Coral Hub and sign in")
+	assert.NotContains(t, unpaired, "/auth/hub/start", "no sign-in action until the link finishes")
+	assert.Contains(t, unpaired, "Coral Hub can then sign you in here with full control of this computer.", "the full-control sentence is in the link step")
+	assert.Contains(t, unpaired, `<input type="checkbox" id="hub-enable">`, "the checkbox is unchecked, and nothing in the markup ticks it")
+	assert.NotRegexp(t, `id="hub-enable"[^>]*checked`, unpaired)
+	assert.Regexp(t, `id="hub-setup-field" hidden`, unpaired, "from this computer no setup code is asked for")
+	assert.Contains(t, unpaired, "Not now, use a password", "always an exit to the password")
+	remote := AuthPage(PageState{PasswordSet: true, HubSignin: "unpaired"})
+	assert.NotRegexp(t, `id="hub-setup-field" hidden`, remote, "from another computer the setup code field shows")
+	assert.Contains(t, remote, "coral setup-code")
+
+	off := AuthPage(PageState{PasswordSet: true, Local: true, HubSignin: "disabled_in_hub", HubURL: "https://app.coralhub.dev"})
+	assert.Contains(t, off, "Sign in with Coral Hub is off for this computer.")
+	assert.Contains(t, off, `<a class="link" href="https://app.coralhub.dev" target="_blank" rel="noopener noreferrer">Open Coral Hub</a>`, "only a link to the Hub's own page")
+	assert.NotRegexp(t, `id="hub-disabled" role="status" hidden`, off, "shown")
+	for _, never := range []string{"/auth/hub/start", "hub-link-open", "panel-hublink", "Sign in with Coral Hub</button>"} {
+		assert.NotContains(t, off, never, "no sign-in action when the Hub's switch is off: "+never)
+	}
+	noURL := AuthPage(PageState{PasswordSet: true, Local: true, HubSignin: "disabled_in_hub"})
+	assert.NotContains(t, noURL, "<a class=\"link\" href=", "no link without a Hub address")
+	hostile := AuthPage(PageState{PasswordSet: true, Local: true, HubSignin: "disabled_in_hub", HubURL: "javascript:alert(1)"})
+	assert.NotContains(t, hostile, "javascript:", "html/template refuses a script URL in the link")
+
+	// the page also works with no password set (the create form), with the same Hub block
+	create := AuthPage(PageState{Local: true, HubSignin: "ready"})
+	assert.Contains(t, create, `id="create-form"`)
+	assert.Contains(t, create, `id="hub-start-form"`)
 }

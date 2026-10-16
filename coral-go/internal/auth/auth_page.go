@@ -16,13 +16,26 @@ import (
 //     the computer that runs Coral), so whoever reaches the port first cannot claim the install.
 //
 // Strict marks strict local auth: the app, the tray and `coral open` still sign in by themselves, and the page says so.
+//
+// HubSignin (#3966) says what the page offers beside the password, and only the server knows it:
+//
+//   - "ready": linked, connector up, the Hub advertised it, the local switch is on: a "Sign in with Coral Hub" button
+//     (a plain form POST to /auth/hub/start).
+//   - "unpaired": not linked: "Link this computer to Coral Hub and sign in", a step with the full-control sentence and
+//     an unticked checkbox that only this page can tick, then the Hub's own page for the approval.
+//   - "disabled_in_hub": the Hub says this machine's switch is off there: a note and a link to the Hub's own page, and
+//     no sign-in action.
+//   - "": no Hub UI at all (no dead button).
+//
+// HubURL is the Hub's own page (https, from the configured Hub host; the server checks it), shown only in the
+// disabled note. The page never reads a Hub setting from its own address: ?hub=unavailable, failed or disabled only
+// say what went wrong.
 type PageState struct {
 	PasswordSet bool
 	Local       bool
 	Strict      bool
-	// HubSignin is Sign in with Coral Hub's state (#3966): "" (no Hub UI), "ready" (the
-	// button), "unpaired" (link and sign in) or "disabled_in_hub" (turned off in Coral Hub).
-	HubSignin string
+	HubSignin   string
+	HubURL      string
 }
 
 // AuthPage renders the page for a state. The markup is fixed and has no user data; the behaviour lives in
@@ -35,7 +48,19 @@ func AuthPage(s PageState) string {
 	return b.String()
 }
 
-var authPageTmpl = template.Must(template.New("auth").Parse(`<!DOCTYPE html>
+var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hub"}}
+{{if eq .HubSignin "ready"}}
+    <div class="or">or</div>
+    <form method="post" action="/auth/hub/start" id="hub-start-form"><button type="submit" class="btn hub" id="hub-btn"><span class="hubmark"></span>Sign in with Coral Hub</button></form>
+    <p class="note" style="text-align:center">Uses your Coral Hub account, as the owner of this computer. Gives full control of it.</p>
+{{else if eq .HubSignin "unpaired"}}
+    <div class="or">or</div>
+    <button type="button" class="btn hub" id="hub-link-open"><span class="hubmark"></span>Link this computer to Coral Hub and sign in</button>
+{{end}}
+{{if or (eq .HubSignin "disabled_in_hub") (eq .HubSignin "ready")}}
+    <div class="warn" id="hub-disabled" role="status"{{if eq .HubSignin "ready"}} hidden{{end}}><span style="font-size:16px">&#9432;</span><span><b>Sign in with Coral Hub is off for this computer.</b> Turn on Sign in with Coral Hub for this machine in Coral Hub, then come back.{{if .HubURL}} <a class="link" href="{{.HubURL}}" target="_blank" rel="noopener noreferrer">Open Coral Hub</a>{{end}}</span></div>
+{{end}}
+{{end}}<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
@@ -71,7 +96,16 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`<!DOCTYPE html>
   ol.steps { margin: 0 0 18px 18px; padding: 0; font-size: 14px; line-height: 1.6; }
   ol.steps li { margin-bottom: 8px; }
   .note { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 14px 0 0; }
-  .panel[hidden], .err[hidden], .lock[hidden] { display: none; }
+  .panel[hidden], .err[hidden], .lock[hidden], .warn[hidden] { display: none; }
+  .or { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 12px; margin: 18px 0; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(212, 167, 44, .13); border: 1px solid rgba(212, 167, 44, .55); border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+  .btn.hub { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 10px 14px; font-size: 15px; }
+  .hubmark { width: 18px; height: 18px; margin-right: 8px; border-radius: 5px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: inline-block; flex: none; }
+  .verify { text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 26px; letter-spacing: .18em; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: 8px; padding: 14px; margin: 0 0 14px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border-light); border-top-color: var(--accent); border-radius: 50%; animation: sp 1s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
   .pw-input.bad { border-color: #e5534b; }
   .setup-input { padding-right: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
   @media (max-width: 480px) { .card { padding: 24px 18px; } }
@@ -82,6 +116,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`<!DOCTYPE html>
 <main class="card">
   <div class="brand"><img src="/static/coral.png" alt="" width="44" height="44">Coral</div>
   <div id="live" class="panel" role="status" aria-live="polite"></div>
+  <div id="hub-flash" class="err" role="alert" hidden></div>
 {{if .PasswordSet}}
   <section id="panel-signin" class="panel">
     <h1>Sign in</h1>
@@ -94,6 +129,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`<!DOCTYPE html>
       <label class="check"><input type="checkbox" id="keep"><span>Keep me signed in on this browser<small>For 30 days. Leave it off on a shared computer.</small></span></label>
       <div class="btnrow"><button type="submit" id="submit" class="btn btn-primary wide">Sign in</button></div>
     </form>
+{{template "hub" .}}
     <div class="linkrow"><button type="button" class="link" id="show-forgot">Forgot password?</button><button type="button" class="link" id="show-key">Use an API key instead</button></div>
   </section>
   <section id="panel-forgot" class="panel" hidden>
@@ -124,7 +160,32 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`<!DOCTYPE html>
       <div class="btnrow"><button type="submit" id="submit" class="btn btn-primary wide">Create password and open Coral</button></div>
     </form>
     <p class="note">Your password manager can save it. There is no email: if you forget it, run coral reset-password on this computer.</p>
+{{template "hub" .}}
     <div class="linkrow"><span></span><button type="button" class="link" id="show-key">Use an API key instead</button></div>
+  </section>
+{{end}}
+{{if eq .HubSignin "unpaired"}}
+  <section id="panel-hublink" class="panel" hidden>
+    <h1>Link this computer to Coral Hub</h1>
+    <p class="sub">Link it once, then sign in here with your Coral Hub account instead of a password. You will finish in Coral Hub and come back here.</p>
+    <div id="hub-link-err" class="err" role="alert" hidden></div>
+    <form id="hub-link-form" autocomplete="off">
+      <label class="pw-field" id="hub-setup-field"{{if .Local}} hidden{{end}}><span class="pw-label">Setup code</span><span class="pw-input-row"><input class="pw-input setup-input" id="hub-setup-code" name="setup-code" type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="16"></span>
+      <span class="note" style="display:block;margin:6px 0 14px">Run <b>coral setup-code</b> on that computer (or look at the console if you started Coral from a terminal).</span></label>
+      <div class="warn"><span style="font-size:16px">&#9888;</span><span><b>Coral Hub can then sign you in here with full control of this computer.</b> A Coral Hub account that is signed in can run commands on this computer, like your password can.</span></div>
+      <label class="check" style="margin-top:0"><input type="checkbox" id="hub-enable"><span>Let Coral Hub sign me in here<small>Off unless you tick it. You can change it later in Settings, Browser sign-in.</small></span></label>
+      <div class="btnrow"><button type="submit" id="hub-link-go" class="btn btn-primary wide">Link this computer to Coral Hub and sign in</button></div>
+      <div class="btnrow" style="margin-top:10px"><button type="button" class="btn wide" data-back="main">Not now, use a password</button></div>
+    </form>
+  </section>
+  <section id="panel-hubwait" class="panel" hidden>
+    <h1>Finish in Coral Hub</h1>
+    <p class="sub">Coral Hub is open in a new tab. Check that it shows this code, then approve linking this computer.</p>
+    <div class="verify" id="hub-code" aria-label="Code to check"></div>
+    <p class="sub" style="margin-bottom:14px" role="status"><span class="spin"></span>Waiting for you to approve in Coral Hub…</p>
+    <div id="hub-wait-err" class="err" role="alert" hidden></div>
+    <div class="btnrow"><button type="button" class="btn wide" id="hub-reopen">Open Coral Hub again</button><button type="button" class="btn wide" id="hub-cancel">Cancel</button></div>
+    <p class="note">Nothing is linked until you approve. This page signs you in by itself when you do.</p>
   </section>
 {{end}}
   <section id="panel-key" class="panel" hidden>

@@ -24,7 +24,7 @@ async function post(url, body) {
 
 const main = $('panel-signin') || $('panel-create');
 function showPanel(panel) {
-    for (const p of [main, $('panel-forgot'), $('panel-key')]) if (p) p.hidden = p !== panel;
+    for (const p of [main, $('panel-forgot'), $('panel-key'), $('panel-hublink'), $('panel-hubwait')]) if (p) p.hidden = p !== panel;
     const focus = panel && panel.querySelector('input:not([hidden]):not([type=checkbox])');
     if (focus) focus.focus();
 }
@@ -113,6 +113,70 @@ if (passwordSet) {
         if (res.status === 429) { setError(err, ''); return lock(waitFor(res)); }
         if (res.data.code === 'bad_code') { setError(err, res.data.error || 'That setup code is not right.'); code.focus(); code.select(); return; }
         setError(err, res.status === 403 ? CROSS : (res.data.error || 'Could not create the password.'));
+    });
+}
+
+// Sign in with Coral Hub (#3966). The server decides what is offered (data in the markup); an address only ever says what went
+// wrong (?hub=unavailable, failed or disabled), is shown once and dropped from the address, and never ticks or fills anything.
+const HUB_FLASH = {
+    unavailable: 'Coral Hub could not start the sign-in. Use your password.',
+    failed: 'Coral Hub could not sign you in. The sign-in did not finish, so nothing was signed in. It can happen if it took too long, if it was opened from another address, or if Coral Hub could not be reached. Try again, or use your password.',
+};
+const hubFlash = params.get('hub');
+if (hubFlash) {
+    params.delete('hub');
+    const q = params.toString();
+    history.replaceState(null, '', window.location.pathname + (q ? '?' + q : '') + window.location.hash);
+    if (hubFlash === 'disabled' && $('hub-disabled')) $('hub-disabled').hidden = false;
+    else setError($('hub-flash'), HUB_FLASH[hubFlash] || (hubFlash === 'disabled' ? 'Sign in with Coral Hub is off for this computer.' : ''));
+}
+const hubOnlyHttps = url => typeof url === 'string' && url.startsWith('https://');
+function startHubSignIn() {   // the same plain POST the Sign in with Coral Hub button makes
+    const f = document.createElement('form'); f.method = 'post'; f.action = '/auth/hub/start'; f.hidden = true;
+    document.body.append(f); f.submit();
+}
+if ($('hub-link-open')) {
+    let poll = null, flowUrl = '';
+    const stopPoll = () => { clearInterval(poll); poll = null; };
+    $('hub-link-open').addEventListener('click', () => showPanel($('panel-hublink')));
+    $('hub-cancel').addEventListener('click', () => { stopPoll(); showPanel(main); });
+    $('hub-reopen').addEventListener('click', () => { if (hubOnlyHttps(flowUrl)) window.open(flowUrl, '_blank', 'noopener'); });
+    function waitForLink(data) {
+        flowUrl = data.verification_url;
+        if (!hubOnlyHttps(flowUrl)) { setError($('hub-link-err'), 'Coral Hub gave an address this page will not open. Try again, or use your password.'); return; }
+        $('hub-code').textContent = String(data.user_code || '');
+        setError($('hub-wait-err'), '');
+        showPanel($('panel-hubwait'));
+        window.open(flowUrl, '_blank', 'noopener');
+        let tries = 0;
+        stopPoll();
+        poll = setInterval(async () => { // interval-ok: the link approval poll on the sign-in page, which has no dashboard pollers to pause
+            tries += 1;
+            let r;
+            try { r = await fetch('/auth/hub/link/status', { credentials: 'same-origin', cache: 'no-store' }); r = r.ok ? await r.json() : null; } catch { r = null; }
+            if (r && r.state === 'linked' && r.ready) { stopPoll(); startHubSignIn(); }
+            else if (r && r.state === 'failed') { stopPoll(); setError($('hub-wait-err'), r.error || 'Linking did not finish. Try again, or use your password.'); }
+            else if (tries >= 150) { stopPoll(); setError($('hub-wait-err'), 'Linking did not finish in five minutes. Try again, or use your password.'); }
+        }, 2000);
+    }
+    $('hub-link-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const err = $('hub-link-err'), field = $('hub-setup-field');
+        setError(err, '');
+        const code = field.hidden ? '' : $('hub-setup-code').value.trim().toUpperCase().replace(/\s+/g, '');
+        if (!field.hidden && !code) { setError(err, 'Enter the setup code.'); return; }
+        const body = { enable_signin: $('hub-enable').checked };
+        if (code) body.setup_code = code;
+        $('hub-link-go').disabled = true;
+        let res;
+        try { res = await post('/auth/hub/link', body); } catch { setError(err, NETWORK); $('hub-link-go').disabled = false; return; }
+        $('hub-link-go').disabled = false;
+        if (res.ok) return waitForLink(res.data);
+        if (res.status === 409) { window.location.reload(); return; }   // linked meanwhile: the page now offers the sign-in
+        if (res.data.code === 'setup_code_required') { field.hidden = false; $('hub-setup-code').focus(); setError(err, 'Enter the setup code.'); return; }
+        if (res.data.code === 'setup_code_wrong') { setError(err, 'That setup code is not right.'); $('hub-setup-code').select(); return; }
+        if (res.status === 429) { setError(err, res.data.error || 'Too many attempts. Try again later.'); return; }
+        setError(err, res.status === 403 ? CROSS : (res.data.error || 'Could not start linking.'));
     });
 }
 

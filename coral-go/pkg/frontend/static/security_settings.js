@@ -9,7 +9,7 @@ import { importOnce } from './import_once.js';
 
 // Lazy modules, awaited here so a retried load of this file re-imports them through importOnce (import_hygiene).
 const { passwordProblem, timeMs, timeLeft, ageText } = await importOnce('./password_rules.js');
-const { postJson, passwordField, usernameStub, strengthMeter, errorText, showSetPasswordModal } = await importOnce('./password_ui.js');
+const { postJson, sendJson, passwordField, usernameStub, strengthMeter, errorText, showSetPasswordModal } = await importOnce('./password_ui.js');
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 let _root = null;
@@ -42,6 +42,7 @@ export async function loadSecurityRow() {
     if (st.password_set) { try { sessions = await getSessions(); } catch { /* the list is optional */ } }
     render(root, st, sessions);
     root.hidden = false;
+    appendHub(root, sessions);   // only where this computer is linked to Coral Hub (#3966)
 }
 
 function render(root, st, sessions) {
@@ -98,7 +99,8 @@ function changeForm() {
 function sessionsBlock(data) {
     const box = el('div', 'sec-sessions');
     if (data && data.needSignIn) { const b = el('div', 'sec-sessions'); b.append(el('p', 'tb-note', 'Sign in in this browser to see signed-in browsers and sign the others out.')); return b; }
-    const list = (data && Array.isArray(data.sessions)) ? data.sessions : null;
+    const all = (data && Array.isArray(data.sessions)) ? data.sessions : null;
+    const list = all && all.filter(s => s.method !== 'hub');   // Coral Hub sign-ins are listed, with Sign out, in their own block
     if (!list) { box.append(el('p', 'tb-note', 'The list of signed-in browsers could not be loaded.')); return box; }
     const h = el('div', 'sec-sub-head', 'Signed-in browsers '); h.append(el('span', 'sec-count', `(${list.length})`));
     box.append(h);
@@ -112,7 +114,7 @@ function sessionsBlock(data) {
         ul.append(li);
     }
     box.append(ul);
-    const others = list.filter(s => !s.current).length;
+    const others = all.filter(s => !s.current).length;
     const out = el('button', 'btn btn-small', 'Sign out other browsers'); out.type = 'button'; out.id = 'sec-signout-others'; out.disabled = others === 0;
     out.addEventListener('click', async () => {
         out.disabled = true;
@@ -138,4 +140,100 @@ function sessionsBlock(data) {
         d.append(rl); box.append(d);
     }
     return box;
+}
+
+// ── Sign in with Coral Hub (#3966) ────────────────────────────────────────────────────────────────────────────
+// The switch writes only through PUT /api/auth/hub-signin, at once (it is not part of the dialog's Apply, so a stale form can
+// never turn it on); every state shown is read back from the server after a change.
+
+async function hubGet(url) {
+    try { const r = await fetch(url, { credentials: 'same-origin', cache: 'no-store' }); return r.ok ? await r.json() : null; } catch { return null; }
+}
+
+async function appendHub(root, sessions) {
+    const st = await hubGet('/api/auth/hub-signin');
+    root.querySelector('#sec-hub')?.remove();
+    if (!st || !st.linked) return;   // nothing to show, and nothing to switch on, until this computer is linked
+    const origins = await hubGet('/api/auth/hub-origins');
+    const hubSessions = (sessions && Array.isArray(sessions.sessions) ? sessions.sessions : []).filter(s => s.method === 'hub');
+    root.append(hubBlock(st, origins && Array.isArray(origins.origins) ? origins.origins : [], hubSessions));
+}
+
+function hubBlock(st, origins, hubSessions) {
+    const box = el('div', 'sec-sessions sec-hub'); box.id = 'sec-hub';
+    box.append(el('div', 'sec-sub-head', 'Sign in with Coral Hub'));
+    const row = el('label', 'sec-switch');
+    const cb = el('input'); cb.type = 'checkbox'; cb.id = 'sec-hub-enabled'; cb.checked = st.enabled === true;
+    const txt = el('span');
+    txt.append(el('b', '', 'Let Coral Hub sign in here'), document.createElement('br'), el('span', 'sec-muted', st.owner_known === false
+        ? 'Off by default. Sign-in stays off until Coral Hub reports the account that linked this computer.'
+        : 'Off by default. Only the Coral Hub account that linked this computer can use it.'));
+    row.append(cb, txt);
+    const warn = el('div', 'sec-warn'); warn.id = 'sec-hub-warn';
+    const wi = el('span', '', '\u26A0'); const wt = el('span');
+    wt.append(el('b', '', 'This lets your Coral Hub account run commands on this computer.'), ' A Coral Hub sign-in has full control, like your password. Turning it off signs out every Coral Hub session at once.');
+    warn.append(wi, wt);
+    box.append(row, warn, el('p', 'tb-note', 'Turned off while "Don\'t let Coral Hub act as the Operator" is on.'));
+    cb.addEventListener('change', async () => {
+        const want = cb.checked;
+        cb.disabled = true;
+        let res;
+        try { res = await sendJson('PUT', '/api/auth/hub-signin', { enabled: want }); } catch { res = { ok: false, data: { error: 'Could not reach Coral.' } }; }
+        if (!res.ok) showToast(errorText(res, 'Could not change Sign in with Coral Hub.'), true);
+        loadSecurityRow();   // the server's answer is what shows, whatever happened
+    });
+
+    box.append(el('div', 'sec-sub-head sec-gap', 'Return addresses'));
+    const ul = el('ul', 'sec-list'); ul.id = 'sec-hub-origins';
+    const always = el('li', 'sec-item'); always.append(el('span', 'sec-who', `${location.protocol}//${location.host}`), el('span', 'sec-when', 'always'));
+    ul.append(always);
+    for (const o of origins) {
+        const li = el('li', 'sec-item');
+        const rm = el('button', 'btn btn-small', 'Remove'); rm.type = 'button';
+        rm.setAttribute('aria-label', `Remove ${o}`);
+        rm.addEventListener('click', () => putOrigins(origins.filter(x => x !== o), err));
+        const when = el('span', 'sec-when'); when.append(rm);
+        li.append(el('span', 'sec-who', o), when);
+        ul.append(li);
+    }
+    const add = el('div', 'sec-add');
+    const input = el('input', 'pw-input'); input.type = 'text'; input.id = 'sec-hub-origin'; input.placeholder = 'https://host:port'; input.setAttribute('aria-label', 'New return address'); input.style.paddingRight = '11px';
+    const addBtn = el('button', 'btn btn-small', 'Add'); addBtn.type = 'button'; addBtn.id = 'sec-hub-origin-add';
+    const err = el('p', 'pw-error'); err.id = 'sec-hub-origin-error'; err.setAttribute('role', 'alert'); err.hidden = true;
+    addBtn.addEventListener('click', () => {
+        const v = input.value.trim();
+        if (!v) { err.hidden = false; err.textContent = 'Enter an address.'; return; }
+        putOrigins([...origins, v], err);
+    });
+    add.append(input, addBtn);
+    box.append(ul, add, err);
+
+    box.append(el('div', 'sec-sub-head sec-gap', `Coral Hub sign-ins now (${hubSessions.length})`));
+    const sl = el('ul', 'sec-list'); sl.id = 'sec-hub-sessions';
+    if (!hubSessions.length) sl.append(el('li', 'sec-item sec-muted', 'None'));
+    for (const s of hubSessions) {
+        const li = el('li', 'sec-item');
+        const out = el('button', 'btn btn-small', 'Sign out'); out.type = 'button';
+        out.setAttribute('aria-label', `Sign out ${s.label || 'this Coral Hub sign-in'}`);
+        out.addEventListener('click', async () => {
+            out.disabled = true;
+            let res;
+            try { res = await sendJson('DELETE', `/api/auth/sessions/${encodeURIComponent(s.id)}`); } catch { res = { ok: false, data: { error: 'Could not reach Coral.' } }; }
+            if (!res.ok) { showToast(errorText(res, 'Could not sign that out.'), true); out.disabled = false; return; }
+            loadSecurityRow();
+        });
+        const when = el('span', 'sec-when', `${ageText(timeMs(s.last_seen))} `); when.append(out);
+        li.append(el('span', 'sec-who', String(s.label || 'Coral Hub')), when);
+        sl.append(li);
+    }
+    box.append(sl);
+    return box;
+}
+
+async function putOrigins(list, err) {
+    err.hidden = true;
+    let res;
+    try { res = await sendJson('PUT', '/api/auth/hub-origins', { origins: list }); } catch { res = { ok: false, data: { error: 'Could not reach Coral.' } }; }
+    if (!res.ok) { err.hidden = false; err.textContent = errorText(res, 'That address was not accepted.'); return; }
+    loadSecurityRow();
 }

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="referrer" content="no-referrer">
+<title>Sign in to Coral</title>
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/variables.css">
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<style>
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg-primary); color: var(--text-primary); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+  .card { width: 100%; max-width: 440px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 32px 30px; box-sizing: border-box; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+  .brand img { width: 44px; height: 44px; border-radius: 10px; flex: none; display: block; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+  .sub { color: var(--text-secondary); font-size: 14px; line-height: 1.5; margin: 0 0 20px; }
+  .err { display: flex; gap: 8px; align-items: flex-start; background: rgba(229, 83, 75, .12); border: 1px solid rgba(229, 83, 75, .5); border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.45; margin: 0 0 16px; }
+  .lock { display: flex; gap: 8px; align-items: flex-start; background: rgba(212, 167, 44, .13); border: 1px solid rgba(212, 167, 44, .55); border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+  .lock .count { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; }
+  .ok { color: var(--text-secondary); font-size: 13px; margin: 12px 0 0; }
+  .btnrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn.wide { flex: 1; padding: 10px 14px; font-size: 15px; justify-content: center; }
+  .link { color: var(--accent); font-size: 13px; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
+  .linkrow { margin-top: 16px; font-size: 13px; color: var(--text-secondary); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .check { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; margin: 4px 0 18px; }
+  .check input { margin-top: 3px; width: 16px; height: 16px; flex: none; padding: 0; appearance: auto; -webkit-appearance: checkbox; background: none; accent-color: var(--accent); }
+  .check small { display: block; color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
+  .code { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; margin: 0 0 16px; }
+  ol.steps { margin: 0 0 18px 18px; padding: 0; font-size: 14px; line-height: 1.6; }
+  ol.steps li { margin-bottom: 8px; }
+  .note { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 14px 0 0; }
+  .panel[hidden], .err[hidden], .lock[hidden], .warn[hidden] { display: none; }
+  .or { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 12px; margin: 18px 0; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(212, 167, 44, .13); border: 1px solid rgba(212, 167, 44, .55); border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+  .btn.hub { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 10px 14px; font-size: 15px; }
+  .hubmark { width: 18px; height: 18px; margin-right: 8px; border-radius: 5px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: inline-block; flex: none; }
+  .verify { text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 26px; letter-spacing: .18em; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: 8px; padding: 14px; margin: 0 0 14px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border-light); border-top-color: var(--accent); border-radius: 50%; animation: sp 1s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  .pw-input.bad { border-color: #e5534b; }
+  .setup-input { padding-right: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
+  @media (max-width: 480px) { .card { padding: 24px 18px; } }
+</style>
+<script src="/static/theme_init.js"></script>
+</head>
+<body data-password-set="true" data-local="true" data-strict="false">
+<main class="card">
+  <div class="brand"><img src="/static/coral.png" alt="" width="44" height="44">Coral</div>
+  <div id="live" class="panel" role="status" aria-live="polite"></div>
+  <div id="hub-flash" class="err" role="alert" hidden></div>
+
+  <section id="panel-signin" class="panel">
+    <h1>Sign in</h1>
+    <p class="sub">Enter the password you made for Coral on this computer.</p>
+    <div id="err" class="err" role="alert" hidden></div>
+    <div id="lock" class="lock" role="status" hidden><span>&#9202;</span><span><b>Sign-in is paused.</b> Too many wrong passwords. It opens again in <span class="count" id="count">0:00</span>.</span></div>
+    <form id="signin-form" autocomplete="on">
+      <input type="text" name="username" value="coral" autocomplete="username" hidden aria-hidden="true" readonly tabindex="-1">
+      <label class="pw-field"><span class="pw-label">Password</span><span class="pw-input-row"><input class="pw-input" id="password" name="password" type="password" autocomplete="current-password" spellcheck="false" autocapitalize="off" autofocus><button type="button" class="pw-toggle" data-toggle="password" aria-pressed="false" aria-label="Show password">Show</button></span></label>
+      <label class="check"><input type="checkbox" id="keep"><span>Keep me signed in on this browser<small>For 30 days. Leave it off on a shared computer.</small></span></label>
+      <div class="btnrow"><button type="submit" id="submit" class="btn btn-primary wide">Sign in</button></div>
+    </form>
+
+
+
+    <div class="warn" id="hub-disabled" role="status"><span style="font-size:16px">&#9432;</span><span><b>Sign in with Coral Hub is off for this computer.</b> Turn on Sign in with Coral Hub for this machine in Coral Hub, then come back. <a class="link" href="https://app.coralhub.dev" target="_blank" rel="noopener noreferrer">Open Coral Hub</a></span></div>
+
+
+    <div class="linkrow"><button type="button" class="link" id="show-forgot">Forgot password?</button><button type="button" class="link" id="show-key">Use an API key instead</button></div>
+  </section>
+  <section id="panel-forgot" class="panel" hidden>
+    <h1>Forgot your password?</h1>
+    <p class="sub">Coral has no email to send a link to. Resetting happens on the computer that runs Coral, which keeps it safe from anyone else on the network.</p>
+    <ol class="steps"><li>Open a terminal on <b>this computer</b> (the one running Coral).</li><li>Run:</li></ol>
+    <div class="code"><span id="reset-cmd">coral reset-password</span><button type="button" class="btn btn-small" id="copy-reset">Copy</button></div>
+    <ol class="steps" start="3"><li>Choose a new password when it asks. Browsers that were signed in are signed out.</li><li>Come back here and sign in.</li></ol>
+    <div class="btnrow"><button type="button" class="btn btn-primary wide" data-back="signin">Back to sign in</button></div>
+    <p class="note">The Coral app and the tray open without a password.</p>
+  </section>
+
+
+  <section id="panel-key" class="panel" hidden>
+    <h1>Use an API key</h1>
+    <p class="sub">Paste the key from Settings in the Coral app, or from the file ~/.coral/api_key on the computer that runs Coral.</p>
+    <div id="key-err" class="err" role="alert" hidden></div>
+    <form id="key-form" autocomplete="off">
+      <label class="pw-field"><span class="pw-label">API key</span><span class="pw-input-row"><input class="pw-input" id="api-key" name="api-key" type="password" autocomplete="off" spellcheck="false" style="padding-right:11px"></span></label>
+      <div class="btnrow"><button type="submit" id="key-submit" class="btn btn-primary wide">Connect</button></div>
+    </form>
+    <div class="linkrow"><button type="button" class="link" data-back="main">Back</button></div>
+  </section>
+</main>
+<script type="module" src="/static/auth_page.js"></script>
+</body>
+</html>

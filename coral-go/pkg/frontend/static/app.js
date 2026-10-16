@@ -851,7 +851,10 @@ function pollStartupStatus() {
                 el.classList.add('hidden');
                 if (data.security_warning) showSecurityWarning(data.security_warning); // #3637
                 dashboardStartupComplete();
-                importOnce('./password_ui.js').then(m => m.maybePromptSetPassword()).catch(() => {}); // #3948: once, while no password is set
+                // One question at a time: set a password (#3948, once, while none is set), then Coral Hub sign-in (#3966, once, for a
+                // computer already linked to Coral Hub). The second waits if the first is still open.
+                importOnce('./password_ui.js').then(m => m.maybePromptSetPassword()).catch(() => {})
+                    .then(() => importOnce('./hub_notice.js')).then(m => m.maybeOfferHubSignin()).catch(() => {});
                 loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded).finally(_settlePollListLoad);
                 return;
             }
