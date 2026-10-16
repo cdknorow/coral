@@ -104,3 +104,35 @@ func secretIntact(t *testing.T, dir, secret string) {
 	entries, _ := os.ReadDir(dir)
 	assert.Len(t, entries, 1, "nothing new outside")
 }
+
+// #3671 (#3669 finding 1): every network and device-namespace form is refused, whichever
+// separators it uses; local paths are not.
+func TestRefuseRemoteForms(t *testing.T) {
+	for _, p := range []string{
+		`\\host\share`, `//host/share`, `\/host\share`, `/\host/share`, `\\host`,
+		`\\?\C:\x`, `\\?\UNC\host\share`, `//?/UNC/host/share`, `\\.\pipe\x`, `\\.\PhysicalDrive0`,
+		`\??\UNC\host\share`, `/??/C:/x`,
+	} {
+		assert.ErrorIs(t, RefuseRemote(p), ErrUNC, p)
+		assert.True(t, IsUNC(p), p)
+	}
+	for _, p := range []string{`/home/u/proj`, `C:\Users\u\proj`, `relative\dir`, `./x`, `~/x`, `/`, `/?/x`, `?`, ``} {
+		assert.NoError(t, RefuseRemote(p), p)
+	}
+}
+
+// #3671 (#3669 finding 4): Windows device names, in any case, with or without an extension,
+// and names ending in a dot or a space are refused; names that only start like one are not.
+func TestCheckNameRefusesWindowsDeviceNames(t *testing.T) {
+	for _, n := range []string{
+		"CON", "con", "Nul", "PRN", "aux", "COM1", "com9", "COM0", "LPT1", "lpt9",
+		"nul.json", "CON.md", "com1.tar.gz", "NUL .json", "conin$", "CONOUT$.txt",
+		"COM\u00b9", "lpt\u00b3.json",
+		"theme.", "theme ", "a..", "", ".",
+	} {
+		assert.ErrorIs(t, CheckName(n), ErrReservedName, "%q", n)
+	}
+	for _, n := range []string{"console", "CONx", "nully", "com10", "COM", "LPT", "lpt1x", "aux-team", "my theme", "x.json", "_con", "com1_"} {
+		assert.NoError(t, CheckName(n), "%q", n)
+	}
+}

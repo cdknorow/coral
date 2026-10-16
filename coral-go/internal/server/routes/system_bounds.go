@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 // knownCLIBinaries are the CLI names Coral launches (claude, codex, agy, pi).
@@ -132,6 +133,9 @@ var errImportRefused = errors.New("import refused")
 // and not a sensitive location (.ssh, .aws, credentials and the like). A team inside a dot-folder
 // (~/.claude/skills/<team>) is allowed. It returns the folder's real path.
 func importTeamRoot(path string) (string, error) {
+	if safefs.RefuseRemote(path) != nil { // before the stat, which would connect to the host (#3671)
+		return "", fmt.Errorf("%w: a network path can't be imported from", errImportRefused)
+	}
 	if !filepath.IsAbs(path) {
 		return "", fmt.Errorf("%w: path must be absolute", errImportRefused)
 	}

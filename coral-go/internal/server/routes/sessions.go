@@ -7028,6 +7028,11 @@ func classifyLaunchError(err error) string {
 // launchDirError is the error for a launch working directory that is not an
 // existing directory, or "" when it is usable.
 func launchDirError(dir string) string {
+	// A network path is refused before anything stats it: on Windows the stat alone connects to
+	// the host as the user (#3671).
+	if safefs.RefuseRemote(dir) != nil {
+		return fmt.Sprintf("a network path can't be a working folder: %s", dir)
+	}
 	abs, err := filepath.Abs(dir)
 	if err != nil || !isDir(abs) {
 		return fmt.Sprintf("directory not found: %s", dir)

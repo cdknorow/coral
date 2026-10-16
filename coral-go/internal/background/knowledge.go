@@ -14,6 +14,7 @@ import (
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -363,7 +364,8 @@ var ErrBadKnowledgeTeam = errors.New("invalid team name for knowledge")
 // either (a Windows alternate data stream).
 func ValidKnowledgeTeam(name string) bool {
 	return name != "" && len(name) <= 128 && name != "." && name != ".." &&
-		!strings.ContainsAny(name, "/\\:\x00") && filepath.Base(name) == name
+		!strings.ContainsAny(name, "/\\:\x00") && filepath.Base(name) == name &&
+		safefs.CheckName(name) == nil // a Windows device name, or a trailing dot or space (#3671)
 }
 
 // knowledgeTeamDir is a team's knowledge folder, or ErrBadKnowledgeTeam.
@@ -667,7 +669,13 @@ func slugify(name string) string {
 			clean.WriteRune(c)
 		}
 	}
-	return clean.String()
+	// A slug names a file (<slug>.md): one that is a Windows device name ("con", "nul", "com1")
+	// gets a '_', the same for every read and write (#3671).
+	slug := clean.String()
+	if slug != "" && safefs.CheckName(slug) != nil {
+		slug += "_"
+	}
+	return slug
 }
 
 func assembleOKFFallback(agentName, role, teamName, timestamp, pass1, collab string) string {

@@ -33,6 +33,7 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -866,8 +867,14 @@ func expandHome(p string) string {
 // directory or a configured project root after symlink resolution and must not be a
 // credential location; otherwise it is reported exactly like a missing directory.
 func browsable(r *http.Request, reqPath string) (string, bool) {
+	// A network path is reported like a missing folder, before anything stats it (#3671): on
+	// Windows the stat alone connects to the host as the user. Every caller (the folder browser,
+	// is-git) stats what this returns.
+	if safefs.RefuseRemote(reqPath) != nil {
+		return "", false
+	}
 	expanded, err := filepath.Abs(expandHome(reqPath))
-	if err != nil {
+	if err != nil || safefs.RefuseRemote(expanded) != nil {
 		return "", false
 	}
 	if !strictBounds(r) {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 // ThemesHandler handles theme CRUD endpoints.
@@ -327,7 +328,7 @@ func (h *ThemesHandler) SeedBundledThemes() {
 
 func (h *ThemesHandler) safePath(name string) string {
 	safe := strings.TrimSpace(safeNameRE.ReplaceAllString(name, ""))
-	if safe == "" {
+	if safe == "" || safefs.CheckName(safe) != nil { // "nul.json" is the NUL device on Windows (#3671)
 		return ""
 	}
 	return filepath.Join(h.themesDir, safe+".json")
@@ -457,7 +458,7 @@ func (h *ThemesHandler) ImportTheme(w http.ResponseWriter, r *http.Request) {
 		name = strings.TrimSuffix(header.Filename, ".json")
 	}
 	safe := strings.TrimSpace(safeNameRE.ReplaceAllString(name, ""))
-	if safe == "" {
+	if safe == "" || safefs.CheckName(safe) != nil {
 		errBadRequest(w, "Could not determine theme name")
 		return
 	}

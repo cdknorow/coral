@@ -124,7 +124,7 @@ func (h *WorkflowHandler) CreateWorkflow(w http.ResponseWriter, r *http.Request)
 		errBadRequest(w, "name is required")
 		return
 	}
-	if !workflowNameRe.MatchString(body.Name) {
+	if !workflowNameRe.MatchString(body.Name) || safefs.CheckName(body.Name) != nil { // Windows device names (#3671)
 		errBadRequest(w, "name contains invalid characters")
 		return
 	}
@@ -244,7 +244,7 @@ func (h *WorkflowHandler) UpdateWorkflow(w http.ResponseWriter, r *http.Request)
 			errBadRequest(w, "invalid name value")
 			return
 		}
-		if !workflowNameRe.MatchString(name) {
+		if !workflowNameRe.MatchString(name) || safefs.CheckName(name) != nil {
 			errBadRequest(w, "name contains invalid characters")
 			return
 		}

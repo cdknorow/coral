@@ -40,11 +40,64 @@ var (
 	ErrUNC        = errors.New("safefs: a network (UNC) path is refused")
 )
 
-// IsUNC reports whether p names a network share (\\host\share or //host/share). Resolving one
+// IsUNC reports whether p names a network share or a device namespace: \\host\share and
+// //host/share, either separator in either place (Windows reads / and \ alike), the \\?\ and
+// \\.\ prefixes (\\?\UNC\host\share is a share too) and the NT form \??\. Resolving a share
 // makes Windows connect to that host (and send the user's credentials); macOS's /net does the
 // same through the automounter, so callers keep paths under their roots before resolving.
 func IsUNC(p string) bool {
-	return strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") || strings.HasPrefix(filepath.VolumeName(p), `\\`)
+	if len(p) >= 2 && isSep(p[0]) && isSep(p[1]) {
+		return true
+	}
+	if len(p) >= 4 && isSep(p[0]) && p[1] == '?' && p[2] == '?' && isSep(p[3]) {
+		return true
+	}
+	return strings.HasPrefix(filepath.VolumeName(p), `\\`)
+}
+
+func isSep(c byte) bool { return c == '/' || c == '\\' }
+
+// RefuseRemote is ErrUNC for a path naming a network share or a device namespace (IsUNC), nil
+// otherwise. Call it on a path from a request before anything stats, opens or resolves it: on
+// Windows even a stat of \\host\share connects to that host as the user (#3669 finding 1).
+func RefuseRemote(p string) error {
+	if IsUNC(p) {
+		return ErrUNC
+	}
+	return nil
+}
+
+// ErrReservedName is a file name Windows maps to a device or alters (#3669 finding 4).
+var ErrReservedName = errors.New("safefs: a reserved file name (a Windows device name, or a trailing dot or space)")
+
+// CheckName refuses a name that becomes one path element of a file Coral writes, when Windows
+// would not store it as given: a reserved device name (CON, PRN, AUX, NUL, COM0-9, LPT0-9, the
+// superscript-digit COM and LPT, CONIN$ and CONOUT$), in any case, with or without an extension
+// ("nul.json" is the NUL device too), and a name ending in a dot or a space (Windows drops them,
+// so two names would share a file). Checked on every system, so a name works wherever Coral runs.
+func CheckName(name string) error {
+	if name == "" {
+		return ErrReservedName
+	}
+	if last := name[len(name)-1]; last == '.' || last == ' ' {
+		return ErrReservedName
+	}
+	stem := name
+	if i := strings.IndexByte(stem, '.'); i >= 0 {
+		stem = stem[:i]
+	}
+	stem = strings.ToUpper(strings.TrimRight(stem, " "))
+	switch stem {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return ErrReservedName
+	}
+	if len(stem) > 3 && (strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT")) {
+		switch stem[3:] {
+		case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "\u00b9", "\u00b2", "\u00b3":
+			return ErrReservedName
+		}
+	}
+	return nil
 }
 
 // Resolve returns the real path of an existing p (symlinks resolved, cleaned, absolute).
