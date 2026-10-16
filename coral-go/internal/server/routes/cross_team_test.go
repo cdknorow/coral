@@ -31,7 +31,7 @@ func newCrossTeamEnv(t *testing.T) *crossTeamEnv {
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	e := &crossTeamEnv{t: t, h: NewBoardHandler(bs), now: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}
-	e.h.SetNotifyFn(func() { e.notified.Add(1) })
+	e.h.SetNotifyFn(func(string) { e.notified.Add(1) })
 	e.h.crossTeam.now = func() time.Time { return e.now }
 	r := chi.NewRouter()
 	r.Get("/api/board/{project}/settings", e.h.GetBoardSettings)

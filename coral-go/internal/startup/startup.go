@@ -960,7 +960,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	boardNotifier.SetDiscoverFn(discoverFn)
 	if bh := srv.BoardHandler(); bh != nil {
 		boardNotifier.SetIsPausedFn(bh.IsPaused)
-		bh.SetNotifyFn(boardNotifier.NotifyNow)
+		bh.SetNotifyFn(boardNotifier.NotifyBoard)
 	}
 	// Seeded before its first pass, but not before the server serves: on a long board
 	// history seeding takes seconds (#3845, perf pass #3833 item 4). A NotifyNow meanwhile
