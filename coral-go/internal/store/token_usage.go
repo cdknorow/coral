@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"time"
 )
 
 // TokenUsage represents a token usage snapshot for a session.
@@ -136,8 +137,9 @@ func NewTokenUsageStore(db *DB) *TokenUsageStore {
 // single API call's delta tokens at a specific timestamp. The composite key
 // (session_id, recorded_at) ensures one row per call — duplicates are ignored.
 func (s *TokenUsageStore) RecordUsage(ctx context.Context, u *TokenUsage) error {
-	if u.RecordedAt == "" {
-		u.RecordedAt = NowUTC()
+	stamped := u.RecordedAt == ""
+	if stamped {
+		u.RecordedAt = tokenUsageNow()
 	}
 	if u.AgentType == "" {
 		u.AgentType = "claude"
@@ -147,14 +149,34 @@ func (s *TokenUsageStore) RecordUsage(ctx context.Context, u *TokenUsage) error 
 		u.Source = "jsonl"
 	}
 
-	result, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO token_usage
+	insert := func() (sql.Result, error) {
+		return s.db.ExecContext(ctx,
+			`INSERT OR IGNORE INTO token_usage
 		 (session_id, agent_name, agent_type, team_id, board_name, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, num_turns, session_start_at, last_activity_at, recorded_at, source, model)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''))`,
-		u.SessionID, u.AgentName, u.AgentType, u.TeamID, u.BoardName,
-		u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens, u.TotalTokens, u.CostUSD, u.NumTurns, u.SessionStartAt, u.LastActivityAt, u.RecordedAt, u.Source, strings.TrimSpace(u.Model))
+			u.SessionID, u.AgentName, u.AgentType, u.TeamID, u.BoardName,
+			u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens, u.TotalTokens, u.CostUSD, u.NumTurns, u.SessionStartAt, u.LastActivityAt, u.RecordedAt, u.Source, strings.TrimSpace(u.Model))
+	}
+	result, err := insert()
 	if err != nil {
 		return err
+	}
+	// (session_id, recorded_at) drops a second report of the same transcript turn. A row Coral
+	// stamped itself (a report with no timestamp) that lands on the same instant as another of
+	// its session is not a duplicate: it takes the next free microsecond rather than being
+	// dropped (#3920: on Windows' coarser clock two reports in a row collided).
+	for i := 0; stamped && i < 1000; i++ {
+		if n, _ := result.RowsAffected(); n > 0 {
+			break
+		}
+		next, perr := time.Parse(ISOFormat, u.RecordedAt)
+		if perr != nil {
+			break
+		}
+		u.RecordedAt = next.Add(time.Microsecond).Format(ISOFormat)
+		if result, err = insert(); err != nil {
+			return err
+		}
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
@@ -553,3 +575,6 @@ func (s *TokenUsageStore) GetUsageSummaryByBoard(ctx context.Context, since stri
 	err := s.db.SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
 }
+
+// tokenUsageNow stamps a usage report that has no timestamp of its own (a var for tests).
+var tokenUsageNow = NowUTC
