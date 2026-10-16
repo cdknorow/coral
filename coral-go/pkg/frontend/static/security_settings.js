@@ -185,10 +185,10 @@ function hubBlock(st, origins, hubSessions) {
 
     box.append(el('div', 'sec-sub-head sec-gap', 'Return addresses'));
     const ul = el('ul', 'sec-list'); ul.id = 'sec-hub-origins';
-    // The server always sends the hub the three loopback origins on this port (a page on this computer may be opened by any of them).
+    // The server always sends the hub the three loopback origins on this port, always as http:// (hub_signin.go), whatever the page's scheme.
     const port = location.port ? `:${location.port}` : '';
     for (const host of ['localhost', '127.0.0.1', '[::1]']) {
-        const always = el('li', 'sec-item'); always.append(el('span', 'sec-who', `${location.protocol}//${host}${port}`), el('span', 'sec-when', 'always'));
+        const always = el('li', 'sec-item'); always.append(el('span', 'sec-who', `http://${host}${port}`), el('span', 'sec-when', 'always'));
         ul.append(always);
     }
     for (const o of origins) {
