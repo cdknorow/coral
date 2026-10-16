@@ -148,6 +148,8 @@ func TestGapReport(t *testing.T) {
 	for _, g := range gained {
 		fmt.Fprintf(&b, "- %s\n", g)
 	}
+	// #3884: coral-hub's comparison, folded in — each shape over runtime-random values.
+	writeRandomGapTable(t, &b, lib)
 	t.Log("\n" + b.String())
 	if p := os.Getenv("CORAL_GAP_REPORT"); p != "" {
 		require.NoError(t, os.WriteFile(p, []byte(b.String()), 0o644))
