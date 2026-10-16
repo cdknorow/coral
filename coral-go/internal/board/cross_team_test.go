@@ -104,7 +104,7 @@ func TestPostCrossTeamMessage(t *testing.T) {
 	require.Contains(t, string(b), `"external":{"direction":"outbound"`)
 	plain, err := s.PostMessage(ctx, "alpha", "Dev", "hello", nil)
 	require.NoError(t, err)
-	got, err := s.GetMessageByID(ctx, plain.ID)
+	got, err := s.GetMessageByID(ctx, "alpha", plain.ID)
 	require.NoError(t, err)
 	b, err = json.Marshal(got)
 	require.NoError(t, err)

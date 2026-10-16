@@ -41,6 +41,50 @@ func TestDeleteMessageStaysOnItsBoard(t *testing.T) {
 	assert.Zero(t, n)
 }
 
+// #3864: an agent walked message ids under its own board (coral-board read --id N, which is
+// GET /api/board/<its board>/messages/all?id=N) and got another team's messages. A message is
+// read by id only through its own board; another board's id answers exactly as a missing one
+// does, so the walk learns neither the content nor that the id exists.
+func TestReadMessageByIDStaysOnItsBoard(t *testing.T) {
+	server, bh := setupBoardTestServer(t)
+	ctx := context.Background()
+	var theirs []int64
+	for _, text := range []string{"@Security Reviewer your open review: #3840", "[Task #3857 completed by QA Engineer]"} {
+		m, err := bh.bs.PostMessage(ctx, "team-a", "Orchestrator", text, nil)
+		require.NoError(t, err)
+		theirs = append(theirs, m.ID)
+	}
+	mine, err := bh.bs.PostMessage(ctx, "team-b", "Orchestrator", "our own post", nil)
+	require.NoError(t, err)
+	get := func(board string, id int64) (int, string) {
+		resp, err := http.Get(server.URL + "/api/board/" + board + "/messages/all?id=" + strconv.FormatInt(id, 10))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.StatusCode, string(body)
+	}
+
+	missingCode, missingBody := get("team-b", mine.ID+1000)
+	require.Equal(t, http.StatusNotFound, missingCode)
+	for id := theirs[0] - 1; id <= mine.ID+1; id++ { // the walk from the report
+		code, body := get("team-b", id)
+		if id == mine.ID {
+			require.Equal(t, http.StatusOK, code)
+			assert.Contains(t, body, "our own post")
+			continue
+		}
+		assert.Equal(t, missingCode, code, "id %d under team-b", id)
+		assert.Equal(t, missingBody, body, "id %d: the same answer as a missing id", id)
+		assert.NotContains(t, body, "Security Reviewer")
+		assert.NotContains(t, body, "#3857")
+	}
+	// Its own board still reads it.
+	code, body := get("team-a", theirs[0])
+	require.Equal(t, http.StatusOK, code)
+	assert.Contains(t, body, "your open review")
+}
+
 // Finding 2: a pause is stored with the board, so a restart (a new handler on the same store)
 // keeps it, and a resume clears it.
 func TestBoardPauseSurvivesARestart(t *testing.T) {

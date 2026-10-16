@@ -1062,8 +1062,10 @@ func (s *Store) CountMessagesBefore(ctx context.Context, project string, beforeI
 	return count, err
 }
 
-// GetMessageByID returns a single message by its ID.
-func (s *Store) GetMessageByID(ctx context.Context, id int64) (*Message, error) {
+// GetMessageByID returns one message of a board by its id. Message ids are numbered across
+// every board, so an id from another board is not found here (sql.ErrNoRows), as if it did
+// not exist (#3864: an agent read other teams' messages by walking ids under its own board).
+func (s *Store) GetMessageByID(ctx context.Context, project string, id int64) (*Message, error) {
 	var msg Message
 	err := s.reader().GetContext(ctx, &msg,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
@@ -1071,7 +1073,7 @@ func (s *Store) GetMessageByID(ctx context.Context, id int64) (*Message, error) 
 		        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
-		 WHERE m.id = ?`, id)
+		 WHERE m.id = ? AND m.project = ?`, id, project)
 	if err != nil {
 		return nil, err
 	}
