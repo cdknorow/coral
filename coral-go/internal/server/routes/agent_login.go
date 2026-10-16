@@ -74,7 +74,7 @@ func (h *SessionsHandler) claudeLoginState(name, sessionID, workingDir string, e
 		if !apiErr.NeedsLogin() || signedInSince(events(), apiErr.At) {
 			return false, ""
 		}
-		return true, apiErr.Text
+		return true, capCLIText(apiErr.Text)
 	}
 	reader, ok := h.terminal.(ptymanager.ScreenReader)
 	if !ok || name == "" {
@@ -105,7 +105,7 @@ func (h *SessionsHandler) usageLimitText(agentType, sessionID, workingDir string
 			return ""
 		}
 		if apiErr, ok := h.jsonl.ReadClaudeAPIError(sessionID, workingDir); ok && apiErr.UsageLimit() {
-			return claudeLimitText(apiErr.Text)
+			return capCLIText(claudeLimitText(apiErr.Text))
 		}
 	case at.Codex:
 		return codexLimitText(logInfo)
@@ -141,14 +141,21 @@ func codexLimitText(logInfo map[string]any) string {
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
 		if m := codexLimitRe.FindStringSubmatch(lines[i]); m != nil {
-			text := strings.TrimSpace(m[1])
-			if len(text) > 300 {
-				text = strings.ToValidUTF8(text[:300], "")
-			}
-			return text
+			return capCLIText(strings.TrimSpace(m[1]))
 		}
 	}
 	return ""
+}
+
+// maxCLIText caps a message taken from a CLI's transcript or terminal before the dashboard
+// shows it: these are a line or two, and a transcript is the agent's to write.
+const maxCLIText = 300
+
+func capCLIText(text string) string {
+	if len(text) > maxCLIText {
+		text = strings.ToValidUTF8(text[:maxCLIText], "")
+	}
+	return text
 }
 
 func signedInSince(events []store.AgentEvent, t time.Time) bool {

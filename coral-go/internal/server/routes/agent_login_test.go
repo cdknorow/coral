@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -181,4 +182,14 @@ func TestCodexUsageLimitText(t *testing.T) {
 	old := append(append([]string{}, hit...), strings.Split(strings.Repeat("more output\n", codexLimitLines), "\n")...)
 	assert.Empty(t, codexLimitText(map[string]any{"recent_lines": old}), "scrolled away once Codex runs again")
 	assert.Equal(t, "Claude AI usage limit reached", claudeLimitText("Claude AI usage limit reached|1760000000"))
+}
+
+// A CLI's message is capped before the dashboard shows it, without splitting a character.
+func TestCapCLIText(t *testing.T) {
+	assert.Equal(t, "Please run /login", capCLIText("Please run /login"))
+	long := strings.Repeat("a", maxCLIText-1) + "\u00b7 and more"
+	got := capCLIText(long)
+	assert.Equal(t, strings.Repeat("a", maxCLIText-1), got)
+	assert.True(t, utf8.ValidString(got))
+	assert.Len(t, capCLIText(strings.Repeat("b", 5000)), maxCLIText)
 }
