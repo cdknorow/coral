@@ -118,7 +118,7 @@ func TestDuplicateRolesGetNumberedNames(t *testing.T) {
 	assert.Equal(t, "Backend Dev 4", handler.uniqueBoardRole(ctx, id, "Backend Dev 2", "claude"), "not 'Backend Dev 2 2'")
 
 	// A role whose holder isn't running keeps its name (a relaunch or resurrect).
-	_, err = bs.Subscribe(ctx, "beta", "QA", "QA", "claude-gone-session", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "beta", "QA", "QA", "claude-gone-session", nil, "all")
 	require.NoError(t, err)
 	assert.Equal(t, "QA", handler.uniqueBoardRole(ctx, "beta", "QA", "claude"))
 

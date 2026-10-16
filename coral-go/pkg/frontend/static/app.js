@@ -44,11 +44,6 @@ import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './histor
 import { copyBranchName, escapeHtml, showView, showToast, viewChanges } from './utils.js';
 import { initPreviewPane, openPreviewTab, closeTab as closePreviewTab, closeAllTabs as closeAllPreviewTabs, resetPreviewPane } from './preview_pane.js';
 import { initScheduler, selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
-import {
-    showWebhookModal, hideWebhookModal, showWebhookCreate,
-    showWebhookList, showWebhookEdit, saveWebhook, deleteWebhook,
-    testWebhook, showWebhookHistory,
-} from './webhooks.js';
 import { initLiveJobs, renderLiveJobs, selectLiveJobRun } from './live_jobs.js';
 import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, toggleBoardSleep, deleteBoardMessage, showExportBoardModal, doExportBoard, toggleSelectMode, toggleMessageSelect, selectAllMessages, selectNoneMessages, cancelSelectMode, exportSelectedAsMarkdown, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
 import { loadAllFolderTags, showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
@@ -165,9 +160,6 @@ Object.assign(window, {
     // scheduler
     selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob,
     showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset,
-    // webhooks
-    showWebhookModal, hideWebhookModal, showWebhookCreate, showWebhookList,
-    showWebhookEdit, saveWebhook, deleteWebhook, testWebhook, showWebhookHistory,
     // live_jobs
     selectLiveJobRun,
     // preview_pane

@@ -26,7 +26,7 @@ func newNoticeEnv(t *testing.T) (*BoardHandler, *board.Store, http.Handler) {
 	bs, err := board.NewStore(t.TempDir() + "/board.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
-	_, err = bs.Subscribe(context.Background(), "qa", "Orchestrator", "Orchestrator", "s1", nil, nil, "mentions")
+	_, err = bs.Subscribe(context.Background(), "qa", "Orchestrator", "Orchestrator", "s1", nil, "mentions")
 	require.NoError(t, err)
 	h := NewBoardHandler(bs)
 	r := chi.NewRouter()

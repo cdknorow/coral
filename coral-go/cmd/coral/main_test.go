@@ -187,20 +187,6 @@ func TestServer_APIBoardProjects(t *testing.T) {
 	}
 }
 
-func TestServer_APIWebhooks(t *testing.T) {
-	ts := setupTestServer(t)
-
-	resp, err := http.Get(ts.URL + "/api/webhooks")
-	if err != nil {
-		t.Fatalf("GET /api/webhooks failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		t.Errorf("status = %d, want 200", resp.StatusCode)
-	}
-}
-
 func TestServer_APIDefaultPrompts(t *testing.T) {
 	ts := setupTestServer(t)
 

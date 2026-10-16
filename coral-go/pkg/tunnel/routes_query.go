@@ -79,7 +79,6 @@ var routeQueries = map[string]string{
 	"GET /api/token-usage/by-team":                      "since",
 	"GET /api/token-usage/summary":                      "since",
 	"GET /api/token-usage/timeseries":                   "interval,since",
-	"GET /api/webhooks/{}/deliveries":                   "limit",
 	"GET /api/workflows/runs/recent":                    "limit,offset,status",
 	"GET /api/workflows/{}/runs":                        "limit,offset,status",
 	"GET /ws/coral":                                     "agent_type,diff=fields,feed=hub,session_id",

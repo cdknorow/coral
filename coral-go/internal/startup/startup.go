@@ -848,7 +848,6 @@ func safeGo(ctx context.Context, name string, fn func()) {
 
 func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Config, srv *server.Server, agentRT background.AgentRuntime) {
 	gitStore := store.NewGitStore(db)
-	webhookStore := store.NewWebhookStore(db)
 	taskStore := store.NewTaskStore(db)
 	sessStore := store.NewSessionStore(db)
 	schedStore := store.NewScheduleStore(db)
@@ -911,16 +910,6 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	)
 	safeGo(ctx, "session_indexer", func() { indexer.Run(ctx) })
 	srv.SetIndexer(indexer)
-
-	// Idle detector
-	idleDetector := background.NewIdleDetector(taskStore, webhookStore, time.Duration(cfg.IdleDetectorIntervalS)*time.Second)
-	idleDetector.SetSessionStore(sessStore)
-	idleDetector.SetDiscoverFn(discoverFn)
-	safeGo(ctx, "idle_detector", func() { idleDetector.Run(ctx) })
-
-	// Webhook dispatcher
-	webhookDispatcher := background.NewWebhookDispatcher(webhookStore, time.Duration(cfg.WebhookDispatcherIntervalS)*time.Second)
-	safeGo(ctx, "webhook_dispatcher", func() { webhookDispatcher.Run(ctx) })
 
 	// Job scheduler
 	scheduler := background.NewJobScheduler(schedStore, 30*time.Second)
@@ -1018,7 +1007,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	srv.SetWorkflowRunner(wfRunner)
 	scheduler.SetWorkflowRunner(wfRunner, wfStore)
 
-	log.Printf("Started 10 background services + workflow runner (git poller, indexer, idle detector, webhook dispatcher, scheduler, board notifier, remote board poller, batch summarizer, session reconciler, token poller)")
+	log.Printf("Started 8 background services + workflow runner (git poller, indexer, scheduler, board notifier, remote board poller, batch summarizer, session reconciler, token poller)")
 }
 
 // startCloudConnector wires the optional Cloud Hub connector. A bad --cloud-url is

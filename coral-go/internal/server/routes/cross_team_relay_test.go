@@ -212,7 +212,7 @@ func TestRelayAllowlistSettingIsOperatorOnly(t *testing.T) {
 // Orchestrator identity as it does for any tunnel write.
 func TestTunnelIdentityGuardLeavesOnlyAuthenticRelays(t *testing.T) {
 	_, handler := setupBoardTestServer(t)
-	_, err := handler.bs.Subscribe(context.Background(), "p", "Dev", "Developer", "s1", nil, nil, "")
+	_, err := handler.bs.Subscribe(context.Background(), "p", "Dev", "Developer", "s1", nil, "")
 	require.NoError(t, err)
 	passed := 0
 	g := TunnelIdentityGuard(handler.bs, func(*http.Request) bool { return true })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

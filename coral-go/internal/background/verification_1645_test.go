@@ -21,9 +21,9 @@ func TestTask1645_ComprehensiveNotifierVerification(t *testing.T) {
 		notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 		notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-hypo", nil, nil, "all")
+		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-hypo", nil, "all")
 		require.NoError(t, err)
-		_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-hypo", nil, nil, "")
+		_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-hypo", nil, "")
 		require.NoError(t, err)
 
 		notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -53,7 +53,7 @@ func TestTask1645_ComprehensiveNotifierVerification(t *testing.T) {
 		notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 		notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-		_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-sub", nil, nil, "mentions")
+		_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-sub", nil, "mentions")
 		require.NoError(t, err)
 
 		notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -84,9 +84,9 @@ func TestTask1645_ComprehensiveNotifierVerification(t *testing.T) {
 		notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 		notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-lead", nil, nil, "all")
+		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-lead", nil, "all")
 		require.NoError(t, err)
-		_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-lead", nil, nil, "")
+		_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-lead", nil, "")
 		require.NoError(t, err)
 
 		notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -118,7 +118,7 @@ func TestTask1645_ComprehensiveNotifierVerification(t *testing.T) {
 		notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 		notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-dup", nil, nil, "all")
+		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-dup", nil, "all")
 		require.NoError(t, err)
 
 		notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -144,7 +144,7 @@ func TestTask1645_ComprehensiveNotifierVerification(t *testing.T) {
 		notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 		notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-burst", nil, nil, "all")
+		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-burst", nil, "all")
 		require.NoError(t, err)
 
 		notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -168,7 +168,7 @@ func TestTask1645_ComprehensiveNotifierVerification(t *testing.T) {
 		notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 		notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-fail", nil, nil, "all")
+		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-fail", nil, "all")
 		require.NoError(t, err)
 
 		notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -193,7 +193,7 @@ func TestTask1645_ComprehensiveNotifierVerification(t *testing.T) {
 		notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 		notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-sys", nil, nil, "all")
+		_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-sys", nil, "all")
 		require.NoError(t, err)
 
 		notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -214,9 +214,9 @@ func TestTask1645_ComprehensiveNotifierVerification(t *testing.T) {
 		notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 		notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-		_, err := bs.Subscribe(ctx, "teamA", "Orchestrator", "Orchestrator", "claude-orch-A", nil, nil, "all")
+		_, err := bs.Subscribe(ctx, "teamA", "Orchestrator", "Orchestrator", "claude-orch-A", nil, "all")
 		require.NoError(t, err)
-		_, err = bs.Subscribe(ctx, "teamB", "Orchestrator", "Orchestrator", "claude-orch-B", nil, nil, "all")
+		_, err = bs.Subscribe(ctx, "teamB", "Orchestrator", "Orchestrator", "claude-orch-B", nil, "all")
 		require.NoError(t, err)
 
 		notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -268,9 +268,9 @@ func TestSeedFromDB_NotifiesSubsequentSameCountBatch(t *testing.T) {
 	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 	notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-seed", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-seed", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-seed", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-seed", nil, "")
 	require.NoError(t, err)
 
 	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {

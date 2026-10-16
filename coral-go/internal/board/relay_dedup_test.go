@@ -16,7 +16,7 @@ func TestRelayDedupIdsArePruned(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	ctx := context.Background()
-	_, err = s.Subscribe(ctx, "beta", "Orchestrator", "Orchestrator", "sess", nil, nil, "mentions")
+	_, err = s.Subscribe(ctx, "beta", "Orchestrator", "Orchestrator", "sess", nil, "mentions")
 	require.NoError(t, err)
 	old := time.Now().UTC().Add(-relayDedupKeep - time.Hour).Format(time.RFC3339)
 	_, err = s.db.ExecContext(ctx, `INSERT INTO board_relayed_messages (source_server, message_id, target_message_id, created_at) VALUES ('srv', 'old', 1, ?)`, old)

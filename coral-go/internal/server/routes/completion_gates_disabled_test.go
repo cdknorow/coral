@@ -33,7 +33,7 @@ var allDisabledGateTypes = []board.CompletionGate{
 func TestCompletionReviewDisabledGatesNeverInvokeRunner(t *testing.T) {
 	server, h := setupBoardTestServer(t)
 	ctx := context.Background()
-	_, err := h.bs.Subscribe(ctx, "spy-review", "lead", "Orchestrator", "lead-session", nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, "spy-review", "lead", "Orchestrator", "lead-session", nil, "all")
 	require.NoError(t, err)
 	h.bs.SetCompletionChecksEnabled(true)
 	task, err := h.bs.CreateTaskWithOpts(ctx, "spy-review", "Gated", "", "medium", "lead", &board.CreateTaskOpts{Workflow: board.TaskWorkflow{CompletionGates: allDisabledGateTypes}}, "worker")
@@ -61,7 +61,7 @@ func TestCompletionGatesAuthorizedClearingWhileDisabled(t *testing.T) {
 	server, handler, bs := setupTask1670Server(t)
 	ctx := context.Background()
 	registerTaskPlanner(t, handler, "proj", "Orchestrator")
-	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "worker-sess", nil, nil, "mentions")
+	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "worker-sess", nil, "mentions")
 	require.NoError(t, err)
 	bs.SetCompletionChecksEnabled(true)
 	task, err := bs.CreateTaskWithOpts(ctx, "proj", "Gated", "", "medium", "Operator", &board.CreateTaskOpts{Workflow: board.TaskWorkflow{CompletionGates: allDisabledGateTypes}}, "Worker")

@@ -36,7 +36,7 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		ok := func(w http.ResponseWriter, r *http.Request) { reached++ }
 		r := chi.NewRouter()
 		r.Use(o.Middleware)
-		for _, p := range []string{"/api/workflows", "/api/workflows/{workflowID}/trigger", "/api/workflows/by-name/{name}/trigger", "/api/scheduled/jobs", "/api/tasks/run", "/api/workflows/runs/{runID}/kill", "/api/tasks/runs/{runID}/kill", "/api/sessions/launch", "/api/sessions/launch-team", "/api/system/login-token", "/api/system/api-key/regenerate", "/api/cloud/connect", "/api/cloud/disconnect", "/api/webhooks", "/api/scheduled/jobs/{jobID}/toggle"} {
+		for _, p := range []string{"/api/workflows", "/api/workflows/{workflowID}/trigger", "/api/workflows/by-name/{name}/trigger", "/api/scheduled/jobs", "/api/tasks/run", "/api/workflows/runs/{runID}/kill", "/api/tasks/runs/{runID}/kill", "/api/sessions/launch", "/api/sessions/launch-team", "/api/system/login-token", "/api/system/api-key/regenerate", "/api/cloud/connect", "/api/cloud/disconnect", "/api/scheduled/jobs/{jobID}/toggle"} {
 			r.Post(p, ok)
 		}
 		r.Put("/api/workflows/{workflowID}", ok)
@@ -44,7 +44,6 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		r.Put("/api/system/hub-operator", ok)
 		r.Put("/api/system/hub-mode", ok)
 		r.Post("/api/system/restart", ok)
-		r.Delete("/api/webhooks/{webhookID}", ok)
 		r.Put("/api/settings/git-diff-mode", ok)
 		r.Get("/api/system/api-key", ok)
 		r.Delete("/api/board/{project}", ok)
@@ -69,7 +68,7 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 			{"PUT", "/api/settings"}, {"POST", "/api/workflows/runs/5/kill"}, {"POST", "/api/tasks/runs/9/kill"},
 			// routes that were guarded only by the forgeable dashboard-provenance headers, and Coral's configuration
 			{"POST", "/api/system/login-token"}, {"POST", "/api/system/api-key/regenerate"}, {"POST", "/api/cloud/connect"},
-			{"POST", "/api/cloud/disconnect"}, {"POST", "/api/webhooks"}, {"DELETE", "/api/webhooks/4"}, {"PUT", "/api/system/hub-operator"},
+			{"POST", "/api/cloud/disconnect"}, {"PUT", "/api/system/hub-operator"},
 			// #3460: Run as a hub, and restarting Coral
 			{"PUT", "/api/system/hub-mode"}, {"POST", "/api/system/restart"},
 			// #3513: the API key (the Operator's credential), and deleting a board

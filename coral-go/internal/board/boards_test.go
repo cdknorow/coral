@@ -19,7 +19,7 @@ func TestBoardsMigrationKeepsNamesAsIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "board.db")
 	s, err := NewStore(path)
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "Coral Go-To-Market Team", "Lead", "Lead", "", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "Coral Go-To-Market Team", "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 	_, err = s.PostMessage(ctx, "alpha", "Dev", "hi", nil)
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestBoardsCreateResolveRename(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	// A legacy board "sprint" (id = name).
-	_, err = s.Subscribe(ctx, "sprint", "Lead", "Lead", "", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "sprint", "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 
 	b1, err := s.CreateBoard(ctx, "sprint", "Operator")
@@ -69,7 +69,7 @@ func TestBoardsCreateResolveRename(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, b1.ID, b2.ID)
 	for _, b := range []*Board{b1, b2} {
-		_, err = s.Subscribe(ctx, b.ID, "Dev", "Dev", "", nil, nil, "all")
+		_, err = s.Subscribe(ctx, b.ID, "Dev", "Dev", "", nil, "all")
 		require.NoError(t, err)
 	}
 
@@ -162,7 +162,7 @@ func TestUnusableLegacyBoardIsRekeyed(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "board.db")
 	s, err := NewStore(path)
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, ".", "Lead", "Lead", "claude-x", nil, nil, "all")
+	_, err = s.Subscribe(ctx, ".", "Lead", "Lead", "claude-x", nil, "all")
 	require.NoError(t, err)
 	_, err = s.PostMessage(ctx, ".", "Lead", "old message", nil)
 	require.NoError(t, err)
@@ -170,7 +170,7 @@ func TestUnusableLegacyBoardIsRekeyed(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.SetWorkingMode(ctx, ".", WorkingMode{Mode: "none", CustomInstructions: "KEEP"})
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "fine", "Dev", "Dev", "", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "fine", "Dev", "Dev", "", nil, "all")
 	require.NoError(t, err)
 	// As before #3536: no boards rows, no re-key yet.
 	_, err = s.db.Exec(`DELETE FROM boards; DELETE FROM board_rekeys`)
@@ -224,7 +224,7 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 	clean := filepath.Join(t.TempDir(), "board.db")
 	s, err := NewStore(clean)
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "fine", "Dev", "Dev", "", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "fine", "Dev", "Dev", "", nil, "all")
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 	s, err = NewStore(clean)
@@ -237,7 +237,7 @@ func TestRekeyBackupAndFailureAreSafe(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "board.db")
 	s, err = NewStore(path)
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "..", "Lead", "Lead", "", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "..", "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 	_, err = s.db.Exec(`CREATE TRIGGER block_rekey BEFORE UPDATE ON boards BEGIN SELECT RAISE(ABORT, 'blocked'); END`)
 	require.NoError(t, err)

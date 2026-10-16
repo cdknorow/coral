@@ -18,10 +18,10 @@ func seedUnreadBoard(tb testing.TB, n int) *Store {
 	s, err := NewStore(filepath.Join(tb.TempDir(), "board.db"))
 	require.NoError(tb, err)
 	tb.Cleanup(func() { s.Close() })
-	_, err = s.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "claude-orch", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "claude-orch", nil, "all")
 	require.NoError(tb, err)
 	for i := 0; i < 6; i++ {
-		_, err = s.Subscribe(ctx, "team", fmt.Sprintf("Agent %02d", i), "Developer", fmt.Sprintf("claude-%d", i), nil, nil, "mentions")
+		_, err = s.Subscribe(ctx, "team", fmt.Sprintf("Agent %02d", i), "Developer", fmt.Sprintf("claude-%d", i), nil, "mentions")
 		require.NoError(tb, err)
 	}
 	tx, err := s.db.Beginx()

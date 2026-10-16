@@ -47,7 +47,7 @@ type ScheduledRun struct {
 	ExitReason        *string `db:"exit_reason" json:"exit_reason"`
 	ErrorMsg          *string `db:"error_msg" json:"error_msg"`
 	TriggerType       *string `db:"trigger_type" json:"trigger_type"`
-	WebhookURL        *string `db:"webhook_url" json:"webhook_url"`
+	WebhookURL        *string `db:"webhook_url" json:"-"` // unused: webhooks were removed (#3646); kept for SELECT *, wiped at start
 	DisplayName       *string `db:"display_name" json:"display_name"`
 	CreatedAt         string  `db:"created_at" json:"created_at"`
 	JobName           *string `db:"job_name" json:"job_name,omitempty"` // populated by JOIN queries
@@ -277,7 +277,7 @@ func (s *ScheduleStore) GetOrCreateSentinelJob(ctx context.Context) (int64, erro
 }
 
 // CreateOneshotRun creates a run record for a one-shot API task.
-func (s *ScheduleStore) CreateOneshotRun(ctx context.Context, scheduledAt string, displayName, webhookURL *string) (int64, error) {
+func (s *ScheduleStore) CreateOneshotRun(ctx context.Context, scheduledAt string, displayName *string) (int64, error) {
 	sentinelID, err := s.GetOrCreateSentinelJob(ctx)
 	if err != nil {
 		return 0, err
@@ -285,9 +285,9 @@ func (s *ScheduleStore) CreateOneshotRun(ctx context.Context, scheduledAt string
 	now := nowUTC()
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO scheduled_runs
-		 (job_id, status, scheduled_at, trigger_type, display_name, webhook_url, created_at)
-		 VALUES (?, 'pending', ?, 'api', ?, ?, ?)`,
-		sentinelID, scheduledAt, displayName, webhookURL, now)
+		 (job_id, status, scheduled_at, trigger_type, display_name, created_at)
+		 VALUES (?, 'pending', ?, 'api', ?, ?)`,
+		sentinelID, scheduledAt, displayName, now)
 	if err != nil {
 		return 0, err
 	}

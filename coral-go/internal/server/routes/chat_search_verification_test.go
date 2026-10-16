@@ -111,7 +111,7 @@ func TestChatSearchVerification_Backend(t *testing.T) {
 	require.NoError(t, ss.UpsertFTS(ctx, "sid-c", "What is the database migration rollback plan?"))
 
 	// Add Board messages
-	_, err = bs.Subscribe(ctx, "core-infra", "bot1", "Infra Bot", "sid-bot1", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "core-infra", "bot1", "Infra Bot", "sid-bot1", nil, "all")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "core-infra", "bot1", "Announcing database migration schedule", nil)
 	require.NoError(t, err)

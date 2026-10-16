@@ -31,6 +31,5 @@ Requests from the same machine (localhost) are accepted without a key. Other dev
 - Coral controls its own listener. A reverse proxy, SSH tunnel or port forward that you set up separately can still expose a loopback listener. Disable those yourself.
 - The direct listener serves plain HTTP, not HTTPS. Use it on a network you trust or put your own encrypted tunnel in front of it.
 - Turning remote access off does not change agent permission or sandbox settings.
-- Webhooks are outbound requests and are not affected by this setting.
 
 For the status and setting names used by the API, see `GET /api/system/privacy`.

@@ -54,15 +54,13 @@ type Config struct {
 	LogDir    string
 
 	// Background task intervals (seconds)
-	IndexerIntervalS           int
-	IndexerStartupDelayS       int
-	GitPollerIntervalS         int
-	WebhookDispatcherIntervalS int
-	IdleDetectorIntervalS      int
-	BoardNotifierIntervalS     int
-	TaskIdleReminderS          int
-	TaskIdleEscalationS        int
-	RemotePollerIntervalS      int
+	IndexerIntervalS       int
+	IndexerStartupDelayS   int
+	GitPollerIntervalS     int
+	BoardNotifierIntervalS int
+	TaskIdleReminderS      int
+	TaskIdleEscalationS    int
+	RemotePollerIntervalS  int
 
 	// HubMode turns this server into a multi-server hub: the remote server
 	// registry, the /api/remote proxy and merged remote agents. Off by default;
@@ -158,15 +156,13 @@ func Load(dataDir ...string) *Config {
 		CoralRoot: envOrDefault("CORAL_ROOT", homeDir),
 		LogDir:    logDir,
 
-		IndexerIntervalS:           120,
-		IndexerStartupDelayS:       30,
-		GitPollerIntervalS:         120,
-		WebhookDispatcherIntervalS: 15,
-		IdleDetectorIntervalS:      60,
-		BoardNotifierIntervalS:     30,
-		TaskIdleReminderS:          envIntOrDefault("CORAL_TASK_IDLE_REMINDER_SECONDS", 1800),
-		TaskIdleEscalationS:        envIntOrDefault("CORAL_TASK_IDLE_ESCALATION_SECONDS", 3600),
-		RemotePollerIntervalS:      30,
+		IndexerIntervalS:       120,
+		IndexerStartupDelayS:   30,
+		GitPollerIntervalS:     120,
+		BoardNotifierIntervalS: 30,
+		TaskIdleReminderS:      envIntOrDefault("CORAL_TASK_IDLE_REMINDER_SECONDS", 1800),
+		TaskIdleEscalationS:    envIntOrDefault("CORAL_TASK_IDLE_ESCALATION_SECONDS", 3600),
+		RemotePollerIntervalS:  30,
 
 		WSPollIntervalS: 5,
 

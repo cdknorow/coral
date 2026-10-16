@@ -308,22 +308,6 @@ runs until `max_duration_s` and is recorded `killed` with `exit_reason: timeout`
 work still happened. Whether any agent configuration exits cleanly enough to record
 `completed` is untested.
 
-### A webhook never fires
-
-Coral saves a webhook config without validating the URL, then blocks it at send time. Any
-loopback, private, link-local, or CGNAT address is rejected by SSRF protection
-(`internal/httputil/ssrf.go`), on both `POST /api/webhooks/{id}/test` and the real dispatch
-path (`internal/background/webhook.go:76`). There is no override or allowlist.
-
-```console
-$ curl -X POST .../api/webhooks/1/test
-{"error":"webhook URL blocked: remote server URL resolves to a private or reserved IP address"}
-```
-
-So a webhook pointed at `http://127.0.0.1:9911` saves cleanly, shows as enabled, and can never
-deliver. Webhooks require a publicly-resolvable endpoint. This also means webhook delivery
-cannot be tested against a local listener.
-
 ## Running more than one instance
 
 ### My second instance lists agents I did not start

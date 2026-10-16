@@ -14,7 +14,7 @@ func TestPersonalTaskReviewProjectionAndCapacity(t *testing.T) {
 	ctx := context.Background()
 	sid := "review-session"
 	project := AgentTaskProject("worker", &sid)
-	_, err := db.TaskEngine.Subscribe(ctx, project, "lead", "Orchestrator", "lead-session", nil, nil, "all")
+	_, err := db.TaskEngine.Subscribe(ctx, project, "lead", "Orchestrator", "lead-session", nil, "all")
 	require.NoError(t, err)
 	task, err := s.CreateAgentTaskWithWorkflow(ctx, "worker", "Build", &sid, nil, "", "medium", nil)
 	require.NoError(t, err)

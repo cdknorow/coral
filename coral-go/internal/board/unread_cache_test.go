@@ -60,7 +60,7 @@ func TestCheckUnread_IncrementalMentionsCountMatchesFullCount(t *testing.T) {
 	mentions := []string{"", "@Agent 01 ", "@Agent01 ", "@all ", "Agent 02: ", "@reviewer ", "@QA Engineer ", "user@agent 01.com ", "Agent 01 — "}
 	subscribe := func(board string) {
 		for _, sub := range subs {
-			_, err := s.Subscribe(ctx, board, sub, "Developer", "sess-"+board+"-"+sub, nil, nil, "mentions")
+			_, err := s.Subscribe(ctx, board, sub, "Developer", "sess-"+board+"-"+sub, nil, "mentions")
 			require.NoError(t, err)
 		}
 	}
@@ -116,7 +116,7 @@ func TestUnreadCache_StrictBoundAndDeleteBrackets(t *testing.T) {
 	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
 	require.NoError(t, err)
 	defer s.Close()
-	_, err = s.Subscribe(ctx, "team", "Dev", "Developer", "sess-dev", nil, nil, "mentions")
+	_, err = s.Subscribe(ctx, "team", "Dev", "Developer", "sess-dev", nil, "mentions")
 	require.NoError(t, err)
 	msg, err := s.PostMessage(ctx, "team", "Lead", "@Dev hello", nil)
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestUnreadCache_StrictBoundAndDeleteBrackets(t *testing.T) {
 	require.Zero(t, sidebar)
 
 	// A subscriber whose row is gone is dropped when it is next asked about.
-	_, err = s.Subscribe(ctx, "team", "Gone", "Developer", "sess-gone", nil, nil, "mentions")
+	_, err = s.Subscribe(ctx, "team", "Gone", "Developer", "sess-gone", nil, "mentions")
 	require.NoError(t, err)
 	_, err = s.CheckUnread(ctx, "team", "Gone")
 	require.NoError(t, err)

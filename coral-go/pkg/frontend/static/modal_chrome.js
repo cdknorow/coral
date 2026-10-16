@@ -45,8 +45,6 @@ document.addEventListener("click", (e) => {
     if (e.target === macroModal) {
         macroModal.style.display = "none";
     }
-    const webhookModal = document.getElementById("webhook-modal");
-    if (e.target === webhookModal) window.hideWebhookModal?.();
     const alertModal = document.getElementById("alert-modal");
     if (e.target === alertModal) window.hideAlertModal?.();
     const confirmModal = document.getElementById("confirm-modal");
@@ -67,7 +65,6 @@ document.addEventListener("keydown", (e) => {
                 else if (id === 'settings-modal') window.hideSettingsModal?.();
                 else if (id === 'restart-modal') hideRestartModal();
                 else if (id === 'macro-modal') modals[i].style.display = 'none';
-                else if (id === 'webhook-modal') window.hideWebhookModal?.();
                 else if (id === 'alert-modal') window.hideAlertModal?.();
                 else if (id === 'confirm-modal') window.hideConfirmModal?.();
                 else if (id === 'prompt-modal') window.hidePromptModal?.();

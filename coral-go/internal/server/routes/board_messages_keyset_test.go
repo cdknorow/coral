@@ -43,7 +43,7 @@ func (p dashboardPage) ids() []int64 {
 func TestListAllMessagesKeysetPaging(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	ctx := context.Background()
-	_, err := handler.bs.Subscribe(ctx, "keys", "agent-1", "Dev", "", nil, nil, "all")
+	_, err := handler.bs.Subscribe(ctx, "keys", "agent-1", "Dev", "", nil, "all")
 	require.NoError(t, err)
 	var ids []int64
 	for i := 0; i < 9; i++ {

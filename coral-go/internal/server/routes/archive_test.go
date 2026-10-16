@@ -190,7 +190,7 @@ func TestBoard_RefusesArchivedAssignee(t *testing.T) {
 	require.NoError(t, terminal.CreateSession(ctx, archivedSession, "/tmp"))
 	require.NoError(t, terminal.CreateSession(ctx, "claude-"+archSID2, "/tmp"))
 	for sub, sess := range map[string]string{"Archie": archivedSession, "Wally": "claude-" + archSID2} {
-		_, err := handler.bs.Subscribe(ctx, "p", sub, "Developer", sess, nil, nil, "")
+		_, err := handler.bs.Subscribe(ctx, "p", sub, "Developer", sess, nil, "")
 		require.NoError(t, err)
 	}
 

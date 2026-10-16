@@ -31,7 +31,7 @@ type Subscriber struct {
 	SubscriberID string  `db:"subscriber_id" json:"subscriber_id"`
 	SessionName  string  `db:"session_name" json:"session_name,omitempty"`
 	JobTitle     string  `db:"job_title" json:"job_title"`
-	WebhookURL   *string `db:"webhook_url" json:"webhook_url"`
+	WebhookURL   *string `db:"webhook_url" json:"-"` // unused: webhooks were removed (#3646); kept for SELECT *, wiped at start
 	OriginServer *string `db:"origin_server" json:"origin_server"`
 	ReceiveMode  string  `db:"receive_mode" json:"receive_mode"`
 	LastReadID   int64   `db:"last_read_id" json:"last_read_id"`
@@ -601,7 +601,7 @@ func nowUTC() string {
 
 // Subscribe adds or updates a subscriber on a board project.
 // subscriberID is the stable identity (role name). sessionName is the current tmux/pty session.
-func (s *Store) Subscribe(ctx context.Context, project, subscriberID, jobTitle, sessionName string, webhookURL, originServer *string, receiveMode string, canPeek ...bool) (*Subscriber, error) {
+func (s *Store) Subscribe(ctx context.Context, project, subscriberID, jobTitle, sessionName string, originServer *string, receiveMode string, canPeek ...bool) (*Subscriber, error) {
 	peekFlag := 0
 	if len(canPeek) > 0 && canPeek[0] {
 		peekFlag = 1
@@ -629,18 +629,18 @@ func (s *Store) Subscribe(ctx context.Context, project, subscriberID, jobTitle, 
 
 	// session_id mirrors subscriber_id so UNIQUE(project, session_id) enforces subscriber uniqueness.
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO board_subscribers (project, session_id, subscriber_id, session_name, job_title, webhook_url, origin_server, receive_mode, last_read_id, subscribed_at, is_active, can_peek)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+		`INSERT INTO board_subscribers (project, session_id, subscriber_id, session_name, job_title, origin_server, receive_mode, last_read_id, subscribed_at, is_active, can_peek)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 		 ON CONFLICT(project, session_id) DO UPDATE SET
 		     job_title = excluded.job_title,
-		     webhook_url = excluded.webhook_url,
+		     webhook_url = NULL,
 		     origin_server = excluded.origin_server,
 		     receive_mode = excluded.receive_mode,
 		     session_name = excluded.session_name,
 		     subscriber_id = excluded.subscriber_id,
 		     is_active = 1,
 		     can_peek = excluded.can_peek`,
-		project, subscriberID, subscriberID, sessionName, jobTitle, webhookURL, originServer, receiveMode, carryForwardCursor, now, peekFlag)
+		project, subscriberID, subscriberID, sessionName, jobTitle, originServer, receiveMode, carryForwardCursor, now, peekFlag)
 	if err == nil {
 		s.ensureBoardRow(ctx, project)
 	}
@@ -1735,16 +1735,6 @@ func (s *Store) DeleteMessage(ctx context.Context, messageID int64) (bool, error
 	s.unreadCounts.invalidate()
 	n, _ := result.RowsAffected()
 	return n > 0, nil
-}
-
-// GetWebhookTargets returns subscribers with webhook URLs (excluding sender).
-func (s *Store) GetWebhookTargets(ctx context.Context, project, excludeSubscriberID string) ([]Subscriber, error) {
-	var subs []Subscriber
-	err := s.reader().SelectContext(ctx, &subs,
-		`SELECT * FROM board_subscribers
-		 WHERE project = ? AND subscriber_id != ? AND webhook_url IS NOT NULL AND webhook_url != '' AND is_active = 1`,
-		project, excludeSubscriberID)
-	return subs, err
 }
 
 // ── Projects ─────────────────────────────────────────────────────────

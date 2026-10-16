@@ -80,7 +80,7 @@ func newSendEnv(t *testing.T) *sendEnv {
 	e.url = srv.URL
 	ctx := context.Background()
 	for _, s := range []struct{ id, role string }{{"Orchestrator", "Orchestrator"}, {"Dev", "Backend Dev"}} {
-		_, err := bs.Subscribe(ctx, "alpha", s.id, s.role, "tmux-alpha"+s.id, nil, nil, "mentions")
+		_, err := bs.Subscribe(ctx, "alpha", s.id, s.role, "tmux-alpha"+s.id, nil, "mentions")
 		require.NoError(t, err)
 	}
 	code, out := e.do("PUT", "/api/board/alpha/settings", map[string]any{"subscriber_id": "Operator", "cross_team_messaging": true}, nil)

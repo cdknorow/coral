@@ -95,7 +95,7 @@ func TestTask1670_StoreTerminalAndReviewPendingRejection(t *testing.T) {
 	require.Contains(t, err.Error(), "cannot be amended (status: skipped)")
 
 	// Review pending rejection
-	_, err = s.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "orch-sess-1", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "orch-sess-1", nil, "all")
 	require.NoError(t, err)
 
 	taskReview, err := s.CreateTask(ctx, "team", "Under review", "body", "medium", "Operator", "worker")
@@ -174,7 +174,7 @@ func TestTask1670_StoreCompletionAndReviewExpectedRevision(t *testing.T) {
 	require.Equal(t, "completed", comp2.Status)
 
 	// 3. Stale review submission test
-	_, err = s.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "orch-sess-2", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "orch-sess-2", nil, "all")
 	require.NoError(t, err)
 
 	t3, err := s.CreateTask(ctx, "team", "Review Task", "body", "medium", "Operator", "worker")

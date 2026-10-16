@@ -27,7 +27,6 @@ These links open the maintained source documentation on GitHub. They follow `mai
 | One-time jobs | [Jobs](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/jobs.md) |
 | Scheduled jobs | [Scheduled jobs](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/scheduled-jobs.md) |
 | Multi-step workflows | [Workflows](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/workflows.md) |
-| Webhook notifications | [Webhooks](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/webhooks.md) |
 | Settings and system status | [Settings and system](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/settings-system.md) |
 | Analytics events and controls | [Telemetry](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/telemetry.md) |
 | Themes | [Themes](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/themes.md) |

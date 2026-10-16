@@ -15,7 +15,7 @@ func TestNotifierConfirmsMentions(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	for _, id := range []string{"Backend Dev", "Backend Dev 2", "Lead"} {
-		if _, err := s.Subscribe(ctx, "team", id, id, "", nil, nil, "mentions"); err != nil {
+		if _, err := s.Subscribe(ctx, "team", id, id, "", nil, "mentions"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -81,7 +81,7 @@ func TestNotifierConfirmsMentions(t *testing.T) {
 	}
 
 	// A word-boundary miss ("@Backend Developer") isn't a mention of "Backend Dev" either.
-	if _, err := s.Subscribe(ctx, "solo", "Backend Dev", "Backend Dev", "", nil, nil, "mentions"); err != nil {
+	if _, err := s.Subscribe(ctx, "solo", "Backend Dev", "Backend Dev", "", nil, "mentions"); err != nil {
 		t.Fatal(err)
 	}
 	post2, err := s.PostMessage(ctx, "solo", "Lead", "@Backend Developers, the new hires, start Monday", nil)
@@ -108,7 +108,7 @@ func TestMentionChecksOnOneConnectionStore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	for _, id := range []string{"Backend Dev", "Backend Dev 2", "Lead"} {
-		if _, err := s.Subscribe(ctx, "team", id, id, "", nil, nil, "mentions"); err != nil {
+		if _, err := s.Subscribe(ctx, "team", id, id, "", nil, "mentions"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -145,7 +145,7 @@ func TestHasUnreadMention(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	for _, id := range []string{"Backend Dev", "Backend Dev 2", "Lead"} {
-		if _, err := s.Subscribe(ctx, "team", id, id, "", nil, nil, "all"); err != nil {
+		if _, err := s.Subscribe(ctx, "team", id, id, "", nil, "all"); err != nil {
 			t.Fatal(err)
 		}
 	}

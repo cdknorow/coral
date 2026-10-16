@@ -89,7 +89,7 @@ func TestGetUnreadCounts_IncrementalMatchesFullCount(t *testing.T) {
 	mentions := []string{"", "@Agent 01 ", "@all ", "Agent 02: ", "@lead ", "x@agent 01.com ", "@Developer "}
 	session := func(board, sub string) string { return "sess-" + board + "-" + sub }
 	subscribe := func(board, sub string) {
-		_, err := s.Subscribe(ctx, board, sub, "Developer", session(board, sub), nil, nil, modes[0])
+		_, err := s.Subscribe(ctx, board, sub, "Developer", session(board, sub), nil, modes[0])
 		require.NoError(t, err)
 	}
 	for _, b := range boards {
@@ -97,7 +97,7 @@ func TestGetUnreadCounts_IncrementalMatchesFullCount(t *testing.T) {
 			subscribe(b, sub)
 		}
 		// One session subscribed to both boards: its counts are summed.
-		_, err := s.Subscribe(ctx, b, "Shared", "Developer", "sess-shared", nil, nil, "all")
+		_, err := s.Subscribe(ctx, b, "Shared", "Developer", "sess-shared", nil, "all")
 		require.NoError(t, err)
 	}
 

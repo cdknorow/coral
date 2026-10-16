@@ -33,8 +33,6 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, 5000, cfg.DBBusyTimeoutMS)
 	assert.Equal(t, 120, cfg.IndexerIntervalS)
 	assert.Equal(t, 120, cfg.GitPollerIntervalS)
-	assert.Equal(t, 15, cfg.WebhookDispatcherIntervalS)
-	assert.Equal(t, 60, cfg.IdleDetectorIntervalS)
 	assert.Equal(t, 30, cfg.BoardNotifierIntervalS)
 	assert.Equal(t, 5, cfg.WSPollIntervalS)
 	assert.Equal(t, dataDir, cfg.CoralDir())

@@ -99,7 +99,6 @@ func cat(groups ...[]route) []route {
 //	/api/sessions/live/{name}/open-in-editor   opens an editor on this computer: local only (#3619, hub audit H4)
 //	                                   (except GET /api/system/hub-operator, read only)
 //	/api/tracking/*                    telemetry
-//	/api/webhooks*                     outbound HTTP (SSRF) and stored URLs
 //	/api/workflows, /api/scheduled     create/update/delete define commands that run later
 //	/api/board/remotes*, /api/servers*, /api/remote/*   outbound requests / hub mode
 //	/api/agent/*                       endpoints for agents on the machine; /api/agent/ui* serves agent-authored HTML

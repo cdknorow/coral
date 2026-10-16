@@ -34,7 +34,7 @@ func TestResumeWithStaleSessionIDRefuses(t *testing.T) {
 		BoardName:  &board,
 	}))
 	require.NoError(t, ss.SetDisplayName(ctx, oldSID, "Dev One"))
-	_, err := handler.bs.Subscribe(ctx, board, "Dev One", "Dev One", name, nil, nil, "all", true)
+	_, err := handler.bs.Subscribe(ctx, board, "Dev One", "Dev One", name, nil, "all", true)
 	require.NoError(t, err)
 
 	// Step 1: POST /api/sessions/live/{name}/restart (replaces oldSID with newSID)
@@ -130,7 +130,7 @@ func TestResumeSleepingSessionSucceeds(t *testing.T) {
 	}))
 	require.NoError(t, ss.SetDisplayName(ctx, sid, "Sleeping Dev"))
 	require.NoError(t, ss.SetSessionSleeping(ctx, sid, true))
-	_, err := handler.bs.Subscribe(ctx, board, "Sleeping Dev", "Sleeping Dev", name, nil, nil, "all", true)
+	_, err := handler.bs.Subscribe(ctx, board, "Sleeping Dev", "Sleeping Dev", name, nil, "all", true)
 	require.NoError(t, err)
 
 	// In sleeping state, terminal session is gone

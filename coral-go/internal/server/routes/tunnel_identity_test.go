@@ -46,11 +46,11 @@ func codeOf(t *testing.T, rec *httptest.ResponseRecorder) string {
 func TestTunnelIdentityGuard(t *testing.T) {
 	_, handler := setupBoardTestServer(t)
 	ctx := context.Background()
-	_, err := handler.bs.Subscribe(ctx, "p", "Lead", "Developer", "s1", nil, nil, "", true) // can_peek
+	_, err := handler.bs.Subscribe(ctx, "p", "Lead", "Developer", "s1", nil, "", true) // can_peek
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(ctx, "p", "Dev", "Developer", "s2", nil, nil, "")
+	_, err = handler.bs.Subscribe(ctx, "p", "Dev", "Developer", "s2", nil, "")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(ctx, "p", "hub-user-0000beef", "Developer", "s3", nil, nil, "")
+	_, err = handler.bs.Subscribe(ctx, "p", "hub-user-0000beef", "Developer", "s3", nil, "")
 	require.NoError(t, err) // a member created before the name was reserved
 
 	operatorOK := true
@@ -218,7 +218,7 @@ func TestTunnelIdentityGuard(t *testing.T) {
 // hub_user; never the Operator, never a member's name. The header means nothing locally.
 func TestTunnelChatPostIsTheHubUser(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
-	_, err := handler.bs.Subscribe(context.Background(), "p", "hub-user-0000beef", "Developer", "s3", nil, nil, "")
+	_, err := handler.bs.Subscribe(context.Background(), "p", "hub-user-0000beef", "Developer", "s3", nil, "")
 	require.NoError(t, err) // a member created before the name was reserved
 	const noHeader = "\x00none"
 	post := func(tunneled bool, hubUser, body string) (int, map[string]any) {
@@ -351,9 +351,9 @@ func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 func TestTunnelChatPostAsTheOperator(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	ctx := context.Background()
-	_, err := handler.bs.Subscribe(ctx, "p", "Dev", "Backend Dev", "s2", nil, nil, "")
+	_, err := handler.bs.Subscribe(ctx, "p", "Dev", "Backend Dev", "s2", nil, "")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(ctx, "p", "hub-user-0000beef", "Developer", "s3", nil, nil, "")
+	_, err = handler.bs.Subscribe(ctx, "p", "hub-user-0000beef", "Developer", "s3", nil, "")
 	require.NoError(t, err)
 	allowed := true
 	handler.SetHubOperatorAllowed(func(r *http.Request) bool { return allowed && cloud.TunneledAuthentic(r) })

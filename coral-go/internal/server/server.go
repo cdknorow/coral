@@ -26,7 +26,6 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/machinehealth"
 	"github.com/cdknorow/coral/internal/proxy"
@@ -112,6 +111,18 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 		log.Printf("[mcp] clearing stored MCP server settings: %v", err)
 	} else if n > 0 {
 		log.Printf("[mcp] cleared stored MCP server settings from %d records (Coral no longer configures MCP servers)", n)
+	}
+	// Coral doesn't send webhooks (#3646): their URLs, usually secrets, are removed from both
+	// databases, and removed for real.
+	if n, err := store.WipeWebhookData(context.Background(), db); err != nil {
+		log.Printf("[webhooks] clearing stored webhook data: %v", err)
+	} else if n > 0 {
+		log.Printf("[webhooks] cleared stored webhook data (%d records; Coral no longer sends webhooks)", n)
+	}
+	if n, err := boardStore.WipeWebhookURLs(context.Background()); err != nil {
+		log.Printf("[webhooks] clearing board subscriptions' webhook URLs: %v", err)
+	} else if n > 0 {
+		log.Printf("[webhooks] cleared the webhook URL of %d board subscriptions", n)
 	}
 
 	// Initialize API key auth
@@ -344,8 +355,6 @@ func (s *Server) buildRouter() chi.Router {
 	r.Use(cloud.Guard(routes.MaxModeFromSettings(store.NewSessionStore(s.db))))
 	// Through Coral Hub, no path under the home directory and no hidden file names (#3559).
 	r.Use(routes.HubPaths)
-	// Outbound webhooks may reach private networks only when the user says so (#3363).
-	httputil.SetWebhookAllowPrivate(webhookAllowPrivateFromSettings(store.NewSessionStore(s.db)))
 	// NOTE: middleware.RealIP was intentionally removed. It rewrites r.RemoteAddr
 	// from X-Forwarded-For headers, which would allow an attacker to spoof
 	// 127.0.0.1 and bypass auth.IsLocalhost(). Coral is a desktop app with no
@@ -437,7 +446,6 @@ func (s *Server) buildRouter() chi.Router {
 	histHandler := routes.NewHistoryHandler(s.db, s.cfg, s.boardStore)
 	s.historyHandler = histHandler
 	schedHandler := routes.NewScheduleHandler(s.db, s.cfg)
-	whHandler := routes.NewWebhooksHandler(s.db, s.cfg)
 	workflowHandler := routes.NewWorkflowHandler(s.db, s.cfg)
 	s.workflowHandler = workflowHandler
 	themeHandler := routes.NewThemesHandler(s.cfg)
@@ -714,15 +722,6 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Connected Apps/OAuth endpoints are retired. Existing rows remain in the
 	// database for operator-managed cleanup and are never loaded by startup.
-
-	// Webhooks
-	r.Get("/api/webhooks", whHandler.ListWebhooks)
-	r.Post("/api/webhooks", whHandler.CreateWebhook)
-	r.Get("/api/webhooks/{webhookID}", whHandler.GetWebhook)
-	r.Patch("/api/webhooks/{webhookID}", whHandler.UpdateWebhook)
-	r.Delete("/api/webhooks/{webhookID}", whHandler.DeleteWebhook)
-	r.Post("/api/webhooks/{webhookID}/test", whHandler.TestWebhook)
-	r.Get("/api/webhooks/{webhookID}/deliveries", whHandler.ListDeliveries)
 
 	// Themes
 	r.Get("/api/themes", themeHandler.ListThemes)
@@ -1120,25 +1119,6 @@ func markWelcomePending(db *store.DB) {
 		SELECT 'welcome_pending', 'True' WHERE NOT EXISTS (SELECT 1 FROM user_settings WHERE key = 'welcome_choice')
 		ON CONFLICT(key) DO NOTHING`); err != nil {
 		log.Printf("first-launch screen: %v", err)
-	}
-}
-
-// webhookAllowPrivateFromSettings reads the webhook_allow_private setting (or
-// CORAL_WEBHOOK_ALLOW_PRIVATE=1) on each call, so a change applies to the next delivery.
-func webhookAllowPrivateFromSettings(ss *store.SessionStore) func() bool {
-	return func() bool {
-		if envTrue("CORAL_WEBHOOK_ALLOW_PRIVATE") {
-			return true
-		}
-		st, err := ss.GetSettings(context.Background())
-		if err != nil {
-			return false
-		}
-		switch strings.ToLower(strings.TrimSpace(st["webhook_allow_private"])) {
-		case "1", "true", "yes":
-			return true
-		}
-		return false
 	}
 }
 

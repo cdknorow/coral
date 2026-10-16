@@ -49,7 +49,7 @@ func TestTask1670_HTTPPlannerAuthorization(t *testing.T) {
 
 	// Register Orchestrator as planner, Worker as regular subscriber
 	registerTaskPlanner(t, handler, "proj", "Orchestrator")
-	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "worker-sess", nil, nil, "mentions")
+	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "worker-sess", nil, "mentions")
 	require.NoError(t, err)
 
 	task, err := bs.CreateTaskWithOpts(ctx, "proj", "Title", "Body", "medium", "Operator", nil, "Worker")
@@ -137,7 +137,7 @@ func TestTask1670_HTTPCompletionAndReviewStaleRevision409(t *testing.T) {
 	ctx := context.Background()
 
 	registerTaskPlanner(t, handler, "proj", "Orchestrator")
-	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "worker-sess", nil, nil, "mentions")
+	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "worker-sess", nil, "mentions")
 	require.NoError(t, err)
 
 	task, err := bs.CreateTaskWithOpts(ctx, "proj", "Task", "Body", "medium", "Operator", nil, "Worker")
@@ -187,7 +187,7 @@ func TestTask1670_HTTPNoticeEmissionOnAmend(t *testing.T) {
 	ctx := context.Background()
 
 	registerTaskPlanner(t, handler, "proj", "Orchestrator")
-	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "worker-sess", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "worker-sess", nil, "all")
 	require.NoError(t, err)
 
 	task, err := bs.CreateTaskWithOpts(ctx, "proj", "Feature X", "Body", "medium", "Operator", nil, "Worker")

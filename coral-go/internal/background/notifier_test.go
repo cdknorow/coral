@@ -59,14 +59,14 @@ func TestBoardNotifier_StaleSubscription(t *testing.T) {
 
 	// Subscribe "Orchestrator" to two different boards with distinct session names.
 	// board-A is the stale/old subscription, board-B is the current one.
-	_, err := bs.Subscribe(ctx, "board-A", "Orchestrator", "Orchestrator", "claude-aaaa-1111", nil, nil, "")
+	_, err := bs.Subscribe(ctx, "board-A", "Orchestrator", "Orchestrator", "claude-aaaa-1111", nil, "")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "board-B", "Orchestrator", "Orchestrator", "claude-bbbb-2222", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "board-B", "Orchestrator", "Orchestrator", "claude-bbbb-2222", nil, "")
 	require.NoError(t, err)
 
 	// Post a message on board-B that mentions the Orchestrator (using @all)
 	// We need another subscriber to post the message.
-	_, err = bs.Subscribe(ctx, "board-B", "Lead Dev", "Lead Dev", "claude-cccc-3333", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "board-B", "Lead Dev", "Lead Dev", "claude-cccc-3333", nil, "")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "board-B", "Lead Dev", "@Orchestrator please review", nil)
 	require.NoError(t, err)
@@ -104,11 +104,11 @@ func TestBoardNotifier_SessionIdentityOverridesStaleDisplayName(t *testing.T) {
 	project := "death-or-trade-ai-auto"
 	n := NewBoardNotifier(bs, rt, time.Second)
 	n.SetIsPausedFn(func(string) bool { return false })
-	_, err := bs.Subscribe(ctx, project, "Orchestrator", "Orchestrator", "codex-orch", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, project, "Orchestrator", "Orchestrator", "codex-orch", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, project, "QA Engineer", "QA Engineer", "codex-qa", nil, nil, "mentions")
+	_, err = bs.Subscribe(ctx, project, "QA Engineer", "QA Engineer", "codex-qa", nil, "mentions")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "codex-poster", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "codex-poster", nil, "all")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, project, "Poster", "@Orchestrator inspect the queue", nil)
 	require.NoError(t, err)
@@ -133,11 +133,11 @@ func TestBoardNotifier_RejectsAbsentSessionDisplayNameFallback(t *testing.T) {
 	ctx := context.Background()
 	n := NewBoardNotifier(bs, rt, time.Second)
 	n.SetIsPausedFn(func(string) bool { return false })
-	_, err := bs.Subscribe(ctx, "team-a", "Orchestrator", "Orchestrator", "codex-a", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "team-a", "Orchestrator", "Orchestrator", "codex-a", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "team-b", "QA Engineer", "QA Engineer", "codex-b", nil, nil, "mentions")
+	_, err = bs.Subscribe(ctx, "team-b", "QA Engineer", "QA Engineer", "codex-b", nil, "mentions")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "team-a", "Poster", "Worker", "codex-poster", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "team-a", "Poster", "Worker", "codex-poster", nil, "all")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "team-a", "Poster", "@Orchestrator team-a only", nil)
 	require.NoError(t, err)
@@ -159,9 +159,9 @@ func TestBoardNotifier_RejectsUnboundLegacySubscription(t *testing.T) {
 	ctx := context.Background()
 	n := NewBoardNotifier(bs, rt, time.Second)
 	n.SetIsPausedFn(func(string) bool { return false })
-	_, err := bs.Subscribe(ctx, "legacy-team", "Orchestrator", "Orchestrator", "", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "legacy-team", "Orchestrator", "Orchestrator", "", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "legacy-team", "Poster", "Worker", "codex-poster", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "legacy-team", "Poster", "Worker", "codex-poster", nil, "all")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "legacy-team", "Poster", "@Orchestrator legacy binding", nil)
 	require.NoError(t, err)
@@ -183,9 +183,9 @@ func TestBoardNotifier_HealthOnlyNudgeIsDistinct(t *testing.T) {
 	rt := &mockRuntime{}
 	ctx := context.Background()
 	n := NewBoardNotifier(bs, rt, time.Second)
-	_, err := bs.Subscribe(ctx, "health-team", "Orchestrator", "Orchestrator", "codex-health", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "health-team", "Orchestrator", "Orchestrator", "codex-health", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "health-team", "Poster", "Worker", "codex-poster", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "health-team", "Poster", "Worker", "codex-poster", nil, "all")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "health-team", "Coral Health Monitor", "[Coral team status] @Orchestrator review blockers", nil)
 	require.NoError(t, err)
@@ -205,9 +205,9 @@ func TestBoardNotifier_NormalAndMixedBatchesPreserveClassification(t *testing.T)
 		t.Helper()
 		bs := testBoardStore(t)
 		rt := &mockRuntime{}
-		_, err := bs.Subscribe(ctx, project, "Orchestrator", "Orchestrator", "codex-"+project, nil, nil, "all")
+		_, err := bs.Subscribe(ctx, project, "Orchestrator", "Orchestrator", "codex-"+project, nil, "all")
 		require.NoError(t, err)
-		_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "poster-"+project, nil, nil, "all")
+		_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "poster-"+project, nil, "all")
 		require.NoError(t, err)
 		n := NewBoardNotifier(bs, rt, time.Second)
 		n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
@@ -240,9 +240,9 @@ func TestBoardNotifier_HealthClassificationIsolatedByRegisteredTeam(t *testing.T
 	rt := &mockRuntime{}
 	ctx := context.Background()
 	for _, project := range []string{"team-a", "team-b"} {
-		_, err := bs.Subscribe(ctx, project, "Lead Coordinator", "Orchestrator", "codex-"+project, nil, nil, "all")
+		_, err := bs.Subscribe(ctx, project, "Lead Coordinator", "Orchestrator", "codex-"+project, nil, "all")
 		require.NoError(t, err)
-		_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "poster-"+project, nil, nil, "all")
+		_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "poster-"+project, nil, "all")
 		require.NoError(t, err)
 	}
 	_, err := bs.PostMessage(ctx, "team-a", "Coral Health Monitor", "[Coral team status] @Lead Coordinator review blockers", nil)
@@ -266,9 +266,9 @@ func TestBoardNotifier_SuppressesHealthOnlyWorkerNudgeButPreservesMixedOrdinary(
 	ctx := context.Background()
 	bs := testBoardStore(t)
 	rt := &mockRuntime{}
-	_, err := bs.Subscribe(ctx, "private-health", "Orchestrator", "Orchestrator", "codex-orch", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "private-health", "Orchestrator", "Orchestrator", "codex-orch", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "private-health", "Artist UI/UX", "Worker", "codex-worker", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "private-health", "Artist UI/UX", "Worker", "codex-worker", nil, "all")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "private-health", "Coral Health Monitor", "[Coral team status] @Orchestrator review blockers", nil)
 	require.NoError(t, err)
@@ -291,9 +291,9 @@ func TestBoardNotifier_SuppressesHealthBacklogForMentionOnlyWorker(t *testing.T)
 	ctx := context.Background()
 	bs := testBoardStore(t)
 	rt := &mockRuntime{}
-	_, err := bs.Subscribe(ctx, "mention-health", "Orchestrator", "Orchestrator", "codex-orch", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "mention-health", "Orchestrator", "Orchestrator", "codex-orch", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "mention-health", "Artist UI/UX", "Worker", "codex-worker", nil, nil, "mentions")
+	_, err = bs.Subscribe(ctx, "mention-health", "Artist UI/UX", "Worker", "codex-worker", nil, "mentions")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "mention-health", "Coral Health Monitor", "[Coral team status] @Orchestrator stale worker summary", nil)
 	require.NoError(t, err)
@@ -322,7 +322,7 @@ func TestBoardNotifier_NoUnreadNoNudge(t *testing.T) {
 	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 	notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-	_, err := bs.Subscribe(ctx, "board-X", "Worker", "Worker", "claude-xxxx-0001", nil, nil, "")
+	_, err := bs.Subscribe(ctx, "board-X", "Worker", "Worker", "claude-xxxx-0001", nil, "")
 	require.NoError(t, err)
 
 	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
@@ -354,9 +354,9 @@ func TestBoardNotifier_PausedBoardSkipped(t *testing.T) {
 	})
 
 	// Create subscription and unread message on a paused board.
-	_, err := bs.Subscribe(ctx, "paused-board", "Agent", "Agent", "claude-pppp-0001", nil, nil, "")
+	_, err := bs.Subscribe(ctx, "paused-board", "Agent", "Agent", "claude-pppp-0001", nil, "")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "paused-board", "Poster", "Poster", "claude-pppp-0002", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "paused-board", "Poster", "Poster", "claude-pppp-0002", nil, "")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "paused-board", "Poster", "@Agent wake up", nil)
 	require.NoError(t, err)
@@ -388,9 +388,9 @@ func TestBoardNotifier_DeduplicatesNotifications(t *testing.T) {
 	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 	notifier.SetIsPausedFn(func(_ string) bool { return false })
 
-	_, err := bs.Subscribe(ctx, "proj", "Dev", "Dev", "claude-dddd-0001", nil, nil, "")
+	_, err := bs.Subscribe(ctx, "proj", "Dev", "Dev", "claude-dddd-0001", nil, "")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "proj", "Poster", "Poster", "claude-dddd-0002", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "proj", "Poster", "Poster", "claude-dddd-0002", nil, "")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "proj", "Poster", "@Dev check this", nil)
 	require.NoError(t, err)
@@ -423,9 +423,9 @@ func TestBoardNotifier_OrchestratorGetsNudgeForNewUnreadBatch(t *testing.T) {
 	ctx := context.Background()
 	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 	notifier.SetIsPausedFn(func(_ string) bool { return false })
-	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-1", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-1", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-1", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-1", nil, "")
 	require.NoError(t, err)
 	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
 		return []AgentInfo{{AgentName: "orch", AgentType: "claude", SessionID: "orch-1", DisplayName: "Orchestrator"}}, nil
@@ -446,9 +446,9 @@ func TestBoardNotifier_NewMessageAfterReadWithSameUnreadCount(t *testing.T) {
 	ctx := context.Background()
 	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 	notifier.SetIsPausedFn(func(_ string) bool { return false })
-	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-same", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-same", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-same", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-same", nil, "")
 	require.NoError(t, err)
 	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
 		return []AgentInfo{{AgentName: "orch", AgentType: "claude", SessionID: "orch-same", DisplayName: "Orchestrator"}}, nil
@@ -483,9 +483,9 @@ func TestBoardNotifier_MentionAfterReadBeforeNextPass(t *testing.T) {
 	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
 		return []AgentInfo{{AgentName: "worker", AgentType: "agy", SessionID: "ffff-0001", DisplayName: "Worker"}}, nil
 	})
-	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "agy-ffff-0001", nil, nil, "mentions")
+	_, err := bs.Subscribe(ctx, "proj", "Worker", "Worker", "agy-ffff-0001", nil, "mentions")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "proj", "Operator", "Operator", "", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "proj", "Operator", "Operator", "", nil, "")
 	require.NoError(t, err)
 	mention := func(text string) {
 		_, err := bs.PostMessage(ctx, "proj", "Operator", "@Worker "+text, nil)
@@ -534,9 +534,9 @@ func TestBoardNotifier_OneNudgePerBatch(t *testing.T) {
 		return []AgentInfo{{AgentName: "dev-agent", AgentType: "claude", SessionID: "eeee-0001", DisplayName: "Dev"}}, nil
 	})
 
-	_, err := bs.Subscribe(ctx, "proj", "Dev", "Dev", "claude-eeee-0001", nil, nil, "")
+	_, err := bs.Subscribe(ctx, "proj", "Dev", "Dev", "claude-eeee-0001", nil, "")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "proj", "Poster", "Poster", "claude-eeee-0002", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "proj", "Poster", "Poster", "claude-eeee-0002", nil, "")
 	require.NoError(t, err)
 	post := func() {
 		_, err := bs.PostMessage(ctx, "proj", "Poster", "@Dev another one", nil)
@@ -586,13 +586,13 @@ func TestBoardNotifier_MultiSessionNoDuplicateNudge(t *testing.T) {
 	notifier.SetIsPausedFn(func(_ string) bool { return false })
 
 	// Session 1: Orchestrator on proj-A (0 unread messages)
-	_, err := bs.Subscribe(ctx, "proj-A", "Orchestrator", "Orchestrator", "codex-orch-1", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "proj-A", "Orchestrator", "Orchestrator", "codex-orch-1", nil, "all")
 	require.NoError(t, err)
 
 	// Session 2: Orchestrator on proj-B (1 unread message)
-	_, err = bs.Subscribe(ctx, "proj-B", "Orchestrator", "Orchestrator", "codex-orch-2", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "proj-B", "Orchestrator", "Orchestrator", "codex-orch-2", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "proj-B", "Worker", "Worker", "codex-worker-2", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "proj-B", "Worker", "Worker", "codex-worker-2", nil, "")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "proj-B", "Worker", "hello orchestrator", nil)
 	require.NoError(t, err)
@@ -626,9 +626,9 @@ func TestBoardNotifier_SeedFromDBPreventsInitialDuplicate(t *testing.T) {
 	rt := &mockRuntime{}
 	ctx := context.Background()
 
-	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "codex-orch-1", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "codex-orch-1", nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "codex-worker-1", nil, nil, "")
+	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "codex-worker-1", nil, "")
 	require.NoError(t, err)
 	_, err = bs.PostMessage(ctx, "proj", "Worker", "pre-existing unread message", nil)
 	require.NoError(t, err)
@@ -663,7 +663,7 @@ func TestBoardNotifier_RetiresAHeldNudgeOnceRead(t *testing.T) {
 	ctx := context.Background()
 	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
 	notifier.SetIsPausedFn(func(_ string) bool { return false })
-	_, err := bs.Subscribe(ctx, "board-X", "Worker", "Worker", "claude-xxxx-0001", nil, nil, "")
+	_, err := bs.Subscribe(ctx, "board-X", "Worker", "Worker", "claude-xxxx-0001", nil, "")
 	require.NoError(t, err)
 	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
 		return []AgentInfo{{AgentName: "worker-agent", AgentType: "claude", SessionID: "xxxx-0001", DisplayName: "Worker"}}, nil

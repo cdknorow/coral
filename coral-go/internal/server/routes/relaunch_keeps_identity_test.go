@@ -15,7 +15,7 @@ import (
 )
 
 // Resume keeps the agent's identity as restart does (#3216): its display name,
-// its tags and its board subscription (job title, receive mode, webhook, peek).
+// its tags and its board subscription (job title, receive mode, peek).
 // A sleeping agent comes back awake (#3273), and the old session's tag rows go
 // when no history entry shows them.
 func TestResumeAndRestartKeepTheAgentsIdentity(t *testing.T) {
@@ -33,8 +33,7 @@ func TestResumeAndRestartKeepTheAgentsIdentity(t *testing.T) {
 			tag, err := ss.CreateTag(ctx, "frontend", "")
 			require.NoError(t, err)
 			require.NoError(t, ss.AddSessionTag(ctx, cur, tag.ID))
-			hook := "https://hooks.example.com/coral"
-			_, err = handler.bs.Subscribe(ctx, board, "Builder", "Builder", name, &hook, nil, "all", true)
+			_, err = handler.bs.Subscribe(ctx, board, "Builder", "Builder", name, nil, "all", true)
 			require.NoError(t, err)
 			require.NoError(t, ss.SetSessionSleeping(ctx, cur, true))
 
@@ -68,8 +67,6 @@ func TestResumeAndRestartKeepTheAgentsIdentity(t *testing.T) {
 			assert.Equal(t, "Builder", sub.SubscriberID)
 			assert.Equal(t, "Builder", sub.JobTitle)
 			assert.Equal(t, "all", sub.ReceiveMode)
-			require.NotNil(t, sub.WebhookURL)
-			assert.Equal(t, hook, *sub.WebhookURL)
 			assert.Equal(t, 1, sub.CanPeek)
 
 			ls, err := ss.GetLiveSession(ctx, out.SessionID)

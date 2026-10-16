@@ -54,7 +54,6 @@ Returns all jobs except the internal `__oneshot__` sentinel row used for API-tri
         "exit_reason": "agent_done",
         "error_msg": null,
         "trigger_type": "cron",
-        "webhook_url": null,
         "display_name": null,
         "created_at": "2025-03-12T16:00:00+00:00"
       },
@@ -275,7 +274,6 @@ GET /api/scheduled/jobs/{jobID}/runs?limit=20
       "exit_reason": "agent_done",
       "error_msg": null,
       "trigger_type": "cron",
-      "webhook_url": null,
       "display_name": null,
       "created_at": "2025-03-12T16:00:00+00:00"
     }
@@ -317,7 +315,6 @@ Returns recent runs across all scheduled jobs.
       "exit_reason": "agent_done",
       "error_msg": null,
       "trigger_type": "cron",
-      "webhook_url": null,
       "display_name": null,
       "created_at": "2025-03-12T16:00:00+00:00"
     }

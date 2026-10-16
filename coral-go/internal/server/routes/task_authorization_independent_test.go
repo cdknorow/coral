@@ -27,25 +27,25 @@ func TestTaskAuthorization_ComprehensiveIndependentVerification(t *testing.T) {
 
 	// Setup board subscribers
 	// 1. Registered Orchestrator on "main-board"
-	_, err := h.bs.Subscribe(ctx, "main-board", "lead-orch", "Orchestrator", "", nil, nil, "all", true)
+	_, err := h.bs.Subscribe(ctx, "main-board", "lead-orch", "Orchestrator", "", nil, "all", true)
 	require.NoError(t, err)
 
 	// 2. Custom title with can_peek=true on "main-board"
-	_, err = h.bs.Subscribe(ctx, "main-board", "peek-orch", "Team Lead", "", nil, nil, "all", true)
+	_, err = h.bs.Subscribe(ctx, "main-board", "peek-orch", "Team Lead", "", nil, "all", true)
 	require.NoError(t, err)
 
 	// 3. Regular worker on "main-board"
-	_, err = h.bs.Subscribe(ctx, "main-board", "dev-worker", "Backend Dev", "", nil, nil, "all", false)
+	_, err = h.bs.Subscribe(ctx, "main-board", "dev-worker", "Backend Dev", "", nil, "all", false)
 	require.NoError(t, err)
 
 	// 4. Inactive subscriber on "main-board"
-	_, err = h.bs.Subscribe(ctx, "main-board", "ex-orch", "Orchestrator", "", nil, nil, "all", true)
+	_, err = h.bs.Subscribe(ctx, "main-board", "ex-orch", "Orchestrator", "", nil, "all", true)
 	require.NoError(t, err)
 	_, err = h.bs.Unsubscribe(ctx, "main-board", "ex-orch")
 	require.NoError(t, err)
 
 	// 5. Orchestrator on another board ("other-board")
-	_, err = h.bs.Subscribe(ctx, "other-board", "foreign-orch", "Orchestrator", "", nil, nil, "all", true)
+	_, err = h.bs.Subscribe(ctx, "other-board", "foreign-orch", "Orchestrator", "", nil, "all", true)
 	require.NoError(t, err)
 
 	boardURL := server.URL + "/api/board/main-board/tasks"

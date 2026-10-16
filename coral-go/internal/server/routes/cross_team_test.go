@@ -48,7 +48,7 @@ func newCrossTeamEnv(t *testing.T) *crossTeamEnv {
 		{"alpha", "Orchestrator", "Orchestrator"}, {"alpha", "Dev", "Backend Dev"},
 		{"beta", "Orchestrator", "Orchestrator"}, {"beta", "QA", "QA Engineer"},
 	} {
-		_, err := bs.Subscribe(ctx, s.board, s.id, s.role, "tmux-"+s.board+s.id, nil, nil, "mentions")
+		_, err := bs.Subscribe(ctx, s.board, s.id, s.role, "tmux-"+s.board+s.id, nil, "mentions")
 		require.NoError(t, err)
 	}
 	return e

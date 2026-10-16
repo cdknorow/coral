@@ -78,7 +78,7 @@ func requireAuthStrictLocalCase(t *testing.T, strictLocal bool) {
 
 	// An agent session token works for its own board identity; a bad token is refused.
 	ctx := context.Background()
-	_, err = srv.boardStore.Subscribe(ctx, "team", "Dev", "Backend Dev", "claude-dev", nil, nil, "")
+	_, err = srv.boardStore.Subscribe(ctx, "team", "Dev", "Backend Dev", "claude-dev", nil, "")
 	require.NoError(t, err)
 	agentTok, err := srv.db.MintSessionToken(ctx, "sid-dev", "claude-dev")
 	require.NoError(t, err)

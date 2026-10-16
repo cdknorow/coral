@@ -22,7 +22,6 @@ DELETE /api/teams/detail/{name} never
 DELETE /api/themes/{name} never
 DELETE /api/upload/{name} never
 DELETE /api/views/{id} never
-DELETE /api/webhooks/{webhookID} never
 DELETE /api/workflows/{workflowID} never
 GET /api/agent-docs never
 GET /api/agent-docs/all never
@@ -170,9 +169,6 @@ GET /api/token-usage/summary view
 GET /api/token-usage/timeseries view
 GET /api/views view
 GET /api/views/{id} view
-GET /api/webhooks never
-GET /api/webhooks/{webhookID} never
-GET /api/webhooks/{webhookID}/deliveries never
 GET /api/workflows view
 GET /api/workflows/by-name/{name} view
 GET /api/workflows/runs/recent view
@@ -188,7 +184,6 @@ PATCH /api/board/{project}/tasks/{taskID} interact
 PATCH /api/board/{project}/tasks/{taskID}/amend interact
 PATCH /api/sessions/live/{name}/notes/{noteID} interact
 PATCH /api/sessions/live/{name}/tasks/{taskID} interact
-PATCH /api/webhooks/{webhookID} never
 POST /api/agent/artifacts never
 POST /api/agent/tasks never
 POST /api/agent/tasks/claim never
@@ -293,8 +288,6 @@ POST /api/themes/import never
 POST /api/tracking/event never
 POST /api/upload launch
 POST /api/views never
-POST /api/webhooks never
-POST /api/webhooks/{webhookID}/test never
 POST /api/workflows never
 POST /api/workflows/by-name/{name}/trigger launch
 POST /api/workflows/runs/{runID}/kill interact

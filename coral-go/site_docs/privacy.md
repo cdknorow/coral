@@ -7,7 +7,6 @@ This page describes what Coral v1.3.23 sends and stores. It does not promise tha
 - **Your agent CLIs** contact their own vendors under those vendors' terms. If you have configured a proxy for them, traffic goes through it.
 - **Usage analytics** (below), unless disabled.
 - **Update check.** Coral looks up the latest release version from GitHub at startup and logs a notice. Development and beta builds, and builds without a release version, skip it.
-- **Webhooks, Slack or Discord notifications** you configure send the content you set up.
 - **Remote access**, if you enable it, accepts connections from your network. It is off by default. See [Remote access](remote-access.md).
 
 ## Usage analytics

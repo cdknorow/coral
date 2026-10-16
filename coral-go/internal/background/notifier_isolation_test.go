@@ -21,9 +21,9 @@ func TestBoardNotifier_IndependentSessionLifecycle(t *testing.T) {
 	}
 	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) { return agents, nil })
 	for _, id := range []string{"one", "two"} {
-		_, err := bs.Subscribe(ctx, id, "Dev", "Dev", "codex-"+id, nil, nil, "all")
+		_, err := bs.Subscribe(ctx, id, "Dev", "Dev", "codex-"+id, nil, "all")
 		require.NoError(t, err)
-		_, err = bs.Subscribe(ctx, id, "Poster", "Poster", "codex-poster-"+id, nil, nil, "all")
+		_, err = bs.Subscribe(ctx, id, "Poster", "Poster", "codex-poster-"+id, nil, "all")
 		require.NoError(t, err)
 		_, err = bs.PostMessage(ctx, id, "Poster", "new message", nil)
 		require.NoError(t, err)

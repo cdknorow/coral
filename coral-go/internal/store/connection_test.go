@@ -61,8 +61,6 @@ func TestSchema_AllTablesExist(t *testing.T) {
 		"user_settings",
 		"scheduled_jobs",
 		"scheduled_runs",
-		"webhook_configs",
-		"webhook_deliveries",
 		"git_changed_files",
 		"workflows",
 		"workflow_runs",

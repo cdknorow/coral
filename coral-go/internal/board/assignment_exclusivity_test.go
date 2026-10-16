@@ -121,7 +121,7 @@ func TestCompletionOwnership(t *testing.T) {
 				s := testStore(t)
 				_, err := sub(s, ctx, "team", "Lead", "Orchestrator")
 				require.NoError(t, err)
-				_, err = s.Subscribe(ctx, "team", "Peeker", "Reviewer", "tmux-peeker", nil, nil, "", true)
+				_, err = s.Subscribe(ctx, "team", "Peeker", "Reviewer", "tmux-peeker", nil, "", true)
 				require.NoError(t, err)
 				_, err = sub(s, ctx, "team", "Retired", "Orchestrator")
 				require.NoError(t, err)

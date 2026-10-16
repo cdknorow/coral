@@ -17,7 +17,7 @@ func TestCompletionReviewRecovery(t *testing.T) {
 	s, err := NewStore(path)
 	require.NoError(t, err)
 	defer func() { s.Close() }()
-	_, err = s.Subscribe(ctx, "team", "reviewer", "Orchestrator", "reviewer-session", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "team", "reviewer", "Orchestrator", "reviewer-session", nil, "all")
 	require.NoError(t, err)
 	up, err := s.CreateTaskWithOpts(ctx, "team", "Build", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{RequiredOutputs: []string{"build"}}}, "worker")
 	require.NoError(t, err)
@@ -117,7 +117,7 @@ func TestCompletionReviewFailedOrCancelledDoesNotSatisfySuccess(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			s := testStore(t)
 			ctx := context.Background()
-			_, err := s.Subscribe(ctx, "team", "lead", "Orchestrator", "session", nil, nil, "all")
+			_, err := s.Subscribe(ctx, "team", "lead", "Orchestrator", "session", nil, "all")
 			require.NoError(t, err)
 			up, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead", "worker")
 			require.NoError(t, err)

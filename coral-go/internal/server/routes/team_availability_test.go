@@ -32,7 +32,7 @@ func TestTeamAvailabilityQueuesAndRuntime(t *testing.T) {
 			s.IsSleeping = 1
 		}
 		require.NoError(t, ss.RegisterLiveSession(ctx, s))
-		_, err := h.bs.Subscribe(ctx, team, name, "Developer", "claude-"+sid, nil, nil, "all")
+		_, err := h.bs.Subscribe(ctx, team, name, "Developer", "claude-"+sid, nil, "all")
 		require.NoError(t, err)
 		if name != "offline" {
 			terminal.addSession("claude-"+sid, "/tmp")
@@ -63,7 +63,7 @@ func TestTeamAvailabilityQueuesAndRuntime(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.bs.CreateTask(ctx, team, "Open pool", "", "medium", "lead")
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, "different-team", "Other", "", "claude-other", nil, nil, "all")
+	_, err = h.bs.Subscribe(ctx, "different-team", "Other", "", "claude-other", nil, "all")
 	require.NoError(t, err)
 	r := chi.NewRouter()
 	r.Get("/api/teams/detail/{name}/availability", h.TeamAvailability)
@@ -106,7 +106,7 @@ func TestTeamAvailabilityActivityIsPrivateOnDemandForOrchestrator(t *testing.T) 
 	sid := uuid.NewString()
 	display := "Lead Coordinator"
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "lead", AgentType: "claude", DisplayName: &display, BoardName: &team, WorkingDir: "/tmp"}))
-	_, err := h.bs.Subscribe(ctx, team, "Lead Coordinator", "Orchestrator", "claude-"+sid, nil, nil, "all", true)
+	_, err := h.bs.Subscribe(ctx, team, "Lead Coordinator", "Orchestrator", "claude-"+sid, nil, "all", true)
 	require.NoError(t, err)
 	task, err := h.bs.CreateTask(ctx, team, "Review queue", "", "medium", "Operator", "Lead Coordinator")
 	require.NoError(t, err)
@@ -152,11 +152,11 @@ func TestTeamAvailabilityActivityRejectsAnonymousWorkerAndCrossTeamCaller(t *tes
 	_, h, _, _ := setupSessionsTestServer(t)
 	ctx := context.Background()
 	team := "private-activity-boundary"
-	_, err := h.bs.Subscribe(ctx, team, "Lead Coordinator", "Orchestrator", "claude-lead", nil, nil, "all", true)
+	_, err := h.bs.Subscribe(ctx, team, "Lead Coordinator", "Orchestrator", "claude-lead", nil, "all", true)
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, team, "Worker", "Worker", "claude-worker", nil, nil, "all")
+	_, err = h.bs.Subscribe(ctx, team, "Worker", "Worker", "claude-worker", nil, "all")
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, "other-team", "Other Orchestrator", "Orchestrator", "claude-other", nil, nil, "all", true)
+	_, err = h.bs.Subscribe(ctx, "other-team", "Other Orchestrator", "Orchestrator", "claude-other", nil, "all", true)
 	require.NoError(t, err)
 	r := chi.NewRouter()
 	r.Get("/api/board/{project}/status", h.TeamAvailability)
@@ -219,7 +219,7 @@ func TestTeamAvailabilityCodexWithoutHooks(t *testing.T) {
 	team := "music-team"
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentName: "music", AgentType: "codex", BoardName: &team, WorkingDir: "/tmp"}))
 	terminal.addSession("codex-"+sid, "/tmp")
-	_, err := h.bs.Subscribe(context.Background(), team, "Music SFX director", "Music", "codex-"+sid, nil, nil, "all")
+	_, err := h.bs.Subscribe(context.Background(), team, "Music SFX director", "Music", "codex-"+sid, nil, "all")
 	require.NoError(t, err)
 	path := filepath.Join(dir, "rollout-"+sid+".jsonl")
 	data := `{"timestamp":"2026-09-26T16:29:51.825Z","type":"event_msg","payload":{"type":"task_complete"}}` + "\n"
@@ -254,7 +254,7 @@ func TestTeamAvailabilityAgyWithoutHooks(t *testing.T) {
 	team := "seo-team"
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentName: "seo", AgentType: "agy", BoardName: &team, WorkingDir: "/tmp"}))
 	terminal.addSession("agy-"+sid, "/tmp")
-	_, err := h.bs.Subscribe(context.Background(), team, "SEO Strategist", "SEO", "agy-"+sid, nil, nil, "all")
+	_, err := h.bs.Subscribe(context.Background(), team, "SEO Strategist", "SEO", "agy-"+sid, nil, "all")
 	require.NoError(t, err)
 
 	path := filepath.Join(dir, "transcript.jsonl")
@@ -303,7 +303,7 @@ func TestTeamAvailabilityWithActiveWait(t *testing.T) {
 		WorkingDir: "/tmp",
 	}))
 	terminal.addSession("claude-"+sid, "/tmp")
-	_, err := h.bs.Subscribe(ctx, team, "Worker", "Developer", "claude-"+sid, nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, team, "Worker", "Developer", "claude-"+sid, nil, "all")
 	require.NoError(t, err)
 
 	// Add an in-progress task for the worker
@@ -349,9 +349,9 @@ func TestTeamAvailabilityAwaitingReviewNeedsATaskUnderReview(t *testing.T) {
 	sid := uuid.NewString()
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "Worker", AgentType: "claude", BoardName: &team, WorkingDir: "/tmp"}))
 	terminal.addSession("claude-"+sid, "/tmp")
-	_, err := h.bs.Subscribe(ctx, team, "Lead", "Orchestrator", "lead-session", nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, team, "Lead", "Orchestrator", "lead-session", nil, "all")
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, team, "Worker", "Developer", "claude-"+sid, nil, nil, "all")
+	_, err = h.bs.Subscribe(ctx, team, "Worker", "Developer", "claude-"+sid, nil, "all")
 	require.NoError(t, err)
 	_, err = h.bs.RegisterWait(ctx, team, "Worker", "claude-"+sid, "message", "Lead", "", 10*time.Minute)
 	require.NoError(t, err)

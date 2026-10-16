@@ -45,7 +45,7 @@ Queues a new agent task. Returns immediately — all work (worktree creation, ag
 | `max_duration_s` | int | `3600` | Timeout in seconds. After this the agent is killed and the run is recorded as `killed` (`timeout`). |
 | `flags` | string | `""` | Extra CLI flags passed to the agent. |
 | `display_name` | string | `null` | Label shown in the UI. Defaults to `Task #<run_id>`. |
-| `webhook_url` | string | `null` | URL to receive POST callbacks on status changes. |
+| ~~`webhook_url`~~ | | | Not supported: Coral doesn't send webhooks, and a request with one is refused with 400. |
 | `auto_accept` | bool | `false` | Auto-respond to permission prompts (also adds `--dangerously-skip-permissions`). |
 | `max_auto_accepts` | int | `10` | Safety limit — auto-accept disables after this many acceptances. |
 
@@ -59,8 +59,7 @@ curl -X POST http://localhost:8420/api/tasks/run \
     "repo_path": "/home/user/myproject",
     "display_name": "Signup validation",
     "auto_accept": true,
-    "max_auto_accepts": 20,
-    "webhook_url": "https://example.com/hooks/coral"
+    "max_auto_accepts": 20
   }'
 ```
 
@@ -120,7 +119,7 @@ Returns `{"error": "Run not found"}, 404` if the run_id doesn't exist.
 POST /api/tasks/runs/{run_id}/kill
 ```
 
-Kills the tmux session, sets status to `killed` with `exit_reason: "user_cancelled"`, and fires the webhook callback.
+Kills the tmux session and sets status to `killed` with `exit_reason: "user_cancelled"`.
 
 ### Response
 
@@ -189,7 +188,7 @@ POST /api/tasks/run
   [agent launch] ──── new tmux session with agent CLI
        |               failure → failed, worktree cleaned up
        v
-    running ──── session_id written, webhook fires "running"
+    running ──── session_id written
        |         prompt sent to agent after 2s init delay
        |         watchdog starts polling tmux every 30s
        |
@@ -200,7 +199,6 @@ POST /api/tasks/run
        v
   [cleanup] ──── auto-accept state removed
                  worktree removed (if cleanup_worktree: true)
-                 webhook fires terminal status
 ```
 
 ---
@@ -243,33 +241,6 @@ The `max_auto_accepts` parameter (default: `10`) caps how many times the fallbac
 
 !!! warning
     Auto-accept is inherently risky. The agent may accept destructive operations. Use `max_auto_accepts` to bound exposure, and prefer reviewing agent output in the dashboard for sensitive tasks.
-
----
-
-## Webhooks
-
-If `webhook_url` is set, Coral sends HTTP POST callbacks at each status transition.
-
-### Payload
-
-```json
-{
-  "run_id": 42,
-  "session_id": "a1b2c3d4-...",
-  "status": "completed",
-  "exit_reason": "agent_done",
-  "started_at": "2025-03-11T10:00:05+00:00",
-  "finished_at": "2025-03-11T10:30:00+00:00",
-  "duration_s": 1795,
-  "source": "coral"
-}
-```
-
-- Fires on: `running`, `completed`, `killed`, `failed`
-- `finished_at` and `duration_s` are `null` for the `running` callback
-- Retries: up to 3 attempts (delays: 5s, 15s, 60s)
-- Timeout: 10s per attempt
-- Any 2xx response is treated as success
 
 ---
 

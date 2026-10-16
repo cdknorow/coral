@@ -502,44 +502,6 @@ CREATE INDEX IF NOT EXISTS idx_scheduled_runs_session
 CREATE INDEX IF NOT EXISTS idx_scheduled_runs_status
 	ON scheduled_runs(status, scheduled_at DESC);
 
-CREATE TABLE IF NOT EXISTS webhook_configs (
-	id                     INTEGER PRIMARY KEY AUTOINCREMENT,
-	name                   TEXT NOT NULL,
-	platform               TEXT NOT NULL,
-	url                    TEXT NOT NULL,
-	enabled                INTEGER NOT NULL DEFAULT 1,
-	event_filter           TEXT NOT NULL DEFAULT '*',
-	idle_threshold_seconds INTEGER NOT NULL DEFAULT 0,
-	agent_filter           TEXT,
-	low_confidence_only    INTEGER NOT NULL DEFAULT 0,
-	consecutive_failures   INTEGER NOT NULL DEFAULT 0,
-	created_at             TEXT NOT NULL,
-	updated_at             TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS webhook_deliveries (
-	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	webhook_id    INTEGER NOT NULL,
-	agent_name    TEXT NOT NULL,
-	session_id    TEXT,
-	event_type    TEXT NOT NULL,
-	event_summary TEXT NOT NULL,
-	status        TEXT NOT NULL DEFAULT 'pending',
-	http_status   INTEGER,
-	error_msg     TEXT,
-	attempt_count INTEGER NOT NULL DEFAULT 0,
-	next_retry_at TEXT,
-	delivered_at  TEXT,
-	created_at    TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook
-	ON webhook_deliveries(webhook_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_pending
-	ON webhook_deliveries(status, next_retry_at)
-	WHERE status = 'pending';
-
 CREATE TABLE IF NOT EXISTS git_changed_files (
 	id                INTEGER PRIMARY KEY AUTOINCREMENT,
 	agent_name        TEXT NOT NULL,

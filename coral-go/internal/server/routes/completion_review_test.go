@@ -13,7 +13,7 @@ import (
 func TestCompletionReviewAPI(t *testing.T) {
 	server, h := setupBoardTestServer(t)
 	ctx := context.Background()
-	_, err := h.bs.Subscribe(ctx, "review", "lead", "Orchestrator", "lead-session", nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, "review", "lead", "Orchestrator", "lead-session", nil, "all")
 	require.NoError(t, err)
 	up, err := h.bs.CreateTask(ctx, "review", "Build", "", "medium", "lead", "worker")
 	require.NoError(t, err)
@@ -45,7 +45,7 @@ func TestCompletionReviewCannotBypassGates(t *testing.T) {
 	server, h := setupBoardTestServer(t)
 	h.bs.SetCompletionChecksEnabled(true)
 	ctx := context.Background()
-	_, err := h.bs.Subscribe(ctx, "gated-review", "lead", "Orchestrator", "lead-session", nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, "gated-review", "lead", "Orchestrator", "lead-session", nil, "all")
 	require.NoError(t, err)
 	task, err := h.bs.CreateTaskWithOpts(ctx, "gated-review", "Gated", "", "medium", "lead", &board.CreateTaskOpts{Workflow: board.TaskWorkflow{CompletionGates: []board.CompletionGate{{Type: "test_evidence", Artifact: "tests"}}}}, "worker")
 	require.NoError(t, err)
@@ -63,7 +63,7 @@ func TestCompletionReviewCannotBypassGates(t *testing.T) {
 func TestCompletionReviewAllowsStoredGatesWhenFeatureDisabled(t *testing.T) {
 	server, h := setupBoardTestServer(t)
 	ctx := context.Background()
-	_, err := h.bs.Subscribe(ctx, "disabled-review", "lead", "Orchestrator", "lead-session", nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, "disabled-review", "lead", "Orchestrator", "lead-session", nil, "all")
 	require.NoError(t, err)
 	h.bs.SetCompletionChecksEnabled(true)
 	task, err := h.bs.CreateTaskWithOpts(ctx, "disabled-review", "Gated", "", "medium", "lead", &board.CreateTaskOpts{Workflow: board.TaskWorkflow{CompletionGates: []board.CompletionGate{

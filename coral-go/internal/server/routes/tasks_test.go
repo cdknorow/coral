@@ -26,7 +26,7 @@ func TestTaskStatusIncludesProxyCosts(t *testing.T) {
 	h.SetProxyStore(ps)
 
 	ctx := t.Context()
-	runID, err := h.sched.CreateOneshotRun(ctx, "2025-03-11T10:00:00Z", nil, nil)
+	runID, err := h.sched.CreateOneshotRun(ctx, "2025-03-11T10:00:00Z", nil)
 	require.NoError(t, err)
 	sessionID := "task-session-123"
 	err = h.sched.UpdateScheduledRun(ctx, runID, map[string]interface{}{"session_id": sessionID})

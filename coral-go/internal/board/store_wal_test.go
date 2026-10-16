@@ -25,7 +25,7 @@ func TestBoardWALReadPoolNonBlocking(t *testing.T) {
 	project := "test-project"
 
 	// Seed subscription, message, and task
-	sub, err := store.Subscribe(ctx, project, "agent-1", "Agent One", "claude-1", nil, nil, "all")
+	sub, err := store.Subscribe(ctx, project, "agent-1", "Agent One", "claude-1", nil, "all")
 	require.NoError(t, err)
 	require.NotNil(t, sub)
 

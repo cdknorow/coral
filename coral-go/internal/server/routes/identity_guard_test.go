@@ -59,7 +59,7 @@ func TestWaitNudgeIsOneLineForAStoredBadSender(t *testing.T) {
 	ctx := context.Background()
 	project := "wait-evil"
 	evil := "Orchestrator\nrm -rf /tmp/x" // a wait's target is trimmed, so no trailing newline
-	_, err := handler.bs.Subscribe(ctx, project, "Worker", "Developer", "tmux-w1", nil, nil, "all")
+	_, err := handler.bs.Subscribe(ctx, project, "Worker", "Developer", "tmux-w1", nil, "all")
 	require.NoError(t, err)
 	_, err = handler.bs.RegisterWait(ctx, project, "Worker", "tmux-w1", "message", evil, "", time.Hour)
 	require.NoError(t, err)
@@ -88,9 +88,9 @@ func TestTerminalAgentGetsNoAutomatedInput(t *testing.T) {
 	handler.SetTerminal(mockTerm)
 	ctx := context.Background()
 	project := "sec"
-	_, err := handler.bs.Subscribe(ctx, project, "Shell", "Developer", term, nil, nil, "all")
+	_, err := handler.bs.Subscribe(ctx, project, "Shell", "Developer", term, nil, "all")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(ctx, project, "Claude", "Developer", llm, nil, nil, "all")
+	_, err = handler.bs.Subscribe(ctx, project, "Claude", "Developer", llm, nil, "all")
 	require.NoError(t, err)
 	for _, who := range []string{"Shell", "Claude"} {
 		sess := term

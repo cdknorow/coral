@@ -52,7 +52,7 @@ func reminderTestHandler(t *testing.T, projects ...string) (*BoardHandler, *gate
 	t.Helper()
 	_, h := setupBoardTestServer(t)
 	for _, p := range projects {
-		_, err := h.bs.Subscribe(context.Background(), p, "agent", "Dev", "claude-"+p, nil, nil, "all")
+		_, err := h.bs.Subscribe(context.Background(), p, "agent", "Dev", "claude-"+p, nil, "all")
 		require.NoError(t, err)
 	}
 	term := &gatedReminderTerminal{}

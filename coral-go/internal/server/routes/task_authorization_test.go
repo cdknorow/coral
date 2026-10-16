@@ -17,7 +17,7 @@ func TestBoardTaskPlanningRequiresRegisteredPrivilege(t *testing.T) {
 	registerTaskPlanner(t, h, "team", "coordinator")
 	registerTaskPlanner(t, h, "other", "foreign")
 	for _, name := range []string{"worker", "Fake Orchestrator"} {
-		_, err := h.bs.Subscribe(ctx, "team", name, "Developer", "", nil, nil, "all")
+		_, err := h.bs.Subscribe(ctx, "team", name, "Developer", "", nil, "all")
 		require.NoError(t, err)
 	}
 	registerTaskPlanner(t, h, "team", "inactive")
@@ -34,7 +34,7 @@ func TestBoardTaskPlanningRequiresRegisteredPrivilege(t *testing.T) {
 	spoof := postJSON(t, base, map[string]string{"title": "Spoof", "subscriber_id": "worker", "created_by": "coordinator"})
 	spoof.Body.Close()
 	require.Equal(t, http.StatusForbidden, spoof.StatusCode)
-	_, err = h.bs.Subscribe(ctx, "team", "privileged", "Coordinator", "", nil, nil, "all", true)
+	_, err = h.bs.Subscribe(ctx, "team", "privileged", "Coordinator", "", nil, "all", true)
 	require.NoError(t, err)
 	privileged := postJSON(t, base, map[string]any{"title": "Draft", "subscriber_id": "privileged", "draft": true})
 	privileged.Body.Close()

@@ -33,9 +33,9 @@ func healthMonitorStore(t *testing.T) *board.Store {
 func healthMonitorBoard(t *testing.T, s *board.Store, project string) {
 	t.Helper()
 	ctx := context.Background()
-	_, err := s.Subscribe(ctx, project, "Orchestrator", "Orchestrator", "session-"+project, nil, nil, "")
+	_, err := s.Subscribe(ctx, project, "Orchestrator", "Orchestrator", "session-"+project, nil, "")
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, project, "Worker", "Worker", "worker-"+project, nil, nil, "")
+	_, err = s.Subscribe(ctx, project, "Worker", "Worker", "worker-"+project, nil, "")
 	require.NoError(t, err)
 }
 
@@ -181,7 +181,7 @@ func TestBoardHealthMonitor_ConsolidatesFindingsAndStatusPerScan(t *testing.T) {
 func TestBoardHealthMonitor_UsesRegisteredOrchestratorAndSkipsAbsent(t *testing.T) {
 	ctx := context.Background()
 	custom := healthMonitorStore(t)
-	_, err := custom.Subscribe(ctx, "custom", "Lead Coordinator", "Orchestrator", "custom-orch", nil, nil, "")
+	_, err := custom.Subscribe(ctx, "custom", "Lead Coordinator", "Orchestrator", "custom-orch", nil, "")
 	require.NoError(t, err)
 	task, err := custom.CreateTask(ctx, "custom", "Active", "", "medium", "Lead Coordinator", "Worker")
 	require.NoError(t, err)
@@ -196,7 +196,7 @@ func TestBoardHealthMonitor_UsesRegisteredOrchestratorAndSkipsAbsent(t *testing.
 	require.NotContains(t, messages[0].Content, "@Orchestrator")
 
 	absent := healthMonitorStore(t)
-	_, err = absent.Subscribe(ctx, "absent", "Worker", "Worker", "absent-worker", nil, nil, "")
+	_, err = absent.Subscribe(ctx, "absent", "Worker", "Worker", "absent-worker", nil, "")
 	require.NoError(t, err)
 	task, err = absent.CreateTask(ctx, "absent", "Active", "", "medium", "Orchestrator", "Worker")
 	require.NoError(t, err)

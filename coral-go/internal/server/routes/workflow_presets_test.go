@@ -15,7 +15,7 @@ import (
 
 func TestWorkflowPresetAPIWorkerAndUserPermissions(t *testing.T) {
 	server, h := setupBoardTestServer(t)
-	_, err := h.bs.Subscribe(context.Background(), "team", "worker", "Developer", "", nil, nil, "all", false)
+	_, err := h.bs.Subscribe(context.Background(), "team", "worker", "Developer", "", nil, "all", false)
 	require.NoError(t, err)
 	r := chi.NewRouter()
 	r.Get("/api/board/{project}/working-mode/presets", h.ListWorkflowPresets)

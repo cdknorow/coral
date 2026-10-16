@@ -40,7 +40,7 @@ func TestListTeamArtifactTasksIsBoundedInSQLAndScoped(t *testing.T) {
 
 func subscribeAgent(t *testing.T, s *Store, project, subscriber, sessionUUID string) {
 	t.Helper()
-	_, err := s.Subscribe(context.Background(), project, subscriber, subscriber, "claude-"+sessionUUID, nil, nil, "all")
+	_, err := s.Subscribe(context.Background(), project, subscriber, subscriber, "claude-"+sessionUUID, nil, "all")
 	require.NoError(t, err)
 }
 

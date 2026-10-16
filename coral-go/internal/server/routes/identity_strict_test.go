@@ -31,7 +31,7 @@ func TestStrictLocalAuth(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 	ctx := context.Background()
-	_, err = bh.bs.Subscribe(ctx, "p", "Dev", "Developer", "claude-dev", nil, nil, "")
+	_, err = bh.bs.Subscribe(ctx, "p", "Dev", "Developer", "claude-dev", nil, "")
 	require.NoError(t, err)
 	token, err := db.MintSessionToken(ctx, "sid-dev", "claude-dev")
 	require.NoError(t, err)

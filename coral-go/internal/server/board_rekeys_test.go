@@ -23,7 +23,7 @@ func TestApplyBoardRekeys(t *testing.T) {
 	bpath := filepath.Join(dir, "board.db")
 	bs, err := board.NewStore(bpath)
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, ".", "Lead", "Lead", "claude-x", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, ".", "Lead", "Lead", "claude-x", nil, "all")
 	require.NoError(t, err)
 	require.NoError(t, bs.Close())
 	// Reopening re-keys only boards without a re-key yet; force one, as an upgrade does.

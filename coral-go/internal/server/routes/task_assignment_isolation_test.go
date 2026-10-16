@@ -22,9 +22,9 @@ func TestOrchestratorTaskAssignmentIsolation(t *testing.T) {
 	terminal.addSession("worker-session", "/tmp")
 	h.SetTerminal(terminal)
 	ctx := context.Background()
-	_, err := h.bs.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "orchestrator-session", nil, nil, "all", true)
+	_, err := h.bs.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "orchestrator-session", nil, "all", true)
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, "team", "Worker", "Worker", "worker-session", nil, nil, "all", false)
+	_, err = h.bs.Subscribe(ctx, "team", "Worker", "Worker", "worker-session", nil, "all", false)
 	require.NoError(t, err)
 	base := server.URL + "/api/board/team"
 	resp := postJSON(t, base+"/tasks", map[string]string{"title": "Orchestrator only", "created_by": "Orchestrator", "assigned_to": "Orchestrator"})

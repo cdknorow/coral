@@ -1553,6 +1553,6 @@ func TestUnescapeLineBreaks(t *testing.T) {
 
 func registerTaskPlanner(t *testing.T, h *BoardHandler, project, actor string) {
 	t.Helper()
-	_, err := h.bs.Subscribe(context.Background(), project, actor, "Orchestrator", "", nil, nil, "all")
+	_, err := h.bs.Subscribe(context.Background(), project, actor, "Orchestrator", "", nil, "all")
 	require.NoError(t, err)
 }

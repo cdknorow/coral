@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 )
 
 // Coral doesn't configure MCP servers (#3644, the operator's decision). Their definitions held
@@ -64,24 +63,8 @@ func WipeMCPConfig(ctx context.Context, db *DB) (int, error) {
 		}
 	}
 	if changed > 0 {
-		// The checkpoint is busy while a reader holds an older snapshot: retry briefly, and say
-		// so if it never completes (the old pages would still be in the WAL).
-		for attempt := 0; ; attempt++ {
-			var busy, logFrames, done int
-			if err := conn.QueryRowxContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &done); err != nil {
-				return changed, fmt.Errorf("wal checkpoint: %w", err)
-			}
-			if busy == 0 {
-				break
-			}
-			if attempt == 20 {
-				return changed, fmt.Errorf("wal checkpoint: still busy after %d tries; the cleared values stay in the WAL until the next checkpoint", attempt+1)
-			}
-			select {
-			case <-ctx.Done():
-				return changed, ctx.Err()
-			case <-time.After(50 * time.Millisecond):
-			}
+		if err := truncateWAL(ctx, conn); err != nil {
+			return changed, err
 		}
 	}
 	return changed, nil

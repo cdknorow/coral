@@ -36,11 +36,11 @@ func TestBoardIDsEndToEnd(t *testing.T) {
 		return resp.StatusCode, out, b
 	}
 	// A legacy board "sprint" and a new board labelled "launch".
-	_, err := bs.Subscribe(ctx, "sprint", "Lead", "Lead", "", nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "sprint", "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 	nb, err := bs.CreateBoard(ctx, "launch", "Operator")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, nb.ID, "Dev", "Dev", "", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, nb.ID, "Dev", "Dev", "", nil, "all")
 	require.NoError(t, err)
 
 	// A post by label lands on the board's id.
@@ -54,7 +54,7 @@ func TestBoardIDsEndToEnd(t *testing.T) {
 	// A second board labelled "sprint": the legacy board's id still wins.
 	other, err := bs.CreateBoard(ctx, "sprint", "Operator")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, other.ID, "Dev", "Dev", "", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, other.ID, "Dev", "Dev", "", nil, "all")
 	require.NoError(t, err)
 	code, out, _ = do("POST", "/api/board/sprint/messages", `{"subscriber_id":"Operator","as":"Operator","content":"legacy"}`)
 	require.Equal(t, http.StatusOK, code, out)
@@ -146,9 +146,9 @@ func TestBoardIDsStrictAgentChecks(t *testing.T) {
 	require.NoError(t, store.NewSessionStore(srv.db).RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "dev", WorkingDir: t.TempDir()}))
 	tok, err := srv.db.MintSessionToken(ctx, sid, "claude-"+sid)
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, mine.ID, "Dev", "Dev", "claude-"+sid, nil, nil, "all")
+	_, err = bs.Subscribe(ctx, mine.ID, "Dev", "Dev", "claude-"+sid, nil, "all")
 	require.NoError(t, err)
-	_, err = bs.Subscribe(ctx, other.ID, "QA", "QA", "", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, other.ID, "QA", "QA", "", nil, "all")
 	require.NoError(t, err)
 
 	asAgent := func(method, path, body string) (int, map[string]any) {
@@ -201,7 +201,7 @@ func TestAgentNewBoardRecordedInDefaultMode(t *testing.T) {
 	ctx := context.Background()
 	b, err := srv.boardStore.CreateBoard(ctx, "team", "Operator")
 	require.NoError(t, err)
-	_, err = srv.boardStore.Subscribe(ctx, b.ID, "Lead", "Lead", "", nil, nil, "all")
+	_, err = srv.boardStore.Subscribe(ctx, b.ID, "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 	sid := "ffffffff-3536-0000-0000-00000000000f"
 	require.NoError(t, store.NewSessionStore(srv.db).RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "dev", WorkingDir: t.TempDir()}))

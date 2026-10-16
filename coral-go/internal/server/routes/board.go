@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -73,7 +72,7 @@ type BoardHandler struct {
 	// (#3404); nil means never.
 	hubOperatorAllowed func(*http.Request) bool
 	// background counts the fire-and-forget work a request starts after it answers
-	// (notifications, wait resolution, webhook dispatch), all of which use the store,
+	// (notifications, wait resolution), all of which use the store,
 	// so a shutdown or a test can wait for it before closing the store (#3486).
 	background sync.WaitGroup
 }
@@ -759,11 +758,10 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	// A webhook URL is a stored outbound address that keeps receiving board traffic after the
-	// hub session ends: like /api/webhooks (Never through the tunnel), it is set only from this
-	// computer (#3619, hub audit H1).
-	if body.WebhookURL != nil && *body.WebhookURL != "" && cloud.Tunneled(r) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "a webhook URL can only be set from this computer, not through Coral Hub", "code": "webhook_not_via_hub"})
+	// Webhooks were removed (#3646): a subscription naming one is refused, so nobody thinks it
+	// applies.
+	if body.WebhookURL != nil && *body.WebhookURL != "" {
+		errBadRequest(w, errWebhooksNotSupported)
 		return
 	}
 	if refuseNewBoardName(w, r, h.bs, project) {
@@ -780,13 +778,7 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	if body.JobTitle == "" {
 		body.JobTitle = "Agent"
 	}
-	if body.WebhookURL != nil && *body.WebhookURL != "" {
-		if err := httputil.ValidateWebhookURL(r.Context(), *body.WebhookURL); err != nil {
-			errBadRequest(w, err.Error())
-			return
-		}
-	}
-	sub, err := h.bs.Subscribe(r.Context(), project, subscriberID, body.JobTitle, body.SessionName, body.WebhookURL, nil, body.ReceiveMode)
+	sub, err := h.bs.Subscribe(r.Context(), project, subscriberID, body.JobTitle, body.SessionName, nil, body.ReceiveMode)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -896,7 +888,7 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 			if cloud.Tunneled(r) {
 				mode = ""
 			}
-			h.bs.Subscribe(r.Context(), project, subscriberID, body.As, "", nil, nil, mode)
+			h.bs.Subscribe(r.Context(), project, subscriberID, body.As, "", nil, mode)
 		}
 	}
 
@@ -930,9 +922,6 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	// A message from an assignee is evidence of progress on its active task.
 	// Keep this separate from task state so posting never completes work.
 	_ = h.bs.TouchActiveTask(r.Context(), project, subscriberID)
-
-	// Fire-and-forget webhook dispatch
-	h.goBG(func() { h.dispatchWebhooks(project, subscriberID, msg) })
 
 	// Trigger immediate board notification so subscribers get nudged right away
 	if h.notifyFn != nil {
@@ -1011,66 +1000,6 @@ func logHubUserMissing() {
 	hubUserMissingLog.last = time.Now()
 	slog.Warn("[cloud] deprecated: a Coral Hub chat post without X-Coral-Hub-User was posted as 'Coral Hub'; the hub should update its pkg/hubproxy (the header will be required in a later release)")
 }
-
-// dispatchWebhooks sends webhook callbacks to all subscribers with webhook_url set.
-func (h *BoardHandler) dispatchWebhooks(project, senderSubscriberID string, msg *board.Message) {
-	ctx := context.Background()
-	targets, err := h.bs.GetWebhookTargets(ctx, project, senderSubscriberID)
-	if err != nil || len(targets) == 0 {
-		return
-	}
-
-	// Look up sender's job_title
-	senderTitle := "Unknown"
-	subs, err := h.bs.ListSubscribers(ctx, project)
-	if err == nil {
-		for _, s := range subs {
-			if s.SubscriberID == senderSubscriberID {
-				senderTitle = s.JobTitle
-				break
-			}
-		}
-	}
-
-	payload := map[string]any{
-		"project": project,
-		"message": map[string]any{
-			"id":            msg.ID,
-			"subscriber_id": msg.SubscriberID,
-			"job_title":     senderTitle,
-			"content":       msg.Content,
-			"created_at":    msg.CreatedAt,
-		},
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return
-	}
-
-	for _, target := range targets {
-		if target.WebhookURL == nil || *target.WebhookURL == "" {
-			continue
-		}
-		go func(url string) {
-			req, err := http.NewRequest("POST", url, bytes.NewReader(body))
-			if err != nil {
-				return
-			}
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := boardWebhookClient.Do(req)
-			if err != nil {
-				slog.Debug("board webhook delivery failed", "url", url, "error", err)
-				return
-			}
-			resp.Body.Close()
-		}(*target.WebhookURL)
-	}
-}
-
-// boardWebhookClient posts to subscriber webhooks (#3363): private and loopback targets are
-// refused at dial time unless the webhook_allow_private setting allows them.
-var boardWebhookClient = httputil.WebhookClient(5 * time.Second)
 
 // ReadMessages reads new messages (cursor-based).
 // GET /api/board/{project}/messages

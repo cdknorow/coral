@@ -84,7 +84,7 @@ func TestBoardStatusLoad(t *testing.T) {
 			name, title, mode = "Orchestrator", "Orchestrator", "all"
 		}
 		require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: name, AgentType: "claude", BoardName: &team, WorkingDir: "/tmp", DisplayName: &name}))
-		_, err := bs.Subscribe(ctx, team, name, title, "claude-"+sid, nil, nil, mode)
+		_, err := bs.Subscribe(ctx, team, name, title, "claude-"+sid, nil, mode)
 		require.NoError(t, err)
 		terminal.addSession("claude-"+sid, "/tmp")
 		_, err = h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: name, SessionID: &sid, EventType: "stop"})

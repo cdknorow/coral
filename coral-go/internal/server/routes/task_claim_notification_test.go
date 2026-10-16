@@ -19,7 +19,7 @@ func TestTaskAssignmentNoticeClaimsNamedTask(t *testing.T) {
 	terminal := newMockTerminal()
 	terminal.addSession("frontend", "/tmp/frontend")
 	h.SetTerminal(terminal)
-	_, err := h.bs.Subscribe(context.Background(), "team", "Frontend", "Frontend", "frontend", nil, nil, "all", false)
+	_, err := h.bs.Subscribe(context.Background(), "team", "Frontend", "Frontend", "frontend", nil, "all", false)
 	require.NoError(t, err)
 	older, err := h.bs.CreateTask(context.Background(), "team", "Old work", "", "high", "Orchestrator", "Frontend")
 	require.NoError(t, err)

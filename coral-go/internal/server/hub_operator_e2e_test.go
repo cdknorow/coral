@@ -159,10 +159,10 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{"/api/board/team/messages", "/api/board/team/tasks", "/api/board/team/messages", "/api/board/team/working-mode"}, paths)
 
-	// #3619 (hub audit H1): a webhook URL is never set through the hub, even as the Operator.
+	// #3646: a webhook URL is refused (Coral sends no webhooks), through the hub too.
 	code, out = viaHub("POST", "/api/board/team/subscribe", map[string]any{"subscriber_id": "Operator", "job_title": "Operator", "webhook_url": "https://93.184.216.34/hook"}, user)
-	assert.Equal(t, http.StatusForbidden, code, out)
-	assert.Equal(t, "webhook_not_via_hub", out["code"])
+	assert.Equal(t, http.StatusBadRequest, code, out)
+	assert.Equal(t, "webhooks are not supported", out["error"])
 
 	// Never changed through the hub; the board's settings neither.
 	code, _ = viaHub("PUT", "/api/system/hub-operator", map[string]any{"disabled": false})

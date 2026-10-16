@@ -29,7 +29,7 @@ func TestNewBoardNamesFollowTheRule(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	// An existing board with a name from before the rule.
-	_, err = bs.Subscribe(ctx, "Coral Go-To-Market Team", "Lead", "Lead", "", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "Coral Go-To-Market Team", "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 
 	h := NewBoardHandler(bs)

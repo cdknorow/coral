@@ -19,7 +19,7 @@ func TestBlockedTaskReassignPreservesDependencies(t *testing.T) {
 	terminal := newMockTerminal()
 	terminal.addSession("new-owner", "/tmp/fixture")
 	h.SetTerminal(terminal)
-	_, err := h.bs.Subscribe(ctx, "team", "new-owner", "Developer", "new-owner", nil, nil, "all", false)
+	_, err := h.bs.Subscribe(ctx, "team", "new-owner", "Developer", "new-owner", nil, "all", false)
 	require.NoError(t, err)
 	up, err := h.bs.CreateTask(ctx, "team", "Upstream", "", "medium", "Orchestrator", "builder")
 	require.NoError(t, err)

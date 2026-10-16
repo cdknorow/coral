@@ -35,7 +35,7 @@ func TestBoardNotifier_Phase2RoutineWaitsMentionGoes(t *testing.T) {
 		return []AgentInfo{{AgentType: "claude", AgentName: "orch", SessionID: sid, DisplayName: "Orch"}}, nil
 	})
 	t.Cleanup(func() { ptymanager.DropHeld(name, "test done") })
-	_, err := bs.Subscribe(ctx, "team", "Orch", "Orchestrator", name, nil, nil, "all")
+	_, err := bs.Subscribe(ctx, "team", "Orch", "Orchestrator", name, nil, "all")
 	require.NoError(t, err)
 	sent := func() int { rt.mu.Lock(); defer rt.mu.Unlock(); return len(rt.sent) }
 
@@ -79,7 +79,7 @@ func TestBoardNotifier_Phase2OrchestratorInMentionsMode(t *testing.T) {
 		return []AgentInfo{{AgentType: "claude", AgentName: "orchestrator", SessionID: sid, DisplayName: "Orchestrator"}}, nil
 	})
 	t.Cleanup(func() { ptymanager.DropHeld(name, "test done") })
-	_, err := bs.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", name, nil, nil, "mentions")
+	_, err := bs.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", name, nil, "mentions")
 	require.NoError(t, err)
 	sent := func() int { rt.mu.Lock(); defer rt.mu.Unlock(); return len(rt.sent) }
 

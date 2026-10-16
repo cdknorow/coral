@@ -311,7 +311,6 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
-	h.goBG(func() { h.dispatchWebhooks(target, inbound.SubscriberID, inbound) })
 	if h.notifyFn != nil {
 		h.notifyFn()
 	}
@@ -436,7 +435,6 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "duplicate": true, "target_message_id": inbound.ID})
 		return
 	}
-	h.goBG(func() { h.dispatchWebhooks(target, inbound.SubscriberID, inbound) })
 	if h.notifyFn != nil {
 		h.notifyFn()
 	}

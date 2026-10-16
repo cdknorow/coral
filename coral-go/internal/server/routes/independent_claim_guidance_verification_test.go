@@ -28,9 +28,9 @@ func TestIndependentClaimGuidanceAndQueueSafety(t *testing.T) {
 	h.SetTerminal(terminal)
 
 	ctx := context.Background()
-	_, err := h.bs.Subscribe(ctx, "team", "Dev1", "Developer", "dev1", nil, nil, "all", false)
+	_, err := h.bs.Subscribe(ctx, "team", "Dev1", "Developer", "dev1", nil, "all", false)
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, "team", "Dev2", "Developer", "dev2", nil, nil, "all", false)
+	_, err = h.bs.Subscribe(ctx, "team", "Dev2", "Developer", "dev2", nil, "all", false)
 	require.NoError(t, err)
 
 	base := server.URL + "/api/board/team"

@@ -122,7 +122,7 @@ func TestOneshotRuns(t *testing.T) {
 	ctx := context.Background()
 
 	displayName := "My Task"
-	runID, err := s.CreateOneshotRun(ctx, "2026-01-01T00:00:00Z", &displayName, nil)
+	runID, err := s.CreateOneshotRun(ctx, "2026-01-01T00:00:00Z", &displayName)
 	require.NoError(t, err)
 	assert.Greater(t, runID, int64(0))
 

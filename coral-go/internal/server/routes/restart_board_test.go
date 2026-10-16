@@ -21,10 +21,10 @@ func TestRestartPreservesSubscriptionWithoutStoredBoard(t *testing.T) {
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
 		SessionID: oldID, AgentType: "codex", AgentName: "coral-go", DisplayName: strPtr("UI"),
 	}))
-	_, err := handler.bs.Subscribe(ctx, "coral-task-workflows", "UI", "UI", oldName, nil, nil, "all", true)
+	_, err := handler.bs.Subscribe(ctx, "coral-task-workflows", "UI", "UI", oldName, nil, "all", true)
 	require.NoError(t, err)
 	// A same-role subscription on another board must not be migrated.
-	_, err = handler.bs.Subscribe(ctx, "other-board", "UI", "UI", "codex-other", nil, nil, "mentions")
+	_, err = handler.bs.Subscribe(ctx, "other-board", "UI", "UI", "codex-other", nil, "mentions")
 	require.NoError(t, err)
 	resp, err := http.Post(server.URL+"/api/sessions/live/"+oldName+"/restart", "application/json",
 		bytes.NewBufferString(`{"session_id":"restart-board-worker","agent_type":"codex"}`))

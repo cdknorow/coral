@@ -23,7 +23,7 @@ func TestPollWaitWakesOnWaitChanges(t *testing.T) {
 	ctx := context.Background()
 	project := "wait-signal"
 	for _, s := range [][3]string{{"Worker", "Developer", "tmux-w"}, {"Lead", "Lead", "tmux-l"}} {
-		_, err := handler.bs.Subscribe(ctx, project, s[0], s[1], s[2], nil, nil, "all")
+		_, err := handler.bs.Subscribe(ctx, project, s[0], s[1], s[2], nil, "all")
 		require.NoError(t, err)
 	}
 	poll := func(timeout int) (chan map[string]any, time.Time) {

@@ -232,7 +232,7 @@ const (
 
 func subscribeSession(t *testing.T, h *BoardHandler, project, subscriber, sessionUUID string) {
 	t.Helper()
-	_, err := h.bs.Subscribe(context.Background(), project, subscriber, subscriber, "claude-"+sessionUUID, nil, nil, "all")
+	_, err := h.bs.Subscribe(context.Background(), project, subscriber, subscriber, "claude-"+sessionUUID, nil, "all")
 	require.NoError(t, err)
 }
 

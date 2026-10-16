@@ -13,7 +13,7 @@
  * selected) because they describe the hub itself or its user, not an agent:
  *   - /api/settings, /api/settings/default-prompts (user preferences)
  *   - /api/themes*, /api/tags, /api/folder-tags, /api/views (hub UI data)
- *   - /api/webhooks*, /api/scheduled/*, /api/workflows (hub automation)
+ *   - /api/scheduled/*, /api/workflows (hub automation)
  *   - /api/system/* (update check, privacy, API key,
  *     network info, database security, editors; system/status and
  *     system/cli-check are local unless launching on a remote, see WP6)

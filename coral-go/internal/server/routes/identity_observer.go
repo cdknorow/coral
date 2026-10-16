@@ -306,10 +306,6 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/cloud/connect/cancel":                 "cancel connecting to Coral Hub",
 	"POST /api/cloud/disconnect":                     "disconnect from Coral Hub",
 	"POST /api/cloud/redeem":                         "redeem a Coral Hub credential",
-	"POST /api/webhooks":                             "create a webhook",
-	"PATCH /api/webhooks/{webhookID}":                "change a webhook",
-	"DELETE /api/webhooks/{webhookID}":               "delete a webhook",
-	"POST /api/webhooks/{webhookID}/test":            "send a test webhook",
 	// #3553: the Operator removes an artifact (also refused to anyone but a person, in every mode).
 	"DELETE /api/artifacts/{id}": "delete an artifact",
 	// #3554: pruning, and the keep mark that protects an artifact from it.
@@ -336,7 +332,7 @@ var recordedAgentRoutes = map[string]string{
 }
 
 // guardedRoutePrefixes limit the (costly) route match to the paths the tables above can hold.
-var guardedRoutePrefixes = []string{"/api/workflows", "/api/scheduled/", "/api/tasks/", "/api/settings", "/api/sessions/launch", "/api/system/", "/api/cloud/", "/api/webhooks", "/api/teams/"}
+var guardedRoutePrefixes = []string{"/api/workflows", "/api/scheduled/", "/api/tasks/", "/api/settings", "/api/sessions/launch", "/api/system/", "/api/cloud/", "/api/teams/"}
 
 // guardedRoute returns the route pattern of r when it is one of operatorOnlyRoutes (only is
 // true: an agent is refused in strict mode) or recordedAgentRoutes (recorded, never refused),

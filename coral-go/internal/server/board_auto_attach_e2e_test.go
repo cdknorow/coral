@@ -39,7 +39,7 @@ func TestBoardAutoAttachEndToEnd(t *testing.T) {
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "dev", WorkingDir: work}))
 	tok, err := srv.db.MintSessionToken(ctx, sid, "claude-"+sid)
 	require.NoError(t, err)
-	_, err = srv.boardStore.Subscribe(ctx, "team", "Dev", "Dev", "claude-"+sid, nil, nil, "all")
+	_, err = srv.boardStore.Subscribe(ctx, "team", "Dev", "Dev", "claude-"+sid, nil, "all")
 	require.NoError(t, err)
 
 	do := func(method, path, body string, hdr http.Header) (int, []byte) {

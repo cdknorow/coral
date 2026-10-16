@@ -1,12 +1,9 @@
 package background
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,7 +13,6 @@ import (
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -127,8 +123,7 @@ type JobScheduler struct {
 	running        map[int64]context.CancelFunc // run_id -> cancel func for watchdog
 	launchFn       func(ctx context.Context, job store.ScheduledJob, runID int64) error
 	nextFireTimeFn func(cronExpr, tz string, after time.Time) (time.Time, error)
-	webhookSem     chan struct{} // limits concurrent webhook dispatch goroutines
-	worktreeRoot   string        // where run worktrees go (Coral's data dir); "" = beside the repo (legacy)
+	worktreeRoot   string // where run worktrees go (Coral's data dir); "" = beside the repo (legacy)
 	workflowRunner *WorkflowRunner
 	workflowStore  *store.WorkflowStore
 }
@@ -147,7 +142,6 @@ func NewJobScheduler(schedStore *store.ScheduleStore, interval time.Duration) *J
 		interval:      interval,
 		logger:        slog.Default().With("service", "job_scheduler"),
 		running:       make(map[int64]context.CancelFunc),
-		webhookSem:    make(chan struct{}, 10), // limit to 10 concurrent webhook dispatches
 	}
 }
 
@@ -487,15 +481,12 @@ func (s *JobScheduler) FireOneshot(ctx context.Context, config map[string]interf
 	s.runningMu.Unlock()
 
 	now := time.Now().UTC().Format(store.ISOFormat)
-	var displayName, webhookURL *string
+	var displayName *string
 	if v, ok := config["display_name"].(string); ok && v != "" {
 		displayName = &v
 	}
-	if v, ok := config["webhook_url"].(string); ok && v != "" {
-		webhookURL = &v
-	}
 
-	runID, err := s.store.CreateOneshotRun(ctx, now, displayName, webhookURL)
+	runID, err := s.store.CreateOneshotRun(ctx, now, displayName)
 	if err != nil {
 		return 0, err
 	}
@@ -592,9 +583,6 @@ func (s *JobScheduler) KillRun(ctx context.Context, runID int64) bool {
 		autoAcceptMu.Unlock()
 	}
 
-	// Fire webhook
-	s.fireWebhookForRun(runID)
-
 	return true
 }
 
@@ -673,7 +661,6 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 				"error_msg":   errMsg,
 				"finished_at": now,
 			})
-			s.fireWebhookForRun(runID)
 			return
 		}
 		workingDir = worktreeDir
@@ -686,9 +673,6 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		"started_at":    startedAt,
 		"worktree_path": workingDir,
 	})
-
-	// Fire "running" webhook
-	s.fireWebhookForRun(runID)
 
 	// Launch the agent via the configured launch function
 	var launchErr error
@@ -742,7 +726,7 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		}
 	}
 
-	// KillRun has already recorded the user's kill and fired its webhook; don't
+	// KillRun has already recorded the user's kill; don't
 	// overwrite it with the "failed" that its cancel produces here.
 	if !userKilled {
 		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
@@ -750,9 +734,6 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 			"finished_at": now,
 			"exit_reason": exitReason,
 		})
-
-		// Fire completion webhook
-		s.fireWebhookForRun(runID)
 	}
 
 	// Cleanup worktree if configured
@@ -805,62 +786,6 @@ func (s *JobScheduler) tagSession(ctx context.Context, sessionID, tagName string
 		s.logger.Warn("failed to tag session", "session_id", sessionID, "tag", tagName, "error", err)
 	}
 }
-
-// fireWebhookForRun looks up a run's webhook_url and fires a callback.
-func (s *JobScheduler) fireWebhookForRun(runID int64) {
-	run, err := s.store.GetScheduledRun(context.Background(), runID)
-	if err != nil || run == nil || run.WebhookURL == nil || *run.WebhookURL == "" {
-		return
-	}
-
-	var durationS *int
-	if run.StartedAt != nil && run.FinishedAt != nil {
-		start, err1 := parseTimestamp(*run.StartedAt)
-		end, err2 := parseTimestamp(*run.FinishedAt)
-		if err1 == nil && err2 == nil {
-			d := int(end.Sub(start).Seconds())
-			durationS = &d
-		}
-	}
-
-	payload := map[string]interface{}{
-		"run_id":      run.ID,
-		"session_id":  run.SessionID,
-		"status":      run.Status,
-		"exit_reason": run.ExitReason,
-		"started_at":  run.StartedAt,
-		"finished_at": run.FinishedAt,
-		"duration_s":  durationS,
-		"source":      "coral",
-	}
-
-	go func() {
-		// Acquire semaphore to limit concurrent webhook goroutines
-		s.webhookSem <- struct{}{}
-		defer func() { <-s.webhookSem }()
-
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return
-		}
-		req, err := http.NewRequest("POST", *run.WebhookURL, bytes.NewReader(body))
-		if err != nil {
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := runWebhookClient.Do(req)
-		if err != nil {
-			s.logger.Warn("webhook callback failed", "run_id", runID, "error", err)
-			return
-		}
-		resp.Body.Close()
-		s.logger.Info("webhook callback sent", "run_id", runID, "status", resp.StatusCode)
-	}()
-}
-
-// runWebhookClient posts job-run callbacks (#3363): private and loopback targets are refused
-// at dial time unless the webhook_allow_private setting allows them.
-var runWebhookClient = httputil.WebhookClient(10 * time.Second)
 
 // createWorktree creates a git worktree for an isolated job run.
 func runGitCmd(ctx context.Context, repoPath string, args ...string) error {

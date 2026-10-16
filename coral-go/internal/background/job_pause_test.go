@@ -88,7 +88,7 @@ func TestRunWorktreeDir(t *testing.T) {
 func TestOneOffRunsHaveNoSentinelName(t *testing.T) {
 	ss := store.NewScheduleStore(setupTestDB(t))
 	ctx := context.Background()
-	_, err := ss.CreateOneshotRun(ctx, time.Now().UTC().Format(store.ISOFormat), nil, nil)
+	_, err := ss.CreateOneshotRun(ctx, time.Now().UTC().Format(store.ISOFormat), nil)
 	require.NoError(t, err)
 	active, err := ss.ListActiveRuns(ctx)
 	require.NoError(t, err)

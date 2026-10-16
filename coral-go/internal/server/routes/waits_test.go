@@ -20,7 +20,7 @@ func TestBoardWaitRoutes_RegisterAndRetrieve(t *testing.T) {
 	project := "wait-test"
 
 	// Subscribe agent
-	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "tmux-w1", nil, nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "tmux-w1", nil, "all")
 	require.NoError(t, err)
 
 	// 1. Initially no active wait
@@ -88,7 +88,7 @@ func TestBoardWaitRoutes_Cancel(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	project := "wait-cancel"
 
-	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "tmux-w1", nil, nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "tmux-w1", nil, "all")
 	require.NoError(t, err)
 
 	_, err = handler.bs.RegisterWait(context.Background(), project, "worker-1", "tmux-w1", "message", "Lead", "waiting for approval", time.Hour)
@@ -117,9 +117,9 @@ func TestBoardWaitRoutes_MessageResolutionNotifiesTerminal(t *testing.T) {
 
 	project := "wait-notify"
 
-	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, "all")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(context.Background(), project, "Orchestrator", "Lead", "tmux-orch", nil, nil, "all")
+	_, err = handler.bs.Subscribe(context.Background(), project, "Orchestrator", "Lead", "tmux-orch", nil, "all")
 	require.NoError(t, err)
 
 	// Worker registers wait for Orchestrator
@@ -166,9 +166,9 @@ func TestBoardWaitRoutes_TaskResolutionNotifiesTerminal(t *testing.T) {
 
 	project := "wait-task-notify"
 
-	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, "all")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(context.Background(), project, "Lead", "Lead", "tmux-lead", nil, nil, "all")
+	_, err = handler.bs.Subscribe(context.Background(), project, "Lead", "Lead", "tmux-lead", nil, "all")
 	require.NoError(t, err)
 
 	// Create and claim a task
@@ -219,9 +219,9 @@ func TestBoardWaitRoutes_PollWait(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	project := "wait-poll"
 
-	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, nil, "all")
+	_, err := handler.bs.Subscribe(context.Background(), project, "Worker", "Developer", "tmux-w1", nil, "all")
 	require.NoError(t, err)
-	_, err = handler.bs.Subscribe(context.Background(), project, "Lead", "Lead", "tmux-lead", nil, nil, "all")
+	_, err = handler.bs.Subscribe(context.Background(), project, "Lead", "Lead", "tmux-lead", nil, "all")
 	require.NoError(t, err)
 
 	// Register wait

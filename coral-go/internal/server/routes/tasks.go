@@ -85,11 +85,9 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "'prompt' is required")
 		return
 	}
-	if body.WebhookURL != "" {
-		if err := httputil.ValidateWebhookURL(r.Context(), body.WebhookURL); err != nil {
-			errBadRequest(w, err.Error())
-			return
-		}
+	if body.WebhookURL != "" { // webhooks were removed (#3646)
+		errBadRequest(w, errWebhooksNotSupported)
+		return
 	}
 	if strings.TrimSpace(body.RepoPath) == "" {
 		errBadRequest(w, "'repo_path' is required")
@@ -180,7 +178,6 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		"max_duration_s":   float64(body.MaxDurationS),
 		"cleanup_worktree": cleanupWT,
 		"create_worktree":  createWT,
-		"webhook_url":      body.WebhookURL,
 		"auto_accept":      body.AutoAccept,
 		"max_auto_accepts": float64(body.MaxAutoAccepts),
 	}
@@ -201,14 +198,11 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 
 	// Fallback: just create a DB record if no scheduler is wired
 	now := store.NowUTC()
-	var webhookURL, displayName *string
-	if body.WebhookURL != "" {
-		webhookURL = &body.WebhookURL
-	}
+	var displayName *string
 	if body.DisplayName != "" {
 		displayName = &body.DisplayName
 	}
-	runID, err := h.sched.CreateOneshotRun(r.Context(), now, displayName, webhookURL)
+	runID, err := h.sched.CreateOneshotRun(r.Context(), now, displayName)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return

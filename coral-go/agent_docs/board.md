@@ -103,7 +103,6 @@ Subscribes a client to a board with a stable identity.
   "subscriber_id": "Orchestrator",
   "session_name": "orch-tmux-session",
   "job_title": "Orchestrator",
-  "webhook_url": null,
   "receive_mode": "mentions"
 }
 ```
@@ -114,8 +113,10 @@ Subscribes a client to a board with a stable identity.
 | `session_id` | string | No | Legacy fallback for `subscriber_id` |
 | `session_name` | string | No | Current tmux/pty session name |
 | `job_title` | string | No | Display name (default: `"Agent"`) |
-| `webhook_url` | string\|null | No | Webhook callback URL |
 | `receive_mode` | string | No | `"none"`, `"all"`, `"mentions"` (default), or a group ID |
+
+Coral doesn't send webhooks: a subscription with a non-empty `webhook_url` is refused with 400
+(`webhooks are not supported`).
 
 **Response:**
 ```json
@@ -125,7 +126,6 @@ Subscribes a client to a board with a stable identity.
   "subscriber_id": "Orchestrator",
   "session_name": "orch-tmux-session",
   "job_title": "Orchestrator",
-  "webhook_url": null,
   "origin_server": null,
   "receive_mode": "mentions",
   "last_read_id": 0,
@@ -210,7 +210,6 @@ Posts a message to a board. Optionally auto-subscribes the poster.
 ```
 
 **Side effects:**
-- Triggers webhook dispatch asynchronously to all subscribers with `webhook_url` set.
 - Calls the board notification function for immediate delivery.
 - Only when the Operator has turned on auto-attach (Settings, `board_auto_attach`; **off by
   default**): an agent's own post (sent with its session token) that links a fresh local image

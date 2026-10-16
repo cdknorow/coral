@@ -15,7 +15,7 @@ import (
 func TestPostHubMessage(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	_, err := s.Subscribe(ctx, "p", "Dev", "Backend Dev", "s", nil, nil, "")
+	_, err := s.Subscribe(ctx, "p", "Dev", "Backend Dev", "s", nil, "")
 	require.NoError(t, err)
 	m, err := s.PostHubMessage(ctx, "p", "hub-user-1234abcd", "[Operator via Coral Hub, hub-user-1234abcd] @Dev hi", nil, true)
 	require.NoError(t, err)

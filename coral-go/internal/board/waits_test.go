@@ -57,7 +57,7 @@ func TestResolveMatchingMessageWaits(t *testing.T) {
 	ctx := context.Background()
 
 	// Subscribe agent
-	_, err = s.Subscribe(ctx, "proj", "Music SFX director", "Music", "sess-music", nil, nil, "mentions")
+	_, err = s.Subscribe(ctx, "proj", "Music SFX director", "Music", "sess-music", nil, "mentions")
 	require.NoError(t, err)
 
 	// Register wait for Orchestrator
@@ -89,7 +89,7 @@ func TestResolveMatchingMessageWaits_ExplicitMention(t *testing.T) {
 	defer s.Close()
 	ctx := context.Background()
 
-	_, err = s.Subscribe(ctx, "proj", "Music SFX director", "Music", "sess-music", nil, nil, "mentions")
+	_, err = s.Subscribe(ctx, "proj", "Music SFX director", "Music", "sess-music", nil, "mentions")
 	require.NoError(t, err)
 
 	// Wait specifically for Lead Developer
@@ -108,9 +108,9 @@ func TestResolveMatchingMessageWaits_IgnoresMessageAddressedToAnotherAgent(t *te
 	require.NoError(t, err)
 	defer s.Close()
 	ctx := context.Background()
-	_, err = s.Subscribe(ctx, "proj", "SEO Agent", "SEO Agent", "sess-seo", nil, nil, "mentions")
+	_, err = s.Subscribe(ctx, "proj", "SEO Agent", "SEO Agent", "sess-seo", nil, "mentions")
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "proj", "Lead Developer", "Lead Developer", "sess-lead", nil, nil, "mentions")
+	_, err = s.Subscribe(ctx, "proj", "Lead Developer", "Lead Developer", "sess-lead", nil, "mentions")
 	require.NoError(t, err)
 	_, err = s.RegisterWait(ctx, "proj", "SEO Agent", "sess-seo", "message", "Orchestrator", "waiting for next instruction", time.Hour)
 	require.NoError(t, err)

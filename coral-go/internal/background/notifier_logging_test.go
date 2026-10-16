@@ -66,7 +66,7 @@ func TestBoardNotifier_MentionsNudgesTrackUnreadCount(t *testing.T) {
 	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
 		return []AgentInfo{{AgentType: "claude", AgentName: "dev", SessionID: sid, DisplayName: "Dev"}}, nil
 	})
-	_, err := bs.Subscribe(ctx, "team", "Dev", "Developer", "claude-"+sid, nil, nil, "mentions")
+	_, err := bs.Subscribe(ctx, "team", "Dev", "Developer", "claude-"+sid, nil, "mentions")
 	require.NoError(t, err)
 	post := func(from, text string) int64 {
 		m, err := bs.PostMessage(ctx, "team", from, text, nil)
@@ -125,7 +125,7 @@ func TestBoardNotifier_RoutinePassesLogNothingAtInfo(t *testing.T) {
 		sid := fmt.Sprintf("11111111-2222-3333-4444-%012d", i)
 		name := fmt.Sprintf("Dev%d", i)
 		agents = append(agents, AgentInfo{AgentType: "claude", AgentName: name, SessionID: sid, DisplayName: name})
-		_, err := bs.Subscribe(ctx, "team", name, "Developer", "claude-"+sid, nil, nil, "mentions")
+		_, err := bs.Subscribe(ctx, "team", name, "Developer", "claude-"+sid, nil, "mentions")
 		require.NoError(t, err)
 	}
 	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) { return agents, nil })
@@ -154,7 +154,7 @@ func TestBoardNotifier_UnreadLookupFailureIsWarn(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	sid := "11111111-2222-3333-4444-555555555555"
-	_, err = bs.Subscribe(ctx, "team", "Dev", "Developer", "claude-"+sid, nil, nil, "mentions")
+	_, err = bs.Subscribe(ctx, "team", "Dev", "Developer", "claude-"+sid, nil, "mentions")
 	require.NoError(t, err)
 	raw, err := sql.Open("sqlite", path)
 	require.NoError(t, err)

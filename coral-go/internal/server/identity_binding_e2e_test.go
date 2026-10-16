@@ -112,9 +112,9 @@ func TestIdentityBindingOnAgentRoutes(t *testing.T) {
 	expect(401, "POST", "/api/sessions/live/x/token-usage", `{"session_id":"`+sidT+`","input_tokens":5}`, nil, "hook-only routes still need a token")
 
 	// Boards: a presented token decides who the caller is.
-	_, err = srv.boardStore.Subscribe(ctx, "b3495", "Alpha", "Alpha", "claude-"+sidA, nil, nil, "all")
+	_, err = srv.boardStore.Subscribe(ctx, "b3495", "Alpha", "Alpha", "claude-"+sidA, nil, "all")
 	require.NoError(t, err)
-	_, err = srv.boardStore.Subscribe(ctx, "b3495", "Beta", "Beta", "claude-"+sidB, nil, nil, "all")
+	_, err = srv.boardStore.Subscribe(ctx, "b3495", "Beta", "Beta", "claude-"+sidB, nil, "all")
 	require.NoError(t, err)
 	out := expect(403, "POST", "/api/board/b3495/messages", `{"subscriber_id":"Beta","content":"as Beta"}`, asA, "impersonating another subscriber")
 	assert.Equal(t, "identity_mismatch", out["code"])
@@ -174,7 +174,7 @@ func TestIdentityBindingBoardStoreErrorFailsClosed(t *testing.T) {
 	require.NoError(t, store.NewSessionStore(srv.db).RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "agent-dddd", WorkingDir: "/tmp/dddd"}))
 	tok, err := srv.db.MintSessionToken(ctx, sid, "claude-"+sid)
 	require.NoError(t, err)
-	_, err = srv.boardStore.Subscribe(ctx, "b3512", "Delta", "Delta", "claude-"+sid, nil, nil, "all")
+	_, err = srv.boardStore.Subscribe(ctx, "b3512", "Delta", "Delta", "claude-"+sid, nil, "all")
 	require.NoError(t, err)
 	require.NoError(t, srv.boardStore.Close()) // every read fails from here on
 	post := func(body string) (int, map[string]any) {

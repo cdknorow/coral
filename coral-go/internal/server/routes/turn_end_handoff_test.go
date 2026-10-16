@@ -27,9 +27,9 @@ func TestTurnEndHandoff(t *testing.T) {
 	board := "team-3481"
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "echo", WorkingDir: "/w", BoardName: &board}))
 	tok := agentToken(t, h, sid, name)
-	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, "all")
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, nil, "all")
+	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 
 	ask := func(body, tok string) (int, map[string]any) {
@@ -101,9 +101,9 @@ func TestTurnEndHandoffSkipsWhileASendIsInProgress(t *testing.T) {
 	board := "team-3481b"
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "foxtrot", WorkingDir: "/w", BoardName: &board}))
 	tok := agentToken(t, h, sid, name)
-	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, "all")
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, nil, "all")
+	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 	_, err = h.bs.PostMessage(ctx, board, "Lead", "@Worker news", nil)
 	require.NoError(t, err)
@@ -143,9 +143,9 @@ func TestTurnEndHandoffSkipsANudgeTypedDuringTheTurn(t *testing.T) {
 	board := "team-3510"
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "golf", WorkingDir: "/w", BoardName: &board}))
 	tok := agentToken(t, h, sid, name)
-	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, "all")
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, nil, "all")
+	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 	_, err = h.bs.PostMessage(ctx, board, "Lead", "@Worker mid-turn message", nil)
 	require.NoError(t, err)
@@ -213,9 +213,9 @@ func TestTurnEndHandoffAfterARealTypedNudge(t *testing.T) {
 	board := "team-3510b"
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "hotel", WorkingDir: "/w", BoardName: &board}))
 	tok := agentToken(t, h, sid, name)
-	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, nil, "all")
+	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, "all")
 	require.NoError(t, err)
-	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, nil, "all")
+	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 	t.Cleanup(func() { ptymanager.DropHeld(name, "test done") })
 

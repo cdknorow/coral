@@ -40,7 +40,7 @@ func TestCrossTeamControlCharacterCannotHideAMention(t *testing.T) {
 	for _, p := range []struct{ board, id, role string }{
 		{"alpha", "Orchestrator", "Orchestrator"}, {"beta", "Orchestrator", "Orchestrator"}, {"beta", "Worker B", "Backend Dev"},
 	} {
-		_, err := s.Subscribe(ctx, p.board, p.id, p.role, "tmux-"+p.board+"-"+strings.ReplaceAll(p.id, " ", ""), nil, nil, "mentions")
+		_, err := s.Subscribe(ctx, p.board, p.id, p.role, "tmux-"+p.board+"-"+strings.ReplaceAll(p.id, " ", ""), nil, "mentions")
 		require.NoError(t, err)
 	}
 	origin := MessageOrigin{ServerID: "local", Board: "alpha", Sender: "Orchestrator", SenderRole: "Orchestrator", TargetServerID: "local", TargetBoard: "beta"}

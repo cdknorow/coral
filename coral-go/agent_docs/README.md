@@ -31,7 +31,6 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 - [Message Board](board.md) — Multi-agent message board, subscriptions, groups, board status/routing, board tasks
 - [Cross-team Messaging](cross-team.md) — Orchestrator-to-Orchestrator messages between teams (`coral-board send`), off by default
 - [Notifications](notifications.md) — Push toast and alert notifications to the Coral UI
-- [Webhooks](webhooks.md) — Webhook management and delivery tracking
 
 ### Configuration
 - [Multi-Server Hub](hub.md) — Register remote Coral servers, merged agent list, proxy and remote launch, Coral Hub tunnel refusals, versions

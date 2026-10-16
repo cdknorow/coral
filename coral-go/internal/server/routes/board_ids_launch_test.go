@@ -113,7 +113,7 @@ func TestLaunchBoardChoice(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, code, "another board's id as a name: %v", out)
 
 	// A legacy board (id = name) counts as taken too.
-	_, err = bs.Subscribe(ctx, "legacy-team", "Lead", "Lead", "", nil, nil, "all")
+	_, err = bs.Subscribe(ctx, "legacy-team", "Lead", "Lead", "", nil, "all")
 	require.NoError(t, err)
 	code, out = call(handler.LaunchTeam, team(map[string]any{"board_name": "legacy-team"}))
 	assert.Equal(t, http.StatusConflict, code, out)

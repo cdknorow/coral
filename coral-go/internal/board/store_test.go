@@ -22,7 +22,7 @@ func testStore(t *testing.T) *Store {
 
 // sub is a test helper that calls Subscribe with subscriberID used as both subscriber and session name.
 func sub(s *Store, ctx context.Context, project, subscriberID, jobTitle string) (*Subscriber, error) {
-	return s.Subscribe(ctx, project, subscriberID, jobTitle, "tmux-"+subscriberID, nil, nil, "")
+	return s.Subscribe(ctx, project, subscriberID, jobTitle, "tmux-"+subscriberID, nil, "")
 }
 
 func TestSubscribeAndList(t *testing.T) {
@@ -105,11 +105,11 @@ func TestReadMessages_DefaultTaggedAndAll(t *testing.T) {
 	ctx := context.Background()
 
 	// Worker (non-orchestrator) and Orchestrator
-	_, err := s.Subscribe(ctx, "proj", "worker-1", "Backend Dev", "tmux-worker-1", nil, nil, "")
+	_, err := s.Subscribe(ctx, "proj", "worker-1", "Backend Dev", "tmux-worker-1", nil, "")
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "proj", "worker-2", "Frontend Dev", "tmux-worker-2", nil, nil, "")
+	_, err = s.Subscribe(ctx, "proj", "worker-2", "Frontend Dev", "tmux-worker-2", nil, "")
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "proj", "orch", "Orchestrator", "tmux-orch", nil, nil, "")
+	_, err = s.Subscribe(ctx, "proj", "orch", "Orchestrator", "tmux-orch", nil, "")
 	require.NoError(t, err)
 
 	// 1. Post untagged message from worker-2
@@ -318,9 +318,9 @@ func TestGetSubscription_MultipleBoards(t *testing.T) {
 
 	// Subscribe the same subscriber_id ("Orchestrator") to two different boards.
 	// This simulates the stale subscription bug: same role on multiple teams.
-	_, err := s.Subscribe(ctx, "board-A", "Orchestrator", "Orchestrator", "tmux-session-A", nil, nil, "")
+	_, err := s.Subscribe(ctx, "board-A", "Orchestrator", "Orchestrator", "tmux-session-A", nil, "")
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "board-B", "Orchestrator", "Orchestrator", "tmux-session-B", nil, nil, "")
+	_, err = s.Subscribe(ctx, "board-B", "Orchestrator", "Orchestrator", "tmux-session-B", nil, "")
 	require.NoError(t, err)
 
 	// GetSubscription by subscriber_id returns *some* active subscription.
@@ -1228,9 +1228,9 @@ func TestDeleteProject(t *testing.T) {
 func TestMarkReadThrough(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	_, err := s.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch", nil, nil, "all")
+	_, err := s.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch", nil, "all")
 	require.NoError(t, err)
-	_, err = s.Subscribe(ctx, "proj", "Dev", "Dev", "claude-dev", nil, nil, "all")
+	_, err = s.Subscribe(ctx, "proj", "Dev", "Dev", "claude-dev", nil, "all")
 	require.NoError(t, err)
 
 	var ids []int64

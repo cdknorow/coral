@@ -3384,7 +3384,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	if restartSubscription != nil {
 		sub := restartSubscription
 		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
-			sub.WebhookURL, sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
+			sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
 			errInternalServer(w, err.Error())
 			return
 		}
@@ -3611,7 +3611,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	// Re-subscribe to board — subscriber_id (role) is stable, so the cursor persists automatically.
 	if sub := resumeSubscription; sub != nil {
 		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
-			sub.WebhookURL, sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
+			sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
 			log.Printf("[resume] re-subscribe %s to board %s: %v", newSessionName, sub.Project, err)
 		}
 		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
@@ -5357,7 +5357,7 @@ func (h *SessionsHandler) setupBoardAndPrompt(sessionID, sessionName, agentType,
 			receiveMode = existing.ReceiveMode
 		}
 
-		if _, err := h.bs.Subscribe(ctx, boardName, subscriberID, role, sessionName, nil, nil, receiveMode, isOrchestrator); err != nil {
+		if _, err := h.bs.Subscribe(ctx, boardName, subscriberID, role, sessionName, nil, receiveMode, isOrchestrator); err != nil {
 			log.Printf("Failed to subscribe session %s to board %s: %v", sessionID[:8], boardName, err)
 		}
 		// The subscription now holds the name; the reservation that covered the launch goes.
