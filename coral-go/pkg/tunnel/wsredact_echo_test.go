@@ -58,7 +58,7 @@ func TestWSRedactTypingEchoIsNotHeldBack(t *testing.T) {
 			dst := &wsRecorder{}
 			w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
 			defer w.close()
-			lat := typeKeys(t, w, dst, "$ ", cmd, 2*time.Second)
+			lat := typeKeys(t, w, dst, "$ ", cmd, 300*time.Millisecond)
 			var slow []string
 			for i, d := range lat {
 				if d > echoBound {
@@ -70,22 +70,49 @@ func TestWSRedactTypingEchoIsNotHeldBack(t *testing.T) {
 		})
 	}
 
-	t.Run("a token typed key by key is still held", func(t *testing.T) {
-		tok := fake("ghp_", 36, alnum)
-		on := atomic.Bool{}
-		on.Store(true)
-		dst := &wsRecorder{}
-		w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
-		defer w.close()
-		require.NoError(t, w.write(websocket.MessageBinary, []byte("$ export T=")))
-		for i := 0; i < 16; i++ { // the prefix and 12 characters of the value
-			require.NoError(t, w.write(websocket.MessageBinary, []byte(tok[i:i+1])))
+	// The operator's decision for #3958: nothing on the terminal stream is held, so every key leaves at once, a token's
+	// keys included (a secret split across frames can show in part: the accepted risk, recorded in the next test).
+	t.Run("every key leaves at once, a typed token's too", func(t *testing.T) {
+		for _, tok := range []string{fake("ghp_", 36, alnum), "AKIA" + fake("", 16, upper), fake("sk-", 40, alnum)} {
+			on := atomic.Bool{}
+			on.Store(true)
+			dst := &wsRecorder{}
+			w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
+			lat := typeKeys(t, w, dst, "$ export T=", tok, 300*time.Millisecond)
+			for i, d := range lat {
+				assert.LessOrEqual(t, d, echoBound, "key %d (%q) of a typed %s... token left within %v, was %v", i, tok[i], tok[:4], echoBound, d)
+			}
+			w.close()
 		}
-		time.Sleep(echoBound * 3) // longer than the echo bound: a value-bearing tail must still be held
-		assert.NotContains(t, dst.binary(), tok[4:], "no character of the value is shown while it is typed")
-		assert.NotContains(t, dst.binary(), tok[:4]+tok[4:5], "and the prefix is not released with a value start after it")
-		require.NoError(t, w.write(websocket.MessageBinary, []byte(tok[16:]+"\r\n")))
-		assert.NotContains(t, dst.binary(), tok[4:], "the finished token never appears")
-		assert.Contains(t, dst.binary(), redact.Marker, "it is replaced by the marker")
 	})
+}
+
+// A secret that arrives whole in one frame is replaced, with or without a prompt before it in the same frame.
+func TestWSRedactOneFrameSecretIsReplaced(t *testing.T) {
+	tok := fake("ghp_", 36, alnum)
+	on := atomic.Bool{}
+	on.Store(true)
+	dst := &wsRecorder{}
+	w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
+	defer w.close()
+	require.NoError(t, w.write(websocket.MessageBinary, []byte("$ echo "+tok+"\r\n")))
+	assert.Equal(t, "$ echo "+redact.Marker+"\r\n", dst.binary())
+	assert.NotContains(t, dst.binary(), tok[4:])
+}
+
+// ACCEPTED RISK (operator, #3958): the stream holds nothing, so a secret split across frames (typed key by key, or cut at a
+// frame boundary) can show in part, or in full, to a Hub viewer. This test documents that behaviour so a change to it is a
+// decision, not an accident; it asserts only what the operator accepted: the output arrives at once and nothing is lost.
+func TestWSRedactSplitFrameSecretIsTheAcceptedRisk(t *testing.T) {
+	tok := fake("ghp_", 36, alnum)
+	on := atomic.Bool{}
+	on.Store(true)
+	dst := &wsRecorder{}
+	w := newWSRedact(context.Background(), dst, redact.Rules, on.Load, true)
+	defer w.close()
+	require.NoError(t, w.write(websocket.MessageBinary, []byte("$ export T="+tok[:20])))
+	require.NoError(t, w.write(websocket.MessageBinary, []byte(tok[20:]+"\r\n")))
+	got := dst.binary()
+	assert.True(t, strings.HasPrefix(got, "$ export T="), "the output arrived: %q", got)
+	assert.Contains(t, got, tok[:20], "the first frame's part of the split secret shows (accepted risk, #3958)")
 }
