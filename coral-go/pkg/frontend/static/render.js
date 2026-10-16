@@ -49,32 +49,6 @@ function _getInitials(name) {
 }
 
 
-/** Collapse whitespace/newlines and truncate to one line. */
- /** Goal text for a session row: summary, else the first user prompt. */
- /**
- * Stable identity source for a session, or '' when there is none.
- * Chain: display_name -> auto_name (D8, transcript-derived, write-once) ->
- * board_job_title. Neither summary nor first_prompt is identity: the summary
- * changes as the agent works, and a prompt is a sentence or a path, not a
- * name (task #85). Both are rendered as goal text only.
- */
- // Placeholder of the command box. The full text (with the agent type and board) is too long for a phone's box and
-// gets cut off mid-word, so narrow screens get the target only.
-/** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */
-/* ── Agent state: one resolver, one vocabulary ─────────────────────────
- * Priority (AGENT_LIST_COMPACT state table):
- *   Ended (killed/history) > Sleeping > Stuck > Needs input > Check terminal
- *   > Ready for input (turn ended, awaiting instruction) > Working > Idle
- * Context, unread and selection are overlays, never winners. Every surface
- * (row dot/pill/aria, tooltip, mobile chip, workspace header, popout pill,
- * nav and group counts) reads this table so the words never diverge. */
- /** Turn ended and the agent awaits its next instruction. Backend contract:
- *  `awaiting_user` (boolean, explicit). Servers without the field still send
- *  the stop-derived `done`, which means exactly this (never "completed"). */
-/** Resolve the single winning state key for a session. */
-/** "Waiting on Lead Developer", "Waiting on task #12", from a registered board wait. */
-/** waiting_kind (from the agent's own request) → the word shown after Needs input. */
-/** Class list for the workspace header status dot (same table as the rows). */
 // ── Board accent colors (localStorage) ────────────────────────────────
 
 function _getBoardColor(boardName) {
