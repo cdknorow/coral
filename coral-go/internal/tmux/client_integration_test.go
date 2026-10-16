@@ -187,20 +187,18 @@ func TestClient_FindPane_BySessionID(t *testing.T) {
 	assert.Equal(t, "claude-abc123def456", pane.SessionName)
 }
 
-func TestClient_FindPane_ByName(t *testing.T) {
+// A bare name finds nothing, even one in a pane's title (#3687: an agent sets its own title).
+func TestClient_FindPane_ByNameFindsNothing(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 
 	createTestSession(t, c, "my-agent-session", t.TempDir())
-
-	// Set pane title to include agent name
-	c.SetPaneTitle(ctx, "my-agent-session.0", "my-repo — claude")
+	c.SetPaneTitle(ctx, "my-agent-session.0", "my-repo \u2014 claude")
 	time.Sleep(100 * time.Millisecond)
 
 	pane, err := c.FindPane(ctx, "my-repo", "", "")
 	require.NoError(t, err)
-	require.NotNil(t, pane)
-	assert.Equal(t, "my-agent-session", pane.SessionName)
+	assert.Nil(t, pane)
 }
 
 func TestClient_FindPane_NotFound(t *testing.T) {
@@ -297,10 +295,10 @@ func TestClient_ResizePane(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 
-	createTestSession(t, c, "resize-test", t.TempDir())
+	createTestSession(t, c, "claude-00003687-0040-4000-8000-000000000000", t.TempDir())
 
 	// Resize should not error
-	target, err := c.FindPaneTarget(ctx, "resize-test", "", "")
+	target, err := c.FindPaneTarget(ctx, "claude-00003687-0040-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotEmpty(t, target)
 
@@ -312,9 +310,9 @@ func TestClient_ResizePaneTarget_RowsAndCols(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 
-	createTestSession(t, c, "resize-dims", t.TempDir())
+	createTestSession(t, c, "claude-00003687-0041-4000-8000-000000000000", t.TempDir())
 
-	target, err := c.FindPaneTarget(ctx, "resize-dims", "", "")
+	target, err := c.FindPaneTarget(ctx, "claude-00003687-0041-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotEmpty(t, target)
 
@@ -348,9 +346,9 @@ func TestClient_ResizePaneTarget_RowsZeroSkipped(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 
-	createTestSession(t, c, "resize-norows", t.TempDir())
+	createTestSession(t, c, "claude-00003687-0042-4000-8000-000000000000", t.TempDir())
 
-	target, err := c.FindPaneTarget(ctx, "resize-norows", "", "")
+	target, err := c.FindPaneTarget(ctx, "claude-00003687-0042-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotEmpty(t, target)
 
@@ -487,10 +485,10 @@ func TestClient_SendRawKeys(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 
-	createTestSession(t, c, "rawkeys-test", t.TempDir())
+	createTestSession(t, c, "claude-00003687-0043-4000-8000-000000000000", t.TempDir())
 
 	// Send raw keys (Enter)
-	err := c.SendRawKeys(ctx, "rawkeys-test", []string{"Enter"}, "", "")
+	err := c.SendRawKeys(ctx, "claude-00003687-0043-4000-8000-000000000000", []string{"Enter"}, "", "")
 	require.NoError(t, err)
 }
 

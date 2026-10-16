@@ -123,12 +123,12 @@ func TestTmuxSessionTerminal_FindSession_ByName(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	dir := t.TempDir()
 
-	spawnTmuxSession(t, terminal, "find-me", dir)
+	spawnTmuxSession(t, terminal, "claude-00003687-0001-4000-8000-000000000000", dir)
 
-	pane, err := terminal.FindSession(context.Background(), "find-me", "", "")
+	pane, err := terminal.FindSession(context.Background(), "claude-00003687-0001-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
-	require.NotNil(t, pane, "expected to find session 'find-me'")
-	assert.Equal(t, "find-me", pane.SessionName)
+	require.NotNil(t, pane, "an exact session name finds its session (#3687: a bare name finds nothing)")
+	assert.Equal(t, "claude-00003687-0001-4000-8000-000000000000", pane.SessionName)
 }
 
 func TestTmuxSessionTerminal_FindSession_NotFound(t *testing.T) {
@@ -157,14 +157,14 @@ func TestTmuxSessionTerminal_KillSession(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "kill-me", t.TempDir())
-	assert.True(t, terminal.HasSession(ctx, "kill-me"))
+	spawnTmuxSession(t, terminal, "claude-00003687-0002-4000-8000-000000000000", t.TempDir())
+	assert.True(t, terminal.HasSession(ctx, "claude-00003687-0002-4000-8000-000000000000"))
 
-	err := terminal.KillSession(ctx, "kill-me", "", "")
+	err := terminal.KillSession(ctx, "claude-00003687-0002-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	assert.False(t, terminal.HasSession(ctx, "kill-me"))
+	assert.False(t, terminal.HasSession(ctx, "claude-00003687-0002-4000-8000-000000000000"))
 }
 
 func TestTmuxSessionTerminal_KillSession_NotFound(t *testing.T) {
@@ -187,12 +187,12 @@ func TestTmuxSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "io-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0003-4000-8000-000000000000", t.TempDir())
 
-	err := terminal.SendInput(ctx, "io-tmux", "echo TMUX_MARKER_42", "", "")
+	err := terminal.SendInput(ctx, "claude-00003687-0003-4000-8000-000000000000", "echo TMUX_MARKER_42", "", "")
 	require.NoError(t, err)
 
-	output := waitForCapture(t, terminal, "io-tmux", "TMUX_MARKER_42", 5*time.Second)
+	output := waitForCapture(t, terminal, "claude-00003687-0003-4000-8000-000000000000", "TMUX_MARKER_42", 5*time.Second)
 	assert.Contains(t, output, "TMUX_MARKER_42", "expected capture to contain marker")
 }
 
@@ -200,10 +200,10 @@ func TestTmuxSessionTerminal_CaptureOutput_EmptySession(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "empty-capture", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0007-4000-8000-000000000000", t.TempDir())
 
 	// Capture on a fresh session should not error (may return prompt text)
-	output, err := terminal.CaptureOutput(ctx, "empty-capture", 200, "", "")
+	output, err := terminal.CaptureOutput(ctx, "claude-00003687-0007-4000-8000-000000000000", 200, "", "")
 	require.NoError(t, err)
 	_ = output // content varies by shell; just verify no error
 }
@@ -214,10 +214,10 @@ func TestTmuxSessionTerminal_SendRawInput(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "raw-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0004-4000-8000-000000000000", t.TempDir())
 
 	// Send raw keys — should not error
-	err := terminal.SendRawInput(ctx, "raw-tmux", []string{"h", "i"}, "", "")
+	err := terminal.SendRawInput(ctx, "claude-00003687-0004-4000-8000-000000000000", []string{"h", "i"}, "", "")
 	require.NoError(t, err)
 }
 
@@ -227,32 +227,32 @@ func TestTmuxSessionTerminal_SendToTarget(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "target-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0005-4000-8000-000000000000", t.TempDir())
 
 	// Find the target first
-	pane, err := terminal.FindSession(ctx, "target-tmux", "", "")
+	pane, err := terminal.FindSession(ctx, "claude-00003687-0005-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, pane)
 
 	err = terminal.SendToTarget(ctx, pane.Target, "echo TARGET_OK")
 	require.NoError(t, err)
 
-	output := waitForCapture(t, terminal, "target-tmux", "TARGET_OK", 5*time.Second)
+	output := waitForCapture(t, terminal, "claude-00003687-0005-4000-8000-000000000000", "TARGET_OK", 5*time.Second)
 	assert.Contains(t, output, "TARGET_OK")
 }
 
 func TestTmuxSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
-	spawnTmuxSession(t, terminal, "long-target-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0009-4000-8000-000000000000", t.TempDir())
 
 	marker := "LONG_TMUX_HANDOFF_MARKER"
 	value := strings.Repeat("x", 1200) + marker
 	command := "printf '%s' '" + value + "'"
 	require.Greater(t, len(command), 900)
-	require.NoError(t, terminal.SendToTarget(ctx, "long-target-tmux:0.0", command))
+	require.NoError(t, terminal.SendToTarget(ctx, "claude-00003687-0009-4000-8000-000000000000:0.0", command))
 
-	output := waitForCapture(t, terminal, "long-target-tmux", marker, 5*time.Second)
+	output := waitForCapture(t, terminal, "claude-00003687-0009-4000-8000-000000000000", marker, 5*time.Second)
 	assert.Contains(t, output, marker)
 }
 
@@ -262,9 +262,9 @@ func TestTmuxSessionTerminal_ResizeSession(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "resize-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0008-4000-8000-000000000000", t.TempDir())
 
-	err := terminal.ResizeSession(ctx, "resize-tmux", 120, "", "")
+	err := terminal.ResizeSession(ctx, "claude-00003687-0008-4000-8000-000000000000", 120, "", "")
 	require.NoError(t, err)
 }
 
@@ -291,13 +291,13 @@ func TestTmuxSessionTerminal_RestartPane(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "restart-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0006-4000-8000-000000000000", t.TempDir())
 
 	// Send a command, then restart
-	terminal.SendInput(ctx, "restart-tmux", "echo BEFORE_RESTART", "", "")
+	terminal.SendInput(ctx, "claude-00003687-0006-4000-8000-000000000000", "echo BEFORE_RESTART", "", "")
 	time.Sleep(500 * time.Millisecond)
 
-	pane, err := terminal.FindSession(ctx, "restart-tmux", "", "")
+	pane, err := terminal.FindSession(ctx, "claude-00003687-0006-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, pane)
 
@@ -306,7 +306,7 @@ func TestTmuxSessionTerminal_RestartPane(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Session should still exist after restart
-	assert.True(t, terminal.HasSession(ctx, "restart-tmux"))
+	assert.True(t, terminal.HasSession(ctx, "claude-00003687-0006-4000-8000-000000000000"))
 }
 
 // ── Logging ──────────────────────────────────────────────────────────
@@ -315,9 +315,9 @@ func TestTmuxSessionTerminal_StartStopLogging(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "log-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0020-4000-8000-000000000000", t.TempDir())
 
-	pane, err := terminal.FindSession(ctx, "log-tmux", "", "")
+	pane, err := terminal.FindSession(ctx, "claude-00003687-0020-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, pane)
 
@@ -336,9 +336,9 @@ func TestTmuxSessionTerminal_ClearHistory(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "clear-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0021-4000-8000-000000000000", t.TempDir())
 
-	pane, err := terminal.FindSession(ctx, "clear-tmux", "", "")
+	pane, err := terminal.FindSession(ctx, "claude-00003687-0021-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, pane)
 
@@ -352,9 +352,9 @@ func TestTmuxSessionTerminal_SetPaneTitle(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "title-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0022-4000-8000-000000000000", t.TempDir())
 
-	pane, err := terminal.FindSession(ctx, "title-tmux", "", "")
+	pane, err := terminal.FindSession(ctx, "claude-00003687-0022-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, pane)
 
@@ -363,7 +363,7 @@ func TestTmuxSessionTerminal_SetPaneTitle(t *testing.T) {
 
 	// Verify the title was set by re-listing sessions
 	time.Sleep(200 * time.Millisecond)
-	paneAfter, err := terminal.FindSession(ctx, "title-tmux", "", "")
+	paneAfter, err := terminal.FindSession(ctx, "claude-00003687-0022-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, paneAfter)
 	assert.Equal(t, "My Custom Title", paneAfter.PaneTitle)
@@ -375,9 +375,9 @@ func TestTmuxSessionTerminal_FindTarget(t *testing.T) {
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
-	spawnTmuxSession(t, terminal, "findtarget-tmux", t.TempDir())
+	spawnTmuxSession(t, terminal, "claude-00003687-0023-4000-8000-000000000000", t.TempDir())
 
-	target, err := terminal.FindTarget(ctx, "findtarget-tmux", "", "")
+	target, err := terminal.FindTarget(ctx, "claude-00003687-0023-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, target, "expected non-empty target for existing session")
 }

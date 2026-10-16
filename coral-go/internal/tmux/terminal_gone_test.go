@@ -88,14 +88,15 @@ func TestMissingSessionPaneNeverReachesASibling(t *testing.T) {
 	}
 }
 
-// Legacy rows without a session id keep the name match: the fix is scoped to callers that
-// name a session.
-func TestLegacyNameMatchWithoutASessionID(t *testing.T) {
-	c, sibling := newSiblingOnly(t)
-	pane, err := c.FindPane(context.Background(), "team", "claude", "")
-	require.NoError(t, err)
-	require.NotNil(t, pane)
-	assert.Equal(t, sibling, pane.SessionName)
+// Without a session id there is no name match at all any more (#3687): the folder and the
+// title the sibling shares with "team" find nothing.
+func TestNoNameMatchWithoutASessionID(t *testing.T) {
+	c, _ := newSiblingOnly(t)
+	for _, name := range []string{"team", "Team", "claude", "team claude"} {
+		pane, err := c.FindPane(context.Background(), name, "claude", "")
+		require.NoError(t, err)
+		assert.Nil(t, pane, name)
+	}
 }
 
 // The agent's own pane is still found by its session id, whatever name the caller passes.

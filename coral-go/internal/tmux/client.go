@@ -382,7 +382,8 @@ func parsePaneList(out, socketPath string) []Pane {
 // Nothing is sent to, read from or killed in any other pane in its place.
 var ErrTerminalGone = errors.New("the agent's terminal is gone")
 
-// FindPane finds the tmux pane for a given agent, matching by session_id or agent_name.
+// FindPane finds the tmux pane of the agent with sessionID (or the exact session name
+// "<type>-<id>" as agentName); nil when there is none.
 func (c *Client) FindPane(ctx context.Context, agentName string, agentType string, sessionID string) (*Pane, error) {
 	panes, err := c.ListPanes(ctx)
 	if err != nil {
@@ -412,44 +413,13 @@ func (c *Client) FindPane(ctx context.Context, agentName string, agentType strin
 		return nil, nil
 	}
 
-	// Legacy callers without a session id: fuzzy match by agent_name. Deprecated: a bare
-	// name is shared by teammates, so the match can be another agent's pane.
+	// Without a session id there is no pane to find (#3687). The old fallback matched a bare
+	// name against pane titles, session names and folders by substring; an agent sets its own
+	// pane's title (OSC 2), so it could be picked as another agent's pane for peek, send and
+	// capture, and teammates share folders and name prefixes. No route passes a bare name any
+	// more (#3214); one that does gets nothing, and the log says which name.
 	warnBareNameLookup("tmux", agentName)
-	agentLow := strings.ToLower(agentName)
-	normName := strings.ToLower(strings.ReplaceAll(agentName, "_", "-"))
-	typeLow := strings.ToLower(agentType)
-
-	var fallback *Pane
-	for i := range panes {
-		titleLow := strings.ToLower(panes[i].PaneTitle)
-		sessLow := strings.ToLower(panes[i].SessionName)
-		pathBase := strings.ToLower(filepath.Base(strings.TrimRight(panes[i].CurrentPath, "/")))
-
-		nameMatch := strings.Contains(titleLow, agentLow) ||
-			strings.Contains(titleLow, normName) ||
-			strings.Contains(sessLow, agentLow) ||
-			strings.Contains(sessLow, normName) ||
-			agentLow == pathBase ||
-			normName == pathBase
-
-		if !nameMatch {
-			continue
-		}
-
-		if typeLow != "" {
-			if strings.Contains(titleLow, typeLow) || strings.Contains(sessLow, typeLow) {
-				return &panes[i], nil
-			}
-			if fallback == nil {
-				p := panes[i]
-				fallback = &p
-			}
-		} else {
-			return &panes[i], nil
-		}
-	}
-
-	return fallback, nil
+	return nil, nil
 }
 
 // IsSessionNameFor reports whether a terminal session name is exactly "<type>-<sessionID>"
