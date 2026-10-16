@@ -656,6 +656,18 @@ function _agentTaskStatus(t) {
     return t.completed === 1 ? 'completed' : t.completed === 2 ? 'in_progress' : t.completed === 3 ? 'skipped' : 'pending';
 }
 
+function formatTaskDate(isoStr) {
+    try {
+        const d = new Date(isoStr);
+        return d.toLocaleString(undefined, {
+            month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+        });
+    } catch {
+        return isoStr;
+    }
+}
+
 export function renderBoardTaskList() {
     const container = document.getElementById('board-task-list');
     if (!container) return;
@@ -1861,18 +1873,6 @@ export function hideTaskDetailModal() {
     if (modal._escHandler) {
         document.removeEventListener('keydown', modal._escHandler);
         modal._escHandler = null;
-    }
-}
-
-function formatTaskDate(isoStr) {
-    try {
-        const d = new Date(isoStr);
-        return d.toLocaleString(undefined, {
-            month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-        });
-    } catch {
-        return isoStr;
     }
 }
 
