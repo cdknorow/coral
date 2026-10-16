@@ -6,12 +6,13 @@ as_board() {
     local session="$1" role="$2"; shift 2
     env -u TMUX -u CORAL_PORT CORAL_URL="$BASE_URL" \
         CORAL_SESSION_NAME="$session" CORAL_SUBSCRIBER_ID="$role" \
+        CORAL_SESSION_TOKEN="$(token_of "$session")" \
         "$TMPDIR_AT/coral-board" "$@"
 }
 builder() { as_board "$SESS_A" Builder "$@"; }
-planner() { as_board "task-planner-$SID_A" Orchestrator "$@"; }
+planner() { as_board "$SESS_PLANNER" Orchestrator "$@"; }
 tester() { as_board "$SESS_B" Tester "$@"; }
-reviewer() { as_board "task-reviewer-$SID_A" Reviewer "$@"; }
+reviewer() { as_board "$SESS_REVIEWER" Reviewer "$@"; }
 task_id() { sed -n 's/^Created Task #\([0-9]*\):.*/\1/p'; }
 workflow_detail() { builder task detail "$1"; }
 workflow_status() { workflow_detail "$1" | jget "d['status']"; }

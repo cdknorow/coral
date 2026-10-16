@@ -333,6 +333,14 @@ OUT=$(as_agent "$SESS_A" task current)
 check "current reports no active task" '[[ "$OUT" == "No active task" ]]' "$OUT"
 
 # Exercise team workflows with the same live mock agents and real board CLI.
+# #3936/#3963: agent_task_workflows drives Orchestrator and Reviewer board roles through
+# coral-board, which needs a session token under strict local auth. Launch them as real agents
+# (like Builder/Tester) so Coral issues their tokens; as_board then carries token_of.
+LP=$(launch_agent "$TMPDIR_AT/work-planner/agent" "Task Planner")
+SESS_PLANNER=$(echo "$LP" | jget "d.get('session_name') or ('claude-' + d.get('session_id',''))")
+LR=$(launch_agent "$TMPDIR_AT/work-reviewer/agent" "Task Reviewer")
+SESS_REVIEWER=$(echo "$LR" | jget "d.get('session_name') or ('claude-' + d.get('session_id',''))")
+
 source "$SCRIPT_DIR/personal_task_workflows.sh"
 source "$SCRIPT_DIR/agent_task_workflows.sh"
 
