@@ -1,13 +1,13 @@
 /* The Activity filter's dropdown, live and history alike: one item's markup, the list redraw that keeps the focused item, and the keyboard
  * (the items are menu checkboxes: arrows move, Space or Enter toggles, Escape closes and gives the focus back to the Filter button). */
-import { escapeAttr } from './utils.js';
+import { escapeAttr, escapeHtml } from './utils.js';
 
-/** One filter row. checked: whether this kind of event shows; countHtml: the count chip, or ''. */
+/** One filter row. group.label is an icon-font character written as an HTML entity (&#xe8f4;), so it goes in as markup; the title is text. checked: whether this kind of event shows; countHtml: the count chip, or ''. */
 export function filterItemHtml(group, mode, checked, countHtml) {
     return `<div class="filter-dropdown-item ${escapeAttr(group.cls)}" data-on-click="filter-toggle" data-mode="${escapeAttr(mode)}" data-key="${escapeAttr(group.key)}"
             role="menuitemcheckbox" aria-checked="${checked ? 'true' : 'false'}" tabindex="0" data-key-click>
             <span class="filter-item-icon event-filter-char">${group.label}</span>
-            <span class="filter-item-label">${group.title}</span>
+            <span class="filter-item-label">${escapeHtml(group.title)}</span>
             ${countHtml}
             <span class="filter-item-check" aria-hidden="true">${checked ? '&#xe834;' : '&#xe835;'}</span>
         </div>`;
