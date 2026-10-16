@@ -141,7 +141,17 @@ const STUB = `(() => {
         assert.equal(await list('command-mention'), null, 'a / inside a word opens nothing');
         console.log('   ✓ all three commands in order; "cl" puts /clear first, Enter inserts "/clear "; "hello /re" finds /review; "foo/bar" opens nothing');
 
-        console.log('5. A blur closes the list');
+        console.log('5. A name that looks like markup is shown as text');
+        await ev(`window.T.state.currentCommands = [{ name: 'x', command: '/<img src=x onerror=window.__pwn=1>', description: '<b>bold</b> & more' }]; true`);
+        await clear();
+        await type('/');
+        await waitFor(shownWith('command-mention'), 'the hostile command', 4000);
+        const hostile = await ev(`({ imgs: document.querySelectorAll('.command-mention-dropdown img, .command-mention-dropdown b').length, text: document.querySelector('.command-mention-dropdown .cmd-name').textContent, desc: document.querySelector('.command-mention-dropdown .cmd-desc').textContent, pwn: window.__pwn === 1 })`);
+        assert.deepEqual(hostile, { imgs: 0, text: '/<img src=x onerror=window.__pwn=1>', desc: '<b>bold</b> & more', pwn: false }, 'the command name and description are text, never markup');
+        await key('Escape');
+        console.log('   ✓ no element is created from a name; it reads as written');
+
+        console.log('6. A blur closes the list');
         await clear();
         await type('@');
         await waitFor(shownWith('file-mention'), 'the list', 4000);
