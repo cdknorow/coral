@@ -83,8 +83,13 @@ func TestRepeatedTmuxFailuresAreCoalesced(t *testing.T) {
 		_ = c.SendTerminalInputToTarget(ctx, "claude-gone:0.0", "x")
 	}
 	assert.Equal(t, 1, strings.Count(buf.String(), "[tmux] exec failed"), "one line for 100 identical failures")
+	before := strings.Count(buf.String(), "\n")
+	for i := 0; i < 100; i++ {
+		_ = c.SendKeysToTarget(ctx, "claude-gone2:0.0", "echo hi")
+	}
+	assert.Equal(t, before+2, strings.Count(buf.String(), "\n"), "a failing send-keys: its exec line and its send-keys line once, not 200 lines")
 	_ = c.SendTerminalInputToTarget(ctx, "claude-other:0.0", "x")
-	assert.Equal(t, 2, strings.Count(buf.String(), "[tmux] exec failed"), "another pane's failure is its own line")
+	assert.Equal(t, 3, strings.Count(buf.String(), "[tmux] exec failed"), "another pane's failure is its own line (after claude-gone and claude-gone2)")
 
 	mu.Lock()
 	at = at.Add(execFailureEvery)

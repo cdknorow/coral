@@ -624,7 +624,15 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 		// No Enter after a failed send: it would submit whatever was already in the agent's
 		// input instead of this text (#3690).
 		cleanup()
-		log.Printf("[tmux] send-keys error (target=%s, cmd_len=%d): %v", target, originalCommandLen, sendErr)
+		// Coalesced like the exec failure it follows (Security's #4112 note): one line, then a
+		// count every few minutes, for a send failing again and again on one pane.
+		if ok, heldBack := execFailures.Allow("send-keys error\x00" + c.SocketPath + "\x00" + target + "\x00" + sendErr.Error()); ok {
+			more := ""
+			if heldBack > 0 {
+				more = fmt.Sprintf(" (and %d more like it in the last %s)", heldBack, execFailureEvery)
+			}
+			log.Printf("[tmux] send-keys error (target=%s, cmd_len=%d): %v%s", target, originalCommandLen, sendErr, more)
+		}
 		return fmt.Errorf("send-keys failed: %w", sendErr)
 	}
 
