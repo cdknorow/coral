@@ -499,7 +499,7 @@ Commands:
                                Park work and wait for an event. Coral will wake
                                you up via terminal notification. STOP after wait.
   leave                        Unsubscribe from board
-  delete                       Delete board and messages
+  delete                       Delete board and messages (Operator only)
   export [--output FILE] [--format json|markdown|html] [--merge FILE]
                                Export chat (auto-detects format from extension)
   task add "title" [--body "details"] [--priority P]  Create a task
@@ -509,12 +509,12 @@ Commands:
   task reassign/cancel/amend     Change ownership, stop work, or revise text
   task submit-review/release-review  Record a candidate or release capacity
   task complete <id> [--message "note"]  Complete with outcome/evidence
-  workflow create --file <path>  Create a workflow from JSON file
+  workflow create --file <path>  Create a workflow from JSON file (Operator only)
   workflow list                  List all workflows
-  workflow trigger <name> [--context '{"key":"val"}']  Trigger a workflow
+  workflow trigger <name> [--context '{"key":"val"}']  Trigger a workflow (Operator only)
   workflow status <run-id>       Check run status
   workflow runs [--workflow <name>] [--status <s>]  List recent runs
-  workflow kill <run-id>         Kill a running workflow
+  workflow kill <run-id>         Kill a running workflow (Operator only)
 
 Output:
   --raw       Print what the server sent byte for byte. Without it, terminal control

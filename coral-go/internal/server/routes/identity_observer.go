@@ -201,7 +201,9 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			r = r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, owner))
 			if route, only, ok := guardedRoute(r); ok {
 				o.countOperatorCall(owner.SessionName, r.Method+" "+route)
-				if only && o.effectiveStrict() {
+				// In every mode (#3929): an agent's token is who the caller is, as for another
+				// board (#3869). A request with no token is left to strict mode.
+				if only {
 					o.refuse(w, http.StatusForbidden, "forbidden_for_agent",
 						"An agent can't "+operatorOnlyRoutes[r.Method+" "+route]+": that is for the Operator (the dashboard, or the command line outside an agent)")
 					return
@@ -282,9 +284,9 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 }
 
 // operatorOnlyRoutes run code or start agents on this computer (#3424, audit HIGH-01):
-// workflows (shell steps), scheduled jobs and task runs. With strict local auth an agent's
-// token can't use them (the Operator can: the dashboard, an API key, the signed command
-// line); otherwise each agent call is recorded in the identity report.
+// workflows (shell steps), scheduled jobs and task runs. An agent's token can't use them, in
+// every mode since #3929 (only with strict local auth before); the Operator can (the dashboard,
+// an API key, the signed command line). Each agent call is recorded in the identity report.
 var operatorOnlyRoutes = map[string]string{
 	// #3668 (the board authorization audit): deleting a message, and pausing or resuming a board
 	// (the Operator's brake), are the Operator's.
