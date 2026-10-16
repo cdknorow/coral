@@ -18,6 +18,7 @@ import (
 	"github.com/cdknorow/coral/internal/clitext"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -94,17 +95,6 @@ func (a *autoWaker) set(f func(*autoWakeStatus)) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	f(&a.status)
-}
-
-func defaultSleep(ctx context.Context, d time.Duration) bool {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-t.C:
-		return true
-	}
 }
 
 // autoWakeOn: the setting, on unless it says "false".
@@ -187,7 +177,7 @@ func (h *SessionsHandler) coralStoppedSessions(ctx context.Context) []store.Live
 }
 
 func agentLabel(ls store.LiveSession) string {
-	if n := cleanAgentName(derefStrPtr(ls.DisplayName)); n != "" {
+	if n := cleanAgentName(ptr.Value(ls.DisplayName)); n != "" {
 		return n
 	}
 	if n := cleanAgentName(ls.AgentName); n != "" {
@@ -331,7 +321,7 @@ func (h *SessionsHandler) autoWakeOne(ctx context.Context, ls store.LiveSession)
 // sendAutoWakeNotice posts Coral's fixed notice to a woken board agent, addressed to it alone
 // (CoralSender: a subscriber reading everything counts it only when it is named).
 func (h *SessionsHandler) sendAutoWakeNotice(ctx context.Context, ls store.LiveSession) {
-	boardName := derefStrPtr(ls.BoardName)
+	boardName := ptr.Value(ls.BoardName)
 	if boardName == "" || h.bs == nil {
 		return
 	}

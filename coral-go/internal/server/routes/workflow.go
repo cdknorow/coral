@@ -20,6 +20,7 @@ import (
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/mediatype"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -499,7 +500,7 @@ func (h *WorkflowHandler) ListWorkflowRuns(w http.ResponseWriter, r *http.Reques
 	}
 	limit := clampLimit(queryInt(r, "limit", 20), 20, 200)
 	offset := clampOffset(queryInt(r, "offset", 0))
-	status := strPtr(r.URL.Query().Get("status"))
+	status := ptr.NonEmpty(r.URL.Query().Get("status"))
 
 	runs, err := h.ws.ListRunsForWorkflow(r.Context(), workflowID, limit, offset, status)
 	if err != nil {
@@ -514,7 +515,7 @@ func (h *WorkflowHandler) ListWorkflowRuns(w http.ResponseWriter, r *http.Reques
 func (h *WorkflowHandler) ListRecentRuns(w http.ResponseWriter, r *http.Request) {
 	limit := clampLimit(queryInt(r, "limit", 20), 20, 200)
 	offset := clampOffset(queryInt(r, "offset", 0))
-	status := strPtr(r.URL.Query().Get("status"))
+	status := ptr.NonEmpty(r.URL.Query().Get("status"))
 
 	runs, err := h.ws.ListRecentRuns(r.Context(), limit, offset, status)
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/cdknorow/coral/internal/ptr"
 )
 
 // Subagent is one subagent launched by a main agent, with its cumulative
@@ -107,10 +109,10 @@ func (s *SubagentStore) UpsertSubagent(ctx context.Context, sa *Subagent) error 
 		    started_at         = COALESCE(started_at, excluded.started_at),
 		    last_activity_at   = COALESCE(excluded.last_activity_at, last_activity_at),
 		    updated_at         = excluded.updated_at`,
-		sa.SessionID, sa.SubagentID, derefStr(sa.SubagentType), derefStr(sa.Description),
-		derefStr(sa.ToolUseID), derefStr(sa.Model), sa.SpawnDepth,
-		sa.APICalls, sa.InputTokens, sa.OutputTokens, sa.CacheReadTokens, sa.CacheWriteTokens, sa.CostUSD, sa.Finished, derefStr(sa.TranscriptPath),
-		derefStr(sa.StartedAt), derefStr(sa.LastActivityAt), now, now)
+		sa.SessionID, sa.SubagentID, ptr.Value(sa.SubagentType), ptr.Value(sa.Description),
+		ptr.Value(sa.ToolUseID), ptr.Value(sa.Model), sa.SpawnDepth,
+		sa.APICalls, sa.InputTokens, sa.OutputTokens, sa.CacheReadTokens, sa.CacheWriteTokens, sa.CostUSD, sa.Finished, ptr.Value(sa.TranscriptPath),
+		ptr.Value(sa.StartedAt), ptr.Value(sa.LastActivityAt), now, now)
 	return err
 }
 

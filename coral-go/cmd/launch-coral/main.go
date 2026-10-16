@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/loginlink"
@@ -192,7 +193,7 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 	ag := agent.GetAgent(agentType)
 
 	// Locate PROTOCOL.md relative to the executable
-	protocolPath := findProtocolMD()
+	protocolPath := background.FindProtocolMD()
 
 	var sessionNames []string
 	for _, dir := range worktrees {
@@ -280,36 +281,6 @@ func startWebServer(ctx context.Context, cfg *config.Config) *startup.RunningSer
 		rs.Close()
 	}()
 	return rs
-}
-
-// findProtocolMD locates PROTOCOL.md relative to the running binary or source.
-func findProtocolMD() string {
-	// Check next to the executable
-	exe, err := os.Executable()
-	if err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "PROTOCOL.md")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-
-	// The current folder only in a dev build (running from the source tree): a release server
-	// started from a repository would otherwise give every agent that repository's
-	// PROTOCOL.md as its system prompt (#3601, weak site W16).
-	if config.TierName != "dev" {
-		return ""
-	}
-	for _, rel := range []string{
-		"src/coral/PROTOCOL.md",
-		"PROTOCOL.md",
-	} {
-		if _, err := os.Stat(rel); err == nil {
-			abs, _ := filepath.Abs(rel)
-			return abs
-		}
-	}
-
-	return ""
 }
 
 func isSSH() bool {

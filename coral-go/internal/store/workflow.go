@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+
+	"github.com/cdknorow/coral/internal/ptr"
 )
 
 // Workflow represents a reusable multi-step automation definition.
@@ -246,8 +248,8 @@ func (s *WorkflowStore) ListWorkflows(ctx context.Context) ([]Workflow, error) {
 		if row.LastRunID != nil {
 			workflows[i].LastRun = &WorkflowRunBrief{
 				ID:          *row.LastRunID,
-				Status:      derefStr(row.LastRunStatus),
-				TriggerType: derefStr(row.LastRunTriggerType),
+				Status:      ptr.Value(row.LastRunStatus),
+				TriggerType: ptr.Value(row.LastRunTriggerType),
 				StartedAt:   row.LastRunStartedAt,
 				FinishedAt:  row.LastRunFinishedAt,
 			}
@@ -255,13 +257,6 @@ func (s *WorkflowStore) ListWorkflows(ctx context.Context) ([]Workflow, error) {
 	}
 
 	return workflows, nil
-}
-
-func derefStr(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 // UpdateWorkflow updates allowed fields on a workflow.

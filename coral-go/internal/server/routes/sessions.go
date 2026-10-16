@@ -43,6 +43,7 @@ import (
 	"github.com/cdknorow/coral/internal/machinehealth"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/sessionstate"
@@ -293,7 +294,7 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 // NewSessionsHandler creates a SessionsHandler with the given dependencies.
 func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, bs *board.Store) *SessionsHandler {
 	return &SessionsHandler{
-		autoWake: autoWaker{sleep: defaultSleep, now: time.Now},
+		autoWake: autoWaker{sleep: background.SleepCtx, now: time.Now},
 		exits:    exitWatch{after: defaultAfter},
 		inOldTmux: func(ctx context.Context, name string) bool {
 			return tmux.HasPrivateAgentSession(ctx, tmux.PrivateSocketPath(cfg.CoralDir()), name)
@@ -556,7 +557,7 @@ func (h *SessionsHandler) cachedResumeFromID(ctx context.Context, sessionID stri
 	if err != nil || ls == nil {
 		return ""
 	}
-	value := derefStrPtr(ls.ResumeFromID)
+	value := ptr.Value(ls.ResumeFromID)
 	h.rememberResumeFromID(sessionID, value)
 	return value
 }
@@ -585,7 +586,7 @@ func (h *SessionsHandler) sleepingFirstPrompt(session store.LiveSession) string 
 	if prompt := h.jsonl.CachedFirstUserPrompt(session.SessionID); prompt != "" {
 		return prompt
 	}
-	return derefStrPtr(session.Prompt)
+	return ptr.Value(session.Prompt)
 }
 
 // List returns all live agent sessions with enriched metadata.
@@ -744,7 +745,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	// query failure used to erase team names and other identity metadata.
 	for _, session := range allLive {
 		if session.BoardName != nil {
-			liveBoardNames[session.SessionID] = [2]string{*session.BoardName, derefStrPtr(session.DisplayName)}
+			liveBoardNames[session.SessionID] = [2]string{*session.BoardName, ptr.Value(session.DisplayName)}
 		}
 		liveExtras[session.SessionID] = liveExtra{
 			Prompt: session.Prompt, Model: session.Model, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
@@ -849,7 +850,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"working_directory":     agent.WorkingDir,
 			"display_name":          displayVal,
 			"icon":                  iconVal,
-			"name_color":            nilIfEmpty(nameColors[sid]),
+			"name_color":            ptr.NullIfEmpty(nameColors[sid]),
 			"branch":                branchVal,
 			"repo_name":             repoNameVal,
 			"git_state":             worktreeVal,
@@ -1093,18 +1094,18 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"display_name":      ls.DisplayName,
 		"auto_name":         nil,
 		"board_project":     ls.BoardName,
-		"board_label":       h.boardLabel(derefStrPtr(ls.BoardName)),
+		"board_label":       h.boardLabel(ptr.Value(ls.BoardName)),
 		"board_job_title":   ls.DisplayName,
 		"icon":              ls.Icon,
 		"name_color":        ls.NameColor,
-		"status":            nilIfEmpty(initialStatus),
-		"summary":           nilIfEmpty(summary),
+		"status":            ptr.NullIfEmpty(initialStatus),
+		"summary":           ptr.NullIfEmpty(summary),
 		"first_prompt":      firstPrompt,
 		"waiting_for_input": liveState.NeedsInput,
 		"awaiting_user":     liveState.AwaitingUser,
-		"waiting_reason":    nilIfEmpty(liveState.WaitingReason),
-		"waiting_summary":   nilIfEmpty(liveState.WaitingSummary),
-		"waiting_kind":      nilIfEmpty(liveState.WaitingKind),
+		"waiting_reason":    ptr.NullIfEmpty(liveState.WaitingReason),
+		"waiting_summary":   ptr.NullIfEmpty(liveState.WaitingSummary),
+		"waiting_kind":      ptr.NullIfEmpty(liveState.WaitingKind),
 		"working":           liveState.Working,
 		"done":              false,
 		"stuck":             false,
@@ -1327,7 +1328,7 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 	// Events
 	trace.begin("events")
 	var events any = []any{}
-	if e, err := h.ts.ListAgentEvents(ctx, name, eventsLimit, strPtr(sessionID)); err == nil {
+	if e, err := h.ts.ListAgentEvents(ctx, name, eventsLimit, ptr.NonEmpty(sessionID)); err == nil {
 		events = e
 	}
 	trace.endPool("events", h.db)
@@ -1430,9 +1431,9 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			targetID = name
 		}
 		if ls, err := h.ss.GetLiveSession(r.Context(), targetID); err == nil && ls != nil {
-			h.chatMeta.put(chatMeta{agentType: ls.AgentType, workingDir: ls.WorkingDir, sessionID: ls.SessionID, resumeFromID: derefStrPtr(ls.ResumeFromID)}, targetID, ls.SessionID)
+			h.chatMeta.put(chatMeta{agentType: ls.AgentType, workingDir: ls.WorkingDir, sessionID: ls.SessionID, resumeFromID: ptr.Value(ls.ResumeFromID)}, targetID, ls.SessionID)
 			resumeLookupDone = true
-			resumeFromID = derefStrPtr(ls.ResumeFromID)
+			resumeFromID = ptr.Value(ls.ResumeFromID)
 			h.rememberResumeFromID(ls.SessionID, resumeFromID)
 			if agentType == "" && ls.AgentType != "" {
 				agentType = ls.AgentType
@@ -1459,9 +1460,9 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 					if matches == 1 {
 						keys = append(keys, name)
 					}
-					h.chatMeta.put(chatMeta{agentType: s.AgentType, workingDir: s.WorkingDir, sessionID: s.SessionID, resumeFromID: derefStrPtr(s.ResumeFromID)}, keys...)
+					h.chatMeta.put(chatMeta{agentType: s.AgentType, workingDir: s.WorkingDir, sessionID: s.SessionID, resumeFromID: ptr.Value(s.ResumeFromID)}, keys...)
 					resumeLookupDone = true
-					resumeFromID = derefStrPtr(s.ResumeFromID)
+					resumeFromID = ptr.Value(s.ResumeFromID)
 					h.rememberResumeFromID(s.SessionID, resumeFromID)
 					if agentType == "" && s.AgentType != "" {
 						agentType = s.AgentType
@@ -1743,13 +1744,13 @@ func (h *SessionsHandler) SessionStatus(w http.ResponseWriter, r *http.Request) 
 		"finished":          finished,
 		"waiting_for_input": waiting,
 		"awaiting_user":     done,
-		"waiting_reason":    nilIfEmpty(liveState.WaitingReason),
-		"waiting_summary":   nilIfEmpty(liveState.WaitingSummary),
-		"waiting_kind":      nilIfEmpty(liveState.WaitingKind),
+		"waiting_reason":    ptr.NullIfEmpty(liveState.WaitingReason),
+		"waiting_summary":   ptr.NullIfEmpty(liveState.WaitingSummary),
+		"waiting_kind":      ptr.NullIfEmpty(liveState.WaitingKind),
 		"done":              done,
 		"sleeping":          sleeping,
-		"latest_event":      nilIfEmpty(latestEvent),
-		"latest_summary":    nilIfEmpty(latestSummary),
+		"latest_event":      ptr.NullIfEmpty(latestEvent),
+		"latest_summary":    ptr.NullIfEmpty(latestSummary),
 		"stopped_at":        row.StoppedAt,
 	})
 }
@@ -1970,7 +1971,7 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 	// pathspec: this used to list every tracked file in the repo to answer a
 	// question about a handful of paths, which on a monorepo is the single
 	// most expensive thing here.
-	sidPtr := strPtr(sessionID)
+	sidPtr := ptr.NonEmpty(sessionID)
 	events, _ := h.ts.ListAgentEvents(r.Context(), name, 200, sidPtr)
 	candidates := make([]string, 0, 16)
 	seen := make(map[string]bool)
@@ -3105,7 +3106,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	if body.Model != nil {
 		preflightModel = strings.TrimSpace(*body.Model)
 	} else if storedSession != nil {
-		preflightModel = strings.TrimSpace(derefStrPtr(storedSession.Model))
+		preflightModel = strings.TrimSpace(ptr.Value(storedSession.Model))
 	}
 	if err := validateAgentModel(agentType, preflightModel); err != nil {
 		errBadRequest(w, err.Error())
@@ -3171,12 +3172,12 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	if body.SessionID != "" {
 		if ls, err := h.ss.GetLiveSession(ctx, body.SessionID); err == nil && ls != nil {
 			storedFlags = store.UnmarshalFlags(ls.Flags)
-			storedPrompt = derefStrPtr(ls.Prompt)
-			storedBoard = derefStrPtr(ls.BoardName)
-			storedBoardServer = derefStrPtr(ls.BoardServer)
-			storedDisplayName = derefStrPtr(ls.DisplayName)
-			storedBoardType = derefStrPtr(ls.BoardType)
-			storedModel = derefStrPtr(ls.Model)
+			storedPrompt = ptr.Value(ls.Prompt)
+			storedBoard = ptr.Value(ls.BoardName)
+			storedBoardServer = ptr.Value(ls.BoardServer)
+			storedDisplayName = ptr.Value(ls.DisplayName)
+			storedBoardType = ptr.Value(ls.BoardType)
+			storedModel = ptr.Value(ls.Model)
 			storedContextWindow = ls.ContextWindow
 			storedCapsJSON = ls.Capabilities
 			storedToolsJSON = ls.Tools
@@ -3349,7 +3350,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		emptyModel := ""
 		storedModelPtr = &emptyModel
 	} else {
-		storedModelPtr = strPtr(storedModel)
+		storedModelPtr = ptr.NonEmpty(storedModel)
 	}
 
 	var storedFlagsJSON *string
@@ -3367,12 +3368,12 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		AgentType:     agentType,
 		AgentName:     folderName,
 		WorkingDir:    workdir,
-		ResumeFromID:  strPtr(body.SessionID),
+		ResumeFromID:  ptr.NonEmpty(body.SessionID),
 		Flags:         storedFlagsJSON,
-		Prompt:        strPtr(storedPrompt),
-		BoardName:     strPtr(storedBoard),
-		BoardServer:   strPtr(storedBoardServer),
-		BoardType:     strPtr(storedBoardType),
+		Prompt:        ptr.NonEmpty(storedPrompt),
+		BoardName:     ptr.NonEmpty(storedBoard),
+		BoardServer:   ptr.NonEmpty(storedBoardServer),
+		BoardType:     ptr.NonEmpty(storedBoardType),
 		Capabilities:  storedCapsJSON,
 		Model:         storedModelPtr,
 		ContextWindow: storedContextWindow,
@@ -3385,7 +3386,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	if sleeping != nil {
 		// The new row inherits the sleeping flag; this agent is running now.
 		h.ss.SetSessionSleeping(ctx, newSessionID, false)
-		if bn := derefStrPtr(sleeping.BoardName); bn != "" && h.boardHandler != nil {
+		if bn := ptr.Value(sleeping.BoardName); bn != "" && h.boardHandler != nil {
 			h.boardHandler.SetPaused(bn, false)
 		}
 	}
@@ -3511,16 +3512,16 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	newLogPath := naming.LogFile(h.cfg.LogDir, agentType, newSessionID)
 
 	// Load stored fields from current session
-	storedPrompt := derefStrPtr(ls.Prompt)
+	storedPrompt := ptr.Value(ls.Prompt)
 	storedSleeping := ls.IsSleeping == 1
 	storedAgentType := agentType
 	if ls.AgentType != "" {
 		storedAgentType = ls.AgentType
 	}
-	storedBoard := derefStrPtr(ls.BoardName)
-	storedBoardServer := derefStrPtr(ls.BoardServer)
-	storedDisplayName := derefStrPtr(ls.DisplayName)
-	storedBoardType := derefStrPtr(ls.BoardType)
+	storedBoard := ptr.Value(ls.BoardName)
+	storedBoardServer := ptr.Value(ls.BoardServer)
+	storedDisplayName := ptr.Value(ls.DisplayName)
+	storedBoardType := ptr.Value(ls.BoardType)
 	storedTools := store.UnmarshalFlags(ls.Tools)
 
 	role := naming.SubscriberID(storedDisplayName, agentType)
@@ -3597,11 +3598,11 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		AgentType:    agentType,
 		AgentName:    filepath.Base(strings.TrimRight(workdir, "/")),
 		WorkingDir:   workdir,
-		ResumeFromID: strPtr(body.SessionID),
-		Prompt:       strPtr(storedPrompt),
-		BoardName:    strPtr(storedBoard),
-		BoardServer:  strPtr(storedBoardServer),
-		BoardType:    strPtr(storedBoardType),
+		ResumeFromID: ptr.NonEmpty(body.SessionID),
+		Prompt:       ptr.NonEmpty(storedPrompt),
+		BoardName:    ptr.NonEmpty(storedBoard),
+		BoardServer:  ptr.NonEmpty(storedBoardServer),
+		BoardType:    ptr.NonEmpty(storedBoardType),
 		PID:          resumePID,
 	})
 	h.noteLaunchedHooks(ctx, newSessionID, agentType) // #3665
@@ -4389,7 +4390,7 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	// One row per open task: the operator's task and the agent's own
 	// TaskCreate for it (synced by title) converge instead of duplicating.
-	if existing, err := h.ts.FindOpenAgentTask(r.Context(), name, body.Title, strPtr(body.SessionID)); err == nil && existing != nil {
+	if existing, err := h.ts.FindOpenAgentTask(r.Context(), name, body.Title, ptr.NonEmpty(body.SessionID)); err == nil && existing != nil {
 		writeJSON(w, http.StatusOK, existing)
 		return
 	}
@@ -4405,13 +4406,13 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	var deps []board.TaskDep
 	if len(body.BlockedBy) > 0 {
-		deps, err = parseBlockedBy(body.BlockedBy, store.AgentTaskProject(name, strPtr(body.SessionID)))
+		deps, err = parseBlockedBy(body.BlockedBy, store.AgentTaskProject(name, ptr.NonEmpty(body.SessionID)))
 		if err != nil {
 			errBadRequest(w, err.Error())
 			return
 		}
 	}
-	task, err := h.ts.CreateAgentTaskWithWorkflow(r.Context(), name, body.Title, strPtr(body.SessionID), displayName, body.Body, body.Priority, &board.CreateTaskOpts{Workflow: body.Workflow, BlockedBy: deps, Draft: body.Draft, MaxDepth: 32})
+	task, err := h.ts.CreateAgentTaskWithWorkflow(r.Context(), name, body.Title, ptr.NonEmpty(body.SessionID), displayName, body.Body, body.Priority, &board.CreateTaskOpts{Workflow: body.Workflow, BlockedBy: deps, Draft: body.Draft, MaxDepth: 32})
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
@@ -4460,7 +4461,7 @@ func (h *SessionsHandler) itemScope(w http.ResponseWriter, r *http.Request, clai
 	if !humanInputCaller(r) { // a terminal session, by the session it names
 		return itemScope{name: agentName(sid, chi.URLParam(r, "name")), sid: &sid, agent: true}, true
 	}
-	return itemScope{name: chi.URLParam(r, "name"), sid: strPtr(claimed)}, true
+	return itemScope{name: chi.URLParam(r, "name"), sid: ptr.NonEmpty(claimed)}, true
 }
 
 // queryClaim is the session a request names in its query, or "".
@@ -4611,7 +4612,7 @@ func (h *SessionsHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	if scope.sid != nil {
 		body.SessionID = *scope.sid
 	}
-	note, err := h.ts.CreateAgentNote(r.Context(), name, body.Content, strPtr(body.SessionID))
+	note, err := h.ts.CreateAgentNote(r.Context(), name, body.Content, ptr.NonEmpty(body.SessionID))
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -5258,16 +5259,16 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		AgentType:     agentType,
 		AgentName:     folderName,
 		WorkingDir:    absDir,
-		DisplayName:   strPtr(displayName),
-		ResumeFromID:  strPtr(resumeSessionID),
+		DisplayName:   ptr.NonEmpty(displayName),
+		ResumeFromID:  ptr.NonEmpty(resumeSessionID),
 		Flags:         store.MarshalFlags(flags),
-		Prompt:        strPtr(prompt),
-		BoardName:     strPtr(boardName),
-		BoardServer:   strPtr(boardServer),
-		Backend:       strPtr(backend),
-		BoardType:     strPtr(boardType),
+		Prompt:        ptr.NonEmpty(prompt),
+		BoardName:     ptr.NonEmpty(boardName),
+		BoardServer:   ptr.NonEmpty(boardServer),
+		Backend:       ptr.NonEmpty(backend),
+		BoardType:     ptr.NonEmpty(boardType),
 		Capabilities:  store.MarshalCapabilities(capabilities),
-		Model:         strPtr(model),
+		Model:         ptr.NonEmpty(model),
 		ContextWindow: proxy.LookupContextWindow(model),
 		Tools:         store.MarshalCapabilities(tools),
 		PID:           shellPID,
@@ -6497,20 +6498,20 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		}
 	}()
 	flags := store.UnmarshalFlags(ls.Flags)
-	prompt := derefStrPtr(ls.Prompt)
-	boardName := derefStrPtr(ls.BoardName)
+	prompt := ptr.Value(ls.Prompt)
+	boardName := ptr.Value(ls.BoardName)
 
 	// Inject distilled knowledge on wake
 	if boardName != "" {
-		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, derefStrPtr(ls.DisplayName), prompt)
+		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, ptr.Value(ls.DisplayName), prompt)
 	}
-	boardServer := derefStrPtr(ls.BoardServer)
+	boardServer := ptr.Value(ls.BoardServer)
 	backend := "tmux"
 	if ls.Backend != nil {
 		backend = *ls.Backend
 	}
-	displayName := derefStrPtr(ls.DisplayName)
-	boardType := derefStrPtr(ls.BoardType)
+	displayName := ptr.Value(ls.DisplayName)
+	boardType := ptr.Value(ls.BoardType)
 	_ = boardServer // retained for future use
 
 	sessionName := naming.SessionName(ls.AgentType, ls.SessionID)
@@ -6716,7 +6717,7 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Unpause the board if this agent was on one
-	bn := derefStrPtr(sess.BoardName)
+	bn := ptr.Value(sess.BoardName)
 	if bn != "" && h.boardHandler != nil {
 		h.boardHandler.SetPaused(bn, false)
 	}
@@ -6852,7 +6853,7 @@ func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
 			h.resetAutoResume(ls.SessionID) // a person's wake (#3613, Security's SHOULD 1)
 		}
 		relaunched++
-		if bn := derefStrPtr(ls.BoardName); bn != "" {
+		if bn := ptr.Value(ls.BoardName); bn != "" {
 			boards[bn] = true
 		}
 	}

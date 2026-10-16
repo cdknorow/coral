@@ -32,16 +32,7 @@ func NewUploadsRetention(db *store.DB, coralDir string) *UploadsRetention {
 
 // Run prunes FirstRun after startup, then every Interval, until ctx is done.
 func (j *UploadsRetention) Run(ctx context.Context) error {
-	wait := j.FirstRun
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(wait):
-		}
-		j.RunOnce(ctx)
-		wait = j.Interval
-	}
+	return runEvery(ctx, j.FirstRun, j.Interval, func() { j.RunOnce(ctx) })
 }
 
 // RunOnce removes expired uploads, then trims to the size cap, and reports how many

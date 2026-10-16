@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/safefs"
 )
 
@@ -94,13 +95,6 @@ func clampOffset(n int) int {
 	return n
 }
 
-func nilIfEmpty(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
 func nilIf(cond bool, s string) any {
 	if cond || s == "" {
 		return nil
@@ -111,21 +105,7 @@ func nilIf(cond bool, s string) any {
 // querySessionID extracts session_id from the query string and returns a
 // *string (nil when absent/empty), ready for store methods that accept *string.
 func querySessionID(r *http.Request) *string {
-	return strPtr(r.URL.Query().Get("session_id"))
-}
-
-func strPtr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
-func derefStrPtr(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
+	return ptr.NonEmpty(r.URL.Query().Get("session_id"))
 }
 
 // intPtrOr returns the value of p if non-nil, otherwise the default.

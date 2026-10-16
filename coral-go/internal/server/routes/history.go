@@ -14,6 +14,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/jsonl"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -150,8 +151,8 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 			m := map[string]any{
 				"session_id":      s.SessionID,
 				"source_type":     s.SourceType,
-				"first_timestamp": derefStrPtr(s.FirstTimestamp),
-				"last_timestamp":  derefStrPtr(s.LastTimestamp),
+				"first_timestamp": ptr.Value(s.FirstTimestamp),
+				"last_timestamp":  ptr.Value(s.LastTimestamp),
 				"message_count":   s.MessageCount,
 				"summary":         s.Summary,
 				"summary_title":   s.SummaryTitle,
@@ -225,8 +226,8 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 					"type":              "group",
 					"source_type":       "board",
 					"summary":           fmt.Sprintf("%d messages, %d participants", p.MessageCount, p.SubscriberCount),
-					"first_timestamp":   derefStrPtr(p.FirstMessageAt),
-					"last_timestamp":    derefStrPtr(p.LastMessageAt),
+					"first_timestamp":   ptr.Value(p.FirstMessageAt),
+					"last_timestamp":    ptr.Value(p.LastMessageAt),
 					"message_count":     p.MessageCount,
 					"subscriber_count":  p.SubscriberCount,
 					"participant_names": participants,
@@ -556,8 +557,8 @@ func (h *HistoryHandler) GetResumeInfo(w http.ResponseWriter, r *http.Request) {
 	if ls, err := h.ss.GetLiveSession(r.Context(), sid); err == nil && ls != nil {
 		result["working_dir"] = ls.WorkingDir
 		result["agent_type"] = ls.AgentType
-		result["board_name"] = derefStrPtr(ls.BoardName)
-		result["display_name"] = derefStrPtr(ls.DisplayName)
+		result["board_name"] = ptr.Value(ls.BoardName)
+		result["display_name"] = ptr.Value(ls.DisplayName)
 	}
 
 	writeJSON(w, http.StatusOK, result)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -98,11 +99,11 @@ func (h *SessionsHandler) HooksStatus(w http.ResponseWriter, r *http.Request) {
 			continue // a sleeping agent loads the current set when it is woken
 		}
 		if st := h.hooksStatusOf(ls.SessionID, recorded); st != hooksCurrent {
-			name := derefStrPtr(ls.DisplayName)
+			name := ptr.Value(ls.DisplayName)
 			if name == "" {
 				name = ls.AgentName
 			}
-			agents = append(agents, hooksAgent{SessionID: ls.SessionID, Name: name, Team: derefStrPtr(ls.BoardName), Status: st, Rev: h.hooksRevOf(ls.SessionID, recorded)})
+			agents = append(agents, hooksAgent{SessionID: ls.SessionID, Name: name, Team: ptr.Value(ls.BoardName), Status: st, Rev: h.hooksRevOf(ls.SessionID, recorded)})
 		}
 	}
 	sort.SliceStable(agents, func(i, j int) bool {

@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -63,7 +64,7 @@ func addCapabilities(entry map[string]any, raw *string) {
 // one is stored for the session.
 func listTextFields(logInfo map[string]any, summary string, displayNames, icons map[string]string, sessionID string) (status, summ, displayName, icon any) {
 	logStatus, _ := logInfo["status"].(string)
-	status, summ, displayName = nilIfEmpty(logStatus), nilIfEmpty(summary), displayNames[sessionID]
+	status, summ, displayName = ptr.NullIfEmpty(logStatus), ptr.NullIfEmpty(summary), displayNames[sessionID]
 	if ic, ok := icons[sessionID]; ok && sessionID != "" {
 		icon = ic
 	}

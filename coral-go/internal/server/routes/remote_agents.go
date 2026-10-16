@@ -56,11 +56,3 @@ func splitRemoteKey(k string) (server, key string, ok bool) {
 	}
 	return parts[0], parts[1], true
 }
-
-func feedKey(s map[string]any) string {
-	if sid, _ := s["session_id"].(string); sid != "" {
-		return sid
-	}
-	name, _ := s["name"].(string)
-	return name
-}
