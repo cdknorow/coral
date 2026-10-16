@@ -1,6 +1,6 @@
 // The agent header names the agent's team and server (#3653, the operator's phone report): at
-// 390x844 the line under the name shows the team, and on a hub with remotes the server ("This
-// computer" for the local one); neither is clipped, and a long team name is cut short while the
+// 390x844 the line under the name shows the team, and on a hub with remotes the server ("Local"
+// for the local one, as the sidebar says); neither is clipped, and a long team name is cut short while the
 // server stays whole. Text only: markup in a name is shown as text. Desktop shows the same line.
 // A real terminal agent on a team is launched (and killed at the end); the hub is faked in the
 // page's state.
@@ -55,12 +55,12 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('the team label is whole and inside the header', m.team.whole && m.team.inside, JSON.stringify(m.team));
         check('no server on a Coral that is not a hub', !m.server.shown && m.server.text === '', JSON.stringify(m.server));
 
-        // A hub with one remote: the local agent's server reads "This computer".
+        // A hub with one remote: the local agent's server reads "Local", as in the sidebar.
         await ev(`import(${MOD} + 'state.js').then(({ state }) => { state.hub = true; state.servers = [{ id: 'build-box', label: 'build-box', status: 'online' }]; return true; })`);
         const update = s => ev(`import(${MOD} + 'header_context.js').then(async m => { m.updateHeaderContext(${s}); return true; })`);
         await update(`await ${LIVE}`);
         m = await ev(measure);
-        check('on a hub with remotes the server shows: "This computer" for the local agent', m.server.shown && m.server.text === 'This computer' && m.team.shown, JSON.stringify(m));
+        check('on a hub with remotes the server shows: "Local" for the local agent', m.server.shown && m.server.text === 'Local' && m.team.shown, JSON.stringify(m));
         check('team and server are whole and inside the header at 390 wide', m.team.whole && m.server.whole && m.team.inside && m.server.inside, JSON.stringify(m));
 
         await update(`{ board_project: 'infra', server: 'build-box' }`);

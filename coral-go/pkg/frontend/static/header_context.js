@@ -1,19 +1,16 @@
 /* The selected agent's team and server, under its name in the agent header (#3653: on a phone
  * the header was the only place that names the agent, and it said neither). The team shows when
- * the agent is on a board; the server only when this Coral is a hub with remotes, and then the
- * local one reads "This computer". Both come from server data and are set as textContent only. */
+ * the agent is on a board; the server only when this Coral is a hub with remotes, named as the
+ * sidebar names it (the local one is "Local", the operator's choice). Both come from server data
+ * and are set as textContent only. */
 
-import { LOCAL_SERVER, keyLabel, sessionServer, sessionTeamKey } from './server_base.js';
+import { keyLabel, sessionServer, sessionTeamKey } from './server_base.js';
 import { serverLabel, showServerLabels } from './server_status.js';
 
 /** headerContext returns { team, server } for a session ("" where nothing is shown). */
 export function headerContext(s) {
     const team = s && s.board_project ? keyLabel(sessionTeamKey(s)) : '';
-    let server = '';
-    if (s && showServerLabels()) {
-        const id = sessionServer(s);
-        server = id === LOCAL_SERVER ? 'This computer' : serverLabel(id);
-    }
+    const server = s && showServerLabels() ? serverLabel(sessionServer(s)) : '';
     return { team, server };
 }
 
