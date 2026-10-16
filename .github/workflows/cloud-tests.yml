@@ -73,9 +73,18 @@ jobs:
           cache-dependency-path: coral-go/go.sum
       - name: secrets (gitleaks, fingerprints in .gitleaksignore)
         run: go run github.com/zricethezav/gitleaks/v8@v8.21.2 detect --source . --config .gitleaks.toml --no-banner --redact
-      - name: reachable vulnerabilities (govulncheck)
+      - name: reachable vulnerabilities (govulncheck, the whole module, every tier's tag set)
         working-directory: coral-go
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -tags 'fts5' ./pkg/... ./internal/cloud/... ./internal/startup/...
+        # A reachable finding fails the step (govulncheck exits non-zero). The tag sets are the
+        # release tiers' (prod, dev, dropboxers, beta), each with fts5 as the builds use (#3675).
+        run: |
+          for tags in fts5 fts5,dev fts5,dropboxers fts5,beta; do
+            echo "== govulncheck -tags $tags"
+            go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 -tags "$tags" ./...
+          done
+      - name: go.mod and go.sum are tidy
+        working-directory: coral-go
+        run: go mod tidy -diff
 
   browser:
     # Real headless Chrome (pinned): the cloud-mode page under the hub's exact CSP, and the fetch-metadata
