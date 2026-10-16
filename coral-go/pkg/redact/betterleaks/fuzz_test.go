@@ -15,7 +15,7 @@ import (
 //   - streamed in two or three writes it gives the same as written whole;
 //   - a stream of one line gives exactly what the whole-text scan gives;
 //   - a JSON reply stays JSON;
-//   - a scan over its budget returns at the budget (and fails closed).
+//   - a scan over its budget returns at the budget (and fails closed), on 1 input in 50.
 //
 //   go test ./pkg/redact/betterleaks -run '^$' -fuzz FuzzLibraryStream -fuzztime 10m
 
@@ -90,7 +90,9 @@ func FuzzLibraryStream(f *testing.F) {
 				t.Fatalf("redaction broke the JSON:\n in %s\n out %s", body, out)
 			}
 		}
-		if !raceEnabled {
+		// The budget property waits up to its budget, so it runs on 1 input in 50: the rest go to
+		// the split and JSON properties at full speed.
+		if !raceEnabled && (int(c1)+int(c2)+len(prefix)+len(suffix))%50 == 0 {
 			tight := &redact.Scanner{Detector: s.Detector, Budget: 100 * time.Millisecond}
 			big := []byte(strings.Repeat(text+"\n", max(1, (64<<10)/(len(text)+1))))
 			start := time.Now()
