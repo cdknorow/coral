@@ -34,6 +34,7 @@ type tokenRule struct {
 	exact    bool                     // the value is exactly min long (AKIA)
 	keep     bool                     // keep the prefix and glue, replace only the value (Bearer, Authorization)
 	notAfter func(byte) bool          // a character that may not come right before the prefix
+	params   bool                     // the value may be an auth-param list (Digest's key="value", ...): redacted to its end
 }
 
 func isAlnum(c byte) bool {
@@ -49,13 +50,16 @@ func isCredValue(c byte) bool {
 
 // authGlue measures what follows "authorization" up to its value: an optional closing quote,
 // spaces, ':' or '=', spaces, an optional opening quote, and an optional scheme word and a
-// space. Terminal escape codes (colour) may sit anywhere a space may (#3562). -1: not an
+// space. A quote is one however it is written (quoteLen): in a JSON string it is \" (#3731: a
+// quoted "authorization": "Basic ..." passed through Coral Hub, whose replies are JSON). Terminal escape codes (colour) may sit anywhere a space may (#3562). -1: not an
 // Authorization value; -2: the buffer ended before that could be told. scheme reports whether
 // a scheme word came before the value.
 func authGlue(b []byte) (n int, scheme bool) {
 	i := 0
-	if i < len(b) && (b[i] == '"' || b[i] == '\'') {
-		i++
+	if q := quoteLen(b); q < 0 {
+		return q, false
+	} else {
+		i += q
 	}
 	if i = skipGap(b, i); i < 0 {
 		return i, false
@@ -69,8 +73,10 @@ func authGlue(b []byte) (n int, scheme bool) {
 	if i = skipGap(b, i+1); i < 0 {
 		return i, false
 	}
-	if i < len(b) && (b[i] == '"' || b[i] == '\'') {
-		i++
+	if q := quoteLen(b[i:]); q < 0 {
+		return q, false
+	} else {
+		i += q
 	}
 	j := i
 	for j < len(b) && j-i <= 16 && (b[j] >= 'a' && b[j] <= 'z' || b[j] >= 'A' && b[j] <= 'Z') {
@@ -90,6 +96,45 @@ func authGlue(b []byte) (n int, scheme bool) {
 		return -2, false
 	}
 	return i, scheme
+}
+
+// maxQuoteEscape bounds the backslashes taken before a quote: \" in a JSON string, \\\" when
+// the text itself had an escaped quote, and so on.
+const maxQuoteEscape = 8
+
+// quoteLen is the length of the quote at the start of b, however it is written: " or ',
+// after any backslashes (JSON writes " as \", and a \" in the text as \\\"), or a JSON \u0022
+// or \u0027. 0: no quote there; -2: b ends before that can be told. When unsure, a quote: an
+// Authorization value after it is then redacted (fail closed).
+func quoteLen(b []byte) int {
+	i := 0
+	for i < len(b) && b[i] == '\\' && i < maxQuoteEscape {
+		i++
+	}
+	if i == len(b) {
+		if i > 0 {
+			return -2
+		}
+		return 0
+	}
+	switch c := b[i]; {
+	case c == '"' || c == '\'':
+		return i + 1
+	case i > 0 && (c == 'u' || c == 'U'):
+		for _, hex := range []string{"u0022", "u0027"} {
+			k := 0
+			for k < len(hex) && i+k < len(b) && b[i+k]|0x20 == hex[k]|0x20 {
+				k++
+			}
+			if k == len(hex) {
+				return i + k
+			}
+			if i+k == len(b) {
+				return -2
+			}
+		}
+	}
+	return 0
 }
 
 // bearerGlue: after "Bearer", spaces (at least one) and any escape codes, up to the value.
@@ -195,7 +240,7 @@ var tokenRules = []tokenRule{
 	{prefixes: []string{"AKIA", "ASIA"}, class: isUpperDigit, min: 16, max: 16, exact: true, notAfter: isAlnum},
 	{prefixes: []string{"xoxa-", "xoxb-", "xoxp-", "xoxr-", "xoxs-"}, class: isAlnumDash, min: 10, max: 255, notAfter: isWord},
 	{prefixes: []string{"Bearer", "bearer", "BEARER"}, glue: bearerGlue, class: isCredValue, min: 20, max: 512, keep: true, notAfter: isWord},
-	{prefixes: []string{"Authorization", "authorization", "AUTHORIZATION"}, glue: authGlue, class: isCredValue, min: 8, max: 512, keep: true, notAfter: isWord},
+	{prefixes: []string{"Authorization", "authorization", "AUTHORIZATION"}, glue: authGlue, class: isCredValue, min: 8, max: 512, keep: true, notAfter: isWord, params: true},
 }
 
 // PEM private-key blocks: "-----BEGIN <LABEL>PRIVATE KEY-----" ... "-----END <LABEL>-----".
@@ -657,6 +702,16 @@ func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long
 		}
 		at, scheme = at+g, sch
 	}
+	if ru.params {
+		// Digest (and any scheme with parameters): username="bob", nonce="...", response="..."
+		// is one credential, redacted to the list's end (#3731).
+		switch n, k := paramList(b[at:], final); {
+		case n == -2:
+			return 0, 0, false, true, false
+		case n > 0 && k >= 2 || n > 0 && bytes.IndexByte(b[at:at+n], '"') >= 0:
+			return at + n, at, true, false, false
+		}
+	}
 	run := 0
 	for at+run < len(b) && ru.class(b[at+run]) {
 		run++
@@ -681,6 +736,92 @@ func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long
 		return 0, 0, false, false, false
 	}
 	return at + run, at, true, false, false
+}
+
+// maxParamList bounds an auth-param list (a Digest header is about 300 bytes); one that runs on
+// past it is redacted to there, and the rest of its run dropped.
+const maxParamList = 1024
+
+// paramList measures the auth-param list at b: key=value pairs separated by commas (and
+// spaces), a value a run of credential characters or a quoted string, its quote written however
+// the text writes it (quoteLen: raw, \" in JSON, \\\" in JSON inside JSON), and closed by the same
+// form. It returns the list's length and how many pairs it holds (0, 0: not a list), or -2 when b
+// ends before the list does (or before maxParamList, when it has no end in sight). With final
+// set, b is the whole body: one that ends inside a pair has the list run to its end (fail
+// closed), and a word with no '=' after it is not a pair.
+func paramList(b []byte, final bool) (n, pairs int) {
+	i := 0
+	// short: b ended. inPair: inside a pair (after its '='); otherwise before a key.
+	short := func(inPair bool) (int, int) {
+		switch {
+		case !final:
+			return -2, 0
+		case inPair:
+			return len(b), pairs + 1
+		}
+		return i, pairs
+	}
+	for {
+		k := i
+		for k < len(b) && (isWord(b[k]) || b[k] == '-') {
+			k++
+		}
+		if k == len(b) {
+			if k >= maxParamList {
+				return maxParamList, pairs + 1
+			}
+			return short(false)
+		}
+		if k == i || b[k] != '=' {
+			return i, pairs
+		}
+		k++
+		q := quoteLen(b[k:])
+		switch {
+		case q == -2:
+			return short(true)
+		case q > 0:
+			form := b[k : k+q]
+			end := bytes.Index(b[k+q:], form)
+			if end < 0 {
+				if len(b) >= maxParamList {
+					return maxParamList, pairs + 1
+				}
+				return short(true)
+			}
+			k += q + end + q
+		default:
+			for k < len(b) && isCredValue(b[k]) {
+				k++
+			}
+		}
+		pairs++
+		end := k
+		if k > maxParamList {
+			return maxParamList, pairs
+		}
+		for k < len(b) && b[k] == ' ' {
+			k++
+		}
+		if k == len(b) {
+			if final {
+				return end, pairs
+			}
+			return -2, 0 // another pair may follow in the next chunk
+		}
+		if b[k] != ',' {
+			return end, pairs
+		}
+		for k++; k < len(b) && b[k] == ' '; k++ {
+		}
+		if k == len(b) {
+			if final {
+				return end, pairs
+			}
+			return -2, 0
+		}
+		i = k
+	}
 }
 
 // mixedValue: the value holds a digit or a symbol, as credentials do.
