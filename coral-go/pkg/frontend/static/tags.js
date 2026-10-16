@@ -1,7 +1,8 @@
 /* Session tags: CRUD, tag pills, dropdown picker */
 
 import { state } from './state.js';
-import { escapeHtml, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr } from './utils.js';
+import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { showToast } from './utils.js';
 
 let allTags = [];
@@ -44,7 +45,7 @@ export function renderSessionTags(tags) {
     container.innerHTML = tags.map(tag =>
         `<span class="tag-pill" style="background:${escapeHtml(tag.color)}">
             ${escapeHtml(tag.name)}
-            <span class="tag-remove" onclick="removeTagFromSession('${jsStr(state.currentSession.name)}', ${Number(tag.id)})">&times;</span>
+            <span class="tag-remove" data-on-click="session-tag-remove" data-name="${escapeAttr(state.currentSession.name)}" data-tag-id="${Number(tag.id)}">&times;</span>
         </span>`
     ).join("");
 }
@@ -74,7 +75,7 @@ function renderTagDropdownList() {
 
     container.innerHTML = available.map(tag =>
         `<span class="tag-dropdown-item" style="background:${escapeHtml(tag.color)}"
-              onclick="addTagToSession('${jsStr(state.currentSession.name)}', ${Number(tag.id)})">
+              data-on-click="session-tag-add" data-name="${escapeAttr(state.currentSession.name)}" data-tag-id="${Number(tag.id)}">
             ${escapeHtml(tag.name)}
         </span>`
     ).join("");
@@ -161,3 +162,10 @@ export function renderSidebarTagDots(tags) {
         tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeHtml(t.color)}" title="${escapeHtml(t.name)}"></span>`).join("") +
         '</span>';
 }
+
+// A session's tag chip (remove) and the tag dropdown (add) (#3645): the session name arrives intact
+// as one argument (data-name), the tag id is checked.
+registerActions({
+    'session-tag-remove': el => { const n = textOf(el.dataset.name), id = idOf(el.dataset.tagId); if (n && id) window.removeTagFromSession(n, id); },
+    'session-tag-add': el => { const n = textOf(el.dataset.name), id = idOf(el.dataset.tagId); if (n && id) window.addTagToSession(n, id); },
+});

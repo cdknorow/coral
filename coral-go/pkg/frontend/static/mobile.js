@@ -141,7 +141,7 @@ export function syncMobileAgentList() {
         header.innerHTML = `
             <h2 class="mobile-list-title">Live Sessions</h2>
             <div class="server-switcher-host" data-server-switcher-host hidden></div>
-            <button class="btn btn-small btn-primary" onclick="showLaunchModal()">+ New</button>
+            <button class="btn btn-small btn-primary" data-on-click="launch-show">+ New</button>
         `;
         agentList.appendChild(header);
         // The servers button (#3085) lives in the sidebar's search row on wider screens.

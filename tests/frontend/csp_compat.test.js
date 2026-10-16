@@ -44,7 +44,7 @@ const { pathToFileURL } = require('url');
     assert.deepStrictEqual(bad, [], `${bad.length} of ${total} inline handlers are outside the CSP-safe grammar:\n` + bad.join('\n'));
 
     // The events the remaining inline handlers use (CSP stage 2, #3645, moves them away slice by slice).
-    assert.deepStrictEqual([...shapesMod.EVENTS], ['click', 'contextmenu', 'input', 'keydown', 'submit'], 'EVENTS is derived from the UI');
+    assert.deepStrictEqual([...shapesMod.EVENTS], ['click', 'submit'], 'EVENTS is derived from the UI');
 
     // ── 1b. the real allowlist refuses anything not shaped like a shipped handler ──
     {
@@ -58,8 +58,11 @@ const { pathToFileURL } = require('url');
         m.runHandler("sendKeys('a', 'b')", el0, evx);
         m.runHandler("removeTagFromSession('" + 'a'.repeat(700) + "', 5)", el0, evx);
         assert.deepStrictEqual(log2, [], 'handlers outside the allowlist must not run at all');
-        m.runHandler("removeTagFromSession('x', 5)", el0, evx);
-        assert.deepStrictEqual(log2, [['removeTag', 'x', 5]], 'a shipped shape still runs');
+        // Slice 8 moved the last real handlers away; id:f(S) (utils.js's doc example) is the shape left.
+        globalThis.f = (...a) => log2.push(['f', ...a]);
+        m.runHandler("f('x')", el0, evx);
+        delete globalThis.f;
+        assert.deepStrictEqual(log2, [['f', 'x']], 'a shipped shape still runs');
         m._useShapesForTests({ has: () => true }); // the remaining checks exercise the interpreter itself
     }
 

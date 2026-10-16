@@ -148,8 +148,10 @@ function renderSessionTagsInto() {
     tags.renderSessionTags([{ id: 7, name: p, color: p }, { id: 8, name: BENIGN, color: '#fff' }]);
 }
 
-// The exact exploit chain from the review, spelled out: the handler text produced for the
-// hostile agent name must call removeTagFromSession once, with the whole name as ONE argument.
+// The exact exploit chain from the review, spelled out: the tag chip made for the hostile agent
+// name must call removeTagFromSession once, with the whole name as ONE argument. Since #3645 the
+// chip names an action (data-on-click) and carries the name as data; it is clicked through the
+// real dispatcher.
 {
     const name = PAYLOADS[0];
     state.currentSession = { name, type: 'live' };
@@ -158,7 +160,8 @@ function renderSessionTagsInto() {
     const seen = [];
     window.removeTagFromSession = globalThis.removeTagFromSession = (...a) => seen.push(a);
     called.length = 0;
-    compat.runHandler(el.getAttribute('onclick'), el, new window.Event('click'));
+    assert.equal(el.getAttribute('onclick'), null, 'no inline handler on the chip');
+    el.dispatchEvent(new window.Event('click', { bubbles: true }));
     assert.deepStrictEqual(seen, [[name, 7]], 'the agent name must arrive intact as a single argument');
     assert.deepStrictEqual(called, [], 'sendKeys must not run');
     document.getElementById('history-session-tags').innerHTML = '';

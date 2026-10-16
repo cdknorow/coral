@@ -1,7 +1,8 @@
 /* Jobs: sidebar rendering for active task runs (cron + API-triggered) */
 
 import { selectLiveSession } from './sessions.js';
-import { escapeHtml, escapeAttr, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr } from './utils.js';
+import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 
 let activeRuns = [];
 
@@ -45,7 +46,7 @@ export function renderLiveJobs(runs) {
 
         const clickable = hasSid ? '' : ' style="opacity: 0.5; cursor: default;"';
         const onClick = hasSid
-            ? `onclick="selectLiveJobRun('${jsStr(run.session_id)}', '${jsStr(run.agent_type || 'claude')}')"`
+            ? `data-on-click="job-live-run" data-session-id="${escapeAttr(run.session_id)}" data-agent-type="${escapeAttr(run.agent_type || 'claude')}"`
             : '';
 
         return `<li class="session-list-item"${clickable} ${onClick}>
@@ -97,3 +98,8 @@ function updateJobsSectionCount() {
     const schedBadge = document.getElementById('scheduled-jobs-count');
     if (schedBadge) schedBadge.textContent = scheduledCount || '';
 }
+
+// A running job's row opens its agent (#3645).
+registerActions({
+    'job-live-run': el => { const sid = textOf(el.dataset.sessionId), type = tokenOf(el.dataset.agentType); if (sid && type) window.selectLiveJobRun(sid, type); },
+});

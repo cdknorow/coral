@@ -116,7 +116,7 @@ const contrast = (a, b) => {
         // Open the way a keyboard user does: the menu button, then Enter on the Settings item.
         await ev(`(() => { const b = document.querySelector('[aria-controls="top-bar-settings-menu"]'); b.focus(); b.click(); return true; })()`);
         await waitFor(`getComputedStyle(document.getElementById('top-bar-settings-menu')).display !== 'none'`, 'the top bar menu', 3000);
-        await ev(`(() => { [...document.querySelectorAll('#top-bar-settings-menu .overflow-menu-item')].find(b => /showSettingsModal/.test(b.getAttribute('onclick') || '')).focus(); return true; })()`);
+        await ev(`(() => { [...document.querySelectorAll('#top-bar-settings-menu .overflow-menu-item')].find(b => b.getAttribute('data-on-click') === 'm-close-top-bar-settings-then-show-settings-modal').focus(); return true; })()`);
         await key('Enter');
         await waitFor(dialogShown, 'the Settings dialog', 5000);
         await waitFor(`document.getElementById('settings-modal').contains(document.activeElement)`, 'focus inside the dialog on open', 3000,

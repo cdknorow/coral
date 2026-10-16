@@ -2,6 +2,7 @@
 
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
+import { registerActions } from './actions.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
 import { isCloud } from './server_base.js';
 
@@ -51,10 +52,10 @@ function renderModal() {
             return `<div class="theme-row">
                 <label class="theme-label" title="${escapeHtml(cssVar)}">${escapeHtml(label)}</label>
                 <div class="theme-color-wrap">
-                    <input type="color" class="theme-color-picker" value="${escapeAttr(hexValue)}" data-var="${escapeHtml(cssVar)}"
-                        oninput="updateThemeVar(this)">
-                    <input type="text" class="theme-color-text" value="${escapeHtml(value)}" placeholder="default" data-var="${escapeHtml(cssVar)}"
-                        oninput="updateThemeVarText(this)">
+                    <input type="color" class="theme-color-picker" value="${escapeAttr(hexValue)}" data-var="${escapeAttr(cssVar)}"
+                        data-on-input="theme-var">
+                    <input type="text" class="theme-color-text" value="${escapeHtml(value)}" placeholder="default" data-var="${escapeAttr(cssVar)}"
+                        data-on-input="theme-var-text">
                 </div>
             </div>`;
         }).join('');
@@ -72,15 +73,15 @@ function renderModal() {
                     <option value="">Load theme...</option>
                     ${themeOptions}
                 </select>
-                <button class="btn btn-sm" onclick="loadSelectedTheme()">Load</button>
-                <button class="btn btn-sm btn-danger" onclick="deleteSelectedTheme()">Delete</button>
+                <button class="btn btn-sm" data-on-click="theme-load">Load</button>
+                <button class="btn btn-sm btn-danger" data-on-click="theme-delete">Delete</button>
                 <span class="toolbar-spacer"></span>
-                ${isCloud() ? '' : '<button class="btn btn-sm" onclick="importThemeFile()">Import</button>'}
-                <button class="btn btn-sm" onclick="exportCurrentTheme()">Export</button>
+                ${isCloud() ? '' : '<button class="btn btn-sm" data-on-click="theme-import">Import</button>'}
+                <button class="btn btn-sm" data-on-click="theme-export">Export</button>
             </div>
             ${isCloud() ? '' : `<div class="theme-generate-bar">
                 <input type="text" id="theme-ai-prompt" class="settings-input" placeholder="Describe your theme... (e.g. &quot;cyberpunk neon with pink and teal&quot;)">
-                <button class="btn btn-sm btn-primary" id="theme-generate-btn" onclick="generateThemeFromDescription()">Generate</button>
+                <button class="btn btn-sm btn-primary" id="theme-generate-btn" data-on-click="theme-generate">Generate</button>
             </div>`}
             <div class="theme-editor-scroll">
                 ${groups}
@@ -94,10 +95,10 @@ function renderModal() {
                 </select>
             </div>
             <div class="modal-actions">
-                <button class="btn" onclick="hideThemeConfigurator()">Cancel</button>
-                <button class="btn" onclick="resetThemeToDefaults()">Reset</button>
-                <button class="btn btn-primary" onclick="previewTheme()">Preview</button>
-                <button class="btn btn-primary" onclick="saveAndApplyTheme()">Save &amp; Apply</button>
+                <button class="btn" data-on-click="theme-close">Cancel</button>
+                <button class="btn" data-on-click="theme-reset">Reset</button>
+                <button class="btn btn-primary" data-on-click="theme-preview">Preview</button>
+                <button class="btn btn-primary" data-on-click="theme-save">Save &amp; Apply</button>
             </div>
         </div>
     `;
@@ -412,3 +413,19 @@ function toHex(color) {
 
     return '#000000';
 }
+
+// The theme configurator's color inputs and buttons (#3645): each calls the same function its
+// inline handler did.
+registerActions({
+    'theme-var': el => window.updateThemeVar(el),
+    'theme-var-text': el => window.updateThemeVarText(el),
+    'theme-load': () => window.loadSelectedTheme(),
+    'theme-delete': () => window.deleteSelectedTheme(),
+    'theme-import': () => window.importThemeFile(),
+    'theme-export': () => window.exportCurrentTheme(),
+    'theme-generate': () => window.generateThemeFromDescription(),
+    'theme-close': () => window.hideThemeConfigurator(),
+    'theme-reset': () => window.resetThemeToDefaults(),
+    'theme-preview': () => window.previewTheme(),
+    'theme-save': () => window.saveAndApplyTheme(),
+});

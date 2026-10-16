@@ -594,12 +594,12 @@ async function run() {
         const navBefore = await evalInPage(`(() => {
             const tabs = Array.from(document.querySelectorAll('.top-nav-tabs .top-nav-tab'));
             const t = document.getElementById('nav-tab-tokens');
-            return { label: t ? t.textContent.trim() : null, title: t ? t.getAttribute('title') : null, onclick: t ? t.getAttribute('onclick') : null,
+            return { label: t ? t.textContent.trim() : null, title: t ? t.getAttribute('title') : null, action: t ? t.getAttribute('data-on-click') + ' ' + t.dataset.arg : null,
                      tokensLabels: tabs.filter(b => b.textContent.trim() === 'Tokens').length, count: tabs.length };
         })()`);
         check('top nav tab reads "Analytics"', navBefore.label === 'Analytics', JSON.stringify(navBefore));
         check('no top-nav tab is still labelled "Tokens"', navBefore.tokensLabels === 0, `${navBefore.tokensLabels}`);
-        check('Analytics tab keeps its id, handler and a descriptive title', navBefore.onclick === "switchNavTab('tokens')" && /^Analytics/.test(navBefore.title || ''), JSON.stringify(navBefore));
+        check('Analytics tab keeps its id, handler and a descriptive title', navBefore.action === 'm-switch-nav-tab tokens' && /^Analytics/.test(navBefore.title || ''), JSON.stringify(navBefore));
         await evalInPage(`document.getElementById('nav-tab-tokens').click(); true`);
         await until(`document.querySelector('.top-nav-tab.active')?.id === 'nav-tab-tokens' && getComputedStyle(document.getElementById('cost-dashboard-view')).display !== 'none' && !!document.querySelector('#cost-dashboard-view h2')`, 'the Analytics view');
         const navAfter = await evalInPage(`(() => ({

@@ -1,6 +1,7 @@
 /* Optional, lazy team artifact source for the existing Files viewer. */
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, jsStr, sanitizeHtml } from './utils.js';
+import { escapeHtml, escapeAttr, sanitizeHtml } from './utils.js';
+import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud } from './server_base.js';
@@ -435,7 +436,7 @@ async function loadKnowledgeTab() {
         if (job.status === 'failed') { renderDistillFailed(panel, boardName, job); return; }
         panel.innerHTML = `<div class="knowledge-empty">
             <div style="margin-bottom:12px">No distilled knowledge yet for this team.</div>
-            <button class="btn btn-primary" onclick="distillTeamKnowledge('${jsStr(boardName)}')">Distill Knowledge</button>
+            <button class="btn btn-primary" data-on-click="knowledge-distill" data-board="${escapeAttr(boardName)}">Distill Knowledge</button>
         </div>`;
         return;
     }
@@ -496,7 +497,7 @@ function renderDistillProgress(panel, job) {
 function renderDistillFailed(panel, boardName, job) {
     panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error)" role="alert">
         Distillation failed: ${escapeHtml((job && job.error) || 'Unknown error')}
-        <div><button class="btn btn-sm" style="margin-top:12px" onclick="distillTeamKnowledge('${jsStr(boardName)}')">Retry</button></div>
+        <div><button class="btn btn-sm" style="margin-top:12px" data-on-click="knowledge-distill" data-board="${escapeAttr(boardName)}">Retry</button></div>
     </div>`;
 }
 
@@ -542,7 +543,7 @@ function renderKnowledgePanel(panel, boardName) {
             <span class="knowledge-nav-title">${knowledgeActiveTab === 'index' ? 'Overview' : escapeHtml(knowledgeActiveTab)}</span>
         </div>
         <div class="knowledge-toolbar-actions">
-            <button class="inline-preview-mode-btn knowledge-redistill-btn" onclick="distillTeamKnowledge('${jsStr(boardName)}')" title="Re-distill"><span class="material-icons">refresh</span></button>
+            <button class="inline-preview-mode-btn knowledge-redistill-btn" data-on-click="knowledge-distill" data-board="${escapeAttr(boardName)}" title="Re-distill"><span class="material-icons">refresh</span></button>
             <button class="inline-preview-mode-btn${knowledgeMode === 'preview' ? ' active' : ''}" data-kmode="preview" title="Preview"><span class="material-icons">visibility</span></button>
             <button class="inline-preview-mode-btn${knowledgeMode === 'edit' ? ' active' : ''}" data-kmode="edit" title="Edit"><span class="material-icons">edit</span></button>
             <button class="inline-preview-save knowledge-save-btn" style="display:${knowledgeMode === 'edit' ? '' : 'none'}">Save</button>
@@ -688,3 +689,8 @@ export async function distillKnowledgeInTab(boardName) {
         if (p && boardName === currentTeam()) p.innerHTML = `<div class="knowledge-empty" style="color:var(--error)">${escapeHtml(err.message)}</div>`;
     }
 }
+
+// Distill / Retry / Re-distill in the team's knowledge panel (#3645).
+registerActions({
+    'knowledge-distill': el => { const b = textOf(el.dataset.board); if (b) window.distillTeamKnowledge(b); },
+});

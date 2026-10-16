@@ -2,6 +2,7 @@
 
 import { state } from './state.js';
 import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast, copyText } from './utils.js';
+import { registerActions } from './actions.js';
 import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { deriveSessionState } from './render.js';
@@ -1802,7 +1803,7 @@ function needsInputHtml(info, session) {
         + context
         + reviewHtml(info)
         + controls.body
-        + `<div class="cni-foot"><button type="button" class="cni-link" onclick="window.showTerminalView()">Open terminal</button>${hint}<span class="cni-foot-spacer"></span>${controls.foot}</div>`;
+        + `<div class="cni-foot"><button type="button" class="cni-link" data-on-click="terminal-view-open">Open terminal</button>${hint}<span class="cni-foot-spacer"></span>${controls.foot}</div>`;
 }
 
 // The prompt cards Coral itself made (#3622 F1). Only a control inside one of these, and outside
@@ -1930,4 +1931,9 @@ document.addEventListener("submit", (e) => {
         return;
     }
     sendPromptAnswer(ownPromptCard(form), Number(form.dataset.n), form.dataset.label, "text", text);
+});
+
+// A prompt card's Open terminal (#3645).
+registerActions({
+    'terminal-view-open': () => window.showTerminalView(),
 });

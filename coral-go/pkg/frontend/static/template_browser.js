@@ -1,6 +1,7 @@
 /* Template Browser — browse and import agent/command templates from aitmpl.com */
 
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
+import { registerActions } from './actions.js';
 
 let _categoriesCache = {};
 
@@ -55,7 +56,7 @@ export async function showTemplateBrowser(type, onSelect) {
             <div class="template-browser-header">
                 <h3>${type === 'agents' ? 'Agent Templates' : 'Command Templates'}</h3>
                 <input type="text" class="template-browser-search" placeholder="Filter templates...">
-                <button class="btn template-browser-close" onclick="this.closest('.modal').remove()">&times;</button>
+                <button class="btn template-browser-close" data-on-click="template-browser-close">&times;</button>
             </div>
             <div style="font-size:11px;color:var(--text-muted);padding:4px 0 8px">
                 Browse community templates from <a href="https://www.aitmpl.com/${type === 'agents' ? 'agents' : 'commands'}" target="_blank" rel="noopener" style="color:var(--accent)">aitmpl.com</a> — open-source Claude Code templates library
@@ -196,3 +197,8 @@ export async function showTemplateBrowser(type, onSelect) {
 
     renderCategories();
 }
+
+// The template browser's ×: it removes its dialog (#3645).
+registerActions({
+    'template-browser-close': el => el.closest('.modal')?.remove(),
+});

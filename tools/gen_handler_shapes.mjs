@@ -16,8 +16,6 @@ const OUT = path.join(root, 'static/csp_shapes.js');
 
 // Names jsIdent() may emit; a test keeps this in sync with HANDLER_NAMES in utils.js.
 export const DYNAMIC_CALLEES = ['toggleEventFilter', 'toggleHistoryEventFilter', 'toggleAllEventFilters', 'toggleAllHistoryEventFilters', 'window._selectAgentPreset', 'window._applyACFPresetValue'];
-// Handler strings built into a variable and interpolated whole (render.js clickHandler).
-const PREBUILT = ["selectHistorySession('X')", "selectLiveSession('X', 'X', 'X', 'X')"];
 
 const EVENT_ATTR = /^on([a-z]+)$/;
 const shapes = new Set();
@@ -49,7 +47,6 @@ function expandHole(expr, quoted) {
     if (/^jsIdent\(/.test(t)) return DYNAMIC_CALLEES;
     const lit = /^[^?]*\?\s*('([^'\\]*)'|"([^"\\]*)")\s*:\s*('([^'\\]*)'|"([^"\\]*)")\s*$/.exec(t);
     if (lit) return [lit[2] ?? lit[3], lit[5] ?? lit[6]];
-    if (t === 'clickHandler') return PREBUILT;
     return quoted ? 'X' : '0'; // unreviewed holes are rejected by the attribute lint, not here
 }
 
@@ -72,7 +69,6 @@ for (const f of fs.readdirSync(staticDir).filter(x => x.endsWith('.js')).sort())
         handle(a.name, parts);
     }
 }
-for (const p of PREBUILT) shapes.add(shapeOf(p));
 
 function walk(d, out) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); e.isDirectory() ? walk(p, out) : /\.html$/.test(e.name) && out.push(p); } return out; }
 for (const f of walk(path.join(root, 'templates'), [])) {

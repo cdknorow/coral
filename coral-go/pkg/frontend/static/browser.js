@@ -1,6 +1,7 @@
 /* Directory browser for session launch modal */
 
-import { escapeHtml, escapeAttr, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr } from './utils.js';
+import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { serverFetch, LOCAL_SERVER, normServer } from './server_base.js';
 import { recentDirsKey } from './launch_server.js';
 
@@ -63,7 +64,7 @@ function renderRecentDirs() {
     section.innerHTML = `<div class="dir-browser-recents-label">Recent</div>` +
         dirs.map(dir => {
             const name = dir.split("/").filter(Boolean).pop() || dir;
-            return `<div class="dir-browser-recent" onclick="browserSelectRecent('${jsStr(dir)}')" title="${escapeHtml(dir)}">
+            return `<div class="dir-browser-recent" data-on-click="browser-recent" data-dir="${escapeAttr(dir)}" title="${escapeAttr(dir)}">
                 <span class="dir-icon">&#128338;</span>
                 <span class="dir-name">${escapeHtml(name)}</span>
                 <span class="dir-browser-recent-path">&lrm;${escapeHtml(dir)}</span>
@@ -145,7 +146,7 @@ async function loadBrowserEntries(path) {
         }
 
         list.innerHTML = data.entries.map(name =>
-            `<li onclick="browserNavigateTo('${jsStr(name)}')" title="${escapeHtml(name)}">
+            `<li data-on-click="browser-nav" data-name="${escapeAttr(name)}" title="${escapeAttr(name)}">
                 <span class="dir-icon">&#128193;</span>
                 <span class="dir-name">${escapeHtml(name)}</span>
             </li>`
@@ -173,3 +174,9 @@ export function browserNavigateUp() {
         loadBrowserEntries(parent);
     }
 }
+
+// The folder browser's recent folders and its entries (#3645).
+registerActions({
+    'browser-recent': el => { const d = textOf(el.dataset.dir, 4096); if (d) window.browserSelectRecent(d); },
+    'browser-nav': el => { const n = textOf(el.dataset.name, 1024); if (n) window.browserNavigateTo(n); },
+});

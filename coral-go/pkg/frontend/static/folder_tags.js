@@ -1,7 +1,8 @@
 /* Folder-level tags: load, render, dropdown picker, add/remove */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr, showToast } from './utils.js';
+import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { renderLiveSessions } from './render.js';
 import { loadAllTags } from './tags.js';
 
@@ -74,14 +75,13 @@ export function hideFolderTagDropdown() {
 }
 
 function _buildDropdownHtml(folderName, currentTags) {
-    const escapedFolder = escapeAttr(folderName);
 
     let currentHtml = "";
     if (currentTags.length > 0) {
         currentHtml = `<div class="folder-tag-current">${currentTags.map(t =>
             `<span class="tag-pill" style="background:${escapeHtml(t.color)}">
                 ${escapeHtml(t.name)}
-                <span class="tag-remove" onclick="event.stopPropagation(); removeFolderTag('${jsStr(escapedFolder)}', ${Number(t.id)})">&times;</span>
+                <span class="tag-remove" data-on-click="folder-tag-remove" data-folder="${escapeAttr(folderName)}" data-tag-id="${Number(t.id)}">&times;</span>
             </span>`
         ).join("")}</div>`;
     }
@@ -95,7 +95,7 @@ function _buildDropdownHtml(folderName, currentTags) {
     if (available.length > 0) {
         availableHtml = `<div class="tag-dropdown-list">${available.map(t =>
             `<span class="tag-dropdown-item" style="background:${escapeHtml(t.color)}"
-                  onclick="event.stopPropagation(); addFolderTag('${jsStr(escapedFolder)}', ${Number(t.id)})">
+                  data-on-click="folder-tag-add" data-folder="${escapeAttr(folderName)}" data-tag-id="${Number(t.id)}">
                 ${escapeHtml(t.name)}
             </span>`
         ).join("")}</div>`;
@@ -104,9 +104,9 @@ function _buildDropdownHtml(folderName, currentTags) {
     }
 
     const createHtml = `<div class="tag-dropdown-create">
-        <input type="text" id="folder-tag-new-name" placeholder="New tag name" onkeydown="if(event.key==='Enter'){event.stopPropagation(); createAndAddFolderTag('${jsStr(escapedFolder)}')}" />
+        <input type="text" id="folder-tag-new-name" placeholder="New tag name" data-on-keydown="folder-tag-new-key" data-folder="${escapeAttr(folderName)}" />
         <input type="color" id="folder-tag-new-color" value="#58a6ff" />
-        <button class="btn btn-small" onclick="event.stopPropagation(); createAndAddFolderTag('${jsStr(escapedFolder)}')">Add</button>
+        <button class="btn btn-small" data-on-click="folder-tag-create" data-folder="${escapeAttr(folderName)}">Add</button>
     </div>`;
 
     return `<div class="tag-dropdown-header">Folder Tags</div>
@@ -203,3 +203,13 @@ function _findGroupHeader(folderName) {
     }
     return null;
 }
+
+// The folder tag dropdown (#3645): the folder is its own name (data-folder), never re-escaped into a
+// script; a tag id is checked. Clicks stay inside the dropdown, as before.
+const folderOf = el => textOf(el.dataset.folder, 4096);
+registerActions({
+    'folder-tag-remove': (el, event) => { event.stopPropagation(); const f = folderOf(el), id = idOf(el.dataset.tagId); if (f && id) window.removeFolderTag(f, id); },
+    'folder-tag-add': (el, event) => { event.stopPropagation(); const f = folderOf(el), id = idOf(el.dataset.tagId); if (f && id) window.addFolderTag(f, id); },
+    'folder-tag-create': (el, event) => { event.stopPropagation(); const f = folderOf(el); if (f) window.createAndAddFolderTag(f); },
+    'folder-tag-new-key': (el, event) => { if (event.key !== 'Enter') return; event.stopPropagation(); const f = folderOf(el); if (f) window.createAndAddFolderTag(f); },
+});

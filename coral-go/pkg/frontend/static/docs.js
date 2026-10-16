@@ -1,6 +1,7 @@
 /* Documentation: browsable agent_docs viewer */
 
-import { escapeHtml as esc, showView, jsStr, showToast, renderDocsMarkdown } from './utils.js';
+import { escapeHtml as esc, showView, showToast, renderDocsMarkdown, escapeAttr } from './utils.js';
+import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { apiFetch } from './api.js';
 import { loadHighlight } from './vendor_loader.js';
 import { note, currentRoute } from './nav.js';
@@ -85,7 +86,7 @@ function renderDocNav() {
 
     list.innerHTML = docsList.map(d => {
         const active = selectedDoc === d.name ? ' active' : '';
-        return `<li class="session-list-item${active}" onclick="selectDoc('${jsStr(d.name)}')">${esc(d.title)}</li>`;
+        return `<li class="session-list-item${escapeAttr(active)}" data-on-click="doc-open" data-doc="${escapeAttr(d.name)}">${esc(d.title)}</li>`;
     }).join('');
 }
 
@@ -144,3 +145,8 @@ export async function selectDoc(name, { noteRoute = true } = {}) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
+
+// A doc in the Docs list (#3645).
+registerActions({
+    'doc-open': el => { const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
+});

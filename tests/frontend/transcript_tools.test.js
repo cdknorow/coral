@@ -333,7 +333,7 @@ async function run() {
   await ev(`window.__promptScreen = null; true`);
 
   // Open terminal switches this view without changing the saved Chat default
-  const openTerm = await ev(`(() => { const before = localStorage.getItem('coral-live-view-mode'); ${C}.querySelector('.chat-needs-input .cni-foot button[onclick]').click(); const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), saved: localStorage.getItem('coral-live-view-mode'), before }; window.setLiveViewMode('chat'); return r; })()`);
+  const openTerm = await ev(`(() => { const before = localStorage.getItem('coral-live-view-mode'); ${C}.querySelector('.chat-needs-input .cni-foot button[data-on-click="terminal-view-open"]').click(); const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), saved: localStorage.getItem('coral-live-view-mode'), before }; window.setLiveViewMode('chat'); return r; })()`);
   check('Open terminal shows the terminal without changing the saved view choice', !openTerm.chat && openTerm.saved === openTerm.before, JSON.stringify(openTerm));
 
   // A permission prompt: the Notification sets waiting_for_input; PreToolUse says what for

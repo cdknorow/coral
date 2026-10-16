@@ -1,7 +1,8 @@
 /* Custom Views — user-generated sidebar tabs rendered in sandboxed iframes */
 
 import { state } from './state.js';
-import { escapeHtml, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr } from './utils.js';
+import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { isCloud } from './server_base.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
 import { lockViewFrame, viewDocument, viewHostDocument, attachViewBridge, API_VIEW_SEES } from './view_sandbox.js';
@@ -53,9 +54,9 @@ function _renderViewTabs() {
     if (!container) return;
 
     container.innerHTML = _views.map(v =>
-        `<button class="agentic-tab" onclick="switchAgenticTab('custom-view-${jsStr(v.id)}', 'top')"
+        `<button class="agentic-tab" data-on-click="custom-view-tab" data-view-id="${escapeAttr(v.id)}"
                  id="agentic-tab-custom-view-${Number(v.id)}" title="${escapeHtml(v.name)}" aria-label="${escapeHtml(v.name)}"
-                 oncontextmenu="event.preventDefault(); window._showViewContextMenu(event, ${Number(v.id)})">
+                 data-on-contextmenu="custom-view-menu">
             <span class="material-icons">dashboard</span>
         </button>`
     ).join('');
@@ -260,8 +261,8 @@ window._showViewContextMenu = function(event, viewId) {
     menu.style.left = event.clientX + 'px';
     menu.style.top = event.clientY + 'px';
     menu.innerHTML = `
-        ${isCloud() ? '' : `<button onclick="window._showEditViewModal(${Number(viewId)}); this.parentElement.remove()">Edit</button>`}
-        <button onclick="window._deleteView(${Number(viewId)}); this.parentElement.remove()">Delete</button>
+        ${isCloud() ? '' : `<button data-on-click="custom-view-edit" data-view-id="${Number(viewId)}">Edit</button>`}
+        <button data-on-click="custom-view-delete" data-view-id="${Number(viewId)}">Delete</button>
     `;
     document.body.appendChild(menu);
 
@@ -284,3 +285,12 @@ window._deleteView = async function(viewId) {
         }
     });
 };
+
+// A custom view's tab, its context menu and the menu's Edit / Delete (#3645). The view id is checked;
+// Edit and Delete close the menu (their button's parent), as before.
+registerActions({
+    'custom-view-tab': el => { const id = tokenOf(el.dataset.viewId); if (id) window.switchAgenticTab('custom-view-' + id, 'top'); },
+    'custom-view-menu': (el, event) => { event.preventDefault(); const id = idOf(el.dataset.viewId); if (id) window._showViewContextMenu(event, id); },
+    'custom-view-edit': el => { const id = idOf(el.dataset.viewId); if (id) window._showEditViewModal(id); el.parentElement?.remove(); },
+    'custom-view-delete': el => { const id = idOf(el.dataset.viewId); if (id) window._deleteView(id); el.parentElement?.remove(); },
+});

@@ -1,6 +1,7 @@
 /* Update notification — checks for new Coral releases on GitHub */
 
-import { escapeHtml, jsStr, showToast } from './utils.js';
+import { escapeHtml, showToast, escapeAttr } from './utils.js';
+import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 
 /**
  * Fetch update info from the backend and show a toast if a new version is available.
@@ -75,7 +76,7 @@ function showUpdateToast(data) {
                     Coral v${escapeHtml(data.latest)} available
                     <span class="update-toast-current">(you have v${escapeHtml(data.current)})</span>
                 </span>
-                <button class="update-toast-close" onclick="dismissUpdateToast('${jsStr(data.latest)}')" title="Dismiss">&times;</button>
+                <button class="update-toast-close" data-on-click="update-dismiss" data-version="${escapeAttr(data.latest)}" title="Dismiss">&times;</button>
             </div>
             ${notesHtml}
             ${downloadBtn}
@@ -115,3 +116,8 @@ export function showSecurityWarning(message) {
     toast.append(body);
     document.body.appendChild(toast);
 }
+
+// The update toast's close button (#3645).
+registerActions({
+    'update-dismiss': el => { const v = textOf(el.dataset.version, 100); if (v) window.dismissUpdateToast(v); },
+});

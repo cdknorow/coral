@@ -45,7 +45,9 @@ export function registerActions(map) {
 export const DESTRUCTIVE_ACTIONS = new Set(['session-restart', 'mb-delete-board',
     'agent-kill', 'agent-restart', 'agent-rename', 'group-kill', 'team-kill', 'team-reset',
     // Slice 7b: the restart dialog's confirm button (the old list's [onclick*="confirmRestart"]).
-    'm-confirm-restart']);
+    'm-confirm-restart',
+    // Slice 8: End them (the agents left in Coral's old tmux server).
+    'm-end-leftover-tmux']);
 export const SEND_ACTIONS = new Set(['cmd-send', 'cmd-send-team', 'cmd-mode-toggle', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro',
     'cmd-send-menu', 'send-menu-send', 'send-menu-team', 'send-menu-resend', 'send-menu-protocol']);
 

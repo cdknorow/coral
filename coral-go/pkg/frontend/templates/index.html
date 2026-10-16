@@ -47,7 +47,7 @@
 <body data-coral-root="{{ .CoralRoot }}" data-entry-mode="{{ .EntryMode }}" data-target-session-id="{{ .TargetSessionID }}" data-target-server="{{ .TargetServer }}">
     <header class="top-bar">
         <div class="top-bar-brand">
-            <button class="tablet-sidebar-toggle" onclick="toggleTabletSidebar()" title="Toggle sidebar" aria-label="Toggle sidebar">
+            <button class="tablet-sidebar-toggle" data-on-click="m-toggle-tablet-sidebar" title="Toggle sidebar" aria-label="Toggle sidebar">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                     <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
                 </svg>
@@ -55,15 +55,15 @@
             <span class="top-bar-title"></span>
         </div>
         <nav class="top-nav-tabs" aria-label="Main navigation">
-            <button class="top-nav-tab active" id="nav-tab-agents" onclick="switchNavTab('agents')" aria-current="page">Agents</button>
+            <button class="top-nav-tab active" id="nav-tab-agents" data-on-click="m-switch-nav-tab" data-arg="agents" aria-current="page">Agents</button>
             <!-- Servers right after Agents (#3507, the operator's order: Agents, Servers, ..., Docs). -->
-            <button class="top-nav-tab" id="nav-tab-servers" onclick="switchNavTab('servers')" aria-controls="servers-view" hidden>Servers</button>
-            <button class="top-nav-tab" data-local-only id="nav-tab-history" onclick="switchNavTab('history')">Chats</button>
-            <button class="top-nav-tab" data-local-only id="nav-tab-workflows" onclick="switchNavTab('workflows')">Workflows</button>
-            <button class="top-nav-tab" data-local-only id="nav-tab-jobs" onclick="switchNavTab('jobs')">Jobs</button>
-            <button class="top-nav-tab" data-local-only id="nav-tab-tokens" onclick="switchNavTab('tokens')" title="Analytics — token usage and cost">Analytics</button>
-            <button class="top-nav-tab" id="nav-tab-docs" onclick="switchNavTab('docs')">Docs</button>
-            <button class="top-nav-tab" id="nav-tab-board" onclick="switchNavTab('board')" style="display:none">Board</button>
+            <button class="top-nav-tab" id="nav-tab-servers" data-on-click="m-switch-nav-tab" data-arg="servers" aria-controls="servers-view" hidden>Servers</button>
+            <button class="top-nav-tab" data-local-only id="nav-tab-history" data-on-click="m-switch-nav-tab" data-arg="history">Chats</button>
+            <button class="top-nav-tab" data-local-only id="nav-tab-workflows" data-on-click="m-switch-nav-tab" data-arg="workflows">Workflows</button>
+            <button class="top-nav-tab" data-local-only id="nav-tab-jobs" data-on-click="m-switch-nav-tab" data-arg="jobs">Jobs</button>
+            <button class="top-nav-tab" data-local-only id="nav-tab-tokens" data-on-click="m-switch-nav-tab" data-arg="tokens" title="Analytics — token usage and cost">Analytics</button>
+            <button class="top-nav-tab" id="nav-tab-docs" data-on-click="m-switch-nav-tab" data-arg="docs">Docs</button>
+            <button class="top-nav-tab" id="nav-tab-board" data-on-click="m-switch-nav-tab" data-arg="board" style="display:none">Board</button>
         </nav>
         <div id="startup-loading" class="startup-loading" role="status" aria-live="polite">
             <span class="startup-spinner"></span>
@@ -76,10 +76,10 @@
             <div id="topbar-search-dropdown" class="topbar-search-dropdown" style="display:none"></div>
         </div>
         <div class="top-bar-actions">
-            <button class="top-bar-btn" onclick="window._goHome()" title="Home" aria-label="Home"><span class="material-icons top-bar-icon">home</span></button>
-            <button class="top-bar-btn" id="panel-toggle-btn" onclick="toggleAgenticPanel()" title="Toggle side panel" aria-label="Toggle side panel"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="12" rx="1.5"/><line x1="10" y1="2" x2="10" y2="14"/></svg></button>
+            <button class="top-bar-btn" data-on-click="m-go-home" title="Home" aria-label="Home"><span class="material-icons top-bar-icon">home</span></button>
+            <button class="top-bar-btn" id="panel-toggle-btn" data-on-click="m-toggle-agentic-panel" title="Toggle side panel" aria-label="Toggle side panel"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="12" rx="1.5"/><line x1="10" y1="2" x2="10" y2="14"/></svg></button>
             <div class="top-bar-settings-wrapper">
-                <button class="top-bar-btn" onclick="toggleTopBarSettings()" title="Menu" aria-label="Settings menu" aria-controls="top-bar-settings-menu">
+                <button class="top-bar-btn" data-on-click="m-toggle-top-bar-settings" title="Menu" aria-label="Settings menu" aria-controls="top-bar-settings-menu">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
                         stroke-linecap="round" stroke-linejoin="round">
                         <path
@@ -88,29 +88,29 @@
                     </svg>
                 </button>
                 <div class="top-bar-settings-menu" id="top-bar-settings-menu" style="display:none">
-                    <button class="overflow-menu-item" onclick="closeTopBarSettings(); sleepAllAgents()">
+                    <button class="overflow-menu-item" data-on-click="m-close-top-bar-settings-then-sleep-all-agents">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                         Sleep All
                     </button>
-                    <button class="overflow-menu-item" onclick="closeTopBarSettings(); wakeAllAgents()">
+                    <button class="overflow-menu-item" data-on-click="m-close-top-bar-settings-then-wake-all-agents">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5"/><path d="M8 5v3l2 1"/></svg>
                         Wake All
                     </button>
-                    <button class="overflow-menu-item overflow-menu-danger" id="stop-all-auto-accept" hidden onclick="closeTopBarSettings(); stopAllAutoAccept()">
+                    <button class="overflow-menu-item overflow-menu-danger" id="stop-all-auto-accept" hidden data-on-click="m-close-top-bar-settings-then-stop-all-auto-accept">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg>
                         Stop all auto-accept
                     </button>
                     <div id="tier-badge" class="overflow-menu-tier" style="display:none"></div>
                     <hr class="overflow-menu-divider">
-                    <button class="overflow-menu-item" onclick="closeTopBarSettings(); showThemeConfigurator()">
+                    <button class="overflow-menu-item" data-on-click="m-close-top-bar-settings-then-show-theme-configurator">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 1.5v13M1.5 8h13"/><path d="M3 3l10 10M13 3L3 13"/></svg>
                         Themes
                     </button>
-                    <button class="overflow-menu-item" data-hub-only style="display:none" onclick="closeTopBarSettings(); showServersModal()">
+                    <button class="overflow-menu-item" data-hub-only style="display:none" data-on-click="m-close-top-bar-settings-then-show-servers-modal">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="4.5" rx="1"/><rect x="2" y="9" width="12" height="4.5" rx="1"/><circle cx="4.5" cy="4.75" r=".6" fill="currentColor"/><circle cx="4.5" cy="11.25" r=".6" fill="currentColor"/></svg>
                         Servers
                     </button>
-                    <button class="overflow-menu-item" onclick="closeTopBarSettings(); showSettingsModal()">
+                    <button class="overflow-menu-item" data-on-click="m-close-top-bar-settings-then-show-settings-modal">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M6.7 1.4h2.6l.4 1.8.5.2 1.6-.9 1.8 1.8-.9 1.6.2.5 1.8.4v2.6l-1.8.4-.2.5.9 1.6-1.8 1.8-1.6-.9-.5.2-.4 1.8H6.7l-.4-1.8-.5-.2-1.6.9-1.8-1.8.9-1.6-.2-.5-1.8-.4V6.7l1.8-.4.2-.5-.9-1.6 1.8-1.8 1.6.9.5-.2z"/>
                             <circle cx="8" cy="8" r="2.5"/>
@@ -126,7 +126,7 @@
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
                         GitHub
                     </a>
-                    <button class="overflow-menu-item" data-local-only onclick="closeTopBarSettings(); checkForUpdates(true)">
+                    <button class="overflow-menu-item" data-local-only data-on-click="m-close-top-bar-settings-then-check-for-updates">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 4v4l2.5 2.5"/><path d="M5 1.5A6.5 6.5 0 0 1 14.5 8"/><path d="M14.5 4v4h-4"/></svg>
                         Check for Updates
                     </button>
@@ -143,12 +143,12 @@
             <span class="tmux-missing-banner-cmd">Install with: <code id="tmux-missing-banner-cmd-text"></code></span>
         </div>
         <button id="tmux-check-again" class="btn btn-small" type="button">Check again</button>
-        <button class="tmux-missing-banner-close" onclick="document.getElementById('tmux-missing-banner').style.display='none'" aria-label="Dismiss">&times;</button>
+        <button class="tmux-missing-banner-close" data-on-click="m-tmux-banner-close" aria-label="Dismiss">&times;</button>
     </div>
 
     <div class="layout">
         {{ template "includes/sidebar.html" . }}
-        <div class="tablet-sidebar-backdrop" onclick="toggleTabletSidebar()"></div>
+        <div class="tablet-sidebar-backdrop" data-on-click="m-toggle-tablet-sidebar"></div>
         <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
 
         <!-- Main Content -->
@@ -160,15 +160,15 @@
             <div id="leftover-tmux-banner" class="leftover-tmux-banner" role="alert" hidden>
                 <span class="material-icons" aria-hidden="true">warning</span>
                 <div class="leftover-tmux-text"><b id="leftover-tmux-count"></b> Coral now uses pty and can't reach them; they keep using CPU and tokens. End them, then wake the agents here. Waking one of them is refused until they are ended, so no second copy starts.</div>
-                <button class="btn btn-primary" type="button" id="leftover-tmux-end" onclick="endLeftoverTmux()">End them</button>
+                <button class="btn btn-primary" type="button" id="leftover-tmux-end" data-on-click="m-end-leftover-tmux">End them</button>
             </div>
 
             <!-- #3636: more agents were running when a pty Coral stopped than it wakes by itself -->
             <div id="auto-wake-banner" class="leftover-tmux-banner" role="alert" hidden>
                 <span class="material-icons" aria-hidden="true">bedtime</span>
                 <div class="leftover-tmux-text"><b id="auto-wake-count"></b> <span id="auto-wake-detail">Wake them? Coral wakes them one at a time and they resume their conversation.</span></div>
-                <button class="btn" type="button" id="auto-wake-dismiss" onclick="dismissAutoWake()">Not now</button>
-                <button class="btn btn-primary" type="button" id="auto-wake-go" onclick="wakePendingAgents()">Wake them</button>
+                <button class="btn" type="button" id="auto-wake-dismiss" data-on-click="m-dismiss-auto-wake">Not now</button>
+                <button class="btn btn-primary" type="button" id="auto-wake-go" data-on-click="m-wake-pending-agents">Wake them</button>
             </div>
 
             <div id="welcome-screen" class="welcome">
@@ -179,18 +179,18 @@
                         <p>Launch a single agent, or a team that works together on a shared message board.</p>
                     </header>
                     <div class="welcome-launch-list">
-                        <button class="welcome-launch" onclick="showLaunchModal(); window._selectLaunchType('agent')">
+                        <button class="welcome-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="agent">
                             <span class="welcome-launch-icon material-icons">smart_toy</span>
                             <span class="welcome-launch-copy"><strong>Launch agent</strong><span>One agent in a folder you choose.</span></span>
                             <span class="material-icons welcome-launch-arrow">arrow_forward</span>
                         </button>
-                        <button class="welcome-launch" onclick="showLaunchModal(); window._selectLaunchType('team')">
+                        <button class="welcome-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="team">
                             <span class="welcome-launch-icon material-icons">groups</span>
                             <span class="welcome-launch-copy"><strong>Launch team</strong><span>Agents with roles on a shared board.</span></span>
                             <span class="material-icons welcome-launch-arrow">arrow_forward</span>
                         </button>
                         <!-- #3630: pin a folder to the Agents list, ready to launch into -->
-                        <button class="welcome-launch" id="welcome-open-folder" onclick="showOpenFolderModal()">
+                        <button class="welcome-launch" id="welcome-open-folder" data-on-click="m-show-open-folder-modal">
                             <span class="welcome-launch-icon material-icons">create_new_folder</span>
                             <span class="welcome-launch-copy"><strong>Open folder</strong><span>Pin a folder to the list, ready to launch into.</span></span>
                             <span class="material-icons welcome-launch-arrow">arrow_forward</span>
@@ -219,7 +219,7 @@
                         <a href="https://cdknorow.github.io/coral/" target="_blank" rel="noopener"><span class="material-icons">menu_book</span>Documentation</a>
                         <a href="https://github.com/cdknorow/coral" target="_blank" rel="noopener"><span class="material-icons">code</span>GitHub</a>
                         <a href="https://github.com/cdknorow/coral/discussions" target="_blank" rel="noopener"><span class="material-icons">forum</span>Forum</a>
-                        <a href="#" role="button" onclick="event.preventDefault(); window._showMobileConnectModal()"><span class="material-icons">qr_code_2</span>Mobile QR code</a>
+                        <a href="#" role="button" data-on-click="m-mobile-connect-open"><span class="material-icons">qr_code_2</span>Mobile QR code</a>
                     </nav>
                 </div>
             </div>
@@ -265,7 +265,7 @@
 
     <!-- Mobile Bottom Tab Bar (3 tabs: Agents, Chat, Board) -->
     <nav class="mobile-tab-bar" role="tablist" aria-label="Mobile navigation">
-        <button class="mobile-tab active" data-tab="agents" onclick="switchMobileTab('agents')">
+        <button class="mobile-tab active" data-tab="agents" data-on-click="m-switch-mobile-tab" data-arg="agents">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/>
                 <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
@@ -273,13 +273,13 @@
             </svg>
             Agents
         </button>
-        <button class="mobile-tab" data-tab="chat" onclick="switchMobileTab('chat')">
+        <button class="mobile-tab" data-tab="chat" data-on-click="m-switch-mobile-tab" data-arg="chat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
             Chat
         </button>
-        <button class="mobile-tab" data-tab="board" onclick="switchMobileTab('board')">
+        <button class="mobile-tab" data-tab="board" data-on-click="m-switch-mobile-tab" data-arg="board">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                 <circle cx="9" cy="7" r="4"/>

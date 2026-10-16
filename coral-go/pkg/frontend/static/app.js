@@ -186,6 +186,35 @@ registerActions({
     'm-validate-team-name': () => { if (window._validateTeamName) window._validateTeamName(); },
     'm-verify-all-c-l-is': el => { window._verifyAllCLIs(); },
 });
+// The page shell in index.html (#3645 slice 8): top bar, nav tabs, settings menu, banners,
+// the empty state and the mobile tabs. A literal argument comes from data-arg and must be one
+// the markup uses.
+registerActions({
+    'm-close-top-bar-settings-then-check-for-updates': () => { window.closeTopBarSettings(); window.checkForUpdates(true); },
+    'm-close-top-bar-settings-then-show-servers-modal': () => { window.closeTopBarSettings(); window.showServersModal(); },
+    'm-close-top-bar-settings-then-show-settings-modal': () => { window.closeTopBarSettings(); window.showSettingsModal(); },
+    'm-close-top-bar-settings-then-show-theme-configurator': () => { window.closeTopBarSettings(); window.showThemeConfigurator(); },
+    'm-close-top-bar-settings-then-sleep-all-agents': () => { window.closeTopBarSettings(); window.sleepAllAgents(); },
+    'm-close-top-bar-settings-then-stop-all-auto-accept': () => { window.closeTopBarSettings(); window.stopAllAutoAccept(); },
+    'm-close-top-bar-settings-then-wake-all-agents': () => { window.closeTopBarSettings(); window.wakeAllAgents(); },
+    'm-dismiss-auto-wake': () => { window.dismissAutoWake(); },
+    'm-end-leftover-tmux': () => { window.endLeftoverTmux(); },
+    'm-go-home': () => { window._goHome(); },
+    'm-mobile-connect-open': (el, event) => { event.preventDefault(); window._showMobileConnectModal(); },
+    'm-show-launch-modal-then-select-launch-type': el => { if (["agent", "team"].includes(el.dataset.arg)) { window.showLaunchModal(); window._selectLaunchType(el.dataset.arg); } },
+    'm-switch-mobile-tab': el => { if (["agents", "board", "chat"].includes(el.dataset.arg)) { window.switchMobileTab(el.dataset.arg); } },
+    'm-switch-nav-tab': el => { if (["agents", "board", "docs", "history", "jobs", "servers", "tokens", "workflows"].includes(el.dataset.arg)) { window.switchNavTab(el.dataset.arg); } },
+    'm-tmux-banner-close': () => { const b = document.getElementById('tmux-missing-banner'); if (b) b.style.display = 'none'; },
+    'm-toggle-agentic-panel': () => { window.toggleAgenticPanel(); },
+    'm-toggle-tablet-sidebar': () => { window.toggleTabletSidebar(); },
+    'm-toggle-top-bar-settings': () => { window.toggleTopBarSettings(); },
+    'm-wake-pending-agents': () => { window.wakePendingAgents(); },
+});
+// The + macro menu (#3645): an item closes the menu, then opens its dialog.
+registerActions({
+    'macro-menu-new': el => { el.closest('#macro-add-menu')?.remove(); window.showMacroModal(); },
+    'macro-menu-templates': el => { el.closest('#macro-add-menu')?.remove(); window.browseCommandTemplates(); },
+});
 // The sidebar's own controls (#3645): rail, search, launch, display toggles, the Jobs subtabs.
 registerActions({
     'sidebar-rail-toggle': () => window.toggleSidebarRail(),
@@ -671,11 +700,11 @@ window.showMacroAddMenu = function(btn) {
     menu.className = 'sidebar-kebab-menu';
     menu.style.cssText = `display:block;position:fixed;bottom:${window.innerHeight - rect.top + 4}px;left:${rect.left}px;min-width:180px;z-index:10000`;
     menu.innerHTML = `
-        <button class="overflow-menu-item" onclick="this.closest('#macro-add-menu').remove(); showMacroModal()">
+        <button class="overflow-menu-item" data-on-click="macro-menu-new">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
             Create Custom
         </button>
-        <button class="overflow-menu-item" onclick="this.closest('#macro-add-menu').remove(); browseCommandTemplates()">
+        <button class="overflow-menu-item" data-on-click="macro-menu-templates">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="10" height="10" rx="1.5"/><line x1="6" y1="6" x2="10" y2="6"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11" x2="8" y2="11"/></svg>
             Browse Commands <span style="font-size:9px;color:var(--text-muted)">(aitmpl.com)</span>
         </button>
