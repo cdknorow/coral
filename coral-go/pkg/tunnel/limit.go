@@ -20,7 +20,9 @@ import (
 //   - a full pool answers at once (429, Retry-After, X-Coral-Limit: connector), never queues;
 //   - one Coral Hub user (the stream's HubUser) holds at most a share of each pool, so a few busy
 //     viewers can't fill it for everyone (#3642); a stream without a user (an old hub) is held
-//     only by the pools;
+//     only by the pools. The share is fairness between viewers, not a security boundary against
+//     the hub: the hub names the user, so a bad hub can name as many as it likes. What bounds a
+//     bad hub is the pools themselves, which hold whatever users it claims;
 //   - a non-stream request that has no response headers after RequestDeadline is cancelled, so
 //     a stalled handler can't hold its slot, and a reply body that makes no progress for
 //     BodyIdle (nothing read from the local API, or the hub not taking it) is ended, so a

@@ -574,10 +574,15 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	defer resp.Body.Close()
 	// From here the reply must keep moving: no progress for BodyIdle (nothing more from the
 	// local API, or the hub not taking what was sent) ends the stream, so its slot is freed
-	// (#3642). The hub sees a truncated reply.
-	idle := time.AfterFunc(lm.bodyIdle, s.abort)
-	defer idle.Stop()
-	progress := func() { idle.Reset(lm.bodyIdle) }
+	// (#3642). The hub sees a truncated reply. The timer starts only once the headers are in,
+	// so a long poll, which answers when it has something, is never timed while it waits; an
+	// event stream (text/event-stream), silent between events by design, is never timed.
+	progress := func() {}
+	if !eventStream(resp.Header.Get("Content-Type")) {
+		idle := time.AfterFunc(lm.bodyIdle, s.abort)
+		defer idle.Stop()
+		progress = func() { idle.Reset(lm.bodyIdle) }
+	}
 	hdr := resp.Header.Clone()
 	for _, k := range []string{"Connection", "Keep-Alive", "Transfer-Encoding", "Upgrade", "Proxy-Authenticate", "Te", "Trailer"} {
 		hdr.Del(k)
@@ -652,6 +657,12 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 			return // anything else: leave the body unterminated so the hub sees a truncated response
 		}
 	}
+}
+
+// eventStream reports whether a reply's Content-Type is an event stream.
+func eventStream(contentType string) bool {
+	mt, _, _ := strings.Cut(contentType, ";")
+	return strings.EqualFold(strings.TrimSpace(mt), "text/event-stream")
 }
 
 // limits is the pool sizes and per-user caps for a request.
