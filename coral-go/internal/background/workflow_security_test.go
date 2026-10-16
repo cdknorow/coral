@@ -149,7 +149,7 @@ func TestContentTemplateModes(t *testing.T) {
 	assert.Equal(t, `echo 'it'\''s'`, got)
 	got, err = expandShellTemplates("cat {{prev_stdout}}", env)
 	require.NoError(t, err)
-	assert.Equal(t, "cat "+filepath.ToSlash(out), got, "a path, with forward slashes in a shell command (#3638; unchanged on Unix)")
+	assert.Equal(t, "cat '"+filepath.ToSlash(out)+"'", got, "a path, with forward slashes in a shell command (#3638; unchanged on Unix), as one quoted word (#3930)")
 }
 
 // F1: as command substitution, trailing newlines are dropped and embedded ones kept, so the
