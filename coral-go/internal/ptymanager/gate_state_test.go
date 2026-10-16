@@ -294,3 +294,22 @@ func TestSignalRuleOverCorpus(t *testing.T) {
 	}
 	t.Logf("%d captures checked", checked)
 }
+
+// #3662 P6: each decision line says how long the signals had been in their state.
+func TestShadowLineCarriesTheStatesAge(t *testing.T) {
+	fastGate(t)
+	t.Setenv("CORAL_GATE_MODE", "")
+	var buf bytes.Buffer
+	var mu sync.Mutex
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(syncWriter{w: &buf, mu: &mu}, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	withState(t, AgentState{State: StateInTurn, Since: time.Now().Add(-12 * time.Minute), LastEvent: time.Now(), CLIVersion: "2.1.300"}, true)
+	a := &fakeAgent{screen: idleInputBox}
+	_, err := DeliverAutomated(context.Background(), a.input("claude-state-age", "k", "nudge", false))
+	require.NoError(t, err)
+	mu.Lock()
+	out := buf.String()
+	mu.Unlock()
+	assert.Contains(t, out, "state_for=12m0s")
+}

@@ -333,9 +333,16 @@ func (g *inputGate) shadowLog(in AutomatedInput, oldWait bool, oldWhy string, ne
 	}
 	// mode is the rule configured for the agent; decided is the one that decided this send (a
 	// mention or a long turn goes by the screen rule even in signals mode).
+	// state_for is how long the signals have been in their state (#3662 P6): for a hold with no
+	// prompt on screen, a lower bound on how long the signal rule would hold the send.
+	stateFor := ""
+	if !st.Since.IsZero() {
+		stateFor = time.Since(st.Since).Round(time.Second).String()
+	}
 	slog.Info("automated input decision", "session", in.Name, "sender", in.What, "key", logKey(in),
 		"old", old, "new", nw, "agree", oldWait == newWait, "mode", mode, "decided", decided,
-		"agent_type", agentType, "cli_version", st.CLIVersion, "state", st.State.String(), "kind", kind, "mention", in.Mention)
+		"agent_type", agentType, "cli_version", st.CLIVersion, "state", st.State.String(), "kind", kind, "mention", in.Mention,
+		"state_for", stateFor)
 }
 
 // logKey is a send's Key for a log line, never its text: a send without a key of its

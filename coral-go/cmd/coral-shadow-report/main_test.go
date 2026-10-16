@@ -90,3 +90,33 @@ func TestWithRotatedCopies(t *testing.T) {
 		}
 	}
 }
+
+// #3662 P6: the longest signal hold with no prompt on screen, per session, with anything over
+// ten minutes flagged; a hold the screen rule agreed with (a prompt on screen) doesn't count.
+func TestLongestHoldWithoutAPrompt(t *testing.T) {
+	log := `2026/10/17 10:00:00.000001 INFO automated input decision session=claude-aaaa old=send new="hold: signals: in turn" agree=false mode=screen agent_type=claude state=in_turn state_for=3m0s
+2026/10/17 10:20:00.000001 INFO automated input decision session=claude-aaaa old=send new="hold: signals: blocked (question)" agree=false mode=screen agent_type=claude state=blocked state_for=12m0s
+2026/10/17 10:21:00.000001 INFO automated input decision session=claude-bbbb old=send new="hold: signals: in turn" agree=false mode=screen agent_type=claude state=in_turn state_for=45s
+2026/10/17 10:22:00.000001 INFO automated input decision session=claude-cccc old="hold: selection menu" new="hold: signals: in turn" agree=true mode=screen agent_type=claude state=in_turn state_for=40m0s
+2026/10/17 10:23:00.000001 INFO automated input decision session=claude-dddd old=send new=send agree=true mode=screen agent_type=claude state=idle state_for=50m0s
+`
+	r := newReport("")
+	r.read(strings.NewReader(log))
+	var out bytes.Buffer
+	r.print(&out, 10)
+	s := out.String()
+	for _, want := range []string{
+		"Longest signal hold with no prompt on screen, per session (P6; over 10m0s: 1)",
+		"12m0s  claude-aaaa  hold: signals: blocked (question) (blocked)   <- over 10m0s: check by hand",
+		"45s  claude-bbbb",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in:\n%s", want, s)
+		}
+	}
+	for _, not := range []string{"claude-cccc  hold", "claude-dddd  "} {
+		if strings.Contains(s, not) {
+			t.Errorf("%q counted: a prompt on screen, or no hold", not)
+		}
+	}
+}

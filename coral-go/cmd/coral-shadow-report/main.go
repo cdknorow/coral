@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -98,6 +99,7 @@ type decision struct {
 	state, kind                                  string // the signals' state and open request kind (#3482 delta 3)
 	old, new                                     string // "send" or the hold reason class
 	agree                                        bool
+	stateFor                                     time.Duration // how long the signals had been in their state (#3662 P6); 0 when not logged
 }
 
 type report struct {
@@ -128,6 +130,9 @@ func (r *report) read(in io.Reader) {
 				agentType: kv["agent_type"], cliVersion: kv["cli_version"],
 				state: kv["state"], kind: kv["kind"],
 				old: outcome(kv["old"]), new: outcome(kv["new"]), agree: kv["agree"] == "true",
+			}
+			if dur, err := time.ParseDuration(kv["state_for"]); err == nil {
+				d.stateFor = dur
 			}
 			if d.agentType == "" {
 				d.agentType = agentTypeOf(d.session)
@@ -221,6 +226,8 @@ func (r *report) print(w io.Writer, top int) {
 		}
 	}
 
+	r.printLongHolds(w, top)
+
 	fmt.Fprintf(w, "\nstate_disagreement (signals idle, a prompt on screen): %d\n", sum(r.disagreements))
 	for i, k := range sortedKeys(r.disagreements, func(a, b string) bool {
 		return r.disagreements[a] > r.disagreements[b] || (r.disagreements[a] == r.disagreements[b] && a < b)
@@ -230,6 +237,63 @@ func (r *report) print(w io.Writer, top int) {
 		}
 		cls, ver, _ := strings.Cut(k, "|")
 		fmt.Fprintf(w, "  %5d  %s (CLI %s)   e.g. %s\n", r.disagreements[k], cls, ver, strings.Join(r.disExamples[k], ", "))
+	}
+}
+
+// longHoldLimit: a signal hold with no prompt on screen longer than this is looked at by hand
+// (#3662 P6, Security: a Blocked or an in-turn state that never clears would hold routine sends).
+const longHoldLimit = 10 * time.Minute
+
+// printLongHolds lists, per session, the oldest signal state that held a send while the screen
+// showed no prompt (the screen rule sent it): a lower bound on how long the signal rule would
+// have held it (#3662 P6).
+func (r *report) printLongHolds(w io.Writer, top int) {
+	longest := map[string]decision{}
+	logged := false
+	for _, d := range r.decisions {
+		if d.old != "send" || !strings.HasPrefix(d.new, "hold") {
+			continue
+		}
+		if d.stateFor > 0 {
+			logged = true
+		}
+		if cur, ok := longest[d.session]; !ok || d.stateFor > cur.stateFor {
+			longest[d.session] = d
+		}
+	}
+	over := 0
+	for _, d := range longest {
+		if d.stateFor > longHoldLimit {
+			over++
+		}
+	}
+	fmt.Fprintf(w, "\nLongest signal hold with no prompt on screen, per session (P6; over %s: %d)\n", longHoldLimit, over)
+	if len(longest) == 0 {
+		fmt.Fprintln(w, "  none: the signal rule held nothing the screen rule sent")
+		return
+	}
+	if !logged {
+		fmt.Fprintln(w, "  no state_for in the log: the server predates #3662 P6")
+		return
+	}
+	sessions := make([]string, 0, len(longest))
+	for s := range longest {
+		sessions = append(sessions, s)
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		a, b := longest[sessions[i]], longest[sessions[j]]
+		return a.stateFor > b.stateFor || (a.stateFor == b.stateFor && sessions[i] < sessions[j])
+	})
+	for i, s := range sessions {
+		if i == top {
+			break
+		}
+		d := longest[s]
+		flag := ""
+		if d.stateFor > longHoldLimit {
+			flag = "   <- over " + longHoldLimit.String() + ": check by hand"
+		}
+		fmt.Fprintf(w, "  %9s  %s  %s (%s)%s\n", d.stateFor, s, d.new, orUnknown(d.state), flag)
 	}
 }
 
