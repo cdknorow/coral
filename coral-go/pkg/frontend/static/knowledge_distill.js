@@ -110,9 +110,3 @@ export function distillChip(team) {
     return '<span class="team-distill-chip" title="Distilling team knowledge…"><span class="team-distill-dot" aria-hidden="true"></span>Distilling…</span>';
 }
 
-/** Tests: forget everything. */
-export function _resetDistillForTests() {
-    for (const t of [...pollers.keys()]) _stopPoll(t);
-    jobs.clear();
-    asked.clear();
-}

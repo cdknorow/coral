@@ -221,9 +221,10 @@ const _lastBusyToast = new Map(); // message kind -> when it was last shown
 
 /** Watch every same-origin /api/ response (once per page). An action (not a GET) refused as
  *  busy says so, at most once per pause. */
+let _watching = false;
 export function installOverloadWatch() {
-    if (typeof window === 'undefined' || window.__coralOverloadWatch) return;
-    window.__coralOverloadWatch = true;
+    if (typeof window === 'undefined' || _watching) return;
+    _watching = true;
     const orig = window.fetch.bind(window);
     window.fetch = async function (input, init) {
         const resp = await orig(input, init);

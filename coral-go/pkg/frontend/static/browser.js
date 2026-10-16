@@ -14,9 +14,6 @@ export function setDirServerResolver(fn) { _dirServerResolver = typeof fn === 'f
 function activeServer() {
     return normServer(_dirServerResolver ? _dirServerResolver(_activeDirInputId) : LOCAL_SERVER);
 }
-export function dirServerFor(inputId) {
-    return normServer(_dirServerResolver ? _dirServerResolver(inputId) : LOCAL_SERVER);
-}
 
 let browserCurrentPath = "~";
 // Track which dir-input + browser pair is active

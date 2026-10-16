@@ -145,9 +145,9 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             host.innerHTML = '<button id="qa-inline-btn" onclick="window.__qaInline++">x</button>';
             document.getElementById('qa-inline-btn').click();
             const s = document.createElement('script'); s.textContent = 'window.__qaInline++'; host.appendChild(s);
-            let ran = 0; const keep = window.toggleTopBarSettings; window.toggleTopBarSettings = () => { ran++; };
+            let ran = 0; const keep = window.__coral.toggleTopBarSettings; window.__coral.toggleTopBarSettings = () => { ran++; };
             const b = document.createElement('button'); b.setAttribute('data-on-click', 'm-toggle-top-bar-settings'); host.appendChild(b); b.click();
-            window.toggleTopBarSettings = keep;
+            window.__coral.toggleTopBarSettings = keep;
             setTimeout(() => { document.removeEventListener('securitypolicyviolation', onViolation); host.remove();
                 resolve({ inlineRan: window.__qaInline, actionRan: ran, seen }); }, 500); // sleep-ok: the violation events are queued
         })`);

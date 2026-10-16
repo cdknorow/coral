@@ -55,10 +55,6 @@ async function fetchRunDetail(runId) {
 
 // ── Initialization ─────────────────────────────────────────────────────
 
-export function initWorkflows() {
-    fetchWorkflows();
-}
-
 export function showWorkflowsTab() {
     showView('workflows-view');
     fetchWorkflows();

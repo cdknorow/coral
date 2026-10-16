@@ -155,7 +155,7 @@ function _selectSearchItem(index) {
 
     if (item.type === 'create') {
         _hideSearchDropdown();
-        window._createFile(item.path);
+        _createFile(item.path);
     } else {
         _hideSearchDropdown();
         openFilePreview(item.path);
@@ -490,7 +490,7 @@ export function openFileEdit(filepath, line, opts) {
 
 /** Create a new file via the API and open it in the editor. */
 // Exposed on window for onclick in rendered search results.
-window._createFile = async function(filePath) {
+async function _createFile(filePath) {
     if (!filePath) return;
     const s = state.currentSession;
     if (!s || s.type !== 'live') return;

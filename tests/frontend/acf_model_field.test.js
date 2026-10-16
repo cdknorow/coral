@@ -93,11 +93,11 @@ async function run() {
         default_model_agy: '',
         default_model_terminal: '',
     });
-    await evalInPage(`window._invalidateDefaultModels && window._invalidateDefaultModels()`);
+    await evalInPage(`window.__coral._invalidateDefaultModels && window.__coral._invalidateDefaultModels()`);
 
     // ─── S1: default set → ACF opens → Model pre-fills ────────────
     await putSettings({ default_model_claude: 'claude-sonnet-4-6' });
-    await evalInPage(`window._invalidateDefaultModels()`);
+    await evalInPage(`window.__coral._invalidateDefaultModels()`);
     await freshACF();
     check('S1 pre-fill with default set', await modelValue() === 'claude-sonnet-4-6');
     check('S1 dirty flag starts false', await dirtyFlag() === 'false');
@@ -145,13 +145,13 @@ async function run() {
 
     // ─── S8: clearing default + invalidate → fresh ACF empty ──────
     await putSettings({ default_model_claude: '' });
-    await evalInPage(`window._invalidateDefaultModels()`);
+    await evalInPage(`window.__coral._invalidateDefaultModels()`);
     await freshACF();
     check('S8 after clearing default → fresh ACF has empty field', await modelValue() === '');
 
     // ─── S9: new default + invalidate → ACF picks up new value ────
     await putSettings({ default_model_claude: 'claude-haiku-4-5-20251001' });
-    await evalInPage(`window._invalidateDefaultModels()`);
+    await evalInPage(`window.__coral._invalidateDefaultModels()`);
     await freshACF();
     check('S9 cache invalidation picks up new default', await modelValue() === 'claude-haiku-4-5-20251001');
 
@@ -164,7 +164,7 @@ async function run() {
             c.id = 'qa-test-acf';
             document.body.appendChild(c);
             window.renderAgentConfigForm('qa-test-acf', { showPreset: false, showName: false });
-            window.setAgentConfig('qa-test-acf', { agentType: 'claude', model: 'claude-opus-4-7' });
+            window.__coral.setAgentConfig('qa-test-acf', { agentType: 'claude', model: 'claude-opus-4-7' });
         })();
     `);
     await new Promise(r => setTimeout(r, 300));

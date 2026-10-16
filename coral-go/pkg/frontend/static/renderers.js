@@ -375,16 +375,3 @@ export function setRendererOverride(sessionId, engineName) {
     agentOverrides[sessionId] = engineName;
 }
 
-/** Clear the renderer override for a specific agent session. */
-export function clearRendererOverride(sessionId) {
-    delete agentOverrides[sessionId];
-}
-
-/** Set the default renderer for an agent type. */
-export function setAgentDefault(agentType, engineName) {
-    if (!ENGINES[engineName]) {
-        console.warn(`Unknown render engine: ${engineName}`);
-        return;
-    }
-    AGENT_DEFAULTS[agentType] = engineName;
-}

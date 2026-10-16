@@ -23,21 +23,21 @@ const base=require('./test_base').BASE;
  await ev(`window.cli.claude={found:true,status:'available',agent_type:'claude'}`);await click('#fixture .acf-cli-warning button');
  assert.equal(await ev(`document.querySelector('#fixture .acf-cli-warning').style.display`),'none');
  assert.ok(await ev(`calls.some(x=>x.url.includes('source=cli_recheck')&&x.cache==='no-store')`));
- await ev(`window.cliMode='http';window._checkAgentCLI('claude',document.querySelector('#fixture .acf-cli-warning'),true)`);await settle();assert.match(await text(),/HTTP 503/);
- const failedCalls=await ev(`calls.filter(x=>x.url.includes('/cli-check')).length`);await ev(`window._checkAgentCLI('claude',document.querySelector('#fixture .acf-cli-warning'))`);assert.equal(await ev(`calls.filter(x=>x.url.includes('/cli-check')).length`),failedCalls+1,'failed explicit recheck discarded the prior available cache');assert.match(await text(),/HTTP 503/);
+ await ev(`window.cliMode='http';window.__coral._checkAgentCLI('claude',document.querySelector('#fixture .acf-cli-warning'),true)`);await settle();assert.match(await text(),/HTTP 503/);
+ const failedCalls=await ev(`calls.filter(x=>x.url.includes('/cli-check')).length`);await ev(`window.__coral._checkAgentCLI('claude',document.querySelector('#fixture .acf-cli-warning'))`);assert.equal(await ev(`calls.filter(x=>x.url.includes('/cli-check')).length`),failedCalls+1,'failed explicit recheck discarded the prior available cache');assert.match(await text(),/HTTP 503/);
  await ev(`window.cliMode='network'`);await click('#fixture .acf-cli-warning button');assert.match(await text(),/Network unavailable/);
  await ev(`window.cliMode='normal';window.cli.claude={available:true}`);await click('#fixture .acf-cli-warning button');assert.match(await text(),/unexpected response/,'available is not the found contract');
  for(const status of ['probe_failed','timeout']){
  await ev(`window.cli.claude={found:true,status:${JSON.stringify(status)},agent_type:'claude'}`);await click('#fixture .acf-cli-warning button');assert.match(await text(),status==='timeout'?/found, but version check timed out/:/found, but version check failed/);
  }
  // The old provider request ignores AbortSignal deliberately: its response must still be dropped.
- await ev(`window.cliMode='defer';window.cli.claude={found:true,status:'available',agent_type:'claude'};window._checkAgentCLI('claude',document.querySelector('#fixture .acf-cli-warning'),true);void 0`);await settle();assert.equal(await ev(`document.querySelector('#fixture .acf-cli-warning button').disabled`),true);
+ await ev(`window.cliMode='defer';window.cli.claude={found:true,status:'available',agent_type:'claude'};window.__coral._checkAgentCLI('claude',document.querySelector('#fixture .acf-cli-warning'),true);void 0`);await settle();assert.equal(await ev(`document.querySelector('#fixture .acf-cli-warning button').disabled`),true);
  await ev(`window.cliMode='normal';const s=document.querySelector('#fixture .acf-agent-type');s.value='codex';s.dispatchEvent(new Event('change',{bubbles:true}))`);await settle();assert.match(await text(),/codex CLI was not found/);
  await ev(`pending.splice(0).forEach(r=>r())`);await settle();assert.match(await text(),/codex CLI was not found/);
- await ev(`window.setAgentConfig('fixture',{agentType:'terminal'})`);assert.equal(await ev(`document.querySelector('#fixture .acf-cli-warning').style.display`),'none');
- await ev(`window.setAgentConfig('fixture',{agentType:'codex'})`);await settle();assert.match(await text(),/codex CLI was not found/);
+ await ev(`window.__coral.setAgentConfig('fixture',{agentType:'terminal'})`);assert.equal(await ev(`document.querySelector('#fixture .acf-cli-warning').style.display`),'none');
+ await ev(`window.__coral.setAgentConfig('fixture',{agentType:'codex'})`);await settle();assert.match(await text(),/codex CLI was not found/);
  // Independent config forms must not share warning DOM or race generations.
- await ev(`const p=document.createElement('div');p.id='fixture2';document.body.append(p);window.renderAgentConfigForm('fixture2',{showPreset:false,value:{agentType:'claude'}});window._checkAgentCLI('claude',document.querySelector('#fixture2 .acf-cli-warning'),true)`);await settle();assert.equal(await ev(`document.querySelector('#fixture2 .acf-cli-warning').style.display`),'none');assert.match(await text(),/codex/);
+ await ev(`const p=document.createElement('div');p.id='fixture2';document.body.append(p);window.renderAgentConfigForm('fixture2',{showPreset:false,value:{agentType:'claude'}});window.__coral._checkAgentCLI('claude',document.querySelector('#fixture2 .acf-cli-warning'),true)`);await settle();assert.equal(await ev(`document.querySelector('#fixture2 .acf-cli-warning').style.display`),'none');assert.match(await text(),/codex/);
  assert.match(await ev(`document.getElementById('tmux-check-message').textContent`),/tmux-backed/);
  await ev(`window.statusData.tmux_available=true`);await click('#tmux-check-again');assert.equal(await ev(`document.getElementById('tmux-missing-banner').style.display`),'none');
  await ev(`window.statusData={startup_complete:true,tmux_available:false,tmux_required:false,effective_backend:'pty'};window.checks.checkTmux(true)`);await settle();assert.equal(await ev(`document.getElementById('tmux-missing-banner').style.display`),'none','PTY is not blocked by missing tmux');

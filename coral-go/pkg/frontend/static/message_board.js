@@ -335,7 +335,7 @@ async function loadEarlierMessages() {
         console.error('Failed to load earlier messages:', e);
     }
 }
-window.loadEarlierMessages = loadEarlierMessages;
+(window.__coral ||= {}).loadEarlierMessages = loadEarlierMessages;
 
 function renderMessages(messages) {
     const container = document.getElementById('mb-messages');
@@ -441,7 +441,6 @@ function navigateToAgentSession(sessionName, displayName) {
     // Fallback: search by display name
     navigateToAgentHistoryByName(displayName);
 }
-window.navigateToAgentSession = navigateToAgentSession;
 
 async function navigateToAgentHistoryByName(displayName) {
     const resp = await fetch(`/api/sessions/history?page_size=50`);
@@ -1190,7 +1189,7 @@ export function initMessageBoard() {
     loadBoardProjects();
 }
 
-export { loadBoardProjects, showMessageBoardProjects as showBoardProjects };
+export { loadBoardProjects };
 
 // The board's generated markup (#3645): data-on-* names, never code. Ids and names are checked
 // before use; a bad one does nothing. Deleting a message never asked first, and still doesn't.

@@ -92,14 +92,14 @@ const UNDERSIZED = `(() => {
 
         // Round 3 (#3131): the top-bar settings dropdown's rows.
         const menuRows = sel => ev(`[...document.querySelectorAll(${JSON.stringify(sel)})].map(e => e.getBoundingClientRect()).filter(r => r.width && r.height).map(r => [Math.round(r.width), Math.round(r.height)])`);
-        await ev(`toggleTopBarSettings()`);
+        await ev(`window.__coral.toggleTopBarSettings()`);
         await waitFor(`[...document.querySelectorAll('#top-bar-settings-menu .overflow-menu-item')].filter(e => e.getBoundingClientRect().height).length >= 2`, 'the settings dropdown', { soft: true });
         const settingsRows = await menuRows('#top-bar-settings-menu .overflow-menu-item');
         assert.ok(settingsRows.length >= 2, 'the settings dropdown is open with its rows: ' + JSON.stringify(settingsRows));
         for (const [w, h] of settingsRows) assert.ok(w >= 44 && h >= 44, `settings dropdown row ${w}x${h} under 44px`);
         const settingsSmall = await ev(UNDERSIZED);
         assert.deepEqual(settingsSmall, [], 'phone 390 with the settings dropdown open: every control is at least 44x44: ' + JSON.stringify(settingsSmall));
-        await ev(`closeTopBarSettings()`);
+        await ev(`window.__coral.closeTopBarSettings()`);
         console.log(`PASS phone 390 coarse: settings dropdown rows at least 44px (${settingsRows.length} rows)`);
 
         // Round 2 (#3098, Coral Hub v1.4.6 re-check): the side panel's tabs, the

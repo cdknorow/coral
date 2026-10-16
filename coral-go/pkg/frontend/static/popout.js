@@ -93,7 +93,6 @@ function _detect() {
 
 export function isPopout() { _detect(); return _mode === 'agent' || _mode === 'invalid'; }
 export function popoutTargetId() { _detect(); return _targetId; }
-export function popoutTargetServer() { _detect(); return _targetServer; }
 export function popoutGetState() { return _state; }
 
 /** True while terminal input/keys/commands must not be sent: no authoritative

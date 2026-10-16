@@ -150,11 +150,6 @@ export async function exitTeamContext({ goBack = true, force = false } = {}) {
 
 window.exitTeamContext = exitTeamContext;
 
-/** Called when an agent is selected. */
-export function leaveTeamForAgent() {
-    return exitTeamContext({ goBack: false });
-}
-
 /** Render the sidebar's Team Settings tab when it is opened. */
 export function renderTeamSettingsTab() {
     const team = getSelectedTeam();

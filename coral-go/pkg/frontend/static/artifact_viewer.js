@@ -123,11 +123,3 @@ export function closeArtifactViewer() {
     if (back && back.isConnected) back.focus();
 }
 
-/** A plain click on an artifact link or image opens the viewer; a modified or middle click keeps
- *  the browser's own behaviour (the link's new tab). */
-export function viewerClick(e, hex, opts) {
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
-    if (!openArtifactViewer(hex, opts)) return false;
-    e.preventDefault();
-    return true;
-}

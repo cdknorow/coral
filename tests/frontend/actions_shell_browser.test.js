@@ -33,8 +33,10 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
     const MOD = `(window.__coralStatic||'/static/')`;
     // Run fn with window[name] replaced by a recorder; returns the calls.
     const spy = (names, body) => ev(`(async () => { const calls = []; const keep = {};
-        for (const n of ${JSON.stringify(names)}) { keep[n] = window[n]; window[n] = (...a) => { calls.push([n, ...a.map(x => (x && x.nodeType) ? 'el' : x)]); }; }
-        try { ${body} } finally { for (const n of ${JSON.stringify(names)}) window[n] = keep[n]; }
+        // A name under the test hooks (window.__coral) or on window itself.
+        const where = n => (window.__coral && n in window.__coral) ? window.__coral : window;
+        for (const n of ${JSON.stringify(names)}) { const o = where(n); keep[n] = [o, o[n]]; o[n] = (...a) => { calls.push([n, ...a.map(x => (x && x.nodeType) ? 'el' : x)]); }; }
+        try { ${body} } finally { for (const n of ${JSON.stringify(names)}) keep[n][0][n] = keep[n][1]; }
         return calls; })()`);
     const HOSTILE = `a'b"c<img src=x>&amp;d`;
     try {

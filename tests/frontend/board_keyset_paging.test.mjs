@@ -62,7 +62,7 @@ assert.equal(query(requests[0]).get('offset'), '0');
 assert.deepEqual(renderedIds(), board.slice(-50).map(m => m.id));
 assert.match(document.getElementById('mb-messages').textContent, /70 remaining/);
 
-window.loadEarlierMessages();
+window.__coral.loadEarlierMessages();
 for (let i = 0; i < 3; i++) await settle();
 assert.equal(query(requests.at(-1)).get('before_id'), '71', 'load earlier pages by the oldest loaded id');
 assert.equal(query(requests.at(-1)).get('offset'), '0');
@@ -137,7 +137,7 @@ for (let i = 0; i < 6; i++) await settle();
 const chatPages = requests.filter(r => query(r).get('limit') !== '1');
 assert.equal(chatPages.length, 1);
 assert.equal(query(chatPages[0]).get('offset'), '0', 'the chat panel loads its latest page without an OFFSET scan');
-window._loadEarlierBoardChat();
+window.__coral._loadEarlierBoardChat();
 for (let i = 0; i < 3; i++) await settle();
 assert.equal(query(requests.at(-1)).get('before_id'), String(board.at(-50).id), 'chat panel loads earlier by id');
 assert.match(document.getElementById('board-panel-msgs').textContent, new RegExp(`${board.length - 100} remaining`));
@@ -195,13 +195,13 @@ assert.match(document.getElementById('board-panel-msgs').textContent, /burst 60/
 
 // A chat-panel "load earlier" in flight across a board switch is dropped.
 holdEarlier = deferred();
-window._loadEarlierBoardChat();
+window.__coral._loadEarlierBoardChat();
 await settle();
 render.showBoardChatTab('other');
 for (let i = 0; i < 6; i++) await settle();
 holdEarlier.resolve(); holdEarlier = null;
 for (let i = 0; i < 3; i++) await settle();
-window._toggleBoardChatSelect(); // re-renders the panel from its message state
+window.__coral._toggleBoardChatSelect(); // re-renders the panel from its message state
 const chatText = document.getElementById('board-panel-msgs').textContent;
 assert.match(chatText, /o4/);
 assert.doesNotMatch(chatText, /\bm1\b|m10\b/, "team's earlier page never lands in another board's chat");

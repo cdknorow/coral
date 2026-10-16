@@ -118,7 +118,7 @@ registerActions({
     'm-copy-info-command': el => { window.copyInfoCommand(); },
     'm-export-personas': el => { window.exportPersonas(); },
     'm-generate-team-from-wizard': el => { window.generateTeamFromWizard(); },
-    'm-handle-team-folder-import': el => { window._handleTeamFolderImport(el); },
+    'm-handle-team-folder-import': el => { _handleTeamFolderImport(el); },
     'm-hide-add-agent-board-modal': el => { window.hideAddAgentBoardModal(); },
     'm-hide-confirm-modal': el => { window.hideConfirmModal(); },
     'm-hide-create-task-modal': el => { window.hideCreateTaskModal(); },
@@ -142,7 +142,7 @@ registerActions({
     'm-hide-team-wizard-modal': el => { window.hideTeamWizardModal(); },
     'm-hide-view-modal': el => { window._hideViewModal(); },
     'm-import-personas': el => { window.importPersonas(); },
-    'm-import-team-from-folder': el => { window._importTeamFromFolder(); },
+    'm-import-team-from-folder': el => { _importTeamFromFolder(); },
     'm-import-team-templates': el => { window.importTeamTemplates(); },
     'm-launch-agent-to-board': el => { window.launchAgentToBoard(); },
     'm-launch-session': el => { window.launchSession(); },
@@ -188,16 +188,16 @@ registerActions({
 // the empty state and the mobile tabs. A literal argument comes from data-arg and must be one
 // the markup uses.
 registerActions({
-    'm-close-top-bar-settings-then-check-for-updates': () => { window.closeTopBarSettings(); window.checkForUpdates(true); },
-    'm-close-top-bar-settings-then-show-servers-modal': () => { window.closeTopBarSettings(); window.showServersModal(); },
-    'm-close-top-bar-settings-then-show-settings-modal': () => { window.closeTopBarSettings(); window.showSettingsModal(); },
-    'm-close-top-bar-settings-then-show-theme-configurator': () => { window.closeTopBarSettings(); window.showThemeConfigurator(); },
-    'm-close-top-bar-settings-then-sleep-all-agents': () => { window.closeTopBarSettings(); window.sleepAllAgents(); },
-    'm-close-top-bar-settings-then-stop-all-auto-accept': () => { window.closeTopBarSettings(); window.stopAllAutoAccept(); },
-    'm-close-top-bar-settings-then-wake-all-agents': () => { window.closeTopBarSettings(); window.wakeAllAgents(); },
+    'm-close-top-bar-settings-then-check-for-updates': () => { window.__coral.closeTopBarSettings(); window.checkForUpdates(true); },
+    'm-close-top-bar-settings-then-show-servers-modal': () => { window.__coral.closeTopBarSettings(); window.showServersModal(); },
+    'm-close-top-bar-settings-then-show-settings-modal': () => { window.__coral.closeTopBarSettings(); window.showSettingsModal(); },
+    'm-close-top-bar-settings-then-show-theme-configurator': () => { window.__coral.closeTopBarSettings(); window.showThemeConfigurator(); },
+    'm-close-top-bar-settings-then-sleep-all-agents': () => { window.__coral.closeTopBarSettings(); window.sleepAllAgents(); },
+    'm-close-top-bar-settings-then-stop-all-auto-accept': () => { window.__coral.closeTopBarSettings(); window.stopAllAutoAccept(); },
+    'm-close-top-bar-settings-then-wake-all-agents': () => { window.__coral.closeTopBarSettings(); window.wakeAllAgents(); },
     'm-dismiss-auto-wake': () => { window.dismissAutoWake(); },
     'm-end-leftover-tmux': () => { window.endLeftoverTmux(); },
-    'm-go-home': () => { window._goHome(); },
+    'm-go-home': () => { window.__coral._goHome(); },
     'm-mobile-connect-open': (el, event) => { event.preventDefault(); window._showMobileConnectModal(); },
     'm-show-launch-modal-then-select-launch-type': el => { if (["agent", "team"].includes(el.dataset.arg)) { window.showLaunchModal(); window._selectLaunchType(el.dataset.arg); } },
     'm-switch-mobile-tab': el => { if (["agents", "board", "chat"].includes(el.dataset.arg)) { window.switchMobileTab(el.dataset.arg); } },
@@ -205,13 +205,8 @@ registerActions({
     'm-tmux-banner-close': () => { const b = document.getElementById('tmux-missing-banner'); if (b) b.style.display = 'none'; },
     'm-toggle-agentic-panel': () => { window.toggleAgenticPanel(); },
     'm-toggle-tablet-sidebar': () => { window.toggleTabletSidebar(); },
-    'm-toggle-top-bar-settings': () => { window.toggleTopBarSettings(); },
+    'm-toggle-top-bar-settings': () => { window.__coral.toggleTopBarSettings(); },
     'm-wake-pending-agents': () => { window.wakePendingAgents(); },
-});
-// The + macro menu (#3645): an item closes the menu, then opens its dialog.
-registerActions({
-    'macro-menu-new': el => { el.closest('#macro-add-menu')?.remove(); window.showMacroModal(); },
-    'macro-menu-templates': el => { el.closest('#macro-add-menu')?.remove(); window.browseCommandTemplates(); },
 });
 // The sidebar's own controls (#3645): rail, search, launch, display toggles, the Jobs subtabs.
 registerActions({
@@ -540,12 +535,12 @@ function tabRoute(tab, view) {
 }
 
 // ── Import team from folder ───────────────────────────────────────────
-window._importTeamFromFolder = function() {
+function _importTeamFromFolder() {
     const input = document.getElementById('team-folder-input');
     if (input) { input.value = ''; input.click(); }
 };
 
-window._handleTeamFolderImport = async function(input) {
+async function _handleTeamFolderImport(input) {
     const files = Array.from(input.files || []);
     if (!files.length) return;
 
@@ -647,85 +642,6 @@ window.toggleSendMenu = function(btn) {
 window.closeSendMenu = function() {
     document.querySelectorAll('.send-btn-menu').forEach(m => m.style.display = 'none');
 };
-window.openTeamIconPicker = function(btn) {
-    showEmojiPicker((emoji) => {
-        btn.textContent = emoji || '🤖';
-        btn.dataset.icon = emoji;
-        const hiddenInput = btn.parentElement.querySelector('.team-agent-icon');
-        if (hiddenInput) hiddenInput.value = emoji;
-    });
-};
-function applyAgentTemplate(template, target, btn) {
-    const name = (template.name || '').replace(/-/g, ' ');
-    const prompt = (template.body || '') + '\n\nCoordinate with the team via the message board.';
-    if (target === 'team-new') {
-        if (window._addTeamAgent) window._addTeamAgent(name, prompt);
-    } else if (target === 'modal') {
-        if (window.setAgentConfig) {
-            window.setAgentConfig('add-agent-board-acf', { name, prompt });
-        }
-    } else if (target === 'row' && btn) {
-        const row = btn.closest('.team-agent-row');
-        if (!row) return;
-        const acfId = row.dataset.acfId;
-        if (acfId && window.setAgentConfig) {
-            window.setAgentConfig(acfId, { name, prompt });
-            // Update summary text
-            const nameEl = row.querySelector('.team-agent-role-name');
-            if (nameEl) nameEl.textContent = name || 'New Agent';
-            const previewEl = row.querySelector('.team-agent-prompt-preview');
-            if (previewEl) previewEl.textContent = prompt.substring(0, 200) + (prompt.length > 200 ? '\u2026' : '');
-        }
-    }
-}
-window.browseAgentTemplatesForModal = function() {
-    showTemplateBrowser('agents', (t) => applyAgentTemplate(t, 'modal'));
-};
-window.browseAgentTemplates = function(btn) {
-    showTemplateBrowser('agents', (t) => applyAgentTemplate(t, 'row', btn));
-};
-window.showMacroAddMenu = function(btn) {
-    // Remove existing menu
-    const existing = document.getElementById('macro-add-menu');
-    if (existing) { existing.remove(); return; }
-
-    const rect = btn.getBoundingClientRect();
-    const menu = document.createElement('div');
-    menu.id = 'macro-add-menu';
-    menu.className = 'sidebar-kebab-menu';
-    menu.style.cssText = `display:block;position:fixed;bottom:${window.innerHeight - rect.top + 4}px;left:${rect.left}px;min-width:180px;z-index:10000`;
-    menu.innerHTML = `
-        <button class="overflow-menu-item" data-on-click="macro-menu-new">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
-            Create Custom
-        </button>
-        <button class="overflow-menu-item" data-on-click="macro-menu-templates">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="10" height="10" rx="1.5"/><line x1="6" y1="6" x2="10" y2="6"/><line x1="6" y1="8.5" x2="10" y2="8.5"/><line x1="6" y1="11" x2="8" y2="11"/></svg>
-            Browse Commands <span style="font-size:9px;color:var(--text-muted)">(aitmpl.com)</span>
-        </button>
-    `;
-    document.body.appendChild(menu);
-
-    // Close on outside click
-    setTimeout(() => {
-        const close = (e) => { if (!menu.contains(e.target) && e.target !== btn) { menu.remove(); document.removeEventListener('click', close, true); } };
-        document.addEventListener('click', close, true);
-    }, 50);
-};
-window.browseCommandTemplates = async function() {
-    const { getMacros, saveMacros } = await importOnce('./controls.js');
-    showTemplateBrowser('commands', async (template) => {
-        const label = template.description || template.name || 'Template';
-        const truncLabel = label.length > 20 ? label.substring(0, 20) + '...' : label;
-        const command = template.body || '';
-        const macros = getMacros();
-        macros.push({ label: truncLabel, command });
-        await saveMacros(macros);
-        const { renderQuickActions } = await importOnce('./controls.js');
-        renderQuickActions();
-    });
-};
-
 // ── Sidebar kebab menu helpers ───────────────────────────────────────────
 function closeSidebarKebabs() {
     document.querySelectorAll('.sidebar-kebab-menu').forEach(m => m.style.display = 'none');
@@ -795,8 +711,8 @@ function closeTopBarSettings() {
     const menu = document.getElementById('top-bar-settings-menu');
     if (menu) menu.style.display = 'none';
 }
-window.toggleTopBarSettings = toggleTopBarSettings;
-window.closeTopBarSettings = closeTopBarSettings;
+(window.__coral ||= {}).toggleTopBarSettings = toggleTopBarSettings;
+(window.__coral ||= {}).closeTopBarSettings = closeTopBarSettings;
 
 
 // Close kebab menus when clicking outside
@@ -1100,7 +1016,7 @@ function registerRouteHandlers() {
 }
 
 // ── Home Navigation ──────────────────────────────────────────────────────
-window._goHome = function() {
+(window.__coral ||= {})._goHome = function() {
     note({ view: 'agents' });
     showHome();
 };

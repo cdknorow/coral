@@ -152,12 +152,12 @@ export function showTeamAvailability(team, options = {}) {
                 if (!agent) return;
                 const button = document.createElement('button');
                 button.type = 'button'; button.className = 'btn'; button.textContent = agent.reminder ? 'Edit reminder' : 'Remind agent';
-                button.onclick = () => window.remindAgent(team, agent.subscriber_id || agent.name, agent);
+                button.onclick = () => remindAgent(team, agent.subscriber_id || agent.name, agent);
                 card.append(button);
                 if (agent.reminder) {
                     const stop = document.createElement('button');
                     stop.type = 'button'; stop.className = 'btn availability-stop-reminder'; stop.textContent = 'Remove reminder';
-                    stop.onclick = () => window.stopAgentReminder(team, agent.subscriber_id || agent.name, load);
+                    stop.onclick = () => stopAgentReminder(team, agent.subscriber_id || agent.name, load);
                     card.append(stop);
                 }
             });
@@ -177,7 +177,7 @@ export function showTeamAvailabilityWorkspace(team, options = {}) {
     return importOnce('./team_context.js').then(m => m.enterTeamContext(team, { restore: options.restore }));
 }
 
-window.remindAgent = async (team, subscriber, existing = null) => {
+const remindAgent = async (team, subscriber, existing = null) => {
     const message = window.prompt('Reminder instruction for this agent:');
     if (!message?.trim()) return;
     const defaultMinutes = existing?.reminder_interval_seconds ? Math.round(existing.reminder_interval_seconds / 60) : 5;
@@ -188,7 +188,7 @@ window.remindAgent = async (team, subscriber, existing = null) => {
     window.showToast?.(response.ok ? 'Agent reminder started' : (data.error || 'Could not start reminder'), !response.ok);
 };
 
-window.stopAgentReminder = async (team, subscriber, onChanged = null) => {
+const stopAgentReminder = async (team, subscriber, onChanged = null) => {
     try {
         const response = await boardFetch(team, `/reminder`, { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber}) });
         const data = await response.json().catch(() => ({}));

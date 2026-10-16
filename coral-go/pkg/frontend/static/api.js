@@ -140,21 +140,6 @@ export async function loadHistorySessionsPaged(page = 1, pageSize = 50) {
     }
 }
 
-export async function loadLiveSessionDetail(name, agentType, sessionId, options) {
-    try {
-        const server = (options && options.server) || serverForSession(name, sessionId);
-        const params = new URLSearchParams();
-        if (agentType) params.set("agent_type", agentType);
-        if (sessionId) params.set("session_id", sessionId);
-        const qs = params.toString() ? `?${params}` : "";
-        return await apiFetch(`/api/sessions/live/${encodeURIComponent(name)}${qs}`, { ...options, server });
-    } catch (e) {
-        if (e.name === 'AbortError') return null;
-        console.error("Failed to load session detail:", e);
-        return null;
-    }
-}
-
 export async function loadHistoryMessages(sessionId, options = {}) {
     try {
         const params = new URLSearchParams();

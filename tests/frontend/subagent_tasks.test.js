@@ -135,11 +135,11 @@ async function run() {
   check('description HTML is escaped', !running.descHasImg && /<img/.test(running.desc) && !(await ev(`window.__xss === 1`)), running.desc);
 
   // Sort by type groups subagents together
-  await ev(`window._toggleTaskSort('type'); true`); await sleep(100);
+  await ev(`window.__coral._toggleTaskSort('type'); true`); await sleep(100);
   rs = await rows();
   const kinds = rs.map(r => r.sub ? 's' : 't').join('');
   check('sorting by Type keeps subagents contiguous', /^t*s{3}t*$/.test(kinds), kinds);
-  await ev(`window._toggleTaskSort('created_at'); true`);
+  await ev(`window.__coral._toggleTaskSort('created_at'); true`);
 
   // ── Detail modal ──
   const modal = () => ev(`(() => { const m = document.getElementById('task-detail-modal'); const c = document.getElementById('task-detail-content'); const q = s => c.querySelector(s);

@@ -160,17 +160,7 @@ function _viewContext() {
 
 /* ── Modal: Create / Edit View ────────────────────────────── */
 
-window._showCreateViewModal = function() {
-    if (isCloud()) return; // views cannot run scripts on the hub, so there is no editor there (saved views are shown read-only)
-    const modal = document.getElementById('custom-view-modal');
-    document.getElementById('custom-view-modal-title').textContent = 'Create Custom View';
-    document.getElementById('custom-view-edit-id').value = '';
-    document.getElementById('custom-view-name').value = '';
-    modal.style.display = 'flex';
-    _initViewEditor(DEFAULT_VIEW_HTML);
-};
-
-window._showEditViewModal = function(viewId) {
+function _showEditViewModal(viewId) {
     if (isCloud()) return; // views cannot run scripts on the hub, so there is no editor there (saved views are shown read-only)
     const view = _views.find(v => v.id === viewId);
     if (!view) return;
@@ -253,7 +243,7 @@ window._saveView = async function() {
 
 /* ── Context Menu ─────────────────────────────────────────── */
 
-window._showViewContextMenu = function(event, viewId) {
+function _showViewContextMenu(event, viewId) {
     // Remove existing menu
     document.querySelectorAll('.view-context-menu').forEach(el => el.remove());
 
@@ -276,7 +266,7 @@ window._showViewContextMenu = function(event, viewId) {
     }, 0);
 };
 
-window._deleteView = async function(viewId) {
+async function _deleteView(viewId) {
     window.showConfirmModal?.('Delete Custom View', 'Delete this custom view?', async () => {
         try {
             await fetch(`/api/views/${viewId}`, { method: 'DELETE' });
@@ -291,7 +281,7 @@ window._deleteView = async function(viewId) {
 // Edit and Delete close the menu (their button's parent), as before.
 registerActions({
     'custom-view-tab': el => { const id = tokenOf(el.dataset.viewId); if (id) window.switchAgenticTab('custom-view-' + id, 'top'); },
-    'custom-view-menu': (el, event) => { event.preventDefault(); const id = idOf(el.dataset.viewId); if (id) window._showViewContextMenu(event, id); },
-    'custom-view-edit': el => { const id = idOf(el.dataset.viewId); if (id) window._showEditViewModal(id); el.parentElement?.remove(); },
-    'custom-view-delete': el => { const id = idOf(el.dataset.viewId); if (id) window._deleteView(id); el.parentElement?.remove(); },
+    'custom-view-menu': (el, event) => { event.preventDefault(); const id = idOf(el.dataset.viewId); if (id) _showViewContextMenu(event, id); },
+    'custom-view-edit': el => { const id = idOf(el.dataset.viewId); if (id) _showEditViewModal(id); el.parentElement?.remove(); },
+    'custom-view-delete': el => { const id = idOf(el.dataset.viewId); if (id) _deleteView(id); el.parentElement?.remove(); },
 });

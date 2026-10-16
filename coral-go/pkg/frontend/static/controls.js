@@ -42,17 +42,6 @@ export function getPendingAttachments(session = state.currentSession) {
     return pendingAttachmentsBySession.get(sid);
 }
 
-// Proxied for any external access expecting an array
-export const pendingAttachments = new Proxy([], {
-    get(target, prop) {
-        const list = getPendingAttachments();
-        if (prop === 'length') return list.length;
-        if (typeof prop === 'string' && !isNaN(prop)) return list[Number(prop)];
-        const val = list[prop];
-        return typeof val === 'function' ? val.bind(list) : val;
-    }
-});
-
 // A sleeping agent has no terminal to receive input. The composer hides the
 // send controls; this is the barrier behind them for every send path.
 function sleepingBlocked(silent = false) {

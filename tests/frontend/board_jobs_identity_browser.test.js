@@ -36,7 +36,7 @@ const BASE = require('./test_base').BASE;
         await waitFor(`fetch('/api/board/${board}/subscribers').then(r => r.json()).then(s => (Array.isArray(s) ? s : s.subscribers || []).some(x => (x.subscriber_id || x.session_id) === 'Operator'))`, 'the Operator subscription', { timeout: 8000 });
         await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'message_board.js'); document.getElementById('mb-post-input').value = 'hello from the board page'; await m.postBoardMessage(); return true; })()`);
         // The side panel's team chat (render.js) posts the same way.
-        await ev(`(async () => { const i = document.createElement('textarea'); i.id = 'board-panel-input'; i.value = 'hello from the side panel'; document.body.appendChild(i); await window._sendBoardChat(${JSON.stringify(board)}); i.remove(); return true; })()`);
+        await ev(`(async () => { const i = document.createElement('textarea'); i.id = 'board-panel-input'; i.value = 'hello from the side panel'; document.body.appendChild(i); await window.__coral._sendBoardChat(${JSON.stringify(board)}); i.remove(); return true; })()`);
 
         const msgs = (await api(`/api/board/${board}/messages/all?limit=50`)).body;
         const list = Array.isArray(msgs) ? msgs : (msgs.messages || []);

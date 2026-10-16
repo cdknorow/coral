@@ -43,48 +43,6 @@ function switchMobileTab(tab) {
 }
 window.switchMobileTab = switchMobileTab;
 
-function _showMobileHistory(agentList) {
-    if (!agentList) return;
-    agentList.style.display = 'flex';
-    agentList.dataset.mode = 'history';
-    agentList.innerHTML = '';
-
-    // Header
-    const header = document.createElement('div');
-    header.style.cssText = 'padding:12px 16px;';
-    header.innerHTML = '<h2 class="mobile-list-title">Session History</h2>';
-    agentList.appendChild(header);
-
-    // Move the sidebar's history section body content into mobile view
-    // We reference the actual sidebar elements so search/filters work
-    const historySection = document.querySelector('[data-section="history"]');
-    if (historySection) {
-        const body = historySection.querySelector('.sidebar-section-body');
-        if (body) {
-            // Clone to avoid removing from sidebar
-            const clone = body.cloneNode(true);
-            clone.style.cssText = 'padding:0 12px;overflow-y:auto;flex:1;';
-
-            // cloneNode keeps the data-on-* actions, so the clones work as they are (one delegated
-            // listener per event, actions.js).
-
-            // Re-wire search input
-            const searchInput = clone.querySelector('input[type="search"]');
-            if (searchInput) {
-                const origInput = document.getElementById('history-search');
-                if (origInput) {
-                    searchInput.addEventListener('input', () => {
-                        origInput.value = searchInput.value;
-                        origInput.dispatchEvent(new Event('input'));
-                    });
-                }
-            }
-
-            agentList.appendChild(clone);
-        }
-    }
-}
-
 // ── Mobile Back Navigation ────────────────────────────────────────────────
 
 function mobileBack() {

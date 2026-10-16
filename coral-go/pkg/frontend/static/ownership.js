@@ -130,11 +130,6 @@ export function releaseOwnership() {
     }
 }
 
-export function onOwnershipChange(cb) {
-    _listeners.add(cb);
-    return () => _listeners.delete(cb);
-}
-
 window.addEventListener('pagehide', () => {
     if (_sessionId && _ownerId === TAB_ID) _post({ type: 'release' });
 });

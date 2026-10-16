@@ -275,7 +275,7 @@ const BASE = require('./test_base').BASE;
                     : real(url, opts);
                 document.querySelectorAll('.toast').forEach(t => t.remove());
                 const s = window.__state.liveSessions.find(x => x.session_id === 'aa-off'); s.auto_accept = false;
-                const p = window.toggleAutoAccept('aa-off', 'aa-off');
+                const p = window.__coral.toggleAutoAccept('aa-off', 'aa-off');
                 await new Promise(r => setTimeout(r, 0));
                 [...document.querySelectorAll('dialog.auto-accept-confirm button')].find(b => b.textContent === 'Enable auto-accept').click();
                 await p;

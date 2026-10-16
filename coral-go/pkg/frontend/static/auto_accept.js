@@ -27,7 +27,6 @@ const WARNING_RISK = 'which can include risky actions such as deleting files, fo
     + 'changing files outside the agent’s folder.';
 const WARNING_TRUST = ' Only turn this on for a task you trust, ideally in a sandbox or a disposable worktree.';
 const WARNING_WAITS = 'Questions and plan approvals still wait for you. It turns off when the agent restarts or wakes.';
-export const WARNING_TEXT = WARNING_LEAD + WARNING_RISK + WARNING_TRUST + ' ' + WARNING_WAITS;
 
 // Why Coral turned it off (auto_accept_paused_code). The server sends codes only; the words are ours.
 export const PAUSED_TEXT = {
@@ -324,7 +323,7 @@ export async function stopAllAutoAccept() {
     return { stopped, failed };
 }
 
-window.toggleAutoAccept = toggleAutoAccept;
+(window.__coral ||= {}).toggleAutoAccept = toggleAutoAccept;
 
 // The agent menu's Auto-accept item (#3645): a menu item stops the click and closes the menus first.
 registerActions({

@@ -106,7 +106,7 @@ function renderModal() {
 
 // ── Color picker handlers (exposed globally) ────────────────────────────
 
-window.updateThemeVar = function(picker) {
+(window.__coral ||= {}).updateThemeVar = function(picker) {
     const cssVar = picker.dataset.var;
     const value = picker.value;
     currentEdits[cssVar] = value;
@@ -115,7 +115,7 @@ window.updateThemeVar = function(picker) {
     if (textInput) textInput.value = value;
 };
 
-window.updateThemeVarText = function(input) {
+(window.__coral ||= {}).updateThemeVarText = function(input) {
     const cssVar = input.dataset.var;
     const value = input.value.trim();
     currentEdits[cssVar] = value;
@@ -129,12 +129,12 @@ window.updateThemeVarText = function(input) {
 
 // ── Theme operations ─────────────────────────────────────────────────────
 
-window.previewTheme = function() {
+(window.__coral ||= {}).previewTheme = function() {
     applyVariablesToDom(currentEdits);
     showToast('Theme preview applied');
 };
 
-window.resetThemeToDefaults = function() {
+function resetThemeToDefaults() {
     // Remove all custom properties and reload
     for (const cssVar of Object.keys(currentEdits)) {
         document.documentElement.style.removeProperty(cssVar);
@@ -148,7 +148,7 @@ window.resetThemeToDefaults = function() {
     showToast('Reset to defaults');
 };
 
-window.saveAndApplyTheme = async function() {
+(window.__coral ||= {}).saveAndApplyTheme = async function() {
     const name = document.getElementById('theme-save-name').value.trim();
     if (!name) {
         showToast('Theme name is required', true);
@@ -185,7 +185,7 @@ window.saveAndApplyTheme = async function() {
     }
 };
 
-window.loadSelectedTheme = async function() {
+async function loadSelectedTheme() {
     const select = document.getElementById('theme-load-select');
     const name = select.value;
     if (!name) return;
@@ -213,7 +213,7 @@ window.loadSelectedTheme = async function() {
     }
 };
 
-window.deleteSelectedTheme = function() {
+function deleteSelectedTheme() {
     const select = document.getElementById('theme-load-select');
     const name = select.value;
     if (!name) return;
@@ -238,7 +238,7 @@ window.deleteSelectedTheme = function() {
     } });
 };
 
-window.exportCurrentTheme = function() {
+(window.__coral ||= {}).exportCurrentTheme = function() {
     const name = document.getElementById('theme-save-name')?.value.trim() || 'coral-theme';
     const description = document.getElementById('theme-save-desc')?.value.trim() || '';
     const base = document.getElementById('theme-save-base')?.value || 'dark';
@@ -254,7 +254,7 @@ window.exportCurrentTheme = function() {
     showToast('Theme exported');
 };
 
-window.generateThemeFromDescription = async function() {
+async function generateThemeFromDescription() {
     const prompt = document.getElementById('theme-ai-prompt')?.value.trim();
     if (!prompt) {
         showToast('Enter a theme description first', true);
@@ -323,7 +323,7 @@ window.generateThemeFromDescription = async function() {
     }
 };
 
-window.importThemeFile = function() {
+function importThemeFile() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
@@ -366,20 +366,6 @@ window.importThemeFile = function() {
 
 // ── Apply theme on page load ─────────────────────────────────────────────
 
-export async function loadCustomTheme() {
-    const themeName = state.settings.custom_theme;
-    if (!themeName) return;
-
-    try {
-        const resp = await fetch(`/api/themes/${encodeURIComponent(themeName)}`);
-        const data = await resp.json();
-        if (data.error || !data.theme?.variables) return;
-        applyVariablesToDom(data.theme.variables);
-    } catch {
-        // Silently fail — fall back to default theme
-    }
-}
-
 // ── Utilities ────────────────────────────────────────────────────────────
 
 function applyVariablesToDom(variables) {
@@ -417,15 +403,15 @@ function toHex(color) {
 // The theme configurator's color inputs and buttons (#3645): each calls the same function its
 // inline handler did.
 registerActions({
-    'theme-var': el => window.updateThemeVar(el),
-    'theme-var-text': el => window.updateThemeVarText(el),
-    'theme-load': () => window.loadSelectedTheme(),
-    'theme-delete': () => window.deleteSelectedTheme(),
-    'theme-import': () => window.importThemeFile(),
-    'theme-export': () => window.exportCurrentTheme(),
-    'theme-generate': () => window.generateThemeFromDescription(),
+    'theme-var': el => window.__coral.updateThemeVar(el),
+    'theme-var-text': el => window.__coral.updateThemeVarText(el),
+    'theme-load': () => loadSelectedTheme(),
+    'theme-delete': () => deleteSelectedTheme(),
+    'theme-import': () => importThemeFile(),
+    'theme-export': () => window.__coral.exportCurrentTheme(),
+    'theme-generate': () => generateThemeFromDescription(),
     'theme-close': () => window.hideThemeConfigurator(),
-    'theme-reset': () => window.resetThemeToDefaults(),
-    'theme-preview': () => window.previewTheme(),
-    'theme-save': () => window.saveAndApplyTheme(),
+    'theme-reset': () => resetThemeToDefaults(),
+    'theme-preview': () => window.__coral.previewTheme(),
+    'theme-save': () => window.__coral.saveAndApplyTheme(),
 });

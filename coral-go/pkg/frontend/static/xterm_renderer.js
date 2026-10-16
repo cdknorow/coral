@@ -822,10 +822,6 @@ export function getTerminal() {
     return terminal;
 }
 
-export function isTerminalFocused() {
-    return _terminalFocused;
-}
-
 export function focusTerminal() {
     if (terminal) {
         terminal.focus();

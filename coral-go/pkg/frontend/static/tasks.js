@@ -351,7 +351,6 @@ export function showSubagentDetailModal(subagentId) {
     modal._escHandler = (e) => { if (e.key === 'Escape') hideTaskDetailModal(); };
     document.addEventListener('keydown', modal._escHandler);
 }
-window.showSubagentDetailModal = showSubagentDetailModal;
 
 // Called after each subagent poll: keep an open modal's stats current, and
 // fetch the result once a running subagent finishes.
@@ -462,42 +461,6 @@ export function renderTaskList() {
     // Agent tasks are now rendered in the unified board task table.
     // Trigger a re-render of the unified table to include updated agent tasks.
     renderBoardTaskList();
-}
-
-function initTaskDragReorder() {
-    const list = document.getElementById('task-bar-list');
-    if (!list) return;
-
-    let dragItem = null;
-
-    list.querySelectorAll('.task-item').forEach(item => {
-        item.addEventListener('dragstart', (e) => {
-            dragItem = item;
-            item.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-        });
-
-        item.addEventListener('dragend', () => {
-            item.classList.remove('dragging');
-            dragItem = null;
-            // Save new order
-            saveTaskOrder();
-        });
-
-        item.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            if (!dragItem || dragItem === item) return;
-
-            const rect = item.getBoundingClientRect();
-            const midY = rect.top + rect.height / 2;
-            if (e.clientY < midY) {
-                list.insertBefore(dragItem, item);
-            } else {
-                list.insertBefore(dragItem, item.nextSibling);
-            }
-        });
-    });
 }
 
 /* ── Board Tasks ────────────────────────────────────────── */
@@ -652,8 +615,7 @@ function _toggleHideCompleted() {
 }
 
 // Expose globally
-window._toggleTaskSort = _toggleTaskSort;
-window._toggleHideCompleted = _toggleHideCompleted;
+(window.__coral ||= {})._toggleTaskSort = _toggleTaskSort;
 
 const _priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
 const _priorityRank = { critical: 1, high: 2, medium: 3, low: 4 };
@@ -921,10 +883,10 @@ function _renderDepPicker(containerId, selectedIds = [], excludeTaskId = null) {
     }
     html += `</div>`;
     container.innerHTML = html;
-    window._updateDepTags(containerId);
+    _updateDepTags(containerId);
 }
 
-window._updateDepTags = function(containerId) {
+function _updateDepTags(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
     const tagsEl = document.getElementById(`${containerId}-tags`);
@@ -1252,7 +1214,6 @@ export function showAgentTaskDetailModal(taskId) {
 
     _openTaskDetailModal(modal);
 }
-window.showAgentTaskDetailModal = showAgentTaskDetailModal;
 
 function _openTaskDetailModal(modal) {
     modal.style.display = '';
@@ -1915,26 +1876,6 @@ function formatTaskDate(isoStr) {
     }
 }
 
-async function saveTaskOrder() {
-    if (!state.currentSession || state.currentSession.type !== 'live') return;
-    const list = document.getElementById('task-bar-list');
-    if (!list) return;
-
-    const taskIds = Array.from(list.querySelectorAll('.task-item'))
-        .map(el => parseInt(el.dataset.taskId))
-        .filter(id => !isNaN(id));
-
-    try {
-        await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/reorder`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ task_ids: taskIds }),
-        });
-    } catch (e) {
-        // silent fail for reorder
-    }
-}
-
 // The task list and task dialogs' markup (#3645): data-on-* names, never code. Each action calls
 // the same function the inline handler did, after checking its values (a bad one does nothing).
 // Cancelling and completing a task still go through their confirm footers (task-cancel shows
@@ -1945,16 +1886,16 @@ const isPersonal = el => el.dataset.personal === '1';
 const depContainer = el => { const id = tokenOf(el.dataset.container); return id ? document.getElementById(id) : null; };
 registerActions({
     'task-close': () => window.hideTaskDetailModal(),
-    'task-hide-done': () => window._toggleHideCompleted(),
-    'task-sort': el => { if (TASK_SORTS.has(el.dataset.sort)) window._toggleTaskSort(el.dataset.sort); },
+    'task-hide-done': () => _toggleHideCompleted(),
+    'task-sort': el => { if (TASK_SORTS.has(el.dataset.sort)) window.__coral._toggleTaskSort(el.dataset.sort); },
     'task-open': el => withId(el.dataset.taskId, id => (el.dataset.kind === 'agent' ? window.showAgentTaskDetailModal(id) : window.showTaskDetailModal(id))),
-    'task-subagent-open': el => { const sid = textOf(el.dataset.subagentId); if (sid) window.showSubagentDetailModal(sid); },
+    'task-subagent-open': el => { const sid = textOf(el.dataset.subagentId); if (sid) showSubagentDetailModal(sid); },
     'task-load-more': () => window.loadMoreBoardTasks(),
     'dep-picker-toggle': el => {
         const list = depContainer(el) && document.getElementById(el.dataset.container + '-list');
         if (list) list.style.display = list.style.display === 'none' ? '' : 'none';
     },
-    'dep-picker-change': el => { if (depContainer(el)) window._updateDepTags(el.dataset.container); },
+    'dep-picker-change': el => { if (depContainer(el)) _updateDepTags(el.dataset.container); },
     'dep-tag-remove': el => {
         const box = depContainer(el), id = idOf(el.dataset.taskId);
         if (box && id) box.querySelector(`input[type="checkbox"][value="${id}"]`)?.click();

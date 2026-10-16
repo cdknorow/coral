@@ -122,7 +122,7 @@ function _getAgentModels(server = LOCAL_SERVER) {
     }
     return _agentModelsByServer.get(id);
 }
-window._getAgentModels = _getAgentModels;
+(window.__coral ||= {})._getAgentModels = _getAgentModels;
 
 // _fillModelDatalist replaces <option>s in the given <datalist> element with
 // the canonical list for the agent type. Unknown types or an empty list
@@ -134,7 +134,6 @@ function _fillModelDatalist(datalistEl, agentType, modelsByType) {
         .map(m => `<option value="${escapeAttr(m)}"></option>`)
         .join('');
 }
-window._fillModelDatalist = _fillModelDatalist;
 
 // ── User's per-type default model (for ACF pre-fill) ───────────────────
 // Pulled from the same /api/settings payload the Settings modal uses (the
@@ -173,7 +172,7 @@ function _invalidateDefaultModels() {
     _defaultModelsByServer.clear();
     _serverSettings.clear();
 }
-window._invalidateDefaultModels = _invalidateDefaultModels;
+(window.__coral ||= {})._invalidateDefaultModels = _invalidateDefaultModels;
 
 // A persisted model is not automatically a user edit. Treat known provider
 // defaults/models as replaceable when the provider changes, while preserving
@@ -818,7 +817,6 @@ function _reviewGeneratedTeam() {
     hideTeamWizardModal();
     _populateGeneratedTeamDraft(team);
 }
-window._reviewGeneratedTeam = _reviewGeneratedTeam;
 
 async function testTeamWizard() {
     const generateBtn = document.getElementById('team-wizard-generate-btn');
@@ -938,7 +936,7 @@ function _checkAgentCLI(agentType, warning = document.getElementById('cli-check-
     const server = _acfServer(warning && warning.closest ? warning.closest('[data-acf-uid]') : null);
     return checkAgentCLI(agentType, warning, {force,command:CLI_INSTALL_INSTRUCTIONS[agentType]?.cmd || '',server});
 }
-window._checkAgentCLI = _checkAgentCLI;
+(window.__coral ||= {})._checkAgentCLI = _checkAgentCLI;
 
 /** Map agent type to its permission bypass flag. */
 const PERM_FLAGS = {
@@ -1374,10 +1372,10 @@ async function _setSavedTeamTemplates(templates) {
 }
 
 // What a preset select's choice does, by the handler a caller names (#3645).
-const PRESET_KINDS = { 'window._selectAgentPreset': 'agent', 'window._applyACFPresetValue': 'acf' };
+const PRESET_KINDS = new Set(['agent', 'acf']);
 
 /** Render preset buttons (built-in + saved) into a container. */
-function _renderPresetButtons(containerId, onClickFn, opts = {}) {
+function _renderPresetButtons(containerId, kind, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container) return;
     const saved = _getSavedPersonas();
@@ -1385,8 +1383,7 @@ function _renderPresetButtons(containerId, onClickFn, opts = {}) {
     const target = opts.target;
     // The select names what a choice does (preset-pick, by kind): the agent dialog's preset, or an
     // agent config form's (with its target), never a function name in the markup.
-    const kind = PRESET_KINDS[onClickFn];
-    if (!kind) throw new Error('unknown preset handler ' + onClickFn);
+    if (!PRESET_KINDS.has(kind)) throw new Error('unknown preset kind ' + kind);
     let html = `<select class="agent-preset-select" data-on-change="preset-pick" data-kind="${escapeAttr(kind)}" data-target="${escapeAttr(target || '')}">`;
     html += `<option value="" disabled selected>Choose a preset or custom...</option>`;
     html += `<optgroup label="Built-in">`;
@@ -1439,17 +1436,9 @@ async function _saveCurrentPersona(nameInputId, promptInputId, flagsInputId) {
     showToast(`Saved persona "${name}"`);
 
     // Re-render all preset containers
-    _renderPresetButtons("agent-preset-selector", "window._selectAgentPreset");
+    _renderPresetButtons("agent-preset-selector", "agent");
 }
 window._saveCurrentPersona = _saveCurrentPersona;
-
-async function _deletePersona(name) {
-    const saved = _getSavedPersonas().filter(p => p.name !== name);
-    await _setSavedPersonas(saved);
-    showToast(`Deleted persona "${name}"`);
-    _renderPresetButtons("agent-preset-selector", "window._selectAgentPreset");
-}
-window._deletePersona = _deletePersona;
 
 // ── Export / Import (Personas & Team Templates) ──────────────────────────
 
@@ -1511,7 +1500,7 @@ export async function importPersonas() {
     }
     await _setSavedPersonas(existing);
     showToast(`Imported ${added} persona(s)`);
-    _renderPresetButtons("agent-preset-selector", "window._selectAgentPreset");
+    _renderPresetButtons("agent-preset-selector", "agent");
 }
 
 export function exportTeamTemplates() {
@@ -1548,7 +1537,7 @@ export async function importTeamTemplates() {
 // ── Agent Preset Selector (single-agent modal) ───────────────────────────
 
 function _initAgentPresets() {
-    _renderPresetButtons("agent-preset-selector", "window._selectAgentPreset");
+    _renderPresetButtons("agent-preset-selector", "agent");
 }
 
 function _selectAgentPreset(name) {
@@ -1572,7 +1561,6 @@ function _selectAgentPreset(name) {
         if (nameInput) nameInput.value = '';
     }
 }
-window._selectAgentPreset = _selectAgentPreset;
 
 // ── Add Agent to Board ───────────────────────────────────────────────────
 // Launches started from inside a board / folder group inherit that group's
@@ -1892,7 +1880,6 @@ function _togglePermissions(containerId) {
     const chevron = el.previousElementSibling?.querySelector('.permissions-chevron');
     if (chevron) chevron.style.transform = isHidden ? 'rotate(90deg)' : '';
 }
-window._togglePermissions = _togglePermissions;
 
 function _renderPermChips(containerId, type, capabilities) {
     const container = document.getElementById(containerId);
@@ -1933,7 +1920,6 @@ function _togglePermChip(btn) {
         }
     }
 }
-window._togglePermChip = _togglePermChip;
 
 function _getPermissions(editorId) {
     const editor = document.getElementById(editorId);
@@ -2100,7 +2086,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
 
     // Render presets if enabled — pass containerId so the preset handler knows which ACF to update
     if (showPreset) {
-        _renderPresetButtons(`${uid}-presets`, 'window._applyACFPresetValue', { target: containerId });
+        _renderPresetButtons(`${uid}-presets`, 'acf', { target: containerId });
     }
 
     // Loaded values are classified against the provider's known defaults and
@@ -2256,7 +2242,7 @@ function setAgentConfig(containerId, values) {
     _syncACFModelField(container);
     _checkAgentCLI(typeEl?.value || 'claude', container.querySelector('.acf-cli-warning'));
 }
-window.setAgentConfig = setAgentConfig;
+(window.__coral ||= {}).setAgentConfig = setAgentConfig;
 
 /** Apply a preset to a specific AgentConfigForm by container ID */
 function _applyACFPresetFor(containerId, name) {
@@ -2277,8 +2263,6 @@ function _applyACFPresetFor(containerId, name) {
         });
     }
 }
-window._applyACFPresetFor = _applyACFPresetFor;
-window._applyACFPresetValue = (value, containerId) => _applyACFPresetFor(containerId, value);
 
 // Default team: first 3 presets
 const DEFAULT_TEAM_PRESETS = AGENT_PRESETS.slice(0, 4);
@@ -2448,22 +2432,6 @@ window._loadTeamTemplateFromSelect = function(name) {
 };
 
 /** Launch a team preset from the welcome screen — opens the team modal pre-filled. */
-window._launchTeamPreset = function(templateName) {
-    const modal = document.getElementById('quick-launch-modal');
-    if (!modal) return;
-    document.getElementById('quick-launch-template').value = templateName;
-    document.getElementById('quick-launch-title').textContent = `Launch ${templateName}`;
-    document.getElementById('quick-launch-board-name').value = '';
-    document.getElementById('quick-launch-board-name').placeholder = boardNameSlug(templateName);
-    _serverSettings.clear();
-    _quickServer = LOCAL_SERVER;
-    _resetDirInputs(['quick-launch-workdir'], LOCAL_SERVER, {}, { switching: false });
-    _renderServerPicker('quick');
-    const quickBrowser = document.getElementById('quick-launch-browser');
-    if (quickBrowser) quickBrowser.style.display = 'none';
-    modal.style.display = '';
-};
-
 window._quickLaunchTeam = async function() {
     const templateName = document.getElementById('quick-launch-template').value;
     const boardName = document.getElementById('quick-launch-board-name').value.trim() ||
@@ -2549,7 +2517,6 @@ function _loadTeamTemplate(name) {
     }
     showToast(`Loaded template "${name}"`);
 }
-window._loadTeamTemplate = _loadTeamTemplate;
 
 let _pendingSaveTemplateAgents = null;
 let _pendingSaveTemplateFlags = '';
@@ -2616,14 +2583,6 @@ async function _confirmSaveTemplate() {
     _hideSaveTemplateModal();
 }
 window._confirmSaveTemplate = _confirmSaveTemplate;
-
-async function _deleteTeamTemplate(name) {
-    const templates = _getSavedTeamTemplates().filter(t => t.name !== name);
-    await _setSavedTeamTemplates(templates);
-    showToast(`Deleted template "${name}"`);
-    _renderTeamTemplateSelector();
-}
-window._deleteTeamTemplate = _deleteTeamTemplate;
 
 function _truncatePrompt(text, maxLen) {
     if (!text || text.length <= maxLen) return text || "";
@@ -2753,7 +2712,6 @@ function _moveTeamAgent(btn, direction) {
         list.insertBefore(row.nextElementSibling, row);
     }
 }
-window._moveTeamAgent = _moveTeamAgent;
 
 window._addTeamAgent = (name, prompt) => {
     _addTeamAgent(name || "", prompt || "");
@@ -3153,11 +3111,9 @@ async function loadDatabaseEncryptionStatus() {
         const resp = await fetch('/api/system/database-security');
         if (!resp.ok) throw new Error(`database security ${resp.status}`);
         const status = await resp.json();
-        window._databaseEncryptionStatus = status;
         renderDatabaseEncryptionStatus(status);
         return status;
     } catch (_) {
-        window._databaseEncryptionStatus = null;
         renderDatabaseEncryptionStatus(null, true);
         return null;
     }
@@ -3174,7 +3130,6 @@ async function saveDatabaseEncryptionSettings() {
     });
     if (!resp.ok) throw new Error(`database security save failed (${resp.status})`);
     const status = await resp.json();
-    window._databaseEncryptionStatus = status;
     renderDatabaseEncryptionStatus(status);
     return true;
 }
@@ -3935,7 +3890,7 @@ window._hideMobileConnectModal = (...args) => importOnce('./mobile_connect.js').
 // exist before this module loads.)
 const teamRow = el => el.closest('.team-agent-row');
 registerActions({
-    'team-generated-review': () => window._reviewGeneratedTeam(),
+    'team-generated-review': () => _reviewGeneratedTeam(),
     'info-copy': el => {
         const cmd = textOf(el.dataset.cmd, 8192);
         if (!cmd) return;
@@ -3945,15 +3900,15 @@ registerActions({
     },
     'preset-pick': el => {
         const v = textOf(el.value);
-        if (v && el.dataset.kind === 'agent') window._selectAgentPreset(v);
-        else if (v && el.dataset.kind === 'acf') { const t = tokenOf(el.dataset.target); if (t) window._applyACFPresetValue(v, t); }
+        if (v && el.dataset.kind === 'agent') _selectAgentPreset(v);
+        else if (v && el.dataset.kind === 'acf') { const t = tokenOf(el.dataset.target); if (t) _applyACFPresetFor(t, v); }
         el.value = '';
     },
-    'perm-chip-toggle': el => window._togglePermChip(el),
+    'perm-chip-toggle': el => _togglePermChip(el),
     'perm-mode-describe': el => window._updatePermModeDescription(el),
-    'perms-toggle': el => { const t = tokenOf(el.dataset.target); if (t) window._togglePermissions(t); },
+    'perms-toggle': el => { const t = tokenOf(el.dataset.target); if (t) _togglePermissions(t); },
     'team-agent-open': el => { const r = teamRow(el); if (r) window.showTeamAgentModal(r); },
     'team-agent-edit': (el, event) => { event.stopPropagation(); const r = teamRow(el); if (r) window.showTeamAgentModal(r); },
-    'team-agent-move': (el, event) => { event.stopPropagation(); if (el.dataset.dir === 'up' || el.dataset.dir === 'down') window._moveTeamAgent(el, el.dataset.dir === 'up' ? -1 : 1); },
+    'team-agent-move': (el, event) => { event.stopPropagation(); if (el.dataset.dir === 'up' || el.dataset.dir === 'down') _moveTeamAgent(el, el.dataset.dir === 'up' ? -1 : 1); },
     'team-agent-remove': (el, event) => { event.stopPropagation(); teamRow(el)?.remove(); },
 });

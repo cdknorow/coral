@@ -58,15 +58,6 @@ const _roleAvatars = {
     'terminal': '💻', 'ops': '🔧', 'infra': '☁️',
 };
 
-function _getAvatarEmoji(name) {
-    if (!name) return null;
-    const lower = name.toLowerCase();
-    for (const [keyword, emoji] of Object.entries(_roleAvatars)) {
-        if (lower.includes(keyword)) return emoji;
-    }
-    return null;
-}
-
 function _getInitials(name) {
     if (!name) return '?';
     const words = name.trim().split(/\s+/);
@@ -121,54 +112,6 @@ export function resolveSessionIdentity(s) {
     const src = sessionIdentitySource(s);
     if (src) return oneLine(src, 60);
     return s.agent_type === 'terminal' ? 'Terminal' : 'Agent';
-}
-
-function _renderAvatar(s, dotClass) {
-    // Role emoji + initials follow the shared identity chain, then the folder.
-    // Colour is keyed ONLY on the folder/session name (never display_name,
-    // auto_name, board_job_title, summary or first_prompt) so agents in one
-    // folder share a hue (established contract, task #89).
-    const name = sessionIdentitySource(s) || s.name || '';
-    const color = getAgentColor(s.name || '');
-    const statusDot = `<span class="avatar-status-dot ${dotClass}"></span>`;
-
-    // Custom icon takes priority
-    if (s.icon && !s.sleeping) {
-        return `<div class="agent-avatar" style="background:${hexToRgba(color, 0.15)}">
-            <span class="agent-avatar-emoji">${escapeHtml(s.icon)}</span>${statusDot}
-        </div>`;
-    }
-
-    // Sleeping
-    if (s.sleeping) {
-        return `<div class="agent-avatar" style="background:rgba(255,193,7,0.1)">
-            <span class="agent-avatar-emoji">🌙</span>${statusDot}
-        </div>`;
-    }
-
-    // Role-based emoji
-    const emoji = _getAvatarEmoji(name);
-    if (emoji) {
-        return `<div class="agent-avatar" style="background:${hexToRgba(color, 0.15)}">
-            <span class="agent-avatar-emoji">${emoji}</span>${statusDot}
-        </div>`;
-    }
-
-    // Fallback: colored initials from the shared *stable* identity source
-    // (display_name -> auto_name -> board_job_title), then folder/terminal
-    // name. Summary and first_prompt are deliberately excluded: one drifts as
-    // the agent works, the other yields initials from a path or sentence.
-    // Colour stays folder-based (see `color` above) so agents in one folder
-    // share a hue.
-    // With no stable identity the row label is "Agent"/"Terminal", so the
-    // initials are AG/TE rather than letters of the folder name (every agent
-    // in coral-go would read CO).
-    const initialsSource = resolveSessionIdentity(s);
-    const initials = _getInitials(initialsSource);
-    const style = `background:${hexToRgba(color, 0.2)};color:${color}`;
-    return `<div class="agent-avatar" style="${style}">
-        <span class="agent-avatar-initials">${escapeHtml(initials)}</span>${statusDot}
-    </div>`;
 }
 
 function formatShortTime(isoStr) {
@@ -622,7 +565,7 @@ async function _loadEarlierBoardChat() {
         msgsEl.scrollTop = msgsEl.scrollHeight - prevScrollHeight;
     } catch { /* ignore */ }
 }
-window._loadEarlierBoardChat = _loadEarlierBoardChat;
+(window.__coral ||= {})._loadEarlierBoardChat = _loadEarlierBoardChat;
 
 function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
     if (!msgsEl) return;
@@ -691,7 +634,7 @@ function _toggleBoardChatSelect() {
     const msgsEl = document.getElementById('board-panel-msgs');
     if (msgsEl) _renderBoardPanelMessages(msgsEl, false);
 }
-window._toggleBoardChatSelect = _toggleBoardChatSelect;
+(window.__coral ||= {})._toggleBoardChatSelect = _toggleBoardChatSelect;
 
 function _toggleBoardChatMsgSelect(msgId, checked) {
     if (checked) {
@@ -703,21 +646,18 @@ function _toggleBoardChatMsgSelect(msgId, checked) {
     if (cb) cb.closest('.mb-message').classList.toggle('mb-message-selected', checked);
     _updateBoardChatSelectBar();
 }
-window._toggleBoardChatMsgSelect = _toggleBoardChatMsgSelect;
 
 function _boardChatSelectAll() {
     _boardChatMessages.forEach(m => _boardChatSelectedIds.add(m.id));
     const msgsEl = document.getElementById('board-panel-msgs');
     if (msgsEl) _renderBoardPanelMessages(msgsEl, false);
 }
-window._boardChatSelectAll = _boardChatSelectAll;
 
 function _boardChatSelectNone() {
     _boardChatSelectedIds.clear();
     const msgsEl = document.getElementById('board-panel-msgs');
     if (msgsEl) _renderBoardPanelMessages(msgsEl, false);
 }
-window._boardChatSelectNone = _boardChatSelectNone;
 
 function _cancelBoardChatSelect() {
     _boardChatSelectMode = false;
@@ -731,7 +671,6 @@ function _cancelBoardChatSelect() {
     const msgsEl = document.getElementById('board-panel-msgs');
     if (msgsEl) _renderBoardPanelMessages(msgsEl, false);
 }
-window._cancelBoardChatSelect = _cancelBoardChatSelect;
 
 function _updateBoardChatSelectBar() {
     const panel = document.getElementById('agentic-panel-board');
@@ -792,7 +731,6 @@ async function _exportBoardChatSelected() {
 
     _cancelBoardChatSelect();
 }
-window._exportBoardChatSelected = _exportBoardChatSelected;
 
 async function _sendBoardChat(boardName) {
     const inputEl = document.getElementById('board-panel-input');
@@ -809,7 +747,7 @@ async function _sendBoardChat(boardName) {
         _loadBoardPanelChat(boardName);
     } catch { /* ignore */ }
 }
-window._sendBoardChat = _sendBoardChat;
+(window.__coral ||= {})._sendBoardChat = _sendBoardChat;
 
 async function _toggleBoardChatPause(boardName) {
     const btn = document.getElementById('board-chat-pause-btn');
@@ -832,19 +770,6 @@ async function _toggleBoardChatPause(boardName) {
         }
     } catch { /* ignore */ }
 }
-window._toggleBoardChatPause = _toggleBoardChatPause;
-
-async function _toggleBoardPause(boardName) {
-    const btn = document.getElementById('board-pause-btn');
-    const isPaused = btn?.classList.contains('paused');
-    const endpoint = isPaused ? 'resume' : 'pause';
-    try {
-        await boardFetch(boardName, `/${endpoint}`, { method: 'POST' });
-        if (btn) btn.classList.toggle('paused');
-        showToast(isPaused ? `Board "${keyLabel(boardName)}" resumed` : `Board "${keyLabel(boardName)}" paused`);
-    } catch { /* ignore */ }
-}
-window._toggleBoardPause = _toggleBoardPause;
 
 async function _checkBoardPauseState(boardName) {
     try {
@@ -866,17 +791,6 @@ async function _checkBoardPauseState(boardName) {
         }
     } catch { /* ignore */ }
 }
-
-async function _clearBoardMessages(boardName) {
-    showConfirmModal('Clear Messages', `Clear all messages from "${keyLabel(boardName)}"? This cannot be undone.`, async () => {
-        try {
-            await boardFetch(boardName, ``, { method: 'DELETE' });
-            _loadBoardPanelChat(boardName, { full: true });
-            showToast(`Cleared messages from "${keyLabel(boardName)}"`);
-        } catch { /* ignore */ }
-    });
-}
-window._clearBoardMessages = _clearBoardMessages;
 
 // Board chat @mention autocomplete
 let _boardSubscribers = {};
@@ -912,7 +826,6 @@ async function _boardMentionInput(event, boardName) {
     ).join('');
     dropdown.style.display = 'block';
 }
-window._boardMentionInput = _boardMentionInput;
 
 function _insertBoardMention(name) {
     const input = document.getElementById('board-panel-input');
@@ -929,7 +842,6 @@ function _insertBoardMention(name) {
     input.focus();
     if (dropdown) dropdown.style.display = 'none';
 }
-window._insertBoardMention = _insertBoardMention;
 
 // ── Session ordering ──────────────────────────────────────────────────
 
@@ -1894,7 +1806,6 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     // The unread count on agent rows was not useful to users, so no chip is rendered.
     void unreadCount;
     const unreadChip = '';
-    void _renderAvatar; // avatars left the list (AGENT_LIST_COMPACT D-A); kept for other callers
     const _archiveItem = `
             <button class="overflow-menu-item" data-on-click="agent-archive" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(sid)}" data-mode="archive">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
@@ -3342,22 +3253,6 @@ export function hideTeamDetails() {
     if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
 }
 
-function _renderTokenLine(s) {
-    const pct = s.context_pct || 0;
-    if (pct === 0) return '';
-    const ctxWindow = s.context_window || 0;
-    const barColor = pct >= 80 ? 'var(--error)' : pct >= 50 ? 'var(--warning)' : 'var(--text-muted)';
-    const titleText = ctxWindow > 0 ? `${_formatTokens(Math.round(ctxWindow * pct / 100))} / ${_formatTokens(ctxWindow)} tokens (${pct}%)` : `Context: ${pct}%`;
-    const label = pct >= 100 ? 'ctx full' : `ctx ${pct}%`;
-    const levelClass = pct >= 80 ? ' ctx-error' : pct >= 50 ? ' ctx-warning' : '';
-    // Informational only: no clickable action here. Users compact by typing
-    // /compact directly in the chat/terminal (operator decision, task #75).
-    return `<span class="session-context-bar${levelClass}" title="${escapeAttr(titleText)}">
-        <span class="context-bar-track"><span class="context-bar-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></span></span>
-        <span class="context-bar-label">${label}</span>
-    </span>`;
-}
-
 function _formatTokens(n) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
@@ -3702,18 +3597,18 @@ registerActions({
     'team-details-close': () => window.hideTeamDetails(),
     // The board chat panel beside an agent.
     'board-chat-open': (el, event) => { event.preventDefault(); const b = textOf(el.dataset.board); if (b) window.selectBoardProject(b); },
-    'board-chat-pause': el => { const b = textOf(el.dataset.board); if (b) window._toggleBoardChatPause(b); },
-    'board-chat-select': () => window._toggleBoardChatSelect(),
+    'board-chat-pause': el => { const b = textOf(el.dataset.board); if (b) _toggleBoardChatPause(b); },
+    'board-chat-select': () => window.__coral._toggleBoardChatSelect(),
     'board-chat-all': () => { const i = document.getElementById('board-panel-input'); if (i) { i.value = '@all ' + i.value; i.focus(); } },
-    'board-chat-send': el => { const b = textOf(el.dataset.board); if (b) window._sendBoardChat(b); },
+    'board-chat-send': el => { const b = textOf(el.dataset.board); if (b) window.__coral._sendBoardChat(b); },
     // Ctrl+Enter sends, as before.
-    'board-chat-key': (el, event) => { if (event.key === 'Enter' && event.ctrlKey) { event.preventDefault(); const b = textOf(el.dataset.board); if (b) window._sendBoardChat(b); } },
-    'board-chat-mention': (el, event) => { const b = textOf(el.dataset.board); if (b) window._boardMentionInput(event, b); },
-    'board-mention-pick': (el, event) => { event.preventDefault(); const n = textOf(el.dataset.name); if (n) window._insertBoardMention(n); },
-    'board-chat-earlier': () => window._loadEarlierBoardChat(),
-    'board-chat-msg-select': el => { const id = idOf(el.dataset.msgId); if (id) window._toggleBoardChatMsgSelect(id, el.checked); },
-    'board-chat-select-all': () => window._boardChatSelectAll(),
-    'board-chat-select-none': () => window._boardChatSelectNone(),
-    'board-chat-export': () => window._exportBoardChatSelected(),
-    'board-chat-select-cancel': () => window._cancelBoardChatSelect(),
+    'board-chat-key': (el, event) => { if (event.key === 'Enter' && event.ctrlKey) { event.preventDefault(); const b = textOf(el.dataset.board); if (b) window.__coral._sendBoardChat(b); } },
+    'board-chat-mention': (el, event) => { const b = textOf(el.dataset.board); if (b) _boardMentionInput(event, b); },
+    'board-mention-pick': (el, event) => { event.preventDefault(); const n = textOf(el.dataset.name); if (n) _insertBoardMention(n); },
+    'board-chat-earlier': () => window.__coral._loadEarlierBoardChat(),
+    'board-chat-msg-select': el => { const id = idOf(el.dataset.msgId); if (id) _toggleBoardChatMsgSelect(id, el.checked); },
+    'board-chat-select-all': () => _boardChatSelectAll(),
+    'board-chat-select-none': () => _boardChatSelectNone(),
+    'board-chat-export': () => _exportBoardChatSelected(),
+    'board-chat-select-cancel': () => _cancelBoardChatSelect(),
 });

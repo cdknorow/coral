@@ -23,7 +23,7 @@ const BASE = require('./test_base').BASE;
         await evaluate(`new Promise(resolve => { const wait = () => typeof window.switchMobileTab === 'function' ? resolve() : setTimeout(wait, 50); wait(); })`);
         for (const width of [320, 390, 767]) {
             await size(width);
-            await evaluate(`window._goHome()`);
+            await evaluate(`window.__coral._goHome()`);
             assert.deepEqual(await visible(), ['mobile-agent-list']);
             await evaluate(`window.switchNavTab('history')`);
             assert.deepEqual(await visible(), ['chats-empty-view'], 'Chats with nothing open shows its own empty state, not the Agents home (#3152)');

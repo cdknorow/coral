@@ -288,5 +288,3 @@ async function onSubmit(e) {
     if (_editing === null) await load(); else render();
 }
 
-// Exposed for tests / other modules.
-export function _serversState() { return { servers: _servers, editing: _editing, hub: state.hub }; }

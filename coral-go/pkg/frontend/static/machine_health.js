@@ -58,9 +58,6 @@ export function localMachineHealth() {
     return _local;
 }
 
-/** Tests: forget the local value. */
-export function _resetMachineHealthForTests() { _local = null; }
-
 /** The status to show: ok | busy | stalled, or unknown (no value, or not one of the enums). */
 export function healthStatus(h) {
     return h && typeof h.status === 'string' && STATUS.has(h.status) ? h.status : 'unknown';
