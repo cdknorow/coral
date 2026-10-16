@@ -116,9 +116,21 @@ const JOB_RUNS = { runs: [{ id: 44, status: 'completed', scheduled_at: '2026-10-
         const toggle = await ev(`(() => { const b = document.querySelector('#wf-run-detail-container [data-on-click="wf-output-toggle"]'); const out = document.getElementById(b.getAttribute('aria-controls'));
             const a = [b.getAttribute('aria-expanded'), out.classList.contains('wf-expanded')]; b.click(); return [a, [b.getAttribute('aria-expanded'), out.classList.contains('wf-expanded')]]; })()`);
         check('a step\'s Output button toggles its output and aria-expanded', toggle[0][1] !== toggle[1][1] && toggle[1][0] === String(toggle[1][1]), JSON.stringify(toggle));
+        // Kill asks first (#3696): the real confirm dialog names the run and its workflow, Cancel
+        // sends nothing, and only Yes kills.
+        const modalState = () => ev(`(() => { const m = document.getElementById('confirm-modal'); return { open: getComputedStyle(m).display !== 'none', title: document.getElementById('confirm-modal-title').textContent, message: document.getElementById('confirm-modal-message').textContent }; })()`);
         await clear();
         await click('#wf-run-detail-container [data-on-click="wf-kill-run"]');
-        check('Kill stops the run', await sent('POST /api/workflows/runs/31/kill', 'the kill'));
+        await until(`!!document.getElementById('confirm-modal') && getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm dialog');
+        const killAsked = await modalState();
+        check('Kill asks first, naming the run and its workflow', killAsked.open && killAsked.title === 'Kill Run' && killAsked.message.includes('run #31') && killAsked.message.includes('"Nightly"'), JSON.stringify(killAsked));
+        await click('#confirm-modal .btn:not(#confirm-modal-yes)');
+        await sleep(300); // sleep-ok: shows that Cancel sends nothing (no condition to wait for)
+        check('Cancel closes the dialog and kills nothing', !(await modalState()).open && !(await reqs()).some(r => r.includes('/kill')), JSON.stringify(await reqs()));
+        await click('#wf-run-detail-container [data-on-click="wf-kill-run"]');
+        await until(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm dialog again');
+        await click('#confirm-modal-yes');
+        check('Yes kills the run', await sent('POST /api/workflows/runs/31/kill', 'the kill'));
         await click('[data-on-click="wf-back"]');
         check('Back returns to the list', await ev(`document.getElementById('wf-list-container').style.display !== 'none'`));
 

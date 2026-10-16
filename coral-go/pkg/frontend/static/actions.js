@@ -41,8 +41,8 @@ export function registerActions(map) {
 // mb-delete-board: deleting the board was never on the popout's old onclick list, so a popout kept
 // it (found by agent_popout's independent probe when slice 5 moved it).
 // Slice 6 adds the sidebar's: an agent's Kill / Restart / Rename, a group's and a team's Kill, and
-// Reset team.
-export const DESTRUCTIVE_ACTIONS = new Set(['session-restart', 'mb-delete-board',
+// Reset team. #3696 adds a board message's × and a workflow run's Kill, which now ask first.
+export const DESTRUCTIVE_ACTIONS = new Set(['session-restart', 'mb-delete-board', 'mb-msg-delete', 'wf-kill-run',
     'agent-kill', 'agent-restart', 'agent-rename', 'group-kill', 'team-kill', 'team-reset',
     // Slice 7b: the restart dialog's confirm button (it called confirmRestart inline before).
     'm-confirm-restart',

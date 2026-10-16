@@ -564,6 +564,15 @@ export async function toggleBoardPause() {
 
 // ── Delete message ───────────────────────────────────────────────────────
 
+// The × on a message asks first: a deleted message is gone for every reader. The wording names the
+// sender and the start of the text, so a mis-click on the wrong row is easy to spot (#3696).
+export function confirmDeleteBoardMessage(messageId) {
+    const m = _allMessages.find(x => x.id === messageId);
+    const text = m ? String(m.content || '').replace(/\s+/g, ' ').trim() : '';
+    const what = m ? `the message from ${m.job_title || 'Unknown'}${text ? ` ("${text.length > 60 ? text.slice(0, 60) + '\u2026' : text}")` : ''}` : `message #${messageId}`;
+    window.showConfirmModal('Delete Message', `Delete ${what}? This cannot be undone.`, () => deleteBoardMessage(messageId));
+}
+
 export async function deleteBoardMessage(messageId) {
     if (!currentProject) return;
     try {
@@ -1172,7 +1181,7 @@ registerActions({
     'mb-project': el => { const p = textOf(el.dataset.project); if (p) selectBoardProject(p); },
     'mb-earlier': () => loadEarlierMessages(),
     'mb-msg-select': el => withId(el.dataset.msgId, id => toggleMessageSelect(id, el.checked)),
-    'mb-msg-delete': el => withId(el.dataset.msgId, deleteBoardMessage),
+    'mb-msg-delete': el => withId(el.dataset.msgId, confirmDeleteBoardMessage),
     'mb-subscriber-history': el => {
         const s = textOf(el.dataset.session);
         if (s) navigateToAgentSession(s, textOf(el.dataset.name) || '');

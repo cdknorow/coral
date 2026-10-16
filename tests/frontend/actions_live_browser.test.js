@@ -133,7 +133,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('an unknown side panel tab does nothing', bogus.before === bogus.after, JSON.stringify(bogus));
 
         // ── Restart asks first; it is on the destructive list ──────────────
-        const listed = await ev(`import(${MOD} + 'actions.js').then(a => a.DESTRUCTIVE_ACTIONS.has('session-restart') && a.SEND_ACTIONS.has('cmd-send') && a.SEND_ACTIONS.has('cmd-raw-keys'))`);
+        const listed = await ev(`import(${MOD} + 'actions.js').then(a => a.DESTRUCTIVE_ACTIONS.has('session-restart') && a.DESTRUCTIVE_ACTIONS.has('mb-msg-delete') && a.DESTRUCTIVE_ACTIONS.has('wf-kill-run') && a.SEND_ACTIONS.has('cmd-send') && a.SEND_ACTIONS.has('cmd-raw-keys'))`);
         check('restart is on the shared destructive list, Send and keys on the send list', listed);
         await quiet(); await clear();
         await ev(`(() => { const b = document.querySelector('#live-session-view [data-on-click="session-restart"]'); if (b) b.click(); return true; })()`);

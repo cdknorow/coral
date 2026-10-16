@@ -11,6 +11,7 @@ let workflows = [];
 let selectedWorkflowId = null;
 let currentRunPollTimer = null;
 let editingWorkflowId = null; // non-null when editing
+let shownRun = null; // the run renderRunDetail last drew, for the Kill confirmation's wording
 
 // ── API helpers ────────────────────────────────────────────────────────
 
@@ -369,6 +370,7 @@ function stopRunPolling() {
 function renderRunDetail(run) {
     const container = document.getElementById('wf-run-detail');
     if (!container) return;
+    shownRun = run;
 
     const steps = run.steps || [];
     const completedCount = steps.filter(s => s.status === 'completed').length;
@@ -524,6 +526,12 @@ export async function triggerWorkflow(id) {
 }
 
 // ── Kill ───────────────────────────────────────────────────────────────
+
+// Kill asks first: it stops the run's agents mid-step and cannot be resumed (#3696).
+export function confirmKillWorkflowRun(runId) {
+    const name = shownRun && Number(shownRun.id) === runId && shownRun.workflow_name ? ` of workflow "${shownRun.workflow_name}"` : '';
+    window.showConfirmModal('Kill Run', `Stop run #${runId}${name}? Its steps stop where they are and the run cannot be resumed.`, () => killWorkflowRun(runId));
+}
 
 export async function killWorkflowRun(runId) {
     try {
@@ -750,7 +758,7 @@ registerActions({
     'wf-edit-agent': el => withId(el.dataset.workflowId, editWorkflowWithAgent),
     // Deleting still asks first (deleteWorkflow's confirm); the name is only shown in it.
     'wf-delete': el => withId(el.dataset.workflowId, id => deleteWorkflow(id, String(el.dataset.name || ''))),
-    'wf-kill-run': el => withId(el.dataset.runId, killWorkflowRun),
+    'wf-kill-run': el => withId(el.dataset.runId, confirmKillWorkflowRun),
     'wf-output-toggle': el => {
         const out = document.getElementById(el.getAttribute('aria-controls'));
         if (out) el.setAttribute('aria-expanded', String(out.classList.toggle('wf-expanded')));

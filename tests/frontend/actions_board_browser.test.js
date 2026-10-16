@@ -37,6 +37,9 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await Page.navigate({ url: BASE + '/' });
         await loaded;
         await coralReady();
+        // The board's Export dialog rewrites the shared confirm dialog and never puts it back (a bug, reported
+        // separately), so keep a pristine copy to restore before the confirmation checks below.
+        await ev(`window.__confirmHTML = document.querySelector('#confirm-modal .modal-content').innerHTML; true`);
 
         agent = await ev(`fetch('/api/sessions/launch-team', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ board_name: 'board-3645', working_dir: '/tmp', agent_type: 'terminal', agents: [{ name: 'Board QA', prompt: 'x' }] }) })
@@ -132,9 +135,25 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await ev(`(() => { const b = document.createElement('button'); b.setAttribute('data-on-click', 'mb-msg-delete'); b.dataset.msgId = '1; DROP'; document.body.appendChild(b); b.click(); b.remove(); return true; })()`);
         await new Promise(r => setTimeout(r, 500)); // sleep-ok: shows that a bad id deletes nothing (no condition to wait for)
         check('a delete with a bad id does nothing', (await ev(`document.querySelectorAll('#mb-messages [data-on-click="mb-msg-delete"]').length`)) === before);
+        // A message's × asks first (#3696): the dialog names the sender and the text, Cancel deletes
+        // nothing, and only Yes deletes. The real confirm dialog is used, not a stub.
+        await ev(`document.querySelector('#confirm-modal .modal-content').innerHTML = window.__confirmHTML; document.getElementById('confirm-modal').style.display = 'none'; true`);
+        const modalState = () => ev(`(() => { const m = document.getElementById('confirm-modal'); if (!m) return { open: false, title: '', message: '' }; return { open: getComputedStyle(m).display !== 'none', title: document.getElementById('confirm-modal-title').textContent, message: document.getElementById('confirm-modal-message').textContent }; })()`);
+        const countMsgs = () => ev(`document.querySelectorAll('#mb-messages [data-on-click="mb-msg-delete"]').length`);
         await ev(`document.querySelector('#mb-messages [data-on-click="mb-msg-delete"]').click(); true`);
+        await until(`!!document.getElementById('confirm-modal') && getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm dialog');
+        const asked = await modalState();
+        check('a message\'s × asks first, naming what is deleted', asked.open && asked.title === 'Delete Message' && /Delete the message from .+\? This cannot be undone\./.test(asked.message), JSON.stringify(asked));
+        check('...and nothing is deleted while it is open', (await countMsgs()) === before);
+        await ev(`document.querySelector('#confirm-modal .btn:not(#confirm-modal-yes)').click(); true`);
+        await new Promise(r => setTimeout(r, 500)); // sleep-ok: shows that Cancel deletes nothing (no condition to wait for)
+        const cancelled = await modalState();
+        check('Cancel closes the dialog and deletes nothing', !cancelled.open && (await countMsgs()) === before, JSON.stringify({ cancelled, n: await countMsgs(), before }));
+        await ev(`document.querySelector('#mb-messages [data-on-click="mb-msg-delete"]').click(); true`);
+        await until(`!!document.getElementById('confirm-modal') && getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm dialog again');
+        await ev(`document.getElementById('confirm-modal-yes').click(); true`);
         await until(`document.querySelectorAll('#mb-messages [data-on-click="mb-msg-delete"]').length === ${before - 1}`, 'one message deleted');
-        check('a message\'s × deletes it', (await ev(`document.querySelectorAll('#mb-messages [data-on-click="mb-msg-delete"]').length`)) === before - 1, `${before} -> ${await ev(`document.querySelectorAll('#mb-messages [data-on-click="mb-msg-delete"]').length`)}`);
+        check('Yes deletes the message', (await countMsgs()) === before - 1, `${before} -> ${await countMsgs()}`);
 
         await ev(`window.__confirmModal = null; window.showConfirmModal = t => { window.__confirmModal = t; }; (() => { const b = document.getElementById('mb-delete-btn'); b.style.display = ''; b.click(); })(); true`);
         await new Promise(r => setTimeout(r, 300)); // sleep-ok: shows that nothing is deleted without a Yes
