@@ -10,6 +10,7 @@ import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
 import { showNotificationToast, showWorkflowNotification, showAlertNotification, showToast, escapeHtml, dbg } from './utils.js';
 import { serverWsBase, identityKey, sessionServer, isCloud } from './server_base.js';
+import { updateHeaderContext } from './header_context.js';
 import { notifyNeedsInput } from './desktop_notify.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
 import { applySleepingView } from './sleeping_view.js';
@@ -302,6 +303,7 @@ export function handleCoralMessage(data) {
                     if (nameEl) nameEl.textContent = headerName;
                     const termLabel = document.getElementById("terminal-header-label");
                     if (termLabel) termLabel.textContent = formatTerminalLabel(headerName, s.session_id);
+                    updateHeaderContext(s);
                     const cmdInput = document.getElementById("command-input");
                     if (cmdInput) {
                         cmdInput.placeholder = commandPlaceholder(headerName, s.agent_type, s.board_project);

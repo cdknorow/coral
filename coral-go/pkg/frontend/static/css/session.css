@@ -1816,6 +1816,38 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+/* The name over its team and server (#3653): one column that shrinks with the header. */
+.terminal-header-left .terminal-identity {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    flex: 0 1 auto;
+    min-width: 0;
+    line-height: 1.25;
+}
+.terminal-session-context {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    margin-left: 4px;
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.terminal-session-context[hidden] { display: none; }
+/* A long team name is cut short first; the server label stays whole. */
+.terminal-context-team {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.terminal-context-server { flex: 0 0 auto; }
+.terminal-context-team:empty,
+.terminal-context-server:empty { display: none; }
+.terminal-context-team:not(:empty) + .terminal-context-server:not(:empty)::before {
+    content: "\00a0\00b7\00a0";
+}
 .terminal-header-actions {
     /* The buttons never shrink, but the folder and branch text in front of them do (they ellipsize): otherwise a long
        path leaves the identity no room and the header overflows (seen at 1024px with a long name). */
