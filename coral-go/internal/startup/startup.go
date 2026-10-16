@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
 	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/cdknorow/coral/internal/safego"
 	"log"
 	"log/slog"
 	"net"
@@ -19,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -470,6 +470,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		onErr = func(err error) { log.Printf("[FATAL] Server error: %v", err) }
 	}
 	go func() {
+		defer safego.Recover("startup/startup:464")
 		if tlsConfig != nil {
 			log.Printf("Coral dashboard: https://localhost:%d (TLS; plain http:// only from this computer)", cfg.Port)
 		} else {
@@ -480,6 +481,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		}
 		for _, ln := range lns[1:] {
 			go func(ln net.Listener) {
+				defer safego.Recover("startup/startup:474")
 				if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
 					onErr(err)
 				}
@@ -871,34 +873,8 @@ func gitPollInterval(ctx context.Context, ss *store.SessionStore, defaultSeconds
 }
 
 func safeGo(ctx context.Context, name string, fn func()) {
-	go func() {
-		for {
-			panicked := false
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						panicked = true
-						log.Printf("[CRASH] background service %q panicked: %v\n%s", name, r, debug.Stack())
-					}
-				}()
-				fn()
-			}()
-			// Normal shutdown — don't restart.
-			if ctx.Err() != nil {
-				return
-			}
-			if !panicked {
-				// fn returned without panic and context isn't done — unexpected.
-				log.Printf("[WARN] background service %q returned unexpectedly", name)
-			}
-			log.Printf("[RESTART] background service %q restarting in 5s...", name)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-			}
-		}
-	}()
+	// A background service restarts after a panic, with a backoff (#3998: the one helper now).
+	safego.Loop(ctx, name, fn)
 }
 
 func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Config, srv *server.Server, agentRT background.AgentRuntime) *background.WorkflowRunner {

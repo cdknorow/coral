@@ -19,6 +19,8 @@ import (
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/shirou/gopsutil/v4/process"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // Health is one sample, in the shape the feeds carry it (machine_health).
@@ -119,6 +121,7 @@ func New(src Source) *Sampler {
 func Start(ctx context.Context, src Source) *Sampler {
 	s := New(src)
 	go func() {
+		defer safego.Recover("machinehealth/machinehealth:121")
 		s.Sample(ctx)
 		t := time.NewTicker(Interval)
 		defer t.Stop()

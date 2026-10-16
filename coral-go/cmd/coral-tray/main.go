@@ -33,6 +33,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/loginlink"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -198,6 +199,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	abrtCh := make(chan os.Signal, 1)
 	signal.Notify(abrtCh, syscall.SIGABRT)
 	go func() {
+		defer safego.Recover("coral-tray/main:200")
 		<-abrtCh
 		log.Printf("[FATAL] received SIGABRT (possible CGO/Mach crash)")
 		log.Printf("[FATAL] goroutines: %d", runtime.NumGoroutine())
@@ -246,7 +248,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 			systray.SetTemplateIcon(iconData, iconData)
 			systray.SetTooltip("Coral — Error")
 			mQuit := systray.AddMenuItem("Quit", "Exit Coral")
-			go func() { <-mQuit.ClickedCh; systray.Quit() }()
+			go func() { defer safego.Recover("coral-tray/main:249"); <-mQuit.ClickedCh; systray.Quit() }()
 		}, func() {})
 		return
 	}
@@ -263,6 +265,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	// Also logs resource usage every 5 minutes to help diagnose memory
 	// pressure kills (macOS Jetsam).
 	go func() {
+		defer safego.Recover("coral-tray/main:265")
 		heartbeatPath := filepath.Join(dataDir, "heartbeat")
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
@@ -296,6 +299,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	// Open dashboard (try native app first, fall back to browser)
 	if !noBrowser {
 		go func() {
+			defer safego.Recover("coral-tray/main:298")
 			time.Sleep(time.Second)
 			dashURL := fmt.Sprintf("http://localhost:%d", port)
 			if err := launchCoralApp(dashURL, mintLink); err != nil {
@@ -305,7 +309,10 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	}
 
 	// Check for updates in background
-	go checkForUpdatesOnStartup(port)
+	go func() {
+		defer safego.Recover("coral-tray/main:checkForUpdatesOnStartup")
+		checkForUpdatesOnStartup(port)
+	}()
 
 	url := fmt.Sprintf("http://localhost:%d", port)
 
@@ -345,6 +352,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		}
 
 		go func() {
+			defer safego.Recover("coral-tray/main:347")
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("[CRASH] systray event loop panicked: %v\n%s", r, debug.Stack())
@@ -353,13 +361,14 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 			for {
 				select {
 				case <-mOpenApp.ClickedCh:
-					go launchCoralApp(url, mintLink)
+					go func() { defer safego.Recover("coral-tray/main:launchCoralApp"); launchCoralApp(url, mintLink) }()
 				case <-mOpenBrowser.ClickedCh:
 					executil.OpenBrowser(loginlink.Or(url, mintLink))
 				case <-mUpdate.ClickedCh:
-					go checkForUpdates()
+					go func() { defer safego.Recover("coral-tray/main:checkForUpdates"); checkForUpdates() }()
 				case <-mShutdown.ClickedCh:
 					go func() {
+						defer safego.Recover("coral-tray/main:362")
 						killed := killAllAgents(url, dataDir)
 						killCoralApp()
 						shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -691,6 +700,7 @@ func launchCoralApp(url string, mint func() (string, error)) error {
 
 	// Reap the process in background and clear the reference when it exits
 	go func() {
+		defer safego.Recover("coral-tray/main:693")
 		cmd.Wait()
 		coralAppMu.Lock()
 		if coralAppProcess == cmd.Process {

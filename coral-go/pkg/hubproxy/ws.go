@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/coder/websocket"
 )
@@ -172,6 +173,7 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 	pol := PolicyFrom(r.Context())
 	if pol.Closed != nil {
 		go func() {
+			defer safego.Recover("hubproxy/ws:174")
 			select {
 			case <-pol.Closed:
 				// Access was withdrawn: end both sides with a code the UI can recognise.
@@ -185,10 +187,12 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
+		defer safego.Recover("hubproxy/ws:187")
 		defer wg.Done()
 		pumpFrom(ctx, cancel, downC, upC, "remote connection lost", clientGate{pol.AllowClientFrame, pol.ReadOnlyNotice}, pol.Closed)
 	}()
 	go func() {
+		defer safego.Recover("hubproxy/ws:191")
 		defer wg.Done()
 		pumpFrom(ctx, cancel, upC, downC, "browser connection lost", clientGate{}, pol.Closed)
 	}()

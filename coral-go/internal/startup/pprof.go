@@ -10,6 +10,8 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // startPprof serves Go profiling endpoints when CORAL_PPROF_ADDR is set, e.g.
@@ -63,10 +65,12 @@ func startPprofOn(ctx context.Context, addr string) (net.Addr, error) {
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
+		defer safego.Recover("startup/pprof:65")
 		<-ctx.Done()
 		srv.Close()
 	}()
 	go func() {
+		defer safego.Recover("startup/pprof:69")
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("[pprof] stopped: %v", err)
 		}

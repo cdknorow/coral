@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // Native TLS (#3355). Remote access on plain HTTP sends the API key, the login cookie
@@ -67,7 +68,7 @@ type sniffListener struct {
 
 func newSniffListener(ln net.Listener, cfg *tls.Config) *sniffListener {
 	l := &sniffListener{Listener: ln, cfg: cfg, conns: make(chan net.Conn), errc: make(chan error, 1), done: make(chan struct{})}
-	go l.acceptLoop()
+	safego.Restart("startup/tls:l.acceptLoop", func() { l.acceptLoop() })
 	return l
 }
 
@@ -85,7 +86,7 @@ func (l *sniffListener) acceptLoop() {
 			}
 			return
 		}
-		go l.sniff(c)
+		go func() { defer safego.Recover("startup/tls:l.sniff"); l.sniff(c) }()
 	}
 }
 

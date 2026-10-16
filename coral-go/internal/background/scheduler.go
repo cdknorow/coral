@@ -13,6 +13,7 @@ import (
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -343,7 +344,10 @@ func (s *JobScheduler) evaluateJob(ctx context.Context, job store.ScheduledJob, 
 
 	// Dispatch based on job type
 	if job.JobType == "workflow" && job.WorkflowID != nil {
-		go s.triggerWorkflowForJob(runID, job)
+		go func() {
+			defer safego.Recover("background/scheduler:s.triggerWorkflowForJob")
+			s.triggerWorkflowForJob(runID, job)
+		}()
 	} else if s.launchFn != nil {
 		rc := runConfig{
 			repoPath:        job.RepoPath,
@@ -607,6 +611,7 @@ func (s *JobScheduler) killRunSession(ctx context.Context, run *store.ScheduledR
 func (s *JobScheduler) watch(runID int64, job store.ScheduledJob, rc runConfig) {
 	s.watching.Add(1)
 	go func() {
+		defer safego.Recover("background/scheduler:609")
 		defer s.watching.Done()
 		s.launchAndWatch(runID, job, rc)
 	}()

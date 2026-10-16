@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/cdknorow/coral/internal/safego"
 	"io"
 	"log/slog"
 	"os"
@@ -160,6 +161,7 @@ func (wr *WorkflowRunner) TriggerWorkflow(ctx context.Context, workflow *store.W
 
 	wr.pruneRuns(ctx, workflow.ID)
 	go func() {
+		defer safego.Recover("background/workflow_runner:149")
 		defer done()
 		wr.executeRun(run.ID, workflow)
 	}()
@@ -827,6 +829,7 @@ func (wr *WorkflowRunner) executeAgentInteractive(ctx context.Context, runID int
 
 	// Send prompt after initialization delay
 	go func() {
+		defer safego.Recover("background/workflow_runner:779")
 		wr.launcher.SendPrompt(ctx, launchResult.SessionID, launchResult.SessionName, agentCfg.AgentType, prompt)
 	}()
 

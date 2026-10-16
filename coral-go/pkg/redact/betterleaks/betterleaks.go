@@ -18,6 +18,7 @@ import (
 	"github.com/betterleaks/betterleaks/sources"
 	"github.com/rs/zerolog"
 
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/pkg/redact"
 )
 
@@ -78,6 +79,7 @@ func (d *Detector) Find(ctx context.Context, text string) ([]redact.Span, error)
 	}
 	done := make(chan result, 1)
 	go func() {
+		defer safego.Recover("redact/betterleaks/betterleaks:80")
 		defer func() { <-d.slots }()
 		defer func() {
 			if p := recover(); p != nil {

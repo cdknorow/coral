@@ -45,6 +45,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 )
@@ -319,8 +320,8 @@ func (h *RemoteAgentHub) reconcile(ctx context.Context) {
 			}
 			wctx, cancel := context.WithCancel(ctx)
 			st.cancel = cancel
-			go h.pollLoop(wctx, rs.ID)
-			go h.feedLoop(wctx, rs.ID)
+			go func() { defer safego.Recover("background/remote_agents:h.pollLoop"); h.pollLoop(wctx, rs.ID) }()
+			go func() { defer safego.Recover("background/remote_agents:h.feedLoop"); h.feedLoop(wctx, rs.ID) }()
 			changed = true
 		}
 	}
@@ -932,7 +933,7 @@ func (h *RemoteAgentHub) runFeed(ctx context.Context, id string) {
 	fctx, stopFeed := context.WithCancel(ctx)
 	defer stopFeed()
 	if p, ok := conn.(feedPinger); ok {
-		go h.pingFeed(fctx, conn, p)
+		go func() { defer safego.Recover("background/remote_agents:h.pingFeed"); h.pingFeed(fctx, conn, p) }()
 	}
 
 	feed := map[string]map[string]any{}

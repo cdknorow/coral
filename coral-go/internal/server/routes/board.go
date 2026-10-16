@@ -23,6 +23,7 @@ import (
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -338,6 +339,7 @@ func (h *BoardHandler) startSubscriberReminder(project, subscriber, message stri
 	h.subscriberReminderIntervals[key] = int(interval / time.Second)
 	h.reminderMu.Unlock()
 	go func() {
+		defer safego.Recover("server/routes/board:340")
 		// The first reminder comes 0.8-1.2 intervals in, the same for this subscriber (#3613):
 		// reminders restored together at start don't all fire in the same second. Then every
 		// interval.
@@ -739,6 +741,7 @@ func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
 	h.reminderMu.Unlock()
 	interval := time.Duration(body.IntervalSeconds) * time.Second
 	go func() {
+		defer safego.Recover("server/routes/board:741")
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		defer h.stopReminder(project, taskID)
@@ -2542,6 +2545,7 @@ func taskOutcomeForTracking(task *board.Task, requested string) string {
 func (h *BoardHandler) goBG(f func()) {
 	h.background.Add(1)
 	go func() {
+		defer safego.Recover("server/routes/board:2544")
 		defer h.background.Done()
 		f()
 	}()

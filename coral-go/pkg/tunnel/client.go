@@ -21,6 +21,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // Handler executes streams opened by the hub. It must finish every stream it
@@ -286,8 +288,8 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	if !o.uplink.Off && !envOff(schedulerEnv) {
 		cs.up = newUplink(o.uplink)
 	}
-	go cs.acceptLoop()
-	go func() { <-ys.CloseChan(); cs.Close() }()
+	go func() { defer safego.Recover("tunnel/client:cs.acceptLoop"); cs.acceptLoop() }()
+	go func() { defer safego.Recover("tunnel/client:290"); <-ys.CloseChan(); cs.Close() }()
 	return cs, nil
 }
 
@@ -316,12 +318,14 @@ func (c *ClientSession) acceptLoop() {
 		if int(c.active.Add(1)) > c.maxStreams {
 			c.active.Add(-1)
 			go func() {
+				defer safego.Recover("tunnel/client:318")
 				_ = writeFrame(st, ResponseHeader{Error: "too many streams", ErrorCode: CodeTooManyStreams})
 				_ = st.Close()
 			}()
 			continue
 		}
 		go func() {
+			defer safego.Recover("tunnel/client:324")
 			defer c.active.Add(-1)
 			c.serve(st)
 		}()
@@ -346,6 +350,7 @@ func (c *ClientSession) serve(st *yamux.Stream) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
+		defer safego.Recover("tunnel/client:348")
 		select {
 		case <-c.ys.CloseChan():
 			cancel()
@@ -405,6 +410,7 @@ func (b *bodyWatcher) Read(p []byte) (int, error) {
 func (s *Stream) watch() {
 	s.watchOnce.Do(func() {
 		go func() {
+			defer safego.Recover("tunnel/client:407")
 			var one [1]byte
 			_, _ = s.st.Read(one[:]) // returns on hub half-close or session end
 			s.cancel()

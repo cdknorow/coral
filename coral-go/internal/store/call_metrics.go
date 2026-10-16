@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 type CallMetric struct {
@@ -96,7 +98,7 @@ func (d *DB) EnqueueCallMetric(m *CallMetric) {
 	full := crossed && len(b.pending) >= callMetricFlushBatch
 	b.mu.Unlock()
 
-	b.start.Do(func() { go d.callMetricLoop(b) })
+	b.start.Do(func() { safego.Restart("store/call_metrics:d.callMetricLoop", func() { d.callMetricLoop(b) }) })
 	if full {
 		select {
 		case b.kick <- struct{}{}:

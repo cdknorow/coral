@@ -26,6 +26,7 @@ import (
 	"github.com/cdknorow/coral/internal/license"
 	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/logrotate"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/startup"
@@ -250,6 +251,7 @@ func main() {
 	// Check for updates on startup (non-blocking; release tiers only)
 	if config.Version != "" && config.TierChecksForUpdates {
 		go func() {
+			defer safego.Recover("coral/main:245")
 			time.Sleep(5 * time.Second)
 			latest := routes.FetchLatestVersion()
 			if updatecheck.Newer(latest, config.Version) {
@@ -277,12 +279,14 @@ func main() {
 			openDashboard(os.Stderr, link, false)
 		} else {
 			go func() {
+				defer safego.Recover("coral/main:272")
 				time.Sleep(500 * time.Millisecond)
 				openDashboard(os.Stderr, link, true)
 			}()
 		}
 	} else if !*noBrowser {
 		go func() {
+			defer safego.Recover("coral/main:278")
 			time.Sleep(500 * time.Millisecond)
 			executil.OpenBrowser(fmt.Sprintf("http://localhost:%d", cfg.Port))
 		}()

@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // screenSnaps lets read-only pollers share one capture of an agent's terminal for
@@ -59,6 +61,7 @@ func (c *screenSnaps) capture(ctx context.Context, name string, lines int, now t
 		e = &screenSnap{at: now, done: make(chan struct{})}
 		c.m[key] = e
 		go func() {
+			defer safego.Recover("server/routes/screen_snaps:61")
 			fctx, cancel := context.WithTimeout(context.Background(), screenSnapTimeout)
 			defer cancel()
 			e.out, e.err = fetch(fctx)

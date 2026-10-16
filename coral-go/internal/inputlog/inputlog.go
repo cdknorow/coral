@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/secfile"
 )
 
@@ -264,7 +265,7 @@ type fileWriter struct {
 
 func newFileWriter(path string, max int64, depth int) *fileWriter {
 	fw := &fileWriter{path: path, max: max, ch: make(chan string, depth), done: make(chan chan struct{})}
-	go fw.loop()
+	safego.Restart("inputlog/inputlog:fw.loop", func() { fw.loop() })
 	return fw
 }
 

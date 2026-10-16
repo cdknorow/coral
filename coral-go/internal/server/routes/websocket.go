@@ -19,6 +19,7 @@ import (
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -785,6 +786,7 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 
 	// Reader goroutine: receives terminal input from the client (JSON text frames)
 	go func() {
+		defer safego.Recover("server/routes/websocket:787")
 		defer cancel()
 		for {
 			_, raw, err := conn.Read(ctx)

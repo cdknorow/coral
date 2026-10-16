@@ -16,6 +16,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/jsonl"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -436,6 +437,7 @@ func (g *GoalGenerator) pollOnce(ctx context.Context) {
 		ls := ls
 		g.wg.Add(1)
 		go func() {
+			defer safego.Recover("background/goals:432")
 			defer g.wg.Done()
 			select {
 			case g.sem <- struct{}{}:
