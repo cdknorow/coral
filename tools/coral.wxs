@@ -88,7 +88,8 @@
             Target="[INSTALLFOLDER]coral-tray.exe"
             Arguments="--backend pty"
             WorkingDirectory="INSTALLFOLDER"
-            Description="Coral — AI Agent Dashboard" />
+            Description="Coral — AI Agent Dashboard"
+            Icon="CoralIcon.exe" />
 
           <RemoveFolder Id="RemoveCoralMenuFolder" On="uninstall" />
           <RegistryValue
@@ -101,6 +102,11 @@
         </Component>
       </Directory>
     </StandardDirectory>
+
+    <!-- Icon for the Start Menu shortcut and the Apps & features entry: the multi-size icon
+         resource embedded in coral-tray.exe (tools/gen_windows_resources.sh) -->
+    <Icon Id="CoralIcon.exe" SourceFile="$(var.BinDir)\coral-tray.exe" />
+    <Property Id="ARPPRODUCTICON" Value="CoralIcon.exe" />
 
     <!-- License agreement dialog -->
     <ui:WixUI Id="WixUI_Minimal" />
