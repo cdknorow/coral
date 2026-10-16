@@ -12,6 +12,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 const (
@@ -187,8 +189,8 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	}
 	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode),
 		hooks: hooks, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
-	go s.rejectInbound()
-	go func() { <-ys.CloseChan(); s.Close() }()
+	go func() { defer safego.Recover("tunnel/server:s.rejectInbound"); s.rejectInbound() }()
+	go func() { defer safego.Recover("tunnel/server:191"); <-ys.CloseChan(); s.Close() }()
 	return s, nil
 }
 
@@ -230,6 +232,7 @@ func (s *Session) rejectInbound() {
 			continue
 		}
 		go func() {
+			defer safego.Recover("tunnel/server:232")
 			defer func() { <-s.relaySlot }()
 			s.serveInbound(st, st.SetDeadline)
 		}()
@@ -372,6 +375,7 @@ func (s *Session) RoundTrip(req *http.Request) (*http.Response, error) {
 	stop := context.AfterFunc(ctx, func() { _ = hs.Close() })
 	werr := make(chan error, 1)
 	go func() {
+		defer safego.Recover("tunnel/server:374")
 		cw := &chunkWriter{w: hs}
 		if req.Body != nil {
 			if _, err := io.Copy(cw, req.Body); err != nil {

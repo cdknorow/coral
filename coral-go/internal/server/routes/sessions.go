@@ -30,6 +30,7 @@ import (
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 )
@@ -385,6 +386,7 @@ func (h *SessionsHandler) warmLogStatus(path string) {
 	h.logWarm[path] = true
 	h.logWarmMu.Unlock()
 	go func() {
+		defer safego.Recover("server/routes/sessions:387")
 		defer func() {
 			h.logWarmMu.Lock()
 			delete(h.logWarm, path)
@@ -408,6 +410,7 @@ func (h *SessionsHandler) warmTranscript(agent AgentInfo) {
 	h.transcriptPending[agent.SessionID] = true
 	h.transcriptWarmMu.Unlock()
 	go func() {
+		defer safego.Recover("server/routes/sessions:410")
 		defer func() {
 			h.transcriptWarmMu.Lock()
 			delete(h.transcriptPending, agent.SessionID)

@@ -19,6 +19,7 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -747,6 +748,7 @@ func runBounded(limit int, fns []func()) {
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(fn func()) {
+			defer safego.Recover("server/routes/sessions_list:749")
 			defer func() { <-sem; wg.Done() }()
 			fn()
 		}(fn)

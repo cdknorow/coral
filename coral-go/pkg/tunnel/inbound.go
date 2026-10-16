@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // Connector-opened streams: every stream is opened by the hub except these, one request each,
@@ -153,6 +155,7 @@ func (s *Session) serveInbound(st io.ReadWriteCloser, setDeadline func(time.Time
 	stop := context.AfterFunc(ctx, func() { _ = st.Close() })
 	defer stop()
 	go func() {
+		defer safego.Recover("tunnel/inbound:155")
 		select {
 		case <-s.ys.CloseChan():
 			cancel()
