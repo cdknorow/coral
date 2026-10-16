@@ -76,6 +76,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifySuites, problems } from './suites.mjs';
+import { loadDurations, orderLongestFirst } from './suite_order.mjs';
 import { failingOutput } from './failing_output.mjs';
 
 // Linux: the run goes in a private network namespace with only loopback (#3466). Chrome cancels
@@ -419,6 +420,11 @@ console.log('');
 for (const t of STRICT_SUITES) if (!suites.cdp.includes(t)) { console.error(`STRICT_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
 let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : [...suites.cdp, ...suites.server])
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
+// Longest first, from the durations of a previous run (suite_durations.json; update_suite_durations.mjs writes it): shards take the next
+// suite from one queue, and a long suite left to the end of an alphabetical queue would leave the other shards idle (#3916).
+const suiteDurations = loadDurations(path.join(here, 'suite_durations.json'));
+tests = orderLongestFirst(tests, suiteDurations);
+if (Object.keys(suiteDurations).length) console.log(`queue: longest first (${tests.filter(t => typeof suiteDurations[t] === 'number').length} of ${tests.length} suites have a recorded duration in suite_durations.json)`);
 // The strict phase's results are named 'strict: <suite>' (the default-mode run of a suite is separate).
 let phase = strictOnly ? 'strict: ' : '';
 const sequences = stress || strictOnly || (only && !sequencesOnly) ? [] : SEQUENCES;
