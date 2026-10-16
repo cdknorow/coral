@@ -187,3 +187,26 @@ func TestGzipAPIPassesTheWriterThrough(t *testing.T) {
 		assert.False(t, wrapped, r.URL.Path)
 	}
 }
+
+// A handler that panics after writing part of a small reply sends none of it: the Recoverer's
+// 500 is what the client gets.
+func TestGzipAPIPanicLeavesTheReplyToTheRecoverer(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if recover() != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}()
+		GzipAPI(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"partial":`))
+			panic("handler failed")
+		})).ServeHTTP(w, r)
+	})
+	r := httptest.NewRequest(http.MethodGet, "/api/x", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Empty(t, rec.Body.String(), "nothing of the failed reply is sent")
+}

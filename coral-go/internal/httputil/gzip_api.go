@@ -31,7 +31,14 @@ func GzipAPI(next http.Handler) http.Handler {
 			return
 		}
 		gw := &gzipAPIWriter{ResponseWriter: w}
-		defer gw.finish()
+		defer func() {
+			// A handler that panicked sends nothing it held: the panic goes on to the Recoverer,
+			// whose 500 then reaches the client instead of a cut-short 200 (Security on #3724).
+			if p := recover(); p != nil {
+				panic(p)
+			}
+			gw.finish()
+		}()
 		next.ServeHTTP(gw, r)
 	})
 }
