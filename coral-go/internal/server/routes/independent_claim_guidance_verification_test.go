@@ -72,7 +72,7 @@ func TestIndependentClaimGuidanceAndQueueSafety(t *testing.T) {
 	require.Contains(t, reassignMsg, expectedClaimCmd, "Reassignment notice must contain explicit claim ID")
 
 	// Check reminder nudge contains explicit ID
-	nudgeResp := postJSON(t, fmt.Sprintf("%s/tasks/%d/nudge", base, newerTask.ID), nil)
+	nudgeResp := postJSON(t, fmt.Sprintf("%s/tasks/%d/nudge?subscriber_id=Operator", base, newerTask.ID), nil)
 	require.Equal(t, http.StatusOK, nudgeResp.StatusCode)
 	nudgeResp.Body.Close()
 	require.Eventually(t, func() bool {

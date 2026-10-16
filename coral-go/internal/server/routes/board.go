@@ -591,6 +591,9 @@ func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "Task not found")
 		return
 	}
+	if !h.requirePlannerOrAssignee(w, ctx, project, task, taskActor(r, ""), "nudge its assignee") {
+		return
+	}
 	assignee := ""
 	if task.AssignedTo != nil {
 		assignee = *task.AssignedTo
@@ -635,7 +638,8 @@ func (h *BoardHandler) SnoozeTaskReminder(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body struct {
-		Seconds int `json:"seconds"`
+		Seconds      int    `json:"seconds"`
+		SubscriberID string `json:"subscriber_id"`
 	}
 	if err := decodeJSON(r, &body); err != nil || body.Seconds <= 0 || body.Seconds > 7*24*60*60 {
 		errBadRequest(w, "seconds must be between 1 and 604800")
@@ -643,6 +647,8 @@ func (h *BoardHandler) SnoozeTaskReminder(w http.ResponseWriter, r *http.Request
 	}
 	if task, err := h.bs.GetTask(r.Context(), project, taskID); err != nil || task == nil {
 		errNotFound(w, "Task not found")
+		return
+	} else if !h.requirePlannerOrAssignee(w, r.Context(), project, task, taskActor(r, body.SubscriberID), "snooze its reminders") {
 		return
 	} else if task.Status != "in_progress" {
 		errBadRequest(w, "only in-progress tasks can be snoozed")
@@ -666,12 +672,21 @@ func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodDelete {
+		task, err := h.bs.GetTask(r.Context(), project, taskID)
+		if err != nil || task == nil {
+			errNotFound(w, "Task not found")
+			return
+		}
+		if !h.requirePlannerOrAssignee(w, r.Context(), project, task, taskActor(r, ""), "stop its reminders") {
+			return
+		}
 		h.stopReminder(project, taskID)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": false})
 		return
 	}
 	var body struct {
-		IntervalSeconds int `json:"interval_seconds"`
+		IntervalSeconds int    `json:"interval_seconds"`
+		SubscriberID    string `json:"subscriber_id"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -684,6 +699,9 @@ func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
 	task, err := h.bs.GetTask(r.Context(), project, taskID)
 	if err != nil || task == nil {
 		errNotFound(w, "Task not found")
+		return
+	}
+	if !h.requirePlannerOrAssignee(w, r.Context(), project, task, taskActor(r, body.SubscriberID), "start its reminders") {
 		return
 	}
 	if task.AssignedTo == nil || *task.AssignedTo == "" {
@@ -1413,6 +1431,37 @@ func (h *BoardHandler) requireTaskPlanner(w http.ResponseWriter, r *http.Request
 	return true
 }
 
+// isTaskPlanner reports whether actor plans this board's tasks: the Operator or an active
+// registered orchestrator.
+func (h *BoardHandler) isTaskPlanner(ctx context.Context, project, actor string) bool {
+	return actor == "Operator" || (actor != "" && h.bs.RequireTaskReviewer(ctx, project, actor) == nil)
+}
+
+// requirePlannerOrAssignee answers 400 without an actor, 403 unless actor plans tasks or is
+// the task's assignee (#3668, the task handlers' follow-up: cancel, title and priority edits,
+// nudges and reminders). It reports whether the request may go on.
+func (h *BoardHandler) requirePlannerOrAssignee(w http.ResponseWriter, ctx context.Context, project string, task *board.Task, actor, what string) bool {
+	if actor == "" {
+		errBadRequest(w, "subscriber_id required")
+		return false
+	}
+	if h.isTaskPlanner(ctx, project, actor) || (task.AssignedTo != nil && *task.AssignedTo == actor) {
+		return true
+	}
+	errForbidden(w, "only the task's assignee, Operator or an active registered orchestrator may "+what)
+	return false
+}
+
+// taskActor is who acts on a task: the JSON body's subscriber_id if the handler read one, else
+// the query's (a DELETE, or the dashboard's nudge, carries no body). The identity layer binds
+// both to the caller's token.
+func taskActor(r *http.Request, fromBody string) string {
+	if a := strings.TrimSpace(fromBody); a != "" {
+		return a
+	}
+	return strings.TrimSpace(r.URL.Query().Get("subscriber_id"))
+}
+
 // CreateTask creates a new task on a board.
 // POST /api/board/{project}/tasks
 func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
@@ -1810,6 +1859,13 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
+	// The same rule as complete: cancelling also stalls every task downstream of it.
+	if current, err := h.bs.GetTask(r.Context(), project, taskID); err != nil || current == nil {
+		errNotFound(w, "Task not found")
+		return
+	} else if !h.requirePlannerOrAssignee(w, r.Context(), project, current, body.SubscriberID, "cancel it") {
+		return
+	}
 	task, err := h.bs.CancelTask(r.Context(), project, taskID, body.SubscriberID, body.Message)
 	if err != nil {
 		errBadRequest(w, err.Error())
@@ -1924,6 +1980,18 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if (raw.AssignedTo != nil || removingBlockers) && !h.requireTaskPlanner(w, r, project, raw.SubscriberID) {
 		return
+	}
+	// A task's title is typed into its assignee's terminal: only a planner or the assignee
+	// changes what it says (#3668).
+	if raw.Title != nil || raw.Priority != nil {
+		current, err := h.bs.GetTask(r.Context(), project, taskID)
+		if err != nil || current == nil {
+			errNotFound(w, "Task not found")
+			return
+		}
+		if !h.requirePlannerOrAssignee(w, r.Context(), project, current, raw.SubscriberID, "change its title or priority") {
+			return
+		}
 	}
 	if raw.AssignedTo != nil && h.refuseArchivedAssignee(w, r.Context(), project, *raw.AssignedTo) {
 		return
@@ -2115,6 +2183,21 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
+		return
+	}
+	// Publishing releases planned work to the workers: a planner's step (#3668).
+	var body struct {
+		SubscriberID string `json:"subscriber_id"`
+	}
+	if r.ContentLength != 0 {
+		_ = decodeJSON(r, &body)
+	}
+	actor := taskActor(r, body.SubscriberID)
+	if actor == "" {
+		errBadRequest(w, "subscriber_id required")
+		return
+	}
+	if !h.requireTaskPlanner(w, r, project, actor) {
 		return
 	}
 	task, err := h.bs.PublishTask(r.Context(), project, taskID)

@@ -763,7 +763,7 @@ func TestBoardUpdateTask_PartialEdit(t *testing.T) {
 
 	// PATCH only the title
 	resp2 := patchJSON(t, base+"/tasks/"+fmt.Sprintf("%.0f", taskID), map[string]string{
-		"title": "Updated title",
+		"title": "Updated title", "subscriber_id": "Operator", // a planner (#3668)
 	})
 	defer resp2.Body.Close()
 	require.Equal(t, http.StatusOK, resp2.StatusCode)
@@ -1265,7 +1265,7 @@ func TestBoardPublishDraft_NoDeps(t *testing.T) {
 	taskID := fmt.Sprintf("%.0f", created["id"].(float64))
 
 	// Publish
-	resp2 := postJSON(t, base+"/tasks/"+taskID+"/publish", nil)
+	resp2 := postJSON(t, base+"/tasks/"+taskID+"/publish?subscriber_id=Operator", nil)
 	defer resp2.Body.Close()
 	require.Equal(t, http.StatusOK, resp2.StatusCode)
 	var published map[string]any
@@ -1293,7 +1293,7 @@ func TestBoardPublishDraft_WithUnresolvedDeps(t *testing.T) {
 	taskID := fmt.Sprintf("%.0f", created["id"].(float64))
 
 	// Publish — should become blocked (blocker unresolved)
-	resp2 := postJSON(t, base+"/tasks/"+taskID+"/publish", nil)
+	resp2 := postJSON(t, base+"/tasks/"+taskID+"/publish?subscriber_id=Operator", nil)
 	defer resp2.Body.Close()
 	require.Equal(t, http.StatusOK, resp2.StatusCode)
 	var published map[string]any
@@ -1310,7 +1310,7 @@ func TestBoardPublishNonDraft_Fails(t *testing.T) {
 		"title": "Pending task", "created_by": "Orchestrator",
 	}).Body.Close()
 
-	resp := postJSON(t, base+"/tasks/1/publish", nil)
+	resp := postJSON(t, base+"/tasks/1/publish?subscriber_id=Operator", nil)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
@@ -1324,7 +1324,7 @@ func TestBoardDraftCanBeCancelled(t *testing.T) {
 		bytes.NewReader([]byte(`{"title":"Draft cancel","created_by":"Orchestrator","draft":true}`)))
 
 	resp := postJSON(t, base+"/tasks/1/cancel", map[string]string{
-		"subscriber_id": "Orch",
+		"subscriber_id": "Operator", // cancel needs the assignee or a planner (#3668)
 	})
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -1342,8 +1342,9 @@ func TestBoardDraftCanBeEdited(t *testing.T) {
 		bytes.NewReader([]byte(`{"title":"Draft edit","created_by":"Orchestrator","draft":true}`)))
 
 	resp := patchJSON(t, base+"/tasks/1", map[string]any{
-		"title":    "Updated draft",
-		"priority": "high",
+		"title":         "Updated draft",
+		"priority":      "high",
+		"subscriber_id": "Operator",
 	})
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -1409,7 +1410,7 @@ func TestBoardNudgeTask(t *testing.T) {
 
 	nudge := func(id int) (int, string) {
 		before := len(terminal.sentTo("claude-backend"))
-		resp := postJSON(t, fmt.Sprintf("%s/tasks/%d/nudge", base, id), map[string]string{})
+		resp := postJSON(t, fmt.Sprintf("%s/tasks/%d/nudge?subscriber_id=Operator", base, id), map[string]string{})
 		defer resp.Body.Close()
 		sent := terminal.sentTo("claude-backend")
 		if len(sent) > before {
@@ -1472,21 +1473,21 @@ func TestBoardRemindTask_StartsAndStopsPeriodicReminder(t *testing.T) {
 		"title": "Periodic work", "created_by": "Orchestrator", "assigned_to": "Backend Dev",
 	}).Body.Close()
 
-	resp := postJSON(t, base+"/tasks/1/reminder", map[string]any{"interval_seconds": 30})
+	resp := postJSON(t, base+"/tasks/1/reminder", map[string]any{"interval_seconds": 30, "subscriber_id": "Operator"})
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var result map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	assert.Equal(t, true, result["active"])
 
-	req, err := http.NewRequest(http.MethodDelete, base+"/tasks/1/reminder", nil)
+	req, err := http.NewRequest(http.MethodDelete, base+"/tasks/1/reminder?subscriber_id=Operator", nil)
 	require.NoError(t, err)
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	resp = postJSON(t, base+"/tasks/1/reminder", map[string]any{"interval_seconds": 10})
+	resp = postJSON(t, base+"/tasks/1/reminder", map[string]any{"interval_seconds": 10, "subscriber_id": "Operator"})
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }

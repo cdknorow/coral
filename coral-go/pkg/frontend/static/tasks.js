@@ -1794,7 +1794,7 @@ export async function nudgeBoardTask(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
     try {
-        const resp = await boardFetch(boardProject, `/tasks/${taskId}/nudge`, { method: 'POST' });
+        const resp = await boardFetch(boardProject, `/tasks/${taskId}/nudge?subscriber_id=Operator`, { method: 'POST' });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
         showToast(`Nudged ${data.assignee || 'the assignee'}`);
@@ -1816,7 +1816,7 @@ export async function remindBoardTask(taskId) {
     try {
         const resp = await boardFetch(boardProject, `/tasks/${taskId}/reminder`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ interval_seconds: intervalSeconds }),
+            body: JSON.stringify({ interval_seconds: intervalSeconds, subscriber_id: 'Operator' }),
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
@@ -1827,7 +1827,7 @@ export async function remindBoardTask(taskId) {
 export async function stopBoardTaskReminder(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
-    await boardFetch(boardProject, `/tasks/${taskId}/reminder`, { method: 'DELETE' });
+    await boardFetch(boardProject, `/tasks/${taskId}/reminder?subscriber_id=Operator`, { method: 'DELETE' });
     showToast('Periodic reminders stopped');
 }
 
@@ -1872,6 +1872,7 @@ export async function publishBoardTask(taskId) {
         const resp = await boardFetch(boardProject, `/tasks/${taskId}/publish`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subscriber_id: 'Operator' }), // publishing is a planner's step (#3668)
         });
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
