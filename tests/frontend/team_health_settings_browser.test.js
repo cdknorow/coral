@@ -113,6 +113,9 @@ const { connect } = require('./agent_view_harness');
         await waitFor(`!!window.__putBody`, 'the PUT', 5000);
         const body = await ev(`window.__putBody`);
         assert.equal(body.subscriber_id, 'Operator'); assert.equal(body.health.held_notice.after_min, 30); assert.deepEqual(body.health.future_rule, { on: true, x: 3 }, 'a field the form does not know goes back as it was');
+        // Reset to defaults fills the held card with the design's 10 minutes (Lead's #4225 default).
+        await ev(`document.querySelector('${P} .health-reset').click(); true`);
+        assert.equal(await ev(`document.querySelector('${P} form').elements.held_notice_after_min.value`), '10', 'the held-delivery default is 10 minutes');
         ok('the held-delivery card appears when the server has held_notice and saves; a field the form does not know is sent back unchanged');
 
         // 8. through Coral Hub the GET leaves "health" out: no tab

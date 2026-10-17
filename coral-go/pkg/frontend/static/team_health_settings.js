@@ -17,7 +17,7 @@ export const HEALTH_DEFAULTS = {
     claim_nudge: { on: true, after_min: 10, nudges: 2 },
     status_nudge: { on: true, after_min: 20, escalate_after_min: 10 },
     mention_renudge: { on: true, after_min: 10 },
-    held_notice: { on: true, after_min: 15 },
+    held_notice: { on: true, after_min: 10 },
 };
 
 const [MIN_LO, MIN_HI] = HEALTH_LIMITS.minutes;
