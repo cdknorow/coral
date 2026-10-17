@@ -33,6 +33,14 @@ on:
 permissions:
   contents: read
 
+# The macOS OpenSSL build: these values make both the build and its cache key (#4126 item 4, Security's
+# note), so a bump to one can't restore a build made from the other. Each macOS job adds its Configure
+# target (OPENSSL_TARGET).
+env:
+  OPENSSL_VERSION: "3.6.5"
+  OPENSSL_SHA256: "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+  OPENSSL_OPTIONS: "shared no-tests"
+
 # This workflow is deliberately unsigned and never uploads or publishes an
 # artifact. It records the exact native library selected by each ephemeral
 # runner before running the extracted-package verifier.
@@ -178,7 +186,7 @@ jobs:
           if ($version -match '^(\d+)\.') { $cryptoMajor = $Matches[1] } else { throw "unrecognized OpenSSL version: $version" }
           # The pin (see the dependencies step): the image's OpenSSL must be exactly 3.6.5, and the link
           # library must be its own, in C:\Program Files\OpenSSL.
-          $expectedOpenSSL = "3.6.5"
+          $expectedOpenSSL = $env:OPENSSL_VERSION  # the workflow env, shared with the macOS builds
           if ($version -ne $expectedOpenSSL) { throw "OpenSSL is $version, expected $expectedOpenSSL (the runner image moved it: bump with the macOS pin)" }
           if (-not $opensslImport.FullName.StartsWith("$opensslRoot\")) { throw "OpenSSL link library $($opensslImport.FullName) is not under $opensslRoot" }
           $dllName = "libcrypto-${cryptoMajor}-x64.dll"
@@ -210,6 +218,8 @@ jobs:
     needs: [plan]
     if: contains(needs.plan.outputs.platforms, ' macos ')
     runs-on: macos-14
+    env:
+      OPENSSL_TARGET: darwin64-arm64-cc
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -222,14 +232,12 @@ jobs:
       - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: openssl
         with:
-          path: ${{ runner.temp }}/openssl-3.6.5-arm64
-          key: openssl-3.6.5-a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98-darwin64-arm64-cc-no-tests-macos-14
+          path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
+          key: openssl-${{ env.OPENSSL_VERSION }}-${{ env.OPENSSL_SHA256 }}-${{ env.OPENSSL_TARGET }}-${{ env.OPENSSL_OPTIONS }}-macos-14
       - name: Install isolated native dependencies
         if: steps.openssl.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          OPENSSL_VERSION="3.6.5"
-          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
           OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-arm64"
           OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
           curl --fail --location --silent --show-error --retry 3 \
@@ -237,19 +245,19 @@ jobs:
           echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
           tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
           cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
-          ./Configure darwin64-arm64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          ./Configure "$OPENSSL_TARGET" $OPENSSL_OPTIONS --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
       - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: ${{ runner.temp }}/openssl-3.6.5-arm64
+          path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
           key: ${{ steps.openssl.outputs.cache-primary-key }}
       - name: Build arm64 package slices
         working-directory: coral-go
         run: |
           set -euo pipefail
-          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-arm64"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-arm64"
           mkdir -p ../dist/encryption-macos-arm64
           for cmd in $(grep -vE '^[[:space:]]*(#|$)' ../tests/release/commands.txt); do  # tests/release/commands.txt (#3855)
             CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags sqlcipher,fts5 -o "../dist/encryption-macos-arm64/$cmd" "./cmd/$cmd/"
@@ -270,6 +278,8 @@ jobs:
     needs: [plan]
     if: contains(needs.plan.outputs.platforms, ' macos ')
     runs-on: macos-15-intel
+    env:
+      OPENSSL_TARGET: darwin64-x86_64-cc
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -282,14 +292,12 @@ jobs:
       - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: openssl
         with:
-          path: ${{ runner.temp }}/openssl-3.6.5-amd64
-          key: openssl-3.6.5-a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98-darwin64-x86_64-cc-no-tests-macos-15-intel
+          path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-amd64
+          key: openssl-${{ env.OPENSSL_VERSION }}-${{ env.OPENSSL_SHA256 }}-${{ env.OPENSSL_TARGET }}-${{ env.OPENSSL_OPTIONS }}-macos-15-intel
       - name: Install isolated native dependencies
         if: steps.openssl.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          OPENSSL_VERSION="3.6.5"
-          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
           OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-amd64"
           OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
           curl --fail --location --silent --show-error --retry 3 \
@@ -297,19 +305,19 @@ jobs:
           echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
           tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
           cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
-          ./Configure darwin64-x86_64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          ./Configure "$OPENSSL_TARGET" $OPENSSL_OPTIONS --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
       - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: ${{ runner.temp }}/openssl-3.6.5-amd64
+          path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-amd64
           key: ${{ steps.openssl.outputs.cache-primary-key }}
       - name: Build amd64 package slices
         working-directory: coral-go
         run: |
           set -euo pipefail
-          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-amd64"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-amd64"
           mkdir -p ../dist/encryption-macos-amd64
           for cmd in $(grep -vE '^[[:space:]]*(#|$)' ../tests/release/commands.txt); do  # tests/release/commands.txt (#3855)
             CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags sqlcipher,fts5 -o "../dist/encryption-macos-amd64/$cmd" "./cmd/$cmd/"
@@ -329,6 +337,8 @@ jobs:
   macos:
     needs: [macos-arm64, macos-amd64]
     runs-on: macos-14
+    env:
+      OPENSSL_TARGET: darwin64-arm64-cc
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -341,14 +351,12 @@ jobs:
       - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: openssl
         with:
-          path: ${{ runner.temp }}/openssl-3.6.5-arm64
-          key: openssl-3.6.5-a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98-darwin64-arm64-cc-no-tests-macos-14
+          path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
+          key: openssl-${{ env.OPENSSL_VERSION }}-${{ env.OPENSSL_SHA256 }}-${{ env.OPENSSL_TARGET }}-${{ env.OPENSSL_OPTIONS }}-macos-14
       - name: Install merge and verification dependencies
         if: steps.openssl.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          OPENSSL_VERSION="3.6.5"
-          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
           OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-arm64"
           OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
           curl --fail --location --silent --show-error --retry 3 \
@@ -356,13 +364,13 @@ jobs:
           echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
           tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
           cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
-          ./Configure darwin64-arm64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          ./Configure "$OPENSSL_TARGET" $OPENSSL_OPTIONS --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
       - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: ${{ runner.temp }}/openssl-3.6.5-arm64
+          path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
           key: ${{ steps.openssl.outputs.cache-primary-key }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -376,7 +384,7 @@ jobs:
         working-directory: coral-go
         run: |
           set -euo pipefail
-          ARM_OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-arm64"
+          ARM_OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-arm64"
           mkdir -p ../dist/encryption-macos
           for cmd in $(grep -hvE '^[[:space:]]*(#|$)' ../tests/release/commands.txt ../tests/release/gui_commands.txt); do  # commands.txt and gui_commands.txt (#3855)
             lipo -create -output "../dist/encryption-macos/$cmd" "../dist/encryption-macos-arm64/$cmd" "../dist/encryption-macos-amd64/$cmd"
@@ -388,7 +396,7 @@ jobs:
           for cmd in $(grep -hvE '^[[:space:]]*(#|$)' ../tests/release/commands.txt ../tests/release/gui_commands.txt); do  # commands.txt and gui_commands.txt (#3855)
             binary="../dist/encryption-macos/$cmd"
             install_name_tool -change "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
-            install_name_tool -change "$RUNNER_TEMP/openssl-3.6.5-amd64/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
+            install_name_tool -change "$RUNNER_TEMP/openssl-$OPENSSL_VERSION-amd64/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
             install_name_tool -change "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
             install_name_tool -add_rpath '@loader_path' "$binary" || true
           done
