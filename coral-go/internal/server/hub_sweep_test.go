@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -45,6 +46,14 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	name := r.sessionNameFor(sid)
 	h := r.srv.Router()
 	js := map[string]string{"Content-Type": "application/json"}
+	// The terminal's own screen shows its working folder, as PowerShell's prompt always does
+	// ("PS C:\Users\...\work\proj>"): typed here on every platform, so the sweep meets it on
+	// Unix too and not only when the Windows prompt happens to be drawn in time.
+	require.Equal(t, 200, call(h, "POST", "/api/sessions/live/"+name+"/send", `{"command":"pwd","agent_type":"terminal","session_id":"`+sid+`"}`, js).Code)
+	require.Eventually(t, func() bool {
+		rec := call(h, "GET", "/api/sessions/live/"+name+"/capture?agent_type=terminal&session_id="+sid, "", nil)
+		return strings.Contains(rec.Body.String(), "proj")
+	}, 15*time.Second, 100*time.Millisecond, "pwd shown on the terminal")
 	// A board with a message and a task, so the board and task routes answer too.
 	// Dev is the launched terminal, so a board peek at Dev has a terminal to read.
 	require.Equal(t, 200, call(h, "POST", "/api/board/team/subscribe", `{"subscriber_id":"Dev","job_title":"Dev","session_name":"`+name+`"}`, js).Code)
@@ -144,7 +153,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		}
 		for _, home := range homes {
 			if strings.Contains(withoutTerminalScreen(rec.Body.String()), home) {
-				leaks = append(leaks, f[1])
+				leaks = append(leaks, f[1]+" ("+strings.Join(jsonFieldsHolding(rec.Body.String(), home), ", ")+")")
 				break
 			}
 		}
@@ -189,20 +198,57 @@ func hubSweepQuery(route, sid string) string {
 	return "?" + strings.Join(parts, "&")
 }
 
-// withoutTerminalScreen is a JSON answer without its "capture" field: the terminal's screen,
-// which the hub is shown as written (hubLongText), as its terminal websocket streams it. A
-// prompt there can show the working folder: PowerShell's always does ("PS C:\Users\...>"),
-// so on Windows the poll's screen held the home on every run, while the sh prompt the Unix
-// runs use ("$") never does. The sweep is about the paths Coral itself answers (#3914).
+// withoutTerminalScreen is a JSON answer without the terminal's screen: its "capture" field (the
+// poll) and its "pane_capture" field (the session detail), which the hub is shown as written
+// (hubLongText; the terminal websocket streams the same screen). A prompt there can show the
+// working folder: PowerShell's always does ("PS C:\Users\...>"), and the test types pwd so
+// every platform shows it. The sweep is about the paths Coral itself answers (#3914; the
+// Windows-only failure on /api/sessions/live/{name} was its pane_capture, v1.4.72's gate).
 func withoutTerminalScreen(body string) string {
 	var m map[string]any
 	if json.Unmarshal([]byte(body), &m) != nil {
 		return body
 	}
-	if _, ok := m["capture"]; !ok {
+	screen := false
+	for _, k := range []string{"capture", "pane_capture"} {
+		if _, ok := m[k]; ok {
+			delete(m, k)
+			screen = true
+		}
+	}
+	if !screen {
 		return body
 	}
-	delete(m, "capture")
 	b, _ := json.Marshal(m)
 	return string(b)
+}
+
+// jsonFieldsHolding names the JSON fields (dotted, [] for list elements) whose string value
+// contains needle: which part of an answer carries a path.
+func jsonFieldsHolding(body, needle string) []string {
+	var v any
+	if json.Unmarshal([]byte(body), &v) != nil {
+		return []string{"(not JSON)"}
+	}
+	var out []string
+	var walk func(path string, v any)
+	walk = func(path string, v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, val := range x {
+				walk(strings.TrimPrefix(path+"."+k, "."), val)
+			}
+		case []any:
+			for _, val := range x {
+				walk(path+"[]", val)
+			}
+		case string:
+			if strings.Contains(x, needle) {
+				out = append(out, path)
+			}
+		}
+	}
+	walk("", v)
+	sort.Strings(out)
+	return out
 }
