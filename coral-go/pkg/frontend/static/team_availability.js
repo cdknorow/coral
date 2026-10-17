@@ -128,6 +128,7 @@ export function showTeamAvailability(team, options = {}) {
         dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
     }
     async function load() {
+        const hadFocus = document.activeElement === refresh;   // a disabled button loses the keyboard focus: give it back afterwards
         refresh.disabled = true;
         content.textContent = 'Checking agents…';
         try {
@@ -165,6 +166,7 @@ export function showTeamAvailability(team, options = {}) {
             content.textContent = `${error.message} Use Refresh to try again.`;
         } finally {
             refresh.disabled = false;
+            if (hadFocus && dialog.isConnected) refresh.focus();
         }
     }
     refresh.onclick = load;

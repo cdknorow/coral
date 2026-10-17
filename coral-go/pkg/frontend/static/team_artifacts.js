@@ -161,9 +161,28 @@ function copyLinkButton(url, name) {
     return button;
 }
 
+// The panel is rebuilt on every change, which dropped the keyboard focus (Refresh, Retry, Load more). Remember what had it (its row and its
+// name) across the rebuilds of one load: while a control is disabled (Refresh during a load) the focus waits until it is back.
+let focusKey = null;
+function focusKeyOf(root) {
+    const a = document.activeElement;
+    if (!a || a === root || !root.contains(a) || a.tagName === 'BODY') return null;
+    const row = a.closest('tr.team-artifact-row');
+    return { row: row ? [...row.parentElement.children].indexOf(row) : -1, label: (a.getAttribute('aria-label') || a.textContent || '').trim() };
+}
+function restoreFocus(root) {
+    if (!focusKey) return;
+    const pool = focusKey.row >= 0 ? (root.querySelectorAll('tr.team-artifact-row')[focusKey.row]?.querySelectorAll('button, a[href], summary') || []) : root.querySelectorAll('.team-artifacts-heading button, .team-artifacts-status ~ button, .team-artifacts-more');
+    const hit = [...pool].find(e => (e.getAttribute('aria-label') || e.textContent || '').trim() === focusKey.label);
+    if (!hit) { focusKey = null; return; }   // the row or the control is gone
+    if (hit.disabled) return;                 // back when it is enabled again
+    hit.focus(); focusKey = null;
+}
+
 function render() {
     const root = document.getElementById(`${panels[source]}-view`);
     if (!root || !isArtifactSource()) return;
+    { const k = focusKeyOf(root); if (k) focusKey = k; else if (document.activeElement && document.activeElement !== document.body && !root.contains(document.activeElement)) focusKey = null; }
     const {items, busy, error, hasMore, truncated} = caches[source];
     const personal = source === 'artifacts';
     const scopeName = personal ? state.currentSession?.display_name || state.currentSession?.name || 'Selected agent' : team;
@@ -314,6 +333,7 @@ function render() {
         more.addEventListener('click', () => load(true)); root.append(more);
     }
     if (truncated) root.append(el('div', 'team-artifacts-status', 'Some older artifacts are not included in this list.'));
+    restoreFocus(root);
 }
 
 async function load(append = false) {
