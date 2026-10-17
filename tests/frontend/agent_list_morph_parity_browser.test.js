@@ -8,7 +8,7 @@
 // removal and an addition. After every step:
 //   - the live list equals a fresh parse of the markup that render wrote (lastLiveListHtml), and
 //   - the visible rows (in order) and the active row are the same in both runs.
-// Then the same page at phone width (390 px, where #mobile-session-list is filled from the sidebar list): a few
+// Then the same page at phone width (390 px, where the sidebar's list element sits in the phone's page as #mobile-session-list): a few
 // feed ticks, and the phone list must be non-empty and the same in both runs.
 //
 // Drives Chrome over CDP (chrome-remote-interface); run_cdp_suites.mjs finds CDP suites by that name.
@@ -68,7 +68,7 @@ async function session(noMorph) {
             if (action) await ev(action);
             await nextFrame();
             steps.push({ label, ...(await ev(`(async () => {
-                const list = document.getElementById('live-sessions-list');
+                const list = (document.getElementById('live-sessions-list') || document.getElementById('mobile-session-list'));
                 const r = await import((window.__coralStatic || '/static/') + 'render.js');
                 const fresh = document.createElement('div'); fresh.innerHTML = r.lastLiveListHtml();
                 return {

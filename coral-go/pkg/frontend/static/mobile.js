@@ -81,27 +81,20 @@ window.mobileBack = mobileBack;
 
 // ── Sync Agent List to Mobile View ────────────────────────────────────────
 
-export function syncMobileAgentList() {
-    if (!isMobile()) return;
-    if (document.body.classList.contains('popout-mode')) return;
+// On a phone the agent list is built once, in the Agents page itself: the sidebar's own list element moves into #mobile-agent-list (and takes the id
+// #mobile-session-list that the phone's styles use) instead of being cloned, so the page holds one copy of every row and no id twice (#4497). On a wide
+// screen it moves back, as #live-sessions-list, to where the sidebar has it.
+let _sidebarHome = null; // { parent, next }: where the list sits in the sidebar
 
-    const agentList = document.getElementById('mobile-agent-list');
-    if (!agentList || agentList.dataset.mode === 'history') return;
-
-    // Copy the live sessions list from sidebar
-    const sidebarList = document.getElementById('live-sessions-list');
-    if (sidebarList && agentList) {
-        // Clear and clone
-        const displayOpen = !!agentList.querySelector('[data-list-display-menu]')?.open;   // a redraw must not close the menu being used
-        agentList.innerHTML = '';
-
-        // Add header with New button
-        const header = document.createElement('div');
-        header.className = 'mobile-list-header';
-        header.innerHTML = `
+function _listHeader(agentList) {
+    let header = agentList.querySelector(':scope > .mobile-list-header');
+    if (header) return header;
+    header = document.createElement('div');
+    header.className = 'mobile-list-header';
+    header.innerHTML = `
             <h2 class="mobile-list-title">Live Sessions</h2>
             <div class="server-switcher-host" data-server-switcher-host hidden></div>
-            <details class="list-display-menu" data-list-display-menu${displayOpen ? ' open' : ''}>
+            <details class="list-display-menu" data-list-display-menu>
                 <summary class="sidebar-collapse-btn" data-display-button title="Display options" aria-label="Display options">
                     <span class="material-icons" style="font-size:1.125rem" aria-hidden="true">notes</span>
                 </summary>
@@ -113,17 +106,37 @@ export function syncMobileAgentList() {
             </details>
             <button class="btn btn-small btn-primary" data-on-click="launch-show">+ New</button>
         `;
-        agentList.appendChild(header);
-        syncDisplayMenu();   // the phone's copy of the ≡ menu (#3991)
-        // The servers button (#3085) lives in the sidebar's search row on wider screens.
-        if (window.renderServerSwitcher) window.renderServerSwitcher();
+    agentList.prepend(header);
+    return header;
+}
 
-        const clone = sidebarList.cloneNode(true);
-        clone.id = 'mobile-session-list';
+export function syncMobileAgentList() {
+    if (document.body.classList.contains('popout-mode')) return;
+    if (!isMobile()) { restoreSidebarList(); return; }
 
-        // The cloned items keep their data-on-* actions, so they work as they are (actions.js delegates).
-        agentList.appendChild(clone);
+    const agentList = document.getElementById('mobile-agent-list');
+    if (!agentList || agentList.dataset.mode === 'history') return;
+
+    _listHeader(agentList);
+    syncDisplayMenu();   // the phone's copy of the ≡ menu (#3991)
+    // The servers button (#3085) lives in the sidebar's search row on wider screens.
+    if (window.renderServerSwitcher) window.renderServerSwitcher();
+
+    const list = document.getElementById('live-sessions-list');
+    if (list && list.parentElement !== agentList) {
+        _sidebarHome = { parent: list.parentElement, next: list.nextSibling };
+        list.id = 'mobile-session-list';
+        agentList.appendChild(list); // the cloned items kept their data-on-* actions; the moved ones keep their listeners too
     }
+}
+
+/** Wide screen: the list goes back into the sidebar as #live-sessions-list, where it was. */
+export function restoreSidebarList() {
+    const list = document.getElementById('mobile-session-list');
+    if (!list || !_sidebarHome || !_sidebarHome.parent.isConnected) return;
+    list.id = 'live-sessions-list';
+    _sidebarHome.parent.insertBefore(list, _sidebarHome.next && _sidebarHome.next.parentNode === _sidebarHome.parent ? _sidebarHome.next : null);
+    _sidebarHome = null;
 }
 
 // ── Intercept Session Selection on Mobile ─────────────────────────────────
@@ -374,8 +387,9 @@ export function initMobile() {
             if (mobile) {
                 syncMobileAgentList();
                 if (welcome && welcome.style.display !== 'none') showView('mobile-agent-list');
-            } else if (list && list.style.display !== 'none') {
-                showView('welcome-screen');
+            } else {
+                restoreSidebarList();
+                if (list && list.style.display !== 'none') showView('welcome-screen');
             }
             wasMobile = mobile;
         }

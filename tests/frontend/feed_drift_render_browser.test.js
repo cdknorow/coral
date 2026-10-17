@@ -23,9 +23,9 @@ const BASE = require('./test_base').BASE;
             // Silence the page's own feed and let its start-up renders finish, so only the messages below move the sidebar.
             if (state.coralWs) { state.coralWs.onmessage = null; state.coralWs.onclose = null; state.coralWs.close(); }
             await new Promise(r => setTimeout(r, 2500));
-            const list = document.getElementById('live-sessions-list');
             let renders = 0;
-            new MutationObserver(() => { renders++; }).observe(list, { childList: true, subtree: true });
+            // Renders are counted by the page's own event, not by DOM changes: a row's tooltip is built on hover now (#4497), so a render that has nothing new to show changes no node.
+            window.addEventListener('coral:live-list-rendered', () => { renders++; });
             const tick = () => new Promise(r => setTimeout(r, 60));
             const row = (extra = {}) => ({ name: 'drift-a', session_id: 'drift-sid-a', agent_type: 'terminal', server: 'local', display_name: 'drift-a', working: false, staleness_seconds: 10, ...extra });
             const realNow = Date.now; let clock = realNow(); Date.now = () => clock;

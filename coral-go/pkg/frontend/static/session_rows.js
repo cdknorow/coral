@@ -1,5 +1,5 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
-import { SESSION_STATES, _WORKTREE_ICON, _gitStateSummary, buildSessionTooltip, deriveSessionState, formatStaleness, getDotClass, getMobileStatusChip, resolveSessionIdentity, sessionGoalText, sessionStateInfo, sessionUnreadCount } from './session_state.js';
+import { SESSION_STATES, _WORKTREE_ICON, _gitStateSummary, deriveSessionState, formatStaleness, getDotClass, getMobileStatusChip, resolveSessionIdentity, sessionGoalText, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 import { _saveSessionOrder } from './list_order.js';
 import { escapeHtml, escapeAttr, agentNameColor } from './utils.js';
 import { autoAcceptChip, autoAcceptMenuItem } from './auto_accept.js';
@@ -267,7 +267,6 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
         <div class="sidebar-kebab-menu" style="display:none">${kebabMenuContent}
         </div>
     </div>`;
-    const tooltip = buildSessionTooltip(s);
     const compactClass = isCompact ? ' session-compact' : '';
     const collapsedClass = collapsed ? ' group-collapsed' : '';
     const sleepingClass = s.sleeping ? ' sleeping' : '';
@@ -312,7 +311,7 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
             ${(!isCompact && s.model && modelLabel(s.agent_type, s.model, sessionServer(s))) ? `<div class="session-model" title="${escapeAttr(s.model)}">${escapeHtml(modelLabel(s.agent_type, s.model, sessionServer(s)))}</div>` : ''}
             ${branchTag}
         </div>
-        <div class="session-tooltip">${tooltip}</div>
+        <div class="session-tooltip"></div>
     </li>`;
 }
 

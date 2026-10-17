@@ -213,6 +213,7 @@ function _dismiss(choice) {
 // A server enrolled with the hub's old host (#3546, hub_moved; the header indicator reports the
 // status) is not offered Coral Hub as if it had never connected: the home section's Coral Hub
 // item says it must be connected again, set as text. Any other status restores the offer.
+document.addEventListener('coral:welcome-built', syncHomeEditions); // a screen built after the settings loaded (the phone builds it on first show, #4497)
 document.addEventListener('coral:cloud-status', e => {
     const copy = document.querySelector('#editions-home [data-editions="home-hub"] .editions-home-copy');
     if (!copy) return;

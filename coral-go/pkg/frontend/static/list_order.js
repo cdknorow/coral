@@ -1,5 +1,5 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
-import { redrawLiveList } from './list_hooks.js';
+import { redrawLiveList, liveListEl } from './list_hooks.js';
 import { state } from './state.js';
 
 /** The board whose chat the panel currently shows (or null). */
@@ -113,7 +113,7 @@ export function moveSessionDown(sessionId) {
 }
 
 function _moveSession(sessionId, direction) {
-    const list = document.getElementById("live-sessions-list");
+    const list = liveListEl();
     if (!list) return;
     const items = [...list.querySelectorAll(".session-group-item")];
     const ids = items.map(el => el.dataset.sessionId);

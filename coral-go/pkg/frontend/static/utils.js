@@ -243,8 +243,20 @@ let _viewChanges = 0;
 /** How many times showView has run: a view that loads asynchronously compares it to tell whether another view was shown meanwhile. */
 export function viewChanges() { return _viewChanges; }
 
+/** Build the welcome screen from its template (once). A phone shows the agent list as its home and never builds it (#4497); a wide window builds it at start. */
+export function buildWelcome() {
+    const host = document.getElementById('welcome-screen');
+    const tpl = document.getElementById('welcome-template');
+    if (!host || !tpl) return false;
+    host.appendChild(tpl.content.cloneNode(true));
+    tpl.remove();
+    document.dispatchEvent(new CustomEvent('coral:welcome-built'));
+    return true;
+}
+
 export function showView(activeId) {
     _viewChanges++;
+    if (activeId === 'welcome-screen') buildWelcome();
     for (const id of VIEW_IDS) {
         const el = document.getElementById(id);
         if (el) el.style.display = id === activeId ? VIEW_DISPLAY[id] : "none";

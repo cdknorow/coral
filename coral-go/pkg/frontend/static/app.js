@@ -49,7 +49,7 @@ import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize, loadPendingFromStorage } from './live_chat.js';
 import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
-import { copyBranchName, escapeHtml, showView, showToast, viewChanges } from './utils.js';
+import { copyBranchName, escapeHtml, showView, showToast, viewChanges, buildWelcome } from './utils.js';
 import { initPreviewPane, openPreviewTab, closeTab as closePreviewTab, closeAllTabs as closeAllPreviewTabs, resetPreviewPane } from './preview_pane.js';
 import { initScheduler, selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
 import { initLiveJobs, renderLiveJobs, selectLiveJobRun } from './live_jobs.js';
@@ -1062,6 +1062,7 @@ async function initLocalStore() {
 
 document.addEventListener("DOMContentLoaded", async () => {
     beginDashboardAnalytics();
+    if (window.innerWidth > 767) buildWelcome(); // a phone starts on the agent list and builds the welcome screen only if it is shown (#4497)
     try {
     // Initialize platform detection and platform-specific behavior
     platform.init();

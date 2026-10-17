@@ -46,7 +46,7 @@ const DEVICES = [
                 const orig = window.selectLiveSession;
                 window.selectLiveSession = function (...a) { window.__picked.push(a[0]); try { return orig.apply(this, a); } catch (e) { /* the fake session has no server */ } };
                 window.__seedRows = () => {
-                    const list = document.getElementById('live-sessions-list');
+                    const list = (document.getElementById('live-sessions-list') || document.getElementById('mobile-session-list')); // the one list: in the phone's page at this width (#4497)
                     list.innerHTML = ['alpha', 'beta'].map(n => '<li class="session-group-item" data-session-id="sid-' + n + '" data-server="local" data-on-click="session-open" data-done="0" data-name="' + n + '" data-agent-type="terminal"><span class="session-label">' + n + '</span></li>').join('');
                     return import((window.__coralStatic||'/static/')+'mobile.js').then(m => m.syncMobileAgentList());
                 };
@@ -58,7 +58,7 @@ const DEVICES = [
             await evaluate(`new Promise(resolve => {
                 const end = Date.now() + 10000; let since = 0;
                 (function check() {
-                    if (!document.querySelector('#live-sessions-list [data-session-id="sid-alpha"]')) { window.__seedRows(); since = 0; }
+                    if (!document.querySelector('#mobile-session-list [data-session-id="sid-alpha"], #live-sessions-list [data-session-id="sid-alpha"]')) { window.__seedRows(); since = 0; }
                     const n = document.querySelectorAll('#mobile-session-list .session-group-item').length;
                     since = n === 2 ? (since || Date.now()) : 0;
                     if ((since && Date.now() - since >= 500) || Date.now() > end) return resolve(n);

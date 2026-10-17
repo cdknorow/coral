@@ -212,6 +212,8 @@
             </div>
 
             <div id="welcome-screen" class="welcome">
+                <!-- Built when the screen is first shown (utils.js showView; at once on a wide window): a phone shows the agent list instead and never builds it (#4497) -->
+                <template id="welcome-template">
                 <div class="welcome-shell">
                     <header class="welcome-header">
                         <span class="welcome-eyebrow">Coral workspace</span>
@@ -262,6 +264,7 @@
                         <a href="#" role="button" data-on-click="m-mobile-connect-open"><span class="material-icons" aria-hidden="true">qr_code_2</span>Mobile QR code</a>
                     </nav>
                 </div>
+                </template>
             </div>
 
             <!-- Chats tab with no chat open (#3152): not the Agents home -->

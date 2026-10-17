@@ -1,5 +1,5 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
-import { redrawLiveList } from './list_hooks.js';
+import { redrawLiveList, liveListEl } from './list_hooks.js';
 import { serverSwitcherHtml } from './server_status.js';
 import { browserLocal } from './safe_storage.js';
 
@@ -32,7 +32,7 @@ if (typeof document !== 'undefined') {
         try { browserLocal.set(`coral-server-collapsed:${id}`, _isServerCollapsed(id) ? 'false' : 'true'); } catch { /* per-viewer only */ }
         _openServerDetails.delete(id);
         redrawLiveList();
-        const again = document.querySelector(`#live-sessions-list .server-group-toggle[data-server-toggle="${CSS.escape(id)}"]`);
+        const again = liveListEl()?.querySelector(`.server-group-toggle[data-server-toggle="${CSS.escape(id)}"]`);
         if (again) again.focus();
     });
     // The server menu's Launch team / Open folder / Launch agent: the launch flow, with that server chosen.

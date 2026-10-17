@@ -72,7 +72,7 @@ const SERVERS = [
             // 4: outside click, inside click, Escape, one popup at a time
             await ev(`${SW}.querySelector('.server-switcher-panel-list').dispatchEvent(new MouseEvent('click', { bubbles: true })); true`); await sleep(150); // sleep-ok: a redraw and a layout settle over frames; no completion event
             assert.equal(await ev(`${SW}.open`), true, `${dev}: a click inside leaves the list open`);
-            await ev(`document.getElementById('live-sessions-list').closest('.sidebar-section, .mobile-agent-list, body').dispatchEvent(new MouseEvent('click', { bubbles: true })); true`); await sleep(150); // sleep-ok: a redraw and a layout settle over frames; no completion event
+            await ev(`(document.getElementById('live-sessions-list') || document.getElementById('mobile-session-list')).closest('.sidebar-section, .mobile-agent-list, body').dispatchEvent(new MouseEvent('click', { bubbles: true })); true`); await sleep(150); // sleep-ok: a redraw and a layout settle over frames; no completion event
             assert.equal(await ev(`!!(${SW}) && ${SW}.open`), false, `${dev}: a click outside closes the list`);
             await ev(`(${SW}).open = true; true`); await sleep(200); // sleep-ok: a redraw and a layout settle over frames; no completion event
             await ev(`${SW}.querySelector('.server-switcher-item').focus(); true`);

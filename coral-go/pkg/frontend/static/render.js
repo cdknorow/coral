@@ -22,7 +22,7 @@ import { morphHtml } from './dom_morph.js';
 import { isPinnedDir, emptyPins, notePinKeys, pinPathForKey, pinnedFolders } from './pinned_folders.js';
 import { LOCAL_SERVER } from './server_base.js';
 import { formatTokens } from './format.js';
-import { registerLiveListRenderer, redrawLiveList } from './list_hooks.js';
+import { registerLiveListRenderer, redrawLiveList, liveListEl } from './list_hooks.js';
 import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _boardMentionKey, _cancelBoardChatSelect, _exportBoardChatSelected, _insertBoardMention, _toggleBoardChatMsgSelect, _toggleBoardChatPause } from './board_chat.js';
 import { _formatCost, _gitStateSummary, _repoBranch, _shortPath, buildSessionTooltip, deriveSessionState, formatShortTime, formatStaleness, getDotClass, resolveSessionIdentity, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 import { _getBoardColor } from './board_accents.js';
@@ -934,11 +934,18 @@ export function flushLiveSessionsRender() {
 
 registerLiveListRenderer(renderLiveSessions); // the hook other modules redraw through (list_hooks.js)
 
+/** The session a list row shows: live, or a killed one still listed (by id and server, by name when the row has no id). */
+function _rowSession(item) {
+    const id = item.dataset.sessionId, server = item.dataset.server, name = item.dataset.name;
+    const same = x => (id ? x.session_id === id : x.name === name) && sessionServer(x) === server;
+    return (state.liveSessions || []).find(same) || Object.values(state.killedSessions || {}).find(same) || null;
+}
+
 function _renderLiveSessions(sessions) {
     // Single-agent popout: the sidebar is chrome. Never render rows there —
     // they would carry session ids and destructive kebab actions into the DOM.
     if (document.body.classList.contains('popout-mode')) {
-        const list = document.getElementById('live-sessions-list');
+        const list = liveListEl();
         if (list) list.innerHTML = '';
         return;
     }
@@ -964,7 +971,7 @@ function _renderLiveSessions(sessions) {
 
     _renderSidebarRail(sessions);
 
-    const list = document.getElementById("live-sessions-list");
+    const list = liveListEl();
     // Re-render replaces every row: remember which row had keyboard focus.
     const focusedRow = document.activeElement && document.activeElement.closest
         ? document.activeElement.closest('.session-group-item[data-session-id]') : null;
@@ -1426,6 +1433,9 @@ function _renderLiveSessions(sessions) {
         const tip = item.querySelector(".session-tooltip");
         if (!tip) continue;
         item.addEventListener("mouseenter", () => {
+            // Built when the pointer comes, from the session as it is now: a row carries an empty tooltip until then (#4497; the table was built for every row on every render).
+            const sess = _rowSession(item);
+            if (sess) tip.innerHTML = buildSessionTooltip(sess);
             const rect = item.getBoundingClientRect();
             tip.style.left = rect.right + 8 + "px";
             tip.style.top = rect.top + "px";
@@ -1452,7 +1462,7 @@ function _renderLiveSessions(sessions) {
         if (again) again.focus({ preventScroll: true });
     }
 
-    // Sync mobile agent list
+    // The phone's page takes the list itself (it is not copied: #4497)
     syncMobileAgentList();
 
     // Keep sidebar status aligned with the team availability API. The first

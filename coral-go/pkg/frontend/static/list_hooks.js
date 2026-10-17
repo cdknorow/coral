@@ -12,3 +12,8 @@ export function registerLiveListRenderer(fn) { _render = fn; }
 export function redrawLiveList() {
     if (_render) _render(state.liveSessions || []);
 }
+
+/** The agent list's element: #live-sessions-list in the sidebar, or the same element as #mobile-session-list while it sits in the phone's page (#4497). */
+export function liveListEl() {
+    return document.getElementById('live-sessions-list') || document.getElementById('mobile-session-list');
+}
