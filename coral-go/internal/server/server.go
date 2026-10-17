@@ -532,7 +532,7 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))
 		return
 	}
-	data := templateData{CoralRoot: s.cfg.CoralRoot, StaticBase: s.staticBase()}
+	data := templateData{CoralRoot: s.cfg.CoralRoot, StaticBase: s.staticBase(), ModulePreloads: frontend.StartupModules()}
 	render := func(out io.Writer) error { return s.indexTmpl.Execute(out, data) }
 	if err := s.indexPage.serve(w, r, data.CoralRoot+"\x00"+data.StaticBase, render); err != nil {
 		log.Printf("Error rendering index template: %v", err)
@@ -573,6 +573,7 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 		TargetSessionID: sessionID,
 		TargetServer:    server,
 		StaticBase:      s.staticBase(),
+		ModulePreloads:  frontend.StartupModules(),
 	}
 	// Rendered per request (the data names the session); served with the same
 	// revalidation and compression as the dashboard page.
