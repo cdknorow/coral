@@ -77,7 +77,6 @@ async function run() {
 
     try {
         const live = await launch('WS Live');
-        const gone = await launch('WS Gone');
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
         await until(`typeof window.selectLiveSession === 'function' && typeof window._coralGetLiveSessions === 'function'`, 'the app hooks', 10000);
         await ev(`localStorage.setItem('coral-live-view-mode', 'terminal'); true`);
@@ -95,21 +94,38 @@ async function run() {
         check('live: "Sent" only once accepted, no error line', (await toasts()).some(t => /^Sent: echo ws-accepted/.test(t)) && await ev(`document.getElementById('composer-error').hidden`), JSON.stringify(await toasts()));
 
         // ── The terminal goes away under an open socket ──
-        // The shell's own exit ends the pane at once; the attach watchdog ends the stream about
-        // 1.4 s later. A composer send in between reaches the server, which answers terminal_gone.
-        await attach(gone);
-        await ev(`(async () => { window.__xt = ${XT}; window.__termFrames = []; return true; })()`);
-        await ev(`(async () => { const x = ${XT}; x.sendTerminalInputWs('exit'); await new Promise(r => setTimeout(r, 300)); return x.sendTerminalInputWs('\\r'); })()`); // sleep-ok: the composer's own text-then-Enter gap (bracketed paste), so the shell runs exit
-        await new Promise(r => setTimeout(r, 300)); // sleep-ok: the pane is gone but the attach watchdog has not ended the stream; no event marks that window
-        await clearToasts();
-        await type('hello gone');
-        const viaSocket = await ev(`(async () => ${XT}.sendTerminalInputWs(''))()`);
-        await ev(`window.sendCommand()`);
-        await until(`window.__termFrames.includes('terminal_gone')`, 'the real terminal_gone frame');
+        // The shell's own exit ends the pane; the server's per-session check ends the stream within
+        // about a second after. A composer send in between reaches the server, which answers
+        // terminal_gone. That window is a race with the server's check, so the test waits for the
+        // pane to be gone (not a fixed time) and, when the stream ended first (terminal_closed before
+        // the send, likelier under load), runs the scene again on a new agent. A server that never
+        // answers terminal_gone fails every attempt.
+        let gone = null, viaSocket = false, frames = [], attempts = 0;
+        const paneGone = async s => (await httpJson('POST', `/api/sessions/live/${encodeURIComponent(s.session_name)}/resize`,
+            { columns: 80, agent_type: 'terminal', session_id: s.session_id })).status === 409;
+        for (attempts = 1; attempts <= 3; attempts++) {
+            gone = await launch(`WS Gone ${attempts}`);
+            await attach(gone);
+            await ev(`(async () => { window.__xt = ${XT}; window.__termFrames = []; window.__closedProbe = undefined; return true; })()`);
+            await ev(`(async () => { const x = ${XT}; x.sendTerminalInputWs('exit'); await new Promise(r => setTimeout(r, 300)); return x.sendTerminalInputWs('\\r'); })()`); // sleep-ok: the composer's own text-then-Enter gap (bracketed paste), so the shell runs exit
+            const deadline = Date.now() + 8000;
+            while (!(await paneGone(gone)) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50)); // sleep-ok: poll interval of a condition wait
+            await clearToasts();
+            await type('hello gone');
+            if (await ev(`window.__termFrames.includes('terminal_closed')`)) { console.log(`attempt ${attempts}: the stream ended before the send; again`); continue; }
+            viaSocket = await ev(`(async () => ${XT}.sendTerminalInputWs(''))()`);
+            await ev(`window.sendCommand()`);
+            await until(`window.__termFrames.includes('terminal_gone') || window.__termFrames.includes('terminal_closed')`, 'the server\'s answer');
+            // terminal_gone comes before terminal_closed, so once either is here, so is any terminal_gone.
+            frames = await ev(`window.__termFrames.slice()`);
+            if (frames.includes('terminal_gone')) break;
+            console.log(`attempt ${attempts}: the stream ended before the input reached the server (${JSON.stringify(frames)}); again`);
+            await ev(`document.getElementById('composer-error').hidden = true; true`);
+        }
+        check('the scene ran inside the window (pane gone, stream still open) within 3 attempts', attempts <= 3, `attempts ${attempts}`);
         // terminal_hello is the server's greeting after the replay seed, and terminal_size reports the pane's size
         // (#3422): under load either can land after the reset above, and neither answers the input, so they are not
         // what 'first' means here.
-        const frames = await ev(`window.__termFrames.slice()`);
         check('the composer sent over the open socket and the server answered terminal_gone', viaSocket === true && frames.filter(t => t !== 'terminal_hello' && t !== 'terminal_size')[0] === 'terminal_gone', JSON.stringify({ viaSocket, frames }));
         await until(`!document.getElementById('composer-error').hidden`, 'the line under the composer');
         const box = await ev(`(() => { const b = document.getElementById('composer-error'); return { hidden: b.hidden, text: b.querySelector('.composer-error-text').textContent, restart: !b.querySelector('.composer-error-restart').hidden }; })()`);
