@@ -173,6 +173,12 @@
                 <button class="btn btn-primary" type="button" data-on-click="update-reload">Reload</button>
             </div>
 
+            <!-- #4291: local sign-in is off (local_auth_banner.js); no close button, it goes when sign-in is back on -->
+            <div id="local-auth-banner" class="leftover-tmux-banner local-auth-banner" role="alert" hidden>
+                <span class="material-icons" aria-hidden="true">warning</span>
+                <div class="leftover-tmux-text"><b>Local sign-in is OFF:</b> any program on this computer can use Coral.</div>
+            </div>
+
             <!-- #3634: under pty, agents still running in Coral's old tmux server (terminal_backend.js) -->
             <div id="leftover-tmux-banner" class="leftover-tmux-banner" role="alert" hidden>
                 <span class="material-icons" aria-hidden="true">warning</span>

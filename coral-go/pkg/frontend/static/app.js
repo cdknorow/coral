@@ -869,6 +869,7 @@ function pollStartupStatus() {
                 if (data.database_warning) showDatabaseWarning(data.database_warning);
                 else setTimeout(recheckDatabases, DATABASE_RECHECK_MS);
                 dashboardStartupComplete();
+                importOnce('./local_auth_banner.js').then(m => m.startLocalAuthBanner()).catch(() => {}); // #4291: red banner while local sign-in is off
                 // One question at a time: set a password (#3948, once, while none is set), then Coral Hub sign-in (#3966, once, for a
                 // computer already linked to Coral Hub). The second waits if the first is still open.
                 importOnce('./password_ui.js').then(m => m.maybePromptSetPassword()).catch(() => {})
