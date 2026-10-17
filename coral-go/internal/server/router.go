@@ -116,6 +116,7 @@ func (s *Server) useMiddleware(r *chi.Mux) {
 		log.Printf("[identity] strict local auth is on: requests from this computer need an agent session token, the dashboard sign-in (coral open) or a command-line signature")
 		s.identity.SetStrict()
 	}
+	r.Use(routes.BoardResolveMemo) // one board resolve per request, shared by the identity layer and the resolver below (#4303)
 	r.Use(s.identity.Middleware)
 	// Nobody but the Operator writes as the Operator; after the identity binding, so its 403 stands (#4207).
 	r.Use(routes.RejectOperatorImpersonation)

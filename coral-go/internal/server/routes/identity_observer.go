@@ -1041,7 +1041,7 @@ func resolvedBoardKey(r *http.Request, bs *board.Store, key string) string {
 	if bs == nil || !board.UsableBoardKey(key) {
 		return key
 	}
-	if id, _, err := bs.ResolveBoard(r.Context(), key); err == nil {
+	if id, _, err := resolveBoard(r, bs, key); err == nil {
 		return id
 	}
 	return key

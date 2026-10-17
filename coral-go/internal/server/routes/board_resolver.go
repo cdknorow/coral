@@ -1,16 +1,74 @@
 package routes
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/cdknorow/coral/internal/board"
 )
 
 // boardStaticRoutes are /api/board/<segment> routes that aren't a board.
 var boardStaticRoutes = map[string]bool{"projects": true, "tasks": true, "remotes": true}
+
+// boardResolveCalls counts the database resolves resolveBoard made (tests: one per request).
+var boardResolveCalls atomic.Int64
+
+// BoardResolveCount is how many database resolves resolveBoard has made (tests).
+func BoardResolveCount() int64 { return boardResolveCalls.Load() }
+
+// boardMemoKey carries a request's resolved boards in its context.
+type boardMemoKey struct{}
+
+type boardMemoEntry struct {
+	id         string
+	candidates []board.Board
+	err        error
+}
+
+// boardMemo remembers what bs.ResolveBoard answered for each key within ONE request, so the
+// identity layer (which resolves the board to check an agent's claim) and BoardKeyResolver (which
+// rewrites the URL) share one resolve instead of asking the database twice (#4303).
+type boardMemo struct {
+	mu sync.Mutex
+	m  map[string]boardMemoEntry
+}
+
+// BoardResolveMemo makes a request's board resolves share one answer. Mount it before the
+// identity middleware.
+func BoardResolveMemo(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/board/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), boardMemoKey{}, &boardMemo{m: map[string]boardMemoEntry{}})))
+	})
+}
+
+// resolveBoard is bs.ResolveBoard through the request's memo, when it has one. An error other than
+// "not found" or "ambiguous" is returned as it came and is remembered too: both callers treat it
+// as "leave the key alone", and a second ask a few microseconds later would not answer better.
+func resolveBoard(r *http.Request, bs *board.Store, key string) (string, []board.Board, error) {
+	memo, _ := r.Context().Value(boardMemoKey{}).(*boardMemo)
+	if memo == nil {
+		boardResolveCalls.Add(1)
+		return bs.ResolveBoard(r.Context(), key)
+	}
+	memo.mu.Lock()
+	defer memo.mu.Unlock()
+	if e, ok := memo.m[key]; ok {
+		return e.id, e.candidates, e.err
+	}
+	boardResolveCalls.Add(1)
+	id, cands, err := bs.ResolveBoard(r.Context(), key)
+	memo.m[key] = boardMemoEntry{id, cands, err}
+	return id, cands, err
+}
 
 // BoardKeyResolver turns the board segment of /api/board/<key>/... into the board's id
 // (#3536). An exact id always wins; otherwise a label that names exactly one board is
@@ -48,7 +106,7 @@ func BoardKeyResolver(bs *board.Store) func(http.Handler) http.Handler {
 					"message": "That board key can't be used in a URL ('.', '..', '/' or a control character)"})
 				return
 			}
-			id, candidates, err := bs.ResolveBoard(r.Context(), key)
+			id, candidates, err := resolveBoard(r, bs, key)
 			switch {
 			case err == nil && id != key:
 				tail, terr := url.PathUnescape(escTail)
