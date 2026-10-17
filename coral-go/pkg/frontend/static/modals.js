@@ -2181,7 +2181,7 @@ async function loadArtifactStoreSize() {
         out.textContent = "Couldn't read the store's size.";
     }
     loadStorageDetail();
-    importOnce('./received_cap_notice.js').then(m => m.checkReceivedCap()).catch(() => {}); // told once at 80% (#4441)
+    importOnce('./received_cap_notice.js').then(m => m.checkReceivedCap({ inSettings: true })).catch(() => {}); // remembered once at 80%; the line says it, no toast over this dialog (#4441)
 }
 
 // ── Free space and automatic cleanup (#3554) ──────────────────────────
@@ -2334,32 +2334,51 @@ function wireStorageActions() {
     });
 }
 
-/** Settings: what other teams and Corals have sent this computer, against the limit on it (#4441). */
+/** Settings: what other teams and Corals have sent this computer, against the limit on it (#4441). One status line says the total, how full it is (from
+ *  80% on, with what to do), that new files are refused at the limit (in the warning colour), and how many received files no board lists. */
+function receivedLine(r) {
+    const files = `${Number(r.objects).toLocaleString()} file${r.objects === 1 ? '' : 's'}`;
+    let line = `Received: ${_gib(r.bytes)} in ${files}`;
+    let full = false, atLimit = false;
+    if (r.max_bytes > 0) {
+        const pct = Math.floor((r.bytes / r.max_bytes) * 100);
+        atLimit = r.bytes >= r.max_bytes;
+        full = atLimit || r.bytes * 5 >= r.max_bytes * 4;
+        line += atLimit ? ` (limit ${_gib(r.max_bytes)} reached: new received files are refused)` : full ? ` (limit ${_gib(r.max_bytes)}, ${pct}% full)` : ` (limit ${_gib(r.max_bytes)})`;
+    } else line += ' (no limit)';
+    if (full) line += '. Delete received files in Team Artifacts to make room, or raise the limit.';
+    const u = Number(r.unlisted?.count) || 0;
+    if (u) line += `${full ? ' ' : '. '}Not listed on any board: ${u.toLocaleString()} file${u === 1 ? '' : 's'}, ${_gib(r.unlisted.bytes)}. Another Coral sent ${u === 1 ? 'it' : 'them'} but the message that names ${u === 1 ? 'it' : 'them'} never came. ${u === 1 ? 'It counts' : 'They count'} toward the limit.${u > (r.unlisted.items || []).length ? ` Showing the oldest ${(r.unlisted.items || []).length}; delete them, then the rest.` : ''}`;
+    return { line, atLimit };
+}
+
 function showReceivedCap(r) {
     const out = document.getElementById('settings-received-size');
     const input = document.getElementById('settings-received-max');
     if (!out || !input || !r) return;
     input.value = r.max_bytes > 0 ? String(Math.round(r.max_bytes / GIB)) : '0';
     input.dataset.loaded = '1'; // only a limit read from Coral is saved back
-    const files = `${Number(r.objects).toLocaleString()} file${r.objects === 1 ? '' : 's'}`;
-    out.textContent = r.max_bytes > 0 ? `Received: ${_gib(r.bytes)} in ${files} (limit ${_gib(r.max_bytes)})` : `Received: ${_gib(r.bytes)} in ${files} (no limit)`;
+    const { line, atLimit } = receivedLine(r);
+    out.textContent = line;
+    if (atLimit) out.dataset.state = 'warn'; else delete out.dataset.state; // at the limit new files are refused: the warning colour
     showUnlistedReceived(r.unlisted);
 }
 
 // Received files no board lists: their message never came. They count in the limit; the Operator can delete them, by exact digest, after a
-// confirmation. Never automatic (#4441, Security's #4440 INFO 2).
+// confirmation. Never automatic (#4441, Security's #4440 INFO 2). The count is in the status line above; the button names what it deletes.
 let _unlistedItems = [];
+let _unlistedBytes = 0;
 function showUnlistedReceived(u) {
     const box = document.getElementById('settings-received-unlisted');
-    const text = document.getElementById('settings-received-unlisted-text');
     const button = document.getElementById('settings-received-unlisted-delete');
-    if (!box || !text || !button) return;
+    if (!box || !button) return;
     const count = Number(u?.count) || 0;
     _unlistedItems = Array.isArray(u?.items) ? u.items.map(i => i.id) : [];
-    box.hidden = count === 0;
-    if (!count) return;
-    const more = count > _unlistedItems.length ? ` Showing the oldest ${_unlistedItems.length}; delete them, then the rest.` : '';
-    text.textContent = `Not listed on any board: ${count.toLocaleString()} file${count === 1 ? '' : 's'}, ${_gib(u.bytes)}. Another Coral sent ${count === 1 ? 'it' : 'them'} but the message that names ${count === 1 ? 'it' : 'them'} never came. ${count === 1 ? 'It counts' : 'They count'} toward the limit.${more} `;
+    _unlistedBytes = (u?.items || []).reduce((sum, i) => sum + (Number(i.size) || 0), 0);
+    box.hidden = _unlistedItems.length === 0;
+    if (!_unlistedItems.length) return;
+    const n = _unlistedItems.length;
+    button.textContent = `Delete ${n.toLocaleString()} unlisted file${n === 1 ? '' : 's'} (${_gib(_unlistedBytes)})`;
     if (!button.dataset.wired) {
         button.dataset.wired = '1';
         button.addEventListener('click', confirmDeleteUnlisted);
@@ -2371,7 +2390,7 @@ function confirmDeleteUnlisted() {
     if (!ids.length) return;
     const n = ids.length;
     window.showConfirmModal?.('Delete received files',
-        `Delete ${n.toLocaleString()} received file${n === 1 ? '' : 's'} that no board lists? ${n === 1 ? 'It is' : 'They are'} removed from Coral and can't be recovered. A file something now lists or links is left alone.`,
+        `Delete ${n.toLocaleString()} unlisted file${n === 1 ? '' : 's'} (${_gib(_unlistedBytes)})? Only ${n === 1 ? 'this file is' : 'these files are'} removed from Coral and can't be recovered; nothing else is touched, and a file something now lists or links is left alone.`,
         async () => {
             let d;
             try {
@@ -2393,6 +2412,7 @@ function confirmDeleteUnlisted() {
 function receivedMaxSetting() {
     const input = document.getElementById('settings-received-max');
     if (!input || isCloud() || input.dataset.loaded !== '1') return {};
+    if (String(input.value).trim() === '') return {}; // an emptied field is unchanged, never 0 (no limit) saved by accident
     const gib = Math.max(0, Math.floor(Number(input.value) || 0));
     return { received_artifacts_max_bytes: String(gib * GIB) };
 }
@@ -2402,6 +2422,7 @@ function artifactStoreMaxSetting() {
     const input = document.getElementById('settings-artifact-store-max');
     // Not on this page, or never read from Coral (a failed load must not reset a limit to 0).
     if (!input || isCloud() || input.dataset.loaded !== '1') return {};
+    if (String(input.value).trim() === '') return {}; // an emptied field is unchanged, never 0 (no limit) saved by accident
     const gib = Math.max(0, Math.floor(Number(input.value) || 0));
     return { artifact_store_max_bytes: String(gib * GIB) };
 }

@@ -241,3 +241,24 @@ func TestReceivedFileListedOnAnotherBoardIsNotUnlisted(t *testing.T) {
 	assert.EqualValues(t, len(data), used, "and still counted once")
 	assert.Equal(t, 1, objects)
 }
+
+// The case #4451 names: a file stored through the receive route whose message never comes, 30 minutes later: it is still counted, and a new file
+// over the cap is refused.
+func TestReceivedFileWithoutItsMessageStaysInTheCapAfterTheWait(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	setReceivedCap(e, 20)
+	a, b := []byte("aaaaaaaaa\n"), []byte("bbbbbbbbbbb\n")
+	status, out := e.sendUnder(relaySrc, "m1", a)
+	require.Equal(t, 200, status, out)
+	e.now = e.now.Add(receivedPendingFor + time.Minute) // its message never came
+	used, objects, _, unlisted := receivedUsage(e.dir, e.now)
+	assert.EqualValues(t, len(a), used, "still counted after the wait")
+	assert.Equal(t, 1, objects)
+	require.Len(t, unlisted, 1)
+	status, out = e.sendUnder(relaySrc, "m2", b) // 10 + 12 > 20
+	assert.Equal(t, 413, status)
+	assert.Equal(t, "store_full", out["error"], "a new file over the cap is refused: %v", out)
+	status, out = e.sendUnder(relaySrc, "m3", []byte("small\n")) // 10 + 6 <= 20
+	assert.Equal(t, 200, status, "one that fits still goes in: %v", out)
+}
