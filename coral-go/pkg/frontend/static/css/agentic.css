@@ -2598,7 +2598,7 @@ button.team-artifact-name { cursor: pointer; }
     .team-artifact-icon-btn { min-width: 44px; min-height: 44px; }
     .team-artifact-col-actions { width: calc(3 * 44px + 2 * var(--space-xs) + 2 * var(--space-lg)); }
     .team-artifacts-help { min-width: 44px; min-height: 44px; }
-    .team-artifact-details summary { min-height: 44px; display: flex; align-items: center; }
+    .team-artifact-details summary { min-height: 44px; min-width: 44px; display: flex; align-items: center; }
     button.team-artifact-name { min-height: 44px; align-content: center; }
 }
 

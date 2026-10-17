@@ -126,7 +126,7 @@ const HEX = c => c.repeat(64);
             const m = await ev(`(() => { const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1; const small = [], over = [];
                 for (const row of document.querySelectorAll('tr.team-artifact-row')) { const nameR = row.querySelector('.team-artifact-name').getBoundingClientRect();
                     for (const b of row.querySelectorAll('td.team-artifact-col-actions a, td.team-artifact-col-actions button')) { const r = b.getBoundingClientRect(); if (r.width < 43.5 || r.height < 43.5) small.push((b.getAttribute('aria-label') || '').slice(0, 20) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)); if (hit(r, nameR)) over.push((b.getAttribute('aria-label') || '').slice(0, 20)); }
-                    const sm = row.querySelector('.team-artifact-details summary').getBoundingClientRect(); if (sm.height < 43.5) small.push('Details ' + Math.round(sm.height));
+                    const sm = row.querySelector('.team-artifact-details summary').getBoundingClientRect(); if (sm.height < 43.5 || sm.width < 43.5) small.push('Details ' + Math.round(sm.width) + 'x' + Math.round(sm.height));
                     const nb = row.querySelector('button.team-artifact-name'); if (nb && nb.getBoundingClientRect().height < 43.5) small.push('name ' + Math.round(nb.getBoundingClientRect().height)); }
                 const help = document.querySelector('.team-artifacts-help').getBoundingClientRect(); if (help.width < 43.5) small.push('help ' + Math.round(help.width));
                 const chip = document.querySelector('.team-artifact-badge-shared'); const cs = getComputedStyle(chip); const lh = parseFloat(cs.lineHeight);

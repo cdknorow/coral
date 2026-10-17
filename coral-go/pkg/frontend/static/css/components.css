@@ -1991,6 +1991,8 @@ button.subscriber-history-link {
     margin-top: 2px;
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning); }
+/* A field that is off (the storage limits while they load, or when the load failed) reads as off, not as an empty box to fill in (#4469, UX). */
+#settings-modal input:disabled, #settings-modal select:disabled { opacity: .6; cursor: not-allowed; }
 .settings-hint[data-state="warn"], .settings-hint [data-state="warn"] { color: var(--warning); }
 /* The controls of one setting on one wrapping row (field, kind, then the buttons side by side) instead of a stack that grows tall (#4469). */
 .settings-controls-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); }

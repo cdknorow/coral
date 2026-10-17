@@ -28,7 +28,7 @@ const GIB = 1024 ** 3;
             window.fetch = (u, o = {}) => { const url = new URL(String(u), location.origin); const p = url.pathname; const m = (o.method || 'GET').toUpperCase(); const json = (b, s = 200) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } }));
                 if (p === '/api/system/artifact-store' && m === 'GET') {
                     if (url.searchParams.get('detail') === '1') return json({ ...window.__store, detail: { by_age: { objects: { '<1d': { bytes: 1000 }, '1-7d': { bytes: 2000 } }, task_diffs: { '<1d': { bytes: 10 } } }, retention: { days: 0, kinds: 'diffs' } } });
-                    if (window.__down) return json({ error: 'x' }, 500); if (window.__hold) return new Promise(res => { window.__release = () => res(new Response(JSON.stringify(window.__store), { status: 200, headers: { 'content-type': 'application/json' } })); });
+                    if (window.__down) return json({ error: 'x' }, 500); if (window.__hold) return new Promise(res => { window.__release = () => res(window.__holdFail ? new Response('{"error":"x"}', { status: 500 }) : new Response(JSON.stringify(window.__store), { status: 200, headers: { 'content-type': 'application/json' } })); });
                     return json(window.__store); }
                 if (p === '/api/artifacts/prune' && m === 'POST') { const b = JSON.parse(o.body); window.__prunes.push(b); return json(b.dry_run ? window.__dry : window.__run); }
                 if (p === '/api/settings' && m === 'PUT') { window.__puts.push(JSON.parse(o.body)); return json({}); }
@@ -63,6 +63,17 @@ const GIB = 1024 ** 3;
         await ev(`window.__puts.length = 0; true`);
         await apply();
         assert.ok(!(await ev(`window.__puts.some(b => 'artifact_store_max_bytes' in b || 'received_artifacts_max_bytes' in b)`)), 'Save writes neither limit after a failed load');
+        // UX's NITs: a field that is off looks off, and a value typed into it while the load was out is cleared when the load fails.
+        const look = await ev(`(() => { const c = getComputedStyle(document.getElementById('settings-artifact-store-max')); return { opacity: Number(c.opacity), cursor: c.cursor }; })()`);
+        assert.ok(look.opacity < 1 && look.cursor === 'not-allowed', 'a disabled limit field looks off: ' + JSON.stringify(look));
+        await close();
+        await ev(`window.__down = false; window.__hold = true; window.__holdFail = true; window.__release = null; window.showSettingsModal(); true`);
+        await waitFor(`!!window.__release`, 'the slow load that will fail', 8000);
+        await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'); i.disabled = false; i.value = '5'; true; })()`);
+        await ev(`window.__hold = null; window.__release(); true`);
+        await waitFor(`/Couldn't read the store's size/.test(document.getElementById('settings-artifact-store-size').textContent)`, 'the failure', 8000);
+        assert.equal(await ev(`document.getElementById('settings-artifact-store-max').value`), '', 'a value typed while the load was out is not left in the field');
+        await ev(`window.__holdFail = false; true`);
         await ev(`window.__down = false; true`);
 
         console.log('2. The artifact store line: three states, "1 file"');
@@ -75,6 +86,7 @@ const GIB = 1024 ** 3;
         const full = await open(storeBody({ bytes: 10.4 * GIB, objects: 1, max: 10 * GIB }));
         assert.match(full.text, /^Artifacts: 10\.4 GiB in 1 file \(limit 10\.0 GiB reached: new uploads are refused\)\. Delete artifacts in Team Artifacts to make room, or raise the limit\./);
         assert.equal(full.warn, 'warn', 'at the limit the line is in the warning colour'); assert.notEqual(full.color, nearly.other, 'a colour that differs from the calm one');
+        await ev(`document.getElementById('settings-artifact-store-size').scrollIntoView({ block: 'center' }); true`); await sleep(300); // sleep-ok: the scroll settles for the screenshot
         await shot('storage-ux-at-limit');
         const nolimit = await open(storeBody({ bytes: 3 * GIB, objects: 5, max: 0 }));
         assert.equal(nolimit.text.split('Saved task diffs')[0], 'Artifacts: 3.0 GiB in 5 files', 'no limit: just the total');

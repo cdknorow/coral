@@ -2203,6 +2203,7 @@ async function loadArtifactStoreSize({ fresh = false } = {}) {
         showReceivedCap(d.received);
     } catch {
         if (fresh) {
+            for (const i of [input, rin]) if (i) { i.value = ''; delete i.dataset.loaded; } // nothing typed meanwhile is kept: the field is off and saves nothing
             out.textContent = "Couldn't read the store's size, so the limit is not shown.";
             if (rout) rout.textContent = "Couldn't read the received files' size, so their limit is not shown.";
         } else out.textContent = "Couldn't read the store's size.";
