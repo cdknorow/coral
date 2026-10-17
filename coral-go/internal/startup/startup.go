@@ -329,14 +329,18 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	}
 
 	// Open database
+	openDone := noticeSlowOpen(cfg.DBPath)
 	db, err := store.OpenWithKey(ctx, cfg.DBPath, dbKey)
+	openDone()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 	dbcrypt.SetEffectiveMode(security.DatabaseEncryption)
 	// Probe the separate board database before constructing the server. A
 	// wrong key must fail closed rather than starting with only one DB open.
+	openDone = noticeSlowOpen(boardPath)
 	boardProbe, err := board.NewStoreWithKey(boardPath, dbKey)
+	openDone()
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to open board database: %w", err)
