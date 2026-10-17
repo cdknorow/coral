@@ -150,6 +150,50 @@ const undersized = sel => `(() => {
                 await ev(`document.getElementById('main-content')?.click() ?? document.body.click(); true`);
                 await waitFor(`!${shown('top-bar-settings-menu')}`, `${v.name}: an outside click closes the menu`);
                 console.log('   opens with its items, closes on an outside click');
+                // From the keyboard: Enter on the gear, Enter on Settings, Escape: focus goes back to the gear, not the page (UX on #4500).
+                const enter = async () => {
+                    await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+                    await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+                };
+                await ev(`${menuBtn}.focus(); true`);
+                await enter();
+                await waitFor(shown('top-bar-settings-menu'), `${v.name}: Enter on the gear opens the menu`);
+                await ev(`document.querySelector('#top-bar-settings-menu [data-on-click="m-close-top-bar-settings-then-show-settings-modal"]').focus(); true`);
+                await enter();
+                await waitFor(shown('settings-modal'), `${v.name}: Enter on Settings opens it`);
+                await waitFor(`document.getElementById('settings-modal').contains(document.activeElement)`, `${v.name}: focus in Settings`);
+                await escape();
+                await waitFor(`!${shown('settings-modal')}`, `${v.name}: Escape closes Settings`);
+                await waitFor(`document.activeElement === ${menuBtn}`, `${v.name}: focus back on the gear`, { diag: `(document.activeElement && (document.activeElement.id || document.activeElement.className || document.activeElement.tagName))` });
+                console.log('   from the keyboard, Settings opened from the menu gives focus back to the gear');
+                // And with the mouse (UX's path): a click on the gear, a click on Settings, Escape.
+                // On a fresh page, so this is Settings' first open (modals.js loads while the menu closes).
+                const reloaded = Page.loadEventFired(); await Page.navigate({ url: BASE + '/' }); await reloaded; await coralReady();
+                const clickAt = async sel => {
+                    const c = await ev(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+                    for (const type of ['mousePressed', 'mouseReleased']) await Input.dispatchMouseEvent({ type, x: c[0], y: c[1], button: 'left', clickCount: 1 });
+                };
+                await ev(`document.activeElement && document.activeElement.blur(); true`);
+                await clickAt('[data-on-click="m-toggle-top-bar-settings"]');
+                await waitFor(shown('top-bar-settings-menu'), `${v.name}: a click on the gear opens the menu`);
+                await clickAt('#top-bar-settings-menu [data-on-click="m-close-top-bar-settings-then-show-settings-modal"]');
+                await waitFor(shown('settings-modal'), `${v.name}: a click on Settings opens it`);
+                await waitFor(`document.getElementById('settings-modal').contains(document.activeElement)`, `${v.name}: focus in Settings (mouse)`);
+                await escape();
+                await waitFor(`!${shown('settings-modal')}`, `${v.name}: Escape closes Settings (mouse)`);
+                await waitFor(`document.activeElement === ${menuBtn}`, `${v.name}: focus back on the gear (mouse)`, { diag: `(document.activeElement && (document.activeElement.id || document.activeElement.className || document.activeElement.tagName))` });
+                console.log('   with the mouse too');
+                // A click that does not move focus (Safari on a Mac doesn't focus a clicked button; a scripted click): still the gear.
+                { const r = Page.loadEventFired(); await Page.navigate({ url: BASE + '/' }); await r; await coralReady(); } // no focus history
+                await ev(`document.activeElement && document.activeElement.blur(); ${menuBtn}.click(); true`);
+                await waitFor(shown('top-bar-settings-menu'), `${v.name}: the menu (no focus)`);
+                await ev(`document.querySelector('#top-bar-settings-menu [data-on-click="m-close-top-bar-settings-then-show-settings-modal"]').click(); true`);
+                await waitFor(shown('settings-modal'), `${v.name}: Settings (no focus)`);
+                await waitFor(`document.getElementById('settings-modal').contains(document.activeElement)`, `${v.name}: focus in Settings (no focus)`);
+                await escape();
+                await waitFor(`!${shown('settings-modal')}`, `${v.name}: Escape closes Settings (no focus)`);
+                await waitFor(`document.activeElement === ${menuBtn}`, `${v.name}: focus back on the gear after a click that moved no focus`, { diag: `(document.activeElement && (document.activeElement.id || document.activeElement.className || document.activeElement.tagName))` });
+                console.log('   and after a click that moved no focus');
             } else {
                 console.log('   (no top-bar menu button at this width)');
             }

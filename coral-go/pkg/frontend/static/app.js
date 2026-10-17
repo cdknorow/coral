@@ -704,6 +704,17 @@ function closeTopBarSettings() {
 (window.__coral ||= {}).closeTopBarSettings = closeTopBarSettings;
 
 
+// A top-bar menu item chosen with a click that focused nothing (a clicked button gets no focus in Safari on a Mac) left focus on
+// the page once the menu closed, so Escape in what it opened dropped the keyboard user at the top: focus goes to the menu's
+// button first (before the item's action, which closes the menu), and what the item opens hands focus back there (UX on #4500).
+document.addEventListener('click', (e) => {
+    const item = e.target.closest?.('#top-bar-settings-menu .overflow-menu-item');
+    if (!item) return;
+    const a = document.activeElement;
+    if (a && a !== document.body && !item.parentElement.contains(a)) return;
+    document.querySelector('[aria-controls="top-bar-settings-menu"]')?.focus({ preventScroll: true });
+}, true);
+
 // Close kebab menus when clicking outside
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.top-bar-settings-wrapper')) {
