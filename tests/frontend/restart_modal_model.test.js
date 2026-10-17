@@ -24,6 +24,7 @@ const BASE = require('./test_base').BASE;
       window.testState = state;
       window.testControls = controls;
       window.__restartRequests = [];
+      for (const k of Object.keys(localStorage)) if (k.startsWith('coral-models:v1:')) localStorage.removeItem(k); // a list an earlier suite cached would show the picker, not the box this suite drives
 
       window.fetch = async (url, opts = {}) => {
         const u = String(url);
@@ -41,6 +42,7 @@ const BASE = require('./test_base').BASE;
             headers: { 'Content-Type': 'application/json' },
           });
         }
+        if (u.includes('/api/agents/models')) return new Response(JSON.stringify({ agent_type: 'claude', models: [], refreshing: false, source: 'account' }), { status: 200, headers: { 'Content-Type': 'application/json' } }); // no list: the plain text box, whatever the machine's CLI returns
         if (u.includes('/api/agent-models')) {
           return new Response(JSON.stringify({ claude: ['claude-opus-5'], codex: ['gpt-6-sol', 'gpt-4o'], agy: [] }), {
             status: 200,

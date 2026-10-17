@@ -86,6 +86,10 @@ async function run() {
     // first use (#3140): load them the way the app does.
     await evalInPage(`window.__coralReady.startup('liveList', 'settings').then(() => import((window.__coralStatic || '/static/') + 'lazy_panels.js')).then(l => l.loadModals()).then(() => typeof window.renderAgentConfigForm)`);
 
+    // No list of models, whatever this machine's CLI would return and whatever an earlier suite cached: the form shows its plain text box, which is what
+    // this suite drives (the picker's own path is model_picker_browser's).
+    await evalInPage(`(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('coral-models:v1:')) localStorage.removeItem(k); const real = window.fetch; window.fetch = (u, o) => new URL(String(u), location.origin).pathname === '/api/agents/models' ? Promise.resolve(new Response(JSON.stringify({ agent_type: 'claude', models: [], refreshing: false, source: 'account' }), { status: 200, headers: { 'Content-Type': 'application/json' } })) : real(u, o); return true; })()`);
+
     // Baseline: clear any stale default model settings.
     await putSettings({
         default_model_claude: '',
