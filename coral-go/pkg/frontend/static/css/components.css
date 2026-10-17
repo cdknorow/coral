@@ -1901,6 +1901,11 @@ button.subscriber-history-link {
     flex-direction: column;
     gap: 14px;
 }
+/* At 200% text on a phone a button's one-line label was wider than the modal and the body scrolled sideways, cutting buttons and selects off (#4247):
+   buttons may wrap their text and nothing is wider than its container. */
+.settings-modal-body .btn, .settings-modal-body select, .settings-modal-body input[type=text], .settings-modal-body input[type=number], .settings-modal-body input[type=password] { max-width: 100%; box-sizing: border-box; }
+.settings-modal-body .btn { white-space: normal; }
+.settings-modal-body .settings-editions-btn { margin-left: 0; }
 
 .settings-theme-btn,
 .settings-prompts-btn {

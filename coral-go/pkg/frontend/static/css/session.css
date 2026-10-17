@@ -2211,7 +2211,9 @@
 }
 .server-group-toggle:hover { background: var(--bg-hover); }
 .server-group-icon { flex: none; color: var(--text-primary); }
-.server-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* The name keeps room for 8 characters and shrinks last (flex-shrink .01 against the marker's 100); the Update marker is what shrinks first (at 200% text "workstation" was "w..." beside Update required, #4247). */
+.server-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: min(8ch, 100%); flex: 0 0.01 auto; }
+.server-group-toggle > .server-update-marker { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .server-group-state { color: var(--text-secondary); font-weight: 400; font-style: italic; white-space: nowrap; }
 .server-group-header.is-down .server-group-icon,
 .server-group-header.is-down .server-group-name { opacity: 0.5; }
@@ -2261,6 +2263,16 @@
     left: 12px; right: 12px; top: calc(100% - 4px); width: auto; min-width: 0; max-width: 24em;
 }
 .mobile-list-header .server-switcher-panel { left: 16px; right: 16px; max-width: none; }
+/* The display menu and a server's menu hang from the whole header / row, not from their own small button, so at 200% text and on a phone they are never
+   wider than the screen or cut off at its left edge (#4247; the server list did this since #4062). */
+.sidebar-header .list-display-menu, .mobile-list-header .list-display-menu { position: static; }
+.sidebar-header .list-display-panel, .mobile-list-header .list-display-panel {
+    left: auto; right: 12px; top: calc(100% - 4px); min-width: min(12em, calc(100% - 24px)); max-width: calc(100% - 24px); box-sizing: border-box;
+}
+.session-list .server-group-header { position: relative; }
+.server-group-header .server-group-more { position: static; }
+.list-display-menu:not([open]) > .list-display-panel, .server-group-more:not([open]) > .server-switcher-panel { display: none; } /* a closed one has no boxes (see the switcher's rule) */
+.server-group-more > .server-switcher-panel { left: auto; right: 0; top: calc(100% - 2px); min-width: min(16em, 100%); max-width: 100%; box-sizing: border-box; }
 .server-switcher-panel-list { min-width: 0; }
 /* A closed switcher has no panel boxes at all: Chrome keeps a closed <details>' content laid out but skipped, at whatever size it falls to (12px wide here),
    and touch-target scans and assistive tools saw those as tiny controls. */
