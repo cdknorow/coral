@@ -114,7 +114,19 @@ func (c *unreadCountCache) storeSidebarUnread(key sidebarUnreadKey, e sidebarUnr
 
 // countMentionsUnread returns the number of unread messages after lastReadID
 // matching filter (a boolean SQL expression over board_messages with filterArgs).
-func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, jobTitle string, lastReadID int64, filter string, filterArgs []any) (int, error) {
+// mentionIndexCount lets countMentionsUnread count from the mention index (#4483): terms are the subscriber's
+// mention terms, senderFilter and senderArgs the filter without the OR of LIKE patterns.
+type mentionIndexCount struct {
+	terms        []string
+	senderFilter string
+	senderArgs   []any
+}
+
+func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, jobTitle string, lastReadID int64, filter string, filterArgs []any, idx *mentionIndexCount) (int, error) {
+	tokens := ""
+	if idx != nil {
+		tokens = s.mentionIndexTokensJSON(ctx, idx.terms)
+	}
 	c := &s.unreadCounts
 	key := mentionCountKey{project, subscriberID}
 	for attempt := 0; ; attempt++ {
@@ -148,12 +160,32 @@ func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, 
 			if err := tx.GetContext(ctx, &row.Hi, `SELECT COALESCE(MAX(id), ?) FROM board_messages WHERE project = ? AND id > ?`, start, project, start); err != nil {
 				return err
 			}
-			args := append([]any{}, filterArgs...)
-			args = append(args, project, start, row.Hi)
 			var contents []string
-			if err := tx.SelectContext(ctx, &contents,
-				`SELECT content FROM board_messages WHERE `+filter+` AND project = ? AND id > ? AND id <= ?`, args...); err != nil {
-				return err
+			fromIndex := false
+			if tokens != "" {
+				// The index's candidates (and every message above its watermark), then the LIKE rule in Go.
+				iargs := append(append([]any{}, idx.senderArgs...), tokens, start, project, start, row.Hi)
+				if err := tx.SelectContext(ctx, &contents,
+					`SELECT content FROM board_messages WHERE `+idx.senderFilter+` AND `+mentionIndexClause("")+` AND project = ? AND id > ? AND id <= ?`, iargs...); err == nil {
+					patterns := mentionLikePatterns(subscriberID, jobTitle)
+					kept := contents[:0]
+					for _, c := range contents {
+						if likeAny(c, patterns) {
+							kept = append(kept, c)
+						}
+					}
+					contents, fromIndex = kept, true
+					s.mentionIndexAnswers.Add(1)
+				}
+			}
+			if !fromIndex {
+				args := append([]any{}, filterArgs...)
+				args = append(args, project, start, row.Hi)
+				contents = contents[:0]
+				if err := tx.SelectContext(ctx, &contents,
+					`SELECT content FROM board_messages WHERE `+filter+` AND project = ? AND id > ? AND id <= ?`, args...); err != nil {
+					return err
+				}
 			}
 			numbered := s.numberedNames(ctx, tx, project)
 			for _, c := range contents {

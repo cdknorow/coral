@@ -154,6 +154,7 @@ type Store struct {
 	unreadCounts            unreadCountCache
 	noMentionIndex          bool // tests: read as before the mention index (#4465)
 	mentionMu               sync.Mutex
+	mentionIndexAnswers     atomic.Int64 // queries the mention index answered (tests check it is used)
 	mentionIndexedTo        atomic.Int64 // the mention index's watermark, -1 until read (see mention_index.go)
 	waitChanges             waitSignal
 	stmts                   *hotStmts // the hot fixed queries, prepared (#4463); nil: unprepared
@@ -1377,7 +1378,10 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 			args = append(args, "%"+t+"%")
 		}
 		filter := "subscriber_id != ?" + systemFilter + " AND (" + strings.Join(whereClauses, " OR ") + ")"
-		return s.countMentionsUnread(ctx, project, subscriberID, sub.JobTitle, sub.LastReadID, filter, args)
+		// The same count from the mention index when it can answer (#4483): the sender filter alone in SQL
+		// plus the index's candidates; countMentionsUnread falls back to filter (the OR of LIKE) otherwise.
+		return s.countMentionsUnread(ctx, project, subscriberID, sub.JobTitle, sub.LastReadID, filter, args,
+			&mentionIndexCount{terms: terms, senderFilter: "subscriber_id != ?" + systemFilter, senderArgs: []any{subscriberID}})
 	}
 
 	// Group-based mode: count messages from group members only
@@ -1425,7 +1429,7 @@ func (s *Store) LatestUnreadMessageID(ctx context.Context, project, subscriberID
 	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue'"
 	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
 		args[1] = max(sub.LastReadID, s.unreadFloor(ctx, project)) // within the unread window (#3875)
-		return s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, true)
+		return s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, args[1].(int64), true)
 	}
 	var latest int64
 	err := s.reader().GetContext(ctx, &latest, "SELECT COALESCE(MAX(m.id),0) FROM board_messages m WHERE "+where, args...)
@@ -1437,10 +1441,29 @@ func (s *Store) LatestUnreadMessageID(ctx context.Context, project, subscriberID
 // ReadMessages and CheckUnread use (containsExplicitTag with the board's numbered names: word
 // boundaries, and "@Backend Dev 2" isn't "@Backend Dev" on a board that has a "Backend Dev 2"),
 // so the notifier never nudges an agent for a message its read wouldn't show it (#3549).
-func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, jobTitle, where string, args []interface{}, newest bool) (int64, error) {
+func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, jobTitle, where string, args []interface{}, from int64, newest bool) (int64, error) {
 	terms := mentionTerms(subscriberID, jobTitle)
 	if len(terms) == 0 {
 		return 0, nil
+	}
+	// The numbered names are read before the candidates' cursor is opened, so this never holds
+	// two reader connections at once (Security's #3549 review).
+	numbered := s.numberedNames(ctx, s.reader(), project)
+	order := ""
+	if newest {
+		order = " ORDER BY m.id DESC"
+	}
+	// From the mention index (#4483): the messages that can mention the subscriber, found by key, then
+	// the LIKE rule and the confirming rule as before. An index that cannot answer, or fails, reads as
+	// it did: the OR of LIKE patterns over every message in the window.
+	if tokens := s.mentionIndexTokensJSON(ctx, terms); tokens != "" {
+		patterns := mentionLikePatterns(subscriberID, jobTitle)
+		idxArgs := append(append([]interface{}{}, args...), tokens, from)
+		id, err := s.confirmFrom(ctx, "SELECT m.id, m.content FROM board_messages m WHERE "+where+" AND "+mentionIndexClause("m.")+order, idxArgs, patterns, subscriberID, jobTitle, numbered)
+		if err == nil {
+			s.mentionIndexAnswers.Add(1)
+			return id, nil
+		}
 	}
 	parts := make([]string, len(terms))
 	args = append([]interface{}{}, args...)
@@ -1448,13 +1471,13 @@ func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, job
 		parts[i] = "m.content LIKE ? COLLATE NOCASE"
 		args = append(args, "%"+term+"%")
 	}
-	query := "SELECT m.id, m.content FROM board_messages m WHERE " + where + " AND (" + strings.Join(parts, " OR ") + ")"
-	if newest {
-		query += " ORDER BY m.id DESC"
-	}
-	// The numbered names are read before the candidates' cursor is opened, so this never holds
-	// two reader connections at once (Security's #3549 review).
-	numbered := s.numberedNames(ctx, s.reader(), project)
+	return s.confirmFrom(ctx, "SELECT m.id, m.content FROM board_messages m WHERE "+where+" AND ("+strings.Join(parts, " OR ")+")"+order, args, nil, subscriberID, jobTitle, numbered)
+}
+
+// confirmFrom runs a candidate query and returns the first message that tags the subscriber; when patterns is
+// set, a candidate must also match them as SQLite's LIKE would (the index's candidates are a superset of the
+// LIKE query's).
+func (s *Store) confirmFrom(ctx context.Context, query string, args []interface{}, patterns []string, subscriberID, jobTitle string, numbered map[string]bool) (int64, error) {
 	rows, err := s.reader().QueryxContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
@@ -1465,6 +1488,9 @@ func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, job
 		var content string
 		if err := rows.Scan(&id, &content); err != nil {
 			return 0, err
+		}
+		if patterns != nil && !likeAny(content, patterns) {
+			continue
 		}
 		if containsExplicitTag(content, subscriberID, jobTitle, numbered) {
 			return id, nil
@@ -1500,9 +1526,10 @@ func (s *Store) HasUnreadMention(ctx context.Context, project, subscriberID stri
 		}
 		return false, err
 	}
+	from := max(sub.LastReadID, s.unreadFloor(ctx, project)) // within the unread window (#3875)
 	id, err := s.confirmedMention(ctx, project, subscriberID, sub.JobTitle,
 		"m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue'",
-		[]interface{}{project, max(sub.LastReadID, s.unreadFloor(ctx, project)), subscriberID}, false) // within the unread window (#3875)
+		[]interface{}{project, from, subscriberID}, from, false)
 	return id > 0, err
 }
 
@@ -1531,7 +1558,7 @@ func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberI
 	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue' AND " + senderClause
 	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
 		args[1] = max(sub.LastReadID, s.unreadFloor(ctx, project)) // within the unread window (#3875)
-		id, err := s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, false)
+		id, err := s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, args[1].(int64), false)
 		return id > 0, err
 	}
 	var found int

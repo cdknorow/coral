@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -57,8 +59,24 @@ func (s *Store) ensureMentionIndexSchema(ctx context.Context) error {
 	}
 	// The backfill: everything already stored. It is bounded by the database, done in chunks, and a store
 	// that cannot finish it still starts: ReadMessages catches up (or reads as it did) when it needs to.
+	// A database with many messages to index says so (Security's #4465 INFO 1), so a slow start is explained.
+	var pending int
+	if err := s.db.GetContext(ctx, &pending, "SELECT COUNT(*) FROM board_messages WHERE id > (SELECT indexed_to FROM board_mention_index_state WHERE id = 1)"); err == nil && pending >= mentionBackfillLogMin {
+		start := time.Now()
+		log.Printf("[board] mention index: indexing %d messages (one time, at start)", pending)
+		err := s.catchUpMentionIndex(ctx)
+		if err != nil {
+			log.Printf("[board] mention index: stopped after %s: %v (reads use the old query until it catches up)", time.Since(start).Round(time.Millisecond), err)
+			return err
+		}
+		log.Printf("[board] mention index: %d messages indexed in %s", pending, time.Since(start).Round(time.Millisecond))
+		return nil
+	}
 	return s.catchUpMentionIndex(ctx)
 }
+
+// mentionBackfillLogMin is how many messages to index at start before the store says it is doing so.
+const mentionBackfillLogMin = 1000
 
 // mentionTokens are the index tokens of a message's text (see the comment above): hex of the bytes, with
 // a one-letter kind in front, so a token is plain ASCII whatever the bytes are.
@@ -264,4 +282,24 @@ func (s *Store) indexedMentionCandidates(ctx context.Context, project, subscribe
 // forgetMentionTokens drops the index rows of deleted messages.
 func forgetMentionTokens(ctx context.Context, ex sqlx.ExecerContext, where string, args ...any) {
 	_, _ = ex.ExecContext(ctx, "DELETE FROM board_message_mentions WHERE message_id IN (SELECT id FROM board_messages WHERE "+where+")", args...)
+}
+
+// mentionIndexClause is the SQL condition that narrows a messages query to the messages that can mention a
+// subscriber: those with one of the tokens (a JSON array bound to the first ?) above a lower id (the second ?),
+// or above the index's watermark, which are not indexed yet and so all stay candidates. alias is the messages
+// table's prefix ("m." or ""). The rules that decide (likeAny, containsExplicitTag) run on what it finds.
+func mentionIndexClause(alias string) string {
+	return "(" + alias + "id IN (SELECT t.message_id FROM board_message_mentions t WHERE t.token IN (SELECT value FROM json_each(?)) AND t.message_id > ?) " +
+		"OR " + alias + "id > (SELECT indexed_to FROM board_mention_index_state WHERE id = 1))"
+}
+
+// mentionIndexTokensJSON is the bound JSON array of a subscriber's candidate tokens, after the index has been
+// caught up; "" when the index cannot answer (an unindexable term, a failed catch-up, tests that read as before).
+func (s *Store) mentionIndexTokensJSON(ctx context.Context, terms []string) string {
+	tokens, ok := mentionCandidateTokens(terms)
+	if !ok || s.noMentionIndex || s.catchUpMentionIndex(ctx) != nil {
+		return ""
+	}
+	arr, _ := json.Marshal(tokens)
+	return string(arr)
 }
