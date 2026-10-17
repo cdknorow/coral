@@ -1,5 +1,41 @@
 # Release Notes
 
+## v1.4.76 — Nudges wait for an agent's turn, Coral's notices drawn as notices, and safer remote servers
+
+### For teams
+
+- **Automated board nudges and messages now wait for a Claude agent's turn to end** (@-mentions still go at once; a prompt or menu on screen still holds everything). Turn it off with the setting `gate_signals_claude` set to false, 0, no or off, or with `CORAL_GATE_MODE=screen` in the server's environment.
+- **Coral's own notices (task updates, board notices) no longer show as your chat messages;** they're drawn as Coral notices.
+
+### Security
+
+- **A remote server reached directly no longer receives the browser's X-API-Key, X-Coral-* or Sec-Fetch-* headers,** and its replies are served sandboxed like a connector's (HTML under /api/remote is a download; Coral's own sandboxed previews still show).
+- **A remote server not marked private must use https;** plain-http servers show a warning, and servers already registered over http keep working.
+- **Listing remote servers and remote boards is for the Operator, not agents.**
+- **The remote-server address check also refuses NAT64 and 6to4 addresses** that embed a private address.
+- **Dashboard files are now served with nosniff, and /static files with Cross-Origin-Resource-Policy: same-origin.**
+
+### Dashboard
+
+- **The Servers tab shows the plain-http warning** in a server's row and its edit form ("Warning:" with an icon, not only a colour), and a refused http address is explained next to the URL field. The Add/Edit server form now matches the other dialogs and fits a phone at 200 percent text.
+- **The Terminal view ends in a slim bar** with the connection state, the columns and rows and the typing hint, which no longer floats over the last line.
+- **The Model field of the launch and restart forms is a picker:** Default, the listed models by name, or Other… for free text.
+- **The Mobile connect dialog says "Sign in to see the API key (run: coral open)"** when you're not signed in, instead of a generic error.
+- **Screen readers:** a rail tile's name now includes its state and unread count ("qa, Working, 9 unread"), read once.
+- **Agent header:** the status dot is named for screen readers (and labelled on touch screens); on a phone at 200 percent text the agent's name stays visible; step bars and Load older are 44 px on touch screens.
+- **The dashboard's cached files are refreshed once with this update** (a new build id); from now on a change of bundler, minifier or stylesheet order does the same.
+
+### Performance
+
+- **Agent requests are cheaper:** a token's owner is cached for up to 10 s, and a revoked token is refused on its next request. Measured in a synthetic in-process test with 8 agents: requests waiting for the database's single write connection fell from about 2,000 to 6-8 per run, p99 from 1.9-3.1 ms to under 0.9 ms, and throughput rose from 10-14k to 16-18k requests a second.
+- **The live agent list reuses the encoded form of rows that didn't change:** in a synthetic test with 20 agents, 55 percent fewer allocations per update (2,896 to 1,314) and about 16 percent less time.
+- **The board notifier looks up agents' terminals less often:** tmux list-panes calls fell from 48 to 26 a minute in total (the rest come from other parts of Coral), and the notifier's CPU by 55 percent.
+- **Shutdown no longer waits up to 30 s** for the call-metrics flush when the database is busy; it gives up after 5 s and logs what it dropped.
+
+### Fixes
+
+- **Startup no longer waits for the local sign-in check before loading the agent list.**
+
 ## v1.4.75 — Chat roll-up, a warning when local sign-in is off, and tighter Coral Hub access
 
 ### Security
