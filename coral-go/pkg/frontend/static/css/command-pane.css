@@ -341,7 +341,7 @@
     }
     #command-pane textarea {
         flex: none;
-        min-height: 44px;
+        min-height: 2.75rem;   /* 44px; rem, so the box grows with the text size */
         max-height: 40vh;
         padding: 0;
         background: transparent;

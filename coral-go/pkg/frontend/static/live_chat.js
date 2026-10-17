@@ -939,16 +939,37 @@ const desktopComposer = window.matchMedia("(min-width: 768px)");
 let _autosizeKey = "";
 let _inputWidth = 0;
 
+// A phone's box has a fixed range of heights (mobile.css); at a large text size the placeholder wraps onto more lines than the range holds
+// and is cut off. An empty box is made tall enough for its placeholder (up to 40 percent of the window); a box with text keeps the range.
+function fitPlaceholder(input) {
+    input.style.removeProperty("min-height");
+    input.style.removeProperty("max-height");
+    if (input.value || !input.placeholder || input.clientWidth < 40) return;   // not laid out yet: nothing to measure
+    const cs = getComputedStyle(input);
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+    const probe = document.createElement("div");
+    probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre-wrap;overflow-wrap:break-word;box-sizing:content-box;width:${input.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)}px;font:${cs.font};line-height:${cs.lineHeight};letter-spacing:${cs.letterSpacing}`;
+    probe.textContent = input.placeholder;
+    document.body.appendChild(probe);
+    const need = Math.min(probe.getBoundingClientRect().height + pad, window.innerHeight * 0.4);
+    probe.remove();
+    if (need > input.offsetHeight + 0.5) {
+        input.style.setProperty("min-height", `${need}px`, "important");
+        input.style.setProperty("max-height", `${need}px`, "important");
+    }
+}
+
 function autosizeCommandInput() {
     const input = document.getElementById("command-input");
     if (!input) return;
-    const key = [input.value, _inputWidth, window.innerHeight, desktopComposer.matches,
+    const key = [input.value, _inputWidth, window.innerHeight, desktopComposer.matches, getComputedStyle(input).fontSize,
         document.getElementById("command-pane")?.classList.contains("chat-mode")].join("\u0001");
     if (key === _autosizeKey) return;
     _autosizeKey = key;
     const before = input.offsetHeight;
     if (!desktopComposer.matches || !input.offsetParent) {
         input.style.height = "";
+        fitPlaceholder(input);
         return;
     }
     // Collapse first so scrollHeight measures the text, not the old height
