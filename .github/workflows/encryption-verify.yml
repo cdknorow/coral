@@ -57,6 +57,7 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # A renamed file counts under both names: foo.go renamed to foo_windows.go leaves the other platforms' builds too.
           all=" linux windows macos "
           plan=""
           if [ "$EVENT" = workflow_dispatch ]; then
@@ -70,7 +71,7 @@ jobs:
             if [ "$EVENT" = pull_request ]; then base="$PR_BASE"; head="$PR_HEAD"; else base="$BEFORE"; head="$SHA"; fi
             files=""
             if [ -n "$base" ] && [ "$base" != 0000000000000000000000000000000000000000 ]; then
-              files="$(gh api "repos/$REPO/compare/$base...$head" --jq 'if (.files | length) < 300 then .files[].filename else "TOO-MANY" end' || echo UNREADABLE)"
+              files="$(gh api "repos/$REPO/compare/$base...$head" --jq 'if (.files | length) < 300 then .files[] | .filename, (.previous_filename // empty) else "TOO-MANY" end' || echo UNREADABLE)"
             fi
             if [ -z "$files" ]; then files=UNREADABLE; fi
             while IFS= read -r f; do
