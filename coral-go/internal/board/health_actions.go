@@ -102,14 +102,15 @@ func (s *Store) TakeHealthAction(ctx context.Context, project, rule, target stri
 // HealthCounter is how often a rule acted on one target about one subject (a task), and
 // whether it has escalated.
 type HealthCounter struct {
-	Count     int  `db:"count"`
-	Escalated bool `db:"escalated"`
+	Count     int    `db:"count"`
+	Escalated bool   `db:"escalated"`
+	LastAt    string `db:"last_at"` // when it last changed ("" when there is none)
 }
 
 // GetHealthCounter returns the counter, zero when there is none.
 func (s *Store) GetHealthCounter(ctx context.Context, project, rule, target, subject string) (HealthCounter, error) {
 	var c HealthCounter
-	err := s.db.GetContext(ctx, &c, `SELECT count, escalated FROM health_counters WHERE project = ? AND rule = ? AND target = ? AND subject = ?`,
+	err := s.db.GetContext(ctx, &c, `SELECT count, escalated, last_at FROM health_counters WHERE project = ? AND rule = ? AND target = ? AND subject = ?`,
 		project, rule, target, subject)
 	if errors.Is(err, sql.ErrNoRows) {
 		return HealthCounter{}, nil
@@ -144,6 +145,12 @@ func (s *Store) ResetHealthCounter(ctx context.Context, project, rule, target, s
 	return err
 }
 
+// ResetHealthCounters forgets every counter of a rule for a target (all its tasks).
+func (s *Store) ResetHealthCounters(ctx context.Context, project, rule, target string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM health_counters WHERE project = ? AND rule = ? AND target = ?`, project, rule, target)
+	return err
+}
+
 // HealthEscalations lists the escalated counters of a board, for the orchestrator's check.
 func (s *Store) HealthEscalations(ctx context.Context, project string) ([]HealthEscalation, error) {
 	var out []HealthEscalation
@@ -157,4 +164,25 @@ type HealthEscalation struct {
 	Target  string `db:"target"`
 	Subject string `db:"subject"`
 	At      string `db:"last_at"`
+}
+
+// TaskLastActivity is when a task last showed activity on the board: its last post, peek or
+// task change (last_activity_at), else when it was claimed. Zero when it has neither.
+func (s *Store) TaskLastActivity(ctx context.Context, project string, id int64) (time.Time, error) {
+	var v sql.NullString
+	if err := s.reader().GetContext(ctx, &v, `SELECT COALESCE(last_activity_at, claimed_at) FROM board_tasks WHERE id = ? AND board_id = ?`, id, project); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
+	}
+	if !v.Valid {
+		return time.Time{}, nil
+	}
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.000000+00:00", "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, v.String); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, nil
 }

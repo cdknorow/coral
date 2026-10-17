@@ -116,6 +116,18 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 		return
 	}
 	issues, assigned, planned := taskQueueIssues(tasks)
+	// What Coral's own rules escalated (#4175: an agent that didn't claim its work after the
+	// claim nudges, or stayed silent after a status nudge); the orchestrator's check in step 2.
+	if esc, err := m.store.HealthEscalations(ctx, project); err == nil {
+		for _, e := range esc {
+			switch e.Rule {
+			case ruleClaimNudge:
+				issues = append(issues, fmt.Sprintf("%s has not claimed task #%s after Coral's claim nudges", e.Target, e.Subject))
+			case ruleStatusNudge:
+				issues = append(issues, fmt.Sprintf("%s has been silent on task #%s since Coral asked for a status", e.Target, e.Subject))
+			}
+		}
+	}
 	recipients := orchestratorRecipients(subs)
 	if len(recipients) == 0 {
 		if len(issues) == 0 {

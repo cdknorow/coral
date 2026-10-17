@@ -990,6 +990,9 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		healthMonitor.SetRuntime(agentRT)
 		healthMonitor.SetIdleThresholds(time.Duration(cfg.TaskIdleReminderS)*time.Second, time.Duration(cfg.TaskIdleEscalationS)*time.Second)
 		safeGo(ctx, "board_health_monitor", func() { healthMonitor.Run(ctx) })
+		// Coral acts on the mechanical items itself (#4175): claim and status nudges.
+		healthNudges := background.NewHealthNudges(srv.BoardStore(), taskStore, agentRT, discoverFn)
+		safeGo(ctx, "health_nudges", func() { healthNudges.Run(ctx) })
 	}
 
 	// Remote board poller
