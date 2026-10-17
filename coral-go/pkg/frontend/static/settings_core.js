@@ -142,6 +142,9 @@ export async function loadSettings() {
         const autoResume = document.getElementById('settings-auto-resume');
         // Off unless the Operator turned it on (#3613).
         if (autoResume) autoResume.checked = settingBool(s.auto_resume_after_api_error || undefined, false);
+        const autoGoals = document.getElementById('settings-auto-goals');
+        // On unless the Operator turned it off (#4204).
+        if (autoGoals) autoGoals.checked = settingBool(s.auto_goals || undefined, true);
         const debugInput = document.getElementById('settings-debug-input-log');
         if (debugInput) debugInput.checked = settingBool(s.debug_input_log, false);
         try {

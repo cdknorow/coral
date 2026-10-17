@@ -307,6 +307,15 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		body[auth.RequireAuthOnLoopbackSetting] = strconv.FormatBool(on)
 	}
+	// auto_goals (#4204): a boolean, normalised to "true"/"false".
+	if v, ok := body[background.GoalSettingKey]; ok {
+		on, valid := validBoolSetting(v)
+		if !valid {
+			errBadRequest(w, background.GoalSettingKey+" must be true or false")
+			return
+		}
+		body[background.GoalSettingKey] = strconv.FormatBool(on)
+	}
 	var current map[string]string
 	for k, v := range body {
 		agentType, isCLIPath := agent.IsCLIPathSetting(k)

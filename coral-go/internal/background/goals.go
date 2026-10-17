@@ -2,6 +2,8 @@ package background
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,12 +45,17 @@ const (
 	// goalQuietPeriod is how long the transcript must be still before the
 	// turn counts as ended.
 	goalQuietPeriod = 20 * time.Second
-	// goalMinInterval spaces refreshes when turns end in quick succession.
-	goalMinInterval = 2 * time.Minute
+	// goalMinInterval is the least time between two automatic goals for one agent (#4204): a
+	// goal names the user's task, which rarely changes faster, and each goal is a CLI run on the
+	// user's account.
+	goalMinInterval = 30 * time.Minute
 	// goalMaxInterval refreshes a long-running turn that never goes quiet.
-	goalMaxInterval = 5 * time.Minute
-	// goalFailureBackoff pauses a session after the CLI fails.
-	goalFailureBackoff = 10 * time.Minute
+	goalMaxInterval = time.Hour
+	// goalFailureBackoff pauses a session after the CLI fails, doubling for each failure in a
+	// row up to goalMaxFailureBackoff (#4204: a CLI that always times out cost a run every
+	// 10 minutes per agent).
+	goalFailureBackoff    = 30 * time.Minute
+	goalMaxFailureBackoff = 4 * time.Hour
 	// goalCLITimeout bounds one CLI call, including its startup.
 	goalCLITimeout = 60 * time.Second
 	// goalConcurrency caps CLI calls running at once.
@@ -169,12 +176,32 @@ type goalState struct {
 	size        int64     // transcript size at the last generation
 	generatedAt time.Time // last successful generation
 	failedAt    time.Time // last CLI failure
+	failures    int       // CLI failures in a row
 	inFlight    bool
 	force       bool   // operator asked for a refresh
 	trigger     string // why the in-flight generation was started
-	// transcript is read incrementally; only generate touches it, and only
+	// transcript is read incrementally; only generate touches it and basis, and only
 	// one generate runs per session (inFlight).
 	transcript goalTranscript
+	// basis is goalBasis of the input the current automatic goal was made from.
+	basis string
+}
+
+// goalBackoff is how long a session waits after its failures-th CLI failure in a row.
+func goalBackoff(failures int) time.Duration {
+	d := goalFailureBackoff
+	for i := 1; i < failures && d < goalMaxFailureBackoff; i++ {
+		d *= 2
+	}
+	return min(d, goalMaxFailureBackoff)
+}
+
+// goalBasis identifies what a goal is made from: the user's requests (#4204). The agent's
+// replies and tool calls are its steps; while the requests are the same, so is the task, and
+// the CLI is not asked again.
+func goalBasis(in goalInput) string {
+	sum := sha256.Sum256([]byte(in.Earlier + "\x00" + in.Request))
+	return hex.EncodeToString(sum[:8])
 }
 
 // goalDue reports whether a session needs a new goal, and the trigger (a
@@ -187,7 +214,7 @@ func goalDue(st goalState, size int64, modAt, now time.Time) (bool, string) {
 	if st.force {
 		return true, store.GoalTriggerManual
 	}
-	if !st.failedAt.IsZero() && now.Sub(st.failedAt) < goalFailureBackoff {
+	if !st.failedAt.IsZero() && now.Sub(st.failedAt) < goalBackoff(st.failures) {
 		return false, ""
 	}
 	if size <= st.size {
@@ -197,7 +224,10 @@ func goalDue(st goalState, size int64, modAt, now time.Time) (bool, string) {
 		return true, store.GoalTriggerFirst
 	}
 	since := now.Sub(st.generatedAt)
-	if now.Sub(modAt) >= goalQuietPeriod && since >= goalMinInterval {
+	if since < goalMinInterval {
+		return false, ""
+	}
+	if now.Sub(modAt) >= goalQuietPeriod {
 		return true, store.GoalTriggerTurnEnd
 	}
 	if since >= goalMaxInterval {
@@ -299,7 +329,7 @@ func (g *GoalGenerator) Status(ctx context.Context) GoalGeneratorStatus {
 		if s.inFlight {
 			st.InFlight++
 		}
-		if !s.failedAt.IsZero() && now.Sub(s.failedAt) < goalFailureBackoff {
+		if !s.failedAt.IsZero() && now.Sub(s.failedAt) < goalBackoff(s.failures) {
 			st.BackingOff++
 		}
 	}
@@ -463,6 +493,7 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 	if info, err := os.Stat(path); err == nil {
 		size = info.Size()
 	}
+	var goalAt time.Time // the stored goal's time, when this run kept it
 	attempt := &store.GoalGeneration{
 		SessionID: ls.SessionID, AgentName: ls.AgentName, AgentType: ls.AgentType,
 		Trigger: trigger, TranscriptBytes: size,
@@ -478,16 +509,21 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 		st.size = size
 		switch {
 		case attempt.Outcome == "":
-			// Not attempted: no transcript to read, or no answer yet.
+			// Not attempted: no transcript to read, no answer yet, or the same requests.
+			if st.generatedAt.IsZero() && !goalAt.IsZero() {
+				st.generatedAt = goalAt // after a restart: the stored goal's time counts
+			}
 		case store.IsGoalFailure(attempt.Outcome):
 			st.failedAt = g.now()
+			st.failures++
 		default:
 			st.generatedAt = g.now()
 			st.failedAt = time.Time{}
+			st.failures = 0
 		}
 	}()
 
-	current, source := g.latestGoal(ctx, ls.SessionID)
+	current, source, currentBasis, currentAt := g.latestGoal(ctx, ls.SessionID)
 	if source == GoalSourceUser {
 		// The operator's goal stands; check again when there is more work.
 		attempt.Outcome = store.GoalOutcomeUserGoal
@@ -514,6 +550,14 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 	}
 	if !in.HasAssistant {
 		size = 0 // nothing to describe yet; retry once the agent answers
+		return
+	}
+	basis := goalBasis(in)
+	if tr.basis == "" && source == GoalSourceAuto {
+		tr.basis = currentBasis // the stored goal's, after a restart
+	}
+	if trigger != store.GoalTriggerManual && current != "" && basis == tr.basis {
+		goalAt = currentAt // the same requests: the goal stands, and no CLI run
 		return
 	}
 
@@ -543,12 +587,13 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 		return
 	}
 	attempt.Goal = goal
+	tr.basis = basis
 	if goal == current {
 		attempt.Outcome = store.GoalOutcomeUnchanged
 		return
 	}
 	attempt.Outcome = store.GoalOutcomeStored
-	detail := fmt.Sprintf(`{"source":%q}`, GoalSourceAuto)
+	detail := fmt.Sprintf(`{"source":%q,"basis":%q}`, GoalSourceAuto, basis)
 	sid := ls.SessionID
 	if _, err := g.taskStore.InsertAgentEvent(ctx, &store.AgentEvent{
 		AgentName:  ls.AgentName,
@@ -591,14 +636,23 @@ func (g *GoalGenerator) pruneMetrics(ctx context.Context) {
 	}
 }
 
-// latestGoal returns the session's newest goal and its source ("" for goals
-// that predate sources).
-func (g *GoalGenerator) latestGoal(ctx context.Context, sessionID string) (goal, source string) {
+// latestGoal returns the session's newest goal, its source ("" for goals that predate
+// sources), the goalBasis it was made from ("" before #4204) and when it was stored.
+func (g *GoalGenerator) latestGoal(ctx context.Context, sessionID string) (goal, source, basis string, at time.Time) {
 	ev, err := g.taskStore.GetLatestGoalEvent(ctx, sessionID)
 	if err != nil || ev == nil {
-		return "", ""
+		return "", "", "", time.Time{}
 	}
-	return ev.Summary, GoalSource(ev.DetailJSON)
+	if ev.DetailJSON != nil {
+		var d struct {
+			Basis string `json:"basis"`
+		}
+		if json.Unmarshal([]byte(*ev.DetailJSON), &d) == nil {
+			basis = d.Basis
+		}
+	}
+	at, _ = time.Parse(store.ISOFormat, ev.CreatedAt)
+	return ev.Summary, GoalSource(ev.DetailJSON), basis, at
 }
 
 // GoalSource reads the source out of a goal event's detail_json.

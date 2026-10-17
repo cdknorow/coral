@@ -34,12 +34,17 @@ The goal half of this spec shipped, simpler than planned:
   (for "yes, go ahead" follow-ups) and the agent's latest reply; no tool
   calls or output. The transcript is read incrementally from byte 0, so a
   request behind megabytes of tool output is still found.
-- Refresh: first goal once the agent has answered; then when the transcript
-  has grown **and** either it has been quiet 20 s (turn ended) with ≥ 2 min
-  since the last goal, or 5 min have passed. 10 min backoff after a failure.
-  Gating state is in memory, not `session_meta` (a restart regenerates once).
+- Refresh (#4204): first goal once the agent has answered; then when the
+  transcript has grown, ≥ 30 min have passed since the last goal, either it
+  has been quiet 20 s (turn ended) or 60 min have passed, **and** the user's
+  requests (the two the model reads) differ from the ones the goal was made
+  from; replies alone never rerun the CLI. Backoff after a failure: 30 min,
+  doubling for each failure in a row, at most 4 h. Gating state is in memory;
+  the goal event carries its requests' hash (`basis`), so a restart does not
+  regenerate a goal whose requests are unchanged. Settings > "Name each
+  agent's goal" turns it off (`auto_goals`).
 - Storage is the existing `goal` agent event with `detail_json`
-  `{"source":"auto"}`; typed edits get `{"source":"user"}` and are never
+  `{"source":"auto","basis":"<hash>"}`; typed edits get `{"source":"user"}` and are never
   replaced. Both payload builders show the **newest** goal event, falling
   back to the PULSE line; PULSE changes are recorded as goal events from both
   builders, and a PULSE line already on record is not replayed after restart.

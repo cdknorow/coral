@@ -28,6 +28,16 @@ import (
 )
 
 func main() {
+	// A one-shot "--print" call (Coral's goal generator, #4204) is answered as the claude CLI
+	// answers it with --output-format json, so a harness using the mock as its CLI sees goals
+	// stored, not a timeout per call.
+	for _, a := range os.Args[1:] {
+		if a == "--print" || a == "-p" {
+			printOneShot(os.Stdin, os.Stdout)
+			return
+		}
+	}
+
 	// Parse flags loosely — we only need to consume them so the process doesn't error.
 	var sessionID, settingsFile, model string
 	var positionalArgs []string
@@ -335,4 +345,20 @@ func short(id string) string {
 		return id[:8]
 	}
 	return id
+}
+
+// printOneShot answers a --print prompt read from in: the first line after "LATEST USER
+// REQUEST:" (the goal prompt's request) as the result, else a fixed line.
+func printOneShot(in io.Reader, out io.Writer) {
+	prompt, _ := io.ReadAll(io.LimitReader(in, 1<<20))
+	result := "Mock agent goal"
+	if _, rest, ok := strings.Cut(string(prompt), "LATEST USER REQUEST:\n"); ok {
+		if line, _, _ := strings.Cut(rest, "\n"); strings.TrimSpace(line) != "" {
+			result = strings.TrimSpace(line)
+		}
+	}
+	_ = json.NewEncoder(out).Encode(map[string]any{
+		"type": "result", "result": result, "is_error": false, "total_cost_usd": 0,
+		"usage": map[string]int{"input_tokens": len(prompt) / 4, "output_tokens": 8},
+	})
 }

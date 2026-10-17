@@ -32,13 +32,15 @@ func TestGoalDue(t *testing.T) {
 	}{
 		{"first goal as soon as there is a transcript", goalState{}, 10, busy, store.GoalTriggerFirst},
 		{"nothing new since the last goal", gen(time.Hour), 100, quiet, ""},
-		{"turn ended, min interval passed", gen(3 * time.Minute), 200, quiet, store.GoalTriggerTurnEnd},
-		{"turn ended, too soon", gen(time.Minute), 200, quiet, ""},
-		{"still working, under max interval", gen(3 * time.Minute), 200, busy, ""},
-		{"still working, max interval passed", gen(6 * time.Minute), 200, busy, store.GoalTriggerInterval},
+		{"turn ended, min interval passed", gen(31 * time.Minute), 200, quiet, store.GoalTriggerTurnEnd},
+		{"turn ended, too soon", gen(29 * time.Minute), 200, quiet, ""},
+		{"still working, under max interval", gen(31 * time.Minute), 200, busy, ""},
+		{"still working, max interval passed", gen(61 * time.Minute), 200, busy, store.GoalTriggerInterval},
 		{"in flight", goalState{inFlight: true}, 10, quiet, ""},
-		{"failed recently", goalState{failedAt: now.Add(-time.Minute)}, 10, quiet, ""},
-		{"failure backoff over", goalState{failedAt: now.Add(-11 * time.Minute)}, 10, quiet, store.GoalTriggerFirst},
+		{"failed recently", goalState{failedAt: now.Add(-time.Minute), failures: 1}, 10, quiet, ""},
+		{"failure backoff over", goalState{failedAt: now.Add(-31 * time.Minute), failures: 1}, 10, quiet, store.GoalTriggerFirst},
+		{"second failure in a row: an hour", goalState{failedAt: now.Add(-59 * time.Minute), failures: 2}, 10, quiet, ""},
+		{"many failures: at most 4 hours", goalState{failedAt: now.Add(-241 * time.Minute), failures: 20}, 10, quiet, store.GoalTriggerFirst},
 		{"forced bypasses interval, backoff and growth", goalState{size: 100, generatedAt: now, failedAt: now, force: true}, 100, busy, store.GoalTriggerManual},
 	}
 	for _, c := range cases {
@@ -371,4 +373,70 @@ func TestGoalsDisabledAnyCase(t *testing.T) {
 		assert.Equal(t, want, GoalsDisabled(map[string]string{GoalSettingKey: v}), "%q", v)
 	}
 	assert.False(t, GoalsDisabled(map[string]string{}), "missing: on")
+}
+
+// fakeClock makes the generator's clock and the transcript's modification time step together.
+func (f *goalFixture) fakeClock(t *testing.T) func(d time.Duration) {
+	t.Helper()
+	clock := time.Now()
+	f.gen.now = func() time.Time { return clock }
+	return func(d time.Duration) {
+		clock = clock.Add(d)
+		quiet := clock.Add(-time.Minute) // the turn has ended
+		require.NoError(t, os.Chtimes(f.path, quiet, quiet))
+	}
+}
+
+// A goal names the user's task: the agent's further replies do not change it, so after the
+// first goal the CLI runs again only for a new request, and not within 30 minutes (#4204).
+func TestGoalGenerator_RunsAgainOnlyForANewRequestAfterTheMinInterval(t *testing.T) {
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g014", AgentType: "claude", AgentName: "coral-go"})
+	advance := f.fakeClock(t)
+	f.poll()
+	require.Equal(t, int32(1), f.calls.Load())
+
+	f.appendTranscript(t,
+		`{"type":"user","message":{"role":"user","content":"Now add goal metrics"},"timestamp":"2026-09-21T11:01:00Z"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Adding them."}]},"timestamp":"2026-09-21T11:01:05Z"}`)
+	advance(time.Minute)
+	f.poll()
+	assert.Equal(t, int32(1), f.calls.Load(), "a new request within 30 minutes of the last goal waits")
+	advance(30 * time.Minute)
+	f.poll()
+	assert.Equal(t, int32(2), f.calls.Load(), "a new request after 30 minutes: one run")
+	assert.Contains(t, f.prompt, "LATEST USER REQUEST:\nNow add goal metrics")
+
+	f.appendTranscript(t, `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Still adding them."}]},"timestamp":"2026-09-21T12:00:00Z"}`)
+	advance(2 * time.Hour)
+	f.poll()
+	assert.Equal(t, int32(2), f.calls.Load(), "more replies to the same request: no run")
+
+	f.gen.RequestGoal(f.sid)
+	f.poll()
+	assert.Equal(t, int32(3), f.calls.Load(), "the operator's refresh always runs")
+}
+
+// After a restart (an upgrade), an agent whose requests are those its stored goal was made
+// from is not asked again, and the stored goal's time starts its 30 minutes (#4204).
+func TestGoalGenerator_ARestartKeepsAGoalMadeFromTheSameRequests(t *testing.T) {
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g015", AgentType: "claude", AgentName: "coral-go"})
+	f.poll()
+	require.Equal(t, int32(1), f.calls.Load())
+
+	first := f.gen
+	f.gen = NewGoalGenerator(f.ss, f.ts, time.Hour)
+	f.gen.resolveCLI, f.gen.runCLI = first.resolveCLI, first.runCLI
+	advance := f.fakeClock(t)
+	f.poll()
+	assert.Equal(t, int32(0), f.calls.Load()-1, "the stored goal stands")
+
+	f.appendTranscript(t,
+		`{"type":"user","message":{"role":"user","content":"Now add goal metrics"},"timestamp":"2026-09-21T12:30:00Z"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Adding them."}]},"timestamp":"2026-09-21T12:30:05Z"}`)
+	advance(time.Minute)
+	f.poll()
+	assert.Equal(t, int32(1), f.calls.Load(), "30 minutes from the stored goal")
+	advance(30 * time.Minute)
+	f.poll()
+	assert.Equal(t, int32(2), f.calls.Load())
 }
