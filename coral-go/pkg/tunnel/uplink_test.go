@@ -333,16 +333,18 @@ func TestUplinkSingleBulkThroughput(t *testing.T) {
 		require.EqualValues(t, size, n)
 		return time.Since(start)
 	}
-	// Throttled: 1 MiB at 5 Mbit is ~1.7 s on the wire. Three downloads each way, interleaved
-	// (off, on, off, ...) so a slow stretch of a shared runner lands on both sides, and the medians
-	// compared: one sample each failed the 10% margin on windows-tests twice on trees that did not
-	// touch this package (2.008 s before, 2.244 s after; #4397).
-	off := hol
-	off.queue = 512 << 10
-	on := hol
-	on.queue = sendLowWater
-	sOff := connectShaped(t, newHub(t, SessionConfig{}), localApp(), off, uplinkConfig{Off: true})
-	sOn := connectShaped(t, newHub(t, SessionConfig{}), localApp(), on, uplinkConfig{})
+	// Throttled: 1 MiB at 5 Mbit is ~1.7 s on the wire. The scheduler off and on over the SAME
+	// link (the shipped 16 KiB send queue), so the comparison is the scheduler's own cost. With the
+	// old 512 KiB queue on the "off" side it also measured the small queue: the test's shaped link
+	// paces one packet every ~2.3 ms and loses the time whenever its queue runs dry, which a 16 KiB
+	// queue refilled by a goroutine does on a busy 2-core runner (windows-tests twice: 2.008 s
+	// before, 2.244 s and 2.316 s after, on trees that did not touch this package; #4397). Three
+	// downloads each way, interleaved (off, on, off, ...) so a slow stretch lands on both sides, and
+	// the medians compared.
+	shape := hol
+	shape.queue = sendLowWater
+	sOff := connectShaped(t, newHub(t, SessionConfig{}), localApp(), shape, uplinkConfig{Off: true})
+	sOn := connectShaped(t, newHub(t, SessionConfig{}), localApp(), shape, uplinkConfig{})
 	var offs, ons []time.Duration
 	for i := 0; i < 3; i++ {
 		offs = append(offs, download(sOff, 1<<20))
