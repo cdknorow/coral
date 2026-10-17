@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"github.com/cdknorow/coral/internal/testleak"
 	"os"
 	"runtime"
 	"testing"
@@ -18,7 +19,7 @@ func TestMain(m *testing.M) {
 	// The tests drive shells, which need no 300ms between a command and its
 	// Enter (production keeps it for agent TUIs).
 	SetSendKeysSettleForTest(20 * time.Millisecond)
-	os.Exit(m.Run())
+	os.Exit(testleak.Check(m.Run())) // no goroutine left running (#4167)
 }
 
 // skipWithoutUnixTmux skips a test that needs a real tmux, its socket, a shell script standing in

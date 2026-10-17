@@ -2,6 +2,7 @@ package routes
 
 import (
 	"fmt"
+	"github.com/cdknorow/coral/internal/testleak"
 	"os"
 	"path/filepath"
 	"testing"
@@ -45,7 +46,7 @@ func TestMain(m *testing.M) {
 			code = 1
 		}
 	}
-	os.Exit(code)
+	os.Exit(testleak.Check(code)) // no goroutine left running (#4167)
 }
 
 // packageArtifactFiles lists the files under ./artifacts (the package folder), if any.
