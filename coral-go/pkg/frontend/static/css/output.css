@@ -479,6 +479,7 @@ body.panel-dragging .xterm-container {
 .terminal-statusbar-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
 .terminal-statusbar[data-state="connected"] .terminal-statusbar-dot { background: var(--success); }
 .terminal-statusbar[data-state="reconnecting"] .terminal-statusbar-dot,
+.terminal-statusbar[data-state="restarting"] .terminal-statusbar-dot,
 .terminal-statusbar[data-state="connecting"] .terminal-statusbar-dot { background: var(--warning); }
 .terminal-statusbar[data-state="ended"] .terminal-statusbar-dot { background: var(--error); }
 .terminal-statusbar-size { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

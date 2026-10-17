@@ -315,7 +315,7 @@ export function setRestarting(value, sessionId = state.currentSession && state.c
 function _setSessionEndedOverlay(visible) {
     const overlay = document.getElementById("session-ended-overlay");
     if (!overlay) return;
-    if (visible) setTerminalState('ended');
+    if (visible && !currentIsRestarting()) setTerminalState('ended');
 
     if (visible && !currentIsRestarting()) {
         // Before showing "Session ended", check if we can reach the server.

@@ -6,6 +6,7 @@ const STATES = {
     connected: 'Connected',
     reconnecting: 'Reconnecting',
     ended: 'Session ended',
+    restarting: 'Restarting',
 };
 
 const bar = () => document.getElementById('terminal-statusbar');
@@ -16,13 +17,18 @@ export function showTerminalStatusbar(on) {
     if (b) b.style.display = on ? '' : 'none';
 }
 
-/** One of connecting, connected, reconnecting, ended. */
+/** One of connecting, connected, reconnecting, ended, restarting. */
 export function setTerminalState(name) {
     const b = bar();
     if (!b || !STATES[name]) return;
     b.dataset.state = name;
     const text = b.querySelector('.terminal-statusbar-state-text');
     if (text) text.textContent = STATES[name];
+}
+
+/** The state now shown, '' when there is no bar. */
+export function terminalState() {
+    return bar()?.dataset.state || '';
 }
 
 /** The terminal's size, as "cols × rows". */

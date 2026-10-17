@@ -2,6 +2,7 @@
 // node shared by every agent and by both views, so "restarting" is kept per session id: it follows the agent that is
 // restarting, not whichever one is on screen when the restart ends.
 import { state } from './state.js';
+import { setTerminalState, terminalState } from './terminal_statusbar.js';
 
 const restarting = new Set();
 
@@ -37,11 +38,13 @@ export function showRestartingOverlay() {
     show('session-ended-default', false);
     show('session-restarting', true);
     show('session-lost-connection', false);
+    setTerminalState('restarting'); // the bar over the chat says so too, not "Session ended"
 }
 
 export function hideSessionOverlay() {
     const overlay = document.getElementById('session-ended-overlay');
     if (overlay) overlay.style.display = 'none';
+    if (terminalState() === 'restarting') setTerminalState('connecting'); // what the bar says before any socket (the Terminal view's own states follow)
 }
 
 // The overlay for the agent now on screen: "restarting" if it is, otherwise gone (hide: false leaves a shown "Session ended" alone).
