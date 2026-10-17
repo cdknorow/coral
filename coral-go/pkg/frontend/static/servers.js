@@ -64,6 +64,9 @@ export function hideServersModal() {
     _editing = null;
 }
 
+// A refused URL (the server's 400 for an http URL at an address that is not private) is shown next to the URL field.
+let _urlError = '';
+
 async function readBody(resp) {
     try { return await resp.json(); } catch { return {}; }
 }
@@ -87,6 +90,14 @@ async function load() {
 function statusPill(status) {
     const m = statusMeta(status);
     return `<span class="server-status server-${m.cls}" title="${escHtml(m.hint)}"><span class="server-dot" aria-hidden="true"></span>${escHtml(m.label)}</span>`;
+}
+
+/** The server's warning for a registered server (a plain-http URL at an address that is not this computer: the API key crosses the network
+ *  unencrypted), as an icon and words, not only a colour: "Warning: The key crosses the network unencrypted; use https or a tunnel." */
+function warningHtml(text, cls = '') {
+    const t = String(text || '').trim();
+    if (!t) return '';
+    return `<div class="servers-row-warn ${cls}"><span class="material-icons" aria-hidden="true">warning</span><span><b>Warning:</b> ${escHtml(t.charAt(0).toUpperCase() + t.slice(1))}${/[.!?]$/.test(t) ? '' : '.'}</span></div>`;
 }
 
 function rowHtml(s) {
@@ -123,6 +134,7 @@ function rowHtml(s) {
         <div class="servers-row-main">
             <div class="servers-row-title">${escHtml(s.label || s.id)} <span class="servers-id">${escHtml(s.id)}</span>${s.allow_private ? ' <span class="servers-tag" title="Private network addresses are allowed for this server">private network</span>' : ''}${badge ? ' ' + badge : ''}</div>
             <div class="servers-row-meta">${meta.map(escHtml).join(' &middot; ')}</div>
+            ${warningHtml(s.warning)}
             ${below ? `<div class="servers-row-hint server-below-minimum">${escHtml(below)}</div>` : ''}
             ${attention}
         </div>
@@ -152,8 +164,10 @@ function formHtml() {
         <label>Display name
             <input type="text" name="label" value="${escHtml(cur.label || '')}" placeholder="Workstation"></label>
         <label>URL
-            <input type="url" name="url" value="${escHtml(cur.url || '')}" placeholder="https://coral.example.com:8420" required>
+            <input type="url" name="url" value="${escHtml(cur.url || '')}" placeholder="https://coral.example.com:8420" required${_urlError ? ' aria-invalid="true" aria-describedby="servers-url-error"' : ''}>
             <span class="servers-help">Scheme, host and port only.</span></label>
+        ${_urlError ? `<div class="servers-url-error" id="servers-url-error" role="alert"><span class="material-icons" aria-hidden="true">error</span><span>${escHtml(_urlError)}</span></div>` : ''}
+        ${adding ? '' : warningHtml((_servers.find(x => x.id === _editing) || {}).warning)}
         <label>API key
             <input type="password" name="api_key" value="" autocomplete="new-password" spellcheck="false" placeholder="${adding ? 'Paste the remote server\'s API key' : 'Leave blank to keep the current key'}" ${adding ? 'required' : ''}>
             <span class="servers-help">Write-only. The key is stored encrypted and is never shown again.</span></label>
@@ -187,7 +201,7 @@ function render() {
     }
     if (_editing !== null) {
         const f = m.querySelector('#servers-form');
-        const target = f && (f.elements[_editing === '' ? 'id' : 'label']);
+        const target = f && (_urlError ? f.elements.url : f.elements[_editing === '' ? 'id' : 'label']);
         if (target) target.focus();
     }
 }
@@ -199,9 +213,9 @@ async function onClick(e) {
     if (!btn) return;
     const action = btn.dataset.action;
     const id = btn.dataset.id;
-    if (action === 'add') { _editing = ''; _formError = ''; _draft = null; return render(); }
-    if (action === 'edit') { _editing = id; _formError = ''; _draft = null; _confirmDelete = null; return render(); }
-    if (action === 'cancel-form') { _editing = null; _formError = ''; _draft = null; return render(); }
+    if (action === 'add') { _editing = ''; _formError = ''; _urlError = ''; _draft = null; return render(); }
+    if (action === 'edit') { _editing = id; _formError = ''; _urlError = ''; _draft = null; _confirmDelete = null; return render(); }
+    if (action === 'cancel-form') { _editing = null; _formError = ''; _urlError = ''; _draft = null; return render(); }
     if (action === 'delete') { _confirmDelete = id; return render(); }
     if (action === 'delete-cancel') { _confirmDelete = null; return render(); }
     if (action === 'delete-confirm') return doDelete(id);
@@ -271,7 +285,7 @@ async function onSubmit(e) {
     _draft = { id, label, url, allow_private: !!f.elements.allow_private.checked };
     // Drop the key from the DOM immediately; it only lives in `body` for this request.
     if (f.elements.api_key) f.elements.api_key.value = '';
-    setBusy('*', true); _formError = '';
+    setBusy('*', true); _formError = ''; _urlError = '';
     try {
         const resp = await fetch(adding ? '/api/servers' : `/api/servers/${encodeURIComponent(_editing)}`, {
             method: adding ? 'POST' : 'PATCH',
@@ -280,7 +294,8 @@ async function onSubmit(e) {
         });
         const data = await readBody(resp);
         if (!resp.ok) {
-            _formError = describeServerError(resp.status, data);
+            const message = describeServerError(resp.status, data);
+            if (resp.status === 400 && /\burl\b/i.test(data && data.error || '')) _urlError = message; else _formError = message;
         } else {
             _editing = null; _draft = null;
             showToast(adding ? 'Server added' : 'Server updated');
