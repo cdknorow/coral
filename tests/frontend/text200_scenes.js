@@ -1,3 +1,4 @@
+// The scenes of the five text200_*_browser suites: the one suite took 70 s on a fast machine and 119 s on a slow CI runner against the 120 s limit, so each group of scenes is its own suite.
 // Views at 200% text on a touch phone (#4344, from the #4276 audit's gaps): every top tab, the side panel's tabs, Settings and every dialog at 390 px with the
 // root font doubled and touch on: the page is not wider than the screen, no control runs off an edge, no text is cut without an ellipsis, every control is
 // 44 px, and text that is sized in rem/em grows with the root font (the CSS and the inline styles no longer use px font sizes: font_size_units.test.mjs).
@@ -13,7 +14,9 @@ const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRec
         const fs = parseFloat(getComputedStyle(e).fontSize);
         if ('${stage}' === 'a') e.__fs16 = fs; else if (e.__fs16 && fs / e.__fs16 < 1.6) out.push((e.id ? '#' + e.id : e.tagName.toLowerCase()) + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') + ' ' + e.__fs16 + '->' + fs + ' "' + e.textContent.trim().slice(0, 24) + '"'); }
     return out; })()`;
-(async () => {
+const GROUPS = ['tabs', 'drawers', 'dialogs', 'wide', 'light'];
+module.exports = async function runScenes(group) {
+    if (!GROUPS.includes(group)) throw new Error('text200_scenes: unknown group ' + JSON.stringify(group) + ', expected one of ' + GROUPS.join(', '));
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const report = []; const problems = [];
@@ -60,30 +63,39 @@ const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRec
             } catch (e) { report.push(`${name}: ERROR ${String(e.message).slice(0, 1400)}`); problems.push(`${name}: the probe itself failed: ${String(e.message).slice(0, 300)}`); }
             await ev(`document.documentElement.style.fontSize = ''; true`);
         };
-        for (const tab of ['agents', 'history', 'workflows', 'jobs', 'tokens', 'docs', 'servers', 'board']) await probe('tab ' + tab, () => ev(`window.switchNavTab('${tab}'); true`));
-        await ev(`window.switchNavTab('agents'); true`);
-        await probe('agent chat', () => ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`));
-        await ev(`(document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); true`); await sleep(800); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
-        for (const tab of ['tasks', 'board', 'files', 'notes', 'activity', 'artifacts']) await probe('drawer ' + tab, () => ev(`window.switchAgenticTab('${tab}', 'top'); true`), '#agentic-state');
-        await ev(`(document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`);
-        await probe('settings', () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`), '#settings-modal');
-        await ev(`window.hideSettingsModal(); true`);
-        const ids = await ev(`[...document.querySelectorAll('.modal[role=dialog]')].map(m => m.id).filter(id => id !== 'settings-modal')`);
-        for (const id of ids) { await probe('dialog ' + id, () => ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'flex'; true`), '#' + id); await ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'none'; true`); }
-        await probe('launch step 2 (agent) with Agent Configuration open', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await sleep(800); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
-            await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await sleep(1000); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
-            await ev(`{ const d = [...document.querySelectorAll('summary')].find(b => b.textContent.trim() === 'Agent Configuration'); if (d) d.parentElement.open = true; } true`); }, '#launch-modal');
-        await ev(`document.getElementById('launch-modal').style.display = 'none'; true`);
-        await ev(`document.documentElement.style.fontSize = ''; true`);
-        // (#4352) a long list and a task with real content, then the same views on a tablet, in landscape and in the light theme
-        await ev(`for (let i = 0; i < 30; i++) window.__m.add('list-agent-' + i + '-with-a-longer-name', 'L', 2, { sleeping: i % 3 === 0 }); true`); await sleep(1200); // sleep-ok: the list renders from several answers
-        await probe('agents list, 30 agents', () => ev(`window.switchNavTab('agents'); window.goHome && window.goHome(); true`));
-        const taskId = await ev(`(async () => { const r = await fetch('/api/board/${board}/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'A task with a rather long title that has to wrap in the dialog at large text sizes', body: 'Line one of the body.\\n\\n- a bullet with a long run of words that wraps\\n- another bullet\\n\\n~~~\\nsome_long_command --with-many --flags and-a-very-long-argument-that-does-not-wrap\\n~~~', created_by: 'Operator' }) }).catch(() => null); const d = r && r.ok ? await r.json().catch(() => null) : null; return d && (d.id || (d.task && d.task.id)) || null; })()`);
-        if (taskId) {
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); (document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); window.switchAgenticTab('tasks', 'top'); true`); await sleep(1500); // sleep-ok: the board's tasks load over a few answers
-            await probe('task details with content', () => ev(`window.showTaskDetailModal(${JSON.stringify(taskId)}); true`), '#task-detail-modal');
-            await ev(`window.hideTaskDetailModal && window.hideTaskDetailModal(); (document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`);
-        } else report.push('task details: the board refused the task here, not probed');
+        if (group === 'tabs') {
+            for (const tab of ['agents', 'history', 'workflows', 'jobs', 'tokens', 'docs', 'servers', 'board']) await probe('tab ' + tab, () => ev(`window.switchNavTab('${tab}'); true`));
+            await ev(`window.switchNavTab('agents'); true`);
+            await probe('agent chat', () => ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`));
+        }
+        if (group === 'drawers') {
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(900); // sleep-ok: the agent view fills from several answers; there is no completion event
+            await ev(`(document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); true`); await sleep(800); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+            for (const tab of ['tasks', 'board', 'files', 'notes', 'activity', 'artifacts']) await probe('drawer ' + tab, () => ev(`window.switchAgenticTab('${tab}', 'top'); true`), '#agentic-state');
+            await ev(`(document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`);
+        }
+        if (group === 'dialogs') {
+            await probe('settings', () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`), '#settings-modal');
+            await ev(`window.hideSettingsModal(); true`);
+            const ids = await ev(`[...document.querySelectorAll('.modal[role=dialog]')].map(m => m.id).filter(id => id !== 'settings-modal')`);
+            for (const id of ids) { await probe('dialog ' + id, () => ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'flex'; true`), '#' + id); await ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'none'; true`); }
+            await probe('launch step 2 (agent) with Agent Configuration open', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await sleep(800); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await sleep(1000); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+                await ev(`{ const d = [...document.querySelectorAll('summary')].find(b => b.textContent.trim() === 'Agent Configuration'); if (d) d.parentElement.open = true; } true`); }, '#launch-modal');
+            await ev(`document.getElementById('launch-modal').style.display = 'none'; true`);
+            await ev(`document.documentElement.style.fontSize = ''; true`);
+        }
+        if (group === 'drawers') {
+            // (#4352) a long list and a task with real content, then the same views on a tablet, in landscape and in the light theme
+            await ev(`for (let i = 0; i < 30; i++) window.__m.add('list-agent-' + i + '-with-a-longer-name', 'L', 2, { sleeping: i % 3 === 0 }); true`); await sleep(1200); // sleep-ok: the list renders from several answers
+            await probe('agents list, 30 agents', () => ev(`window.switchNavTab('agents'); window.goHome && window.goHome(); true`));
+            const taskId = await ev(`(async () => { const r = await fetch('/api/board/${board}/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'A task with a rather long title that has to wrap in the dialog at large text sizes', body: 'Line one of the body.\\n\\n- a bullet with a long run of words that wraps\\n- another bullet\\n\\n~~~\\nsome_long_command --with-many --flags and-a-very-long-argument-that-does-not-wrap\\n~~~', created_by: 'Operator' }) }).catch(() => null); const d = r && r.ok ? await r.json().catch(() => null) : null; return d && (d.id || (d.task && d.task.id)) || null; })()`);
+            if (taskId) {
+                await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); (document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); window.switchAgenticTab('tasks', 'top'); true`); await sleep(1500); // sleep-ok: the board's tasks load over a few answers
+                await probe('task details with content', () => ev(`window.showTaskDetailModal(${JSON.stringify(taskId)}); true`), '#task-detail-modal');
+                await ev(`window.hideTaskDetailModal && window.hideTaskDetailModal(); (document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`);
+            } else report.push('task details: the board refused the task here, not probed');
+        }
         const subset = async (tag) => {
             for (const tab of ['agents', 'history', 'workflows', 'tokens', 'docs']) await probe(tag + ' tab ' + tab, () => ev(`window.switchNavTab('${tab}'); true`));
             await probe(tag + ' settings', () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`), '#settings-modal');
@@ -92,24 +104,30 @@ const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRec
                 await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await sleep(1000); }, '#launch-modal'); // sleep-ok: the dialog fills from several answers
             await ev(`document.getElementById('launch-modal').style.display = 'none'; window.switchNavTab('agents'); true`);
         };
-        await Emulation.setDeviceMetricsOverride({ width: 820, height: 1180, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
-        await subset('tablet 820');
-        await Emulation.setDeviceMetricsOverride({ width: 844, height: 390, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
-        await subset('landscape 844x390');
-        await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
-        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars && m.clearCustomThemeVars(); m.applyTheme('light'); return true; })()`); await sleep(500); // sleep-ok: the theme applies over a frame
-        await subset('light theme');
-        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.applyTheme('dark'); return true; })()`);
+        if (group === 'wide') {
+            await Emulation.setDeviceMetricsOverride({ width: 820, height: 1180, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
+            await subset('tablet 820');
+            await Emulation.setDeviceMetricsOverride({ width: 844, height: 390, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
+            await subset('landscape 844x390');
+        }
+        if (group === 'light') {
+            await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
+            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars && m.clearCustomThemeVars(); m.applyTheme('light'); return true; })()`); await sleep(500); // sleep-ok: the theme applies over a frame
+            await subset('light theme');
+            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.applyTheme('dark'); return true; })()`);
+        }
+        if (group === 'tabs') {
 
-        // the header's glyph buttons scale: the svg icons are drawn in rem
-        await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(900); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
-        const gl = async () => ev(`[...document.querySelectorAll('.terminal-header-btn svg, .top-bar-btn svg')].filter(e => e.getClientRects().length).map(e => Math.round(e.getBoundingClientRect().width * 10) / 10)`);
-        const g16 = await gl(); await ev(`document.documentElement.style.fontSize = '32px'; true`); await sleep(500); const g32 = await gl(); await ev(`document.documentElement.style.fontSize = ''; true`); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
-        if (!g16.length || g16.some((w, i) => !(g32[i] / w >= 1.9))) problems.push(`header glyph buttons did not scale: ${JSON.stringify(g16)} -> ${JSON.stringify(g32)}`);
-        report.push('HEADER GLYPHS ' + JSON.stringify(g16) + ' -> ' + JSON.stringify(g32));
-        report.push('HEADER BUTTONS: ' + JSON.stringify(await ev(`[...document.querySelectorAll('.terminal-header button, .terminal-header-btn, .terminal-header a')].filter(e => e.getClientRects().length).map(e => ({ c: String(e.className).slice(0, 30), w: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height), icon: (e.querySelector('.material-icons, svg') ? (parseFloat(getComputedStyle(e.querySelector('.material-icons') || e.querySelector('svg')).fontSize) || e.querySelector('svg').getBoundingClientRect().width) : null) }))`)));
+            // the header's glyph buttons scale: the svg icons are drawn in rem
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(900); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+            const gl = async () => ev(`[...document.querySelectorAll('.terminal-header-btn svg, .top-bar-btn svg')].filter(e => e.getClientRects().length).map(e => Math.round(e.getBoundingClientRect().width * 10) / 10)`);
+            const g16 = await gl(); await ev(`document.documentElement.style.fontSize = '32px'; true`); await sleep(500); const g32 = await gl(); await ev(`document.documentElement.style.fontSize = ''; true`); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+            if (!g16.length || g16.some((w, i) => !(g32[i] / w >= 1.9))) problems.push(`header glyph buttons did not scale: ${JSON.stringify(g16)} -> ${JSON.stringify(g32)}`);
+            report.push('HEADER GLYPHS ' + JSON.stringify(g16) + ' -> ' + JSON.stringify(g32));
+            report.push('HEADER BUTTONS: ' + JSON.stringify(await ev(`[...document.querySelectorAll('.terminal-header button, .terminal-header-btn, .terminal-header a')].filter(e => e.getClientRects().length).map(e => ({ c: String(e.className).slice(0, 30), w: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height), icon: (e.querySelector('.material-icons, svg') ? (parseFloat(getComputedStyle(e.querySelector('.material-icons') || e.querySelector('svg')).fontSize) || e.querySelector('svg').getBoundingClientRect().width) : null) }))`)));
+        }
     } finally { await client.close(); }
     if (process.env.T200_REPORT) throw new Error('\nREPORT (T200_REPORT is set: failing on purpose to print it)\n' + report.join('\n'));
     if (problems.length) throw new Error('\n' + problems.join('\n') + '\n\nFULL REPORT\n' + report.join('\n'));
-    console.log('   ✓ ' + report.length + ' scenes at 390 px, 200% text, touch: no overflow, no clipped text, 44 px targets, text grows, header glyphs scale');
-})().catch(e => { console.error(e.message); process.exitCode = 1; });
+    console.log('   ✓ ' + group + ': ' + report.length + ' scenes at 390 px, 200% text, touch: no overflow, no clipped text, 44 px targets, text grows, header glyphs scale');
+};
