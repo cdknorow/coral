@@ -22,7 +22,7 @@ import {
     pickerVisible, pickerOptions, serverLabel, launchBlockReason, coerceSelection,
     bareBoardName, postLaunch, waitForLaunched,
 } from './launch_server.js';
-import { settingBool, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
+import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 import { pollEvery } from './overload.js';
 import { attachDialogFocus } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
@@ -2357,12 +2357,64 @@ function artifactStoreMaxSetting() {
     return { artifact_store_max_bytes: String(gib * GIB) };
 }
 
+// The settings the dialog opened with: Save sends only the fields that differ from them (settings_diff.js).
+let _settingsAtOpen = null;
+
+// The CLI path fields, as the server has them now. The dialog opens at once from the settings this page loaded, which a
+// CLI path saved from another tab or client has outdated: a moment later the fields the person has not touched show the
+// server's value, and it becomes what Save compares with (so a path the person never edited is never written back).
+const CLI_PATH_FIELDS = { cli_path_claude: 'settings-cli-path-claude', cli_path_codex: 'settings-cli-path-codex', cli_path_pi: 'settings-cli-path-pi', cli_path_agy: 'settings-cli-path-agy' };
+
+// The CLI path settings whose field the person typed in since the dialog opened.
+function editedCLIPathKeys() {
+    return Object.entries(CLI_PATH_FIELDS).filter(([, id]) => document.getElementById(id)?.dataset.edited === '1').map(([key]) => key);
+}
+
+function refreshCLIPathFields() {
+    if (isCloud()) return; // the CLI path fields are hidden on the hub (machine settings): nothing to refresh
+    const { cli_path_agy: _agy, ...fields } = CLI_PATH_FIELDS;
+    const opened = _settingsAtOpen;
+    const ids = [...Object.values(fields), 'settings-cli-path-agy'];
+    // Typing in a field marks it edited, even when what is typed equals what it showed.
+    for (const id of ids) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.dataset.edited = '';
+        if (!el.dataset.watched) { el.dataset.watched = '1'; el.addEventListener('input', () => { el.dataset.edited = '1'; }); }
+    }
+    fetch('/api/settings').then(r => r.ok ? r.json() : null).then(data => {
+        const fresh = data && data.settings;
+        // A different open since (the dialog was closed and opened again) has its own refresh.
+        if (!fresh || _settingsAtOpen !== opened) return;
+        const update = {};
+        for (const [key, id] of Object.entries(fields)) {
+            const el = document.getElementById(id);
+            if (!el || el.dataset.edited === '1') continue; // the person is editing it: leave it
+            const now = fresh[key] || '';
+            el.value = now;
+            update[key] = now;
+        }
+        const agy = document.getElementById('settings-cli-path-agy');
+        if (agy && agy.dataset.edited !== '1') {
+            const now = fresh.cli_path_agy || fresh.cli_path_gemini || '';
+            agy.value = now;
+            update.cli_path_agy = fresh.cli_path_agy || '';
+            update.cli_path_gemini = fresh.cli_path_gemini || '';
+        }
+        Object.assign(_settingsAtOpen, update);
+        state.settings = { ...state.settings, ...update };
+    }).catch(() => { /* the dialog keeps what it opened with */ });
+}
+
 export async function showSettingsModal() {
     // Focus moves in on open, Tab stays inside, and focus comes back on close (accessibility pass).
     attachDialogFocus(document.getElementById('settings-modal'));
+
     importOnce('./terminal_backend.js').then(m => m.loadTerminalBackendRow()).catch(() => {}); // #3634
     importOnce('./security_settings.js').then(m => m.loadSecurityRow()).catch(() => {}); // #3948
     const s = state.settings || {};
+    // What this dialog opens with: Save sends only the fields that end up different from it.
+    _settingsAtOpen = { ...s };
     // The machine-only parts of this dialog (privacy, remote access, database encryption, connecting to a hub) do not
     // exist on the hub: the cloud dialog shows only the per-user settings (applyCloudSettingsDialog below).
     if (!isCloud()) {
@@ -2482,6 +2534,7 @@ export async function showSettingsModal() {
     const agyCliPath = s.cli_path_agy || s.cli_path_gemini || "";
     if (cliAgy) cliAgy.value = agyCliPath;
     if (cliPi) cliPi.value = s.cli_path_pi || "";
+    refreshCLIPathFields();
 
     // Default Models — populate combo inputs + datalists from /api/agent-models
     const defClaude = document.getElementById("settings-default-model-claude");
@@ -2695,6 +2748,9 @@ export async function applySettings() {
         remote_access_enabled: remoteAccessEnabled,
     };
 
+    // Only what the person changed since the dialog opened: a field this dialog never touched (a CLI path another
+    // tab saved meanwhile) is not written back with the value this page opened with.
+    payload = changedSettings(payload, _settingsAtOpen, themeValue, editedCLIPathKeys());
     // The hub accepts only the per-user keys (anything else refuses the whole request); the machine ones are hidden.
     if (isCloud()) payload = filterSettingsPayload(payload).kept;
 
@@ -2702,7 +2758,8 @@ export async function applySettings() {
 
     try {
         if (!isCloud()) await saveDatabaseEncryptionSettings();
-        const response = await fetch("/api/settings", {
+        // Nothing changed: nothing to write.
+        const response = Object.keys(payload).length === 0 ? { ok: true } : await fetch("/api/settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -2715,6 +2772,7 @@ export async function applySettings() {
             throw err;
         }
         state.settings = { ...state.settings, ...payload };
+        if (_settingsAtOpen) _settingsAtOpen = { ..._settingsAtOpen, ...payload }; // the dialog stays open on a cancelled backend change
         if (!isCloud() && state.privacyStatus) {
             state.privacyStatus.remote_access_enabled = remoteAccessEnabled;
             state.privacyStatus.remote_access_restart_required = state.privacyStatus.remote_access_effective !== remoteAccessEnabled;

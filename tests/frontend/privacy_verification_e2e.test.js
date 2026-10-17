@@ -104,6 +104,8 @@ const BASE = require('./test_base').BASE;
     // 5. Test failure feedback: simulated save error keeps modal open
     await ev(`(() => {
       document.getElementById('settings-modal').style.display = 'flex';
+      // Save writes only what changed (settings_diff.js): change one setting so there is a save to fail.
+      document.getElementById('settings-telemetry-enabled').checked = true;
       const origFetch = window.fetch;
       window.fetch = async (url, opts = {}) => {
         if (String(url).endsWith('/api/settings') && opts.method === 'PUT') {

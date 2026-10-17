@@ -8,6 +8,8 @@ import { state } from './state.js';
 import { fetchSystemStatus } from './system_status.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
 import { browserLocal } from './safe_storage.js';
+// What Save sends: only the fields the person changed (here so the module is loaded at startup, import_hygiene).
+export { changedSettings } from './settings_diff.js';
 
 export function settingBool(value, fallback = true) {
     if (typeof value === 'boolean') return value;
