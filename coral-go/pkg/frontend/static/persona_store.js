@@ -3,6 +3,7 @@ import { importOnce } from './import_once.js';
 const { AGENT_PRESETS } = await importOnce('./agent_presets.js');
 import { escapeHtml, escapeAttr } from './utils.js';
 import { state } from './state.js';
+import { updateSettingList, upsertByName } from './settings_lists.js';
 
 // ── Saved Personas & Team Templates ──────────────────────────────────────
 export function _getSavedPersonas() {
@@ -10,13 +11,10 @@ export function _getSavedPersonas() {
     catch { return []; }
 }
 
-export async function _setSavedPersonas(personas) {
-    state.settings.saved_personas = JSON.stringify(personas);
-    await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ saved_personas: state.settings.saved_personas }),
-    });
+/** Save personas by name (replacing the one of the same name, adding the rest) into the list the server has now (#4423). */
+export async function _upsertSavedPersonas(entries) {
+    const { raw } = await updateSettingList("saved_personas", list => upsertByName(list, entries), { local: _getSavedPersonas() });
+    state.settings.saved_personas = raw;
 }
 
 export function _getSavedTeamTemplates() {
@@ -24,13 +22,10 @@ export function _getSavedTeamTemplates() {
     catch { return []; }
 }
 
-export async function _setSavedTeamTemplates(templates) {
-    state.settings.saved_team_templates = JSON.stringify(templates);
-    await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ saved_team_templates: state.settings.saved_team_templates }),
-    });
+/** The same for team templates. */
+export async function _upsertSavedTeamTemplates(entries) {
+    const { raw } = await updateSettingList("saved_team_templates", list => upsertByName(list, entries), { local: _getSavedTeamTemplates() });
+    state.settings.saved_team_templates = raw;
 }
 
 // What a preset select's choice does, by the handler a caller names (#3645).

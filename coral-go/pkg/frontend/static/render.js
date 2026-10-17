@@ -3,6 +3,7 @@
 import { modelLabel } from './model_labels.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
+import { updateSettingList, upsertByName, parseList } from './settings_lists.js';
 import { launchBlockedReason } from './hub_access.js';
 import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, noteBoardLabels, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
@@ -475,19 +476,16 @@ export function saveTeamFromSidebar(boardName) {
         tmpl = await _attachWorkingModeToTemplate(boardName, tmpl);
         tmpl.name = templateName;
 
-        // Save to user_settings via the settings API
-        let existing = [];
+        // Save to user_settings via the settings API: into the list the server has now (#4423), so a template another
+        // tab saved meanwhile is kept.
         try {
-            existing = JSON.parse(state.settings.saved_team_templates || "[]");
-        } catch { /* ignore */ }
-        const idx = existing.findIndex(t => t.name === templateName);
-        if (idx >= 0) existing[idx] = tmpl; else existing.push(tmpl);
-        state.settings.saved_team_templates = JSON.stringify(existing);
-        await fetch("/api/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ saved_team_templates: state.settings.saved_team_templates }),
-        });
+            const { raw } = await updateSettingList("saved_team_templates", list => upsertByName(list, [tmpl]),
+                { local: parseList(state.settings.saved_team_templates, []) });
+            state.settings.saved_team_templates = raw;
+        } catch {
+            showToast("Could not save the template", "error");
+            return;
+        }
         showToast(`Saved template "${templateName}" (${tmpl.agents.length} agents)`);
     });
 }

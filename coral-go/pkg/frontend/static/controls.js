@@ -3,6 +3,7 @@ import { dashboardPromptRequested } from './dashboard_analytics.js';
 /* Quick actions, command sending, mode toggling, and session controls */
 
 import { state, sessionKey, saveSessionDraft } from './state.js';
+import { updateSettingList, removeFirst } from './settings_lists.js';
 import { claimOwnership } from './ownership.js';
 import { popoutTerminalBlocked } from './popout.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
@@ -294,14 +295,12 @@ export function getMacros() {
     return [...DEFAULT_MACROS];
 }
 
- async function saveMacros(macros) {
-    state.settings.macros = JSON.stringify(macros);
+// Macros are one list in one setting: a change is applied to the list the server has NOW (#4423), so a macro another tab
+// added is kept, and a delete removes the macro the person clicked, not whatever is at that position now.
+async function changeMacros(change) {
     try {
-        await fetch("/api/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ macros: state.settings.macros }),
-        });
+        const { raw } = await updateSettingList("macros", change, { fallback: DEFAULT_MACROS, local: getMacros() });
+        state.settings.macros = raw;
     } catch (e) {
         console.error("Failed to save macros:", e);
     }
@@ -326,17 +325,15 @@ export async function addMacro() {
     const label = document.getElementById("macro-label-input").value.trim();
     const command = document.getElementById("macro-command-input").value.trim();
     if (!label || !command) { showToast("Label and command are required", true); return; }
-    const macros = getMacros();
-    macros.push({ label, command });
-    await saveMacros(macros);
+    await changeMacros(list => [...list, { label, command }]);
     hideMacroModal();
     renderQuickActions();
 }
 
 export async function deleteMacro(index) {
-    const macros = getMacros();
-    macros.splice(index, 1);
-    await saveMacros(macros);
+    const target = getMacros()[index];
+    if (!target) return;
+    await changeMacros(list => removeFirst(list, m => m && m.label === target.label && m.command === target.command));
     renderQuickActions();
 }
 

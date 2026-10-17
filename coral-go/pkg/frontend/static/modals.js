@@ -32,7 +32,7 @@ const { AGENT_PRESETS, ALL_CAPABILITIES } = await importOnce('./agent_presets.js
 const { PERMISSION_MODE_DESCRIPTIONS, _getPermissionFlagsForAgentMode, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { CLI_INSTALL_INSTRUCTIONS, _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
-const { _findPersona, _getSavedPersonas, _getSavedTeamTemplates, _renderPresetButtons, _setSavedPersonas, _setSavedTeamTemplates } = await importOnce('./persona_store.js');
+const { _findPersona, _getSavedPersonas, _getSavedTeamTemplates, _renderPresetButtons, _upsertSavedPersonas, _upsertSavedTeamTemplates } = await importOnce('./persona_store.js');
 const { _syncACFModelField, _togglePermChip, _togglePermissions, getAgentConfig, renderAgentConfigForm, setAgentConfig } = await importOnce('./agent_config_form.js');
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
@@ -1042,12 +1042,9 @@ async function _saveCurrentPersona(nameInputId, promptInputId, flagsInputId) {
     if (!name) { showToast("Enter a name before saving", "error"); return; }
     if (AGENT_PRESETS.find(p => p.name === name)) { showToast("Can't overwrite a built-in preset", "error"); return; }
 
-    const saved = _getSavedPersonas();
-    const idx = saved.findIndex(p => p.name === name);
     const entry = { name, prompt, flags };
     if (capabilities) entry.capabilities = capabilities;
-    if (idx >= 0) saved[idx] = entry; else saved.push(entry);
-    await _setSavedPersonas(saved);
+    try { await _upsertSavedPersonas([entry]); } catch { showToast("Could not save the persona", "error"); return; }
     showToast(`Saved persona "${name}"`);
 
     // Re-render all preset containers
@@ -1099,21 +1096,14 @@ export async function importPersonas() {
     const personas = data.personas || (Array.isArray(data) ? data : null);
     if (!personas || !Array.isArray(personas)) { showToast("Invalid persona file format", "error"); return; }
 
-    const existing = _getSavedPersonas();
-    const existingNames = new Set(existing.map(p => p.name));
-    let added = 0;
+    const entries = [];
     for (const p of personas) {
         if (!p.name) continue;
         if (AGENT_PRESETS.find(bp => bp.name === p.name)) continue;
-        if (existingNames.has(p.name)) {
-            const idx = existing.findIndex(e => e.name === p.name);
-            existing[idx] = { name: p.name, prompt: p.prompt || "", flags: p.flags || "" };
-        } else {
-            existing.push({ name: p.name, prompt: p.prompt || "", flags: p.flags || "" });
-        }
-        added++;
+        entries.push({ name: p.name, prompt: p.prompt || "", flags: p.flags || "" });
     }
-    await _setSavedPersonas(existing);
+    const added = entries.length;
+    try { await _upsertSavedPersonas(entries); } catch { showToast("Could not save the imported personas", "error"); return; }
     showToast(`Imported ${added} persona(s)`);
     _renderPresetButtons("agent-preset-selector", "agent");
 }
@@ -1131,20 +1121,9 @@ export async function importTeamTemplates() {
     const templates = data.templates || (Array.isArray(data) ? data : null);
     if (!templates || !Array.isArray(templates)) { showToast("Invalid template file format", "error"); return; }
 
-    const existing = _getSavedTeamTemplates();
-    const existingNames = new Set(existing.map(t => t.name));
-    let added = 0;
-    for (const t of templates) {
-        if (!t.name || !Array.isArray(t.agents)) continue;
-        if (existingNames.has(t.name)) {
-            const idx = existing.findIndex(e => e.name === t.name);
-            existing[idx] = t;
-        } else {
-            existing.push(t);
-        }
-        added++;
-    }
-    await _setSavedTeamTemplates(existing);
+    const entries = templates.filter(t => t.name && Array.isArray(t.agents));
+    const added = entries.length;
+    try { await _upsertSavedTeamTemplates(entries); } catch { showToast("Could not save the imported templates", "error"); return; }
     showToast(`Imported ${added} template(s)`);
     _renderTeamTemplateSelector();
 }
@@ -1720,11 +1699,8 @@ async function _confirmSaveTemplate() {
     if (!templateName) { showToast("Template name is required", true); nameInput?.focus(); return; }
     if (!_pendingSaveTemplateAgents) return;
 
-    const templates = _getSavedTeamTemplates();
-    const idx = templates.findIndex(t => t.name === templateName);
     const entry = { name: templateName, agents: _pendingSaveTemplateAgents, flags: _pendingSaveTemplateFlags };
-    if (idx >= 0) templates[idx] = entry; else templates.push(entry);
-    await _setSavedTeamTemplates(templates);
+    try { await _upsertSavedTeamTemplates([entry]); } catch { showToast("Could not save the template", true); return; }
     showToast(`Saved template "${templateName}"`);
     _renderTeamTemplateSelector();
     _hideSaveTemplateModal();
