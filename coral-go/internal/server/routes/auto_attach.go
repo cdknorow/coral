@@ -679,6 +679,9 @@ func webpSize(d []byte) (int, int, bool) {
 //     flags would need editing);
 //   - GIF: comment, plain-text and application extensions dropped, cut at the trailer.
 func stripImageMetadata(data []byte, mediaType string) ([]byte, error) {
+	if len(data) > stripMaxInput {
+		return nil, errAttach("too_large")
+	}
 	switch mediaType {
 	case "image/jpeg":
 		return stripJPEG(data)
@@ -701,6 +704,15 @@ func stripImageMetadata(data []byte, mediaType string) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// The strippers' resource limits (#4380). They walk the file's structure once and decode nothing (no
+// pixels, no decompression), so time and memory are linear in the input and a decompression bomb has
+// nothing to inflate; these bound the input and the number of structural elements a hostile file can make
+// them visit, and the output never exceeds the input.
+const (
+	stripMaxInput    = 64 << 20 // the artifact store's own maximum
+	stripMaxElements = 1 << 20  // JPEG segments, PNG chunks or GIF blocks in one file
+)
 
 // jpegKeep reports whether a JPEG marker segment is kept: APP0 (JFIF), APP2 only with an
 // ICC profile, APP14 (Adobe colour transform), and the table, frame, restart-interval and
@@ -731,7 +743,10 @@ func stripJPEG(d []byte) ([]byte, error) {
 	out = append(out, 0xFF, 0xD8)
 	i := 2
 	scanned := false
-	for i+2 <= len(d) {
+	for elements := 0; i+2 <= len(d); elements++ {
+		if elements > stripMaxElements {
+			return nil, errAttach("bad_image")
+		}
 		if d[i] != 0xFF {
 			return nil, errAttach("bad_image")
 		}
@@ -795,12 +810,12 @@ func stripPNGText(d []byte) ([]byte, error) {
 		return nil, errAttach("bad_image")
 	}
 	out := append(make([]byte, 0, len(d)), d[:8]...)
-	for i := 8; i < len(d); {
-		if i+12 > len(d) {
+	for i, elements := 8, 0; i < len(d); elements++ {
+		if i+12 > len(d) || elements > stripMaxElements {
 			return nil, errAttach("bad_image")
 		}
 		n := int(binary.BigEndian.Uint32(d[i : i+4]))
-		if n < 0 || i+12+n > len(d) {
+		if n < 0 || int64(i)+12+int64(n) > int64(len(d)) { // 64-bit: a chunk length near 4 GiB cannot wrap on a 32-bit int
 			return nil, errAttach("bad_image")
 		}
 		typ := string(d[i+4 : i+8])
@@ -842,7 +857,10 @@ func stripGIF(d []byte) ([]byte, error) {
 		}
 		return 0, false
 	}
-	for i < len(d) {
+	for blocks := 0; i < len(d); blocks++ {
+		if blocks > stripMaxElements {
+			return nil, errAttach("bad_image")
+		}
 		switch d[i] {
 		case 0x3B: // trailer
 			return append(out, 0x3B), nil
