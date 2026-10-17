@@ -6,11 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"mime"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -86,6 +88,11 @@ const (
 // set of files. It is computed once at startup (the tree is embedded).
 func staticBuildVersion(fsys fs.FS) (string, error) {
 	h := sha256.New()
+	// The served bytes are the tree through the minifier, so the minifier is an input: a new esbuild
+	// or other options with the same files would otherwise ship new bytes under the same
+	// immutable URL, kept by browsers for a year (#4320).
+	io.WriteString(h, frontend.MinifyIdentity())
+	h.Write([]byte{0})
 	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -103,6 +110,30 @@ func staticBuildVersion(fsys fs.FS) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)[:6]), nil
+}
+
+// bundleVersion is the version of the bundled family (/static/bb/<ver>/): a hash of the bytes it
+// serves, not of the sources it was built from. The build's output also depends on the bundler and
+// its options and on the stylesheet order in the shell, none of which are in the static tree, so
+// the hash is over the staticVersion (the tree and the minifier) and every built file, in name
+// order (#4320).
+func bundleVersion(staticVersion string, b *frontend.Bundle) string {
+	h := sha256.New()
+	io.WriteString(h, staticVersion)
+	h.Write([]byte{0})
+	names := make([]string, 0, len(b.Files))
+	for name := range b.Files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		io.WriteString(h, name)
+		h.Write([]byte{0})
+		fmt.Fprintf(h, "%d", len(b.Files[name]))
+		h.Write([]byte{0})
+		h.Write(b.Files[name])
+	}
+	return hex.EncodeToString(h.Sum(nil)[:6])
 }
 
 // versionedStaticHandler serves /static/b/{ver}/* from fsys. The current
@@ -166,6 +197,9 @@ func staticAssetHandler(fsys fs.FS, next http.Handler, cacheControl string) http
 				v, _ = cache.LoadOrStore(name, newStaticAsset(name, data))
 			}
 		}
+		// Files under /static are only ever this origin's own: never sniffed into another type,
+		// never loaded by another origin's page (#4320, Security's INFO 5).
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 		serveCachedAsset(w, r, v.(*staticAsset), cacheControl)
 	})
 }
@@ -176,6 +210,7 @@ func staticAssetHandler(fsys fs.FS, next http.Handler, cacheControl string) http
 func serveCachedAsset(w http.ResponseWriter, r *http.Request, a *staticAsset, cacheControl string) {
 	h := w.Header()
 	h.Set("Content-Type", a.contentType)
+	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Cache-Control", cacheControl)
 	body, etag := a.plain, a.etag
 	if a.gz != nil {

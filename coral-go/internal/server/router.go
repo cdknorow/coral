@@ -709,6 +709,11 @@ func (s *Server) registerStatic(r *chi.Mux) {
 			log.Printf("bundled dashboard unavailable, serving the original files: %v", err)
 		} else {
 			bundleFS = b.FS(staticSub)
+			// The build id names the bytes served, not only the sources: the bundler, its options and
+			// the stylesheet order change them with the tree untouched (#4320). It is ONE id for both
+			// families, the pop-out's /static/b/ and the bundled /static/bb/, and the X-Coral-Build
+			// header the update banner compares with, so they stay the same name for one build.
+			s.staticVersion = bundleVersion(s.staticVersion, b)
 			s.bundleBase = "/static/bb/" + s.staticVersion + "/"
 		}
 	}

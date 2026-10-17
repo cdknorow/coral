@@ -3,6 +3,7 @@ package frontend
 import (
 	"os"
 	"path"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 
@@ -52,6 +53,36 @@ func MinifyAsset(name string, data []byte) []byte {
 		return data
 	}
 	return res.Code
+}
+
+// minifyFormat names the options MinifyAsset passes to esbuild: change it when they change, so
+// anything keyed on the minified bytes (the static build version, #4320) changes with them.
+const minifyFormat = "ws+syntax,esnext,utf8,legal-inline,no-rename:1"
+
+// MinifyIdentity names how MinifyAsset turns a file into the bytes it serves: the esbuild version,
+// its options (minifyFormat) and whether minifying is off (CORAL_NO_MINIFY=1 or SetMinifyDisabled).
+// A version that names served bytes hashes it (#4320).
+func MinifyIdentity() string {
+	if disabled.Load() || os.Getenv("CORAL_NO_MINIFY") == "1" {
+		return "minify:off"
+	}
+	return "minify:esbuild " + esbuildVersion() + " " + minifyFormat
+}
+
+// esbuildVersion is the version of the esbuild module this binary was built with, from the build
+// info (the module version in go.mod); "unknown" when the binary carries none.
+func esbuildVersion() string {
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		for _, d := range bi.Deps {
+			if d.Path == "github.com/evanw/esbuild" {
+				if d.Replace != nil && d.Replace.Version != "" {
+					return d.Replace.Version
+				}
+				return d.Version
+			}
+		}
+	}
+	return "unknown"
 }
 
 // disabled is for tests that compare served bytes with the embedded source.
