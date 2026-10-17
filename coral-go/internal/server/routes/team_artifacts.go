@@ -28,8 +28,6 @@ const (
 
 var digestLikeName = regexp.MustCompile(`^(?:sha256:)?[a-fA-F0-9]{32,64}$`)
 
-var coralArtifactURI = regexp.MustCompile(`^(?:coral://artifacts/|/api/artifacts/)([a-fA-F0-9]{64})(?:\?v=[0-9]+)?$`)
-
 // teamArtifact is one deduplicated artifact reference in a team's task results.
 type teamArtifact struct {
 	ID             string `json:"id"`
@@ -52,6 +50,9 @@ type teamArtifact struct {
 	// cannot be established); see board.ArtifactProducer.
 	SessionID  *string `json:"session_id"`
 	ProducedBy *string `json:"produced_by"`
+	// Unverified: a coral://artifacts link the team never uploaded (#4379): listed as a plain
+	// link, with no size, type, preview or download from the store ("link not verified").
+	Unverified bool `json:"unverified,omitempty"`
 
 	index   int
 	managed string // 64-hex Coral object id for coral-managed artifacts
@@ -177,11 +178,14 @@ func collectTeamArtifacts(project string, tasks []board.TeamArtifactTask, subscr
 			}
 			switch {
 			case a.URI != "":
-				if m := coralArtifactURI.FindStringSubmatch(a.URI); m != nil {
-					item.managed = strings.ToLower(m[1])
+				// A managed link counts as the team's file unless the check at completion marked it
+				// unverified (#4379); legacy rows (no provenance) show as they always did.
+				if id := managedArtifactID(a.URI); id != "" && a.Provenance != provenanceUnverified {
+					item.managed = id
 					item.ID = item.managed
 				} else {
 					item.ID = "uri:" + a.URI
+					item.Unverified = id != ""
 				}
 			case a.Content != "":
 				n := int64(len(a.Content))

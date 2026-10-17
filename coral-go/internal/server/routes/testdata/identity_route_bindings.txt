@@ -120,7 +120,7 @@ POST /api/board/{project}/tasks/claim | board-claims
 POST /api/board/{project}/tasks/current | board-claims
 POST /api/board/{project}/tasks/{taskID}/approve | board-claims
 POST /api/board/{project}/tasks/{taskID}/cancel | board-claims
-POST /api/board/{project}/tasks/{taskID}/complete | board-claims
+POST /api/board/{project}/tasks/{taskID}/complete | board-claims +token-session
 POST /api/board/{project}/tasks/{taskID}/nudge | board-claims
 POST /api/board/{project}/tasks/{taskID}/park | board-claims +token-session
 POST /api/board/{project}/tasks/{taskID}/publish | board-claims
@@ -130,7 +130,7 @@ POST /api/board/{project}/tasks/{taskID}/release-review | board-claims
 POST /api/board/{project}/tasks/{taskID}/reminder | board-claims
 POST /api/board/{project}/tasks/{taskID}/review | board-claims
 POST /api/board/{project}/tasks/{taskID}/snooze | board-claims
-POST /api/board/{project}/tasks/{taskID}/submit-review | board-claims
+POST /api/board/{project}/tasks/{taskID}/submit-review | board-claims +token-session
 POST /api/board/{project}/waits | board-claims
 POST /api/board/{project}/working-mode/presets | board-claims | operator-only
 POST /api/board/{project}/working-mode/presets/{presetID}/reset | board-claims | operator-only

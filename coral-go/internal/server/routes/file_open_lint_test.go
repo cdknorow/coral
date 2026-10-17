@@ -39,6 +39,7 @@ var reviewedFileOpens = map[string]string{
 	"system_bounds.go:readImportFile:OpenNoFollow":                      "#3583: bounded import (no link followed, regular file, size cap)",
 	"team_artifacts.go:enrichTeamArtifact:ReadFile":                     "a managed artifact's hex name, lower-cased and checked",
 	"team_artifacts.go:uploadDirCache.list:ReadFile":                    "names read from the server's uploads folder",
+	"task_artifact_vet.go:BoardHandler.objectSidecarDigest:ReadFile":    "a managed artifact's 64-hex id (managedArtifactID), Lstat'ed as a regular file under the bound first (#4379)",
 	"themes.go:ThemesHandler.GetTheme:ReadFile":                         "the theme name keeps only [A-Za-z0-9-_ ] (safeNameRE)",
 	"themes.go:ThemesHandler.ImportTheme:WriteFile":                     "safeNameRE",
 	"themes.go:ThemesHandler.ListThemes:ReadFile":                       "names read from the server's themes folder",

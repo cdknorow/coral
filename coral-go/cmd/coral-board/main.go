@@ -2037,6 +2037,20 @@ func cmdTaskComplete(st *boardState, args []string) {
 	json.Unmarshal(data, &task)
 	title, _ := task["title"].(string)
 	fmt.Printf("Finished Task #%d (%s): %s\n", taskID, *outcome, title)
+	printUnverifiedArtifacts(data)
+}
+
+// printUnverifiedArtifacts says which coral://artifacts links in the result the server kept as plain
+// links because this team never uploaded those files (#4379).
+func printUnverifiedArtifacts(data []byte) {
+	var r struct {
+		N     int      `json:"artifacts_unverified"`
+		Names []string `json:"artifacts_unverified_names"`
+	}
+	if json.Unmarshal(data, &r) != nil || r.N == 0 {
+		return
+	}
+	fmt.Printf("Note: %d artifact link(s) are not uploads of this team and were kept as plain links: %s. Upload the file with 'coral-agent artifact upload <file>' and use the link it prints.\n", r.N, strings.Join(r.Names, ", "))
 }
 
 func printTaskWorkflow(task map[string]any) {
@@ -2989,6 +3003,7 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 		default:
 			fmt.Printf("Task #%d: submit-review recorded.\n", id)
 		}
+		printUnverifiedArtifacts(data)
 		return
 	}
 	fmt.Printf("Task #%d: %s recorded. Completion has not been accepted.\n", id, action)

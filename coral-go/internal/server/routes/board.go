@@ -1926,6 +1926,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
+	unverified := h.vetTaskArtifacts(r, project, body.Artifacts)
 	task, err := h.bs.CompleteTaskWithArtifactsAtRevisionAndCandidate(r.Context(), project, taskID, body.SubscriberID, body.Message, body.Outcome, body.Artifacts, body.ExpectedRevision, body.CandidateRevision)
 	if err != nil {
 		if strings.Contains(err.Error(), "revision") {
@@ -1947,7 +1948,27 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.afterTaskCompleted(project, body.SubscriberID, task, completionMsg, "")
-	writeJSON(w, http.StatusOK, task)
+	writeTaskVetted(w, task, unverified)
+}
+
+// writeTaskVetted answers with the task, plus artifacts_unverified (how many managed links were
+// kept as plain links, and their names) when vetTaskArtifacts marked any: the agent can upload the
+// file and complete again.
+func writeTaskVetted(w http.ResponseWriter, task any, unverified []string) {
+	if len(unverified) == 0 {
+		writeJSON(w, http.StatusOK, task)
+		return
+	}
+	raw, err := json.Marshal(task)
+	var out map[string]any
+	if err != nil || json.Unmarshal(raw, &out) != nil {
+		writeJSON(w, http.StatusOK, task)
+		return
+	}
+	out["artifacts_unverified"] = len(unverified)
+	out["artifacts_unverified_names"] = unverified
+	out["artifacts_unverified_help"] = "these coral://artifacts links are not uploads of this team: they are kept as plain links. Upload the file with coral-agent artifact upload and use its link."
+	writeJSON(w, http.StatusOK, out)
 }
 
 // afterTaskCompleted posts the completion notice and runs what a completion sets off: the

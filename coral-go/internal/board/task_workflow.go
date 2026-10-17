@@ -32,6 +32,10 @@ type TaskArtifact struct {
 	Remote       string `json:"remote,omitempty"`
 	Landed       bool   `json:"landed,omitempty"`
 	ExitCode     *int   `json:"exit_code,omitempty"`
+	// Provenance is how Coral checked a managed link (coral://artifacts/<id>) when the result was
+	// recorded (#4379): "uploaded", "person", "unverified", or "" (legacy rows, other entries). Set
+	// by the server only; a value the client sends is cleared.
+	Provenance string `json:"provenance,omitempty"`
 }
 
 const maxTaskArtifacts = 32
