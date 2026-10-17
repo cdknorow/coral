@@ -46,8 +46,8 @@ type Config struct {
 	// StrictLocalAuth (#3418): a request from this computer needs a credential (an agent's
 	// session token, the dashboard's sign-in cookie, the command-line signature or the API
 	// key), and an identity that doesn't match its token is refused instead of logged. On
-	// by default since #3936 (startup.Start sets it; CORAL_STRICT_LOCAL_AUTH=0 or
-	// --strict-local-auth=false turns it off); never settable through the API, so neither
+	// by default since #3936 (startup.Start sets it; --strict-local-auth=false turns it off, and
+	// CORAL_STRICT_LOCAL_AUTH=0 does in a dev build only, #4290); never settable through the API, so neither
 	// Coral Hub nor an agent can turn it off.
 	StrictLocalAuth bool
 
@@ -293,12 +293,17 @@ func cloudConnectFromEnv(v string) string {
 }
 
 // StrictLocalAuthFromEnv reads CORAL_STRICT_LOCAL_AUTH (#3936): strict local auth is on
-// unless it says off (0, false, no or off, in any case). Unset is on; a value that is neither
-// on nor off is taken as on, with a warning for the log, so a typo never weakens it.
+// unless it says off (0, false, no or off, in any case), and only a dev build honours that
+// (#4290): another tier ignores an off, with a warning naming --strict-local-auth=false. Unset is
+// on; a value that is neither on nor off is taken as on, with a warning for the log, so a typo
+// never weakens it.
 func StrictLocalAuthFromEnv() (on bool, warning string) {
 	v := os.Getenv("CORAL_STRICT_LOCAL_AUTH")
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "0", "false", "no", "off":
+		if !StrictLocalAuthEnvHonoured {
+			return true, fmt.Sprintf("[auth] WARNING: CORAL_STRICT_LOCAL_AUTH=%q is ignored in this build: strict local auth stays on. Start Coral with --strict-local-auth=false to turn it off", v)
+		}
 		return false, ""
 	case "", "1", "true", "yes", "on":
 		return true, ""

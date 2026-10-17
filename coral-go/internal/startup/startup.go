@@ -94,7 +94,7 @@ type Options struct {
 	// stops startup.
 	TLSCert, TLSKey string
 	// StrictLocalAuth overrides strict local auth (--strict-local-auth, #3418). nil: on unless
-	// CORAL_STRICT_LOCAL_AUTH says off (#3936), the same for coral, coral-tray and launch-coral.
+	// CORAL_STRICT_LOCAL_AUTH says off in a dev build (#3936, #4290), the same for coral, coral-tray and launch-coral.
 	StrictLocalAuth *bool
 }
 

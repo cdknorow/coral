@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cdknorow/coral/internal/config"
 )
 
 // #3936: strict local auth is on unless CORAL_STRICT_LOCAL_AUTH says off or the command line
@@ -16,6 +18,7 @@ func TestStrictLocalAuthIsOnUnlessTurnedOff(t *testing.T) {
 	log.SetOutput(&out)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 	on, off := true, false
+	envHonoured := config.StrictLocalAuthEnvHonoured // a dev build only (#4290)
 	for _, tc := range []struct {
 		env      string
 		set      bool
@@ -26,10 +29,10 @@ func TestStrictLocalAuthIsOnUnlessTurnedOff(t *testing.T) {
 		{env: "1", set: true, want: true},
 		{env: "on", set: true, want: true},
 		{env: "", set: true, want: true},
-		{env: "0", set: true, want: false},
-		{env: " Off ", set: true, want: false},
-		{env: "no", set: true, want: false},
-		{env: "false", set: true, want: false},
+		{env: "0", set: true, want: !envHonoured},
+		{env: " Off ", set: true, want: !envHonoured},
+		{env: "no", set: true, want: !envHonoured},
+		{env: "false", set: true, want: !envHonoured},
 		{env: "nope", set: true, want: true}, // a typo never weakens it
 		{env: "0", set: true, override: &on, want: true},
 		{override: &off, want: false},
@@ -114,7 +117,34 @@ func TestStrictLocalAuthRefusesOffOnTheDefaultFolder(t *testing.T) {
 		t.Errorf("off on a folder of its own: on=%v err=%v", on, err)
 	}
 	t.Setenv("CORAL_STRICT_LOCAL_AUTH", "0")
-	if _, err := strictLocalAuth(filepath.Join(home, ".coral"), nil); err == nil {
+	_, err = strictLocalAuth(filepath.Join(home, ".coral"), nil)
+	if config.StrictLocalAuthEnvHonoured && err == nil {
 		t.Error("CORAL_STRICT_LOCAL_AUTH=0 on the default folder started")
+	}
+	if !config.StrictLocalAuthEnvHonoured && err != nil {
+		t.Errorf("a release build ignores the env, so strict stays on and starts: %v", err)
+	}
+}
+
+// #4290: only a dev build honours CORAL_STRICT_LOCAL_AUTH=0; any other tier stays strict and says
+// which flag turns it off, and the flag works in both.
+func TestStrictLocalAuthEnvIsHonouredOnlyInDevBuilds(t *testing.T) {
+	var out bytes.Buffer
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	t.Setenv("CORAL_STRICT_LOCAL_AUTH", "0")
+	got, err := strictLocalAuth(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := !config.StrictLocalAuthEnvHonoured; got != want {
+		t.Errorf("CORAL_STRICT_LOCAL_AUTH=0: strict = %v, want %v for this build", got, want)
+	}
+	if !config.StrictLocalAuthEnvHonoured && !strings.Contains(out.String(), "--strict-local-auth=false") {
+		t.Errorf("an ignored env is not reported with the flag:\n%s", out.String())
+	}
+	off := false
+	if got, err := strictLocalAuth(t.TempDir(), &off); err != nil || got {
+		t.Errorf("--strict-local-auth=false: strict = %v, err %v, want off in every tier", got, err)
 	}
 }

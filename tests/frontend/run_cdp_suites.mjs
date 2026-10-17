@@ -354,10 +354,10 @@ async function startShard(n, gen = 0, strict = false) {
   // test the prompt and the sign-in page stub the auth API themselves.
   const pwFile = path.join(dir, 'initial-password');
   fs.writeFileSync(pwFile, TEST_PASSWORD + '\n', { mode: 0o600 }); fs.chmodSync(pwFile, 0o600);
-  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile, ...(strict ? {} : { CORAL_STRICT_LOCAL_AUTH: '0' }) };
+  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile };
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
-    ...(strict ? ['--strict-local-auth'] : []), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
+    ...(strict ? ['--strict-local-auth'] : ['--strict-local-auth=false']), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
     { env: serverEnv, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
   track(coral);
   allLogs.push(log);

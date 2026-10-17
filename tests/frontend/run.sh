@@ -106,8 +106,8 @@ mkdir -p "$CORAL_HOME/host-home"
 (umask 077 && printf '%s\n' coral-cdp-suites-test-password > "$CORAL_HOME/initial-password")
 # Strict local auth is the default (#3936); these suites' node-side calls send no credential, as
 # in run_cdp_suites.mjs's regular shards, so it is off here (its strict phase covers strict).
-env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR CORAL_STRICT_LOCAL_AUTH=0 CORAL_INITIAL_PASSWORD_FILE="$CORAL_HOME/initial-password" HOME="$CORAL_HOME/host-home" \
-    "$CORAL_BIN" --host 127.0.0.1 --port "$CORAL_PORT" --home "$CORAL_HOME" --no-browser --cloud-url off \
+env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR CORAL_INITIAL_PASSWORD_FILE="$CORAL_HOME/initial-password" HOME="$CORAL_HOME/host-home" \
+    "$CORAL_BIN" --host 127.0.0.1 --port "$CORAL_PORT" --home "$CORAL_HOME" --no-browser --cloud-url off --strict-local-auth=false \
     > "$CORAL_HOME/server.log" 2>&1 &
 CORAL_PID=$!
 
