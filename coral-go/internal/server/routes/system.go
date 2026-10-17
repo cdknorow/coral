@@ -307,6 +307,23 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		body[ArtifactStoreMaxBytesSetting] = strconv.FormatInt(n, 10)
 	}
+	// The cap on received files (#4441): whole bytes, 0 for none; and the notice's acknowledgement, the cap it was shown for.
+	if v, ok := body[ReceivedArtifactsMaxBytesSetting]; ok {
+		s, isString := v.(string)
+		n, valid := parseStoreCap(s)
+		if !isString || !valid || s == "" {
+			errBadRequest(w, ReceivedArtifactsMaxBytesSetting+" must be a whole number of bytes (0 for no cap)")
+			return
+		}
+		body[ReceivedArtifactsMaxBytesSetting] = strconv.FormatInt(n, 10)
+	}
+	if v, ok := body[ReceivedCapNoticeAckSetting]; ok {
+		s, isString := v.(string)
+		if n, err := strconv.ParseInt(s, 10, 64); !isString || err != nil || n < 0 {
+			errBadRequest(w, ReceivedCapNoticeAckSetting+" must be a whole number of bytes")
+			return
+		}
+	}
 	// Artifact retention (#3554): whole days from 0 (off) to 3650, and a list of kinds. Its
 	// bookkeeping keys are Coral's own.
 	for _, k := range []string{retentionEnabledAtKey, retentionSeenDaysKey, RetentionAckAtKey, RetentionLastKey} {

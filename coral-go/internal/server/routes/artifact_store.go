@@ -69,8 +69,10 @@ type artifactStore struct {
 	bytes    int64
 	objects  int
 	maxBytes func() int64 // the setting; 0 is no cap
-	windows  map[string]*uploadUsage
-	now      func() time.Time
+	// receivedMaxBytes caps what other Corals and boards have sent (received_cap.go); nil is the default 2 GiB.
+	receivedMaxBytes func() int64
+	windows          map[string]*uploadUsage
+	now              func() time.Time
 }
 
 type uploadUsage struct {

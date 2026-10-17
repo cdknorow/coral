@@ -1111,6 +1111,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }).finally(() => { _startListLoadSettled(); _liveListLoaded(); });
     loadAllFolderTags();
     if (!popout) loadPinnedFolders();
+    if (!popout) importOnce('./received_cap_notice.js').then(m => m.checkReceivedCap()).catch(() => {}); // #4441: told once when received files reach 80% of their limit
     if (!popout) importOnce('./terminal_backend.js').then(m => { m.checkLeftoverTmux(); m.watchAutoWake(); m.watchHooksStatus(); }).catch(() => {}); // #3634, #3636, #3665
     loadCustomViews();
     initTabCustomize();

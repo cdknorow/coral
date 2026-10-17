@@ -166,6 +166,8 @@ var settingRegistry = map[string]settingSpec{
 	"home_editions_hidden": generic(boolSetting),
 	// Storage: artifacts, uploads, call metrics, knowledge.
 	ArtifactStoreMaxBytesSetting:          generic(nil),
+	ReceivedArtifactsMaxBytesSetting:      generic(nil),
+	ReceivedCapNoticeAckSetting:           generic(nil),
 	RetentionDaysSetting:                  generic(nil),
 	RetentionKindsSetting:                 generic(nil),
 	"uploads_retention_days":              generic(intSetting(1, 365, false)),

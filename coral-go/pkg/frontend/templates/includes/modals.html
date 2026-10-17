@@ -686,6 +686,14 @@
                     <div id="settings-storage-detail" class="settings-hint"></div>
                 </dd>
                 <dt class="toggle-dt">
+                    <label for="settings-received-max">Received files limit (GiB)</label>
+                    <span class="toggle-desc">The most space files sent to this computer by other teams and Corals may take. Above it, new received files are refused; nothing is deleted, and your agents' own uploads are not affected. The default is 2; 0 means no limit.</span>
+                </dt>
+                <dd>
+                    <input type="number" id="settings-received-max" min="0" step="1" inputmode="numeric" aria-describedby="settings-received-size">
+                    <div id="settings-received-size" class="settings-hint" role="status">Loading…</div>
+                </dd>
+                <dt class="toggle-dt">
                     <label for="settings-prune-days">Free space</label>
                     <span class="toggle-desc">Shrink rewrites saved diffs of finished tasks without secrets, dot-files, binaries and big files (the code changes stay). Prune deletes saved diffs of finished tasks and stopped sessions, and artifacts nothing links, older than the days you choose. Kept artifacts and anything still linked are never touched. Each shows what it would do first.</span>
                 </dt>

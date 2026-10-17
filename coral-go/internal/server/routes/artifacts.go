@@ -61,6 +61,7 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	st := storeFor(h.cfg.CoralDir())
 	st.mu.Lock()
 	st.maxBytes = h.artifactStoreMaxBytes
+	st.receivedMaxBytes = h.receivedArtifactsMaxBytes
 	st.mu.Unlock()
 	r.Post("/api/agent/artifacts", h.uploadAgentArtifact)
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
@@ -126,6 +127,7 @@ func (h *SessionsHandler) getArtifactStore(w http.ResponseWriter, r *http.Reques
 		"task_diffs":    map[string]int64{"bytes": tb, "files": tn},
 		"session_diffs": map[string]int64{"bytes": sb, "files": sn},
 	}
+	out["received"] = h.receivedStatus() // #4441: the total received from other Corals and boards, its cap and the one-time notice
 	// ?detail=1 (#3554): by age, by board, kept and retention, for Settings > Storage.
 	if r.URL.Query().Get("detail") == "1" {
 		if detail, err := h.storageDetail(r.Context()); err == nil {

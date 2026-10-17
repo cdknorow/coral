@@ -2176,10 +2176,12 @@ async function loadArtifactStoreSize() {
             `Saved session diffs: ${_gib(d.session_diffs?.bytes || 0)} in ${Number(d.session_diffs?.files || 0).toLocaleString()} files (not limited)`,
         ];
         out.replaceChildren(...lines.flatMap((l, i) => (i ? [document.createElement('br'), l] : [l])));
+        showReceivedCap(d.received);
     } catch {
         out.textContent = "Couldn't read the store's size.";
     }
     loadStorageDetail();
+    importOnce('./received_cap_notice.js').then(m => m.checkReceivedCap()).catch(() => {}); // told once at 80% (#4441)
 }
 
 // ── Free space and automatic cleanup (#3554) ──────────────────────────
@@ -2330,6 +2332,25 @@ function wireStorageActions() {
             });
         requestAnimationFrame(() => document.querySelector('#confirm-modal .modal-actions .btn:not(#confirm-modal-yes)')?.focus());
     });
+}
+
+/** Settings: what other teams and Corals have sent this computer, against the limit on it (#4441). */
+function showReceivedCap(r) {
+    const out = document.getElementById('settings-received-size');
+    const input = document.getElementById('settings-received-max');
+    if (!out || !input || !r) return;
+    input.value = r.max_bytes > 0 ? String(Math.round(r.max_bytes / GIB)) : '0';
+    input.dataset.loaded = '1'; // only a limit read from Coral is saved back
+    const files = `${Number(r.objects).toLocaleString()} file${r.objects === 1 ? '' : 's'}`;
+    out.textContent = r.max_bytes > 0 ? `Received: ${_gib(r.bytes)} in ${files} (limit ${_gib(r.max_bytes)})` : `Received: ${_gib(r.bytes)} in ${files} (no limit)`;
+}
+
+/** The received-files limit to save, in bytes ({} when the field isn't on this page or was never read). */
+function receivedMaxSetting() {
+    const input = document.getElementById('settings-received-max');
+    if (!input || isCloud() || input.dataset.loaded !== '1') return {};
+    const gib = Math.max(0, Math.floor(Number(input.value) || 0));
+    return { received_artifacts_max_bytes: String(gib * GIB) };
 }
 
 /** The limit to save, in bytes ({} when the field isn't on this page). */
@@ -2743,6 +2764,7 @@ export async function applySettings() {
         auto_resume_after_api_error: autoResume,
         auto_goals: autoGoals,
         ...artifactStoreMaxSetting(),
+        ...receivedMaxSetting(),
         ...retentionSettings(),
         debug_input_log: debugInputLog,
         remote_access_enabled: remoteAccessEnabled,

@@ -49,6 +49,13 @@ assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(GIB) }, { ar
 assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(GIB) }, { artifact_store_max_bytes: String(GIB + 12345) }), {});
 assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(2 * GIB) }, { artifact_store_max_bytes: String(GIB) }), { artifact_store_max_bytes: String(2 * GIB) });
 assert.deepEqual(changedSettings({ artifact_store_max_bytes: '0' }, {}), {});
+// #4441: the received-files limit; unset is the default 2 GiB (not 0, which is no limit), so a field left alone writes nothing.
+assert.deepEqual(changedSettings({ received_artifacts_max_bytes: String(2 * GIB) }, {}), {});
+assert.deepEqual(changedSettings({ received_artifacts_max_bytes: String(5 * GIB) }, {}), { received_artifacts_max_bytes: String(5 * GIB) });
+assert.deepEqual(changedSettings({ received_artifacts_max_bytes: '0' }, {}), { received_artifacts_max_bytes: '0' }, '0 is a real change from the default');
+assert.deepEqual(changedSettings({ received_artifacts_max_bytes: '0' }, { received_artifacts_max_bytes: String(2 * GIB) }), { received_artifacts_max_bytes: '0' });
+assert.deepEqual(changedSettings({ received_artifacts_max_bytes: String(2 * GIB) }, { received_artifacts_max_bytes: '0' }), { received_artifacts_max_bytes: String(2 * GIB) });
+assert.deepEqual(changedSettings({ received_artifacts_max_bytes: String(2 * GIB) }, { received_artifacts_max_bytes: String(2 * GIB + 5) }), {});
 // Retention fields read a missing setting as their defaults.
 assert.deepEqual(changedSettings({ artifact_retention_days: '0', artifact_retention_kinds: 'diffs' }, {}), {});
 assert.deepEqual(changedSettings({ artifact_retention_days: '30', artifact_retention_kinds: 'diffs' }, {}), { artifact_retention_days: '30' });

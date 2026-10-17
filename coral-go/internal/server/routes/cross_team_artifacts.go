@@ -410,6 +410,11 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		receivedRefuse(w, http.StatusForbidden, "artifacts_off", "this board does not accept files from other computers", "")
 		return
 	}
+	// The cap on received files (#4441): checked before the bytes are stored, for new objects only. Local uploads are not counted here and not refused by it.
+	if !receivedFits(h.coralDir, hexID, int64(len(res.Data))) {
+		receivedRefuse(w, http.StatusRequestEntityTooLarge, "store_full", "this computer's limit on received files is reached", "")
+		return
+	}
 	// No session id: the file is no agent's upload, so it gets no upload record, only the receipt below.
 	// The same answer for new bytes and bytes already stored: a sender learns nothing about what this
 	// computer holds.

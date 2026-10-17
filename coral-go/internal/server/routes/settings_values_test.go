@@ -91,6 +91,30 @@ func TestSettingNumbersAreStoredWhole(t *testing.T) {
 	assert.Equal(t, "0", stored()["artifact_store_max_bytes"], "a refused value leaves the cap as it was")
 }
 
+// #4441: the cap on received files is a whole number of bytes (0 for none, never empty), and its notice's acknowledgement is the cap it was shown for.
+func TestReceivedCapSettings(t *testing.T) {
+	put, stored := settingsClient(t)
+	require.Equal(t, http.StatusOK, put(`{"received_artifacts_max_bytes": 5368709120}`))
+	assert.Equal(t, "5368709120", stored()["received_artifacts_max_bytes"])
+	require.Equal(t, http.StatusOK, put(`{"received_artifacts_max_bytes": "0"}`))
+	assert.Equal(t, "0", stored()["received_artifacts_max_bytes"])
+	require.Equal(t, http.StatusOK, put(`{"received_cap_notice_ack": "5368709120"}`))
+	assert.Equal(t, "5368709120", stored()["received_cap_notice_ack"])
+	for _, raw := range []string{
+		`{"received_artifacts_max_bytes": "lots"}`,
+		`{"received_artifacts_max_bytes": ""}`,
+		`{"received_artifacts_max_bytes": "-1"}`,
+		`{"received_artifacts_max_bytes": 1.5}`,
+		`{"received_artifacts_max_bytes": true}`,
+		`{"received_cap_notice_ack": "lots"}`,
+		`{"received_cap_notice_ack": "-1"}`,
+		`{"received_cap_notice_ack": true}`,
+	} {
+		assert.Equal(t, http.StatusBadRequest, put(raw), raw)
+	}
+	assert.Equal(t, "0", stored()["received_artifacts_max_bytes"], "a refused value leaves the cap as it was")
+}
+
 // The store's cap reader never reads a value it can't parse as "no cap": the exponent form older versions stored is the
 // number it stands for, and anything else, or a settings read that fails, takes nothing new.
 func TestArtifactStoreCapReaderFailsClosed(t *testing.T) {
