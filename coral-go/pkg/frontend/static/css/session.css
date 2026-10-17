@@ -1917,20 +1917,20 @@
 /* Team settings, Health check tab (#4230): the check, then one card per automatic rule with its numbers and the server's limits under each. */
 .health-form .health-rule-head { display: flex; align-items: flex-start; gap: 8px; font-weight: 600; }
 .health-form .health-rule-head input { margin-top: 3px; flex: none; }
-.health-form .health-why { display: block; color: var(--text-secondary); font-size: 13px; font-weight: 400; margin: 0; }
+.health-form .health-why { display: block; color: var(--text-secondary); font-size: calc(var(--fs-md) * .9); font-weight: 400; margin: 0; } /* from the title's own size token, so it scales with the title (#4259) */
 .health-rule { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; background: var(--bg-primary); }
 .health-rule > .health-why { margin-left: 26px; }
 .health-knobs { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 2px 0 0 26px; }
 .health-knobs:empty { display: none; }
 .health-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
 .working-mode-form label.health-knob { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-secondary); font-weight: 500; }
-.health-knob-box { display: flex; align-items: center; gap: 6px; }
+.health-knob-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .health-limits { font-weight: 400; font-size: 12px; color: var(--text-secondary); }
 .health-form input[type="number"], .health-form input[type="text"] { box-sizing: border-box; min-height: var(--control-height, 32px); background: var(--bg-tertiary, var(--bg-primary)); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; }
-.health-form input[type="number"] { width: 7em; }
+.health-form input[type="number"] { width: 7em; max-width: 100%; } /* (not min(7em, 100%): a percentage width collapses the shrink-wrapped box and drops the unit under the input) */
 .health-knob.health-wide, .health-knobs .health-wide { flex: 1 1 100%; }
 .health-form input[type="text"] { width: 100%; }
-.health-wide-select { flex: 1 1 11em; min-width: 11em; }
+.health-wide-select { flex: 1 1 11em; min-width: min(11em, 100%); }
 .health-wide-select select { margin-top: 4px; }
 .health-rule.off .health-why, .health-rule.off .health-knobs { opacity: .55; }
 .health-form input:focus-visible, .health-form select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -2311,3 +2311,14 @@
     line-height: 1.4;
 }
 .server-unreachable-banner[hidden] { display: none; }
+
+/* At 200% text on a phone the panel was wider than its box and clipped on the right: a fieldset is as wide as its content unless told otherwise, and the 11em
+   select and 7em number box did not shrink. Nothing in the form is wider than its container (#4259). */
+.health-form, .health-form fieldset, .health-form label, .health-rule, .health-knobs, .health-row { min-width: 0; max-width: 100%; }
+.health-form select, .health-form input[type="text"] { max-width: 100%; }
+/* A phone or a touch screen: the check rows and the inputs are touch-size targets. */
+@media (max-width: 767px), (pointer: coarse) {
+    .health-form .health-rule-head { min-height: var(--control-touch-height, 44px); align-items: center; }
+    .health-form .health-rule-head input { margin-top: 0; }
+    .health-form input[type="number"], .health-form input[type="text"], .health-form select { min-height: var(--control-touch-height, 44px); }
+}

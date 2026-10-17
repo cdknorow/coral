@@ -39,8 +39,8 @@ export function healthPanelHTML(h, members) {
     const options = [`<option value="">The orchestrator (default)</option>`]
         .concat(members.map(m => `<option value="${escapeAttr(m.subscriber_id)}"${m.subscriber_id === rcpt ? ' selected' : ''}>${escapeHtml(m.subscriber_id)}${m.job_title ? ` (${escapeHtml(m.job_title)})` : ''}</option>`));
     if (rcpt && !names.includes(rcpt)) options.push(`<option value="${escapeAttr(rcpt)}" selected>${escapeHtml(rcpt)} (not in the team now)</option>`);
-    const reviewers = `<label class="health-knob health-wide">Default reviewers <span class="health-limits">up to ${HEALTH_LIMITS.reviewers}, separated by commas</span>
-        <input type="text" name="default_reviewers" value="${escapeAttr((h.default_reviewers || []).join(', '))}" list="health-members" autocomplete="off" maxlength="400" placeholder="Names of agents on this team (none: reviews wait for the orchestrator)"><datalist id="health-members">${names.map(n => `<option value="${escapeAttr(n)}">`).join('')}</datalist></label>`;
+    const reviewers = `<label class="health-knob health-wide">Default reviewers <span class="health-limits">Names of agents on this team, up to ${HEALTH_LIMITS.reviewers}, separated by commas. None: reviews wait for the orchestrator.</span>
+        <input type="text" name="default_reviewers" value="${escapeAttr((h.default_reviewers || []).join(', '))}" list="health-members" autocomplete="off" maxlength="400" placeholder="Names, separated by commas"><datalist id="health-members">${names.map(n => `<option value="${escapeAttr(n)}">`).join('')}</datalist></label>`;
     const held = h.held_notice ? rule('held_notice', 'Tell the Operator about a held delivery',
         'A message Coral could not type into an agent (its terminal is on a dialog) and has held back for a while is reported to the Operator.',
         !!h.held_notice.on, knob('held_notice_after_min', 'After', h.held_notice.after_min, MIN_LO, MIN_HI, 'minutes held')) : '';

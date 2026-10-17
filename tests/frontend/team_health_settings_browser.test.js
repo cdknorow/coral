@@ -50,11 +50,11 @@ const { connect } = require('./agent_view_harness');
             const unlabelled = [...f.querySelectorAll('input, select')].filter(e => !(e.closest('label') || e.getAttribute('aria-label'))).map(e => e.name);
             return { on: v('on').checked, allClear: v('all_clear').checked, rcpt: v('recipient').value, opts: [...v('recipient').options].map(o => o.value + '=' + o.textContent), nums, unlabelled, rev: v('default_reviewers').value, rules: ['auto_delegate', 'claim_nudge', 'status_nudge', 'mention_renudge'].map(r => v(r + '_on').checked), held: !!document.querySelector('[data-rule=held_notice]'), save: f.querySelector('[type=submit]').disabled }; })()`);
         assert.equal(form.on, true); assert.equal(form.allClear, true); assert.equal(form.rcpt, '');
-        assert.deepEqual(form.nums, [['interval_min', '10', '5', '1440'], ['claim_nudge_after_min', '10', '5', '1440'], ['claim_nudge_nudges', '2', '1', '5'], ['status_nudge_after_min', '20', '5', '1440'], ['status_nudge_escalate_after_min', '10', '5', '1440'], ['mention_renudge_after_min', '10', '5', '1440']]);
+        assert.deepEqual(form.nums, [['interval_min', '10', '5', '1440'], ['claim_nudge_after_min', '10', '5', '1440'], ['claim_nudge_nudges', '2', '1', '5'], ['status_nudge_after_min', '20', '5', '1440'], ['status_nudge_escalate_after_min', '10', '5', '1440'], ['held_notice_after_min', '10', '5', '1440'], ['mention_renudge_after_min', '10', '5', '1440']]); // the server returns held_notice since Lead's #4225: its card is in the defaults
         assert.deepEqual(form.unlabelled, [], 'every control has a label');
         assert.deepEqual(form.rules, [true, true, true, true]);
         assert.ok(form.opts.some(o => o.startsWith('Boss=')) && form.opts.some(o => o.startsWith('Dev One=')) && form.opts[0] === '=The orchestrator (default)', JSON.stringify(form.opts));
-        assert.equal(form.held, false, 'no held-delivery card while the server has no held_notice');
+        assert.equal(form.held, true, 'the held-delivery card shows: the server returns held_notice (#4225)');
         assert.equal(form.save, true, 'Save starts disabled');
         ok('defaults from the server, limits 5 to 1440 minutes and 1 to 5 nudges on the inputs, every control labelled, members offered as recipients');
 
