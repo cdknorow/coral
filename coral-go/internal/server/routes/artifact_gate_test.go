@@ -189,7 +189,17 @@ func TestReceivedFileNameFollowsTheSniffedType(t *testing.T) {
 		"../../etc/passwd":             "passwd.png",
 		`..\..\windows\system32\x.exe`: "x.png",
 		"report‮gpj.exe":               "report_gpj.png",
-		"CON":                          "CON.png",
+		"CON":                          "_CON.png",
+		"CON.txt":                      "_CON.png",
+		"nul.tar.gz":                   "_nul.tar.png",
+		"Com1":                         "_Com1.png",
+		"LPT9.log":                     "_LPT9.png",
+		"prn":                          "_prn.png",
+		"AUX ":                         "_AUX.png",
+		"CONIN":                        "_CONIN.png",
+		"CONOUT.x":                     "_CONOUT.png",
+		"COM10":                        "COM10.png",
+		"console":                      "console.png",
 		"a\x00b\x07c.txt":              "a_b_c.png",
 		"":                             "attachment.png",
 		"...":                          "attachment.png",
@@ -305,4 +315,21 @@ func TestStripLimits(t *testing.T) {
 	huge = append(huge, make([]byte, 16)...)
 	_, err = stripImageMetadata(huge, "image/png")
 	assert.Error(t, err)
+}
+
+// Text means text all the way through, not only in the first probe: 9 KiB of text then a zip is refused.
+func TestGateTextIsTextThroughout(t *testing.T) {
+	text := bytes.Repeat([]byte("plain words\n"), 1000) // over the 8 KiB probe
+	_, err := gateReceived(text)
+	require.NoError(t, err)
+	for name, tail := range map[string][]byte{
+		"zip":      append([]byte("PK\x03\x04"), make([]byte, 40)...),
+		"NUL":      {0},
+		"bad utf8": {0xff, 0xfe, 0xfd},
+	} {
+		_, err := gateReceived(append(append([]byte{}, text...), tail...))
+		var r gateRefusal
+		require.ErrorAs(t, err, &r, name)
+		assert.Equal(t, "type_refused", r.Code, name)
+	}
 }

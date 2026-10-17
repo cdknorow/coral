@@ -81,7 +81,7 @@ func gateReceived(data []byte) (gateResult, error) {
 	case bytes.HasPrefix(head, []byte("%PDF-")):
 		return gateResult{MediaType: "application/pdf", Ext: ".pdf", Data: data}, nil
 	}
-	if !looksLikeText(head) {
+	if !looksLikeText(head) || !textThroughout(data) {
 		return gateResult{}, refuse("this type of file is not accepted")
 	}
 	switch {
@@ -173,6 +173,13 @@ func looksLikeText(head []byte) bool {
 		}
 	}
 	return ctrl*50 < max(len(p), 1) // under 2 percent
+}
+
+// textThroughout reports whether the whole file is text: no NUL and valid UTF-8 from the first byte to
+// the last (linear), so 9 KiB of text followed by a zip is not "text". The probe above stays as the
+// cheap first look.
+func textThroughout(data []byte) bool {
+	return bytes.IndexByte(data, 0) < 0 && utf8.Valid(data)
 }
 
 func firstNonSpace(head []byte) []byte {
@@ -275,5 +282,21 @@ func receivedFileName(sent string, res gateResult) string {
 	if base == "" {
 		base = "attachment"
 	}
+	if windowsDeviceName(base) {
+		base = "_" + base
+	}
 	return base + res.Ext
+}
+
+// windowsDeviceName reports whether name, once a Windows file system looks at it, is a device: the
+// part before the first dot (trailing spaces ignored, any case) is CON, PRN, AUX, NUL, COM0-9,
+// LPT0-9, CONIN or CONOUT, so "CON.txt" and "nul.tar.txt" both open the device, not a file.
+func windowsDeviceName(name string) bool {
+	stem, _, _ := strings.Cut(name, ".")
+	switch s := strings.ToUpper(strings.TrimRight(stem, " ")); s {
+	case "CON", "PRN", "AUX", "NUL", "CONIN", "CONOUT":
+		return true
+	default:
+		return len(s) == 4 && (s[:3] == "COM" || s[:3] == "LPT") && s[3] >= '0' && s[3] <= '9'
+	}
 }
