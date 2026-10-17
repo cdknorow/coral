@@ -16,6 +16,7 @@ import { storeKey, onAccountForgotten } from './local_store.js';
 import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, isShortReply, lastContent, noticeStartedTurn, rollUpGroups, updateWorkGroupSummary } from './chat_content.js';
 import { flashCopied, makeBubble } from './chat_bubbles.js';
 import { unwrapPastedContent } from './pasted_content.js';
+import { CHAT_TRIM, FIRST_PAGE, takeChatPrefetch } from './chat_page.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 import { INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, isCoralNudge, normalizeNudgeText, noteAgentActivity, noteInterrupt, rememberUserMessage, syncPendingBubbles, syncWorkingIndicator } from './pending_messages.js';
 import { browserLocal } from './safe_storage.js';
@@ -76,12 +77,10 @@ function freshKeptPage(sessionId) {
 // leg); older pages load as the reader scrolls toward the top. 30 messages fill
 // the view and are about a third of the 100 it was (#3723: 22 to 61 KB against
 // 68 to 170 KB on 100 MB transcripts).
-const FIRST_PAGE = 30;
 const OLDER_PAGE = 200;
 // Pages carry at most CHAT_TRIM bytes of each long tool field (an output, a
 // written file, an edit): they are folded away, and a card loads its message in
 // full when opened (loadTrimmedCard).
-const CHAT_TRIM = 2048;
 // Bumped on reset so responses for a previous session are dropped, and used to
 // keep a single refresh in flight: overlapping initial loads would otherwise
 // both render the full history.
@@ -531,7 +530,16 @@ export async function refreshLiveHistory() {
     activeChatAbortController = abortCtrl;
 
     try {
-        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
+        // The first page of a deep-linked chat was asked for when the page loaded, before the list named the agent (chat_page.js): when it is the request
+        // this would make, take it over; if it failed or was refused, make the request as usual. Its abort is this load's: a switch cancels it too.
+        let resp = null;
+        const early = initialLoadDone ? null : takeChatPrefetch(session, params, { local: server === 'local', cloud: isCloud() });
+        if (early) {
+            abortCtrl.signal.addEventListener('abort', early.abort, { once: true });
+            try { resp = await early.promise; } catch { resp = null; }
+            if (resp && !resp.ok) resp = null; // a refusal (a 401 above all) is the real request's to meet, with the page's own handling
+        }
+        if (!resp) resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
             signal: abortCtrl.signal,
         });
         if (generation !== historyGeneration) return;

@@ -1,5 +1,6 @@
 import './update_banner.js'; // first: it wraps fetch before the other modules ask for anything (#3751)
 import { importOnce } from './import_once.js';
+import { startChatPrefetch } from './chat_page.js';
 import './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
 import './nav_tabs.js'; // the tab row, its More menu and the phone's view dropdown (#3816)
 import { initPrerequisiteChecks } from './prerequisites.js';
@@ -1043,6 +1044,10 @@ function showHome() {
 }
 
 // ── Initialization ────────────────────────────────────────────────────────
+// A page opened at /agents/<session id> asks for that chat's first page now, not after the live list names the agent (chat_page.js, #4326).
+// The Coral Hub, the pop-out and a remote server's agent are not /agents/<id> of a local session: nothing starts there.
+startChatPrefetch({ cloud: isCloud() });
+
 // What was typed and where people worked, kept in this browser (local_store.js, #3681): owned by the
 // signed-in Coral Hub account (none locally), aged out at start and daily in a tab left open.
 async function initLocalStore() {
