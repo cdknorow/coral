@@ -124,6 +124,22 @@ func TestCanonicalIdentityKeysMiddleware(t *testing.T) {
 	do("GET", "/api/board/p/messages?Subscriber_ID=Lead", ``)
 	assert.Equal(t, "", gotBody)
 
+	// A declared length over the cap is refused on the agent routes too, with the body unread.
+	for _, path := range []string{"/api/board/p/tasks", "/api/agent/tasks"} {
+		r := httptest.NewRequest("POST", path, strings.NewReader(`{"SUBSCRIBER_ID":"Lead"}`))
+		r.ContentLength = maxBoardBody + 1
+		gotBody = "(not reached)"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code, path)
+		assert.Equal(t, "(not reached)", gotBody, path)
+	}
+	r2 := httptest.NewRequest("POST", "/api/agent/artifacts", strings.NewReader("raw"))
+	r2.ContentLength = maxBoardBody + 1
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, r2)
+	assert.Equal(t, http.StatusOK, rec2.Code, "an artifact upload is not capped here")
+
 	// A chunked body over the cap is refused, as the identity layer refuses a declared one.
 	big := `{"title":"` + strings.Repeat("a", maxBoardBody) + `"}`
 	r := httptest.NewRequest("POST", "/api/board/p/tasks", io.NopCloser(strings.NewReader(big)))

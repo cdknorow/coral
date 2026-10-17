@@ -44,9 +44,14 @@ func CanonicalIdentityKeys(next http.Handler) http.Handler {
 		// An artifact upload is the raw file, not a request body about a board.
 		if (!strings.HasPrefix(r.URL.Path, "/api/board/") && !strings.HasPrefix(r.URL.Path, "/api/agent/")) ||
 			strings.HasPrefix(r.URL.Path, "/api/agent/artifacts") ||
-			r.Body == nil || r.Body == http.NoBody || r.ContentLength > maxBoardBody {
-			// (A declared length over the cap is refused by the identity layer for a board.)
+			r.Body == nil || r.Body == http.NoBody {
 			next.ServeHTTP(w, r)
+			return
+		}
+		// A body over the cap is refused here, for the agent routes too (nothing else caps them):
+		// passed on, it would keep its differently spelled keys from every guard.
+		if r.ContentLength > maxBoardBody {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "This board request's body is over the limit", "code": "body_too_large"})
 			return
 		}
 		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBoardBody))
