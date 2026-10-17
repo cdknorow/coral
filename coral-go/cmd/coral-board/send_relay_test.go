@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // #3489: send --address goes to this board's relay-messages route with the sender's own
@@ -219,5 +220,15 @@ func TestSendPrintsAnAttachmentRefusalsCode(t *testing.T) {
 		if got := refusalText(c.code, c.words); got != c.want {
 			t.Errorf("refusalText(%q, %q) = %q", c.code, c.words, got)
 		}
+	}
+}
+
+// A send waits for each attachment's scan (up to 100 s) as well as its transfer (up to 125 s).
+func TestAttachWaitCoversTheScanAndTheTransfer(t *testing.T) {
+	if got := attachWait(1); got != 260*time.Second {
+		t.Errorf("one attachment: %v", got)
+	}
+	if got := attachWait(4); got != 935*time.Second {
+		t.Errorf("four attachments: %v", got)
 	}
 }

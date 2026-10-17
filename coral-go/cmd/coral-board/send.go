@@ -182,9 +182,10 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 	body["message_id"] = messageID
 	timeout := 35 * time.Second
 	if len(attach) > 0 {
-		// Each file may take up to Coral Hub's 120 s transfer limit; the files go before the message.
+		// Each file may take up to Coral Hub's 120 s transfer limit, after up to 100 s of secret scanning on
+		// this computer (the server's scanFileCap); the files go before the message.
 		body["attach"] = attach
-		timeout = time.Duration(len(attach))*125*time.Second + 35*time.Second
+		timeout = attachWait(len(attach))
 	}
 	data, status, err := apiCallRawTimeout(http.MethodPost, "/"+url.PathEscape(id.Board)+"/relay-messages", body, timeout)
 	if err != nil {
@@ -293,4 +294,10 @@ func refusalText(code, words string) string {
 		return words
 	}
 	return code + ": " + words
+}
+
+// attachWait is how long a send with n attachments waits for the server: per file the 125 s of Coral Hub's
+// transfer limit and the 100 s the server may spend scanning it for secrets (scanFileCap), and 35 s for the message.
+func attachWait(n int) time.Duration {
+	return time.Duration(n)*(125+100)*time.Second + 35*time.Second
 }

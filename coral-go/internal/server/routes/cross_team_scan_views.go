@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"html"
 	"regexp"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cdknorow/coral/internal/secrets"
@@ -41,15 +42,67 @@ const (
 	scanUnchecked             // the budget ran out, or the scan could not finish: fails closed
 )
 
-// scanSecrets runs Coral's secret rules over text and its re-encoded views (scanViews). It is the scan of
-// an attachment and of the text of a message to another Coral, so they cannot differ.
-func scanSecrets(data []byte) scanOutcome {
+// The time a file's scan may take (#4453): a pass over the text or one of its views gets scanBaseBudget plus
+// scanPerMiB for every MiB it scans, so a near-8 MiB file passes on a loaded machine as it does on an idle one
+// (an idle laptop needs 1 to 1.7 s a pass for 7.5 MiB, which is 0.2 s a MiB), and the whole file, all its
+// passes together, gets scanFileCap. The cap stays under the 125 s the command line waits for one attachment
+// (and the scan runs before the first byte goes to Coral Hub, so the relay's own 15 s and 120 s stream
+// deadlines have not started). The message text keeps the 3 s of the other replies (textBudget): it is at most
+// 64 KiB.
+const (
+	scanBaseBudget = 3 * time.Second
+	scanPerMiB     = 4 * time.Second
+	scanFileCap    = 100 * time.Second
+	textBudget     = 3 * time.Second
+)
+
+// scanPassBudget is the budget of one pass over n bytes.
+func scanPassBudget(n int) time.Duration {
+	return scanBaseBudget + time.Duration(int64(scanPerMiB)*int64(n)/(1<<20))
+}
+
+// scanEnv is what the scan runs on: the clock and the rules (replaceable in tests).
+type scanEnv struct {
+	now  func() time.Time
+	text func(budget time.Duration, v []byte) ([]byte, error)
+}
+
+var liveScan = scanEnv{now: time.Now, text: func(budget time.Duration, v []byte) ([]byte, error) {
+	return secrets.BudgetedRedactor(budget).Text(v)
+}}
+
+// scanSecrets runs Coral's secret rules over a file and its re-encoded views (scanViews), within the file's
+// budget: it is the scan of an attachment.
+func scanSecrets(data []byte) scanOutcome { return scanFile(liveScan, data) }
+
+// scanMessageText is the scan of a message's own text: the same rules and views, the 3 s of a reply.
+func scanMessageText(data []byte) scanOutcome {
+	return scanWith(liveScan, data, func(int) time.Duration { return textBudget })
+}
+
+func scanFile(env scanEnv, data []byte) scanOutcome {
+	deadline := env.now().Add(scanFileCap)
+	return scanWith(env, data, func(n int) time.Duration {
+		budget := scanPassBudget(n)
+		if left := deadline.Sub(env.now()); left < budget {
+			budget = left
+		}
+		return budget
+	})
+}
+
+// scanWith scans data and each of its views, each pass within budgetFor(its size).
+func scanWith(env scanEnv, data []byte, budgetFor func(n int) time.Duration) scanOutcome {
 	views, ok := scanViews(data)
 	if !ok {
 		return scanUnchecked
 	}
 	for _, v := range append([][]byte{data}, views...) {
-		out, err := secrets.Redactor().Text(v)
+		budget := budgetFor(len(v))
+		if budget <= 0 {
+			return scanUnchecked
+		}
+		out, err := env.text(budget, v)
 		if err != nil {
 			return scanUnchecked
 		}

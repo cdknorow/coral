@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -150,4 +151,59 @@ func TestRelayedFileThroughTheRealGuards(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, status, "a Hub user and a server: %v", out)
 	assert.Equal(t, "ambiguous_origin", out["error"])
 	assert.Len(t, e.stored(), stored, "none of them stored anything")
+}
+
+// countingBody counts what is read from it.
+type countingBody struct {
+	left int
+	read int
+}
+
+func (c *countingBody) Read(p []byte) (int, error) {
+	if c.left == 0 {
+		return 0, io.EOF
+	}
+	n := min(len(p), c.left)
+	for i := 0; i < n; i++ {
+		p[i] = 0xAB
+	}
+	c.left -= n
+	c.read += n
+	return n, nil
+}
+func (c *countingBody) Close() error { return nil }
+
+// An agent's token on a relayed file request: the identity check does not read the frame looking for claims
+// (checkBoard and attributionClaims), as it does for any other board request; the board and subscription checks
+// still run (Security's #4453 review, with the Orchestrator).
+func TestIdentityCheckDoesNotReadARelayedFilesBody(t *testing.T) {
+	_, bh := setupBoardTestServer(t)
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	ctx := t.Context()
+	_, err = bh.bs.Subscribe(ctx, "p", "Dev", "Developer", "claude-dev", nil, "")
+	require.NoError(t, err)
+	token, err := db.MintSessionToken(ctx, "sid-dev", "claude-dev")
+	require.NoError(t, err)
+	o := NewIdentityObserver(db, bh.bs, func(*http.Request) bool { return false })
+
+	run := func(path string) (read, code int) {
+		h := o.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		body := &countingBody{left: 3 << 20}
+		req := httptest.NewRequest("POST", path, body)
+		req.ContentLength = int64(body.left)
+		req.Header.Set(store.SessionTokenHeader, token)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return body.read, rec.Code
+	}
+	read, _ := run("/api/board/p/external-artifacts")
+	assert.Zero(t, read, "the identity check read none of the frame")
+	read, _ = run("/api/board/p/messages")
+	assert.Positive(t, read, "another board route's body is still read for its claims")
+	// The board check still runs: a token not subscribed on the board is refused as before, without a read.
+	read, code := run("/api/board/other-board/external-artifacts")
+	assert.Zero(t, read)
+	assert.Equal(t, http.StatusForbidden, code, "an agent on another board is refused as for any board route")
 }

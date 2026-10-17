@@ -938,7 +938,9 @@ func boardClaims(r *http.Request) (map[string][]string, error) {
 	for _, f := range []string{"subscriber_id", "as", "created_by", "session_name"} {
 		claims[f] = append(claims[f], r.URL.Query()[f]...)
 	}
-	if r.Body != nil && r.Body != http.NoBody {
+	// A relayed file's body is a binary frame, not a request about a board: it names no identity and is never
+	// read here (#4453; CanonicalIdentityKeys skips it too). The query's claims above are still collected.
+	if r.Body != nil && r.Body != http.NoBody && !isRelayedFileRoute(r) {
 		raw, err := io.ReadAll(r.Body)
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {

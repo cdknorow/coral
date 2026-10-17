@@ -30,6 +30,7 @@ var (
 	once    sync.Once
 	red     redact.Redactor
 	logRed  redact.Redactor
+	det     redact.Detector
 	initErr error
 )
 
@@ -39,7 +40,7 @@ func build() {
 		initErr, red, logRed = err, redact.Refuse, redact.Refuse
 		return
 	}
-	det := withExtraRules{base: d}
+	det = withExtraRules{base: d}
 	red = &redact.Scanner{Detector: det, Budget: Budget}
 	logRed = &redact.Scanner{Detector: det, Budget: LogBudget}
 }
@@ -62,4 +63,15 @@ func Redactor() redact.Redactor {
 func LogRedactor() redact.Redactor {
 	once.Do(build)
 	return logRed
+}
+
+// BudgetedRedactor is the process's rules with a budget of the caller's choosing: a file that leaves this computer
+// is scanned with a budget that grows with its size (#4453), while replies, events and log lines keep Budget and
+// LogBudget. If the rules could not be built, every call refuses.
+func BudgetedRedactor(budget time.Duration) redact.Redactor {
+	once.Do(build)
+	if initErr != nil {
+		return redact.Refuse
+	}
+	return &redact.Scanner{Detector: det, Budget: budget}
 }

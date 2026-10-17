@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"bytes"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
@@ -11,9 +12,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // The sender-side scan against Security's #4438 matrix: each re-encoding of a token is either caught
@@ -162,4 +166,112 @@ func TestScanAttachmentPathLogIsNotRefused(t *testing.T) {
 	r := scanAttachment(attachedArtifact{ID: "ab"}, []byte(b.String()+"token="+base64.StdEncoding.EncodeToString([]byte("ghp_1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R"))+"\n"))
 	require.NotNil(t, r)
 	assert.Equal(t, "attach_secret", r.code)
+}
+
+// fakeScan is a scan environment on a fake clock: each pass takes what take says, answers ErrUnchecked when
+// that is more than the budget it was given (as the real scanner does at its budget), and records the budgets.
+type fakeScan struct {
+	clock   time.Time
+	take    func(n int) time.Duration
+	budgets []time.Duration
+	spent   time.Duration
+}
+
+func (f *fakeScan) env() scanEnv {
+	return scanEnv{
+		now: func() time.Time { return f.clock },
+		text: func(budget time.Duration, v []byte) ([]byte, error) {
+			f.budgets = append(f.budgets, budget)
+			d := f.take(len(v))
+			if d > budget {
+				f.clock, f.spent = f.clock.Add(budget), f.spent+budget
+				return nil, redact.ErrUnchecked
+			}
+			f.clock, f.spent = f.clock.Add(d), f.spent+d
+			return v, nil
+		},
+	}
+}
+
+// A pass over a file gets 3 s plus 4 s a MiB, so a near-8 MiB file passes on a slow machine; a small file
+// gets the 3 s it always had (#4453, the Orchestrator's budget).
+func TestScanBudgetGrowsWithTheFile(t *testing.T) {
+	assert.Equal(t, 3*time.Second, scanPassBudget(0))
+	assert.InDelta(t, float64(3*time.Second), float64(scanPassBudget(1<<10)), float64(10*time.Millisecond), "a small file: about 3 s")
+	assert.Equal(t, 7*time.Second, scanPassBudget(1<<20))
+	assert.Equal(t, 33*time.Second, scanPassBudget(7<<20+512<<10), "7.5 MiB: 33 s, about 15 times an idle machine's pass")
+	assert.Equal(t, 35*time.Second, scanPassBudget(8<<20))
+	assert.Less(t, scanFileCap, 125*time.Second, "under the 125 s the command line waits for one attachment")
+
+	// A file whose passes take 20 s each (a loaded machine, 7.5 MiB) is checked, where 3 s would have refused it.
+	data := bytes.Repeat([]byte("ordinary line of a big log file\n"), (7<<20+512<<10)/32)
+	f := &fakeScan{clock: time.Unix(0, 0), take: func(int) time.Duration { return 20 * time.Second }}
+	assert.Equal(t, scanClean, scanFile(f.env(), data))
+	require.NotEmpty(t, f.budgets)
+	assert.Equal(t, scanPassBudget(len(data)), f.budgets[0], "the first pass gets the size's budget")
+	// The same file under the flat 3 s is refused: what the scaling is for.
+	f2 := &fakeScan{clock: time.Unix(0, 0), take: func(int) time.Duration { return 20 * time.Second }}
+	assert.Equal(t, scanUnchecked, scanWith(f2.env(), data, func(int) time.Duration { return textBudget }))
+
+	// A small file still gets about 3 s and is refused when a pass takes longer.
+	small := []byte("a small note\n")
+	f3 := &fakeScan{clock: time.Unix(0, 0), take: func(int) time.Duration { return 4 * time.Second }}
+	assert.Equal(t, scanUnchecked, scanFile(f3.env(), small))
+	assert.InDelta(t, float64(3*time.Second), float64(f3.budgets[0]), float64(10*time.Millisecond))
+}
+
+// The whole file's passes together never take more than scanFileCap, however dense: a pass is given only what
+// is left, and no time left is unchecked.
+func TestScanFileCapHoldsAgainstADenseFile(t *testing.T) {
+	// Views that are each as big as the file: reversed text and joined fragments, as a hostile file makes them.
+	data := bytes.Repeat([]byte("ghp_ab cd1234 "), 8<<20/14)
+	views, ok := scanViews(data)
+	require.True(t, ok)
+	require.GreaterOrEqual(t, len(views), 2, "a dense file has several full-size views")
+
+	// Each pass takes 30 s: three fit under 100 s, the fourth is given the 10 s left and runs out.
+	f := &fakeScan{clock: time.Unix(0, 0), take: func(int) time.Duration { return 30 * time.Second }}
+	passes := 1 + len(views)
+	out := scanFile(f.env(), data)
+	assert.LessOrEqual(t, f.spent, scanFileCap, "the file's scan never takes more than the cap")
+	if passes >= 4 {
+		assert.Equal(t, scanUnchecked, out, "out of time: refused, not passed")
+		require.GreaterOrEqual(t, len(f.budgets), 4)
+		assert.Equal(t, 10*time.Second, f.budgets[3], "the fourth pass gets only what is left")
+	}
+
+	// A hostile pass that always takes its whole budget ends the scan at once.
+	g := &fakeScan{clock: time.Unix(0, 0), take: func(int) time.Duration { return time.Hour }}
+	assert.Equal(t, scanUnchecked, scanFile(g.env(), data))
+	assert.Len(t, g.budgets, 1)
+	assert.LessOrEqual(t, g.spent, scanFileCap)
+
+	// Nothing left is refused without a pass.
+	h := &fakeScan{clock: time.Unix(0, 0), take: func(int) time.Duration { return 0 }}
+	env := h.env()
+	env.now = func() time.Time { h.clock = h.clock.Add(scanFileCap); return h.clock }
+	assert.Equal(t, scanUnchecked, scanFile(env, data))
+	assert.Empty(t, h.budgets)
+}
+
+// The two entry points use the two budgets: an attachment's scan the file's, a message's text the 3 s of a reply.
+func TestEntryPointsUseTheirBudgets(t *testing.T) {
+	old := liveScan
+	t.Cleanup(func() { liveScan = old })
+	data := bytes.Repeat([]byte("a line of a big text file\n"), (6<<20)/26)
+
+	f := &fakeScan{clock: time.Unix(0, 0), take: func(int) time.Duration { return time.Second }}
+	liveScan = f.env()
+	assert.Equal(t, scanClean, scanSecrets(data))
+	require.NotEmpty(t, f.budgets)
+	assert.Equal(t, scanPassBudget(len(data)), f.budgets[0], "an attachment: the budget of its size")
+	assert.Greater(t, f.budgets[0], 20*time.Second)
+
+	m := &fakeScan{clock: time.Unix(0, 0), take: func(int) time.Duration { return time.Second }}
+	liveScan = m.env()
+	assert.Equal(t, scanClean, scanMessageText(data))
+	require.NotEmpty(t, m.budgets)
+	for _, b := range m.budgets {
+		assert.Equal(t, 3*time.Second, b, "a message's text keeps the 3 s, whatever its size")
+	}
 }
