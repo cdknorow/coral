@@ -6,7 +6,7 @@ import { launchBlockedReason } from './hub_access.js';
 import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, noteBoardLabels, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { distillChip } from './knowledge_distill.js';
-import { formatDurationSec as formatDuration, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, getAgentColor, hexToRgba, AGENT_NAME_PALETTE, boardMessageDisplayText } from './utils.js';
+import { formatDurationSec as formatDuration, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, hexToRgba, AGENT_NAME_PALETTE, agentNameColor, boardMessageDisplayText } from './utils.js';
 import { registerActions, idOf, tokenOf, textOf } from './actions.js';
 import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
@@ -786,15 +786,7 @@ function _railTile(s, active) {
     const railStale = isStaleSession(s);
     const railLabel = railStale ? `${label}: ${staleReason(s)}` : (showServerLabels() ? `${label} · ${serverLabel(sessionServer(s))}` : label);
     return `<button type="button" class="sidebar-rail-item${active ? ' active' : ''}${railStale ? ' session-stale' : ''}" title="${escapeAttr(railLabel)}" aria-label="${escapeAttr(railLabel)}"${railStale ? ' disabled' : ''}
-        ${railStale ? '' : `data-on-click="session-open" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(s.session_id || '')}" data-server="${escapeAttr(sessionServer(s))}"`}><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
-}
-
-function _railTeamColor(name) {
-    const custom = _getBoardColor(name);
-    if (custom) return custom;
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-    return `hsl(${((hash % 360) + 360) % 360}, 60%, 55%)`;
+        ${railStale ? '' : `data-on-click="session-open" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(s.session_id || '')}" data-server="${escapeAttr(sessionServer(s))}"`}><span class="rail-tile"${agentNameColor(s) ? ` style="--agent-name-color:${escapeAttr(agentNameColor(s))}"` : ''}>${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
 }
 
 /** Icon rail shown when the sidebar is collapsed: a team/folder header per
@@ -843,10 +835,12 @@ function _renderSidebarRail(sessions) {
         if (!g.agents.length) continue;
         const collapsed = _isGroupCollapsed(g.key);
         const letter = (g.label.trim()[0] || '?').toUpperCase();
-        const accent = g.kind === 'team' ? _railTeamColor(g.key) : getAgentColor(splitKey(g.key).name); // the key: a rename keeps the colour
-        const style = ` style="--rail-accent:${escapeAttr(accent)}"`;
+        // The same colours as the full list (#3507): a team shows the colour the user picked for it,
+        // and every other team, folder and workflow the same neutral chip.
+        const accent = g.kind === 'team' ? _getBoardColor(g.key) : null;
+        const style = accent ? ` style="--rail-accent:${escapeAttr(accent)}"` : '';
         const title = `${g.label} (${g.agents.length}) — click to ${collapsed ? 'expand' : 'collapse'}`;
-        html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
+        html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${accent ? ' has-accent' : ''}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
             data-on-click="group-collapse" data-group="${escapeAttr(g.key)}">${_RAIL_ICONS[g.kind]}<span class="sidebar-rail-letter">${escapeHtml(letter)}</span></button>`;
         if (collapsed) continue;
         for (const s of g.agents) {
