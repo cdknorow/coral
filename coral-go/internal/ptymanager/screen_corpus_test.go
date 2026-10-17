@@ -44,7 +44,7 @@ const corpusNudge = "You have 1 unread message on the message board. Run 'coral-
 var boxStateNames = map[boxState]string{boxUnknown: "unknown", boxEmpty: "empty", boxOurs: "ours", boxOther: "other"}
 
 // whyPrefixes are the reasons PromptOnScreen gives, by their fixed start.
-var whyPrefixes = []string{"selection menu", "prompt question", footerWhy, busyWhy, loginWhy}
+var whyPrefixes = []string{"selection menu", "prompt question", footerWhy, busyWhy, loginWhy, dialogWhy}
 
 func whyPrefix(why string) string {
 	for _, p := range whyPrefixes {

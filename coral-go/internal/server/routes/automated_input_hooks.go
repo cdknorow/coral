@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +26,10 @@ const heldInputSummary = sessionstate.HeldInputSummary
 // box not on screen. Nobody's answer is needed, so it is informational: no Needs
 // input, toast or attention (#3471). It must match none of sessionstate's phrases.
 const heldForInputBoxSummary = "Coral is holding automated messages until the text in this agent's input box is sent or cleared"
+
+// heldDialogGaveUpPrefix starts the note for a send given up behind a dialog (#4104, the
+// Orchestrator's wording). It must match none of sessionstate's phrases: nothing to answer.
+const heldDialogGaveUpPrefix = "Coral dropped an automated message: a dialog in the agent's terminal may be blocking delivery ("
 
 // heldGaveUpSummary is recorded when the gate gave up a held paste of its own (#3708): it
 // was pasted but its input box never confirmed it, so it was dropped rather than left to
@@ -78,7 +83,7 @@ func (h *SessionsHandler) gateNeedsInput(ctx context.Context, name, agentType, s
 		return false
 	}
 	st := h.deriveSingleSessionState(ctx, sessionID, 0)
-	return st.NeedsInput && st.WaitingSummary != heldInputSummary
+	return st.NeedsInput && !sessionstate.IsHeldInputSummary(st.WaitingSummary)
 }
 
 // recordHeldTooLong records, once per send held a while, why on the agent's
@@ -94,7 +99,10 @@ func (h *SessionsHandler) recordHeldTooLong(name, agentType, sessionID, what, ki
 		return
 	}
 	summary := heldInputSummary
-	if !prompt {
+	switch {
+	case kind == ptymanager.KindDialog:
+		summary = sessionstate.HeldDialogSummary // "delivery held: a dialog is open" (#4104)
+	case !prompt:
 		summary = heldForInputBoxSummary
 	}
 	h.recordHeldNote(name, sessionID, summary)
@@ -122,7 +130,13 @@ func (h *SessionsHandler) recordHeldGaveUp(name, agentType, sessionID, what, why
 	if h.ts == nil || sessionID == "" {
 		return
 	}
-	h.recordHeldNote(name, sessionID, heldGaveUpSummary)
+	summary := heldGaveUpSummary
+	if strings.HasPrefix(why, ptymanager.WhyDialogGaveUp) || why == ptymanager.WhyEnterGaveUp {
+		// Given up behind a dialog (#4104): a mention after 10 minutes of one, or an Enter that
+		// never submitted (most likely a dialog Coral doesn't know). The note says so.
+		summary = heldDialogGaveUpPrefix + why + ")"
+	}
+	h.recordHeldNote(name, sessionID, summary)
 }
 
 func (h *SessionsHandler) recordHeldNote(name, sessionID, summary string) {

@@ -399,3 +399,21 @@ func TestSignedInSince(t *testing.T) {
 		}
 	}
 }
+
+// #4104: the dialog's held notice is Coral's own, like HeldInputSummary: Needs input, not the
+// agent's request, and cleared by the ended note.
+func TestHeldDialogNoticeIsCoralsOwn(t *testing.T) {
+	if Classify(HeldDialogSummary) != NotificationNeedsInput {
+		t.Fatal("the dialog notice shows Needs input")
+	}
+	st := Derive(Input{Events: []Event{stop, note(HeldDialogSummary)}})
+	if !st.NeedsInput || st.OwnRequest || st.WaitingSummary != HeldDialogSummary {
+		t.Fatalf("dialog notice: %+v", st)
+	}
+	if Derive(Input{Events: []Event{stop, note(HeldDialogSummary), note(HeldInputEndedSummary)}}).NeedsInput {
+		t.Fatal("cleared when the hold ended")
+	}
+	if !IsHeldInputSummary(HeldDialogSummary) || !IsHeldInputSummary(HeldInputSummary) || IsHeldInputSummary("Claude needs your permission to use Bash") {
+		t.Fatal("IsHeldInputSummary")
+	}
+}

@@ -89,6 +89,13 @@ func inputBoxText(screen string) (text string, ok bool) {
 	if open, _ := PromptOnScreen(screen); open {
 		return "", false
 	}
+	return inputBoxTextAny(screen)
+}
+
+// inputBoxTextAny is inputBoxText whatever is open above the box: what the bottom input line
+// holds even while a dialog is drawn over it (#4104: an Enter a dialog took leaves the pasted
+// text there).
+func inputBoxTextAny(screen string) (text string, ok bool) {
 	lines := tailLines(screenText(screen), boxScanLines)
 	start := boxStartLine(lines)
 	if start < 0 {
@@ -124,6 +131,11 @@ func inputBoxState(screen, text string, hadPlaceholder bool) boxState {
 	if !ok {
 		return boxUnknown
 	}
+	return boxTextState(box, text, hadPlaceholder)
+}
+
+// boxTextState is inputBoxState for the box's text box.
+func boxTextState(box, text string, hadPlaceholder bool) boxState {
 	if strings.Contains(box, pastePlaceholder) {
 		if !hadPlaceholder && collapsible(text) {
 			return boxOurs
@@ -387,6 +399,112 @@ type mentionWaitingKey struct{}
 func mentionWaiting(ctx context.Context) bool {
 	v, _ := ctx.Value(mentionWaitingKey{}).(bool)
 	return v
+}
+
+// whyNotSubmitted: a paste whose Enter didn't submit it (#4104: a dialog took the Enter).
+const whyNotSubmitted = "its Enter didn't submit it (a dialog may have taken it); only the Enter is tried again"
+
+// whyLeftover: Coral's own earlier paste is still in the input box, and its Enter didn't
+// submit it either.
+const whyLeftover = "Coral's earlier message is still in the input box; its Enter didn't submit it"
+
+// maxEnterTries bounds pressing a held paste's Enter with no dialog up (#4104): after that it is
+// given up and reported, never pressed for ever.
+const maxEnterTries = 3
+
+// enterSubmitted reports whether text has left the input box after its Enter, looking for up to
+// pasteVerifyWait (#4104). The box is read under anything drawn above it (inputBoxTextAny). A
+// screen that can't be read counts as submitted, as before this check.
+func (in AutomatedInput) enterSubmitted(ctx context.Context, sr ScreenReader, agentType, sessionID, text string) bool {
+	deadline := time.Now().Add(pasteVerifyWait)
+	for {
+		screen, err := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
+		if err != nil {
+			return true
+		}
+		box, ok := inputBoxTextAny(screen)
+		if !ok || boxTextState(box, text, in.hadPlaceholder) != boxOurs {
+			return true
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			return false
+		}
+		time.Sleep(pasteVerifyEvery)
+	}
+}
+
+// confirmSubmitted checks, on a rendered screen, that in's text left the input box after its
+// Enter. Not: held as the same send (never pasted again: Security's #4104 note), its next turn
+// pressing only the Enter, held by the dialog's kind when one is up; after maxEnterTries
+// Enters with none up, given up (errPasteGaveUp). It reports whether the send is held.
+func (g *inputGate) confirmSubmitted(ctx context.Context, in AutomatedInput, sr ScreenReader, rendered bool, agentType, sessionID string) (bool, error) {
+	if !rendered || sr == nil || in.enterSubmitted(ctx, sr, agentType, sessionID, in.Text) {
+		g.setLastPasted(in.Name, "")
+		return false, nil
+	}
+	in.entered = true
+	if in.pasteRetry == 0 {
+		in.pasteRetry = 1 // its next turn reads the box first: our text there means only the Enter
+	}
+	kind := ""
+	if screen, err := sr.AgentScreen(ctx, in.Name, agentType, sessionID); err == nil {
+		if open, why := PromptOnScreen(screen); open {
+			kind = promptKind(why)
+		}
+	}
+	if kind != KindDialog {
+		in.enterTries++
+		if in.enterTries >= maxEnterTries {
+			return false, g.giveUpPaste(in, WhyEnterGaveUp)
+		}
+	}
+	g.holdPaste(in, whyNotSubmitted, false, kind)
+	return true, nil
+}
+
+// enterAndConfirm presses the Enter for in's text, already in the input box, and confirms it.
+func (g *inputGate) enterAndConfirm(ctx context.Context, in AutomatedInput, sr ScreenReader, rendered bool, agentType, sessionID string) (held bool, err error) {
+	es, ok := in.Term.(EnterSender)
+	if !ok {
+		return false, errors.New("this terminal can't press Enter on its own")
+	}
+	if err := es.SendEnter(ctx, in.Name, agentType, sessionID); err != nil {
+		return false, err
+	}
+	return g.confirmSubmitted(ctx, in, sr, rendered, agentType, sessionID)
+}
+
+// submitLeftover handles a box holding text that isn't this send's (#4104): when it is exactly
+// the text Coral last pasted for the session (nothing typed since: a person's edit is a draft,
+// the Orchestrator's condition), its Enter is pressed first and confirmed. own is false for
+// anyone else's text (a draft, never touched). held: its Enter didn't submit it, so this send
+// waits behind it.
+func (g *inputGate) submitLeftover(ctx context.Context, in AutomatedInput, sr ScreenReader, screen, agentType, sessionID string) (held bool, err error, own bool) {
+	left := g.lastPastedFor(in.Name)
+	box, ok := inputBoxText(screen)
+	if left == "" || !ok || squeeze(box) != left {
+		return false, nil, false
+	}
+	es, ok := in.Term.(EnterSender)
+	if !ok {
+		return false, nil, false
+	}
+	slog.Info("automated input: Coral's earlier message was still in the input box; sending its Enter first", "session", in.Name, "sender", in.What)
+	if err := es.SendEnter(ctx, in.Name, agentType, sessionID); err != nil {
+		return false, err, true
+	}
+	if !in.enterSubmitted(ctx, sr, agentType, sessionID, left) {
+		kind := ""
+		if s, err := sr.AgentScreen(ctx, in.Name, agentType, sessionID); err == nil {
+			if open, why := PromptOnScreen(s); open {
+				kind = promptKind(why)
+			}
+		}
+		g.holdPaste(in, whyLeftover, false, kind)
+		return true, nil, true
+	}
+	g.setLastPasted(in.Name, "")
+	return false, nil, true
 }
 
 // pasteStuck reports whether a held paste of Coral's has waited long enough to give up.

@@ -2,11 +2,13 @@ package routes
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -56,4 +58,32 @@ func TestHeldTooLongShowsNeedsInputOnlyForAPrompt(t *testing.T) {
 	assert.True(t, h.gateNeedsInput(ctx, name, "claude", sid))
 	h.recordHeldEnded(name, "claude", sid)
 	assert.True(t, h.deriveSingleSessionState(ctx, sid, 0).NeedsInput, "the agent's own request stays")
+}
+
+// #4104: a send held behind Claude Code's bug-report dialog shows "delivery held: a dialog is
+// open" (Needs input, Coral's own: it never feeds the gate); a mention given up behind it says why.
+func TestADialogHoldShowsDeliveryHeld(t *testing.T) {
+	server, h, _, ss := setupSessionsTestServer(t)
+	defer server.Close()
+	ctx := context.Background()
+	sid := "dddddddd-4104-0000-0000-000000000001"
+	name := "claude-" + sid
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: name, WorkingDir: "/tmp/p"}))
+	h.recordHeldTooLong(name, "claude", sid, "board nudge", ptymanager.KindDialog)
+	st := h.deriveSingleSessionState(ctx, sid, 0)
+	assert.True(t, st.NeedsInput)
+	assert.Equal(t, sessionstate.HeldDialogSummary, st.WaitingSummary)
+	assert.Contains(t, st.WaitingSummary, "Delivery held: a dialog is open")
+	assert.False(t, h.gateNeedsInput(ctx, name, "claude", sid), "Coral's own notice never feeds the gate")
+
+	h.recordHeldGaveUp(name, "claude", sid, "board message", ptymanager.WhyDialogGaveUp+" 10m0s")
+	events, err := h.ts.ListAgentEvents(ctx, name, 5, &sid)
+	require.NoError(t, err)
+	found := false
+	for _, e := range events {
+		if strings.Contains(e.Summary, ptymanager.WhyDialogGaveUp) {
+			found = true
+		}
+	}
+	assert.True(t, found, "the give-up note says why")
 }

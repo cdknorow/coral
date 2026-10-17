@@ -203,7 +203,7 @@ func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why,
 	// Idle by signals: the screen may still hold more.
 	if haveScreen {
 		if open, why := PromptOnScreen(screen); open {
-			if isPromptHold(why) {
+			if isPromptHold(why) && !isDialogHold(why) { // a dialog isn't a request the signals would show
 				disagreed = true
 				if noteDisagreement(in.Name, why, time.Now()) {
 					slog.Warn("automated input: state_disagreement: the signals say idle but the screen shows a prompt",
@@ -229,6 +229,9 @@ func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why,
 const (
 	kindPrompt = "prompt" // a prompt read from the screen
 	kindTrust  = "trust"  // a trust screen at launch (no hooks run before it)
+	// KindDialog: a dialog Claude Code draws over its input box (its bug-report draft, #4104).
+	// Not a question for the agent: shown as "delivery held: a dialog is open".
+	KindDialog = "dialog"
 )
 
 // blockedKind is the kind a Blocked state reports: the agent's own (permission,
@@ -243,6 +246,9 @@ func blockedKind(k string) string {
 // promptKind is the kind for a reason PromptOnScreen gave: a prompt, or "" for a
 // footer alone or a busy agent.
 func promptKind(why string) string {
+	if isDialogHold(why) {
+		return KindDialog
+	}
 	if isPromptHold(why) {
 		return kindPrompt
 	}

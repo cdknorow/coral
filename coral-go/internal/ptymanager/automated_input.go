@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -94,6 +95,12 @@ type AutomatedInput struct {
 	// hadPlaceholder: the box held a "[Pasted ...]" placeholder before Coral's paste
 	// (a person's), so one is never taken as ours.
 	hadPlaceholder bool
+	// entered: its text was pasted and its Enter pressed, but the text was still in the box
+	// afterwards (#4104: a dialog took the Enter). Its next turn presses only the Enter, never
+	// pastes again, and an empty box then means the Enter took effect late: delivered.
+	// enterTries counts those Enters with no dialog up; after maxEnterTries it is given up.
+	entered    bool
+	enterTries int
 	// urgent: an @-mention waits behind this held send (#3708), so a paste of Coral's that
 	// can't be confirmed gives up after pasteStuckAfterUrgent instead of pasteStuckAfter.
 	urgent bool
@@ -242,6 +249,10 @@ type gateTimings struct {
 	// first prompt (RequireInputBox) has no time limit; it goes with its agent
 	// (DropHeld).
 	expiry time.Duration
+	// dialogReport: a send held behind a dialog (#4104) is reported after this, not tooLong:
+	// the user has something to dismiss now. dialogMentionGiveUp: a mention held behind one is
+	// given up after this (never pasted, never typed into the dialog). Zero: the defaults.
+	dialogReport, dialogMentionGiveUp time.Duration
 	// every is how often held sends are retried.
 	every time.Duration
 }
@@ -477,12 +488,14 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 		}
 		switch state {
 		case boxOurs:
-			es, ok := in.Term.(EnterSender)
-			if !ok {
-				return false, errors.New("this terminal can't press Enter on its own"), true
-			}
-			return false, es.SendEnter(ctx, in.Name, agentType, sessionID), true
+			held, err := g.enterAndConfirm(ctx, in, sr, rendered, agentType, sessionID)
+			return held, err, true
 		case boxEmpty:
+			if in.entered {
+				// Its Enter took effect after the last look: delivered, never pasted again.
+				g.setLastPasted(in.Name, "")
+				return false, nil, true
+			}
 			if in.pasteRetry > maxPasteRetries {
 				if g.pasteStuck(in) {
 					return false, g.giveUpPaste(in, "pasted again but it never reached the input box"), true
@@ -517,14 +530,17 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 			in.hadPlaceholder = hasPlaceholder(screen)
 			switch in.boxState(ctx, screen, agentType, sessionID) {
 			case boxOther:
+				if held, err, own := g.submitLeftover(ctx, in, sr, screen, agentType, sessionID); own {
+					if held || err != nil {
+						return held, err, true
+					}
+					break // Coral's earlier text was sent: now ours
+				}
 				g.holdPaste(in, whyDraft, false, "")
 				return true, nil, true
 			case boxOurs:
-				es, ok := in.Term.(EnterSender)
-				if !ok {
-					return false, errors.New("this terminal can't press Enter on its own"), true
-				}
-				return false, es.SendEnter(ctx, in.Name, agentType, sessionID), true
+				held, err := g.enterAndConfirm(ctx, in, sr, rendered, agentType, sessionID)
+				return held, err, true
 			}
 		}
 	}
@@ -560,7 +576,12 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 			time.Sleep(pasteVerifyEvery)
 		}
 	}
+	g.setLastPasted(in.Name, in.Text) // Coral's, until its Enter is seen to submit it (#4104)
 	err = ps.SendPrompt(tmux.WithBeforeEnter(pctx, check), in.Name, in.Text, agentType, sessionID)
+	if err == nil {
+		held, err := g.confirmSubmitted(ctx, in, sr, rendered, agentType, sessionID)
+		return held, err, true
+	}
 	switch {
 	case errors.Is(err, ErrBracketedPasteUnavailable):
 		return false, nil, false
@@ -651,6 +672,7 @@ func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted bool, kind s
 	again := in.heldWhy == why
 	in.heldWhy = why
 	g.held[in.Name] = append([]*heldInput{{in: in, heldAt: heldAt, why: why, kind: kind, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
+	g.noteDialogLocked(in.Name, kind)
 	start := !g.running
 	g.running = true
 	g.mu.Unlock()
@@ -735,6 +757,69 @@ type inputGate struct {
 	shadowLast map[string]string
 	// delivered: when each session's sends were last typed, by Key (LastDelivered).
 	delivered map[string]map[string]time.Time
+	// lastPasted: each session's last text Coral pasted, squeezed, until its Enter is seen to
+	// submit it (#4104): left in the box (a dialog took the Enter), it is Coral's, not a draft.
+	lastPasted map[string]string
+	// dialogHeld: sessions whose sends were last held behind a dialog: the held notice stays
+	// up (checkEnded) until a send is delivered again.
+	dialogHeld map[string]bool
+}
+
+// Defaults for gateTimings' dialog fields.
+const (
+	defaultDialogReport        = 10 * time.Second
+	defaultDialogMentionGiveUp = 10 * time.Minute
+)
+
+// WhyDialogGaveUp starts the reason a mention held behind a dialog was given up (#4104).
+const WhyDialogGaveUp = "a dialog was open in the agent's terminal for"
+
+// WhyEnterGaveUp is the reason a paste was given up because its Enter never submitted it, with no
+// dialog recognised (#4104): most likely one Coral doesn't know.
+const WhyEnterGaveUp = "its Enter didn't submit it, three times"
+
+func (g *inputGate) dialogReportAfter() time.Duration {
+	if g.timings.dialogReport > 0 {
+		return g.timings.dialogReport
+	}
+	return defaultDialogReport
+}
+
+func (g *inputGate) dialogGiveUpAfter() time.Duration {
+	if g.timings.dialogMentionGiveUp > 0 {
+		return g.timings.dialogMentionGiveUp
+	}
+	return defaultDialogMentionGiveUp
+}
+
+// setLastPasted records (or, with "", forgets) the text Coral last pasted for name.
+func (g *inputGate) setLastPasted(name, text string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.lastPasted == nil {
+		g.lastPasted = map[string]string{}
+	}
+	if text == "" {
+		delete(g.lastPasted, name)
+		return
+	}
+	g.lastPasted[name] = squeeze(text)
+}
+
+func (g *inputGate) lastPastedFor(name string) string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.lastPasted[name]
+}
+
+// noteDialogLocked records whether name's latest hold was behind a dialog (g.mu held).
+func (g *inputGate) noteDialogLocked(name, kind string) {
+	if kind == KindDialog {
+		if g.dialogHeld == nil {
+			g.dialogHeld = map[string]bool{}
+		}
+		g.dialogHeld[name] = true
+	}
 }
 
 var gate = &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, shadowLast: map[string]string{}, delivered: map[string]map[string]time.Time{}, now: time.Now,
@@ -759,6 +844,7 @@ func (g *inputGate) hold(in AutomatedInput, why, kind string) {
 			// Superseded: the newer send replaces it, in its place.
 			q[i] = &heldInput{in: in, heldAt: h.heldAt, why: why, kind: kind, reported: h.reported, reportedPrompt: h.reportedPrompt}
 			g.held[in.Name] = q
+			g.noteDialogLocked(in.Name, kind)
 			g.logHeld(in, why, "replaced a held send")
 			return
 		}
@@ -779,6 +865,7 @@ func (g *inputGate) hold(in AutomatedInput, why, kind string) {
 		q = q[1:]
 	}
 	g.held[in.Name] = append(q, &heldInput{in: in, heldAt: g.now(), why: why, kind: kind})
+	g.noteDialogLocked(in.Name, kind)
 	g.logHeld(in, why, "held")
 	if !g.running {
 		g.running = true
@@ -812,6 +899,12 @@ func (g *inputGate) staleLocked(in AutomatedInput) bool {
 // checkEnded calls HeldEndedFunc when name had a reported send and has none held now.
 func (g *inputGate) checkEnded(name string) {
 	g.mu.Lock()
+	if g.dialogHeld[name] {
+		// The dialog's notice stays until a send is delivered again (#4104): a mention given up
+		// behind it empties the queue, but the dialog is still open.
+		g.mu.Unlock()
+		return
+	}
 	in, ok := g.reportedFor[name]
 	if ok {
 		for _, h := range g.held[name] {
@@ -857,11 +950,15 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		}
 		g.mu.Unlock()
 		if waiting, why, kind := in.waiting(ctx); waiting {
+			if kind == KindDialog && g.giveUpMentionsBehindDialog(name) {
+				continue // the head was a mention given up: look at the next
+			}
 			// Keep the current reason: a send held for a busy footer or a draft
 			// that a real prompt now holds must say so (QA, after #3478).
 			g.mu.Lock()
 			changed := h.why != why
 			h.why, h.kind = why, kind
+			g.noteDialogLocked(name, kind)
 			g.mu.Unlock()
 			if changed {
 				g.logHeld(h.in, why, "still held")
@@ -900,6 +997,37 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 			slog.Info("automated input delivered after the hold ended", "session", name, "sender", h.in.What, "held_for", g.now().Sub(h.heldAt).Round(time.Second).String(), "released", releasedBecause(h.why))
 		}
 	}
+}
+
+// giveUpMentionsBehindDialog gives up every mention held for name behind a dialog for
+// dialogGiveUpAfter (#4104): never pasted, never typed into the dialog, and reported (the note
+// says why). It reports whether the queue's head was one of them.
+func (g *inputGate) giveUpMentionsBehindDialog(name string) (headGone bool) {
+	limit := g.dialogGiveUpAfter()
+	g.mu.Lock()
+	q := g.held[name]
+	var gone []AutomatedInput
+	kept := q[:0:0]
+	for i, h := range q {
+		if h.in.Mention && g.now().Sub(h.heldAt) >= limit {
+			in := h.in
+			in.heldSince = h.heldAt
+			gone = append(gone, in)
+			if i == 0 {
+				headGone = true
+			}
+			continue
+		}
+		kept = append(kept, h)
+	}
+	if len(gone) > 0 {
+		g.held[name] = kept
+	}
+	g.mu.Unlock()
+	for _, in := range gone {
+		_ = g.giveUpPaste(in, fmt.Sprintf("%s %s", WhyDialogGaveUp, limit.Round(time.Minute)))
+	}
+	return headGone
 }
 
 func (g *inputGate) loop() {
@@ -949,7 +1077,11 @@ func (g *inputGate) expireAndReportLocked() {
 				slog.Warn("automated input: dropping a send held too long", "session", name, "sender", h.in.What)
 				continue
 			}
-			if (!h.reported || (h.kind != "" && !h.reportedPrompt)) && now.Sub(h.heldAt) > g.timings.tooLong && report != nil {
+			after := g.timings.tooLong
+			if h.kind == KindDialog && g.dialogReportAfter() < after {
+				after = g.dialogReportAfter() // something to dismiss now (#4104)
+			}
+			if (!h.reported || (h.kind != "" && !h.reportedPrompt)) && now.Sub(h.heldAt) > after && report != nil {
 				h.reported = true
 				h.reportedPrompt = h.reportedPrompt || h.kind != ""
 				g.reportedFor[name] = h.in
@@ -979,6 +1111,8 @@ func DropHeld(name, why string) {
 	gate.gens[name]++
 	gate.shadowForgetSessionLocked(name)
 	delete(gate.delivered, name)
+	delete(gate.lastPasted, name)
+	delete(gate.dialogHeld, name)
 	gate.mu.Unlock()
 	noteDisagreement(name, "", time.Now()) // its disagreement window, if any, ends with it (#3655)
 	gate.checkEnded(name)
@@ -1040,6 +1174,7 @@ const deliveredKeysPerSession = 64
 func (g *inputGate) noteDelivered(name, key string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	delete(g.dialogHeld, name) // delivered: no dialog in the way any more (#4104)
 	m := g.delivered[name]
 	if m == nil {
 		m = map[string]time.Time{}
