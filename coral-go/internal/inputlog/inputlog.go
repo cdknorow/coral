@@ -150,7 +150,13 @@ func Delete() (int, error) {
 func applyLocked(why string) {
 	on := (forced || setting) && path != ""
 	was := enabled.Load()
-	if fw := w.Load(); on && (fw == nil || fw.path != path) {
+	// A writer for another path, or one for a log turned off, is stopped (what it queued is written
+	// first): it was left running with its file open, one goroutine per data folder or toggle (#4167).
+	if fw := w.Load(); fw != nil && (!on || fw.path != path) {
+		w.Store(nil)
+		fw.stop()
+	}
+	if on && w.Load() == nil {
 		w.Store(newFileWriter(path, maxFileBytes, queueDepth))
 	}
 	enabled.Store(on)
@@ -261,10 +267,12 @@ type fileWriter struct {
 	f       *os.File
 	size    int64
 	done    chan chan struct{}
+	quit    chan chan struct{}
+	stopped chan struct{} // closed when the goroutine has ended (stop)
 }
 
 func newFileWriter(path string, max int64, depth int) *fileWriter {
-	fw := &fileWriter{path: path, max: max, ch: make(chan string, depth), done: make(chan chan struct{})}
+	fw := &fileWriter{path: path, max: max, ch: make(chan string, depth), done: make(chan chan struct{}), quit: make(chan chan struct{}), stopped: make(chan struct{})}
 	safego.Restart("inputlog/inputlog:fw.loop", func() { fw.loop() })
 	return fw
 }
@@ -296,8 +304,29 @@ func (fw *fileWriter) loop() {
 				}
 			}
 			close(ack)
+		case ack := <-fw.quit:
+			for {
+				select {
+				case line := <-fw.ch:
+					fw.write(line)
+					continue
+				default:
+				}
+				break
+			}
+			fw.closeFile()
+			close(fw.stopped)
+			close(ack)
+			return
 		}
 	}
+}
+
+// stop writes what is queued, closes the file and ends the writer's goroutine.
+func (fw *fileWriter) stop() {
+	ack := make(chan struct{})
+	fw.quit <- ack
+	<-ack
 }
 
 func (fw *fileWriter) write(line string) {
@@ -343,6 +372,9 @@ func (fw *fileWriter) closeFile() {
 // flush waits until every line queued before it is written.
 func (fw *fileWriter) flush() {
 	ack := make(chan struct{})
-	fw.done <- ack
-	<-ack
+	select {
+	case fw.done <- ack:
+		<-ack
+	case <-fw.stopped: // stopped meanwhile: everything it had is written
+	}
 }
