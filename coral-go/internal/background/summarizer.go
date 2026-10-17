@@ -74,50 +74,87 @@ func loadTranscript(ctx context.Context, ss *store.SessionStore, sessionID strin
 	return condenseMessages(data), nil
 }
 
-// condenseMessages extracts text from JSONL entries and truncates to maxTranscriptChars.
+// transcriptCutMarker stands for the middle of a transcript longer than maxTranscriptChars.
+const transcriptCutMarker = "\n\n[... middle of conversation truncated ...]\n\n"
+
+// condenseMessages extracts text from JSONL entries and truncates to maxTranscriptChars, keeping
+// the first and last half.
+//
+// Each message is redacted whole, before the join and the cut, which could otherwise leave a
+// fragment of a token too short for the rules to know (#4414); a message that can't be checked is
+// left out. Only the messages that reach the kept text are read and redacted: they are taken from
+// the front until the head holds half the limit and from the back until the tail does, so the
+// middle of a long transcript is never parsed (a message across the cut is redacted whole). The
+// result is what redacting every message, joining them and cutting would give.
 func condenseMessages(data []byte) string {
-	var parts []string
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	lines := strings.Split(string(data), "\n")
+	half := maxTranscriptChars / 2
+	var head, tail []string // tail is in reverse order
+	headLen, tailLen := 0, 0
+	add := func(parts []string, n int, part string) ([]string, int) {
+		if len(parts) > 0 {
+			n += len("\n\n")
 		}
-
-		var entry map[string]any
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-
-		msgType, _ := entry["type"].(string)
-		msg, _ := entry["message"].(map[string]any)
-		if msg == nil {
-			continue
-		}
-
-		// Each message is redacted whole, before the join and the head and tail cut, which could
-		// otherwise leave a fragment of a token too short for the rules to know (#4414). A message
-		// that can't be checked is left out.
-		content, err := redactKnowledge(extractContent(msg))
-		if err != nil || content == "" {
-			continue
-		}
-
-		role := "Assistant"
-		if msgType == "human" || msgType == "user" {
-			role = "User"
-		}
-		parts = append(parts, fmt.Sprintf("### %s\n%s", role, content))
+		return append(parts, part), n + len(part)
 	}
-
-	fullText := strings.Join(parts, "\n\n")
-
-	// Truncate keeping beginning and end
+	i, j := 0, len(lines)
+	for i < j && headLen < half {
+		if part, ok := condensedMessage(lines[i]); ok {
+			head, headLen = add(head, headLen, part)
+		}
+		i++
+	}
+	for j > i && tailLen < half {
+		j--
+		if part, ok := condensedMessage(lines[j]); ok {
+			tail, tailLen = add(tail, tailLen, part)
+		}
+	}
+	for l, r := 0, len(tail)-1; l < r; l, r = l+1, r-1 {
+		tail[l], tail[r] = tail[r], tail[l]
+	}
+	headText, tailText := strings.Join(head, "\n\n"), strings.Join(tail, "\n\n")
+	if i < j {
+		// Lines in the middle were never read: the head and the tail each hold at least half,
+		// so the whole text is longer than the limit and the cut keeps only what was read.
+		return headText[:half] + transcriptCutMarker + tailText[len(tailText)-half:]
+	}
+	fullText := headText
+	if headText != "" && tailText != "" {
+		fullText += "\n\n"
+	}
+	fullText += tailText
 	if len(fullText) > maxTranscriptChars {
-		half := maxTranscriptChars / 2
-		fullText = fullText[:half] + "\n\n[... middle of conversation truncated ...]\n\n" + fullText[len(fullText)-half:]
+		fullText = fullText[:half] + transcriptCutMarker + fullText[len(fullText)-half:]
 	}
-
 	return fullText
+}
+
+// condensedMessage is one JSONL line as condenseMessages shows it ("### Role\ntext"), redacted;
+// ok is false for a line that isn't a message with text, or can't be checked for secrets.
+func condensedMessage(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", false
+	}
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		return "", false
+	}
+	msgType, _ := entry["type"].(string)
+	msg, _ := entry["message"].(map[string]any)
+	if msg == nil {
+		return "", false
+	}
+	content, err := redactKnowledge(extractContent(msg))
+	if err != nil || content == "" {
+		return "", false
+	}
+	role := "Assistant"
+	if msgType == "human" || msgType == "user" {
+		role = "User"
+	}
+	return fmt.Sprintf("### %s\n%s", role, content), true
 }
 
 // extractContent pulls text from a message content field (string or array of blocks).
