@@ -55,13 +55,17 @@ int cocoaShowEULA(const char *title, const char *info, const char *accept, const
 */
 import "C"
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/cdknorow/coral/internal/eulatext"
+)
 
 // showEULADialog shows a native Cocoa dialog with the TOS text.
 // Returns true if the user accepts, false if they decline.
 func showEULADialog(tosText string) bool {
-	cTitle, cInfo := C.CString(eulaDialogTitle), C.CString(eulaDialogIntro)
-	cAccept, cDecline, cName := C.CString(eulaAcceptLabel), C.CString(eulaDeclineLabel), C.CString(eulaAccessibleName)
+	cTitle, cInfo := C.CString(eulatext.DialogTitle), C.CString(eulatext.DialogIntro)
+	cAccept, cDecline, cName := C.CString(eulatext.AcceptLabel), C.CString(eulatext.DeclineLabel), C.CString(eulatext.AccessibleName)
 	cText := C.CString(tosText)
 	defer func() {
 		for _, p := range []*C.char{cTitle, cInfo, cAccept, cDecline, cName, cText} {

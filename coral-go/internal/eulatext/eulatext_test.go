@@ -1,4 +1,4 @@
-package main
+package eulatext
 
 import (
 	"os"
@@ -8,22 +8,22 @@ import (
 
 // The desktop app's Terms of Service dialogs (#4360 follow-up): they are native windows a test cannot open, so this checks the words they are built from and that
 // each platform's dialog makes the promise the words make: Enter declines, accepting is deliberate.
-func TestEULADialogWords(t *testing.T) {
+func TestDialogWords(t *testing.T) {
 	for _, want := range []string{"Accept", "Decline", "quit Coral", "Nothing is accepted until you choose Accept"} {
-		if !strings.Contains(eulaDialogIntro, want) {
-			t.Errorf("the dialog's line %q does not say %q", eulaDialogIntro, want)
+		if !strings.Contains(DialogIntro, want) {
+			t.Errorf("the dialog's line %q does not say %q", DialogIntro, want)
 		}
 	}
-	if eulaAcceptLabel != "Accept" || eulaDeclineLabel != "Decline" {
-		t.Errorf("the buttons are %q and %q", eulaAcceptLabel, eulaDeclineLabel)
+	if AcceptLabel != "Accept" || DeclineLabel != "Decline" {
+		t.Errorf("the buttons are %q and %q", AcceptLabel, DeclineLabel)
 	}
-	if !strings.Contains(eulaAccessibleName, "Terms of Service") || !strings.Contains(eulaAccessibleName, "scroll") {
-		t.Errorf("the terms need a name a screen reader can read: %q", eulaAccessibleName)
+	if !strings.Contains(AccessibleName, "Terms of Service") || !strings.Contains(AccessibleName, "scroll") {
+		t.Errorf("the terms need a name a screen reader can read: %q", AccessibleName)
 	}
 }
 
-func TestEULADialogsDefaultToDecline(t *testing.T) {
-	mac, err := os.ReadFile("eula_darwin.go")
+func TestDialogsDefaultToDecline(t *testing.T) {
+	mac, err := os.ReadFile("../../cmd/coral-app/eula_darwin.go")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestEULADialogsDefaultToDecline(t *testing.T) {
 			t.Errorf("the macOS dialog lost %q", want)
 		}
 	}
-	win, err := os.ReadFile("eula_windows.go")
+	win, err := os.ReadFile("../../cmd/coral-app/eula_windows.go")
 	if err != nil {
 		t.Fatal(err)
 	}

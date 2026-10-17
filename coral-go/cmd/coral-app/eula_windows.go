@@ -5,6 +5,8 @@ package main
 import (
 	"syscall"
 	"unsafe"
+
+	"github.com/cdknorow/coral/internal/eulatext"
 )
 
 var (
@@ -20,8 +22,8 @@ const (
 )
 
 func showEULADialog(tosText string) bool {
-	title, _ := syscall.UTF16PtrFromString(eulaDialogTitle)
-	text, _ := syscall.UTF16PtrFromString(tosText + "\n\n" + eulaDialogIntro + "\nYes = " + eulaAcceptLabel + ", No = " + eulaDeclineLabel + " (the default).")
+	title, _ := syscall.UTF16PtrFromString(eulatext.DialogTitle)
+	text, _ := syscall.UTF16PtrFromString(tosText + "\n\n" + eulatext.DialogIntro + "\nYes = " + eulatext.AcceptLabel + ", No = " + eulatext.DeclineLabel + " (the default).")
 
 	ret, _, _ := messageBox.Call(
 		0,
