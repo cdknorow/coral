@@ -122,3 +122,35 @@ jobs:
         with:
           path: ${{ steps.go.outputs.cache-paths }}
           key: ${{ steps.go.outputs.cache-key }}
+
+  go-linux:
+    name: Go caches (Linux ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      # Exactly release.yml's build-linux setup, so this run saves under the key a tag looks for.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: coral-go/go.sum
+      - name: Sync agent docs
+        run: bash tools/sync-agent-docs.sh
+      - name: Build the release binaries (${{ matrix.arch }})
+        working-directory: coral-go
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          while IFS='=' read -r k v; do declare "$k=$v"; done < <(bash ../tests/release/resolve_release.sh v0.0.0)
+          mkdir -p "$RUNNER_TEMP/out"
+          for cmd in $commands; do
+            [ -d "./cmd/$cmd" ] || continue
+            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -tags "$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
+          done
+          (go mod download)
