@@ -21,10 +21,16 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     let statusReplies = [];        // the link poll's GET /auth/hub/link/status answers, in order (the last one repeats)
     const json = (status, body, headers = {}) => ({ status, body, headers });
     try {
-        await Promise.all([Page.enable(), Runtime.enable()]);
+        await Promise.all([Page.enable(), Runtime.enable(), client.Network.enable()]);
+        // What navigated the page, for a failure's report (the replaced-page flake): every document request the browser made (who started it, whether it is a redirect hop and
+        // from where) and every request this test served, newest last.
+        const navLog = []; const servedLog = [];
+        const keep = (log, x) => { log.push(x); if (log.length > 14) log.shift(); };
+        client.Network.requestWillBeSent(e => { if (e.type === 'Document') keep(navLog, `${e.request.method} ${e.request.url.replace(BASE, '')} by ${e.initiator.type}${e.redirectResponse ? ' redirect-from ' + e.redirectResponse.url.replace(BASE, '') + ' ' + e.redirectResponse.status : ''} @${navSeq}`); });
         await Fetch.enable({ patterns: [{ urlPattern: BASE + '/auth*' }, { urlPattern: BASE + '/zz-done*' }] });
         client.on('Fetch.requestPaused', async p => {
             const u = new URL(p.request.url);
+            keep(servedLog, `${p.request.method} ${u.pathname}${u.search} @${navSeq}${p.redirectedRequestId ? ' (redirect hop)' : ''}`);
             const fulfill = (status, body, type, headers = {}) => Fetch.fulfillRequest({ requestId: p.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: type }, ...Object.entries(headers).map(([name, value]) => ({ name, value }))], body: Buffer.from(body).toString('base64') });
             if (u.pathname === '/zz-done') return fulfill(200, '<title>done</title><p id="done">done</p>', 'text/html');
             if (u.pathname === '/auth/hub/link/status') { const r = statusReplies.length > 1 ? statusReplies.shift() : statusReplies[0]; return fulfill(200, JSON.stringify(r || { state: 'enrolling', ready: false, error: '' }), 'application/json'); }
@@ -162,7 +168,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         try { await waitFor(`!!document.getElementById('done')`, 'redirect after creating'); } catch (e) {
             // Say what the page was when the wait gave up, so a rare failure on a slow runner names its cause: this document or a replacement, and what it was sent.
             const d = await ev(`({ href: location.href, ready: document.readyState, doc: window.__zzDoc || 'replaced', stamp: (document.querySelector('meta[name=zz-nav]') || {}).content || '', pw: (document.getElementById('password') || {}).value, err: (document.getElementById('err') || {}).textContent })`).catch(x => ({ evalError: String(x.message).slice(0, 120) }));
-            throw new Error(`${e.message}: ${JSON.stringify({ ...d, navSeq, posts: posts.map(p => p.url) })}`);
+            throw new Error(`${e.message}: ${JSON.stringify({ ...d, navSeq, posts: posts.map(p => p.url), navLog, servedLog })}`);
         }
         assert.deepEqual(posts[0], { url: '/auth/password/create', body: { password: '  a b  ', keep: false } }, 'any non-empty password, exactly as typed, no code');
         // 409: someone set one first -> the page reloads as the sign-in page
