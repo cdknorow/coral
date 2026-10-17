@@ -40,6 +40,7 @@ type tmuxSession struct {
 type logTail struct {
 	mu          sync.Mutex
 	subscribers map[string]chan []byte
+	lagged      map[string]bool // subscribers cut off for falling behind (#4161; guarded by mu)
 	cancel      context.CancelFunc
 	done        chan struct{}
 }
@@ -375,9 +376,25 @@ func (b *TmuxBackend) Attach(name, subscriberID string) (<-chan []byte, error) {
 
 	tail.mu.Lock()
 	tail.subscribers[subscriberID] = ch
+	delete(tail.lagged, subscriberID)
 	tail.mu.Unlock()
 
 	return ch, nil
+}
+
+// Lagged implements LagReporter (#4161).
+func (b *TmuxBackend) Lagged(name, subscriberID string) bool {
+	b.mu.RLock()
+	tail, ok := b.tails[name]
+	b.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	tail.mu.Lock()
+	defer tail.mu.Unlock()
+	lagged := tail.lagged[subscriberID]
+	delete(tail.lagged, subscriberID)
+	return lagged
 }
 
 // Unsubscribe removes a subscriber. When the last subscriber leaves,
@@ -395,6 +412,7 @@ func (b *TmuxBackend) Unsubscribe(name, subscriberID string) {
 		close(ch)
 		delete(tail.subscribers, subscriberID)
 	}
+	delete(tail.lagged, subscriberID)
 	remaining := len(tail.subscribers)
 	tail.mu.Unlock()
 
@@ -519,6 +537,7 @@ func (b *TmuxBackend) startTail(name, tmuxName, logPath string) *logTail {
 	ctx, cancel := context.WithCancel(context.Background())
 	tail := &logTail{
 		subscribers: make(map[string]chan []byte),
+		lagged:      make(map[string]bool),
 		cancel:      cancel,
 		done:        make(chan struct{}),
 	}
@@ -669,13 +688,7 @@ func (b *TmuxBackend) tailLoop(ctx context.Context, name string, tail *logTail, 
 					offset += int64(n)
 
 					tail.mu.Lock()
-					for _, ch := range tail.subscribers {
-						select {
-						case ch <- data:
-						default:
-							// Slow subscriber — drop frame
-						}
-					}
+					fanOut(tail.subscribers, tail.lagged, data) // one that fell behind is cut off
 					tail.mu.Unlock()
 				}
 				if readErr != nil || n < len(buf) {

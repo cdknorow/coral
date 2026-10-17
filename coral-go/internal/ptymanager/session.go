@@ -37,7 +37,8 @@ type session struct {
 
 	mu          sync.Mutex
 	subscribers map[string]chan []byte
-	cols, rows  uint16 // the PTY's size as last set (guarded by mu)
+	lagged      map[string]bool // subscribers cut off for falling behind (#4161; guarded by mu)
+	cols, rows  uint16          // the PTY's size as last set (guarded by mu)
 
 	// Ring buffer of recent output for snapshot on reconnect
 	ringMu  sync.Mutex
@@ -100,6 +101,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		logFile:     logFile,
 		logPath:     logPath,
 		subscribers: make(map[string]chan []byte),
+		lagged:      make(map[string]bool),
 		cols:        cols,
 		rows:        rows,
 		ring:        make([]byte, 0, 256*1024),
@@ -137,15 +139,9 @@ func (s *session) readLoop() {
 			}
 			s.ringMu.Unlock()
 
-			// Fan out to WebSocket subscribers (non-blocking)
+			// Fan out to WebSocket subscribers (non-blocking; one that fell behind is cut off)
 			s.mu.Lock()
-			for _, ch := range s.subscribers {
-				select {
-				case ch <- data:
-				default:
-					// Subscriber slow — drop frame
-				}
-			}
+			fanOut(s.subscribers, s.lagged, data)
 			s.mu.Unlock()
 		}
 		if err != nil {
@@ -217,8 +213,18 @@ func (s *session) subscribe(id string) <-chan []byte {
 	ch := make(chan []byte, 256)
 	s.mu.Lock()
 	s.subscribers[id] = ch
+	delete(s.lagged, id)
 	s.mu.Unlock()
 	return ch
+}
+
+// takeLagged reports, once, whether subscriber id was cut off for falling behind.
+func (s *session) takeLagged(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lagged := s.lagged[id]
+	delete(s.lagged, id)
+	return lagged
 }
 
 // unsubscribe removes a subscriber.
@@ -228,6 +234,7 @@ func (s *session) unsubscribe(id string) {
 		close(ch)
 		delete(s.subscribers, id)
 	}
+	delete(s.lagged, id)
 	s.mu.Unlock()
 }
 

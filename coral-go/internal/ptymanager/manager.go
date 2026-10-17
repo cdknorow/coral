@@ -292,6 +292,14 @@ func (m *PTYBackend) Attach(name, subscriberID string) (<-chan []byte, error) {
 	return s.subscribe(subscriberID), nil
 }
 
+// Lagged implements LagReporter (#4161).
+func (m *PTYBackend) Lagged(name, subscriberID string) bool {
+	m.mu.RLock()
+	s, ok := m.sessions[name]
+	m.mu.RUnlock()
+	return ok && s.takeLagged(subscriberID)
+}
+
 func (m *PTYBackend) Unsubscribe(name, subscriberID string) {
 	m.mu.RLock()
 	s, ok := m.sessions[name]

@@ -240,7 +240,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if hasRemotes {
 				msg["servers"] = remoteServers
 			}
-			if err := wsjson.Write(ctx, conn, forHub(msg)); err != nil {
+			if err := wsWriteJSON(ctx, conn, forHub(msg)); err != nil {
 				return
 			}
 			sent()
@@ -305,7 +305,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if hasNotifications {
 				payload["notifications"] = pending
 			}
-			if err := wsjson.Write(ctx, conn, forHub(payload)); err != nil {
+			if err := wsWriteJSON(ctx, conn, forHub(payload)); err != nil {
 				return
 			}
 			sent()
@@ -322,7 +322,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			// can tell an idle server from one whose tick loop is stuck (it
 			// falls back to polling the list when the feed goes quiet).
 			// Dashboards ignore the type.
-			if err := wsjson.Write(ctx, conn, map[string]any{"type": "coral_heartbeat"}); err != nil {
+			if err := wsWriteJSON(ctx, conn, map[string]any{"type": "coral_heartbeat"}); err != nil {
 				return
 			}
 			lastSent = time.Now()
@@ -723,7 +723,7 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		// The terminal is already gone: say so as when it ends while open, so the client
 		// shows the session ended instead of retrying a broken connection (#3276).
 		if errors.Is(err, ptymanager.ErrTerminalGone) {
-			wsjson.Write(ctx, conn, map[string]any{"type": "terminal_closed"})
+			wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_closed"})
 			conn.Close(websocket.StatusNormalClosure, "session ended")
 			return
 		}
@@ -734,19 +734,26 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 	defer h.backend.Unsubscribe(name, subID)
 
 	// Send replay seed as a binary frame, prefixed with clear codes so
-	// reconnects don't stack duplicate scrollback.
-	if replay, err := h.backend.Replay(name); err == nil && len(replay) > 0 {
+	// reconnects don't stack duplicate scrollback. Also sent again to a viewer that fell
+	// behind (#4161); false when the write failed.
+	sendReplay := func() bool {
+		replay, err := h.backend.Replay(name)
+		if err != nil || len(replay) == 0 {
+			return true
+		}
 		clearPrefix := []byte("\x1b[2J\x1b[3J\x1b[H")
 		seed := make([]byte, len(clearPrefix)+len(replay))
 		copy(seed, clearPrefix)
 		copy(seed[len(clearPrefix):], replay)
-		conn.Write(ctx, websocket.MessageBinary, seed)
+		return wsWrite(ctx, conn, websocket.MessageBinary, seed) == nil
 	}
+	sendReplay()
+	var resyncs resyncBudget
 
 	// This server answers every terminal_input that carries an id (#3276): the client then
 	// settles a send on the answer instead of on a quiet window. Sent after the replay seed,
 	// which clients expect first.
-	wsjson.Write(ctx, conn, map[string]any{"type": "terminal_hello", "input_acks": true})
+	wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_hello", "input_acks": true})
 
 	// The pane's real size (#3422): sent now and whenever it changes, whoever changed it
 	// (another dashboard, a phone, a tmux attach). A viewer that does not set the size
@@ -774,7 +781,7 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		if initial {
 			frame["initial"] = true
 		}
-		wsjson.Write(ctx, conn, frame)
+		wsWriteJSON(ctx, conn, frame)
 	}
 	sendSize(0, true)
 	var sizeTick <-chan time.Time
@@ -854,13 +861,13 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 			}
 			switch {
 			case errors.Is(sendErr, ptymanager.ErrTerminalGone):
-				wsjson.Write(ctx, conn, withID(map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": msg.Type == "terminal_input"}))
+				wsWriteJSON(ctx, conn, withID(map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": msg.Type == "terminal_input"}))
 			case msg.Type != "terminal_input" || msg.ID == nil:
 				// Resizes and input without an id get no answer (older clients).
 			case sendErr != nil:
-				wsjson.Write(ctx, conn, withID(map[string]any{"type": "terminal_input_failed", "error": "The input could not be sent to the agent's terminal.", "not_sent": true}))
+				wsWriteJSON(ctx, conn, withID(map[string]any{"type": "terminal_input_failed", "error": "The input could not be sent to the agent's terminal.", "not_sent": true}))
 			default:
-				wsjson.Write(ctx, conn, withID(map[string]any{"type": "terminal_input_ack"}))
+				wsWriteJSON(ctx, conn, withID(map[string]any{"type": "terminal_input_ack"}))
 			}
 		}
 	}()
@@ -877,15 +884,80 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 			sendSize(0, false)
 		case data, ok := <-ch:
 			if !ok {
-				wsjson.Write(ctx, conn, map[string]any{"type": "terminal_closed"})
+				if lr, isLR := h.backend.(ptymanager.LagReporter); isLR && lr.Lagged(name, subID) {
+					// This viewer fell a whole buffer behind (#4161): start it again from a fresh
+					// replay rather than show the output with frames missing. One that keeps
+					// falling behind is closed; the dashboard reconnects after a pause.
+					if !resyncs.allow(time.Now()) {
+						conn.Close(websocket.StatusTryAgainLater, "the terminal's output is faster than this connection")
+						return
+					}
+					next, err := h.backend.Attach(name, subID)
+					if err != nil {
+						wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_closed"})
+						conn.Close(websocket.StatusNormalClosure, "session ended")
+						return
+					}
+					ch = next
+					if !sendReplay() {
+						return
+					}
+					continue
+				}
+				wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_closed"})
 				conn.Close(websocket.StatusNormalClosure, "session ended")
 				return
 			}
-			if err := conn.Write(ctx, websocket.MessageBinary, data); err != nil {
+			if err := wsWrite(ctx, conn, websocket.MessageBinary, data); err != nil {
 				return
 			}
 		}
 	}
+}
+
+// wsWriteTimeout bounds every write to a dashboard socket (#4161). A client that stops reading
+// (a tab in the background, a stalled link or Coral Hub stream) blocks a write once the
+// connection's buffers are full; after this long the socket is closed, which frees its
+// goroutines, its terminal subscription and its Coral Hub stream. The dashboard reconnects
+// when it reads again and starts from a fresh replay.
+var wsWriteTimeout = 15 * time.Second
+
+func wsWrite(ctx context.Context, conn *websocket.Conn, typ websocket.MessageType, data []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
+	defer cancel()
+	return conn.Write(ctx, typ, data)
+}
+
+func wsWriteJSON(ctx context.Context, conn *websocket.Conn, v any) error {
+	ctx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
+	defer cancel()
+	return wsjson.Write(ctx, conn, v)
+}
+
+// resyncBudget limits how often a terminal socket starts again from a replay because its viewer
+// fell behind (#4161): resyncLimit times in resyncWindow, then the socket is closed and the
+// dashboard's reconnect pause slows it down. A replay is larger than what was missed, so a
+// viewer too slow for the output would otherwise be sent replays back to back.
+type resyncBudget struct{ times []time.Time }
+
+const (
+	resyncLimit  = 3
+	resyncWindow = time.Minute
+)
+
+func (b *resyncBudget) allow(now time.Time) bool {
+	kept := b.times[:0]
+	for _, t := range b.times {
+		if now.Sub(t) < resyncWindow {
+			kept = append(kept, t)
+		}
+	}
+	b.times = kept
+	if len(b.times) >= resyncLimit {
+		return false
+	}
+	b.times = append(b.times, now)
+	return true
 }
 
 // terminalSizeEvery is how often an open terminal socket checks the pane's size for changes
