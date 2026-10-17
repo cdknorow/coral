@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -180,6 +181,8 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 		ToAddress    string `json:"to_address"`
 		ReplyTo      int64  `json:"reply_to"`
 		MessageID    string `json:"message_id"`
+		// Attach are coral://artifacts links sent as files with the message (cross-team artifacts, C2).
+		Attach []string `json:"attach"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		relayError(w, http.StatusBadRequest, "bad_request", "invalid JSON", 0)
@@ -246,6 +249,20 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	if messageID == "" {
 		messageID = uuid.NewString()
 	}
+	// Files first, checked and held before anything is sent (a refusal here sends nothing), their links
+	// appended to the text; the message goes only after every file is with Coral Hub.
+	var prepared *attachPrepared
+	if len(body.Attach) > 0 {
+		var ok bool
+		if prepared, ok = h.prepareRelayAttachments(w, r, project, body.SubscriberID, body.SessionName, body.Attach); !ok {
+			return
+		}
+		body.Content += attachmentLines(prepared.atts)
+		if len(body.Content) > maxRelayedContent {
+			relayError(w, http.StatusRequestEntityTooLarge, "too_large", fmt.Sprintf("content and the attachment links must be at most %d bytes", maxRelayedContent), 0)
+			return
+		}
+	}
 	payload, err := json.Marshal(map[string]any{
 		"message_id": messageID,
 		"hops":       hops,
@@ -265,6 +282,14 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	if allowed, wait := h.crossTeam.allow(quotaKey); !allowed {
 		relayError(w, http.StatusTooManyRequests, "rate_limited", fmt.Sprintf("retry in %ds", int(math.Ceil(wait.Seconds()))), int(math.Ceil(wait.Seconds())))
 		return
+	}
+	if prepared != nil {
+		if ok, refund := h.sendRelayAttachments(w, ctx, prepared, messageID, body.ToAddress, project); !ok {
+			if refund {
+				h.crossTeam.refund(quotaKey)
+			}
+			return
+		}
 	}
 	resp, err := relay(ctx, tunnel.RelayMessagePath, payload)
 	if err != nil {
@@ -319,7 +344,17 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	if h.notifyFn != nil {
 		h.notifyFn(project)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "duplicate": ans.Duplicate, "message_id": messageID, "target_message_id": target, "mirror": mirror})
+	out := map[string]any{"ok": true, "duplicate": ans.Duplicate, "message_id": messageID, "target_message_id": target, "mirror": mirror}
+	if prepared != nil {
+		// The shared rows only now: the hub has the files and the message.
+		h.recordSharedAttachments(prepared.atts, project, server, team, body.SubscriberID, mirror.ID, time.Now().UTC().Format(time.RFC3339))
+		var ids []string
+		for _, a := range prepared.atts {
+			ids = append(ids, "coral://artifacts/"+a.ID)
+		}
+		out["attached"] = ids
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // relayTarget is one address Coral Hub says this board may message.

@@ -27,7 +27,7 @@ type sendIdentity struct {
 // runSend posts a cross-team message to another board's Orchestrator.
 //
 //	coral-board send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"
-//	coral-board send --address <server>/<team> [--reply-to <message id>] [--message-id <id>] "<message>"
+//	coral-board send --address <server>/<team> [--reply-to <message id>] [--message-id <id>] [--attach coral://artifacts/<id> ...] "<message>"
 //
 // The server checks that the sender is an Orchestrator on its board (or the
 // Operator), that both boards allow cross-team messaging, and the rate limit. With
@@ -87,10 +87,10 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 		if target != "" || to != "" {
 			return fmt.Errorf("--address can't be combined with --board or --to")
 		}
-		if len(attach) > 0 {
-			return fmt.Errorf("--attach works only with --board (a board on this Coral) for now")
+		if len(attach) > 4 {
+			return fmt.Errorf("at most 4 --attach per send")
 		}
-		return runRelaySend(id, address, replyTo, messageID, message, out)
+		return runRelaySend(id, address, replyTo, messageID, message, attach, out)
 	}
 	if replyTo != "" || messageID != "" {
 		return fmt.Errorf("--reply-to and --message-id go with --address")
@@ -153,7 +153,7 @@ func cmdSend() {
 }
 
 // runRelaySend sends message to another Coral through Coral Hub (#3489).
-func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, out io.Writer) error {
+func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, attach []string, out io.Writer) error {
 	if message == "" {
 		return fmt.Errorf(`usage: coral-board send --address <server>/<team> [--reply-to <message id>] [--message-id <id>] "<message>"`)
 	}
@@ -179,16 +179,23 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 		messageID = uuid.NewString()
 	}
 	body["message_id"] = messageID
-	data, status, err := apiCallRawTimeout(http.MethodPost, "/"+url.PathEscape(id.Board)+"/relay-messages", body, 35*time.Second)
+	timeout := 35 * time.Second
+	if len(attach) > 0 {
+		// Each file may take up to Coral Hub's 120 s transfer limit; the files go before the message.
+		body["attach"] = attach
+		timeout = time.Duration(len(attach))*125*time.Second + 35*time.Second
+	}
+	data, status, err := apiCallRawTimeout(http.MethodPost, "/"+url.PathEscape(id.Board)+"/relay-messages", body, timeout)
 	if err != nil {
 		return err
 	}
 	var result struct {
-		Error           string `json:"error"`
-		Message         string `json:"message"`
-		MessageID       string `json:"message_id"`
-		TargetMessageID int64  `json:"target_message_id"`
-		Duplicate       bool   `json:"duplicate"`
+		Error           string   `json:"error"`
+		Message         string   `json:"message"`
+		MessageID       string   `json:"message_id"`
+		TargetMessageID int64    `json:"target_message_id"`
+		Duplicate       bool     `json:"duplicate"`
+		Attached        []string `json:"attached"`
 	}
 	_ = json.Unmarshal(data, &result)
 	if status != http.StatusOK {
@@ -215,6 +222,9 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 	}
 	fmt.Fprintf(out, "Sent to '%s' through Coral Hub (their message #%d; message id %s). A copy is on '%s'.\n",
 		address, result.TargetMessageID, result.MessageID, id.Board)
+	if len(result.Attached) > 0 {
+		fmt.Fprintf(out, "Attached %d file(s): %s\n", len(result.Attached), strings.Join(result.Attached, ", "))
+	}
 	return nil
 }
 

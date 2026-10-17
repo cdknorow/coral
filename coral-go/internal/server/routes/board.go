@@ -68,6 +68,8 @@ type BoardHandler struct {
 	received receivedLimiter
 	// relay sends a cross-team message to another Coral through Coral Hub (#3489).
 	relay RelaySender
+	// relayArtifact sends a file to another Coral through Coral Hub (cross-team artifacts).
+	relayArtifact RelayArtifactSender
 	// hubNotices drops a repeated Coral Hub notice (#3489).
 	hubNotices hubNoticeSeen
 	// isArchivedSession reports whether a board session (agentType-sessionID) is

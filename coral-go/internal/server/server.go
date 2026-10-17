@@ -276,6 +276,7 @@ func (s *Server) SetCloud(m *cloud.Manager) {
 	// Cross-team messages to another Coral go through the same Coral Hub tunnel (#3489).
 	if s.boardHandler != nil && m != nil {
 		s.boardHandler.SetRelay(m.Relay)
+		s.boardHandler.SetRelayArtifact(m.RelayArtifact)
 	}
 }
 

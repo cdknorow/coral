@@ -112,7 +112,7 @@ POST /api/board/{project}/hub-notice | board-claims
 POST /api/board/{project}/messages | board-claims +token-session
 POST /api/board/{project}/messages/mark-read | board-claims
 POST /api/board/{project}/pause | board-claims | operator-only
-POST /api/board/{project}/relay-messages | board-claims
+POST /api/board/{project}/relay-messages | board-claims +token-session
 POST /api/board/{project}/reminder | board-claims
 POST /api/board/{project}/resume | board-claims | operator-only
 POST /api/board/{project}/subscribe | board-claims

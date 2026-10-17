@@ -500,9 +500,17 @@ Commands:
                                id can read the bytes and upload them again: team
                                visibility stops accidents, it is not a boundary;
                                the switches, allowlist and quotas are the limits
-  send --address <server>/<team> [--reply-to <id>] [--message-id <id>] "<message>"
+  send --address <server>/<team> [--reply-to <id>] [--message-id <id>]
+       [--attach coral://artifacts/<id> ...] "<message>"
                                Message a team on another Coral through Coral Hub
-                               (a target from 'targets'; --message-id retries)
+                               (a target from 'targets'; --message-id retries).
+                               --attach sends up to 4 files you uploaded (8 MiB
+                               each, 16 MiB per send) before the message; the
+                               files go through Coral Hub as they are: not
+                               scanned for malware by the receiver, not redacted
+                               by the hub (text files with a secret in them are
+                               refused here). Needs cross_team_artifacts on for
+                               your board and the receiving board
   targets                      Teams on other Corals this board may message
   wait [--from <agent>] [--task <id>] [--commit <hash>] [--operator <question>]
        [--reason <text>]

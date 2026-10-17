@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -155,6 +156,9 @@ type Manager struct {
 	// in-flight cap (4), so a legitimate request is never closed for being over its
 	// stream cap (which the connector would read as "no relay").
 	relaySlots chan struct{}
+	// artifactSlots keeps this Coral to one file transfer at a time through the tunnel: the hub
+	// budgets them per tunnel, and a file takes the bulk lane for as long as it is sent.
+	artifactSlots chan struct{}
 	// signinSlots is Hub sign-in's own in-flight budget (2, the hub's per-tunnel cap for it), so
 	// a relay burst never makes a sign-in check wait or come back busy (#3966).
 	signinSlots chan struct{}
@@ -176,7 +180,7 @@ func New(o Options) *Manager {
 	if hc == nil {
 		hc = NewHubHTTPClient()
 	}
-	m := &Manager{o: o, hc: hc, loaded: make(chan struct{}), relaySlots: make(chan struct{}, 4), signinSlots: make(chan struct{}, 2)}
+	m := &Manager{o: o, hc: hc, loaded: make(chan struct{}), relaySlots: make(chan struct{}, 4), artifactSlots: make(chan struct{}, 1), signinSlots: make(chan struct{}, 2)}
 	m.st = Status{Configured: o.HubURL != "", HubURL: o.HubURL, State: StateOff}
 	if o.HubURL != "" {
 		m.st.State = StateIdle
@@ -694,4 +698,22 @@ func (m *Manager) Relay(ctx context.Context, path string, body []byte) (tunnel.R
 		return tunnel.RelayResponse{}, ctx.Err()
 	}
 	return cs.Relay(ctx, path, body)
+}
+
+// RelayArtifact sends one file frame (n bytes read from body: the 4-byte metadata length, the metadata,
+// then the file's bytes) to Coral Hub over the live tunnel (cross-team artifacts): ErrNotLinked without
+// one, tunnel.ErrRelayArtifactUnsupported when the hub doesn't relay files for this server. One transfer
+// at a time; a second waits its turn or gives up with ctx.
+func (m *Manager) RelayArtifact(ctx context.Context, n int64, body io.Reader) (tunnel.RelayResponse, error) {
+	cs := m.session.Load()
+	if cs == nil {
+		return tunnel.RelayResponse{}, ErrNotLinked
+	}
+	select {
+	case m.artifactSlots <- struct{}{}:
+		defer func() { <-m.artifactSlots }()
+	case <-ctx.Done():
+		return tunnel.RelayResponse{}, ctx.Err()
+	}
+	return cs.RelayArtifact(ctx, n, body)
 }

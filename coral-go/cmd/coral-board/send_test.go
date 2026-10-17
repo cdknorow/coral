@@ -132,10 +132,75 @@ func TestRunSendAttach(t *testing.T) {
 	if err := runSend(append(five, "hi"), id, &out); err == nil || !strings.Contains(err.Error(), "at most 4") {
 		t.Fatalf("five attachments: %v", err)
 	}
-	if err := runSend([]string{"--address", "srv/team", "--attach", "coral://artifacts/aa", "hi"}, id, &out); err == nil || !strings.Contains(err.Error(), "only with --board") {
-		t.Fatalf("--address with --attach: %v", err)
+	fiveAddr := []string{"--address", "srv/team"}
+	for i := 0; i < 5; i++ {
+		fiveAddr = append(fiveAddr, "--attach", "coral://artifacts/x")
+	}
+	if err := runSend(append(fiveAddr, "hi"), id, &out); err == nil || !strings.Contains(err.Error(), "at most 4") {
+		t.Fatalf("five attachments to another Coral: %v", err)
 	}
 	if err := checkFreeText([]string{"send", "--board", "beta", "--attach", "coral://artifacts/aa", "hi"}); err != nil {
 		t.Fatalf("the pre-check refuses --attach: %v", err)
+	}
+}
+
+// C2 (#4403): --address with --attach posts the attach list to the relay route and prints the files the
+// server sent; a refusal names the code and, when it is temporary, the message id to retry with.
+func TestRunSendAddressAttach(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	status, reply := http.StatusOK, `{"ok":true,"message_id":"m-1","target_message_id":9,"attached":["coral://artifacts/aa"]}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		data, _ := io.ReadAll(r.Body)
+		gotBody = nil
+		_ = json.Unmarshal(data, &gotBody)
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, reply)
+	}))
+	defer server.Close()
+	oldURL := serverURL
+	serverURL = server.URL
+	defer func() { serverURL = oldURL }()
+	id := sendIdentity{Board: "alpha", SubscriberID: "Orchestrator", SessionName: "claude-abc"}
+
+	var out bytes.Buffer
+	if err := runSend([]string{"--address", "homelab/qa", "--attach", "coral://artifacts/aa", "the", "report"}, id, &out); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/api/board/alpha/relay-messages" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if att, _ := gotBody["attach"].([]any); len(att) != 1 || att[0] != "coral://artifacts/aa" {
+		t.Fatalf("attach = %v", gotBody["attach"])
+	}
+	if !strings.Contains(out.String(), "Attached 1 file(s): coral://artifacts/aa") {
+		t.Fatalf("output = %q", out.String())
+	}
+
+	// No --attach: the body has none (a plain send is unchanged).
+	out.Reset()
+	if err := runSend([]string{"--address", "homelab/qa", "hello"}, id, &out); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := gotBody["attach"]; has {
+		t.Fatalf("a plain send carries an attach list: %v", gotBody)
+	}
+
+	// A hub 429 reaches the caller with its code and the retry hint.
+	status, reply = http.StatusTooManyRequests, `{"ok":false,"error":"artifact_quota","message":"attachment 1 of 1: Coral Hub's limit on files is used up; retry in 7 s"}`
+	err := runSend([]string{"--address", "homelab/qa", "--message-id", "m-2", "--attach", "coral://artifacts/aa", "hi"}, id, &out)
+	if err == nil || !strings.Contains(err.Error(), "(429)") || !strings.Contains(err.Error(), "artifact_quota") || !strings.Contains(err.Error(), "--message-id m-2") {
+		t.Fatalf("429: %v", err)
+	}
+	// A local refusal (the switch is off) is an error with its code.
+	status, reply = http.StatusForbidden, `{"ok":false,"error":"artifacts_off","message":"sending files is off on board \"alpha\""}`
+	if err := runSend([]string{"--address", "homelab/qa", "--attach", "coral://artifacts/aa", "hi"}, id, &out); err == nil || !strings.Contains(err.Error(), "artifacts_off") {
+		t.Fatalf("switch off: %v", err)
+	}
+	// An attach-limit refusal from the server carries its words in "error".
+	status, reply = http.StatusBadRequest, `{"code":"not_yours","error":"coral://artifacts/aa is not one of your uploads"}`
+	if err := runSend([]string{"--address", "homelab/qa", "--attach", "coral://artifacts/aa", "hi"}, id, &out); err == nil || !strings.Contains(err.Error(), "not one of your uploads") {
+		t.Fatalf("not yours: %v", err)
 	}
 }
