@@ -249,10 +249,11 @@ export function serverSwitcherHtml(open = false) {
     const level = notices.some(n => n.level === 'required') ? 'required' : (notices.length ? 'available' : '');
     // On the button the marker is short ("Update"); the level is its colour and the button's accessible name says "Update required".
     const marker = level ? `<span class="server-update-marker server-update-${level}">Update</span>` : '';
-    return `<details class="server-switcher server-${m.cls}" data-server-switcher${open ? ' open' : ''}>`
+    return `<details class="server-switcher server-${m.cls}${single ? '' : ' server-switcher-multi'}" data-server-switcher${open ? ' open' : ''}>`
         + `<summary class="server-switcher-btn" aria-label="${escHtml(aria + (level ? `. ${level === 'required' ? 'Update required' : 'Update available'}` : ''))}" title="${escHtml(single ? serverHoverText(e.id) : aria)}">`
-        // The count is its own element so the button can keep it whole while the word after it gives way (operator, #4062).
-        + `<span class="server-dot" aria-hidden="true"></span>${single ? '' : `<span class="server-switcher-count">${list.length}</span>`}<span class="server-switcher-label">${escHtml(single ? label : 'servers')}</span>`
+        // Several servers: the dot, the count and the marker, no word ("N servers" is the title and the accessible name), so the search box keeps
+        // its room (operator, #4062). One server: its name, which gives way with an ellipsis.
+        + `<span class="server-dot" aria-hidden="true"></span>${single ? `<span class="server-switcher-label">${escHtml(label)}</span>` : `<span class="server-switcher-count">${list.length}</span>`}`
         + marker + `<span class="server-switcher-caret" aria-hidden="true">▾</span></summary>`
         + `<div class="server-switcher-panel${single ? '' : ' server-switcher-panel-list'}">${body}</div></details>`;
 }

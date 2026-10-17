@@ -51,7 +51,7 @@ const SETTINGS_PRELOAD = `(() => {
         const sw = host && host.querySelector('details[data-server-switcher]');
         const sum = sw && sw.querySelector('summary');
         return {
-            button: sw ? { label: sum.querySelector('.server-switcher-label').textContent, cls: sw.className, aria: sum.getAttribute('aria-label'), title: sum.getAttribute('title'), open: sw.open } : null,
+            button: sw ? { label: (sum.querySelector('.server-switcher-count') || sum.querySelector('.server-switcher-label')).textContent, hasWord: !!(sum.querySelector('.server-switcher-count') && sum.querySelector('.server-switcher-label')), cls: sw.className, aria: sum.getAttribute('aria-label'), title: sum.getAttribute('title'), open: sw.open } : null,
             strip: document.querySelectorAll('#live-sessions-list .server-strip-row, #live-sessions-list .server-strip-item').length,
             chips: [...document.querySelectorAll('#live-sessions-list .row-server-prefix .row-server-name')].map(c => c.textContent.trim()),
             headers: [...document.querySelectorAll('#live-sessions-list li.server-group-header')].map(h => ({ id: h.dataset.serverGroup, name: h.querySelector('.server-group-name').textContent, state: h.querySelector('.server-group-state')?.textContent || null, expanded: h.querySelector('.server-group-toggle').getAttribute('aria-expanded') })),
@@ -135,7 +135,9 @@ const SETTINGS_PRELOAD = `(() => {
         await ev(`window.__settingsPuts.length = 0; if (T.state.settings) delete T.state.settings.show_session_server; true`);
         await scene(THREE);
         v = await view();
-        assert.equal(v.button.label, '3 servers');
+        assert.equal(v.button.label, '3', 'several servers: the button shows the count alone (the word is in the title and the accessible name)');
+        assert.equal(v.button.hasWord, false);
+        assert.match(v.button.title || '', /3 servers/, 'the title says N servers');
         assert.match(v.button.aria, /^3 servers, 1 not online/, `aggregate accessible name (${v.button.aria})`);
         assert.ok(!/server-online/.test(v.button.cls), `aggregate dot is not online while one is down (${v.button.cls})`);
         assert.equal(v.strip, 0, 'no strip');

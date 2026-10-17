@@ -2208,6 +2208,7 @@
     .sidebar-header.sidebar-header, .mobile-list-header.mobile-list-header { --ctl-h: var(--control-touch-height, 44px); }
 }
 @media (pointer: coarse) {
+    .server-switcher-item { min-width: var(--control-touch-height, 44px); }
     .server-switcher-btn, .server-group-toggle, .server-switcher-item, .server-open-footer, .server-launch-btn, .list-display-option {
         min-height: var(--control-touch-height, 44px);
     }
@@ -2232,14 +2233,19 @@
 }
 .mobile-list-header .server-switcher-panel { left: 16px; right: 16px; max-width: none; }
 .server-switcher-panel-list { min-width: 0; }
+/* A closed switcher has no panel boxes at all: Chrome keeps a closed <details>' content laid out but skipped, at whatever size it falls to (12px wide here),
+   and touch-target scans and assistive tools saw those as tiny controls. */
+.server-switcher:not([open]) > .server-switcher-panel { display: none; }
 /* Keep the search box usable next to the server button (#3085). */
 /* The server button keeps its dot, count, Update marker and caret whole (operator, #4062): it may shrink only as far as those (7rem; the
    word after the count gives way with an ellipsis). The search box is the control that gives up width, down to 5em, and a very narrow sidebar
    wraps the header rather than clip the button. */
 .sidebar-header { flex-wrap: wrap; }
 .sidebar-header .sidebar-search { flex: 1 1 5em; min-width: 5em; }
+.sidebar-header .server-switcher-host:has(.server-switcher-multi), .mobile-list-header .server-switcher-host:has(.server-switcher-multi) { flex: none; min-width: max-content; max-width: none; } /* several servers: dot, count, marker, caret: it is its own width */
 .sidebar-header .server-switcher-host { flex: 1 1 0; min-width: 7rem; max-width: 12em; } /* 7rem holds the dot, count, marker and caret (min-content would count the whole word after the count); flex-basis 0 so a wrapping row is judged by that smallest size */
-.sidebar-header .server-switcher, .sidebar-header .server-switcher-btn { min-width: 0; max-width: 12em; width: 100%; } /* the button fills its flexible host, so its label is what gives way */
+.sidebar-header .server-switcher, .sidebar-header .server-switcher-btn { min-width: 0; max-width: 12em; width: 100%; }
+@media (pointer: coarse) { .sidebar-header .server-switcher-btn, .mobile-list-header .server-switcher-btn { min-width: var(--control-touch-height, 44px); justify-content: center; } } /* a button of a dot, a count and a caret is still a touch target */ /* the button fills its flexible host, so its label is what gives way */
 /* Status text for screen readers only (the dot carries it visually). */
 .row-server-prefix .sr-only, .server-switcher .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

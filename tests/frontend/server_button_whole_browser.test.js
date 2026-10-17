@@ -23,7 +23,8 @@ const SERVERS = [
         const header = btn.closest('.sidebar-header, .mobile-list-header'); const hr = header.getBoundingClientRect();
         const count = btn.querySelector('.server-switcher-count'); const dot = btn.querySelector('.server-dot'); const marker = btn.querySelector('.server-update-marker'); const caret = btn.querySelector('.server-switcher-caret');
         const whole = [dot, count, marker, caret].every(e => e && e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().right <= b.right + 0.5 && e.getBoundingClientRect().left >= b.left - 0.5);
-        return { whole, countText: count && count.textContent, bad, btnScroll: [btn.scrollWidth, btn.clientWidth], inside: b.left >= hr.left - 0.5 && b.right <= hr.right + 0.5, marker: !!btn.querySelector('.server-update-marker'), w: Math.round(b.width), text: btn.innerText.replace(/\\s+/g, ' ').trim() }; })()`);
+        const searchEl = document.querySelector('.sidebar-header .sidebar-search-input'); const searchOk = !searchEl || !searchEl.getClientRects().length || searchEl.scrollWidth <= searchEl.clientWidth + 1; const search = searchEl && searchEl.getClientRects().length ? Math.round(searchEl.getBoundingClientRect().width) : null;
+        return { hasWord: !!btn.querySelector('.server-switcher-label'), title: btn.getAttribute('title'), ariaOk: /3 servers/.test(btn.getAttribute('aria-label') || ''), searchOk, search, whole, countText: count && count.textContent, bad, btnScroll: [btn.scrollWidth, btn.clientWidth], inside: b.left >= hr.left - 0.5 && b.right <= hr.right + 0.5, marker: !!btn.querySelector('.server-update-marker'), w: Math.round(b.width), text: btn.innerText.replace(/\\s+/g, ' ').trim() }; })()`);
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -41,6 +42,10 @@ const SERVERS = [
             assert.ok(m.btnScroll[0] <= m.btnScroll[1] + 1, `${label}: the button's content fits it: ${JSON.stringify(m)}`);
             assert.ok(m.inside, `${label}: the button is inside the header: ${JSON.stringify(m)}`);
             assert.ok(m.marker, `${label}: the Update marker is there`);
+            assert.ok(!m.hasWord, `${label}: no word after the count: ${JSON.stringify(m)}`);
+            assert.equal(m.title, '3 servers, 1 not online', `${label}: 'N servers' is the button's title`);
+            assert.ok(m.ariaOk, `${label}: and in its accessible name`);
+            assert.ok(m.searchOk, `${label}: the search box keeps its placeholder whole (${m.search})`);
             assert.ok(m.whole && m.countText === '3', `${label}: the dot, the count (3), the Update marker and the caret are whole inside the button: ${JSON.stringify(m)}`);
             console.log(`   ✓ ${label}: the server button is whole (${m.w}px: ${m.text})`);
         }
