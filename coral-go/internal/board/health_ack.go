@@ -21,31 +21,41 @@ var ErrNoSuchHealthItem = errors.New("no such item in this board's recent health
 const healthItemKeep = 7 * 24 * time.Hour
 
 // NoteHealthItems records the state each item of a check has now (id -> state) and returns the
-// ids whose state is the acknowledged one: those are left out of the check.
-func (s *Store) NoteHealthItems(ctx context.Context, project string, items map[string]string, now time.Time) (map[string]bool, error) {
-	acked := map[string]bool{}
+// ids whose state is the acknowledged one (left out of the check), and the ids acknowledged in
+// an earlier state (back: said once, so their acknowledgement is cleared).
+func (s *Store) NoteHealthItems(ctx context.Context, project string, items map[string]string, now time.Time) (acked, back map[string]bool, err error) {
+	acked, back = map[string]bool{}, map[string]bool{}
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer tx.Rollback()
 	at := now.UTC().Format(healthTimeFormat)
 	for id, state := range items {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO health_items (project, item, state, shown_at) VALUES (?, ?, ?, ?)
 			ON CONFLICT(project, item) DO UPDATE SET state = excluded.state, shown_at = excluded.shown_at`, project, id, state, at); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		var ackedState sql.NullString
 		if err := tx.GetContext(ctx, &ackedState, `SELECT acked_state FROM health_items WHERE project = ? AND item = ?`, project, id); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		acked[id] = ackedState.Valid && ackedState.String == state
+		switch {
+		case !ackedState.Valid:
+		case ackedState.String == state:
+			acked[id] = true
+		default:
+			back[id] = true
+			if _, err := tx.ExecContext(ctx, `UPDATE health_items SET acked_state = NULL, acked_by = NULL, acked_at = NULL WHERE project = ? AND item = ?`, project, id); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM health_items WHERE project = ? AND shown_at < ?`,
 		project, now.Add(-healthItemKeep).UTC().Format(healthTimeFormat)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return acked, tx.Commit()
+	return acked, back, tx.Commit()
 }
 
 // AckHealthItem marks an item handled in the state the check last showed it in.

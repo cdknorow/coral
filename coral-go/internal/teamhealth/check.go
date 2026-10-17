@@ -32,6 +32,8 @@ type Item struct {
 	// changes (#4175 step 3). An item without a Key can't be acknowledged.
 	Key   string
 	State string
+	// Back: the orchestrator acknowledged it and its state has changed since; said once.
+	Back bool
 }
 
 // ItemID is the short id the check prints for an item ("coral-board health ack <id>").
@@ -64,6 +66,29 @@ type CheckInput struct {
 	Items     []Item
 	Questions []Question
 	Progress  Progress
+	// Parked tasks raise no item; the check counts them so it is plain that something is set
+	// aside, and names, once, a task whose park ended by itself (#4175 step 3, Security's SHOULD).
+	Parked       int
+	BackFromPark []int64
+}
+
+// parkedNote is the team line's note on parked tasks, or "".
+func parkedNote(in CheckInput) string {
+	var parts []string
+	if in.Parked > 0 {
+		parts = append(parts, fmt.Sprintf("%d parked", in.Parked))
+	}
+	if len(in.BackFromPark) > 0 {
+		var ids []string
+		for _, id := range in.BackFromPark {
+			ids = append(ids, fmt.Sprintf("#%d", id))
+		}
+		parts = append(parts, "back from park: "+strings.Join(ids, ", "))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, "; ") + ")"
 }
 
 // Compose writes the check.
@@ -73,11 +98,13 @@ func Compose(in CheckInput) string {
 	if in.Progress.Completed+in.Progress.Reviewed+in.Progress.Posts == 0 {
 		team = fmt.Sprintf("No progress since the last check (%s).", since)
 	}
+	note := parkedNote(in)
+	team = strings.TrimSuffix(team, ".") + note + "."
 	if len(in.Items) == 0 && len(in.Questions) == 0 {
 		if in.Progress.Completed+in.Progress.Reviewed+in.Progress.Posts == 0 {
-			return fmt.Sprintf("[Coral health check] Nothing needs you; no progress since the last check (%s).", since)
+			return fmt.Sprintf("[Coral health check] Nothing needs you; no progress since the last check (%s)%s.", since, note)
 		}
-		return fmt.Sprintf("[Coral health check] All %d agents progressing; %s since %s.", in.Agents, progressPhrase(in.Progress), since)
+		return fmt.Sprintf("[Coral health check] All %d agents progressing; %s since %s%s.", in.Agents, progressPhrase(in.Progress), since, note)
 	}
 	items := append([]Item(nil), in.Items...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Rank < items[j].Rank })
@@ -92,6 +119,9 @@ func Compose(in CheckInput) string {
 		}
 		if it.Suggest != "" {
 			l += " Suggest: " + it.Suggest + "."
+		}
+		if it.Back {
+			l += " (back: changed since it was acknowledged)"
 		}
 		if it.Key != "" {
 			l += " [ack " + ItemID(it.Key) + "]"

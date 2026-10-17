@@ -40,6 +40,13 @@ func (t *TaskReminders) Run(ctx context.Context) error {
 	return runEvery(ctx, t.Interval, t.Interval, func() { t.RunOnce(ctx) })
 }
 
+// ruleTaskReminder is the health action a task reminder takes.
+const ruleTaskReminder = "task-reminder"
+
+// taskReminderLimits are the board's limits for one agent and for the board (HealthNudges'
+// PerTargetPerHour and TeamBudget).
+var taskReminderLimits = board.HealthLimits{PerTargetPerHour: 3, TeamPerHour: 20}
+
 func taskReminderText(id int64, at time.Time) string {
 	return fmt.Sprintf("[Coral] Reminder for #%d, set for %s. Run 'coral-board task detail %d'.", id, at.Local().Format("15:04"), id)
 }
@@ -68,6 +75,14 @@ func (t *TaskReminders) RunOnce(ctx context.Context) {
 		if target == "" {
 			if orch, err := t.store.TeamOrchestrator(ctx, project); err == nil {
 				target = orch
+			}
+		}
+		// Every reminder is an automatic action within the board's limits (Security's #4176 rule 5,
+		// on #4225): 3 an hour per agent, 20 an hour per board. One refused stays unsent and goes
+		// on a later pass, so a hundred tasks due at once can't flood one agent, and none is lost.
+		if target != "" {
+			if why, err := t.store.TakeHealthAction(ctx, project, ruleTaskReminder, target, now, taskReminderLimits); err != nil || why != "" {
+				continue
 			}
 		}
 		if ok, err := t.store.MarkTaskReminded(ctx, project, task.ID, now); err != nil || !ok {

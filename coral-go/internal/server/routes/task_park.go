@@ -13,6 +13,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/teamhealth"
 )
 
@@ -24,6 +25,11 @@ const maxParkDays = 90
 // team's orchestrator, known by its own agent token's subscription on this board, never by a
 // name the request gives. An agent can't park or ack its own task to hide that it is stuck.
 func (h *BoardHandler) healthAdmin(r *http.Request, project string) (who string, ok bool) {
+	// Never through Coral Hub: these routes are off the tunnel table, and this is the second lock
+	// should one ever be added (Security's SHOULD on #4225).
+	if cloud.Tunneled(r) {
+		return "", false
+	}
 	if owner, verified := VerifiedSession(r.Context()); verified {
 		sub, err := h.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
 		if err != nil || sub == nil || sub.Project != project {

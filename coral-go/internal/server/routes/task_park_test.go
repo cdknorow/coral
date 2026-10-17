@@ -78,6 +78,8 @@ func TestParkIsTheOrchestratorsOrTheOperatorsAndTheReasonIsCleaned(t *testing.T)
 	assert.Equal(t, http.StatusForbidden, code, "another team's orchestrator")
 	code, _ = call(http.MethodPost, stuck.ID, `{"reason":"x"}`, func(r *http.Request) { r.Header.Set("User-Agent", "coral-board/1.0") })
 	assert.Equal(t, http.StatusForbidden, code, "unsigned agent command line")
+	code, _ = call(http.MethodPost, stuck.ID, `{"reason":"x"}`, func(r *http.Request) { r.Header.Set(tunnel.ViaHeader, "1") })
+	assert.Equal(t, http.StatusForbidden, code, "through Coral Hub, refused in the handler too")
 	code, _ = call(http.MethodDelete, stuck.ID, ``, as("claude-dev"))
 	assert.Equal(t, http.StatusForbidden, code, "nor unpark")
 	assert.False(t, parked(stuck.ID))
@@ -141,7 +143,7 @@ func TestAckIsTheOrchestratorsOrTheOperators(t *testing.T) {
 		require.NoError(t, err)
 	}
 	item := "1a2b3c4d"
-	_, err := h.bs.NoteHealthItems(ctx, "team", map[string]string{item: "2026-10-17T04:00:00Z"}, time.Now())
+	_, _, err := h.bs.NoteHealthItems(ctx, "team", map[string]string{item: "2026-10-17T04:00:00Z"}, time.Now())
 	require.NoError(t, err)
 	ack := func(body string, mod func(*http.Request)) int {
 		req := httptest.NewRequest(http.MethodPost, "/api/board/team/health/ack", bytes.NewReader([]byte(body)))
@@ -162,7 +164,7 @@ func TestAckIsTheOrchestratorsOrTheOperators(t *testing.T) {
 		}
 	}
 	acked := func() bool {
-		got, err := h.bs.NoteHealthItems(ctx, "team", map[string]string{item: "2026-10-17T04:00:00Z"}, time.Now())
+		got, _, err := h.bs.NoteHealthItems(ctx, "team", map[string]string{item: "2026-10-17T04:00:00Z"}, time.Now())
 		require.NoError(t, err)
 		return got[item]
 	}
@@ -173,6 +175,8 @@ func TestAckIsTheOrchestratorsOrTheOperators(t *testing.T) {
 	assert.Equal(t, http.StatusOK, ack(`{"item":"`+item+`"}`, as("claude-orch")), "the orchestrator")
 	assert.True(t, acked())
 	assert.Equal(t, http.StatusOK, ack(`{"item":"`+item+`"}`, nil), "the Operator")
+	// Through Coral Hub, refused in the handler too, whatever the tunnel table says.
+	assert.Equal(t, http.StatusForbidden, ack(`{"item":"`+item+`"}`, func(r *http.Request) { r.Header.Set(tunnel.ViaHeader, "1") }), "tunnelled")
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify(http.MethodPost, "/api/board/team/health/ack", ""), "not through Coral Hub")
 }
 

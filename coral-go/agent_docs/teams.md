@@ -506,8 +506,11 @@ posts on the board. The question is shown as quoted, masked text like any agent 
 Each item ends with `[ack <id>]`. The orchestrator (or the Operator) runs `coral-board health
 ack <id>` once it has handled the item, and it stays off the check until its state changes (the
 agent goes idle again later, another escalation, a different set of reviews waiting). A parked
-task (`coral-board task park`, see board.md) raises no item and gets no nudge or reminder at all.
-An agent can do neither: an ack or a park with its token is refused.
+task (`coral-board task park`, see board.md) raises no item and gets no nudge or reminder at all;
+the check's team line counts them ("2 parked"), and names a task whose park ended by itself
+once ("back from park: #12"). An acknowledged item whose state changed comes back marked
+"back: changed since it was acknowledged", once. An agent can do neither: an ack or a park
+with its token is refused, and neither is possible through Coral Hub.
 
 Coral never reassigns tasks or accepts completions on its own.
 

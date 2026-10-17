@@ -161,10 +161,15 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 	// A parked task raises no item (#4175 step 3): it is left out of everything below.
 	var tasks []board.Task
 	parked := map[string]bool{}
+	var backFromPark []int64
 	for _, t := range all {
 		if t.Parked(now) {
 			parked[fmt.Sprint(t.ID)] = true
 			continue
+		}
+		if t.ParkedReason != nil { // its end passed: back, said once in this check, then cleared
+			backFromPark = append(backFromPark, t.ID)
+			_, _ = m.store.UnparkTask(ctx, project, t.ID)
 		}
 		tasks = append(tasks, t)
 	}
@@ -275,10 +280,11 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 			states[teamhealth.ItemID(it.Key)] = it.State
 		}
 	}
-	if acked, err := m.store.NoteHealthItems(ctx, project, states, now); err == nil {
+	if acked, back, err := m.store.NoteHealthItems(ctx, project, states, now); err == nil {
 		kept := items[:0]
 		for _, it := range items {
 			if it.Key == "" || !acked[teamhealth.ItemID(it.Key)] {
+				it.Back = it.Key != "" && back[teamhealth.ItemID(it.Key)]
 				kept = append(kept, it)
 			}
 		}
@@ -304,7 +310,8 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 		}
 	}
 	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items, Questions: questions,
-		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts}}), len(items), nil
+		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts},
+		Parked:   len(parked), BackFromPark: backFromPark}), len(items), nil
 }
 
 func taskList(ids []int64) string {

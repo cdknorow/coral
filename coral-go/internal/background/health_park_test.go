@@ -67,6 +67,19 @@ func TestParkedTasksRaiseNoCheckItem(t *testing.T) {
 	out := h.checkTo("Orchestrator")
 	assert.NotContains(t, out, fmt.Sprintf("#%d", work.ID), out)
 	assert.Contains(t, out, "Nothing needs you")
+	assert.Contains(t, out, "(1 parked)", "the check says something is set aside")
+
+	// A park whose end passed: named once as back, its item returns, then the note is gone.
+	_, err = h.s.ParkTask(ctx, "team", work.ID, "until the soak ends", time.Now().Add(-time.Second))
+	require.NoError(t, err)
+	h.now = h.now.Add(11 * time.Minute)
+	out = h.checkTo("Orchestrator")
+	assert.Contains(t, out, fmt.Sprintf("back from park: #%d", work.ID), out)
+	assert.Contains(t, out, fmt.Sprintf("silent on #%d", work.ID), "its item is back")
+	assert.NotContains(t, out, "parked;")
+	h.now = h.now.Add(11 * time.Minute)
+	out = h.checkTo("Orchestrator")
+	assert.NotContains(t, out, "back from park", "said once")
 }
 
 // The orchestrator acknowledges an item (#4175 step 3): it stays off the check while its state is
@@ -92,4 +105,9 @@ func TestAcknowledgedItemsStayOffUntilTheyChange(t *testing.T) {
 	h.now = h.now.Add(11 * time.Minute)
 	out = h.checkTo("Orchestrator")
 	assert.Contains(t, out, "QA: idle", "a changed state shows again")
+	assert.Contains(t, out, "(back: changed since it was acknowledged)", "and says it is back")
+	h.now = h.now.Add(11 * time.Minute)
+	out = h.checkTo("Orchestrator")
+	assert.Contains(t, out, "QA: idle")
+	assert.NotContains(t, out, "(back:", "said once")
 }

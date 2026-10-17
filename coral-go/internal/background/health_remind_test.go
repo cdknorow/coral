@@ -92,3 +92,44 @@ func TestTaskRemindersGoOutOnceAtTheirTime(t *testing.T) {
 	r.RunOnce(ctx)
 	assert.Contains(t, sent["Dev"][2], fmt.Sprintf("#%d", later))
 }
+
+// Security's MUST on #4225 (#4176 rule 5): ten reminders for one agent due together go out
+// within the board's limits, at most 3 in an hour, the rest on later passes, none lost.
+func TestTaskRemindersStayWithinTheLimits(t *testing.T) {
+	s := healthMonitorStore(t)
+	ctx := context.Background()
+	sid := "00000002-0000-0000-0000-000000000000"
+	_, err := s.Subscribe(ctx, "team", "Dev", "Developer", naming.SessionName("claude", sid), nil, "all")
+	require.NoError(t, err)
+	agents := []AgentInfo{{AgentType: "claude", SessionID: sid, DisplayName: "Dev"}}
+	now := time.Now()
+	var got []string
+	r := NewTaskReminders(s, nil, func(context.Context) ([]AgentInfo, error) { return agents, nil })
+	r.now = func() time.Time { return now }
+	r.deliver = func(_ context.Context, _ AgentInfo, _ string, text string) error {
+		got = append(got, text)
+		return nil
+	}
+	ids := map[string]bool{}
+	for i := 0; i < 10; i++ {
+		tk, err := s.CreateTask(ctx, "team", fmt.Sprint("t", i), "", "medium", "Orchestrator", "Dev")
+		require.NoError(t, err)
+		require.NoError(t, s.SetTaskRemindAt(ctx, "team", tk.ID, now.Add(time.Minute)))
+		ids[fmt.Sprintf("Reminder for #%d,", tk.ID)] = true
+	}
+	now = now.Add(2 * time.Minute)
+	for i := 0; i < 10; i++ { // twenty passes in five minutes
+		r.RunOnce(ctx)
+		now = now.Add(30 * time.Second)
+	}
+	assert.Len(t, got, 3, "at most 3 in the hour")
+	for hour := 0; hour < 4; hour++ {
+		now = now.Add(61 * time.Minute)
+		r.RunOnce(ctx)
+	}
+	assert.Len(t, got, 10, "the rest on later passes")
+	for _, text := range got {
+		delete(ids, text[strings.Index(text, "Reminder for #"):strings.Index(text, ",")+1])
+	}
+	assert.Empty(t, ids, "none lost, none twice")
+}

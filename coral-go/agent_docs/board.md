@@ -683,7 +683,7 @@ POST /api/board/{project}/tasks
 | `blocked_by` | array | No | Prerequisite IDs or rules with `task_id`, optional `board_id`, `condition`, and `required_artifacts` |
 | `draft` | boolean | No | Keep unpublished until explicitly published |
 | `workflow` | object | No | `name`, `stage`, `instructions`, `required_outputs`, `parent_task_id`, `retry_of` |
-| `remind_at` | string | No | RFC 3339 time, at most 90 days ahead: a one-time reminder then (`coral-board task add ... --remind-at "2026-10-19 21:58"`, or `21:58`, `2h`, `3d`). Coral types it to the assignee, or to the orchestrator when nobody is assigned, through the gate, with the task number and time only, and posts a board line; a parked task is reminded when it comes back |
+| `remind_at` | string | No | RFC 3339 time, at most 90 days ahead: a one-time reminder then (`coral-board task add ... --remind-at "2026-10-19 21:58"`, or `21:58`, `2h`, `3d`). Coral types it to the assignee, or to the orchestrator when nobody is assigned, through the gate, with the task number and time only, and posts a board line; a parked task is reminded when it comes back. Reminders count against the board's limits (3 an hour per agent, 20 per board): one past them waits for a later pass, none is lost |
 
 **Response:** `201 Created` with task object. **409**
 `{"error": "<name> is archived; unarchive it before assigning it work", "code": "assignee_archived"}`
