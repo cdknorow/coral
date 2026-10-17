@@ -31,7 +31,6 @@ int cocoaShowEULA(const char *title, const char *info, const char *accept, const
 	NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 500, 300)];
 	scrollView.hasVerticalScroller = YES;
 	scrollView.borderType = NSBezelBorder;
-	scrollView.accessibilityLabel = [NSString stringWithUTF8String:name];
 
 	NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 480, 300)];
 	textView.editable = NO;
