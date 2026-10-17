@@ -21,6 +21,9 @@ type HealthSettings struct {
 	ClaimNudge       HealthClaimNudge   `json:"claim_nudge"`
 	StatusNudge      HealthStatusNudge  `json:"status_nudge"`
 	MentionRenudge   HealthMentionNudge `json:"mention_renudge"`
+	// HeldNotice tells the Operator about an agent whose automated messages have waited at a
+	// dialog for AfterMin (#4175 step 3).
+	HeldNotice HealthMentionNudge `json:"held_notice"`
 }
 
 // HealthRuleOn is a rule that is only on or off.
@@ -56,6 +59,7 @@ func DefaultHealthSettings() HealthSettings {
 		ClaimNudge:     HealthClaimNudge{On: true, AfterMin: 10, Nudges: 2},
 		StatusNudge:    HealthStatusNudge{On: true, AfterMin: 20, EscalateAfterMin: 10},
 		MentionRenudge: HealthMentionNudge{On: true, AfterMin: 10},
+		HeldNotice:     HealthMentionNudge{On: true, AfterMin: 10},
 	}
 }
 
@@ -78,6 +82,7 @@ func (h HealthSettings) Clamp() HealthSettings {
 	h.StatusNudge.AfterMin = clampInt(h.StatusNudge.AfterMin, 5, 1440)
 	h.StatusNudge.EscalateAfterMin = clampInt(h.StatusNudge.EscalateAfterMin, 5, 1440)
 	h.MentionRenudge.AfterMin = clampInt(h.MentionRenudge.AfterMin, 5, 1440)
+	h.HeldNotice.AfterMin = clampInt(h.HeldNotice.AfterMin, 5, 1440)
 	h.Recipient = strings.TrimSpace(h.Recipient)
 	var revs []string
 	for _, r := range h.DefaultReviewers {

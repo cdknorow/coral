@@ -10,6 +10,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/teamhealth"
@@ -35,6 +36,8 @@ type HealthNudges struct {
 	signal   func(ctx context.Context, sessionID string) (agentSignal, bool)
 	deliver  func(ctx context.Context, a AgentInfo, key, text string) error
 	now      func() time.Time
+	// heldDialogs: since when each session's automated input waits at a dialog (health_held.go).
+	heldDialogs func() map[string]time.Time
 
 	Interval   time.Duration
 	TeamBudget int // automatic actions per board per hour
@@ -69,7 +72,7 @@ func hookSignal(ts *store.TaskStore) func(ctx context.Context, sessionID string)
 func NewHealthNudges(bs *board.Store, ts *store.TaskStore, rt AgentRuntime, discover func(context.Context) ([]AgentInfo, error)) *HealthNudges {
 	h := &HealthNudges{
 		store: bs, runtime: rt, logger: slog.Default(), discover: discover, now: time.Now,
-		Interval: 5 * time.Minute, TeamBudget: 20,
+		Interval: 5 * time.Minute, TeamBudget: 20, heldDialogs: ptymanager.HeldAtDialog,
 	}
 	h.signal = hookSignal(ts)
 	h.deliver = func(ctx context.Context, a AgentInfo, key, text string) error {
@@ -245,6 +248,9 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 	if orch, err := h.store.TeamOrchestrator(ctx, project); err == nil && hs.MentionRenudge.On {
 		h.renudgeMentions(ctx, project, orch, subs, bySession, now, minutes(hs.MentionRenudge.AfterMin), take, &renudged)
 	}
+
+	// An agent whose messages wait at a dialog: tell the Operator (#4175 step 3).
+	h.heldNotices(ctx, project, subs, now, hs, take)
 
 	// An escalation ends with its task (completed, cancelled, reassigned).
 	if esc, err := h.store.HealthEscalations(ctx, project); err == nil {

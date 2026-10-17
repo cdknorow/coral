@@ -528,6 +528,7 @@ values are clamped: times are 5 to 1440 minutes, and nudges are 1 to 5.
 | `claim_nudge` | on, `after_min` 10, `nudges` 2 | nudge an idle agent to claim its work; escalate after the nudges |
 | `status_nudge` | on, `after_min` 20, `escalate_after_min` 10 | ask for a status after no activity; escalate if still silent |
 | `mention_renudge` | on, `after_min` 10 | remind the orchestrator of an unanswered mention |
+| `held_notice` | on, `after_min` 10 | tell the Operator, on the board, about an agent whose messages have waited at a dialog that long: its name and "waiting at a dialog" only, once per hold |
 
 The claim nudge names the agent's highest-priority assigned task. Once that escalates, the
 next one waits until the first is resolved. A task whose reminder is snoozed gets no status
