@@ -8,6 +8,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/pkg/redact"
 )
 
@@ -27,13 +28,13 @@ var csi = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]")
 // a task title in the orchestrator's check), by Security's #4176 rule 2, in this order:
 // invisible characters dropped (an invisible mark inside a token would end the redactor's match
 // and leave the rest of the secret showing), then redacted whole with the Hub redactor (rd;
-// redact.Rules when nil), failing closed; then its first line; escape sequences, control, format (bidi, zero-width) characters dropped; every @
+// internal/secrets, Coral's redactor, when nil), failing closed; then its first line; escape sequences, control, format (bidi, zero-width) characters dropped; every @
 // neutralised so it can't mention anyone; spaces collapsed; then cut, so a cut can never split a
 // secret the redactor would have caught. The result is labelled as quoted agent text and at most
 // MaxShown characters long.
 func ShownText(text string, rd redact.Redactor) string {
 	if rd == nil {
-		rd = redact.Rules
+		rd = secrets.Redactor() // Coral's secret rules (#3808), not pkg/redact's own
 	}
 	red, err := rd.Text([]byte(dropInvisibles(text)))
 	if err != nil || !utf8.Valid(red) {
