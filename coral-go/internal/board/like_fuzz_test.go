@@ -2,7 +2,6 @@ package board
 
 import (
 	"strings"
-	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -17,24 +16,15 @@ import (
 // answers are equal, whatever the term holds: % and _ wildcards, ASCII case, non-ASCII letters,
 // combining marks, spaces. A plain go test runs the seeds; go test -fuzz FuzzLikeAgainstSQLite
 // -fuzztime 10m ./internal/board/ fuzzes.
-var (
-	likeDBOnce sync.Once
-	likeDB     *sqlx.DB
-)
-
-func sqliteForLike(t testing.TB) *sqlx.DB {
-	likeDBOnce.Do(func() {
-		db, err := sqlx.Open("sqlite", ":memory:")
-		if err != nil {
-			t.Fatal(err)
-		}
-		db.SetMaxOpenConns(1)
-		likeDB = db
-	})
-	return likeDB
-}
-
 func FuzzLikeAgainstSQLite(f *testing.F) {
+	// One in-memory SQLite for every input, closed when the fuzz target ends (#4167's leak guard
+	// found its connection opener still running when it was opened once per process).
+	db, err := sqlx.Open("sqlite", ":memory:")
+	if err != nil {
+		f.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	f.Cleanup(func() { db.Close() })
 	for _, s := range [][2]string{
 		{"@Backend Dev please look", "@Backend Dev"}, {"@BACKENDDEV case", "@backenddev"}, {"@Lead Developerx not a tag", "@Lead Developer"},
 		{"50% done", "50%"}, {"a_b", "a_b"}, {"aXb", "a_b"}, {"axxb", "a%b"}, {"cafÉ", "café"}, {"CAFE", "café"}, {"ßa", "SSA"},
@@ -49,7 +39,7 @@ func FuzzLikeAgainstSQLite(f *testing.F) {
 		}
 		pat := "%" + term + "%"
 		var want bool
-		if err := sqliteForLike(t).QueryRow(`SELECT ? LIKE ? COLLATE NOCASE`, content, pat).Scan(&want); err != nil {
+		if err := db.QueryRow(`SELECT ? LIKE ? COLLATE NOCASE`, content, pat).Scan(&want); err != nil {
 			t.Fatal(err)
 		}
 		if got := likeAny(content, []string{pat}); got != want {
