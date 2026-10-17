@@ -188,20 +188,38 @@ func CheckAndPromptEULA(showDialog func(tosText string) bool) bool {
 // executablePath is the running program's path; a variable so a test can name one.
 var executablePath = os.Executable
 
-// eulaCommand is the command a person types in a terminal to be asked: this very program, quoted when its path has a space or another character a shell
-// would split or expand, so it can be pasted as it is (#4360). When the path is unknown it is the program's usual name.
-func eulaCommand() string {
-	path, err := executablePath()
-	if err != nil || path == "" {
-		return "coral"
+// eulaCommandLines are the lines a person can paste into a terminal to be asked: this very program, quoted for the shell it runs in (#4360). A path with a
+// control character in it (a newline, a carriage return, an escape, anything under 0x20, or 0x7f) is never printed as it is, so a hostile path cannot rewrite
+// the terminal or smuggle in a second command: the program's usual name stands in. On Windows both forms are given, PowerShell's call operator with a
+// single-quoted path (an apostrophe doubled) and the Command Prompt's double-quoted path; elsewhere one POSIX single-quoted form when a shell would split
+// or expand the path.
+func eulaCommandLines(goos, path string) []string {
+	if path == "" {
+		return []string{"coral"}
+	}
+	for _, r := range path {
+		if r < 0x20 || r == 0x7f {
+			return []string{"coral"}
+		}
+	}
+	if goos == "windows" {
+		return []string{
+			"PowerShell:      & '" + strings.ReplaceAll(path, "'", "''") + "'",
+			"Command Prompt:  \"" + path + "\"",
+		}
 	}
 	if !strings.ContainsAny(path, " \t'\"$`\\&;|<>()*?[]{}!#~") {
-		return path
+		return []string{path}
 	}
-	if runtime.GOOS == "windows" {
-		return `"` + path + `"`
+	return []string{"'" + strings.ReplaceAll(path, "'", `'\''`) + "'"}
+}
+
+func eulaCommand() []string {
+	path, err := executablePath()
+	if err != nil {
+		path = ""
 	}
-	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+	return eulaCommandLines(runtime.GOOS, path)
 }
 
 // TerminalEULADialog shows the TOS in the terminal and prompts for acceptance.
@@ -211,7 +229,9 @@ func TerminalEULADialog(tosText string) bool {
 		fmt.Println("The Terms of Service have not been accepted and stdin is not a terminal, so Coral cannot ask.")
 		fmt.Println("To accept them, run this once in a terminal, read the terms and type 'accept':")
 		fmt.Println()
-		fmt.Println("    " + eulaCommand())
+		for _, line := range eulaCommand() {
+			fmt.Println("    " + line)
+		}
 		return false
 	}
 	fmt.Println(tosText)
