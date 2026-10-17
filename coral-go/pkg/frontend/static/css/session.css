@@ -2218,7 +2218,10 @@
 .mobile-list-header .mobile-list-title { margin-right: auto; }
 .mobile-list-header .btn { height: var(--ctl-h); box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
 .mobile-list-header .mobile-list-title { white-space: nowrap; flex: none; }
-.mobile-list-header .server-switcher-host { min-width: 0; flex: 0 1 auto; }
+/* The server button is the header's one flexible control: it starts at 5em and takes what is left on the row. With flex-basis auto it asked for
+   its full label, which with wrapping on (#4086) pushed the last control to a second line even at 390px (#4062). At large text the fixed controls
+   alone fill the row and the header wraps, as #4086 wants. */
+.mobile-list-header .server-switcher-host { min-width: 0; flex: 1 1 5em; }
 .mobile-list-header .server-switcher, .mobile-list-header .server-switcher-btn { min-width: 0; max-width: 100%; }
 /* The server list opens under the whole header row, not under its own button, so it is never wider than the screen or cut off at the edge (#4062). */
 .sidebar-header, .mobile-list-header { position: relative; }
