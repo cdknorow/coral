@@ -179,6 +179,22 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "changes_artifact": changesArtifact, "changes_artifact_error": artifactError})
 }
 
+// putSubscriptionBack returns a board subscription to the session it was on, when a launch failed
+// after the subscription had moved to the session that was to start (restart and resume move it
+// first, so the new process's first request is a member's). sub is the subscription as it was
+// before the move; nil is nothing to put back.
+func (h *SessionsHandler) putSubscriptionBack(ctx context.Context, sub *board.Subscriber) {
+	if sub == nil || h.bs == nil {
+		return
+	}
+	if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, sub.SessionName,
+		sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
+		log.Printf("[launch] putting %s back on its board %s after a failed launch: %v", sub.SessionName, sub.Project, err)
+		return
+	}
+	writeBoardStateFile(sub.SessionName, sub.Project, sub.JobTitle, h.cfg)
+}
+
 func sendLaunchCommand(ctx context.Context, terminal ptymanager.SessionTerminal, target, command string) error {
 	if err := terminal.SendToTarget(ctx, target, command); err != nil {
 		return fmt.Errorf("launch command delivery to %s failed: %w", target, err)
@@ -514,11 +530,13 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		// protected script handoff instead of hitting the shell's canonical
 		// input limit while a fresh PTY is initializing.
 		if err := sendLaunchCommand(ctx, h.terminal, newSessionName, cmd); err != nil {
+			h.putSubscriptionBack(ctx, restartSubscription)
 			errInternalServer(w, fmt.Sprintf("pty launch command failed: %v", err))
 			return
 		}
 	} else {
 		if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
+			h.putSubscriptionBack(ctx, restartSubscription)
 			errInternalServer(w, fmt.Sprintf("launch command failed: %v", err))
 			return
 		}
@@ -767,13 +785,16 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		resumeSubscription, _ = h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(storedAgentType, body.CurrentSessionID))
 	}
 	if sub := resumeSubscription; sub != nil {
+		// As Restart does: an agent resumed without its board is worse than a resume that failed.
 		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
 			sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
-			log.Printf("[resume] re-subscribe %s to board %s: %v", newSessionName, sub.Project, err)
+			errInternalServer(w, err.Error())
+			return
 		}
 		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
 	}
 	if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
+		h.putSubscriptionBack(ctx, resumeSubscription)
 		errInternalServer(w, err.Error())
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -73,6 +74,47 @@ func TestRestartAndResumeSubscribeTheNewSessionBeforeTheLaunch(t *testing.T) {
 				assert.True(t, subscribed, "%s: %s had no board subscription when its launch was typed", op, name)
 			}
 			assert.True(t, sawNew[out.SessionName], "%s: the launch went to the new session %s (saw %v)", op, out.SessionName, sawNew)
+		})
+	}
+}
+
+// When the launch command can't be typed, the subscription that moved to the new session name
+// before it goes back to the old one: a failed restart or resume leaves the agent on its board.
+func TestFailedRestartOrResumePutsTheSubscriptionBack(t *testing.T) {
+	for _, op := range []string{"restart", "resume"} {
+		t.Run(op, func(t *testing.T) {
+			server, handler, term, ss := setupSessionsTestServer(t)
+			ctx := context.Background()
+			oldSID := "44444444-4444-4444-8444-444444444444"
+			oldName := naming.SessionName("claude", oldSID)
+			dir := t.TempDir()
+			term.addSession(oldName, dir)
+			board := "back-team"
+			require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: oldSID, AgentType: "claude", AgentName: "proj", WorkingDir: dir, BoardName: &board}))
+			require.NoError(t, ss.SetDisplayName(ctx, oldSID, "Dev One"))
+			_, err := handler.bs.Subscribe(ctx, board, "Dev One", "Dev One", oldName, nil, "all", true)
+			require.NoError(t, err)
+
+			term.mu.Lock()
+			term.sendErr = errors.New("terminal gone")
+			term.mu.Unlock()
+			body := map[string]any{"agent_type": "claude", "session_id": oldSID}
+			if op == "resume" {
+				body = map[string]any{"agent_type": "claude", "session_id": "55555555-5555-4555-8555-555555555555", "current_session_id": oldSID}
+			}
+			b, _ := json.Marshal(body)
+			resp, err := http.Post(server.URL+"/api/sessions/live/"+oldName+"/"+op, "application/json", bytes.NewReader(b))
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+
+			subs, err := handler.bs.ListSubscribers(ctx, board)
+			require.NoError(t, err)
+			require.Len(t, subs, 1, "one subscription")
+			assert.Equal(t, oldName, subs[0].SessionName, "%s failed: the agent is back on its old session", op)
+			assert.Equal(t, "Dev One", subs[0].SubscriberID)
+			assert.Equal(t, "all", subs[0].ReceiveMode)
+			assert.Equal(t, 1, subs[0].CanPeek)
 		})
 	}
 }
