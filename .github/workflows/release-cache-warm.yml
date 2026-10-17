@@ -14,7 +14,7 @@ name: Release cache warm
 
 on:
   push:
-    branches: [main]
+    branches: [main, ci/4126-cache3] # CI-ONLY (proof run on the ci/ branch): never land this line
     paths:
       - coral-go/go.mod
       - coral-go/go.sum
@@ -180,7 +180,7 @@ jobs:
   # toolchain, source, flags and path).
   go-cache-audit:
     name: Go cache audit (${{ matrix.os }} ${{ matrix.arch }})
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/ci/4126-cache3' # CI-ONLY
     needs: [go-macos, go-linux]
     runs-on: ${{ matrix.runner }}
     strategy:
