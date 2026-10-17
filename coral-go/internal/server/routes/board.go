@@ -618,7 +618,11 @@ func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "Task not found")
 		return
 	}
-	if !h.requirePlannerOrAssignee(w, ctx, project, task, taskActor(r, ""), "nudge its assignee") {
+	nudgeActor, attrOK := attributedTo(w, r, taskActor(r, ""))
+	if !attrOK {
+		return
+	}
+	if !h.requirePlannerOrAssignee(w, ctx, project, task, nudgeActor, "nudge its assignee") {
 		return
 	}
 	assignee := ""
@@ -672,10 +676,14 @@ func (h *BoardHandler) SnoozeTaskReminder(w http.ResponseWriter, r *http.Request
 		errBadRequest(w, "seconds must be between 1 and 604800")
 		return
 	}
+	snoozeActor, attrOK := attributedTo(w, r, taskActor(r, body.SubscriberID))
+	if !attrOK {
+		return
+	}
 	if task, err := h.bs.GetTask(r.Context(), project, taskID); err != nil || task == nil {
 		errNotFound(w, "Task not found")
 		return
-	} else if !h.requirePlannerOrAssignee(w, r.Context(), project, task, taskActor(r, body.SubscriberID), "snooze its reminders") {
+	} else if !h.requirePlannerOrAssignee(w, r.Context(), project, task, snoozeActor, "snooze its reminders") {
 		return
 	} else if task.Status != "in_progress" {
 		errBadRequest(w, "only in-progress tasks can be snoozed")
@@ -704,7 +712,11 @@ func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
 			errNotFound(w, "Task not found")
 			return
 		}
-		if !h.requirePlannerOrAssignee(w, r.Context(), project, task, taskActor(r, ""), "stop its reminders") {
+		stopActor, attrOK := attributedTo(w, r, taskActor(r, ""))
+		if !attrOK {
+			return
+		}
+		if !h.requirePlannerOrAssignee(w, r.Context(), project, task, stopActor, "stop its reminders") {
 			return
 		}
 		h.stopReminder(project, taskID)
@@ -728,7 +740,11 @@ func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "Task not found")
 		return
 	}
-	if !h.requirePlannerOrAssignee(w, r.Context(), project, task, taskActor(r, body.SubscriberID), "start its reminders") {
+	startActor, attrOK := attributedTo(w, r, taskActor(r, body.SubscriberID))
+	if !attrOK {
+		return
+	}
+	if !h.requirePlannerOrAssignee(w, r.Context(), project, task, startActor, "start its reminders") {
 		return
 	}
 	if task.AssignedTo == nil || *task.AssignedTo == "" {
@@ -1440,7 +1456,18 @@ func (h *BoardHandler) requireTaskPlanner(w http.ResponseWriter, r *http.Request
 	// Operator is the reserved identity used by the desktop dashboard. Server
 	// auth already gates remote requests; local clients share the desktop trust
 	// boundary. This is not cryptographic attestation of a human caller.
+	// The Operator is the actor the identity layer verified (#4255), in any spelling the caller used;
+	// the exact name "Operator" in the claim is the earlier test: kept in log mode, where a claimant with
+	// nothing behind the name passes and is counted, and gone under enforce.
+	if callerActor(r).IsOperator() {
+		return true
+	}
 	if actor == "Operator" {
+		if identityActorEnforced() {
+			errForbidden(w, "only the Operator or an active registered orchestrator may create or reassign shared tasks")
+			return false
+		}
+		noteEnforceDiffers("task-planner", r)
 		return true
 	}
 	if err := h.bs.RequireTaskReviewer(r.Context(), project, actor); err != nil {
@@ -1516,6 +1543,17 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if refuseNewBoardName(w, r, h.bs, project) {
 		return
+	}
+	attrClaim := body.SubscriberID
+	if attrClaim == "" {
+		attrClaim = body.CreatedBy
+	}
+	attrWho, attrOK := attributedTo(w, r, attrClaim)
+	if !attrOK {
+		return
+	}
+	if identityActorEnforced() { // the attributed name is the creator, whichever alias was used
+		body.SubscriberID, body.CreatedBy = attrWho, attrWho
 	}
 	createdBy := body.CreatedBy
 	if createdBy == "" {
@@ -1740,6 +1778,11 @@ func (h *BoardHandler) ActiveTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return
@@ -1764,6 +1807,11 @@ func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return
@@ -1820,6 +1868,11 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return
@@ -1903,6 +1956,11 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return
@@ -2016,6 +2074,11 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, raw.SubscriberID)
+	if !attrOK {
+		return
+	}
+	raw.SubscriberID = attrWho
 	if raw.Body != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "task body changes require the revisioned /amend endpoint with a reason and base_revision"})
 		return
@@ -2147,6 +2210,11 @@ func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if !h.requireTaskPlanner(w, r, project, body.SubscriberID) {
 		return
 	}
@@ -2189,6 +2257,11 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if !h.requireTaskPlanner(w, r, project, body.SubscriberID) {
 		return
 	}
@@ -2243,7 +2316,10 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength != 0 {
 		_ = decodeJSON(r, &body)
 	}
-	actor := taskActor(r, body.SubscriberID)
+	actor, attrOK := attributedTo(w, r, taskActor(r, body.SubscriberID))
+	if !attrOK {
+		return
+	}
 	if actor == "" {
 		errBadRequest(w, "subscriber_id required")
 		return

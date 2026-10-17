@@ -28,7 +28,15 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		ExpectedRevision  *int                 `json:"expected_revision,omitempty"`
 		CandidateRevision string               `json:"candidate_revision,omitempty"`
 	}
-	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" {
+	derr := decodeJSON(r, &body)
+	if derr == nil {
+		attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+		if !attrOK {
+			return
+		}
+		body.SubscriberID = attrWho
+	}
+	if derr != nil || body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id and valid JSON required")
 		return
 	}
@@ -106,7 +114,15 @@ func (h *BoardHandler) DelegateReview(w http.ResponseWriter, r *http.Request) {
 		SubscriberID string   `json:"subscriber_id"`
 		Reviewers    []string `json:"reviewers"`
 	}
-	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" {
+	derr := decodeJSON(r, &body)
+	if derr == nil {
+		attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+		if !attrOK {
+			return
+		}
+		body.SubscriberID = attrWho
+	}
+	if derr != nil || body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id and valid JSON required")
 		return
 	}
@@ -158,7 +174,15 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 		Note         string `json:"note"`
 		Round        int    `json:"round"` // the round reviewed; an earlier one is refused (#3787)
 	}
-	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" {
+	derr := decodeJSON(r, &body)
+	if derr == nil {
+		attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+		if !attrOK {
+			return
+		}
+		body.SubscriberID = attrWho
+	}
+	if derr != nil || body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id and valid JSON required")
 		return
 	}
@@ -230,6 +254,11 @@ func (h *BoardHandler) ReleaseCompletionReview(w http.ResponseWriter, r *http.Re
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if err := h.bs.RequireTaskReviewer(r.Context(), project, body.SubscriberID); err != nil {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 		return

@@ -23,6 +23,7 @@ import (
 type attributionHarness struct {
 	t      *testing.T
 	h      http.Handler
+	bh     *BoardHandler
 	tokens map[string]string
 	cookie bool
 	taskID int64
@@ -55,6 +56,26 @@ func newAttributionHarness(t *testing.T) *attributionHarness {
 	r.Post("/api/board/{project}/health/ack", bh.AckHealthItem)
 	r.Put("/api/board/{project}/settings", bh.UpdateBoardSettings)
 	r.Post("/api/board/{project}/messages", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	// The task verbs (#4255 commit 3), the real handlers behind the real identity layer.
+	r.Post("/api/board/{project}/tasks", bh.CreateTask)
+	r.Post("/api/board/{project}/tasks/claim", bh.ClaimTask)
+	r.Post("/api/board/{project}/tasks/current", bh.ActiveTask)
+	r.Post("/api/board/{project}/tasks/{taskID}/complete", bh.CompleteTaskByID)
+	r.Post("/api/board/{project}/tasks/{taskID}/submit-review", bh.SubmitCompletionReview)
+	r.Post("/api/board/{project}/tasks/{taskID}/release-review", bh.ReleaseCompletionReview)
+	r.Post("/api/board/{project}/tasks/{taskID}/review", bh.DelegateReview)
+	r.Post("/api/board/{project}/tasks/{taskID}/approve", bh.ApproveReview)
+	r.Post("/api/board/{project}/tasks/{taskID}/reject", bh.RejectReview)
+	r.Post("/api/board/{project}/tasks/{taskID}/cancel", bh.CancelTaskByID)
+	r.Patch("/api/board/{project}/tasks/{taskID}", bh.UpdateTask)
+	r.Patch("/api/board/{project}/tasks/{taskID}/amend", bh.AmendTask)
+	r.Post("/api/board/{project}/tasks/{taskID}/reassign", bh.ReassignTask)
+	r.Post("/api/board/{project}/tasks/{taskID}/publish", bh.PublishTask)
+	r.Post("/api/board/{project}/tasks/{taskID}/nudge", bh.NudgeTask)
+	r.Post("/api/board/{project}/tasks/{taskID}/snooze", bh.SnoozeTaskReminder)
+	r.Post("/api/board/{project}/tasks/{taskID}/reminder", bh.RemindTask)
+	r.Delete("/api/board/{project}/tasks/{taskID}/reminder", bh.RemindTask)
+	a.bh = bh
 	a.h = r
 	return a
 }
@@ -72,6 +93,20 @@ func (a *attributionHarness) call(actor, method, path, body string) int {
 	rec := httptest.NewRecorder()
 	a.h.ServeHTTP(rec, r)
 	return rec.Code
+}
+
+// callBody is call, with the response body.
+func (a *attributionHarness) callBody(actor, method, path, body string) (int, string) {
+	a.t.Helper()
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	a.cookie = actor == "operator"
+	if tok, ok := a.tokens[actor]; ok {
+		r.Header.Set(store.SessionTokenHeader, tok)
+		r.Header.Set("User-Agent", "coral-board/test")
+	}
+	rec := httptest.NewRecorder()
+	a.h.ServeHTTP(rec, r)
+	return rec.Code, rec.Body.String()
 }
 
 func setMode(t *testing.T, enforce bool) {

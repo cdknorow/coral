@@ -3,8 +3,11 @@ package routes
 import (
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cdknorow/coral/internal/board"
 )
 
 // identity_actor (#4255, identity phase 2): "log" (the default) leaves every decision as it was and
@@ -77,4 +80,39 @@ func actorMode() string {
 		return "enforce"
 	}
 	return "log"
+}
+
+// actorName is the name an actor attributes a request to, and whether it has one: the board member a
+// token holds, "Operator" for the verified Operator, the name the tunnel decided for a Hub request.
+// A claimed actor, and a token with no member name yet, have none.
+func actorName(a Actor) (string, bool) {
+	switch {
+	case a.Kind == ActorToken && a.Name != "":
+		return a.Name, true
+	case a.Kind == ActorOperator:
+		return "Operator", true
+	case a.Kind == ActorHub && a.Name != "":
+		return a.Name, true
+	}
+	return "", false
+}
+
+// attributedTo is the name a handler attributes request r to (#4255): in log mode the name the request
+// claims, as before, counted when the actor alone would refuse it or name someone else; under enforce
+// the actor's name, the claim being optional, and a request with no verified actor refused with 403.
+// A handler assigns the result back to the field it read the claim from, so the rest of it reads the
+// attributed name.
+func attributedTo(w http.ResponseWriter, r *http.Request, claim string) (string, bool) {
+	name, verified := actorName(callerActor(r))
+	if identityActorEnforced() {
+		if !verified {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "this request is not from a verified member of the board or the Operator", "code": "identity_unverified"})
+			return "", false
+		}
+		return name, true
+	}
+	if c := strings.TrimSpace(claim); !verified || (c != "" && !board.SameIdentity(c, name)) {
+		noteEnforceDiffers("attribution", r)
+	}
+	return claim, true
 }
