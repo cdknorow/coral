@@ -757,21 +757,30 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 		// only the wait for its last byte. It fails closed (#3718, coral-hub Security): a reply
 		// over jsonWholeMax is refused (never streamed unchecked), and one that can't get room in
 		// the process-wide jsonBudget is answered busy, to retry.
+		// The reservation is given back as soon as the bytes it covers are no longer held, before
+		// the answer that ends the request: a caller that has the answer finds the budget back
+		// (#4136: the deferred release ran after the hub had the reply, and a check right after it
+		// saw the budget still taken), and a slow hub link doesn't keep it from other replies.
 		raw, release, why := readJSONBudgeted(body, resp.ContentLength, decoded, progress)
 		defer release()
 		switch why {
 		case jsonTooLarge:
+			release()
 			respondJSONTooLarge(s)
 			return
 		case jsonNoBudget:
+			release()
 			respondJSONBusy(s)
 			return
 		case jsonReadFailed:
+			release()
 			s.Reject(CodeUpstream, "local response ended early", 0)
 			return
 		}
 		out, ok := l.redactReply(resp.Header, raw)
 		if !ok || !redactedJSONOK(resp.Header, raw, out) {
+			raw, out = nil, nil
+			release()
 			l.respondRedactFailed(s)
 			return
 		}
@@ -787,6 +796,8 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 			out = out[n:]
 			progress()
 		}
+		raw = nil
+		release() // every byte is written: nothing of the reply is held any more
 		_ = w.Close()
 		return
 	}
