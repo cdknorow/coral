@@ -426,7 +426,11 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	backend, agentRT, terminal := selectBackend(opts.BackendType, cfg.LogDir, cfg.CoralDir())
 
 	// Build the HTTP server
-	srv := server.NewWithKey(cfg, db, backend, terminal, dbKey)
+	srv, err := server.NewWithKey(cfg, db, backend, terminal, dbKey)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
 	srv.SetRestarter(opts.Restart)
 	loginToken, lerr := srv.WriteLoginToken()
 	if lerr != nil {
