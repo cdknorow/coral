@@ -199,6 +199,19 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	// A setting is a string, a boolean or a number (Security's #4431 SHOULD 1). null is empty, as the
+	// request-pool sizes already took it: it was stored as the text "<nil>", which as a CLI path broke
+	// every launch. An array or an object is refused, with nothing saved.
+	for k, v := range body {
+		switch v.(type) {
+		case nil:
+			body[k] = ""
+		case string, bool, float64:
+		default:
+			errBadRequest(w, k+" must be a string, true or false, or a number")
+			return
+		}
+	}
 	// The terminal backend is written only by its own route, which needs a person (#3634).
 	for k := range body {
 		if isTerminalBackendKey(k) {
