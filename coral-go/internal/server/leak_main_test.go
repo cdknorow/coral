@@ -3,11 +3,15 @@ package server
 import (
 	"os"
 	"testing"
+	"time"
 
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/testleak"
 )
 
 // TestMain fails the package when its tests leave a goroutine running (#4167).
 func TestMain(m *testing.M) {
-	os.Exit(testleak.Check(m.Run()))
+	code := m.Run()
+	ptymanager.StopGate(10 * time.Second) // the input gate's retry loop, asleep after a held send
+	os.Exit(testleak.Check(code))
 }

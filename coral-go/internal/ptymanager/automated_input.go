@@ -681,7 +681,7 @@ func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted bool, kind s
 		g.logHeld(in, why, "paste held")
 	}
 	if start {
-		go func() { defer safego.Recover("ptymanager/automated_input:g.loop"); g.loop() }()
+		g.startLoop()
 	}
 }
 
@@ -714,7 +714,7 @@ func (g *inputGate) holdEnter(in AutomatedInput, kind string) {
 	g.mu.Unlock()
 	g.logHeld(enter, "a prompt opened between its text and its Enter", "Enter withheld")
 	if start {
-		go func() { defer safego.Recover("ptymanager/automated_input:g.loop"); g.loop() }()
+		g.startLoop()
 	}
 }
 
@@ -742,7 +742,14 @@ type inputGate struct {
 	mu      sync.Mutex
 	held    map[string][]*heldInput // by session name, oldest first
 	running bool
-	now     func() time.Time
+	// The retry loop stops on request (StopGate: Coral's shutdown, and the tests, which must not
+	// leave it sleeping): stop wakes a sleeping loop, stopping makes any loop that starts or wakes
+	// meanwhile end at once, and loops counts the running loops so a stop can wait for them.
+	stop     chan struct{}
+	stopping bool
+	loops    sync.WaitGroup
+	sleeps   atomic.Int64 // how many times the loop has begun a sleep (tests wait for it to be asleep)
+	now      func() time.Time
 	// sending serialises the sends to one session (a direct send and the
 	// retry loop), so held sends keep their order and none is typed twice.
 	sending sync.Map // session name -> *sync.Mutex
@@ -870,7 +877,7 @@ func (g *inputGate) hold(in AutomatedInput, why, kind string) {
 	g.logHeld(in, why, "held")
 	if !g.running {
 		g.running = true
-		go func() { defer safego.Recover("ptymanager/automated_input:g.loop"); g.loop() }()
+		g.startLoop()
 	}
 }
 
@@ -1031,12 +1038,79 @@ func (g *inputGate) giveUpMentionsBehindDialog(name string) (headGone bool) {
 	return headGone
 }
 
+// startLoop runs the retry loop in its own goroutine. The caller has set running.
+func (g *inputGate) startLoop() {
+	g.loops.Add(1)
+	go func() {
+		defer g.loops.Done()
+		defer safego.Recover("ptymanager/automated_input:g.loop")
+		g.loop()
+	}()
+}
+
+// sleepOrStop waits d, or less when the loop is asked to stop; it reports whether it was.
+func (g *inputGate) sleepOrStop(d time.Duration) (stopped bool) {
+	g.mu.Lock()
+	if g.stopping {
+		g.mu.Unlock()
+		return true
+	}
+	if g.stop == nil {
+		g.stop = make(chan struct{})
+	}
+	stop := g.stop
+	g.mu.Unlock()
+	g.sleeps.Add(1)
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return false
+	case <-stop:
+		return true
+	}
+}
+
+// StopGate stops the gate's retry loop and waits up to timeout for it to end, reporting whether it
+// did. Sends held at that moment stay held (a later hold starts the loop again), so this is for the
+// end of Coral and of a test, not a way to cancel input. Coral's shutdown calls it so the loop's
+// sleep doesn't outlive the server, and the test mains of the packages that hold input call it
+// before the leak check (#4167): a short test run ends before the loop's 2 s sleep does.
+func StopGate(timeout time.Duration) bool { return gate.stopLoop(timeout) }
+
+func (g *inputGate) stopLoop(timeout time.Duration) bool {
+	g.mu.Lock()
+	g.stopping = true
+	if g.stop != nil {
+		close(g.stop)
+		g.stop = nil
+	}
+	g.mu.Unlock()
+	done := make(chan struct{})
+	go func() { g.loops.Wait(); close(done) }()
+	ok := true
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		ok = false
+	}
+	g.mu.Lock()
+	g.stopping = false
+	g.mu.Unlock()
+	return ok
+}
+
 func (g *inputGate) loop() {
 	for {
 		g.mu.Lock()
 		every := g.timings.every
 		g.mu.Unlock()
-		time.Sleep(every)
+		if g.sleepOrStop(every) {
+			g.mu.Lock()
+			g.running = false // held sends stay held; the next hold starts a loop again
+			g.mu.Unlock()
+			return
+		}
 		g.mu.Lock()
 		names := make([]string, 0, len(g.held))
 		for n := range g.held {
