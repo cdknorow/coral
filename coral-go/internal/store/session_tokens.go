@@ -8,6 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // Per-session agent tokens (#3387, identity phase 1). Each agent session gets a random
@@ -55,7 +58,11 @@ func (db *DB) MintSessionToken(ctx context.Context, sessionID, sessionName strin
 		hashSessionToken(token), sessionID, sessionName, now); err != nil {
 		return "", err
 	}
-	return token, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	db.InvalidateSessionTokens() // the session's earlier token is revoked now
+	return token, nil
 }
 
 // revokeSessionTokensTx revokes every live token of a session.
@@ -66,15 +73,92 @@ func revokeSessionTokensTx(ctx context.Context, tx interface {
 	return err
 }
 
-// SessionTokenOwnerOf returns the session a live (unrevoked) token belongs to.
+// tokenOwnerTTL is the longest a cached owner is trusted without a write of this process
+// invalidating it: the backstop for a change this process did not see (another process on the
+// same database file).
+const tokenOwnerTTL = 10 * time.Second
+
+// tokenOwnerMax bounds the cache; past it the cache is emptied rather than grown.
+const tokenOwnerMax = 4096
+
+// tokenOwnerCache remembers which session a LIVE token belongs to, so an agent request does not
+// query the database for every call (#4303: it was the costliest statement on the write
+// connection). Only a positive answer is kept. Every write that changes a token (mint, which
+// revokes the session's earlier one; unregister and replace of a session) invalidates it AFTER the
+// write commits, and a lookup that began before an invalidation never stores its answer (gen), so
+// a revoked token is not accepted from the cache on the next request. An error is never cached
+// (a lookup that fails refuses the token).
+type tokenOwnerCache struct {
+	mu      sync.Mutex
+	entries map[string]tokenOwnerEntry
+	gen     atomic.Uint64
+
+	hits, lookups atomic.Int64 // for tests and measurement
+}
+
+type tokenOwnerEntry struct {
+	owner   SessionTokenOwner
+	expires time.Time
+}
+
+func (c *tokenOwnerCache) get(hash string) (SessionTokenOwner, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.entries[hash]
+	if !ok || time.Now().After(e.expires) {
+		delete(c.entries, hash)
+		return SessionTokenOwner{}, false
+	}
+	return e.owner, true
+}
+
+// put stores an answer unless an invalidation happened since gen was read.
+func (c *tokenOwnerCache) put(hash string, o SessionTokenOwner, gen uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.gen.Load() != gen {
+		return
+	}
+	if c.entries == nil || len(c.entries) >= tokenOwnerMax {
+		c.entries = map[string]tokenOwnerEntry{}
+	}
+	c.entries[hash] = tokenOwnerEntry{owner: o, expires: time.Now().Add(tokenOwnerTTL)}
+}
+
+func (c *tokenOwnerCache) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.gen.Add(1)
+	c.entries = nil
+}
+
+// InvalidateSessionTokens drops every cached token owner. A write that changes a token calls it
+// after the write commits.
+func (db *DB) InvalidateSessionTokens() { db.tokenOwners.invalidate() }
+
+// SessionTokenCacheStats is how many owner lookups were asked for and how many the cache answered.
+func (db *DB) SessionTokenCacheStats() (lookups, hits int64) {
+	return db.tokenOwners.lookups.Load(), db.tokenOwners.hits.Load()
+}
+
+// SessionTokenOwnerOf returns the session a live (unrevoked) token belongs to. The answer is
+// cached (tokenOwnerCache); a miss reads the read pool, not the write connection.
 func (db *DB) SessionTokenOwnerOf(ctx context.Context, token string) (*SessionTokenOwner, error) {
+	hash := hashSessionToken(token)
+	db.tokenOwners.lookups.Add(1)
+	if o, ok := db.tokenOwners.get(hash); ok {
+		db.tokenOwners.hits.Add(1)
+		return &o, nil
+	}
+	gen := db.tokenOwners.gen.Load()
 	var o SessionTokenOwner
-	err := db.GetContext(ctx, &o, `SELECT session_id, session_name FROM session_tokens WHERE token_hash = ? AND revoked_at IS NULL`, hashSessionToken(token))
+	err := db.Reader().GetContext(ctx, &o, `SELECT session_id, session_name FROM session_tokens WHERE token_hash = ? AND revoked_at IS NULL`, hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUnknownSessionToken
 	}
 	if err != nil {
 		return nil, err
 	}
+	db.tokenOwners.put(hash, o, gen)
 	return &o, nil
 }

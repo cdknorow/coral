@@ -1018,6 +1018,7 @@ func (s *SessionStore) RegisterLiveSession(ctx context.Context, ls *LiveSession)
 
 // UnregisterLiveSession marks a live session as inactive (preserves the record for history).
 func (s *SessionStore) UnregisterLiveSession(ctx context.Context, sessionID string) error {
+	defer s.db.InvalidateSessionTokens() // after the commit (or the rollback): never before it (#4303)
 	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
 		if err := clearAutoAcceptTx(ctx, tx, sessionID, AutoAcceptRunEnded, false); err != nil {
 			return err
@@ -1163,6 +1164,7 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 
 // ReplaceLiveSession replaces an old session with a new one, carrying forward metadata.
 func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID string, newSession *LiveSession) error {
+	defer s.db.InvalidateSessionTokens() // after the commit (or the rollback): never before it (#4303)
 	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
 		// A restart or resume replaces the session: the old one's token stops working (#3387).
 		if err := revokeSessionTokensTx(ctx, tx, oldSessionID); err != nil {

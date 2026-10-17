@@ -28,6 +28,9 @@ type DB struct {
 
 	callMetricsInit sync.Once
 	callMetrics     *callMetricBuffer
+
+	// tokenOwners caches SessionTokenOwnerOf (#4303); see session_tokens.go.
+	tokenOwners tokenOwnerCache
 }
 
 // Reader returns the read-only connection pool, or the primary connection
