@@ -3,7 +3,7 @@
 //
 //   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome]
 //                           [--shards N] [--retries N] [--allow-flaky] [--keep] [--stress [--runs N] [--cpu-throttle X]]
-//                           [--sequences] [--strict | --no-strict]
+//                           [--sequences] [--strict | --no-strict] [--part K/N] [--results-out FILE]
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
@@ -51,6 +51,11 @@
 //
 // results.json (path printed at the end) has every suite with its status and every attempt (with the
 // log of the Coral server it ran against); a failed attempt keeps its complete output, untruncated.
+//
+// --part K/N runs one Nth of the default-mode suites: the K-th of every N in name order (1 <= K <= N), so N
+// runs with K = 1..N cover each suite exactly once (CI's matrix, cdp-gate.yml). A part runs no sequences and no
+// strict phase: those run as their own parts (--sequences, --strict). --results-out FILE also writes results.json
+// there (the run's folder is removed when everything passes), for CI to upload and summarize.
 //
 // Disk: a run's temp folder holds the built binary and every shard's data dir and Chrome profile (about
 // 250 MB). On exit it is deleted when every suite passed on its first attempt; otherwise (a failure, a
@@ -127,6 +132,11 @@ const throttle = stress ? Number(arg('--cpu-throttle', '4')) : 1;
 if (!(throttle >= 1)) { console.error('--cpu-throttle must be a number >= 1'); process.exit(2); }
 const allowFlaky = flag('--allow-flaky');
 const sequencesOnly = flag('--sequences');
+const partArg = arg('--part', '');
+const partM = /^(\d+)\/(\d+)$/.exec(partArg);
+if (partArg && !(partM && +partM[1] >= 1 && +partM[1] <= +partM[2])) { console.error('--part must be K/N with 1 <= K <= N'); process.exit(2); }
+const part = partM ? { k: +partM[1], n: +partM[2] } : null;
+const resultsOut = arg('--results-out', '');
 const SEQUENCES = [
   ['terminal_pane_size_browser.test.js', 'terminal_scroll.test.js'],
 ];
@@ -139,7 +149,7 @@ const STRICT_SUITES = [
   'strict_mode_browser.test.js', 'server_switcher_browser.test.js', 'agent_state.test.js',
   'team_view_consolidation.test.js', 'team_view_responsive_rows.test.js', 'a11y_dashboard_browser.test.js',
 ];
-const strictShard = strictOnly || (!flag('--no-strict') && !only && !stress && !flag('--sequences'));
+const strictShard = strictOnly || (!flag('--no-strict') && !only && !stress && !flag('--sequences') && !part);
 const PROD_PORT = 8420;
 const chromePath = arg('--chrome', process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
@@ -429,7 +439,8 @@ console.log('');
 
 for (const t of STRICT_SUITES) if (!suites.cdp.includes(t)) { console.error(`STRICT_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
 let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : [...suites.cdp, ...suites.server])
-  .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
+  .filter(f => !only || only.split(',').some(o => f.includes(o))).sort()
+  .filter((f, i) => !part || i % part.n === part.k - 1);
 // Longest first, from the durations of a previous run (suite_durations.json; update_suite_durations.mjs writes it): shards take the next
 // suite from one queue, and a long suite left to the end of an alphabetical queue would leave the other shards idle (#3916).
 const suiteDurations = loadDurations(path.join(here, 'suite_durations.json'));
@@ -437,10 +448,10 @@ tests = orderLongestFirst(tests, suiteDurations);
 if (Object.keys(suiteDurations).length) console.log(`queue: longest first (${tests.filter(t => typeof suiteDurations[t] === 'number').length} of ${tests.length} suites have a recorded duration in suite_durations.json)`);
 // The strict phase's results are named 'strict: <suite>' (the default-mode run of a suite is separate).
 let phase = strictOnly ? 'strict: ' : '';
-const sequences = stress || strictOnly || (only && !sequencesOnly) ? [] : SEQUENCES;
+const sequences = stress || strictOnly || part || (only && !sequencesOnly) ? [] : SEQUENCES;
 for (const t of sequences.flat()) if (!suites.cdp.includes(t)) { console.error(`SEQUENCES names ${t}, which is not a CDP suite`); process.exit(2); }
 if (!tests.length && !sequences.length) { console.error('no CDP suites matched'); process.exit(2); }
-console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.length} suites${only ? ` (--only ${only})` : ''}${sequences.length ? `, then ${sequences.length} sequence(s)` : ''}`);
+console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.length} suites${only ? ` (--only ${only})` : ''}${part ? ` (part ${part.k}/${part.n})` : ''}${sequences.length ? `, then ${sequences.length} sequence(s)` : ''}`);
 
 // clearOrigin gives the next suite a clean browser: it opens one fresh about:blank tab and closes every
 // other page (a reused tab would keep its sessionStorage, and the previous suite's still-open document
@@ -651,6 +662,7 @@ const elapsed = ((Date.now() - runStarted) / 1000).toFixed(1);
 results.sort((a, b) => a.test.localeCompare(b.test) || a.run - b.run);
 fs.mkdirSync(tmp, { recursive: true }); // it may have been removed during the run (#3727)
 fs.writeFileSync(path.join(tmp, 'results.json'), JSON.stringify(results, null, 1));
+if (resultsOut) fs.writeFileSync(resultsOut, JSON.stringify(results, null, 1));
 const where = `results: ${path.join(tmp, 'results.json')}  coral logs: ${allLogs.join(' ')}`;
 
 let exitCode;
