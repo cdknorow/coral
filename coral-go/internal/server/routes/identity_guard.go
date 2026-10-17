@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/cdknorow/coral/internal/store"
 )
 
 func strconvQuote(s string) string { return strconv.Quote(strings.TrimSpace(s)) }
@@ -16,6 +18,18 @@ func strconvQuote(s string) string { return strconv.Quote(strings.TrimSpace(s)) 
 // identityFields are the request fields, in a JSON body or the query string, that
 // name a board participant (#3376).
 var identityFields = []string{"subscriber_id", "session_id", "job_title", "assignee", "as", "from", "sender", "target", "created_by"}
+
+// selfIdentityFields are the fields by which a request says who it is from.
+var selfIdentityFields = map[string]bool{"subscriber_id": true, "session_id": true, "job_title": true, "as": true, "from": true, "sender": true, "created_by": true}
+
+// isAgentCaller reports whether the request comes from an agent's tool: it carries a session
+// token, or it is the agent command line without the Operator's signature.
+func isAgentCaller(r *http.Request) bool {
+	if r.Header.Get(store.SessionTokenHeader) != "" {
+		return true
+	}
+	return isAgentTool(r) && r.Header.Get(cliauth.CLIAuthHeader) == ""
+}
 
 // RejectBadIdentities refuses a board or agent-task request whose identity fields
 // carry control or formatting characters (board.ValidateIdentity): such a name is
@@ -61,6 +75,13 @@ func RejectBadIdentities(next http.Handler) http.Handler {
 					}
 					if board.IsReservedName(s) {
 						errBadRequest(w, f+" "+strconvQuote(s)+" is reserved for Coral's own messages")
+						return
+					}
+					// The Operator's name: the dashboard and the signed command line write as exactly
+					// "Operator"; an agent's tool does not, and no caller writes a look-alike spelling
+					// of it (#4207). Fields that only name someone (assignee, target) are not asked.
+					if selfIdentityFields[f] && board.IsOperatorName(s) && (strings.TrimSpace(s) != board.OperatorName || isAgentCaller(r)) {
+						errBadRequest(w, f+" "+strconvQuote(s)+" is reserved for the Operator")
 						return
 					}
 				}

@@ -135,6 +135,15 @@ func asciiLookalikes(s string) string {
 	}, s)
 }
 
+// OperatorName is the Operator's identity on a board: the dashboard's own posts and the
+// command line signed as the Operator use it. An agent may not (IsOperatorName, #4207).
+const OperatorName = "Operator"
+
+// IsOperatorName reports whether s is the Operator's name in any spelling that
+// normalizeName reads as the same: case, spacing, invisible characters, fullwidth letters
+// and look-alike letters from other scripts.
+func IsOperatorName(s string) bool { return SameIdentity(s, OperatorName) }
+
 // IsReservedName reports whether s is one of ReservedNames or starts with HubUserPrefix,
 // compared in normalizeName's form (case, spacing and invisible characters don't help).
 func IsReservedName(s string) bool {

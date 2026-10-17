@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -112,4 +114,49 @@ func TestTerminalAgentGetsNoAutomatedInput(t *testing.T) {
 	assert.NotContains(t, llmInputs[0], "\n")
 	assert.True(t, automatedInputBlocked(ctx, mockTerm, term, "", "", "test"))
 	assert.True(t, automatedInputBlocked(ctx, mockTerm, "anything", "terminal", "", "test"), "by agent type too")
+}
+
+// #4207: the Operator's name is the Operator's. The dashboard (no agent token, a browser) and the
+// command line signed as the Operator write as exactly "Operator"; an agent's tool does not, and
+// nobody writes a look-alike spelling of it. Fields that only name someone (assignee, target) stay
+// open to agents.
+func TestOperatorNameIsOnlyTheOperators(t *testing.T) {
+	h := RejectBadIdentities(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.Copy(io.Discard, r.Body) }))
+	do := func(headers map[string]string, body string) int {
+		req := httptest.NewRequest("POST", "/api/board/p/messages", strings.NewReader(body))
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	dashboard := map[string]string{"User-Agent": "Mozilla/5.0", "Origin": "http://localhost:8420"}
+	agentToken := map[string]string{"User-Agent": "coral-board/1.4", store.SessionTokenHeader: "tok"}
+	agentCLI := map[string]string{"User-Agent": "coral-board/1.4"}
+	signedCLI := map[string]string{"User-Agent": "coral-board/1.4", cliauth.CLIAuthHeader: "sig"}
+	cyr := string(rune(0x41e)) + "perator" // a Cyrillic O
+
+	// The dashboard's own writes still work, in every field it uses.
+	for _, body := range []string{
+		`{"subscriber_id":"Operator","content":"hi"}`, `{"subscriber_id":"Operator","as":"Operator","content":"hi"}`,
+		`{"subscriber_id":"Operator","job_title":"Operator"}`, `{"subscriber_id":"Operator","assignee":"Dev"}`,
+	} {
+		assert.Equal(t, http.StatusOK, do(dashboard, body), body)
+		assert.Equal(t, http.StatusOK, do(signedCLI, body), "the signed command line: "+body)
+	}
+	// An agent's tool may not write as the Operator, with or without a token.
+	for _, hd := range []map[string]string{agentToken, agentCLI} {
+		for _, f := range []string{"subscriber_id", "as", "job_title", "from", "sender", "created_by"} {
+			assert.Equal(t, http.StatusBadRequest, do(hd, `{"`+f+`":"Operator","content":"hi"}`), f)
+			assert.Equal(t, http.StatusBadRequest, do(hd, `{"`+f+`":" operator "}`), f+" spaced and lower case")
+		}
+		// ...but may name the Operator as someone to address or assign to.
+		assert.Equal(t, http.StatusOK, do(hd, `{"subscriber_id":"Dev","assignee":"Operator","target":"Operator"}`))
+	}
+	// A look-alike spelling is refused for everyone, the dashboard included.
+	for _, hd := range []map[string]string{dashboard, signedCLI, agentToken} {
+		assert.Equal(t, http.StatusBadRequest, do(hd, `{"subscriber_id":"`+cyr+`"}`))
+		assert.Equal(t, http.StatusBadRequest, do(hd, `{"as":"operator"}`), "another case is another spelling")
+	}
 }
