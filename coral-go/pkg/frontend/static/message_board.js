@@ -359,11 +359,18 @@ function isAtBottom(container) {
     return (container.scrollHeight - container.scrollTop - container.clientHeight) < 50;
 }
 
-// Scrolling near the top loads the page before the oldest message shown, as "Load earlier" does.
+// Scrolling near the top loads the page before the oldest message shown, as "Load earlier" does. Not the scroll that moving
+// keyboard focus onto "Load earlier" makes (the browser scrolls it into view): that is the reader reaching the button, who
+// then presses it or not (Frontend's finding on #4492).
 function wireBoardScroll(container) {
     if (container._mbScrollWired) return;
     container._mbScrollWired = true;
+    let focusScrollUntil = 0;
+    container.addEventListener('focusin', (e) => {
+        if (e.target.closest?.('.mb-load-earlier')) focusScrollUntil = performance.now() + 300;
+    });
     container.addEventListener('scroll', () => {
+        if (performance.now() < focusScrollUntil && document.activeElement?.closest?.('.mb-load-earlier')) return;
         if (container.scrollTop < 80 && _loadedOffset > 0) loadEarlierMessages();
     }, { passive: true });
 }
@@ -436,11 +443,22 @@ function renderMessages(messages, { keepAnchor = false } = {}) {
     const prevScrollTop = container.scrollTop;
     const prevScrollHeight = container.scrollHeight;
     const wasAtBottom = isAtBottom(container);
+    // "Load earlier" pressed from the keyboard is drawn again with the list: focus goes to the new one (UX on #4492).
+    const earlierFocused = !!document.activeElement?.closest?.('#mb-messages > .mb-load-earlier');
 
     // Runs of task-queue lines are one collapsed row (#3343), except in select mode.
     const items = groupTaskQueueRuns(messages, !_selectMode);
     container.innerHTML = boardHeaderHtml(messages) + items.map((item, i) => renderBoardItem(item, i > 0 ? items[i - 1] : null)).join('');
     resolveBoardArtifacts(container, state.currentBoardServer);
+    if (earlierFocused) {
+        // The button again, or with every message loaded the count line, so focus doesn't drop to the page.
+        const next = container.querySelector(':scope > .mb-load-earlier button');
+        if (next) next.focus({ preventScroll: true });
+        else {
+            const count = container.querySelector(':scope > .mb-message-count');
+            if (count) { count.tabIndex = -1; count.focus({ preventScroll: true }); }
+        }
+    }
     if (pendingMessageId) {
         const target = container.querySelector(`[data-message-id="${CSS.escape(pendingMessageId)}"]`);
         if (target) {

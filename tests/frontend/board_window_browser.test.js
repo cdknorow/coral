@@ -39,7 +39,7 @@ function page(q) {
 
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
-    const { Page, Runtime, Emulation, Fetch } = client;
+    const { Page, Runtime, Emulation, Fetch, Input } = client;
     const ev = async expression => {
         const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true });
         if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 600));
@@ -169,6 +169,26 @@ function page(q) {
         await waitFor(`Number(${C}.querySelector('.mb-message-count').textContent.match(/Showing (\\d+)/)[1]) >= ${top0.n + 50}`, 'the earlier page, from scrolling');
         const top1 = await ev(`(() => { const r = ${C}.querySelector('[data-message-id="${top0.id}"], [data-queue-run="${top0.id}"]'); return { y: r.getBoundingClientRect().top, st: ${C}.scrollTop }; })()`);
         assert.ok(Math.abs(top1.y - top0.y) < 2 && top1.st > 0, `the row that was at the top stays there (${top0.y} -> ${top1.y})`);
+
+        console.log('"Load earlier" pressed with Enter loads the page before and keeps keyboard focus (UX on #4492)');
+        const n1 = await shown();
+        await ev(`(() => { const b = ${C}.querySelector('.mb-load-earlier button'); b.focus({ preventScroll: true }); return document.activeElement === b; })()`);
+        await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' }); // text: a real Enter activates the button
+        await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+        await waitFor(`Number(${C}.querySelector('.mb-message-count').textContent.match(/Showing (\\d+)/)[1]) >= ${n1 + 50}`, 'the page before, from Enter');
+        assert.ok(await ev(`document.activeElement === ${C}.querySelector('.mb-load-earlier button')`), 'focus is on the new Load earlier button, not the page');
+        await ev(`document.activeElement.blur(); true`);
+
+        console.log('Tabbing onto "Load earlier" from lower down scrolls it into view and loads nothing');
+        await toBottom();
+        const n2 = await shown();
+        await ev(`(() => { const b = ${C}.querySelector('.mb-load-earlier button'); b.focus(); return true; })()`); // as Tab does: scrolls to it
+        assert.ok(await ev(`${C}.scrollTop < 80`), 'the focus scrolled the list to the button');
+        const settled = await waitStable(`${C}.querySelector('.mb-message-count').textContent`, 'the count after the focus', 400);
+        assert.equal(Number(settled.match(/Showing (\d+)/)[1]), n2, 'no page loaded by the scroll the focus made');
+        assert.ok(await ev(`document.activeElement === ${C}.querySelector('.mb-load-earlier button')`), 'focus stays on the button');
+        await ev(`document.activeElement.blur(); true`);
+        await toBottom();
 
         console.log('Select mode: new rows can be selected, a selection stays, nothing is dropped');
         await toBottom();
