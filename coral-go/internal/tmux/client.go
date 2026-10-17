@@ -530,7 +530,11 @@ func (c *Client) FindPaneTarget(ctx context.Context, agentName, agentType, sessi
 	return pane.Target, nil
 }
 
-// SendKeys sends a command to a tmux pane. Multi-line text is wrapped in bracket paste.
+// SendKeys types text into a tmux pane: a message, an answer, anything a person or Coral wrote
+// for the agent. It arrives as that text at any length (multi-line or long text as one paste
+// that respects the pane's bracketed paste mode, a short line with send-keys -l), and is NEVER
+// turned into a script the pane's shell would run (#4361: an over-900-character dashboard
+// message reached the agent as ". '/tmp/coral-command-N.sh'").
 func (c *Client) SendKeys(ctx context.Context, agentName, command, agentType, sessionID string) error {
 	target, err := c.FindPaneTarget(ctx, agentName, agentType, sessionID)
 	if err != nil {
@@ -540,7 +544,7 @@ func (c *Client) SendKeys(ctx context.Context, agentName, command, agentType, se
 		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 
-	return c.GoneAfter(ctx, agentName, agentType, sessionID, c.SendKeysToTarget(ctx, target, command))
+	return c.GoneAfter(ctx, agentName, agentType, sessionID, c.typeToTarget(ctx, target, command, false))
 }
 
 // errEmptyDisplay stands for a display-message that answered nothing, for GoneAfter.
@@ -598,14 +602,25 @@ func SetSendKeysSettleForTest(d time.Duration) (restore func()) {
 	return func() { sendKeysSettle = old }
 }
 
-// SendKeysToTarget sends a command to a specific tmux target.
+// SendKeysToTarget types a COMMAND Coral built (a launch line, a test's shell command) into a
+// specific tmux target: for a shell, never for text written for an agent (that is SendKeys, which
+// never wraps). A command over inlineCommandLimit is handed over as a private script the shell
+// sources, because a fresh shell's input buffer is small; so only a command Coral composed may come
+// here (TestOnlyLaunchPathsWrapACommand pins its callers).
 // Multi-line text uses tmux paste-buffer -p which respects the pane's
 // bracketed paste mode — if the shell has it enabled, tmux wraps the
 // paste in \e[200~...\e[201~; otherwise it sends raw text.
 func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) error {
+	return c.typeToTarget(ctx, target, command, true)
+}
+
+// typeToTarget is the typing both paths share. launch: the text is a command Coral composed, and a
+// long one goes through a script (commandInvocation); otherwise it is delivered as text at any
+// length.
+func (c *Client) typeToTarget(ctx context.Context, target, command string, launch bool) error {
 	originalCommandLen := len(command)
 	cleanup := func() {}
-	if len(command) > inlineCommandLimit {
+	if launch && len(command) > inlineCommandLimit {
 		var err error
 		command, cleanup, err = commandInvocation(command)
 		if err != nil {
@@ -613,7 +628,9 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 		}
 	}
 	var sendErr error
-	if strings.Contains(command, "\n") {
+	// A long single line is pasted too (not an argument of send-keys): text for an agent has no
+	// length limit, and a launch command that became a short ". path" line is under it anyway.
+	if strings.Contains(command, "\n") || (!launch && len(command) > inlineCommandLimit) {
 		sendErr = c.pasteToTarget(ctx, target, command)
 	} else {
 		// "--": text starting with '-' ("- fix the tests", "--help") is typed, not read as

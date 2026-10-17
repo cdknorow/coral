@@ -75,8 +75,7 @@ var allowedSenders = map[string]string{
 	"internal/background/runtime_pty.go\tPTYRuntime.SendPrompt\tSendPrompt":                "primitive",
 	"internal/background/runtime_pty.go\tPTYRuntime.SendEnter\tSendInput":                  "primitive",
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendEnter\tSendInput": "primitive",
-	"internal/tmux/client.go\tClient.SendKeys\tSendKeysToTarget":                           "primitive",
-	"internal/tmux/client.go\tClient.SendKeysToTarget\tpasteToTarget":                      "primitive",
+	"internal/tmux/client.go\tClient.typeToTarget\tpasteToTarget":                          "primitive", // SendKeys (text) and SendKeysToTarget (a launch command) type through it (#4361)
 	"internal/tmux/client.go\tClient.SendTerminalInputToTarget\tpasteToTarget":             "primitive",
 	"internal/tmux/client.go\tClient.SendTerminalInputToTarget\tSendTerminalInputToTarget": "primitive",
 }

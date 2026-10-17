@@ -30,6 +30,7 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/cmdhandoff"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/inputlog"
@@ -359,6 +360,10 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// Per-session agent tokens, before anything can launch an agent (#3387).
 	setupSessionTokens(db, cfg.CoralDir())
 	setupAgentTools(cfg.CoralDir())
+	// Launch scripts a shell never sourced (its pane died first) are removed a day later (#4361).
+	if n := cmdhandoff.Sweep(); n > 0 {
+		log.Printf("[startup] removed %d launch script(s) older than a day from the temp folder", n)
+	}
 
 	// Native TLS (#3355): load the pair before binding, so a bad pair stops startup.
 	tlsConfig, err := loadTLSConfig(opts.TLSCert, opts.TLSKey)
