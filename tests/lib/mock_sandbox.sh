@@ -23,7 +23,9 @@
 # themselves, so a path that execs the type rather than the resolved binary is covered too. A Go test
 # (TestMockSandboxStubsEveryAgentCLI in coral-go/internal/testguard) fails if a new agent type or
 # binary is not in this list, so it stays in step automatically.
-CORAL_TEST_STUB_CLIS="${CORAL_TEST_STUB_CLIS:-claude codex gemini agy pi antigravity}"
+# The built-in defaults are ALWAYS stubbed; an inherited CORAL_TEST_STUB_CLIS may ADD names, never
+# remove them, so a stray value in the environment can't shorten the list for a run (Lead's INFO on #4354).
+CORAL_TEST_STUB_CLIS="claude codex gemini agy pi antigravity ${CORAL_TEST_STUB_CLIS:-}"
 
 coral_test_sandbox() {
     CORAL_TEST_HOME="$(mktemp -d "${TMPDIR:-/tmp}/coral-test-home.XXXXXX")"

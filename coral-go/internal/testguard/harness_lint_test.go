@@ -163,7 +163,8 @@ func TestMockSandboxStubsEveryAgentCLI(t *testing.T) {
 }
 
 var (
-	reStubList    = regexp.MustCompile(`CORAL_TEST_STUB_CLIS="\$\{CORAL_TEST_STUB_CLIS:-([^"}]*)\}"`)
+	// The defaults are the literal names before any ${...} expansion in the assignment.
+	reStubList    = regexp.MustCompile(`CORAL_TEST_STUB_CLIS="([^"$]*)`)
 	reConstString = regexp.MustCompile(`^\s*[A-Za-z0-9_]+\s*=\s*"([a-z0-9]+)"`)
 	reBinaryField = regexp.MustCompile(`Binary:\s*"([a-z0-9]+)"`)
 )
