@@ -251,7 +251,8 @@ export function serverSwitcherHtml(open = false) {
     const marker = level ? `<span class="server-update-marker server-update-${level}">Update</span>` : '';
     return `<details class="server-switcher server-${m.cls}" data-server-switcher${open ? ' open' : ''}>`
         + `<summary class="server-switcher-btn" aria-label="${escHtml(aria + (level ? `. ${level === 'required' ? 'Update required' : 'Update available'}` : ''))}" title="${escHtml(single ? serverHoverText(e.id) : aria)}">`
-        + `<span class="server-dot" aria-hidden="true"></span><span class="server-switcher-label">${escHtml(label)}</span>`
+        // The count is its own element so the button can keep it whole while the word after it gives way (operator, #4062).
+        + `<span class="server-dot" aria-hidden="true"></span>${single ? '' : `<span class="server-switcher-count">${list.length}</span>`}<span class="server-switcher-label">${escHtml(single ? label : 'servers')}</span>`
         + marker + `<span class="server-switcher-caret" aria-hidden="true">▾</span></summary>`
         + `<div class="server-switcher-panel${single ? '' : ' server-switcher-panel-list'}">${body}</div></details>`;
 }

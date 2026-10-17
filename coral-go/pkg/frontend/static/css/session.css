@@ -2121,6 +2121,7 @@
     font-size: var(--fs-base); color: var(--text-secondary); white-space: nowrap;
 }
 .server-switcher-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.server-switcher-btn > .server-dot, .server-switcher-count, .server-switcher-btn > .server-update-marker, .server-switcher-caret { flex: none; }
 .server-switcher-caret { opacity: .6; }
 .server-switcher-btn:focus-visible, .server-group-toggle:focus-visible, .server-group-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .server-switcher-panel, .list-display-panel {
@@ -2216,13 +2217,12 @@
 /* flex-wrap: a narrow phone wraps the header's controls instead of pushing them off the screen (#4086). */
 .mobile-list-header { --ctl-h: 36px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; }
 .mobile-list-header .mobile-list-title { margin-right: auto; }
-.mobile-list-header .btn { height: var(--ctl-h); box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+.mobile-list-header .btn { height: var(--ctl-h); box-sizing: border-box; padding-top: 0; padding-bottom: 0; margin: 0; } /* margin: 0: .btn-small's 20px side margins counted toward the row and wrapped + New */
 .mobile-list-header .mobile-list-title { white-space: nowrap; flex: none; }
-/* The server button is the header's one flexible control: it starts at 5em and takes what is left on the row. With flex-basis auto it asked for
-   its full label, which with wrapping on (#4086) pushed the last control to a second line even at 390px (#4062). At large text the fixed controls
-   alone fill the row and the header wraps, as #4086 wants. */
-.mobile-list-header .server-switcher-host { min-width: 0; flex: 1 1 5em; }
-.mobile-list-header .server-switcher, .mobile-list-header .server-switcher-btn { min-width: 0; max-width: 100%; }
+/* The server button keeps its dot, count, Update marker and caret whole (operator): it shrinks only as far as those. The title and + New are small;
+   if the row cannot hold them all, the header wraps (#4086) rather than clip the button. */
+.mobile-list-header .server-switcher-host { flex: 1 1 0; min-width: 7rem; max-width: 12em; }
+.mobile-list-header .server-switcher, .mobile-list-header .server-switcher-btn { min-width: 0; max-width: 12em; width: 100%; }
 /* The server list opens under the whole header row, not under its own button, so it is never wider than the screen or cut off at the edge (#4062). */
 .sidebar-header, .mobile-list-header { position: relative; }
 .sidebar-header .server-switcher-host, .sidebar-header .server-switcher,
@@ -2233,9 +2233,13 @@
 .mobile-list-header .server-switcher-panel { left: 16px; right: 16px; max-width: none; }
 .server-switcher-panel-list { min-width: 0; }
 /* Keep the search box usable next to the server button (#3085). */
-.sidebar-header .sidebar-search { min-width: 7em; }
-.sidebar-header .server-switcher-host { min-width: 0; flex: 0 1 auto; }
-.sidebar-header .server-switcher, .sidebar-header .server-switcher-btn { min-width: 0; max-width: 100%; }
+/* The server button keeps its dot, count, Update marker and caret whole (operator, #4062): it may shrink only as far as those (7rem; the
+   word after the count gives way with an ellipsis). The search box is the control that gives up width, down to 5em, and a very narrow sidebar
+   wraps the header rather than clip the button. */
+.sidebar-header { flex-wrap: wrap; }
+.sidebar-header .sidebar-search { flex: 1 1 5em; min-width: 5em; }
+.sidebar-header .server-switcher-host { flex: 1 1 0; min-width: 7rem; max-width: 12em; } /* 7rem holds the dot, count, marker and caret (min-content would count the whole word after the count); flex-basis 0 so a wrapping row is judged by that smallest size */
+.sidebar-header .server-switcher, .sidebar-header .server-switcher-btn { min-width: 0; max-width: 12em; width: 100%; } /* the button fills its flexible host, so its label is what gives way */
 /* Status text for screen readers only (the dot carries it visually). */
 .row-server-prefix .sr-only, .server-switcher .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
