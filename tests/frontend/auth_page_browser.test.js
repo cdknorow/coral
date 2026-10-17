@@ -14,6 +14,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     const ev = async x => { const r = await Runtime.evaluate({ expression: x, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: settle
     const waitFor = async (expr, what, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev(expr)) return; await sleep(20); } throw new Error('timed out waiting for ' + what); };
+    let navSeq = 0;                // the navigation open() last started: the stamp on the page served for it
     let page = 'signin';            // which golden /auth serves
     const posts = [];              // {url, body}
     let replies = [];              // queue of {status, body, headers} for the next POSTs
@@ -32,13 +33,22 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
                 const r = replies.shift() || json(200, { ok: true });
                 return fulfill(r.status, JSON.stringify(r.body), 'application/json', r.headers);
             }
-            return fulfill(200, GOLD(page), 'text/html; charset=utf-8');
+            // Each page served is stamped with the navigation it was served for (open's navSeq), so a test
+            // waits for ITS page, never for whichever document happens to be loaded.
+            const gold = GOLD(page);
+            return fulfill(200, gold.includes('<head>') ? gold.replace('<head>', `<head><meta name="zz-nav" content="${navSeq}">`) : `<meta name="zz-nav" content="${navSeq}">` + gold, 'text/html; charset=utf-8');
         });
         let nextReplies = [];
         const openWith = (name, query, r) => { nextReplies = r; return open(name, query); };
         const open = async (name, query = '?return_to=/zz-done') => {
             page = name; posts.length = 0; replies = nextReplies; nextReplies = [];
-            await Page.navigate({ url: BASE + '/auth' + query }); await Page.loadEventFired();
+            // The previous step may leave a navigation in flight (a redirect to '/' that has committed, its page's
+            // own loads). Wait for the document served for THIS navigation, by the stamp it carries: a load event
+            // cannot say which document it was for, and a late one from the old page let the checks below run on
+            // it (the flake: "false !== true" on the setup page, "timed out waiting for redirect after creating").
+            const seq = ++navSeq;
+            await Page.navigate({ url: BASE + '/auth' + query });
+            await waitFor(`document.readyState === 'complete' && !!document.querySelector('meta[name=zz-nav]') && document.querySelector('meta[name=zz-nav]').content === '${seq}'`, `this navigation's page (${name})`);
             await waitFor(`!!document.getElementById('submit') || !!document.getElementById('key-submit')`, 'the page');
             await waitFor(`document.documentElement.dataset.authReady === 'true'`, 'the page script');   // the module script runs after load
             assert.equal(await ev(`(() => { const i = document.querySelector('.brand img'); return !!i && i.complete && i.naturalWidth > 0; })()`), true, `${name}: Coral's logo loads (from /static, with no credential)`);
