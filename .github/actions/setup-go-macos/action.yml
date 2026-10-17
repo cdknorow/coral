@@ -1,8 +1,33 @@
 # Install Go on a macOS runner from go.dev, pinned to the official SHA-256 (#3855: one copy for the
 # three macOS jobs). actions/setup-go's archive was unavailable to the macOS runners (codeload 404 on
 # 2026-10-15, which blocked v1.4.29), so these jobs take Go straight from go.dev.
+#
+# cache: "restore" restores the Go build and module caches that a main run saved (#4126 item 2;
+# release-cache-warm.yml saves them under the key this action gives as cache-key, with the paths
+# it gives as cache-paths). Only main writes them: a cache saved on a tag can't be read by another
+# tag. The key is the runner's architecture and image, the Go version and coral-go/go.sum. Go
+# checks a module against go.sum only when it downloads it, not when it reuses the extracted copy
+# in GOMODCACHE, so after a restore `go mod verify` re-hashes every cached module and the job fails
+# unless they all match (Security's MUST on #4251). Go's build cache is keyed by its inputs (source,
+# flags, toolchain) but a cached output is not re-checked on reuse: like the tmux payload, it is
+# trusted because only main's warm workflow writes it.
 name: Install Go (go.dev, checksum-pinned, macOS)
 description: Installs Go 1.26.9 for this runner's architecture and puts it on PATH.
+inputs:
+  cache:
+    description: '"off" (default) or "restore": restore the build and module caches a main run saved'
+    required: false
+    default: "off"
+outputs:
+  cache-key:
+    description: The cache key for this runner (set when cache is not off)
+    value: ${{ steps.key.outputs.key }}
+  cache-paths:
+    description: GOCACHE and GOMODCACHE, one per line (set when cache is not off)
+    value: ${{ steps.key.outputs.paths }}
+  cache-hit:
+    description: '"true" when the caches were restored under exactly cache-key'
+    value: ${{ steps.restore.outputs.cache-hit }}
 runs:
   using: composite
   steps:
@@ -20,3 +45,37 @@ runs:
         tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/$f"
         echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
         "$RUNNER_TEMP/go/bin/go" version
+    - name: Go cache key
+      id: key
+      if: inputs.cache != 'off'
+      shell: bash
+      env:
+        SUM_HASH: ${{ hashFiles('coral-go/go.sum') }}
+      run: |
+        set -euo pipefail
+        go="$RUNNER_TEMP/go/bin/go"
+        {
+          echo "key=go-macos-v1-$(uname -m)-${ImageOS:-unknown}-$("$go" env GOVERSION)-${SUM_HASH}"
+          echo "prefix=go-macos-v1-$(uname -m)-${ImageOS:-unknown}-$("$go" env GOVERSION)-"
+          echo "paths<<EOF"
+          "$go" env GOCACHE
+          "$go" env GOMODCACHE
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+    - name: Restore the Go caches (saved by main)
+      id: restore
+      if: inputs.cache == 'restore'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.key.outputs.paths }}
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+    - name: Verify the restored modules against go.sum
+      if: inputs.cache == 'restore'
+      shell: bash
+      working-directory: coral-go
+      run: |
+        set -euo pipefail
+        out="$("$RUNNER_TEMP/go/bin/go" mod verify 2>&1)" || true
+        echo "$out"
+        [ "$out" = "all modules verified" ] || { echo "::error::go mod verify: the module cache does not match go.sum"; exit 1; }

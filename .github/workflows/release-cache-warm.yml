@@ -81,3 +81,44 @@ jobs:
           CORAL_BUNDLED_TMUX_BIN: ${{ github.workspace }}/dist/${{ matrix.dist }}/tmux-payload/bin/tmux
           CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/${{ matrix.dist }}/tmux-payload/terminfo
         run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1
+
+  go-macos:
+    name: Go caches (macOS ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-14 }
+          - { arch: amd64, runner: macos-15-intel }
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - id: go
+        uses: ./.github/actions/setup-go-macos
+        with:
+          cache: restore
+      - name: Sync agent docs
+        run: bash tools/sync-agent-docs.sh
+      # The release's build commands, programs and tags (a production tag's), so the build cache
+      # holds what a release compiles.
+      - name: Build the release binaries (${{ matrix.arch }})
+        working-directory: coral-go
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          while IFS='=' read -r k v; do declare "$k=$v"; done < <(bash ../tests/release/resolve_release.sh v0.0.0)
+          mkdir -p "$RUNNER_TEMP/out"
+          for cmd in $commands; do
+            CGO_ENABLED=0 GOOS=darwin GOARCH="$ARCH" go build -tags "$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
+          done
+          for cmd in $gui_commands; do
+            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH="$ARCH" go build -tags "webview,$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
+          done
+          (go mod download)
+      - name: Save the Go caches
+        if: steps.go.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go.outputs.cache-paths }}
+          key: ${{ steps.go.outputs.cache-key }}

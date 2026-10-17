@@ -307,8 +307,11 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855).
+      # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855). The Go caches are
+      # main's (release-cache-warm.yml), restored only (#4126 item 2).
       - uses: ./.github/actions/setup-go-macos
+        with:
+          cache: restore
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
       - name: Build arm64 binaries
@@ -364,6 +367,8 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855).
       - uses: ./.github/actions/setup-go-macos
+        with:
+          cache: restore
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
       - name: Build amd64 binaries
