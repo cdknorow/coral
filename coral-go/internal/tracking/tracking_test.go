@@ -177,8 +177,7 @@ func TestTrackOnceWithoutPostHogKeySendsNothingAndDoesNotBurnTheMilestone(t *tes
 	if got := len(rec.all()); got != 0 {
 		t.Fatalf("expected no events without a PostHog key, got %d", got)
 	}
-	// The milestone is still recorded as reached — it is product state that
-	// gates the supporter reminder — but it is not marked as sent.
+	// The milestone is still recorded as reached (product state), but it is not marked as sent.
 	s := loadMilestones()
 	if _, ok := s.Reached[EventFirstAgentLaunched]; !ok {
 		t.Error("the milestone should be recorded as reached even with no analytics key")
@@ -193,41 +192,6 @@ func TestTrackOnceWithoutPostHogKeySendsNothingAndDoesNotBurnTheMilestone(t *tes
 	waitForAsync()
 	if got := rec.count(EventFirstAgentLaunched); got != 1 {
 		t.Fatalf("expected 1 %s event after the key appears, got %d", EventFirstAgentLaunched, got)
-	}
-}
-
-func TestValueDeliveredTracksTheValueMilestones(t *testing.T) {
-	newTestTracking(t)
-
-	if ValueDelivered() {
-		t.Fatal("a fresh install has not been delivered any value yet")
-	}
-
-	// A milestone that is not a value milestone does not count.
-	TrackOnce(EventReturned24h, nil)
-	waitForAsync()
-	if ValueDelivered() {
-		t.Fatal("returned_24h is not a demonstration of value")
-	}
-
-	TrackOnce(EventFirstAgentLaunched, nil)
-	waitForAsync()
-	if !ValueDelivered() {
-		t.Fatal("launching the first agent should count as value delivered")
-	}
-}
-
-// The supporter reminder is a product decision and must work on a build that
-// sends no analytics at all.
-func TestValueDeliveredWorksWithoutAnAnalyticsKey(t *testing.T) {
-	newTestTracking(t)
-	config.PostHogKey = ""
-
-	TrackOnce(EventFirstTaskCompleted, nil)
-	waitForAsync()
-
-	if !ValueDelivered() {
-		t.Fatal("value must be recorded even when analytics are not configured")
 	}
 }
 
@@ -337,26 +301,6 @@ func config_PostHogKeyTo(t *testing.T, key string) {
 	config.PostHogKey = key
 }
 
-// Regression: the supporter reminder reads value state during server startup,
-// which happens before SetCoralDir is called. Reading the ambient default
-// there meant a test instance run with --home consulted the production
-// install's milestones. ValueDeliveredIn must read only the directory it is
-// given.
-func TestValueDeliveredInReadsOnlyTheDirectoryItIsGiven(t *testing.T) {
-	newTestTracking(t) // coralDir is the ambient temp dir for this test
-
-	TrackOnce(EventFirstAgentLaunched, nil)
-	waitForAsync()
-	if !ValueDelivered() {
-		t.Fatal("expected value delivered in the ambient directory")
-	}
-
-	other := t.TempDir()
-	if ValueDeliveredIn(other) {
-		t.Fatal("ValueDeliveredIn read state from outside the directory it was given")
-	}
-}
-
 // Regression, and the reason there is no ~/.coral fallback any more: the test
 // suite exercises the launch and task handlers, which call TrackOnce. With a
 // guessed default directory those calls wrote milestone state into the user's
@@ -392,9 +336,6 @@ func TestTrackingWritesNothingWhenNoDataDirectoryIsConfigured(t *testing.T) {
 	if after := dirSnapshot(guarded); after != before {
 		t.Errorf("tracking wrote into %s with no data directory configured\nbefore: %v\nafter:  %v",
 			guarded, before, after)
-	}
-	if ValueDelivered() {
-		t.Error("ValueDelivered must not consult a guessed directory")
 	}
 	if DisclosureAcknowledged() {
 		t.Error("DisclosureAcknowledged must not consult a guessed directory")

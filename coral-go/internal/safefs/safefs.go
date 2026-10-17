@@ -399,28 +399,6 @@ func (r *Root) CreateNew(rel string, perm os.FileMode) (*os.File, error) {
 // Lstat reports on rel inside the root without following its last name.
 func (r *Root) Lstat(rel string) (fs.FileInfo, error) { return r.root.Lstat(rel) }
 
-// IsCanonicalUUID reports whether id is a UUID in the canonical 36-character lower-case form
-// (8-4-4-4-12 hex), the form Coral generates for session ids.
-func IsCanonicalUUID(id string) bool {
-	if len(id) != 36 {
-		return false
-	}
-	for i := 0; i < 36; i++ {
-		c := id[i]
-		switch i {
-		case 8, 13, 18, 23:
-			if c != '-' {
-				return false
-			}
-		default:
-			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 // IsSafeID reports whether id is safe as one path element and as a command-line argument: 1 to
 // 128 ASCII letters, digits, '-' and '_', starting with a letter or digit (so never a flag, ".",
 // ".." or a separator).

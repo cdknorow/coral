@@ -160,7 +160,6 @@ func TestOptedOutAndKeylessNeverEmitOrConsumeOneTimeEvents(t *testing.T) {
 	s := loadMilestonesAt(dir + "/" + milestonesFileName)
 	assert.Contains(t, s.Reached, EventFirstAgentLaunched)
 	assert.NotContains(t, s.Fired, EventFirstAgentLaunched)
-	assert.True(t, ValueDeliveredIn(dir), "the supporter gate keeps working while opted out")
 
 	// Re-enabled: sent exactly once, then never again.
 	SetTelemetryEnabled(true)

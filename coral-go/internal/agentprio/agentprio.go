@@ -89,13 +89,6 @@ func Level() string {
 	return Low
 }
 
-// Forced reports whether the flag or env decides the level.
-func Forced() bool {
-	state.RLock()
-	defer state.RUnlock()
-	return state.forced != ""
-}
-
 // Apply lowers the priority of process pid if agents run low. Best effort: an
 // error is logged once per kind and otherwise ignored.
 func Apply(pid int) {

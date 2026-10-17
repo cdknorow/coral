@@ -547,13 +547,3 @@ func TestUsageSummaryByBranch_IgnoresSessionsWithoutGit(t *testing.T) {
 	assert.Equal(t, float64(1000), totals["total_tokens"])
 	assert.Equal(t, float64(1), totals["num_agents"])
 }
-
-func TestTokenUsageHandler_StoreAccessor(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "accessor_test.db")
-	db, err := storetest.Open(t, dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
-
-	h := NewTokenUsageHandler(db)
-	assert.NotNil(t, h.Store())
-}

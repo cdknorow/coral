@@ -97,19 +97,6 @@ func readEULAMarker() (eulaMarker, bool) {
 	return parseEULAMarker(string(data)), true
 }
 
-// AcceptedEULAVersion returns the version of the terms the user accepted, or ""
-// when they have not accepted any. A legacy marker is the current version.
-func AcceptedEULAVersion() string {
-	m, ok := readEULAMarker()
-	switch {
-	case !ok:
-		return ""
-	case m.Legacy:
-		return EULAVersion
-	}
-	return m.Version
-}
-
 // IsEULAAccepted reports whether the user accepted the current terms: the
 // marker names EULAVersion with this text's digest, or is a legacy marker.
 func IsEULAAccepted() bool {

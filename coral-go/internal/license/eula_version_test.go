@@ -43,7 +43,7 @@ func TestEULAMarkerRecordsVersionAndDigest(t *testing.T) {
 	if EULAText != terms.EULAText || EULAVersion != terms.EULAVersion {
 		t.Fatal("internal/license must show pkg/license's terms")
 	}
-	if IsEULAAccepted() || AcceptedEULAVersion() != "" {
+	if IsEULAAccepted() {
 		t.Fatal("no marker: not accepted")
 	}
 	require(t, WriteEULAMarker())
@@ -52,7 +52,7 @@ func TestEULAMarkerRecordsVersionAndDigest(t *testing.T) {
 	if string(data) != want {
 		t.Fatalf("marker = %q, want %q", data, want)
 	}
-	if !IsEULAAccepted() || AcceptedEULAVersion() != EULAVersion {
+	if !IsEULAAccepted() {
 		t.Fatal("accepted")
 	}
 

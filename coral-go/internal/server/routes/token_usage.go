@@ -22,11 +22,6 @@ func NewTokenUsageHandler(db *store.DB) *TokenUsageHandler {
 	}
 }
 
-// Store returns the underlying TokenUsageStore.
-func (h *TokenUsageHandler) Store() *store.TokenUsageStore {
-	return h.ts
-}
-
 // ListUsage returns filtered token usage records.
 // GET /api/token-usage
 func (h *TokenUsageHandler) ListUsage(w http.ResponseWriter, r *http.Request) {

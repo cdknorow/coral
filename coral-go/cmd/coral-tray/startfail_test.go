@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -14,9 +13,9 @@ func TestStartFailureTitle(t *testing.T) {
 		"can't listen on 127.0.0.1 port 8420 (in use?): listen tcp 127.0.0.1:8420: bind: address already in use":                                           "Not started: can't listen on 127.0.0.1 port 8420 (in use?): listen tcp 127.0.0.1:8…",
 		"failed to open database\nsecond line": "Not started: failed to open database",
 	} {
-		got := startFailureTitle(errors.New(in))
+		got := statusTitle("Not started: ", in)
 		if got != want {
-			t.Errorf("startFailureTitle(%q)\n got %q\nwant %q", in, got, want)
+			t.Errorf("statusTitle(%q)\n got %q\nwant %q", in, got, want)
 		}
 		if n := utf8.RuneCountInString(strings.TrimPrefix(got, "Not started: ")); n > 70 {
 			t.Errorf("%q: %d characters", got, n)

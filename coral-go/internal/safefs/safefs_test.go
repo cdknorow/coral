@@ -46,16 +46,6 @@ func TestWithin(t *testing.T) {
 
 func TestIDs(t *testing.T) {
 	for id, want := range map[string]bool{
-		"0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11":   true,
-		"0B7F0F4E-3C1B-4C55-9B0E-0F6B1B2F1A11":   false, // canonical is lower case
-		"{0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11}": false,
-		"0b7f0f4e3c1b4c559b0e0f6b1b2f1a11":       false,
-		"../../0b7f0f4e-3c1b-4c55-9b0e-0f6b1":    false,
-		"":                                       false,
-	} {
-		assert.Equal(t, want, IsCanonicalUUID(id), id)
-	}
-	for id, want := range map[string]bool{
 		"abc": true, "rollout_2026-x": true, "A1": true,
 		"-x": false, "--dangerously-skip-permissions": false, "_x": false, ".": false, "..": false,
 		"a/b": false, `a\b`: false, "a.b": false, "a b": false, "": false, strings.Repeat("a", 129): false,

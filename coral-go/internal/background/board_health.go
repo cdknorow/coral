@@ -54,9 +54,6 @@ func (m *BoardHealthMonitor) SetAgents(ts *store.TaskStore, rt AgentRuntime, dis
 	}
 }
 
-// SetRuntime is retained for callers that share a monitor runtime; SetAgents is what wires it.
-func (m *BoardHealthMonitor) SetRuntime(_ AgentRuntime) {}
-
 // SetIdleThresholds sets how long an agent with nothing assigned is idle before the check names it
 // (the first value; the second is no longer used: Coral's status nudge escalates stale tasks).
 func (m *BoardHealthMonitor) SetIdleThresholds(remindAfter, _ time.Duration) {

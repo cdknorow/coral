@@ -738,10 +738,6 @@ func isInsideAppBundle() bool {
 	return strings.Contains(exe, ".app/Contents/MacOS/")
 }
 
-// startFailureTitle is the tray menu's line for why the server did not start (#4151): the
-// error's first line, cut to fit a menu.
-func startFailureTitle(err error) string { return statusTitle("Not started: ", err.Error()) }
-
 // statusTitle is a menu line: prefix and the reason's first line, without the server's own
 // "Failed to start: cannot start Coral: " lead, cut to fit a menu.
 func statusTitle(prefix, reason string) string {

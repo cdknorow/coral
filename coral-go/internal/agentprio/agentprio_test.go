@@ -25,7 +25,6 @@ func TestLevelPrecedence(t *testing.T) {
 	SetSetting("normal")
 	Setup("LOW")
 	assert.Equal(t, Low, Level(), "the flag or env wins")
-	assert.True(t, Forced())
 	Setup("sideways") // ignored
 	assert.Equal(t, Low, Level())
 }
