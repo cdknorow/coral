@@ -57,6 +57,10 @@ func (h *BoardHandler) relayArtifactSender() RelayArtifactSender {
 // bytes are read.
 var attachBeforeLoad func(path string)
 
+// attachAfterRead, when set (tests), runs after a file's bytes are read and checked and before the name is
+// checked again.
+var attachAfterRead func(path string)
+
 // loadAttachment opens an attachment once, no-follow, and returns its bytes after the checks C1 made again
 // on this open: a regular file of the size C1 saw, the sidecar's digest, and the SHA-256 of what was read
 // equal to the id, and the name still the same file afterwards. Anything else is attach_changed: the file was swapped or removed after the first check,
@@ -90,6 +94,9 @@ func (h *BoardHandler) loadAttachment(a attachedArtifact) ([]byte, *attachRefusa
 	}
 	if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != a.ID {
 		return nil, changed
+	}
+	if attachAfterRead != nil {
+		attachAfterRead(path)
 	}
 	// The name must still be this very file when the read is done: an object the Operator deleted, or one
 	// replaced by a link or another file, during the read refuses the send (the open handle alone would
@@ -285,6 +292,7 @@ func (h *BoardHandler) sendRelayAttachments(w http.ResponseWriter, ctx context.C
 			if resp.RetryAfter > 0 {
 				why += fmt.Sprintf("; retry in %d s", resp.RetryAfter)
 			}
+			why += "; a retry resends the files the hub already has"
 		case code == "artifacts_off":
 			why = "files are off for this address (the receiving board, or the account's file switch in Coral Hub)"
 		case code == "not_found":

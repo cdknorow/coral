@@ -288,6 +288,7 @@ func TestRelayAttachEarlyHubRefusalReachesTheCaller(t *testing.T) {
 	msg, _ := out["message"].(string)
 	assert.Contains(t, msg, "attachment 1 of 2")
 	assert.Contains(t, msg, "limit: hourly")
+	assert.Contains(t, msg, "a retry resends the files the hub already has")
 	assert.Contains(t, msg, "--message-id msg-9")
 	assert.NotContains(t, msg, "free text from the hub", "never the hub's own words")
 	events, _, msgs := e.wire.snapshot()
@@ -532,4 +533,22 @@ func TestRelayAttachUnsupportedRefundsTheRateToken(t *testing.T) {
 		code, out, _ := e.relay(alphaOrchSID, "", uri(a))
 		require.Equal(t, http.StatusNotImplemented, code, "send %d: %v", i, out)
 	}
+}
+
+// The name is checked again after the read: the path swapped for another file with the very same bytes (a new
+// inode, so the digest alone would pass) is attach_changed, with nothing sent or recorded.
+func TestRelayAttachSameBytesInAnotherFileAbortsWithNothingSent(t *testing.T) {
+	e := newRelayAttachEnv(t, true)
+	a := e.upload(alphaOrchSID, "# one\n")
+	attachAfterRead = func(path string) {
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.NoError(t, os.Remove(path))
+		require.NoError(t, os.WriteFile(path, data, 0o600))
+	}
+	code, out, _ := e.relay(alphaOrchSID, "", uri(a))
+	attachAfterRead = nil
+	assert.Equal(t, http.StatusConflict, code, out)
+	assert.Equal(t, "attach_changed", out["code"])
+	e.nothingSent("same bytes, another file")
 }
