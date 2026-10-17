@@ -134,7 +134,7 @@ c GET /api/sessions/{sessionID}/changes
 c GET /api/sessions/{sessionID}/changes.diff
 a GET /api/sessions/{sessionID}/resolve
 c GET /api/sessions/{sessionID}/status
-c GET /api/settings
+b GET /api/settings
 c GET /api/settings/default-prompts
 c GET /api/settings/prompt-inspection
 c GET /api/spec.json

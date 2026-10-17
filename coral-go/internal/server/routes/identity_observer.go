@@ -335,6 +335,9 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/workflows/runs/{runID}/kill": "stop a workflow run",
 	"POST /api/tasks/runs/{runID}/kill":     "stop a task run",
 	"PUT /api/settings":                     "change Coral's settings",
+	// #4432 (Security's #4431 INFO 1): reading them too: the CLI paths, prompts and storage and access switches
+	// are the Operator's, and no agent tool reads them.
+	"GET /api/settings": "read Coral's settings",
 
 	// #3445, found by QA: routes whose only guard was "this looks like the dashboard" (an Origin and
 	// a Sec-Fetch-Site header any local caller can send, so an agent token plus two forged headers
