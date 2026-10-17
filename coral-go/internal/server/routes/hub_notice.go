@@ -160,7 +160,7 @@ func (h *BoardHandler) PostHubNotice(w http.ResponseWriter, r *http.Request) {
 	h.hubNotices.record(key, text, now)
 	slog.Info("[cloud] Coral Hub notice", "board", project, "kind", body.Kind, "role", body.Role)
 	if h.notifyFn != nil {
-		h.notifyFn()
+		h.notifyFn(project)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message_id": msg.ID})
 }

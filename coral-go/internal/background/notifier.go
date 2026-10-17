@@ -24,6 +24,9 @@ type BoardNotifier struct {
 	notifiedMu  sync.Mutex
 	notified    map[string]notifyState // session_name -> last nudge since the agent last read
 	notifyNowCh chan struct{}
+	pendingMu   sync.Mutex
+	pendingAll  bool             // a pass over every board is due (NotifyNow)
+	pending     map[string]bool  // boards a message was posted to since the last pass (NotifyBoard)
 	remindAfter time.Duration    // resend when still unread this long after a nudge
 	now         func() time.Time // for tests
 }
@@ -106,9 +109,47 @@ func (n *BoardNotifier) seedStates(ctx context.Context) (map[string]board.Unread
 	return n.boardStore.GetUnreadStatesFor(ctx, names)
 }
 
-// NotifyNow triggers an immediate notification pass without waiting for the next tick.
-// Safe to call from any goroutine. Non-blocking if a notification is already pending.
+// NotifyNow triggers an immediate notification pass over every board without waiting for the
+// next tick. Safe to call from any goroutine. Non-blocking if a notification is already pending.
 func (n *BoardNotifier) NotifyNow() {
+	n.pendingMu.Lock()
+	n.pendingAll = true
+	n.pendingMu.Unlock()
+	n.signal()
+}
+
+// NotifyBoard triggers an immediate pass over the agents on project's board only: a message
+// posted there changes no other board's unread counts. A pass per post over every agent made
+// the notifier's work grow with posts times agents (#4028 follow-up: 0.50 s, 1.18 s and 3.64 s
+// of CPU per 2 minutes at 20, 40 and 80 agents). Boards posted to meanwhile share one pass; an
+// empty project is NotifyNow.
+func (n *BoardNotifier) NotifyBoard(project string) {
+	if project == "" {
+		n.NotifyNow()
+		return
+	}
+	n.pendingMu.Lock()
+	if n.pending == nil {
+		n.pending = map[string]bool{}
+	}
+	n.pending[project] = true
+	n.pendingMu.Unlock()
+	n.signal()
+}
+
+// takePending returns what the next event pass covers: nil for every board, else the boards.
+func (n *BoardNotifier) takePending() map[string]bool {
+	n.pendingMu.Lock()
+	defer n.pendingMu.Unlock()
+	boards, all := n.pending, n.pendingAll
+	n.pending, n.pendingAll = nil, false
+	if all || len(boards) == 0 {
+		return nil
+	}
+	return boards
+}
+
+func (n *BoardNotifier) signal() {
 	select {
 	case n.notifyNowCh <- struct{}{}:
 	default:
@@ -129,19 +170,43 @@ func (n *BoardNotifier) Run(ctx context.Context) error {
 				n.logger.Error("notification error", "error", err)
 			}
 		case <-n.notifyNowCh:
-			if err := n.RunOnce(ctx); err != nil {
+			if err := n.runPass(ctx, n.takePending()); err != nil {
 				n.logger.Error("notification error (event-driven)", "error", err)
 			}
 		}
 	}
 }
 
-// RunOnce performs a single notification pass.
+// RunOnce performs a single notification pass over every board.
 func (n *BoardNotifier) RunOnce(ctx context.Context) error {
+	return n.runPass(ctx, nil)
+}
+
+// runPass is a notification pass over the agents on boards (every board when nil). A scoped
+// pass skips the agents not subscribed to one of those boards before any per-agent lookup, and
+// leaves the nudge records alone: only a full pass sees every live session.
+func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) error {
 	agents, err := n.discoverFn(ctx)
 	if err != nil {
 		n.logger.Error("discover agents failed", "error", err)
 		return err
+	}
+	var onBoards map[string]bool // session names subscribed to boards
+	if boards != nil {
+		onBoards = map[string]bool{}
+		for project := range boards {
+			subs, err := n.boardStore.ListSubscribers(ctx, project)
+			if err != nil {
+				n.logger.Warn("list subscribers failed; a full pass instead", "project", project, "error", err)
+				onBoards = nil
+				break
+			}
+			for _, sub := range subs {
+				if sub.SessionName != "" {
+					onBoards[sub.SessionName] = true
+				}
+			}
+		}
 	}
 
 	n.logger.Debug("notification pass", "agent_count", len(agents))
@@ -160,6 +225,9 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 
 		sessName := naming.SessionName(a.AgentType, a.SessionID)
 		liveSessions[sessName] = true
+		if onBoards != nil && !onBoards[sessName] {
+			continue
+		}
 		subscriberID := naming.SubscriberID(a.DisplayName, a.AgentType)
 
 		// A discovered session must have an authoritative subscription binding.
@@ -296,6 +364,9 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		n.notifiedMu.Unlock()
 	}
 
+	if onBoards != nil {
+		return nil
+	}
 	// Clean up stale entries
 	n.notifiedMu.Lock()
 	for sname := range n.notified {

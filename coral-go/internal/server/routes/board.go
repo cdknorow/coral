@@ -41,8 +41,8 @@ type BoardHandler struct {
 	bs                            *board.Store
 	terminal                      ptymanager.SessionTerminal
 	mu                            sync.RWMutex
-	paused                        map[string]bool // in-memory set of paused project names
-	notifyFn                      func()          // triggers immediate board notification pass
+	paused                        map[string]bool      // in-memory set of paused project names
+	notifyFn                      func(project string) // triggers an immediate notification pass for project's board
 	coralDir                      string
 	autoAttach                    *AutoAttacher // #3515: an agent's linked images and Markdown
 	writeTaskArtifact             func(context.Context, *board.Task, string) error
@@ -450,8 +450,8 @@ func (h *BoardHandler) IsPaused(project string) bool {
 	return h.isPaused(project)
 }
 
-// SetNotifyFn sets a callback that triggers an immediate board notification pass.
-func (h *BoardHandler) SetNotifyFn(fn func()) {
+// SetNotifyFn sets a callback that triggers an immediate notification pass for a board.
+func (h *BoardHandler) SetNotifyFn(fn func(project string)) {
 	h.notifyFn = fn
 }
 
@@ -1017,7 +1017,7 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Trigger immediate board notification so subscribers get nudged right away
 	if h.notifyFn != nil {
-		h.notifyFn()
+		h.notifyFn(project)
 	}
 
 	// Resolve any active registered waits for this message

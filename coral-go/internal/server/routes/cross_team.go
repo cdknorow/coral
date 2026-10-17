@@ -312,7 +312,9 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if h.notifyFn != nil {
-		h.notifyFn()
+		// Both boards got a message: the target the inbound one, the sender's the outbound copy.
+		h.notifyFn(target)
+		h.notifyFn(body.FromBoard)
 	}
 	h.goBG(func() { h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content) })
 	writeJSON(w, http.StatusOK, map[string]any{"message": inbound, "mirror": outbound, "delivered_to": recipients})
@@ -436,7 +438,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 		return
 	}
 	if h.notifyFn != nil {
-		h.notifyFn()
+		h.notifyFn(target)
 	}
 	h.goBG(func() { h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content) })
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "target_message_id": inbound.ID})

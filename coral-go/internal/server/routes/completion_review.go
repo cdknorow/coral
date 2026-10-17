@@ -86,7 +86,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, author, false), nil)
 	}
 	if h.notifyFn != nil {
-		h.notifyFn()
+		h.notifyFn(project)
 	}
 	task, _ = h.bs.GetTask(ctx, project, id)
 	writeJSON(w, http.StatusOK, task)
@@ -129,7 +129,7 @@ func (h *BoardHandler) DelegateReview(w http.ResponseWriter, r *http.Request) {
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, rt, *rt.AssignedTo, false), nil)
 	}
 	if h.notifyFn != nil {
-		h.notifyFn()
+		h.notifyFn(project)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"task": task, "reviews": reviews})
 }
@@ -210,7 +210,7 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, body.SubscriberID, false), nil)
 	}
 	if h.notifyFn != nil {
-		h.notifyFn()
+		h.notifyFn(project)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"task": task, "review_task": v.ReviewTask, "completed": v.Complete && task.Status == "completed", "rejected": v.Rejected})
 }
@@ -247,7 +247,7 @@ func (h *BoardHandler) ReleaseCompletionReview(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if h.notifyFn != nil {
-		h.notifyFn()
+		h.notifyFn(project)
 	}
 	writeJSON(w, http.StatusOK, task)
 }

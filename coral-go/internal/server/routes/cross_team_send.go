@@ -294,7 +294,7 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if h.notifyFn != nil {
-		h.notifyFn()
+		h.notifyFn(project)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "duplicate": ans.Duplicate, "message_id": messageID, "target_message_id": target, "mirror": mirror})
 }
