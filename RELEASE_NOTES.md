@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.4.75 — Chat roll-up, a warning when local sign-in is off, and tighter Coral Hub access
+
+### Security
+
+- **A red banner says when local sign-in is off:** "Local sign-in is OFF: any program on this computer can use Coral." It shows on the dashboard, including the agent pop-out, can't be dismissed, is re-checked every minute, and a failed check leaves it as it was. It isn't shown in Coral Hub's view.
+- **With local sign-in off, Coral refuses to start on the default `~/.coral` folder** (however it is spelled, including a symlink or a different letter case on macOS and Windows); use a folder of its own.
+- **`CORAL_STRICT_LOCAL_AUTH=0` now works only in dev builds;** use `--strict-local-auth=false`, which works in every build. A release build ignores the variable, stays strict and logs a warning naming the flag. If you set CORAL_STRICT_LOCAL_AUTH=0, Coral is strict again after this update.
+- **Reading or regenerating the API key needs a verified Operator credential** (the API key, the dashboard sign-in or the signed command line), even with local sign-in off; an agent's token or a request with no credential is refused.
+- **Coral's secret masking also catches** a bearer token or Basic value in an Authorization header, JSON web tokens, Hugging Face and Google OAuth tokens, an AWS secret key written with spaces around the "=", and a key with an invisible character inside it.
+- **Identity, step 2 (still log only):** the Operator now sets the identity mode with `PUT /api/system/identity-actor` (refused through Coral Hub; the default is log and enforcement stays off). Planning commands now accept you, the Operator, in any spelling of the name, so the signed command line's lower-case "operator" is no longer refused.
+
+### Coral Hub
+
+- **Sleeping or killing one agent through Coral Hub now needs Launch access,** as sleeping all agents already did.
+- **Nine routes are refused through Coral Hub:** reassigning or snoozing tasks, saving or resetting a working-mode preset, session task reorder, task runs and a task's changes diff. Adding a new preset still works; for an existing one, the Hub view hides Save and Reset built-in and says why.
+
+### Dashboard
+
+- **Chat roll-up:** consecutive collapsed groups with nothing visible between them become one bar showing the number of updates and steps and the newest group's label. Opening it shows the groups as before. A reply or your message ends the run, new groups fold into a closed bar without the page jumping, and chat find opens the bar in front of a match.
+- **Keyboard and screen-reader fixes:** the tab chooser announces moves, hides and resets and closes when you Tab past either end; the display menu closes on Escape; a server's menu takes the arrow keys, Home and End; the Health check tab's controls are named by their titles; Sign out other browsers keeps focus in place.
+
 ## v1.4.74 — The orchestrator's health check, a faster first load, and steadier agent restarts
 
 ### Security
