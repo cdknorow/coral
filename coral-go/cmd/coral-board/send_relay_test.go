@@ -186,3 +186,38 @@ func TestTargetsFailureFormat(t *testing.T) {
 		t.Fatalf("got %v, want %q", err, want)
 	}
 }
+
+// An attachment's refusal answers {"code", "error": words}: the command line prints the code before the words
+// (#4453), on both the address and the local board forms.
+func TestSendPrintsAnAttachmentRefusalsCode(t *testing.T) {
+	isolateBoardEnv(t)
+	reply := `{"code":"attach_secret","error":"coral://artifacts/ab looks like it contains a secret (a token or a key), so it was not sent"}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		w.Write([]byte(reply))
+	}))
+	defer ts.Close()
+	oldURL := serverURL
+	serverURL = ts.URL
+	defer func() { serverURL = oldURL }()
+	id := sendIdentity{Board: "alpha", SubscriberID: "Orchestrator", SessionName: "tmux-1"}
+	var out bytes.Buffer
+	for _, args := range [][]string{{"--address", "homelab/qa", "--attach", "coral://artifacts/ab", "hi"}, {"--board", "beta", "--attach", "coral://artifacts/ab", "hi"}} {
+		err := runSend(args, id, &out)
+		if err == nil || !strings.Contains(err.Error(), "(422): attach_secret: coral://artifacts/ab looks like it contains a secret") {
+			t.Errorf("%v: %v", args, err)
+		}
+	}
+	// A refusal whose error is already its code is not doubled.
+	reply = `{"ok":false,"error":"target_offline","message":"later"}`
+	err := runSend([]string{"--address", "homelab/qa", "hi"}, id, &out)
+	if err == nil || strings.Count(err.Error(), "target_offline") != 1 {
+		t.Errorf("%v", err)
+	}
+	for _, c := range []struct{ code, words, want string }{{"", "w", "w"}, {"c", "c", "c"}, {"c", "c: w", "c: w"}, {"c", "w", "c: w"}} {
+		if got := refusalText(c.code, c.words); got != c.want {
+			t.Errorf("refusalText(%q, %q) = %q", c.code, c.words, got)
+		}
+	}
+}

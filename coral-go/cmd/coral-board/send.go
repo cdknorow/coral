@@ -120,6 +120,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 	}
 	var result struct {
 		Error       string   `json:"error"`
+		Code        string   `json:"code"`
 		DeliveredTo []string `json:"delivered_to"`
 		Attached    []string `json:"attached"`
 		Message     struct {
@@ -131,7 +132,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 		if result.Error == "" {
 			result.Error = strings.TrimSpace(string(data))
 		}
-		return fmt.Errorf("send to %q failed (%d): %s", target, status, result.Error)
+		return fmt.Errorf("send to %q failed (%d): %s", target, status, refusalText(result.Code, result.Error))
 	}
 	fmt.Fprintf(out, "Sent to '%s' (message #%d, delivered to %s). A copy is on '%s'.\n",
 		target, result.Message.ID, strings.Join(result.DeliveredTo, ", "), id.Board)
@@ -191,6 +192,7 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 	}
 	var result struct {
 		Error           string   `json:"error"`
+		Code            string   `json:"code"`
 		Message         string   `json:"message"`
 		MessageID       string   `json:"message_id"`
 		TargetMessageID int64    `json:"target_message_id"`
@@ -202,7 +204,7 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 		if result.Error == "" {
 			result.Error = strings.TrimSpace(string(data))
 		}
-		msg := fmt.Sprintf("send to %q failed (%d): %s", address, status, result.Error)
+		msg := fmt.Sprintf("send to %q failed (%d): %s", address, status, refusalText(result.Code, result.Error))
 		if result.Message != "" {
 			msg += ": " + result.Message
 		}
@@ -281,4 +283,14 @@ func runTargets(board, subscriberID, sessionName string, out io.Writer) error {
 		fmt.Fprintf(out, "%s (%s)\n", t.Address, state)
 	}
 	return nil
+}
+
+// refusalText is a refusal's words with its code in front when it has one: an attachment's refusal (attach_secret,
+// attach_unchecked, not_yours, ...) answers {"code", "error": words}, and the code is what a script or a reader
+// tells one refusal from another by; a refusal whose "error" is already the code is left as it is.
+func refusalText(code, words string) string {
+	if code == "" || code == words || strings.HasPrefix(words, code) {
+		return words
+	}
+	return code + ": " + words
 }
