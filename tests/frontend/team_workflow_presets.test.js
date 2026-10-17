@@ -49,6 +49,7 @@ const TEAM_A = 'team-alpha-' + RUN, TEAM_B = 'team-beta-' + RUN;
       { label: 'Workflow', selected: 'true' },
       { label: 'Prompt inspection', selected: 'false' },
       { label: 'Global settings', selected: 'false' },
+      { label: 'Health check', selected: 'false' }, // #4230: the real settings API returns a health object
     ], 'Team settings should expose clear section tabs');
     await ev(`document.querySelector('[data-settings-tab="prompts"]').click()`);
     assert.equal(await ev(`document.querySelector('[data-settings-panel="workflow"]').hidden`), true, 'Workflow panel should hide while inspecting prompts');

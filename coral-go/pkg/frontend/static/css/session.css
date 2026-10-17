@@ -1879,6 +1879,7 @@
 @media(max-width: 600px) { .team-availability-dialog { padding: 16px; } .team-view-details { grid-template-columns:1fr 1fr; } .availability-agent { grid-template-columns:1fr auto; } .availability-agent > p, .availability-agent > ul { grid-column:1 / -1; } }
 
 .working-mode-form { display: grid; gap: 16px; overflow: auto; min-height: 0; padding: 2px 4px 2px 0; }
+.working-mode-form[hidden] { display: none; }
 .working-mode-form label { display: block; font: 500 var(--fs-md)/1.4 var(--font-sans); }
 .working-mode-form select, .working-mode-form textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .working-mode-form p { font-size: 13px; color: var(--text-secondary); margin: 0; }
@@ -1912,6 +1913,28 @@
 .team-settings-actions button { flex: 0 0 auto; }
 .team-settings-actions span { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
 @media(max-width: 600px) { .team-settings-actions { align-items: stretch; flex-direction: column; } }
+
+/* Team settings, Health check tab (#4230): the check, then one card per automatic rule with its numbers and the server's limits under each. */
+.health-form .health-rule-head { display: flex; align-items: flex-start; gap: 8px; font-weight: 600; }
+.health-form .health-rule-head input { margin-top: 3px; flex: none; }
+.health-form .health-why { display: block; color: var(--text-secondary); font-size: 13px; font-weight: 400; margin: 0; }
+.health-rule { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; background: var(--bg-primary); }
+.health-rule > .health-why { margin-left: 26px; }
+.health-knobs { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 2px 0 0 26px; }
+.health-knobs:empty { display: none; }
+.health-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
+.working-mode-form label.health-knob { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.health-knob-box { display: flex; align-items: center; gap: 6px; }
+.health-limits { font-weight: 400; font-size: 12px; color: var(--text-secondary); }
+.health-form input[type="number"], .health-form input[type="text"] { box-sizing: border-box; min-height: var(--control-height, 32px); background: var(--bg-tertiary, var(--bg-primary)); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.health-form input[type="number"] { width: 7em; }
+.health-knob.health-wide, .health-knobs .health-wide { flex: 1 1 100%; }
+.health-form input[type="text"] { width: 100%; }
+.health-wide-select { flex: 1 1 11em; min-width: 11em; }
+.health-wide-select select { margin-top: 4px; }
+.health-rule.off .health-why, .health-rule.off .health-knobs { opacity: .55; }
+.health-form input:focus-visible, .health-form select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.health-state.health-error { color: var(--error, #e5534b); }
 
 .team-availability-dialog .modal-close-btn { padding: 0; background: transparent; border-color: transparent; }
 .working-mode-form select, .working-mode-form input[name="preset_name"] { min-height: var(--control-height); }

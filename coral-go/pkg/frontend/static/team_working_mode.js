@@ -13,8 +13,8 @@ function settingsFormSnapshot(form) {
 }
 
 export function hasUnsavedTeamSettings() {
-    const form = document.querySelector('#team-settings-workspace form');
-    return Boolean(form?.dataset.initialState && settingsFormSnapshot(form) !== form.dataset.initialState);
+    // The main form, and the Health check tab's own (#4230): either with changes asks before leaving.
+    return [...document.querySelectorAll('#team-settings-workspace form, #team-working-mode-dialog form')].some(form => Boolean(form.dataset.initialState && settingsFormSnapshot(form) !== form.dataset.initialState));
 }
 
 /** Resolves true when leaving the team settings panel may go ahead: nothing unsaved, or the user
@@ -174,17 +174,36 @@ export async function showTeamWorkingMode(team, options = {}) {
             panel.hidden = !active;
             panel.classList.toggle('active', active);
         });
+        form.hidden = name === 'health'; // the Health check tab has its own form and Save; the main Save bar is not for it (#4230)
+        // On a phone the tab strip scrolls sideways: the selected tab is brought into view (the Health check tab is last).
+        tabs.find(tab => tab.dataset.settingsTab === name)?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
         if (moveFocus) tabs.find(tab => tab.dataset.settingsTab === name)?.focus();
     }
-    tabs.forEach((tab, index) => {
+    function bindTab(tab) {
         tab.onclick = () => activatePanel(tab.dataset.settingsTab);
         tab.onkeydown = event => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
+            const index = tabs.indexOf(tab);
             const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
             activatePanel(tabs[next].dataset.settingsTab, true);
         };
-    });
+    }
+    tabs.forEach(bindTab);
+    // The Health check tab (#4230) exists only when the settings GET returned a "health" object: not through Coral Hub, which leaves it out.
+    async function addHealthTab(health) {
+        const m = await importOnce('./team_health_settings.js');
+        const tab = document.createElement('button');
+        tab.type = 'button'; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', 'false'); tab.setAttribute('aria-controls', 'team-settings-health');
+        tab.dataset.settingsTab = 'health'; tab.id = 'team-settings-tab-health'; tab.tabIndex = -1; tab.textContent = 'Health check';
+        const panel = document.createElement('section');
+        panel.className = 'team-settings-panel'; panel.id = 'team-settings-health'; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', 'team-settings-tab-health');
+        panel.dataset.settingsPanel = 'health'; panel.tabIndex = 0; panel.hidden = true;
+        dialog.querySelector('.team-settings-tabs').append(tab);
+        form.after(panel);
+        tabs.push(tab); panels.push(panel); bindTab(tab);
+        await m.mountHealthSettings(panel, team, health);
+    }
 
     const selectedPreset = () => presets.find(p => p.id === presetSelect.value);
     function syncPresetForm() {
@@ -296,8 +315,10 @@ export async function showTeamWorkingMode(team, options = {}) {
                 if (hint) hint.textContent = 'Could not load global settings; changes to global settings are disabled.';
             }
             if (boardSettingsResponse?.ok) {
-                form.elements.cross_team_messaging.checked = Boolean((await boardSettingsResponse.json()).cross_team_messaging);
+                const boardSettings = await boardSettingsResponse.json();
+                form.elements.cross_team_messaging.checked = Boolean(boardSettings.cross_team_messaging);
                 boardSettingsLoaded = true;
+                if (boardSettings.health && typeof boardSettings.health === 'object') await addHealthTab(boardSettings.health).catch(() => {});
             } else {
                 // The board settings could not be loaded: leave the switch off and disabled.
                 form.elements.cross_team_messaging.disabled = true;
