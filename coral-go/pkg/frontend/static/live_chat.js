@@ -1049,7 +1049,17 @@ export function showTerminalView() {
 }
 
 
-// A brand-new agent has no transcript yet; say so instead of a blank pane.
+// What a brand-new agent's empty chat says, by what the agent is doing: a title, and a hint on what to do next.
+function emptyStateWords(session) {
+    const row = (state.liveSessions || []).find(s => s.session_id === session?.session_id) || session;
+    switch (deriveSessionState(row)) {
+        case 'sleeping': return ["This agent is asleep", "Use Wake below to chat with it."];
+        case 'ended': return ["This agent has ended", "It left no messages here."];
+        default: return ["No messages yet", "Type below and press Enter to send, Shift+Enter for a new line. The agent's replies and steps appear here."];
+    }
+}
+
+// A brand-new agent has no transcript yet; say so, and what to do, instead of a blank pane.
 function syncEmptyState(container) {
     const hasContent = Array.from(container.children).some(c => !c.matches(TRAILING_CHROME + ", .load-more-btn, .loading-indicator"));
     const busy = container.querySelector(":scope > .chat-working, :scope > .chat-needs-input, :scope > .pending-messages");
@@ -1058,12 +1068,18 @@ function syncEmptyState(container) {
         if (el) el.remove();
         return;
     }
+    const [title, hint] = emptyStateWords(state.currentSession);
     if (!el) {
         el = document.createElement("div");
         el.className = "chat-empty";
-        el.textContent = "No messages yet. Send a message below to get started.";
+        el.setAttribute("role", "status");
+        el.innerHTML = '<div class="chat-empty-title"></div><div class="chat-empty-hint"></div>';
         container.appendChild(el);
     }
+    // Only write a word that changed, so a screen reader is not told the same thing at every poll
+    const t = el.querySelector(".chat-empty-title"), h = el.querySelector(".chat-empty-hint");
+    if (t.textContent !== title) t.textContent = title;
+    if (h.textContent !== hint) h.textContent = hint;
 }
 
 // Answering: the server re-reads the terminal and sends the digit (plus the

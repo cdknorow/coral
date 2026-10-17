@@ -1232,13 +1232,23 @@
     font-size: 0.8125rem;
 }
 
-/* A brand-new agent with no transcript yet */
+/* A brand-new agent with no transcript yet: a title and what to do next */
 .chat-empty {
     text-align: center;
     color: var(--text-muted);
     font-family: var(--font-sans);
     font-size: 0.875rem;
-    margin: 48px auto;
+    margin: 3rem auto;
+    padding: 0 1rem;
+    max-width: 28rem;
+}
+.chat-empty-title {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-bottom: 0.375rem;
+}
+.chat-empty-hint {
+    line-height: 1.5;
 }
 
 /* Chat mode: the command pane keeps just Cancel (Esc) and Send. The mode
