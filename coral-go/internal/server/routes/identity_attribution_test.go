@@ -23,6 +23,7 @@ import (
 type attributionHarness struct {
 	t      *testing.T
 	h      http.Handler
+	db     *store.DB
 	bh     *BoardHandler
 	tokens map[string]string
 	cookie bool
@@ -55,7 +56,18 @@ func newAttributionHarness(t *testing.T) *attributionHarness {
 	r.Post("/api/board/{project}/tasks/{taskID}/park", bh.ParkTask)
 	r.Post("/api/board/{project}/health/ack", bh.AckHealthItem)
 	r.Put("/api/board/{project}/settings", bh.UpdateBoardSettings)
-	r.Post("/api/board/{project}/messages", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	r.Post("/api/board/{project}/messages", bh.PostMessage)
+	r.Get("/api/board/{project}/messages", bh.ReadMessages)
+	r.Get("/api/board/{project}/messages/check", bh.CheckUnread)
+	r.Post("/api/board/{project}/messages/mark-read", bh.MarkRead)
+	r.Post("/api/board/{project}/subscribe", bh.Subscribe)
+	r.Delete("/api/board/{project}/subscribe", bh.Unsubscribe)
+	r.Get("/api/board/{project}/peek", bh.PeekAgent)
+	r.Post("/api/board/{project}/waits", bh.RegisterWait)
+	r.Get("/api/board/{project}/waits", bh.GetActiveWait)
+	r.Delete("/api/board/{project}/waits", bh.CancelWait)
+	r.Post("/api/board/{project}/reminder", bh.RemindSubscriber)
+	r.Delete("/api/board/{project}/reminder", bh.RemindSubscriber)
 	// The task verbs (#4255 commit 3), the real handlers behind the real identity layer.
 	r.Post("/api/board/{project}/tasks", bh.CreateTask)
 	r.Post("/api/board/{project}/tasks/claim", bh.ClaimTask)
@@ -83,6 +95,13 @@ func newAttributionHarness(t *testing.T) *attributionHarness {
 	r.Post("/api/board/{project}/relay-messages", bh.PostRelayMessage)
 	r.Get("/api/board/{project}/relay-targets", bh.ListRelayTargets)
 	a.bh = bh
+	a.db = db
+	// A reminder a test sets runs a goroutine of its own: stop them all before the leak check (#4167).
+	t.Cleanup(func() {
+		for _, id := range []string{"Orchestrator", "Dev", "Operator", "New One"} {
+			bh.stopSubscriberReminder("team", id)
+		}
+	})
 	a.h = r
 	return a
 }
@@ -118,6 +137,20 @@ func (a *attributionHarness) callBody(actor, method, path, body string) (int, st
 	rec := httptest.NewRecorder()
 	a.h.ServeHTTP(rec, r)
 	return rec.Code, rec.Body.String()
+}
+
+// mintToken mints an agent token for a session on no board (a joining agent) in the harness's store.
+func (a *attributionHarness) mintToken(t *testing.T, key, sid, session string) string {
+	t.Helper()
+	tok, err := a.db.MintSessionToken(context.Background(), sid, session)
+	require.NoError(t, err)
+	a.tokens[key] = tok
+	return key
+}
+
+// callBodyWithToken is callBody for a token minted with mintToken.
+func (a *attributionHarness) callBodyWithToken(key, method, path, body string) (int, string) {
+	return a.callBody(key, method, path, body)
 }
 
 func setMode(t *testing.T, enforce bool) {

@@ -195,6 +195,11 @@ func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) 
 			errBadRequest(w, "invalid JSON")
 			return
 		}
+		attrWho, attrOK := attributedSubject(w, r, body.SubscriberID)
+		if !attrOK {
+			return
+		}
+		body.SubscriberID = attrWho
 		if strings.TrimSpace(body.SubscriberID) == "" {
 			errBadRequest(w, "subscriber_id is required")
 			return
@@ -221,6 +226,11 @@ func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedSubject(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if strings.TrimSpace(body.SubscriberID) == "" || strings.TrimSpace(body.Message) == "" {
 		errBadRequest(w, "subscriber_id and message are required")
 		return
@@ -810,7 +820,15 @@ func (h *BoardHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		ThroughID    int64  `json:"through_id"`
 		FromID       int64  `json:"from_id"`
 	}
-	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" || body.ThroughID <= 0 {
+	derr := decodeJSON(r, &body)
+	if derr == nil {
+		attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+		if !attrOK {
+			return
+		}
+		body.SubscriberID = attrWho
+	}
+	if derr != nil || body.SubscriberID == "" || body.ThroughID <= 0 {
 		errBadRequest(w, "subscriber_id and through_id are required")
 		return
 	}
@@ -885,6 +903,11 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, sub)
 		return
 	}
+	joinName, joinSession, joinOK := attributedJoin(w, r, body.SubscriberID, body.SessionName)
+	if !joinOK {
+		return
+	}
+	body.SubscriberID, body.SessionName = joinName, joinSession
 	subscriberID := body.SubscriberID
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
@@ -915,6 +938,11 @@ func (h *BoardHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedSubject(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	subscriberID := body.SubscriberID
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
@@ -942,7 +970,15 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		TargetGroupID *string `json:"target_group_id,omitempty"`
 		As            string  `json:"as,omitempty"` // display name for auto-subscribe (e.g. "Operator")
 	}
-	if err := decodeJSON(r, &body); err != nil || body.Content == "" {
+	derr := decodeJSON(r, &body)
+	if derr == nil && !cloud.Tunneled(r) {
+		attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+		if !attrOK {
+			return
+		}
+		body.SubscriberID = attrWho
+	}
+	if derr != nil || body.Content == "" {
 		errBadRequest(w, "content required")
 		return
 	}
@@ -1115,7 +1151,10 @@ func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, emptyIfNil(messages))
 		return
 	}
-	subscriberID := r.URL.Query().Get("subscriber_id")
+	subscriberID, attrOK := attributedTo(w, r, r.URL.Query().Get("subscriber_id"))
+	if !attrOK {
+		return
+	}
 	limit := clampLimit(queryInt(r, "limit", 50), 50, 500)
 	allParam := r.URL.Query().Get("all")
 	readAll := allParam == "true" || allParam == "1"
@@ -1218,7 +1257,10 @@ func (h *BoardHandler) CheckUnread(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"unread": 0})
 		return
 	}
-	subscriberID := r.URL.Query().Get("subscriber_id")
+	subscriberID, attrOK := attributedTo(w, r, r.URL.Query().Get("subscriber_id"))
+	if !attrOK {
+		return
+	}
 	count, err := h.bs.CheckUnread(r.Context(), project, subscriberID)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -1260,6 +1302,13 @@ func (h *BoardHandler) ListSubscribers(w http.ResponseWriter, r *http.Request) {
 func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	callerID := r.URL.Query().Get("subscriber_id")
+	if !cloud.Tunneled(r) { // through Coral Hub the caller is never read from the query
+		attrWho, attrOK := attributedTo(w, r, callerID)
+		if !attrOK {
+			return
+		}
+		callerID = attrWho
+	}
 	target := r.URL.Query().Get("target")
 	lines := queryInt(r, "lines", 30)
 
@@ -2444,6 +2493,11 @@ func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
 	if body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return
@@ -2491,6 +2545,11 @@ func (h *BoardHandler) GetActiveWait(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	subscriberID := r.URL.Query().Get("subscriber_id")
 	if subscriberID != "" {
+		attrWho, attrOK := attributedTo(w, r, subscriberID)
+		if !attrOK {
+			return
+		}
+		subscriberID = attrWho
 		wait, err := h.bs.GetActiveWait(r.Context(), project, subscriberID)
 		if err != nil {
 			errInternalServer(w, err.Error())
@@ -2519,6 +2578,11 @@ func (h *BoardHandler) CancelWait(w http.ResponseWriter, r *http.Request) {
 		_ = decodeJSON(r, &body)
 		subscriberID = body.SubscriberID
 	}
+	attrWho, attrOK := attributedTo(w, r, subscriberID)
+	if !attrOK {
+		return
+	}
+	subscriberID = attrWho
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return
@@ -2534,7 +2598,10 @@ func (h *BoardHandler) CancelWait(w http.ResponseWriter, r *http.Request) {
 // GET /api/board/{project}/waits/poll
 func (h *BoardHandler) PollWait(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
-	subscriberID := r.URL.Query().Get("subscriber_id")
+	subscriberID, attrOK := attributedTo(w, r, r.URL.Query().Get("subscriber_id"))
+	if !attrOK {
+		return
+	}
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")
 		return

@@ -103,6 +103,9 @@ func actorName(a Actor) (string, bool) {
 // A handler assigns the result back to the field it read the claim from, so the rest of it reads the
 // attributed name.
 func attributedTo(w http.ResponseWriter, r *http.Request, claim string) (string, bool) {
+	if callerActor(r).Kind == ActorHub {
+		return claim, true // through Coral Hub the tunnel's guard has decided who may be named (TunnelIdentityGuard)
+	}
 	name, verified := actorName(callerActor(r))
 	if identityActorEnforced() {
 		if !verified {
@@ -115,4 +118,58 @@ func attributedTo(w http.ResponseWriter, r *http.Request, claim string) (string,
 		noteEnforceDiffers("attribution", r)
 	}
 	return claim, true
+}
+
+// attributedSubject is the name a handler acts on when the request's subscriber_id names the subject of
+// the action, not the caller (leaving a board, a reminder): a member's token acts on itself, the Operator
+// (the dashboard, the signed command line) may name any member, and under enforce a request with no
+// verified actor is refused. In log mode it is the claim, counted where enforce would decide otherwise.
+func attributedSubject(w http.ResponseWriter, r *http.Request, claim string) (string, bool) {
+	a := callerActor(r)
+	if name, member := a.Member(); member {
+		if identityActorEnforced() {
+			return name, true
+		}
+		if c := strings.TrimSpace(claim); c != "" && !board.SameIdentity(c, name) {
+			noteEnforceDiffers("attribution", r)
+		}
+		return claim, true
+	}
+	verified := a.Kind == ActorOperator || (a.Kind == ActorHub && a.Name != "")
+	if identityActorEnforced() && !verified {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "this request is not from a verified member of the board or the Operator", "code": "identity_unverified"})
+		return "", false
+	}
+	if !verified {
+		noteEnforceDiffers("attribution", r)
+	}
+	return claim, true
+}
+
+// attributedJoin is the name and session a subscribe is made with. A token joins under the name it
+// chooses (it has none yet) from its OWN session, whatever session it names; a member re-subscribing is
+// that member; the Operator names what it joins as; under enforce a request with no verified actor is
+// refused. In log mode it is the claim, counted where enforce would decide otherwise.
+func attributedJoin(w http.ResponseWriter, r *http.Request, claimName, claimSession string) (string, string, bool) {
+	a := callerActor(r)
+	verified := a.Kind == ActorToken || a.Kind == ActorOperator
+	if !identityActorEnforced() {
+		if !verified || (a.Kind == ActorToken && ((a.Name != "" && strings.TrimSpace(claimName) != "" && !board.SameIdentity(strings.TrimSpace(claimName), a.Name)) ||
+			(strings.TrimSpace(claimSession) != "" && claimSession != a.Session))) {
+			noteEnforceDiffers("attribution", r)
+		}
+		return claimName, claimSession, true
+	}
+	switch {
+	case a.Kind == ActorToken:
+		name := claimName
+		if a.Name != "" {
+			name = a.Name
+		}
+		return name, a.Session, true
+	case a.Kind == ActorOperator:
+		return claimName, claimSession, true
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": "this request is not from a verified member of the board or the Operator", "code": "identity_unverified"})
+	return "", "", false
 }
