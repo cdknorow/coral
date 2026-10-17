@@ -101,8 +101,19 @@ function readableName(item) {
     return item.task_id ? `Task #${item.task_id} artifact` : 'Uploaded artifact';
 }
 
+// What a row says about where it came from, and whether Coral checked the link (#4396). A row whose provenance is "unverified" cites a Coral artifact
+// this team has no upload of: it has no size, type, preview or download here, and it says so. A shared row is a file this team sent; a received one
+// came from another computer. The words are the server's display text, never markup.
+function isUnverified(item) { return item.provenance === 'unverified'; }
+function originBadge(item) {
+    if (isUnverified(item)) return { kind: 'unverified', text: 'Link not verified' };
+    if (item.source === 'shared') return { kind: 'shared', text: `Sent to ${item.shared_to || 'another team'}` };
+    if (item.source === 'received') return { kind: 'received', text: `From ${item.received_from || 'another computer'}` };
+    return null;
+}
+
 function artifactLink(item) {
-    if (item.available === false) return null;
+    if (item.available === false || isUnverified(item)) return null;
     const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})(?:\?v=\d+)?$/i.exec(item.uri || '');
     if (managed) return { url: serverUrl(artifactPath(managed[1]), splitKey(team).server), preview: true };
     const contentPath = `/api/board/${encodeURIComponent(splitKey(team).name)}/tasks/${item.task_id}/artifact-content`;
@@ -250,6 +261,8 @@ function render() {
     const rows = el('tbody');list.append(rows);
     for (const item of items) {
         const row = el('tr', 'team-artifact-row');
+        const unverified = isUnverified(item);
+        const badge = originBadge(item);
         const info = el('td', 'team-artifact-info team-artifact-col-name');
         const name = readableName(item);
         const link = artifactLink(item);
@@ -269,20 +282,30 @@ function render() {
         }
         title.title = name;
         info.append(title);
+        if (badge) {
+            const chip = el('span', `team-artifact-badge team-artifact-badge-${badge.kind}`, badge.text);
+            info.append(chip);
+            row.dataset.origin = badge.kind;
+        }
         const date = item.created_at ? new Date(item.created_at) : null;
         const created = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : '—';
         // An artifact uploaded outside a task says so (#3045).
         const task = item.task_id ? `#${item.task_id}` : 'No task';
-        const type = artifactType(item);
-        const size = sizeLabel(item.size) || '—';
+        const type = unverified ? '—' : artifactType(item);
+        const size = unverified ? '—' : sizeLabel(item.size) || '—';
         const details = el('details', 'team-artifact-details');
         const summary = el('summary', '', 'Details');
         summary.setAttribute('aria-label', `Details for ${name}`);
         const fields = el('dl');
         for (const [label, value] of [
-            ['Name', name], ['Type', type], ['MIME', item.media_type || 'Unknown'],
-            ['Size', size], ['Task', task], ['Task title', item.task_title],
+            ['Name', name], ['Type', unverified ? null : type], ['MIME', unverified ? null : item.media_type || 'Unknown'],
+            ['Size', unverified ? null : size], ['Task', task], ['Task title', item.task_title],
             ['Created', created], ['Producer', item.produced_by],
+            ['Status', unverified ? 'Link not verified: this team has not uploaded this file, so Coral shows no size, type or preview' : null],
+            ['Sent to', item.source === 'shared' ? item.shared_to : null],
+            ['Received from', item.source === 'received' ? item.received_from : null],
+            ['Board (claimed by the sender)', item.source === 'received' ? item.from_board : null],
+            ['Checked', item.source === 'received' ? 'Not scanned: this file came from another computer' : null],
             ['Source', item.source], ['References', item.reference_count],
         ]) {
             if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
@@ -332,7 +355,7 @@ function render() {
                 actions.append(keep, del);
             }
             actionCell.append(actions);
-        } else actionCell.append(el('span', 'team-artifact-missing', item.available === false ? 'Missing' : 'Unavailable'));
+        } else actionCell.append(el('span', 'team-artifact-missing', unverified ? 'Not verified' : item.available === false ? 'Missing' : 'Unavailable'));
         rows.append(row);
     }
     scroll.append(list);root.append(scroll);

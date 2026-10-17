@@ -2563,6 +2563,9 @@ body.panel-dragging .agentic-state {
 .team-artifact-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding: 0; background: none; border: 0; color: var(--text-primary); font: 500 var(--fs-md)/1.4 var(--font-sans); text-align: left; overflow-wrap: anywhere; }
 button.team-artifact-name { cursor: pointer; }
 .team-artifact-missing { font-size: var(--fs-base); color: var(--text-secondary); }
+/* Where a row came from: a file this team sent, one from another computer, or a link Coral could not verify (#4396). Words, not colour alone. */
+.team-artifact-badge { display: inline-block; max-width: 100%; margin-top: var(--space-xs); padding: 0.125rem 0.5rem; border: 1px solid var(--border); border-radius: 0.75rem; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.4; overflow-wrap: anywhere; }
+.team-artifact-badge-unverified { border-color: var(--warning); color: var(--text-primary); }
 .team-artifact-details { margin-top: var(--space-xs); color: var(--text-secondary); font-size: var(--fs-base); }
 .team-artifact-details summary { width: fit-content; padding: var(--space-xs) 0; cursor: pointer; }
 .team-artifact-details dl { margin: var(--space-md) 0 0; }
