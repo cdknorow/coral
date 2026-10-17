@@ -2346,6 +2346,18 @@ function editedCLIPathKeys() {
     return Object.entries(CLI_PATH_FIELDS).filter(([, id]) => document.getElementById(id)?.dataset.edited === '1').map(([key]) => key);
 }
 
+// dropUnfilledCLIPaths removes from payload the CLI path settings whose field the dialog has not filled and the person has not
+// typed in: an empty field that was never filled is not a path cleared on purpose (it would clear the path, v1.4.80 gate).
+function dropUnfilledCLIPaths(payload) {
+    for (const [key, id] of Object.entries(CLI_PATH_FIELDS)) {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.filled === '1' || el.dataset.edited === '1') continue;
+        delete payload[key];
+        if (key === 'cli_path_agy') delete payload.cli_path_gemini; // one field for both
+    }
+    return payload;
+}
+
 function refreshCLIPathFields() {
     if (isCloud()) return; // the CLI path fields are hidden on the hub (machine settings): nothing to refresh
     const { cli_path_agy: _agy, ...fields } = CLI_PATH_FIELDS;
@@ -2391,6 +2403,9 @@ export async function showSettingsModal() {
     const s = state.settings || {};
     // What this dialog opens with: Save sends only the fields that end up different from it.
     _settingsAtOpen = { ...s };
+    // The CLI path fields are filled later in this function (after awaited requests): until then they are empty, and a Save
+    // made in that time (a suite that does not wait for the dialog) must not read them as "cleared".
+    for (const id of Object.values(CLI_PATH_FIELDS)) { const el = document.getElementById(id); if (el) el.dataset.filled = ''; }
     // The machine-only parts of this dialog (privacy, remote access, database encryption, connecting to a hub) do not
     // exist on the hub: the cloud dialog shows only the per-user settings (applyCloudSettingsDialog below).
     if (!isCloud()) {
@@ -2510,6 +2525,7 @@ export async function showSettingsModal() {
     const agyCliPath = s.cli_path_agy || s.cli_path_gemini || "";
     if (cliAgy) cliAgy.value = agyCliPath;
     if (cliPi) cliPi.value = s.cli_path_pi || "";
+    for (const id of Object.values(CLI_PATH_FIELDS)) { const el = document.getElementById(id); if (el) el.dataset.filled = '1'; }
     refreshCLIPathFields();
 
     // Default Models — populate combo inputs + datalists from /api/agent-models
@@ -2726,7 +2742,7 @@ export async function applySettings() {
 
     // Only what the person changed since the dialog opened: a field this dialog never touched (a CLI path another
     // tab saved meanwhile) is not written back with the value this page opened with.
-    payload = changedSettings(payload, _settingsAtOpen, themeValue, editedCLIPathKeys());
+    payload = changedSettings(dropUnfilledCLIPaths(payload), _settingsAtOpen, themeValue, editedCLIPathKeys());
     // The hub accepts only the per-user keys (anything else refuses the whole request); the machine ones are hidden.
     if (isCloud()) payload = filterSettingsPayload(payload).kept;
 
