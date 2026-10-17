@@ -65,7 +65,7 @@ func MinifyIdentity() string {
 	if disabled.Load() || os.Getenv("CORAL_NO_MINIFY") == "1" {
 		return "minify:off"
 	}
-	return "minify:esbuild " + esbuildVersion + " " + minifyFormat
+	return "minify:esbuild " + esbuildVersion + " " + minifyFormat + " " + bundleFormat
 }
 
 // esbuildVersion is the esbuild module version this binary is built with: a constant, not read

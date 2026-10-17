@@ -58,6 +58,11 @@ func StylesheetsInShell(indexHTML []byte) []string {
 	return out
 }
 
+// bundleFormat names what the bundled family's bytes depend on beyond the sources and MinifyAsset's options: change it when BuildBundle's output changes
+// for the same tree (its esbuild options, what it registers or adds), so the static build version (MinifyIdentity, #4320) changes with it and a browser
+// holding the old bundle at the same /static/bb/<build>/ URL is not served the new one's stubs by mistake.
+const bundleFormat = "bundle:ws+syntax+idents,self-registered-importonce,startup-lazy:1"
+
 // StartupLazyModules are the modules the dashboard's startup imports with importOnce (not statically), on every normal start: the
 // leftover-tmux check and the sign-in and set-password prompts. They are part of the bundle so those imports cost
 // no request, and no second round trip for the stubs they import (#4326). Order matters: password_ui.js awaits importOnce('./password_rules.js') at its

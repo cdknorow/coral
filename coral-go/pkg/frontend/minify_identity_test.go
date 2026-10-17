@@ -16,6 +16,9 @@ func TestMinifyIdentity(t *testing.T) {
 	if !strings.HasPrefix(on, "minify:esbuild ") || !strings.Contains(on, minifyFormat) {
 		t.Fatalf("identity %q does not name esbuild and its options", on)
 	}
+	if !strings.Contains(on, bundleFormat) {
+		t.Errorf("identity %q does not carry the bundle's format %q: a change to BuildBundle's output would not change the build id (#4326)", on, bundleFormat)
+	}
 	if !strings.Contains(on, esbuildVersion) {
 		t.Errorf("identity %q does not carry the esbuild version %s", on, esbuildVersion)
 	}
