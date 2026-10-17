@@ -113,6 +113,10 @@ const BASE = require('./test_base').BASE;
         console.log('PASS (6) Launch: missing directory -> field marked, cleared on edit');
 
         // ── (12) Settings API key: masked, full width, Show and Copy.
+        // GET /api/system/api-key needs a signed-in browser (#4290): these tabs have no sign-in, so the answer is faked, as a signed-in one and as a refused one.
+        await ev(`window.__realFetch = window.fetch; window.__keyAnswer = 200; window.fetch = (u, o) => new URL(String(u), location.origin).pathname === '/api/system/api-key'
+            ? Promise.resolve(window.__keyAnswer === 200 ? new Response(JSON.stringify({ key: 'papercuts-test-key-0123456789' }), { status: 200, headers: { 'content-type': 'application/json' } }) : new Response('{"error":"dashboard_auth_required"}', { status: window.__keyAnswer, headers: { 'content-type': 'application/json' } }))
+            : window.__realFetch(u, o); true`);
         await ev(`showSettingsModal()`);
         await waitFor(`(() => { const i = document.getElementById('settings-api-key'); return i && i.value && i.value !== 'Loading...'; })()`, 'the API key', { timeout: 8000 });
         const key = await ev(`(() => { const i = document.getElementById('settings-api-key'); const row = i.closest('.settings-api-key-row'); const show = document.getElementById('settings-api-key-show'); const copy = document.getElementById('settings-api-key-copy');
@@ -124,7 +128,13 @@ const BASE = require('./test_base').BASE;
         await ev(`document.getElementById('settings-api-key-show').click(); true`);
         assert.deepEqual(await ev(`[document.getElementById('settings-api-key').type, document.getElementById('settings-api-key-show').textContent, document.getElementById('settings-api-key-show').getAttribute('aria-pressed')]`), ['text', 'Hide', 'true']);
         await ev(`hideSettingsModal(); true`);
-        console.log('PASS (12) API key: masked full width, Show/Hide, Copy enabled');
+        // No sign-in: the server answers 401; the field says how to see the key (text, controls off), not "Not configured".
+        await ev(`window.__keyAnswer = 401; showSettingsModal(); true`);
+        await waitFor(`/Sign in/.test(document.getElementById('settings-api-key').value)`, 'the sign-in text', { timeout: 8000 });
+        const refused = await ev(`(() => { const i = document.getElementById('settings-api-key'); return { value: i.value, type: i.type, showHidden: document.getElementById('settings-api-key-show').hidden, copyDisabled: document.getElementById('settings-api-key-copy').disabled }; })()`);
+        assert.deepEqual(refused, { value: 'Sign in to see the API key (run: coral open)', type: 'text', showHidden: true, copyDisabled: true });
+        await ev(`hideSettingsModal(); window.fetch = window.__realFetch; true`);
+        console.log('PASS (12) API key: masked full width, Show/Hide, Copy enabled; a 401 says to sign in');
 
         // ── (13) The agent search placeholder fits the box at its narrowest.
         const fit = await ev(`(() => { const i = document.getElementById('agent-search-input'); const cs = getComputedStyle(i); const box = i.closest('.sidebar-search'); const min = parseFloat(getComputedStyle(box).minWidth);

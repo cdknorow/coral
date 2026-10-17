@@ -220,6 +220,8 @@ const SHELL_PROBE = `(() => {
         mode: document.body.getAttribute('data-entry-mode'), target: document.body.getAttribute('data-target-session-id'), popoutClass: document.body.classList.contains('popout-mode'),
         chrome: { topBar: vis('.top-bar'), sidebar: vis('.sidebar'), sidebarHandle: vis('#sidebar-resize-handle'), tabletToggle: vis('.tablet-sidebar-toggle'), mobileBar: vis('.mobile-tab-bar'), mobileList: vis('#mobile-agent-list'), welcome: vis('#welcome-screen') },
         layoutH: document.querySelector('.layout') ? document.querySelector('.layout').getBoundingClientRect().height : null, innerH: window.innerHeight,
+        // the local sign-in banner's strip (#4291), when sign-in is off, takes its height from the page above the layout
+        stripH: [...document.body.children].filter(e => e.id === 'local-auth-banner' && !e.hidden).reduce((n, e) => n + e.getBoundingClientRect().height, 0),
         identity: (document.getElementById('popout-header-identity') || {}).textContent || '', identityLive: (document.getElementById('popout-header-identity') || { getAttribute() { return null; } }).getAttribute('aria-live'),
         badge: (document.getElementById('terminal-type-badge') || {}).textContent || '', pill: (document.getElementById('terminal-state-pill') || { getAttribute() { return null; } }).getAttribute('data-state'), pillText: (document.getElementById('terminal-state-pill') || {}).textContent || '',
         openMain: (() => { const a = document.getElementById('popout-open-main-btn'); return a ? { tag: a.tagName, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') } : null; })(),
@@ -319,7 +321,7 @@ async function run() {
     let s1 = await t1.ev(SHELL_PROBE);
     check('1 popout boot attrs + popout-mode class', s1.mode === 'agent' && s1.target === sid && s1.popoutClass, JSON.stringify({ mode: s1.mode, target: s1.target, cls: s1.popoutClass }));
     check('8 chrome absent/hidden (top bar, sidebar, handle, tablet toggle, mobile bar/list, welcome)', Object.values(s1.chrome).every(v => v !== 'visible'), JSON.stringify(s1.chrome));
-    check('8 .layout fills the viewport', s1.layoutH !== null && Math.abs(s1.layoutH - s1.innerH) <= 2, `${s1.layoutH} vs ${s1.innerH}`);
+    check('8 .layout fills the viewport (less the local sign-in strip, when it shows)', s1.layoutH !== null && Math.abs(s1.layoutH - (s1.innerH - s1.stripH)) <= 2, `${s1.layoutH} vs ${s1.innerH} less ${s1.stripH}`);
     // On desktop the bottom command pane is hidden in TERMINAL view on purpose (chat.css: the xterm takes keystrokes
     // itself); it shows in chat view and on mobile. This fixture is a terminal session, so the pane is hidden here and
     // the input and quick-action strip it contains are still the ones the popout drives.

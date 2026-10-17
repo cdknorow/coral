@@ -29,9 +29,10 @@ export async function checkLocalAuthBanner() {
     if (banner.hidden === off) banner.hidden = !off; // only a change touches it
 }
 
+/** Start the checks; resolves when the first answer is in (the page waits for it, briefly, so the banner's strip is settled before the terminal is sized). */
 export function startLocalAuthBanner() {
-    if (started || isCloud()) return;
+    if (started || isCloud()) return Promise.resolve();
     started = true;
-    checkLocalAuthBanner();
     pollEvery(checkLocalAuthBanner, CHECK_MS);
+    return checkLocalAuthBanner();
 }

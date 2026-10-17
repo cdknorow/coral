@@ -145,6 +145,13 @@
         </div>
     </header>
 
+    <!-- #4291: local sign-in is off (local_auth_banner.js). A strip across the top, like the tmux banner below, and not a child of .main-content: the
+         views in it are counted and sized, and its height is settled before the terminal is sized. No close button; it goes when sign-in is back on. -->
+    <div id="local-auth-banner" class="local-auth-banner" role="alert" hidden>
+        <span class="material-icons" aria-hidden="true">warning</span>
+        <div class="local-auth-banner-text"><b>Local sign-in is OFF:</b> any program on this computer can use Coral.</div>
+    </div>
+
     <div id="tmux-missing-banner" class="tmux-missing-banner" role="alert" style="display:none">
         <span class="material-icons tmux-missing-banner-icon">warning</span>
         <div class="tmux-missing-banner-body">
@@ -171,12 +178,6 @@
                 <span class="material-icons" aria-hidden="true">system_update</span>
                 <div class="leftover-tmux-text"><b>Coral was updated.</b> <span id="update-banner-detail">Reloading in a few seconds.</span></div>
                 <button class="btn btn-primary" type="button" data-on-click="update-reload">Reload</button>
-            </div>
-
-            <!-- #4291: local sign-in is off (local_auth_banner.js); no close button, it goes when sign-in is back on -->
-            <div id="local-auth-banner" class="leftover-tmux-banner local-auth-banner" role="alert" hidden>
-                <span class="material-icons" aria-hidden="true">warning</span>
-                <div class="leftover-tmux-text"><b>Local sign-in is OFF:</b> any program on this computer can use Coral.</div>
             </div>
 
             <!-- #3634: under pty, agents still running in Coral's old tmux server (terminal_backend.js) -->

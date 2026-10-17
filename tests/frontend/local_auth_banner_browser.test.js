@@ -38,9 +38,10 @@ const FAKE = `(() => {
         // off: shown at startup
         await waitFor(`!document.getElementById('local-auth-banner').hidden`, 'the banner at startup', 15000);
         const b = await ev(`(() => { const e = document.getElementById('local-auth-banner'); const cs = getComputedStyle(e);
-            return { text: e.querySelector('.leftover-tmux-text').textContent.replace(/\\s+/g, ' ').trim(), role: e.getAttribute('role'), buttons: e.querySelectorAll('button, [role=button], a').length, border: cs.borderTopColor, errorColor: getComputedStyle(document.documentElement).getPropertyValue('--error').trim() }; })()`);
+            return { text: e.querySelector('.local-auth-banner-text').textContent.replace(/\\s+/g, ' ').trim(), role: e.getAttribute('role'), buttons: e.querySelectorAll('button, [role=button], a').length, border: cs.borderTopColor, errorColor: getComputedStyle(document.documentElement).getPropertyValue('--error').trim() }; })()`);
         assert.equal(b.text, TEXT); assert.equal(b.role, 'alert'); assert.equal(b.buttons, 0, 'nothing to close or follow');
         assert.ok(b.border && b.border !== 'rgba(0, 0, 0, 0)', 'a red border: ' + b.border);
+        assert.equal(await ev(`!document.querySelector('.main-content').contains(document.getElementById('local-auth-banner')) && document.getElementById('local-auth-banner').previousElementSibling.tagName === 'HEADER'`), true, 'a strip under the header, not a child of .main-content');
         assert.equal(await shown(), true);
         await shot('desktop');
         ok('strict_local_auth false: the banner shows at startup with the exact words, a role=alert, no button');

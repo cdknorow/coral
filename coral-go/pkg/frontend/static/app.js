@@ -863,13 +863,15 @@ function pollStartupStatus() {
             const data = await resp.json();
             if (!data || typeof data.startup_complete !== 'boolean') throw new SyntaxError('Invalid startup status');
             if (data.startup_complete) {
+                // The local sign-in banner's strip is settled before the page shows, so the terminal is sized once with it (or without it): a
+                // check that is slow or fails does not hold the page past 1.5 s (#4291).
+                await Promise.race([importOnce('./local_auth_banner.js').then(m => m.startLocalAuthBanner()), new Promise(r => setTimeout(r, 1500))]).catch(() => {});
                 el.classList.add('hidden');
                 if (data.security_warning) showSecurityWarning(data.security_warning); // #3637
                 // The server checks its databases a minute after it starts (#4157): look again then.
                 if (data.database_warning) showDatabaseWarning(data.database_warning);
                 else setTimeout(recheckDatabases, DATABASE_RECHECK_MS);
                 dashboardStartupComplete();
-                importOnce('./local_auth_banner.js').then(m => m.startLocalAuthBanner()).catch(() => {}); // #4291: red banner while local sign-in is off
                 // One question at a time: set a password (#3948, once, while none is set), then Coral Hub sign-in (#3966, once, for a
                 // computer already linked to Coral Hub). The second waits if the first is still open.
                 importOnce('./password_ui.js').then(m => m.maybePromptSetPassword()).catch(() => {})

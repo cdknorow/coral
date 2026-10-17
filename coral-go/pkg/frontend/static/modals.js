@@ -2463,8 +2463,12 @@ export async function showSettingsModal() {
     const apiKeyInput = document.getElementById("settings-api-key");
     if (apiKeyInput && !isCloud()) {
         _wireApiKeyControls(apiKeyInput);
-        fetch('/api/system/api-key').then(r => r.ok ? r.json() : null).then(data => {
-            _setApiKey(apiKeyInput, data && data.key, 'Not configured');
+        fetch('/api/system/api-key').then(r => {
+            // No sign-in (the dashboard opened without one, local sign-in off): the server refuses the key. Say how to see it, not "Not configured".
+            if (r.status === 401 || r.status === 403) return { signIn: true };
+            return r.ok ? r.json() : null;
+        }).then(data => {
+            _setApiKey(apiKeyInput, data && data.key, data && data.signIn ? 'Sign in to see the API key (run: coral open)' : 'Not configured');
         }).catch(() => _setApiKey(apiKeyInput, '', 'Not available'));
     }
 

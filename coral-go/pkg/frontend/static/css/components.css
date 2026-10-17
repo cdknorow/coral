@@ -3852,8 +3852,10 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 .leftover-tmux-banner[hidden] { display: none; }
 .leftover-tmux-banner .material-icons { color: var(--color-warning, #d29922); }
 .leftover-tmux-text { flex: 1; min-width: 0; }
-.local-auth-banner { background: color-mix(in srgb, var(--error) 16%, var(--bg-secondary)); border: 1px solid var(--error); color: var(--text-primary); } /* #4291 */
-.leftover-tmux-banner.local-auth-banner .material-icons { color: var(--error); }
+.local-auth-banner { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; background: color-mix(in srgb, var(--error) 16%, var(--bg-secondary)); border-bottom: 1px solid var(--error); color: var(--text-primary); font-size: var(--fs-base, 13px); } /* #4291 */
+.local-auth-banner[hidden] { display: none; }
+.local-auth-banner .material-icons { flex: none; color: var(--error); font-size: 20px; }
+.local-auth-banner-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 767px) { .leftover-tmux-banner { flex-wrap: wrap; } }
 /* Agents on an older hook set (#3665). One line (the count and three buttons); the list opens below it, bounded
    in height and scrollable, grouped by team (#3729). */
