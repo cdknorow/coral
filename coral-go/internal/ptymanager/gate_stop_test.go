@@ -1,6 +1,8 @@
 package ptymanager
 
 import (
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -8,11 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var stopGateRuns atomic.Int64
+
 // The gate's retry loop sleeps between tries; StopGate must wake it and wait for it to end, well
 // inside the sleep, and leave what is held held (#4167: a short test run ended before the 2 s sleep
 // did, and the leak check named the loop).
 func TestStopGateEndsTheSleepingLoopAndKeepsWhatIsHeld(t *testing.T) {
-	const name = "stopgate-test-session"
+	// Its own session name each run: DropHeld (the cleanup) raises the session's generation, and a
+	// later run's sends under the same name would be stale and never held (-count=N).
+	name := fmt.Sprintf("stopgate-test-session-%d", stopGateRuns.Add(1))
 	gate.mu.Lock()
 	oldEvery := gate.timings.every
 	gate.timings.every = 2 * time.Second // long enough that a retry can't happen during the test
