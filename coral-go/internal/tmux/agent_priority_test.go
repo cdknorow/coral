@@ -58,7 +58,11 @@ func TestNewAgentPanesRunAtLowPriority(t *testing.T) {
 
 	// An already-running pane (an older Coral's) is lowered once at startup.
 	agentprio.SetSetting(agentprio.Low)
-	assert.GreaterOrEqual(t, c.LowerExistingPanes(ctx), 1)
+	if n := c.LowerExistingPanes(ctx); base < agentprio.Nice {
+		assert.GreaterOrEqual(t, n, 1)
+	} else {
+		assert.Zero(t, n, "already at Nice (the test runs niced): nothing changed, nothing counted (#4129)")
+	}
 	assert.Equal(t, low, niceOf(t, pid2), "lowered by the startup pass")
 }
 

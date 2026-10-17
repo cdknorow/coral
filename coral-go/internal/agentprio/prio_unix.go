@@ -13,11 +13,21 @@ import (
 // lower sets pid's niceness to Nice. Raising niceness needs no privilege; a
 // process already nicer than Nice is left alone.
 func lower(pid int) error {
+	_, err := lowerChanged(pid)
+	return err
+}
+
+// lowerChanged is lower, reporting whether pid's niceness was changed (false when it already
+// ran at Nice or nicer).
+func lowerChanged(pid int) (bool, error) {
 	cur, err := syscall.Getpriority(syscall.PRIO_PROCESS, pid)
 	if err == nil && niceness(cur) >= Nice {
-		return nil
+		return false, nil
 	}
-	return syscall.Setpriority(syscall.PRIO_PROCESS, pid, Nice)
+	if err := syscall.Setpriority(syscall.PRIO_PROCESS, pid, Nice); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // lowerGroup lowers each member of process group pgid on its own, so a member
@@ -79,10 +89,18 @@ func groupMembers(pgid int) []int {
 
 // descendants returns pid and all its descendants, from ps, each with the
 // parent it had in that snapshot (0 for pid itself if ps failed).
-func descendants(pid int) []proc {
+func descendants(pid int) []proc { return descendantsOf(pid) }
+
+// descendantsOf is descendants for several roots from one ps snapshot (#4129: a ps per pane
+// cost ~20 ms each at startup).
+func descendantsOf(pids ...int) []proc {
 	pairs := psPairs("ppid")
 	if pairs == nil {
-		return []proc{{pid: pid}}
+		out := make([]proc, 0, len(pids))
+		for _, pid := range pids {
+			out = append(out, proc{pid: pid})
+		}
+		return out
 	}
 	children := map[int][]int{}
 	parent := map[int]int{}
@@ -90,7 +108,7 @@ func descendants(pid int) []proc {
 		children[p[1]] = append(children[p[1]], p[0])
 		parent[p[0]] = p[1]
 	}
-	all, queue := []proc{}, []int{pid}
+	all, queue := []proc{}, append([]int(nil), pids...)
 	seen := map[int]bool{}
 	for len(queue) > 0 {
 		p := queue[0]

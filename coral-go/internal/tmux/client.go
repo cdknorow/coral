@@ -1053,13 +1053,13 @@ func (c *Client) LowerExistingPanes(ctx context.Context) int {
 	if err != nil {
 		return 0
 	}
-	n := 0
+	var pids []int
 	for _, f := range strings.Fields(out) {
 		if pid, err := strconv.Atoi(f); err == nil {
-			n += agentprio.ApplyTree(pid)
+			pids = append(pids, pid)
 		}
 	}
-	return n
+	return agentprio.ApplyTrees(pids) // one process snapshot for every pane (#4129)
 }
 
 // scrubServerEnv keeps Coral's server-only settings out of new agent panes (#3389). A tmux

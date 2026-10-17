@@ -143,6 +143,14 @@ func ApplyTree(pid int) int {
 	return lowerTree(descendants(pid))
 }
 
+// ApplyTrees is ApplyTree for several processes, from one process snapshot (#4129).
+func ApplyTrees(pids []int) int {
+	if len(pids) == 0 || Level() != Low {
+		return 0
+	}
+	return lowerTree(descendantsOf(pids...))
+}
+
 // lowerTree lowers each process of a snapshot whose parent is unchanged.
 func lowerTree(procs []proc) int {
 	n := 0
@@ -152,11 +160,14 @@ func lowerTree(procs []proc) int {
 				continue
 			}
 		}
-		if err := lower(p.pid); err != nil {
+		changed, err := lowerChanged(p.pid)
+		if err != nil {
 			logOnce("tree", err)
 			continue
 		}
-		n++
+		if changed {
+			n++ // only processes whose priority this changed (#4129: it counted all of them)
+		}
 	}
 	return n
 }

@@ -80,7 +80,11 @@ func TestApplyGroupAndTree(t *testing.T) {
 	t.Cleanup(func() { _ = syscall.Kill(-ppid, syscall.SIGKILL) })
 	time.Sleep(200 * time.Millisecond)
 	n := ApplyTree(ppid)
-	assert.GreaterOrEqual(t, n, 3, "the pane and its children")
+	if niceOf(t, os.Getpid()) < Nice {
+		assert.GreaterOrEqual(t, n, 3, "the pane and its children")
+	} else {
+		assert.Zero(t, n, "already at Nice (tests run niced): nothing changed, nothing counted (#4129)")
+	}
 	for _, p := range descendants(ppid) {
 		assert.Equal(t, want, niceOf(t, p.pid), "pid %d under the pane", p.pid)
 	}
@@ -128,6 +132,30 @@ func TestApplyTreeSkipsAReusedPid(t *testing.T) {
 
 	assert.Equal(t, 0, lowerTree([]proc{{pid: pid, ppid: ppid + 1}}), "a different parent: skipped")
 	assert.Equal(t, self, niceOf(t, pid))
-	assert.Equal(t, 1, lowerTree([]proc{{pid: pid, ppid: ppid}}), "the same parent: lowered")
+	wantN := 1
+	if self >= Nice {
+		wantN = 0 // already at Nice: lowered means changed (#4129)
+	}
+	assert.Equal(t, wantN, lowerTree([]proc{{pid: pid, ppid: ppid}}), "the same parent: lowered")
 	assert.Equal(t, max(self, Nice), niceOf(t, pid))
+}
+
+// #4129: ApplyTrees lowers several panes' trees from one process snapshot, and counts only the
+// processes whose priority it changed: a second pass over the same panes changes nothing.
+func TestApplyTreesCountsOnlyWhatItChanged(t *testing.T) {
+	reset(t)
+	self := niceOf(t, os.Getpid())
+	a := startSleep(t, exec.Command("sleep", "30"))
+	b := startSleep(t, exec.Command("sleep", "30"))
+	n := ApplyTrees([]int{a, b})
+	if self < Nice {
+		assert.Equal(t, 2, n, "both panes lowered")
+	} else {
+		assert.Zero(t, n, "already at Nice")
+	}
+	for _, p := range []int{a, b} {
+		assert.Equal(t, max(self, Nice), niceOf(t, p))
+	}
+	assert.Zero(t, ApplyTrees([]int{a, b}), "a second pass changes nothing and says so")
+	assert.Zero(t, ApplyTrees(nil))
 }

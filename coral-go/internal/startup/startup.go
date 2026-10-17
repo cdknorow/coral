@@ -846,13 +846,17 @@ func selectBackend(backendType, logDir, coralDir string) (ptymanager.TerminalBac
 		return ptyBackend, background.NewPTYRuntime(ptyBackend), ptymanager.NewPTYSessionTerminal(ptyBackend)
 	}
 	tmuxClient := tmux.NewClient(coralDir)
-	// Panes a tmux server from before #3437 started at normal priority: lower
-	// them (and their children) once, on our own socket only.
-	if n := tmuxClient.LowerExistingPanes(context.Background()); n > 0 {
-		log.Printf("Lowered the priority of %d existing agent processes (agent_priority=%s)", n, agentprio.Level())
-	}
-	// How many agents only the default-socket merge finds (#3635; it goes off by default next release).
-	tmuxClient.LogDefaultSocketMerges(context.Background())
+	// Neither has to finish before the dashboard answers (#4129: with 20 agents they took ~440 ms
+	// of every start), so they run beside the rest of startup:
+	// - panes a tmux server from before #3437 started at normal priority are lowered (and their
+	//   children), on our own socket only; they were running already, so a moment later is fine;
+	// - how many agents only the default-socket merge finds is logged (#3635).
+	safego.Go("startup: existing panes", func() {
+		if n := tmuxClient.LowerExistingPanes(context.Background()); n > 0 {
+			log.Printf("Lowered the priority of %d existing agent processes (agent_priority=%s)", n, agentprio.Level())
+		}
+		tmuxClient.LogDefaultSocketMerges(context.Background())
+	})
 	tmuxBackend := ptymanager.NewTmuxBackend(tmuxClient, logDir)
 	log.Println("Using tmux terminal backend")
 	return tmuxBackend, background.NewTmuxRuntime(tmuxClient), ptymanager.NewTmuxSessionTerminal(tmuxClient)
