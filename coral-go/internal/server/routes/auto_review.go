@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -83,4 +84,23 @@ func (h *BoardHandler) healthBudgetReached(ctx context.Context, project string) 
 	}
 	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf(
 		"@%s [Coral health actions paused] this board's budget of %d automatic actions an hour is used up; Coral acts again next hour", teamhealth.Name(orch), healthTeamBudget), nil)
+}
+
+// claimIdentity says how the name a board request gives is backed (#4175, Security's caveat on
+// #4176 rule 13): "token" when the request carries an agent token whose session holds that
+// name's subscription on this board, "operator" for the Operator with no agent token (the
+// dashboard, a signed CLI), and "claimed" otherwise. Recorded on tasks now; the names count by
+// it once identity is strict.
+func (h *BoardHandler) claimIdentity(r *http.Request, project, claimed string) string {
+	if owner, ok := VerifiedSession(r.Context()); ok {
+		sub, err := h.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
+		if err == nil && sub != nil && sub.Project == project && board.SameIdentity(sub.SubscriberID, claimed) {
+			return "token"
+		}
+		return "claimed"
+	}
+	if claimed == "Operator" && !agentCaller(r) {
+		return "operator"
+	}
+	return "claimed"
 }

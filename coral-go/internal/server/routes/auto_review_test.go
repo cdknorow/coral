@@ -120,3 +120,32 @@ func TestAutoDelegationCanBeTurnedOff(t *testing.T) {
 	submit(t, base, task.ID)
 	assert.Empty(t, reviewersOf(t, h, "off", task.ID))
 }
+
+// #4175, Security's caveat on #4176 rule 13: how the creator's and each amendment's names were
+// backed is recorded by the server, whatever the request says ("claimed" for a bare name,
+// "operator" for the Operator without an agent token).
+func TestTaskRecordsHowItsNamesWereBacked(t *testing.T) {
+	server, h := setupBoardTestServer(t)
+	ctx := context.Background()
+	_, err := h.bs.Subscribe(ctx, "ids", "lead", "Orchestrator", "lead-session", nil, "all")
+	require.NoError(t, err)
+	code, out := postCode(t, server.URL+"/api/board/ids/tasks", map[string]any{"title": "work", "subscriber_id": "lead",
+		"workflow": map[string]any{"created_identity": "token", "amend_identity": map[string]string{"2": "token"}}})
+	require.Equal(t, 201, code, "%v", out)
+	id := int64(out["id"].(float64))
+	task, err := h.bs.GetTask(ctx, "ids", id)
+	require.NoError(t, err)
+	assert.Equal(t, "claimed", task.Workflow.CreatedIdentity, "a forged value is replaced")
+	assert.Empty(t, task.Workflow.AmendIdentity)
+
+	code, out = postCode(t, server.URL+"/api/board/ids/tasks", map[string]any{"title": "work", "subscriber_id": "Operator"})
+	require.Equal(t, 201, code, "%v", out)
+	task, err = h.bs.GetTask(ctx, "ids", int64(out["id"].(float64)))
+	require.NoError(t, err)
+	assert.Equal(t, "operator", task.Workflow.CreatedIdentity)
+
+	require.NoError(t, h.bs.RecordAmendIdentity(ctx, "ids", id, 2, "operator"))
+	task, err = h.bs.GetTask(ctx, "ids", id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"2": "operator"}, task.Workflow.AmendIdentity)
+}

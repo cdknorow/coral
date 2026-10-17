@@ -1525,6 +1525,9 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		body.Priority = "medium"
 	}
 
+	// How the creator's name is backed: the server's to say, whatever the request sent (#4175).
+	body.Workflow.CreatedIdentity = h.claimIdentity(r, project, createdBy)
+	body.Workflow.AmendIdentity = nil
 	opts := &board.CreateTaskOpts{Draft: body.Draft, Workflow: body.Workflow}
 	if len(body.BlockedBy) > 0 {
 		deps, err := parseBlockedBy(body.BlockedBy, project)
@@ -2134,6 +2137,9 @@ func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
 			errBadRequest(w, err.Error())
 		}
 		return
+	}
+	if err := h.bs.RecordAmendIdentity(r.Context(), project, task.ID, task.Revision, h.claimIdentity(r, project, body.SubscriberID)); err != nil {
+		slog.Warn("record amendment identity failed", "project", project, "task", task.ID, "error", err)
 	}
 	h.goBG(func() {
 		notice := fmt.Sprintf("[Task #%d amended to revision %d] %s", task.ID, task.Revision, task.Title)

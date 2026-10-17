@@ -71,6 +71,12 @@ type TaskWorkflow struct {
 	// its review to when it enters review, if the task's creator was the orchestrator or the
 	// Operator (AutoReviewers).
 	Reviewers []string `json:"reviewers,omitempty"`
+	// How the creator's and each amendment's names were backed (#4175, Security's caveat on
+	// #4176 rule 13): "token" (an agent token whose session holds that name on this board),
+	// "operator" (the Operator, with no agent token) or "claimed" (only the name the request
+	// gave). Set by the server only; recorded now, for when identity is strict.
+	CreatedIdentity string            `json:"created_identity,omitempty"`
+	AmendIdentity   map[string]string `json:"amend_identity,omitempty"` // by revision
 }
 
 func (s *Store) initTaskWorkflows(ctx context.Context) error {
@@ -602,4 +608,29 @@ func validateTaskArtifacts(artifacts []TaskArtifact) ([]string, error) {
 		return nil, err
 	}
 	return names, nil
+}
+
+// RecordAmendIdentity records how the name behind amendment revision of task id was backed.
+func (s *Store) RecordAmendIdentity(ctx context.Context, project string, id int64, revision int, identity string) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.GetContext(ctx, &n, `SELECT COUNT(*) FROM board_tasks WHERE id = ? AND board_id = ?`, id, project); err != nil || n == 0 {
+		return err
+	}
+	w, err := loadWorkflow(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if w.AmendIdentity == nil {
+		w.AmendIdentity = map[string]string{}
+	}
+	w.AmendIdentity[fmt.Sprint(revision)] = identity
+	if err := saveWorkflow(ctx, tx, id, w); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
