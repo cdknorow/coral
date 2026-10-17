@@ -16,8 +16,8 @@ const BASE = require('./test_base').BASE;
     const C = `document.getElementById('live-history-messages')`;
     const BTN = `document.querySelector('#chat-jump-latest button')`;
     const state = () => ev(`(() => { const c = ${C}, b = ${BTN}, r = document.getElementById('chat-jump-latest');
-        const br = b.getBoundingClientRect(), cnt = r.querySelector('.chat-jump-latest-count');
-        return { shown: !b.hidden && br.width > 0, label: b.getAttribute('aria-label'), count: cnt.hidden ? '' : cnt.textContent, live: r.querySelector('.chat-jump-latest-status').textContent,
+        const br = b.getBoundingClientRect(), dot = r.querySelector('.chat-jump-latest-dot');
+        return { shown: !b.hidden && br.width > 0, label: b.getAttribute('aria-label'), dot: !dot.hidden && dot.getBoundingClientRect().width > 0, live: r.querySelector('.chat-jump-latest-status').textContent,
             region: { role: r.getAttribute('role'), live: r.getAttribute('aria-live'), displayed: getComputedStyle(r).display !== 'none' },
             dist: Math.round(c.scrollHeight - c.scrollTop - c.clientHeight), ch: c.clientHeight, st: Math.round(c.scrollTop), w: Math.round(br.width), h: Math.round(br.height) }; })()`);
     const scrollTo = (expr) => ev(`(() => { const c = ${C}; c.scrollTop = ${expr}; c.dispatchEvent(new Event('scroll')); return new Promise(r => setTimeout(() => r(true), 50)); })()`); // sleep-ok: the scroll event's handlers run
@@ -60,15 +60,26 @@ const BASE = require('./test_base').BASE;
             s = await state();
             assert.equal(s.shown, true, `shown more than a screen up (${JSON.stringify(s)})`);
             assert.equal(s.label, 'Jump to latest');
-            assert.equal(s.count, '');
+            assert.equal(s.dot, false, 'no dot with nothing new');
             const geo = await ev(`(() => { const b = ${BTN}.getBoundingClientRect(), i = document.getElementById('command-pane').getBoundingClientRect(), vw = document.documentElement.clientWidth;
                 const lum = c => { const [r, g, b2] = c.match(/[\\d.]+/g).slice(0, 3).map(Number).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b2; };
-                const cs = getComputedStyle(${BTN}); const a = lum(cs.color), bg = lum(cs.backgroundColor);
-                return { aboveInput: b.bottom <= i.top + 0.5, inside: b.left >= 0 && b.right <= vw, contrast: (Math.max(a, bg) + 0.05) / (Math.min(a, bg) + 0.05) }; })()`);
+                const circle = getComputedStyle(${BTN}, ${v.coarse ? "'::before'" : 'null'}); const a = lum(getComputedStyle(${BTN}).color), bg = lum(circle.backgroundColor);
+                const cw = ${v.coarse ? `parseFloat(circle.width) || (${BTN}.getBoundingClientRect().width - 8)` : `${BTN}.getBoundingClientRect().width`};
+                return { aboveInput: b.bottom <= i.top + 0.5, inside: b.left >= 0 && b.right <= vw, contrast: (Math.max(a, bg) + 0.05) / (Math.min(a, bg) + 0.05), circle: Math.round(cw),
+                    opacity: Number(getComputedStyle(${BTN}).opacity), bgColor: circle.backgroundColor }; })()`);
             assert.ok(geo.aboveInput, `${v.name}: above the input, not over it`);
             assert.ok(geo.inside, `${v.name}: on the screen`);
-            assert.ok(geo.contrast >= 4.5, `${v.name}: contrast ${geo.contrast.toFixed(2)}:1`);
+            assert.ok(geo.contrast >= 4.5, `${v.name}: the white arrow on the circle, contrast ${geo.contrast.toFixed(2)}:1`);
+            assert.equal(geo.bgColor, 'rgb(0, 0, 0)', `${v.name}: a black circle (dark theme)`);
+            assert.ok(geo.circle >= 32 && geo.circle <= 36, `${v.name}: a 32-36 px circle (${geo.circle})`);
+            assert.ok(geo.opacity < 1, `${v.name}: a little faded at rest (${geo.opacity})`);
             if (v.coarse) assert.ok(s.w >= 44 && s.h >= 44, `${v.name}: 44 px on touch (${s.w}x${s.h})`);
+            if (!v.coarse) {
+                // The light theme: a dark grey circle, still a white arrow.
+                const light = await ev(`(() => { const r = document.documentElement, was = r.getAttribute('data-theme'); r.setAttribute('data-theme', 'light');
+                    const b = ${BTN}, out = { bg: getComputedStyle(b).backgroundColor, fg: getComputedStyle(b).color }; if (was) r.setAttribute('data-theme', was); else r.removeAttribute('data-theme'); return out; })()`);
+                assert.deepEqual(light, { bg: 'rgb(58, 58, 58)', fg: 'rgb(255, 255, 255)' }, `${v.name}: light theme, a dark grey circle and a white arrow`);
+            }
             if (!v.coarse) {
                 // Tab reaches it: from the control before it in the page, the next Tab stop is the button.
                 const reach = await ev(`(() => { const b = ${BTN}; const all = [...document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(e => e.getClientRects().length && !e.closest('[hidden]'));
@@ -79,13 +90,15 @@ const BASE = require('./test_base').BASE;
             console.log(`${v.name}: new messages while reading higher up are counted and announced; the view stays where it is`);
             const st0 = (await state()).st;
             await add(3);
-            await waitFor(`(${BTN}.querySelector('.chat-jump-latest-count') || {}).textContent === '3'`, `${v.name}: the count 3`);
+            await waitFor(`${BTN}.getAttribute('aria-label') === 'Jump to latest, 3 new messages'`, `${v.name}: the count 3`);
             s = await state();
             assert.equal(s.live, '3 new messages');
             assert.equal(s.label, 'Jump to latest, 3 new messages');
+            assert.equal(s.dot, true, 'a dot, and no number on the button');
+            assert.ok(!/\d/.test(await ev(`${BTN}.textContent`)), 'no visible count text');
             assert.equal(s.st, st0, 'the view did not move');
             await add(1);
-            await waitFor(`(${BTN}.querySelector('.chat-jump-latest-count') || {}).textContent === '4'`, `${v.name}: the count 4`);
+            await waitFor(`${BTN}.getAttribute('aria-label') === 'Jump to latest, 4 new messages'`, `${v.name}: the count 4`);
 
             console.log(`${v.name}: Enter jumps to the latest and pins the view`);
             await ev(`${BTN}.focus(); true`);
@@ -93,7 +106,7 @@ const BASE = require('./test_base').BASE;
             await waitFor(`(() => { const c = ${C}; return c.scrollHeight - c.scrollTop - c.clientHeight < 50; })()`, `${v.name}: at the bottom after the jump`, 4000);
             await waitFor(`${BTN}.hidden`, `${v.name}: the button goes`);
             s = await state();
-            assert.equal(s.count, '');
+            assert.equal(s.dot, false);
             assert.equal(s.live, '', 'the count is cleared');
             const focus = await ev(`document.activeElement && (document.activeElement.id || document.activeElement.className)`);
             assert.equal(focus, v.coarse ? 'live-history-messages' : 'command-input', `${v.name}: focus after the jump`);
@@ -110,7 +123,7 @@ const BASE = require('./test_base').BASE;
             await waitFor(`(async () => { const c = ${C}; return c.scrollHeight - c.scrollTop - c.clientHeight < 2 && (await import(${S} + 'state.js')).state.autoScroll; })()`, `${v.name}: finished at the bottom, pinned`, 3000);
             await add(1);
             await waitFor(`(() => { const c = ${C}; return c.scrollHeight - c.scrollTop - c.clientHeight < 50; })()`, `${v.name}: pinned: the next one follows`);
-            assert.equal((await state()).count, '', 'nothing counted while pinned');
+            assert.equal((await state()).dot, false, 'nothing counted while pinned');
 
             console.log(`${v.name}: scrolling back up during a jump lets go of it`);
             await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
@@ -123,26 +136,26 @@ const BASE = require('./test_base').BASE;
             console.log(`${v.name}: scrolling to the bottom by hand clears the count`);
             await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
             await add(1);
-            await waitFor(`(${BTN}.querySelector('.chat-jump-latest-count') || {}).textContent === '1'`, `${v.name}: the count 1`);
+            await waitFor(`${BTN}.getAttribute('aria-label') === 'Jump to latest, 1 new message'`, `${v.name}: the count 1`);
             assert.equal((await state()).live, '1 new message', 'singular');
             await scrollTo(`c.scrollHeight`);
             await waitFor(`${BTN}.hidden`, `${v.name}: gone at the bottom`);
-            assert.equal((await state()).count, '');
+            assert.equal((await state()).dot, false);
 
             if (!v.coarse) {
                 console.log(`${v.name}: a click jumps too; another agent starts with no count; not in the Terminal view`);
                 await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
                 await add(2);
-                await waitFor(`(${BTN}.querySelector('.chat-jump-latest-count') || {}).textContent === '2'`, `${v.name}: the count 2`);
+                await waitFor(`${BTN}.getAttribute('aria-label') === 'Jump to latest, 2 new messages'`, `${v.name}: the count 2`);
                 await ev(`${BTN}.click(); true`);
                 await waitFor(`${BTN}.hidden && (() => { const c = ${C}; return c.scrollHeight - c.scrollTop - c.clientHeight < 50; })()`, `${v.name}: a click jumps`, 4000);
                 await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
                 await add(2);
-                await waitFor(`(${BTN}.querySelector('.chat-jump-latest-count') || {}).textContent === '2'`, `${v.name}: the count 2 again`);
+                await waitFor(`${BTN}.getAttribute('aria-label') === 'Jump to latest, 2 new messages'`, `${v.name}: the count 2 again`);
                 await ev(`window.selectLiveSession('jl-other', 'claude', 'jl-other-id', 'local'); true`);
                 await waitFor(`${C}.textContent.includes('o59')`, `${v.name}: the other agent's chat`, 8000);
                 s = await state();
-                assert.equal(s.count, '', 'another agent starts with no count');
+                assert.equal(s.dot, false, 'another agent starts with no count');
                 assert.equal(s.shown, false, 'and at its bottom, no button');
                 await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
                 await ev(`(async () => { (await import(${S} + 'live_chat.js')).setLiveViewMode('terminal'); return true; })()`);

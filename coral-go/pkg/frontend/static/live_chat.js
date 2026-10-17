@@ -1150,7 +1150,7 @@ document.addEventListener("submit", (e) => {
 // ── Jump to latest (#4511, operator request) ────────────────────────────
 // Reading higher up in an agent's Chat view, a round down-arrow button above the chat input jumps to the latest message and pins
 // the view again, so new messages follow. It shows once you are more than about a screen from the bottom (or when messages came
-// in while you read higher up, counted on it) and goes at the bottom. Its live region stays displayed and only its text changes
+// in while you read higher up: a dot on it, the number in its name) and goes at the bottom. Its live region stays displayed and only its text changes
 // (a region shown already filled can go unannounced: UX on #4502); it reads like the board's "N new messages" pill (#4502).
 let _jumpUnseen = 0;
 let _jumpWired = false;
@@ -1158,7 +1158,7 @@ const JUMP_AT_BOTTOM_PX = 50; // the pin's own threshold (state.autoScroll, app.
 
 function jumpParts() {
     const region = document.getElementById('chat-jump-latest');
-    return region && { btn: region.querySelector('button'), count: region.querySelector('.chat-jump-latest-count'), status: region.querySelector('.chat-jump-latest-status') };
+    return region && { btn: region.querySelector('button'), dot: region.querySelector('.chat-jump-latest-dot'), status: region.querySelector('.chat-jump-latest-status') };
 }
 
 function syncJumpToLatest() {
@@ -1181,8 +1181,7 @@ function setJumpUnseen(n) {
     const p = jumpParts();
     if (!p) return;
     const words = n ? `${n} new message${n === 1 ? '' : 's'}` : '';
-    p.count.textContent = n ? (n > 99 ? '99+' : String(n)) : '';
-    p.count.hidden = !n;
+    p.dot.hidden = !n; // a dot, no number: the count is in the name and the live region (the operator's restyle)
     const name = n ? `Jump to latest, ${words}` : 'Jump to latest';
     p.btn.setAttribute('aria-label', name);
     p.btn.title = name;

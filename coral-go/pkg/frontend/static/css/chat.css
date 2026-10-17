@@ -585,52 +585,71 @@
     padding: 12px 20px;
 }
 
-/* Jump to latest (#4511): a round down arrow at the bottom right of the chat, above the input, while you read higher up; the count
-   of messages that came in since. --accent-dim, as the board's pill (#4502): white on it clears 4.5:1. It grows with the text up
-   to 56 px (at 200% it would be 80 px and cover more of the messages); the count's text grows with it. */
+/* Jump to latest (#4511): a quiet round button at the bottom right of the chat, above the input, while you read higher up (the
+   operator's restyle: it blends in). A black circle with a white down arrow, a thin light edge and a soft shadow so it reads on
+   the black chat, a little faded until hovered or focused; a dark grey circle in the light theme. 34 px on a desktop; on a touch
+   screen the button is a 44 px target and the 36 px circle is drawn inside it. New messages show as a small dot; the count is in
+   its name and the live region. */
 .chat-jump-latest {
     position: absolute;
     right: 16px;
     bottom: 12px;
     z-index: 5;
     pointer-events: none;
+    --jump-bg: #000;
+    --jump-edge: rgba(255, 255, 255, 0.22);
 }
+[data-theme="light"] .chat-jump-latest { --jump-bg: #3a3a3a; --jump-edge: rgba(0, 0, 0, 0.18); }
 .capture-wrapper:not(.chat-mode) .chat-jump-latest { display: none; }
 .chat-jump-latest-btn {
     pointer-events: auto;
     position: relative;
-    width: min(2.5rem, 56px);
-    height: min(2.5rem, 56px);
-    border: 0;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--jump-edge);
     border-radius: 50%;
-    background: var(--accent-dim);
-    color: var(--text-on-accent, #fff);
+    background: var(--jump-bg);
+    color: #fff;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+    opacity: 0.75;
+    transition: opacity 0.15s ease;
 }
+.chat-jump-latest-btn:hover, .chat-jump-latest-btn:focus-visible { opacity: 1; }
 .chat-jump-latest-btn[hidden] { display: none; }
 .chat-jump-latest-btn:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
-.chat-jump-latest-btn svg { width: min(1.125rem, 24px); height: min(1.125rem, 24px); }
-.chat-jump-latest-count {
+.chat-jump-latest-btn svg { position: relative; width: 18px; height: 18px; }
+/* A small dot when messages came in while you read higher up. */
+.chat-jump-latest-dot {
     position: absolute;
-    top: -0.375rem;
-    right: -0.375rem;
-    min-width: 1.25rem;
-    height: 1.25rem;
-    padding: 0 0.3125rem;
-    border-radius: 0.625rem;
-    background: var(--text-primary);
-    color: var(--bg-primary);
-    font-size: 0.6875rem;
-    font-weight: 700;
-    line-height: 1.25rem;
-    text-align: center;
+    top: 1px;
+    right: 1px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 2px var(--jump-bg);
 }
-.chat-jump-latest-count[hidden] { display: none; }
-@media (pointer: coarse) { .chat-jump-latest-btn { min-width: 44px; min-height: 44px; } }
+.chat-jump-latest-dot[hidden] { display: none; }
+/* Touch: the button is the 44 px target, transparent; the circle is its ::before, 36 px. */
+@media (pointer: coarse) {
+    .chat-jump-latest-btn { width: 44px; height: 44px; border: 0; background: none; box-shadow: none; }
+    .chat-jump-latest-btn::before {
+        content: '';
+        position: absolute;
+        inset: 4px;
+        border-radius: 50%;
+        border: 1px solid var(--jump-edge);
+        background: var(--jump-bg);
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+    }
+    .chat-jump-latest-dot { top: 5px; right: 5px; }
+}
+@media (prefers-reduced-motion: reduce) { .chat-jump-latest-btn { transition: none; } }
 .chat-jump-latest-status {
     position: absolute;
     width: 1px;
