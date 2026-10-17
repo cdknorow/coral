@@ -15,9 +15,11 @@ func TestFanOutCutsOffAFullSubscriber(t *testing.T) {
 	subs := map[string]chan []byte{"fast": fast, "slow": slow}
 	lagged := map[string]bool{}
 	fanOut(subs, lagged, []byte("1"))
+	drained := make(chan struct{})
 	go func() {
 		for range fast {
 		}
+		close(drained)
 	}()
 	fanOut(subs, lagged, []byte("2")) // slow's one slot is taken: it is cut off
 	fanOut(subs, lagged, []byte("3"))
@@ -28,6 +30,8 @@ func TestFanOutCutsOffAFullSubscriber(t *testing.T) {
 	assert.Equal(t, "1", string(got), "what it had queued is kept")
 	_, open := <-slow
 	assert.False(t, open, "then its channel is closed")
+	close(fast) // the reader ends with the test (#4167's leak guard)
+	<-drained
 }
 
 // A PTY viewer that reads nothing while the agent prints is cut off and reported lagged once;
