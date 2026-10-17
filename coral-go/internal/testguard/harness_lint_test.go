@@ -136,7 +136,8 @@ func TestHarnessScriptsUseTheMockAgentSandbox(t *testing.T) {
 // type or a changed launch binary fails this test until the stub list is updated.
 func TestMockSandboxStubsEveryAgentCLI(t *testing.T) {
 	root := repoRootForLint(t)
-	stub := readStubCLIs(t, root)
+	stub := readStubCLIs(t, root)   // CORAL_TEST_STUB_CLIS in tests/lib/mock_sandbox.sh
+	cdp := readCDPCLITypes(t, root) // CLI_TYPES in tests/frontend/run_cdp_suites.mjs
 
 	want := map[string]string{} // name -> where it came from, for the failure message
 	for _, v := range constValues(t, filepath.Join(root, "coral-go/internal/agenttypes/types.go")) {
@@ -149,16 +150,31 @@ func TestMockSandboxStubsEveryAgentCLI(t *testing.T) {
 		want[v] = "agentCLIs binary"
 	}
 
-	var missing []string
-	for name, from := range want {
-		if !stub[name] {
-			missing = append(missing, name+" ("+from+")")
+	// Both harness lists must cover every agent CLI, so a seventh agent type can't be missed in one of
+	// the three lists (mock_sandbox.sh, run_cdp_suites.mjs, agenttypes/agentCLIs). #4354.
+	for _, l := range []struct {
+		name string
+		set  map[string]bool
+	}{
+		{"CORAL_TEST_STUB_CLIS in tests/lib/mock_sandbox.sh", stub},
+		{"CLI_TYPES in tests/frontend/run_cdp_suites.mjs", cdp},
+	} {
+		var missing []string
+		for name, from := range want {
+			if !l.set[name] {
+				missing = append(missing, name+" ("+from+")")
+			}
+		}
+		sort.Strings(missing)
+		if len(missing) > 0 {
+			t.Errorf("%s does not include every agent CLI; add:\n  %s\n(current list: %s)",
+				l.name, strings.Join(missing, "\n  "), stubKeys(l.set))
 		}
 	}
-	sort.Strings(missing)
-	if len(missing) > 0 {
-		t.Fatalf("CORAL_TEST_STUB_CLIS in tests/lib/mock_sandbox.sh does not stub every agent CLI; add:\n  %s\n"+
-			"(current stub list: %s)", strings.Join(missing, "\n  "), stubKeys(stub))
+	// And the two harness lists must match each other exactly, so one never quietly drifts from the other.
+	if a, b := stubKeys(stub), stubKeys(cdp); a != b {
+		t.Errorf("the two harness CLI lists differ (keep them identical):\n"+
+			"  mock_sandbox.sh CORAL_TEST_STUB_CLIS: %s\n  run_cdp_suites.mjs CLI_TYPES:         %s", a, b)
 	}
 }
 
@@ -167,6 +183,8 @@ var (
 	reStubList    = regexp.MustCompile(`CORAL_TEST_STUB_CLIS="([^"$]*)`)
 	reConstString = regexp.MustCompile(`^\s*[A-Za-z0-9_]+\s*=\s*"([a-z0-9]+)"`)
 	reBinaryField = regexp.MustCompile(`Binary:\s*"([a-z0-9]+)"`)
+	reCDPCLIList  = regexp.MustCompile(`CLI_TYPES\s*=\s*\[([^\]]*)\]`)
+	reCDPName     = regexp.MustCompile(`'([a-z0-9]+)'`)
 )
 
 func readStubCLIs(t *testing.T, root string) map[string]bool {
@@ -182,6 +200,28 @@ func readStubCLIs(t *testing.T, root string) map[string]bool {
 	out := map[string]bool{}
 	for _, f := range strings.Fields(string(m[1])) {
 		out[f] = true
+	}
+	return out
+}
+
+// readCDPCLITypes reads the CLI_TYPES array in tests/frontend/run_cdp_suites.mjs (the agent types each
+// CDP test server stubs and points cli_path at).
+func readCDPCLITypes(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, "tests/frontend/run_cdp_suites.mjs"))
+	if err != nil {
+		t.Fatalf("reading run_cdp_suites.mjs: %v", err)
+	}
+	m := reCDPCLIList.FindSubmatch(b)
+	if m == nil {
+		t.Fatalf("could not find the CLI_TYPES array in run_cdp_suites.mjs")
+	}
+	out := map[string]bool{}
+	for _, q := range reCDPName.FindAllSubmatch(m[1], -1) {
+		out[string(q[1])] = true
+	}
+	if len(out) == 0 {
+		t.Fatalf("CLI_TYPES in run_cdp_suites.mjs is empty")
 	}
 	return out
 }
