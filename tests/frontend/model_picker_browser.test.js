@@ -21,6 +21,8 @@ const { connect } = require('./agent_view_harness');
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
+        // acf_model_field_test leaves a default model in the server's settings, which the form would pre-fill: start from none.
+        await ev(`fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ default_model_claude: '', default_model_codex: '', default_model_agy: '', default_model_terminal: '' }) }).then(r => r.ok)`);
         await ev(`(() => { const R = window.fetch; const OPUS = ${JSON.stringify(OPUS)}, SONNET = ${JSON.stringify(SONNET)};
             window.__calls = []; window.__serve = { claude: { models: [OPUS, SONNET], refreshing: false }, codex: { models: [], refreshing: false } }; window.__delay = 0; window.__refresh = { status: 202 };
             window.fetch = (u, o = {}) => { const url = new URL(String(u), location.origin); const m = (o.method || 'GET').toUpperCase();

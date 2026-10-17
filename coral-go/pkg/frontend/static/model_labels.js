@@ -1,6 +1,8 @@
 /* The agent's model as people read it (#4066): "Claude · Opus 4.1" from the model id the server reports, using the display name from
  * the cached model list (model_picker.js keeps it) when there is one, else a short name worked out from the id. Pure, and small enough
  * for the agent list to import at startup. */
+import { browserLocal } from './safe_storage.js';
+
 const LOCAL_SERVER = 'local'; // server_base.js's LOCAL_SERVER; not imported so this file stays pure
 
 const TYPE_NAMES = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', agy: 'Antigravity', antigravity: 'Antigravity', pi: 'Pi' };
@@ -14,14 +16,14 @@ export function typeName(agentType) {
 /** The cached model list for a server and agent type ({models, fetched_at, source}), or null. */
 export function readModelsCache(server, agentType) {
     try {
-        const raw = localStorage.getItem(`${MODELS_CACHE_PREFIX}${server || LOCAL_SERVER}:${agentType}`);
+        const raw = browserLocal.get(`${MODELS_CACHE_PREFIX}${server || LOCAL_SERVER}:${agentType}`);
         const v = raw ? JSON.parse(raw) : null;
         return v && Array.isArray(v.models) ? v : null;
     } catch { return null; }
 }
 
 export function writeModelsCache(server, agentType, data) {
-    try { localStorage.setItem(`${MODELS_CACHE_PREFIX}${server || LOCAL_SERVER}:${agentType}`, JSON.stringify({ models: data.models, fetched_at: data.fetched_at || null, source: data.source || '' })); } catch { /* per-viewer only */ }
+    try { browserLocal.set(`${MODELS_CACHE_PREFIX}${server || LOCAL_SERVER}:${agentType}`, JSON.stringify({ models: data.models, fetched_at: data.fetched_at || null, source: data.source || '' })); } catch { /* per-viewer only */ }
 }
 
 /** A short name from a model id when the list has no display name: claude-opus-4-1-20250805 gives "Opus 4.1". */
