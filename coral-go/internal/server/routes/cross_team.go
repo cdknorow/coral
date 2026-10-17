@@ -61,7 +61,7 @@ func relaySource(r *http.Request) (server string, present bool) {
 // process's connector. The browser identity guard leaves it to PostExternalMessage, which
 // checks the source server against the board's allowlist instead.
 func isAuthenticRelay(r *http.Request) bool {
-	if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/external-messages") {
+	if r.Method != http.MethodPost || !(strings.HasSuffix(r.URL.Path, "/external-messages") || strings.HasSuffix(r.URL.Path, "/external-artifacts")) {
 		return false
 	}
 	_, present := relaySource(r)

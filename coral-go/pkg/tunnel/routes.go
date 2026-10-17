@@ -238,6 +238,8 @@ var routeTable = cat(
 		"/api/workflows/runs/{id}/kill",
 		"/api/board/{project}/messages",
 		"/api/board/{project}/external-messages",
+		// A file Coral Hub relayed from another Coral (cross-team artifacts): only with its stamped header.
+		"/api/board/{project}/external-artifacts",
 		// Coral Hub's notice about a team link (#3489): only with its stamped header.
 		"/api/board/{project}/hub-notice",
 		"/api/board/{project}/subscribe",

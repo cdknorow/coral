@@ -104,6 +104,7 @@ POST /api/agent/tasks/{taskID}/publish | token-bound
 POST /api/agent/ui-request | unbound
 POST /api/agent/ui/{id}/events | token-bound
 POST /api/board/remotes | board-unchecked | operator-only
+POST /api/board/{project}/external-artifacts | board-claims
 POST /api/board/{project}/external-messages | board-claims +token-session
 POST /api/board/{project}/groups/{groupID}/members | board-claims | operator-only
 POST /api/board/{project}/health/ack | board-claims +token-session

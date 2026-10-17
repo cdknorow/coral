@@ -617,6 +617,7 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 	r.Get("/api/board/{project}/settings", boardHandler.GetBoardSettings)
 	r.Put("/api/board/{project}/settings", boardHandler.UpdateBoardSettings)
 	r.Post("/api/board/{project}/external-messages", boardHandler.PostExternalMessage)
+	r.Post("/api/board/{project}/external-artifacts", boardHandler.PostExternalArtifact)
 	// To another Coral through Coral Hub (#3489); this computer only (not in the tunnel's table).
 	r.Post("/api/board/{project}/relay-messages", boardHandler.PostRelayMessage)
 	r.Get("/api/board/{project}/relay-targets", boardHandler.ListRelayTargets)

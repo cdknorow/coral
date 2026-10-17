@@ -224,6 +224,7 @@ b POST /api/auth/sessions/sign-out-others
 c POST /api/auto-accept/disable-all
 b POST /api/board/remotes
 a POST /api/board/{project}/external-messages
+a POST /api/board/{project}/external-artifacts
 b POST /api/board/{project}/groups/{groupID}/members
 a POST /api/board/{project}/health/ack
 c POST /api/board/{project}/hub-notice

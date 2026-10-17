@@ -64,6 +64,8 @@ type BoardHandler struct {
 	deleteSubscriberReminder func(ctx context.Context, project, subscriber string) error
 	// crossTeam rate-limits cross-team messages per sender and target.
 	crossTeam crossTeamLimiter
+	// received limits the files other Corals push (cross-team artifacts).
+	received receivedLimiter
 	// relay sends a cross-team message to another Coral through Coral Hub (#3489).
 	relay RelaySender
 	// hubNotices drops a repeated Coral Hub notice (#3489).

@@ -209,6 +209,7 @@ POST /api/auth/password/set never
 POST /api/auth/sessions/sign-out-others never
 POST /api/auto-accept/disable-all interact
 POST /api/board/remotes never
+POST /api/board/{project}/external-artifacts interact
 POST /api/board/{project}/external-messages interact
 POST /api/board/{project}/groups/{groupID}/members never
 POST /api/board/{project}/health/ack never

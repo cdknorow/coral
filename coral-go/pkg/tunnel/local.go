@@ -397,11 +397,12 @@ func ForwardsHubUser(method, decodedPath string) bool {
 // strips it from browser requests.
 const HubServerHeader = "X-Coral-Hub-Server"
 
-// hubServerRoute is the only route the Coral Hub server header is forwarded to.
-var hubServerRoute = regexp.MustCompile(`^/api/board/[^/]+/external-messages$`)
+// hubServerRoute is where the Coral Hub server header is forwarded: a relayed message, and a
+// relayed file (cross-team artifacts).
+var hubServerRoute = regexp.MustCompile(`^/api/board/[^/]+/external-(messages|artifacts)$`)
 
 // ForwardsHubServer reports whether X-Coral-Hub-Server is forwarded for a request: a POST
-// to /api/board/{project}/external-messages, and nothing else.
+// to /api/board/{project}/external-messages or .../external-artifacts, and nothing else.
 func ForwardsHubServer(method, decodedPath string) bool {
 	return method == http.MethodPost && hubServerRoute.MatchString(decodedPath)
 }

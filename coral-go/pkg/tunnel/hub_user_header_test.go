@@ -59,6 +59,14 @@ func TestScrubForwardsTheHubServerHeaderOnlyOnExternalMessages(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/board/team/external-messages", true},
 		{http.MethodPost, "/api/board/a b/external-messages", true},
+		// A relayed file (cross-team artifacts): the same rule on its own route, and no other.
+		{http.MethodPost, "/api/board/team/external-artifacts", true},
+		{http.MethodPost, "/api/board/a b/external-artifacts", true},
+		{http.MethodGet, "/api/board/team/external-artifacts", false},
+		{http.MethodPut, "/api/board/team/external-artifacts", false},
+		{http.MethodPost, "/api/board/team/external-artifacts/x", false},
+		{http.MethodPost, "/api/board/team/external-artifact", false},
+		{http.MethodPost, "/api/board/team/artifacts", false},
 		{http.MethodGet, "/api/board/team/external-messages", false},
 		{http.MethodPut, "/api/board/team/external-messages", false},
 		{http.MethodPost, "/api/board/team/messages", false},
