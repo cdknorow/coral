@@ -196,9 +196,9 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 	// Fix double-encoded detail_json rows in agent_events (one-time fixup).
 	// Prior to the fix, makeToolDetail returned a JSON string which was then
 	// re-marshaled, producing '"{\"key\":\"val\"}"' instead of '{"key":"val"}'.
-	d.ExecContext(ctx, `UPDATE agent_events SET detail_json = json_extract(detail_json, '$')
-		WHERE detail_json IS NOT NULL AND typeof(json_extract(detail_json, '$')) = 'text'
-		AND json_valid(json_extract(detail_json, '$'))`)
+	// It reads every event, so it runs once (#4129: ~450 ms on 200k events, cold, on every
+	// start, growing with the history): a store_meta row marks it done.
+	fixDoubleEncodedDetailJSON(ctx, d)
 
 	// After the fixup above, so a new table is filled from the fixed rows (#3846).
 	if err := d.ensureEditedFiles(ctx); err != nil {
@@ -850,6 +850,28 @@ func reportForeignKeyOrphans(ctx context.Context, dbPath, key string) {
 
 // fkCheckBudget bounds the startup foreign key check (a test seam).
 var fkCheckBudget = 5 * time.Second
+
+// detailJSONFixupKey marks, in store_meta, that agent_events' double-encoded detail_json rows
+// (written before makeToolDetail was fixed) were repaired.
+const detailJSONFixupKey = "agent_events_detail_json_fixed"
+
+// fixDoubleEncodedDetailJSON repairs those rows once. New rows are never double-encoded, so the
+// marker is set only after the update succeeded; a failure is retried at the next start.
+func fixDoubleEncodedDetailJSON(ctx context.Context, d *DB) {
+	var done int
+	if err := d.GetContext(ctx, &done, `SELECT COUNT(*) FROM store_meta WHERE key = ?`, detailJSONFixupKey); err != nil || done > 0 {
+		return
+	}
+	if _, err := d.ExecContext(ctx, `UPDATE agent_events SET detail_json = json_extract(detail_json, '$')
+		WHERE detail_json IS NOT NULL AND typeof(json_extract(detail_json, '$')) = 'text'
+		AND json_valid(json_extract(detail_json, '$'))`); err != nil {
+		slog.Warn("[store] repairing double-encoded event details", "error", err)
+		return
+	}
+	if _, err := d.ExecContext(ctx, `INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)`, detailJSONFixupKey, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		slog.Warn("[store] repairing double-encoded event details: write marker", "error", err)
+	}
+}
 
 // remoteURLScrubKey marks, in store_meta, that remote URLs recorded before #3558 were cleaned.
 // A new key makes the scrub run once more when it learns a new form: "_2" adds scp-style
