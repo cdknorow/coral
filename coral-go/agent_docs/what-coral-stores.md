@@ -2,8 +2,6 @@
 
 Coral keeps its data in one folder, `<data dir>` (`~/.coral` unless `CORAL_DATA_DIR` says otherwise). The files in the table are readable only by you (file mode 0600, in a 0700 folder). This page says what is kept, how long, whether it is cleaned of secrets, and where to change it. Nothing here is sent to anyone: the last section says what reaches Coral Hub.
 
-<!-- TODO(#4381): new launch files go to <data dir>/tmp only after #4381 is merged; the launch temp file wording below follows Lead's #4381 (temp files under <data dir>/tmp, swept at startup); check it against the commit as landed. -->
-
 | What | Kept | Cleaned of secrets? | To change it |
 |---|---|---|---|
 | **Terminal logs** (`<data dir>/logs/<agent>_coral_<id>.log`: what an agent's terminal showed; search reads them) | As long as the agent exists. **Killing an agent deletes its log on the tmux terminal backend** (Sleep and Archive keep it; the pty backend leaves it). | Raw on disk. Redacted when Coral Hub serves them (the connector does it); the dashboard on this computer shows them as the terminal showed them. | Delete a log's file. Kill an agent to remove its log (tmux). |
