@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"strings"
@@ -8,6 +9,8 @@ import (
 	"sync/atomic"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/store"
 )
 
 // identity_actor (#4255, identity phase 2): "log" (the default) leaves every decision as it was and
@@ -172,4 +175,44 @@ func attributedJoin(w http.ResponseWriter, r *http.Request, claimName, claimSess
 	}
 	writeJSON(w, http.StatusForbidden, map[string]string{"error": "this request is not from a verified member of the board or the Operator", "code": "identity_unverified"})
 	return "", "", false
+}
+
+// IdentityActorSetting stores the identity_actor mode ("log" or "enforce"). Only SetIdentityActor
+// writes it (PutSettings refuses the key), so the Operator's decision is the only way it changes.
+const IdentityActorSetting = "identity_actor"
+
+// LoadIdentityActor applies the stored mode at startup. Anything but "enforce" is log, the default.
+func LoadIdentityActor(ctx context.Context, ss *store.SessionStore) {
+	settings, err := ss.GetSettings(ctx)
+	setIdentityActorEnforced(err == nil && settings[IdentityActorSetting] == "enforce")
+}
+
+// SetIdentityActor: PUT /api/system/identity-actor {"mode": "log"|"enforce"}. The Operator's switch:
+// refused through Coral Hub, and refused here for anything but the verified Operator (an agent's
+// token, a claimed caller), so the check does not rest on the route list alone.
+func (h *CloudHandler) SetIdentityActor(w http.ResponseWriter, r *http.Request) {
+	if cloud.Tunneled(r) {
+		errForbidden(w, "The identity mode is only available on this computer")
+		return
+	}
+	if a := callerActor(r); a.Kind != ActorOperator || !a.IsOperator() {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator may change the identity mode", "code": "operator_only"})
+		return
+	}
+	if !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if err := decodeJSON(r, &body); err != nil || (body.Mode != "log" && body.Mode != "enforce") {
+		errBadRequest(w, "mode must be \"log\" or \"enforce\"")
+		return
+	}
+	if err := h.ss.SetSetting(r.Context(), IdentityActorSetting, body.Mode); err != nil {
+		errInternalServer(w, "Could not save the setting")
+		return
+	}
+	setIdentityActorEnforced(body.Mode == "enforce")
+	writeJSON(w, http.StatusOK, map[string]string{"identity_actor": actorMode()})
 }

@@ -232,6 +232,13 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The identity mode is the Operator's switch, written only by its own route (#4255).
+	for k := range body {
+		if strings.EqualFold(strings.TrimSpace(k), IdentityActorSetting) {
+			errBadRequest(w, k+" is set with PUT /api/system/identity-actor")
+			return
+		}
+	}
 	// Run as a hub has its own route, on this computer only (#3460).
 	if _, ok := body[HubModeSetting]; ok {
 		errBadRequest(w, HubModeSetting+" is set with PUT /api/system/hub-mode")

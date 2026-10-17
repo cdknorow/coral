@@ -357,6 +357,7 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/cloud/max-mode":                        "change what Coral Hub may do",
 	"PUT /api/cloud/allow-auto-accept":               "change whether Coral Hub may turn on auto-accept",
 	"PUT /api/cloud/redact-tokens":                   "change whether tokens are hidden from Coral Hub viewers",
+	"PUT /api/system/identity-actor":                 "change how Coral decides who is calling",
 	"POST /api/cloud/connect":                        "connect to Coral Hub",
 	"POST /api/cloud/connect/cancel":                 "cancel connecting to Coral Hub",
 	"POST /api/cloud/disconnect":                     "disconnect from Coral Hub",

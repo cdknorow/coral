@@ -366,6 +366,8 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	}
 	r.Post("/api/system/login-token", s.cloudHandler.LoginToken)
 	r.Get("/api/system/identity-report", s.cloudHandler.IdentityReport)
+	r.Put("/api/system/identity-actor", s.cloudHandler.SetIdentityActor)
+	routes.LoadIdentityActor(context.Background(), store.NewSessionStore(s.db))
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
 	r.Put("/api/cloud/redact-tokens", s.cloudHandler.SetRedactTokens)
