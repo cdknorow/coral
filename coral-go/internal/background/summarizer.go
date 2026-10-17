@@ -94,8 +94,11 @@ func condenseMessages(data []byte) string {
 			continue
 		}
 
-		content := extractContent(msg)
-		if content == "" {
+		// Each message is redacted whole, before the join and the head and tail cut, which could
+		// otherwise leave a fragment of a token too short for the rules to know (#4414). A message
+		// that can't be checked is left out.
+		content, err := redactKnowledge(extractContent(msg))
+		if err != nil || content == "" {
 			continue
 		}
 

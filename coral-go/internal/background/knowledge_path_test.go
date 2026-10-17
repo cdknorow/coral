@@ -22,7 +22,7 @@ func TestKnowledgeTeamNamesStayInsideTheFolder(t *testing.T) {
 		if ValidKnowledgeTeam(bad) {
 			t.Errorf("%q should be refused", bad)
 		}
-		if err := WriteKnowledgeFile(dir, bad, "agent", "x"); !errors.Is(err, ErrBadKnowledgeTeam) {
+		if _, err := WriteKnowledgeFile(dir, bad, "agent", "x"); !errors.Is(err, ErrBadKnowledgeTeam) {
 			t.Errorf("write %q: %v", bad, err)
 		}
 		if _, err := ReadKnowledgeBundle(dir, bad); !errors.Is(err, ErrBadKnowledgeTeam) {
@@ -51,8 +51,9 @@ func TestKnowledgeNamesAreNeverWindowsDevices(t *testing.T) {
 	assert.Equal(t, "backend-dev", Slugify("Backend Dev"))
 
 	dir := t.TempDir()
-	require.NoError(t, WriteKnowledgeFile(dir, "team", "Nul", "notes"))
+	_, err := WriteKnowledgeFile(dir, "team", "Nul", "notes")
+	require.NoError(t, err)
 	assert.Equal(t, "notes", LoadAgentKnowledge(dir, "team", "Nul"))
-	_, err := os.Stat(filepath.Join(dir, "agent_knowledge", "team", "nul_.md"))
+	_, err = os.Stat(filepath.Join(dir, "agent_knowledge", "team", "nul_.md"))
 	assert.NoError(t, err)
 }

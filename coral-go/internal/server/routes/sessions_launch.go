@@ -257,12 +257,16 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		hasKnowledge := false
 		for _, a := range body.Agents {
 			if a.Knowledge != "" {
-				background.WriteKnowledgeFile(coralDir, body.BoardName, a.Name, a.Knowledge)
+				if _, err := background.WriteKnowledgeFile(coralDir, body.BoardName, a.Name, a.Knowledge); err != nil {
+					log.Printf("[launch-team] knowledge for agent %q of team %s not restored: %v", a.Name, body.BoardName, err)
+				}
 				hasKnowledge = true
 			}
 		}
 		if body.TeamKnowledgeIndex != "" {
-			background.WriteKnowledgeIndex(coralDir, body.BoardName, body.TeamKnowledgeIndex)
+			if err := background.WriteKnowledgeIndex(coralDir, body.BoardName, body.TeamKnowledgeIndex); err != nil {
+				log.Printf("[launch-team] knowledge index of team %s not restored: %v", body.BoardName, err)
+			}
 			hasKnowledge = true
 		}
 		if hasKnowledge {

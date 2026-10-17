@@ -50,7 +50,7 @@ timestamp: 2026-01-01T00:00:00Z
 - docker build -t myapp .
 `
 
-	err := WriteKnowledgeFile(dir, "my-team", "DevOps", content)
+	_, err := WriteKnowledgeFile(dir, "my-team", "DevOps", content)
 	if err != nil {
 		t.Fatalf("WriteKnowledgeFile: %v", err)
 	}
@@ -300,7 +300,8 @@ func newTestBundle(team string) *KnowledgeBundle {
 // knowledge, and its error text never ends up in any agent's document.
 func TestDistillReportsFailedAgentsAndKeepsTheirKnowledge(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, WriteKnowledgeFile(dir, "team", "Ada", "OLD ADA"))
+	_, err := WriteKnowledgeFile(dir, "team", "Ada", "OLD ADA")
+	require.NoError(t, err)
 	var phases []string
 	b, err := distillAgents(newTestBundle("team"), distillTestAgents(), fakeKnowledgeCall(map[string]bool{"Ada": true}, false), dir,
 		func(p DistillProgress) { phases = append(phases, p.Phase) })
@@ -335,8 +336,9 @@ func TestDistillReportsFailedAgentsAndKeepsTheirKnowledge(t *testing.T) {
 func TestDistillFailsWhenEveryExtractionFails(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, WriteKnowledgeIndex(dir, "team", "OLD INDEX"))
-	require.NoError(t, WriteKnowledgeFile(dir, "team", "Bob", "OLD BOB"))
-	_, err := distillAgents(newTestBundle("team"), distillTestAgents(), fakeKnowledgeCall(map[string]bool{"Ada": true, "Bob": true}, false), dir, nil)
+	_, err := WriteKnowledgeFile(dir, "team", "Bob", "OLD BOB")
+	require.NoError(t, err)
+	_, err = distillAgents(newTestBundle("team"), distillTestAgents(), fakeKnowledgeCall(map[string]bool{"Ada": true, "Bob": true}, false), dir, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no agent's knowledge could be extracted (2 of 2 failed): claude CLI failed")
 	read, err := ReadKnowledgeBundle(dir, "team")

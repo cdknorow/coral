@@ -348,12 +348,14 @@ func (h *SessionsHandler) SaveAgentKnowledge(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Rewrite to disk
-	if err := background.WriteKnowledgeFile(coralDir, teamName, agentName, body.Content); err != nil {
+	redacted, err := background.WriteKnowledgeFile(coralDir, teamName, agentName, body.Content)
+	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	// redacted: a secret in the text was replaced before it was saved (#4414).
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "redacted": redacted})
 }
 
 // InjectKnowledgeIntoPrompt appends relevant knowledge to an agent's prompt.

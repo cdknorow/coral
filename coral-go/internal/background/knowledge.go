@@ -507,21 +507,22 @@ func LoadAgentKnowledge(coralDir, teamName, agentName string) string {
 	return md
 }
 
-// WriteKnowledgeFile writes a single agent's knowledge file to disk.
-func WriteKnowledgeFile(coralDir, teamName, agentName, content string) error {
+// WriteKnowledgeFile writes a single agent's knowledge file to disk, redacted; redacted says
+// whether a secret was replaced.
+func WriteKnowledgeFile(coralDir, teamName, agentName, content string) (redacted bool, err error) {
 	dir, err := knowledgeTeamDir(coralDir, teamName)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
+		return false, err
 	}
 	slug := slugify(agentName)
 	md, err := redactKnowledge(content) // #4414: never written unredacted
 	if err != nil {
-		return fmt.Errorf("knowledge not written: it could not be checked for secrets: %w", err)
+		return false, fmt.Errorf("knowledge not written: it could not be checked for secrets: %w", err)
 	}
-	return secfile.WriteFileNoFollow(filepath.Join(dir, slug+".md"), []byte(md), 0o600)
+	return md != content, secfile.WriteFileNoFollow(filepath.Join(dir, slug+".md"), []byte(md), 0o600)
 }
 
 // WriteKnowledgeIndex writes the team's index.md knowledge file.

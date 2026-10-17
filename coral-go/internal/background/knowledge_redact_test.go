@@ -58,6 +58,39 @@ func TestDistillTranscriptIsRedacted(t *testing.T) {
 	assert.Contains(t, got["Ada"], "then make test", "the rest of the transcript is kept")
 }
 
+// Security's #4414 SHOULD: the transcript's head and tail cut can't leave a fragment of a token.
+// Each message is redacted whole before the join and the cut; a token placed across the head cut
+// and one across the tail cut leave no 8-character piece of themselves in what is distilled.
+func TestTranscriptCutLeavesNoTokenFragment(t *testing.T) {
+	isolateKnowledgeEnv(t)
+	f := newKnowledgeTeamFixture(t, "team")
+	f.launch("s-ada", "Ada", true)
+	const prefix = "### Assistant\n" // how condenseMessages heads each message
+	half := maxTranscriptChars / 2
+	head := strings.Repeat("a", half-len(prefix)-20) + knowledgeToken + " end of the first message"
+	tail := knowledgeToken + " " + strings.Repeat("b", half+20-len(knowledgeToken)-1)
+	lines := []string{head, "a message in the middle", tail}
+	var jsonl strings.Builder
+	for _, l := range lines {
+		jsonl.WriteString(`{"type":"assistant","message":{"content":"` + l + `"}}` + "\n")
+	}
+	path := filepath.Join(f.dir, "s-ada.jsonl")
+	require.NoError(t, os.WriteFile(path, []byte(jsonl.String()), 0o600))
+
+	// Without the per-message pass the cut falls 20 characters into each token.
+	full := prefix + head + "\n\n" + prefix + lines[1] + "\n\n" + prefix + tail
+	require.Greater(t, len(full), maxTranscriptChars)
+	require.Equal(t, half-20, strings.Index(full, knowledgeToken), "the first token straddles the head cut")
+	require.Equal(t, len(full)-half-20, strings.LastIndex(full, knowledgeToken), "the second straddles the tail cut")
+
+	got := f.distilled()["Ada"]
+	require.NotEmpty(t, got)
+	for i := 0; i+8 <= len(knowledgeToken); i++ {
+		assert.NotContains(t, got, knowledgeToken[i:i+8], "a fragment of the token")
+	}
+	assert.Contains(t, got, redact.Marker)
+}
+
 // #4414: what the model returns is redacted before it is written: each agent's file and index.md.
 func TestDistilledKnowledgeIsRedactedOnDisk(t *testing.T) {
 	isolateKnowledgeEnv(t)
@@ -97,7 +130,12 @@ func TestKnowledgeBundleIsRedactedOnDisk(t *testing.T) {
 func TestSavedAndImportedKnowledgeIsRedacted(t *testing.T) {
 	isolateKnowledgeEnv(t)
 	dir := t.TempDir()
-	require.NoError(t, WriteKnowledgeFile(dir, "team", "Ada", "token: "+knowledgeToken))
+	redacted, err := WriteKnowledgeFile(dir, "team", "Ada", "token: "+knowledgeToken)
+	require.NoError(t, err)
+	assert.True(t, redacted, "the caller is told a secret was replaced")
+	redacted, err = WriteKnowledgeFile(dir, "team", "Bob", "no secret here")
+	require.NoError(t, err)
+	assert.False(t, redacted)
 	require.NoError(t, WriteKnowledgeIndex(dir, "team", "# Team\n"+knowledgeToken))
 	files := knowledgeFiles(t, dir, "team")
 	assertRedacted(t, files["ada.md"], "ada.md")
@@ -139,7 +177,8 @@ func TestUncheckedKnowledgeFailsClosed(t *testing.T) {
 	knowledgeRedactor = func() redact.Redactor { return failingRedactor{redact.Rules} }
 	t.Cleanup(func() { knowledgeRedactor = old })
 
-	assert.Error(t, WriteKnowledgeFile(dir, "team", "Ada", "x"))
+	_, err := WriteKnowledgeFile(dir, "team", "Ada", "x")
+	assert.Error(t, err)
 	assert.Error(t, WriteKnowledgeIndex(dir, "team", "new index"))
 	assert.Error(t, writeKnowledgeBundle(dir, &KnowledgeBundle{TeamName: "team", IndexMD: "new index",
 		Agents: map[string]*AgentConcept{"Bob": {AgentName: "Bob", FinalMD: "new bob"}}}))
@@ -147,7 +186,7 @@ func TestUncheckedKnowledgeFailsClosed(t *testing.T) {
 	assert.Equal(t, map[string]string{"index.md": "# Team", "bob.md": "old bob"}, files, "nothing written")
 
 	assert.Empty(t, LoadAgentKnowledge(dir, "team", "Bob"))
-	_, err := ReadKnowledgeBundle(dir, "team")
+	_, err = ReadKnowledgeBundle(dir, "team")
 	assert.Error(t, err)
 	assert.Empty(t, redactedTranscript("a transcript"), "an unchecked transcript is not sent")
 }
