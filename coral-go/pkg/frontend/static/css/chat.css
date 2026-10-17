@@ -67,7 +67,7 @@
     padding: 1px 5px;
     border-radius: 3px;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .chat-bubble .message-text pre {
@@ -82,7 +82,7 @@
 .chat-bubble .message-text pre code {
     background: none;
     padding: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.45;
 }
 
@@ -100,7 +100,7 @@
 .chat-bubble .message-text h2,
 .chat-bubble .message-text h3 {
     margin: 10px 0 4px;
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 600;
 }
 
@@ -114,7 +114,7 @@
 .chat-bubble .message-text table {
     border-collapse: collapse;
     margin: 8px 0;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .chat-bubble .message-text th,
@@ -141,7 +141,7 @@
     color: var(--text-secondary);
     padding: 2px 8px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.15s;
@@ -219,7 +219,7 @@
 
 .work-group-summary::before {
     content: "\25B8";
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1;
     color: var(--text-secondary);
     flex-shrink: 0;
@@ -268,7 +268,7 @@
 .tool-call {
     margin: 0 0 3px;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .tool-call + .chat-bubble {
@@ -293,7 +293,7 @@
 
 .tool-call-summary::before {
     content: "\25B8";
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1;
     color: var(--text-secondary);
     flex-shrink: 0;
@@ -351,14 +351,14 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--bg-secondary);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .tool-card-summary {
     margin-top: 3px;
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -367,7 +367,7 @@
 
 .tool-card-description {
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: 0.75rem;
     margin-bottom: 4px;
 }
 
@@ -377,7 +377,7 @@
 }
 
 .tool-question-text {
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 500;
     color: var(--text-primary);
     margin-bottom: 6px;
@@ -399,7 +399,7 @@
 }
 
 .tool-question-option-label {
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--accent);
 }
@@ -417,7 +417,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 1.4;
     color: var(--text-primary);
     white-space: pre-wrap;
@@ -462,7 +462,7 @@
     padding: 8px 10px;
     border-top: 1px solid var(--border);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 1.4;
     color: var(--text-secondary);
     overflow-x: auto;
@@ -482,7 +482,7 @@
     margin: 0;
     padding: 4px 8px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 1.4;
     color: var(--text-secondary);
     white-space: pre-wrap;
@@ -545,7 +545,7 @@
     background: none;
     border: none;
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 0.6875rem;
     padding: 3px 8px;
     cursor: pointer;
 }
@@ -555,7 +555,7 @@
 }
 
 .live-view-toggle-btn .material-icons {
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 
 .live-view-toggle-btn:hover {
@@ -593,7 +593,7 @@
     padding: 3px 7px;
 }
 .live-view-toggle-btn .material-icons {
-    font-size: 16px;
+    font-size: 1rem;
 }
 
 /* ── Chat prose: reading typography (live Chat view + history Chat tab) ── */
@@ -714,7 +714,7 @@
 }
 .chat-prose.chat-messages .chat-bubble .message-text pre code {
     font-family: var(--font-mono);
-    font-size: 13.5px;
+    font-size: 0.8438rem;
     line-height: 1.6;
     background: none;
     border: none;
@@ -728,7 +728,7 @@
 
 .chat-prose.chat-messages .chat-bubble .message-text table {
     font-family: var(--font-sans);
-    font-size: 14px;
+    font-size: 0.875rem;
     margin: 0 0 16px;
 }
 
@@ -808,7 +808,7 @@
 .chat-file-menu-path {
     padding: 4px 10px 6px;
     font-family: var(--font-mono, monospace);
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -826,7 +826,7 @@
     border-radius: 4px;
     background: none;
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: 0.75rem;
     text-align: left;
     cursor: pointer;
 }
@@ -870,7 +870,7 @@
     gap: 8px;
     margin: 4px auto 18px;
     font-family: var(--font-sans);
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -901,7 +901,7 @@
 .chat-note {
     text-align: left;
     font-family: var(--font-sans);
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-muted);
     margin: 6px 0 16px;
 }
@@ -927,7 +927,7 @@
     background: color-mix(in srgb, var(--accent) 8%, transparent);
     color: var(--text-secondary);
     font-family: var(--font-sans);
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.4;
 }
 /* A health check: the pill in the secondary accent (a left bar on a round pill read as a
@@ -962,7 +962,7 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
@@ -1001,21 +1001,21 @@
     .cni-dot { animation: none; }
 }
 .cni-kicker {
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--warning);
 }
 .cni-question {
-    font-size: 16px;
+    font-size: 1rem;
     font-weight: 600;
     line-height: 1.4;
     margin: 2px 0 12px;
 }
 .cni-context-text {
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     margin: -6px 0 8px;
 }
 .cni-target {
@@ -1035,10 +1035,10 @@
     padding: 10px 14px;
     margin: 0 0 12px;
     background: var(--bg-primary);
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 .cni-plan h1, .cni-plan h2, .cni-plan h3, .cni-plan h4 {
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 600;
     margin: 10px 0 4px;
 }
@@ -1056,7 +1056,7 @@
 }
 .cni-static-q {
     margin: 0 0 10px;
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 .cni-static-q ul {
     margin: 4px 0 0;
@@ -1089,7 +1089,7 @@
     background: var(--bg-tertiary);
     color: var(--text-primary);
     font: inherit;
-    font-size: 14px;
+    font-size: 0.875rem;
     cursor: pointer;
     transition: border-color 0.12s, background 0.12s;
 }
@@ -1119,7 +1119,7 @@
     border: 1px solid var(--border-light);
     border-radius: 4px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 16px;
     text-align: center;
     color: var(--text-secondary);
@@ -1156,7 +1156,7 @@
     background: var(--bg-primary);
     color: var(--text-primary);
     font: inherit;
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 .cni-text-input::placeholder {
     color: var(--text-muted);
@@ -1193,7 +1193,7 @@
 .cni-review dd {
     margin: 0;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1.45;
     overflow-wrap: anywhere;
 }
@@ -1229,7 +1229,7 @@
     color: var(--text-muted);
 }
 .cni-foot .btn {
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 /* A brand-new agent with no transcript yet */
@@ -1237,7 +1237,7 @@
     text-align: center;
     color: var(--text-muted);
     font-family: var(--font-sans);
-    font-size: 14px;
+    font-size: 0.875rem;
     margin: 48px auto;
 }
 
@@ -1374,7 +1374,7 @@
     gap: 12px;
     padding: 24px 16px;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 0.8125rem;
     text-align: center;
     flex-wrap: wrap;
 }
@@ -1408,11 +1408,11 @@
     border-radius: 5px;
     color: var(--text-primary);
     font: inherit;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 .chat-find-input:focus { outline: none; border-color: var(--accent); }
 .chat-find-bar.no-results .chat-find-input { border-color: var(--error); }
-.chat-find-count { min-width: 56px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.chat-find-count { min-width: 56px; font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 .chat-find-bar button {
     background: none;
     border: none;
@@ -1421,7 +1421,7 @@
     padding: 2px 6px;
     border-radius: 4px;
     font: inherit;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 .chat-find-bar button:hover:not(:disabled) { background: var(--bg-hover, rgba(255, 255, 255, 0.08)); color: var(--text-primary); }
 .chat-find-older { color: var(--accent) !important; }

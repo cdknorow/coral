@@ -12,6 +12,8 @@
 
 .wf-header {
     display: flex;
+    flex-wrap: wrap; /* #4344: at large text the title and its buttons wrap instead of the buttons running off the right edge */
+    gap: 8px;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
@@ -29,7 +31,7 @@
 }
 
 .wf-count-badge {
-    font-size: 11px;
+    font-size: 0.6875rem;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     padding: 2px 8px;
@@ -38,6 +40,7 @@
 
 .wf-header-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
 }
 
@@ -50,19 +53,19 @@
 }
 
 .wf-empty-icon {
-    font-size: 48px;
+    font-size: 3rem;
     opacity: 0.3;
     margin-bottom: 12px;
 }
 
 .wf-empty p {
     margin: 8px 0 4px;
-    font-size: 15px;
+    font-size: 0.9375rem;
     color: var(--text-primary);
 }
 
 .wf-empty-hint {
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 /* ── Workflow list ────────────────────────────────────────── */
@@ -107,7 +110,7 @@
 }
 
 .wf-badge {
-    font-size: 11px;
+    font-size: 0.6875rem;
     padding: 2px 8px;
     border-radius: 10px;
     font-weight: 500;
@@ -138,7 +141,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-muted);
 }
 
@@ -238,7 +241,7 @@
     padding: 8px 12px;
     background: var(--bg-tertiary);
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .wf-step-index {
@@ -250,7 +253,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 600;
     color: var(--text-secondary);
     flex-shrink: 0;
@@ -262,7 +265,7 @@
 }
 
 .wf-step-type {
-    font-size: 11px;
+    font-size: 0.6875rem;
     padding: 1px 6px;
     border-radius: 4px;
     background: var(--bg-secondary);
@@ -281,7 +284,7 @@
 .wf-runs-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .wf-runs-table th,
@@ -294,7 +297,7 @@
 .wf-runs-table th {
     font-weight: 600;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .wf-runs-table tr {
@@ -335,7 +338,7 @@
 .wf-progress-fill.pending { background: var(--text-secondary); }
 
 .wf-progress-text {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-muted);
     white-space: nowrap;
 }
@@ -452,7 +455,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 0.75rem;
     flex-shrink: 0;
 }
 
@@ -465,12 +468,12 @@
 
 .wf-run-step-name {
     font-weight: 500;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .wf-run-step-timing {
     margin-left: auto;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-muted);
 }
 
@@ -498,7 +501,7 @@
     border-radius: 4px;
     padding: 8px 10px;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 0.75rem;
     white-space: pre-wrap;
     word-break: break-all;
     max-height: 0;
@@ -567,7 +570,7 @@
 /* ── Exit code badge ──────────────────────────────────────── */
 
 .wf-exit-code {
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--font-mono);
     padding: 1px 6px;
     border-radius: 4px;
@@ -592,7 +595,7 @@
     align-items: center;
     gap: 4px;
     margin-top: 6px;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .wf-step-file {
@@ -601,7 +604,7 @@
     border-radius: 4px;
     padding: 1px 6px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--text-muted);
 }
 
@@ -620,7 +623,7 @@
 }
 
 .wf-label {
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 500;
     color: var(--text-secondary);
     margin-top: 4px;
@@ -692,7 +695,7 @@
     color: var(--text-muted);
     cursor: pointer;
     padding: 2px;
-    font-size: 16px;
+    font-size: 1rem;
     line-height: 1;
 }
 
@@ -706,7 +709,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 6px 8px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-primary);
     resize: vertical;
     min-height: 36px;
@@ -724,7 +727,7 @@
     color: var(--error);
     border-radius: 6px;
     padding: 8px 10px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     margin-top: 4px;
 }
 
@@ -734,7 +737,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     padding: 2px 8px;
     border-radius: 10px;
     font-weight: 500;

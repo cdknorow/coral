@@ -83,7 +83,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     white-space: nowrap;
 }
@@ -115,7 +115,7 @@
     border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
@@ -150,7 +150,7 @@
 
 .sched-desc {
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     margin-bottom: 12px;
 }
 
@@ -159,7 +159,7 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 12px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 200px;
@@ -169,7 +169,7 @@
 .sched-runs-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 0.8125rem;
     margin-top: 8px;
 }
 
@@ -217,7 +217,7 @@
 }
 
 .sched-dot {
-    font-size: 10px;
+    font-size: 0.625rem;
     margin-right: 4px;
 }
 
@@ -234,7 +234,7 @@
     margin-left: 6px;
     padding: 1px 6px;
     border-radius: 8px;
-    font-size: 10px;
+    font-size: 0.625rem;
     font-weight: 600;
     white-space: nowrap;
     color: var(--error, var(--error));
@@ -246,7 +246,7 @@
     margin: 0 0 14px;
     padding: 10px 12px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--error, var(--error));
     background: rgba(248, 81, 73, 0.12);
@@ -264,7 +264,7 @@
 }
 
 .sched-fail-error code {
-    font-size: 11.5px;
+    font-size: 0.7188rem;
     color: var(--text-secondary);
     white-space: pre;
 }

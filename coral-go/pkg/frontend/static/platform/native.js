@@ -35,12 +35,12 @@ function initHealthCheck() {
         el.id = 'coral-app-disconnect-overlay';
         el.style.cssText = 'display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);align-items:center;justify-content:center;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#e0e0e0;';
         el.innerHTML = '<div style="text-align:center;max-width:400px;padding:32px">'
-            + '<div style="font-size:48px;margin-bottom:16px">\u26a0\ufe0f</div>'
-            + '<h2 style="margin:0 0 8px;font-size:20px;color:#fff">Server Disconnected</h2>'
-            + '<p style="margin:0 0 16px;font-size:14px;color:#aaa">Coral may have crashed. Check <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:3px;font-size:12px">~/.coral/coral.log</code> for details.</p>'
+            + '<div style="font-size:3rem;margin-bottom:16px">\u26a0\ufe0f</div>'
+            + '<h2 style="margin:0 0 8px;font-size:1.25rem;color:#fff">Server Disconnected</h2>'
+            + '<p style="margin:0 0 16px;font-size:0.875rem;color:#aaa">Coral may have crashed. Check <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:3px;font-size:0.75rem">~/.coral/coral.log</code> for details.</p>'
             + '<div style="display:flex;align-items:center;gap:8px;justify-content:center">'
             + '<span class="coral-reconnect-spinner" style="display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:coral-reconnect-spin 0.8s linear infinite"></span>'
-            + '<span style="font-size:13px;color:#888">Reconnecting...</span>'
+            + '<span style="font-size:0.8125rem;color:#888">Reconnecting...</span>'
             + '</div></div>';
 
         const style = document.createElement('style');

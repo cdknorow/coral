@@ -51,7 +51,7 @@
     color: var(--text-muted);
     cursor: pointer;
     flex: 1;
-    font-size: 10px;
+    font-size: 0.625rem;
     font-family: inherit;
     transition: color 0.15s;
     -webkit-tap-highlight-color: transparent;
@@ -104,7 +104,7 @@
     opacity: 0.75;
 }
 .mobile-send-team-btn .material-icons {
-    font-size: 18px;
+    font-size: 1.125rem;
 }
 
 /* ── Mobile Agent List (full screen) ──────────────────────── */
@@ -132,7 +132,7 @@
     color: var(--text-secondary);
     cursor: pointer;
     padding: 6px;
-    font-size: 18px;
+    font-size: 1.125rem;
     line-height: 1;
     margin-right: 4px;
 }
@@ -249,7 +249,7 @@
     }
 
     .top-bar h1 {
-        font-size: 14px;
+        font-size: 0.875rem;
     }
 
     /* Panel toggle: hide on mobile unless viewing an active live session */
@@ -327,7 +327,7 @@
         justify-content: center;
         min-width: 36px;
         min-height: 36px;
-        font-size: 20px;
+        font-size: 1.25rem;
         z-index: 5;
     }
 
@@ -444,7 +444,7 @@
     .board-chat-textarea {
         min-height: 60px;
         max-height: 100px;
-        font-size: 14px !important;
+        font-size: 0.875rem !important;
     }
 
     .board-chat-editor-wrap {
@@ -456,7 +456,7 @@
     }
 
     .board-chat-messages {
-        font-size: 11px;
+        font-size: 0.6875rem;
         padding: 4px 8px;
     }
 
@@ -489,7 +489,7 @@
     }
 
     .session-header h2 {
-        font-size: 14px !important;
+        font-size: 0.875rem !important;
     }
 
     /* Hide branch, badge, status — keep Goal as single truncated line */
@@ -505,11 +505,11 @@
     }
 
     .session-title #session-summary .goal-label {
-        font-size: 12px;
+        font-size: 0.75rem;
     }
 
     .session-title #session-summary .summary-text {
-        font-size: 12px;
+        font-size: 0.75rem;
     }
 
     /* Compact title: everything on one line, goal truncates */
@@ -588,7 +588,7 @@
     }
 
     #mb-post-input {
-        font-size: 16px !important; /* prevent iOS zoom on focus */
+        font-size: 1rem !important; /* prevent iOS zoom on focus */
     }
 
     /* Goal/summary: single truncated line on mobile */
@@ -607,7 +607,7 @@
     }
 
     .sched-header h2 {
-        font-size: 15px !important;
+        font-size: 0.9375rem !important;
     }
 
     /* Job cards stack full width */
@@ -633,11 +633,11 @@
 
     /* Welcome screen compact */
     .welcome h2 {
-        font-size: 16px;
+        font-size: 1rem;
     }
 
     .welcome p {
-        font-size: 12px;
+        font-size: 0.75rem;
     }
 
     /* History tabs scrollable */
@@ -693,7 +693,7 @@
         display: block;
         cursor: pointer;
         padding: 12px 14px;
-        font-size: 13px;
+        font-size: 0.8125rem;
         font-weight: 600;
         color: var(--text-primary);
         list-style: none;
@@ -766,7 +766,7 @@
 
     /* Waiting banner compact */
     .waiting-banner {
-        font-size: 12px !important;
+        font-size: 0.75rem !important;
         padding: 8px 12px !important;
     }
 
@@ -874,7 +874,7 @@
     }
 
     #mobile-session-list .agent-avatar-emoji {
-        font-size: 16px;
+        font-size: 1rem;
     }
 
     #mobile-session-list .session-name-row {
@@ -885,7 +885,7 @@
     #mobile-session-list .session-label {
         white-space: normal;
         line-height: 1.35;
-        font-size: 14px;
+        font-size: 0.875rem;
         font-weight: 500; /* agents are children of the 600-weight group header */
     }
 
@@ -911,7 +911,7 @@
         background: rgba(255, 193, 7, 0.14);
         border: 1px solid rgba(255, 193, 7, 0.3);
         color: var(--warning);
-        font-size: 11px;
+        font-size: 0.6875rem;
         font-weight: 600;
     }
 
@@ -935,7 +935,7 @@
         align-items: center;
         border-radius: 999px;
         padding: 3px 8px;
-        font-size: 10px;
+        font-size: 0.625rem;
         font-weight: 700;
         letter-spacing: 0.02em;
         text-transform: uppercase;
@@ -964,7 +964,7 @@
     #mobile-session-list .session-unread-chip { display: none; }
     #mobile-session-list .session-line2 { height: auto; align-items: flex-start; }
     #mobile-session-list .session-dot.sleeping::before,
-    #mobile-session-list .session-dot.ended::before { font-size: 13px; inset: -4px -2px; }
+    #mobile-session-list .session-dot.ended::before { font-size: 0.8125rem; inset: -4px -2px; }
 
     #mobile-session-list .session-status-chip.error {
         background: rgba(248, 81, 73, 0.16);
@@ -972,7 +972,7 @@
     }
 
     #mobile-session-list .session-activity-text {
-        font-size: 11px;
+        font-size: 0.6875rem;
         color: var(--text-secondary);
     }
 
@@ -1181,7 +1181,7 @@
     }
 
     .top-bar-title {
-        font-size: 13px;
+        font-size: 0.8125rem;
     }
 
     /* Hide search on very small screens to save space */
@@ -1205,29 +1205,29 @@
     }
 
     .modal-header h3 {
-        font-size: 15px;
+        font-size: 0.9375rem;
     }
 
     /* Session header: extra compact */
     .session-header h2 {
-        font-size: 13px !important;
+        font-size: 0.8125rem !important;
     }
 
     /* Message board: compact post form */
     .mb-post-input {
-        font-size: 14px;
+        font-size: 0.875rem;
         padding: 8px 10px;
     }
 
     .mb-post-send-btn {
         height: 38px;
         padding: 0 14px;
-        font-size: 13px;
+        font-size: 0.8125rem;
     }
 
     /* History tabs: smaller on small phones */
     .history-tab-btn {
-        font-size: 11px;
+        font-size: 0.6875rem;
         padding: 6px 8px;
     }
 }
@@ -1241,7 +1241,7 @@
     }
 
     .top-bar h1 {
-        font-size: 13px;
+        font-size: 0.8125rem;
     }
 
     /* Layout: account for smaller top bar */
@@ -1267,7 +1267,7 @@
 
     /* Waiting banner: compact */
     .waiting-banner {
-        font-size: 11px !important;
+        font-size: 0.6875rem !important;
         padding: 4px 10px !important;
     }
 
@@ -1301,7 +1301,7 @@
     height: 0;
     overflow: hidden;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
     transition: height 0.1s ease-out;
 }
 

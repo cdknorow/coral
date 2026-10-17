@@ -778,7 +778,7 @@ export async function showExportBoardModal() {
         const sid = escapeAttr(s.subscriber_id);
         return `<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;white-space:nowrap">
             <input type="checkbox" class="export-agent-cb" value="${escapeAttr(sid)}" data-role="${escapeAttr(s.job_title || s.subscriber_id)}">
-            <span style="font-weight:600;font-size:12px">${role}</span>
+            <span style="font-weight:600;font-size:0.75rem">${role}</span>
         </label>`;
     }).join('');
 
@@ -788,25 +788,25 @@ export async function showExportBoardModal() {
 
     body.innerHTML = `
         <div style="margin-bottom:16px">
-            <p style="margin:0 0 8px;font-size:14px">Export <strong>${escapeHtml(keyLabel(currentProject))}</strong> board messages.</p>
-            <p style="margin:0 0 12px;font-size:13px;color:var(--text-muted)">Optionally include individual agent chat histories, interleaved by timestamp.</p>
-            <p id="export-secrets-note" style="margin:0;font-size:13px;color:var(--text-muted)">The export holds agent output as written and may include secrets the agents printed. It is plain text, not encrypted.</p>
+            <p style="margin:0 0 8px;font-size:0.875rem">Export <strong>${escapeHtml(keyLabel(currentProject))}</strong> board messages.</p>
+            <p style="margin:0 0 12px;font-size:0.8125rem;color:var(--text-muted)">Optionally include individual agent chat histories, interleaved by timestamp.</p>
+            <p id="export-secrets-note" style="margin:0;font-size:0.8125rem;color:var(--text-muted)">The export holds agent output as written and may include secrets the agents printed. It is plain text, not encrypted.</p>
         </div>
         <div style="margin-bottom:16px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <label style="font-weight:600;font-size:13px">Include agent chats:</label>
+                <label style="font-weight:600;font-size:0.8125rem">Include agent chats:</label>
                 <div style="display:flex;gap:8px">
-                    <button class="mb-action-btn" data-on-click="mb-export-agents" data-checked="1" style="font-size:11px;padding:2px 8px">All</button>
-                    <button class="mb-action-btn" data-on-click="mb-export-agents" data-checked="0" style="font-size:11px;padding:2px 8px">None</button>
+                    <button class="mb-action-btn" data-on-click="mb-export-agents" data-checked="1" style="font-size:0.6875rem;padding:2px 8px">All</button>
+                    <button class="mb-action-btn" data-on-click="mb-export-agents" data-checked="0" style="font-size:0.6875rem;padding:2px 8px">None</button>
                 </div>
             </div>
             <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px 12px">
-                ${agentCheckboxes || '<p style="font-size:13px;color:var(--text-muted)">No subscribers</p>'}
+                ${agentCheckboxes || '<p style="font-size:0.8125rem;color:var(--text-muted)">No subscribers</p>'}
             </div>
         </div>
         <div style="margin-bottom:8px">
-            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px">Format:</label>
-            <select id="export-format-select" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:13px">
+            <label style="font-weight:600;font-size:0.8125rem;display:block;margin-bottom:4px">Format:</label>
+            <select id="export-format-select" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:0.8125rem">
                 <option value="html">HTML (styled, shareable)</option>
                 <option value="json">JSON (canonical data)</option>
                 <option value="markdown">Markdown</option>
@@ -833,7 +833,7 @@ export async function doExportBoard() {
 
     // Show progress in the export dialog's own footer
     const actions = document.getElementById('mb-export-actions');
-    actions.innerHTML = '<span style="color:var(--text-muted);font-size:13px">Exporting...</span>';
+    actions.innerHTML = '<span style="color:var(--text-muted);font-size:0.8125rem">Exporting...</span>';
 
     try {
         // 1. Fetch all board messages (in pages, #3718)

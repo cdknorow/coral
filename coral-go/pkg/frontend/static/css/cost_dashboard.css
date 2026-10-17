@@ -126,6 +126,8 @@
 
 .cost-header {
     display: flex;
+    flex-wrap: wrap; /* #4344: at large text the title and the controls wrap instead of the select running off the right edge */
+    gap: 8px;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 20px;
@@ -140,8 +142,11 @@
 
 .cost-header-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .cost-time-select {
@@ -186,7 +191,7 @@
 }
 
 .cost-card-value {
-    font-size: 20px;
+    font-size: 1.25rem;
     font-weight: 700;
     color: var(--text-primary);
     font-variant-numeric: tabular-nums;
@@ -214,14 +219,14 @@
     padding: 24px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 /* Tables */
 .cost-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .cost-table thead th {
@@ -299,7 +304,7 @@
 /* Model name */
 .cost-model-name {
     font-family: var(--font-mono, monospace);
-    font-size: 11px;
+    font-size: 0.6875rem;
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -387,11 +392,11 @@
 
 .cost-card-highlight .cost-card-value {
     color: var(--accent);
-    font-size: 22px;
+    font-size: 1.375rem;
 }
 
 .cost-card-burn .cost-card-value {
-    font-size: 16px;
+    font-size: 1rem;
     color: var(--warning);
 }
 
@@ -436,7 +441,7 @@
 }
 
 .spend-label {
-    font-size: 10px;
+    font-size: 0.625rem;
     fill: var(--text-muted);
     font-family: var(--font-mono, monospace);
 }
@@ -484,7 +489,7 @@
     pointer-events: none;
 }
 .agent-cost-chart-tooltip .chart-title {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--text-muted);
     margin-bottom: 6px;
 }
@@ -492,7 +497,7 @@
     display: block;
 }
 .agent-cost-chart-tooltip .chart-axis-label {
-    font-size: 10px;
+    font-size: 0.625rem;
     fill: var(--text-muted);
 }
 .agent-cost-chart-tooltip .chart-line {

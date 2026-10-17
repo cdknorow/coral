@@ -835,10 +835,10 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
     modal.innerHTML = `
         <div class="modal-content" style="width:480px">
             <h3>${info.name} CLI Not Found</h3>
-            <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin:8px 0 12px">
+            <p style="color:var(--text-secondary);font-size:0.8125rem;line-height:1.5;margin:8px 0 12px">
                 The <code>${info.name}</code> command was not found ${where}. Install it there to launch ${info.name} agents.
             </p>
-            <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:13px;display:flex;align-items:center;gap:8px">
+            <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:0.8125rem;display:flex;align-items:center;gap:8px">
                 <code style="flex:1;user-select:all">${escapeHtml(info.cmd)}</code>
                 <button class="btn btn-small" data-on-click="info-copy" data-cmd="${escapeAttr(info.cmd)}">Copy</button>
             </div>
@@ -870,7 +870,7 @@ function _checkPermissionFlag(flagsStr, agentType, server = LOCAL_SERVER) {
         modal.innerHTML = `
             <div class="modal-content" style="width:460px">
                 <h3>Permission Prompt Warning</h3>
-                <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin:8px 0 16px">
+                <p style="color:var(--text-secondary);font-size:0.8125rem;line-height:1.5;margin:8px 0 16px">
                     Agents may get stuck on permission prompts without <code>${escapeHtml(permFlag)}</code>. Would you like to enable it?
                 </p>
                 <div class="modal-actions" style="gap:8px">
@@ -1979,8 +1979,8 @@ async function launchTeam() {
                 modal.innerHTML = `
                     <div class="modal-content" style="width:500px">
                         <h3>Team Launch — ${failed.length} agent${failed.length > 1 ? 's' : ''} failed</h3>
-                        <p style="color:var(--text-secondary);font-size:13px;margin:8px 0">${successCount} launched successfully, ${failed.length} failed:</p>
-                        <ul style="color:var(--error);font-size:13px;line-height:1.6;margin:8px 0 16px;padding-left:20px">${failList}</ul>
+                        <p style="color:var(--text-secondary);font-size:0.8125rem;margin:8px 0">${successCount} launched successfully, ${failed.length} failed:</p>
+                        <ul style="color:var(--error);font-size:0.8125rem;line-height:1.6;margin:8px 0 16px;padding-left:20px">${failList}</ul>
                         <div class="modal-actions">
                             <button class="btn" data-action="settings">Set CLI Paths</button>
                             <button class="btn btn-primary" data-action="close">OK</button>

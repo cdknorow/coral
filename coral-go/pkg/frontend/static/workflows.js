@@ -68,7 +68,7 @@ export function showWorkflowsTab() {
 
 export async function launchWorkflowAgent() {
     const btn = document.getElementById('wf-build-agent-btn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons" style="font-size:16px">hourglass_top</span> Launching\u2026'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons" style="font-size:1rem">hourglass_top</span> Launching\u2026'; }
 
     try {
         // Fetch the skill prompt
@@ -114,7 +114,7 @@ export async function launchWorkflowAgent() {
     } catch (e) {
         showToast('Failed to launch workflow agent', true);
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-icons" style="font-size:16px">smart_toy</span> Build with Agent'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-icons" style="font-size:1rem">smart_toy</span> Build with Agent'; }
     }
 }
 
@@ -285,22 +285,22 @@ function renderWorkflowDetail(wf, runs) {
             <tbody>${rowsHtml}</tbody>
         </table>`;
     } else {
-        runsHtml = '<p style="color:var(--text-muted);font-size:13px">No runs yet.</p>';
+        runsHtml = '<p style="color:var(--text-muted);font-size:0.8125rem">No runs yet.</p>';
     }
 
     container.innerHTML = `
         <div class="wf-detail-header">
             <div>
                 <h3 class="wf-detail-title">${esc(wf.name)}</h3>
-                ${wf.description ? `<div style="color:var(--text-secondary);font-size:13px;margin-top:2px">${esc(wf.description)}</div>` : ''}
+                ${wf.description ? `<div style="color:var(--text-secondary);font-size:0.8125rem;margin-top:2px">${esc(wf.description)}</div>` : ''}
             </div>
             <div class="wf-detail-actions">
                 <button class="btn btn-sm btn-primary" data-on-click="wf-trigger" data-workflow-id="${Number(wf.id)}">
-                    <span class="material-icons" style="font-size:14px">play_arrow</span> Run
+                    <span class="material-icons" style="font-size:0.875rem">play_arrow</span> Run
                 </button>
                 <button class="btn btn-sm" data-on-click="wf-edit" data-workflow-id="${Number(wf.id)}">Edit</button>
                 <button class="btn btn-sm" data-on-click="wf-edit-agent" data-workflow-id="${Number(wf.id)}">
-                    <span class="material-icons" style="font-size:14px">smart_toy</span> Edit with Agent
+                    <span class="material-icons" style="font-size:0.875rem">smart_toy</span> Edit with Agent
                 </button>
                 <button class="btn btn-sm" style="color:var(--error)" data-on-click="wf-delete" data-workflow-id="${Number(wf.id)}" data-name="${escAttr(wf.name)}">Delete</button>
             </div>
@@ -426,15 +426,15 @@ function renderRunDetail(run) {
             const autoExpand = isFailed ? ' wf-expanded' : '';
             outputHtml = `
                 <button type="button" class="wf-run-step-output-toggle" aria-expanded="${escAttr(isFailed)}" aria-controls="${escAttr(outputId)}" data-on-click="wf-output-toggle">
-                    <span class="material-icons" style="font-size:14px" aria-hidden="true">terminal</span> Output
-                    <span class="material-icons wf-toggle-arrow" style="font-size:14px" aria-hidden="true">expand_more</span>
+                    <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">terminal</span> Output
+                    <span class="material-icons wf-toggle-arrow" style="font-size:0.875rem" aria-hidden="true">expand_more</span>
                 </button>
                 <div id="${escAttr(outputId)}" class="wf-run-step-output${autoExpand}">${esc(s.output_tail)}</div>`;
         }
         // Why a step failed: the end of its stderr, always shown (stderr.txt is still in the file list).
         if (isFailed && s.error_tail && s.error_tail.trim()) {
             outputHtml += `
-                <div class="wf-run-step-error-label"><span class="material-icons" style="font-size:14px" aria-hidden="true">error_outline</span> Error output</div>
+                <div class="wf-run-step-error-label"><span class="material-icons" style="font-size:0.875rem" aria-hidden="true">error_outline</span> Error output</div>
                 <div class="wf-run-step-output wf-expanded wf-run-step-error">${esc(s.error_tail.replace(/\s+$/, ''))}</div>`;
         }
 
@@ -444,7 +444,7 @@ function renderRunDetail(run) {
         if (files.length > 0) {
             const fileItems = files.map(f => `<span class="wf-step-file">${esc(f)}</span>`).join('');
             filesHtml = `<div class="wf-step-files">
-                <span class="material-icons" style="font-size:13px;color:var(--text-muted)">folder_open</span>
+                <span class="material-icons" style="font-size:0.8125rem;color:var(--text-muted)">folder_open</span>
                 ${fileItems}
             </div>`;
         }
@@ -453,7 +453,7 @@ function renderRunDetail(run) {
         let agentHtml = '';
         if (s.type === 'agent' && s.session_id) {
             agentHtml = `<span class="wf-step-agent-link" data-on-click="wf-step-agent" data-session="${escAttr(s.session_name || s.session_id)}">
-                <span class="material-icons" style="font-size:13px">open_in_new</span> View agent
+                <span class="material-icons" style="font-size:0.8125rem">open_in_new</span> View agent
             </span>`;
         }
 
@@ -476,13 +476,13 @@ function renderRunDetail(run) {
 
     const killBtn = isActive
         ? `<button class="btn btn-sm" style="color:var(--error)" data-on-click="wf-kill-run" data-run-id="${Number(run.id)}">
-            <span class="material-icons" style="font-size:14px">stop</span> Kill
+            <span class="material-icons" style="font-size:0.875rem">stop</span> Kill
           </button>`
         : '';
 
     const retriggerBtn = !isActive && run.workflow_id
         ? `<button class="btn btn-sm" data-on-click="wf-trigger" data-workflow-id="${Number(run.workflow_id)}">
-            <span class="material-icons" style="font-size:14px">replay</span> Re-run
+            <span class="material-icons" style="font-size:0.875rem">replay</span> Re-run
           </button>`
         : '';
 

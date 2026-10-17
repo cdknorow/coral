@@ -429,10 +429,10 @@ export async function shareAgentTeam(boardName) {
         <div class="modal-content" style="width:600px">
             <div class="modal-header">
                 <h3>Export Team: ${escapeHtml(keyLabel(boardName))}</h3>
-                <p style="color:var(--text-secondary);font-size:13px;margin:6px 0 0">${tmpl.agents.length} agents</p>
+                <p style="color:var(--text-secondary);font-size:0.8125rem;margin:6px 0 0">${tmpl.agents.length} agents</p>
             </div>
             <div class="modal-body">
-                <textarea readonly style="width:100%;height:260px;font-family:monospace;font-size:12px;resize:vertical;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:12px">${escapeHtml(jsonStr)}</textarea>
+                <textarea readonly style="width:100%;height:260px;font-family:monospace;font-size:0.75rem;resize:vertical;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:12px">${escapeHtml(jsonStr)}</textarea>
             </div>
             <div class="modal-actions modal-footer">
                 <button class="btn" data-action="close">Close</button>
@@ -756,7 +756,7 @@ export function expandSleepingGroup(groupName) {
 const _RAIL_ICONS = {
     team: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>',
     folder: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg>',
-    workflow: '<span class="material-icons" style="font-size:13px" aria-hidden="true">account_tree</span>',
+    workflow: '<span class="material-icons" style="font-size:0.8125rem" aria-hidden="true">account_tree</span>',
 };
 
 // Role keyword -> Material icon for the rail tiles (first match wins).
@@ -1050,7 +1050,7 @@ function _renderLiveSessions(sessions) {
             <button class="sidebar-kebab-btn group-kebab-btn" data-on-click="kebab-toggle" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
                 <button class="overflow-menu-item" data-on-click="team-availability" data-board="${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
-                <button class="overflow-menu-item" data-on-click="team-working-mode" data-board="${escapeAttr(boardName)}"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
+                <button class="overflow-menu-item" data-on-click="team-working-mode" data-board="${escapeAttr(boardName)}"><span class="material-icons" style="font-size:0.875rem;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
                 <button class="overflow-menu-item" data-on-click="team-add-agent" data-board="${escapeAttr(boardName)}" data-dir="${escapeAttr(boardWorkDir)}">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
@@ -1149,7 +1149,7 @@ function _renderLiveSessions(sessions) {
 
         html += `<li class="session-board-card session-board-card-toplevel session-wf-card" style="border-left-color: var(--color-tool-agent)">
             <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" data-on-click="group-collapse" data-group="wf:${escapeAttr(wfName)}"${_collapseAttrs(wfCollapsed)}>
-                <div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:14px;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
+                <div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:0.875rem;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
             </div>
             <ul class="board-card-agents${wfCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -1320,7 +1320,7 @@ function _renderLiveSessions(sessions) {
                     <button class="sidebar-kebab-btn group-kebab-btn" data-on-click="kebab-toggle" title="Group actions">&#x22EE;</button>
                     <div class="sidebar-kebab-menu" style="display:none">
                 <button class="overflow-menu-item" data-on-click="team-availability" data-board="${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
-                <button class="overflow-menu-item" data-on-click="team-working-mode" data-board="${escapeAttr(boardName)}"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
+                <button class="overflow-menu-item" data-on-click="team-working-mode" data-board="${escapeAttr(boardName)}"><span class="material-icons" style="font-size:0.875rem;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
                         <button class="overflow-menu-item" data-on-click="team-add-agent" data-board="${escapeAttr(boardName)}" data-dir="${escapeAttr(boardWorkDir)}">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                             Add Agent
@@ -1822,7 +1822,7 @@ export async function showTeamTokenUsage(boardName) {
         ${executionTimeRow}
     </div>`;
 
-    html += `<table class="cost-table" style="font-size:12px">
+    html += `<table class="cost-table" style="font-size:0.75rem">
         <thead><tr>
             <th>Agent</th>
             <th style="text-align:right">Input</th>

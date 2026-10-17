@@ -334,7 +334,7 @@ function _renderTopBarResults(files, message, workingDir) {
     // Working directory header
     const dir = workingDir || state.currentSession?.working_directory;
     const dirHeader = dir
-        ? `<div class="topbar-search-dir" style="padding:6px 12px;font-size:11px;color:var(--text-secondary);border-bottom:1px solid var(--border);font-family:var(--font-mono)"><span class="material-icons" style="font-size:13px;vertical-align:-2px;margin-right:4px">folder</span>${escapeHtml(dir)}</div>`
+        ? `<div class="topbar-search-dir" style="padding:6px 12px;font-size:0.6875rem;color:var(--text-secondary);border-bottom:1px solid var(--border);font-family:var(--font-mono)"><span class="material-icons" style="font-size:0.8125rem;vertical-align:-2px;margin-right:4px">folder</span>${escapeHtml(dir)}</div>`
         : '';
 
     if (message) {

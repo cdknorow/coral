@@ -110,7 +110,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
         // select a row, so it must bubble to the row's click handler. Only the
         // sparkle button requests a goal.
         goalLine = `<span class="session-goal session-goal-empty${isCompact ? ' session-goal-compact' : ''}">
-                <button class="sidebar-goal-btn sidebar-goal-btn-inline" data-on-click="goal-request" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(sid)}" title="Generate goal" aria-label="Generate goal for ${escapeAttr(identity)}"><span class="material-icons" style="font-size:14px">auto_awesome</span></button>
+                <button class="sidebar-goal-btn sidebar-goal-btn-inline" data-on-click="goal-request" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(sid)}" title="Generate goal" aria-label="Generate goal for ${escapeAttr(identity)}"><span class="material-icons" style="font-size:0.875rem">auto_awesome</span></button>
                 <span class="session-goal-empty-label">No goal yet</span>
             </span>`;
     }

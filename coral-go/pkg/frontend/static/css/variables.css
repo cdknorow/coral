@@ -134,8 +134,8 @@
     --control-height: 36px;
     --control-compact-height: 32px;
     --control-touch-height: 44px;
-    --icon-size: 18px;
-    --icon-inline-size: 16px;
+    --icon-size: 1.125rem;   /* 18px */
+    --icon-inline-size: 1rem; /* 16px */
     --chat-prose-font: var(--font-sans);
     --chat-prose-size: var(--fs-lg);
 

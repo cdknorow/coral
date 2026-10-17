@@ -22,7 +22,7 @@
 
 .docs-empty p {
     margin-top: 8px;
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 
 /* ── Markdown rendering ───────────────────────────────────── */
@@ -54,14 +54,14 @@
 .docs-content p {
     margin: 8px 0;
     line-height: 1.6;
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 
 .docs-content code {
     background: var(--bg-tertiary);
     padding: 2px 5px;
     border-radius: 3px;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .docs-content pre {
@@ -70,7 +70,7 @@
     border-radius: 6px;
     padding: 12px 14px;
     overflow-x: auto;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.5;
     margin: 8px 0;
 }
@@ -84,7 +84,7 @@
     border-collapse: collapse;
     width: 100%;
     margin: 8px 0;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .docs-content th,
@@ -103,7 +103,7 @@
 .docs-content ol {
     padding-left: 1.5em;
     margin: 6px 0;
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1.6;
 }
 

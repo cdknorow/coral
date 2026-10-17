@@ -129,7 +129,7 @@
 .session-dot.ended::before {
     position: absolute;
     inset: -4px -3px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 16px;
     text-align: center;
     color: var(--text-secondary);
@@ -156,12 +156,12 @@
 }
 
 .agent-avatar-emoji {
-    font-size: 15px;
+    font-size: 0.9375rem;
     line-height: 1;
 }
 
 .agent-avatar-initials {
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0.3px;
@@ -221,7 +221,7 @@
     gap: 12px 20px;
     padding: 8px 16px;
     margin: 0 0 4px 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     border-bottom: 1px solid var(--border);
 }
@@ -258,7 +258,7 @@
 
 .session-tooltip-table {
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.5;
 }
 
@@ -352,7 +352,7 @@
     padding: 0 5px;
     height: 16px;
     line-height: 16px;
-    font-size: 14px;
+    font-size: 0.875rem;
     position: relative;
 }
 .session-name-row .sidebar-kebab-btn::after {
@@ -453,7 +453,7 @@
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1rem;
     padding: 2px 4px;
     border-radius: 3px;
     line-height: 1;
@@ -761,7 +761,7 @@
 }
 
 .group-kebab .sidebar-kebab-btn {
-    font-size: 13px;
+    font-size: 0.8125rem;
     padding: 1px 3px;
     opacity: 0;
     align-self: center;
@@ -784,7 +784,7 @@
 /* ── Terminal icon in sidebar ─────────────────────────────── */
 
 .agent-icon {
-    font-size: 13px;
+    font-size: 0.8125rem;
     vertical-align: middle;
 }
 
@@ -1103,7 +1103,7 @@
 
 .drag-grip {
     display: none;
-    font-size: 10px;
+    font-size: 0.625rem;
     color: var(--text-muted);
     opacity: 0;
     cursor: grab;
@@ -1159,7 +1159,7 @@
 }
 
 .session-title h2 {
-    font-size: 16px;
+    font-size: 1rem;
     font-weight: 600;
 }
 
@@ -1176,12 +1176,12 @@
 }
 
 .status-line, .summary-line {
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--text-secondary);
 }
 
 .token-usage {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--text-muted);
     white-space: nowrap;
 }
@@ -1195,7 +1195,7 @@
 }
 
 .goal-label {
-    font-size: 15px;
+    font-size: 0.9375rem;
     font-weight: 600;
     color: var(--color-tool-agent);
     flex-shrink: 0;
@@ -1236,7 +1236,7 @@
     border: 1px solid var(--accent);
     border-radius: 4px;
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 500;
     padding: 2px 8px;
     outline: none;
@@ -1250,7 +1250,7 @@
     background: rgba(var(--accent-rgb), 0.1);
     border: 1px solid rgba(var(--accent-rgb), 0.2);
     border-radius: 12px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--accent);
     font-family: var(--font-mono);
 }
@@ -1263,7 +1263,7 @@
 .branch-git-state {
     display: inline-flex;
     gap: 6px;
-    font-size: 11px;
+    font-size: 0.6875rem;
 }
 .branch-git-state:empty { display: none; }
 .gs-worktree {
@@ -1400,7 +1400,7 @@
     border-radius: 6px;
     padding: 6px 12px;
     margin: 0 12px 8px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--warning);
     text-align: center;
 }
@@ -1417,7 +1417,7 @@
 /* ── Session ID Label ──────────────────────────────────────── */
 
 .session-id-label {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--text-muted);
     font-family: var(--font-mono);
 }
@@ -1479,7 +1479,7 @@
 }
 
 .session-board-card-toplevel .board-card-header .group-name-line {
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 600;
 }
 
@@ -1506,7 +1506,7 @@
 }
 
 .board-chat-header {
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-primary);
     padding: 6px 10px;
@@ -1543,7 +1543,7 @@
 .board-chat-messages {
     flex: 1;
     overflow-y: auto;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.5;
     padding: 12px 20px;
     max-width: 800px;
@@ -1598,7 +1598,7 @@
     width: 100%;
     box-sizing: border-box;
     padding: 8px 12px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-family: var(--font-mono);
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
@@ -1632,7 +1632,7 @@
 
 .board-mention-item {
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
     color: var(--text-secondary);
 }
@@ -1654,7 +1654,7 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     min-width: 240px;
     max-width: 360px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-primary);
 }
 .team-details-popover:focus { outline: none; }
@@ -1672,7 +1672,7 @@
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1rem;
     line-height: 1;
     min-width: 24px;
     min-height: 24px;
@@ -1817,7 +1817,7 @@
 }
 
 .prompt-modal-colors-label {
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--text-secondary);
     margin-bottom: 6px;
 }
@@ -1837,7 +1837,7 @@
     box-shadow: 0 0 0 1px var(--border);
     cursor: pointer;
     padding: 0;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 700;
     color: var(--bg-primary);
     display: flex;
@@ -1861,26 +1861,26 @@
 .team-availability-dialog header p { font-size: var(--fs-base); color: var(--text-secondary); }
 .team-availability-dialog button { min-height: var(--control-compact-height); font: 500 var(--fs-md)/1.4 var(--font-sans); cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; }
 .team-availability-dialog button:disabled { opacity: .5; }
-.availability-toolbar { margin: 18px 0; font-size: 13px; }
+.availability-toolbar { margin: 18px 0; font-size: 0.8125rem; }
 .availability-summary { display: flex; gap: 12px; flex-wrap: wrap; }
 .availability-summary div { display: flex; flex-direction: column; min-width: 65px; padding: 10px; border-radius: 8px; background: var(--bg-tertiary); }
-.availability-summary strong { font-size: 24px; }
-.availability-summary span, .availability-note, .availability-agent p, .availability-agent small, .availability-unassigned li span { color: var(--text-secondary); font-size: 12px; }
+.availability-summary strong { font-size: 1.5rem; }
+.availability-summary span, .availability-note, .availability-agent p, .availability-agent small, .availability-unassigned li span { color: var(--text-secondary); font-size: 0.75rem; }
 .team-view-details { display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:8px; margin:14px 0; }
 .team-view-details div { min-width:0; padding:10px 12px; border-radius:8px; background:var(--bg-tertiary); }
 .team-view-details span, .team-view-details strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .team-view-details span { color:var(--text-secondary); font-size: var(--fs-base); }
-.team-view-details strong { margin-top:4px; font-size:13px; font-weight:500; }
+.team-view-details strong { margin-top:4px; font-size:0.8125rem; font-weight:500; }
 .availability-agents { display:flex; flex-direction:column; gap:6px; }
 .availability-agent { display:grid; grid-template-columns:minmax(150px,1fr) minmax(180px,2fr) auto; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; overflow-wrap:anywhere; }
 .availability-agent > p { margin:0; }
 .availability-agent > .btn { margin-top:0; }
 .availability-agent-heading small, .availability-agent li span, .availability-unassigned li span { display: block; margin: 4px 0; }
-.availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 12px; color: var(--text-secondary); }
+.availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 0.75rem; color: var(--text-secondary); }
 .availability-badge.is-free { color: var(--success); }
 .availability-task_idle .availability-badge, .availability-summary-task_idle { color: var(--text-secondary); }
 .availability-waiting .availability-badge, .availability-summary-waiting { color: var(--accent); }
-.team-availability-dialog ul { padding-left: 18px; font-size: 13px; }
+.team-availability-dialog ul { padding-left: 18px; font-size: 0.8125rem; }
 .team-availability-dialog li { margin: 8px 0; }
 @media(max-width: 600px) { .team-availability-dialog { padding: 16px; } .team-view-details { grid-template-columns:1fr 1fr; } .availability-agent { grid-template-columns:1fr auto; } .availability-agent > p, .availability-agent > ul { grid-column:1 / -1; } }
 
@@ -1888,17 +1888,17 @@
 .working-mode-form[hidden] { display: none; }
 .working-mode-form label { display: block; font: 500 var(--fs-md)/1.4 var(--font-sans); }
 .working-mode-form select, .working-mode-form textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
-.working-mode-form p { font-size: 13px; color: var(--text-secondary); margin: 0; }
+.working-mode-form p { font-size: 0.8125rem; color: var(--text-secondary); margin: 0; }
 .team-settings-section { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 0; display: grid; gap: 12px; }
 .team-settings-section legend { font-size: var(--fs-md); font-weight: 600; color: var(--text-primary); padding: 0 4px; }
 .team-settings-section.global-settings-section { background: var(--bg-tertiary); }
-.working-mode-hint { font-size: 12px !important; color: var(--text-secondary); margin: 0; line-height: 1.4; }
+.working-mode-hint { font-size: 0.75rem !important; color: var(--text-secondary); margin: 0; line-height: 1.4; }
 .working-mode-docs-link { color: var(--accent); text-decoration: none; cursor: pointer; }
 .working-mode-docs-link:hover { text-decoration: underline; }
-.working-mode-status { min-height: 18px; color: var(--text-secondary); font-size: 13px; }
+.working-mode-status { min-height: 18px; color: var(--text-secondary); font-size: 0.8125rem; }
 .working-mode-status.is-error { color: var(--error); }
 .team-settings-tabs { display: flex; gap: 4px; margin: 8px 0 16px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-tertiary); }
-.team-settings-tabs [role="tab"] { flex: 1; border: 0; background: transparent; color: var(--text-secondary); font-size: 13px; padding: 8px 10px; }
+.team-settings-tabs [role="tab"] { flex: 1; border: 0; background: transparent; color: var(--text-secondary); font-size: 0.8125rem; padding: 8px 10px; }
 .team-settings-tabs [role="tab"][aria-selected="true"] { background: var(--bg-primary); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 .team-settings-tabs [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .team-settings-panel { display: grid; gap: 16px; }
@@ -1908,16 +1908,16 @@
 .working-mode-form input[name="preset_name"] { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .prompt-inspection-content { display: grid; gap: 10px; }
 .prompt-inspection-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-tertiary); }
-.prompt-inspection-card h4 { margin: 0 0 6px; font-size: 14px; }
-.prompt-inspection-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--text-secondary); font-size: 12px !important; }
+.prompt-inspection-card h4 { margin: 0 0 6px; font-size: 0.875rem; }
+.prompt-inspection-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--text-secondary); font-size: 0.75rem !important; }
 .prompt-inspection-fragment { margin-top: 10px; }
-.prompt-inspection-fragment summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
-.prompt-inspection-fragment pre { max-height: 120px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; padding: 8px; border-radius: 5px; background: var(--bg-primary); color: var(--text-primary); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.prompt-inspection-fragment summary { cursor: pointer; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+.prompt-inspection-fragment pre { max-height: 120px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; padding: 8px; border-radius: 5px; background: var(--bg-primary); color: var(--text-primary); font: 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media(max-width: 600px) { .prompt-inspection-meta { flex-direction: column; gap: 4px; } }
 @media(max-width: 600px) { .team-settings-tabs { overflow-x: auto; } .team-settings-tabs [role="tab"] { flex: 0 0 auto; white-space: nowrap; } }
 .team-settings-actions { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 12px 0 2px; background: linear-gradient(var(--bg-secondary), var(--bg-secondary)); }
 .team-settings-actions button { flex: 0 0 auto; }
-.team-settings-actions span { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
+.team-settings-actions span { color: var(--text-secondary); font-size: 0.75rem; line-height: 1.35; }
 @media(max-width: 600px) { .team-settings-actions { align-items: stretch; flex-direction: column; } }
 
 /* Team settings, Health check tab (#4230): the check, then one card per automatic rule with its numbers and the server's limits under each. */
@@ -1929,9 +1929,9 @@
 .health-knobs { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 2px 0 0 26px; }
 .health-knobs:empty { display: none; }
 .health-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
-.working-mode-form label.health-knob { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.working-mode-form label.health-knob { display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
 .health-knob-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.health-limits { font-weight: 400; font-size: 12px; color: var(--text-secondary); }
+.health-limits { font-weight: 400; font-size: 0.75rem; color: var(--text-secondary); }
 .health-form input[type="number"], .health-form input[type="text"] { box-sizing: border-box; min-height: var(--control-height, 32px); background: var(--bg-tertiary, var(--bg-primary)); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; }
 .health-form input[type="number"] { width: 7em; max-width: 100%; } /* (not min(7em, 100%): a percentage width collapses the shrink-wrapped box and drops the unit under the input) */
 .health-knob.health-wide, .health-knobs .health-wide { flex: 1 1 100%; }
@@ -1954,18 +1954,18 @@
 .knowledge-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .knowledge-toolbar-left { display: flex; align-items: center; gap: 6px; }
 .knowledge-toolbar-actions { display: flex; gap: 2px; align-items: center; margin-left: auto; }
-.knowledge-nav-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.knowledge-nav-title { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
 .knowledge-content-area { flex: 1; min-height: 0; overflow: hidden; }
 .knowledge-pane { display: none; height: 100%; overflow: hidden; }
 .knowledge-pane.active { display: flex; flex-direction: column; }
 .knowledge-preview { flex: 1; overflow-y: auto; padding: 12px 14px; }
-.knowledge-editor { flex: 1; width: 100%; resize: none; font-family: var(--font-mono, monospace); font-size: 12px; line-height: 1.5; padding: 12px 14px; background: var(--bg-primary); color: var(--text-primary); border: none; outline: none; overflow-y: auto; }
-.knowledge-md { font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.knowledge-editor { flex: 1; width: 100%; resize: none; font-family: var(--font-mono, monospace); font-size: 0.75rem; line-height: 1.5; padding: 12px 14px; background: var(--bg-primary); color: var(--text-primary); border: none; outline: none; overflow-y: auto; }
+.knowledge-md { font-size: 0.8125rem; line-height: 1.6; color: var(--text-secondary); }
 .knowledge-md.notes-rendered { padding: 0; }
-.knowledge-h2 { margin: 16px 0 8px; font-size: 15px; font-weight: 600; color: var(--text-primary); }
-.knowledge-h3 { margin: 16px 0 6px; font-size: 14px; font-weight: 600; color: var(--text-primary); }
-.knowledge-h4 { margin: 12px 0 4px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.knowledge-code { background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+.knowledge-h2 { margin: 16px 0 8px; font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
+.knowledge-h3 { margin: 16px 0 6px; font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+.knowledge-h4 { margin: 12px 0 4px; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+.knowledge-code { background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px; font-size: 0.75rem; }
 .knowledge-li { margin: 2px 0; padding-left: 12px; }
 .knowledge-spacer { margin: 8px 0; }
 .knowledge-link { color: var(--accent); cursor: pointer; text-decoration: none; border-bottom: 1px dotted var(--accent); }
@@ -1977,11 +1977,11 @@
 /* Knowledge distillation in progress / last run (#3325) */
 .knowledge-progress { display: inline-block; width: 200px; height: 4px; margin-top: 8px; overflow: hidden; border-radius: 2px; background: var(--bg-tertiary); }
 .knowledge-progress-bar { height: 100%; border-radius: 2px; background: var(--accent); transition: width .3s; }
-.knowledge-run-note { margin: 0 0 8px; padding: 6px 10px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 12px; }
+.knowledge-run-note { margin: 0 0 8px; padding: 6px 10px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.75rem; }
 .knowledge-run-note.is-failed { color: var(--error); }
 .knowledge-run-note.is-partial { color: var(--warning); }
 /* The team header while its knowledge is being distilled */
-.team-distill-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 0 6px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 11px; font-weight: 500; line-height: 16px; white-space: nowrap; }
+.team-distill-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 0 6px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.6875rem; font-weight: 500; line-height: 16px; white-space: nowrap; }
 .team-distill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse-working 1.5s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .team-distill-dot { animation: none; } }
 .knowledge-save-btn { margin-left: 4px; }
@@ -2185,8 +2185,8 @@
 .server-switcher-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .server-switcher-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .server-switcher-update { display: block; }
-.server-switcher-update .server-update-marker { display: block; box-sizing: border-box; width: 100%; padding: 0 2px; font-size: 10px; text-align: center; }
-.server-switcher-btn .server-update-marker { font-size: 10px; padding: 0 3px; }
+.server-switcher-update .server-update-marker { display: block; box-sizing: border-box; width: 100%; padding: 0 2px; font-size: 0.625rem; text-align: center; }
+.server-switcher-btn .server-update-marker { font-size: 0.625rem; padding: 0 3px; }
 .server-switcher-meta { color: var(--text-secondary); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 /* Not checked yet: quiet, not a state to act on. */
 .server-switcher-item.server-unknown .server-switcher-name,

@@ -522,8 +522,8 @@ function renderDistillProgress(panel, job) {
         ${_SPIN}
         <div>${escapeHtml(phase)}${agent}</div>
         <div class="knowledge-progress" aria-hidden="true"><div class="knowledge-progress-bar" style="width:${pct}%"></div></div>
-        <div style="font-size:12px;margin-top:4px">${escapeHtml(counts)}</div>
-        <div style="font-size:12px;margin-top:4px">You can leave this view: the run continues, and you'll be told when it's done.</div>
+        <div style="font-size:0.75rem;margin-top:4px">${escapeHtml(counts)}</div>
+        <div style="font-size:0.75rem;margin-top:4px">You can leave this view: the run continues, and you'll be told when it's done.</div>
     </div>`;
 }
 

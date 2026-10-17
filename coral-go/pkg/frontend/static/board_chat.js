@@ -268,7 +268,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
     if (_boardChatOffset > 0) {
         const remaining = _boardChatOffset;
         loadEarlierHtml = `<div style="text-align:center;padding:6px 0 8px">
-            <button class="btn btn-small" data-on-click="board-chat-earlier" style="font-size:11px;color:var(--text-muted)">
+            <button class="btn btn-small" data-on-click="board-chat-earlier" style="font-size:0.6875rem;color:var(--text-muted)">
                 ▲ Load ${Math.min(remaining, _BOARD_CHAT_PAGE)} earlier (${remaining} remaining)
             </button>
         </div>`;

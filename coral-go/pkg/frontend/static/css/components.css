@@ -111,7 +111,7 @@
     border: 1px solid rgba(210, 153, 34, 0.25);
     border-radius: 8px;
     color: var(--warning);
-    font-size: 13px;
+    font-size: 0.8125rem;
     margin: 8px 16px 12px;
 }
 
@@ -130,12 +130,12 @@
 .session-ended-content {
     text-align: center;
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 
 .session-ended-content p {
     margin: 0 0 12px 0;
-    font-size: 16px;
+    font-size: 1rem;
     color: var(--text-secondary);
 }
 
@@ -209,7 +209,7 @@
     background: var(--mb-tint);
     color: var(--mb-color);
     font-weight: 700;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .mb-message-header,
@@ -241,7 +241,7 @@
 /* Task-queue lines (#3343): a run of them is one muted, collapsible row. */
 .mb-queue-run {
     margin: 10px 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-muted);
 }
 .mb-queue-summary {
@@ -255,7 +255,7 @@
     list-style: none;
 }
 .mb-queue-summary::-webkit-details-marker { display: none; }
-.mb-queue-summary::before { content: '▸'; font-size: 10px; }
+.mb-queue-summary::before { content: '▸'; font-size: 0.625rem; }
 .mb-queue-run[open] > .mb-queue-summary::before { content: '▾'; }
 .mb-queue-summary:hover, .mb-queue-summary:focus-visible { background: var(--bg-tertiary); color: var(--text-secondary); }
 .mb-queue-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -278,7 +278,7 @@
 
 .mb-agent-name {
     font-weight: 700;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--mb-color);
 }
 
@@ -323,7 +323,7 @@
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1rem;
     line-height: 1;
     padding: 0 4px;
     opacity: 0;
@@ -376,7 +376,7 @@
 }
 
 .mb-select-count {
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 600;
     color: var(--text-primary);
     margin-right: auto;
@@ -384,7 +384,7 @@
 
 .mb-select-action-btn {
     padding: 6px 14px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 500;
     border-radius: 6px;
 }
@@ -431,12 +431,12 @@ button.subscriber-history-link {
 .mb-message-body h1, .mb-message-body h2, .mb-message-body h3,
 .mb-message-body h4, .mb-message-body h5, .mb-message-body h6 {
     margin: 8px 0 4px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 700;
 }
 
-.mb-message-body h2 { font-size: 14px; }
-.mb-message-body h3 { font-size: 13px; color: var(--mb-heading); }
+.mb-message-body h2 { font-size: 0.875rem; }
+.mb-message-body h3 { font-size: 0.8125rem; color: var(--mb-heading); }
 
 .mb-message-body ul, .mb-message-body ol {
     margin: 6px 0 10px;
@@ -455,7 +455,7 @@ button.subscriber-history-link {
     background: var(--mb-code-bg);
     padding: 1px 5px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-family: var(--font-mono);
 }
 
@@ -472,7 +472,7 @@ button.subscriber-history-link {
 .mb-message-body pre code {
     background: none;
     padding: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .mb-message-body strong {
@@ -552,7 +552,7 @@ button.subscriber-history-link {
     border: none !important;
     border-bottom: none !important;
     flex-shrink: 0;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .btn-send:hover {
@@ -565,7 +565,7 @@ button.subscriber-history-link {
 /* ── Badges ────────────────────────────────────────────────── */
 
 .badge {
-    font-size: 11px;
+    font-size: 0.6875rem;
     padding: 2px 8px;
     border-radius: 12px;
     font-weight: 600;
@@ -581,7 +581,7 @@ button.subscriber-history-link {
 .badge.waiting-badge {
     background: var(--warning);
     color: #000;
-    font-size: 10px;
+    font-size: 0.625rem;
     animation: pulse-waiting 1.5s ease-in-out infinite;
 }
 
@@ -770,7 +770,7 @@ button.subscriber-history-link {
 .settings-toggle strong {
     display: block;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 600;
 }
 
@@ -784,6 +784,7 @@ button.subscriber-history-link {
 
 .modal-actions {
     display: flex;
+    flex-wrap: wrap; /* #4344: at 200% text the buttons wrap instead of running off the left edge */
     justify-content: flex-end;
     gap: 8px;
     margin-top: 20px;
@@ -830,7 +831,7 @@ button.subscriber-history-link {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 8px 16px;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .info-grid dt {
@@ -877,7 +878,7 @@ button.subscriber-history-link {
     padding: 2px 8px;
     border-radius: 4px;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .session-info-modal {
@@ -915,14 +916,14 @@ button.subscriber-history-link {
 }
 
 .info-value-emphasis {
-    font-size: 15px;
+    font-size: 0.9375rem;
     font-weight: 600;
 }
 
 .info-value-mono,
 .info-value-path {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.45;
 }
 
@@ -967,7 +968,7 @@ button.subscriber-history-link {
 .info-token-value {
     font-variant-numeric: tabular-nums;
     font-weight: 600;
-    font-size: 18px;
+    font-size: 1.125rem;
     line-height: 1.1;
 }
 
@@ -1075,7 +1076,7 @@ button.subscriber-history-link {
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px 20px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--text-primary);
     z-index: 200;
     animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
@@ -1125,7 +1126,7 @@ button.subscriber-history-link {
     color: var(--text-muted);
     border: none;
     padding: 0 2px;
-    font-size: 16px;
+    font-size: 1rem;
     line-height: 1;
 }
 
@@ -1151,7 +1152,7 @@ button.subscriber-history-link {
     border-left: 4px solid var(--warning);
     border-radius: 10px;
     padding: 0;
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--text-primary);
     z-index: 300;
     min-width: 300px;
@@ -1175,11 +1176,11 @@ button.subscriber-history-link {
 }
 
 .notification-toast-title {
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 
 .notification-toast-detail {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     line-height: 1.4;
     padding: 6px 8px;
@@ -1190,7 +1191,7 @@ button.subscriber-history-link {
 .notification-toast-link {
     color: var(--accent);
     text-decoration: none;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 500;
     cursor: pointer;
 }
@@ -1204,7 +1205,7 @@ button.subscriber-history-link {
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1rem;
     padding: 0 0 0 8px;
     line-height: 1;
 }
@@ -1242,19 +1243,19 @@ button.subscriber-history-link {
 }
 
 .alert-notification-icon {
-    font-size: 40px;
+    font-size: 2.5rem;
     margin-bottom: 12px;
 }
 
 .alert-notification-title {
-    font-size: 18px;
+    font-size: 1.125rem;
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 8px;
 }
 
 .alert-notification-message {
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--text-secondary);
     line-height: 1.5;
     margin-bottom: 16px;
@@ -1263,7 +1264,7 @@ button.subscriber-history-link {
 .alert-notification-link {
     display: inline-block;
     color: var(--accent);
-    font-size: 13px;
+    font-size: 0.8125rem;
     margin-bottom: 20px;
     text-decoration: none;
 }
@@ -1274,7 +1275,7 @@ button.subscriber-history-link {
 
 .alert-notification-host {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
     margin-left: 6px;
     overflow-wrap: anywhere; /* a long host or IDN wraps instead of overflowing the alert at phone width */
 }
@@ -1305,7 +1306,7 @@ button.subscriber-history-link {
     border-left: 4px solid var(--accent);
     border-radius: 10px;
     padding: 0;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--text-primary);
     z-index: 300;
     min-width: 320px;
@@ -1344,14 +1345,14 @@ button.subscriber-history-link {
 }
 
 .update-toast-title {
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 600;
     color: var(--accent);
 }
 
 .update-toast-current {
     font-weight: 400;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
@@ -1360,7 +1361,7 @@ button.subscriber-history-link {
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 18px;
+    font-size: 1.125rem;
     padding: 0;
     line-height: 1;
     flex-shrink: 0;
@@ -1374,7 +1375,7 @@ button.subscriber-history-link {
     list-style: none;
     padding: 0;
     margin: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     line-height: 1.5;
 }
@@ -1405,7 +1406,7 @@ button.subscriber-history-link {
     animation: tooltip-fade-in 0s 1s forwards;
     border-radius: 6px;
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.4;
     text-align: left;
     white-space: normal;
@@ -1459,7 +1460,7 @@ button.subscriber-history-link {
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     outline: none;
 }
 
@@ -1473,7 +1474,7 @@ button.subscriber-history-link {
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 0.6875rem;
     cursor: pointer;
     white-space: nowrap;
 }
@@ -1490,7 +1491,7 @@ button.subscriber-history-link {
 }
 
 .emoji-picker-category {
-    font-size: 10px;
+    font-size: 0.625rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -1511,7 +1512,7 @@ button.subscriber-history-link {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: 1.25rem;
     background: none;
     border: none;
     border-radius: 6px;
@@ -1538,7 +1539,7 @@ button.subscriber-history-link {
     gap: 4px;
     padding: 2px 10px;
     border-radius: 12px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 600;
     color: #fff;
     white-space: nowrap;
@@ -1547,7 +1548,7 @@ button.subscriber-history-link {
 .tag-pill .tag-remove {
     cursor: pointer;
     opacity: 0.6;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1;
     margin-left: 2px;
 }
@@ -1588,7 +1589,7 @@ button.subscriber-history-link {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
 }
@@ -1611,7 +1612,7 @@ button.subscriber-history-link {
     gap: 4px;
     padding: 4px 10px;
     border-radius: 12px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 600;
     color: #fff;
     cursor: pointer;
@@ -1637,7 +1638,7 @@ button.subscriber-history-link {
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: 0.75rem;
     outline: none;
 }
 
@@ -1690,7 +1691,7 @@ button.subscriber-history-link {
     justify-content: center;
     gap: 8px;
     padding: 8px 16px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
@@ -1736,7 +1737,7 @@ button.subscriber-history-link {
 }
 
 .flag-shortcut-btn {
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--font-mono);
     padding: 3px 8px;
     border-radius: 4px;
@@ -1780,11 +1781,11 @@ button.subscriber-history-link {
 .dir-browser-up {
     margin: 0;
     padding: 2px 8px;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .dir-browser-path {
-    font-size: 12px;
+    font-size: 0.75rem;
     font-family: var(--font-mono);
     color: var(--text-secondary);
     overflow: hidden;
@@ -1808,7 +1809,7 @@ button.subscriber-history-link {
 
 .dir-browser-recents-label {
     padding: 4px 12px 2px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted);
@@ -1816,7 +1817,7 @@ button.subscriber-history-link {
 
 .dir-browser-recent {
     padding: 5px 12px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     cursor: pointer;
     color: var(--text-secondary);
     display: flex;
@@ -1836,7 +1837,7 @@ button.subscriber-history-link {
 }
 
 .dir-browser-recent-path {
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--font-mono);
     color: var(--text-muted);
     overflow: hidden;
@@ -1848,7 +1849,7 @@ button.subscriber-history-link {
 
 .dir-browser-list li {
     padding: 6px 12px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     cursor: pointer;
     color: var(--text-secondary);
     display: flex;
@@ -1876,7 +1877,7 @@ button.subscriber-history-link {
 }
 
 .dir-icon {
-    font-size: 14px;
+    font-size: 0.875rem;
     flex-shrink: 0;
 }
 
@@ -1911,6 +1912,7 @@ button.subscriber-history-link {
 .settings-prompts-btn {
     width: 100%;
     margin: 0;
+    flex: none; /* #4344: in the body's column a wrapped label made the button shorter than its text at large text sizes */
 }
 
 .settings-input {
@@ -1920,7 +1922,7 @@ button.subscriber-history-link {
 
 .settings-mono-input {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .settings-api-key-row {
@@ -1952,7 +1954,7 @@ button.subscriber-history-link {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     width: 100%;
     margin: 0;
@@ -1961,14 +1963,14 @@ button.subscriber-history-link {
 .settings-cli-label {
     width: 56px;
     flex-shrink: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
 }
 
 .settings-cli-paths .settings-input {
     flex: 1;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-family: var(--font-mono);
     margin-top: 0;
 }
@@ -2051,7 +2053,7 @@ button.subscriber-history-link {
     background: none;
     border: none;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-family: inherit;
     cursor: pointer;
     border-radius: 4px;
@@ -2090,7 +2092,7 @@ button.subscriber-history-link {
 
 .overflow-menu-tier {
     padding: 6px 14px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -2101,7 +2103,7 @@ button.subscriber-history-link {
     display: inline-block;
     padding: 2px 8px;
     border-radius: 4px;
-    font-size: 10px;
+    font-size: 0.625rem;
     font-weight: 700;
     letter-spacing: 0.5px;
 }
@@ -2171,13 +2173,13 @@ button.subscriber-history-link {
 }
 
 .launch-type-label {
-    font-size: 15px;
+    font-size: 0.9375rem;
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .launch-type-desc {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     text-align: center;
     line-height: 1.4;
@@ -2247,12 +2249,12 @@ button.subscriber-history-link {
 
 .acf-auto-permissions-toggle strong {
     display: block;
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--text-primary);
 }
 
 .acf-auto-permissions-flag {
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
 }
 
@@ -2277,7 +2279,7 @@ button.subscriber-history-link {
 
 .acf-auto-permissions-note {
     margin-top: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     line-height: 1.45;
 }
@@ -2343,14 +2345,14 @@ button.subscriber-history-link {
 
 .team-launch-card-header h4 {
     margin: 0;
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 700;
     color: var(--text-primary);
 }
 
 .team-launch-card-header p {
     margin: 6px 0 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.35;
     color: var(--text-muted);
 }
@@ -2367,7 +2369,7 @@ button.subscriber-history-link {
 }
 
 .team-agents-desc {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-muted);
     margin: 4px 0 0;
     line-height: 1.4;
@@ -2375,7 +2377,7 @@ button.subscriber-history-link {
 
 .team-field-hint {
     margin: -4px 0 12px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-muted);
     line-height: 1.4;
 }
@@ -2393,7 +2395,7 @@ button.subscriber-history-link {
 .team-add-agent-btn-full {
     width: 100%;
     padding: 10px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     border-radius: 10px;
     border: 2px dashed var(--border);
     background: transparent;
@@ -2409,7 +2411,7 @@ button.subscriber-history-link {
 
 .team-template-dropdown-label {
     display: block;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 8px;
@@ -2482,7 +2484,7 @@ button.subscriber-history-link {
 .team-advanced summary {
     cursor: pointer;
     padding: 10px 12px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--text-secondary);
     list-style: none;
@@ -2514,13 +2516,13 @@ button.subscriber-history-link {
 
 .team-settings-toggle strong {
     display: block;
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--text-primary);
 }
 
 .team-settings-note {
     margin-top: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.4;
     color: var(--text-secondary);
 }
@@ -2553,14 +2555,14 @@ button.subscriber-history-link {
 
 .team-agent-modal-subtitle {
     margin: 0 0 12px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.45;
     color: var(--text-secondary);
 }
 
 .team-wizard-subtitle {
     margin: 10px 0 0;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--text-secondary);
 }
@@ -2596,13 +2598,13 @@ button.subscriber-history-link {
 .team-wizard-intro strong {
     display: block;
     margin-bottom: 4px;
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--text-primary);
 }
 
 .team-wizard-intro p {
     margin: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.5;
     color: var(--text-secondary);
 }
@@ -2619,7 +2621,7 @@ button.subscriber-history-link {
     border: 1px solid rgba(255, 107, 107, 0.3);
     background: rgba(255, 107, 107, 0.08);
     color: var(--error);
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.5;
 }
 
@@ -2633,18 +2635,18 @@ button.subscriber-history-link {
 }
 
 .team-wizard-success-icon {
-    font-size: 48px;
+    font-size: 3rem;
     color: var(--success);
 }
 
 .team-wizard-success strong {
-    font-size: 18px;
+    font-size: 1.125rem;
 }
 
 .team-wizard-success p {
     margin: 0;
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 0.875rem;
 }
 
 .team-wizard-success .btn {
@@ -2661,12 +2663,12 @@ button.subscriber-history-link {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.08));
     border: 1px solid rgba(99, 102, 241, 0.25);
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.4;
 }
 
 .generated-team-banner .material-icons {
-    font-size: 18px;
+    font-size: 1.125rem;
     color: var(--accent);
     flex-shrink: 0;
 }
@@ -2703,7 +2705,7 @@ button.subscriber-history-link {
 }
 
 .team-agent-role-name {
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
@@ -2750,7 +2752,7 @@ button.subscriber-history-link {
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1rem;
     padding: 0 4px;
     line-height: 1;
 }
@@ -2782,7 +2784,7 @@ button.subscriber-history-link {
 .team-agent-row label {
     display: block;
     margin-bottom: 6px;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .team-agent-row input,
@@ -2829,7 +2831,7 @@ button.subscriber-history-link {
 
 .add-agent-board-subtitle {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 0.8125rem;
     margin: -8px 0 12px 0;
 }
 
@@ -2838,7 +2840,7 @@ button.subscriber-history-link {
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 18px;
+    font-size: 1.125rem;
     padding: 0 8px 0 0;
     vertical-align: middle;
     transition: color 0.15s;
@@ -2878,7 +2880,7 @@ button.subscriber-history-link {
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     outline: none;
 }
 
@@ -2887,7 +2889,7 @@ button.subscriber-history-link {
 }
 
 .template-browser-close {
-    font-size: 18px;
+    font-size: 1.125rem;
     padding: 2px 8px !important;
     min-width: 0;
 }
@@ -2957,18 +2959,18 @@ button.subscriber-history-link {
     padding: 20px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .template-preview-name {
-    font-size: 16px;
+    font-size: 1rem;
     font-weight: 700;
     text-transform: capitalize;
     margin-bottom: 6px;
 }
 
 .template-preview-desc {
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--text-secondary);
     margin-bottom: 8px;
 }
@@ -2992,7 +2994,7 @@ button.subscriber-history-link {
 .template-preview-body pre {
     margin: 0;
     white-space: pre-wrap;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--font-mono);
     color: var(--text-secondary);
     line-height: 1.5;
@@ -3058,7 +3060,7 @@ button.subscriber-history-link {
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-family: inherit;
     padding: 4px 0;
     display: flex;
@@ -3084,7 +3086,7 @@ button.subscriber-history-link {
 }
 
 .perms-label {
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -3100,7 +3102,7 @@ button.subscriber-history-link {
 }
 
 .perm-chip {
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--font-mono);
     padding: 3px 8px;
     border-radius: 4px;
@@ -3129,7 +3131,7 @@ button.subscriber-history-link {
 .perms-shell-input {
     width: 100%;
     box-sizing: border-box;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-family: var(--font-mono);
 }
 
@@ -3179,7 +3181,7 @@ button.subscriber-history-link {
 /* ── CLI Check Warning ───────────────────────────────────── */
 
 .cli-check-warning {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--warning);
     margin-top: 2px;
 }
@@ -3232,7 +3234,7 @@ button.subscriber-history-link {
 .color-picker-hex {
     flex: 1;
     padding: 4px 6px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--font-mono);
     background: var(--bg-primary);
     border: 1px solid var(--border);
@@ -3315,7 +3317,7 @@ button.subscriber-history-link {
     border-radius: 8px;
     background: var(--bg-secondary);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 0.875rem;
     resize: vertical;
     font-family: inherit;
     line-height: 1.5;
@@ -3336,7 +3338,7 @@ button.subscriber-history-link {
 }
 
 .mb-subscribers-title {
-    font-size: 13px;
+    font-size: 0.8125rem;
     margin: 0 0 8px;
     color: var(--text-muted);
 }
@@ -3380,7 +3382,7 @@ button.subscriber-history-link {
 
 .prompts-description {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 0.75rem;
     margin: 0 0 12px;
 }
 
@@ -3401,7 +3403,7 @@ button.subscriber-history-link {
 
 .prompt-field-label {
     font-weight: 600;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .prompt-field-reset {
@@ -3412,7 +3414,7 @@ button.subscriber-history-link {
 .prompt-textarea {
     resize: vertical;
     font-family: monospace;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .prompts-divider {
@@ -3430,7 +3432,7 @@ button.subscriber-history-link {
 }
 
 .settings-about-title {
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 600;
     margin-bottom: 8px;
     color: var(--text-secondary);
@@ -3444,7 +3446,7 @@ button.subscriber-history-link {
 
 .tier-branding {
     text-align: center;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-muted);
     margin-top: 16px;
     padding-top: 12px;
@@ -3467,7 +3469,7 @@ button.subscriber-history-link {
     border-radius: 8px;
     padding: 14px;
     font-family: var(--font-mono);
-    font-size: 14px;
+    font-size: 0.875rem;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -3491,7 +3493,7 @@ button.subscriber-history-link {
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 10px;
-    font-size: 12px;
+    font-size: 0.75rem;
     margin-bottom: 12px;
     text-align: left;
 }
@@ -3508,11 +3510,11 @@ button.subscriber-history-link {
 
 .text-secondary-sm {
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .icon-inline {
-    font-size: 16px;
+    font-size: 1rem;
     vertical-align: middle;
     margin-right: 6px;
 }
@@ -3522,7 +3524,7 @@ button.subscriber-history-link {
 }
 
 .top-bar-icon {
-    font-size: 18px;
+    font-size: 1.125rem;
 }
 
 .notes-panel-body {
@@ -3532,7 +3534,7 @@ button.subscriber-history-link {
 }
 
 .icon-btn-inline {
-    font-size: 14px;
+    font-size: 0.875rem;
     vertical-align: -2px;
     margin-right: 2px;
 }
@@ -3548,11 +3550,11 @@ button.subscriber-history-link {
     background: color-mix(in srgb, var(--warning) 18%, var(--bg-secondary));
     border-bottom: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 .tmux-missing-banner-icon {
     color: var(--warning);
-    font-size: 20px;
+    font-size: 1.25rem;
     flex-shrink: 0;
 }
 .tmux-missing-banner-body {
@@ -3570,14 +3572,14 @@ button.subscriber-history-link {
     padding: 2px 6px;
     border-radius: 3px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 .tmux-missing-banner-close {
     background: transparent;
     border: 0;
     color: var(--text-primary);
     opacity: 0.7;
-    font-size: 20px;
+    font-size: 1.25rem;
     line-height: 1;
     cursor: pointer;
     padding: 4px 8px;
@@ -3680,7 +3682,7 @@ input[aria-invalid="true"] {
     margin-left: 4px;
     padding: 0 5px;
     border-radius: 4px;
-    font-size: 10px;
+    font-size: 0.625rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     line-height: 16px;
@@ -3706,7 +3708,7 @@ dialog.auto-accept-confirm {
     color: var(--text-primary);
 }
 dialog.auto-accept-confirm::backdrop { background: rgba(0, 0, 0, 0.55); }
-dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 16px; }
+dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 1rem; }
 .auto-accept-confirm-agent { margin: 0 0 10px; color: var(--text-secondary); font-weight: 600; }
 #auto-accept-confirm-text { margin: 0 0 18px; line-height: 1.5; color: var(--text-secondary); }
 #auto-accept-confirm-text p { margin: 0 0 8px; }
@@ -3724,7 +3726,7 @@ dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 16px; }
 .settings-cloud-hub-operator { margin-top: 8px; }
 .settings-cloud-hub-operator .settings-error { color: var(--error, #e5534b); }
 /* The popout's switch while auto-accept is off (#3182): an outlined, quiet header button. */
-button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: 4px; font: inherit; font-size: 11px; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--border); cursor: pointer; }
+button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: 4px; font: inherit; font-size: 0.6875rem; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--border); cursor: pointer; }
 button.auto-accept-header-off:hover { color: var(--text-primary); border-color: rgba(var(--warning-rgb), 0.6); }
 button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
@@ -3737,7 +3739,7 @@ button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); 
     padding: 0 5px;
     border-radius: 4px;
     font: inherit;
-    font-size: 10px;
+    font-size: 0.625rem;
     font-weight: 700;
     line-height: 16px;
     color: var(--error);
@@ -3747,7 +3749,7 @@ button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); 
 }
 .terminal-gone-chip:hover { background: rgba(var(--error-rgb), 0.22); }
 .terminal-gone-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 20px; padding: 0 8px; }
+button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-height: 20px; padding: 0 8px; }
 
 /* Machine health (#3446): a status dot and a compact card. The dot is the only coloured part;
    every value is text in the normal text colours (contrast as in the accessibility pass). */
@@ -3880,7 +3882,7 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 .leftover-tmux-text { flex: 1; min-width: 0; }
 .local-auth-banner { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; background: color-mix(in srgb, var(--error) 16%, var(--bg-secondary)); border-bottom: 1px solid var(--error); color: var(--text-primary); font-size: var(--fs-base, 13px); } /* #4291 */
 .local-auth-banner[hidden] { display: none; }
-.local-auth-banner .material-icons { flex: none; color: var(--error); font-size: 20px; }
+.local-auth-banner .material-icons { flex: none; color: var(--error); font-size: 1.25rem; }
 .local-auth-banner-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 767px) { .leftover-tmux-banner { flex-wrap: wrap; } }
 /* Agents on an older hook set (#3665). One line (the count and three buttons); the list opens below it, bounded
@@ -3924,30 +3926,30 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .signed-out-status { min-height: 1.2em; margin: 0; }
 
 /* ── Browser password (#3948): the set-password prompt and Settings > Browser sign-in ─────────────────────────── */
-.pw-lead { margin: 8px 0 14px; line-height: 1.5; color: var(--text-secondary); font-size: 14px; }
-.pw-field { display: block; margin: 0 0 12px; font-size: 13px; }
+.pw-lead { margin: 8px 0 14px; line-height: 1.5; color: var(--text-secondary); font-size: 0.875rem; }
+.pw-field { display: block; margin: 0 0 12px; font-size: 0.8125rem; }
 .pw-label { display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-primary); }
 .pw-input-row { display: block; position: relative; }
-.pw-input { width: 100%; box-sizing: border-box; padding: 9px 64px 9px 11px; font-size: 14px; border-radius: 8px;
+.pw-input { width: 100%; box-sizing: border-box; padding: 9px 64px 9px 11px; font-size: 0.875rem; border-radius: 8px;
     border: 1px solid var(--border-light); background: var(--bg-primary); color: var(--text-primary); }
 .pw-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 [data-theme="light"] .pw-toggle { color: var(--accent-dim); }   /* AA on the light card (#4023) */
 .pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--accent);
-    font-size: 13px; cursor: pointer; padding: 6px 8px; }
+    font-size: 0.8125rem; cursor: pointer; padding: 6px 8px; }
 .pw-meter { height: 6px; border-radius: 3px; background: var(--bg-tertiary); overflow: hidden; margin: 2px 0 4px; }
 .pw-meter > i { display: block; height: 100%; width: 0; border-radius: 3px; background: #d4a72c; transition: width .15s; }
 .pw-strength[data-level="strong"] .pw-meter > i { background: #3fb950; }
 .pw-strength[data-level="weak"] .pw-meter > i { background: #e5534b; }
-.pw-hint { font-size: 12px; color: var(--text-secondary); margin: 0 0 12px; min-height: 1.3em; line-height: 1.45; }
+.pw-hint { font-size: 0.75rem; color: var(--text-secondary); margin: 0 0 12px; min-height: 1.3em; line-height: 1.45; }
 .pw-hint b { color: var(--text-primary); font-weight: 600; }
-.pw-error { color: #e5534b; font-size: 13px; margin: 0 0 10px; }
-.pw-note { font-size: 12px; color: var(--text-secondary); margin: 8px 0 0; line-height: 1.5; }
+.pw-error { color: #e5534b; font-size: 0.8125rem; margin: 0 0 10px; }
+.pw-note { font-size: 0.75rem; color: var(--text-secondary); margin: 8px 0 0; line-height: 1.5; }
 .sec-row details { margin: 10px 0; }
-.sec-row summary { cursor: pointer; font-weight: 600; font-size: 13px; margin-bottom: 10px; }
+.sec-row summary { cursor: pointer; font-weight: 600; font-size: 0.8125rem; margin-bottom: 10px; }
 .sec-sessions { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
-.sec-sub-head { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.sec-sub-head { font-weight: 600; font-size: 0.8125rem; margin-bottom: 6px; }
 .sec-count { color: var(--text-secondary); font-weight: 400; }
-.sec-list { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
+.sec-list { list-style: none; margin: 0 0 10px; padding: 0; font-size: 0.8125rem; }
 .sec-item { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
 .sec-who { overflow-wrap: anywhere; }
 .sec-when { color: var(--text-secondary); text-align: right; flex: none; }
@@ -3957,9 +3959,9 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .sec-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 767px), (pointer: coarse) { .sec-actions .btn { min-height: var(--control-touch-height, 44px); } }
 .sec-muted { color: var(--text-secondary); font-weight: 400; }
-#settings-modal .sec-switch { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; font-size: 13px; margin: 6px 0; cursor: pointer; }
+#settings-modal .sec-switch { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; font-size: 0.8125rem; margin: 6px 0; cursor: pointer; }
 #settings-modal .sec-switch input[type="checkbox"] { width: 16px; height: 16px; flex: none; margin: 2px 0 0; padding: 0; }
-.sec-warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(212, 167, 44, .13); border: 1px solid rgba(212, 167, 44, .55); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; margin: 8px 0; }
+.sec-warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(212, 167, 44, .13); border: 1px solid rgba(212, 167, 44, .55); border-radius: 8px; padding: 10px 12px; font-size: 0.7812rem; line-height: 1.5; margin: 8px 0; }
 .sec-add { display: flex; gap: 8px; align-items: center; }
 .sec-add .btn { margin: 0; }
 #settings-modal .sec-sessions .btn { margin: 0; }   /* .btn-small's 20 px side margin pushed these buttons off their row */
@@ -3986,7 +3988,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
     border: 1px solid var(--border); border-radius: var(--radius-md);
     background: none; color: var(--text-secondary); cursor: pointer;
 }
-.acf-model-refresh .material-icons { font-size: 16px; }
+.acf-model-refresh .material-icons { font-size: 1rem; }
 .acf-model-refresh:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .acf-model-refresh:disabled { opacity: .5; cursor: progress; }
 .acf-model-id { display: block; margin-top: 2px; font-family: var(--font-mono); font-size: var(--fs-sm, 11px); font-weight: 400; color: var(--text-muted); overflow-wrap: anywhere; }

@@ -65,7 +65,7 @@
 .nav-more-wrap { display: flex; flex: 0 0 auto; }
 /* The row is text only; More shows a small chevron. */
 .top-nav-tab .material-icons { display: none; }
-.nav-more-btn .material-icons { display: inline-block; font-size: 16px; vertical-align: -3px; margin-left: 2px; }
+.nav-more-btn .material-icons { display: inline-block; font-size: 1rem; vertical-align: -3px; margin-left: 2px; }
 
 /* The More menu (the row's, when tabs do not fit) and the phone's view list share one element. */
 .nav-more-menu {
@@ -95,7 +95,7 @@
     text-align: left;
 }
 .nav-more-item:hover, .nav-more-item.active { background: var(--bg-tertiary); }
-.nav-more-item .material-icons { color: var(--text-secondary); font-size: 20px; }
+.nav-more-item .material-icons { color: var(--text-secondary); font-size: 1.25rem; }
 /* Icons only in the phone's list of views. */
 .nav-more-menu:not(.nav-all) .nav-more-item .material-icons { display: none; }
 
@@ -115,7 +115,7 @@
 .top-bar-search-icon {
     position: absolute;
     left: 8px;
-    font-size: 16px;
+    font-size: 1rem;
     color: var(--text-secondary);
     pointer-events: none;
 }
@@ -163,13 +163,13 @@
 }
 
 .top-bar h1 {
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--text-secondary);
 }
 
 .top-bar .btn-primary {
-    font-size: 12px;
+    font-size: 0.75rem;
     padding: 5px 14px;
 }
 
@@ -178,7 +178,7 @@
     align-items: center;
     gap: 6px;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 0.8125rem;
     padding: 4px 12px;
     background: var(--bg-secondary);
     border-radius: 6px;
@@ -298,7 +298,7 @@ body.panel-dragging .sidebar {
     border-radius: 8px;
     color: var(--text-primary);
     font: inherit;
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .sidebar-search-input:focus { outline: none; border-color: var(--accent); }
@@ -383,7 +383,7 @@ body.panel-dragging .sidebar {
            the row's hover and selected backgrounds. */
         background: transparent;
         color: var(--agent-name-color, var(--text-secondary));
-        font: 600 11px/1 var(--font-sans);
+        font: 600 0.6875rem/1 var(--font-sans);
         transition: background 0.12s, color 0.12s;
     }
     /* The palette is tuned for dark backgrounds: deepen it on light themes, as the full list does. */
@@ -394,8 +394,8 @@ body.panel-dragging .sidebar {
     .sidebar-rail-item.active .rail-tile { background: rgba(var(--accent-rgb), 0.14); }
     .sidebar-rail-item.active .rail-tile:not([style]) { color: var(--text-primary); }
     .sidebar-rail-item.active:hover .rail-tile { background: rgba(var(--accent-rgb), 0.17); }
-    .rail-tile .rail-tile-icon { font-size: 10px !important; width: 10px; height: 10px; line-height: 10px; }
-    .rail-tile-emoji { font-size: 9px; line-height: 1; }
+    .rail-tile .rail-tile-icon { font-size: 0.625rem !important; width: 10px; height: 10px; line-height: 10px; }
+    .rail-tile-emoji { font-size: 0.5625rem; line-height: 1; }
     .rail-tile-badge {
         position: absolute;
         top: -5px;
@@ -405,13 +405,13 @@ body.panel-dragging .sidebar {
         padding: 0 3px;
         box-sizing: border-box;
         border-radius: 7px;
-        font: 700 9px/14px var(--font-sans);
+        font: 700 0.5625rem/0.875rem var(--font-sans);
         text-align: center;
         color: var(--rail-badge-text);
         border: 1.5px solid var(--bg-secondary);
     }
     .rail-tile-unread { background: var(--rail-badge-unread); }
-    .rail-tile-done { background: var(--rail-badge-done); font-size: 10px; line-height: 11px; }
+    .rail-tile-done { background: var(--rail-badge-done); font-size: 0.625rem; line-height: 11px; }
     .rail-tile-dot { bottom: -3px; right: -3px; width: 9px; height: 9px; }
     .sidebar-rail-btn:last-child { border: 1px dashed var(--border); border-radius: 8px; width: 40px; height: 32px; }
     .sidebar-rail-group {
@@ -435,7 +435,7 @@ body.panel-dragging .sidebar {
     .sidebar-rail-group:first-child { margin-top: 0; }
     .sidebar-rail-group:hover { background: var(--bg-hover, rgba(255, 255, 255, 0.045)); }
     .sidebar-rail-group.collapsed { opacity: 0.55; }
-    .sidebar-rail-letter { font: 600 11px/1 var(--font-sans); }
+    .sidebar-rail-letter { font: 600 0.6875rem/1 var(--font-sans); }
 }
 
 .sidebar-footer .sidebar-new-btn-full {
@@ -606,7 +606,7 @@ body.panel-dragging .sidebar {
 }
 
 .sidebar-section .sidebar-section-header h2 {
-    font-size: 14px;
+    font-size: 0.875rem;
     text-transform: none;
     letter-spacing: normal;
     color: var(--text-primary);
@@ -629,7 +629,7 @@ body.panel-dragging .sidebar {
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: 0.75rem;
     outline: none;
 }
 
@@ -735,7 +735,7 @@ body.panel-dragging .sidebar {
     gap: 3px;
     padding: 1px 7px;
     border-radius: 10px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     background: var(--accent-dim);
     color: #fff;
 }
@@ -743,7 +743,7 @@ body.panel-dragging .sidebar {
 .hf-tag-remove {
     cursor: pointer;
     opacity: 0.75;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1;
 }
 
@@ -933,7 +933,7 @@ body.panel-dragging .sidebar {
 .editions-code { color: var(--text-secondary); font-size: 0.8125rem; }
 .editions-code[hidden], .editions-mode[hidden], .editions-cloud [hidden] { display: none; }
 .editions-code a { color: var(--accent); word-break: break-all; }
-.editions-usercode { margin-top: 6px; color: var(--text-primary); font: 600 24px/1.2 var(--font-mono, monospace); letter-spacing: .12em; user-select: all; }
+.editions-usercode { margin-top: 6px; color: var(--text-primary); font: 600 1.5rem/1.2 var(--font-mono, monospace); letter-spacing: .12em; user-select: all; }
 .editions-cloud-actions { display: flex; gap: 8px; }
 .editions-cloud-actions:not(:has(> :not([hidden]))) { display: none; }
 .cloud-command-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

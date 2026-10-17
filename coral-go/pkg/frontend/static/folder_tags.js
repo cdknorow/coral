@@ -100,7 +100,7 @@ function _buildDropdownHtml(folderName, currentTags) {
             </span>`
         ).join("")}</div>`;
     } else {
-        availableHtml = '<div class="tag-dropdown-list"><span style="font-size:12px;color:var(--text-muted)">No tags available</span></div>';
+        availableHtml = '<div class="tag-dropdown-list"><span style="font-size:0.75rem;color:var(--text-muted)">No tags available</span></div>';
     }
 
     const createHtml = `<div class="tag-dropdown-create">

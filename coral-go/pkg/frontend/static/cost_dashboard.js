@@ -168,7 +168,7 @@ function _sortHeader(table, field, label, extraClass, filterable, valueExtractor
     let filterIcon = '';
     if (filterable) {
         const active = _hasActiveFilter(table, field) ? ' cost-filter-active' : '';
-        filterIcon = `<span class="cost-col-filter${escapeAttr(active)}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter"><span class="material-icons" style="font-size:13px">filter_list</span></span>`;
+        filterIcon = `<span class="cost-col-filter${escapeAttr(active)}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter"><span class="material-icons" style="font-size:0.8125rem">filter_list</span></span>`;
     }
     return `<th class="${escapeAttr(cls)}" data-on-click="cost-sort" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}">${label}${arrow}${filterIcon}</th>`;
 }
@@ -717,10 +717,10 @@ function _renderTaskTable(tasks) {
     }
 
     const statusIcon = (status) => {
-        if (status === 'completed') return '<span class="material-icons board-task-status-icon completed" style="font-size:14px">check_circle</span>';
+        if (status === 'completed') return '<span class="material-icons board-task-status-icon completed" style="font-size:0.875rem">check_circle</span>';
         if (status === 'in_progress') return '<span class="task-spinner" title="In progress"></span>';
-        if (status === 'skipped') return '<span class="material-icons board-task-status-icon skipped" style="font-size:14px">block</span>';
-        return '<span class="material-icons board-task-status-icon pending" style="font-size:14px">radio_button_unchecked</span>';
+        if (status === 'skipped') return '<span class="material-icons board-task-status-icon skipped" style="font-size:0.875rem">block</span>';
+        return '<span class="material-icons board-task-status-icon pending" style="font-size:0.875rem">radio_button_unchecked</span>';
     };
 
     let html = `<table class="cost-table">

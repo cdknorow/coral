@@ -114,7 +114,7 @@
     border: 1px solid var(--border);
     background: var(--bg-primary);
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1;
     padding: 0;
     cursor: pointer;
@@ -134,7 +134,7 @@
 }
 
 .btn-add-macro {
-    font-size: 16px;
+    font-size: 1rem;
     font-weight: 400;
     color: var(--text-muted);
     border-style: dashed;
@@ -185,7 +185,7 @@
     background: none;
     border: none;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-family: inherit;
     cursor: pointer;
     border-radius: 6px;
@@ -233,7 +233,7 @@
 
 .command-mention-item {
     padding: 6px 12px;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-family: var(--font-mono);
     color: var(--text-secondary);
     cursor: pointer;
@@ -272,7 +272,7 @@
 
 .file-mention-item {
     padding: 6px 12px;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-family: var(--font-mono);
     color: var(--text-secondary);
     cursor: pointer;
@@ -294,7 +294,7 @@
 
 .file-mention-breadcrumb {
     padding: 4px 12px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--font-mono);
     color: var(--text-muted);
     border-bottom: 1px solid var(--border);
@@ -302,7 +302,7 @@
 
 .file-mention-dir-icon {
     margin-right: 4px;
-    font-size: 11px;
+    font-size: 0.6875rem;
 }
 
 /* ── Composer card (desktop) ──────────────────────────────── */
@@ -348,7 +348,7 @@
         border: none;
         border-radius: 0;
         font-family: var(--font-sans);
-        font-size: 14px;
+        font-size: 0.875rem;
         overflow-y: auto;
     }
     #command-pane .command-pane-toolbar {
@@ -429,7 +429,7 @@
     flex-shrink: 0;
     border-bottom: 1px solid var(--border);
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 .sleeping-composer[hidden] {
     display: none;
@@ -467,7 +467,7 @@
     border-radius: 8px;
     background: rgba(var(--error-rgb), 0.1);
     color: var(--error);
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.35;
 }
 .composer-error[hidden] { display: none; }
@@ -480,7 +480,7 @@
     border: none;
     background: none;
     color: inherit;
-    font-size: 16px;
+    font-size: 1rem;
     cursor: pointer;
 }
 @media (max-width: 767px) {

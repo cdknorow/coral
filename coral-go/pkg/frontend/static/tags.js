@@ -69,7 +69,7 @@ function renderTagDropdownList() {
     const available = allTags.filter(t => !sessionTagIds.has(t.id));
 
     if (available.length === 0) {
-        container.innerHTML = '<span style="font-size:12px;color:var(--text-muted)">No tags available — create one below</span>';
+        container.innerHTML = '<span style="font-size:0.75rem;color:var(--text-muted)">No tags available — create one below</span>';
         return;
     }
 

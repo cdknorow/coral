@@ -3,7 +3,7 @@
     <div id="launch-modal" class="modal" role="dialog" aria-labelledby="launch-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <!-- Hub only: launch target server (hidden unless hub mode has a usable remote) -->
-            <div id="launch-server-row" class="launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:13px">
+            <div id="launch-server-row" class="launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:0.8125rem">
                 <label for="launch-server" style="margin:0;white-space:nowrap">Server:</label>
                 <select id="launch-server" aria-label="Launch on server" style="flex:1;min-width:0" data-on-change="m-on-launch-server-change"></select>
                 <span id="launch-server-note" class="text-muted-sm"></span>
@@ -217,7 +217,7 @@
                                         <input type="file" id="team-folder-input" webkitdirectory directory multiple style="display:none" data-on-change="m-handle-team-folder-import">
                                     </div>
                                     <div class="team-agents-header">
-                                        <strong style="font-size:14px">Team Agents</strong>
+                                        <strong style="font-size:0.875rem">Team Agents</strong>
                                         <p class="team-agents-desc">These agents launch together on the shared message board, each in its own session.</p>
                                     </div>
                                     <div id="team-agents-list" class="team-agents-scroll"></div>
@@ -402,7 +402,7 @@
             </div>
             <div class="modal-actions modal-footer">
                 <button class="btn" data-on-click="m-hide-team-wizard-modal">Cancel</button>
-                <button id="team-wizard-test-btn" class="btn" data-on-click="m-test-team-wizard" title="Test flow with sample data (no API call)" style="font-size:12px;opacity:0.7">Test</button>
+                <button id="team-wizard-test-btn" class="btn" data-on-click="m-test-team-wizard" title="Test flow with sample data (no API call)" style="font-size:0.75rem;opacity:0.7">Test</button>
                 <button id="team-wizard-generate-btn" class="btn btn-primary" data-on-click="m-generate-team-from-wizard">Generate Team</button>
             </div>
         </div>
@@ -415,7 +415,7 @@
                 <h3 id="prompt-modal-title">Enter value</h3>
             </div>
             <div class="modal-body">
-                <label id="prompt-modal-label" for="prompt-modal-input" style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px"></label>
+                <label id="prompt-modal-label" for="prompt-modal-input" style="font-size:0.8125rem;color:var(--text-secondary);display:block;margin-bottom:6px"></label>
                 <input type="text" id="prompt-modal-input" style="width:100%" aria-labelledby="prompt-modal-title prompt-modal-label" autofocus>
                 <div id="prompt-modal-colors" class="prompt-modal-colors" style="display:none">
                     <div class="prompt-modal-colors-label">Name color</div>
@@ -477,7 +477,7 @@
                 <h3 id="restart-title">Restart Session</h3>
             </div>
             <div class="modal-body">
-                <p id="restart-modal-name" style="color:var(--text-secondary);font-size:13px;margin-bottom:12px"></p>
+                <p id="restart-modal-name" style="color:var(--text-secondary);font-size:0.8125rem;margin-bottom:12px"></p>
                 <div id="restart-acf"></div>
             </div>
             <div class="modal-actions modal-footer">
@@ -538,7 +538,7 @@
             </div>
             <div class="modal-body">
                 <div id="resume-launch-form">
-                    <label style="font-size:13px;display:block;margin-bottom:8px">Working Directory:
+                    <label style="font-size:0.8125rem;display:block;margin-bottom:8px">Working Directory:
                         <div class="dir-input-row" style="margin-top:4px">
                             <input type="text" id="resume-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
                             <button class="btn" data-on-click="m-toggle-browser" data-browser="resume-dir resume-dir-browser resume-browser-list resume-browser-current-path">Browse</button>
@@ -554,9 +554,9 @@
                         </ul>
                     </div>
                     <div id="resume-board-row" style="display:none;margin-top:8px">
-                        <label style="font-size:13px;display:flex;align-items:center;gap:8px">
+                        <label style="font-size:0.8125rem;display:flex;align-items:center;gap:8px">
                             <input type="checkbox" id="resume-board-check" checked>
-                            Rejoin board: <span id="resume-board-name" class="badge board-badge" style="font-size:12px"></span>
+                            Rejoin board: <span id="resume-board-name" class="badge board-badge" style="font-size:0.75rem"></span>
                         </label>
                     </div>
                 </div>
@@ -641,7 +641,7 @@
                         <input type="password" id="settings-api-key" class="settings-input settings-mono-input" readonly autocomplete="off" placeholder="Loading..." aria-label="API key">
                         <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-show" aria-pressed="false" hidden>Show</button>
                         <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-copy" disabled>Copy</button>
-                        <button class="btn btn-small" type="button" data-on-click="m-show-mobile-connect-modal" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:14px;vertical-align:middle">qr_code_2</span> Mobile QR</button>
+                        <button class="btn btn-small" type="button" data-on-click="m-show-mobile-connect-modal" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:0.875rem;vertical-align:middle">qr_code_2</span> Mobile QR</button>
                     </div>
                     <span class="settings-hint">Used for remote/mobile access. Keep secret.</span>
                 </dd>
@@ -972,7 +972,7 @@
                 </dd>
                 </dl>
                 <button class="btn btn-primary settings-prompts-btn" data-on-click="m-hide-settings-modal-then-show-default-prompts-modal">
-                    <span style="font-size:16px;vertical-align:middle;margin-right:6px">✏️</span>
+                    <span style="font-size:1rem;vertical-align:middle;margin-right:6px">✏️</span>
                     Edit Default Prompts
                 </button>
 
@@ -1059,10 +1059,10 @@
                 <!-- Job type toggle -->
                 <div class="job-type-toggle" id="job-type-toggle">
                     <button class="job-type-btn active" data-type="workflow" data-on-click="m-switch-job-type" data-arg="workflow">
-                        <span class="material-icons" style="font-size:16px">account_tree</span> Workflow
+                        <span class="material-icons" style="font-size:1rem">account_tree</span> Workflow
                     </button>
                     <button class="job-type-btn" data-type="prompt" data-on-click="m-switch-job-type" data-arg="prompt">
-                        <span class="material-icons" style="font-size:16px">smart_toy</span> Agent Prompt
+                        <span class="material-icons" style="font-size:1rem">smart_toy</span> Agent Prompt
                     </button>
                 </div>
 
@@ -1162,7 +1162,7 @@
                 <label style="margin-top:8px;display:block">Command:
                     <input type="text" id="macro-command-input" placeholder="e.g. /commit && git push" style="width:100%">
                 </label>
-                <p style="color:var(--text-muted);font-size:11px;margin-top:6px">Use <code>&&</code> to chain multiple commands (1s delay between each).</p>
+                <p style="color:var(--text-muted);font-size:0.6875rem;margin-top:6px">Use <code>&&</code> to chain multiple commands (1s delay between each).</p>
             </div>
             <div class="modal-actions modal-footer">
                 <button class="btn" data-on-click="m-hide-macro-modal">Cancel</button>
@@ -1179,7 +1179,7 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="quick-launch-template">
-                <div id="quick-launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:13px">
+                <div id="quick-launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:0.8125rem">
                     <label for="quick-launch-server" style="margin:0;white-space:nowrap">Server:</label>
                     <select id="quick-launch-server" aria-label="Launch on server" style="flex:1;min-width:0" data-on-change="m-on-quick-launch-server-change"></select>
                 </div>

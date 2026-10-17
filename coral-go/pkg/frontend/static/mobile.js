@@ -103,7 +103,7 @@ export function syncMobileAgentList() {
             <div class="server-switcher-host" data-server-switcher-host hidden></div>
             <details class="list-display-menu" data-list-display-menu${displayOpen ? ' open' : ''}>
                 <summary class="sidebar-collapse-btn" data-display-button title="Display options" aria-label="Display options">
-                    <span class="material-icons" style="font-size:18px" aria-hidden="true">notes</span>
+                    <span class="material-icons" style="font-size:1.125rem" aria-hidden="true">notes</span>
                 </summary>
                 <div class="list-display-panel" role="group" aria-label="Display options">
                     <label class="list-display-option"><input type="checkbox" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>

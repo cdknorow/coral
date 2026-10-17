@@ -59,7 +59,7 @@ body.no-scrollbars {
     gap: 8px;
     padding: 24px 16px;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .loading-indicator::before {

@@ -15,8 +15,8 @@ const DEFAULT_VIEW_HTML = `<!DOCTYPE html>
 <html>
 <head>
 <style>
-  body { font-family: -apple-system, sans-serif; color: #e0e0e4; background: #1a1a1e; padding: 12px; font-size: 13px; }
-  h3 { margin: 0 0 12px; font-size: 14px; color: #8c8c94; }
+  body { font-family: -apple-system, sans-serif; color: #e0e0e4; background: #1a1a1e; padding: 12px; font-size: 0.8125rem; }
+  h3 { margin: 0 0 12px; font-size: 0.875rem; color: #8c8c94; }
 </style>
 </head>
 <body>
