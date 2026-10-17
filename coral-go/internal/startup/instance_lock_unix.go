@@ -40,5 +40,7 @@ func (l *instanceLock) close(path string) {
 	}
 	_ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
 	_ = l.file.Close()
-	_ = os.Remove(path)
+	// The file stays, as on Windows: the next server reuses it (#4151). Removing it after the
+	// unlock could unlink the file a server started meanwhile has locked, and a third server
+	// could then lock a new file of the same name and run beside it.
 }
