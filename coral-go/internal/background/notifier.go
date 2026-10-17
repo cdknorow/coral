@@ -29,7 +29,19 @@ type BoardNotifier struct {
 	pending     map[string]bool  // boards a message was posted to since the last pass (NotifyBoard)
 	remindAfter time.Duration    // resend when still unread this long after a nudge
 	now         func() time.Time // for tests
+
+	discMu     sync.Mutex
+	discAgents []AgentInfo     // the last discovery, reused by event passes for discoveryMaxAge
+	discAt     time.Time       // when it ran (zero: never)
+	discAbsent map[string]bool // board subscribers a fresh discovery did not find, since the last timer pass
 }
+
+// discoveryMaxAge is how long an event pass (a post's) reuses the last agent discovery (#4299):
+// a discovery is a tmux list-panes, and running one per post cost 37 a minute at 20 agents and
+// 1.3 posts a second (#4275); with posts that steady, a 2 s window still ran one every 2 s. A
+// stale one is safe: a session it lacks rediscovers, and so does a nudge that fails. The timer's
+// pass always discovers afresh.
+const discoveryMaxAge = 10 * time.Second
 
 // notifyState records the nudge sent since the subscriber last read the board.
 type notifyState struct {
@@ -170,7 +182,7 @@ func (n *BoardNotifier) Run(ctx context.Context) error {
 				n.logger.Error("notification error", "error", err)
 			}
 		case <-n.notifyNowCh:
-			if err := n.runPass(ctx, n.takePending()); err != nil {
+			if err := n.eventPass(ctx); err != nil {
 				n.logger.Error("notification error (event-driven)", "error", err)
 			}
 		}
@@ -182,15 +194,44 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 	return n.runPass(ctx, nil)
 }
 
-// runPass is a notification pass over the agents on boards (every board when nil). A scoped
-// pass skips the agents not subscribed to one of those boards before any per-agent lookup, and
-// leaves the nudge records alone: only a full pass sees every live session.
-func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) error {
-	agents, err := n.discoverFn(ctx)
-	if err != nil {
-		n.logger.Error("discover agents failed", "error", err)
-		return err
+// eventPass is the pass a post (or NotifyNow) asks for: over what is pending, reusing a
+// discovery up to discoveryMaxAge old.
+func (n *BoardNotifier) eventPass(ctx context.Context) error {
+	return n.runPassWith(ctx, n.takePending(), true)
+}
+
+// discover returns the running agents: the last discovery when reuse is set and it is younger
+// than discoveryMaxAge (cached reports that), else a fresh one, which becomes the last.
+func (n *BoardNotifier) discover(ctx context.Context, reuse bool) (agents []AgentInfo, cached bool, err error) {
+	n.discMu.Lock()
+	if reuse && !n.discAt.IsZero() && n.now().Sub(n.discAt) < discoveryMaxAge {
+		agents = n.discAgents
+		n.discMu.Unlock()
+		return agents, true, nil
 	}
+	n.discMu.Unlock()
+	agents, err = n.discoverFn(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	n.discMu.Lock()
+	n.discAgents, n.discAt = agents, n.now()
+	n.discMu.Unlock()
+	return agents, false, nil
+}
+
+// runPass is a notification pass over the agents on boards (every board when nil) with a fresh
+// discovery.
+func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) error {
+	return n.runPassWith(ctx, boards, false)
+}
+
+// runPassWith is a notification pass over the agents on boards (every board when nil). A scoped
+// pass skips the agents not subscribed to one of those boards before any per-agent lookup, and
+// leaves the nudge records alone: only a full pass sees every live session. With reuse, the
+// agents may come from a discovery up to discoveryMaxAge old; a subscriber of those boards it
+// lacks (an agent just launched) or a nudge that fails (a pane just gone) discovers again, once.
+func (n *BoardNotifier) runPassWith(ctx context.Context, boards map[string]bool, reuse bool) error {
 	var onBoards map[string]bool // session names subscribed to boards
 	if boards != nil {
 		onBoards = map[string]bool{}
@@ -207,6 +248,42 @@ func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) err
 				}
 			}
 		}
+	}
+
+	agents, cached, err := n.discover(ctx, reuse)
+	if err != nil {
+		n.logger.Error("discover agents failed", "error", err)
+		return err
+	}
+	if !reuse && boards == nil {
+		n.discMu.Lock()
+		n.discAbsent = nil
+		n.discMu.Unlock()
+	}
+	if cached && n.lacksSubscriber(agents, onBoards) {
+		if agents, cached, err = n.discover(ctx, false); err != nil {
+			n.logger.Error("discover agents failed", "error", err)
+			return err
+		}
+	}
+	if !cached && onBoards != nil {
+		n.noteAbsent(agents, onBoards)
+	}
+	// rediscover is a fresh discovery's session names, taken at most once, after a nudge from a
+	// reused discovery failed.
+	var fresh map[string]bool
+	rediscover := func(sessName string) bool {
+		if fresh == nil {
+			fresh = map[string]bool{}
+			again, _, err := n.discover(ctx, false)
+			if err != nil {
+				n.logger.Warn("discover agents failed after a failed nudge", "error", err)
+			}
+			for _, a := range again {
+				fresh[naming.SessionName(a.AgentType, a.SessionID)] = true
+			}
+		}
+		return fresh[sessName]
 	}
 
 	n.logger.Debug("notification pass", "agent_count", len(agents))
@@ -383,6 +460,15 @@ func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) err
 		// One line (#3376), through the automated-input gate (#3431): a newer
 		// unread count for this board replaces a held one.
 		skipped, err := deliverAutomated(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention)
+		if err != nil && cached && !skipped {
+			// The discovery was reused: if the session is still running, its pane may only
+			// have moved; send once more to the same session (never another).
+			if !rediscover(sessName) {
+				n.logger.Info("agent gone since the last discovery; no nudge", "session", sessName)
+				continue
+			}
+			skipped, err = deliverAutomated(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention)
+		}
 		if skipped {
 			continue
 		}
@@ -409,4 +495,44 @@ func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) err
 	n.notifiedMu.Unlock()
 
 	return nil
+}
+
+// lacksSubscriber reports whether a session subscribed to the pass's boards is missing from
+// agents and was not already missing from a fresh discovery since the last timer pass: an
+// agent launched after agents was discovered (launch-team subscribes it first).
+func (n *BoardNotifier) lacksSubscriber(agents []AgentInfo, onBoards map[string]bool) bool {
+	if len(onBoards) == 0 {
+		return false
+	}
+	running := make(map[string]bool, len(agents))
+	for _, a := range agents {
+		running[naming.SessionName(a.AgentType, a.SessionID)] = true
+	}
+	n.discMu.Lock()
+	defer n.discMu.Unlock()
+	for sn := range onBoards {
+		if !running[sn] && !n.discAbsent[sn] {
+			return true
+		}
+	}
+	return false
+}
+
+// noteAbsent records the subscribers of the pass's boards a fresh discovery did not find (ended
+// sessions keep their subscriptions), so they don't make every event pass discover again.
+func (n *BoardNotifier) noteAbsent(agents []AgentInfo, onBoards map[string]bool) {
+	running := make(map[string]bool, len(agents))
+	for _, a := range agents {
+		running[naming.SessionName(a.AgentType, a.SessionID)] = true
+	}
+	n.discMu.Lock()
+	defer n.discMu.Unlock()
+	for sn := range onBoards {
+		if !running[sn] {
+			if n.discAbsent == nil {
+				n.discAbsent = map[string]bool{}
+			}
+			n.discAbsent[sn] = true
+		}
+	}
 }
