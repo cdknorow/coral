@@ -56,6 +56,9 @@ const MESSAGES = [
                 (await import(${S}+'render.js')).renderHistoryChat(${JSON.stringify(MESSAGES)});
                 return true; })()`);
             await waitFor(`document.querySelectorAll('#history-messages .work-group-body > .chat-system').length === 3 && !!document.querySelector('#history-messages > .chat-note')`, 'the notices');
+            // Consecutive folded turns are one roll-up bar (#4264); open it so its groups show.
+            await ev(`document.querySelectorAll('#history-messages > .work-rollup').forEach(b => { b.open = true; })`);
+            await waitFor(`[...document.querySelectorAll('#history-messages > .work-group')].every(g => g.checkVisibility({ checkVisibilityCSS: true }))`, 'the roll-up bar to show its groups');
             await nextFrame();
             const m = await measure();
             console.log(`#3592 ${label}: pane ${m.pane}px`);

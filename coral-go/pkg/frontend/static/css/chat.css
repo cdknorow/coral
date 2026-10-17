@@ -212,6 +212,10 @@
 }
 
 .work-group-summary::-webkit-details-marker { display: none; }
+.work-rollup { margin: 0 0 10px; }
+.work-rollup > .work-group-summary { border-style: solid; }
+.work-rollup[open] > .work-group-summary::before { transform: rotate(90deg); }
+.work-group[hidden] { display: none; }
 
 .work-group-summary::before {
     content: "\25B8";
@@ -753,7 +757,8 @@
 }
 
 /* Tool/work groups: quieter, sans, so prose stands out */
-.chat-prose .work-group {
+.chat-prose .work-group,
+.chat-prose .work-rollup {
     margin-bottom: 18px;
 }
 

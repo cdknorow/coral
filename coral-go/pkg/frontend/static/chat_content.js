@@ -57,10 +57,14 @@ export function noticeStartedTurn(container) {
     return !!(first && first.classList.contains("chat-system"));
 }
 
+function stepCount(group) {
+    return Array.from(group.querySelector(":scope > .work-group-body").children).filter(c => !c.classList.contains("folded-reply")).length;
+}
+
 export function updateWorkGroupSummary(group) {
     const body = group.querySelector(":scope > .work-group-body");
     // The folded reply is the label, not a step.
-    const steps = Array.from(body.children).filter(c => !c.classList.contains("folded-reply")).length;
+    const steps = stepCount(group);
     group.querySelector(".work-group-count").textContent = `${steps} step${steps === 1 ? "" : "s"}`;
     const last = body.lastElementChild;
     let latest = "";
@@ -98,6 +102,62 @@ export function appendWork(container, el, { newGroup = false } = {}) {
     }
     group.querySelector(":scope > .work-group-body").appendChild(el);
     updateWorkGroupSummary(group);
+    rollUpRunEndingAt(group);
+}
+
+// Consecutive collapsed groups with nothing visible between them (no reply that stays on the page, no user message) read as ONE bar
+// (#4264, the operator: "multiple collapsed bars should be rolled up into a single one"). The groups stay siblings of each other in the
+// transcript, so everything that walks the page (noticeStartedTurn, the notice roll-up, stitching pages) is unchanged; a run of two or
+// more gets a .work-rollup bar in front of it, labelled with the count and the newest group's label, and its groups are hidden until the
+// bar is open. A group the page adds while the bar is open shows at once; one added while it is closed folds in under the bar.
+function createRollup() {
+    const bar = htmlToElement(`<details class="work-rollup">
+        <summary class="work-group-summary work-rollup-summary"><span class="work-group-count"></span><span class="work-group-latest"></span></summary>
+    </details>`);
+    bar.addEventListener("toggle", () => syncRollup(bar));
+    return bar;
+}
+
+function syncRollup(bar) {
+    for (let el = bar.nextElementSibling; el && el.classList.contains("work-group"); el = el.nextElementSibling) el.hidden = !bar.open;
+}
+
+const isGroup = el => !!el && el.classList.contains("work-group");
+const isRollup = el => !!el && el.classList.contains("work-rollup");
+
+/** Make the run of groups `groups` (consecutive, in page order) one bar, or none when it is a single group. */
+function rollUpRun(groups, bars) {
+    if (groups.length < 2) {
+        bars.forEach(b => b.remove());
+        groups.forEach(g => { g.hidden = false; });
+        return;
+    }
+    const bar = bars[0] || createRollup();
+    bars.slice(1).forEach(b => b.remove());
+    if (bar.nextElementSibling !== groups[0]) groups[0].before(bar);
+    const steps = groups.reduce((n, g) => n + stepCount(g), 0);
+    bar.querySelector(".work-group-count").textContent = `${groups.length} updates \u00b7 ${steps} step${steps === 1 ? "" : "s"}`;
+    bar.querySelector(".work-group-latest").textContent = groups[groups.length - 1].querySelector(".work-group-latest").textContent;
+    syncRollup(bar);
+}
+
+/** The run that ends at `group` (the page's last transcript element): called as each step is appended. */
+function rollUpRunEndingAt(group) {
+    const groups = [], bars = [];
+    for (let el = group; isGroup(el) || isRollup(el); el = el.previousElementSibling) (isGroup(el) ? groups : bars).unshift(el);
+    rollUpRun(groups, bars);
+}
+
+/** Every run in the container: after older messages are prepended and stitched, runs that met at the seam are one. */
+export function rollUpGroups(container) {
+    let groups = [], bars = [];
+    const flush = () => { if (groups.length || bars.length) rollUpRun(groups, bars); groups = []; bars = []; };
+    for (const el of Array.from(container.children)) {
+        if (isGroup(el)) groups.push(el);
+        else if (isRollup(el)) bars.push(el);
+        else flush();
+    }
+    flush();
 }
 
 export function appendTurnFinal(container, el) {

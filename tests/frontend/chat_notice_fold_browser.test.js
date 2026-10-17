@@ -36,7 +36,7 @@ const fixture = [
 ];
 
 (async () => {
-    const { client, Page, Emulation, ev, PRELOAD, install } = await connect();
+    const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -49,15 +49,16 @@ const fixture = [
             document.body.appendChild(box); m.renderTranscript(${JSON.stringify(fixture)}, box, 'claude'); return true; })`);
         const top = await ev(`(() => { const box = document.getElementById('fold-box');
             const vis = el => el.checkVisibility({ checkVisibilityCSS: true });
-            return [...box.children].map(el => el.classList.contains('work-group')
+            return [...box.children].map(el => el.classList.contains('work-rollup') ? { kind: 'rollup', count: el.querySelector('.work-group-count').textContent } : el.classList.contains('work-group')
                 ? { kind: 'group', open: el.open, count: el.querySelector('.work-group-count').textContent, label: el.querySelector('.work-group-latest').textContent,
                     inside: [...el.querySelectorAll(':scope > .work-group-body > *')].map(c => c.classList.contains('chat-system') ? 'notice' : c.classList.contains('tool-call') ? 'tool' : c.classList.contains('folded-reply') ? 'reply' : c.className) }
                 : { kind: el.classList.contains('human') ? 'user' : 'reply', text: (el.querySelector('.message-text') || el).innerText.trim().slice(0, 40), visible: vis(el) }); })()`);
         if (process.env.FOLD_SHOT_DIR) require('node:fs').writeFileSync(`${process.env.FOLD_SHOT_DIR}/chat.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
         const kinds = top.map(x => x.kind).join(',');
-        // user, group(t1), reply(DevOps), group[notice,t2,reply], group[health,t3,reply], group[notice], reply(LONG), group[hook,t4,reply], user, group[t5,notice,t6], reply(Build), user, reply
-        assert.equal(kinds, 'user,group,reply,group,group,group,reply,group,user,group,reply,user,reply', kinds + '\n' + JSON.stringify(top, null, 1));
+        // user, group(t1), reply(DevOps), rollup(3 updates) over group[notice,t2,reply], group[health,t3,reply], group[notice], reply(LONG), group[hook,t4,reply], user, group[t5,notice,t6], reply(Build), user, reply
+        assert.equal(kinds, 'user,group,reply,rollup,group,group,group,reply,group,user,group,reply,user,reply', kinds + '\n' + JSON.stringify(top, null, 1));
         const g = top.filter(x => x.kind === 'group');
+        assert.equal(top.find(x => x.kind === 'rollup').count, '3 updates \u00b7 5 steps', 'three folded turns in a row are one bar (#4264)');
         assert.deepEqual(g[1].inside, ['notice', 'tool', 'reply'], 'unread notice, read, reply folded in order');
         assert.equal(g[1].count, '2 steps'); assert.equal(g[1].label, 'Both were routine task-queue notices.');
         assert.deepEqual(g[2].inside, ['notice', 'tool', 'reply']); assert.equal(g[2].count, '2 steps'); assert.equal(g[2].label, 'All six agents are working, and each has its next task queued.');
@@ -72,6 +73,9 @@ const fixture = [
         // no notice or hook text stands on its own
         assert.equal(await ev(`[...document.getElementById('fold-box').children].some(el => el.classList.contains('chat-system'))`), false, 'no notice pill outside a group');
         assert.equal(await ev(`/Stop hook feedback/.test([...document.querySelectorAll('#fold-box > .chat-bubble.human')].map(e => e.innerText).join('|'))`), false, 'stop-hook feedback is not shown as a user message');
+        // Open the roll-up bar (its groups hide while it is closed)
+        await ev(`document.querySelector('#fold-box > .work-rollup').open = true`);
+        await waitFor(`document.querySelector('#fold-box > .work-rollup + .work-group').checkVisibility({ checkVisibilityCSS: true })`, 'the roll-up bar to open');
         // Expanded: the notice, the step and the reply, in order
         const opened = await ev(`(() => { const gs = document.querySelectorAll('#fold-box > .work-group'); gs[1].open = true; return gs[1].innerText; })()`);
         const i1 = opened.indexOf('unread messages'), i2 = opened.indexOf('Read new board messages'), i3 = opened.lastIndexOf('Both were routine');

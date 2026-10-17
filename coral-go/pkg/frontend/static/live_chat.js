@@ -13,7 +13,7 @@ import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
 import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from './overload.js';
 import { storeKey, onAccountForgotten } from './local_store.js';
-import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, isShortReply, lastContent, noticeStartedTurn, updateWorkGroupSummary } from './chat_content.js';
+import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, isShortReply, lastContent, noticeStartedTurn, rollUpGroups, updateWorkGroupSummary } from './chat_content.js';
 import { flashCopied, makeBubble } from './chat_bubbles.js';
 import { unwrapPastedContent } from './pasted_content.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
@@ -751,6 +751,7 @@ async function _loadMoreHistory(generation) {
                 container.insertBefore(temp.firstChild, refNode);
             }
             stitchPages(lastOlder);
+            rollUpGroups(container);
 
             historyStart = data.start;
             historyHasMore = (data.has_more || false) && historyStart > 0;
