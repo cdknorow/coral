@@ -1,0 +1,179 @@
+package routes
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+)
+
+// Actor is who a request is from, as the identity layer decided it (#4244, identity phase 2 of
+// #4232). It is the single source for attribution: handlers will take the name they attribute a
+// request to from here instead of decoding subscriber_id again (the next steps move them over, in
+// groups); until then it is set and compared with each request's claim in log mode, and nothing
+// changes for the request.
+//
+// Only the identity layer sets it, in a context value no client can reach (the key type is
+// unexported, and a header is never read): a request cannot bring its own.
+type Actor struct {
+	// Kind says what backs the name:
+	//   ActorToken    an agent's session token: Name is the member name the token's session holds on
+	//                 this board ("" for a session that is not on it yet, e.g. one joining);
+	//   ActorOperator the Operator: the dashboard's cookie, the signed command line, an API key;
+	//   ActorHub      Coral Hub: the tunnel's own guard decides the name (a Hub user, or the Operator
+	//                 for the Hub operator), so Name is empty here;
+	//   ActorClaimed  nothing backs it: a caller with no credential (an install that opted out of
+	//                 strict local auth, a script, a bare command line). Name is empty; the request's
+	//                 claim is a claim. Nothing privileged may accept it (rule 13, park, ack,
+	//                 settings, the Operator name, reserved names).
+	Kind string
+	// Name is the member name for ActorToken, and "Operator" for ActorOperator.
+	Name string
+	// Session is the agent session name the token belongs to (ActorToken).
+	Session string
+}
+
+// Actor kinds.
+const (
+	ActorToken    = "token"
+	ActorOperator = "operator"
+	ActorHub      = "hub"
+	ActorClaimed  = "claimed"
+)
+
+type actorKey struct{}
+
+// ActorOf is who the request is from, if the identity layer decided it (a request that did not pass
+// through it, such as a test calling a handler directly, has none).
+func ActorOf(ctx context.Context) (Actor, bool) {
+	a, ok := ctx.Value(actorKey{}).(Actor)
+	return a, ok
+}
+
+func withActor(r *http.Request, a Actor) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), actorKey{}, a))
+}
+
+// actorFor is the actor of a request that carries no agent token, by how the identity layer
+// classified its caller.
+func actorFor(caller string) (Actor, bool) {
+	switch caller {
+	case callerCLISigned, callerAPIKey, callerDashCookie:
+		return Actor{Kind: ActorOperator, Name: "Operator"}, true
+	case callerHub:
+		return Actor{Kind: ActorHub}, true
+	case callerOpen:
+		return Actor{}, false // the liveness check and the command line's hello: nobody acts
+	}
+	return Actor{Kind: ActorClaimed}, true
+}
+
+// Claim outcomes, counted per actor kind and route.
+const (
+	claimNone      = "no_claim"       // the request names no one
+	claimMatch     = "match"          // every name it gives is the actor's
+	claimSpelling  = "match_spelling" // the same name in another capitalisation (the signed command line sends "operator")
+	claimDiffers   = "differs"        // it names someone else (a token request refused by the identity check never gets here)
+	claimUnbound   = "unbound"        // the actor has no member name yet (joining) or the tunnel decides it
+	claimUnchecked = "unverified"     // nothing backs the actor: the claim is only a claim
+	claimUnread    = "unreadable"     // the body could not be read for its claims
+)
+
+// claimOutcome compares the names a board request gives for itself with its actor.
+func claimOutcome(a Actor, given []string) string {
+	seen, differs, spelling := false, false, false
+	for _, v := range given {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		seen = true
+		switch {
+		case a.Name != "" && v == a.Name:
+		case a.Name != "" && strings.EqualFold(v, a.Name):
+			spelling = true
+		default:
+			differs = true
+		}
+	}
+	switch {
+	case !seen:
+		return claimNone
+	case a.Kind == ActorClaimed:
+		return claimUnchecked
+	case a.Name == "":
+		return claimUnbound
+	case differs:
+		return claimDiffers
+	case spelling:
+		return claimSpelling
+	}
+	return claimMatch
+}
+
+// attributionClaims are the names a board request gives for itself (the fields handlers attribute
+// by), in its query and JSON body.
+func attributionClaims(r *http.Request) ([]string, error) {
+	claims, err := boardClaims(r)
+	if err != nil {
+		return nil, err
+	}
+	return append(append([]string(nil), claims["subscriber_id"]...), claims["created_by"]...), nil
+}
+
+// countActor records, once the request has been routed, how its claim compared with its actor
+// (log mode: "enforce" would judge on these numbers).
+func (o *IdentityObserver) countActor(r *http.Request, a Actor, given []string, readErr error) {
+	outcome := claimUnread
+	if readErr == nil {
+		outcome = claimOutcome(a, given)
+	}
+	key := fmt.Sprintf("%s %s %s %s", a.Kind, outcome, r.Method, routeOf(r))
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if _, ok := o.actorClaims[key]; !ok && len(o.actorClaims) >= identityBreakKeysMax {
+		key = a.Kind + " " + outcome + " other"
+	}
+	o.actorClaims[key]++
+}
+
+// routeOf is the route pattern chi matched for r (after routing), or the one it would match.
+func routeOf(r *http.Request) string {
+	route := ""
+	if rc := chi.RouteContext(r.Context()); rc != nil {
+		route = rc.RoutePattern()
+		if route == "" && rc.Routes != nil {
+			// Refused before routing (strict mode): ask the router which route it was.
+			if tctx := chi.NewRouteContext(); rc.Routes.Match(tctx, r.Method, r.URL.Path) {
+				route = tctx.RoutePattern()
+			}
+		}
+	}
+	if route == "" {
+		route = "(unrouted)"
+	}
+	return route
+}
+
+// serveAs passes a request that carries no agent token on, with its actor set and, for a board
+// request, its claim compared with it (log mode).
+func (o *IdentityObserver) serveAs(w http.ResponseWriter, r *http.Request, next http.Handler, caller string) {
+	actor, ok := actorFor(caller)
+	if !ok {
+		next.ServeHTTP(w, r)
+		return
+	}
+	r = withActor(r, actor)
+	isBoard := strings.HasPrefix(r.URL.Path, "/api/board/")
+	var given []string
+	var readErr error
+	if isBoard {
+		given, readErr = attributionClaims(r)
+	}
+	next.ServeHTTP(w, r)
+	if isBoard {
+		o.countActor(r, actor, given, readErr)
+	}
+}

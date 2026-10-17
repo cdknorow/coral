@@ -103,16 +103,19 @@ type IdentityObserver struct {
 	operatorCalls map[string]int64
 	// refused counts strict-mode refusals by code (#3418): zero in a healthy team.
 	refused map[string]int64
-	recent  []IdentityMismatch
-	lastLog map[string]time.Time
-	now     func() time.Time
+	// actorClaims counts board requests by "actor-kind outcome METHOD /route" (#4244): how the
+	// names a request gives for itself compared with the actor the identity layer decided.
+	actorClaims map[string]int64
+	recent      []IdentityMismatch
+	lastLog     map[string]time.Time
+	now         func() time.Time
 }
 
 // NewIdentityObserver returns the observer; hasSession reports a valid dashboard cookie.
 func NewIdentityObserver(db *store.DB, bs *board.Store, hasSession func(*http.Request) bool) *IdentityObserver {
 	return &IdentityObserver{db: db, bs: bs, hasSession: hasSession,
 		callers: map[string]int64{}, bySession: map[string]int64{}, byTool: map[string]int64{},
-		mismatches: map[string]int64{}, breakBy: map[string]int64{}, refused: map[string]int64{}, operatorCalls: map[string]int64{}, lastLog: map[string]time.Time{}, now: time.Now}
+		mismatches: map[string]int64{}, breakBy: map[string]int64{}, refused: map[string]int64{}, actorClaims: map[string]int64{}, operatorCalls: map[string]int64{}, lastLog: map[string]time.Time{}, now: time.Now}
 }
 
 var agentToolPrefixes = []string{"coral-board/", "coral-agent/", "coral-hook-"}
@@ -190,7 +193,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 						"This agent's session token is unknown or no longer valid (the agent was restarted or closed). Restart the agent from Coral.")
 					return
 				}
-				next.ServeHTTP(w, r)
+				o.serveAs(w, r, next, callerAgentBadToken)
 				o.countBreak(callerAgentBadToken, r)
 				return
 			}
@@ -216,7 +219,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			// (#3495): an agent can't post or act as another subscriber or as the Operator,
 			// nor act on a board its session isn't subscribed on (#3869: an agent read other
 			// teams' boards by name), apart from joining one and a cross-team send.
-			m, err := o.checkBoard(r, owner)
+			m, actorName, err := o.checkBoard(r, owner)
 			if errors.Is(err, errBoardBodyTooLarge) {
 				o.refuse(w, http.StatusRequestEntityTooLarge, "body_too_large", "This board request's body is over the limit")
 				return
@@ -235,7 +238,20 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 					"This agent can't act as "+strconv.Quote(m.Claimed)+" ("+m.Field+"): its session is "+strconv.Quote(m.Expected)+" ("+m.Kind+")")
 				return
 			}
+			// Who the request is from, decided here and read from here (#4244): the member name the
+			// token's session holds on this board. The claim is compared in log mode.
+			actor := Actor{Kind: ActorToken, Name: actorName, Session: owner.SessionName}
+			r = withActor(r, actor)
+			var given []string
+			var readErr error
+			isBoard := strings.HasPrefix(r.URL.Path, "/api/board/")
+			if isBoard {
+				given, readErr = attributionClaims(r)
+			}
 			next.ServeHTTP(w, r)
+			if isBoard {
+				o.countActor(r, actor, given, readErr)
+			}
 			return
 		}
 		caller := o.classify(r)
@@ -276,10 +292,10 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 				}
 				return
 			}
-			next.ServeHTTP(w, r2)
+			o.serveAs(w, r2, next, caller)
 			return
 		}
-		next.ServeHTTP(w, r)
+		o.serveAs(w, r, next, caller)
 		if wouldBreak[caller] {
 			o.countBreak(caller, r)
 		}
@@ -723,19 +739,7 @@ func (o *IdentityObserver) countBreak(caller string, r *http.Request) {
 	if len(tool) > 40 {
 		tool = tool[:40]
 	}
-	route := ""
-	if rc := chi.RouteContext(r.Context()); rc != nil {
-		route = rc.RoutePattern()
-		if route == "" && rc.Routes != nil {
-			// Refused before routing (strict mode): ask the router which route it was.
-			if tctx := chi.NewRouteContext(); rc.Routes.Match(tctx, r.Method, r.URL.Path) {
-				route = tctx.RoutePattern()
-			}
-		}
-	}
-	if route == "" {
-		route = "(unrouted)"
-	}
+	route := routeOf(r)
 	key := caller + " " + tool + " " + r.Method + " " + route
 	o.mu.Lock()
 	if _, ok := o.breakBy[key]; !ok && len(o.breakBy) >= identityBreakKeysMax {
@@ -797,15 +801,15 @@ func (o *IdentityObserver) logOnce(key, msg string, args ...any) {
 // returns the first mismatch (nil when there is none). Every mismatch is recorded. An
 // error means a claimed name couldn't be checked (the board's subscribers couldn't be
 // read), and the caller refuses the request.
-func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionTokenOwner) (first *IdentityMismatch, err error) {
+func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionTokenOwner) (first *IdentityMismatch, actorName string, err error) {
 	rest, ok := strings.CutPrefix(r.URL.Path, "/api/board/")
 	if !ok || o.bs == nil {
-		return nil, nil
+		return nil, "", nil
 	}
 	project, tail, _ := strings.Cut(rest, "/")
 	switch project {
 	case "", "projects", "tasks", "remotes":
-		return nil, nil
+		return nil, "", nil
 	}
 	// The board the request acts on, as the router will resolve it (#3536, Security's
 	// review): a label naming one board is that board's id, so an agent may use its own
@@ -829,7 +833,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 	}
 	claims, err := boardClaims(r)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// A subscription is bound to the session that holds it: an agent can't subscribe (or
 	// act) under another session's name (#3512).
@@ -843,7 +847,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 	if sub != nil && project != sub.Project {
 		there, err := o.bs.SessionSubscription(r.Context(), project, owner.SessionName)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		if there != nil {
 			sub = there
@@ -869,7 +873,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 				default:
 					if !listed {
 						if held, err = o.bs.ListSubscribers(r.Context(), project); err != nil {
-							return nil, err
+							return nil, "", err
 						}
 						listed = true
 					}
@@ -882,7 +886,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 				}
 			}
 		}
-		return first, nil
+		return first, "", nil
 	}
 	if project != sub.Project && !acrossBoards(r.Method, tail) {
 		note(o.mismatch(r, owner, mismatchCrossBoard, sub.Project, project, "project"))
@@ -901,7 +905,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 			}
 		}
 	}
-	return first, nil
+	return first, sub.SubscriberID, nil
 }
 
 // notSubscribed is the expected identity logged for an agent that holds a token but
@@ -989,6 +993,10 @@ func (o *IdentityObserver) Report() map[string]any {
 	for k, v := range o.refused {
 		refused[k] = v
 	}
+	actorClaims := map[string]int64{}
+	for k, v := range o.actorClaims {
+		actorClaims[k] = v
+	}
 	opCalls := map[string]int64{}
 	for k, v := range o.operatorCalls {
 		opCalls[k] = v
@@ -1005,7 +1013,7 @@ func (o *IdentityObserver) Report() map[string]any {
 	if o.effectiveStrict() {
 		mode = "strict"
 	}
-	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls,
+	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls, "actor_claims": actorClaims,
 		"mismatches": mm, "recent_mismatches": recent, "attributed_by_session": sessions, "attributed_by_tool": tools}
 }
 
