@@ -122,19 +122,27 @@ func attachLooksLikeText(data []byte) bool {
 }
 
 // scanAttachment refuses a text file with a secret in it (a token or key by the same rules that redact
-// Coral Hub's replies), or one that could not be checked in time: a file that leaves this computer is
-// not redacted by the hub. Images, PDFs and other binary types are not scanned (the --attach help says so).
+// Coral Hub's replies, in the file and in a few re-encodings of it: scanViews), or one that could not be
+// checked in time: a file that leaves this computer is not redacted by the hub. Images, PDFs and other binary types are not scanned (the --attach help says so).
 func scanAttachment(a attachedArtifact, data []byte) *attachRefusal {
 	if !attachLooksLikeText(data) {
 		return nil
 	}
 	shown := "coral://artifacts/" + a.ID
-	out, err := secrets.Redactor().Text(data)
-	if err != nil {
-		return &attachRefusal{http.StatusUnprocessableEntity, "attach_unchecked", fmt.Sprintf("%s could not be checked for secrets in time, so it was not sent; send a smaller file", shown)}
+	unchecked := &attachRefusal{http.StatusUnprocessableEntity, "attach_unchecked", fmt.Sprintf("%s could not be checked for secrets in time, so it was not sent; send a smaller file", shown)}
+	found := &attachRefusal{http.StatusUnprocessableEntity, "attach_secret", fmt.Sprintf("%s looks like it contains a secret (a token or a key), so it was not sent; remove it and upload the file again", shown)}
+	views, ok := scanViews(data)
+	if !ok {
+		return unchecked
 	}
-	if !bytes.Equal(out, data) {
-		return &attachRefusal{http.StatusUnprocessableEntity, "attach_secret", fmt.Sprintf("%s looks like it contains a secret (a token or a key), so it was not sent; remove it and upload the file again", shown)}
+	for _, v := range append([][]byte{data}, views...) {
+		out, err := secrets.Redactor().Text(v)
+		if err != nil {
+			return unchecked
+		}
+		if !bytes.Equal(out, v) {
+			return found
+		}
 	}
 	return nil
 }
