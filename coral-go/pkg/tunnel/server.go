@@ -51,6 +51,16 @@ type SessionConfig struct {
 	// MaxRelayInFlight caps concurrent OnRelay calls per tunnel (default 4); more
 	// get 429.
 	MaxRelayInFlight int
+	// OnRelayArtifact handles a streamed artifact request the connector opens (relay_artifact.go,
+	// #4378). Nil: the "relay_artifact" capability is never advertised and the path is closed.
+	OnRelayArtifact RelayArtifactFunc
+	// MaxArtifactBytes caps one artifact request's body, the design's frame included (default
+	// RelayDefaultArtifact, 8 MiB plus the frame; at most RelayMaxArtifact, 16 MiB plus the frame); a
+	// request declaring more is closed unanswered before a byte is read.
+	MaxArtifactBytes int64
+	// MaxArtifactInFlight caps concurrent OnRelayArtifact calls per tunnel (default 1); more get
+	// 429. The account and hub budgets are the hub's own.
+	MaxArtifactInFlight int
 	// MaxRelayStreams caps connector-opened streams being read per tunnel (default 8). It is
 	// taken before any goroutine or read; a stream over it is closed at once.
 	MaxRelayStreams int
@@ -80,6 +90,15 @@ func (c SessionConfig) withDefaults() SessionConfig {
 	}
 	if c.MaxRelayStreams <= 0 {
 		c.MaxRelayStreams = 8
+	}
+	if c.MaxArtifactBytes <= 0 {
+		c.MaxArtifactBytes = RelayDefaultArtifact
+	}
+	if c.MaxArtifactBytes > RelayMaxArtifact {
+		c.MaxArtifactBytes = RelayMaxArtifact
+	}
+	if c.MaxArtifactInFlight <= 0 {
+		c.MaxArtifactInFlight = 1
 	}
 	c.Limits = c.Limits.withDefaults()
 	return c
@@ -125,6 +144,10 @@ type Session struct {
 	// signinInflight: sign-in hook calls in progress (their own budget, #3966).
 	signinInflight atomic.Int32
 	relaySlot      chan struct{} // connector-opened streams being handled (MaxRelayStreams)
+	// artifactHook is set only on a tunnel the hub advertised relay_artifact to; artifactInflight
+	// counts its calls in progress.
+	artifactHook     RelayArtifactFunc
+	artifactInflight atomic.Int32
 }
 
 // Accept performs the server handshake on an upgraded WebSocket and returns a
@@ -171,8 +194,19 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	// only when the hub has its hook.
 	var caps []string
 	var hooks map[Kind]inboundHook
+	var artifactHook RelayArtifactFunc
 	if v >= 2 && cfg.Capabilities != nil {
-		caps, hooks = cfg.advertisedHooks(cfg.Capabilities(identity))
+		chosen := cfg.Capabilities(identity)
+		caps, hooks = cfg.advertisedHooks(chosen)
+		if cfg.OnRelayArtifact != nil {
+			for _, name := range chosen {
+				if name == CapabilityRelayArtifact {
+					caps = append(caps, name)
+					artifactHook = cfg.OnRelayArtifact
+					break
+				}
+			}
+		}
 	}
 	var routeKey string
 	if cfg.RouteKey != nil {
@@ -196,7 +230,7 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 		return nil, err
 	}
 	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode),
-		hooks: hooks, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
+		hooks: hooks, artifactHook: artifactHook, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
 	go func() { defer safego.Recover("tunnel/server:s.rejectInbound"); s.rejectInbound() }()
 	go func() { defer safego.Recover("tunnel/server:191"); <-ys.CloseChan(); s.Close() }()
 	return s, nil
@@ -227,7 +261,7 @@ func (s *Session) rejectInbound() {
 		if err != nil {
 			return
 		}
-		if len(s.hooks) == 0 {
+		if len(s.hooks) == 0 && s.artifactHook == nil {
 			_ = st.Close()
 			continue
 		}

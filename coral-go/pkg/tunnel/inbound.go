@@ -114,7 +114,7 @@ func (s *Session) serveInbound(st io.ReadWriteCloser, setDeadline func(time.Time
 	// with the kind's fixed body, and the stream closes.
 	defer func() {
 		if p := recover(); p != nil {
-			slog.Error("tunnel: connector-request handler panicked")
+			logInboundPanic()
 			if k != nil {
 				_ = setDeadline(time.Now().Add(inboundReadDeadline))
 				writeInboundResponse(st, RelayResponse{Status: http.StatusBadGateway, Body: k.failed})
@@ -131,6 +131,12 @@ func (s *Session) serveInbound(st io.ReadWriteCloser, setDeadline func(time.Time
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if dec.Decode(&h) != nil || dec.Decode(new(json.RawMessage)) != io.EOF {
+		return
+	}
+	// A streamed artifact request has its own reader, cap and deadlines (relay_artifact.go); it is
+	// refused here unless the hub advertised it, and a message path never matches it (relayCap).
+	if h.Kind == KindRelay && h.Path == RelayArtifactPath {
+		s.serveArtifact(st, h, setDeadline)
 		return
 	}
 	hook := s.hooks[h.Kind]
@@ -255,23 +261,49 @@ func (c *ClientSession) callInbound(ctx context.Context, k *inboundKind, path st
 	stop := context.AfterFunc(ctx, func() { _ = st.Close() })
 	defer stop()
 	fail := func(err error) (RelayResponse, error) { return RelayResponse{}, c.inboundErr(ctx, err, unsupported) }
-	if err := writeFrame(st, Header{Kind: k.kind, Method: http.MethodPost, Path: path, ContentLength: int64(len(body))}); err != nil {
+	// Writes go through the uplink scheduler like every stream's (#4378): a connector-opened request
+	// is no longer written straight to yamux, past the lanes. Messages, targets and sign-in are small
+	// and keep the interactive lane; the artifact path (relay_artifact.go) is on the bulk lane.
+	w := io.Writer(st)
+	if c.up != nil {
+		w = &upWriter{st: st, u: c.up, lane: inboundLane(path), done: ctx.Done()}
+	}
+	if err := writeFrame(w, Header{Kind: k.kind, Method: http.MethodPost, Path: path, ContentLength: int64(len(body))}); err != nil {
 		return fail(err)
 	}
-	if err := writeRawFrame(st, body); err != nil {
+	if err := writeRawFrame(w, body); err != nil {
 		return fail(err)
 	}
 	b, err := readFrame(st, c.cfg.Limits.MaxHeaderBytes)
 	if err != nil {
 		return fail(err)
 	}
+	out, err := c.readInboundReply(st, b, k)
+	if err != nil && !errors.Is(err, ErrBadHeader) {
+		return fail(err)
+	}
+	return out, err
+}
+
+// inboundLane is the uplink lane a connector-opened request is written on: the bulk lane for the
+// artifact path, the interactive one for everything else.
+func inboundLane(path string) int {
+	if path == RelayArtifactPath {
+		return artifactLane
+	}
+	return laneInteractive
+}
+
+// readInboundReply reads the hub's answer after its header frame b: the status, Retry-After and the
+// body frame of at most the kind's reply cap.
+func (c *ClientSession) readInboundReply(st io.Reader, b []byte, k *inboundKind) (RelayResponse, error) {
 	var rh ResponseHeader
 	if json.Unmarshal(b, &rh) != nil || rh.Status < 200 || rh.Status > 599 {
 		return RelayResponse{}, ErrBadHeader
 	}
 	respBody, err := readFrame(st, k.maxReply)
 	if err != nil {
-		return fail(err)
+		return RelayResponse{}, err
 	}
 	out := RelayResponse{Status: rh.Status, Body: respBody}
 	if v := http.Header(rh.Headers).Get("Retry-After"); v != "" {
@@ -281,6 +313,9 @@ func (c *ClientSession) callInbound(ctx context.Context, k *inboundKind, path st
 	}
 	return out, nil
 }
+
+// logInboundPanic is the one line a panic in a connector-request hook leaves: never the request.
+func logInboundPanic() { slog.Error("tunnel: connector-request handler panicked") }
 
 func (c *ClientSession) inboundErr(ctx context.Context, err, unsupported error) error {
 	if ctx.Err() != nil {
