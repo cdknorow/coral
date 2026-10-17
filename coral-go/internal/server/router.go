@@ -88,6 +88,9 @@ func (s *Server) useMiddleware(r *chi.Mux) {
 
 	// Debug request logger (session/ws calls only, when CORAL_DEBUG=1)
 	r.Use(routes.DebugRequestLogger)
+	// First of the board's guards: a body's identity keys are in one spelling, so every guard
+	// below reads what the handler decodes (#4233).
+	r.Use(routes.CanonicalIdentityKeys)
 	// Board identities never carry control characters (#3376).
 	r.Use(routes.RejectBadIdentities)
 	// Through Coral Hub, nobody acts with an orchestrator's rights on a board (#3377).

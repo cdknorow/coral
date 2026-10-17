@@ -926,10 +926,15 @@ func boardClaims(r *http.Request) (map[string][]string, error) {
 		r.Body = io.NopCloser(bytes.NewReader(raw))
 		var body map[string]json.RawMessage
 		if err == nil && json.Unmarshal(raw, &body) == nil {
-			for f := range claims {
-				var s string
-				if v, ok := body[f]; ok && json.Unmarshal(v, &s) == nil {
-					claims[f] = append(claims[f], s)
+			// Every spelling of a claim field counts, as encoding/json would match it (#4233): the
+			// canonicalising middleware has already put them in one spelling, and this holds
+			// when a request reaches here by another path.
+			for key, v := range body {
+				for f := range claims {
+					var s string
+					if strings.EqualFold(key, f) && json.Unmarshal(v, &s) == nil {
+						claims[f] = append(claims[f], s)
+					}
 				}
 			}
 		}
