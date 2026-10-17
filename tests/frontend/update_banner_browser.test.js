@@ -50,7 +50,7 @@ const NEW_BUILD = 'ffffffffffff';
         console.log('1. The server names the build the page loaded from, and nothing shows');
         await load(false);
         await poke();
-        const own = await ev(`(/^\\/static\\/b\\/([^/]+)\\/$/.exec(window.__coralStatic) || [])[1] || ''`);
+        const own = await ev(`(/^\\/static\\/bb?\\/([^/]+)\\/$/.exec(window.__coralStatic) || [])[1] || ''`);
         assert.ok(own, `the page loaded from a versioned prefix (${await ev('window.__coralStatic')})`);
         assert.ok(seenBuilds.length > 0 && seenBuilds.every(b => b === own), `every /api/ answer carries the page's own build (${own}; saw ${[...new Set(seenBuilds)]})`);
         await sleep(700); // sleep-ok: no banner appears in the time a reload would have fired (nothing to wait for)

@@ -28,10 +28,10 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Build-versioned files (/static/b/<build>/) are immutable: the browser's HTTP
+    // Build-versioned files (/static/b/<build>/, and the bundled /static/bb/<build>/) are immutable: the browser's HTTP
     // cache keeps them. Caching them here too would add a full copy per build that
     // nothing ever evicts.
-    if (url.pathname.startsWith('/static/b/')) {
+    if (url.pathname.startsWith('/static/b/') || url.pathname.startsWith('/static/bb/')) {
         return;
     }
 

@@ -48,7 +48,11 @@ var compressibleExt = map[string]bool{
 const staticMinGzip = 512
 
 func newStaticAsset(name string, data []byte) *staticAsset {
-	data = frontend.MinifyAsset(name, data) // comments and indentation are bytes on the wire (#4203)
+	return newStaticAssetFrom(name, frontend.MinifyAsset(name, data)) // comments and indentation are bytes on the wire (#4203)
+}
+
+// newStaticAssetFrom is newStaticAsset for bytes that are final already (the bundled family's files, #4228: minified, with their source map link).
+func newStaticAssetFrom(name string, data []byte) *staticAsset {
 	sum := sha256.Sum256(data)
 	tag := hex.EncodeToString(sum[:12])
 	a := &staticAsset{plain: data, etag: `"` + tag + `"`}
@@ -106,10 +110,15 @@ func staticBuildVersion(fsys fs.FS) (string, error) {
 // still gets the current files, but only with revalidation, so a stale name
 // can never be cached forever with the wrong bytes.
 func versionedStaticHandler(fsys fs.FS, current string) http.Handler {
+	return versionedStaticHandlerAt("/static/b/", fsys, current)
+}
+
+// versionedStaticHandlerAt is versionedStaticHandler under another prefix: the bundled family (#4228) is served at /static/bb/{ver}/.
+func versionedStaticHandlerAt(prefix string, fsys fs.FS, current string) http.Handler {
 	immutable := staticAssetHandler(fsys, http.NotFoundHandler(), cacheImmutable)
 	revalidate := staticAssetHandler(fsys, http.NotFoundHandler(), cacheRevalidate)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rest := strings.TrimPrefix(r.URL.Path, "/static/b/")
+		rest := strings.TrimPrefix(r.URL.Path, prefix)
 		ver, file, ok := strings.Cut(rest, "/")
 		if !ok || ver == "" || file == "" {
 			http.NotFound(w, r)
@@ -150,7 +159,12 @@ func staticAssetHandler(fsys fs.FS, next http.Handler, cacheControl string) http
 				next.ServeHTTP(w, r)
 				return
 			}
-			v, _ = cache.LoadOrStore(name, newStaticAsset(name, data))
+			// A file the bundled family built itself is served as built: minifying it again would drop its source map link.
+			if built, ok := fsys.(interface{ Built(string) bool }); ok && built.Built(name) {
+				v, _ = cache.LoadOrStore(name, newStaticAssetFrom(name, data))
+			} else {
+				v, _ = cache.LoadOrStore(name, newStaticAsset(name, data))
+			}
 		}
 		serveCachedAsset(w, r, v.(*staticAsset), cacheControl)
 	})

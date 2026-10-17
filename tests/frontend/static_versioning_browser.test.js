@@ -36,16 +36,19 @@ const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html', '/st
         // Cold load.
         const cold = await load();
         const appSrc = await ev(`document.querySelector('script[type=module][src$="app.js"]').src`);
-        const m = new URL(appSrc).pathname.match(/^\/static\/b\/([0-9a-f]{12})\/app\.js$/);
+        const m = new URL(appSrc).pathname.match(/^\/static\/bb?\/([0-9a-f]{12})\/app\.js$/); // /static/b/ or the bundled family's /static/bb/ (#4228)
         assert.ok(m, 'app.js loads from /static/b/<build>/: ' + appSrc);
-        const prefix = `/static/b/${m[1]}/`;
+        const prefix = new URL(appSrc).pathname.replace(/app\.js$/, '');
         assert.equal(await ev('window.__coralStatic'), prefix, 'the page knows its static prefix');
 
         const order = await ev(`Array.from(document.querySelectorAll('script[type=module]')).map(s => s.src)`);
         assert.deepEqual(order.map(u => new URL(u).pathname.split('/').pop()), ['app.js'], 'app.js is the one module tag (csp_compat.js is gone, #3645)');
+        // The startup graph is one file (the bundled family, #4228): its modules are not requests of their own, and a module that
+        // is loaded later (importOnce) is the original file at the same prefix, importing the bundle's instances through its stub.
         const acts = cold.filter(r => r.url.endsWith('/actions.js'));
-        assert.equal(acts.length, 1, 'actions.js is fetched once: ' + JSON.stringify(acts.map(r => r.url)));
-        assert.equal(acts[0].url, new URL('actions.js', appSrc).href, 'actions.js loads at app.js\'s prefix (one instance)');
+        assert.equal(acts.length, 0, 'actions.js is inside app.js, not a request: ' + JSON.stringify(acts.map(r => r.url)));
+        assert.equal(cold.filter(r => r.url === appSrc).length, 1, 'app.js is fetched once');
+        assert.equal(await ev(`(async () => { const a = await import(window.__coralStatic + 'state.js'); const b = await import(window.__coralStatic + 'state.js'); return a.state === b.state && !!a.state; })()`), true, 'a module imported by its URL is the bundle\'s instance');
 
         // Only the files that must keep a fixed URL (the service worker and the
         // panel and view sandbox hosts) are fetched outside the prefix; images included.
@@ -59,10 +62,10 @@ const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html', '/st
         assert.ok(icons.includes(prefix + 'coral.png'), 'coral.png resolves under the prefix: ' + JSON.stringify(icons));
         assert.deepEqual(icons.filter(p => !p.startsWith(prefix)), [], 'every manifest icon resolves under the prefix');
         const versioned = cold.filter(r => new URL(r.url).pathname.startsWith(prefix));
-        assert.ok(versioned.length > 50, 'the module graph loads under the prefix: ' + versioned.length);
+        assert.ok(versioned.length >= 3 && versioned.length < 40, 'one script and one stylesheet, not 160 files, load under the prefix: ' + versioned.length);
         assert.ok(versioned.some(r => r.url.includes('/vendor/fonts/')), 'fonts (relative url() in fonts.css) load under the prefix');
         for (const r of versioned) assert.match(r.cache, /immutable/, 'immutable: ' + r.url);
-        console.log(`PASS cold: ${versioned.length} files under ${prefix}, immutable; actions.js once at app.js's prefix`);
+        console.log(`PASS cold: ${versioned.length} files under ${prefix}, immutable; app.js once`);
 
         // A revisit (a new navigation, not a reload): nothing under the prefix
         // comes from the network.
@@ -84,7 +87,7 @@ const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html', '/st
         assert.ok(await ev(`!!navigator.serviceWorker.controller`), 'the service worker controls the page');
         await ev(`document.fonts.ready.then(() => true)`); await sleep(300);
         const stored = await ev(`(async () => { const out = []; for (const n of await caches.keys()) { const c = await caches.open(n); for (const r of await c.keys()) out.push(n + ' ' + new URL(r.url).pathname); } return out; })()`);
-        assert.deepEqual(stored.filter(e => e.split(' ')[1].startsWith('/static/b/')), [], 'no versioned file in Cache Storage');
+        assert.deepEqual(stored.filter(e => e.split(' ')[1].startsWith('/static/b/') || e.split(' ')[1].startsWith('/static/bb/')), [], 'no versioned file in Cache Storage');
         assert.ok(!stored.some(e => e.startsWith('coral-v3 ')), 'the pre-versioning cache was dropped');
         console.log(`PASS service worker: ${stored.length} Cache Storage entries, none versioned`);
     } finally { await client.close(); }

@@ -12,9 +12,9 @@ import { browserSession } from './safe_storage.js';
  const BUILD_HEADER = 'X-Coral-Build';
 const RELOAD_DELAY_MS = 5000;
 
-/** The build id in a static prefix like /static/b/<build>/, or '' (plain /static/, the hub). */
+/** The build id in a static prefix like /static/b/<build>/ or the bundled /static/bb/<build>/ (#4228), or '' (plain /static/, the hub). */
  function buildOf(staticBase) {
-    const m = /^\/static\/b\/([^/]+)\/$/.exec(staticBase || '');
+    const m = /^\/static\/bb?\/([^/]+)\/$/.exec(staticBase || '');
     return m ? m[1] : '';
 }
 

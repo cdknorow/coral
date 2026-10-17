@@ -61,6 +61,7 @@ type Server struct {
 	indexTmpl       *template.Template
 	indexPage       renderedPage // the dashboard page, rendered and compressed once per data
 	staticVersion   string       // build version of the static tree: /static/b/<staticVersion>/
+	bundleBase      string       // /static/bb/<staticVersion>/ when the bundled family is served (#4228), else ""
 	tasksHandler    *routes.TasksHandler
 	boardHandler    *routes.BoardHandler
 	historyHandler  *routes.HistoryHandler
@@ -533,6 +534,10 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := templateData{CoralRoot: s.cfg.CoralRoot, StaticBase: s.staticBase(), ModulePreloads: frontend.StartupModules()}
+	if s.bundleBase != "" { // the dashboard starts from one script and one stylesheet; the agent pop-out stays on the original files (#4228)
+		// No per-module hints: under the bundled prefix every module URL is a stub, and hinting 133 stubs would fetch what the bundle replaces.
+		data.StaticBase, data.StylesheetBundle, data.ModulePreloads = s.bundleBase, frontend.BundleStylesheet, nil
+	}
 	render := func(out io.Writer) error { return s.indexTmpl.Execute(out, data) }
 	if err := s.indexPage.serve(w, r, data.CoralRoot+"\x00"+data.StaticBase, render); err != nil {
 		log.Printf("Error rendering index template: %v", err)

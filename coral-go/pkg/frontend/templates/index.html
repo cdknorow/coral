@@ -16,6 +16,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="{{ $base }}coral.png">
+    {{- if .StylesheetBundle }}
+    <link rel="stylesheet" href="{{ $base }}{{ .StylesheetBundle }}">
+    {{- else }}
     <link rel="stylesheet" href="{{ $base }}css/fonts.css">
     <link rel="stylesheet" href="{{ $base }}css/variables.css">
     <link rel="stylesheet" href="{{ $base }}css/animations.css">
@@ -41,6 +44,7 @@
     <link rel="stylesheet" href="{{ $base }}css/native.css">
     <link rel="stylesheet" href="{{ $base }}css/native-macos.css">
     <link rel="stylesheet" href="{{ $base }}css/native-windows.css">
+    {{- end }}
     <!-- The startup module graph, hinted after the stylesheets so the render-blocking CSS is asked for first (#3900) -->
     {{- range .ModulePreloads }}
     <link rel="modulepreload" href="{{ $base }}{{ . }}">

@@ -49,6 +49,9 @@ type PageData struct {
 	// the same for every viewer and every request, never from input. Empty (the Cloud Hub's own
 	// pages, a test) means no hints.
 	ModulePreloads []string
+	// StylesheetBundle, when set, is the path (relative to StaticBase) of the one stylesheet that replaces the shell's 24 links
+	// (BundleStylesheet, #4228); the server sets it only together with the bundled StaticBase. Empty means the individual links.
+	StylesheetBundle string
 }
 
 // IndexTemplateFiles lists the template files that make up the app shell.

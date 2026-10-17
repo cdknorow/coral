@@ -21,6 +21,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/frontend"
 )
 
 // The router is built in this order; registration and wiring order are as they were in one
@@ -692,6 +693,17 @@ func (s *Server) registerStatic(r *chi.Mux) {
 	} else {
 		log.Printf("static build version unavailable, serving plain /static paths: %v", err)
 	}
+	// The bundled family (#4228): app.js's module graph and the shell's stylesheets as one file each, next to the unchanged files.
+	var bundleFS fs.FS
+	if s.staticVersion != "" && !frontend.BundleDisabled() {
+		index, _ := fs.ReadFile(frontend.Templates, "templates/index.html")
+		if b, err := frontend.BuildBundle(staticSub, index); err != nil {
+			log.Printf("bundled dashboard unavailable, serving the original files: %v", err)
+		} else {
+			bundleFS = b.FS(staticSub)
+			s.bundleBase = "/static/bb/" + s.staticVersion + "/"
+		}
+	}
 	// Service worker needs wider scope header
 	r.Get("/static/sw.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Service-Worker-Allowed", "/")
@@ -706,6 +718,9 @@ func (s *Server) registerStatic(r *chi.Mux) {
 	// prefix. Plain /static/ paths above keep working (service worker,
 	// panel_host.html, links, older pages).
 	r.Handle("/static/b/*", versionedStaticHandler(staticSub, s.staticVersion))
+	if bundleFS != nil {
+		r.Handle("/static/bb/*", versionedStaticHandlerAt("/static/bb/", bundleFS, s.staticVersion))
+	}
 
 	// API spec for custom views
 	r.Get("/api/spec.json", func(w http.ResponseWriter, r *http.Request) {
