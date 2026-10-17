@@ -6,6 +6,7 @@
  *     (the top bar's menu) hands focus to the button that controls that menu (aria-controls). */
 
 import { lastFocusOutsideDialogs } from './modal_chrome.js';
+import { onAnyBuilt } from './lazy_dom.js';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
 
@@ -88,3 +89,5 @@ function noteOpener(dialog) {
 export function attachAllDialogFocus(root = document) {
     for (const d of root.querySelectorAll('.modal[role="dialog"]')) attachDialogFocus(d);
 }
+// A dialog built from its template on first open (#4500) gets the same, as it is built.
+onAnyBuilt(el => { if (el.matches('.modal[role="dialog"]')) attachDialogFocus(el); });

@@ -34,30 +34,30 @@ const GIB = 1024 ** 3;
                 if (p === '/api/settings' && m === 'PUT') { window.__puts.push(JSON.parse(o.body)); return json({}); }
                 return R(u, o); };
             return true; })()`);
-        const GONE = `(window.hideSettingsModal(), getComputedStyle(document.getElementById('settings-modal')).display === 'none')`;
+        const GONE = `(window.hideSettingsModal(), (!document.getElementById('settings-modal') || getComputedStyle(document.getElementById('settings-modal')).display === 'none'))`;
         const close = () => waitFor(GONE, 'Settings to close', 6000);
         const apply = () => ev(`import((window.__coralStatic || '/static/') + 'modals.js').then(m => m.applySettings()).then(() => true)`);
-        const line = () => ev(`document.getElementById('settings-artifact-store-size').textContent`);
+        const line = () => ev(`(document.getElementById('settings-artifact-store-size')?.textContent ?? '')`);
 
         console.log('1. A failed or slow load leaves the fields empty and off, and Save writes neither limit');
         await ev(`window.showSettingsModal(); true`);
-        await waitFor(`/Artifacts: 4\\.0 GiB in 120 files/.test(document.getElementById('settings-artifact-store-size').textContent)`, 'the store line', 8000);
+        await waitFor(`/Artifacts: 4\\.0 GiB in 120 files/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the store line', 8000);
         assert.equal(await ev(`document.getElementById('settings-artifact-store-max').value`), '10', 'the limit is shown');
         await close();
         await ev(`window.__hold = true; window.showSettingsModal(); true`);
         await waitFor(`!!window.__release`, 'the slow load', 8000);
-        let f = await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'), r = document.getElementById('settings-received-max'); return { line: document.getElementById('settings-artifact-store-size').textContent, rline: document.getElementById('settings-received-size').textContent, v: i.value, loaded: i.dataset.loaded || '', dis: i.disabled, rv: r.value, rloaded: r.dataset.loaded || '', rdis: r.disabled }; })()`);
+        let f = await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'), r = document.getElementById('settings-received-max'); return { line: (document.getElementById('settings-artifact-store-size')?.textContent ?? ''), rline: (document.getElementById('settings-received-size')?.textContent ?? ''), v: i.value, loaded: i.dataset.loaded || '', dis: i.disabled, rv: r.value, rloaded: r.dataset.loaded || '', rdis: r.disabled }; })()`);
         assert.equal(f.line, 'Loading…', 'the line says it is loading, not what it showed last time'); assert.equal(f.rline, 'Loading…');
         assert.equal(f.v, ''); assert.equal(f.loaded, ''); assert.equal(f.dis, true); assert.equal(f.rv, ''); assert.equal(f.rloaded, ''); assert.equal(f.rdis, true);
         await ev(`window.__puts.length = 0; document.getElementById('settings-artifact-store-max').disabled = false; document.getElementById('settings-artifact-store-max').value = '5'; true`);
         await apply();
         assert.ok(!(await ev(`window.__puts.some(b => 'artifact_store_max_bytes' in b)`)), 'a limit that was not read is never saved back, even if the field was typed in meanwhile');
         await ev(`window.__hold = null; window.__release && window.__release(); true`);
-        await waitFor(`/Artifacts: 4\\.0 GiB/.test(document.getElementById('settings-artifact-store-size').textContent)`, 'the late answer', 8000);
+        await waitFor(`/Artifacts: 4\\.0 GiB/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the late answer', 8000);
         await close();
         await ev(`window.__down = true; window.showSettingsModal(); true`);
-        await waitFor(`/Couldn't read the store's size, so the limit is not shown\\./.test(document.getElementById('settings-artifact-store-size').textContent)`, 'the error', 8000);
-        f = await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'), r = document.getElementById('settings-received-max'); return { v: i.value, loaded: i.dataset.loaded || '', dis: i.disabled, rv: r.value, rdis: r.disabled, rline: document.getElementById('settings-received-size').textContent }; })()`);
+        await waitFor(`/Couldn't read the store's size, so the limit is not shown\\./.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the error', 8000);
+        f = await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'), r = document.getElementById('settings-received-max'); return { v: i.value, loaded: i.dataset.loaded || '', dis: i.disabled, rv: r.value, rdis: r.disabled, rline: (document.getElementById('settings-received-size')?.textContent ?? '') }; })()`);
         assert.equal(f.v, '', 'not the 10 of the last open'); assert.equal(f.loaded, ''); assert.equal(f.dis, true); assert.equal(f.rv, ''); assert.equal(f.rdis, true);
         assert.match(f.rline, /Couldn't read the received files' size, so their limit is not shown\./);
         await ev(`window.__puts.length = 0; true`);
@@ -71,13 +71,13 @@ const GIB = 1024 ** 3;
         await waitFor(`!!window.__release`, 'the slow load that will fail', 8000);
         await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'); i.disabled = false; i.value = '5'; true; })()`);
         await ev(`window.__hold = null; window.__release(); true`);
-        await waitFor(`/Couldn't read the store's size/.test(document.getElementById('settings-artifact-store-size').textContent)`, 'the failure', 8000);
+        await waitFor(`/Couldn't read the store's size/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the failure', 8000);
         assert.equal(await ev(`document.getElementById('settings-artifact-store-max').value`), '', 'a value typed while the load was out is not left in the field');
         await ev(`window.__holdFail = false; true`);
         await ev(`window.__down = false; true`);
 
         console.log('2. The artifact store line: three states, "1 file"');
-        const open = async body => { await close(); await ev(`window.__store = ${JSON.stringify(body)}; window.showSettingsModal(); true`); await waitFor(`/Artifacts: /.test(document.getElementById('settings-artifact-store-size').textContent)`, 'the line', 8000); await sleep(300); // sleep-ok: the dialog finishes laying out
+        const open = async body => { await close(); await ev(`window.__store = ${JSON.stringify(body)}; window.showSettingsModal(); true`); await waitFor(`/Artifacts: /.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the line', 8000); await sleep(300); // sleep-ok: the dialog finishes laying out
             return ev(`(() => { const o = document.getElementById('settings-artifact-store-size'); const span = o.querySelector('span'); return { text: o.textContent, warn: span && span.dataset.state || '', color: getComputedStyle(span).color, other: getComputedStyle(o).color, lines: o.querySelectorAll('br').length + 1 }; })()`); };
         const calm = await open(storeBody({ bytes: 3 * GIB, objects: 5, max: 10 * GIB, diffs: 1 }));
         assert.equal(calm.text.split('Saved task diffs')[0], 'Artifacts: 3.0 GiB in 5 files (limit 10.0 GiB)'); assert.equal(calm.warn, ''); assert.match(calm.text, /Saved task diffs: 2 KiB in 1 file \(not limited\)/, '"1 file", not "1 files"');
@@ -92,7 +92,7 @@ const GIB = 1024 ** 3;
         assert.equal(nolimit.text.split('Saved task diffs')[0], 'Artifacts: 3.0 GiB in 5 files', 'no limit: just the total');
 
         console.log('3. One line per kind in the age breakdown');
-        await waitFor(`/Artifacts by age: /.test(document.getElementById('settings-storage-detail').textContent)`, 'the breakdown', 8000);
+        await waitFor(`/Artifacts by age: /.test((document.getElementById('settings-storage-detail')?.textContent ?? ''))`, 'the breakdown', 8000);
         const ages = await ev(`[...document.getElementById('settings-storage-detail').childNodes].filter(n => n.nodeType === 3).map(n => n.textContent)`);
         assert.match(ages[0], /^Artifacts by age: <1d /); assert.match(ages[1], /^Task diffs by age: <1d /);
 
@@ -114,7 +114,7 @@ const GIB = 1024 ** 3;
         assert.match(ask, /^Prune 14 saved diffs \(0\.4 GiB\), 3 unlinked artifacts \(0\.8 GiB\), 2 stored diff copies \(10 MiB\), freeing about 1\.3 GiB\./);
         assert.doesNotMatch(ask, /(^|, |Prune )(diffs|objects|diff-objects) \(/, "never the server's kind names");
         await yesWithKeys();
-        await waitFor(`/^Freed 1\\.3 GiB from 19 items; 1 left alone because it changed\\.$/.test(document.getElementById('settings-storage-result').textContent)`, 'the result', 8000);
+        await waitFor(`/^Freed 1\\.3 GiB from 19 items; 1 left alone because it changed\\.$/.test((document.getElementById('settings-storage-result')?.textContent ?? ''))`, 'the result', 8000);
         assert.equal(await ev(`document.activeElement.id`), 'settings-storage-prune', 'the focus is back on Prune, not the page');
         await ev(`window.__dry = { kinds: { diffs: { count: 1, bytes: 1048576 } }, freed: 1048576 }; window.__run = { freed: 1048576, removed: 1, skipped: 0, errors: 0 }; true`);
         await focusAsk('settings-storage-shrink');
@@ -122,7 +122,7 @@ const GIB = 1024 ** 3;
         await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the Shrink confirmation', 8000);
         assert.match(await ev(`document.getElementById('confirm-modal-message').textContent`), /^Shrink 1 saved diff \(1 MiB\), saving about 1 MiB\./, 'the singular');
         await yesWithKeys();
-        await waitFor(`/^Saved 1 MiB from 1 item\\.$/.test(document.getElementById('settings-storage-result').textContent)`, 'the Shrink result', 8000);
+        await waitFor(`/^Saved 1 MiB from 1 item\\.$/.test((document.getElementById('settings-storage-result')?.textContent ?? ''))`, 'the Shrink result', 8000);
         assert.equal(await ev(`document.activeElement.id`), 'settings-storage-shrink', 'the focus is back on Shrink');
         console.log('PASS');
     } catch (e) {

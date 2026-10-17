@@ -18,6 +18,7 @@ import { registerActions, textOf } from './actions.js';
 import { responseErrorText } from './server_status.js';
 import { scheduleLiveSessionsRender } from './render.js';
 import { isPopout } from './popout.js';
+import { onBuilt } from './lazy_dom.js';
 
 const WARNING_TITLE = 'Turn on auto-accept for this agent?';
 // The operator's exact words (#3182), in parts so the risk stands out and what still waits gets
@@ -292,7 +293,7 @@ export function noteAutoAcceptPauses(sessions) {
     syncStopAll();
 }
 
-/** "Stop all auto-accept" (top-bar menu) is shown only while some agent has it on. */
+/** "Stop all auto-accept" (top-bar menu) is shown only while some agent has it on. The menu is built on first open (#4500). */
  function syncStopAll() {
     const item = document.getElementById('stop-all-auto-accept');
     if (!item) return;
@@ -300,6 +301,7 @@ export function noteAutoAcceptPauses(sessions) {
     item.hidden = n === 0;
     item.title = n ? `Turn auto-accept off for all ${n} agent${n === 1 ? '' : 's'}` : '';
 }
+onBuilt('top-bar-settings-menu', syncStopAll);
 
 /** Turn auto-accept off for every agent at once, on this server and on every server the hub shows. */
 export async function stopAllAutoAccept() {

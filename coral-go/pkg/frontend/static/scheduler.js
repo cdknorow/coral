@@ -5,6 +5,7 @@ import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { registerActions, idOf, uuidOf } from './actions.js';
 import { pollEvery } from './overload.js';
 import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
+import { ensureBuilt } from './lazy_dom.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -305,6 +306,7 @@ async function _loadWorkflowOptions() {
 }
 
 export function showJobModal() {
+    ensureBuilt('job-modal'); // built on first open (#4500)
     editingJobId = null;
     openedJob = null;
     document.getElementById('job-modal-title').textContent = 'New Scheduled Job';
@@ -341,6 +343,7 @@ export async function editScheduledJob(jobId) {
     if (!job || job.error) { showToast('Could not load the job. Try again.', true); return; }
 
     editingJobId = jobId;
+    ensureBuilt('job-modal');
     document.getElementById('job-modal-title').textContent = 'Edit Scheduled Job';
     document.getElementById('job-modal-submit').textContent = 'Save Changes';
     document.getElementById('job-modal').style.display = 'flex';
@@ -395,7 +398,8 @@ function jobFormValues() {
 }
 
 export function hideJobModal() {
-    document.getElementById('job-modal').style.display = 'none';
+    const modal = document.getElementById('job-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 export async function validateCronPreview() {

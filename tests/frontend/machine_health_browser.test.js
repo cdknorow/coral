@@ -73,7 +73,8 @@ const HEALTH = {
         })();` });
         await Page.navigate({ url: BASE + '/' });
         await Page.loadEventFired();
-        await waitFor(`!!document.getElementById('machine-health-local')`, 'the Settings slot', 10000);
+        // Settings, which holds the slot, is built on first open (#4500): built here, as the test reads the slot without opening it.
+        await waitFor(`(window.__coral?.buildAllLazy?.(), !!document.getElementById('machine-health-local'))`, 'the Settings slot', 10000);
         await waitFor(`(async () => { const { state } = await import((window.__coralStatic || '/static/') + 'state.js'); return !!state.coralWs && state.coralWs.readyState === 1; })()`, 'the feed open', 10000);
         await feedSynced(0);
 

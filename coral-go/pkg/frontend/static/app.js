@@ -295,6 +295,7 @@ import { isCloud } from './server_base.js';
 import { installOverloadWatch } from './overload.js';
 import { handleUnauthorized, isSignedOut401 } from './auth_redirect.js';
 import { browserLocal } from './safe_storage.js';
+import { ensureBuilt } from './lazy_dom.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -684,7 +685,7 @@ Object.assign(window, {
 
 // Top-bar settings dropdown
 function toggleTopBarSettings() {
-    const menu = document.getElementById('top-bar-settings-menu');
+    const menu = ensureBuilt('top-bar-settings-menu'); // built on first open (#4500)
     if (!menu) return;
     const isOpen = menu.style.display !== 'none';
     menu.style.display = isOpen ? 'none' : '';

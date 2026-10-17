@@ -30,11 +30,11 @@ const MIB = 1024 ** 2;
                 return R(u, o); };
             return true; })()`);
         const openSettings = async () => {
-            await waitFor(`(window.hideSettingsModal(), getComputedStyle(document.getElementById('settings-modal')).display === 'none')`, 'Settings to close', 6000);
+            await waitFor(`(window.hideSettingsModal(), (!document.getElementById('settings-modal') || getComputedStyle(document.getElementById('settings-modal')).display === 'none'))`, 'Settings to close', 6000);
             await ev(`window.showSettingsModal(); true`);
-            await waitFor(`!/Loading/.test(document.getElementById('settings-terminal-logs-status').textContent)`, 'the terminal logs line', 8000);
+            await waitFor(`!!document.getElementById('settings-terminal-logs-status') && !/Loading/.test(document.getElementById('settings-terminal-logs-status').textContent)`, 'the terminal logs line', 8000);
         };
-        const state = () => ev(`(() => { const b = document.getElementById('settings-terminal-logs-delete'); return { text: document.getElementById('settings-terminal-logs-status').textContent, role: document.getElementById('settings-terminal-logs-status').getAttribute('role'), hidden: b.hidden, button: b.textContent, label: (document.querySelector('label[for=settings-terminal-logs-delete]') || {}).textContent }; })()`);
+        const state = () => ev(`(() => { const b = document.getElementById('settings-terminal-logs-delete'); return { text: (document.getElementById('settings-terminal-logs-status')?.textContent ?? ''), role: document.getElementById('settings-terminal-logs-status').getAttribute('role'), hidden: b.hidden, button: b.textContent, label: (document.querySelector('label[for=settings-terminal-logs-delete]') || {}).textContent }; })()`);
         const showRow = () => ev(`(() => { const i = document.getElementById('settings-terminal-logs-status'); let p = i.parentElement; while (p && !(p.scrollHeight > p.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(p).overflowY))) p = p.parentElement; if (p) p.scrollTop += i.getBoundingClientRect().top - p.getBoundingClientRect().top - 120; return true; })()`);
 
         console.log('1. The line and the button name the numbers');
@@ -69,14 +69,14 @@ const MIB = 1024 ** 2;
         await waitFor(`window.__posts.length === 1`, 'the request', 8000);
         assert.deepEqual(await ev(`window.__posts[0]`), { count: 12, bytes: 45 * MIB }, 'the numbers it was shown');
         await waitFor(`/changed since you looked, so nothing was deleted/.test(document.body.innerText)`, 'the changed notice', 8000);
-        await waitFor(`/13 belong to ended agents \\(50 MiB\\)/.test(document.getElementById('settings-terminal-logs-status').textContent)`, 'the new numbers', 8000);
+        await waitFor(`/13 belong to ended agents \\(50 MiB\\)/.test((document.getElementById('settings-terminal-logs-status')?.textContent ?? ''))`, 'the new numbers', 8000);
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); window.__next = () => Promise.resolve(new Response(JSON.stringify({ deleted: 13, bytes: ${50 * MIB}, failed: [] }), { status: 200, headers: { 'content-type': 'application/json' } })); window.__logs = { files: 19, bytes: ${136 * MIB}, ended: { count: 0, bytes: 0 } }; true`);
         await yes();
         await waitFor(`window.__posts.length === 2`, 'the second request', 8000);
         assert.deepEqual(await ev(`window.__posts[1]`), { count: 13, bytes: 50 * MIB });
         await waitFor(`/Deleted 13 terminal logs, 50 MiB freed\\./.test(document.body.innerText)`, 'the result', 8000);
         await waitFor(`document.getElementById('settings-terminal-logs-delete').hidden`, 'the button to go when none are left', 8000);
-        assert.match(await ev(`document.getElementById('settings-terminal-logs-status').textContent`), /^19 terminal logs, 0\.1 GiB\. None belong to ended agents\.$/);
+        assert.match(await ev(`(document.getElementById('settings-terminal-logs-status')?.textContent ?? '')`), /^19 terminal logs, 0\.1 GiB\. None belong to ended agents\.$/);
 
         console.log('4. An unreadable status says so and offers nothing');
         await ev(`window.__down = true; true`);

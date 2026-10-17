@@ -51,7 +51,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             return inner(url, opts);
         };
         return true; })()`);
-    const settingsOpen = () => ev(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`);
+    const settingsOpen = () => ev(`!!document.getElementById('settings-modal') && getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`);
     const row = () => ev(`(() => { const r = document.getElementById('settings-terminal-backend');
         return { hidden: r.hidden, now: document.getElementById('tb-now').textContent, choice: !document.getElementById('tb-choice').hidden,
             fixed: !document.getElementById('tb-fixed').hidden, checked: (document.querySelector('input[name="terminal-backend"]:checked') || {}).value || null,
@@ -72,7 +72,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
         // ── The row on this tmux server ─────────────────────────────────────
         await ev(`window.showSettingsModal(); true`);
-        await until(`!document.getElementById('settings-terminal-backend').hidden`, 'the backend row');
+        await until(`document.getElementById('settings-terminal-backend')?.hidden === false`, 'the backend row');
         let r = await row();
         check('Settings shows the backend row: running tmux, tmux picked, both options', !r.hidden && r.now === 'Running now: tmux' && r.choice && !r.fixed && r.checked === 'tmux'
             && r.texts[0].startsWith('tmux: agents keep running') && r.texts[1] === 'pty: better isolation between agents', JSON.stringify(r));
@@ -102,7 +102,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await until(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm again');
         await ev(`document.getElementById('confirm-modal-yes').click(); true`);
         await until(`window.__tbCalls.some(c => c.startsWith('PUT'))`, 'the save');
-        await until(`getComputedStyle(document.getElementById('settings-modal')).display === 'none'`, 'Settings closed');
+        await until(`(!document.getElementById('settings-modal') || getComputedStyle(document.getElementById('settings-modal')).display === 'none')`, 'Settings closed');
         let calls = await ev(`window.__tbCalls.filter(c => !c.startsWith('GET'))`);
         check('confirming puts the agents to sleep BEFORE saving pty',
             JSON.stringify(calls) === JSON.stringify(['POST /api/sessions/live/sleep-all', 'PUT /api/system/terminal-backend {"backend":"pty"}']), JSON.stringify(calls));

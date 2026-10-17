@@ -13,6 +13,7 @@ import { state } from './state.js';
 import { modelLabel } from './model_labels.js';
 import { terminalGoneChip } from './terminal_gone.js';
 import { browserLocal } from './safe_storage.js';
+import { onBuilt } from './lazy_dom.js';
 
 // ── Archived section (#3030) ─────────────────────────────────────────────
 // One global collapsed section at the bottom of the list. The grouping is all
@@ -363,6 +364,7 @@ export function applySessionSummaryPref() {
     if (check) check.checked = shown;
     syncDisplayMenu();
 }
+onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summaries box, once Settings is built (#4500)
 
 /** 'Show server' (setting show_session_server): unset = on with 2+ servers, off with one. */
  export function isServerShownOnRows() {

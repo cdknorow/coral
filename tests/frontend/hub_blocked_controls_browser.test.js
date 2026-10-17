@@ -149,6 +149,7 @@ const HUB_PRELOAD = `(() => {
             return { sleepAll: q('[data-on-click="m-close-top-bar-settings-then-sleep-all-agents"]'), teamSleep: q('#qa-hub-controls [data-mode=sleep][data-board="@m1/team1"]'), teamWake: q('#qa-hub-controls [data-mode=wake]'),
                 boardPanelPause: q('#qa-hub-controls [data-on-click=board-chat-pause]'), boardViewPause: q('[data-on-click=mb-pause]'), msgDelete: q('#qa-hub-controls [data-on-click=mb-msg-delete]'),
                 localTeamSleep: q('#qa-hub-controls [data-board="team-local"]'), agentSleep: q('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-sleep]') }; })()`);
+        await ev(`window.__coral.toggleTopBarSettings(); window.__coral.closeTopBarSettings(); true`); // the menu (Sleep all) is built on first open (#4500)
         const LAUNCH_ONLY = ['sleepAll', 'teamSleep', 'teamWake', 'boardPanelPause', 'boardViewPause', 'msgDelete'];
         for (const mode of ['view', 'interact']) {
             await access(mode);

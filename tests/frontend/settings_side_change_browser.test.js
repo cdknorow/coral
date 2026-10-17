@@ -27,7 +27,7 @@ const BASE = require('./test_base').BASE;
   const clearToasts = () => ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
   const openDialog = async () => {
     await ev(`window.showSettingsModal(); true`);
-    await until(`!document.getElementById('tb-autowake').hidden && document.querySelector('input[name="terminal-backend"]')`, 'the wake and backend parts of the dialog');
+    await until(`document.getElementById('tb-autowake')?.hidden === false && document.querySelector('input[name="terminal-backend"]')`, 'the wake and backend parts of the dialog');
     // The dialog fills its CLI path fields a moment after it opens; a Save before that drops them, which is not what this test is about.
     await until(`document.getElementById('settings-cli-path-claude').dataset.filled === '1'`, 'the dialog to finish filling');
   };

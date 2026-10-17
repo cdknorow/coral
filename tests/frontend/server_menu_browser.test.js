@@ -57,7 +57,7 @@ const SERVERS = [
     })()`);
     const click = async (id, kind) => {
         await ev(`(() => { document.querySelector('#live-sessions-list li.server-group-header[data-server-group="${id}"] [data-server-launch="${kind}"]').click(); return true; })()`);
-        await waitFor(`['launch-modal', 'open-folder-modal'].some(id => getComputedStyle(document.getElementById(id)).display !== 'none')`, 'a launch flow opens', 3000);
+        await waitFor(`['launch-modal', 'open-folder-modal'].some(id => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none'; })`, 'a launch flow opens', 3000);
     };
 
     try {

@@ -43,8 +43,8 @@ const contrast = (a, b) => {
         const a = document.activeElement, d = document.getElementById('settings-modal');
         return { inside: !!d && d.contains(a), id: a && a.id, tag: a && a.tagName, text: a && (a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 40), controls: a && a.getAttribute('aria-controls') };
     })()`);
-    const dialogShown = `getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`;
-    const dialogHidden = `getComputedStyle(document.getElementById('settings-modal')).display === 'none'`;
+    const dialogShown = `!!document.getElementById('settings-modal') && getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`; // Settings is built on first open (#4500)
+    const dialogHidden = `!document.getElementById('settings-modal') || getComputedStyle(document.getElementById('settings-modal')).display === 'none'`;
 
     try {
         await Page.enable();
@@ -97,6 +97,7 @@ const contrast = (a, b) => {
         console.log(`   ✓ --text-muted at least 4.5:1 on primary/secondary/tertiary/elevated: applied theme (${applied.muted}${applied.inline ? ', bundled Dark' : ''}), variables.css dark and light (${inlineVars} inline theme vars set aside)`);
 
         console.log('3. Select names');
+        await ev(`window.__coral.buildAllLazy(); true`); // the dialogs are built on first open (#4500): name every select in them
         const names = await ev(`(() => {
             const ids = ['settings-theme', 'settings-renderer-select', 'settings-agent-type', 'settings-permission-mode',
                 'settings-database-encryption', 'settings-terminal-font-size', 'settings-terminal-scrollback', 'cost-time-range'];

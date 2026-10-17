@@ -182,6 +182,7 @@ const BASE = require('./test_base').BASE;
         console.log('   ✓ five events, own icons, filterable');
 
         console.log('8. Stop all auto-accept: shown only while some agent has it on; stops them all');
+        await ev(`window.__coral.toggleTopBarSettings(); window.__coral.closeTopBarSettings(); true`); // the top-bar menu is built on first open (#4500)
         await ev(`(() => { for (const s of window.__state.liveSessions) { s.auto_accept = s.session_id !== 'aa-pi'; s.auto_accept_paused_code = null; } window.__aa.noteAutoAcceptPauses(window.__state.liveSessions); return true; })()`);
         assert.equal(await ev(`document.getElementById('stop-all-auto-accept').hidden`), false, 'shown with agents on');
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); window.stopAllAutoAccept(); true`);
@@ -201,6 +202,7 @@ const BASE = require('./test_base').BASE;
 
         console.log('10. Settings: "Coral Hub can turn on auto-accept" shows only with Launch, on by default, saves locally');
         const cloudRow = await ev(`(async () => {
+            window.__coral.buildAllLazy(); // Settings is built on first open (#4500)
             if (!document.getElementById('settings-cloud-allow-auto-accept')) return 'missing';
             const real = window.fetch;
             window.__cloudPuts = [];

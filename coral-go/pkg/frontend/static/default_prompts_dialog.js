@@ -2,6 +2,9 @@
 import { state } from './state.js';
 import { showToast } from './utils.js';
 import { NOTHING_TO_SAVE } from './settings_diff.js';
+import { ensureBuilt } from './lazy_dom.js';
+
+ensureBuilt('default-prompts-modal'); // built on this module's first load, its first use (#4500)
 
 // ── Default Prompts Modal ──────────────────────────────────────────
 

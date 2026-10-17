@@ -8,6 +8,7 @@ import { state } from './state.js';
 import { fetchSystemStatus } from './system_status.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
 import { browserLocal } from './safe_storage.js';
+import { onBuilt } from './lazy_dom.js';
 // What Save sends: only the fields the person changed (here so the module is loaded at startup, import_hygiene).
 export { changedSettings } from './settings_diff.js';
 
@@ -180,8 +181,8 @@ export async function loadSettings() {
     }
 }
 
-/** A partner build's name in the settings menu (Coral for Dropbox); nothing otherwise.
- *  Coral has no paid licence (#3221). */
+/** A partner build's name in the settings menu (Coral for Dropbox); nothing otherwise. The menu is built on first open
+ *  (#4500); until then this has nothing to fill. Coral has no paid licence (#3221). */
  async function _loadTierBadge() {
     const badge = document.getElementById('tier-badge');
     if (!badge) return;
@@ -197,6 +198,7 @@ export async function loadSettings() {
         }
     } catch { /* silent — non-critical */ }
 }
+onBuilt('top-bar-settings-menu', () => { _loadTierBadge(); });
 
 /** Resolve "system" to the actual dark/light value */
  function resolveTheme(theme) {

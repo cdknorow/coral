@@ -12,6 +12,7 @@
  * value outside the enums is shown as unknown rather than echoed. */
 
 import { state } from './state.js';
+import { onBuilt } from './lazy_dom.js';
 
 // Maps, not plain objects: a value such as "constructor" or "__proto__" must not count as known
 // (QA, #3446 review).
@@ -146,6 +147,7 @@ function renderLocalCard() {
     if (!slot) return;
     slot.replaceChildren(healthCard(localMachineHealth(), { title: 'This machine' }));
 }
+onBuilt('settings-modal', renderLocalCard); // the card's slot is in Settings, built on first open (#4500)
 if (typeof document !== 'undefined') { // a page (pure-node tests import this module too)
     document.addEventListener('coral:machine-health', renderLocalCard);
     document.addEventListener('coral:feed-state', renderLocalCard);

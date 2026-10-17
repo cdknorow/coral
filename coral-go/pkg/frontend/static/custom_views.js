@@ -7,6 +7,7 @@ import { isCloud } from './server_base.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
 import { lockViewFrame, viewDocument, attachViewBridge, API_VIEW_SEES } from './view_sandbox.js';
 import { loadCodeMirror } from './vendor_loader.js';
+import { ensureBuilt } from './lazy_dom.js';
 
 let _views = [];       // cached views from API
 let _cmEditor = null;  // CodeMirror editor for the view code
@@ -164,7 +165,7 @@ function _showEditViewModal(viewId) {
     if (isCloud()) return; // views cannot run scripts on the hub, so there is no editor there (saved views are shown read-only)
     const view = _views.find(v => v.id === viewId);
     if (!view) return;
-    const modal = document.getElementById('custom-view-modal');
+    const modal = ensureBuilt('custom-view-modal'); // built on first open (#4500)
     document.getElementById('custom-view-modal-title').textContent = 'Edit View: ' + view.name;
     document.getElementById('custom-view-edit-id').value = viewId;
     document.getElementById('custom-view-name').value = view.name;
@@ -173,7 +174,8 @@ function _showEditViewModal(viewId) {
 };
 
 window._hideViewModal = function() {
-    document.getElementById('custom-view-modal').style.display = 'none';
+    const modal = document.getElementById('custom-view-modal');
+    if (modal) modal.style.display = 'none';
     if (_cmEditor) { _cmEditor.destroy(); _cmEditor = null; }
 };
 

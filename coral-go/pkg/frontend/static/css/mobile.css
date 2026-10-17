@@ -1313,6 +1313,11 @@
         min-height: 52px;
     }
 
+    /* The Job dialog's Cleanup worktree box is tapped through its label (38px tall before, #4500) */
+    .job-cleanup-option {
+        min-height: 44px;
+    }
+
     /* Always show kebab buttons (no hover on touch) */
     .sidebar-kebab-btn {
         opacity: 0.5 !important;

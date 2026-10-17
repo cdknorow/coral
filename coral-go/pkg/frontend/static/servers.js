@@ -15,6 +15,7 @@ import {
     statusMeta, escHtml, describeServerError, formatLastSeen, isValidServerId,
     serverVersion, serverAgentCount, updateBadgeHtml, belowMinimumText,
 } from './server_status.js';
+import { onBuilt } from './lazy_dom.js';
 
 let _servers = [];
 let _editing = null;      // id being edited, '' for "add", null when the form is closed
@@ -31,6 +32,8 @@ export async function initServersUi() {
     try { await initHub(); } catch { /* treated as non-hub */ }
     const hub = isHub();
     document.querySelectorAll('[data-hub-only]').forEach(el => { el.style.display = hub ? '' : 'none'; });
+    // The top-bar menu's Servers item, once the menu is built (#4500).
+    onBuilt('top-bar-settings-menu', menu => menu.querySelectorAll('[data-hub-only]').forEach(el => { el.style.display = hub ? '' : 'none'; }));
     const { updateServersTabVisibility } = await importOnce('./servers_tab.js');
     updateServersTabVisibility();
     return hub;

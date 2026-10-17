@@ -27,6 +27,14 @@ import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInpu
 import { pollEvery } from './overload.js';
 import { attachDialogFocus } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
+import { ensureBuilt, onBuilt } from './lazy_dom.js';
+
+// The Launch, Info and Settings dialogs are built from their templates when this module loads, which is their first use
+// (#4500): everything below finds them in the page. Settings' load-time writers (settings_core.js and others) find nothing
+// until then, and showSettingsModal fills every field as it opens.
+ensureBuilt('launch-modal');
+ensureBuilt('info-modal');
+ensureBuilt('settings-modal');
 const { launch } = await importOnce('./launch_state.js');
 const { _acfServer, _effectiveServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _invalidateDefaultModels, _loadServerSettings, _serverSettings, _settingsFor } = await importOnce('./launch_models.js');
 const { AGENT_PRESETS, ALL_CAPABILITIES } = await importOnce('./agent_presets.js');
@@ -3040,16 +3048,16 @@ function _syncFlagButtons(inputId) {
     });
 }
 
-// Attach input listeners for flag sync. This module loads on first use (#3140),
-// usually long after DOMContentLoaded, so attach at once when the page is parsed.
-function _attachFlagSync() {
-    for (const id of ["launch-flags", "restart-flags", "job-modal-flags", "team-flags"]) {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener("input", () => _syncFlagButtons(id));
-    }
+// Attach input listeners for flag sync. This module loads on first use (#3140), usually long after DOMContentLoaded, so
+// attach at once; the Job dialog's input once that dialog is built (#4500), which can be later still.
+function _attachFlagSync(id) {
+    const el = document.getElementById(id);
+    if (!el || el._flagSync) return;
+    el._flagSync = true;
+    el.addEventListener("input", () => _syncFlagButtons(id));
 }
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _attachFlagSync);
-else _attachFlagSync();
+for (const id of ["launch-flags", "restart-flags", "team-flags"]) _attachFlagSync(id);
+onBuilt("job-modal", () => _attachFlagSync("job-modal-flags"));
 
 
 // ── Mobile Connect Modal ─────────────────────────────────────────────────

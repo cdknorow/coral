@@ -74,7 +74,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
         // ── Settings, on a pty Coral ───────────────────────────────────────
         await ev(`window.showSettingsModal(); true`);
-        await until(`!document.getElementById('tb-autowake').hidden`, 'the auto-wake part');
+        await until(`document.getElementById('tb-autowake')?.hidden === false`, 'the auto-wake part');
         const row = await ev(`({ on: document.getElementById('tb-autowake-on').checked, cap: document.getElementById('tb-autowake-cap').value,
             text: document.getElementById('tb-autowake').textContent.replace(/\\s+/g, ' ') })`);
         check('on pty, Settings shows the wake setting, on, cap 8, and says bypass-permission agents resume as they ran',

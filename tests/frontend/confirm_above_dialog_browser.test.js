@@ -18,7 +18,7 @@ const { connect } = require('./agent_view_harness');
             return { shown: getComputedStyle(document.getElementById('confirm-modal')).display !== 'none', inside: !!at && !!at.closest('#confirm-modal'), what: at && (at.id || at.className || at.tagName) }; })()`);
         for (const [name, open] of [['Settings', `window.showSettingsModal()`]]) {
             await ev(`${open}; true`);
-            await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, name, 8000);
+            await waitFor(`(!!document.getElementById('settings-modal') && getComputedStyle(document.getElementById('settings-modal')).display !== 'none')`, name, 8000);
             await ev(`window.showConfirmModal('Delete terminal logs', 'Delete 12 terminal logs of ended agents (45 MiB)? This can not be undone.', () => {}); true`);
             await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation', 8000);
             await sleep(500); // sleep-ok: the confirmation fades in; no completion event

@@ -38,7 +38,7 @@ const NAMES = fs.readFileSync(path.join(__dirname, '../../coral-go/pkg/frontend/
         const iconsIn = async sel => ev(`document.querySelectorAll(${JSON.stringify(sel + ' .material-icons')}).length`);
         for (const [open, id] of [[`window.showSettingsModal()`, 'settings-modal'], [`window.showLaunchModal()`, 'launch-modal']]) {
             await ev(`(async () => { ${open}; return true; })()`);
-            await until(`getComputedStyle(document.getElementById('${id}')).display !== 'none'`, `${id} to open`);
+            await until(`!!document.getElementById('${id}') && getComputedStyle(document.getElementById('${id}')).display !== 'none'`, `${id} to open`);
             assert.ok(await iconsIn('#' + id) > 0, `${id} has icons to check`);
             bad.push(...await walk(id));
             await ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);

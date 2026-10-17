@@ -1615,6 +1615,10 @@ body.panel-dragging .agentic-state {
 .dep-picker-add-link:hover {
     text-decoration: underline;
 }
+/* Tapped on a phone (Create task, #4500): at least 44px each way, as every control there */
+@media (pointer: coarse) {
+    .dep-picker-add-link { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+}
 
 .dep-picker-list {
     max-height: 150px;

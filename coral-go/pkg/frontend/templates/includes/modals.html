@@ -1,5 +1,6 @@
 {{ define "includes/modals.html" }}
     <!-- Launch Modal -->
+    <template data-lazy="launch-modal">
     <div id="launch-modal" class="modal" role="dialog" aria-labelledby="launch-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <!-- Hub only: launch target server (hidden unless hub mode has a usable remote) -->
@@ -314,6 +315,7 @@
             </div>
         </div>
     </div>
+    </template>
 
     <!-- Open folder (#3630): pins a folder to the Agents list (empty is fine), ready to launch into. -->
     <div id="open-folder-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="open-folder-title" style="display:none" data-on-click="m-open-folder-backdrop">
@@ -488,6 +490,7 @@
     </div>
 
     <!-- Info Modal -->
+    <template data-lazy="info-modal">
     <div id="info-modal" class="modal" role="dialog" aria-labelledby="info-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide session-info-modal">
             <div class="modal-header">
@@ -529,6 +532,7 @@
             </div>
         </div>
     </div>
+    </template>
 
     <!-- Resume Modal -->
     <div id="resume-modal" class="modal" role="dialog" aria-labelledby="resume-title" aria-modal="true" style="display:none">
@@ -569,6 +573,7 @@
     </div>
 
     <!-- Settings Modal -->
+    <template data-lazy="settings-modal">
     <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" style="display:none">
         <div class="modal-content modal-content-wide settings-modal-content">
             <div class="modal-header">
@@ -1016,8 +1021,10 @@
             </div>
         </div>
     </div>
+    </template>
 
     <!-- Default Prompts Modal -->
+    <template data-lazy="default-prompts-modal">
     <div id="default-prompts-modal" class="modal" role="dialog" aria-labelledby="default-prompts-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-xl">
             <div class="modal-header">
@@ -1066,11 +1073,13 @@
             </div>
         </div>
     </div>
+    </template>
 
     <!-- Theme Configurator Modal (content rendered dynamically) -->
     <div id="theme-configurator-modal" class="modal" role="dialog" aria-label="Customize theme" aria-modal="true" style="display:none"></div>
 
     <!-- Scheduled Job Modal -->
+    <template data-lazy="job-modal">
     <div id="job-modal" class="modal" role="dialog" aria-labelledby="job-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
@@ -1157,7 +1166,7 @@
                     <label>Max Duration (seconds):
                         <input type="number" id="job-modal-timeout" value="3600" min="60">
                     </label>
-                    <label style="display:flex;align-items:center;gap:6px;padding-bottom:6px">
+                    <label class="job-cleanup-option" style="display:flex;align-items:center;gap:6px;padding-bottom:6px">
                         <input type="checkbox" id="job-modal-cleanup" checked>
                         Cleanup worktree
                     </label>
@@ -1169,6 +1178,7 @@
             </div>
         </div>
     </div>
+    </template>
 
     <!-- Add Macro Modal -->
     <div id="macro-modal" class="modal" role="dialog" aria-labelledby="macro-title" aria-modal="true" style="display:none">
@@ -1250,6 +1260,7 @@
     </div>
 
     <!-- Create/Edit Custom View Modal -->
+    <template data-lazy="custom-view-modal">
     <div id="custom-view-modal" class="modal" role="dialog" aria-labelledby="custom-view-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-extra-wide">
             <div class="modal-header">
@@ -1282,6 +1293,7 @@
             </div>
         </div>
     </div>
+    </template>
 
     <!-- Mobile Connect Modal -->
     <div id="mobile-connect-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="mobile-connect-title" style="display:none" data-on-click="m-mobile-connect-backdrop">
@@ -1309,6 +1321,7 @@
     </div>
 
     <!-- Task Detail Modal -->
+    <template data-lazy="create-task-modal">
     <div id="create-task-modal" class="modal" role="dialog" aria-labelledby="create-task-heading" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
@@ -1376,6 +1389,7 @@
             </div>
         </div>
     </div>
+    </template>
 
     <div id="task-detail-modal" class="modal" role="dialog" aria-labelledby="task-detail-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-extra-wide">

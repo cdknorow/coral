@@ -13,6 +13,7 @@ import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from
 import { _agentTaskStatus, _formatCost, _formatTaskTime, _formatTokenCount, _priorityLabel, _priorityOrder, formatTaskDate } from './task_format.js';
 import { _claimedFor, _subagentTooltip, clearOpenSubagent, loadSubagents, showSubagentDetailModal, subagentToTaskRow } from './subagents.js';
 import { browserLocal } from './safe_storage.js';
+import { ensureBuilt } from './lazy_dom.js';
 export { clearOpenSubagent, loadSubagents } from './subagents.js';
 
 // ── Board task polling ───────────────────────────────────────────────
@@ -628,7 +629,7 @@ function _getSelectedDeps(containerId) {
 /* ── Create Task Modal ─────────────────────────────────── */
 
 export async function showCreateTaskModal() {
-    const modal = document.getElementById('create-task-modal');
+    const modal = ensureBuilt('create-task-modal'); // built on first open (#4500)
     if (!modal) return;
 
     // Reset form

@@ -107,6 +107,7 @@ const BASE = require('./test_base').BASE;
 
         console.log("2. Settings: \"Don't let Coral Hub act as the Operator\" (an opt-out, #3404)");
         const s = await ev(`(async () => {
+            window.__coral.buildAllLazy(); // Settings is built on first open (#4500)
             const real = window.fetch;
             const json = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } });
             let st = { configured: true, state: 'connected', hub_url: 'https://hub.example', max_mode: 'interact' };
