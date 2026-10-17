@@ -51,6 +51,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
             await waitFor(`document.readyState === 'complete' && !!document.querySelector('meta[name=zz-nav]') && document.querySelector('meta[name=zz-nav]').content === '${seq}'`, `this navigation's page (${name})`);
             await waitFor(`!!document.getElementById('submit') || !!document.getElementById('key-submit')`, 'the page');
             await waitFor(`document.documentElement.dataset.authReady === 'true'`, 'the page script');   // the module script runs after load
+            await ev(`window.__zzDoc = '${seq}'; true`);   // survives only while this document does: a replacement by a late navigation shows in a failure's report
             assert.equal(await ev(`(() => { const i = document.querySelector('.brand img'); return !!i && i.complete && i.naturalWidth > 0; })()`), true, `${name}: Coral's logo loads (from /static, with no credential)`);
         };
         // A 409 makes the page reload itself. A test that goes on after seeing the markup it expects can be looking at the OLD document (the hub page already holds the
@@ -140,6 +141,11 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         replies = [json(200, { ok: true })]; await type('password', 'x'); await submit('signin-form');
         await waitFor(`location.pathname === '/'`, 'a safe fallback for an unsafe return_to');
         assert.ok((await ev('location.host')).length > 0 && !(await ev('location.host')).includes('evil'));
+        // That safe fallback is the real dashboard at '/', still loading. It can redirect again (to /auth, which this test serves) a moment later, and a late
+        // redirect like that replaced the NEXT step's page under it with a freshly stamped one (the flake: 'timed out waiting for redirect after creating'). End it
+        // here: go to the page this test serves for done, which has no script, and wait for it (#4414).
+        await Page.navigate({ url: BASE + '/zz-done' });
+        await waitFor(`!!document.getElementById('done')`, 'the dashboard page to be replaced by the plain done page');
 
         // ── create (this computer) ──
         await open('create');
@@ -153,7 +159,11 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         assert.equal(await text('err'), 'Enter a password.');
         replies = [json(200, { ok: true })];
         await type('password', '  a b  '); await type('confirm', '  a b  '); await submit('create-form');
-        await waitFor(`!!document.getElementById('done')`, 'redirect after creating');
+        try { await waitFor(`!!document.getElementById('done')`, 'redirect after creating'); } catch (e) {
+            // Say what the page was when the wait gave up, so a rare failure on a slow runner names its cause: this document or a replacement, and what it was sent.
+            const d = await ev(`({ href: location.href, ready: document.readyState, doc: window.__zzDoc || 'replaced', stamp: (document.querySelector('meta[name=zz-nav]') || {}).content || '', pw: (document.getElementById('password') || {}).value, err: (document.getElementById('err') || {}).textContent })`).catch(x => ({ evalError: String(x.message).slice(0, 120) }));
+            throw new Error(`${e.message}: ${JSON.stringify({ ...d, navSeq, posts: posts.map(p => p.url) })}`);
+        }
         assert.deepEqual(posts[0], { url: '/auth/password/create', body: { password: '  a b  ', keep: false } }, 'any non-empty password, exactly as typed, no code');
         // 409: someone set one first -> the page reloads as the sign-in page
         await open('create');
