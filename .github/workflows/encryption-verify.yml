@@ -248,7 +248,7 @@ jobs:
           ./Configure "$OPENSSL_TARGET" $OPENSSL_OPTIONS --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
-      - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
+      - if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/4126-enc') && steps.openssl.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
@@ -308,7 +308,7 @@ jobs:
           ./Configure "$OPENSSL_TARGET" $OPENSSL_OPTIONS --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
-      - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
+      - if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/4126-enc') && steps.openssl.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-amd64
@@ -367,7 +367,7 @@ jobs:
           ./Configure "$OPENSSL_TARGET" $OPENSSL_OPTIONS --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
-      - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
+      - if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/4126-enc') && steps.openssl.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
