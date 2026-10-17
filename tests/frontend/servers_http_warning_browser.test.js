@@ -89,6 +89,10 @@ const SERVERS = [
         assert.ok(fit2.docOver <= 0 && fit2.right <= fit2.vw && fit2.sw <= fit2.cw + 1, JSON.stringify(fit2));
         await ev(`document.getElementById('servers-url-error').scrollIntoView({ block: 'center' }); true`); await sleep(200); // sleep-ok: layout settles after a font-size or scroll change; there is no completion event
         await shot('refused-phone-200');
+        const chk = await ev(`(() => { const i = document.querySelector('#servers-form input[name=allow_private]'); i.scrollIntoView({ block: 'center' }); const r = i.getBoundingClientRect(); const cs = getComputedStyle(i);
+            return { w: Math.round(r.width), h: Math.round(r.height), left: Math.round(r.left), right: Math.round(r.right), display: cs.display, appearance: cs.appearance, vis: i.checkVisibility({ checkVisibilityCSS: true }) }; })()`);
+        assert.ok(chk.vis && chk.w >= 12 && chk.h >= 12 && chk.left >= 0 && chk.right <= 390, 'the private-network checkbox is drawn inside the screen at 200%: ' + JSON.stringify(chk));
+        await shot('checkbox-phone-200');
         ok('at 390 px and 200% text the row warning and the inline URL error stay inside the screen');
     } catch (e) {
         console.error(e);

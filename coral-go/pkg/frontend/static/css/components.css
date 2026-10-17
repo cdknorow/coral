@@ -3609,7 +3609,7 @@ button.subscriber-history-link {
 .servers-row-error { margin-top: var(--space-xs); font-size: var(--fs-base); color: var(--error); overflow-wrap: anywhere; }
 .servers-row-warn { display: flex; align-items: flex-start; gap: var(--space-sm); margin-top: var(--space-xs); font-size: var(--fs-base); font-weight: 400; color: var(--text-primary); overflow-wrap: anywhere; min-width: 0; } /* #4301: icon and words, not only a colour */
 .servers-row-warn .material-icons { flex: none; font-size: 1.15em; color: var(--warning); }
-.servers-url-error { display: flex; align-items: flex-start; gap: var(--space-sm); margin-top: var(--space-xs); font-size: var(--fs-base); font-weight: 400; color: var(--text-primary); overflow-wrap: anywhere; }
+.servers-url-error { display: flex; align-items: flex-start; gap: var(--space-sm); margin-top: calc(-1 * var(--space-sm)); margin-bottom: var(--space-lg); font-size: var(--fs-base); font-weight: 400; color: var(--text-primary); overflow-wrap: anywhere; }
 .servers-url-error .material-icons { flex: none; font-size: 1.15em; color: var(--error); }
 .servers-form input[aria-invalid="true"] { border-color: var(--error); }
 .servers-row-status { flex: 0 0 auto; }
@@ -3637,6 +3637,26 @@ button.subscriber-history-link {
 .modal-content label.servers-check { display: flex; align-items: flex-start; gap: var(--space-md); }
 .modal-content label.servers-check input { width: auto; margin-top: 3px; flex-shrink: 0; }
 .servers-form-actions { display: flex; justify-content: flex-end; gap: var(--space-md); }
+/* The Add/Edit server form in the Servers tab (a page, not a dialog) looks like the dialogs' forms (#4324): labels above full-width fields that
+   share the field look, a checkbox row of its own, and wrapping help text; nothing wider than the page at 390 px or 200% text. */
+.servers-form { min-width: 0; max-width: 100%; }
+.servers-form label { display: block; font-size: var(--fs-md); color: var(--text-secondary); margin-bottom: var(--space-lg); font-weight: 500; min-width: 0; }
+.servers-form input:not([type="checkbox"]):not([type="radio"]) {
+    display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin-top: var(--space-xs); padding: 8px 12px; min-height: var(--control-height);
+    background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary);
+    font-size: var(--fs-md); font-family: var(--font-sans); outline: none;
+}
+.servers-form input:not([type="checkbox"]):not([type="radio"]):focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent); }
+.servers-form input[aria-invalid="true"], .servers-form input[aria-invalid="true"]:focus { border-color: var(--error); }
+.servers-form input:disabled { opacity: .6; cursor: not-allowed; }
+.servers-form label.servers-check { display: flex; align-items: flex-start; gap: var(--space-md); }
+.servers-form label.servers-check input { width: auto; margin: 3px 0 0; flex: none; }
+.servers-form .servers-help { overflow-wrap: anywhere; }
+.servers-form-actions { flex-wrap: wrap; margin-top: var(--space-lg); }
+@media (max-width: 767px), (pointer: coarse) {
+    .servers-form input:not([type="checkbox"]):not([type="radio"]), .servers-form-actions .btn { min-height: var(--control-touch-height, 44px); }
+    .servers-form label.servers-check { min-height: var(--control-touch-height, 44px); } /* the whole row is the tap target; the box stays by the first line */
+}
 @media (pointer: coarse) { .servers-row-actions .btn { min-height: 44px; } }
 
 /* Settings > Coral Hub (cloud connector) */

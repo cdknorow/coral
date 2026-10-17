@@ -45,8 +45,27 @@ const { connect } = require('./agent_view_harness');
             assert.equal(rows.m4.lines.length, 1, dev + ': one line for a rejected key, not the raw text and the hint');
             assert.match(rows.m4.lines[0], /rejected the stored API key/); assert.deepEqual(rows.m4.details, ['the server rejected the API key']);
             assert.deepEqual(rows.m5.lines, ['warming up'], 'an error with no hint is shown as it is'); assert.deepEqual(rows.m5.details, []);
+            // 4: the Add server form in the tab looks like the dialogs' forms (#4324): a label above a full-width field, fields stacked and aligned, touch-size on a phone.
+            await ev(`document.querySelector('[data-action=add]').click(); true`);
+            await waitFor(`!!document.getElementById('servers-form')`, 'the add form');
+            const form = await ev(`(() => { const f = document.getElementById('servers-form'); const fr = f.getBoundingClientRect(); const px = v => Math.round(v * 10) / 10;
+                const fields = ['id', 'label', 'url', 'api_key'].map(n => { const i = f.elements[n]; const r = i.getBoundingClientRect(); const lab = i.closest('label'); const lr = lab.getBoundingClientRect();
+                    return { n, w: px(r.width), left: px(r.left - fr.left), above: r.top >= lr.top + 8, h: px(r.height), bg: getComputedStyle(i).backgroundColor, border: getComputedStyle(i).borderTopWidth }; });
+                const box = f.elements.allow_private.getBoundingClientRect(); const chk = f.elements.allow_private.closest('label').getBoundingClientRect(); const btns = [...f.querySelectorAll('.servers-form-actions .btn')].map(b => px(b.getBoundingClientRect().height));
+                return { formW: px(fr.width), box: { w: px(box.width), h: px(box.height), left: px(box.left), right: px(box.right) }, fields, chkH: px(chk.height), btns, over: document.documentElement.scrollWidth - innerWidth, bodyBg: getComputedStyle(document.body).backgroundColor }; })()`);
+            for (const f of form.fields) {
+                assert.ok(f.w >= form.formW - 2, `${dev}: ${f.n} takes the form's width (${f.w} of ${form.formW})`);
+                assert.ok(Math.abs(f.left) <= 2, `${dev}: ${f.n} starts at the form's left edge (${f.left})`);
+                assert.ok(f.above, `${dev}: ${f.n}'s label sits above it`);
+                assert.ok(f.h >= (mobile ? 44 : 32), `${dev}: ${f.n} is ${f.h} px tall`);
+                assert.equal(f.border, '1px', `${dev}: ${f.n} has the shared field border`);
+            }
+            assert.ok(form.box.w >= 12 && form.box.h >= 12 && form.box.left >= 0 && form.box.right <= (mobile ? 390 : 1280), `${dev}: the checkbox is drawn, inside the screen (${JSON.stringify(form.box)})`);
+            if (mobile) assert.ok(form.chkH >= 44 && form.btns.every(h => h >= 44), `${dev}: the checkbox row (${form.chkH}) and the buttons (${form.btns}) are 44 px targets`);
+            assert.ok(form.over <= 0, `${dev}: the form adds no sideways scroll (${form.over})`);
+            await ev(`document.querySelector('#servers-form [data-action=cancel-form]').click(); true`);
             await ev(`window.switchNavTab('agents'); true`);
         }
-        console.log('PASS settings and servers polish: checkboxes are boxes, the encryption select fits, one error line per server');
+        console.log('PASS settings and servers polish: checkboxes are boxes, the encryption select fits, one error line per server, the add form is labels above full-width fields');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
