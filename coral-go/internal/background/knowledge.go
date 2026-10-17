@@ -16,7 +16,9 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // KnowledgeBundle holds the OKF output for a team.
@@ -211,7 +213,7 @@ func teamKnowledgeAgents(ctx context.Context, ss *store.SessionStore, ts *store.
 		if n := names[name]; n > 1 {
 			name = fmt.Sprintf("%s (%d)", name, n)
 		}
-		agents = append(agents, agentMeta{name: name, role: inferRole(prompt), transcript: agentTranscript(ctx, ss, sessionID)})
+		agents = append(agents, agentMeta{name: name, role: inferRole(prompt), transcript: redactedTranscript(agentTranscript(ctx, ss, sessionID))})
 	}
 	for _, ls := range live {
 		name := ls.AgentName
@@ -260,6 +262,35 @@ func agentTranscript(ctx context.Context, ss *store.SessionStore, sessionID stri
 		}
 	}
 	return ""
+}
+
+// knowledgeRedactor is the redactor agent knowledge goes through (#4414), replaceable in tests.
+var knowledgeRedactor = func() redact.Redactor { return secrets.Redactor() }
+
+// redactKnowledge is s with every secret Coral's rules find replaced. Knowledge comes from agent
+// transcripts and board text, is kept for good, shown on the dashboard and put into later agents'
+// prompts, so it is redacted where it enters (the transcript sent for distilling), where it is
+// written and where it is read (files written before this). An error means it couldn't be checked:
+// the caller then keeps nothing.
+func redactKnowledge(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	out, err := knowledgeRedactor().Text([]byte(s))
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// redactedTranscript is a transcript ready to send for distilling: redacted, or "" (as if there
+// were none) when it couldn't be checked.
+func redactedTranscript(t string) string {
+	out, err := redactKnowledge(t)
+	if err != nil {
+		return ""
+	}
+	return out
 }
 
 // distillAgents runs the three passes over the agents with call (the Claude CLI) and writes
@@ -424,7 +455,10 @@ func ReadKnowledgeBundle(coralDir, teamName string) (*KnowledgeBundle, error) {
 	if err != nil {
 		return nil, err
 	}
-	bundle.IndexMD = string(indexData)
+	// Redacted on the way out too, for files written before knowledge was redacted (#4414).
+	if bundle.IndexMD, err = redactKnowledge(string(indexData)); err != nil {
+		return nil, fmt.Errorf("knowledge could not be checked for secrets: %w", err)
+	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -439,10 +473,14 @@ func ReadKnowledgeBundle(coralDir, teamName string) (*KnowledgeBundle, error) {
 		if err != nil {
 			continue
 		}
+		md, err := redactKnowledge(string(data))
+		if err != nil {
+			continue // unchecked knowledge is not shown
+		}
 		name := strings.TrimSuffix(e.Name(), ".md")
 		bundle.Agents[name] = &AgentConcept{
 			AgentName: name,
-			FinalMD:   string(data),
+			FinalMD:   md,
 		}
 	}
 
@@ -461,7 +499,12 @@ func LoadAgentKnowledge(coralDir, teamName, agentName string) string {
 	if err != nil {
 		return ""
 	}
-	return string(data)
+	// Redacted on the way out too (files written before #4414); unchecked knowledge is none.
+	md, err := redactKnowledge(string(data))
+	if err != nil {
+		return ""
+	}
+	return md
 }
 
 // WriteKnowledgeFile writes a single agent's knowledge file to disk.
@@ -474,7 +517,11 @@ func WriteKnowledgeFile(coralDir, teamName, agentName, content string) error {
 		return err
 	}
 	slug := slugify(agentName)
-	return secfile.WriteFileNoFollow(filepath.Join(dir, slug+".md"), []byte(content), 0o600)
+	md, err := redactKnowledge(content) // #4414: never written unredacted
+	if err != nil {
+		return fmt.Errorf("knowledge not written: it could not be checked for secrets: %w", err)
+	}
+	return secfile.WriteFileNoFollow(filepath.Join(dir, slug+".md"), []byte(md), 0o600)
 }
 
 // WriteKnowledgeIndex writes the team's index.md knowledge file.
@@ -486,7 +533,11 @@ func WriteKnowledgeIndex(coralDir, teamName, content string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	return secfile.WriteFileNoFollow(filepath.Join(dir, "index.md"), []byte(content), 0o600)
+	md, err := redactKnowledge(content) // #4414: never written unredacted
+	if err != nil {
+		return fmt.Errorf("knowledge not written: it could not be checked for secrets: %w", err)
+	}
+	return secfile.WriteFileNoFollow(filepath.Join(dir, "index.md"), []byte(md), 0o600)
 }
 
 const (
@@ -578,16 +629,32 @@ func writeKnowledgeBundle(coralDir string, bundle *KnowledgeBundle) error {
 		return err
 	}
 
+	// Everything is redacted before anything is written: a document that can't be checked stops
+	// the write (#4414).
+	index, err := redactKnowledge(bundle.IndexMD)
+	if err != nil {
+		return fmt.Errorf("knowledge not written: it could not be checked for secrets: %w", err)
+	}
+	finals := make(map[string]string, len(bundle.Agents))
+	for name, concept := range bundle.Agents {
+		md, err := redactKnowledge(concept.FinalMD)
+		if err != nil {
+			return fmt.Errorf("knowledge not written: it could not be checked for secrets: %w", err)
+		}
+		finals[name], concept.FinalMD = md, md
+	}
+	bundle.IndexMD = index
+
 	// Write index.md
-	if err := secfile.WriteFileNoFollow(filepath.Join(dir, "index.md"), []byte(bundle.IndexMD), 0o600); err != nil {
+	if err := secfile.WriteFileNoFollow(filepath.Join(dir, "index.md"), []byte(index), 0o600); err != nil {
 		return err
 	}
 
 	// Write each agent's OKF file
-	for name, concept := range bundle.Agents {
+	for name, md := range finals {
 		slug := slugify(name)
 		path := filepath.Join(dir, slug+".md")
-		if err := secfile.WriteFileNoFollow(path, []byte(concept.FinalMD), 0o600); err != nil {
+		if err := secfile.WriteFileNoFollow(path, []byte(md), 0o600); err != nil {
 			return err
 		}
 	}
