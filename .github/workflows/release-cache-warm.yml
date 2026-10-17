@@ -172,3 +172,64 @@ jobs:
             CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -tags "$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
           done
           (go mod download)
+
+  # The compiled-package cache (GOCACHE) is keyed by its inputs, but Go doesn't re-check a cached
+  # output when it reuses it: like the tmux payload, it is trusted because only this workflow on
+  # main writes it. An audit with teeth (Security's SHOULD on #4251): on the scheduled runs (and by
+  # hand), build the release programs twice on each runner, once with the restored GOCACHE and once
+  # with an empty one, and fail if any binary differs (a Go build is reproducible for the same
+  # toolchain, source, flags and path).
+  go-cache-audit:
+    name: Go cache audit (${{ matrix.os }} ${{ matrix.arch }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [go-macos, go-linux]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos, arch: arm64, runner: macos-14 }
+          - { os: macos, arch: amd64, runner: macos-15-intel }
+          - { os: linux, arch: amd64, runner: ubuntu-24.04 }
+          - { os: linux, arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - if: matrix.os == 'macos'
+        uses: ./.github/actions/setup-go-macos
+        with:
+          cache: restore
+      - if: matrix.os == 'linux'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: coral-go/go.sum
+      - name: Sync agent docs
+        run: bash tools/sync-agent-docs.sh
+      - name: Build twice, with the restored GOCACHE and with an empty one, and compare
+        working-directory: coral-go
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          while IFS='=' read -r k v; do declare "$k=$v"; done < <(bash ../tests/release/resolve_release.sh v0.0.0)
+          goos=darwin; [ "$OS" = linux ] && goos=linux
+          build() { # $1: output folder
+            mkdir -p "$1"
+            for cmd in $commands; do
+              [ -d "./cmd/$cmd" ] || continue
+              CGO_ENABLED=0 GOOS="$goos" GOARCH="$ARCH" go build -tags "$build_tags" -ldflags "-s -w" -o "$1/$cmd" "./cmd/$cmd/"
+            done
+            if [ "$OS" = macos ]; then
+              for cmd in $gui_commands; do
+                MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH="$ARCH" go build -tags "webview,$build_tags" -ldflags "-s -w" -o "$1/$cmd" "./cmd/$cmd/"
+              done
+            fi
+          }
+          build "$RUNNER_TEMP/with-cache"
+          GOCACHE="$RUNNER_TEMP/empty-gocache" build "$RUNNER_TEMP/without-cache"
+          (cd "$RUNNER_TEMP/with-cache" && shasum -a 256 -- * | sort -k2) > "$RUNNER_TEMP/with.sha256"
+          (cd "$RUNNER_TEMP/without-cache" && shasum -a 256 -- * | sort -k2) > "$RUNNER_TEMP/without.sha256"
+          cat "$RUNNER_TEMP/with.sha256"
+          diff "$RUNNER_TEMP/with.sha256" "$RUNNER_TEMP/without.sha256" || { echo "::error::a binary built from the restored GOCACHE differs from one built without it"; exit 1; }
+          echo "All $(wc -l < "$RUNNER_TEMP/with.sha256" | tr -d " ") binaries are identical with and without the restored GOCACHE"
