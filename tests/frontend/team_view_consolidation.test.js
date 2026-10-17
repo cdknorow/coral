@@ -194,6 +194,9 @@ const BASE = require('./test_base').BASE;
         return origFetch(url, opts);
       };
       const form = document.querySelector('.working-mode-form');
+      // Save sends only what changed (#4423): change a working-mode field and the global one, so both are sent.
+      form.elements.custom_instructions.value += ' Again.';
+      form.elements.board_health_monitor.checked = !form.elements.board_health_monitor.checked;
       await form.onsubmit({ preventDefault() {} });
       window.fetch = origFetch;
     })()`);
@@ -207,7 +210,7 @@ const BASE = require('./test_base').BASE;
     const persistedWorkingMode = await ev(`fetch('/api/board/test-team/working-mode').then(r => r.json())`);
     assert.equal(persistedWorkingMode.mode, 'shared_checkout');
     assert.equal(persistedWorkingMode.dependency_guidance, true);
-    assert.equal(persistedWorkingMode.custom_instructions, 'Custom instructions for test.');
+    assert.equal(persistedWorkingMode.custom_instructions, 'Custom instructions for test. Again.', 'the partial save saved the working mode');
 
     const persistedGlobalSettings = await ev(`fetch('/api/settings').then(r => r.json())`);
     assert.equal(persistedGlobalSettings.settings?.board_health_monitor, 'true');

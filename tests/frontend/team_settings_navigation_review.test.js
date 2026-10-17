@@ -20,6 +20,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
   await ev(`import((window.__coralStatic||'/static/')+'team_working_mode.js').then(m=>window.openSettings=m.showTeamWorkingMode)`);
   for(const [name,width,height] of [['desktop',1280,800],['mobile',390,844]]) {
    await Emulation.setDeviceMetricsOverride({width,height,deviceScaleFactor:1,mobile:false});
+   await ev(`fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({board_health_monitor:'false'})}).then(r=>r.status)`); // so turning it on below is a change: Save sends only what changed (#4423)
    console.log(name,'opening');await ev(`window.openSettings('navigation-review')`);
    // Polled with timers, not animation frames: after the pass's Escape key press the Mac's headless Chrome reports the page hidden and runs no animation frames, so the old frame loop never saw the button enabled (#3703, #3705).
    await waitFor(`!!document.querySelector('[type=submit]') && !document.querySelector('[type=submit]').disabled`,'the settings to load',{timeout:10000,diag:`({status:(document.querySelector('.working-mode-status')||{}).textContent})`});
@@ -57,7 +58,13 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
        if(url==='/api/settings'&&opts?.method==='PUT')setTimeout(window.reviewResolve,0);
        return response;
       };
-      document.querySelector('.team-settings-actions button').click();
+      // Change the working mode and the global setting away from what the server has, so each Save sends both (#4423).
+      const f=document.querySelector('.working-mode-form');
+      return Promise.all([window.reviewOriginalFetch('/api/settings').then(r=>r.json()),window.reviewOriginalFetch('/api/board/navigation-review/working-mode').then(r=>r.json())]).then(([g,m])=>{
+       f.elements.board_health_monitor.checked=g.settings.board_health_monitor==='false';
+       f.elements.mode.value=m.mode==='worktrees'?'shared_checkout':'worktrees';
+       document.querySelector('.team-settings-actions button').click();
+      });
      })()`);
      await ev(`window.reviewSaveDone`);console.log('save response received');
      const status=await ev(`document.querySelector('.working-mode-status').textContent`);

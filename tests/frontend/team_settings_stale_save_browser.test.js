@@ -2,7 +2,8 @@
 //   - a working-mode instruction and the files switch another client changed while the dialog was open survive a Save of the
 //     messaging switch, and nothing else is sent;
 //   - a working-mode field changed in the dialog is saved onto the server's current working mode (the other client's instruction stays);
-//   - the Health check tab saves the person's change onto the server's current health object: a rule another client changed stays.
+//   - the Health check tab saves the person's change onto the server's current health object: a rule another client changed stays;
+//   - a Save with nothing changed sends nothing and says so.
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -65,6 +66,13 @@ const { connect } = require('./agent_view_harness');
         const saved = (await api('/settings')).body.health;
         assert.equal(saved.interval_min, 15, 'the field the person changed is saved');
         assert.equal(saved.claim_nudge.after_min, 30, 'the rule another client changed stays');
+        console.log('4. Saved with nothing changed: no request, and the person is told');
+        await open();
+        await ev(`(() => { const R = window.fetch; window.__teamPuts = 0; window.fetch = (u, o = {}) => { if ((o.method || '').toUpperCase() === 'PUT') window.__teamPuts++; return R(u, o); }; window.__restoreFetch = () => { window.fetch = R; }; return true; })()`);
+        await ev(`document.querySelector('.working-mode-status').textContent = ''; ${form}.requestSubmit(); true`);
+        await waitFor(`/Nothing to save/.test(document.querySelector('.working-mode-status').textContent)`, 'the nothing-to-save line', 10000);
+        assert.equal(await ev(`window.__teamPuts`), 0, 'no request');
+        await ev(`window.__restoreFetch(); true`);
         console.log('PASS Team settings saves only what changed');
     } finally {
         try { await client.close(); } catch (_) {}

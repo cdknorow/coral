@@ -374,6 +374,11 @@ export async function showTeamWorkingMode(team, options = {}) {
         const modeChanged = Object.keys(changedFields(base.mode, mode)).length > 0;
         const boardChanged = changedFields(base.board, boardNow);
         const globalChanged = changedFields(base.global, globalNow);
+        if (!modeChanged && !(boardSettingsLoaded && Object.keys(boardChanged).length) && !(settingsLoaded && Object.keys(globalChanged).length)) {
+            setStatus('Nothing to save: no setting changed.');
+            save.disabled = false;
+            return;
+        }
         if (modeChanged) {
             try {
                 // The working mode is saved whole: what the server has now, with only the fields changed here.
