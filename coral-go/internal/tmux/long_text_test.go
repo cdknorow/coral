@@ -137,11 +137,7 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 	}, sendKeysToTarget, "a new caller of SendKeysToTarget (which wraps a long command) must be a launch path: say so here")
 
 	// And the agent-text method itself never reaches the wrapping function.
-	src, err := os.ReadFile("client.go")
-	require.NoError(t, err)
-	i := strings.Index(string(src), "func (c *Client) SendKeys(")
-	require.GreaterOrEqual(t, i, 0)
-	body := string(src)[i : i+strings.Index(string(src)[i:], "\n}\n")]
+	body := funcBody(t, "client.go", "func (c *Client) SendKeys(")
 	assert.NotContains(t, body, "SendKeysToTarget(")
 	assert.NotContains(t, body, "commandInvocation(")
 	assert.Contains(t, body, "typeToTarget(ctx, target, command, false)")
@@ -150,15 +146,25 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 // The dashboard's /send reaches a tmux agent through TmuxSessionTerminal.SendInput: it calls the text
 // method (SendKeys), never the launch typing function.
 func TestTmuxSessionTerminalSendInputIsTheTextPath(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("..", "ptymanager", "session_terminal_tmux.go"))
-	require.NoError(t, err)
-	i := strings.Index(string(src), "func (t *TmuxSessionTerminal) SendInput(")
-	require.GreaterOrEqual(t, i, 0)
-	body := string(src)[i : i+strings.Index(string(src)[i:], "\n}\n")]
+	path := filepath.Join("..", "ptymanager", "session_terminal_tmux.go")
+	body := funcBody(t, path, "func (t *TmuxSessionTerminal) SendInput(")
 	assert.Contains(t, body, "t.client.SendKeys(")
 	assert.NotContains(t, body, "SendKeysToTarget(")
-	j := strings.Index(string(src), "func (t *TmuxSessionTerminal) SendToTarget(")
-	require.GreaterOrEqual(t, j, 0)
-	launch := string(src)[j : j+strings.Index(string(src)[j:], "\n}\n")]
+	launch := funcBody(t, path, "func (t *TmuxSessionTerminal) SendToTarget(")
 	assert.Contains(t, launch, "SendKeysToTarget(", "the launch send is the one that may wrap")
+}
+
+// funcBody is the text of the function that begins with signature in the Go source at path: from the
+// signature to the closing brace at column 0. CRLF line endings (a Windows checkout) are normalized
+// first, and every index is checked, so a miss fails the test with a message and never panics.
+func funcBody(t *testing.T, path, signature string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	src := strings.ReplaceAll(string(b), "\r\n", "\n")
+	i := strings.Index(src, signature)
+	require.GreaterOrEqual(t, i, 0, "%s: no %q", path, signature)
+	n := strings.Index(src[i:], "\n}\n")
+	require.GreaterOrEqual(t, n, 0, "%s: %q has no closing brace at column 0", path, signature)
+	return src[i : i+n]
 }
