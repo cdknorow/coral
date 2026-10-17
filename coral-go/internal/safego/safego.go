@@ -46,7 +46,9 @@ func Go(name string, fn func()) {
 }
 
 // loopBackoff is the first restart delay; it doubles up to loopBackoffMax after each failure in
-// a row, and starts again after a run that lasted loopHealthy.
+// a row, and starts again after a run that lasted loopHealthy. Loop and Restart read them when
+// they are called, never from their goroutine, so a test that sets them and puts them back can't
+// race with a loop still winding down.
 var (
 	loopBackoff    = 5 * time.Second
 	loopBackoffMax = 2 * time.Minute
@@ -57,9 +59,10 @@ var (
 // unexpected return restarts it after a backoff (5 s, doubling to 2 minutes; back to 5 s after a
 // run of 5 minutes). It stops when ctx ends.
 func Loop(ctx context.Context, name string, fn func()) {
+	first, most, healthy := loopBackoff, loopBackoffMax, loopHealthy
 	go func() {
 		defer Recover(name)
-		delay := loopBackoff
+		delay := first
 		for {
 			start := time.Now()
 			panicked := true
@@ -74,8 +77,8 @@ func Loop(ctx context.Context, name string, fn func()) {
 			if !panicked {
 				log.Printf("[WARN] background service %q returned unexpectedly", name)
 			}
-			if time.Since(start) >= loopHealthy {
-				delay = loopBackoff
+			if time.Since(start) >= healthy {
+				delay = first
 			}
 			log.Printf("[RESTART] background service %q restarting in %s", name, delay)
 			select {
@@ -83,8 +86,8 @@ func Loop(ctx context.Context, name string, fn func()) {
 				return
 			case <-time.After(delay):
 			}
-			if delay *= 2; delay > loopBackoffMax {
-				delay = loopBackoffMax
+			if delay *= 2; delay > most {
+				delay = most
 			}
 		}
 	}()
@@ -94,9 +97,10 @@ func Loop(ctx context.Context, name string, fn func()) {
 // stops when fn returns normally. For a loop that ends on its own (a listener closing, ctx done)
 // but must not be lost to a panic.
 func Restart(name string, fn func()) {
+	first, most := loopBackoff, loopBackoffMax
 	go func() {
 		defer Recover(name)
-		delay := loopBackoff
+		delay := first
 		for {
 			panicked := true
 			func() {
@@ -109,8 +113,8 @@ func Restart(name string, fn func()) {
 			}
 			log.Printf("[RESTART] %q restarting in %s after a panic", name, delay)
 			time.Sleep(delay)
-			if delay *= 2; delay > loopBackoffMax {
-				delay = loopBackoffMax
+			if delay *= 2; delay > most {
+				delay = most
 			}
 		}
 	}()
