@@ -19,8 +19,19 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="${REPO:-$(cd "$HERE/../.." && pwd)}"
 GO="${GO:-go}"
 PORT="${PORT:-8491}"; HUBPORT="${HUBPORT:-8492}"; PPROF="${PPROF:-8493}"
+# Whether something listens on port $1, and whether process $1 listens on port $2 (#4346: a health
+# check on the port passed against another agent's server and the run drove that one).
+port_busy() {
+  if [[ "$(uname -s)" == Linux ]]; then ss -ltnH "sport = :$1" | grep -q .
+  else netstat -an -p tcp | grep -q "\.$1 .*LISTEN"; fi
+}
+pid_listens() {
+  if [[ "$(uname -s)" == Linux ]]; then ss -ltnpH "sport = :$2" | grep -q "pid=$1,"
+  else lsof -nP -a -p "$1" -iTCP:"$2" -sTCP:LISTEN >/dev/null 2>&1; fi
+}
 for p in "$PORT" "$HUBPORT" "$PPROF"; do
   if [[ "$p" == 8420 ]]; then echo "[perf] refusing port 8420 (the production server)" >&2; exit 2; fi
+  if port_busy "$p"; then echo "[perf] port $p is in use" >&2; exit 2; fi
 done
 MINUTES="${MINUTES:-15}"; WARMUP="${WARMUP:-300}"; PROFILE="${PROFILE:-120}"; AGENTS="${AGENTS:-20}"
 BASE_TMP="$([ -d "/sd2/$USER" ] && echo "/sd2/$USER/lead-tmp" || echo "${TMPDIR:-/tmp}")"
@@ -73,8 +84,13 @@ start_server() { # $1 data dir, $2 port, $3 log, rest: extra flags
     -u CLAUDE_PROJECTS_DIR HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" CORAL_DATA_DIR="$d" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
     CORAL_INITIAL_PASSWORD_FILE="$d/pw" "$@" \
     "$WORK/bin/coral" --home "$d" --no-browser --host 127.0.0.1 --port "$port" --cloud-url off >"$logf" 2>&1 &
-  PIDS+=($!)
-  for _ in $(seq 60); do curl -s -m 2 "http://127.0.0.1:$port/api/health" >/dev/null && return 0; sleep 0.5; done
+  local pid=$!
+  PIDS+=($pid)
+  for _ in $(seq 60); do
+    kill -0 "$pid" 2>/dev/null || { log "server on $port exited"; tail -20 "$logf"; exit 1; }
+    pid_listens "$pid" "$port" && curl -s -m 2 "http://127.0.0.1:$port/api/health" >/dev/null && return 0
+    sleep 0.5
+  done
   log "server on $port did not start"; tail -20 "$logf"; exit 1
 }
 
@@ -86,7 +102,10 @@ MOCK_ENV=(); [[ "${MOCK_TRANSCRIPT:-0}" == 1 ]] && MOCK_ENV=(MOCK_AGENT_TRANSCRI
 start_server "$WORK/d1" "$PORT" "$OUT/server.log" CORAL_PPROF_ADDR="127.0.0.1:$PPROF" GODEBUG=gctrace=1 ${MOCK_ENV[@]+"${MOCK_ENV[@]}"} # bash 3.2: an empty array is "unbound" under set -u
 SRV=${PIDS[$((${#PIDS[@]} - 1))]}
 KEY="$(cat "$WORK/d1/api_key")"
-api(){ local m="$1" p="$2"; shift 2; curl -s -m 20 -X "$m" "http://127.0.0.1:$PORT$p" -H "X-API-Key: $KEY" -H "Content-Type: application/json" "$@"; }
+[[ -n "$KEY" ]] || { log "no API key"; exit 1; }
+# -m 180: a team launch spaces its agents' starts; a client that gives up first leaves the rest to
+# launch after it hung up (#4346: under load they ran without their settings).
+api(){ local m="$1" p="$2"; shift 2; curl -s -m 180 -X "$m" "http://127.0.0.1:$PORT$p" -H "X-API-Key: $KEY" -H "Content-Type: application/json" "$@"; }
 api PUT /api/settings -d "{\"cli_path_claude\": \"$WORK/bin/mock-agent\"}" >/dev/null
 
 log "launching $AGENTS mock agents in 3 teams"
@@ -110,6 +129,7 @@ log "$live live sessions"
 log "starting the hub-mode Coral on $HUBPORT"
 start_server "$WORK/d2" "$HUBPORT" "$OUT/hub.log" CORAL_HUB=1
 HKEY="$(cat "$WORK/d2/api_key")"
+[[ -n "$HKEY" ]] || { log "no hub API key"; exit 1; }
 curl -s -m 20 -X POST "http://127.0.0.1:$HUBPORT/api/servers" -H "X-API-Key: $HKEY" -H "Content-Type: application/json" \
   -d "{\"id\":\"busy\",\"label\":\"busy\",\"url\":\"http://127.0.0.1:$PORT\",\"api_key\":\"$KEY\",\"allow_private\":true}" > "$OUT/hub-add.json"
 
