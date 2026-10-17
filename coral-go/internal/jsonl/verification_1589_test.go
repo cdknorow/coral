@@ -66,8 +66,13 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 	})
 
 	t.Run("4_MultipleRollouts_NewestMtimeSelected", func(t *testing.T) {
-		oldRollout := filepath.Join(tempBase, "2026", "09", "29", "rollout-old-sessionA.jsonl")
-		newRollout := filepath.Join(tempBase, "2026", "09", "29", "rollout-new-sessionA.jsonl")
+		// Its own folder: subtest 3 leaves a rollout with this session's marker in tempBase, written
+		// "now", which Windows' coarse file clock can tie with this one's "now" (#4136: windows-tests
+		// 38994764155 picked it). Here only the two rollouts compete.
+		base := filepath.Join(t.TempDir(), "sessions")
+		require.NoError(t, os.MkdirAll(filepath.Join(base, "2026", "09", "29"), 0755))
+		oldRollout := filepath.Join(base, "2026", "09", "29", "rollout-old-sessionA.jsonl")
+		newRollout := filepath.Join(base, "2026", "09", "29", "rollout-new-sessionA.jsonl")
 
 		meta := fmt.Sprintf(`{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"CORAL_SESSION_ID: %s"}]}}`+"\n", coralID_A)
 		require.NoError(t, os.WriteFile(oldRollout, []byte(meta), 0644))
@@ -77,7 +82,7 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 		require.NoError(t, os.Chtimes(oldRollout, now.Add(-10*time.Minute), now.Add(-10*time.Minute)))
 		require.NoError(t, os.Chtimes(newRollout, now, now))
 
-		resolved := resolveCodexTranscriptByMarker(tempBase, coralID_A)
+		resolved := resolveCodexTranscriptByMarker(base, coralID_A)
 		require.Equal(t, newRollout, resolved, "must select newest rollout by mtime")
 	})
 
