@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/cdknorow/coral/internal/agentmodels"
 	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/updatecheck"
 	"net"
@@ -639,6 +640,8 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		// A data folder other people on this computer can read (Windows; #3637): shown on the
 		// dashboard's first page, not only in the log. "" when there is nothing to say.
 		"security_warning": dataDirWarning(h.cfg.CoralDir()),
+		// Damage the integrity check found a minute after start (#4157); "" when none.
+		"database_warning": background.DatabaseWarning(),
 	})
 }
 

@@ -63,7 +63,7 @@ import { initWindows } from './platform/windows.js';
 import { initBrowser } from './platform/browser.js';
 import { initChatFind } from './chat_find.js';
 
-import { checkForUpdates, dismissUpdateToast, showSecurityWarning } from './update_check.js';
+import { checkForUpdates, dismissUpdateToast, showDatabaseWarning, showSecurityWarning } from './update_check.js';
 import { teamFetch, sessionServer, keyLabel } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import { initHubIndicator } from './hub_indicator.js';
@@ -831,6 +831,18 @@ const _startListLoadSettled = () => { if (--_startListLoads === 0) markReady('li
 let _pollListLoadSettled = false;
 const _settlePollListLoad = () => { if (!_pollListLoadSettled) { _pollListLoadSettled = true; _startListLoadSettled(); } };
 
+// The server checks its databases a minute after it starts (#4157); a page opened before
+// then asks once more a little after, so a damaged database is not only in the log.
+const DATABASE_RECHECK_MS = 90_000;
+async function recheckDatabases() {
+    try {
+        const resp = await fetchSystemStatus({ fresh: true });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data && data.database_warning) showDatabaseWarning(data.database_warning);
+    } catch { /* not shown; the next page load asks again */ }
+}
+
 function pollStartupStatus() {
     const el = document.getElementById('startup-loading');
     if (!el) { _settlePollListLoad(); return; }
@@ -853,6 +865,9 @@ function pollStartupStatus() {
             if (data.startup_complete) {
                 el.classList.add('hidden');
                 if (data.security_warning) showSecurityWarning(data.security_warning); // #3637
+                // The server checks its databases a minute after it starts (#4157): look again then.
+                if (data.database_warning) showDatabaseWarning(data.database_warning);
+                else setTimeout(recheckDatabases, DATABASE_RECHECK_MS);
                 dashboardStartupComplete();
                 // One question at a time: set a password (#3948, once, while none is set), then Coral Hub sign-in (#3966, once, for a
                 // computer already linked to Coral Hub). The second waits if the first is still open.
