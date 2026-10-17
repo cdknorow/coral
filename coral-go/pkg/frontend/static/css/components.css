@@ -3917,6 +3917,8 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .sec-failed .sec-who { color: #e5534b; }
 @media (max-width: 480px) { .sec-item { flex-direction: column; gap: 0; } .sec-when { text-align: left; } }
 .sec-gap { margin-top: 14px; }
+.sec-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 767px), (pointer: coarse) { .sec-actions .btn { min-height: var(--control-touch-height, 44px); } }
 .sec-muted { color: var(--text-secondary); font-weight: 400; }
 #settings-modal .sec-switch { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; font-size: 13px; margin: 6px 0; cursor: pointer; }
 #settings-modal .sec-switch input[type="checkbox"] { width: 16px; height: 16px; flex: none; margin: 2px 0 0; padding: 0; }

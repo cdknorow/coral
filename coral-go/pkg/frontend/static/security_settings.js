@@ -6,6 +6,7 @@
 import { showToast } from './utils.js';
 import { isCloud } from './server_base.js';
 import { importOnce } from './import_once.js';
+import { signOutThisBrowser } from './local_store.js';
 
 // Lazy modules, awaited here so a retried load of this file re-imports them through importOnce (import_hygiene).
 const { passwordProblem, timeMs, timeLeft, ageText } = await importOnce('./password_rules.js');
@@ -125,7 +126,11 @@ function sessionsBlock(data) {
         showToast(n ? `Signed out ${n} other browser${n === 1 ? '' : 's'}.` : 'No other browsers were signed in.');
         loadSecurityRow();
     });
-    box.append(out);
+    // This browser's own Sign out, next to it: confirm-free (signing in again undoes it), a plain button for keyboard and touch.
+    const me = el('button', 'btn btn-small', 'Sign out'); me.type = 'button'; me.id = 'sec-signout';
+    me.addEventListener('click', () => { me.disabled = true; out.disabled = true; signOutThisBrowser(); });
+    const actions = el('div', 'sec-actions'); actions.append(out, me);
+    box.append(actions);
     const recent = (data && Array.isArray(data.recent)) ? data.recent : [];
     if (recent.length) {
         const d = el('details', 'sec-recent'); d.id = 'sec-recent';

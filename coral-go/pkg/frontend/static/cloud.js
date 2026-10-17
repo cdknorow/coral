@@ -9,7 +9,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { filterSettingsPayload, settingsErrorMessage } from './cloud_settings.js';
-import { purgeStored, forgetAccountMemory } from './local_store.js';
+import { signOutThisBrowser } from './local_store.js';
 
 /** GET paths that only a machine's own dashboard serves: privacy state and agent panels. (Themes,
  *  settings, tags, folder tags and views are the hub's own per-user data.) */
@@ -163,14 +163,7 @@ export function installCloudFetch() {
     };
 }
 
-async function signOut() {
-    // What was typed and where people worked stays in this browser otherwise (#3681): drafts,
-    // pending messages, recent folders and stars of every account, removed before signing out.
-    try { purgeStored(); } catch { /* storage refused */ }
-    forgetAccountMemory(); // and what this page holds in memory: the kept chat pages (#3726)
-    try { await fetch('/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch { /* ignore */ }
-    location.replace('/signin');
-}
+const signOut = signOutThisBrowser; // drafts, pending messages, recent folders, stars and panel requests go before the session does (#3681, #4164)
 
 function buildAccountMenu(email) {
     const menu = h('div', { className: 'cloud-account-menu', id: 'cloud-account-menu', hidden: true, role: 'menu' },

@@ -68,6 +68,28 @@ export function forgetAccountMemory() {
     for (const fn of _forgetters) { try { fn(); } catch { /* one forgetter's failure must not keep the rest */ } }
 }
 
+/** An agent panel's unsent request (agent_ui.js keeps it per agent in sessionStorage); another person at this browser must not read it. */
+const PANEL_DRAFT_PREFIX = 'coral-panel-request:';
+export function purgePanelDrafts() {
+    let s;
+    try { s = sessionStorage; } catch { return 0; }
+    const keys = [];
+    try { for (let i = 0; i < s.length; i++) { const k = s.key(i); if (k && k.startsWith(PANEL_DRAFT_PREFIX)) keys.push(k); } } catch { return 0; }
+    for (const k of keys) { try { s.removeItem(k); } catch { /* storage refused */ } }
+    return keys.length;
+}
+
+/** Sign this browser out (Coral Hub and a local password alike): what was typed and where people worked (drafts, pending
+ *  messages, recent folders, stars, the panels' requests) and what the page holds in memory go first, then the session ends
+ *  (POST /auth/logout) and the sign-in page shows. The tab layout is a display preference and stays (#4164). */
+export async function signOutThisBrowser() {
+    try { purgeStored(); } catch { /* storage refused */ }
+    purgePanelDrafts();
+    forgetAccountMemory();
+    try { await fetch('/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin' }); } catch { /* the sign-in page shows either way */ }
+    location.replace('/signin');
+}
+
 /** Remove the stored kinds: all of them, or those `which(key, owner)` picks. */
 export function purgeStored(which = () => true) {
     const keys = browserLocal.keys().filter(k => isStored(k) && which(k, ownerOf(k)));
