@@ -84,3 +84,33 @@ func TestAvailable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, v, "an older release is never offered")
 }
+
+// #4133: the update check reads a public endpoint and never carries a credential from the
+// environment, not to the feed and not to wherever it redirects.
+func TestLatestSendsNoCredential(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "FAKE-TOKEN-FOR-TEST")
+	t.Setenv("GH_TOKEN", "FAKE-TOKEN-FOR-TEST")
+	var seen []http.Header
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Clone())
+		_, _ = w.Write([]byte(`{"tag_name":"v9.9.9"}`))
+	}))
+	defer target.Close()
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Clone())
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer feed.Close()
+	v, err := Latest(context.Background(), feed.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "9.9.9", v)
+	require.Len(t, seen, 2, "the feed and the redirect target both answered")
+	for i, h := range seen {
+		assert.Empty(t, h.Get("Authorization"), "request %d carries no Authorization", i)
+		for k, vals := range h {
+			for _, val := range vals {
+				assert.NotContains(t, val, "FAKE-TOKEN", "request %d header %s", i, k)
+			}
+		}
+	}
+}

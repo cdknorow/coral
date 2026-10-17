@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -43,7 +42,9 @@ var tagShape = regexp.MustCompile(`^v?(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:-([0-9A-
 var ErrBadTag = errors.New("updatecheck: the release tag is not a version")
 
 // Latest returns the latest release's version (without the "v"), from apiURL (ReleasesAPI;
-// tests pass their own). GITHUB_TOKEN, when set, is sent as the GitHub token (rate limits).
+// tests pass their own). The request is anonymous: it reads a public endpoint, and no credential
+// from the environment (GITHUB_TOKEN, which is often a developer's token with write rights) is
+// attached to it (#4133).
 func Latest(ctx context.Context, apiURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
@@ -52,9 +53,6 @@ func Latest(ctx context.Context, apiURL string) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
