@@ -20,7 +20,8 @@ const buildNote = ""
 // (after the key and the DSN's own settings).
 func init() {
 	sql.Register(EncryptedDriver, &sqlite3.SQLiteDriver{ConnectHook: func(c *sqlite3.SQLiteConn) error {
-		_, err := c.Exec("PRAGMA temp_store = MEMORY; PRAGMA cache_size = -8000;", nil)
+		// journal_size_limit (16 MiB): the WAL is truncated back after a checkpoint (#4142).
+		_, err := c.Exec("PRAGMA temp_store = MEMORY; PRAGMA cache_size = -8000; PRAGMA journal_size_limit = 16777216;", nil)
 		return err
 	}})
 }

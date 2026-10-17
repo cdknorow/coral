@@ -218,7 +218,8 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	}
 
 	driver := "sqlite"
-	dsn := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)"
+	// journal_size_limit (16 MiB): the WAL is truncated back after a checkpoint (#4142).
+	dsn := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)&_pragma=journal_size_limit(16777216)"
 	if key != "" {
 		// The SQLCipher driver's own DSN keys: it ignores _pragma_ ones (#3454).
 		driver = dbcrypt.EncryptedDriver

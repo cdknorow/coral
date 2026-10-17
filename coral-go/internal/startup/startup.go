@@ -1025,6 +1025,14 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	metricsRetention := background.NewCallMetricsRetention(db)
 	safeGo(ctx, "call_metrics_retention", func() { metricsRetention.Run(ctx) })
 
+	// PRAGMA optimize on both databases, a little after startup and every few hours (#4142).
+	optimizeTargets := map[string]background.Optimizer{"sessions.db": db}
+	if bs := srv.BoardStore(); bs != nil {
+		optimizeTargets["messageboard.db"] = bs
+	}
+	dbOptimize := background.NewDBOptimize(optimizeTargets)
+	safeGo(ctx, "db_optimize", func() { dbOptimize.Run(ctx) })
+
 	// A pty Coral wakes the agents that were running when it last stopped (#3636): one pass per
 	// start. Restart, not safeGo: safeGo restarts a service that returns, so the pass (and its
 	// "agents were running" notice) ran again every few seconds (#4033).

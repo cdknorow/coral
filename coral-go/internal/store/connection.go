@@ -86,7 +86,7 @@ func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
 	}
 
 	driver := "sqlite"
-	dsn := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)"
+	dsn := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)" + journalSizeLimitParam
 	if key != "" {
 		// The SQLCipher driver's own DSN keys: it ignores _pragma_ ones (#3454).
 		driver = dbcrypt.EncryptedDriver
@@ -872,6 +872,10 @@ func fixDoubleEncodedDetailJSON(ctx context.Context, d *DB) {
 		slog.Warn("[store] repairing double-encoded event details: write marker", "error", err)
 	}
 }
+
+// journalSizeLimitParam: the writer's WAL is truncated back to JournalSizeLimit after a
+// checkpoint (#4142).
+var journalSizeLimitParam = fmt.Sprintf("&_pragma=journal_size_limit(%d)", JournalSizeLimit)
 
 // remoteURLScrubKey marks, in store_meta, that remote URLs recorded before #3558 were cleaned.
 // A new key makes the scrub run once more when it learns a new form: "_2" adds scp-style
