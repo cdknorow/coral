@@ -167,7 +167,10 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 			parked[fmt.Sprint(t.ID)] = true
 			continue
 		}
-		if t.ParkedReason != nil { // its end passed: back, said once in this check, then cleared
+		// Its end passed: back, said once in this check, and the park cleared now. Cleared before
+		// the check is delivered, so a check that then fails to go out loses this note (a notice
+		// only: the task itself is back on the list either way).
+		if t.ParkedReason != nil {
 			backFromPark = append(backFromPark, t.ID)
 			_, _ = m.store.UnparkTask(ctx, project, t.ID)
 		}
