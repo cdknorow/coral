@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/cdknorow/coral/internal/clitext"
 	"github.com/cdknorow/coral/internal/dbcrypt"
@@ -150,6 +152,9 @@ type Store struct {
 	completionCheckRunner   CompletionCheckRunner
 	completionChecksEnabled bool
 	unreadCounts            unreadCountCache
+	noMentionIndex          bool // tests: read as before the mention index (#4465)
+	mentionMu               sync.Mutex
+	mentionIndexedTo        atomic.Int64 // the mention index's watermark, -1 until read (see mention_index.go)
 	waitChanges             waitSignal
 	stmts                   *hotStmts // the hot fixed queries, prepared (#4463); nil: unprepared
 }
@@ -556,7 +561,14 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	if err := s.initTaskWorkflows(ctx); err != nil {
 		return err
 	}
-	return s.ensureBoardsSchema(ctx)
+	if err := s.ensureBoardsSchema(ctx); err != nil {
+		return err
+	}
+	// The mention index and its backfill (#4465). A failure here only means ReadMessages reads as it did.
+	if err := s.ensureMentionIndexSchema(ctx); err != nil {
+		log.Printf("[board] mention index: %v", err)
+	}
+	return nil
 }
 
 // Rebuild from the existing schema so all columns, indexes, and personal-task
@@ -908,30 +920,18 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 			patterns[i] = "%" + t + "%"
 		}
 
-		whereClauses := make([]string, len(patterns))
-		args := []interface{}{project, sub.LastReadID, subscriberID}
-		for i, p := range patterns {
-			whereClauses[i] = "m.content LIKE ? COLLATE NOCASE"
-			args = append(args, p)
-		}
 		fetchLimit := limit * 2
 		if fetchLimit < 50 {
 			fetchLimit = 50
 		}
-		args = append(args, fetchLimit)
-
-		query := fmt.Sprintf(
-			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.created_at,
-			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
-			 FROM board_messages m
-			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
-			 WHERE m.project = ? AND m.id > ? AND m.subscriber_id != ? AND (%s)
-			 ORDER BY m.id ASC LIMIT ?`,
-			strings.Join(whereClauses, " OR "))
-		var candidates []Message
-		err = s.reader().SelectContext(ctx, &candidates, query, args...)
+		candidates, indexed, err := s.indexedMentionCandidates(ctx, project, subscriberID, sub.LastReadID, terms, fetchLimit)
 		if err != nil {
 			return nil, err
+		}
+		if !indexed {
+			if candidates, err = s.likeMentionCandidates(ctx, project, subscriberID, sub.LastReadID, patterns, fetchLimit); err != nil {
+				return nil, err
+			}
 		}
 
 		numbered := s.numberedNames(ctx, s.reader(), project)
@@ -1857,6 +1857,7 @@ func (s *Store) ListGroups(ctx context.Context, project string) ([]GroupInfo, er
 // (#3668, the board authorization audit's finding 1).
 func (s *Store) DeleteMessage(ctx context.Context, project string, messageID int64) (bool, error) {
 	s.unreadCounts.invalidate()
+	forgetMentionTokens(ctx, s.db, "id = ? AND project = ?", messageID, project)
 	result, err := s.db.ExecContext(ctx, "DELETE FROM board_messages WHERE id = ? AND project = ?", messageID, project)
 	if err != nil {
 		return false, err
@@ -1959,6 +1960,7 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 	}
 	defer tx.Rollback()
 	s.unreadCounts.invalidate()
+	forgetMentionTokens(ctx, tx, "project = ?", project)
 	if _, err := tx.ExecContext(ctx, "DELETE FROM board_messages WHERE project = ?", project); err != nil {
 		return err
 	}
@@ -3177,3 +3179,27 @@ func (s *Store) GetTaskLiveCost(ctx context.Context, project string, taskID int6
 // Such a notice @-names its agent; a subscriber reading everything counts it only when it is the
 // one named.
 const CoralSender = "Coral"
+
+// likeMentionCandidates is the query ReadMessages used before the mention index (#4465), and still uses for a
+// subscriber whose terms the index cannot answer: the messages after a cursor, from others, that match any of
+// the LIKE patterns, the first fetchLimit of them, oldest first. The index's results are tested against it.
+func (s *Store) likeMentionCandidates(ctx context.Context, project, subscriberID string, lastReadID int64, patterns []string, fetchLimit int) ([]Message, error) {
+	whereClauses := make([]string, len(patterns))
+	args := []interface{}{project, lastReadID, subscriberID}
+	for i, p := range patterns {
+		whereClauses[i] = "m.content LIKE ? COLLATE NOCASE"
+		args = append(args, p)
+	}
+	args = append(args, fetchLimit)
+	query := fmt.Sprintf(
+		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.created_at,
+		        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
+		 FROM board_messages m
+		 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
+		 WHERE m.project = ? AND m.id > ? AND m.subscriber_id != ? AND (%s)
+		 ORDER BY m.id ASC LIMIT ?`,
+		strings.Join(whereClauses, " OR "))
+	var candidates []Message
+	err := s.reader().SelectContext(ctx, &candidates, query, args...)
+	return candidates, err
+}
