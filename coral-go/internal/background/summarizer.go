@@ -40,8 +40,13 @@ func BuildSummarizeFn(sessionStore *store.SessionStore) func(ctx context.Context
 		}
 
 		// Call Claude CLI to generate summary
-		settings, _ := sessionStore.GetSettings(ctx)
-		summary, err := callClaude(ctx, settings, transcript)
+		settings, serr := sessionStore.GetSettings(context.WithoutCancel(ctx))
+		var summary string
+		if serr != nil { // never run the CLI found on PATH instead of the configured one (#4350)
+			err = fmt.Errorf("reading Coral's settings: %w", serr)
+		} else {
+			summary, err = callClaude(ctx, settings, transcript)
+		}
 		if err != nil {
 			summary = fmt.Sprintf("*Auto-summarization failed: %v*", err)
 		}

@@ -1368,7 +1368,11 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, _ := h.ss.GetSettings(r.Context())
+	settings, serr := h.ss.GetSettings(context.WithoutCancel(r.Context()))
+	if serr != nil { // never run the CLI found on PATH instead of the configured one (#4350)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Coral's settings could not be read; try again"})
+		return
+	}
 	claudePath, err := agent.FindCLI(settings, agenttypes.Claude)
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{

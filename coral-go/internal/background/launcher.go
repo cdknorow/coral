@@ -99,11 +99,15 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 		// launch: the macOS app started from Finder has no Homebrew PATH (#3205).
 		var settings map[string]string
 		if l.sessDB != nil {
-			if st, err := l.sessDB.GetSettings(ctx); err == nil {
-				settings = st
-			} else {
-				slog.Warn("reading settings for the agent CLI path failed", "error", err)
+			// A read that fails fails the launch: without the settings the command would run the
+			// CLI found on PATH instead of the configured one (#4350). The context is not the
+			// caller's cancellation either.
+			st, err := l.sessDB.GetSettings(context.WithoutCancel(ctx))
+			if err != nil {
+				slog.Error("reading settings for the agent CLI path failed", "error", err)
+				return nil, fmt.Errorf("reading Coral's settings for the agent CLI path: %w", err)
 			}
+			settings = st
 		}
 		var err error
 		launchCmd, err = ag.LaunchCommand(agent.LaunchParams{

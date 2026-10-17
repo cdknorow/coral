@@ -387,7 +387,11 @@ func (g *GoalGenerator) pollOnce(ctx context.Context) {
 	g.mu.Lock()
 	g.lastPoll = g.now()
 	g.mu.Unlock()
-	settings, _ := g.sessionStore.GetSettings(ctx)
+	settings, serr := g.sessionStore.GetSettings(context.WithoutCancel(ctx))
+	if serr != nil { // without the settings the goal CLI would be the one on PATH, not the configured one (#4350): skip this poll
+		g.logger.Error("failed to read settings for the goal poll", "error", serr)
+		return
+	}
 	if GoalsDisabled(settings) {
 		return
 	}

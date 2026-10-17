@@ -437,7 +437,11 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 
 	role := naming.SubscriberID(storedDisplayName, agentType)
 
-	userSettings, _ := h.ss.GetSettings(ctx)
+	userSettings, serr := h.launchSettings(ctx)
+	if serr != nil { // never start the restarted agent on the CLI found on PATH (#4350)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
+		return
+	}
 
 	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
 		SessionID:       newSessionID,
@@ -731,7 +735,11 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	role := naming.SubscriberID(storedDisplayName, agentType)
 
-	userSettings, _ := h.ss.GetSettings(ctx)
+	userSettings, serr := h.launchSettings(ctx)
+	if serr != nil { // never resume the agent on the CLI found on PATH (#4350)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
+		return
+	}
 
 	// The launch command is built before the terminal is touched: when it can't be built
 	// (#3601 W12), the resume fails with the old agent still running.

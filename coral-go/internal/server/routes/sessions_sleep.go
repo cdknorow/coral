@@ -197,7 +197,10 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	agentImpl := agent.GetAgent(ls.AgentType)
 	agent.TryPrepareResume(agentImpl, ls.SessionID, ls.WorkingDir)
 
-	userSettings, _ := h.ss.GetSettings(ctx)
+	userSettings, serr := h.launchSettings(ctx)
+	if serr != nil { // never wake the agent on the CLI found on PATH (#4350)
+		return serr
+	}
 	cliPath := agent.ResolveCLIPath(userSettings, ls.AgentType)
 
 	role := displayName

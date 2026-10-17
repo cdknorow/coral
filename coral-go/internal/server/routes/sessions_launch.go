@@ -392,8 +392,15 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	var launched []map[string]any
 	firstFailure := ""
 
-	// Load settings once so we can fall back to per-type default_model_<type>.
-	userSettings, _ := h.ss.GetSettings(ctx)
+	// Load settings once so we can fall back to per-type default_model_<type>. A read that fails
+	// stops the team before any agent starts: the loop below would otherwise start its agents
+	// without the configured CLI path (#4350).
+	userSettings, err := h.launchSettings(ctx)
+	if err != nil {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailSpawnFailed, 0, len(body.Agents))
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
 
 	// An agent never starts a less-restricted agent (#4032): the team's own flags and each
 	// member's choices are limited, except a member that is exactly an entry of a team template
@@ -692,6 +699,23 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "board": boardName, "agents": launched})
 }
 
+// errLaunchSettings is what a launch answers when Coral's settings could not be read.
+var errLaunchSettings = errors.New("Coral's settings could not be read, so the agent was not started (it would have run the CLI found on PATH instead of the one set in Settings > CLI Paths); try again")
+
+// launchSettings reads the settings a launch builds its command from: the CLI path, the default
+// model and permission mode. It reads with a context a client's hang-up cannot cancel (a team launch
+// loops over its agents inside one request: when the request ended partway, every later agent read
+// no settings and started the CLI found on PATH, the real one, instead of the configured one), and
+// a read that fails fails the launch: it never falls back to PATH (#4350).
+func (h *SessionsHandler) launchSettings(ctx context.Context) (map[string]string, error) {
+	s, err := h.ss.GetSettings(context.WithoutCancel(ctx))
+	if err != nil || s == nil {
+		slog.Error("reading settings for a launch failed", "error", err)
+		return nil, errLaunchSettings
+	}
+	return s, nil
+}
+
 // launchSession creates a new agent session using the specified backend (tmux or pty).
 func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType, displayName, resumeSessionID string,
 	flags []string, prompt, boardName, boardServer, backend, boardType, model string, capabilities *agent.Capabilities,
@@ -722,7 +746,10 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	}
 
 	// Resolve custom CLI path from settings
-	userSettings, _ := h.ss.GetSettings(ctx)
+	userSettings, err := h.launchSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
 	cliPath := agent.ResolveCLIPath(userSettings, agentType)
 
 	// Check CLI availability before launching (skip for terminal type)

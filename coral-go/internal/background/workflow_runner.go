@@ -631,13 +631,13 @@ func (wr *WorkflowRunner) executeAgentStep(ctx context.Context, runID int64, ste
 	return stepErr
 }
 
-// settings are the user's settings (for the CLI path); nil when unavailable.
-func (wr *WorkflowRunner) settings(ctx context.Context) map[string]string {
+// settings are the user's settings (for the CLI path); nil with no error when there is no store,
+// and an error when the read fails (the step then fails instead of running the CLI on PATH, #4350).
+func (wr *WorkflowRunner) settings(ctx context.Context) (map[string]string, error) {
 	if wr.store == nil || wr.store.DB() == nil {
-		return nil
+		return nil, nil
 	}
-	s, _ := store.NewSessionStore(wr.store.DB()).GetSettings(ctx)
-	return s
+	return store.NewSessionStore(wr.store.DB()).GetSettings(context.WithoutCancel(ctx))
 }
 
 // printStepCLIs lists the agent CLIs a non-interactive ("print") workflow step may use, and
@@ -680,7 +680,11 @@ func KnownStepAgentType(agentType string) bool {
 // file (same as LaunchCommand) so the agent has tool access in headless mode.
 // Captures stdout/stderr to step files. No tmux session.
 func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, step StepDef, sf stepFiles, repoPath string, env []string, agentCfg *AgentStepConfig, prompt string, stepHooks map[string]interface{}, result *StepResult) error {
-	binPath, err := agent.FindCLI(wr.settings(ctx), agentCfg.AgentType)
+	stepSettings, err := wr.settings(ctx)
+	if err != nil {
+		return fmt.Errorf("step %q: reading Coral's settings for the CLI path: %w", step.Name, err)
+	}
+	binPath, err := agent.FindCLI(stepSettings, agentCfg.AgentType)
 	if err != nil {
 		return fmt.Errorf("step %q: %w", step.Name, err)
 	}

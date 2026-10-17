@@ -160,7 +160,10 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 	if !ValidKnowledgeTeam(teamName) {
 		return nil, ErrBadKnowledgeTeam
 	}
-	settings, _ := ss.GetSettings(ctx)
+	settings, serr := ss.GetSettings(context.WithoutCancel(ctx))
+	if serr != nil { // never run the CLI found on PATH instead of the configured one (#4350)
+		return nil, fmt.Errorf("reading Coral's settings: %w", serr)
+	}
 	claudePath, err := checkClaudeCLI(ctx, settings)
 	if err != nil {
 		return nil, err
