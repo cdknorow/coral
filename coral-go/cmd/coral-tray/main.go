@@ -243,12 +243,36 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	if err != nil {
 		log.Printf("Failed to start: %v", err)
 		beeep.Notify("Coral", "Failed to start: "+err.Error(), "")
-		// Still launch tray so user sees the error
+		// Still launch the tray, with the reason, the log that explains it and a retry (#4151).
 		systray.Run(func() {
 			systray.SetTemplateIcon(iconData, iconData)
 			systray.SetTooltip("Coral — Error")
+			mReason := systray.AddMenuItem(startFailureTitle(err), err.Error())
+			mReason.Disable()
+			mLog := systray.AddMenuItem("Open Log", "Open tray.log, which says why Coral could not start")
+			mRetry := systray.AddMenuItem("Retry", "Start Coral again")
 			mQuit := systray.AddMenuItem("Quit", "Exit Coral")
-			go func() { defer safego.Recover("coral-tray/main:249"); <-mQuit.ClickedCh; systray.Quit() }()
+			go func() {
+				defer safego.Recover("coral-tray/main:start-failure-menu")
+				for {
+					select {
+					case <-mLog.ClickedCh:
+						executil.OpenBrowser(filepath.Join(dataDir, "tray.log"))
+					case <-mRetry.ClickedCh:
+						// A new instance with the same arguments, once this one has exited.
+						if err := spawnRestart(dataDir); err != nil {
+							log.Printf("[retry] could not start a new instance: %v", err)
+							beeep.Notify("Coral", "Could not retry: "+err.Error(), "")
+							continue
+						}
+						systray.Quit()
+						return
+					case <-mQuit.ClickedCh:
+						systray.Quit()
+						return
+					}
+				}
+			}()
 		}, func() {})
 		return
 	}
@@ -768,6 +792,17 @@ func isInsideAppBundle() bool {
 		exe = resolved
 	}
 	return strings.Contains(exe, ".app/Contents/MacOS/")
+}
+
+// startFailureTitle is the tray menu's line for why the server did not start (#4151): the
+// error's first line, cut to fit a menu.
+func startFailureTitle(err error) string {
+	msg, _, _ := strings.Cut(err.Error(), "\n")
+	msg = strings.TrimPrefix(msg, "cannot start Coral: ")
+	if r := []rune(msg); len(r) > 70 {
+		msg = string(r[:69]) + "…"
+	}
+	return "Not started: " + msg
 }
 
 // restartWaitEnv carries the PID of the instance a restarted one replaces (#3460).
