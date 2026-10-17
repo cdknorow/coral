@@ -66,9 +66,13 @@ function _getInitials(name) {
    // bumped whenever the board chat panel is rebuilt, to drop stale loads
 
 
+// Killing an agent on the tmux terminal backend deletes its terminal log, which search reads (tmux Client.KillSession); Sleep and Archive keep it (#4399).
+// The pty backend leaves the log alone, so the sentence names the backend and is true for every agent.
+export const KILL_LOG_NOTE = "On the tmux terminal backend this also deletes the agent's terminal log, which search uses. Sleep or Archive keeps it.";
+
 export function killSessionDirect(name, agentType, sessionId) {
     const server = serverForSession(name, sessionId);
-    showConfirmModal('Kill Session', `Kill session "${name}"? This will terminate the agent.`, async () => { try {
+    showConfirmModal('Kill Session', `Kill session "${name}"? This will terminate the agent. ${KILL_LOG_NOTE}`, async () => { try {
         const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(name)}/kill`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -248,7 +252,7 @@ export async function killGroup(groupName) {
 
     showConfirmModal(
         "Kill All Agents",
-        `Kill all ${groupSessions.length} agent(s) in "${groupName.startsWith('wf:') ? groupName.slice(3) : keyLabel(groupName)}"? This will terminate them.`,
+        `Kill all ${groupSessions.length} agent(s) in "${groupName.startsWith('wf:') ? groupName.slice(3) : keyLabel(groupName)}"? This will terminate them. ${KILL_LOG_NOTE}`,
         async () => {
             for (const s of groupSessions) {
                 try {
@@ -305,7 +309,7 @@ export async function killBoard(boardName) {
 
     showConfirmModal(
         "Kill Team",
-        `Kill all ${boardSessions.length} agent(s) on board "${keyLabel(boardName)}"? This will terminate them.`,
+        `Kill all ${boardSessions.length} agent(s) on board "${keyLabel(boardName)}"? This will terminate them. ${KILL_LOG_NOTE}`,
         async () => {
             for (const s of boardSessions) {
                 try {

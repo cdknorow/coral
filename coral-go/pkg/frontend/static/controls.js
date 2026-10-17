@@ -8,7 +8,7 @@ import { popoutTerminalBlocked } from './popout.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { registerActions, idOf } from './actions.js';
 import { stopCaptureRefresh } from './capture.js';
-import { renderLiveSessions } from './render.js';
+import { renderLiveSessions, KILL_LOG_NOTE } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
 import { addPendingMessage, removePendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
@@ -515,7 +515,7 @@ export async function killSession() {
         return;
     }
 
-    window.showConfirmModal('Kill Session', `Kill session "${state.currentSession.name}"? This will terminate the agent.`, async () => {
+    window.showConfirmModal('Kill Session', `Kill session "${state.currentSession.name}"? This will terminate the agent. ${KILL_LOG_NOTE}`, async () => {
         try {
             const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/kill`, {
                 method: "POST",
