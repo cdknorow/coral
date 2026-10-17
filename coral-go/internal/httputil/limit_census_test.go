@@ -22,18 +22,20 @@ var tooManyRequestsSites = map[string]struct {
 	count  int
 	reason string
 }{
-	"internal/httputil/limit.go":                {1, "WriteActionLimit itself: always sends X-Coral-Limit: action"},
-	"internal/auth/middleware.go":               {1, "too many wrong API keys: marked by hand (X-Coral-Limit set just before), plain-text body"},
-	"internal/cloud/enroll.go":                  {2, "client side: reads Coral Hub's 429, never writes one"},
-	"internal/cloud/redeem.go":                  {1, "client side: reads Coral Hub's 429"},
-	"internal/cloud/signin.go":                  {1, "client side: the Hub sign-in check reads Coral Hub's busy 429 as transient, like no answer (#3966)"},
-	"internal/tracking/posthog.go":              {2, "client side: retries the analytics service's 429 (and says so in a comment)"},
-	"cmd/coral/cloud_connect.go":                {1, "client side: the CLI reads Coral Hub's 429"},
-	"cmd/coral-board/send.go":                   {1, "client side: coral-board reads a relayed send's 429 to suggest a retry (#3489)"},
-	"pkg/tunnel/inbound.go":                     {1, "relay protocol, not HTTP to the dashboard: the hub's per-tunnel in-flight cap answer to a connector, which Coral passes on marked (#3489; moved from relay.go into the shared table of connector-opened kinds, #3966)"},
-	"cmd/coral-agent/main.go":                   {1, "client side: coral-agent reads Coral's 429 on an upload and surfaces its Retry-After (#4004)"},
-	"pkg/tunnel/limit.go":                       {1, "the connector's hub-wide in-flight cap (#3624): a load limit, not a per-action one, so it is marked X-Coral-Limit: connector and the dashboard backs off on it"},
-	"internal/server/routes/cross_team_send.go": {2, "a relayed send's per-sender limit, and Coral Hub's 429 passed on: relayError writes every 429 with WriteActionLimitBody (marked), the other mention is that check (#3489)"},
+	"internal/httputil/limit.go":                        {1, "WriteActionLimit itself: always sends X-Coral-Limit: action"},
+	"internal/auth/middleware.go":                       {1, "too many wrong API keys: marked by hand (X-Coral-Limit set just before), plain-text body"},
+	"internal/cloud/enroll.go":                          {2, "client side: reads Coral Hub's 429, never writes one"},
+	"internal/cloud/redeem.go":                          {1, "client side: reads Coral Hub's 429"},
+	"internal/cloud/signin.go":                          {1, "client side: the Hub sign-in check reads Coral Hub's busy 429 as transient, like no answer (#3966)"},
+	"internal/tracking/posthog.go":                      {2, "client side: retries the analytics service's 429 (and says so in a comment)"},
+	"cmd/coral/cloud_connect.go":                        {1, "client side: the CLI reads Coral Hub's 429"},
+	"cmd/coral-board/send.go":                           {1, "client side: coral-board reads a relayed send's 429 to suggest a retry (#3489)"},
+	"pkg/tunnel/inbound.go":                             {1, "relay protocol, not HTTP to the dashboard: the hub's per-tunnel in-flight cap answer to a connector, which Coral passes on marked (#3489; moved from relay.go into the shared table of connector-opened kinds, #3966)"},
+	"cmd/coral-agent/main.go":                           {1, "client side: coral-agent reads Coral's 429 on an upload and surfaces its Retry-After (#4004)"},
+	"pkg/tunnel/limit.go":                               {1, "the connector's hub-wide in-flight cap (#3624): a load limit, not a per-action one, so it is marked X-Coral-Limit: connector and the dashboard backs off on it"},
+	"internal/server/routes/cross_team_attach_relay.go": {1, "client side: reads Coral Hub's 429 on a file of a send with --attach and passes it on through relayError, which writes every 429 with WriteActionLimitBody (marked), keeping its Retry-After (#4403)"},
+	"pkg/tunnel/relay_artifact.go":                      {1, "relay protocol, not HTTP to the dashboard: the hub's per-tunnel in-flight cap answer to a connector's file request (the artifact twin of inbound.go's), read by ClientSession.RelayArtifact and passed on marked by relayError (#4378)"},
+	"internal/server/routes/cross_team_send.go":         {2, "a relayed send's per-sender limit, and Coral Hub's 429 passed on: relayError writes every 429 with WriteActionLimitBody (marked), the other mention is that check (#3489)"},
 }
 
 func TestEveryTooManyRequestsIsAccountedFor(t *testing.T) {
