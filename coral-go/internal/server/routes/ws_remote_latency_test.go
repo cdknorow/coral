@@ -144,11 +144,15 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 
 	src.set(remoteSnap("b-1"))
 	first := awaitStatus(t, ctx, conn, "b-1", time.Second)
-	assert.Less(t, first, 100*time.Millisecond, "the first change of a burst is not held back")
+	// Not held back means sent before the debounce would have let it go; under a loaded gate the
+	// send itself can take more than a fixed 100 ms (#4136: this failed twice in full gates).
+	assert.Less(t, first, h.cfg.WSRemoteDebounce, "the first change of a burst is not held back")
+	burstStart := time.Now()
 	for i := 2; i <= 10; i++ {
 		src.set(remoteSnap(fmt.Sprintf("b-%d", i)))
 		time.Sleep(20 * time.Millisecond)
 	}
+	burst := time.Since(burstStart)
 	// The other nine changes come as one diff with the latest state, within the
 	// limit, and no further diff follows.
 	var diffs []string
@@ -168,5 +172,15 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 			}
 		}
 	}
-	assert.Equal(t, []string{"b-10"}, diffs, "one coalesced diff carrying the latest remote state")
+	// One coalesced diff per debounce window the burst spanned: one when it fit in a window (the
+	// 180 ms it takes unloaded), more only when a loaded machine stretched its sleeps past the
+	// window, which then rightly sends what was pending. Never a diff per change, and the last one
+	// carries the latest state.
+	allowed := 1 + int(burst/h.cfg.WSRemoteDebounce)
+	require.NotEmpty(t, diffs, "the burst's changes arrive")
+	assert.LessOrEqual(t, len(diffs), allowed, "coalesced: %v over a %s burst", diffs, burst)
+	assert.Equal(t, "b-10", diffs[len(diffs)-1], "the last diff carries the latest remote state")
+	if burst < h.cfg.WSRemoteDebounce {
+		assert.Equal(t, []string{"b-10"}, diffs, "one coalesced diff carrying the latest remote state")
+	}
 }
