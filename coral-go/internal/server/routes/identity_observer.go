@@ -1020,7 +1020,7 @@ func (o *IdentityObserver) Report() map[string]any {
 	if o.effectiveStrict() {
 		mode = "strict"
 	}
-	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls, "actor_claims": actorClaims, "joining_would_refuse": joining,
+	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls, "actor_claims": actorClaims, "joining_would_refuse": joining, "enforce_would_differ": enforceDiffersSnapshot(), "identity_actor": actorMode(),
 		"mismatches": mm, "recent_mismatches": recent, "attributed_by_session": sessions, "attributed_by_tool": tools}
 }
 

@@ -39,7 +39,10 @@ func (h *BoardHandler) autoDelegateReview(ctx context.Context, project string, i
 	if err != nil || task == nil {
 		return false
 	}
-	names, source, err := h.bs.AutoReviewers(ctx, project, task, orch)
+	names, source, differs, err := h.bs.AutoReviewers(ctx, project, task, orch, identityActorEnforced())
+	if differs && !identityActorEnforced() {
+		noteEnforceDiffersKey("reviewers-trust (rule 13) submit-review")
+	}
 	if err != nil || len(names) == 0 {
 		return false
 	}
@@ -87,19 +90,21 @@ func (h *BoardHandler) healthBudgetReached(ctx context.Context, project string) 
 }
 
 // claimIdentity says how the name a board request gives is backed (#4175, Security's caveat on
-// #4176 rule 13): "token" when the request carries an agent token whose session holds that
-// name's subscription on this board, "operator" for the Operator with no agent token (the
-// dashboard, a signed CLI), and "claimed" otherwise. Recorded on tasks now; the names count by
-// it once identity is strict.
+// #4176 rule 13), from the request's actor (#4255), not from the claim: "token" when the actor is a
+// member of this board and the claim, if any, is that member (an empty claim means the caller);
+// "operator" when the actor is the Operator (the dashboard, a signed command line, an API key, the
+// Hub operator) and the claim, if any, is the Operator's name in any spelling; "claimed" otherwise
+// (nothing backs the name). Recorded on tasks; rule 13 trusts a creator or amender by it.
 func (h *BoardHandler) claimIdentity(r *http.Request, project, claimed string) string {
-	if owner, ok := VerifiedSession(r.Context()); ok {
-		sub, err := h.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
-		if err == nil && sub != nil && sub.Project == project && board.SameIdentity(sub.SubscriberID, claimed) {
+	a := callerActor(r)
+	claimed = strings.TrimSpace(claimed)
+	if name, member := a.Member(); member {
+		if claimed == "" || board.SameIdentity(name, claimed) {
 			return "token"
 		}
 		return "claimed"
 	}
-	if claimed == "Operator" && !agentCaller(r) {
+	if a.IsOperator() && (claimed == "" || board.IsOperatorName(claimed)) {
 		return "operator"
 	}
 	return "claimed"

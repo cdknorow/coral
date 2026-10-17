@@ -1,11 +1,16 @@
 package routes
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -122,27 +127,61 @@ func TestAutoDelegationCanBeTurnedOff(t *testing.T) {
 }
 
 // #4175, Security's caveat on #4176 rule 13: how the creator's and each amendment's names were
-// backed is recorded by the server, whatever the request says ("claimed" for a bare name,
-// "operator" for the Operator without an agent token).
+// backed is recorded by the server, whatever the request says, from the request's actor (#4255):
+// "token" for a member of the board, "operator" for the Operator (the dashboard, a signed command
+// line, an API key), "claimed" for a bare name. The handler is mounted behind a stand-in for the
+// identity layer that sets the actor the layer would have decided.
 func TestTaskRecordsHowItsNamesWereBacked(t *testing.T) {
-	server, h := setupBoardTestServer(t)
+	_, h := setupBoardTestServer(t)
 	ctx := context.Background()
 	_, err := h.bs.Subscribe(ctx, "ids", "lead", "Orchestrator", "lead-session", nil, "all")
 	require.NoError(t, err)
-	code, out := postCode(t, server.URL+"/api/board/ids/tasks", map[string]any{"title": "work", "subscriber_id": "lead",
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Header.Get("X-Test-Actor") {
+			case "token":
+				r = withActor(r, Actor{Kind: ActorToken, Name: "lead", Session: "lead-session"})
+			case "operator":
+				r = withActor(r, Actor{Kind: ActorOperator, Name: "Operator"})
+			default:
+				r = withActor(r, Actor{Kind: ActorClaimed})
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	router.Post("/api/board/{project}/tasks", h.CreateTask)
+	create := func(actor string, body map[string]any) *board.Task {
+		raw, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, "/api/board/ids/tasks", bytes.NewReader(raw))
+		req.Header.Set("X-Test-Actor", actor)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, 201, rec.Code, rec.Body.String())
+		var out struct {
+			ID int64 `json:"id"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		task, err := h.bs.GetTask(ctx, "ids", out.ID)
+		require.NoError(t, err)
+		return task
+	}
+	// A bare name, with forged "recorded" values in the body: claimed, and the forged values are replaced.
+	task := create("claimed", map[string]any{"title": "work", "subscriber_id": "lead",
 		"workflow": map[string]any{"created_identity": "token", "amend_identity": map[string]string{"2": "token"}}})
-	require.Equal(t, 201, code, "%v", out)
-	id := int64(out["id"].(float64))
-	task, err := h.bs.GetTask(ctx, "ids", id)
-	require.NoError(t, err)
+	id := task.ID
 	assert.Equal(t, "claimed", task.Workflow.CreatedIdentity, "a forged value is replaced")
 	assert.Empty(t, task.Workflow.AmendIdentity)
 
-	code, out = postCode(t, server.URL+"/api/board/ids/tasks", map[string]any{"title": "work", "subscriber_id": "Operator"})
-	require.Equal(t, 201, code, "%v", out)
-	task, err = h.bs.GetTask(ctx, "ids", int64(out["id"].(float64)))
-	require.NoError(t, err)
-	assert.Equal(t, "operator", task.Workflow.CreatedIdentity)
+	// A member of the board, by its token: "token". (CreateTask still needs the claim; the task verbs
+	// read the actor in the next commit.)
+	assert.Equal(t, "token", create("token", map[string]any{"title": "work", "subscriber_id": "lead"}).Workflow.CreatedIdentity)
+
+	// The Operator, with the dashboard's name. (Another spelling of it is claimIdentity's table; the
+	// task planner check still compares the claim to "Operator" exactly: the next commit moves it to the actor.)
+	assert.Equal(t, "operator", create("operator", map[string]any{"title": "work", "subscriber_id": "Operator"}).Workflow.CreatedIdentity)
+	// ...and the same name with nothing behind it is a claim.
+	assert.Equal(t, "claimed", create("claimed", map[string]any{"title": "work", "subscriber_id": "Operator"}).Workflow.CreatedIdentity)
 
 	require.NoError(t, h.bs.RecordAmendIdentity(ctx, "ids", id, 2, "operator"))
 	task, err = h.bs.GetTask(ctx, "ids", id)

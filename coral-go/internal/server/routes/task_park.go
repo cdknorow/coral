@@ -30,6 +30,38 @@ func (h *BoardHandler) healthAdmin(r *http.Request, project string) (who string,
 	if cloud.Tunneled(r) {
 		return "", false
 	}
+	// By the actor alone (#4255): the Operator the identity layer verified, or the member the token's
+	// session holds on this board when that member is the team's orchestrator. A claimed actor is
+	// neither. In log mode the earlier decision stands, and where the two differ it is counted.
+	byActor, actorOK := h.healthAdminByActor(r, project)
+	if identityActorEnforced() {
+		return byActor, actorOK
+	}
+	who, ok = h.healthAdminLegacy(r, project)
+	if ok != actorOK || who != byActor {
+		noteEnforceDiffers("health-admin", r)
+	}
+	return who, ok
+}
+
+func (h *BoardHandler) healthAdminByActor(r *http.Request, project string) (string, bool) {
+	a := callerActor(r)
+	if name, member := a.Member(); member {
+		orch, err := h.bs.TeamOrchestrator(r.Context(), project)
+		if err != nil || !board.SameIdentity(orch, name) {
+			return "", false
+		}
+		return name, true
+	}
+	if a.Kind == ActorOperator {
+		return "Operator", true
+	}
+	return "", false
+}
+
+// healthAdminLegacy is the decision before the actor: the token's own subscription lookup, or the
+// absence of an agent token (an agent tool only with the Operator's checked signature).
+func (h *BoardHandler) healthAdminLegacy(r *http.Request, project string) (who string, ok bool) {
 	if owner, verified := VerifiedSession(r.Context()); verified {
 		sub, err := h.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
 		if err != nil || sub == nil || sub.Project != project {

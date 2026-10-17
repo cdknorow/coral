@@ -97,7 +97,14 @@ func RejectBadIdentities(next http.Handler) http.Handler {
 // request through Coral Hub is left to the tunnel's own identity guard (TunnelIdentityGuard).
 func RejectOperatorImpersonation(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if (!strings.HasPrefix(r.URL.Path, "/api/board/") && !strings.HasPrefix(r.URL.Path, "/api/agent/")) || cloud.Tunneled(r) || !isAgentCaller(r) ||
+		// Who is asked (#4255): an agent today (a token, or the agent command line without a checked
+		// signature); under enforce, anyone the identity layer did not verify as the Operator (a
+		// claimed actor too), so no caller with nothing behind its name writes as the Operator. In log
+		// mode a claimed non-agent caller is let through, and counted when it writes the Operator's name.
+		agent := isAgentCaller(r)
+		notOperator := callerActor(r).Kind != ActorOperator
+		asked := agent || (identityActorEnforced() && notOperator)
+		if (!strings.HasPrefix(r.URL.Path, "/api/board/") && !strings.HasPrefix(r.URL.Path, "/api/agent/")) || cloud.Tunneled(r) || !(asked || notOperator) ||
 			r.Body == nil || r.Body == http.NoBody || (r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch) {
 			next.ServeHTTP(w, r)
 			return
@@ -122,6 +129,10 @@ func RejectOperatorImpersonation(next http.Handler) http.Handler {
 				}
 				// Fields that only name someone (assignee, target) are not asked.
 				if board.IsOperatorName(s) {
+					if !asked {
+						noteEnforceDiffers("operator-name", r) // log mode: a claimed caller writes it; enforce would refuse
+						continue
+					}
 					errBadRequest(w, f+" "+strconvQuote(s)+" is reserved for the Operator")
 					return
 				}

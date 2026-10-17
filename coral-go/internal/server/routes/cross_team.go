@@ -159,7 +159,18 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 	// settings decide what Coral types into every agent (Security's #4176 rule 16). A claimed
 	// name is not enough; an agent's token, or its command line without the Operator's
 	// signature, is refused whatever subscriber_id it gives.
-	if body.SubscriberID != crossTeamOperatorID || agentCaller(r) || (isAgentTool(r) && !cliauth.Verified(r)) {
+	// By the actor alone under enforce (#4255): the Operator the identity layer verified (a claim of
+	// the Operator's name, when given, must be it); in log mode the claim-and-caller test above stands,
+	// and where the two differ it is counted.
+	legacy := body.SubscriberID == crossTeamOperatorID && !agentCaller(r) && !(isAgentTool(r) && !cliauth.Verified(r))
+	byActor := callerActor(r).Kind == ActorOperator && (strings.TrimSpace(body.SubscriberID) == "" || board.IsOperatorName(body.SubscriberID))
+	allowed := legacy
+	if identityActorEnforced() {
+		allowed = byActor
+	} else if legacy != byActor {
+		noteEnforceDiffers("board-settings", r)
+	}
+	if !allowed {
 		errForbidden(w, "only the Operator can change board settings")
 		return
 	}
