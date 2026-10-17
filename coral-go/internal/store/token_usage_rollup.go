@@ -91,24 +91,28 @@ BEGIN
 	  AND NOT (NEW.session_id IS OLD.session_id AND COALESCE(NEW.source, 'jsonl') IS COALESCE(OLD.source, 'jsonl'))`) + `;
 END;
 
-CREATE TRIGGER IF NOT EXISTS token_usage_rollup_delete AFTER DELETE ON token_usage BEGIN
+-- Not while raw rows are rolled up into token_usage_hourly (#4163): the sums already count
+-- them, and a rebuild per deleted row would only cost time.
+CREATE TRIGGER IF NOT EXISTS token_usage_rollup_delete AFTER DELETE ON token_usage
+WHEN NOT EXISTS (SELECT 1 FROM token_usage_pruning)
+BEGIN
 	DELETE FROM token_usage_rollup WHERE session_id = OLD.session_id AND source = COALESCE(OLD.source, 'jsonl');
 	` + rebuildTokenUsageRollup(`session_id = OLD.session_id AND COALESCE(source, 'jsonl') = COALESCE(OLD.source, 'jsonl')`) + `;
 END;
 `
 
-// rebuildTokenUsageRollup recomputes the rollup rows for the token_usage rows
-// matching where. The newest turn's context comes from the row at
-// MAX(recorded_at), which (session_id, recorded_at) makes unique.
+// rebuildTokenUsageRollup recomputes the rollup rows for the token usage rows
+// matching where, raw and rolled up (token_usage_all, #4163). The newest turn's
+// context comes from the row at MAX(recorded_at).
 func rebuildTokenUsageRollup(where string) string {
 	return `INSERT INTO token_usage_rollup
-	SELECT g.*, (SELECT x.input_tokens + x.cache_read_tokens + x.cache_write_tokens FROM token_usage x
-	             WHERE x.session_id = g.session_id AND x.recorded_at = g.recorded_at)
+	SELECT g.*, COALESCE((SELECT x.ctx_tokens FROM token_usage_all x
+	             WHERE x.session_id = g.session_id AND x.recorded_at = g.recorded_at LIMIT 1), 0)
 	FROM (SELECT session_id, COALESCE(source, 'jsonl') AS source,
 	             SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_write_tokens),
-	             SUM(total_tokens), SUM(cost_usd), COUNT(*), MAX(id), MAX(agent_name), MAX(agent_type),
+	             SUM(total_tokens), SUM(cost_usd), SUM(n_rows), MAX(id), MAX(agent_name), MAX(agent_type),
 	             MAX(team_id), MAX(board_name), MAX(recorded_at) AS recorded_at
-	      FROM token_usage WHERE ` + where + ` GROUP BY 1, 2) g`
+	      FROM token_usage_all WHERE ` + where + ` GROUP BY 1, 2) g`
 }
 
 // ensureTokenUsageRollup creates the rollup and its triggers and, the first
@@ -123,6 +127,14 @@ func (d *DB) ensureTokenUsageRollup(ctx context.Context) error {
 	var existed int
 	if err := tx.GetContext(ctx, &existed,
 		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'token_usage_rollup'`); err != nil {
+		return err
+	}
+	// The hourly table, the view and the guard come first: the triggers below use them. The
+	// two triggers whose bodies changed with them (#4163) are made again on every start.
+	if _, err := tx.ExecContext(ctx, tokenUsageHourlySQL); err != nil {
+		return fmt.Errorf("create token usage hourly: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DROP TRIGGER IF EXISTS token_usage_rollup_update_rebuild; DROP TRIGGER IF EXISTS token_usage_rollup_delete;`); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, tokenUsageRollupSQL); err != nil {

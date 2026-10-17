@@ -30,7 +30,7 @@ func applyBoardRekeys(ctx context.Context, bs *board.Store, db *store.DB, coralD
 		if db != nil {
 			for _, tc := range [][2]string{
 				{"live_sessions", "board_name"}, {"teams", "name"},
-				{"token_usage", "board_name"}, {"call_metrics", "board_name"}, {"call_metrics_hourly", "board_name"},
+				{"token_usage", "board_name"}, {"token_usage_hourly", "board_name"}, {"call_metrics", "board_name"}, {"call_metrics_hourly", "board_name"},
 			} {
 				q := `UPDATE ` + tc[0] + ` SET ` + tc[1] + ` = ? WHERE ` + tc[1] + ` = ?`
 				if res, err := db.ExecContext(ctx, q, id, old); err != nil {
