@@ -10,9 +10,14 @@ const TEXT = 'Local sign-in is OFF: any program on this computer can use Coral.'
 const FAKE = `(() => {
     window.__auth = { strict_local_auth: false };
     const inner = window.fetch;
-    window.fetch = (url, opts) => new URL(String(url), location.origin).pathname === '/api/system/auth-status'
-        ? Promise.resolve(new Response(JSON.stringify({ authenticated: true, method: 'session', password_set: true, local: true, ...window.__auth }), { status: 200, headers: { 'content-type': 'application/json' } }))
-        : inner(url, opts);
+    window.__authMode = 'ok'; // ok | 500 | throw | badjson: how the status poll fails
+    window.fetch = (url, opts) => {
+        if (new URL(String(url), location.origin).pathname !== '/api/system/auth-status') return inner(url, opts);
+        if (window.__authMode === 'throw') return Promise.reject(new TypeError('network down'));
+        if (window.__authMode === '500') return Promise.resolve(new Response('{"error":"boom"}', { status: 500, headers: { 'content-type': 'application/json' } }));
+        if (window.__authMode === 'badjson') return Promise.resolve(new Response('<html>not json', { status: 200, headers: { 'content-type': 'text/html' } }));
+        return Promise.resolve(new Response(JSON.stringify({ authenticated: true, method: 'session', password_set: true, local: true, ...window.__auth }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    };
 })();`;
 
 (async () => {
@@ -65,6 +70,23 @@ const FAKE = `(() => {
         await ev(`window.__auth = {}; true`); await recheck();
         assert.equal(await shown(), false, 'field missing (an older server): hidden');
         ok('strict on hides it, off shows it again, a missing field hides it');
+
+        // A failed poll is not an answer: the banner stays as it is, shown or hidden (Security's #4291 follow-up).
+        await ev(`window.__auth = { strict_local_auth: false }; true`); await recheck();
+        assert.equal(await shown(), true);
+        for (const mode of ['500', 'throw', 'badjson']) {
+            await ev(`window.__authMode = ${JSON.stringify(mode)}; true`); await recheck();
+            assert.equal(await shown(), true, `a failed poll (${mode}) leaves a shown banner shown`);
+        }
+        await ev(`window.__authMode = 'ok'; window.__auth = { strict_local_auth: true }; true`); await recheck();
+        assert.equal(await shown(), false);
+        for (const mode of ['500', 'throw', 'badjson']) {
+            await ev(`window.__authMode = ${JSON.stringify(mode)}; true`); await recheck();
+            assert.equal(await shown(), false, `a failed poll (${mode}) does not show a hidden banner`);
+        }
+        await ev(`window.__authMode = 'ok'; window.__auth = { strict_local_auth: false }; true`); await recheck();
+        assert.equal(await shown(), true, 'and a good answer still changes it');
+        ok('a failed poll (500, network error, bad JSON) leaves the banner as it is, shown or hidden');
 
         // The agent pop-out (/agent/<uuid>) runs the same startup: the banner shows there too and does not break its layout.
         const UUID = require('node:crypto').randomUUID();

@@ -9,18 +9,23 @@ import { pollEvery } from './overload.js';
 const CHECK_MS = 60000;
 let started = false;
 
+/** true (sign-in is off), false (on, or this server does not say), or null when the answer could not be read: a failed poll (network error,
+ *  a non-ok status, a body that is not JSON) is not an answer, so it leaves the banner as it is rather than hiding a warning that is true. */
 async function localSigninOff() {
     try {
         const r = await fetch('/api/system/auth-status', { credentials: 'same-origin', cache: 'no-store' });
-        const st = r.ok ? await r.json() : null;
-        return !!st && st.strict_local_auth === false;
-    } catch { return false; }
+        if (!r.ok) return null;
+        const st = await r.json();
+        if (!st || typeof st !== 'object') return null;
+        return st.strict_local_auth === false;
+    } catch { return null; }
 }
 
 export async function checkLocalAuthBanner() {
     const banner = document.getElementById('local-auth-banner');
     if (!banner || isCloud()) return;
     const off = await localSigninOff();
+    if (off === null) return;
     if (banner.hidden === off) banner.hidden = !off; // only a change touches it
 }
 
