@@ -120,6 +120,19 @@ func TerminalKind(t ptymanager.SessionTerminal) string {
 	return "unknown"
 }
 
+// generateJobTTL is how long a team-generation job's result is kept.
+const generateJobTTL = 10 * time.Minute
+
+// pruneGenerateJobsLocked drops the jobs older than generateJobTTL, when a job is added or asked
+// for. A goroutine per SystemHandler swept them every minute and never ended (#4167, goleak).
+func (h *SystemHandler) pruneGenerateJobsLocked() {
+	for id, job := range h.generateJobs {
+		if time.Since(job.CreatedAt) > generateJobTTL {
+			delete(h.generateJobs, id)
+		}
+	}
+}
+
 // NewSystemHandler creates a SystemHandler.
 func NewSystemHandler(db *store.DB, cfg *config.Config) *SystemHandler {
 	h := &SystemHandler{
@@ -128,20 +141,6 @@ func NewSystemHandler(db *store.DB, cfg *config.Config) *SystemHandler {
 		cfg:          cfg,
 		generateJobs: make(map[string]*generateJob),
 	}
-	// Cleanup expired generation jobs every minute
-	go func() {
-		defer safego.Recover("server/routes/system:127")
-		for {
-			time.Sleep(time.Minute)
-			h.generateJobsMu.Lock()
-			for id, job := range h.generateJobs {
-				if time.Since(job.CreatedAt) > 10*time.Minute {
-					delete(h.generateJobs, id)
-				}
-			}
-			h.generateJobsMu.Unlock()
-		}
-	}()
 	h.models = h.newAgentModels()
 	return h
 }
@@ -1375,6 +1374,7 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 	job := &generateJob{Status: "pending", CreatedAt: time.Now()}
 
 	h.generateJobsMu.Lock()
+	h.pruneGenerateJobsLocked()
 	h.generateJobs[jobID] = job
 	h.generateJobsMu.Unlock()
 
@@ -1413,6 +1413,7 @@ func (h *SystemHandler) GenerateTeamStatus(w http.ResponseWriter, r *http.Reques
 	jobID := chi.URLParam(r, "jobId")
 
 	h.generateJobsMu.Lock()
+	h.pruneGenerateJobsLocked()
 	job, ok := h.generateJobs[jobID]
 	h.generateJobsMu.Unlock()
 
