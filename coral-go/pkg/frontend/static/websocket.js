@@ -4,7 +4,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { signInUrl } from './cloud.js';
 import { feedRetryDelay, isStalenessDrift, DRIFT_RENDER_MAX_AGE_MS } from './feed_pacing.js';
-import { scheduleLiveSessionsRender, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateSessionModel, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
+import { scheduleLiveSessionsRender, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateSessionModel, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass, applyTerminalDot } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -319,7 +319,7 @@ export function handleCoralMessage(data) {
                     updateChangedFileCount(s.changed_file_count || 0);
                     // Update terminal header status dot
                     const termDot = document.getElementById('terminal-status-dot');
-                    if (termDot) termDot.className = terminalDotClass(s);
+                    applyTerminalDot(termDot, s);
                     popoutUpdateFromSession(s);
                     // The agent went to sleep or woke up elsewhere (sidebar, team
                     // wake): select it again so the terminal attaches or the

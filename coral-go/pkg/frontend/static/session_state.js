@@ -160,6 +160,19 @@ export function terminalDotClass(s) {
     return `terminal-status-dot ${sessionStateInfo(s || {}).dot}`;
 }
 
+/** The agent header's status dot (#4327, from the #4276 audit): its class, its tip and its accessible name all say the state in the sidebar's
+ *  words, so it is not colour only. The word beside it (drawn on touch screens, which have no hover for the tip) is aria-hidden: read once. */
+export function applyTerminalDot(dot, s) {
+    if (!dot) return;
+    const info = sessionStateInfo(s || {});
+    dot.className = terminalDotClass(s);
+    dot.title = info.label;
+    dot.setAttribute('role', 'img');
+    dot.setAttribute('aria-label', info.label);
+    const word = document.getElementById('terminal-state-word');
+    if (word) word.textContent = info.label;
+}
+
 export function getMobileStatusChip(s) {
     const info = sessionStateInfo(s);
     return { label: info.label, className: info.chip };

@@ -1690,6 +1690,8 @@
 
 /* Selected-agent header: the identity may shrink; the actions on the right
    never do. */
+.terminal-state-word { display: none; flex: none; font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; } /* #4327: the state in words where there is no hover (touch screens wider than a phone) */
+@media (pointer: coarse) and (min-width: 768px) { .terminal-state-word:not(:empty) { display: inline; } }
 .terminal-header-left {
     flex: 1 1 auto;
     /* The identity keeps room (dot + at least ~120px of name) while the folder/branch in the actions shrink first. */
