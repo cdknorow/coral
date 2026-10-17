@@ -63,10 +63,12 @@ export function attachDialogFocus(dialog) {
         dialog._focusOpener = null;
         // Only when focus was left in the closed dialog or dropped to the page: never take it
         // from something the close itself moved it to, or put it behind another dialog opened from
-        // this one (Settings' Themes and Default Prompts buttons).
+        // this one (Settings' Themes and Default Prompts buttons). Back into a dialog that is still
+        // open is right: a confirmation asked from Settings, cancelled or escaped, gives focus back to
+        // the button in Settings that asked (it dropped to the page: UX on #4500).
         const now = document.activeElement;
-        const otherOpen = [...document.querySelectorAll('.modal')].some(m => m !== dialog && isShown(m) && m.getClientRects().length > 0);
-        if (back && !otherOpen && (!now || now === document.body || dialog.contains(now))) back.focus();
+        const behind = [...document.querySelectorAll('.modal')].some(m => m !== dialog && isShown(m) && m.getClientRects().length > 0 && !m.contains(back));
+        if (back && !behind && (!now || now === document.body || dialog.contains(now))) back.focus();
     };
     new MutationObserver(() => {
         const now = isShown(dialog);
