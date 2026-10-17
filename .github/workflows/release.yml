@@ -59,6 +59,16 @@ jobs:
           go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
 
+      # Go checks a module against go.sum only when it downloads it, not when it reuses a cached
+      # copy: re-hash every restored module (Security's MUST on #4251).
+      - name: Verify the restored modules against go.sum
+        working-directory: coral-go
+        run: |
+          set -euo pipefail
+          out="$(go mod verify 2>&1)" || true
+          echo "$out"
+          [ "$out" = "all modules verified" ] || { echo "::error::go mod verify: the module cache does not match go.sum"; exit 1; }
+
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
 
