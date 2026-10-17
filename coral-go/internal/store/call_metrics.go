@@ -116,11 +116,22 @@ func (d *DB) callMetricLoop(b *callMetricBuffer) {
 		case <-t.C:
 		case <-b.kick:
 		case <-b.stop:
-			d.logCallMetricFlush(d.FlushCallMetrics(context.Background()))
+			d.finalCallMetricFlush()
 			return
 		}
 		d.logCallMetricFlush(d.FlushCallMetrics(context.Background()))
 	}
+}
+
+// callMetricCloseTimeout bounds the flush at shutdown (#4299): a write connection held
+// elsewhere must not hold up Close for SQLite's 30 s busy timeout, or longer.
+var callMetricCloseTimeout = 5 * time.Second
+
+// finalCallMetricFlush writes what is queued when the DB closes, within callMetricCloseTimeout.
+func (d *DB) finalCallMetricFlush() {
+	ctx, cancel := context.WithTimeout(context.Background(), callMetricCloseTimeout)
+	defer cancel()
+	d.logCallMetricFlush(d.FlushCallMetrics(ctx))
 }
 
 func (d *DB) logCallMetricFlush(err error) {
@@ -253,7 +264,7 @@ func (d *DB) closeCallMetrics() {
 		started := true
 		b.start.Do(func() { started = false })
 		if !started {
-			d.logCallMetricFlush(d.FlushCallMetrics(context.Background()))
+			d.finalCallMetricFlush()
 			return
 		}
 		close(b.stop)

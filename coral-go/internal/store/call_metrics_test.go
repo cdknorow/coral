@@ -130,6 +130,28 @@ func TestCloseFlushesQueuedCallMetrics(t *testing.T) {
 	assert.Equal(t, 3, countCallMetrics(t, db))
 }
 
+// #4299: the flush at shutdown gives up after callMetricCloseTimeout when the write connection
+// is held, instead of holding up Close until it is free.
+func TestCloseFlushOfCallMetricsHasADeadline(t *testing.T) {
+	setCallMetricLimits(t, time.Hour, 1000, 1000)
+	old := callMetricCloseTimeout
+	callMetricCloseTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { callMetricCloseTimeout = old })
+	db := openTestDB(t)
+	db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/x"})
+	tx, err := db.Beginx() // holds the only write connection
+	require.NoError(t, err)
+	defer tx.Rollback()
+
+	done := make(chan struct{})
+	go func() { db.closeCallMetrics(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("closing waited for the write connection past the deadline")
+	}
+}
+
 func TestCallMetricQueueIsBounded(t *testing.T) {
 	setCallMetricLimits(t, time.Hour, 1000, 3)
 	db := openTestDB(t)
