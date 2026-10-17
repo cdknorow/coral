@@ -942,6 +942,23 @@ stays blocked if another prerequisite is unmet, otherwise it becomes pending and
 assignee is notified. Draft tasks stay draft; started or finished tasks cannot have
 their prerequisites removed. These commands do not complete or cancel upstream tasks.
 
+### Park a Task
+
+```
+POST   /api/board/{project}/tasks/{id}/park   {"reason": "waiting on the operator", "until": "2026-10-19T21:58:00Z"}
+DELETE /api/board/{project}/tasks/{id}/park
+coral-board task park <id> --reason "why" [--until "2026-10-19 21:58" | 2026-10-19 | 21:58 | 3d]
+coral-board task unpark <id>
+```
+
+Sets an open task aside on purpose: while it is parked it gets no reminder, no claim or status
+nudge, and no item in the orchestrator's health check. It keeps its status, owner and review
+state (`parked_reason` and `parked_until` on the task). It comes back by itself when `until`
+passes (at most 90 days ahead), or with unpark. Only the team's orchestrator (by its own agent
+token) or the Operator may park or unpark: an agent can't park its own task to hide that it is
+stuck (**403**). The reason is stored cleaned (one line, at most 120 characters, no secrets, no
+`@`); the board line says who parked it and until when, never the reason.
+
 ### Task Status Workflow
 
 ```

@@ -164,8 +164,8 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 		}
 		var mine, pending []board.Task
 		for _, t := range tasks {
-			if t.AssignedTo == nil || !board.SameIdentity(*t.AssignedTo, sub.SubscriberID) {
-				continue
+			if t.AssignedTo == nil || !board.SameIdentity(*t.AssignedTo, sub.SubscriberID) || t.Parked(now) {
+				continue // a parked task is set aside on purpose: no nudge for it (#4175 step 3)
 			}
 			switch t.Status {
 			case "in_progress":

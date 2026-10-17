@@ -757,6 +757,9 @@ func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
 				if getErr != nil || current == nil || current.AssignedTo == nil || (current.Status != "pending" && current.Status != "in_progress") {
 					return
 				}
+				if current.Parked(time.Now()) {
+					continue // parked: no reminder while it is (#4175 step 3)
+				}
 				_ = h.sendTaskNudge(ctx, project, *current.AssignedTo, fmt.Sprintf("[Task #%d reminder] %s — periodic reminder; run 'coral-board task current' or 'coral-board task claim'.", current.ID, oneLineTitle(current.Title)))
 			case <-ctx.Done():
 				return

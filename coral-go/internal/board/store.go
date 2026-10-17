@@ -50,29 +50,33 @@ type GroupInfo struct {
 
 // Task represents a board task.
 type Task struct {
-	ID                int64        `db:"id" json:"id"`
-	Revision          int          `db:"revision" json:"revision"`
-	BoardID           string       `db:"board_id" json:"board_id"`
-	BoardLabel        string       `db:"-" json:"board_label,omitempty"` // filled where a list spans boards (#3536)
-	Title             string       `db:"title" json:"title"`
-	Body              *string      `db:"body" json:"body,omitempty"`
-	Status            string       `db:"status" json:"status"`
-	Priority          string       `db:"priority" json:"priority"`
-	CreatedBy         string       `db:"created_by" json:"created_by"`
-	AssignedTo        *string      `db:"assigned_to" json:"assigned_to"`
-	CompletedBy       *string      `db:"completed_by" json:"completed_by"`
-	CompletionMessage *string      `db:"completion_message" json:"completion_message,omitempty"`
-	CreatedAt         string       `db:"created_at" json:"created_at"`
-	ClaimedAt         *string      `db:"claimed_at" json:"claimed_at,omitempty"`
-	CompletedAt       *string      `db:"completed_at" json:"completed_at,omitempty"`
-	SessionID         *string      `db:"session_id" json:"session_id,omitempty"`
-	CostUSD           *float64     `db:"cost_usd" json:"cost_usd,omitempty"`
-	InputTokens       *int         `db:"input_tokens" json:"input_tokens,omitempty"`
-	OutputTokens      *int         `db:"output_tokens" json:"output_tokens,omitempty"`
-	CacheReadTokens   *int         `db:"cache_read_tokens" json:"cache_read_tokens,omitempty"`
-	CacheWriteTokens  *int         `db:"cache_write_tokens" json:"cache_write_tokens,omitempty"`
-	BlockedBy         []TaskDep    `db:"-" json:"blocked_by,omitempty"`
-	Workflow          TaskWorkflow `db:"-" json:"workflow"`
+	ID                int64    `db:"id" json:"id"`
+	Revision          int      `db:"revision" json:"revision"`
+	BoardID           string   `db:"board_id" json:"board_id"`
+	BoardLabel        string   `db:"-" json:"board_label,omitempty"` // filled where a list spans boards (#3536)
+	Title             string   `db:"title" json:"title"`
+	Body              *string  `db:"body" json:"body,omitempty"`
+	Status            string   `db:"status" json:"status"`
+	Priority          string   `db:"priority" json:"priority"`
+	CreatedBy         string   `db:"created_by" json:"created_by"`
+	AssignedTo        *string  `db:"assigned_to" json:"assigned_to"`
+	CompletedBy       *string  `db:"completed_by" json:"completed_by"`
+	CompletionMessage *string  `db:"completion_message" json:"completion_message,omitempty"`
+	CreatedAt         string   `db:"created_at" json:"created_at"`
+	ClaimedAt         *string  `db:"claimed_at" json:"claimed_at,omitempty"`
+	CompletedAt       *string  `db:"completed_at" json:"completed_at,omitempty"`
+	SessionID         *string  `db:"session_id" json:"session_id,omitempty"`
+	CostUSD           *float64 `db:"cost_usd" json:"cost_usd,omitempty"`
+	InputTokens       *int     `db:"input_tokens" json:"input_tokens,omitempty"`
+	OutputTokens      *int     `db:"output_tokens" json:"output_tokens,omitempty"`
+	CacheReadTokens   *int     `db:"cache_read_tokens" json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens  *int     `db:"cache_write_tokens" json:"cache_write_tokens,omitempty"`
+	// ParkedReason and ParkedUntil: a parked task (#4175 step 3, park.go). Read where the health
+	// rules and the task views need them; nil elsewhere.
+	ParkedReason *string      `db:"parked_reason" json:"parked_reason,omitempty"`
+	ParkedUntil  *string      `db:"parked_until" json:"parked_until,omitempty"`
+	BlockedBy    []TaskDep    `db:"-" json:"blocked_by,omitempty"`
+	Workflow     TaskWorkflow `db:"-" json:"workflow"`
 }
 
 type TaskDep struct {
@@ -452,6 +456,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_messages ADD COLUMN origin TEXT",
 		"ALTER TABLE board_messages ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE board_messages ADD COLUMN hub_user TEXT",
+		"ALTER TABLE board_tasks ADD COLUMN parked_reason TEXT",
+		"ALTER TABLE board_tasks ADD COLUMN parked_until TEXT",
 	}
 	for _, ddl := range alterColumns {
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
@@ -1965,7 +1971,7 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 func (s *Store) getTaskByID(ctx context.Context, project string, taskID int64) (*Task, error) {
 	var t Task
 	err := s.reader().GetContext(ctx, &t,
-		"SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
+		"SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
 	if err != nil {
 		return nil, err
 	}
@@ -2067,7 +2073,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 	var tasks []Task
 	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks WHERE board_id = ?
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until FROM board_tasks WHERE board_id = ?
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
 		project)
 	if err != nil {
@@ -2086,7 +2092,7 @@ func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 func (s *Store) ListOpenTasks(ctx context.Context, project string) ([]Task, error) {
 	var tasks []Task
 	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until FROM board_tasks
 		 WHERE board_id = ? AND status IN ('pending', 'in_progress', 'blocked', 'draft')
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
 		project)
@@ -2127,7 +2133,7 @@ func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 	}
 	var tasks []Task
 	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until FROM board_tasks
 		 ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -2435,6 +2441,7 @@ func (s *Store) IdleTasks(ctx context.Context, project string, before time.Time)
 		completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens,
 		cache_write_tokens FROM board_tasks
 		WHERE board_id = ? AND status = 'in_progress' AND COALESCE(last_activity_at, claimed_at) IS NOT NULL
+		AND NOT `+parkedSQL+`
 		AND COALESCE(last_activity_at, claimed_at) < ?
 		AND (idle_snoozed_until IS NULL OR idle_snoozed_until <= ?)`, project, before.UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339))
 	return tasks, err

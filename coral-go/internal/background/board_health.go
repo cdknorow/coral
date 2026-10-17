@@ -154,9 +154,19 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 	if err != nil {
 		return "", 0, err
 	}
-	tasks, err := m.store.ListOpenTasks(ctx, project)
+	all, err := m.store.ListOpenTasks(ctx, project)
 	if err != nil {
 		return "", 0, err
+	}
+	// A parked task raises no item (#4175 step 3): it is left out of everything below.
+	var tasks []board.Task
+	parked := map[string]bool{}
+	for _, t := range all {
+		if t.Parked(now) {
+			parked[fmt.Sprint(t.ID)] = true
+			continue
+		}
+		tasks = append(tasks, t)
 	}
 	waits, _ := m.store.ListActiveWaits(ctx, project)
 	waiting := map[string]bool{}
@@ -175,6 +185,9 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 	// 1. What Coral's own rules escalated.
 	if esc, err := m.store.HealthEscalations(ctx, project); err == nil {
 		for _, e := range esc {
+			if parked[e.Subject] {
+				continue
+			}
 			at, _ := time.Parse("2006-01-02T15:04:05.000Z", e.At)
 			ago := teamhealth.Age(now.Sub(at))
 			switch e.Rule {
@@ -227,6 +240,13 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 	}
 	sort.Strings(names)
 	for _, r := range names {
+		var open []int64
+		for _, id := range reviews[r] {
+			if !parked[fmt.Sprint(id)] {
+				open = append(open, id)
+			}
+		}
+		reviews[r] = open
 		if len(reviews[r]) < 3 {
 			continue
 		}

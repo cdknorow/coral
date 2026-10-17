@@ -50,6 +50,13 @@ func ShownText(text string, rd redact.Redactor) string {
 	return quotedLabel + s
 }
 
+// StoredText is agent-authored text Coral keeps and shows later (a task's park reason, #4175 step
+// 3): ShownText's rules (invisibles dropped, redacted, first line, @ neutralised, at most
+// MaxShown characters) without its "quoted: " label, which the place that shows it adds.
+func StoredText(text string, rd redact.Redactor) string {
+	return strings.TrimPrefix(ShownText(text, rd), quotedLabel)
+}
+
 // dropInvisibles removes escape sequences, control and format (bidi, zero-width, soft hyphen)
 // characters and combining marks (accents, variation selectors, the grapheme joiner), keeping the line breaks, which the first-line cut needs.
 func dropInvisibles(s string) string {

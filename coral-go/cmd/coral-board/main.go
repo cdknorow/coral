@@ -1666,6 +1666,8 @@ Subcommands:
 		cmdTaskUnblock(st, taskArgs)
 	case "amend":
 		cmdTaskAmend(st, taskArgs)
+	case "park", "unpark":
+		cmdTaskPark(st, taskArgs, sub == "unpark")
 	case "--help", "-h", "help":
 		fmt.Println(taskUsageText)
 		os.Exit(0)
@@ -1693,6 +1695,9 @@ Subcommands:
   cancel <id> [--message "reason"]
   reassign <id> [--to "Agent Name"]
   unblock <id> (--blocker ID | --all) Remove one or all prerequisites (orchestrator only)
+  park <id> --reason "why" [--until DATE]  Set a task aside: no reminders, nudges or check items for it until
+                                   it is unparked or DATE passes (orchestrator or Operator only)
+  unpark <id>                      Bring a parked task back
   amend <id> --revision N --reason "..." [--body "..." --workflow-instructions "..." --completion-gates JSON (experimental, disabled by default; "[]" clears)]
 
 Workflow options for add:
