@@ -113,6 +113,8 @@ func (s *Server) useMiddleware(r *chi.Mux) {
 		s.identity.SetStrict()
 	}
 	r.Use(s.identity.Middleware)
+	// Nobody but the Operator writes as the Operator; after the identity binding, so its 403 stands (#4207).
+	r.Use(routes.RejectOperatorImpersonation)
 	// A board's name in /api/board/<key>/... resolves to its id (#3536), after the identity
 	// checks so only an authenticated caller sees an ambiguity's candidates.
 	r.Use(routes.BoardKeyResolver(s.boardStore))

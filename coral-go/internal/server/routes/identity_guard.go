@@ -10,6 +10,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -77,13 +78,50 @@ func RejectBadIdentities(next http.Handler) http.Handler {
 						errBadRequest(w, f+" "+strconvQuote(s)+" is reserved for Coral's own messages")
 						return
 					}
-					// The Operator's name: the dashboard and the signed command line write as exactly
-					// "Operator"; an agent's tool does not, and no caller writes a look-alike spelling
-					// of it (#4207). Fields that only name someone (assignee, target) are not asked.
-					if selfIdentityFields[f] && board.IsOperatorName(s) && (strings.TrimSpace(s) != board.OperatorName || isAgentCaller(r)) {
-						errBadRequest(w, f+" "+strconvQuote(s)+" is reserved for the Operator")
-						return
-					}
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RejectOperatorImpersonation refuses a board or agent-task write that says it is from the
+// Operator when it is not (#4207). It runs after the identity layer, so a request an agent
+// token's identity binding already refused (403 identity_mismatch) is answered by that, and
+// before the handlers. The dashboard and the signed command line write as exactly "Operator"; an
+// agent's tool (a session token, or the agent command line without the Operator's signature)
+// does not, and no local caller writes another spelling of it. A request that came through
+// Coral Hub is left to the tunnel's own identity guard (TunnelIdentityGuard), which accepts the
+// Hub operator's spellings and attributes the post to the Hub user.
+func RejectOperatorImpersonation(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (!strings.HasPrefix(r.URL.Path, "/api/board/") && !strings.HasPrefix(r.URL.Path, "/api/agent/")) || cloud.Tunneled(r) ||
+			r.Body == nil || r.Body == http.NoBody || (r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		raw, err := io.ReadAll(r.Body)
+		r.Body.Close()
+		if err != nil {
+			errBadRequest(w, "could not read the request body")
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		var body map[string]json.RawMessage
+		if json.Unmarshal(raw, &body) == nil {
+			for f := range selfIdentityFields {
+				v, ok := body[f]
+				if !ok {
+					continue
+				}
+				var s string
+				if json.Unmarshal(v, &s) != nil {
+					continue
+				}
+				// Fields that only name someone (assignee, target) are not asked.
+				if board.IsOperatorName(s) && (strings.TrimSpace(s) != board.OperatorName || isAgentCaller(r)) {
+					errBadRequest(w, f+" "+strconvQuote(s)+" is reserved for the Operator")
+					return
 				}
 			}
 		}
