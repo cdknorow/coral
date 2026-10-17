@@ -115,12 +115,28 @@ jobs:
           by = lambda s: sorted(r['test'] for r in rows if r['status'] == s)
           failed, flaky = by('fail') + by('timeout'), by('flaky')
           passed = len(rows) - len(failed) - len(flaky)
-          lines = [f"{passed}/{len(rows)} suites passed" + (f", {len(flaky)} FLAKY" if flaky else "") + (f", {len(failed)} FAILED" if failed else "")]
+          # The runner's end checks are not suites: the #4354 sandbox (a real agent CLI was
+          # invoked) and a leaked tmux server fail a part with every suite passed, so read
+          # each part's run.log for them too (a 238/238 count once hid six failed parts).
+          ends = []
+          for f in sorted(glob.glob('parts/*/run.log')):
+              part, block = f.split('/')[1], None
+              for line in open(f, errors='replace'):
+                  line = line.rstrip('\n')
+                  if line.startswith('FAIL (#4354)') or line.startswith('LEAK:'):
+                      block = [line]; ends.append((part, block)); continue
+                  if block is not None:
+                      if not line.strip() or line.startswith('results:'): block = None
+                      elif len(block) < 6: block.append(line)
+          green = os.environ['PARTS_RESULT'] == 'success' and not (failed or flaky or ends)
+          lines = [("green: " if green else "NOT green: ") + f"{passed}/{len(rows)} suites passed" + (f", {len(flaky)} FLAKY" if flaky else "") + (f", {len(failed)} FAILED" if failed else "") + (f", {len(ends)} end-check failure(s)" if ends else "") + f"; parts: {os.environ['PARTS_RESULT']}"]
           if flaky: lines.append("FLAKY: " + ", ".join(flaky))
           if failed: lines.append("FAILED: " + ", ".join(failed))
+          for part, block in ends: lines.append(f"{part}: " + " / ".join(block))
           print("\n".join(lines))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as s:
               s.write("## cdp-gate\n\n" + "\n\n".join(lines) + "\n")
+          raise SystemExit(0 if green else 1)
           PY
           echo "parts: $PARTS_RESULT"
           [ "$PARTS_RESULT" = success ]
