@@ -151,12 +151,16 @@ const BASE = require('./test_base').BASE;
     await ev(`document.querySelector('#team-availability-dialog header button').click()`);
     await ev(`new Promise(r => setTimeout(r, 50))`);
 
-    // 5. Open Team settings (showTeamWorkingMode) and verify settings + health monitor
+    // 5. Open Team settings (showTeamWorkingMode) and verify settings + health monitor.
+    // Save sends only what changed (#4423): the global switch is stored off first, so turning it on below is a change
+    // whatever an earlier suite left (a fresh server has no value, which the dialog shows as on).
+    await ev(`fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ board_health_monitor: 'false' }) }).then(r => r.status)`);
     await ev(`(async () => {
       const modeModule = await import((window.__coralStatic||'/static/')+'team_working_mode.js');
       modeModule.showTeamWorkingMode('test-team');
     })()`);
-    await ev(`new Promise(r => setTimeout(r, 100))`);
+    // Wait until the dialog has loaded what it compares a Save with, so the edits below are made after it, as a person's are.
+    await ev(`new Promise((resolve, reject) => { const t0 = Date.now(); const tick = () => { const f = document.querySelector('.working-mode-form'); if (f && f.dataset.initialState !== undefined) resolve(true); else if (Date.now() - t0 > 15000) reject(new Error('Team settings did not load')); else setTimeout(tick, 50); }; tick(); })`);
 
     const settingsTitle = await ev(`document.querySelector('#team-working-mode-dialog header h2').textContent`);
     assert.equal(settingsTitle, 'Team settings', 'Settings dialog header must be "Team settings"');
