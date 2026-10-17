@@ -59,9 +59,16 @@ jobs:
         with:
           go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
+      # mingw is pinned. OpenSSL is the runner image's own (C:\Program Files\OpenSSL), not a Chocolatey
+      # package: Chocolatey's older openssl packages download from slproweb.com, which drops old
+      # installers (3.6.2 already fails), and the image's OpenSSL is 3.6.5, the same as the macOS jobs.
+      # The build step asserts the version, so an image update that moves it fails the build on
+      # purpose; bump it together with the macOS pin (#4092 follow-up, Security's and Backend's notes).
       - name: Install isolated native dependencies
         shell: powershell
-        run: choco install mingw openssl -y
+        run: |
+          choco install mingw --version=16.1.0 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" }
       - name: Build and verify extracted Windows package
         working-directory: coral-go
         shell: powershell
@@ -95,6 +102,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "go build failed: coral-app" }
           $version = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
           if ($version -match '^(\d+)\.') { $cryptoMajor = $Matches[1] } else { throw "unrecognized OpenSSL version: $version" }
+          # The pin (see the dependencies step): the image's OpenSSL must be exactly 3.6.5, and the link
+          # library must be its own, in C:\Program Files\OpenSSL.
+          $expectedOpenSSL = "3.6.5"
+          if ($version -ne $expectedOpenSSL) { throw "OpenSSL is $version, expected $expectedOpenSSL (the runner image moved it: bump with the macOS pin)" }
+          if (-not $opensslImport.FullName.StartsWith("$opensslRoot\")) { throw "OpenSSL link library $($opensslImport.FullName) is not under $opensslRoot" }
           $dllName = "libcrypto-${cryptoMajor}-x64.dll"
           $sourceDll = Join-Path "$opensslRoot\bin" $dllName
           if (!(Test-Path $sourceDll)) { throw "matching OpenSSL DLL not found: $sourceDll" }
