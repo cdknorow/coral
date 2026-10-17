@@ -163,5 +163,8 @@ func (ar *Routes) AuthStatus(w http.ResponseWriter, r *http.Request) {
 		"method":        method,
 		"password_set":  ar.ks.PasswordSet(),
 		"local":         localOperator(r),
+		// strict_local_auth (#4290): false means any program on this computer can use Coral
+		// without a credential; the dashboard says so in a banner.
+		"strict_local_auth": ar.strictLocal,
 	})
 }

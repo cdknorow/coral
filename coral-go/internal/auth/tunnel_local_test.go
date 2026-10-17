@@ -66,11 +66,13 @@ func TestTunnelStampIsNeverLocal(t *testing.T) {
 	}
 	st := status(req("GET", "/api/system/auth-status", false))
 	assert.Equal(t, false, st["authenticated"], "strict: locality is not a credential")
+	assert.Equal(t, true, st["strict_local_auth"], "strict on is reported (#4290)")
 	assert.Equal(t, "none", st["method"])
 	r := req("GET", "/api/system/auth-status", false)
 	r.Header.Set("X-API-Key", ks.Key())
 	assert.Equal(t, "key", status(r)["method"])
 	ar.SetStrictLocal(false)
+	assert.Equal(t, false, status(req("GET", "/api/system/auth-status", false))["strict_local_auth"], "strict off is reported (#4290)")
 	assert.Equal(t, "localhost", status(req("GET", "/api/system/auth-status", false))["method"], "opt-out: as before")
 	assert.Equal(t, "none", status(req("GET", "/api/system/auth-status", true))["method"], "never for the tunnel")
 }
