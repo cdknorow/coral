@@ -338,6 +338,7 @@ b PUT /api/board/{project}/working-mode/presets/{presetID}
 b PUT /api/cloud/allow-auto-accept
 b PUT /api/cloud/max-mode
 b PUT /api/cloud/redact-tokens
+b PUT /api/system/identity-actor
 b PUT /api/remote/{server}/*
 b PUT /api/scheduled/jobs/{jobID}
 b PUT /api/sessions/history/{sessionID}/notes

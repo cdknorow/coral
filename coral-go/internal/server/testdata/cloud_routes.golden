@@ -332,6 +332,7 @@ PUT /api/settings/git-diff-mode interact
 PUT /api/system/database-security never
 PUT /api/system/hub-mode never
 PUT /api/system/hub-operator never
+PUT /api/system/identity-actor never
 PUT /api/system/terminal-backend never
 PUT /api/teams/detail/{name}/knowledge/{agentName} never
 PUT /api/themes/{name} never
