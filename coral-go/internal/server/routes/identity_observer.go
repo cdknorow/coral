@@ -178,7 +178,9 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 		// (boardClaims) for an agent's token, and the handler's decoder for every caller, token or
 		// not (#3668 finding 5, #3695). A declared length over the cap is refused here with 413; a
 		// chunked body is cut at the cap, so its handler fails to decode it.
-		if r.Body != nil && strings.HasPrefix(r.URL.Path, "/api/board/") {
+		// The relayed file route is the exception (#4453): its body is a file frame, with its own bounds
+		// (bodyLimits, and the handler's checks on the declared length before a byte is read).
+		if r.Body != nil && strings.HasPrefix(r.URL.Path, "/api/board/") && !isRelayedFileRoute(r) {
 			if r.ContentLength > maxBoardBody {
 				o.refuse(w, http.StatusRequestEntityTooLarge, "body_too_large", "This board request's body is over the limit")
 				return
@@ -960,6 +962,16 @@ func boardClaims(r *http.Request) (map[string][]string, error) {
 		}
 	}
 	return claims, nil
+}
+
+// isRelayedFileRoute: POST /api/board/{project}/external-artifacts, the file another Coral sends through
+// Coral Hub. Its body is a binary frame of up to 8 MiB, not a JSON request about a board.
+func isRelayedFileRoute(r *http.Request) bool {
+	if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/api/board/") || !strings.HasSuffix(r.URL.Path, "/external-artifacts") {
+		return false
+	}
+	project := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/board/"), "/external-artifacts")
+	return project != "" && !strings.Contains(project, "/")
 }
 
 // maxBoardBody caps a board request's body before the identity check reads it (a board post or

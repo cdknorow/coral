@@ -44,6 +44,7 @@ func CanonicalIdentityKeys(next http.Handler) http.Handler {
 		// An artifact upload is the raw file, not a request body about a board.
 		if (!strings.HasPrefix(r.URL.Path, "/api/board/") && !strings.HasPrefix(r.URL.Path, "/api/agent/")) ||
 			strings.HasPrefix(r.URL.Path, "/api/agent/artifacts") ||
+			isRelayedFileRoute(r) || // a file frame (#4453)
 			r.Body == nil || r.Body == http.NoBody {
 			next.ServeHTTP(w, r)
 			return

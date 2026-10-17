@@ -23,6 +23,9 @@ var bodyLimits = map[string]int64{
 	"POST /api/upload":                           maxFileSize + 1<<20,      // a 20 MB image plus multipart framing
 	"POST /api/agent/artifacts":                  maxAgentArtifactSize + 1, // the artifact's own limit
 	"PUT /api/sessions/live/{name}/file-content": 50 << 20,                 // the editor's save (SaveFileContent's own cap)
+	// A file another Coral sends through Coral Hub: the frame is a 4-byte length, the metadata and the file
+	// (the handler refuses a declared length over this before it reads a byte, #4453).
+	"POST /api/board/{project}/external-artifacts": 4 + maxReceivedMeta + maxReceivedArtifact,
 }
 
 // BodyLimitKeys lists the routes with a raised limit (tests).
