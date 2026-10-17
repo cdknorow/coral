@@ -8,6 +8,7 @@
 
 import { showToast } from './utils.js';
 import { isCloud } from './server_base.js';
+import { isSignedOut } from './overload.js';
 import { showConfirmModal } from './render.js';
 import { state } from './state.js';
 import { browserSession } from './safe_storage.js';
@@ -235,6 +236,7 @@ export function watchAutoWake() {
     if (isCloud()) return;
     let tries = 0;
     const look = async () => {
+        if (isSignedOut()) return; // the wait every poller keeps while signed out; the page reloads when the user signs in (a stray request landed in auth_redirect's quiet window)
         tries++;
         let st;
         try { st = await autoWakeStatus(); } catch { return; }

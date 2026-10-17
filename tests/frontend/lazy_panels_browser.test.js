@@ -26,7 +26,8 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
     const waitForSeen = async (pred, what, ms = 8000) => { const end = Date.now() + ms; while (Date.now() < end && !seen.some(pred)) await sleep(20); };
     let plan = {};
     const held = [];
-    const modOf = url => { const m = url.match(/\/static\/(?:b\/[^/]+\/)?([a-z_]+\.js)(\?[^#]*)?$/); return m ? m[1] + (m[2] || '') : null; };
+    // (/static/b/<build>/ or the bundled family's /static/bb/<build>/, #4228)
+    const modOf = url => { const m = url.match(/\/static\/(?:bb?\/[^/]+\/)?([a-z_]+\.js)(\?[^#]*)?$/); return m ? m[1] + (m[2] || '') : null; };
     Network.requestWillBeSent(e => { const m = modOf(e.request.url); if (m) seen.push(m); else if (/\/api\/workflows/.test(e.request.url)) seen.push('API ' + e.request.url.replace(/^.*\/api\//, '/api/')); });
     Fetch.requestPaused(async e => {
         const m = modOf(e.request.url) || '';
