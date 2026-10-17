@@ -15,6 +15,7 @@ import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from 
 import { storeKey, onAccountForgotten } from './local_store.js';
 import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, lastContent, updateWorkGroupSummary } from './chat_content.js';
 import { flashCopied, makeBubble } from './chat_bubbles.js';
+import { unwrapPastedContent } from './pasted_content.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 import { INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, isCoralNudge, normalizeNudgeText, noteAgentActivity, noteInterrupt, rememberUserMessage, syncPendingBubbles, syncWorkingIndicator } from './pending_messages.js';
 import { browserLocal } from './safe_storage.js';
@@ -336,7 +337,7 @@ function renderOneMessage(msg, container, agentType) {
 		appendCoralNotice(container, normalizeNudgeText(msg.content), isCoralHealthNudge(msg.content));
     } else if (msg.type === "user") {
         appendContent(container, makeBubble("chat-bubble human",
-            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content, undefined, 'chat')}</div>`));
+            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>`));
     } else if (msg.type === "assistant") {
         if (msg.text) {
             const bubble = makeBubble(`chat-bubble assistant${msg.phase === "commentary" ? " commentary" : ""}`,

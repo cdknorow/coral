@@ -27,7 +27,7 @@
     margin-left: auto;
     border-radius: 18px;
     padding: 8px 16px;
-    max-width: 70%;
+    max-width: 85%;
     width: fit-content;
 }
 
@@ -722,7 +722,8 @@
     background: var(--chat-prose-human);
     color: var(--text-primary);
     margin: 28px 0 22px auto;
-    max-width: min(75%, 600px);
+    /* 85% of the 780px reading column, or of the screen when it is narrower (#4208) */
+    max-width: calc(min(100%, 780px) * 0.85);
     border: none;
     padding: 10px 16px;
 }

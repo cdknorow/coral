@@ -6,6 +6,7 @@ import { appendContent, lastContent } from './chat_content.js';
 import { deriveSessionState } from './render.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
 import { makeBubble } from './chat_bubbles.js';
+import { unwrapPastedContent } from './pasted_content.js';
 import { state } from './state.js';
 import { storeKey } from './local_store.js';
 import { browserLocal } from './safe_storage.js';
@@ -313,7 +314,7 @@ function syncPendingGroup(container, cls, items, label) {
         const summary = coralNoticeSummary(normalizeNudgeText(p.text));
         const el = coral
             ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label" role="status">${label}</span>`)
-            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(p.text, undefined, 'chat')}</div><div class="pending-label" role="status">${label}</div>`);
+            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(unwrapPastedContent(p.text), undefined, 'chat')}</div><div class="pending-label" role="status">${label}</div>`);
         el.dataset.pendingId = String(p.id);
         // Keep send order even when a message moves between groups
         const next = Array.from(wrap.children).find(c => Number(c.dataset.pendingId) > p.id);
