@@ -5,6 +5,7 @@ DELETE /api/board/{project}/groups/{groupID}/members/{sessionID} | board-claims 
 DELETE /api/board/{project}/messages/{messageID} | board-claims | operator-only
 DELETE /api/board/{project}/reminder | board-claims
 DELETE /api/board/{project}/subscribe | board-claims
+DELETE /api/board/{project}/tasks/{taskID}/park | board-claims +token-session
 DELETE /api/board/{project}/tasks/{taskID}/reminder | board-claims
 DELETE /api/board/{project}/waits | board-claims
 DELETE /api/sessions/history/{sessionID}/tags/{tagID} | unbound | operator-only
@@ -90,7 +91,7 @@ GET /api/sessions/{sessionID}/status | unbound
 PATCH /api/agent/tasks/{taskID} | token-bound
 PATCH /api/board/{project} | board-claims | operator-only
 PATCH /api/board/{project}/tasks/{taskID} | board-claims
-PATCH /api/board/{project}/tasks/{taskID}/amend | board-claims
+PATCH /api/board/{project}/tasks/{taskID}/amend | board-claims +token-session
 PATCH /api/sessions/live/{name}/notes/{noteID} | token-bound
 PATCH /api/sessions/live/{name}/tasks/{taskID} | token-bound
 POST /api/agent/artifacts | token-bound
@@ -105,6 +106,7 @@ POST /api/agent/ui/{id}/events | token-bound
 POST /api/board/remotes | board-unchecked | operator-only
 POST /api/board/{project}/external-messages | board-claims
 POST /api/board/{project}/groups/{groupID}/members | board-claims | operator-only
+POST /api/board/{project}/health/ack | board-claims +token-session
 POST /api/board/{project}/hub-notice | board-claims
 POST /api/board/{project}/messages | board-claims +token-session
 POST /api/board/{project}/messages/mark-read | board-claims
@@ -113,13 +115,14 @@ POST /api/board/{project}/relay-messages | board-claims
 POST /api/board/{project}/reminder | board-claims
 POST /api/board/{project}/resume | board-claims | operator-only
 POST /api/board/{project}/subscribe | board-claims
-POST /api/board/{project}/tasks | board-claims
+POST /api/board/{project}/tasks | board-claims +token-session
 POST /api/board/{project}/tasks/claim | board-claims
 POST /api/board/{project}/tasks/current | board-claims
 POST /api/board/{project}/tasks/{taskID}/approve | board-claims
 POST /api/board/{project}/tasks/{taskID}/cancel | board-claims
 POST /api/board/{project}/tasks/{taskID}/complete | board-claims
 POST /api/board/{project}/tasks/{taskID}/nudge | board-claims
+POST /api/board/{project}/tasks/{taskID}/park | board-claims +token-session
 POST /api/board/{project}/tasks/{taskID}/publish | board-claims
 POST /api/board/{project}/tasks/{taskID}/reassign | board-claims
 POST /api/board/{project}/tasks/{taskID}/reject | board-claims
@@ -169,7 +172,7 @@ POST /api/sessions/live/{sessionID}/sleep | unbound | operator-only
 POST /api/sessions/live/{sessionID}/unarchive | unbound | operator-only
 POST /api/sessions/live/{sessionID}/wake | unbound | operator-only
 PUT /api/agent/ui/{id} | token-bound
-PUT /api/board/{project}/settings | board-claims | operator-only
+PUT /api/board/{project}/settings | board-claims +token-session | operator-only
 PUT /api/board/{project}/working-mode | board-claims | operator-only
 PUT /api/board/{project}/working-mode/presets/{presetID} | board-claims | operator-only
 PUT /api/sessions/history/{sessionID}/notes | unbound | operator-only
