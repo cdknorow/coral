@@ -3,6 +3,10 @@
 // and runs a heartbeat loop that posts to and reads from the message board via
 // the Coral HTTP API. This keeps the tmux session alive and exercises the board.
 // Each line typed into it is echoed as "[mock-agent] input: ..." for tests.
+//
+// With --mock-transcript (or MOCK_AGENT_TRANSCRIPT=1) it also writes a Claude Code transcript
+// (transcript.go): a turn for every line typed in and one every 30 seconds, with --model's
+// model (default claude-opus-5-5), so stress and soak runs read real transcripts.
 package main
 
 import (
@@ -25,8 +29,9 @@ import (
 
 func main() {
 	// Parse flags loosely — we only need to consume them so the process doesn't error.
-	var sessionID, settingsFile string
+	var sessionID, settingsFile, model string
 	var positionalArgs []string
+	writeTranscript := os.Getenv("MOCK_AGENT_TRANSCRIPT") == "1"
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -45,6 +50,13 @@ func main() {
 				settingsFile = args[i+1]
 				i++
 			}
+		case "--model":
+			if i+1 < len(args) {
+				model = args[i+1]
+				i++
+			}
+		case "--mock-transcript":
+			writeTranscript = true
 		default:
 			if !strings.HasPrefix(args[i], "-") {
 				positionalArgs = append(positionalArgs, args[i])
@@ -124,6 +136,18 @@ func main() {
 			fmt.Sprintf("Mock agent online (session=%s)", short(sessionID)))
 	}
 
+	var tr *transcript
+	if writeTranscript {
+		if tr = newTranscript(sessionID, model); tr != nil {
+			fmt.Fprintf(os.Stderr, "[mock-agent] writing a transcript: %s\n", tr.path)
+		}
+	}
+	turn := func(prompt string) {
+		if err := tr.Turn(prompt); err != nil {
+			fmt.Fprintf(os.Stderr, "[mock-agent] transcript: %v\n", err)
+		}
+	}
+
 	// Echo every line typed into the agent (what Coral sends: prompts, task
 	// notifications) with a fixed prefix, so tests can check the pane for the
 	// exact input.
@@ -132,6 +156,7 @@ func main() {
 		sc.Buffer(make([]byte, 64*1024), 1024*1024)
 		for sc.Scan() {
 			fmt.Printf("[mock-agent] input: %s\n", sc.Text())
+			turn(sc.Text())
 		}
 	}()
 
@@ -162,6 +187,9 @@ func main() {
 			}
 			// Print to stdout so tmux pipe-pane captures activity
 			fmt.Printf("[%s] heartbeat #%d\n", time.Now().Format("15:04:05"), count)
+			if count%6 == 0 {
+				turn(fmt.Sprintf("heartbeat #%d: check the board", count))
+			}
 		}
 	}
 }
