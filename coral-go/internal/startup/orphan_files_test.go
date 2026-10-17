@@ -16,12 +16,13 @@ func TestRemoveOrphanProxyCA(t *testing.T) {
 	for _, name := range []string{"proxy-ca-key.pem", "proxy-ca.pem", "proxy-ca-bundle.pem", "proxy-ca-key.pem.bak", "other.pem"} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600))
 	}
-	assert.ElementsMatch(t, []string{"proxy-ca-key.pem", "proxy-ca.pem", "proxy-ca-bundle.pem"}, removeOrphanProxyCA(dir))
-	for _, name := range []string{"proxy-ca-key.pem", "proxy-ca.pem", "proxy-ca-bundle.pem"} {
+	assert.ElementsMatch(t, []string{"proxy-ca-key.pem", "proxy-ca.pem"}, removeOrphanProxyCA(dir))
+	for _, name := range []string{"proxy-ca-key.pem", "proxy-ca.pem"} {
 		_, err := os.Lstat(filepath.Join(dir, name))
 		assert.True(t, os.IsNotExist(err), name)
 	}
-	for _, name := range []string{"proxy-ca-key.pem.bak", "other.pem"} {
+	// The bundle stays (a pre-v1.3.14 Codex pane may still use it as SSL_CERT_FILE).
+	for _, name := range []string{"proxy-ca-bundle.pem", "proxy-ca-key.pem.bak", "other.pem"} {
 		_, err := os.Lstat(filepath.Join(dir, name))
 		assert.NoError(t, err, "%s is kept", name)
 	}

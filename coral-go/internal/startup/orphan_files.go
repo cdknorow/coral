@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 )
 
-// orphanProxyCAFiles are what the removed MITM proxy (gone in 8997a45f) left in the data folder:
-// its CA certificate, its private key and the bundle with the CA added. Nothing reads them now.
-var orphanProxyCAFiles = []string{"proxy-ca-key.pem", "proxy-ca.pem", "proxy-ca-bundle.pem"}
+// orphanProxyCAFiles are what the removed MITM proxy (gone in 8997a45f) left in the data folder
+// that nothing reads now: its CA private key and certificate. proxy-ca-bundle.pem (the system
+// roots plus that CA) stays for now: a long-lived Codex pane started before v1.3.14 may still have
+// SSL_CERT_FILE pointing at it, and removing it would break that agent's TLS. It goes two releases
+// after this one (Security's #4381 review, option a).
+var orphanProxyCAFiles = []string{"proxy-ca-key.pem", "proxy-ca.pem"}
 
 // removeOrphanProxyCA deletes those files from dataDir (#4381, Security's #4371 SHOULD 3): by their
 // exact names, and only regular files (a symlink or a folder by that name is left alone). It
