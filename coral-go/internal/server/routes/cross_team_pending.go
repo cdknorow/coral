@@ -135,10 +135,58 @@ func (h *BoardHandler) promotePending(target, src, relayID string, inboundID int
 			continue
 		}
 		p.Rec.MessageID = inboundID
+		if first, have := h.crossTeamRecord("received", target, p.Rec.ID); have {
+			h.noteAlsoReceived(first, p.Rec)
+			_ = os.Remove(path)
+			continue
+		}
 		if err := h.writeCrossTeamRecord("received", p.Rec); err != nil {
 			slog.Warn("cross-team artifact: could not record the received row", "board", target, "id", p.Rec.ID, "error", err)
 			continue
 		}
 		_ = os.Remove(path)
+	}
+}
+
+// maxAlsoReceipts bounds the later receipts kept on one row.
+const maxAlsoReceipts = 20
+
+// noteAlsoReceived adds a later receipt of the same bytes from another server or board to the row, once
+// per (server, board). The first receipt's fields are never changed.
+func (h *BoardHandler) noteAlsoReceived(first, later crossTeamArtifactRecord) {
+	h.alsoMu.Lock()
+	defer h.alsoMu.Unlock()
+	// Read again under the lock: a row may have gained an entry since it was read.
+	if cur, ok := h.crossTeamRecord("received", first.Board, first.ID); ok {
+		first = cur
+	}
+	if first.Server == later.Server && first.OtherBoard == later.OtherBoard || len(first.Also) >= maxAlsoReceipts {
+		return
+	}
+	for _, a := range first.Also {
+		if a.Server == later.Server && a.OtherBoard == later.OtherBoard {
+			return
+		}
+	}
+	first.Also = append(first.Also, crossTeamAlso{Server: later.Server, OtherBoard: later.OtherBoard, MessageID: later.MessageID, At: later.At})
+	dir := h.boardRecordDir("received", first.Board)
+	data, err := json.Marshal(first)
+	if dir == "" || err != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(dir, ".rec-*")
+	if err != nil {
+		return
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return
+	}
+	if tmp.Close() != nil {
+		return
+	}
+	if err := os.Rename(tmp.Name(), filepath.Join(dir, first.ID+".json")); err != nil {
+		slog.Warn("cross-team artifact: could not record a later receipt", "board", first.Board, "id", first.ID, "error", err)
 	}
 }

@@ -731,3 +731,64 @@ func TestReceivedFileDeletedWhilePendingIsNotListed(t *testing.T) {
 	require.Equal(t, 200, code, out)
 	assert.Empty(t, e.listed())
 }
+
+// A second source sending bytes the board already has is recorded on the row (the first source stays,
+// write-once); the same source and board again adds nothing (#4449, Security's #4438 INFO 3).
+func TestReceivedSecondSourceIsRecorded(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	_, _ = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc, otherSrc}}, false)
+	data := []byte("the same bytes from two Corals\n")
+	id := strings.TrimPrefix(sha256Of(data), "sha256:")
+
+	status, out := e.sendUnder(relaySrc, "m1", data)
+	require.Equal(t, 200, status, out)
+	code, out := e.deliver(relaySrc, "m1")
+	require.Equal(t, 200, code, out)
+	rows := e.listed()
+	require.Len(t, rows, 1)
+	assert.Empty(t, rows[0]["also_received_from"])
+
+	status, out = e.sendUnder(otherSrc, "n1", data)
+	require.Equal(t, 200, status, out)
+	code, out = e.deliver(otherSrc, "n1")
+	require.Equal(t, 200, code, out)
+	// The same source and board again (a duplicate message, a retry) adds nothing.
+	_, _ = e.sendUnder(otherSrc, "n1", data)
+	_, _ = e.deliver(otherSrc, "n1")
+	// The first source sending it again under another message adds nothing either.
+	_, _ = e.sendUnder(relaySrc, "m2", data)
+	_, _ = e.deliver(relaySrc, "m2")
+
+	rows = e.listed()
+	require.Len(t, rows, 1)
+	assert.Equal(t, relaySrc+"/alpha", rows[0]["received_from"], "the first source stands")
+	assert.Equal(t, []any{otherSrc + "/alpha"}, rows[0]["also_received_from"])
+	rec, ok := e.h.crossTeamRecord("received", "beta", id)
+	require.True(t, ok)
+	assert.Equal(t, relaySrc, rec.Server)
+	require.Len(t, rec.Also, 1)
+	assert.Equal(t, otherSrc, rec.Also[0].Server)
+	assert.NotZero(t, rec.Also[0].MessageID)
+
+	// Another board of the first source is a second sender too.
+	m := meta(data, "f.txt")
+	m["message_id"], m["from_board"] = "m3", "gamma"
+	status, out = e.send("auth", relaySrc, "", frame(m, data))
+	require.Equal(t, 200, status, out)
+	_, _ = e.deliver(relaySrc, "m3")
+	rec, _ = e.h.crossTeamRecord("received", "beta", id)
+	assert.Len(t, rec.Also, 2)
+
+	// The list is bounded.
+	for i := 0; i < maxAlsoReceipts+5; i++ {
+		m := meta(data, "f.txt")
+		m["message_id"], m["from_board"] = fmt.Sprintf("x%d", i), fmt.Sprintf("board-%d", i)
+		e.h.received.events = nil // the hourly count and the message rate are not what is tested
+		e.h.crossTeam = crossTeamLimiter{}
+		_, _ = e.send("auth", relaySrc, "", frame(m, data))
+		_, _ = e.deliver(relaySrc, fmt.Sprintf("x%d", i))
+	}
+	rec, _ = e.h.crossTeamRecord("received", "beta", id)
+	assert.Len(t, rec.Also, maxAlsoReceipts)
+}

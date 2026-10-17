@@ -20,7 +20,6 @@ import (
 
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -129,20 +128,11 @@ func scanAttachment(a attachedArtifact, data []byte) *attachRefusal {
 		return nil
 	}
 	shown := "coral://artifacts/" + a.ID
-	unchecked := &attachRefusal{http.StatusUnprocessableEntity, "attach_unchecked", fmt.Sprintf("%s could not be checked for secrets in time, so it was not sent; send a smaller file", shown)}
-	found := &attachRefusal{http.StatusUnprocessableEntity, "attach_secret", fmt.Sprintf("%s looks like it contains a secret (a token or a key), so it was not sent; remove it and upload the file again", shown)}
-	views, ok := scanViews(data)
-	if !ok {
-		return unchecked
-	}
-	for _, v := range append([][]byte{data}, views...) {
-		out, err := secrets.Redactor().Text(v)
-		if err != nil {
-			return unchecked
-		}
-		if !bytes.Equal(out, v) {
-			return found
-		}
+	switch scanSecrets(data) {
+	case scanUnchecked:
+		return &attachRefusal{http.StatusUnprocessableEntity, "attach_unchecked", fmt.Sprintf("%s could not be checked for secrets in time, so it was not sent; send a smaller file", shown)}
+	case scanFound:
+		return &attachRefusal{http.StatusUnprocessableEntity, "attach_secret", fmt.Sprintf("%s looks like it contains a secret (a token or a key), so it was not sent; remove it and upload the file again", shown)}
 	}
 	return nil
 }

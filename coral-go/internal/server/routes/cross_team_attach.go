@@ -270,6 +270,18 @@ type crossTeamArtifactRecord struct {
 	By         string `json:"by"`          // who sent it
 	MessageID  int64  `json:"message_id"`  // the message it came with, on this board
 	At         string `json:"at"`
+	// Also: a received row only: later receipts of the same bytes from another server or board (the
+	// first source stays in the fields above, write-once), so the board can see that more than one
+	// Coral sent it (#4449).
+	Also []crossTeamAlso `json:"also,omitempty"`
+}
+
+// crossTeamAlso is one later receipt of a file a board already had.
+type crossTeamAlso struct {
+	Server     string `json:"server"`
+	OtherBoard string `json:"other_board"`
+	MessageID  int64  `json:"message_id"`
+	At         string `json:"at"`
 }
 
 // linkFile is os.Link, replaceable in tests (a folder that can't hard-link).
@@ -400,6 +412,9 @@ func (h *BoardHandler) mergeCrossTeamRows(items []teamArtifact, project string) 
 				item.SharedTo = where
 			} else {
 				item.ReceivedFrom, item.FromBoard = where, rec.OtherBoard
+				for _, a := range rec.Also {
+					item.AlsoReceivedFrom = append(item.AlsoReceivedFrom, a.Server+"/"+a.OtherBoard)
+				}
 			}
 			items = append(items, item)
 			added = true

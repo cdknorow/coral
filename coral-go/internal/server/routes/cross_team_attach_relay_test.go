@@ -3,9 +3,11 @@ package routes
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -141,11 +143,17 @@ func newRelayAttachEnv(t *testing.T, artifactsOn bool) *relayAttachEnv {
 // relay posts a send to homelab/qa from alpha's Orchestrator (session sid), with an optional message id.
 func (e *relayAttachEnv) relay(sid, messageID string, attach ...string) (int, map[string]any, http.Header) {
 	e.t.Helper()
+	return e.relayText(sid, messageID, "here you go", attach...)
+}
+
+// relayText is relay with the message's own text.
+func (e *relayAttachEnv) relayText(sid, messageID, content string, attach ...string) (int, map[string]any, http.Header) {
+	e.t.Helper()
 	sender, sessionName := "Orchestrator", "claude-"+sid
 	if sid == "operator" {
 		sender, sessionName = "Operator", ""
 	}
-	body := map[string]any{"subscriber_id": sender, "session_name": sessionName, "content": "here you go", "to_address": "homelab/qa", "attach": attach}
+	body := map[string]any{"subscriber_id": sender, "session_name": sessionName, "content": content, "to_address": "homelab/qa", "attach": attach}
 	if messageID != "" {
 		body["message_id"] = messageID
 	}
@@ -574,4 +582,46 @@ func TestRelayAttachSwitchTurnedOffBetweenFiles(t *testing.T) {
 	assert.Len(t, files, 1, "the second file is not sent")
 	assert.Zero(t, msgs, "nor the message")
 	assert.Empty(t, e.sharedRows())
+}
+
+// The text of a message to another Coral is scanned like an attachment, with the same views: a token is
+// refused plain, in base64 and split, with a fixed code that names nothing from the text; nothing reaches
+// Coral Hub and no rate token is spent (#4449).
+func TestRelayMessageTextWithASecretIsRefused(t *testing.T) {
+	token := "ghp_" + "1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R"
+	e := newRelayAttachEnv(t, true)
+	for name, text := range map[string]string{
+		"plain":     "deploy with token=" + token,
+		"base64":    "here: " + base64.StdEncoding.EncodeToString([]byte("token="+token)),
+		"split":     token[:10] + "\n" + token[10:],
+		"reversed":  string(reverseBytes([]byte(token))),
+		"in a list": "- one\n- two\n- " + token + "\n",
+	} {
+		code, out, _ := e.relayText(alphaOrchSID, "", text)
+		assert.Equal(t, http.StatusUnprocessableEntity, code, name)
+		assert.Equal(t, "message_secret", out["error"], name)
+		msg, _ := out["message"].(string)
+		assert.NotContains(t, msg, token[:8], name+": the answer names no matched text")
+		e.nothingSent(name)
+	}
+
+	// Ordinary prose with paths, URLs and ids passes and is sent.
+	prose := "The log is at /Users/someone/Software/coral/coral-go/internal/server/routes/file_x.go and the run is https://example.com/api/board/some-long-project-name/artifacts/42?x=1. The password: is in the vault, not here."
+	code, out, _ := e.relayText(alphaOrchSID, "", prose)
+	require.Equal(t, http.StatusOK, code, out)
+	_, _, msgs := e.wire.snapshot()
+	assert.Equal(t, 1, msgs)
+}
+
+// A budget that runs out on the text fails closed with its own code.
+func TestRelayMessageTextOverTheScanBudgetIsRefused(t *testing.T) {
+	e := newRelayAttachEnv(t, true)
+	var b strings.Builder
+	for i := 0; i < scanMaxRuns+8; i++ {
+		fmt.Fprintln(&b, "note", base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("plain note number %06d", i))))
+	}
+	code, out, _ := e.relayText(alphaOrchSID, "", b.String())
+	assert.Equal(t, http.StatusUnprocessableEntity, code)
+	assert.Equal(t, "message_unchecked", out["error"])
+	e.nothingSent("over budget")
 }

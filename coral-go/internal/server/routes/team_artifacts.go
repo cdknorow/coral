@@ -62,7 +62,9 @@ type teamArtifact struct {
 	SharedTo     string `json:"shared_to,omitempty"`
 	ReceivedFrom string `json:"received_from,omitempty"`
 	FromBoard    string `json:"from_board,omitempty"`
-	SentBy       string `json:"sent_by,omitempty"`
+	// AlsoReceivedFrom: other <server>/<board> that sent the same bytes later (#4449).
+	AlsoReceivedFrom []string `json:"also_received_from,omitempty"`
+	SentBy           string   `json:"sent_by,omitempty"`
 
 	index   int
 	managed string // 64-hex Coral object id for coral-managed artifacts

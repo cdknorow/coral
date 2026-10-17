@@ -7,6 +7,8 @@ import (
 	"html"
 	"regexp"
 	"unicode/utf8"
+
+	"github.com/cdknorow/coral/internal/secrets"
 )
 
 // The sender-side scan of a text attachment looks at the file as it is and at a few re-encodings of it
@@ -29,6 +31,34 @@ var (
 	// a line that is only base64 (a wrapped block, as the base64 tool writes it).
 	encodedLineRe = regexp.MustCompile(`^[ \t]*[A-Za-z0-9+/_-]{16,}={0,2}[ \t]*\r?$`)
 )
+
+// scanOutcome is what scanSecrets found.
+type scanOutcome int
+
+const (
+	scanClean     scanOutcome = iota
+	scanFound                 // a token or key, in the text or in one of its views
+	scanUnchecked             // the budget ran out, or the scan could not finish: fails closed
+)
+
+// scanSecrets runs Coral's secret rules over text and its re-encoded views (scanViews). It is the scan of
+// an attachment and of the text of a message to another Coral, so they cannot differ.
+func scanSecrets(data []byte) scanOutcome {
+	views, ok := scanViews(data)
+	if !ok {
+		return scanUnchecked
+	}
+	for _, v := range append([][]byte{data}, views...) {
+		out, err := secrets.Redactor().Text(v)
+		if err != nil {
+			return scanUnchecked
+		}
+		if !bytes.Equal(out, v) {
+			return scanFound
+		}
+	}
+	return scanClean
+}
 
 // scanViews returns the re-encoded views of data to scan besides data itself. ok is false when a bound
 // ran out (more encoded runs or decoded bytes than the scan takes): the caller fails closed.

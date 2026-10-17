@@ -44,6 +44,7 @@ type BoardHandler struct {
 	paused                        map[string]bool      // in-memory set of paused project names
 	notifyFn                      func(project string) // triggers an immediate notification pass for project's board
 	coralDir                      string
+	alsoMu                        sync.Mutex    // serialises adding a later receipt to a received row (#4449)
 	autoAttach                    *AutoAttacher // #3515: an agent's linked images and Markdown
 	writeTaskArtifact             func(context.Context, *board.Task, string) error
 	reminderMu                    sync.Mutex

@@ -306,6 +306,7 @@ function render() {
             ['Sent to', item.source === 'shared' ? item.shared_to : null],
             ['Sent by', item.source === 'shared' || item.source === 'received' ? item.sent_by : null],
             ['Received from', item.source === 'received' ? item.received_from : null],
+            ['Also received from', item.source === 'received' && item.also_received_from ? item.also_received_from.join(', ') : null],
             ['Board (claimed by the sender)', item.source === 'received' ? item.from_board : null],
             ['Checked', item.source === 'received' ? 'Not scanned: this file came from another computer' : null],
             ['Source', item.source], ['References', item.reference_count],
