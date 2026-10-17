@@ -18,6 +18,14 @@ import (
 	"github.com/cdknorow/coral/internal/secfile"
 )
 
+// The sizes coral.log, tray.log and app.log rotate at (#3628 F5, #4112): 20 MB, 5 older copies
+// (about 120 MB at most), and a log from before rotation over twice the size keeps its last 5 MB.
+const (
+	DefaultMaxSize = 20 << 20
+	DefaultKeep    = 5
+	DefaultTrim    = 5 << 20
+)
+
 // File is an append-only log file that rotates at MaxSize, keeping Keep older copies.
 type File struct {
 	path    string
@@ -25,9 +33,22 @@ type File struct {
 	keep    int
 	trimTo  int64 // an oversized file (over 2×maxSize) keeps only its last trimTo bytes; 0: all
 
-	mu   sync.Mutex
-	f    *os.File
-	size int64
+	mu     sync.Mutex
+	f      *os.File
+	size   int64
+	onOpen func(*os.File) // run with each file opened (OnOpen)
+}
+
+// OnOpen runs fn with the open file now and with each new file after a rotation, under the
+// file's lock: the tray points its stderr (fd 2, where native crash text goes) at the log, and
+// that has to follow the log into each new file.
+func (r *File) OnOpen(fn func(*os.File)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onOpen = fn
+	if fn != nil && r.f != nil {
+		fn(r.f)
+	}
 }
 
 // Open opens (or creates) path for appending. A file already over maxSize rotates on the next
@@ -61,6 +82,9 @@ func (r *File) open() error {
 	r.f, r.size = f, 0
 	if st, err := f.Stat(); err == nil {
 		r.size = st.Size()
+	}
+	if r.onOpen != nil {
+		r.onOpen(f)
 	}
 	return nil
 }

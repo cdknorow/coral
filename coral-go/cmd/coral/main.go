@@ -42,9 +42,9 @@ const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
 // coralLogKeep older copies are kept (about 120 MB at most). A log from before rotation over
 // twice that size keeps only its last coralLogTrim on its first rotation (the operator's choice).
 const (
-	coralLogMaxSize = 20 << 20
-	coralLogKeep    = 5
-	coralLogTrim    = 5 << 20
+	coralLogMaxSize = logrotate.DefaultMaxSize
+	coralLogKeep    = logrotate.DefaultKeep
+	coralLogTrim    = logrotate.DefaultTrim
 )
 
 // setupCrashLogging logs to <coralDir>/coral.log and copies each line to the

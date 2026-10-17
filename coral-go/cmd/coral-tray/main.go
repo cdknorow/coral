@@ -33,6 +33,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/loginlink"
+	"github.com/cdknorow/coral/internal/logrotate"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/startup"
@@ -146,15 +147,16 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	// Setup log file FIRST — when launched from .app there's no terminal,
 	// so log.Fatalf messages would disappear silently without this.
 	logFile := filepath.Join(dataDir, "tray.log")
-	if lf, err := secfile.OpenNoFollow(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+	// Rotates as coral.log does (#4112): 0600, no symlink followed, 20 MB x 5.
+	if lf, err := logrotate.Open(logFile, logrotate.DefaultMaxSize, logrotate.DefaultKeep, logrotate.DefaultTrim); err == nil {
 		log.SetOutput(lf)
 		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
-		// Redirect OS-level stderr (fd 2) to the log file. CGO crashes
-		// (systray, Cocoa) write to stderr, not Go's log package. Without
-		// this, those crash messages vanish when running as a .app bundle
-		// or background process with no terminal attached.
-		redirectStderr(lf)
+		// Redirect OS-level stderr (fd 2) to the log file, and to each new file after a
+		// rotation. CGO crashes (systray, Cocoa) write to stderr, not Go's log package.
+		// Without this, those crash messages vanish when running as a .app bundle or
+		// background process with no terminal attached.
+		lf.OnOpen(redirectStderr)
 		// lf intentionally NOT closed — log.SetOutput and dup2'd stderr
 		// need the FD open for the process lifetime. OS cleans up on exit.
 	}
@@ -782,7 +784,7 @@ func spawnRestart(dataDir string) error {
 	}
 	cmd := exec.Command(exe, os.Args[1:]...)
 	cmd.Env = append(os.Environ(), restartWaitEnv+"="+strconv.Itoa(os.Getpid()))
-	if lf, err := os.OpenFile(filepath.Join(dataDir, "tray.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+	if lf, err := secfile.OpenNoFollow(filepath.Join(dataDir, "tray.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
 		cmd.Stdout, cmd.Stderr = lf, lf
 		defer lf.Close() // the child has its own copy
 	}
