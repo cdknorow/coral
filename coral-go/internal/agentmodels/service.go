@@ -25,10 +25,15 @@ const (
 	retryAfterError = time.Hour
 	// minManualGap limits the Operator's Refresh, per family.
 	minManualGap = 30 * time.Second
-	// fetchTimeout bounds one CLI run.
-	fetchTimeout = 30 * time.Second
 	maxOutput    = 8 << 20
 )
+
+// fetchTimeout bounds one CLI run (a var for tests).
+var fetchTimeout = 30 * time.Second
+
+// ErrSettingsUnreadable is what a finder returns when Coral's settings could not be read, so the CLI
+// to run is unknown: no probe is started, and the CLI found on PATH is never asked instead (#4350).
+var ErrSettingsUnreadable = errors.New("Coral's settings could not be read")
 
 // ErrTooSoon is a manual refresh within minManualGap of the last one.
 var ErrTooSoon = errors.New("the model list was refreshed moments ago; try again shortly")
@@ -152,7 +157,11 @@ func (s *Service) get(agentType string, manual bool) Result {
 	}
 	path, err := s.find(agentType)
 	if err != nil {
-		res.Error = "the CLI is not installed, or not where Settings > CLI Paths says"
+		if errors.Is(err, ErrSettingsUnreadable) {
+			res.Error = "Coral's settings could not be read, so the CLI could not be found: try again"
+		} else {
+			res.Error = "the CLI is not installed, or not where Settings > CLI Paths says"
+		}
 		return res
 	}
 	key := cliKey(path)

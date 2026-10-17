@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/cdknorow/coral/internal/agent"
@@ -14,8 +15,8 @@ import (
 func (h *SystemHandler) newAgentModels() *agentmodels.Service {
 	return agentmodels.NewService(func(agentType string) (string, error) {
 		settings, err := h.ss.GetSettingsForCLI(context.Background())
-		if err != nil {
-			return "", err // never ask the CLI found on PATH instead of the configured one (#4350)
+		if err != nil { // never ask the CLI found on PATH instead of the configured one (#4350)
+			return "", fmt.Errorf("%w: %v", agentmodels.ErrSettingsUnreadable, err)
 		}
 		return agent.FindCLI(settings, agentType)
 	})

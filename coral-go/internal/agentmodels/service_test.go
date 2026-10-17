@@ -164,3 +164,86 @@ func TestGetWithoutAList(t *testing.T) {
 	assert.Equal(t, "builtin", r.Source, "a missing CLI still gets the curated list")
 	assert.NotEmpty(t, r.Models)
 }
+
+// #4353: however many requests ask at once, one probe runs per family; a request never waits for it
+// and every one gets the same answer; the answer is then cached, so later requests start none.
+func TestTwentyConcurrentGetsStartOneProbe(t *testing.T) {
+	path := fakeCLI(t)
+	var probes atomic.Int32
+	release := make(chan struct{})
+	s, _ := newTestService(t, path, func(ctx context.Context, family, p string) ([]Model, string, error) {
+		probes.Add(1)
+		<-release
+		return []Model{{Value: "opus", DisplayName: "Opus"}}, "account", nil
+	})
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	answered := make(chan Result, 20)
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			answered <- s.Get("claude") // returns at once: the probe is still blocked
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(answered)
+	for r := range answered {
+		assert.True(t, r.Refreshing)
+	}
+	close(release)
+	s.Wait()
+	assert.EqualValues(t, 1, probes.Load(), "20 requests, one probe")
+	for i := 0; i < 20; i++ {
+		assert.Equal(t, []string{"opus"}, values(s.Get("claude").Models))
+	}
+	assert.EqualValues(t, 1, probes.Load(), "a cache hit starts no probe")
+}
+
+// A probe that hangs ends at fetchTimeout, the request that asked never waited for it, and the last
+// good list is still what answers.
+func TestHungProbeTimesOutAndRequestsStayFast(t *testing.T) {
+	old := fetchTimeout
+	fetchTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { fetchTimeout = old })
+	path := fakeCLI(t)
+	var calls atomic.Int32
+	s, clock := newTestService(t, path, func(ctx context.Context, family, p string) ([]Model, string, error) {
+		if calls.Add(1) == 1 {
+			return []Model{{Value: "opus", DisplayName: "Opus"}}, "account", nil
+		}
+		<-ctx.Done() // the CLI never answers
+		return nil, "", ctx.Err()
+	})
+	s.Get("claude")
+	s.Wait()
+	require.Equal(t, []string{"opus"}, values(s.Get("claude").Models))
+
+	*clock = clock.Add(maxAge) // due again: the second probe hangs
+	begin := time.Now()
+	r := s.Get("claude")
+	assert.Less(t, time.Since(begin), 40*time.Millisecond, "the request did not wait for the CLI")
+	assert.True(t, r.Refreshing)
+	assert.Equal(t, []string{"opus"}, values(r.Models), "the last good list answers meanwhile")
+	s.Wait() // returns once the probe has timed out
+	r = s.Get("claude")
+	assert.False(t, r.Refreshing)
+	assert.Equal(t, []string{"opus"}, values(r.Models), "still the last good list")
+	assert.Contains(t, r.Error, "didn't answer in time")
+}
+
+// A finder that fails because Coral's settings could not be read starts no probe and says so,
+// rather than that the CLI is missing; it never falls to the CLI on PATH.
+func TestSettingsReadErrorStartsNoProbe(t *testing.T) {
+	var probes atomic.Int32
+	s := NewService(func(string) (string, error) { return "", ErrSettingsUnreadable })
+	s.fetch = func(context.Context, string, string) ([]Model, string, error) { probes.Add(1); return nil, "", nil }
+	t.Cleanup(s.Wait)
+	r := s.Get("claude")
+	s.Wait()
+	assert.Contains(t, r.Error, "settings could not be read")
+	assert.NotContains(t, r.Error, "not installed")
+	assert.Zero(t, probes.Load())
+}
