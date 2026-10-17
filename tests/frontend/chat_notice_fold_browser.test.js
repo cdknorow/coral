@@ -76,6 +76,16 @@ const fixture = [
         const opened = await ev(`(() => { const gs = document.querySelectorAll('#fold-box > .work-group'); gs[1].open = true; return gs[1].innerText; })()`);
         const i1 = opened.indexOf('unread messages'), i2 = opened.indexOf('Read new board messages'), i3 = opened.lastIndexOf('Both were routine');
         assert.ok(i1 >= 0 && i2 > i1 && i3 > i2, 'expanding shows the notice, the step, the reply in order: ' + JSON.stringify(opened));
+        // Expanded, each notice keeps its pill: the bell 'Coral' pill, the shield 'Coral · Health check' pill, in its place among the steps (operator).
+        const pills = await ev(`(() => { document.querySelectorAll('#fold-box > .work-group').forEach(g => { g.open = true; });
+            return [...document.querySelectorAll('#fold-box .work-group-body > .chat-system')].map(p => { const cs = getComputedStyle(p); const r = p.getBoundingClientRect();
+                return { health: p.classList.contains('chat-system-health'), icon: p.querySelector('.material-icons').textContent.trim(), label: p.querySelector('.chat-system-label').textContent.trim(),
+                    radius: parseFloat(cs.borderTopLeftRadius) >= 100 || cs.borderTopLeftRadius.includes('%'), border: cs.borderTopWidth !== '0px', visible: r.width > 0 && r.height > 0, text: p.querySelector('.chat-system-text').textContent.slice(0, 20) }; }); })()`);
+        if (process.env.FOLD_SHOT_DIR) require('node:fs').writeFileSync(`${process.env.FOLD_SHOT_DIR}/expanded.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
+        assert.equal(pills.length, 5, 'five notices in groups: ' + JSON.stringify(pills));
+        assert.ok(pills.every(p => p.radius && p.border && p.visible), 'each is a visible bordered pill: ' + JSON.stringify(pills));
+        assert.deepEqual(pills.map(p => [p.icon, p.label]), [['notifications', 'Coral'], ['health_and_safety', 'Coral · Health check'], ['notifications', 'Coral'], ['notifications', 'Coral'], ['notifications', 'Coral']], 'the bell pill and the shield health-check pill');
+        console.log('   ✓ expanded groups keep the Coral pill styling');
         console.log('   ✓ ' + kinds);
         console.log('\nPASS notices and short notice-turn replies fold into steps');
     } finally { await client.close(); }
