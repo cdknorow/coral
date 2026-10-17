@@ -179,13 +179,12 @@ var routeTable = cat(
 		"/api/board/{project}/tasks",
 		"/api/board/{project}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}/cost",
-		"/api/board/{project}/tasks/{id}/changes.diff",
 		"/api/board/{project}/tasks/{id}/artifact-content",
 		"/api/board/{project}/artifacts",
 		"/api/board/{project}/status",
 		"/api/board/{project}/working-mode",
 		"/api/board/{project}/working-mode/presets",
-		"/api/tasks/runs", "/api/tasks/active", "/api/tasks/runs/{id}",
+		"/api/tasks/active",
 		"/api/teams/all",
 		"/api/teams/detail/{name}",
 		"/api/teams/detail/{name}/availability",
@@ -231,15 +230,11 @@ var routeTable = cat(
 		"/api/auto-accept/disable-all",
 		"/api/sessions/live/{name}/goal",
 		"/api/sessions/live/{name}/files/refresh",
-		"/api/sessions/live/{name}/kill",
 		"/api/sessions/live/{name}/notes",
 		"/api/sessions/live/{name}/tasks",
-		"/api/sessions/live/{name}/tasks/reorder",
-		"/api/sessions/live/{id}/sleep",
 		// Archive stops a running agent like sleep; unarchive starts nothing (it stays asleep).
 		"/api/sessions/live/{id}/archive",
 		"/api/sessions/live/{id}/unarchive",
-		"/api/tasks/runs/{id}/kill",
 		"/api/workflows/runs/{id}/kill",
 		"/api/board/{project}/messages",
 		"/api/board/{project}/external-messages",
@@ -253,13 +248,10 @@ var routeTable = cat(
 		// reviewer agent named in subscriber_id, and Coral Hub can't prove it is that agent
 		// (Security's #3725 review), so they stay off this table and are refused.
 		"/api/board/{project}/tasks/{id}/cancel",
-		"/api/board/{project}/tasks/{id}/reassign",
 		"/api/board/{project}/tasks/{id}/nudge",
-		"/api/board/{project}/tasks/{id}/snooze",
 		"/api/board/{project}/tasks/{id}/reminder",
 		"/api/board/{project}/tasks/{id}/publish",
 		"/api/board/{project}/working-mode/presets",
-		"/api/board/{project}/working-mode/presets/{id}/reset",
 	),
 	rules(http.MethodPut, TierInteract,
 		// Only the changed-files comparison base (validated to three values); PUT /api/settings itself stays never.
@@ -268,7 +260,6 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/icon",
 		"/api/sessions/live/{name}/name-color",
 		"/api/board/{project}/working-mode",
-		"/api/board/{project}/working-mode/presets/{id}",
 		// PUT /api/board/{project}/settings (cross-team settings) is never through the tunnel (#3377).
 	),
 	rules(http.MethodPatch, TierInteract,
@@ -286,13 +277,15 @@ var routeTable = cat(
 	// Deleting a whole board (its messages, tasks and members) can't be undone: Launch, not
 	// Interact (#3433). It stays the Operator's (attributed, recorded, refused with the opt-out).
 	rules(http.MethodDelete, TierLaunch, "/api/board/{project}"),
-	// Killing every agent of a team at once ends all their work in progress: Launch (#3433).
-	// Stopping one agent stays Interact (a safety stop).
-	rules(http.MethodPost, TierLaunch, "/api/sessions/live/team/{board}/kill"),
-	// Sleeping a whole team or every agent, pausing a board and deleting a board message are
-	// Launch, like what undoes them (wake, wake-all, resume) (#3942, coral-hub's tiers;
-	// Security's #3901 item 2). One agent's sleep stays Interact.
+	// Killing every agent of a team at once ends all their work in progress: Launch (#3433), and
+	// so does killing one agent (coral-hub's tiers, #4274): what ends a session is Launch, like what
+	// starts it again.
+	rules(http.MethodPost, TierLaunch, "/api/sessions/live/team/{board}/kill", "/api/sessions/live/{name}/kill"),
+	// Sleeping one agent, a whole team or every agent, pausing a board and deleting a board message
+	// are Launch, like what undoes them (wake, wake-all, resume) (#3942 and #4274, coral-hub's
+	// tiers; Security's #3901 item 2).
 	rules(http.MethodPost, TierLaunch,
+		"/api/sessions/live/{id}/sleep",
 		"/api/sessions/live/team/{board}/sleep",
 		"/api/sessions/live/sleep-all",
 		"/api/board/{project}/pause",

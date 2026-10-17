@@ -35,7 +35,7 @@ func TestClassifyTiers(t *testing.T) {
 		{"POST", "/api/board/p/tasks", "", TierInteract},
 		{"PUT", "/api/sessions/live/a/display-name", "", TierInteract},
 		{"DELETE", "/api/board/p/messages/3", "", TierLaunch}, // #3942
-		{"POST", "/api/sessions/live/a/kill", "", TierInteract},
+		{"POST", "/api/sessions/live/a/kill", "", TierLaunch},
 		{"POST", "/api/sessions/launch", "", TierLaunch},
 		{"POST", "/api/sessions/live/a/open-in-editor", "", TierNever}, // local only (#3619, H4)
 		{"POST", "/api/board/p/tasks/7/approve", "", TierNever},        // a reviewer's verdict (#3725)
@@ -605,19 +605,19 @@ func TestDeletingABoardNeedsLaunch(t *testing.T) {
 	if !AllowRequest(func() Mode { return TierLaunch })("DELETE", "/api/board/team", "") {
 		t.Error("a board delete is refused at Launch")
 	}
-	// Killing a whole team is Launch too; one agent's kill stays a safety stop at Interact.
+	// Killing a whole team is Launch, and so is one agent's kill (#4274, coral-hub's tiers).
 	if got := Classify("POST", "/api/sessions/live/team/alpha/kill", ""); got != TierLaunch {
 		t.Errorf("team kill: %v, want launch", got)
 	}
-	if got := Classify("POST", "/api/sessions/live/agent-1/kill", ""); got != TierInteract {
-		t.Errorf("single kill: %v, want interact", got)
+	if got := Classify("POST", "/api/sessions/live/agent-1/kill", ""); got != TierLaunch {
+		t.Errorf("single kill: %v, want launch", got)
 	}
 }
 
 // #3942 (coral-hub's tiers, Security's #3901 item 2): sleeping a team or every agent, pausing
 // a board and deleting a board message are Launch, like what undoes them; the agents' own
-// board calls are never reachable through the tunnel. One agent's sleep, the dashboard's
-// subscribe, resolve-path and a session's resolve keep their tiers.
+// board calls are never reachable through the tunnel. The dashboard's subscribe, resolve-path and
+// a session's resolve keep their tiers (one agent's sleep moved to Launch in #4274).
 func TestHubTierMoves3942(t *testing.T) {
 	for _, c := range []struct {
 		method, path string
@@ -647,7 +647,6 @@ func TestHubTierMoves3942(t *testing.T) {
 		{"GET", "/api/sessions/resolve", TierNever},
 		{"DELETE", "/api/board/team/subscribe", TierNever},
 
-		{"POST", "/api/sessions/live/agent-1/sleep", TierInteract},
 		{"POST", "/api/board/team/subscribe", TierInteract},
 		{"POST", "/api/board/team/messages", TierInteract},
 		{"GET", "/api/sessions/live/agent-1/resolve-path", TierView},
@@ -671,5 +670,43 @@ func TestShapeAllowed(t *testing.T) {
 	} {
 		method, path, _ := strings.Cut(shape, " ")
 		assert.Equal(t, want, ShapeAllowed(method, path), shape)
+	}
+}
+
+// #4274 (agreed with coral-hub, Security's #3901 items 2 and 3): one agent's sleep and kill are
+// Launch like the team's and like what undoes them; nine routes Coral's own dashboard never calls are
+// no longer reachable; and the routes coral-hub relies on keep their tiers.
+func TestHubTierChanges4274(t *testing.T) {
+	for _, c := range []struct {
+		method, path string
+		want         Tier
+	}{
+		{"POST", "/api/sessions/live/agent-1/sleep", TierLaunch},
+		{"POST", "/api/sessions/live/agent-1/kill", TierLaunch},
+		{"POST", "/api/sessions/live/agent-1/wake", TierLaunch}, // the undo
+		{"POST", "/api/sessions/live/agent-1/archive", TierInteract},
+
+		{"POST", "/api/board/team/tasks/9/reassign", TierNever},
+		{"POST", "/api/board/team/tasks/9/snooze", TierNever},
+		{"PUT", "/api/board/team/working-mode/presets/p", TierNever},
+		{"POST", "/api/board/team/working-mode/presets/p/reset", TierNever},
+		{"POST", "/api/sessions/live/agent-1/tasks/reorder", TierNever},
+		{"GET", "/api/tasks/runs", TierNever},
+		{"GET", "/api/tasks/runs/7", TierNever},
+		{"POST", "/api/tasks/runs/7/kill", TierNever},
+		{"GET", "/api/board/team/tasks/9/changes.diff", TierNever},
+
+		// What coral-hub relies on stays as it was.
+		{"GET", "/api/sessions/live/agent-1/changes.diff", TierView},
+		{"GET", "/api/sessions/live/agent-1/diff", TierView},
+		{"GET", "/api/sessions/live/agent-1/capture", TierView},
+		{"GET", "/api/sessions/live/agent-1/file-content", TierView},
+		{"GET", "/api/sessions/live/agent-1/file-original", TierView},
+		{"GET", "/api/sessions/0b1e2c3d-0000-4000-8000-000000000001/changes.diff", TierView},
+		{"GET", "/api/tasks/active", TierView},
+		{"POST", "/api/board/team/tasks/9/nudge", TierInteract},
+		{"POST", "/api/board/team/tasks/9/complete", TierInteract},
+	} {
+		assert.Equal(t, c.want, Classify(c.method, c.path, ""), "%s %s", c.method, c.path)
 	}
 }

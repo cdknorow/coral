@@ -16,7 +16,6 @@ GET /api/board/{project}/subscribers redact
 GET /api/board/{project}/tasks redact
 GET /api/board/{project}/tasks/{id} redact
 GET /api/board/{project}/tasks/{id}/artifact-content redact
-GET /api/board/{project}/tasks/{id}/changes.diff redact
 GET /api/board/{project}/tasks/{id}/cost redact
 GET /api/board/{project}/working-mode redact
 GET /api/board/{project}/working-mode/presets redact
@@ -73,8 +72,6 @@ GET /api/settings/default-prompts redact
 GET /api/system/hub-operator redact
 GET /api/tags redact
 GET /api/tasks/active redact
-GET /api/tasks/runs redact
-GET /api/tasks/runs/{id} redact
 GET /api/teams/all redact
 GET /api/teams/detail/{name} redact
 GET /api/teams/detail/{name}/availability redact

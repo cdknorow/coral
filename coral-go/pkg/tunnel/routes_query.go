@@ -53,7 +53,6 @@ var routeQueries = map[string]string{
 	"GET /api/sessions/live/{}/subagents":         "session_id",
 	"GET /api/sessions/live/{}/subagents/{}":      "session_id",
 	"GET /api/sessions/live/{}/tasks":             "limit,session_id",
-	"GET /api/tasks/runs":                         "limit,status",
 	"GET /api/teams/all":                          "status",
 	"GET /api/teams/detail/{}/availability":       "activity,project,subscriber_id",
 	"GET /api/token-usage":                        "board_name,session_id,since",
@@ -72,9 +71,7 @@ var routeQueries = map[string]string{
 	"POST /api/board/{}/tasks/{}/nudge":           "subscriber_id",
 	"POST /api/board/{}/tasks/{}/publish":         "subscriber_id",
 	"POST /api/board/{}/tasks/{}/reminder":        "subscriber_id",
-	"POST /api/board/{}/tasks/{}/snooze":          "subscriber_id",
 	"POST /api/sessions/live/{}/notes":            "session_id",
 	"POST /api/sessions/live/{}/tasks":            "session_id",
-	"POST /api/sessions/live/{}/tasks/reorder":    "session_id",
 	"PUT /api/sessions/live/{}/file-content":      "filepath*,session_id",
 }
