@@ -40,6 +40,10 @@ type Subscriber struct {
 	CanPeek      int     `db:"can_peek" json:"can_peek"`
 	// Legacy column — kept for DB compat, mirrors SubscriberID for new rows.
 	SessionID string `db:"session_id" json:"-"`
+	// SessionJoinedAt is when SessionName became this subscription's session (#4379): set when the
+	// row is made, when another session takes the role over, and when it rejoins after leaving. NULL
+	// on rows from before it existed (SubscribedAt stands in for them).
+	SessionJoinedAt *string `db:"session_joined_at" json:"-"`
 }
 
 // GroupInfo holds group summary info.
@@ -462,6 +466,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_tasks ADD COLUMN parked_until TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN remind_at TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN reminded_at TEXT",
+		"ALTER TABLE board_subscribers ADD COLUMN session_joined_at TEXT",
 	}
 	for _, ddl := range alterColumns {
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
@@ -638,18 +643,22 @@ func (s *Store) Subscribe(ctx context.Context, project, subscriberID, jobTitle, 
 
 	// session_id mirrors subscriber_id so UNIQUE(project, session_id) enforces subscriber uniqueness.
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO board_subscribers (project, session_id, subscriber_id, session_name, job_title, origin_server, receive_mode, last_read_id, subscribed_at, is_active, can_peek)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+		`INSERT INTO board_subscribers (project, session_id, subscriber_id, session_name, job_title, origin_server, receive_mode, last_read_id, subscribed_at, is_active, can_peek, session_joined_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
 		 ON CONFLICT(project, session_id) DO UPDATE SET
 		     job_title = excluded.job_title,
 		     webhook_url = NULL,
 		     origin_server = excluded.origin_server,
 		     receive_mode = excluded.receive_mode,
+		     session_joined_at = CASE
+		         WHEN board_subscribers.session_name IS excluded.session_name AND board_subscribers.is_active = 1
+		         THEN COALESCE(board_subscribers.session_joined_at, board_subscribers.subscribed_at)
+		         ELSE excluded.session_joined_at END,
 		     session_name = excluded.session_name,
 		     subscriber_id = excluded.subscriber_id,
 		     is_active = 1,
 		     can_peek = excluded.can_peek`,
-		project, subscriberID, subscriberID, sessionName, jobTitle, originServer, receiveMode, carryForwardCursor, now, peekFlag)
+		project, subscriberID, subscriberID, sessionName, jobTitle, originServer, receiveMode, carryForwardCursor, now, peekFlag, now)
 	if err == nil {
 		s.ensureBoardRow(ctx, project)
 	}

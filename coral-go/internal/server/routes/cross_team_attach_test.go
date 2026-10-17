@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -118,7 +119,7 @@ func (e *attachEnv) send(from, to, sid string, attach ...string) (int, map[strin
 
 func (e *attachEnv) upload(sid, content string) string {
 	e.t.Helper()
-	return writeUpload(e.t, e.coralDir, sid, content, "file-"+content[:4]+".md", "2026-10-17T00:00:00Z")
+	return writeUpload(e.t, e.coralDir, sid, content, "file-"+content[:4]+".md", afterJoin())
 }
 
 func (e *attachEnv) messages(board string) int {
@@ -129,6 +130,10 @@ func (e *attachEnv) messages(board string) int {
 }
 
 func uri(id string) string { return "coral://artifacts/" + id }
+
+// afterJoin is an upload time after the env's agents joined their boards (uploads made before a
+// session joined the sending board don't count for it).
+func afterJoin() string { return time.Now().UTC().Add(time.Second).Format(time.RFC3339) }
 
 // An Orchestrator attaches its own upload: the message carries the link, and the sender's board
 // gets a shared record and the receiver's a received one, both of the same object (no copy).
@@ -199,7 +204,7 @@ func TestAttachOldTaskRowsGrantNothing(t *testing.T) {
 	code, out := e.send("alpha", "beta", alphaOrchSID, uri(d))
 	require.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "not_yours", out["code"])
-	writeUpload(t, e.coralDir, alphaOrchSID, "legacy bytes", "old.md", "2026-10-17T00:00:00Z")
+	writeUpload(t, e.coralDir, alphaOrchSID, "legacy bytes", "old.md", afterJoin())
 	code, out = e.send("alpha", "beta", alphaOrchSID, uri(d))
 	assert.Equal(t, http.StatusOK, code, out)
 }
@@ -324,14 +329,14 @@ func TestAttachRecordAndSizeChecksEachRefuse(t *testing.T) {
 	empty := storeManagedArtifact(t, e.coralDir, "", true, true)
 	dir := uploadsDir(e.coralDir, betaQASID)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "empty", Size: 0, Digest: "sha256:" + empty}, "2026-10-17T00:00:00Z"})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "empty", Size: 0, Digest: "sha256:" + empty}, afterJoin()})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, empty+".json"), rec, 0o644))
 	code, out := e.send("alpha", "beta", alphaOrchSID, uri(empty))
 	require.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "not_yours", out["code"])
 
 	d := e.upload(alphaOrchSID, "sized bytes")
-	wrong, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "x", Size: 999, Digest: "sha256:" + d}, "2026-10-17T00:00:00Z"})
+	wrong, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "x", Size: 999, Digest: "sha256:" + d}, afterJoin()})
 	require.NoError(t, os.WriteFile(filepath.Join(uploadsDir(e.coralDir, alphaOrchSID), d+".json"), wrong, 0o644))
 	e.h.uploads = uploadDirCache{}
 	code, out = e.send("alpha", "beta", alphaOrchSID, uri(d))
@@ -407,6 +412,53 @@ func TestAttachATeammatesUpload(t *testing.T) {
 
 	theirs := e.upload(betaQASID, "beta qa's notes")
 	code, out = e.send("alpha", "beta", alphaOrchSID, uri(theirs))
+	require.Equal(t, http.StatusBadRequest, code)
+	assert.Equal(t, "not_yours", out["code"])
+}
+
+// Team scope is per board in time (the Orchestrator's 11:54, Security's point 1): an agent that moved
+// to this board doesn't bring the uploads it made before joining it; what it uploads after joining
+// counts; a past member's uploads from its time here stay attachable after it left the team.
+func TestAttachTeamScopeIsFromWhenASessionJoined(t *testing.T) {
+	e := newAttachEnv(t, true)
+	ctx := context.Background()
+	const mover = "dddd6666-0000-4000-8000-000000000006"
+	_, err := e.h.bs.Subscribe(ctx, "zeta", "Mover", "Backend Dev", "claude-"+mover, nil, "mentions")
+	require.NoError(t, err)
+	before := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	early := writeUpload(t, e.coralDir, mover, "made on zeta", "early.md", before)
+	_, err = e.h.bs.Subscribe(ctx, "alpha", "Mover", "Backend Dev", "claude-"+mover, nil, "mentions")
+	require.NoError(t, err)
+	code, out := e.send("alpha", "beta", alphaOrchSID, uri(early))
+	require.Equal(t, http.StatusBadRequest, code, "uploaded before joining alpha: %v", out)
+	assert.Equal(t, "not_yours", out["code"])
+	late := writeUpload(t, e.coralDir, mover, "made on alpha", "late.md", afterJoin())
+	code, out = e.send("alpha", "beta", alphaOrchSID, uri(late))
+	require.Equal(t, http.StatusOK, code, out)
+
+	// A past member: claimed a task here, uploaded, then its role went to another session.
+	const past = "eeee7777-0000-4000-8000-000000000007"
+	_, err = e.h.bs.Subscribe(ctx, "alpha", "Temp", "QA Engineer", "claude-"+past, nil, "mentions")
+	require.NoError(t, err)
+	// The claim records its session when the sessions database has it active, as in the server.
+	sdb, err := sqlx.Open("sqlite", filepath.Join(t.TempDir(), "sessions.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { sdb.Close() })
+	_, err = sdb.Exec(`CREATE TABLE live_sessions (session_id TEXT, status TEXT); INSERT INTO live_sessions VALUES ('` + past + `', 'active')`)
+	require.NoError(t, err)
+	e.h.bs.SetSessionsDB(sdb)
+	task, err := e.h.bs.CreateTask(ctx, "alpha", "temp work", "", "medium", "Operator")
+	require.NoError(t, err)
+	_, err = e.h.bs.ClaimTask(ctx, "alpha", "Temp", task.ID)
+	require.NoError(t, err)
+	kept := writeUpload(t, e.coralDir, past, "made while on alpha", "kept.md", afterJoin())
+	tooEarly := writeUpload(t, e.coralDir, past, "made before alpha", "early2.md", before)
+	_, err = e.h.bs.Subscribe(ctx, "alpha", "Temp", "QA Engineer", "claude-ffff8888-0000-4000-8000-000000000008", nil, "mentions")
+	require.NoError(t, err)
+	e.h.uploads = uploadDirCache{}
+	code, out = e.send("alpha", "beta", alphaOrchSID, uri(kept))
+	require.Equal(t, http.StatusOK, code, "a past member's upload from its time here: %v", out)
+	code, out = e.send("alpha", "beta", alphaOrchSID, uri(tooEarly))
 	require.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "not_yours", out["code"])
 }

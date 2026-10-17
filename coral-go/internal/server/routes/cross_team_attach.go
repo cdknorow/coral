@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/secfile"
 )
 
@@ -48,9 +47,12 @@ func notYours(raw string) *attachRefusal {
 // through Coral Hub) may send any stored object; an agent what an agent of its team uploaded.
 type attachSender struct {
 	person    bool
-	sessionID string   // the agent's verified session (empty: it can attach nothing)
-	team      []string // the sessions whose uploads count: the sending board's team (the Orchestrator's own included)
-	windowKey string   // its hourly upload window
+	sessionID string // the agent's verified session (empty: it can attach nothing)
+	// team are the sessions whose uploads count, with when each joined the sending board: an upload
+	// counts only if it was made on or after that (an agent that moved boards doesn't bring an
+	// earlier board's uploads; a past member's uploads from its time here still count).
+	team      map[string]time.Time
+	windowKey string // its hourly upload window
 }
 
 // attachedArtifact is one checked attachment.
@@ -177,33 +179,35 @@ func (h *BoardHandler) readAttachment(dir, id, shown string, s attachSender, rec
 	return a, nil
 }
 
-// teamUploadRecordOf is the first genuine upload record of id among sessions.
-func (h *BoardHandler) teamUploadRecordOf(sessions []string, id string) (agentUploadRecord, bool) {
-	for _, sid := range sessions {
-		if rec, ok := h.uploadRecordOf(sid, id); ok {
+// teamUploadRecordOf is a genuine upload record of id by one of the team's sessions, made on or
+// after that session joined the board (sessions are tried in a fixed order).
+func (h *BoardHandler) teamUploadRecordOf(team map[string]time.Time, id string) (agentUploadRecord, bool) {
+	sids := make([]string, 0, len(team))
+	for sid := range team {
+		sids = append(sids, sid)
+	}
+	sort.Strings(sids)
+	for _, sid := range sids {
+		rec, ok := h.uploadRecordOf(sid, id)
+		if !ok {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, rec.CreatedAt)
+		if err == nil && !at.Before(team[sid]) {
 			return rec, true
 		}
 	}
 	return agentUploadRecord{}, false
 }
 
-// teamSessions are the agent sessions of project's team, as Team Artifacts finds them: every
-// subscriber's session and the session that claimed one of its tasks.
-func (h *BoardHandler) teamSessions(ctx context.Context, project string) []string {
-	subscribers, err := h.bs.TeamSubscriberSessions(ctx, project)
+// teamSessions are the agent sessions of project's team (every subscriber's, and every session that
+// claimed one of its tasks) with when each joined the board (board.SessionJoinTimes).
+func (h *BoardHandler) teamSessions(ctx context.Context, project string) map[string]time.Time {
+	team, err := h.bs.SessionJoinTimes(ctx, project)
 	if err != nil {
 		return nil
 	}
-	tasks, _, err := h.bs.ListTeamArtifactTasksQuery(ctx, board.TeamArtifactQuery{Project: project, Limit: board.MaxTeamArtifactTaskScan, Subscribers: subscribers})
-	if err != nil {
-		tasks = nil
-	}
-	var out []string
-	for sid := range teamUploadSessions(tasks, subscribers) {
-		out = append(out, sid)
-	}
-	sort.Strings(out)
-	return out
+	return team
 }
 
 // objectMeta is an object's sidecar metadata.

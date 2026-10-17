@@ -373,7 +373,7 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 			sender.windowKey = sharedUploadBucket
 			if owner, ok := VerifiedSession(ctx); ok && owner != nil && owner.SessionID != "" && senderSession != "" && owner.SessionName == senderSession {
 				sender.sessionID, sender.windowKey = owner.SessionID, "session:"+owner.SessionID
-				sender.team = append([]string{owner.SessionID}, h.teamSessions(ctx, body.FromBoard)...)
+				sender.team = h.teamSessions(ctx, body.FromBoard) // the sender is a subscriber: its own session is in it
 			}
 		}
 		var refused *attachRefusal

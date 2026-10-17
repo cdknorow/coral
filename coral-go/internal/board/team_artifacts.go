@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/cdknorow/coral/internal/naming"
 )
@@ -48,6 +49,52 @@ func (s *Store) TeamSubscriberSessions(ctx context.Context, project string) (map
 			continue
 		}
 		out[r.SubscriberID] = naming.SessionIDFromName(*r.SessionName)
+	}
+	return out, nil
+}
+
+// SessionJoinTimes maps each agent session of project's team to when it joined the board (#4379):
+// the time it became a subscription's session (SubscribedAt for rows from before that was kept),
+// or its first task claim on the board, whichever is earlier. A session with neither is absent.
+func (s *Store) SessionJoinTimes(ctx context.Context, project string) (map[string]time.Time, error) {
+	var subs []struct {
+		SessionName *string `db:"session_name"`
+		JoinedAt    *string `db:"joined_at"`
+	}
+	if err := s.reader().SelectContext(ctx, &subs,
+		`SELECT session_name, COALESCE(session_joined_at, subscribed_at) AS joined_at FROM board_subscribers WHERE project = ?`, project); err != nil {
+		return nil, err
+	}
+	var claims []struct {
+		SessionID string  `db:"session_id"`
+		First     *string `db:"first_claim"`
+	}
+	if err := s.reader().SelectContext(ctx, &claims,
+		`SELECT session_id, MIN(claimed_at) AS first_claim FROM board_tasks
+		 WHERE board_id = ? AND session_id IS NOT NULL AND session_id != '' AND claimed_at IS NOT NULL
+		 GROUP BY session_id`, project); err != nil {
+		return nil, err
+	}
+	out := map[string]time.Time{}
+	note := func(sid string, at *string) {
+		if sid == "" || at == nil {
+			return
+		}
+		t, err := time.Parse(time.RFC3339, *at)
+		if err != nil {
+			return
+		}
+		if prev, ok := out[sid]; !ok || t.Before(prev) {
+			out[sid] = t
+		}
+	}
+	for _, r := range subs {
+		if r.SessionName != nil && strings.TrimSpace(*r.SessionName) != "" {
+			note(naming.SessionIDFromName(*r.SessionName), r.JoinedAt)
+		}
+	}
+	for _, c := range claims {
+		note(c.SessionID, c.First)
 	}
 	return out, nil
 }
