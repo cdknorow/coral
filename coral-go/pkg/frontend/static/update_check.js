@@ -13,7 +13,8 @@ export async function checkForUpdates(force = false) {
     if (!force && browserLocal.get("coral-update-check-enabled") === "false") return;
 
     try {
-        const resp = await fetch("/api/system/update-check");
+        // A manual check asks again (the server answers from a cache and refreshes at most once a minute, #4133).
+        const resp = await fetch(force ? "/api/system/update-check?refresh=1" : "/api/system/update-check");
         const data = await resp.json();
 
         if (!data.available) {

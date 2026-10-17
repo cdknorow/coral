@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -189,4 +190,36 @@ func TestUpdateCheck_NeverOffersAnOlderRelease(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 		assert.Equal(t, false, resp["available"], "current %s", current)
 	}
+}
+
+// ── #4133: the route does not make one GitHub request per call ──────────
+
+func TestUpdateCheckTwentyCallsMakeOneRequest(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		json.NewEncoder(w).Encode(map[string]string{"tag_name": "v99.0.0"})
+	}))
+	origURL, origVersion := githubReleasesAPI, config.Version
+	githubReleasesAPI = server.URL
+	config.Version = "1.4.70"
+	t.Cleanup(func() { githubReleasesAPI, config.Version = origURL, origVersion; server.Close() })
+
+	h := &SystemHandler{}
+	for i := 0; i < 20; i++ {
+		rec := httptest.NewRecorder()
+		h.UpdateCheck(rec, httptest.NewRequest("GET", "/api/system/update-check", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		assert.Equal(t, true, out["available"])
+		assert.Equal(t, "99.0.0", out["latest"])
+	}
+	assert.EqualValues(t, 1, hits.Load(), "20 calls to the route, one request to GitHub")
+
+	// A manual check right after is the cached answer too; it cannot be used to hammer the feed.
+	for i := 0; i < 10; i++ {
+		h.UpdateCheck(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/system/update-check?refresh=1", nil))
+	}
+	assert.EqualValues(t, 1, hits.Load(), "?refresh=1 within a minute of the last answer is not another request")
 }

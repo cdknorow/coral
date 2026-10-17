@@ -164,7 +164,7 @@ Returns server startup status, version, and tier information.
 GET /api/system/update-check
 ```
 
-Checks GitHub releases for available updates (5-second timeout).
+Checks GitHub releases for available updates (5-second timeout). The answer is cached for an hour (a failure for five minutes) and concurrent calls share one request, so repeated calls, an agent's included, make one request to GitHub. `?refresh=1` (the dashboard's "Check for Updates") asks again when the cached answer is over a minute old.
 
 **Response:**
 ```json
