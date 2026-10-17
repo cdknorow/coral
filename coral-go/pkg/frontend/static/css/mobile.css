@@ -424,7 +424,7 @@
     .command-pane textarea {
         min-height: 36px !important;
         max-height: 80px;
-        font-size: 16px !important; /* prevent iOS zoom on focus */
+        font-size: 1rem !important; /* 16px at the default size: prevents iOS zoom on focus, and follows the text size */
         padding: 7px 12px;
         border-radius: 18px;
     }
@@ -1386,9 +1386,16 @@
 
 /* Titles of the phone-width agent and history lists. Classes rather than style="" attributes: the Cloud Hub's CSP
    (style-src 'self') refuses inline style attributes in markup assigned through innerHTML. */
-.mobile-list-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0; }
+.mobile-list-title { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0; }
 
 /* The artifacts table scrolls sideways; on a phone the default scrollbar is a thick grey bar under the header. */
 @media (max-width: 767px) {
     .team-artifacts-scroll { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+}
+
+/* 200 percent page zoom on a phone is a page under 260 px wide: the top bar (brand, view dropdown, home and settings buttons) needs 216 px,
+   so the dropdown drops to its own row instead of widening the page (#4086). */
+@media (max-width: 260px) {
+    .top-bar { padding: 7px 8px; flex-wrap: wrap; row-gap: 4px; }
+    .nav-select { order: 3; flex: 1 1 100%; margin: 0; }
 }

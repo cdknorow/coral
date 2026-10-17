@@ -156,9 +156,9 @@ const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.i
             tag = '195 (390 px at 200% zoom)';
             await ev(`T.render.renderLiveSessions(T.state.liveSessions); true`); await sleep(800); // sleep-ok: the layout re-flows over frames
             await ev(`window.selectLiveSession('', '', '', 'local'); true`).catch(() => {});
-            await scan('home / agents list', '', { sideways: false });   // a 21 px sideways scroll with no element past the edge is left alone here (listed in the report)
+            await scan('home / agents list');
             await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(1500); // sleep-ok: the Chat view settles over several answers
-            await scan('agent chat', '', { sideways: false });
+            await scan('agent chat');
         }
         assert.deepEqual(problems, [], 'phone layout problems:\n  ' + problems.join('\n  '));
         console.log('\nPASS phone layout: 320, 375 and 414 px, every tab, the side panel, Settings, every dialog, the keyboard up');

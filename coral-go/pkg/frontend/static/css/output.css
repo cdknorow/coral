@@ -334,7 +334,7 @@ body.panel-dragging .preview-pane {
 
 .terminal-session-label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--fs-sm);
     color: var(--text-secondary);
     margin-left: 4px;
 }
