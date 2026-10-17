@@ -243,6 +243,14 @@ func (t *ThinkingTracker) pollSession(ctx context.Context, ls *store.LiveSession
 // read returns the thinking turns completed by the lines appended since the
 // last call. A trailing partial line is left for the next call.
 func (tl *transcriptTail) read() ([]thinkingTurn, error) {
+	// Unchanged since the last poll (an idle agent, most of them): a stat, not an open. Opening
+	// every live transcript every 2 s was the tracker's whole cost on an idle server (#4154: 0.65 of
+	// 0.68 s per 10 minutes at 80 agents; a stat costs a ninth of open, fstat and close on macOS).
+	if st, err := os.Stat(tl.path); err != nil {
+		return nil, err
+	} else if st.Size() == tl.offset {
+		return nil, nil
+	}
 	f, err := os.Open(tl.path)
 	if err != nil {
 		return nil, err
