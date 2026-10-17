@@ -28,12 +28,18 @@ func parseRoutesSource(t *testing.T) *routesSource {
 	require.NoError(t, err)
 	pkg := pkgs["routes"]
 	require.NotNil(t, pkg)
-	src := &routesSource{fset: fset, files: map[string]*ast.File{}, named: map[string]*ast.StructType{}}
+	files := map[string]*ast.File{}
 	for name, f := range pkg.Files {
-		if strings.HasSuffix(name, "_test.go") {
-			continue
+		if !strings.HasSuffix(name, "_test.go") {
+			files[name] = f
 		}
-		src.files[name] = f
+	}
+	return newRoutesSource(fset, files)
+}
+
+func newRoutesSource(fset *token.FileSet, files map[string]*ast.File) *routesSource {
+	src := &routesSource{fset: fset, files: files, named: map[string]*ast.StructType{}}
+	for _, f := range files {
 		for _, d := range f.Decls {
 			gd, ok := d.(*ast.GenDecl)
 			if !ok || gd.Tok != token.TYPE {
@@ -143,6 +149,21 @@ func (src *routesSource) decodedBodies() []decodedBody {
 				continue
 			}
 			vars := map[string]ast.Expr{}
+			ptrs := map[string]bool{} // variables that are pointers: passed as they are, not as &x
+			// A function parameter is a decode target too: decodeJSON(r, body) where body is *T.
+			if fd.Type.Params != nil {
+				for _, f := range fd.Type.Params.List {
+					var te ast.Expr = f.Type
+					isPtr := false
+					if st, ok := te.(*ast.StarExpr); ok {
+						te, isPtr = st.X, true
+					}
+					for _, id := range f.Names {
+						vars[id.Name] = te
+						ptrs[id.Name] = isPtr
+					}
+				}
+			}
 			ast.Inspect(fd.Body, func(n ast.Node) bool {
 				switch x := n.(type) {
 				case *ast.ValueSpec:
@@ -186,12 +207,18 @@ func (src *routesSource) decodedBodies() []decodedBody {
 				if fn != "decodeJSON" && fn != "Decode" && fn != "Unmarshal" {
 					return true
 				}
-				u, ok := call.Args[len(call.Args)-1].(*ast.UnaryExpr)
-				if !ok || u.Op != token.AND {
-					return true
+				var id *ast.Ident
+				switch a := call.Args[len(call.Args)-1].(type) {
+				case *ast.UnaryExpr: // &x
+					if a.Op == token.AND {
+						id, _ = a.X.(*ast.Ident)
+					}
+				case *ast.Ident: // x, a pointer parameter
+					if ptrs[a.Name] {
+						id = a
+					}
 				}
-				id, ok := u.X.(*ast.Ident)
-				if !ok {
+				if id == nil {
 					return true
 				}
 				te, ok := vars[id.Name]
@@ -283,12 +310,18 @@ const (
 	queryAgent   = "an agent route: the file binds the claim to the token (callerSession, agentFromRequest or VerifiedSession)"
 	queryLookup  = "the session the request is about (a lookup or filter key); it does not say who is calling"
 	queryMetrics = "labels the call in the call metrics"
+	// relay-targets: the identity layer reads session_name from the query too (boardClaims) and compares it with
+	// the token's session; relaySenderRole requires it to match the named subscriber's subscription.
+	queryBoardSession = "board request: the identity layer compares session_name with the token's session (boardClaims), and relaySenderRole requires it to match the subscriber's subscription"
 )
 
 var queryIdentityReads = map[string]string{
 	"board.go subscriber_id":             queryBoard,
 	"board.go target":                    queryTarget,
 	"board_remotes.go subscriber_id":     queryBoard,
+	"cross_team_send.go subscriber_id":   queryBoard,
+	"cross_team_send.go session_name":    queryBoardSession,
+	"token_usage.go session_id":          queryLookup,
 	"team_availability.go subscriber_id": queryBoard,
 	"call_metrics.go subscriber_id":      queryMetrics,
 	"call_metrics.go session_id":         queryMetrics,
@@ -306,22 +339,43 @@ var queryIdentityReads = map[string]string{
 	"websocket.go session_id":            queryLookup,
 }
 
-func TestIdentityQueryReadsAreClassified(t *testing.T) {
-	src := parseRoutesSource(t)
+// identityQueryReads finds where the source reads one of the identity keys from the query string:
+// r.URL.Query().Get("k"), r.URL.Query()["k"], and the same through a variable (q := r.URL.Query()).
+func (src *routesSource) identityQueryReads() map[string]bool {
 	canon := map[string]bool{}
 	for _, k := range identityKeys {
 		canon[k] = true
 	}
 	found := map[string]bool{}
-	isQuery := func(e ast.Expr) bool { // r.URL.Query()
-		c, ok := e.(*ast.CallExpr)
-		if !ok {
-			return false
-		}
-		se, ok := c.Fun.(*ast.SelectorExpr)
-		return ok && se.Sel.Name == "Query"
-	}
 	for file, f := range src.files {
+		// Variables holding the query (per file, by name; a name reused for something else is read as
+		// the query, which only makes this stricter).
+		queryVars := map[string]bool{}
+		ast.Inspect(f, func(n ast.Node) bool {
+			if as, ok := n.(*ast.AssignStmt); ok && len(as.Lhs) == len(as.Rhs) {
+				for i, l := range as.Lhs {
+					if id, ok := l.(*ast.Ident); ok {
+						if c, ok := as.Rhs[i].(*ast.CallExpr); ok {
+							if se, ok := c.Fun.(*ast.SelectorExpr); ok && se.Sel.Name == "Query" {
+								queryVars[id.Name] = true
+							}
+						}
+					}
+				}
+			}
+			return true
+		})
+		isQuery := func(e ast.Expr) bool { // r.URL.Query(), or a variable holding it
+			if id, ok := e.(*ast.Ident); ok {
+				return queryVars[id.Name]
+			}
+			c, ok := e.(*ast.CallExpr)
+			if !ok {
+				return false
+			}
+			se, ok := c.Fun.(*ast.SelectorExpr)
+			return ok && se.Sel.Name == "Query"
+		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			var key string
 			switch x := n.(type) {
@@ -344,6 +398,12 @@ func TestIdentityQueryReadsAreClassified(t *testing.T) {
 			return true
 		})
 	}
+	return found
+}
+
+func TestIdentityQueryReadsAreClassified(t *testing.T) {
+	src := parseRoutesSource(t)
+	found := src.identityQueryReads()
 	require.Greater(t, len(found), 10, "the census must find the handlers' query reads (found %d)", len(found))
 	for key := range found {
 		_, ok := queryIdentityReads[key]
@@ -454,4 +514,45 @@ func TestWebSocketClientMessagesCarryNoIdentity(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]bool{"WSTerminal": true}, readers, "a new WebSocket handler reads client messages: classify what it may carry here")
+}
+
+// The census's two blind spots, closed (#4244 follow-up): a decode into a function parameter, and a
+// query read through a variable. Checked on a source made for it, so the helper itself is tested.
+func TestCensusSeesParameterDecodesAndQueryVariables(t *testing.T) {
+	const code = `package routes
+
+import "net/http"
+
+type nestedBody struct {
+	Items []struct {
+		CreatedBy string ` + "`json:\"created_by\"`" + `
+	} ` + "`json:\"items\"`" + `
+}
+
+func readBody(r *http.Request, body *nestedBody) { _ = decodeJSON(r, body) }
+
+func readOpaque(r *http.Request, raw map[string]any) { _ = decodeJSON(r, &raw) }
+
+func viaVariable(r *http.Request) string {
+	q := r.URL.Query()
+	return q.Get("subscriber_id") + q["created_by"][0]
+}
+`
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "synthetic.go", code, 0)
+	require.NoError(t, err)
+	src := newRoutesSource(fset, map[string]*ast.File{"synthetic.go": f})
+
+	byFn := map[string]decodedBody{}
+	for _, d := range src.decodedBodies() {
+		byFn[d.fn] = d
+	}
+	require.Contains(t, byFn, "readBody", "a decode into a pointer parameter is found")
+	assert.Equal(t, 1, byFn["readBody"].fields["created_by"], "and its nested identity field is seen at depth 1")
+	require.Contains(t, byFn, "readOpaque", "a decode into a parameter's address is found")
+	assert.Equal(t, "map", byFn["readOpaque"].opaque)
+
+	reads := src.identityQueryReads()
+	assert.True(t, reads["synthetic.go subscriber_id"], "a Get through a variable holding the query is found")
+	assert.True(t, reads["synthetic.go created_by"], "and an index through it")
 }
