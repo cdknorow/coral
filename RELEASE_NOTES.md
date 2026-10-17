@@ -1,5 +1,33 @@
 # Release Notes
 
+## v1.4.74 — The orchestrator's health check, a faster first load, and steadier agent restarts
+
+### Security
+
+- **Coral's secret masking now also catches Anthropic and OpenAI keys and AWS access key IDs,** in Coral Hub views, logs and agent events.
+- **Coral now records who each board and agent request really comes from** (an agent's own token, you, or a Coral Hub user), in the log only. Nothing is refused on that basis yet; this is the first step toward refusing a request made under someone else's name.
+- **An agent can no longer change a board's settings,** even with a valid token; only you can, on the computer that runs Coral.
+
+### For teams
+
+- **The health check is now the orchestrator's action list,** typed to it rather than posted on the board: what Coral escalated, an idle agent with no work, a reviewer whose queue grows while another is idle, queue problems, and what moved. When nothing needs it, it's one line.
+- **Team settings has a Health check tab:** whether the check runs, how often, who gets it, and each automatic rule on or off with its numbers. Only the Operator can change them, on the computer that runs Coral, not through Coral Hub.
+- **Park a task** with `coral-board task park <id> --reason "..." [--until DATE]` (and `unpark`): a parked task gets no reminders or nudges and stays off the check. The orchestrator acknowledges a check item with `coral-board health ack <id>`, and it stays off the check until its state changes. Only the team's orchestrator or you (the Operator) can park, unpark or acknowledge, and not through Coral Hub.
+- **Reminders:** `task add --remind-at TIME` has Coral remind the assignee once at that time; `coral-board wait --operator "question"` records a question for you, listed in the check with its age until you answer on the board; Coral reminds the orchestrator, once, of an @-mention it hasn't acted on for 10 minutes; and it tells you on the board when an agent's messages have waited at a dialog for 10 minutes (or a little later; once per hold).
+- **Agent text Coral shows in these lines is cleaned first:** redacted, cut to one line of 120 characters, with control, invisible and direction-changing characters removed.
+
+### Dashboard
+
+- **Faster first load:** the dashboard starts from one minified script and one stylesheet instead of more than 130 modules and 24 stylesheets. On a slow connection the agent list appears in about half the time (6.2 s to 3.2 s on simulated 4G).
+- **At 200 percent text** the display menu and a server's menu stay inside the screen, a server header keeps its name beside the Update marker, and the Settings window no longer scrolls sideways on a phone.
+- **Settings checkboxes and the Health check tab have phone-sized tap areas,** and the tab fits at 200 percent text.
+- **Contrast:** text that fell under 4.5:1 when hovered, focused or selected is fixed.
+
+### Fixes
+
+- **A restarted or resumed agent keeps its board membership:** its subscription moves to the new session before the agent starts, and moves back if the launch fails.
+- **Creating the dashboard password** could fail when two creations raced; each now uses its own temporary file.
+
 ## v1.4.73 — Your own side-panel tabs, a tray that restarts Coral, and a sturdier server
 
 v1.4.72 was tagged but never released (its release check found that the Operator's own command line was refused when joining or posting to a board); this release carries all of it, with that fixed.
