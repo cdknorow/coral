@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.71 — Phones and larger text, the dashboard by keyboard, and leaner background work
+
+### Security
+
+- **A failed terminal command no longer writes what was typed into coral.log, and repeated failures are logged once with a count.** tray.log and app.log now rotate like coral.log.
+
+### Fixes
+
+- **Coral no longer stalls an agent's messages behind Claude Code's bug-report or session-survey prompt:** it waits for the prompt to close, never types into it, and shows that delivery is held.
+- **Chat no longer hides an agent's reply inside a collapsed steps group when more work follows it in the same turn** (for example after a board notification). Short notes written alongside a tool call still fold into the group.
+- **Pressing Enter in a team's preset name box saves the preset only.** Before, it also saved the whole team settings form (working mode, cross-team and health settings).
+- **On a Mac with exactly 1 or 16 open network connections, Coral's check of who owns a local connection misread the system's socket list and refused the request;** it now reads the list correctly.
+- **A large redacted reply through Coral Hub could occasionally be refused as over its size budget while another was finishing;** the budget is now released before the reply is sent.
+- **Phones:** the selected agent's header no longer pushes its last buttons off the screen, and small controls across the dashboard (the Chat/Terminal toggle, Find, Copy, dialog close buttons, a password field's Show and more) are 44 px touch targets. Landscape and 200 percent text work too: at 200 percent zoom the page no longer scrolls sideways.
+- **Text follows a larger text size:** the dashboard's type scale, the composer, the home screen and the headings are in rem, the same size as before at the default setting. The composer grows with the text, and an empty phone composer is tall enough for its placeholder.
+- **More of the dashboard works by keyboard:** the Artifacts panel and the Team view keep the focus through a refresh, and the Team settings tabs and the Team Artifacts tab work by keyboard.
+
+### Performance
+
+- **The agent screen readers share one capture:** the poll, the login-screen check and the team status's activity line run one capture-pane between them while the screen is unchanged, and a new keystroke still shows on the next read.
+- **Coral's own call statistics keep per-call detail for 24 hours, then hourly totals for the rest of the 14 days;** after the upgrade the older per-call rows are summarized over the first few runs.
+- **Board posts no longer make Coral re-check every agent on every board.**
+- **Quieter logs:** a task completed outside an agent session no longer logs a warning, and a working folder that isn't a git repository is warned about once instead of every 2 minutes.
+
 ## v1.4.70 — Command-line signing hardened, a quieter first launch, and terminal fit fixes
 
 ### Security
