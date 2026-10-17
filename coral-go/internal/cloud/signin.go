@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -68,13 +69,41 @@ var (
 	statusSet = map[string]bool{"ok": true, "revoked": true, "unknown": true, "disabled": true}
 )
 
-// strictJSON decodes exactly one JSON object into v: an unknown or repeated key, a second
-// value or trailing bytes is an error.
+// jsonFieldNames is the exact JSON names of the fields of the struct v points to (nil when v is not
+// such a pointer). encoding/json matches a key to a field ignoring case, so {"ok":false,"OK":true}
+// is two different keys to a byte comparison and one field to the decoder, where the last one wins:
+// strictJSON checks keys against these names exactly (#4147, found by FuzzStrictJSON).
+func jsonFieldNames(v any) map[string]bool {
+	t := reflect.TypeOf(v)
+	if t == nil || t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Struct {
+		return nil
+	}
+	names := map[string]bool{}
+	for i := 0; i < t.Elem().NumField(); i++ {
+		f := t.Elem().Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		switch name {
+		case "-":
+			continue
+		case "":
+			name = f.Name
+		}
+		names[name] = true
+	}
+	return names
+}
+
+// strictJSON decodes exactly one JSON object into v: an unknown or repeated key (compared exactly,
+// not ignoring case), a second value or trailing bytes is an error.
 func strictJSON(b []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
 		return errors.New("not a JSON object")
 	}
+	names := jsonFieldNames(v)
 	seen := map[string]bool{}
 	for dec.More() {
 		t, err := dec.Token()
@@ -84,6 +113,9 @@ func strictJSON(b []byte, v any) error {
 		k, _ := t.(string)
 		if seen[k] {
 			return fmt.Errorf("repeated key %q", k)
+		}
+		if names != nil && !names[k] {
+			return fmt.Errorf("unknown key %q", k) // including a different case of a known one
 		}
 		seen[k] = true
 		var skip json.RawMessage
