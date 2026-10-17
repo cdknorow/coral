@@ -960,13 +960,12 @@ func (c *Client) KillSession(ctx context.Context, agentName, agentType, sessionI
 		return err
 	}
 
-	// Clean up log and settings files
+	// Clean up the log file. The launch temp files (prompt, settings, ...) are removed by the
+	// session's teardown in routes (agent.CleanupTempFiles); a name built here never matched them
+	// (#4381).
 	if sessionID != "" {
 		logPath := naming.LogFile(naming.DefaultLogDir(), agentType, sessionID)
 		os.Remove(logPath)
-
-		settingsFile := filepath.Join(os.TempDir(), fmt.Sprintf("coral_settings_%s.json", sessionID))
-		os.Remove(settingsFile)
 	}
 
 	return nil

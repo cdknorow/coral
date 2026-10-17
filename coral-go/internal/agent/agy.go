@@ -382,9 +382,9 @@ var agyHookEvents = []string{"SessionStart", "PreInvocation", "PreToolUse", "Pos
 // error the launch fails (#3601 W12: an agent without Coral's hooks is silently degraded).
 // CleanupTempFiles removes it with the session's other temp files.
 func agyHooksDir(sessionID string) (string, error) {
-	dir, err := os.MkdirTemp("", "coral_agyhooks_"+safeFileID(sessionID)+"_*")
+	dir, err := os.MkdirTemp(LaunchTempDir(), "coral_agyhooks_"+safeFileID(sessionID)+"_*")
 	if err != nil {
-		return "", fmt.Errorf("can't create agy's hooks folder in the temp folder %s: %w", os.TempDir(), err)
+		return "", fmt.Errorf("can't create agy's hooks folder in the temp folder %s: %w", LaunchTempDir(), err)
 	}
 	spec := map[string]any{}
 	for _, event := range agyHookEvents {

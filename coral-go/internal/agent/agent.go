@@ -443,9 +443,10 @@ func writeTempFile(prefix, id, ext string, content []byte) (string, error) {
 	// possibly from a request) keeps only safe characters (#3362).
 	id = safeFileID(id)
 	pattern := fmt.Sprintf("coral_%s_%s_*.%s", prefix, id, ext)
-	f, err := createTemp("", pattern)
+	dir := LaunchTempDir()
+	f, err := createTemp(dir, pattern)
 	if err != nil {
-		return "", fmt.Errorf("can't create the agent's %s file in the temp folder %s: %w", prefix, os.TempDir(), err)
+		return "", fmt.Errorf("can't create the agent's %s file in the temp folder %s: %w", prefix, dir, err)
 	}
 	_, err = f.Write(content)
 	if cerr := f.Close(); err == nil {
@@ -453,7 +454,7 @@ func writeTempFile(prefix, id, ext string, content []byte) (string, error) {
 	}
 	if err != nil {
 		os.Remove(f.Name())
-		return "", fmt.Errorf("can't write the agent's %s file in the temp folder %s: %w", prefix, os.TempDir(), err)
+		return "", fmt.Errorf("can't write the agent's %s file in the temp folder %s: %w", prefix, dir, err)
 	}
 	return f.Name(), nil
 }
@@ -533,10 +534,12 @@ func CleanupTempFiles(sessionID string) {
 	if !isCanonicalUUID(sessionID) {
 		return
 	}
-	pattern := filepath.Join(os.TempDir(), "coral_*_"+sessionID+"*")
-	matches, err := filepath.Glob(pattern)
-	if err != nil {
-		return
+	var matches []string
+	for _, dir := range launchTempDirs() {
+		m, err := filepath.Glob(filepath.Join(dir, "coral_*_"+sessionID+"*"))
+		if err == nil {
+			matches = append(matches, m...)
+		}
 	}
 	for _, path := range matches {
 		base := filepath.Base(path)
