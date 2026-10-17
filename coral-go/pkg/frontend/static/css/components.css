@@ -597,6 +597,10 @@ button.subscriber-history-link {
     z-index: 100;
 }
 
+/* A confirmation is asked from other dialogs (Settings' Prune, Start automatic cleanup, Delete received files, Delete terminal logs) and comes earlier in the page than
+   they do, so at the same layer they were painted over it: the dimmed page, and no question to answer. It is above the dialog that asked. */
+#confirm-modal { z-index: 110; }
+
 .modal-content {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
