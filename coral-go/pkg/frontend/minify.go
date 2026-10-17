@@ -3,7 +3,6 @@ package frontend
 import (
 	"os"
 	"path"
-	"runtime/debug"
 	"strings"
 	"sync/atomic"
 
@@ -66,24 +65,14 @@ func MinifyIdentity() string {
 	if disabled.Load() || os.Getenv("CORAL_NO_MINIFY") == "1" {
 		return "minify:off"
 	}
-	return "minify:esbuild " + esbuildVersion() + " " + minifyFormat
+	return "minify:esbuild " + esbuildVersion + " " + minifyFormat
 }
 
-// esbuildVersion is the version of the esbuild module this binary was built with, from the build
-// info (the module version in go.mod); "unknown" when the binary carries none.
-func esbuildVersion() string {
-	if bi, ok := debug.ReadBuildInfo(); ok {
-		for _, d := range bi.Deps {
-			if d.Path == "github.com/evanw/esbuild" {
-				if d.Replace != nil && d.Replace.Version != "" {
-					return d.Replace.Version
-				}
-				return d.Version
-			}
-		}
-	}
-	return "unknown"
-}
+// esbuildVersion is the esbuild module version this binary is built with: a constant, not read
+// from the build info (a test binary on Windows carries no dependency list there, and the identity
+// must not depend on how a binary was built). TestEsbuildVersionMatchesGoMod fails when go.mod's
+// version moves and this does not, so the minifier identity follows an esbuild bump.
+const esbuildVersion = "v0.25.0"
 
 // disabled is for tests that compare served bytes with the embedded source.
 var disabled atomic.Bool
