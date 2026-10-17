@@ -40,7 +40,7 @@ func TestStrictLocalAuthIsOnUnlessTurnedOff(t *testing.T) {
 			t.Setenv("CORAL_STRICT_LOCAL_AUTH", "")
 			os.Unsetenv("CORAL_STRICT_LOCAL_AUTH")
 		}
-		if got := strictLocalAuth(t.TempDir(), tc.override); got != tc.want {
+		if got, err := strictLocalAuth(t.TempDir(), tc.override); err != nil || got != tc.want {
 			t.Errorf("CORAL_STRICT_LOCAL_AUTH=%q (set %v), override %v: got %v, want %v", tc.env, tc.set, tc.override, got, tc.want)
 		}
 	}
@@ -55,7 +55,7 @@ func TestStrictLocalAuthIsOnUnlessTurnedOff(t *testing.T) {
 	os.Unsetenv("CORAL_STRICT_LOCAL_AUTH")
 	dir := t.TempDir()
 	out.Reset()
-	strictLocalAuth(dir, nil)
+	_, _ = strictLocalAuth(dir, nil)
 	if n := strings.Count(out.String(), "Coral now requires a credential"); n != 1 {
 		t.Fatalf("first start: notice shown %d times:\n%s", n, out.String())
 	}
@@ -63,8 +63,58 @@ func TestStrictLocalAuthIsOnUnlessTurnedOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	strictLocalAuth(dir, nil)
+	_, _ = strictLocalAuth(dir, nil)
 	if strings.Contains(out.String(), "Coral now requires a credential") {
 		t.Errorf("the notice is shown again:\n%s", out.String())
+	}
+}
+
+// #4290: strict local auth off is refused on the default data folder and fine on one of its own.
+func TestStrictOffIsRefusedOnTheDefaultDataFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	def := filepath.Join(home, ".coral")
+	if err := os.MkdirAll(def, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(def, link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	for _, dir := range []string{def, def + string(filepath.Separator), filepath.Join(def, "..", ".coral"), link} {
+		err := refuseStrictOffOnDefaultDir(false, dir)
+		if err == nil || !strings.Contains(err.Error(), "CORAL_DATA_DIR") {
+			t.Errorf("strict off on %q: got %v, want a refusal naming CORAL_DATA_DIR", dir, err)
+		}
+		if err := refuseStrictOffOnDefaultDir(true, dir); err != nil {
+			t.Errorf("strict on, %q: %v", dir, err)
+		}
+	}
+	if err := refuseStrictOffOnDefaultDir(false, t.TempDir()); err != nil {
+		t.Errorf("a folder of its own: %v", err)
+	}
+	if err := refuseStrictOffOnDefaultDir(false, filepath.Join(home, ".coral-test")); err != nil {
+		t.Errorf("a sibling folder: %v", err)
+	}
+}
+
+// Through strictLocalAuth, which Start calls: off on the default folder is an error, off on a
+// folder of its own is not.
+func TestStrictLocalAuthRefusesOffOnTheDefaultFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	off := false
+	on, err := strictLocalAuth(filepath.Join(home, ".coral"), &off)
+	if err == nil || !strings.Contains(err.Error(), "CORAL_DATA_DIR") {
+		t.Fatalf("want a refusal naming CORAL_DATA_DIR, got on=%v err=%v", on, err)
+	}
+	if on, err := strictLocalAuth(t.TempDir(), &off); err != nil || on {
+		t.Errorf("off on a folder of its own: on=%v err=%v", on, err)
+	}
+	t.Setenv("CORAL_STRICT_LOCAL_AUTH", "0")
+	if _, err := strictLocalAuth(filepath.Join(home, ".coral"), nil); err == nil {
+		t.Error("CORAL_STRICT_LOCAL_AUTH=0 on the default folder started")
 	}
 }

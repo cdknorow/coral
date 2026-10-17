@@ -367,7 +367,11 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		return nil, err
 	}
 	cfg.TLS = tlsConfig != nil
-	cfg.StrictLocalAuth = strictLocalAuth(cfg.CoralDir(), opts.StrictLocalAuth)
+	cfg.StrictLocalAuth, err = strictLocalAuth(cfg.CoralDir(), opts.StrictLocalAuth)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
 
 	// Bind the port now and keep the listeners open to avoid a TOCTOU race
 	// (another process grabbing the port between check and serve). One listener per --host
