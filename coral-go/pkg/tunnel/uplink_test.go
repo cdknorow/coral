@@ -333,15 +333,29 @@ func TestUplinkSingleBulkThroughput(t *testing.T) {
 		require.EqualValues(t, size, n)
 		return time.Since(start)
 	}
-	// Throttled: 1 MiB at 5 Mbit is ~1.7 s on the wire.
+	// Throttled: 1 MiB at 5 Mbit is ~1.7 s on the wire. Three downloads each way, interleaved
+	// (off, on, off, ...) so a slow stretch of a shared runner lands on both sides, and the medians
+	// compared: one sample each failed the 10% margin on windows-tests twice on trees that did not
+	// touch this package (2.008 s before, 2.244 s after; #4397).
 	off := hol
 	off.queue = 512 << 10
 	on := hol
 	on.queue = sendLowWater
-	tOff := download(connectShaped(t, newHub(t, SessionConfig{}), localApp(), off, uplinkConfig{Off: true}), 1<<20)
-	tOn := download(connectShaped(t, newHub(t, SessionConfig{}), localApp(), on, uplinkConfig{}), 1<<20)
-	t.Logf("throttled 1 MiB: before %v, after %v", tOff.Round(time.Millisecond), tOn.Round(time.Millisecond))
-	assert.Less(t, float64(tOn), float64(tOff)*1.10, "within 10%")
+	sOff := connectShaped(t, newHub(t, SessionConfig{}), localApp(), off, uplinkConfig{Off: true})
+	sOn := connectShaped(t, newHub(t, SessionConfig{}), localApp(), on, uplinkConfig{})
+	var offs, ons []time.Duration
+	for i := 0; i < 3; i++ {
+		offs = append(offs, download(sOff, 1<<20))
+		ons = append(ons, download(sOn, 1<<20))
+	}
+	median := func(d []time.Duration) time.Duration {
+		s := append([]time.Duration(nil), d...)
+		sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+		return s[len(s)/2]
+	}
+	tOff, tOn := median(offs), median(ons)
+	t.Logf("throttled 1 MiB, median of 3: before %v %v, after %v %v", tOff.Round(time.Millisecond), offs, tOn.Round(time.Millisecond), ons)
+	assert.Less(t, float64(tOn), float64(tOff)*1.10, "within 10% (medians)")
 
 	// Fast (loopback, no shaping): 64 MiB, best of 3 each.
 	best := func(up uplinkConfig) time.Duration {
