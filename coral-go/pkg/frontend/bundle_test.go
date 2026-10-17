@@ -130,7 +130,7 @@ func TestEveryLazyModuleBuildsAgainstTheStubs(t *testing.T) {
 	}
 	// Resolve through the bundled prefix's files, with the stubs standing where the startup modules were. A few lazy modules are
 	// scripts (not modules) or need globals; esbuild reports only import/export problems, which is what is checked.
-	res := bundleBuild(&overlayFS{files: b.Files, base: static}, entry.String(), "probe.js", false)
+	res := bundleBuild(&overlayFS{files: b.Files, base: static}, entry.String(), "probe.js", false, nil)
 	for _, e := range res.Errors {
 		loc := ""
 		if e.Location != nil {
@@ -204,8 +204,8 @@ func TestBundleOverlay(t *testing.T) {
 	if err != nil || !bytes.Equal(app, b.Files["app.js"]) {
 		t.Fatalf("app.js is not the bundle: %v", err)
 	}
-	orig, _ := fs.ReadFile(static, "password_ui.js")
-	got, err := fs.ReadFile(o, "password_ui.js")
+	orig, _ := fs.ReadFile(static, "security_settings.js")
+	got, err := fs.ReadFile(o, "security_settings.js")
 	if err != nil || !bytes.Equal(got, orig) {
 		t.Errorf("a file the bundle does not replace is not the original: %v", err)
 	}

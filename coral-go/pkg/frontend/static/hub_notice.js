@@ -7,7 +7,8 @@ import { showToast } from './utils.js';
 import { isCloud } from './server_base.js';
 import { importOnce } from './import_once.js';
 
-const { sendJson } = await importOnce('./password_ui.js');
+// Asked for when used, not awaited at the top level: a module that awaits a bundled module at load can wait on the stub of a module that waits for it (#4326).
+const sendJson = (...args) => importOnce('./password_ui.js').then(m => m.sendJson(...args));
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 

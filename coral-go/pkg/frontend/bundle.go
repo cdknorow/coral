@@ -58,10 +58,45 @@ func StylesheetsInShell(indexHTML []byte) []string {
 	return out
 }
 
+// StartupLazyModules are the modules the dashboard's startup imports with importOnce (not statically), on every normal start: the
+// leftover-tmux check and the sign-in and set-password prompts. They are part of the bundle so those imports cost
+// no request, and no second round trip for the stubs they import (#4326). Order matters: password_ui.js awaits importOnce('./password_rules.js') at its
+// top level, which is answered from the bundle only once password_rules.js has run, so that comes first. (hub_notice.js used to await password_ui.js the same way; it asks for it when it needs it now, so it can be bundled.) bundle_startup_requests_browser checks the list against a real start.
+var StartupLazyModules = []string{"terminal_backend.js", "password_rules.js", "password_ui.js", "hub_notice.js", "local_auth_banner.js", "import_once.js"}
+
+var importOnceSpec = regexp.MustCompile(`importOnce\(\s*['"]\./([^'"?]+)['"]`)
+
+// importOnceSpecs is the set of modules (paths under static/) that some file imports with importOnce('./path').
+func importOnceSpecs(static fs.FS) map[string]bool {
+	out := map[string]bool{}
+	_ = fs.WalkDir(static, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".js") {
+			return nil
+		}
+		if data, err := fs.ReadFile(static, p); err == nil {
+			for _, m := range importOnceSpec.FindAllSubmatch(data, -1) {
+				out[string(m[1])] = true
+			}
+		}
+		return nil
+	})
+	return out
+}
+
+// startupEntry is the bundle's entry before its aliases: app.js, then the modules startup imports lazily.
+func startupEntry() string {
+	var b strings.Builder
+	b.WriteString("import './app.js';\n")
+	for _, m := range StartupLazyModules {
+		fmt.Fprintf(&b, "import './%s';\n", m)
+	}
+	return b.String()
+}
+
 // BuildBundle builds the family from the static tree (rooted at static/) and the shell template's source.
 func BuildBundle(static fs.FS, indexHTML []byte) (*Bundle, error) {
 	// 1. The bundle: app.js, then an alias export for every name of every module it contains.
-	probe := bundleBuild(static, "import './app.js';\n", "app.js", false)
+	probe := bundleBuild(static, startupEntry(), "app.js", false, nil)
 	if err := buildError(probe); err != nil {
 		return nil, err
 	}
@@ -82,7 +117,7 @@ func BuildBundle(static fs.FS, indexHTML []byte) (*Bundle, error) {
 		exports[m] = ex
 	}
 	var entry strings.Builder
-	entry.WriteString("import './app.js';\n")
+	entry.WriteString(startupEntry())
 	alias := map[string]string{}
 	for i, m := range names {
 		alias[m] = fmt.Sprintf("m%d", i)
@@ -98,7 +133,17 @@ func BuildBundle(static fs.FS, indexHTML []byte) (*Bundle, error) {
 		}
 		fmt.Fprintf(&entry, " } from './%s';\n", m)
 	}
-	res := bundleBuild(static, entry.String(), "app.js", true)
+	// A module some importOnce('./path') names registers its own namespace with importOnce when it has run (below), so a later importOnce
+	// is answered from the bundle with no request for the stub (#4326). Registered by the module itself, not by the entry: the entry runs after
+	// app.js, whose startup already calls importOnce. Only those modules get one: a namespace object for every module costs about 20 KB of gzip.
+	imported := importOnceSpecs(static)
+	registered := map[string]bool{}
+	for _, m := range names {
+		if imported[m] && m != "import_once.js" {
+			registered[m] = true
+		}
+	}
+	res := bundleBuild(static, entry.String(), "app.js", true, registered)
 	if err := buildError(res); err != nil {
 		return nil, err
 	}
@@ -175,7 +220,7 @@ func buildError(r api.BuildResult) error {
 }
 
 // bundleBuild bundles entry (source text, resolved as app.js's sibling) with the static tree as the file system.
-func bundleBuild(static fs.FS, entry, sourcefile string, final bool) api.BuildResult {
+func bundleBuild(static fs.FS, entry, sourcefile string, final bool, registered map[string]bool) api.BuildResult {
 	opts := api.BuildOptions{
 		Stdin:         &api.StdinOptions{Contents: entry, Sourcefile: sourcefile, Loader: api.LoaderJS, ResolveDir: "/"},
 		Bundle:        true,
@@ -187,7 +232,7 @@ func bundleBuild(static fs.FS, entry, sourcefile string, final bool) api.BuildRe
 		Write:         false,
 		Metafile:      true,
 		LogLevel:      api.LogLevelSilent,
-		Plugins:       []api.Plugin{embeddedFiles(static)},
+		Plugins:       []api.Plugin{embeddedFiles(static, registered)},
 	}
 	if final {
 		opts.MinifyWhitespace, opts.MinifySyntax = true, true // names stay the source's: as MinifyAsset
@@ -198,7 +243,7 @@ func bundleBuild(static fs.FS, entry, sourcefile string, final bool) api.BuildRe
 }
 
 // embeddedFiles resolves './x.js' and '../x.js' against the importing file inside fsys: esbuild reads no disk.
-func embeddedFiles(fsys fs.FS) api.Plugin {
+func embeddedFiles(fsys fs.FS, registered map[string]bool) api.Plugin {
 	const ns = "static"
 	return api.Plugin{Name: "embedded-static", Setup: func(b api.PluginBuild) {
 		b.OnResolve(api.OnResolveOptions{Filter: `.*`}, func(a api.OnResolveArgs) (api.OnResolveResult, error) {
@@ -226,6 +271,10 @@ func embeddedFiles(fsys fs.FS) api.Plugin {
 				return api.OnLoadResult{}, err
 			}
 			src := string(data)
+			if registered[a.Path] {
+				// The module's own namespace, registered with importOnce once the module has run (a module may import itself).
+				src += fmt.Sprintf("\nimport * as __bundledSelf from './%s';\nimport { registerBundled as __registerBundled } from '%s';\n__registerBundled({ %q: __bundledSelf });\n", path.Base(a.Path), relativeTo(a.Path, "import_once.js"), a.Path)
+			}
 			return api.OnLoadResult{Contents: &src, Loader: api.LoaderJS}, nil
 		})
 	}}

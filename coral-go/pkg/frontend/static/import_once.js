@@ -20,11 +20,22 @@
 
 const loads = new Map(); // resolved URL -> { pending, attempt }
 
+/* Modules the bundle (#4228) already holds: app.js's startup graph and the modules startup always imports. The bundle registers their
+ * namespaces here when it starts, so importOnce answers for them with no request: a bundled module's URL is only a stub that re-exports
+ * the bundle's instance, and fetching it cost a round trip on the way to the first paint (sessions.js asked for render.js there, the
+ * startup tasks for terminal_backend.js and its five stubs, #4326). Empty when the page is not bundled (the pop-out, CORAL_NO_BUNDLE=1). */
+const bundled = new Map(); // './render.js' -> module namespace
+
+export function registerBundled(namespaces) {
+    for (const [name, ns] of Object.entries(namespaces)) bundled.set('./' + name, ns);
+}
+
 /** Import `spec` ('./name.js'), sharing one load per module. On failure the
  *  promise rejects, the attempt is forgotten, and, when `label` is given (a
  *  load the user asked for), a toast says what could not be loaded. Background
  *  callers omit it. */
 export function importOnce(spec, label) {
+    if (bundled.has(spec)) return Promise.resolve(bundled.get(spec));
     const url = new URL(spec, import.meta.url).href;
     let entry = loads.get(url);
     if (!entry) loads.set(url, entry = { pending: null, attempt: 0 });
