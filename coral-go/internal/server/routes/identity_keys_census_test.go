@@ -1,10 +1,6 @@
 package routes
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -48,140 +44,11 @@ var notIdentityFields = map[string]string{
 }
 
 func TestEveryDecodedIdentityFieldIsCanonicalised(t *testing.T) {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", nil, 0)
-	require.NoError(t, err)
-	pkg := pkgs["routes"]
-	require.NotNil(t, pkg)
-
-	named := map[string]*ast.StructType{}
-	var files []*ast.File
-	for name, f := range pkg.Files {
-		if strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		files = append(files, f)
-		for _, d := range f.Decls {
-			gd, ok := d.(*ast.GenDecl)
-			if !ok || gd.Tok != token.TYPE {
-				continue
-			}
-			for _, s := range gd.Specs {
-				if ts, ok := s.(*ast.TypeSpec); ok {
-					if st, ok := ts.Type.(*ast.StructType); ok {
-						named[ts.Name.Name] = st
-					}
-				}
-			}
-		}
-	}
-
-	// tags collects the JSON field names of a struct, through embedded and nested structs.
-	var tags func(st *ast.StructType, out map[string]bool, depth int)
-	tags = func(st *ast.StructType, out map[string]bool, depth int) {
-		if depth > 6 {
-			return
-		}
-		for _, f := range st.Fields.List {
-			if f.Tag != nil {
-				tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`")).Get("json")
-				if name, _, _ := strings.Cut(tag, ","); name != "" && name != "-" {
-					out[name] = true
-				}
-			}
-			var inner ast.Expr = f.Type
-			for {
-				switch x := inner.(type) {
-				case *ast.StarExpr:
-					inner = x.X
-					continue
-				case *ast.ArrayType:
-					inner = x.Elt
-					continue
-				}
-				break
-			}
-			switch x := inner.(type) {
-			case *ast.StructType:
-				tags(x, out, depth+1)
-			case *ast.Ident:
-				if n, ok := named[x.Name]; ok {
-					tags(n, out, depth+1)
-				}
-			}
-		}
-	}
-
+	src := parseRoutesSource(t)
 	decoded := map[string]string{} // json field name -> where
-	for _, f := range files {
-		for _, d := range f.Decls {
-			fd, ok := d.(*ast.FuncDecl)
-			if !ok || fd.Body == nil {
-				continue
-			}
-			vars := map[string]ast.Expr{} // local var -> its type expression
-			ast.Inspect(fd.Body, func(n ast.Node) bool {
-				switch x := n.(type) {
-				case *ast.ValueSpec:
-					for _, id := range x.Names {
-						if x.Type != nil {
-							vars[id.Name] = x.Type
-						}
-					}
-				case *ast.AssignStmt:
-					for i, l := range x.Lhs {
-						id, ok := l.(*ast.Ident)
-						if !ok || i >= len(x.Rhs) {
-							continue
-						}
-						if cl, ok := x.Rhs[i].(*ast.CompositeLit); ok && cl.Type != nil {
-							vars[id.Name] = cl.Type
-						}
-					}
-				}
-				return true
-			})
-			ast.Inspect(fd.Body, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok || len(call.Args) == 0 {
-					return true
-				}
-				var fn string
-				switch c := call.Fun.(type) {
-				case *ast.Ident:
-					fn = c.Name
-				case *ast.SelectorExpr:
-					fn = c.Sel.Name
-				}
-				if fn != "decodeJSON" && fn != "Decode" && fn != "Unmarshal" {
-					return true
-				}
-				u, ok := call.Args[len(call.Args)-1].(*ast.UnaryExpr)
-				if !ok || u.Op != token.AND {
-					return true
-				}
-				id, ok := u.X.(*ast.Ident)
-				if !ok {
-					return true
-				}
-				te, ok := vars[id.Name]
-				if !ok {
-					return true
-				}
-				out := map[string]bool{}
-				switch x := te.(type) {
-				case *ast.StructType:
-					tags(x, out, 0)
-				case *ast.Ident:
-					if n, ok := named[x.Name]; ok {
-						tags(n, out, 0)
-					}
-				}
-				for name := range out {
-					decoded[name] = fd.Name.Name
-				}
-				return true
-			})
+	for _, d := range src.decodedBodies() {
+		for name := range d.fields {
+			decoded[name] = d.fn
 		}
 	}
 	require.Greater(t, len(decoded), 40, "the census must find the handlers' request fields (found %d)", len(decoded))

@@ -1,0 +1,457 @@
+package routes
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"reflect"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// routesSource is the routes package's non-test source, parsed, with its named struct types.
+type routesSource struct {
+	fset  *token.FileSet
+	files map[string]*ast.File // by file name
+	named map[string]*ast.StructType
+}
+
+func parseRoutesSource(t *testing.T) *routesSource {
+	t.Helper()
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", nil, 0)
+	require.NoError(t, err)
+	pkg := pkgs["routes"]
+	require.NotNil(t, pkg)
+	src := &routesSource{fset: fset, files: map[string]*ast.File{}, named: map[string]*ast.StructType{}}
+	for name, f := range pkg.Files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src.files[name] = f
+		for _, d := range f.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok || gd.Tok != token.TYPE {
+				continue
+			}
+			for _, s := range gd.Specs {
+				if ts, ok := s.(*ast.TypeSpec); ok {
+					if st, ok := ts.Type.(*ast.StructType); ok {
+						src.named[ts.Name.Name] = st
+					}
+				}
+			}
+		}
+	}
+	return src
+}
+
+// tags collects the JSON field names of a struct with the shallowest depth each is found at,
+// through embedded, nested, pointer and slice fields.
+func (src *routesSource) tags(st *ast.StructType, out map[string]int, depth int) {
+	if depth > 6 {
+		return
+	}
+	for _, f := range st.Fields.List {
+		if f.Tag != nil {
+			tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`")).Get("json")
+			if name, _, _ := strings.Cut(tag, ","); name != "" && name != "-" {
+				if d, ok := out[name]; !ok || depth < d {
+					out[name] = depth
+				}
+			}
+		}
+		var inner ast.Expr = f.Type
+		for {
+			switch x := inner.(type) {
+			case *ast.StarExpr:
+				inner = x.X
+				continue
+			case *ast.ArrayType:
+				inner = x.Elt
+				continue
+			}
+			break
+		}
+		switch x := inner.(type) {
+		case *ast.StructType:
+			src.tags(x, out, depth+1)
+		case *ast.Ident:
+			if n, ok := src.named[x.Name]; ok {
+				// An embedded struct's fields are the struct's own (depth stays).
+				d := depth + 1
+				if len(f.Names) == 0 {
+					d = depth
+				}
+				src.tags(n, out, d)
+			}
+		}
+	}
+}
+
+// decodedBody is one place a handler decodes a request body.
+type decodedBody struct {
+	file, fn string
+	fields   map[string]int // JSON field name -> shallowest depth
+	opaque   string         // the target's type when it can't be audited by tags (map, any, RawMessage), else ""
+}
+
+func isRequestBodyRead(e ast.Expr) bool {
+	found := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		if se, ok := n.(*ast.SelectorExpr); ok && se.Sel.Name == "Body" {
+			if id, ok := se.X.(*ast.Ident); ok && (id.Name == "r" || id.Name == "req") {
+				found = true
+			}
+		}
+		return true
+	})
+	return found
+}
+
+func opaqueType(e ast.Expr) string {
+	switch x := e.(type) {
+	case *ast.MapType:
+		return "map"
+	case *ast.InterfaceType:
+		return "interface"
+	case *ast.Ident:
+		if x.Name == "any" {
+			return "any"
+		}
+	case *ast.SelectorExpr:
+		if x.Sel.Name == "RawMessage" {
+			return "json.RawMessage"
+		}
+	}
+	return ""
+}
+
+// decodedBodies finds every place a handler decodes a request body into a variable: decodeJSON(r,
+// &x), json.NewDecoder(r.Body).Decode(&x), or json.Unmarshal(b, &x) (whose source is not followed).
+func (src *routesSource) decodedBodies() []decodedBody {
+	var out []decodedBody
+	for file, f := range src.files {
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Body == nil {
+				continue
+			}
+			vars := map[string]ast.Expr{}
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.ValueSpec:
+					for _, id := range x.Names {
+						if x.Type != nil {
+							vars[id.Name] = x.Type
+						}
+					}
+				case *ast.AssignStmt:
+					for i, l := range x.Lhs {
+						id, ok := l.(*ast.Ident)
+						if !ok || i >= len(x.Rhs) {
+							continue
+						}
+						if cl, ok := x.Rhs[i].(*ast.CompositeLit); ok && cl.Type != nil {
+							vars[id.Name] = cl.Type
+						}
+					}
+				}
+				return true
+			})
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok || len(call.Args) == 0 {
+					return true
+				}
+				var fn string
+				bodyRead := false
+				switch c := call.Fun.(type) {
+				case *ast.Ident:
+					fn = c.Name
+					bodyRead = fn == "decodeJSON"
+				case *ast.SelectorExpr:
+					fn = c.Sel.Name
+					if fn == "Decode" {
+						if inner, ok := c.X.(*ast.CallExpr); ok && len(inner.Args) > 0 && isRequestBodyRead(inner.Args[0]) {
+							bodyRead = true
+						}
+					}
+				}
+				if fn != "decodeJSON" && fn != "Decode" && fn != "Unmarshal" {
+					return true
+				}
+				u, ok := call.Args[len(call.Args)-1].(*ast.UnaryExpr)
+				if !ok || u.Op != token.AND {
+					return true
+				}
+				id, ok := u.X.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				te, ok := vars[id.Name]
+				if !ok {
+					return true
+				}
+				db := decodedBody{file: file, fn: fd.Name.Name, fields: map[string]int{}}
+				switch x := te.(type) {
+				case *ast.StructType:
+					src.tags(x, db.fields, 0)
+				case *ast.Ident:
+					if n, ok := src.named[x.Name]; ok {
+						src.tags(n, db.fields, 0)
+					}
+				}
+				if bodyRead {
+					db.opaque = opaqueType(te)
+				}
+				out = append(out, db)
+				return true
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].file+out[i].fn < out[j].file+out[j].fn })
+	return out
+}
+
+// ---- What the identity layer's claim check does not read from the body (#4244; Security's answer to
+// #4232, question 3): nested identity fields, bodies that can't be audited by their tags, the query
+// string, path parameters and WebSocket messages. Each is listed with its reason, so a new one
+// fails here until someone has decided how it is bound.
+
+// nestedIdentityFields are identity keys found inside a decoded request struct below the top level
+// (the identity layer reads only the top level), with why each is not a caller's claim. None today.
+var nestedIdentityFields = map[string]string{}
+
+func TestNoIdentityFieldIsNestedInADecodedBody(t *testing.T) {
+	canon := map[string]bool{}
+	for _, k := range identityKeys {
+		canon[k] = true
+	}
+	var found []string
+	for _, d := range parseRoutesSource(t).decodedBodies() {
+		for name, depth := range d.fields {
+			if canon[name] && depth > 0 {
+				key := d.file + " " + d.fn + " " + name
+				if _, ok := nestedIdentityFields[key]; !ok {
+					found = append(found, key)
+				}
+			}
+		}
+	}
+	sort.Strings(found)
+	assert.Empty(t, found, "an identity field nested in a request body is read by no guard: flatten it, or list it in nestedIdentityFields with why it is not a claim")
+}
+
+// opaqueRequestDecodes are the handlers that decode a request body into a map, an interface or a
+// json.RawMessage, which no tag scan can audit: each reads only the keys named, none an identity,
+// and (where it says so) is an Operator-only route (operatorOnlyRoutes).
+var opaqueRequestDecodes = map[string]string{
+	"schedule.go UpdateJob":         "reads only job fields (agent_type, base_branch, cron_expr, enabled, paused_reason, repo_path, timezone); PUT /api/scheduled/jobs/{jobID} is Operator-only",
+	"system.go PutSettings":         "the body is a map of Coral's setting names to values, none an identity; PUT /api/settings is Operator-only",
+	"system.go SetDatabaseSecurity": "reads only mode; PUT /api/system/database-security is Operator-only",
+	"themes.go SaveTheme":           "reads only base, description and variables",
+	"workflow.go UpdateWorkflow":    "reads only workflow fields (name, steps, default_agent, repo_path, base_branch, max_duration_s); PUT /api/workflows/{workflowID} is Operator-only",
+}
+
+func TestOpaqueRequestDecodesAreListed(t *testing.T) {
+	found := map[string]string{}
+	for _, d := range parseRoutesSource(t).decodedBodies() {
+		if d.opaque != "" {
+			found[d.file+" "+d.fn] = d.opaque
+		}
+	}
+	for key, typ := range found {
+		_, ok := opaqueRequestDecodes[key]
+		assert.True(t, ok, "%s decodes a request body into a %s: no guard can read an identity from it by tag. Decode into a struct, or list it in opaqueRequestDecodes with what it reads", key, typ)
+	}
+	for key := range opaqueRequestDecodes {
+		_, ok := found[key]
+		assert.True(t, ok, "opaqueRequestDecodes lists %s, which no longer decodes a request body that way: remove it", key)
+	}
+}
+
+// Where a handler reads an identity from the query string, and how that read is bound.
+const (
+	queryBoard   = "board request: the identity layer reads subscriber_id from the query and compares it with the token's member name (boardClaims)"
+	queryTarget  = "names whom the request is about (a target), not who is calling"
+	queryAgent   = "an agent route: the file binds the claim to the token (callerSession, agentFromRequest or VerifiedSession)"
+	queryLookup  = "the session the request is about (a lookup or filter key); it does not say who is calling"
+	queryMetrics = "labels the call in the call metrics"
+)
+
+var queryIdentityReads = map[string]string{
+	"board.go subscriber_id":             queryBoard,
+	"board.go target":                    queryTarget,
+	"board_remotes.go subscriber_id":     queryBoard,
+	"team_availability.go subscriber_id": queryBoard,
+	"call_metrics.go subscriber_id":      queryMetrics,
+	"call_metrics.go session_id":         queryMetrics,
+	"agent_tasks.go session_id":          queryAgent,
+	"agent_ui.go session_id":             queryAgent,
+	"artifacts.go session_id":            queryAgent,
+	"sessions_tasks.go session_id":       queryAgent,
+	"agent_history.go session_id":        queryLookup,
+	"agent_ui_request.go session_id":     queryLookup,
+	"helpers.go session_id":              queryLookup,
+	"sessions_chat.go session_id":        queryLookup,
+	"sessions_files.go session_id":       queryLookup,
+	"subagents.go session_id":            queryLookup,
+	"team_artifacts.go session_id":       queryLookup,
+	"websocket.go session_id":            queryLookup,
+}
+
+func TestIdentityQueryReadsAreClassified(t *testing.T) {
+	src := parseRoutesSource(t)
+	canon := map[string]bool{}
+	for _, k := range identityKeys {
+		canon[k] = true
+	}
+	found := map[string]bool{}
+	isQuery := func(e ast.Expr) bool { // r.URL.Query()
+		c, ok := e.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		se, ok := c.Fun.(*ast.SelectorExpr)
+		return ok && se.Sel.Name == "Query"
+	}
+	for file, f := range src.files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			var key string
+			switch x := n.(type) {
+			case *ast.CallExpr: // r.URL.Query().Get("k")
+				if se, ok := x.Fun.(*ast.SelectorExpr); ok && se.Sel.Name == "Get" && isQuery(se.X) && len(x.Args) == 1 {
+					if bl, ok := x.Args[0].(*ast.BasicLit); ok {
+						key = strings.Trim(bl.Value, `"`)
+					}
+				}
+			case *ast.IndexExpr: // r.URL.Query()["k"]
+				if isQuery(x.X) {
+					if bl, ok := x.Index.(*ast.BasicLit); ok {
+						key = strings.Trim(bl.Value, `"`)
+					}
+				}
+			}
+			if canon[key] {
+				found[file+" "+key] = true
+			}
+			return true
+		})
+	}
+	require.Greater(t, len(found), 10, "the census must find the handlers' query reads (found %d)", len(found))
+	for key := range found {
+		_, ok := queryIdentityReads[key]
+		assert.True(t, ok, "%s reads an identity from the query string: say how it is bound in queryIdentityReads", key)
+	}
+	for key, why := range queryIdentityReads {
+		if !found[key] {
+			t.Errorf("queryIdentityReads lists %s, which no longer reads it: remove it", key)
+			continue
+		}
+		if why == queryAgent {
+			file, _, _ := strings.Cut(key, " ")
+			b, err := os.ReadFile(file)
+			require.NoError(t, err)
+			text := string(b)
+			assert.True(t, strings.Contains(text, "callerSession(") || strings.Contains(text, "agentFromRequest(") || strings.Contains(text, "VerifiedSession("),
+				"%s is listed as bound to the token, but the file calls none of callerSession, agentFromRequest or VerifiedSession", file)
+		}
+	}
+}
+
+// knownPathParams are the URL parameters the handlers read. None of them is who is calling: each
+// names a thing the request is about (a member named in a path is a target, as the group member
+// to remove). A new one, such as {subscriberID}, fails here until it is classified.
+var knownPathParams = map[string]string{
+	"project":      "the board (an id or a label); the identity layer resolves it and compares it with the token's board",
+	"name":         "the thing addressed by name: a live session, a theme, a team, an agent template, a workflow by name: a target",
+	"sessionID":    "a session addressed (live, history, or a group member to remove): a target",
+	"boardName":    "the board a team action (kill, reset, sleep status) acts on: a target",
+	"agentName":    "an agent's knowledge file in a team: a target",
+	"remoteServer": "a configured remote server's id",
+	"folderName":   "a folder's tag set",
+	"category":     "a template category",
+	"*":            "the rest of a path: a file inside a workflow run's step, or a remote server's own path (board remotes, the call metrics' remote pattern)",
+	"id":           "an id", "taskID": "an id", "groupID": "an id", "workflowID": "an id", "runID": "an id", "jobID": "an id", "jobId": "an id",
+	"tagID": "an id", "presetID": "an id", "noteID": "an id", "messageID": "an id", "subagentID": "an id", "stepIndex": "an index",
+}
+
+func TestPathParamsAreClassified(t *testing.T) {
+	found := map[string]bool{}
+	for _, f := range parseRoutesSource(t).files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			c, ok := n.(*ast.CallExpr)
+			if !ok || len(c.Args) != 2 {
+				return true
+			}
+			var fn string
+			switch x := c.Fun.(type) {
+			case *ast.Ident:
+				fn = x.Name
+			case *ast.SelectorExpr:
+				fn = x.Sel.Name
+			}
+			if fn == "urlParam" || fn == "URLParam" {
+				if bl, ok := c.Args[1].(*ast.BasicLit); ok {
+					found[strings.Trim(bl.Value, `"`)] = true
+				}
+			}
+			return true
+		})
+	}
+	require.Greater(t, len(found), 10, "the census must find the handlers' path parameters (found %d)", len(found))
+	for name := range found {
+		_, ok := knownPathParams[name]
+		assert.True(t, ok, "a handler reads the path parameter {%s}: classify it in knownPathParams (a target, or who is calling?)", name)
+	}
+	for name := range knownPathParams {
+		assert.True(t, found[name], "knownPathParams lists {%s}, which no handler reads: remove it", name)
+	}
+}
+
+// Only the terminal WebSocket reads messages from a client, and what it reads is keystrokes, a resize and an id:
+// no identity field.
+func TestWebSocketClientMessagesCarryNoIdentity(t *testing.T) {
+	src := parseRoutesSource(t)
+	canon := map[string]bool{}
+	for _, k := range identityKeys {
+		canon[k] = true
+	}
+	readers := map[string]bool{}
+	for _, f := range src.files {
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Body == nil {
+				continue
+			}
+			reads := false
+			tags := map[string]int{}
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.CallExpr:
+					if se, ok := x.Fun.(*ast.SelectorExpr); ok && se.Sel.Name == "Read" {
+						if id, ok := se.X.(*ast.Ident); ok && id.Name == "conn" {
+							reads = true
+						}
+					}
+				case *ast.StructType:
+					src.tags(x, tags, 0)
+				}
+				return true
+			})
+			if reads {
+				readers[fd.Name.Name] = true
+				for name := range tags {
+					assert.False(t, canon[name], "%s reads client WebSocket messages and declares the identity field %q: no guard reads it", fd.Name.Name, name)
+				}
+			}
+		}
+	}
+	assert.Equal(t, map[string]bool{"WSTerminal": true}, readers, "a new WebSocket handler reads client messages: classify what it may carry here")
+}
