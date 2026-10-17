@@ -40,7 +40,7 @@ import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
 import { loadCustomViews, activateCustomView } from './custom_views.js';
-import { initTabCustomize } from './tab_customize.js';
+import { initTabCustomize, applyTabPrefs } from './tab_customize.js';
 import { startNav, go, note, onRoute, currentRoute } from './nav.js';
 import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } from './routes.js';
 import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
@@ -1030,6 +1030,7 @@ async function initLocalStore() {
     let tag = '';
     try { tag = state.account ? await accountTag(state.account.email) : ''; } catch { tag = ''; }
     setStoreOwner(tag);
+    applyTabPrefs(); // the tab choice is kept per account, so read it now that the account is known (#4103)
     loadSessionDrafts(ageOutStored());
     loadPendingFromStorage();
     setInterval(() => loadSessionDrafts(ageOutStored()), DAY_MS); // interval-ok: daily, browser storage only, no request

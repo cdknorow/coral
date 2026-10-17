@@ -51,10 +51,11 @@ const { connect } = require('./agent_view_harness');
         const st = await ev(`(() => { const rows = [...document.querySelectorAll('#tab-customize .tc-row')];
             const lock = rows[0].querySelector('.tc-check');
             return { expanded: document.getElementById('agentic-tab-customize').getAttribute('aria-expanded'), lockDisabled: lock.disabled, lockChecked: lock.checked, upDis: rows[0].querySelector('[data-dir="-1"]').getAttribute('aria-disabled'),
-                downDis: rows[rows.length - 1].querySelector('[data-dir="1"]').getAttribute('aria-disabled'), midUp: rows[1].querySelector('[data-dir="-1"]').getAttribute('aria-disabled'),
+                downDis: rows[rows.length - 1].querySelector('[data-dir="1"]').getAttribute('aria-disabled'), midUp: rows[2].querySelector('[data-dir="-1"]').getAttribute('aria-disabled'), belowLockUp: rows[1].querySelector('[data-dir="-1"]').getAttribute('aria-disabled'), lockDown: rows[0].querySelector('[data-dir="1"]').getAttribute('aria-disabled'),
                 focus: document.activeElement.className, names: rows.map(r => r.querySelector('.tc-check').getAttribute('aria-label')) } })()`);
         assert.equal(st.expanded, 'true'); assert.ok(st.lockDisabled && st.lockChecked, 'first tab locked and shown');
         assert.equal(st.upDis, 'true'); assert.equal(st.downDis, 'true'); assert.equal(st.midUp, null);
+        assert.equal(st.belowLockUp, 'true', 'nothing moves above the first tab'); assert.equal(st.lockDown, 'true', 'the first tab does not move');
         assert.ok(st.names.every(n => /^Show /.test(n)), JSON.stringify(st.names));
         assert.equal(st.focus, 'tc-check', 'focus goes into the popover');
         ok('popover: first tab locked and checked, edge arrows aria-disabled, every row labelled, focus inside');
@@ -83,9 +84,9 @@ const { connect } = require('./agent_view_harness');
         ok('up/down buttons and Alt+Up/Down reorder the real row; focus stays on the control');
 
         // A count moves with its tab.
-        const c = await ev(`(() => { const b = document.getElementById('agentic-tab-files'); b.querySelector('.agentic-tab-count').textContent = '6'; const at = [...b.parentElement.children].indexOf(b);
-            document.querySelector('#tab-customize .tc-move[data-tab="files"][data-dir="1"]').click();
-            return { count: b.querySelector('.agentic-tab-count').textContent, moved: [...b.parentElement.children].indexOf(b) !== at, same: document.getElementById('agentic-tab-files') === b } })()`);
+        const c = await ev(`(() => { const b = document.getElementById('agentic-tab-notes'); b.querySelector('.agentic-tab-count').textContent = '6'; const at = [...b.parentElement.children].indexOf(b);
+            document.querySelector('#tab-customize .tc-move[data-tab="notes"][data-dir="-1"]').click();
+            return { count: b.querySelector('.agentic-tab-count').textContent, moved: [...b.parentElement.children].indexOf(b) !== at, same: document.getElementById('agentic-tab-notes') === b } })()`);
         assert.deepEqual(c, { count: '6', moved: true, same: true });
         ok('a tab keeps its count when it moves');
         const custom = await row();
@@ -121,6 +122,47 @@ const { connect } = require('./agent_view_harness');
         assert.deepEqual(await row(), def);
         ok('unreadable saved prefs fall back to the default row');
 
+        // What is read back is checked (Security, #4103): unknown and repeated ids dropped, non-strings dropped, missing tabs last, the first tab first and shown.
+        await ev(`localStorage.setItem('coral-agentic-tab-prefs', JSON.stringify({ agent: { order: ['notes', 'nope', 'notes', 42, null, { x: 1 }, 'activity', '<img src=x onerror=1>'], hidden: [${JSON.stringify(first)}, 'ghost', 'tasks', 'tasks', 7] }, team: 'junk' })); true`);
+        await load();
+        const cleaned = await row();
+        assert.equal(cleaned[0], first, 'the first tab is first and shown');
+        assert.deepEqual(cleaned, [first, 'notes', 'activity', ...def.filter(t => ![first, 'notes', 'activity', 'tasks'].includes(t))], JSON.stringify(cleaned));
+        assert.ok(!cleaned.includes('tasks'), 'a valid hidden id still hides');
+        await open();
+        const listed2 = await listed();
+        assert.deepEqual(listed2, [first, 'notes', 'activity', ...def.filter(t => ![first, 'notes', 'activity'].includes(t))], 'the list agrees: every tab can be shown again, none vanished');
+        await ev(`document.querySelector('#tab-customize .tc-check[data-tab="notes"]').click(); true`); // a change rewrites the key from the cleaned value
+        const stored = JSON.parse(await ev(`localStorage.getItem('coral-agentic-tab-prefs')`));
+        const known = new Set(def.concat(['board', 'team-view', 'team-settings', 'team-artifacts', 'knowledge']));
+        assert.ok([...(stored.agent.order || []), ...(stored.agent.hidden || []), ...(stored.team.order || []), ...(stored.team.hidden || [])].every(id => known.has(id)), 'only known tab ids are stored: ' + JSON.stringify(stored));
+        await close();
+        ok('stored lists are validated: unknown, repeated and non-string ids dropped, missing tabs last, the first tab first and shown');
+
+        // Kept per account: with a Hub account the key carries the account tag and the default key is not read.
+        await ev(`localStorage.clear(); true`);
+        await load();
+        await ev(`import((window.__coralStatic || '/static/') + 'local_store.js').then(async m => { m.setStoreOwner('0123456789abcdef'); const t = await import((window.__coralStatic || '/static/') + 'tab_customize.js'); t.applyTabPrefs(); return true; })`);
+        await open();
+        await ev(`document.querySelector('#tab-customize .tc-check[data-tab="tasks"]').click(); true`);
+        assert.equal(await ev(`localStorage.getItem('coral-agentic-tab-prefs')`), null, 'not written under the shared key');
+        assert.ok(await ev(`localStorage.getItem('coral-agentic-tab-prefs@0123456789abcdef')`), 'written under the account key');
+        await ev(`import((window.__coralStatic || '/static/') + 'local_store.js').then(m => { m.setStoreOwner('fedcba9876543210'); return import((window.__coralStatic || '/static/') + 'tab_customize.js'); }).then(t => { t.applyTabPrefs(); return true; })`);
+        assert.ok((await row()).includes('tasks'), 'another account does not read the first one’s choice');
+        await close();
+        ok('the choice is kept per account (storeKey); another account reads its own');
+
+        // Reset removes the key.
+        await ev(`localStorage.clear(); true`);
+        await load();
+        await open();
+        await ev(`document.querySelector('#tab-customize .tc-check[data-tab="tasks"]').click(); true`);
+        assert.ok(await ev(`localStorage.getItem('coral-agentic-tab-prefs')`), 'a choice is stored');
+        await ev(`document.querySelector('#tab-customize .tc-reset').click(); true`);
+        assert.equal(await ev(`localStorage.getItem('coral-agentic-tab-prefs')`), null, 'Reset removes the key');
+        await close();
+        ok('Reset removes the stored key');
+
         // Reset to default; Escape closes and returns focus to the button; click-away closes.
         await ev(`localStorage.setItem('coral-agentic-tab-prefs', JSON.stringify({ agent: { order: ['notes'], hidden: ['tasks'] }, team: { order: [], hidden: [] } })); true`);
         await load();
@@ -128,7 +170,7 @@ const { connect } = require('./agent_view_harness');
         await open();
         await ev(`document.querySelector('#tab-customize .tc-reset').click(); true`);
         assert.deepEqual(await row(), def, 'Reset restores the default');
-        assert.equal(await ev(`localStorage.getItem('coral-agentic-tab-prefs')`).then(v => JSON.parse(v).agent.hidden.length), 0);
+        assert.equal(await ev(`localStorage.getItem('coral-agentic-tab-prefs')`), null, 'Reset leaves no key behind');
         assert.equal(await ev(`document.activeElement.classList.contains('tc-reset')`), true, 'focus stays on Reset');
         await key('Escape');
         assert.equal(await ev(`!!document.getElementById('tab-customize')`), false);

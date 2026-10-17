@@ -1,41 +1,59 @@
 /* Customize the side panel's tab row (#4103, operator request): hide or show each tab and reorder
  * them, from a small popover opened by the tune button at the end of the row or a right-click on
- * the row (a bottom sheet on a phone). The choice is kept per user in this browser (localStorage)
- * and applies to every agent; the agent's tabs and the team's tabs keep separate lists, since they
+ * the row (a bottom sheet on a phone). The choice is kept per user in this browser (safe_storage.js,
+ * under the signed-in account's storeKey) as tab ids only, and applies to every agent; the agent's tabs and the team's tabs keep separate lists, since they
  * show in different contexts.
  *
  * The tab buttons stay the real ones (their counts and handlers move with them): a hidden tab only
- * gets .tab-hidden, and the order is the DOM order. The locked tab (Chat when the agent is on a
+ * gets .tab-hidden, and the order is the DOM order. What is read back is checked against the page's own
+ * tab ids (unknown and repeated ids dropped, missing ones last). The locked tab (Chat when the agent is on a
  * board, else the context's first tab) can't be hidden, so the row is never empty, and a hidden tab
  * that is open falls back to it. */
 import { registerActions } from './actions.js';
 import { escapeHtml, escapeAttr } from './utils.js';
+import { browserLocal } from './safe_storage.js';
+import { storeKey } from './local_store.js';
 
-const KEY = 'coral-agentic-tab-prefs';
+const BASE_KEY = 'coral-agentic-tab-prefs'; // kept under storeKey(): on Coral Hub one browser serves several accounts
 const empty = () => ({ order: [], hidden: [] });
 let prefs = { agent: empty(), team: empty() };
-let defaultOrder = null; // every customizable tab id in the page's own order
+let defaultOrder = null; // every customizable tab id in the page's own order: the ids a stored list may name
+let loadedKey = null;
 let dragId = null;
 
 const strip = () => document.querySelector('#agentic-block-top .agentic-state-tabs');
 const tabButtons = () => [...(strip()?.querySelectorAll('.agentic-tab[data-tab]') || [])];
 const contextOf = () => (document.getElementById('agentic-state')?.classList.contains('team-context') ? 'team' : 'agent');
 
-function load() {
+/** A stored list as ids this page knows: strings only, the page's own tab ids, no duplicates. Anything else is dropped (a corrupt or
+ *  hand-edited value can't name a tab that doesn't exist, and what is stored is ids, never a title or content). */
+function cleanIds(list) {
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const id of list) if (typeof id === 'string' && defaultOrder.includes(id) && !out.includes(id)) out.push(id);
+    return out;
+}
+
+/** Read the saved choice for the signed-in account (a different account, or the account arriving after start, reads its own). */
+function ensureLoaded() {
+    const key = storeKey(BASE_KEY);
+    if (key === loadedKey) return;
+    loadedKey = key;
+    prefs = { agent: empty(), team: empty() };
     try {
-        const p = JSON.parse(localStorage.getItem(KEY) || 'null');
+        const p = JSON.parse(browserLocal.get(key) || 'null');
         for (const ctx of ['agent', 'team']) {
-            const c = p && p[ctx];
-            prefs[ctx] = {
-                order: Array.isArray(c?.order) ? c.order.filter(x => typeof x === 'string') : [],
-                hidden: Array.isArray(c?.hidden) ? c.hidden.filter(x => typeof x === 'string') : [],
-            };
+            const c = p && typeof p === 'object' ? p[ctx] : null;
+            prefs[ctx] = { order: cleanIds(c?.order), hidden: cleanIds(c?.hidden) };
         }
     } catch { /* unreadable: the defaults */ }
 }
 
+/** Keep the choice; with nothing chosen the key is removed, so Reset leaves nothing behind. */
 function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(prefs)); } catch { /* private mode: lasts until reload */ }
+    const key = storeKey(BASE_KEY);
+    const chosen = ['agent', 'team'].some(ctx => prefs[ctx].order.length || prefs[ctx].hidden.length);
+    if (chosen) browserLocal.set(key, JSON.stringify(prefs)); else browserLocal.remove(key);
 }
 
 /** The tabs the current context shows, in the page's own order: the agent's, or the team's. */
@@ -54,10 +72,11 @@ function lockedId(ids) {
     return ids.includes('board') ? 'board' : byDefault(ids)[0];
 }
 
-/** The ids in the user's order: their saved order first, then any tab they have not placed. */
+/** The ids in the user's order: the locked tab (Chat) first, always; then their saved order, then any tab they have not placed. */
 function orderedIds(ctx, ids) {
-    const saved = prefs[ctx].order.filter(id => ids.includes(id));
-    return [...saved, ...byDefault(ids.filter(id => !saved.includes(id)))];
+    const locked = lockedId(ids);
+    const saved = prefs[ctx].order.filter(id => ids.includes(id) && id !== locked);
+    return [locked, ...saved, ...byDefault(ids.filter(id => id !== locked && !saved.includes(id)))].filter(Boolean);
 }
 
 /** Put the saved choice on the real tab row. Safe to call at any time; it only changes what differs. */
@@ -65,6 +84,7 @@ export function applyTabPrefs() {
     const bar = strip();
     if (!bar) return;
     if (!defaultOrder) defaultOrder = tabButtons().map(b => b.dataset.tab);
+    ensureLoaded();
     const ctx = contextOf();
     const avail = available(ctx);
     const ids = avail.map(b => b.dataset.tab);
@@ -91,6 +111,7 @@ export function openableTab(tabName) {
 // ── The popover ────────────────────────────────────────────────────────────
 
 function rowsHTML(ctx) {
+    ensureLoaded();
     const avail = available(ctx);
     const ids = orderedIds(ctx, avail.map(b => b.dataset.tab));
     const locked = lockedId(ids);
@@ -101,15 +122,15 @@ function rowsHTML(ctx) {
         const icon = b.querySelector('.material-icons')?.textContent || '';
         const isLocked = id === locked;
         const on = isLocked || !hidden.has(id);
-        return `<li class="tc-row" draggable="true" data-tab="${escapeAttr(id)}">
+        return `<li class="tc-row" draggable="${isLocked ? 'false' : 'true'}" data-tab="${escapeAttr(id)}">
             <span class="material-icons tc-grip" aria-hidden="true">drag_indicator</span>
             <label class="tc-label"><input type="checkbox" class="tc-check" data-tab="${escapeAttr(id)}"${on ? ' checked' : ''}${isLocked ? ' disabled' : ''}
                 aria-label="Show ${escapeAttr(name)}${isLocked ? ' (always shown)' : ''}">
                 <span class="material-icons tc-icon" aria-hidden="true">${escapeHtml(icon)}</span><span class="tc-name">${escapeHtml(name)}</span></label>
             ${isLocked ? '<span class="material-icons tc-lock" aria-hidden="true" title="Always shown">lock</span>' : ''}
             <span class="tc-sp"></span>
-            <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="-1" aria-label="Move ${escapeAttr(name)} up"${i === 0 ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_up</span></button>
-            <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="1" aria-label="Move ${escapeAttr(name)} down"${i === ids.length - 1 ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_down</span></button>
+            <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="-1" aria-label="Move ${escapeAttr(name)} up"${i <= 1 || isLocked ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_up</span></button>
+            <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="1" aria-label="Move ${escapeAttr(name)} down"${i === ids.length - 1 || isLocked ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_down</span></button>
         </li>`;
     }).join('');
 }
@@ -137,7 +158,7 @@ function move(id, dir, refocus) {
     const ids = orderedIds(ctx, available(ctx).map(b => b.dataset.tab));
     const i = ids.indexOf(id);
     const j = i + dir;
-    if (i < 0 || j < 0 || j >= ids.length) return;
+    if (i < 1 || j < 1 || j >= ids.length) return; // the first tab (Chat) neither moves nor is passed
     [ids[i], ids[j]] = [ids[j], ids[i]];
     prefs[ctx].order = ids;
     save();
@@ -236,7 +257,7 @@ export function openCustomize() {
         const from = ids.indexOf(dragId);
         const to = ids.indexOf(row.dataset.tab);
         dragId = null;
-        if (from < 0 || to < 0 || from === to) return;
+        if (from < 1 || to < 1 || from === to) return; // the first tab stays first
         ids.splice(to, 0, ids.splice(from, 1)[0]);
         prefs[ctx].order = ids;
         save();
@@ -261,8 +282,7 @@ registerActions({
 });
 
 export function initTabCustomize() {
-    load();
-    applyTabPrefs();
+    applyTabPrefs(); // reads the saved choice for the account
     // The row changes with the context (agent or team) and with whether the agent is on a board.
     const state = document.getElementById('agentic-state');
     if (state) new MutationObserver(applyTabPrefs).observe(state, { attributes: true, attributeFilter: ['class'] });
