@@ -1,0 +1,63 @@
+name: fuzz-nightly
+# Nightly fuzzing of the cross-team artifact receive gate and the image strippers (#4391, from
+# Security's suggestion on Backend's C4 #4380). The targets ship with a small seed corpus and run
+# only ~25 s in the unit suite; this job runs each one for ~10 minutes on main to find inputs the
+# seed corpus does not reach. Each target is its own job (fail-fast: false), so one crash does not
+# hide the others.
+#
+# Trust (the same rules as cdp-gate.yml, #4383): it runs only on a schedule (so, on the default
+# branch, main) and by manual dispatch, never on pull_request, so a fork's code never runs here.
+# The job has no secrets and read-only contents; actions are pinned by SHA; nothing is cached (a
+# cache a scheduled run wrote could be read by a release, #4251). It never commits: a crash is made
+# visible by uploading the crasher and failing the job.
+#
+# Replaying a crasher locally:
+#   1. Open the failed job, download its "fuzz-crashers-<target>" artifact, and unzip it.
+#   2. Copy the crasher file it contains (testdata/fuzz/<Target>/<id>) into your checkout at the
+#      same path: coral-go/internal/server/routes/testdata/fuzz/<Target>/<id>
+#   3. Re-run just that input (it fails the same way, fast, no fuzzing):
+#        cd coral-go && go test -tags fts5 -run '<Target>/<id>' ./internal/server/routes/
+#      e.g. go test -tags fts5 -run 'FuzzStripJPEG/5bd3151860' ./internal/server/routes/
+#   Or fuzz the target yourself: go test -tags fts5 -run '^$' -fuzz '^<Target>$' ./internal/server/routes/
+
+on:
+  schedule:
+    - cron: "27 8 * * *" # 08:27 UTC nightly, off the top of the hour to avoid the scheduler's busiest minute
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15 # ~10 min of fuzzing plus build and startup
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzStripJPEG, FuzzStripPNG, FuzzStripGIF, FuzzGateReceived]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false # nothing cached here: see the header
+      - name: fuzz ${{ matrix.target }} for ~10 minutes
+        working-directory: coral-go
+        run: |
+          go test -tags fts5 -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 10m ./internal/server/routes/
+      - name: upload the crasher on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crashers-${{ matrix.target }}
+          path: coral-go/internal/server/routes/testdata/fuzz/${{ matrix.target }}/
+          if-no-files-found: warn # a build or setup failure leaves no crasher; the job still fails
+          retention-days: 14
