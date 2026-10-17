@@ -306,6 +306,53 @@ func validOriginPattern(p string) error {
 	return nil
 }
 
+// dropHubUserHeader removes X-Coral-Hub-User in any spelling.
+func dropHubUserHeader(h http.Header) {
+	for k := range h {
+		if http.CanonicalHeaderKey(k) == tunnel.HubUserHeader {
+			delete(h, k)
+		}
+	}
+}
+
+// plainSandbox reports whether a Content-Security-Policy has the bare "sandbox" directive: no
+// allow-scripts, no allow-same-origin, so the document is an opaque origin that runs nothing.
+// "sandbox allow-scripts ..." is a different directive and does not count.
+func plainSandbox(csp string) bool {
+	for _, d := range strings.Split(csp, ";") {
+		if strings.EqualFold(strings.TrimSpace(d), "sandbox") {
+			return true
+		}
+	}
+	return false
+}
+
+// directResponseFilter is StrictResponseFilter for a remote Coral reached directly (self-hosted
+// --hub). A response that arrives sandboxed (Coral's own previews: PreviewCSP, the file-content
+// preview's policy) keeps its policy, type and disposition kind, since the sandbox is what makes
+// them safe to show; everything else is filtered as a connector's reply is.
+func directResponseFilter(resp *http.Response) error {
+	csp := resp.Header.Get("Content-Security-Policy")
+	if !plainSandbox(csp) {
+		return StrictResponseFilter(resp)
+	}
+	contentType := resp.Header.Get("Content-Type")
+	kind, params, _ := mime.ParseMediaType(resp.Header.Get("Content-Disposition"))
+	if err := StrictResponseFilter(resp); err != nil {
+		return err
+	}
+	if mt, p, err := mime.ParseMediaType(contentType); err == nil && mt != "" {
+		resp.Header.Set("Content-Type", mime.FormatMediaType(strings.ToLower(mt), p))
+	}
+	if kind == "inline" || kind == "attachment" {
+		resp.Header.Set("Content-Disposition", Disposition(kind, params["filename"]))
+	} else {
+		resp.Header.Del("Content-Disposition")
+	}
+	resp.Header.Set("Content-Security-Policy", csp)
+	return nil
+}
+
 // forwardToConnector is the allowlist of browser request headers sent over a
 // tunnel (canonical form). The hub's own CSRF token, cookies, fetch-metadata and
 // forwarding headers never reach the connector.

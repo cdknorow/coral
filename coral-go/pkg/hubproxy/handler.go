@@ -154,8 +154,18 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			out := pr.Out
 			out.URL.Path, out.URL.RawPath = dec, raw
 			out.URL.RawQuery = stripAPIKey(pr.In.URL.RawQuery)
-			if isTunnel(t) {
-				allowlistHeaders(out.Header, out.Method, dec) // untrusted far side: allowlist, not denylist
+			// Untrusted far side: allowlist, not denylist, on every target (#4297). A direct remote
+			// got only the denylist below, so a browser's X-API-Key, X-Coral-* and Sec-Fetch-* went
+			// downstream; the Authorization the target sets in RoundTrip is added after this.
+			enc := out.Header.Values("Accept-Encoding")
+			allowlistHeaders(out.Header, out.Method, dec)
+			if !isTunnel(t) {
+				dropHubUserHeader(out.Header) // only a tunnel carries a Hub user the connector vouches for
+				// A direct remote relays gzip unchanged (the connector decodes for a tunnel, which is
+				// why Accept-Encoding is not on the allowlist): it is no secret, so it goes on.
+				for _, v := range enc {
+					out.Header.Add("Accept-Encoding", v)
+				}
 			}
 			for _, hd := range []string{"Authorization", "Cookie", "Origin", "Referer", "Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip"} {
 				out.Header.Del(hd)
@@ -186,8 +196,10 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 				w.Header().Del("Cache-Control")
 				return StrictResponseFilter(resp)
 			}
-			resp.Header.Del("Set-Cookie")
-			return nil
+			// A direct remote's bytes are as untrusted as a connector's (#4297): a page it answers under
+			// /api/remote/<id>/api/... would otherwise run on this origin.
+			w.Header().Del("Cache-Control")
+			return directResponseFilter(resp)
 		},
 		ErrorHandler: func(w http.ResponseWriter, req *http.Request, err error) {
 			if r.Context().Err() != nil {
