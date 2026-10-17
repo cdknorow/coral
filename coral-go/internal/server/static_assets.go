@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/cdknorow/coral/pkg/frontend"
 )
 
 // The embedded /static tree never changes while the server runs, so each
@@ -47,6 +48,7 @@ var compressibleExt = map[string]bool{
 const staticMinGzip = 512
 
 func newStaticAsset(name string, data []byte) *staticAsset {
+	data = frontend.MinifyAsset(name, data) // comments and indentation are bytes on the wire (#4203)
 	sum := sha256.Sum256(data)
 	tag := hex.EncodeToString(sum[:12])
 	a := &staticAsset{plain: data, etag: `"` + tag + `"`}

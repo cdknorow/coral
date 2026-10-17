@@ -66,6 +66,7 @@ func TestStaticAssetsGzipAndRevalidate(t *testing.T) {
 	srv, sub := staticTestServer(t)
 	want, err := fs.ReadFile(sub, "app.js")
 	require.NoError(t, err)
+	want = frontend.MinifyAsset("app.js", want) // the server serves the minified source (#4203)
 
 	plain, body := get(t, http.MethodGet, srv.URL+"/static/app.js", nil)
 	require.Equal(t, http.StatusOK, plain.StatusCode)
@@ -207,6 +208,7 @@ func TestVersionedStaticPaths(t *testing.T) {
 	t.Cleanup(srv.Close)
 	want, err := fs.ReadFile(sub, "app.js")
 	require.NoError(t, err)
+	want = frontend.MinifyAsset("app.js", want) // the server serves the minified source (#4203)
 
 	cur, body := get(t, http.MethodGet, srv.URL+"/static/b/"+ver+"/app.js", map[string]string{"Accept-Encoding": "gzip"})
 	require.Equal(t, http.StatusOK, cur.StatusCode)

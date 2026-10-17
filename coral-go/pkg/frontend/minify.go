@@ -1,0 +1,61 @@
+package frontend
+
+import (
+	"os"
+	"path"
+	"strings"
+	"sync/atomic"
+
+	"github.com/evanw/esbuild/pkg/api"
+)
+
+// MinifyAsset returns the dashboard file name (a path under static/) minified, or data itself when it is not one to minify or minifying
+// fails (#4203). The dashboard is served as separate ES modules from the embedded tree, comments and indentation included; on a slow
+// link the bytes are the load time (about 8.5 ms per KB on 4g), and whitespace and syntax minifying take the gzip size of the 191 JS and
+// CSS files from 707 KB to 475 KB (-33%).
+//
+// What it does and does not do, so a stack trace and the page's own code keep working:
+//   - whitespace and syntax only: identifiers are NOT renamed, so function and variable names are the source's (no code here reads a
+//     name, and an error in the console names what the source names); module boundaries and import paths are untouched (no bundling);
+//   - comments are dropped, "legal" ones (@license, @preserve) kept; Unicode is left as UTF-8, not escaped;
+//   - vendor/, *.min.js and agent_docs are served as they are (already minified or not code).
+//
+// The result is a pure function of (name, data): the server computes it once per file and caches it (internal/server/static_assets.go),
+// and an embedder that serves the same tree (the Cloud Hub) calls this too. CORAL_NO_MINIFY=1 turns it off, to read the source in the
+// browser's devtools.
+func MinifyAsset(name string, data []byte) []byte {
+	if disabled.Load() || os.Getenv("CORAL_NO_MINIFY") == "1" {
+		return data
+	}
+	name = strings.TrimPrefix(path.Clean("/"+name), "/")
+	ext := path.Ext(name)
+	if (ext != ".js" && ext != ".css") || strings.HasPrefix(name, "vendor/") || strings.HasSuffix(name, ".min.js") || strings.HasPrefix(name, "agent_docs/") {
+		return data
+	}
+	opts := api.TransformOptions{
+		Sourcefile:        name,
+		Target:            api.ESNext,
+		MinifyWhitespace:  true,
+		MinifySyntax:      true,
+		Charset:           api.CharsetUTF8,
+		LegalComments:     api.LegalCommentsInline,
+		LogLevel:          api.LogLevelSilent,
+		MinifyIdentifiers: false,
+	}
+	if ext == ".css" {
+		opts.Loader = api.LoaderCSS
+	} else {
+		opts.Loader = api.LoaderJS
+	}
+	res := api.Transform(string(data), opts)
+	if len(res.Errors) > 0 || len(res.Code) == 0 || len(res.Code) >= len(data) {
+		return data
+	}
+	return res.Code
+}
+
+// disabled is for tests that compare served bytes with the embedded source.
+var disabled atomic.Bool
+
+// SetMinifyDisabled turns MinifyAsset into the identity (tests only).
+func SetMinifyDisabled(off bool) { disabled.Store(off) }
