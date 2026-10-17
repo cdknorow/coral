@@ -332,12 +332,20 @@ function renderMessage(msg, container, agentType = "claude") {
     }
 }
 
+// A user turn that Coral typed into the agent, not the Operator: the server flags the turns it delivered itself (coral_notice,
+// #4306); older history and anything sent before the server started are read by their text. A long notice reaches the agent as a
+// paste, which Claude Code records wrapped in pasted_content tags, so the text is unwrapped before it is read.
+function isCoralDelivery(msg) {
+    return msg.coral_notice === true || isCoralNudge(unwrapPastedContent(msg.content));
+}
+
 function renderOneMessage(msg, container, agentType) {
     const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
         appendContent(container, makeBubble("chat-note", "Interrupted"));
-	} else if (msg.type === "user" && isCoralNudge(msg.content)) {
-		appendCoralNotice(container, normalizeNudgeText(msg.content), isCoralHealthNudge(msg.content));
+	} else if (msg.type === "user" && isCoralDelivery(msg)) {
+		const text = unwrapPastedContent(msg.content);
+		appendCoralNotice(container, normalizeNudgeText(text), isCoralHealthNudge(text));
     } else if (msg.type === "user") {
         appendContent(container, makeBubble("chat-bubble human",
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>`));

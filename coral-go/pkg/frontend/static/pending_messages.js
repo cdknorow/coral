@@ -99,6 +99,7 @@ const CORAL_NUDGE_RES = [
     /^You have tasks available/i,
     /^You have a new task in Coral \(#\d+:/i,
     /^\[Task #\d+[^\]]*\]/i,
+    /^\[New Task #\d+[^\]]*\]/i, // the new-task broadcast, "@notify-all [New Task #N (priority)] ..."
     /^\[Wait resolved\]/i,
 	/^\[Coral\b[^\]]*\]/i,
 	/^Stop hook feedback:/i, // Claude Code's block from a Stop hook (the board check): not something the user typed (#4171)
@@ -147,7 +148,7 @@ export function normalizeNudgeText(content) {
 	text = text.replace(/^(?:\/[a-zA-Z0-9_-]+\s*)+/, "").trim();
 	text = text.replace(/^\[Coral health check\]\s*/i, "").trim();
     // If preceded by a notification tag like "@QA Engineer " or "@notify-all "
-    return text.replace(/^@[^@\n\r]+?\s+(?=(?:You have|\[Task #|\[Wait resolved\]|\[Coral\b))/i, "").trim();
+    return text.replace(/^@[^@\n\r]+?\s+(?=(?:You have|\[Task #|\[New Task #|\[Wait resolved\]|\[Coral\b))/i, "").trim();
 }
 
 export function isCoralHealthNudge(content) {

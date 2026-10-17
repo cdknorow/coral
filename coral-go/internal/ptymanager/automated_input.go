@@ -396,6 +396,7 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 	gate.shadowForget(in.Name, in.Key)
 	if err == nil {
 		gate.noteDelivered(in.Name, in.Key)
+		noteDeliveredText(in.Name, in.Text)
 	}
 	return Sent, err
 }
@@ -1002,6 +1003,7 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		} else {
 			g.shadowForget(name, h.in.Key)
 			g.noteDelivered(name, h.in.Key)
+			noteDeliveredText(name, h.in.Text)
 			slog.Info("automated input delivered after the hold ended", "session", name, "sender", h.in.What, "held_for", g.now().Sub(h.heldAt).Round(time.Second).String(), "released", releasedBecause(h.why))
 		}
 	}

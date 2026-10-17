@@ -395,7 +395,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			end = max(end-max(offset, 0), 0)
 		}
 		start := max(end-limit, 0)
-		page := messages[start:end]
+		page := markCoralDeliveries(messages[start:end], agentType, sessionID, name)
 		if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
 			page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
 		}
@@ -413,6 +413,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	messages = markCoralDeliveries(messages, agentType, sessionID, name)
 	reply := map[string]any{"messages": messages, "total": total, "limit_notice": limitNotice,
 		"needs_login": needsLogin, "login_reason": nilIf(!needsLogin || loginReason == "", loginReason)}
 	h.addNeedsInput(r, reply, name, agentType, sessionID)
