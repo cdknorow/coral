@@ -1997,8 +1997,8 @@ button.subscriber-history-link {
 /* The controls of one setting on one wrapping row (field, kind, then the buttons side by side) instead of a stack that grows tall (#4469). */
 .settings-controls-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); }
 .settings-controls-row > * { margin: 0; }
-.settings-controls-row .settings-inline { display: inline-flex; align-items: center; gap: var(--space-xs); white-space: nowrap; }
-.settings-controls-row .settings-inline input { display: inline-block; margin: 0; width: 5em; min-width: 56px; flex: none; } /* never narrower than a touch target, whatever the row's width or the text size (text200_wide) */
+.settings-controls-row .settings-inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); max-width: 100%; } /* the words wrap at the field when the row is narrow (popover_bounds: no sideways scroll at 200% text) */
+.settings-controls-row .settings-inline input { display: inline-block; margin: 0; width: 3.5em; min-width: 44px; flex: none; } /* never narrower than a touch target (text200_wide) */
 .settings-hint[data-state="error"] { color: var(--danger); }
 .settings-database-encryption-warning {
     display: block;
