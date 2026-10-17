@@ -98,12 +98,12 @@ async function run() {
   let t = await top();
   check('history loads a first page of 30 messages (#3723)', (await ev(`window.__chatLimits || []`)).every(l => l === '30') && (await ev(`(window.__chatLimits || []).length`)) > 0, JSON.stringify(await ev(`window.__chatLimits`)));
   check('overlapping initial loads render the history once', t.filter(x => x.kind === 'user').length === 1, JSON.stringify(t.map(x => x.kind)));
-  check('top level: group, user, prose, group, question, final reply (prose is never folded)', JSON.stringify(t.map(x => x.kind)) === '["group","user","reply","group","reply","reply"]', JSON.stringify(t.map(x => x.kind)));
+  check('top level: group, user, group (preamble and calls), question, final reply', JSON.stringify(t.map(x => x.kind)) === '["group","user","group","reply","reply"]', JSON.stringify(t.map(x => x.kind)));
   check('groups are collapsed by default', t.filter(x => x.kind === 'group').every(g => !g.open));
-  check('group summary counts steps and names the latest tool', t[3].steps === '2 steps' && t[3].latest === 'static/tasks.js', `${t[3].steps} / ${t[3].latest}`);
+  check('group summary counts steps and names the latest tool', t[2].steps === '3 steps' && t[2].latest === 'static/tasks.js', `${t[2].steps} / ${t[2].latest}`);
   check('orphan result from an older page is grouped', t[0].steps === '1 step' && t[0].latest === 'output', `${t[0].steps} / ${t[0].latest}`);
-  check('final reply is visible and marked final', t[5].final && t[5].text === 'Done — spacing fixed.');
-  check('prose and the question are visible; commands and output stay hidden while collapsed', await ev(`(() => { const x = ${C}.innerText; return x.includes('Please tidy the modal spacing.') && x.includes('Looking at the CSS first.') && x.includes('Which spacing?') && !x.includes('git diff --stat') && !x.includes('line 39'); })()`));
+  check('final reply is visible and marked final', t[4].final && t[4].text === 'Done — spacing fixed.');
+  check('the question is visible; the one-line preamble, commands and output stay hidden while collapsed', await ev(`(() => { const x = ${C}.innerText; return x.includes('Please tidy the modal spacing.') && x.includes('Which spacing?') && !x.includes('Looking at the') && !x.includes('git diff --stat') && !x.includes('line 39'); })()`));
   check('result HTML is escaped', await ev(`!window.__xss && !${C}.querySelector('script')`));
   await ev(`window.__chatDelay = 80; true`); // the initial-load overlap is checked; later polls need no slow answer
 
@@ -112,7 +112,7 @@ async function run() {
   const calls = await ev(`Array.from(${C}.querySelectorAll('.work-group')[1].querySelectorAll('.tool-call')).map(d => ({ id: d.dataset.toolUseId, open: d.open, err: d.classList.contains('tool-call-error'),
       label: d.querySelector('.tool-call-label').textContent, bodyVisible: d.querySelector('.tool-call-body').checkVisibility(), h: d.getBoundingClientRect().height }))`);
   const byId = (id) => calls.find(c => c.id === id);
-  check('opening the group keeps the prose and the question on the page', await ev(`(() => { const x = ${C}.innerText; return x.includes('Looking at the CSS first.') && x.includes('Which spacing?'); })()`));
+  check('opening the group shows the preamble; the question stays on the page', await ev(`(() => { const x = ${C}.innerText; return x.includes('Looking at the CSS first.') && x.includes('Which spacing?'); })()`));
   // One line plus the compact control height (32px min) and padding; an open body is far taller.
   check('tool rows inside stay collapsed to one line', calls.length === 2 && calls.every(c => !c.open && !c.bodyVisible && c.h < 44), JSON.stringify(calls));
   check('Bash row labelled by its description', byId('t1') && byId('t1').label === 'Check modal section spacing');
@@ -132,7 +132,7 @@ async function run() {
   await cycles(3);
   t = await top();
   check('an earlier reply stays visible when work follows; the work is a new group', JSON.stringify(t.slice(-4).map(x => x.kind)) === '["user","reply","group","reply"]' && t[t.length - 3].text === 'Interim note.' && t[t.length - 2].steps === '1 step' && t[t.length - 1].text === 'Header done.', JSON.stringify(t.slice(-4)));
-  check('earlier groups keep their open state across polls', t[3].open === true);
+  check('earlier groups keep their open state across polls', t[2].open === true);
 
   const shot = await Page.captureScreenshot({ format: 'png', clip: await ev(`(() => { const r = ${C}.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: Math.min(r.height, 900), scale: 1 }; })()`) });
   if (process.env.SHOT) fs.writeFileSync(process.env.SHOT, Buffer.from(shot.data, 'base64'));
