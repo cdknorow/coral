@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -84,4 +85,61 @@ func TestHealthSettingsAreTheOperatorsAndChecked(t *testing.T) {
 	code, _ = putSettings(t, url, map[string]any{"subscriber_id": "Operator", "health": hs})
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "Dev", h.bs.GetHealthSettings(ctx, "team").Recipient)
+}
+
+// Security's MUST 2 on step 2 (#4176 rule 16): the handler refuses an agent itself, whatever
+// subscriber_id it gives, and does not rely on the guard in front of the route.
+func TestHealthSettingsHandlerRefusesAnAgentCaller(t *testing.T) {
+	_, h := setupBoardTestServer(t)
+	ctx := context.Background()
+	_, err := h.bs.Subscribe(ctx, "team", "Dev", "Developer", "claude-a", nil, "all")
+	require.NoError(t, err)
+	put := func(mod func(*http.Request)) int {
+		req := httptest.NewRequest(http.MethodPut, "/api/board/team/settings", bytes.NewReader([]byte(`{"subscriber_id":"Operator","health":{"on":false}}`)))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("project", "team")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		mod(req)
+		rec := httptest.NewRecorder()
+		h.UpdateBoardSettings(rec, req)
+		return rec.Code
+	}
+	// An agent token claiming to be the Operator.
+	code := put(func(r *http.Request) {
+		*r = *r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: "sid-a", SessionName: "claude-a"}))
+	})
+	assert.Equal(t, http.StatusForbidden, code, "agent token")
+	// The agent command line without the Operator's signature.
+	code = put(func(r *http.Request) { r.Header.Set("User-Agent", "coral-board/1.0") })
+	assert.Equal(t, http.StatusForbidden, code, "unsigned agent command line")
+	assert.True(t, h.bs.GetHealthSettings(ctx, "team").On, "settings unchanged")
+	// The dashboard-shaped request still works.
+	code = put(func(r *http.Request) { r.Header.Set("User-Agent", "Mozilla/5.0") })
+	assert.Equal(t, http.StatusOK, code, "dashboard")
+	assert.False(t, h.bs.GetHealthSettings(ctx, "team").On)
+}
+
+// Security's SHOULD (a): through Coral Hub the settings leave the health object out.
+func TestBoardSettingsThroughTheHubLeaveOutHealth(t *testing.T) {
+	_, h := setupBoardTestServer(t)
+	get := func(hub bool) map[string]any {
+		req := httptest.NewRequest(http.MethodGet, "/api/board/team/settings", nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("project", "team")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		if hub {
+			req.Header.Set(tunnel.ViaHeader, "1")
+		}
+		rec := httptest.NewRecorder()
+		h.GetBoardSettings(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		return out
+	}
+	assert.Contains(t, get(false), "health")
+	hub := get(true)
+	assert.NotContains(t, hub, "health")
+	assert.NotEmpty(t, hub, "the rest of the settings are still returned")
 }

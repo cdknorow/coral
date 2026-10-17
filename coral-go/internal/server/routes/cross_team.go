@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
@@ -123,6 +125,20 @@ func (h *BoardHandler) GetBoardSettings(w http.ResponseWriter, r *http.Request) 
 		errInternalServer(w, err.Error())
 		return
 	}
+	if cloud.Tunneled(r) {
+		// The health check's configuration (its recipient, its default reviewers) is the
+		// local dashboard's: Coral Hub's view of the settings leaves it out (Security's #4176
+		// rule 17, on step 2).
+		raw, err := json.Marshal(settings)
+		var fields map[string]json.RawMessage
+		if err != nil || json.Unmarshal(raw, &fields) != nil {
+			errInternalServer(w, "settings")
+			return
+		}
+		delete(fields, "health")
+		writeJSON(w, http.StatusOK, fields)
+		return
+	}
 	writeJSON(w, http.StatusOK, settings)
 }
 
@@ -139,7 +155,11 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	if body.SubscriberID != crossTeamOperatorID {
+	// The Operator only, decided here and not only by the guard in front of the route: these
+	// settings decide what Coral types into every agent (Security's #4176 rule 16). A claimed
+	// name is not enough; an agent's token, or its command line without the Operator's
+	// signature, is refused whatever subscriber_id it gives.
+	if body.SubscriberID != crossTeamOperatorID || agentCaller(r) || (isAgentTool(r) && !cliauth.Verified(r)) {
 		errForbidden(w, "only the Operator can change board settings")
 		return
 	}
