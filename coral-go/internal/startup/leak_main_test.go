@@ -21,7 +21,9 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "startup tests: no isolated folder:", err)
 		os.Exit(1)
 	}
-	for k, v := range map[string]string{"TMPDIR": iso, "HOME": filepath.Join(iso, "home"), "CORAL_DATA_DIR": filepath.Join(iso, "data")} {
+	// TMP, TEMP and USERPROFILE too: os.TempDir and the home folder read those on Windows, not
+	// TMPDIR and HOME (Security's SHOULD on #4381 v2).
+	for k, v := range map[string]string{"TMPDIR": iso, "TMP": iso, "TEMP": iso, "HOME": filepath.Join(iso, "home"), "USERPROFILE": filepath.Join(iso, "home"), "CORAL_DATA_DIR": filepath.Join(iso, "data")} {
 		_ = os.MkdirAll(v, 0o700)
 		os.Setenv(k, v)
 	}
