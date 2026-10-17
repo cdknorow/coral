@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -93,4 +95,42 @@ func TestRelaySenderAsksTheActor(t *testing.T) {
 			assert.Contains(t, []string{"not_orchestrator", "session_mismatch"}, code(body), "a member that is not an orchestrator: %s", body)
 		})
 	}
+}
+
+// relaySenderRole is the second lock behind the Operator-name guard: called directly, it decides the
+// Operator name by the actor too. A browser with no sign-in is "a person" to the earlier test and
+// nobody to the actor: let through in log mode (counted), refused under enforce.
+func TestRelaySenderRoleDecidesTheOperatorByTheActor(t *testing.T) {
+	a := newAttributionHarness(t)
+	answer := func(actor *Actor, person bool) string {
+		r := httptest.NewRequest("POST", "/api/board/team/relay-messages", nil)
+		if actor != nil {
+			r = withActor(r, *actor)
+		}
+		if person { // this computer's browser, no sign-in: callerDashNoCookie, a person to humanInputCaller
+			r = r.WithContext(context.WithValue(r.Context(), callerKindKey{}, callerDashNoCookie))
+		}
+		rec := httptest.NewRecorder()
+		a.bh.relaySenderRole(rec, r, "team", "Operator", "")
+		body := rec.Body.String()
+		for _, c := range []string{"operator_requires_person", "cross_team_disabled"} {
+			if strings.Contains(body, c) {
+				return c
+			}
+		}
+		return "other: " + body
+	}
+	operator := &Actor{Kind: ActorOperator, Name: "Operator"}
+	claimed := &Actor{Kind: ActorClaimed}
+
+	setMode(t, false)
+	assert.Equal(t, "cross_team_disabled", answer(operator, true), "the verified Operator reaches the board's setting")
+	assert.Equal(t, "cross_team_disabled", answer(claimed, true), "log mode: a person to the earlier test passes it")
+	assert.Contains(t, enforceDiffersSites(), "relay-operator POST (unrouted)", "a direct call has no route")
+	assert.Equal(t, "operator_requires_person", answer(claimed, false), "and a process that is not a person never did")
+
+	setMode(t, true)
+	assert.Equal(t, "cross_team_disabled", answer(operator, true))
+	assert.Equal(t, "operator_requires_person", answer(claimed, true), "enforce: nothing behind the name is refused")
+	assert.Equal(t, "operator_requires_person", answer(nil, true), "and neither is a request that did not pass the identity layer")
 }
