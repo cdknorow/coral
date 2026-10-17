@@ -73,6 +73,21 @@ func TestDirectTargetResponsesAreSandboxed(t *testing.T) {
 			w.Header().Set("Content-Type", "text/html")
 			w.Header().Set("Content-Security-Policy", "sandbox allow-scripts allow-same-origin")
 			io.WriteString(w, evil)
+		case "/api/evil-first-wins":
+			// The first sandbox directive is the one a browser reads: this one allows scripts on the
+			// hub's own origin, and the bare one after it does not undo it.
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Content-Security-Policy", "sandbox allow-scripts allow-same-origin; sandbox")
+			io.WriteString(w, evil)
+		case "/api/evil-two-lines":
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Add("Content-Security-Policy", "sandbox")
+			w.Header().Add("Content-Security-Policy", "default-src 'none'")
+			io.WriteString(w, evil)
+		case "/api/evil-comma":
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Content-Security-Policy", "sandbox, script-src 'unsafe-inline'")
+			io.WriteString(w, evil)
 		case "/api/preview":
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Content-Disposition", `inline; filename="page.html"`)
@@ -94,7 +109,7 @@ func TestDirectTargetResponsesAreSandboxed(t *testing.T) {
 		return resp
 	}
 
-	for _, path := range []string{"/api/evil-page", "/api/evil-csp"} {
+	for _, path := range []string{"/api/evil-page", "/api/evil-csp", "/api/evil-first-wins", "/api/evil-two-lines", "/api/evil-comma"} {
 		resp := get(path)
 		assert.Equal(t, "application/octet-stream", resp.Header.Get("Content-Type"), path)
 		assert.True(t, strings.HasPrefix(resp.Header.Get("Content-Disposition"), "attachment"), path)
@@ -120,4 +135,32 @@ func TestDirectTargetResponsesAreSandboxed(t *testing.T) {
 	resp = get("/api/json")
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 	assert.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
+}
+
+// plainSandbox accepts one header line with exactly one sandbox directive, and it bare.
+func TestPlainSandbox(t *testing.T) {
+	for _, tc := range []struct {
+		values []string
+		ok     bool
+	}{
+		{[]string{"sandbox"}, true},
+		{[]string{"SANDBOX"}, true},
+		{[]string{PreviewCSP}, true},
+		{[]string{"default-src 'none'; style-src 'unsafe-inline'; sandbox"}, true},
+		{[]string{"sandbox;"}, true},
+		{[]string{"sandbox allow-scripts allow-same-origin; sandbox"}, false}, // the first wins
+		{[]string{"sandbox; sandbox allow-scripts"}, false},
+		{[]string{"sandbox; sandbox"}, false}, // two directives: the second is ignored, but it is not a shape Coral sends
+		{[]string{"sandbox allow-scripts"}, false},
+		{[]string{"sandbox, default-src 'none'"}, false},
+		{[]string{"default-src 'none', sandbox"}, false},
+		{[]string{"sandbox", "default-src 'none'"}, false}, // two header lines
+		{[]string{"sandbox", "sandbox"}, false},
+		{[]string{"default-src 'none'"}, false},
+		{[]string{"sandboxed"}, false},
+		{[]string{""}, false},
+		{nil, false},
+	} {
+		assert.Equal(t, tc.ok, plainSandbox(tc.values), "%q", tc.values)
+	}
 }

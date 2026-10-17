@@ -315,16 +315,28 @@ func dropHubUserHeader(h http.Header) {
 	}
 }
 
-// plainSandbox reports whether a Content-Security-Policy has the bare "sandbox" directive: no
-// allow-scripts, no allow-same-origin, so the document is an opaque origin that runs nothing.
-// "sandbox allow-scripts ..." is a different directive and does not count.
-func plainSandbox(csp string) bool {
-	for _, d := range strings.Split(csp, ";") {
-		if strings.EqualFold(strings.TrimSpace(d), "sandbox") {
-			return true
-		}
+// plainSandbox reports whether a response's Content-Security-Policy is safely sandboxed: ONE header
+// line (a second line is a second policy, and the browser enforces both, so which "sandbox" wins is
+// not ours to guess), no comma (a comma separates policies inside one line), and exactly one
+// directive named sandbox, which is bare: no allow-scripts, no allow-same-origin, so the document
+// is an opaque origin that runs nothing. 'sandbox allow-scripts; sandbox' fails: the first sandbox
+// directive is the one a browser reads, and a later bare one doesn't undo it.
+func plainSandbox(values []string) bool {
+	if len(values) != 1 || strings.Contains(values[0], ",") {
+		return false
 	}
-	return false
+	bare := 0
+	for _, d := range strings.Split(values[0], ";") {
+		fields := strings.Fields(d)
+		if len(fields) == 0 || !strings.EqualFold(fields[0], "sandbox") {
+			continue
+		}
+		if len(fields) != 1 {
+			return false // a sandbox directive with tokens
+		}
+		bare++
+	}
+	return bare == 1
 }
 
 // directResponseFilter is StrictResponseFilter for a remote Coral reached directly (self-hosted
@@ -333,7 +345,7 @@ func plainSandbox(csp string) bool {
 // them safe to show; everything else is filtered as a connector's reply is.
 func directResponseFilter(resp *http.Response) error {
 	csp := resp.Header.Get("Content-Security-Policy")
-	if !plainSandbox(csp) {
+	if !plainSandbox(resp.Header.Values("Content-Security-Policy")) {
 		return StrictResponseFilter(resp)
 	}
 	contentType := resp.Header.Get("Content-Type")
