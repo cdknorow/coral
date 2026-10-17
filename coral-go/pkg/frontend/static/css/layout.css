@@ -376,22 +376,22 @@ body.panel-dragging .sidebar {
         height: 28px;
         box-sizing: border-box;
         border-radius: 8px;
-        border: 1px solid var(--rail-tile-border);
-        background: var(--rail-tile-bg);
-        /* An agent's initials take the name colour the user picked for it, as its row's name does. */
-        color: var(--agent-name-color, var(--rail-tile-text));
-        font: 700 11px/1 var(--font-mono);
-        transition: background 0.12s, border-color 0.12s, color 0.12s;
+        /* The expanded list's look, from its own tokens (operator, #4184): no tile of its own, the
+           initials in the colour of the agent's name in its row (session.css .session-label-name),
+           the row's hover and selected backgrounds. */
+        background: transparent;
+        color: var(--agent-name-color, var(--text-secondary));
+        font: 600 11px/1 var(--font-sans);
+        transition: background 0.12s, color 0.12s;
     }
     /* The palette is tuned for dark backgrounds: deepen it on light themes, as the full list does. */
     [data-theme="light"] .rail-tile[style] { color: color-mix(in srgb, var(--agent-name-color) 62%, black); }
-    .sidebar-rail-item:hover .rail-tile { background: var(--rail-tile-bg-hover); }
+    .sidebar-rail-item:hover .rail-tile { background: var(--bg-hover, rgba(255, 255, 255, 0.045)); }
     .sidebar-rail-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
-    /* Selected: brighter tile */
-    .sidebar-rail-item.active .rail-tile {
-        background: var(--rail-tile-active-bg);
-        border-color: var(--rail-tile-active-border);
-    }
+    /* Selected: the selected row's soft accent tile, and its name's primary colour */
+    .sidebar-rail-item.active .rail-tile { background: rgba(var(--accent-rgb), 0.14); }
+    .sidebar-rail-item.active .rail-tile:not([style]) { color: var(--text-primary); }
+    .sidebar-rail-item.active:hover .rail-tile { background: rgba(var(--accent-rgb), 0.17); }
     .rail-tile .rail-tile-icon { font-size: 10px !important; width: 10px; height: 10px; line-height: 10px; }
     .rail-tile-emoji { font-size: 9px; line-height: 1; }
     .rail-tile-badge {
@@ -422,22 +422,18 @@ body.panel-dragging .sidebar {
         margin-top: 8px;
         padding: 0;
         flex-shrink: 0;
-        /* Neutral, as the full list's group headers are, unless the user picked the team's colour (#3507). */
-        background: var(--rail-tile-bg-hover);
-        border: 1px solid var(--rail-tile-border);
+        /* A team's header in the list: bold text with no fill, in the colour the user picked for the
+           team (--team-accent, as session.css), else the headers' step down from the primary text. */
+        background: transparent;
+        border: none;
         border-radius: 6px;
-        color: var(--rail-tile-text);
+        color: var(--team-accent, color-mix(in srgb, var(--text-primary) 82%, transparent));
         cursor: pointer;
     }
-    .sidebar-rail-group.has-accent {
-        background: var(--rail-accent);
-        border-color: transparent;
-        color: var(--rail-chip-text);
-    }
     .sidebar-rail-group:first-child { margin-top: 0; }
-    .sidebar-rail-group:hover { filter: brightness(1.12); }
+    .sidebar-rail-group:hover { background: var(--bg-hover, rgba(255, 255, 255, 0.045)); }
     .sidebar-rail-group.collapsed { opacity: 0.55; }
-    .sidebar-rail-letter { font: 700 11px/1 var(--font-sans); }
+    .sidebar-rail-letter { font: 600 11px/1 var(--font-sans); }
 }
 
 .sidebar-footer .sidebar-new-btn-full {

@@ -838,9 +838,9 @@ function _renderSidebarRail(sessions) {
         // The same colours as the full list (#3507): a team shows the colour the user picked for it,
         // and every other team, folder and workflow the same neutral chip.
         const accent = g.kind === 'team' ? _getBoardColor(g.key) : null;
-        const style = accent ? ` style="--rail-accent:${escapeAttr(accent)}"` : '';
+        const style = accent ? ` style="--team-accent:${escapeAttr(accent)}"` : '';
         const title = `${g.label} (${g.agents.length}) — click to ${collapsed ? 'expand' : 'collapse'}`;
-        html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${accent ? ' has-accent' : ''}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
+        html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
             data-on-click="group-collapse" data-group="${escapeAttr(g.key)}">${_RAIL_ICONS[g.kind]}<span class="sidebar-rail-letter">${escapeHtml(letter)}</span></button>`;
         if (collapsed) continue;
         for (const s of g.agents) {
