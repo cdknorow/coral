@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -25,12 +26,18 @@ const (
 // SessionConfig tunes a tunnel session. Zero fields take the defaults, which
 // follow the spec: ping every 20s, dead after 60s.
 type SessionConfig struct {
-	MaxStreams     int           // concurrent streams per session, default 256
-	WindowSize     uint32        // yamux per-stream window, default 256 KiB
-	KeepAlive      time.Duration // ping interval, default 20s
-	DeadAfter      time.Duration // declare the peer dead after this, default 60s
-	StreamOpenWait time.Duration // default 10s
-	Limits         Limits
+	MaxStreams int    // concurrent streams per session, default 256
+	WindowSize uint32 // yamux per-stream window, default 256 KiB
+	// BulkTargetDelay is the queueing delay a bulk request (WithBulk) may add to interactive traffic on the session,
+	// default 50 ms; BulkMaxRate caps a bulk request's speed in bytes/s (default 16 MiB/s); BulkMaxDuration is how long
+	// a bulk push may take before it fails (default 120 s, the connector's artifact limit). See bulk_pacer.go.
+	BulkTargetDelay time.Duration
+	BulkMaxRate     int64
+	BulkMaxDuration time.Duration
+	KeepAlive       time.Duration // ping interval, default 20s
+	DeadAfter       time.Duration // declare the peer dead after this, default 60s
+	StreamOpenWait  time.Duration // default 10s
+	Limits          Limits
 
 	// Capabilities decides, per authenticated tunnel, which capabilities the hub
 	// advertises in Welcome (version 2 peers only); nil advertises none. Only "relay" (with
@@ -100,6 +107,9 @@ func (c SessionConfig) withDefaults() SessionConfig {
 	if c.MaxArtifactInFlight <= 0 {
 		c.MaxArtifactInFlight = 1
 	}
+	if c.BulkMaxDuration <= 0 {
+		c.BulkMaxDuration = bulkDefDuration
+	}
 	c.Limits = c.Limits.withDefaults()
 	return c
 }
@@ -148,6 +158,16 @@ type Session struct {
 	// counts its calls in progress.
 	artifactHook     RelayArtifactFunc
 	artifactInflight atomic.Int32
+	bulkOnce         sync.Once
+	bulkPace         *bulkPacer // paces the requests the hub marks as bulk (WithBulk)
+}
+
+// bulk is the session's bulk pacer, made on first use.
+func (s *Session) bulk() *bulkPacer {
+	s.bulkOnce.Do(func() {
+		s.bulkPace = newBulkPacer(s.ys.Ping, s.cfg.BulkTargetDelay, float64(s.cfg.BulkMaxRate))
+	})
+	return s.bulkPace
 }
 
 // Accept performs the server handshake on an upgraded WebSocket and returns a
@@ -325,10 +345,60 @@ type HubStream struct {
 	s    *Session
 	st   *yamux.Stream
 	once sync.Once
+	// pace is set on a stream opened with WithBulk: its writes are rate-limited (bulk_pacer.go). done ends a wait for it.
+	pace *bulkPacer
+	done chan struct{}
+	// left is the bytes a bulk body still has to write (0: not known) and deadline when the push must be done: a push
+	// that cannot finish by then at the lowest paced rate fails at once (ErrBulkTooSlow). Only the writer reads them.
+	left     int64
+	deadline time.Time
+	paceOff  atomic.Bool
+	paceOnce sync.Once
 }
 
-func (h *HubStream) Read(p []byte) (int, error)  { return h.st.Read(p) }
-func (h *HubStream) Write(p []byte) (int, error) { return h.st.Write(p) }
+// releasePace ends the pacing of this stream (idempotent): the pings stop when its body is written, not when the
+// machine has finished answering.
+func (h *HubStream) releasePace() {
+	if h.pace == nil {
+		return
+	}
+	h.paceOnce.Do(func() {
+		h.paceOff.Store(true)
+		h.pace.release()
+	})
+}
+
+func (h *HubStream) Read(p []byte) (int, error) { return h.st.Read(p) }
+
+// Write sends p on the stream; on a bulk stream, in paced slices.
+func (h *HubStream) Write(p []byte) (int, error) {
+	if h.pace == nil || h.paceOff.Load() {
+		return h.st.Write(p)
+	}
+	written := 0
+	for len(p) > 0 {
+		n := min(bulkSlice, len(p))
+		if h.pace.tooSlow(h.left, h.deadline) {
+			return written, ErrBulkTooSlow
+		}
+		h.pace.take(n, h.done)
+		select {
+		case <-h.done:
+			return written, net.ErrClosed
+		default:
+		}
+		k, err := h.st.Write(p[:n])
+		written += k
+		if h.left > 0 {
+			h.left -= int64(k)
+		}
+		if err != nil {
+			return written, err
+		}
+		p = p[n:]
+	}
+	return written, nil
+}
 func (h *HubStream) SetDeadline(t time.Time) error {
 	return h.st.SetDeadline(t)
 }
@@ -337,6 +407,10 @@ func (h *HubStream) SetDeadline(t time.Time) error {
 func (h *HubStream) Close() error {
 	var err error
 	h.once.Do(func() {
+		if h.pace != nil {
+			close(h.done)
+			h.releasePace()
+		}
 		err = h.st.Close()
 		h.s.active.Add(-1)
 	})
@@ -366,6 +440,11 @@ func (s *Session) OpenStream(ctx context.Context, hdr Header) (*HubStream, error
 		return nil, err
 	}
 	hs := &HubStream{s: s, st: st}
+	if isBulk(ctx) { // paced: yields to interactive traffic on this session (bulk_pacer.go)
+		hs.pace, hs.done = s.bulk(), make(chan struct{})
+		hs.deadline = time.Now().Add(s.cfg.BulkMaxDuration)
+		hs.pace.acquire(ctx.Done())
+	}
 	stop := context.AfterFunc(ctx, func() { _ = hs.Close() })
 	defer stop()
 	if err := writeFrame(st, hdr); err != nil {
@@ -415,6 +494,9 @@ func (s *Session) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	stop := context.AfterFunc(ctx, func() { _ = hs.Close() })
+	if hs.pace != nil && req.ContentLength > 0 {
+		hs.left = req.ContentLength
+	}
 	werr := make(chan error, 1)
 	go func() {
 		defer safego.Recover("tunnel/server:374")
@@ -422,11 +504,16 @@ func (s *Session) RoundTrip(req *http.Request) (*http.Response, error) {
 		if req.Body != nil {
 			if _, err := io.Copy(cw, req.Body); err != nil {
 				werr <- err
+				if errors.Is(err, ErrBulkTooSlow) {
+					_ = hs.Close() // end the transfer now, not at the deadline
+				}
 				return
 			}
 			req.Body.Close()
 		}
-		werr <- cw.Close()
+		err := cw.Close()
+		hs.releasePace() // the body is written: no more pings while the machine answers
+		werr <- err
 	}()
 	rh, err := s.readResponse(hs)
 	if err != nil {
@@ -434,7 +521,9 @@ func (s *Session) RoundTrip(req *http.Request) (*http.Response, error) {
 		_ = hs.Close()
 		select {
 		case e := <-werr:
-			_ = e
+			if errors.Is(e, ErrBulkTooSlow) {
+				return nil, e
+			}
 		default:
 		}
 		if ctx.Err() != nil {

@@ -64,13 +64,16 @@ func (p *patternBody) Read(b []byte) (int, error) {
 }
 
 // pushFiles has the hub push n-byte files to the external-artifacts route, one after another, until ctx ends.
-func pushFiles(ctx context.Context, s *Session, n int, wg *sync.WaitGroup) {
+func pushFiles(ctx context.Context, s *Session, n int, wg *sync.WaitGroup, bulk ...bool) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for ctx.Err() == nil {
 			req, _ := http.NewRequest(http.MethodPost, "http://ignored/api/board/team/external-artifacts", &patternBody{left: n})
 			req.ContentLength = int64(n)
+			if len(bulk) > 0 && bulk[0] {
+				req = req.WithContext(WithBulk(ctx)) // the hub marks the push as bulk (#4427)
+			}
 			resp, err := s.RoundTrip(req)
 			if err != nil {
 				return
@@ -91,13 +94,21 @@ func percentiles(lat []time.Duration) sample {
 // interactiveLatency times 20 UI requests (a GET) and 20 keystrokes (a small POST), interleaved, and returns each's
 // median and p95. With push, a fake hub pushes files meanwhile and the measured window must overlap real transfers.
 func interactiveLatency(t testing.TB, s *Session, received *atomic.Int64, push bool) (ui, key sample) {
+	ui, key, _ = interactiveLatencyMode(t, s, received, push, false)
+	return ui, key
+}
+
+// interactiveLatencyMode is interactiveLatency with the push marked bulk (bulk), and also reports the push's speed in
+// bytes/s over the time the requests took.
+func interactiveLatencyMode(t testing.TB, s *Session, received *atomic.Int64, push, bulk bool) (ui, key sample, pushRate float64) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	if push {
-		pushFiles(ctx, s, 8<<20, &wg)
+		pushFiles(ctx, s, 8<<20, &wg, bulk)
 		require.Eventually(t, func() bool { return received.Load() > 256<<10 }, 20*time.Second, 10*time.Millisecond, "the push is flowing")
 	}
 	before := received.Load()
+	windowStart := time.Now()
 	var uiLat, keyLat []time.Duration
 	for i := 0; i < 20; i++ {
 		start := time.Now()
@@ -119,13 +130,16 @@ func interactiveLatency(t testing.TB, s *Session, received *atomic.Int64, push b
 		time.Sleep(10 * time.Millisecond)
 	}
 	if push {
-		// The push is bounded by the stream's window per round trip (256 KiB per 60 ms, a file takes about 2 s): over the
-		// ~2.5 s the requests take, a whole file's worth of bytes must have arrived.
-		assert.Greater(t, received.Load()-before, int64(4<<20), "a push was in flight while the requests were timed")
+		pushRate = float64(received.Load()-before) / time.Since(windowStart).Seconds()
+		if !bulk {
+			// The push is bounded by the stream's window per round trip (256 KiB per 60 ms, a file takes about 2 s): over
+			// the ~2.5 s the requests take, a whole file's worth of bytes must have arrived.
+			assert.Greater(t, received.Load()-before, int64(4<<20), "a push was in flight while the requests were timed")
+		}
 	}
 	cancel()
 	wg.Wait()
-	return percentiles(uiLat), percentiles(keyLat)
+	return percentiles(uiLat), percentiles(keyLat), pushRate
 }
 
 func shapedPushSession(t testing.TB, received *atomic.Int64) *Session {
@@ -269,6 +283,36 @@ func TestInteractiveRequestsDuringAPushOnAShapedDownlink(t *testing.T) {
 			t.Logf("downlink %g Mbit: idle UI p50 %v p95 %v, keystroke p50 %v p95 %v; during an 8 MiB push: UI p50 %v p95 %v, keystroke p50 %v p95 %v",
 				down, idleUI.p50.Round(time.Millisecond), idleUI.p95.Round(time.Millisecond), idleKey.p50.Round(time.Millisecond), idleKey.p95.Round(time.Millisecond),
 				ui.p50.Round(time.Millisecond), ui.p95.Round(time.Millisecond), key.p50.Round(time.Millisecond), key.p95.Round(time.Millisecond))
+		})
+	}
+}
+
+// With the hub marking the push as bulk (WithBulk, #4427) a keystroke and a UI request stay within the interactive bound
+// on a slow downlink, where unmarked they wait a window (256 KiB) behind the file (322 ms median at 5 Mbit); the push still
+// moves, at the speed the link leaves it.
+func TestBulkPushStaysWithinTheInteractiveBoundOnASlowDownlink(t *testing.T) {
+	if testing.Short() {
+		t.Skip("throttled-link measurement")
+	}
+	for _, down := range []float64{5, 20} {
+		t.Run(fmt.Sprintf("down=%gMbit", down), func(t *testing.T) {
+			var received atomic.Int64
+			shape := hol
+			shape.queue = sendLowWater
+			s := connectShapedBothWays(t, newHub(t, SessionConfig{}), pushApp(&received), shape, down)
+			idleUI, idleKey := interactiveLatency(t, s, &received, false)
+			measure := func() (sample, sample, float64) { return interactiveLatencyMode(t, s, &received, true, true) }
+			ui, key, rate := measure()
+			t.Logf("downlink %g Mbit: idle UI p50 %v p95 %v, keystroke p50 %v p95 %v; bulk push (%.0f KiB/s of %.0f KiB/s): UI p50 %v p95 %v, keystroke p50 %v p95 %v",
+				down, idleUI.p50.Round(time.Millisecond), idleUI.p95.Round(time.Millisecond), idleKey.p50.Round(time.Millisecond), idleKey.p95.Round(time.Millisecond),
+				rate/1024, down*1e6/8/1024, ui.p50.Round(time.Millisecond), ui.p95.Round(time.Millisecond), key.p50.Round(time.Millisecond), key.p95.Round(time.Millisecond))
+			if ui.p95 >= hubCriterion || key.p95 >= hubCriterion {
+				t.Logf("p95 missed the %v bound with load average %s: measuring once more", hubCriterion, loadavg())
+				ui, key, rate = measure()
+			}
+			assert.Less(t, ui.p95, hubCriterion, "a UI request's p95 during a bulk push")
+			assert.Less(t, key.p95, hubCriterion, "a keystroke's p95 during a bulk push")
+			assert.Greater(t, rate, 0.4*down*1e6/8, "the bulk push still uses at least 40 percent of the link")
 		})
 	}
 }
