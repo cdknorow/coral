@@ -280,6 +280,10 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         let attached = () => {};
         const tryAttach = () => {
             if (generation !== switchGeneration) return;
+            // The terminal stopped being wanted while xterm.js loaded (Chat view, Back to the list closed the socket and
+            // cleared _terminalStarted): no socket is opened for a view that is not showing (#4518). A later switch to
+            // Terminal attaches then.
+            if (!_terminalStarted) { attached(); return; }
             try { attach(); attached(); } catch (err) { _terminalStarted = false; failed(err); }
         };
         const loadThenAttach = () => {

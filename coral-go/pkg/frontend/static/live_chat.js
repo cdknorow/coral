@@ -4,7 +4,8 @@ import { state } from './state.js';
 import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast, copyText } from './utils.js';
 import { registerActions } from './actions.js';
 import { platform } from './platform/detect.js';
-import { fitTerminal } from './xterm_renderer.js';
+import { fitTerminal, refreshTerminal } from './xterm_renderer.js';
+import { loadXterm, xtermReady } from './vendor_loader.js';
 import { fireAgentView } from './agent_view.js';
 import { deriveSessionState } from './render.js';
 import { chatAgentAdapter } from './chat_agents.js';
@@ -977,15 +978,46 @@ export function applyLiveViewMode(override) {
     if (mode === "chat") {
         // The terminal is not shown: its socket closes (sessions.js), and opens again when it is.
         fireAgentView("coral:terminal-unwanted");
+        scheduleTerminalPrefetch();
         return startLiveHistoryPoll();
     } else {
         stopLiveHistoryPoll();
         // The terminal is shown: it attaches now if it has not (sessions.js; no socket or xterm.js in Chat view).
         fireAgentView("coral:terminal-wanted");
-        // The xterm canvas was hidden; refit now that it has a size again.
+        // The xterm canvas was hidden; refit now that it has a size again, and repaint it: a renderer that was hidden may not
+        // draw again until something is written, and an idle agent writes nothing (#4518).
         setTimeout(fitTerminal, 0);
+        requestAnimationFrame(() => requestAnimationFrame(() => { fitTerminal(); refreshTerminal(); }));
     }
     return Promise.resolve();
+}
+
+// xterm.js (456 KB with its add-ons) is only downloaded when the Terminal view is first shown (#3083), and that wait, on a slow link
+// or through Coral Hub, was the blank pane after the switch (#4518: about a second at 1.5 Mbit and 150 ms; measured). So it is fetched
+// ahead: on the first sign that the Terminal button is about to be used (pointer over it, touch, focus), and when the Chat view has been
+// showing for terminalPrefetch.idleMs on a link that is not metered or slow. It loads once; every later switch finds it ready.
+export const terminalPrefetch = { idleMs: 2000 };
+let _prefetchTimer = null;
+export function prefetchTerminal() {
+    if (xtermReady()) return;
+    loadXterm().catch(() => { /* a failed prefetch is retried by the switch itself, which shows its own Retry */ });
+}
+function slowOrMetered() {
+    const c = navigator.connection;
+    return !!c && (c.saveData === true || /(^|-)2g$/.test(c.effectiveType || ""));
+}
+function scheduleTerminalPrefetch() {
+    if (xtermReady() || _prefetchTimer || slowOrMetered() || !hasTranscript(state.currentSession)) return;
+    _prefetchTimer = setTimeout(() => {
+        _prefetchTimer = null;
+        if (effectiveLiveViewMode() === "chat" && !slowOrMetered()) prefetchTerminal();
+    }, terminalPrefetch.idleMs);
+}
+// The intent: pointer over, touch or keyboard focus on the Terminal button (it exists in the page from the start).
+for (const type of ["pointerover", "touchstart", "focusin"]) {
+    document.addEventListener(type, (e) => {
+        if (e.target instanceof Element && e.target.closest("#live-view-btn-terminal, [data-on-click='terminal-view-open']")) prefetchTerminal();
+    }, { capture: true, passive: true });
 }
 
 

@@ -298,6 +298,9 @@ let _wsGeneration = 0;
 let _termFailures = 0;
 let _termFailureSession = null;
 export const terminalHooks = { schedule: (fn, ms) => setTimeout(fn, ms) };
+// A socket that opened and then said nothing for this long is stuck (the server sends the replay and a hello at once on every
+// connect): it is closed, and the reconnect takes over (#4518).
+export const SILENT_SOCKET_MS = 4000;
 let _paneClosed = false;  // true when server reports pane is gone
 let _needsScrollToBottom = false;  // set on connect, cleared after settling
 let _bottomWhenHidden = null;      // while the container is hidden: whether it was at the bottom
@@ -667,6 +670,15 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
         _termFailures = 0;
         _setDisconnectedBadge(false);
         setTerminalState('connected');
+        // The server answers a connect with the replay and a hello at once: an open socket that has sent nothing after
+        // SILENT_SOCKET_MS is stuck (a hub path that dropped the stream, a stalled attach), so it is closed and the
+        // reconnect (with its backoff) takes over, rather than leaving the pane blank (#4518).
+        terminalHooks.schedule(() => {
+            if (myGeneration === _wsGeneration && thisWs === terminalWs && _msgCount === 0 && thisWs.readyState === WebSocket.OPEN) {
+                dbg('terminalWs silent after open: closing to reconnect', { sessionId });
+                thisWs.close();
+            }
+        }, SILENT_SOCKET_MS);
         document.dispatchEvent(new CustomEvent('coral:terminal-reconnected'));
         if (terminal && !_following && mayResizePane()) _sendResize(terminal.cols, terminal.rows);
         // Flush any input queued while disconnected
@@ -681,6 +693,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
     };
 
     let _msgCount = 0;
+    const thisWs = terminalWs;
     terminalWs.onmessage = (event) => {
         // close() does not guarantee that already-dispatched message events are
         // cancelled. Ignoring the old generation prevents stale terminal data
@@ -854,6 +867,12 @@ export function disposeTerminal() {
 
 export function fitTerminal() {
     _sizeLocal();
+}
+
+/** Repaint the whole screen from the buffer: the container was hidden (Chat view) and the renderer may not have drawn since it
+ *  came back, so the screen can stay blank until something is written (#4518). */
+export function refreshTerminal() {
+    if (terminal && terminal.rows > 0) terminal.refresh(0, terminal.rows - 1);
 }
 
 export function setPanelDragging(dragging) {
