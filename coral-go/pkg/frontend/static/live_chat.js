@@ -287,8 +287,11 @@ function renderQuestionCard(tool) {
 
 // Join a prepended older page to the page after it: a run of tool calls split by the page
 // boundary is one group again. A reply at the end of the older page stays a reply (#4105).
-function stitchPages(lastOlder) {
-    const next = lastOlder && lastOlder.nextElementSibling;
+export function stitchPages(lastOlder) {
+    let next = lastOlder && lastOlder.nextElementSibling;
+    // The page after may open with a roll-up bar in front of its run: the group the tool run continues into is the bar's first member
+    // (rollUpGroups then makes one bar of the run again).
+    if (next && next.classList.contains("work-rollup")) next = next.nextElementSibling;
     if (!next || !next.classList.contains("work-group")) return;
     const nextBody = next.querySelector(":scope > .work-group-body");
     if (lastOlder && lastOlder.classList.contains("work-group")) {

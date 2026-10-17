@@ -2,6 +2,7 @@
 // with the CSS Custom Highlight API, so the transcript DOM is never modified
 // and the live poll re-rendering messages cannot strip the marks.
 import { chatHasOlder, loadMoreHistory } from './live_chat.js';
+import { revealRolledGroup } from './chat_content.js';
 
 const MAX_MATCHES = 2000;
 const MAX_OLDER_PAGES = 100;
@@ -108,6 +109,8 @@ function updateCount(query) {
 function reveal(range) {
     const el = range.startContainer.parentElement;
     if (!el) return;
+    // A match in a group folded under a roll-up bar: open the bar in front of its run first, then the details.
+    revealRolledGroup(el.closest('.work-group'));
     for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
     el.scrollIntoView({ block: 'center' });
 }
