@@ -201,8 +201,10 @@
 }
 
 .session-group-item.session-done .session-label,
+/* Muted missed AA on a hovered or selected row in both themes (#4209); the
+   grey and the struck-through name still mark the row done. */
 .session-group-item.session-done .session-goal {
-    color: var(--text-muted);
+    color: var(--text-goal, color-mix(in srgb, var(--text-secondary) 65%, var(--text-muted)));
     filter: grayscale(1);
 }
 
@@ -878,11 +880,12 @@
 
 /* A sleeping row is still a readable, selectable item: its goal line must
    meet WCAG AA. components.css dims it to --text-muted with the same
-   specificity; this later rule restores --text-secondary (>= 4.5:1). The
-   dimmed NAME above already carries the sleeping state. */
+   specificity; this later rule restores --text-secondary (>= 4.5:1), or the
+   theme's goal colour where secondary is too light on a hovered row (light,
+   #4209). The dimmed NAME above already carries the sleeping state. */
 .session-group-item.sleeping .session-goal,
 .session-group-item.sleeping .session-goal-empty {
-    color: var(--text-secondary);
+    color: var(--text-goal, var(--text-secondary));
     opacity: 1;
 }
 
@@ -1050,10 +1053,11 @@
 }
 
 /* The selected tile is darker than a plain row: lift its goal line back to
-   secondary so it keeps >= 4.5:1 there. */
+   secondary so it keeps >= 4.5:1 there (the light theme's goal colour is
+   already dark enough for it, #4209). */
 .session-group-item.active .session-goal,
 .session-group-item.active .session-goal-empty {
-    color: var(--text-secondary);
+    color: var(--text-goal, var(--text-secondary));
 }
 
 /* ── Agent Status Text ────────────────────────────────────── */

@@ -221,6 +221,9 @@
     --text-primary:   #1f2328;
     --text-secondary: #59636e;
     --text-muted:     #5f6770; /* at least 4.5:1 on the light panels (WCAG AA); was #8b949e, 2.6-3.1:1 */
+    /* The sidebar goal line: the light hover and selected tiles are dark enough that secondary
+       (4.2-4.4:1) misses AA there; a fifth of primary keeps it >= 4.9:1 on every row (#4209). */
+    --text-goal:      color-mix(in srgb, var(--text-secondary) 80%, var(--text-primary));
 
     /* Accent / Brand */
     --accent:     #0969da;
