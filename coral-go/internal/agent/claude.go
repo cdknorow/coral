@@ -526,9 +526,9 @@ func copyDir(src, dst string) {
 
 // writeNoFollow writes data to a new file, failing if it exists or is a symlink (O_EXCL and, on
 // unix, O_NOFOLLOW), so copying a resumed session never follows or overwrites a planted path
-// (#3582).
+// (#3582). Readable by this user only (#4381): a session's transcript and files.
 func writeNoFollow(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|oNoFollow, 0644)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|oNoFollow, 0o600)
 	if err != nil {
 		return err
 	}

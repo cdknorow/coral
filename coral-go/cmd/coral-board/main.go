@@ -1340,7 +1340,7 @@ func cmdExport() {
 	}
 
 	if outputFile != "" {
-		if err := os.WriteFile(outputFile, buf.Bytes(), 0644); err != nil {
+		if err := writeExport(outputFile, buf.Bytes()); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -3182,3 +3182,12 @@ func lastSeenRound(project string, id int64) int {
 
 // exitFn is os.Exit, replaced in tests that check a refused command.
 var exitFn = os.Exit
+
+// writeExport writes a board export to path, readable by this user only (#4381, Security's #4371):
+// it holds the board's messages. A file that was already there is made so too.
+func writeExport(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
