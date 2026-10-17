@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"bytes"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,8 +20,9 @@ func writeFakeExe(t *testing.T, dir, name string) string {
 }
 
 // FindCLI follows launch (#3169): the configured path first, then PATH, then
-// the common install locations; a configured path that is not an executable
-// falls back to the others; with none, an error that says where to set it.
+// the common install locations; a configured path that is not an executable is
+// an error, never PATH's binary (#4432, Security's #4431 SHOULD 4); with none,
+// an error that says where to set it.
 func TestFindCLI(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell-script fake binaries")
@@ -39,17 +38,22 @@ func TestFindCLI(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, configured, got)
 
-	// A configured path that does not exist falls back to PATH, with a warning
-	// naming it (launch would report it, so the difference is visible).
+	// A configured path that does not exist, or is not executable, is an error naming it,
+	// although PATH has the binary: the unwrapped CLI never runs in its place.
 	inPath := writeFakeExe(t, onPath, "codex")
-	var logs bytes.Buffer
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	got, err = FindCLI(map[string]string{CLIPathSettingKey(at.Codex): "/no/such/codex"}, at.Codex)
-	slog.SetDefault(prev)
-	require.NoError(t, err)
-	assert.Equal(t, inPath, got)
-	assert.Contains(t, logs.String(), "configured=/no/such/codex", "the fallback is logged with the configured path")
+	notExec := filepath.Join(t.TempDir(), "codex-wrapper")
+	require.NoError(t, os.WriteFile(notExec, []byte("#!/bin/sh\n"), 0o644))
+	for _, broken := range []string{"/no/such/codex", notExec, t.TempDir()} {
+		got, err = FindCLI(map[string]string{CLIPathSettingKey(at.Codex): broken}, at.Codex)
+		require.Error(t, err, broken)
+		assert.Empty(t, got)
+		assert.Contains(t, err.Error(), broken)
+		assert.Contains(t, err.Error(), "Settings > CLI Paths")
+	}
+	// The agy and gemini pair share a path: a broken one set for gemini stops agy too.
+	writeFakeExe(t, onPath, "agy")
+	_, err = FindCLI(map[string]string{CLIPathSettingKey(at.Gemini): "/no/such/agy"}, at.Agy)
+	require.Error(t, err)
 
 	// No setting: PATH.
 	got, err = FindCLI(nil, at.Codex)

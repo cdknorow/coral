@@ -362,15 +362,17 @@ func ResolveCLIPath(settings map[string]string, agentType string) string {
 // PATH, then the common install locations. The macOS app started from Finder
 // has no Homebrew PATH, so a bare exec of "claude" fails there even though
 // agents launch fine; every caller that runs an agent CLI uses this (#3169).
-// A configured path that is not an executable falls back to the others, with
-// a warning naming it (launch reports it instead, so the two can differ).
+// A configured path that is not an executable is an error, as at launch (#4350):
+// the PATH and the common locations are searched only when no path is set, so a
+// broken wrapper never has the unwrapped CLI run background jobs instead
+// (Security's #4431 SHOULD 4).
 func FindCLI(settings map[string]string, agentType string) (string, error) {
 	if p := ResolveCLIPath(settings, agentType); p != "" {
-		if resolved, err := exec.LookPath(p); err == nil {
-			return resolved, nil
+		resolved, err := exec.LookPath(p)
+		if err != nil {
+			return "", fmt.Errorf("%s CLI path %q set in Settings > CLI Paths can't be run (%v): fix it or clear it to use the one on PATH", agentType, p, err)
 		}
-		slog.Warn("configured CLI path is not an executable; falling back to PATH and common locations",
-			"agent_type", agentType, "configured", p)
+		return resolved, nil
 	}
 	bin := agentType
 	if info := GetCLIInfo(agentType); info != nil && info.Binary != "" {
