@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jmoiron/sqlx"
@@ -59,4 +60,19 @@ func FuzzLikeAgainstSQLite(f *testing.F) {
 			t.Fatalf("content %q pattern %q: SQLite says %v, likeMatch says %v", content, pat, want, got)
 		}
 	})
+}
+
+// A term with several wildcards over a long message is answered in time proportional to the product of
+// their lengths, not a power of the message length (FuzzLikeAgainstSQLite stalled on this input).
+func TestLikeMatchManyWildcardsOverLongTextIsBounded(t *testing.T) {
+	long := "0000000000" + strings.Repeat("\x13", 60000) + "0"
+	start := time.Now()
+	for _, p := range []string{"%0%_%1%", "%0%_%_%_%1%", "%a%b%c%d%e%f%g%", "%_%_%_%_%_%_%x"} {
+		if likeMatch(long, p) {
+			t.Fatalf("%q should not match", p)
+		}
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("matching took %s", d)
+	}
 }

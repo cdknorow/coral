@@ -218,45 +218,38 @@ func asciiLowerByte(b byte) byte {
 
 // likeMatch is SQLite's LIKE without ESCAPE: '%' matches any run of characters, '_' any one
 // character, and other characters match case-insensitively for ASCII only (COLLATE NOCASE and
-// LIKE's own folding are both ASCII-only).
+// LIKE's own folding are both ASCII-only). It remembers only the last '%' to return to, so the work
+// is at most len(s)*len(p) however many wildcards the pattern holds (a term with several of them
+// over a long message once cost a power of the message length: #4147).
 func likeMatch(s, p string) bool {
-	if p == "" {
-		return s == ""
-	}
-	pr, pw := utf8.DecodeRuneInString(p)
-	switch pr {
-	case '%':
-		rest := strings.TrimLeft(p, "%")
-		if rest == "" {
-			return true
-		}
-		for i := 0; i <= len(s); {
-			if likeMatch(s[i:], rest) {
-				return true
+	si, pi := 0, 0
+	star, mark := -1, 0 // the pattern position after the last '%', and where in s its run now ends
+	for si < len(s) {
+		if pi < len(p) {
+			pr, pw := utf8.DecodeRuneInString(p[pi:])
+			if pr == '%' {
+				pi += pw
+				star, mark = pi, si
+				continue
 			}
-			if i == len(s) {
-				break
+			sr, sw := utf8.DecodeRuneInString(s[si:])
+			if pr == '_' || asciiLower(sr) == asciiLower(pr) {
+				si += sw
+				pi += pw
+				continue
 			}
-			_, w := utf8.DecodeRuneInString(s[i:])
-			i += w
 		}
-		return false
-	case '_':
-		if s == "" {
+		if star < 0 {
 			return false
 		}
-		_, sw := utf8.DecodeRuneInString(s)
-		return likeMatch(s[sw:], p[pw:])
-	default:
-		if s == "" {
-			return false
-		}
-		sr, sw := utf8.DecodeRuneInString(s)
-		if asciiLower(sr) != asciiLower(pr) {
-			return false
-		}
-		return likeMatch(s[sw:], p[pw:])
+		_, w := utf8.DecodeRuneInString(s[mark:])
+		mark += w
+		si, pi = mark, star
 	}
+	for pi < len(p) && p[pi] == '%' {
+		pi++
+	}
+	return pi == len(p)
 }
 
 func asciiLower(r rune) rune {
