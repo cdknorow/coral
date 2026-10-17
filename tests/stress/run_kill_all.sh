@@ -59,6 +59,7 @@ cleanup() {
     else
         rm -rf "$TMP"
     fi
+    coral_test_sandbox_cleanup   # #4354
 }
 trap cleanup EXIT
 
@@ -75,7 +76,8 @@ log "Starting coral on $BASE_URL (data $CORAL_DATA_DIR) ..."
 # The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
 # ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
 mkdir -p "$TMP/host-home"
-env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u TMUX -u TMUX_PANE -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMP/host-home" \
+coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u TMUX -u TMUX_PANE -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMP/host-home" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
     "$TMP/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 # Ready only when OUR server says it bound the port (its own log line), not when anything answers.
@@ -189,5 +191,6 @@ launch_solo "Solo A"; launch_solo "Solo B"
 wait_running "Solo A" "Solo B"
 kill_round "group-by-team off" off
 
+coral_test_sandbox_check || FAIL=$((FAIL + 1))   # #4354
 log "Result: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

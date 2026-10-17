@@ -31,6 +31,11 @@ OUT="${OUT:-$WORK/results}"
 mkdir -p "$OUT" "$WORK/bin" "$WORK/d1" "$WORK/d2" "$WORK/home"
 log(){ echo "[perf $(date +%H:%M:%S)] $*"; }
 
+# #4354: an isolated HOME + a stub claude/codex/gemini first on PATH so a mock run can never reach
+# the real CLI or write to the real ~/.claude; coral_test_sandbox_check asserts it before exit.
+source "$HERE/../lib/mock_sandbox.sh"
+coral_test_sandbox
+
 PIDS=()
 cleanup() {
   log "cleanup"
@@ -47,6 +52,7 @@ cleanup() {
       { sleep 2; rm -rf -- "$WORK/d1" "$WORK/d2" "$WORK/home" "$WORK/repo" "$WORK/chrome" "$WORK/bin"; }
     [[ "$OUT" == "$WORK"/* ]] || rmdir -- "$WORK" 2>/dev/null
   fi
+  coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir
   log "results in $OUT"
 }
 trap cleanup EXIT
@@ -64,7 +70,7 @@ start_server() { # $1 data dir, $2 port, $3 log, rest: extra flags
   local d="$1" port="$2" logf="$3"; shift 3
   printf '%s\n' "$PW" > "$d/pw" && chmod 600 "$d/pw"
   env -u TMUX -u CORAL_CLOUD_URL -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CORAL_SESSION_TOKEN \
-    -u CLAUDE_PROJECTS_DIR HOME="$WORK/home" CORAL_DATA_DIR="$d" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
+    -u CLAUDE_PROJECTS_DIR HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" CORAL_DATA_DIR="$d" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
     CORAL_INITIAL_PASSWORD_FILE="$d/pw" "$@" \
     "$WORK/bin/coral" --home "$d" --no-browser --host 127.0.0.1 --port "$port" --cloud-url off >"$logf" 2>&1 &
   PIDS+=($!)
@@ -138,7 +144,7 @@ REST=$(( MINUTES * 60 - WARMUP - PROFILE ))
 T1=$(date +%s); C1=$(cpu_seconds)
 curl -s -m 30 "http://127.0.0.1:$PPROF/debug/pprof/heap" -o "$OUT/heap.pprof"
 curl -s -m 30 "http://127.0.0.1:$PPROF/debug/pprof/goroutine?debug=1" -o "$OUT/goroutines.txt"
-log "agent transcripts written: $(find "$WORK/home/.claude/projects" -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')"
+log "agent transcripts written: $(find "$CORAL_TEST_HOME/.claude/projects" -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')"
 
 PROFILE="$PROFILE" python3 -I - "$OUT" "$T0" "$T1" "$C0" "$C1" <<'PY' | tee "$OUT/summary.txt"
 import re, sys
@@ -167,4 +173,6 @@ done
 "$GOBIN_TOOL" tool pprof -top -sample_index=alloc_space -nodecount=25 "$WORK/bin/coral" "$OUT/allocs.pprof" > "$OUT/allocs-space-top.txt" 2>&1
 "$GOBIN_TOOL" tool pprof -top -cum -nodecount=40 "$WORK/bin/coral" "$OUT/cpu.pprof" > "$OUT/cpu-cum.txt" 2>&1
 cp "$WORK/bin/coral" "$OUT/coral.bin"
+# #4354: no real CLI was reached and the real ~/.claude did not grow; fail the run loudly otherwise.
+coral_test_sandbox_check || exit 1
 log "done: $OUT (summary.txt, cpu-top.txt, cpu-cum.txt, allocs-top.txt, allocs-space-top.txt)"

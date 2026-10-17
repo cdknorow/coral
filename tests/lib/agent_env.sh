@@ -37,3 +37,7 @@ curl() {
         command curl "$@"
     fi
 }
+
+# Mock-agent run safety (#4354): coral_test_sandbox / _check / _cleanup. Kept in its own file so a
+# runner that does not source this one (e.g. tests/perf/profile_busy.sh) can source just the sandbox.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mock_sandbox.sh"

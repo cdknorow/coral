@@ -220,6 +220,18 @@ function sweepLeftovers() {
 sweepLeftovers();
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-cdp-'));
+// Mock-agent run safety (#4354): a stub claude/codex/gemini first on every shard server's PATH, so
+// a launch that ever falls back to the PATH CLI hits the stub (records a marker, exits 1) instead of
+// the operator's real CLI. HOME already points into each shard, so transcripts never reach the real
+// ~/.claude; STUB_MARKER and the ~/.claude/projects baseline are checked before exit. Keep in step
+// with tests/lib/mock_sandbox.sh and coral-go/internal/testguard (TestHarnessScriptsUseTheMockAgentSandbox).
+const STUB_BIN = path.join(tmp, 'stub-bin'); fs.mkdirSync(STUB_BIN);
+const STUB_MARKER = path.join(tmp, 'REAL_CLI_WAS_CALLED');
+for (const cli of ['claude', 'codex', 'gemini']) {
+  fs.writeFileSync(path.join(STUB_BIN, cli), `#!/bin/sh\nprintf '%s %s\\n' "${cli}" "$*" >> "${STUB_MARKER}"\nexit 1\n`, { mode: 0o755 });
+}
+const REAL_CLAUDE_PROJECTS = path.join(os.homedir(), '.claude', 'projects');
+const claudeBaseline = (() => { try { return new Set(fs.readdirSync(REAL_CLAUDE_PROJECTS)); } catch { return new Set(); } })();
 const procs = new Set(); // every process group we started, killed on exit
 const recordPids = () => {
   try {
@@ -364,7 +376,8 @@ async function startShard(n, gen = 0, strict = false) {
   // test the prompt and the sign-in page stub the auth API themselves.
   const pwFile = path.join(dir, 'initial-password');
   fs.writeFileSync(pwFile, TEST_PASSWORD + '\n', { mode: 0o600 }); fs.chmodSync(pwFile, 0o600);
-  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile };
+  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile,
+    PATH: STUB_BIN + path.delimiter + (testEnv.PATH || process.env.PATH || '') };  // #4354: stub CLI first on PATH
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
     ...(strict ? ['--strict-local-auth'] : ['--strict-local-auth=false']), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
@@ -696,6 +709,18 @@ if (leaks.length) {
   for (const l of leaks) { console.log(`  ${l.pid} ${l.command}`); try { process.kill(l.pid, 'SIGKILL'); } catch { /* gone */ } }
   if (!exitCode) exitCode = 4;
 }
-allPassed = results.every(r => r.status === 'pass') && !leaks.length;
+// #4354: fail loudly if a real CLI on PATH was invoked, or the real ~/.claude/projects grew.
+let sandboxOk = true;
+try {
+  if (fs.existsSync(STUB_MARKER) && fs.statSync(STUB_MARKER).size > 0) {
+    console.error('FAIL (#4354): a real CLI on PATH was invoked (a mock cli_path was bypassed):\n' + fs.readFileSync(STUB_MARKER, 'utf8').replace(/^/gm, '    '));
+    sandboxOk = false;
+  }
+  const added = (() => { try { return fs.readdirSync(REAL_CLAUDE_PROJECTS).filter(n => !claudeBaseline.has(n)); } catch { return []; } })();
+  if (added.length) { console.error('FAIL (#4354): new entries under the real ~/.claude/projects:\n    ' + added.join('\n    ')); sandboxOk = false; }
+} catch (e) { console.error(`#4354 sandbox check error: ${e.message}`); sandboxOk = false; }
+if (!sandboxOk && !exitCode) exitCode = 1;
+
+allPassed = results.every(r => r.status === 'pass') && !leaks.length && sandboxOk;
 console.log(allPassed && !keep ? 'all passed: the run folder is removed on exit (--keep keeps it)' : where);
 process.exit(exitCode);

@@ -38,6 +38,7 @@ cleanup() {
     else
         rm -rf "$TMPDIR_TEAMS" 2>/dev/null || true
     fi
+    coral_test_sandbox_cleanup   # #4354
 }
 trap cleanup EXIT
 
@@ -105,7 +106,8 @@ log "Starting coral server on port $PORT..."
 # The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
 # ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
 mkdir -p "$TMPDIR_TEAMS/host-home"
-env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_TEAMS/host-home" "$TMPDIR_TEAMS/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_TEAMS/server.log" 2>&1 &
+coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_TEAMS/host-home" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_TEAMS/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_TEAMS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 
@@ -261,6 +263,7 @@ echo "  Passed: $PASS"
 echo "  Failed: $FAIL"
 echo "================================"
 
+coral_test_sandbox_check || FAIL=$((FAIL + 1))   # #4354: no real CLI reached, real ~/.claude unchanged
 if [[ $FAIL -gt 0 ]]; then
     exit 1
 fi

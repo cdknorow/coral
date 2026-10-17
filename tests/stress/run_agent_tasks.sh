@@ -54,6 +54,7 @@ cleanup() {
     else
         rm -rf "${TMPDIR_AT:-}" 2>/dev/null || true
     fi
+    coral_test_sandbox_cleanup   # #4354
 }
 trap cleanup EXIT
 
@@ -166,7 +167,8 @@ log "Starting coral server on port $PORT..."
 # ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
 mkdir -p "$TMPDIR_AT/host-home"
 mkdir -p "$TMPDIR_AT/env-dump"
-env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR -u CORAL_CLOUD_URL HOME="$TMPDIR_AT/host-home" \
+coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR -u CORAL_CLOUD_URL HOME="$TMPDIR_AT/host-home" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
     MOCK_AGENT_ENV_DUMP="$TMPDIR_AT/env-dump" \
     "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --cloud-url off --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
 SERVER_PID=$!
@@ -435,5 +437,6 @@ fi
 # The EXIT trap cleans up mock agents and the isolated server on every path.
 
 echo
+coral_test_sandbox_check || FAIL=$((FAIL + 1))   # #4354
 log "Results: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

@@ -42,6 +42,7 @@ cleanup() {
         wait "$SERVER_PID" 2>/dev/null || true
     fi
     rm -rf "$TMPDIR_STRESS" 2>/dev/null || true
+    coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir
 }
 trap cleanup EXIT
 
@@ -101,6 +102,10 @@ PYPORT
 export GOMAXPROCS="${GOMAXPROCS:-2}"
 export GOMEMLIMIT="${GOMEMLIMIT:-512MiB}"
 
+# #4354: isolated HOME + a stub claude/codex/gemini first on PATH, so a mock run can never reach
+# the real CLI or write to the real ~/.claude. coral_test_sandbox_check asserts it at the end.
+coral_test_sandbox
+
 log "Building coral (dev mode) and coral-board..."
 cd "$CORAL_DIR"
 go build -p 1 -tags "dev fts5" -o "$TMPDIR_STRESS/coral" ./cmd/coral/
@@ -113,7 +118,7 @@ log "Starting coral server on port $PORT..."
 # This runner tests board logic, and its coral-board "agents" (run_cli) have no session token,
 # which strict local auth (the default since #3936) refuses by design; so its server runs with
 # strict local auth off. run_identity.sh covers auth. Its own curls still send the API key.
-env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_STRESS/home" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux --no-browser --cloud-url off --strict-local-auth=false >>"$TMPDIR_STRESS/server.log" 2>&1 &
+env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux --no-browser --cloud-url off --strict-local-auth=false >>"$TMPDIR_STRESS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 }
@@ -1192,6 +1197,9 @@ echo "  STRESS TEST RESULTS"
 echo "  Passed: $PASS"
 echo "  Failed: $FAIL"
 echo "================================"
+
+# #4354: no real CLI was reached and the real ~/.claude did not grow; fail the run loudly otherwise.
+coral_test_sandbox_check || FAIL=$((FAIL + 1))
 
 if [[ $FAIL -gt 0 ]]; then
     exit 1

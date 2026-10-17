@@ -75,6 +75,7 @@ cleanup() {
         # ('Directory not empty'): try again once, and never let it change the run's result.
         rm -rf "$TMP" 2>/dev/null || { sleep 2; rm -rf "$TMP" 2>/dev/null || true; }
     fi
+    coral_test_sandbox_cleanup   # #4354
     exit "$code"
 }
 trap cleanup EXIT
@@ -123,7 +124,8 @@ log "Starting an isolated server on $PORT (data $DATA)..."
 HOSTILE_ENV=(CORAL_PORT=1 CORAL_HOST=10.255.255.1 CORAL_URL=http://10.255.255.1:1 CORAL_DIR=/nonexistent/parent-coral
     CORAL_DATA_DIR=/nonexistent/parent-coral CORAL_SESSION_NAME=parent-session-3421 CORAL_SESSION_ID=parent-sid-3421
     CORAL_SUBSCRIBER_ID=ParentRole3421 CORAL_SESSION_TOKEN=leak-token-parent-3421)
-env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" "${HOSTILE_ENV[@]}" \
+coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
+env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" PATH="$CORAL_TEST_STUB_BIN:$PATH" "${HOSTILE_ENV[@]}" \
     CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 CORAL_TMUX_NO_FALLBACK=1 \
     MOCK_AGENT_CORAL_BOARD="$BIN/coral-board" MOCK_AGENT_ENV_DUMP="$DUMP" MOCK_AGENT_BLIND_PREFIX=id-blind \
     CORAL_TEST_LOGIN_TOKEN_TTL=3s \
@@ -450,5 +452,6 @@ report | python3 -c '
 import sys, json
 for k, v in sorted(json.load(sys.stdin).get("would_break_by_route", {}).items(), key=lambda kv: -kv[1]):
     print("[identity]   %5d  %s" % (v, k))'
+coral_test_sandbox_check || FAIL=$((FAIL + 1))   # #4354
 log "Done: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
