@@ -273,3 +273,24 @@ func TestSetupCode(t *testing.T) {
 	ks.retireSetupCode()
 	assert.Equal(t, "", ks.SetupCode())
 }
+
+// Two creations interleaved (#4240, a v1.4.72 gate flake of the test above): one creation runs
+// from start to end while another is about to make its temp file. The other must still get
+// ErrPasswordExists, never a file-system error from the first one's cleanup.
+func TestCreatePasswordHashInterleaved(t *testing.T) {
+	dir := t.TempDir()
+	phc, _ := HashPassword("pw")
+	var first error
+	beforePasswordTemp = func() {
+		beforePasswordTemp = func() {}
+		first = CreatePasswordHash(dir, phc)
+	}
+	t.Cleanup(func() { beforePasswordTemp = func() {} })
+	second := CreatePasswordHash(dir, phc)
+	require.NoError(t, first, "the creation that ran in between wins")
+	assert.ErrorIs(t, second, ErrPasswordExists, "the other is told a password exists")
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		assert.NotContains(t, e.Name(), "password-new", "no temp left behind")
+	}
+}
