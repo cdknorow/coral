@@ -517,6 +517,12 @@
     background: var(--bg-tertiary);
     color: var(--text-primary);
 }
+/* A phone or a touch screen: the step bars (a group's and a roll-up's) and "Load older messages" are 44 px targets, not 32 (#4327, from the #4276
+   audit: the most numerous taps in a long chat). A mouse layout keeps the compact height. */
+@media (pointer: coarse), (max-width: 767px) {
+    .work-group-summary { min-height: var(--control-touch-height, 44px); }
+    .load-more-btn { min-height: var(--control-touch-height, 44px); }
+}
 
 /* ── Center Chat View (Terminal/Chat toggle) ───────────────── */
 
