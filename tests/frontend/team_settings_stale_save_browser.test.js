@@ -25,7 +25,9 @@ const { connect } = require('./agent_view_harness');
         assert.equal((await put('/working-mode', { mode: 'none', dependency_guidance: false, custom_instructions: 'as the dialog opens' })).status, 200);
 
         const open = async () => {
-            await ev(`document.getElementById('team-settings-workspace')?.remove(); import((window.__coralStatic || '/static/') + 'team_working_mode.js').then(m => m.showTeamWorkingMode(${JSON.stringify(TEAM)}, { workspace: false })); true`);
+            // The previous dialog goes now, before the import resolves, so the wait below can only see the new one (it
+            // otherwise passed on the old dialog, which the new one then replaced under the next click).
+            await ev(`document.getElementById('team-settings-workspace')?.remove(); document.getElementById('team-working-mode-dialog')?.remove(); import((window.__coralStatic || '/static/') + 'team_working_mode.js').then(m => m.showTeamWorkingMode(${JSON.stringify(TEAM)}, { workspace: false })); true`);
             await waitFor(`!!${form} && ${form}.dataset.initialState !== undefined && !!document.querySelector('[data-settings-tab=health]')`, 'the loaded Team settings', 15000);
         };
         const submit = async () => {
