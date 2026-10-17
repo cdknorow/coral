@@ -11,6 +11,9 @@ type AgentSignal = agentSignal
 // HealthHooks replace how the health rules see the clock, the agents, their state and the gate,
 // for a test that drives the rules from outside this package (the end-to-end health scenario,
 // #4246). A nil field leaves that part as it is.
+//
+// Test hooks; not called outside tests. They are exported only because the scenario lives in
+// another package; TestSetHooksIsCalledOnlyFromTests fails if a non-test file calls SetHooks.
 type HealthHooks struct {
 	Now         func() time.Time
 	Discover    func(ctx context.Context) ([]AgentInfo, error)

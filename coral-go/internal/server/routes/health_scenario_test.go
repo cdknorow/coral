@@ -57,6 +57,7 @@ func TestHealthCheckScenario(t *testing.T) {
 		{"Parker", "Developer", "00000000-4246-0000-0000-000000000008"},
 		{"Spare", "Developer", "00000000-4246-0000-0000-000000000009"},
 		{"Held", "Developer", "00000000-4246-0000-0000-000000000010"},
+		{"Rem", "Developer", "00000000-4246-0000-0000-000000000011"},
 	}
 	sidOf := map[string]string{}
 	var agents []background.AgentInfo
@@ -223,6 +224,15 @@ func TestHealthCheckScenario(t *testing.T) {
 		"assigned_to": "Author", "remind_at": remindAt.Format(time.RFC3339)}, "Orchestrator")
 	require.Equal(t, http.StatusCreated, code, "%v", out)
 	soakID := int64(out["id"].(float64))
+	// Five tasks for Rem, all reminding at the same time (Security's note on #4246: the limits for
+	// reminders, end to end).
+	var remIDs []int64
+	for i := 0; i < 5; i++ {
+		code, out = api(http.MethodPost, "/api/board/team/tasks", map[string]any{"title": fmt.Sprint("gate step ", i), "subscriber_id": "Orchestrator",
+			"assigned_to": "Rem", "remind_at": remindAt.Format(time.RFC3339)}, "Orchestrator")
+		require.Equal(t, http.StatusCreated, code, "%v", out)
+		remIDs = append(remIDs, int64(out["id"].(float64)))
+	}
 
 	// Step 1 (5 min): a claim nudge to Dev, a status nudge to Worker, the orchestrator reminded
 	// of Asker's mention, the Operator told about Held's dialog; nothing for Parker; the check
@@ -248,6 +258,7 @@ func TestHealthCheckScenario(t *testing.T) {
 	assert.Len(t, typedTo("Dev", "coral-board task claim"), 2, "second claim nudge")
 	assert.Len(t, typedTo("Worker", "No activity on"), 1, "one status nudge, then escalation")
 	assert.Len(t, typedTo("Author", fmt.Sprintf("Reminder for #%d", soakID)), 1, "the reminder at its time")
+	assert.Len(t, typedTo("Rem", "Reminder for #"), 3, "five due together: 3 in the hour")
 	c2 := lastCheck()
 	assert.Contains(t, c2, fmt.Sprintf("Worker: silent on #%d since Coral asked for a status", work.ID))
 	m := regexp.MustCompile(`Spare: idle [^\[]*\[ack ([0-9a-f]{8})\]`).FindStringSubmatch(c2)
@@ -276,6 +287,23 @@ func TestHealthCheckScenario(t *testing.T) {
 	c4 := lastCheck()
 	assert.Contains(t, c4, "Spare: idle")
 	assert.Contains(t, c4, "(back: changed since it was acknowledged)")
+
+	assert.Len(t, typedTo("Rem", "Reminder for #"), 3, "still 3 within the hour")
+
+	// The hour is over: Rem's other two reminders go out, each of the five exactly once.
+	clk = clk.Add(time.Hour)
+	reminders.RunOnce(ctx)
+	rem := typedTo("Rem", "Reminder for #")
+	require.Len(t, rem, 5, "the rest on a later pass, none lost")
+	for _, id := range remIDs {
+		n := 0
+		for _, text := range rem {
+			if strings.Contains(text, fmt.Sprintf("Reminder for #%d,", id)) {
+				n++
+			}
+		}
+		assert.Equal(t, 1, n, "#%d reminded once", id)
+	}
 
 	// Every check fits its cap and carries no task title.
 	for _, c := range typedTo("Orchestrator", "[Coral health check]") {
