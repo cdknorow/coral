@@ -88,7 +88,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cdp-${{ strategy.job-index }}
+          # the attempt in the name: a re-run of the failed parts uploads again, and with one name per
+          # part the summary would read whichever copy landed last (v1.4.82: a flaky first attempt
+          # reported after a clean re-run)
+          name: cdp-${{ strategy.job-index }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/out
           retention-days: 7
           if-no-files-found: warn
@@ -108,10 +111,19 @@ jobs:
           PARTS_RESULT: ${{ needs.part.result }}
         run: |
           python3 - <<'PY'
-          import glob, json, os
+          import glob, json, os, re
+          # Each part's newest attempt only: a re-run of the failed parts adds cdp-<part>-a<attempt>
+          # beside the first attempt's, and parts that passed keep their first.
+          latest = {}
+          for d in glob.glob('parts/cdp-*'):
+              m = re.fullmatch(r'parts/cdp-(\d+)-a(\d+)', d)
+              if m and int(m.group(2)) > latest.get(m.group(1), (0, ''))[0]:
+                  latest[m.group(1)] = (int(m.group(2)), d)
+          dirs = sorted(d for _, d in latest.values())
           rows = []
-          for f in sorted(glob.glob('parts/*/results.json')):
-              rows += json.load(open(f))
+          for d in dirs:
+              f = os.path.join(d, 'results.json')
+              if os.path.exists(f): rows += json.load(open(f))
           by = lambda s: sorted(r['test'] for r in rows if r['status'] == s)
           failed, flaky = by('fail') + by('timeout'), by('flaky')
           passed = len(rows) - len(failed) - len(flaky)
@@ -119,7 +131,7 @@ jobs:
           # invoked) and a leaked tmux server fail a part with every suite passed, so read
           # each part's run.log for them too (a 238/238 count once hid six failed parts).
           ends = []
-          for f in sorted(glob.glob('parts/*/run.log')):
+          for f in [os.path.join(d, 'run.log') for d in dirs if os.path.exists(os.path.join(d, 'run.log'))]:
               part, block = f.split('/')[1], None
               for line in open(f, errors='replace'):
                   line = line.rstrip('\n')
@@ -128,7 +140,7 @@ jobs:
                   if block is not None:
                       if not line.strip() or line.startswith('results:'): block = None
                       elif len(block) < 6: block.append(line)
-          green = os.environ['PARTS_RESULT'] == 'success' and not (failed or flaky or ends)
+          green = os.environ['PARTS_RESULT'] == 'success' and bool(rows) and not (failed or flaky or ends)  # no results read is not green
           lines = [("green: " if green else "NOT green: ") + f"{passed}/{len(rows)} suites passed" + (f", {len(flaky)} FLAKY" if flaky else "") + (f", {len(failed)} FAILED" if failed else "") + (f", {len(ends)} end-check failure(s)" if ends else "") + f"; parts: {os.environ['PARTS_RESULT']}"]
           if flaky: lines.append("FLAKY: " + ", ".join(flaky))
           if failed: lines.append("FAILED: " + ", ".join(failed))
