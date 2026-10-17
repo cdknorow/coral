@@ -52,14 +52,19 @@ const { connect } = require('./agent_view_harness');
         await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'h200-long', 'local'); true`); await sleep(800); // sleep-ok: the header fills after the selection
         await ev(`T.render.updateSessionBranch('fix-4327-header-wrap', 'coral', {}); true`); await sleep(300); // sleep-ok: the header redraws after the branch is set
         await ev(`document.documentElement.style.fontSize = ''; true`);
-        for (const w of [320, 360, 375, 390]) {
-            await Emulation.setDeviceMetricsOverride({ width: w, height: 800, deviceScaleFactor: 1, mobile: true }); await sleep(400); // sleep-ok: layout settles after the emulation change
-            const r = await read();
-            assert.ok(r.kidsBottom <= 40 && r.headerH <= 40, `${w} px at 100% text: one header row (rows end at ${r.kidsBottom}, header ${r.headerH}) with the name ${r.w}px wide`);
+        // UX's measurement (#4327 review): the header wrapped to TWO rows from 350 to 365 px when the branch showed. A phone's header must be the same one
+        // row at every width, with the branch only where it fits (370 px and up), and a long branch the way UX set it.
+        await ev(`T.render.updateSessionBranch('feature/header-wrap-branch', 'coral', {}); true`); await sleep(300); // sleep-ok: the header redraws after the branch is set
+        const oneRow = async w => { await Emulation.setDeviceMetricsOverride({ width: w, height: 800, deviceScaleFactor: 1, mobile: true }); await sleep(400); return read(); }; // sleep-ok: layout settles after the emulation change
+        const rowH = (await oneRow(320)).headerH; // the branch is left out here: the header's one-row height
+        for (const w of [320, 330, 340, 350, 355, 360, 365, 370, 375, 390, 414]) {
+            const r = await oneRow(w);
+            assert.ok(r.headerH <= rowH + 1 && r.kidsBottom <= r.headerH + 1, `${w} px at 100% text: one header row (rows end at ${r.kidsBottom}, header ${r.headerH}, one row is ${rowH}) with the name ${r.w}px wide`);
             assert.ok(r.w >= 48, `${w} px at 100% text: the name has room (${r.w}px)`);
-            assert.equal(r.branchShown, w >= 360, `${w} px at 100% text: the branch ${w >= 360 ? 'stays in' : 'is left out of'} the header`);
+            assert.equal(r.branchShown, w >= 370, `${w} px at 100% text: the branch ${w >= 370 ? 'stays in' : 'is left out of'} the header`);
+            assert.ok(r.over <= 0, `${w} px: no sideways scroll`);
         }
-        ok('at 320, 360, 375 and 390 px with normal text the header is one row, the name has room, and the branch stays from 360 px up');
+        ok('from 320 to 414 px with normal text the header is one row, the name has room, and the branch shows from 370 px up (the container is the content box of the header, 12 px under the viewport)');
     } catch (e) {
         console.error(e);
         process.exitCode = 1;
