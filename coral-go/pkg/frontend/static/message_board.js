@@ -171,6 +171,7 @@ onBoardLabelsChanged(() => {
 
 export function selectBoardProject(project, messageId = null) {
     currentProject = project;
+    clearNewPill();
     state.currentBoardServer = splitKey(project).server;
     pendingMessageId = messageId != null ? String(messageId) : null;
     note(keyRoute('board', project)); // the board's page (#3532)
@@ -222,6 +223,7 @@ export function selectBoardProject(project, messageId = null) {
 
 export function showMessageBoardProjects() {
     currentProject = null;
+    clearNewPill();
     stopBoardPoll();
     // Exit select mode if active
     _selectMode = false;
@@ -372,6 +374,7 @@ function wireBoardScroll(container) {
     container.addEventListener('scroll', () => {
         if (performance.now() < focusScrollUntil && document.activeElement?.closest?.('.mb-load-earlier')) return;
         if (container.scrollTop < 80 && _loadedOffset > 0) loadEarlierMessages();
+        if (_unseen && isAtBottom(container)) clearNewPill();
     }, { passive: true });
 }
 
@@ -518,6 +521,32 @@ function appendNewMessages(count) {
     if (wasAtBottom) trimBoardWindow(container);
     updateBoardHeader(container);
     if (wasAtBottom) container.scrollTop = container.scrollHeight;
+    else noteUnseenMessages(count);
+}
+
+// Reading higher up: the posts a poll brings are not shown to you, so a small pill at the board's bottom edge counts them and jumps to the latest
+// (#4502). A polite live region announces it; it goes when the board is at the bottom again, by the button or by scrolling.
+let _unseen = 0;
+function noteUnseenMessages(n) {
+    if (!n) return;
+    _unseen += n;
+    renderNewPill();
+}
+function renderNewPill() {
+    const pill = document.getElementById('mb-new-pill');
+    if (!pill) return;
+    // The live region stays displayed and only its text changes (a region hidden and shown with its text can go unannounced).
+    const btn = pill.querySelector('button');
+    btn.textContent = _unseen > 0 ? `${_unseen} new message${_unseen === 1 ? '' : 's'}, jump to latest` : '';
+    btn.hidden = _unseen <= 0;
+}
+function clearNewPill() { _unseen = 0; renderNewPill(); }
+function jumpToLatest() {
+    const container = document.getElementById('mb-messages');
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+    clearNewPill();
+    container.focus({ preventScroll: true });
 }
 
 // Drops the oldest loaded messages beyond BOARD_KEEP, and their rows, once a page more has built up (see BOARD_KEEP).
@@ -1371,6 +1400,7 @@ const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
 registerActions({
     'mb-project': el => { const p = textOf(el.dataset.project); if (p) selectBoardProject(p); },
     'mb-earlier': () => loadEarlierMessages(),
+    'mb-jump-latest': () => jumpToLatest(),
     'mb-msg-select': el => withId(el.dataset.msgId, id => toggleMessageSelect(id, el.checked)),
     'mb-msg-delete': el => withId(el.dataset.msgId, confirmDeleteBoardMessage),
     'mb-subscriber-history': el => {

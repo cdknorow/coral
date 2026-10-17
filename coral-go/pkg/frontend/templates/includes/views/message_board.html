@@ -26,11 +26,17 @@
         <!-- Board view (shown when project selected) -->
         <div id="mb-board" class="mb-board" style="display:none">
             <!-- Messages -->
-            <div id="mb-messages" class="mb-messages-scroll">
-                <div id="mb-sleep-banner" class="mb-sleep-banner" style="display:none">
-                    <span>🌙 This team is sleeping. Messages are paused.</span>
+            <div class="mb-messages-wrap">
+                <div id="mb-messages" class="mb-messages-scroll" tabindex="-1">
+                    <div id="mb-sleep-banner" class="mb-sleep-banner" style="display:none">
+                        <span>🌙 This team is sleeping. Messages are paused.</span>
+                    </div>
+                    <div class="empty-state" id="mb-messages-empty">No messages yet</div>
                 </div>
-                <div class="empty-state" id="mb-messages-empty">No messages yet</div>
+                <!-- Reading higher up while posts arrive (#4502): a count and a way to the latest, announced politely -->
+                <div id="mb-new-pill" class="mb-new-pill" role="status" aria-live="polite">
+                    <button type="button" class="mb-new-pill-btn" data-on-click="mb-jump-latest" hidden></button>
+                </div>
             </div>
 
             <!-- Post form -->
