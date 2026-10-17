@@ -35,6 +35,12 @@ function jsonError(response, fallback) {
     return response.json().catch(() => ({})).then(data => data.error || fallback);
 }
 
+// What the preset form shows for a preset's name and instructions.
+const presetNameText = preset => preset.name || PRESET_NAMES[preset.id] || preset.id;
+const presetInstructionsText = preset => preset.overridden
+    ? (preset.instructions ?? '')
+    : (preset.instructions ?? preset.default_instructions ?? '');
+
 function presetLabel(preset) {
     return `${preset.name || PRESET_NAMES[preset.id] || preset.id}${preset.builtin ? ' · built in' : ''}`;
 }
@@ -220,10 +226,10 @@ export async function showTeamWorkingMode(team, options = {}) {
     function syncPresetForm() {
         const preset = selectedPreset();
         if (!preset) return;
-        presetName.value = preset.name || PRESET_NAMES[preset.id] || preset.id;
-        presetInstructions.value = preset.overridden
-            ? (preset.instructions ?? '')
-            : (preset.instructions ?? preset.default_instructions ?? '');
+        presetName.value = presetNameText(preset);
+        presetInstructions.value = presetInstructionsText(preset);
+        // What the form opened with: Save applies only what the person changed to the preset as the server has it then.
+        preset.openedForm = { name: presetName.value, instructions: presetInstructions.value };
         // Through Coral Hub a preset can be created but not changed or reset (the Hub refuses the PUT and the reset, #4274): those
         // buttons are not drawn, and an existing preset reads as read-only with the reason in its status line.
         const hubLocked = isCloud() && !preset.isNew;
@@ -273,14 +279,25 @@ export async function showTeamWorkingMode(team, options = {}) {
             const isNew = Boolean(preset.isNew);
             const method = isNew ? 'POST' : 'PUT';
             const url = isNew ? presetsURL : `${presetsURL}/${encodeURIComponent(preset.id)}`;
-            const body = preset.builtin ? { name, instructions } : { id: preset.id, name, instructions };
+            // A PUT replaces name and instructions together, so a field the person left alone would put back the value this
+            // form opened with over a change another client made meanwhile (a rename, an instructions edit): read the preset
+            // again now and apply only what was changed here (#4423).
+            let toSave = { name, instructions };
+            if (!isNew && preset.openedForm) {
+                try {
+                    const again = await fetch(presetsURL);
+                    const fresh = again.ok ? ((await again.json()).presets || []).find(p => p.id === preset.id) : null;
+                    if (fresh) toSave = rebaseChanges(preset.openedForm, { name, instructions }, { name: presetNameText(fresh), instructions: presetInstructionsText(fresh) });
+                } catch { /* save what the form holds */ }
+            }
+            const body = preset.builtin ? { name: toSave.name, instructions: toSave.instructions } : { id: preset.id, name: toSave.name, instructions: toSave.instructions };
             const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             if (!response.ok) throw new Error(await jsonError(response, 'Could not save preset.'));
             const result = await response.json();
             const saved = result.preset || result;
             preset.isNew = false;
             if (preset.builtin) preset.overridden = true;
-            Object.assign(preset, saved, { name, instructions, builtin: Boolean(saved.builtin ?? preset.builtin) });
+            Object.assign(preset, saved, { name: toSave.name, instructions: toSave.instructions, builtin: Boolean(saved.builtin ?? preset.builtin) });
             renderPresets(); presetSelect.value = preset.id; syncPresetForm();
             setStatus('Workflow preset saved.');
         } catch (error) { setStatus(error.message, true); }
