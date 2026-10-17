@@ -115,11 +115,10 @@ func (c *unreadCountCache) storeSidebarUnread(key sidebarUnreadKey, e sidebarUnr
 // countMentionsUnread returns the number of unread messages after lastReadID
 // matching filter (a boolean SQL expression over board_messages with filterArgs).
 // mentionIndexCount lets countMentionsUnread count from the mention index (#4483): terms are the subscriber's
-// mention terms, senderFilter and senderArgs the filter without the OR of LIKE patterns.
+// mention terms and senderArgs the arguments of the sender filter in sqlMentionCount (the subscriber).
 type mentionIndexCount struct {
-	terms        []string
-	senderFilter string
-	senderArgs   []any
+	terms      []string
+	senderArgs []any
 }
 
 func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, jobTitle string, lastReadID int64, filter string, filterArgs []any, idx *mentionIndexCount) (int, error) {
@@ -165,8 +164,13 @@ func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, 
 			if tokens != "" {
 				// The index's candidates (and every message above its watermark), then the LIKE rule in Go.
 				iargs := append(append([]any{}, idx.senderArgs...), tokens, start, project, start, row.Hi)
-				if err := tx.SelectContext(ctx, &contents,
-					`SELECT content FROM board_messages WHERE `+idx.senderFilter+` AND `+mentionIndexClause("")+` AND project = ? AND id > ? AND id <= ?`, iargs...); err == nil {
+				var qerr error
+				if st := s.hot().mentionCount; st != nil {
+					qerr = tx.StmtxContext(ctx, st).SelectContext(ctx, &contents, iargs...)
+				} else {
+					qerr = tx.SelectContext(ctx, &contents, sqlMentionCount, iargs...)
+				}
+				if qerr == nil {
 					patterns := mentionLikePatterns(subscriberID, jobTitle)
 					kept := contents[:0]
 					for _, c := range contents {

@@ -261,6 +261,7 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	if isInMemoryPath(dbPath) {
 		s.readDB = db
 		s.stmts = prepareHotStmts(context.Background(), s.reader())
+		s.stmts.prepareWriter(context.Background(), s.db)
 		return s, nil
 	}
 
@@ -277,6 +278,7 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	readDB.SetMaxIdleConns(4)
 	s.readDB = readDB
 	s.stmts = prepareHotStmts(context.Background(), s.reader())
+	s.stmts.prepareWriter(context.Background(), s.db)
 	return s, nil
 }
 
@@ -1381,7 +1383,7 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 		// The same count from the mention index when it can answer (#4483): the sender filter alone in SQL
 		// plus the index's candidates; countMentionsUnread falls back to filter (the OR of LIKE) otherwise.
 		return s.countMentionsUnread(ctx, project, subscriberID, sub.JobTitle, sub.LastReadID, filter, args,
-			&mentionIndexCount{terms: terms, senderFilter: "subscriber_id != ?" + systemFilter, senderArgs: []any{subscriberID}})
+			&mentionIndexCount{terms: terms, senderArgs: []any{subscriberID}})
 	}
 
 	// Group-based mode: count messages from group members only
@@ -1459,7 +1461,8 @@ func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, job
 	if tokens := s.mentionIndexTokensJSON(ctx, terms); tokens != "" {
 		patterns := mentionLikePatterns(subscriberID, jobTitle)
 		idxArgs := append(append([]interface{}{}, args...), tokens, from)
-		id, err := s.confirmFrom(ctx, "SELECT m.id, m.content FROM board_messages m WHERE "+where+" AND "+mentionIndexClause("m.")+order, idxArgs, patterns, subscriberID, jobTitle, numbered)
+		query := "SELECT m.id, m.content FROM board_messages m WHERE " + where + " AND " + mentionIndexClause("m.") + order
+		id, err := s.confirmFrom(ctx, s.hot().cachedStmt(ctx, s.reader(), query), query, idxArgs, patterns, subscriberID, jobTitle, numbered)
 		if err == nil {
 			s.mentionIndexAnswers.Add(1)
 			return id, nil
@@ -1471,14 +1474,14 @@ func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, job
 		parts[i] = "m.content LIKE ? COLLATE NOCASE"
 		args = append(args, "%"+term+"%")
 	}
-	return s.confirmFrom(ctx, "SELECT m.id, m.content FROM board_messages m WHERE "+where+" AND ("+strings.Join(parts, " OR ")+")"+order, args, nil, subscriberID, jobTitle, numbered)
+	return s.confirmFrom(ctx, nil, "SELECT m.id, m.content FROM board_messages m WHERE "+where+" AND ("+strings.Join(parts, " OR ")+")"+order, args, nil, subscriberID, jobTitle, numbered)
 }
 
 // confirmFrom runs a candidate query and returns the first message that tags the subscriber; when patterns is
 // set, a candidate must also match them as SQLite's LIKE would (the index's candidates are a superset of the
 // LIKE query's).
-func (s *Store) confirmFrom(ctx context.Context, query string, args []interface{}, patterns []string, subscriberID, jobTitle string, numbered map[string]bool) (int64, error) {
-	rows, err := s.reader().QueryxContext(ctx, query, args...)
+func (s *Store) confirmFrom(ctx context.Context, st *sqlx.Stmt, query string, args []interface{}, patterns []string, subscriberID, jobTitle string, numbered map[string]bool) (int64, error) {
+	rows, err := queryxHot(ctx, st, s.reader(), query, args...)
 	if err != nil {
 		return 0, err
 	}

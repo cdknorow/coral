@@ -173,13 +173,13 @@ func (s *Store) indexMentionChunk(ctx context.Context, limit int) (int, error) {
 	// The watermark is read from the table once, then kept here: only this store moves it (under mentionMu).
 	from := s.mentionIndexedTo.Load()
 	if from < 0 {
-		if err := s.reader().GetContext(ctx, &from, "SELECT indexed_to FROM board_mention_index_state WHERE id = 1"); err != nil {
+		if err := s.reader().GetContext(ctx, &from, sqlMentionGetMark); err != nil {
 			return 0, err
 		}
 		s.mentionIndexedTo.Store(from)
 	}
 	var newest int64
-	if err := s.reader().GetContext(ctx, &newest, "SELECT COALESCE(MAX(id), 0) FROM board_messages"); err != nil {
+	if err := getHot(ctx, s.hot().newestMessageID, s.reader(), &newest, sqlNewestMessageID); err != nil {
 		return 0, err
 	}
 	if newest <= from {
@@ -192,7 +192,8 @@ func (s *Store) indexMentionChunk(ctx context.Context, limit int) (int, error) {
 	defer tx.Rollback()
 	// The watermark read again inside the write transaction: nothing else moves it, but it is the writer's
 	// view that decides which messages exist.
-	if err := tx.GetContext(ctx, &from, "SELECT indexed_to FROM board_mention_index_state WHERE id = 1"); err != nil {
+	h := s.hot()
+	if err := txGet(ctx, tx, h.mentionGetMark, &from, sqlMentionGetMark); err != nil {
 		return 0, err
 	}
 	s.mentionIndexedTo.Store(from)
@@ -200,17 +201,24 @@ func (s *Store) indexMentionChunk(ctx context.Context, limit int) (int, error) {
 		ID      int64  `db:"id"`
 		Content string `db:"content"`
 	}
-	if err := tx.SelectContext(ctx, &rows, "SELECT id, content FROM board_messages WHERE id > ? ORDER BY id ASC LIMIT ?", from, limit); err != nil {
+	if h.mentionChunk != nil {
+		err = tx.StmtxContext(ctx, h.mentionChunk).SelectContext(ctx, &rows, from, limit)
+	} else {
+		err = tx.SelectContext(ctx, &rows, sqlMentionChunk, from, limit)
+	}
+	if err != nil {
 		return 0, err
 	}
 	if len(rows) == 0 {
 		return 0, nil
 	}
-	ins, err := tx.PreparexContext(ctx, "INSERT OR IGNORE INTO board_message_mentions (token, message_id) VALUES (?, ?)")
-	if err != nil {
+	var ins *sqlx.Stmt
+	if h.mentionInsert != nil {
+		ins = tx.StmtxContext(ctx, h.mentionInsert)
+	} else if ins, err = tx.PreparexContext(ctx, sqlMentionInsert); err != nil {
 		return 0, err
 	}
-	defer ins.Close()
+	defer ins.Close() // closes the transaction's binding of a prepared statement, or the one prepared here
 	for _, r := range rows {
 		for _, tok := range mentionTokens(r.Content) {
 			if _, err := ins.ExecContext(ctx, tok, r.ID); err != nil {
@@ -218,7 +226,12 @@ func (s *Store) indexMentionChunk(ctx context.Context, limit int) (int, error) {
 			}
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE board_mention_index_state SET indexed_to = ? WHERE id = 1", rows[len(rows)-1].ID); err != nil {
+	if h.mentionSetMark != nil {
+		_, err = tx.StmtxContext(ctx, h.mentionSetMark).ExecContext(ctx, rows[len(rows)-1].ID)
+	} else {
+		_, err = tx.ExecContext(ctx, sqlMentionSetMark, rows[len(rows)-1].ID)
+	}
+	if err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -256,7 +269,7 @@ func (s *Store) indexedMentionCandidates(ctx context.Context, project, subscribe
 	for i, t := range terms {
 		patterns[i] = "%" + t + "%"
 	}
-	rows, err := s.reader().QueryxContext(ctx, mentionCandidateQuery, project, lastReadID, subscriberID, string(arr), lastReadID)
+	rows, err := queryxHot(ctx, s.hot().mentionCandidates, s.reader(), mentionCandidateQuery, project, lastReadID, subscriberID, string(arr), lastReadID)
 	if err != nil {
 		return nil, true, err
 	}
@@ -293,6 +306,10 @@ func mentionIndexClause(alias string) string {
 		"OR " + alias + "id > (SELECT indexed_to FROM board_mention_index_state WHERE id = 1))"
 }
 
+// mentionIndexClauseNoAlias is mentionIndexClause("") as a constant, for the prepared count query.
+const mentionIndexClauseNoAlias = "(id IN (SELECT t.message_id FROM board_message_mentions t WHERE t.token IN (SELECT value FROM json_each(?)) AND t.message_id > ?) " +
+	"OR id > (SELECT indexed_to FROM board_mention_index_state WHERE id = 1))"
+
 // mentionIndexTokensJSON is the bound JSON array of a subscriber's candidate tokens, after the index has been
 // caught up; "" when the index cannot answer (an unindexable term, a failed catch-up, tests that read as before).
 func (s *Store) mentionIndexTokensJSON(ctx context.Context, terms []string) string {
@@ -302,4 +319,12 @@ func (s *Store) mentionIndexTokensJSON(ctx context.Context, terms []string) stri
 	}
 	arr, _ := json.Marshal(tokens)
 	return string(arr)
+}
+
+// txGet is getHot inside a transaction: a prepared statement is bound to the transaction with tx.Stmtx.
+func txGet(ctx context.Context, tx *sqlx.Tx, st *sqlx.Stmt, dest any, query string, args ...any) error {
+	if st != nil {
+		return tx.StmtxContext(ctx, st).GetContext(ctx, dest, args...)
+	}
+	return tx.GetContext(ctx, dest, query, args...)
 }
