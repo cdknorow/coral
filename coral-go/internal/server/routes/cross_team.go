@@ -163,6 +163,15 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		}
 		body.CrossTeamServers = &clean
 	}
+	if body.Health != nil {
+		// The check's recipient is a member of this team, never anyone else (#4176 rule 18).
+		if rcpt := strings.TrimSpace(body.Health.Recipient); rcpt != "" {
+			if sub, err := h.bs.GetProjectSubscription(r.Context(), urlParam(r, "project"), rcpt); err != nil || sub == nil {
+				errBadRequest(w, fmt.Sprintf("health.recipient: %q is not a member of this team", board.OneLine(rcpt)))
+				return
+			}
+		}
+	}
 	settings, err := h.bs.UpdateBoardSettings(r.Context(), urlParam(r, "project"), body.BoardSettingsUpdate)
 	if err != nil {
 		errInternalServer(w, err.Error())

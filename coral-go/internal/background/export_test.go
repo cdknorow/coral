@@ -2,7 +2,6 @@ package background
 
 import (
 	"context"
-
 )
 
 // Test-only hooks, kept out of the shipped binary (#3824, Go cleanup 2: audit #3780 section B).

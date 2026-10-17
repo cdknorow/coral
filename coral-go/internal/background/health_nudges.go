@@ -36,13 +36,9 @@ type HealthNudges struct {
 	deliver  func(ctx context.Context, a AgentInfo, key, text string) error
 	now      func() time.Time
 
-	Interval     time.Duration
-	ClaimAfter   time.Duration // idle with assigned work this long: a claim nudge
-	ClaimNudges  int           // nudges before escalating
-	StatusAfter  time.Duration // an in-progress task with no activity this long: a status nudge
-	SilentAfter  time.Duration // still nothing this long after the status nudge: escalate
-	MentionAfter time.Duration // an @-mention of the orchestrator unanswered this long: one re-nudge
-	TeamBudget   int           // automatic actions per board per hour
+	Interval   time.Duration
+	TeamBudget int // automatic actions per board per hour
+	// The rules' thresholds and switches are each team's health settings (board.HealthSettings).
 }
 
 // agentSignal is an agent's state from its hook events.
@@ -73,8 +69,7 @@ func hookSignal(ts *store.TaskStore) func(ctx context.Context, sessionID string)
 func NewHealthNudges(bs *board.Store, ts *store.TaskStore, rt AgentRuntime, discover func(context.Context) ([]AgentInfo, error)) *HealthNudges {
 	h := &HealthNudges{
 		store: bs, runtime: rt, logger: slog.Default(), discover: discover, now: time.Now,
-		Interval: 5 * time.Minute, ClaimAfter: 10 * time.Minute, ClaimNudges: 2,
-		StatusAfter: 20 * time.Minute, SilentAfter: 10 * time.Minute, MentionAfter: 10 * time.Minute, TeamBudget: 20,
+		Interval: 5 * time.Minute, TeamBudget: 20,
 	}
 	h.signal = hookSignal(ts)
 	h.deliver = func(ctx context.Context, a AgentInfo, key, text string) error {
@@ -126,14 +121,16 @@ func (h *HealthNudges) RunOnce(ctx context.Context) {
 		bySession[naming.SessionName(a.AgentType, a.SessionID)] = a
 	}
 	for _, p := range projects {
-		if v, _ := h.store.BoardSetting(ctx, p.Project, "health_nudges"); v == "off" {
-			continue
+		if hs := h.store.GetHealthSettings(ctx, p.Project); hs.On {
+			h.runProject(ctx, p.Project, bySession, hs)
 		}
-		h.runProject(ctx, p.Project, bySession)
 	}
 }
 
-func (h *HealthNudges) runProject(ctx context.Context, project string, bySession map[string]AgentInfo) {
+func (h *HealthNudges) runProject(ctx context.Context, project string, bySession map[string]AgentInfo, hs board.HealthSettings) {
+	minutes := func(m int) time.Duration { return time.Duration(m) * time.Minute }
+	claimAfter, claimNudges := minutes(hs.ClaimNudge.AfterMin), hs.ClaimNudge.Nudges
+	statusAfter, silentAfter := minutes(hs.StatusNudge.AfterMin), minutes(hs.StatusNudge.EscalateAfterMin)
 	subs, err := h.store.ListSubscribers(ctx, project)
 	if err != nil {
 		return
@@ -182,18 +179,18 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 		// Claim nudge: idle, nothing in progress, assigned work waiting.
 		if len(mine) > 0 {
 			h.store.ResetHealthCounters(ctx, project, ruleClaimNudge, sub.SubscriberID)
-		} else if len(pending) > 0 && known && !sig.InTurn && !sig.NeedsInput && !waiting[sub.SubscriberID] &&
-			!sig.Since.IsZero() && now.Sub(sig.Since) >= h.ClaimAfter {
+		} else if hs.ClaimNudge.On && len(pending) > 0 && known && !sig.InTurn && !sig.NeedsInput && !waiting[sub.SubscriberID] &&
+			!sig.Since.IsZero() && now.Sub(sig.Since) >= claimAfter {
 			t := pending[0] // ListOpenTasks orders by priority, then id
 			subject := fmt.Sprint(t.ID)
 			c, err := h.store.GetHealthCounter(ctx, project, ruleClaimNudge, sub.SubscriberID, subject)
 			switch {
 			case err != nil || c.Escalated:
-			case c.Count >= h.ClaimNudges:
+			case c.Count >= claimNudges:
 				if h.store.MarkHealthEscalated(ctx, project, ruleClaimNudge, sub.SubscriberID, subject, now) == nil {
 					escalated = append(escalated, fmt.Sprintf("%s has not claimed #%d after %d nudges", teamhealth.Name(sub.SubscriberID), t.ID, c.Count))
 				}
-			case take(ruleClaimNudge, sub.SubscriberID, h.ClaimAfter):
+			case take(ruleClaimNudge, sub.SubscriberID, claimAfter):
 				if h.deliver(ctx, a, "health-claim:"+project, claimNudgeText(t.ID)) == nil {
 					h.store.BumpHealthCounter(ctx, project, ruleClaimNudge, sub.SubscriberID, subject, now)
 					claimed = append(claimed, fmt.Sprintf("%s (#%d)", teamhealth.Name(sub.SubscriberID), t.ID))
@@ -203,6 +200,12 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 
 		// Status nudge: a task in progress with no activity.
 		for _, t := range mine {
+			if !hs.StatusNudge.On {
+				break
+			}
+			if until, _ := h.store.TaskSnoozedUntil(ctx, project, t.ID); until.After(now) {
+				continue // the reminder is snoozed (long tests, a release gate)
+			}
 			subject := fmt.Sprint(t.ID)
 			last, _ := h.store.TaskLastActivity(ctx, project, t.ID)
 			if known && sig.LastEvent.After(last) {
@@ -219,7 +222,7 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 				if at, perr := time.Parse("2006-01-02T15:04:05.000Z", c.LastAt); perr == nil && last.After(at) {
 					h.store.ResetHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject) // active again
 					c = board.HealthCounter{}
-				} else if !c.Escalated && perr == nil && now.Sub(at) >= h.SilentAfter {
+				} else if !c.Escalated && perr == nil && now.Sub(at) >= silentAfter {
 					if h.store.MarkHealthEscalated(ctx, project, ruleStatusNudge, sub.SubscriberID, subject, now) == nil {
 						escalated = append(escalated, fmt.Sprintf("%s silent on #%d after a status nudge", teamhealth.Name(sub.SubscriberID), t.ID))
 					}
@@ -228,7 +231,7 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 					continue
 				}
 			}
-			if silent := now.Sub(last); silent >= h.StatusAfter && take(ruleStatusNudge, sub.SubscriberID, h.StatusAfter) {
+			if silent := now.Sub(last); silent >= statusAfter && take(ruleStatusNudge, sub.SubscriberID, statusAfter) {
 				if h.deliver(ctx, a, "health-status:"+project, statusNudgeText(t.ID, int(silent.Minutes()))) == nil {
 					h.store.BumpHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject, now)
 					statused = append(statused, fmt.Sprintf("%s (#%d)", teamhealth.Name(sub.SubscriberID), t.ID))
@@ -239,8 +242,8 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 
 	// Re-nudge the orchestrator, once, for agents' @-mentions it has not acted on (#4176 rule 9):
 	// once per message, one nudge per sender per window, never for Coral's own lines.
-	if orch, err := h.store.TeamOrchestrator(ctx, project); err == nil && h.MentionAfter > 0 {
-		h.renudgeMentions(ctx, project, orch, subs, bySession, now, take, &renudged)
+	if orch, err := h.store.TeamOrchestrator(ctx, project); err == nil && hs.MentionRenudge.On {
+		h.renudgeMentions(ctx, project, orch, subs, bySession, now, minutes(hs.MentionRenudge.AfterMin), take, &renudged)
 	}
 
 	// An escalation ends with its task (completed, cancelled, reassigned).
@@ -283,7 +286,7 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 // the orchestrator neither posted nor did anything (no hook event), and reminds it once per
 // sender, each message only once.
 func (h *HealthNudges) renudgeMentions(ctx context.Context, project, orch string, subs []board.Subscriber, bySession map[string]AgentInfo,
-	now time.Time, take func(rule, target string, cooldown time.Duration) bool, renudged *[]string) {
+	now time.Time, after time.Duration, take func(rule, target string, cooldown time.Duration) bool, renudged *[]string) {
 	var orchSub *board.Subscriber
 	for i := range subs {
 		if subs[i].SubscriberID == orch {
@@ -315,7 +318,7 @@ func (h *HealthNudges) renudgeMentions(ctx context.Context, project, orch string
 	var senders []string
 	for _, m := range mentions {
 		at, err := time.Parse(time.RFC3339, m.CreatedAt)
-		if err != nil || now.Sub(at) < h.MentionAfter || !acted.Before(at) {
+		if err != nil || now.Sub(at) < after || !acted.Before(at) {
 			continue // too recent, or the orchestrator acted after it
 		}
 		if why, _ := h.store.HealthActionTaken(ctx, project, ruleMentionRenudge+"-msg", fmt.Sprint(m.ID)); why {

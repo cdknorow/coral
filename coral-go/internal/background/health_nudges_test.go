@@ -46,7 +46,7 @@ func newNudgeHarness(t *testing.T, path string) *nudgeHarness {
 			return nil
 		},
 		now:        func() time.Time { return n.now },
-		ClaimAfter: 10 * time.Minute, ClaimNudges: 2, StatusAfter: 20 * time.Minute, SilentAfter: 10 * time.Minute, MentionAfter: 10 * time.Minute, TeamBudget: 20,
+		TeamBudget: 20,
 	}
 	return n
 }
@@ -231,7 +231,6 @@ func TestEscalationEndsWithItsTask(t *testing.T) {
 	assert.Empty(t, esc)
 }
 
-
 // #4176 rule 9: an agent's @-mention of the orchestrator that it hasn't acted on for 10 minutes
 // gets one reminder: once per message, one per sender per window (later mentions coalesced),
 // none when the orchestrator posted or acted since, none for Coral's own line (case C7).
@@ -271,4 +270,29 @@ func TestMentionRenudge(t *testing.T) {
 	require.NoError(t, err)
 	n.run(45 * time.Minute)
 	assert.Len(t, n.sentTo("Orchestrator"), 2, "it posted after the mention")
+}
+
+// A rule the team turned off doesn't act (#4175 settings); its other rules still do.
+func TestHealthNudgesFollowTheTeamSettings(t *testing.T) {
+	n := newNudgeHarness(t, "")
+	ctx := context.Background()
+	sid := "15151515-1515-1515-1515-151515151515"
+	n.agent("Dev", sid)
+	_, err := n.bs.CreateTask(ctx, "team", "work", "", "high", "Operator", "Dev")
+	require.NoError(t, err)
+	n.sig[sid] = agentSignal{Since: n.now.Add(-time.Hour)}
+	hs := board.DefaultHealthSettings()
+	hs.ClaimNudge.On = false
+	_, err = n.bs.UpdateBoardSettings(ctx, "team", board.BoardSettingsUpdate{Health: &hs})
+	require.NoError(t, err)
+	n.run(0)
+	assert.Empty(t, n.sentTo("Dev"))
+
+	hs.ClaimNudge.On, hs.ClaimNudge.AfterMin = true, 90
+	_, err = n.bs.UpdateBoardSettings(ctx, "team", board.BoardSettingsUpdate{Health: &hs})
+	require.NoError(t, err)
+	n.run(time.Minute)
+	assert.Empty(t, n.sentTo("Dev"), "idle 61 min, the team waits 90")
+	n.run(30 * time.Minute)
+	assert.Len(t, n.sentTo("Dev"), 1)
 }

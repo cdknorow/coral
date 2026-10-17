@@ -10,11 +10,6 @@ import (
 // no reviewers goes to the reviewers it names, instead of waiting for the orchestrator to
 // delegate it. Security's #4176 rules 12 and 13 shape who that can be.
 
-// DefaultReviewersKey is the board setting naming the team's default reviewers (comma
-// separated; empty by default): the reviewers of a task that names none, or whose names don't
-// count (#4175).
-const DefaultReviewersKey = "health_default_reviewers"
-
 // Where AutoReviewers found its reviewers, for the board line.
 const (
 	ReviewersNamedInTask = "named in the task"
@@ -41,7 +36,8 @@ func splitReviewerNames(s string) []string {
 //
 //   - The names a task carries (its reviewers field, else a "Reviewers:" line in its body) count
 //     only when everyone who made or amended it is the orchestrator or the Operator: an agent
-//     can't name its own reviewers (#4176 rule 13). Otherwise, the team's default reviewers.
+//     can't name its own reviewers (#4176 rule 13). Otherwise, the team's default reviewers
+//     (its health settings; none by default).
 //   - A reviewer is a current subscriber of the board, never the task's author, creator or
 //     assignee (any spelling of the same name), and named once (#4176 rule 12).
 //
@@ -68,11 +64,7 @@ func (s *Store) AutoReviewers(ctx context.Context, project string, task *Task, o
 		source = ReviewersNamedInTask
 	}
 	if len(candidates) == 0 {
-		settings, err := s.boardSettingValue(ctx, project, DefaultReviewersKey)
-		if err != nil {
-			return nil, "", err
-		}
-		candidates = splitReviewerNames(settings)
+		candidates = s.GetHealthSettings(ctx, project).DefaultReviewers
 		source = ReviewersTeamDefault
 	}
 	excluded := []string{task.CreatedBy, task.Workflow.OriginalAuthor}

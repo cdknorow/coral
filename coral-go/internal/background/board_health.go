@@ -99,25 +99,46 @@ func (m *BoardHealthMonitor) scan(ctx context.Context) {
 	}
 }
 
-// checkProject composes one board's check and types it to the orchestrator.
+// checkProject composes one board's check and types it to its recipient, as the team's health
+// settings say (on, interval, recipient, all-clear line).
 func (m *BoardHealthMonitor) checkProject(ctx context.Context, project string, bySession map[string]AgentInfo) {
+	hs := m.store.GetHealthSettings(ctx, project)
+	if !hs.On {
+		return
+	}
+	m.mu.Lock()
+	last, checked := m.lastCheck[project]
+	m.mu.Unlock()
+	if checked && m.now().Sub(last) < time.Duration(hs.IntervalMin)*time.Minute {
+		return
+	}
 	orch, err := m.store.TeamOrchestrator(ctx, project)
 	if err != nil {
 		return // no orchestrator: nobody to tell
 	}
-	orchSub, err := m.store.GetProjectSubscription(ctx, project, orch)
-	if err != nil || orchSub == nil {
+	// The recipient is checked again here (#4176 rule 18): one who left the team gets nothing,
+	// and the check goes to the orchestrator instead.
+	recipient := orch
+	if hs.Recipient != "" {
+		if sub, err := m.store.GetProjectSubscription(ctx, project, hs.Recipient); err == nil && sub != nil {
+			recipient = sub.SubscriberID
+		} else {
+			m.logger.Warn("health check recipient is not a member of the team any more; sending to the orchestrator", "project", project)
+		}
+	}
+	rcptSub, err := m.store.GetProjectSubscription(ctx, project, recipient)
+	if err != nil || rcptSub == nil {
 		return
 	}
-	orchAgent, live := bySession[orchSub.SessionName]
+	rcptAgent, live := bySession[rcptSub.SessionName]
 	if !live {
 		return
 	}
-	text, err := m.composeCheck(ctx, project, orch, bySession)
-	if err != nil {
+	text, items, err := m.composeCheck(ctx, project, orch, bySession)
+	if err != nil || (items == 0 && !hs.AllClear) {
 		return
 	}
-	if err := m.deliver(ctx, orchAgent, "health-check:"+project, text); err != nil {
+	if err := m.deliver(ctx, rcptAgent, "health-check:"+project, text); err != nil {
 		m.logger.Warn("health check delivery failed", "project", project, "error", err)
 		return
 	}
@@ -127,15 +148,15 @@ func (m *BoardHealthMonitor) checkProject(ctx context.Context, project string, b
 }
 
 // composeCheck gathers a board's items and writes its check.
-func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch string, bySession map[string]AgentInfo) (string, error) {
+func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch string, bySession map[string]AgentInfo) (string, int, error) {
 	now := m.now()
 	subs, err := m.store.ListSubscribers(ctx, project)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	tasks, err := m.store.ListOpenTasks(ctx, project)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	waits, _ := m.store.ListActiveWaits(ctx, project)
 	waiting := map[string]bool{}
@@ -233,7 +254,7 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 	}
 	p, _ := m.store.ProgressSince(ctx, project, since)
 	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items,
-		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts}}), nil
+		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts}}), len(items), nil
 }
 
 func taskList(ids []int64) string {

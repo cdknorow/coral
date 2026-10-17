@@ -50,12 +50,16 @@ type BoardSettings struct {
 	// CrossTeamServers are the other Corals (Coral Hub server ids) whose Orchestrators may
 	// message this board through Coral Hub (#3489). Empty: none. Needs CrossTeamMessaging.
 	CrossTeamServers []string `json:"cross_team_servers"`
+	// Health is the team's health check configuration (#4175).
+	Health HealthSettings `json:"health"`
 }
 
 // BoardSettingsUpdate changes only the settings that are set.
 type BoardSettingsUpdate struct {
 	CrossTeamMessaging *bool     `json:"cross_team_messaging"`
 	CrossTeamServers   *[]string `json:"cross_team_servers"`
+	// Health replaces the whole health configuration (clamped; the handler checks the recipient).
+	Health *HealthSettings `json:"health"`
 }
 
 const (
@@ -134,6 +138,7 @@ func (s *Store) GetBoardSettings(ctx context.Context, project string) (BoardSett
 			_ = json.Unmarshal([]byte(r.Value), &out.CrossTeamServers)
 		}
 	}
+	out.Health = s.GetHealthSettings(ctx, project)
 	return out, nil
 }
 
@@ -160,6 +165,11 @@ func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u Board
 			`INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)
 			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`,
 			project, settingCrossTeamServers, string(raw)); err != nil {
+			return BoardSettings{}, err
+		}
+	}
+	if u.Health != nil {
+		if err := s.setHealthSettings(ctx, project, *u.Health); err != nil {
 			return BoardSettings{}, err
 		}
 	}

@@ -497,6 +497,28 @@ When enabled at startup, Coral does two things on each board (#4175):
 
 Coral never reassigns tasks or accepts completions on its own.
 
+**Health check settings** are per team, in the board's settings (`GET`/`PUT
+/api/board/{project}/settings`, field `health`). Only the Operator changes them, on this
+computer: an agent's token, the orchestrator's included, is refused, and Coral Hub can read
+them but never change them. A team that never sets them gets the defaults below. Out-of-range
+values are clamped: times are 5 to 1440 minutes, and nudges are 1 to 5.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `on` | true | the whole check and every rule |
+| `interval_min` | 10 | minutes between checks |
+| `recipient` | "" (the orchestrator) | who gets the check: a member of this team, checked again at each check |
+| `all_clear` | true | send the one-line check when nothing needs the orchestrator |
+| `default_reviewers` | [] | reviewers of a task that names none, or whose names don't count |
+| `auto_delegate.on` | true | review auto-delegation |
+| `claim_nudge` | on, `after_min` 10, `nudges` 2 | nudge an idle agent to claim its work; escalate after the nudges |
+| `status_nudge` | on, `after_min` 20, `escalate_after_min` 10 | ask for a status after no activity; escalate if still silent |
+| `mention_renudge` | on, `after_min` 10 | remind the orchestrator of an unanswered mention |
+
+The claim nudge names the agent's highest-priority assigned task. Once that escalates, the
+next one waits until the first is resolved. A task whose reminder is snoozed gets no status
+nudge.
+
 Activation for `death-or-trade-ai-auto` is deliberately explicit: save the
 existing global `board_health_monitor=true` setting, restart the server so
 startup reads it, and confirm the Orchestrator subscription is active. Verify

@@ -154,3 +154,54 @@ func TestCheckItems(t *testing.T) {
 	assert.NotContains(t, out, "Waiter:", "an agent in a wait is not idle")
 	assert.Contains(t, out, "1 review done", "the team line counts what moved")
 }
+
+// The team's settings decide (#4175, case C6b's "recipient re-checked at delivery"): the
+// interval between checks, whether the all-clear line is sent, and the recipient, who must still
+// be a member when the check goes (else the orchestrator gets it).
+func TestCheckFollowsTheTeamSettings(t *testing.T) {
+	h := newCheckHarness(t)
+	ctx := context.Background()
+	h.member("Orchestrator", "Orchestrator", 1, 0)
+	h.member("Lead", "Lead Developer", 2, 0)
+	set := func(f func(*board.HealthSettings)) {
+		hs := board.DefaultHealthSettings()
+		f(&hs)
+		_, err := h.s.UpdateBoardSettings(ctx, "team", board.BoardSettingsUpdate{Health: &hs})
+		require.NoError(t, err)
+	}
+	count := func(name string) int {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return len(h.sent[name])
+	}
+
+	set(func(hs *board.HealthSettings) { hs.Recipient = "Lead"; hs.IntervalMin = 30 })
+	h.m.scan(ctx)
+	assert.Equal(t, 1, count("Lead"))
+	assert.Equal(t, 0, count("Orchestrator"))
+	h.now = h.now.Add(10 * time.Minute)
+	h.m.scan(ctx)
+	assert.Equal(t, 1, count("Lead"), "within the team's 30 minutes")
+	h.now = h.now.Add(21 * time.Minute)
+	h.m.scan(ctx)
+	assert.Equal(t, 2, count("Lead"))
+
+	// The recipient left the team: the orchestrator gets it.
+	_, err := h.s.Unsubscribe(ctx, "team", "Lead")
+	require.NoError(t, err)
+	h.now = h.now.Add(31 * time.Minute)
+	h.m.scan(ctx)
+	assert.Equal(t, 1, count("Orchestrator"))
+
+	// No all-clear line: nothing is sent when nothing needs the orchestrator.
+	set(func(hs *board.HealthSettings) { hs.AllClear = false; hs.IntervalMin = 5 })
+	h.now = h.now.Add(6 * time.Minute)
+	h.m.scan(ctx)
+	assert.Equal(t, 1, count("Orchestrator"))
+
+	// Off: nothing at all.
+	set(func(hs *board.HealthSettings) { hs.On = false })
+	h.now = h.now.Add(time.Hour)
+	h.m.scan(ctx)
+	assert.Equal(t, 1, count("Orchestrator"))
+}

@@ -19,9 +19,6 @@ import (
 // and 13); the review round it opens needs all of them, as a delegation by the orchestrator
 // does (rule 15).
 
-// AutoDelegateKey is the board setting that turns review auto-delegation off ("off").
-const AutoDelegateKey = "health_auto_delegate"
-
 // reviewDelegationLimits bound auto-delegation on one board.
 var reviewDelegationLimits = board.HealthLimits{PerTargetPerHour: 2, TeamPerHour: healthTeamBudget}
 
@@ -34,7 +31,7 @@ var healthNow = time.Now
 // autoDelegateReview delegates task id, just handed to orch for review, and reports whether it
 // did. When it didn't, the orchestrator is told as before.
 func (h *BoardHandler) autoDelegateReview(ctx context.Context, project string, id int64, orch string) bool {
-	if v, _ := h.bs.BoardSetting(ctx, project, AutoDelegateKey); v == "off" {
+	if hs := h.bs.GetHealthSettings(ctx, project); !hs.On || !hs.AutoDelegate.On {
 		return false
 	}
 	task, err := h.bs.GetTask(ctx, project, id)
