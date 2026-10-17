@@ -1,0 +1,125 @@
+name: cdp-gate
+# The full CDP set (tests/frontend/run_cdp_suites.mjs) on GitHub-hosted runners, so a release gate doesn't
+# depend on one machine (#4383: epoch dropped three gates on 2026-10-17). Six parts of the default-mode suites
+# (--part K/6, each suite in exactly one part), the sequences and the strict phase run as separate jobs; each
+# uploads its results.json and Coral logs, and one summary job is the check. Same rules as the epoch gate: one
+# retry per suite, and a suite that passes only on its retry (FLAKY) fails its part (runner exit 3).
+#
+# Trust: it runs only on pushes to ci/** (branches the landing agent pushes) and by manual dispatch, never on
+# pull_request, so a fork's code never runs here; the job has no secrets and read-only contents; actions are
+# pinned by SHA; nothing is cached (a cache written by a ci/ branch could be read by a release, #4251).
+# Agent CLIs: stub claude, codex and gemini go first on PATH and fail loudly, so no real CLI can start (#4354).
+on:
+  push:
+    branches: ["ci/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cdp-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  part:
+    name: cdp (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "part 1/6", args: "--part 1/6" }
+          - { name: "part 2/6", args: "--part 2/6" }
+          - { name: "part 3/6", args: "--part 3/6" }
+          - { name: "part 4/6", args: "--part 4/6" }
+          - { name: "part 5/6", args: "--part 5/6" }
+          - { name: "part 6/6", args: "--part 6/6" }
+          - { name: "sequences", args: "--sequences" }
+          - { name: "strict", args: "--strict" }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false # nothing cached here: see the header
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - id: chrome
+        uses: browser-actions/setup-chrome@4f8e94349a351df0f048634f25fec36c3c91eded # v2.1.1
+        with:
+          install-dependencies: true
+          chrome-version: "155.0.8059.39" # the same pin as cloud-tests.yml; bump both together
+      - name: install
+        working-directory: tests/frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund # exactly package-lock.json, no install scripts (#3675)
+      - name: stub agent CLIs first on PATH
+        run: |
+          stub="$RUNNER_TEMP/stub-cli"
+          mkdir -p "$stub"
+          for c in claude codex gemini; do
+            printf '#!/bin/sh\necho "stub %s: a CDP suite tried to run a real agent CLI ($*)" >&2\nexit 1\n' "$c" > "$stub/$c"
+            chmod 755 "$stub/$c"
+          done
+          echo "$stub" >> "$GITHUB_PATH"
+      - name: run ${{ matrix.name }}
+        working-directory: tests/frontend
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+          ARGS: ${{ matrix.args }}
+        run: |
+          set -o pipefail
+          # shellcheck disable=SC2086 # ARGS holds the runner's flags
+          node run_cdp_suites.mjs --timeout 180 --keep $ARGS --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
+      - name: collect logs
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          cp "$RUNNER_TEMP/run.log" "$RUNNER_TEMP/results.json" "$RUNNER_TEMP/out/" 2>/dev/null || true
+          # the run's Coral logs (named in the runner's last lines), at most 200 files
+          grep -o '/[^ ]*/coral\.log' "$RUNNER_TEMP/run.log" | sort -u | head -200 | while read -r f; do
+            [ -f "$f" ] && cp "$f" "$RUNNER_TEMP/out/$(echo "$f" | tr '/' '_')"
+          done
+      - name: upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cdp-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/out
+          retention-days: 7
+          if-no-files-found: warn
+
+  summary:
+    name: cdp-gate
+    if: always()
+    needs: part
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: parts
+      - name: summary
+        env:
+          PARTS_RESULT: ${{ needs.part.result }}
+        run: |
+          python3 - <<'PY'
+          import glob, json, os
+          rows = []
+          for f in sorted(glob.glob('parts/*/results.json')):
+              rows += json.load(open(f))
+          by = lambda s: sorted(r['test'] for r in rows if r['status'] == s)
+          failed, flaky = by('fail') + by('timeout'), by('flaky')
+          passed = len(rows) - len(failed) - len(flaky)
+          lines = [f"{passed}/{len(rows)} suites passed" + (f", {len(flaky)} FLAKY" if flaky else "") + (f", {len(failed)} FAILED" if failed else "")]
+          if flaky: lines.append("FLAKY: " + ", ".join(flaky))
+          if failed: lines.append("FAILED: " + ", ".join(failed))
+          print("\n".join(lines))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as s:
+              s.write("## cdp-gate\n\n" + "\n\n".join(lines) + "\n")
+          PY
+          echo "parts: $PARTS_RESULT"
+          [ "$PARTS_RESULT" = success ]
