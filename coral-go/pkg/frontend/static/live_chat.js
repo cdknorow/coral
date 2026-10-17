@@ -283,17 +283,12 @@ function renderQuestionCard(tool) {
     return `<div class="tool-card" data-tool-use-id="${escapeHtml(tool.tool_use_id || "")}">${bodyHtml}</div>`;
 }
 
-// Join a prepended older page to the page after it: a trailing "final" reply
-// that was followed by more work is folded in, and split groups are merged.
+// Join a prepended older page to the page after it: a run of tool calls split by the page
+// boundary is one group again. A reply at the end of the older page stays a reply (#4105).
 function stitchPages(lastOlder) {
-    let next = lastOlder && lastOlder.nextElementSibling;
+    const next = lastOlder && lastOlder.nextElementSibling;
     if (!next || !next.classList.contains("work-group")) return;
     const nextBody = next.querySelector(":scope > .work-group-body");
-    if (lastOlder.classList.contains("turn-final")) {
-        lastOlder.classList.remove("turn-final");
-        nextBody.insertBefore(lastOlder, nextBody.firstChild);
-        lastOlder = next.previousElementSibling;
-    }
     if (lastOlder && lastOlder.classList.contains("work-group")) {
         const olderBody = lastOlder.querySelector(":scope > .work-group-body");
         while (nextBody.firstChild) olderBody.appendChild(nextBody.firstChild);

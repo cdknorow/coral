@@ -28,8 +28,9 @@ class PiChatAdapter extends ChatAgentAdapter {}
 
 class CodexChatAdapter extends ChatAgentAdapter {
     assistantPlacement(message) {
-        // Codex records this distinction in the rollout. Using it avoids the
-        // generic renderer's guess-and-demote behavior while a turn streams.
+        // Codex records this distinction in the rollout, so its progress commentary
+        // is a work step and its answers are replies (the other agents' prose is
+        // always shown as a reply, #4105).
         return message.phase === "commentary" ? "work" : "final";
     }
 
