@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/eskriett/confusables"
 )
 
 // Board identities (#3376, SEC-BD-01): subscriber ids, job titles and the like are
@@ -40,9 +42,12 @@ func ValidateIdentity(s string) error {
 // reserved one by looking the same (#3376): format characters (zero-width, joiners,
 // bidi) are dropped, every Unicode space (NBSP, U+2000-200A, U+202F, U+3000…) becomes
 // one ASCII space and runs collapse, fullwidth ASCII (Ｃｏｒａｌ) becomes ASCII, then trimmed
-// and lower-cased. (The compatibility folding is the fullwidth block, not all of NFKC:
-// no new dependency for it.)
+// and lower-cased. Letters from other scripts that look like Latin ones (a Cyrillic а or о,
+// a Greek Η or ο, a mathematical or roman-numeral form) become the Latin letter, from Unicode's
+// confusables table (foldConfusables, #4207), so no spelling in another script passes for
+// another name. (The compatibility folding is the fullwidth block, not all of NFKC.)
 func normalizeName(s string) string {
+	s = foldConfusables(s)
 	var b strings.Builder
 	space := false
 	for _, r := range s {
@@ -97,12 +102,46 @@ const HubUnknownSender = "Coral Hub"
 // so no subscriber or role can look like one.
 const HubUserPrefix = "hub-user-"
 
+// confusableFold maps characters that look like ASCII ones to those ASCII ones (Unicode's
+// confusables.txt, Unicode 17, package github.com/eskriett/confusables, MIT). It leaves ASCII
+// alone and drops combining marks (Zoë and Zoe are one name).
+var confusableFold = confusables.NewSafe()
+
+// foldConfusables is s with look-alike letters from other scripts as ASCII; a pure ASCII
+// name, almost every name, is returned as it is, without the table.
+func foldConfusables(s string) string {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return confusableFold.ToASCII(s)
+		}
+	}
+	return s
+}
+
+// asciiLookalikes folds the ASCII characters that read alike in common typefaces: a capital I,
+// a digit 1 and a bar for a lower-case l, and a zero for an O. IsReservedName compares in this
+// form too (CoraI, Syst3m... for the reserved few); identity checks do not, so QA1 and QAl stay
+// two names.
+func asciiLookalikes(s string) string {
+	s = foldConfusables(s)
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case 'I', '1', '|':
+			return 'l'
+		case '0', 'O':
+			return 'o'
+		}
+		return r
+	}, s)
+}
+
 // IsReservedName reports whether s is one of ReservedNames or starts with HubUserPrefix,
 // compared in normalizeName's form (case, spacing and invisible characters don't help).
 func IsReservedName(s string) bool {
 	n := normalizeName(s)
+	k := normalizeName(asciiLookalikes(s))
 	for _, r := range ReservedNames {
-		if n == normalizeName(r) {
+		if n == normalizeName(r) || k == normalizeName(asciiLookalikes(r)) {
 			return true
 		}
 	}

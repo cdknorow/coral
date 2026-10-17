@@ -52,3 +52,55 @@ func TestReservedNamesAreComparedNormalised(t *testing.T) {
 	}
 	assert.NoError(t, ValidateIdentity("👩\u200d💻 Dev"), "an emoji joiner is still fine")
 }
+
+// Look-alike letters from other scripts (#4207, Security's #4175 note 2): a name spelled with a
+// Cyrillic or Greek letter, a roman numeral or a mathematical form that reads like a Latin one is
+// the same name for every identity and reserved-name check. The letters are written as runes, not
+// typed, so the source shows what is being tested.
+func TestLookAlikeSpellingsAreTheSameName(t *testing.T) {
+	cyrA, cyrO, cyrE := string(rune(0x430)), string(rune(0x43e)), string(rune(0x435))
+	cyrCapO, cyrCapC, cyrCapS, cyrCapH := string(rune(0x41e)), string(rune(0x421)), string(rune(0x405)), string(rune(0x41d))
+	grEta, grOmicron := string(rune(0x397)), string(rune(0x3bf))
+	romanI := string(rune(0x2160))
+	for _, c := range []struct{ want, spelled string }{
+		{"Coral", "Cor" + cyrA + "l"},
+		{"Coral", cyrCapC + cyrO + "r" + cyrA + "l"},
+		{"Coral", "C" + grOmicron + "ral"},
+		{"Coral", "Cora" + romanI},
+		{"System", "Syst" + cyrE + "m"},
+		{"System", cyrCapS + "yst" + cyrE + "m"},
+		{"Health", cyrCapH + cyrE + "alth"},
+		{"Health", grEta + "ealth"},
+		{"Health", "H" + cyrE + "alth"},
+		{"Orchestrator", cyrCapO + "rchestrator"},
+		{"Orchestrator", "Orchestrat" + cyrO + "r"},
+		{"Operator", cyrCapO + "perator"},
+		{"Operator", "Op" + cyrE + "rator"},
+		{"Operator", "Operat" + grOmicron + "r"},
+		{"Security Reviewer", "S" + cyrE + "curity R" + cyrE + "vi" + cyrE + "w" + cyrE + "r"},
+		{"Coral Task Queue", cyrCapC + "oral Task Queue"},
+	} {
+		assert.True(t, SameIdentity(c.want, c.spelled), "%q is %q", c.spelled, c.want)
+	}
+	// Names that are not look-alikes stay different, and a plain ASCII name is untouched.
+	for _, c := range [][2]string{{"Coral", "Corall"}, {"Dev", "Dave"}, {"QA1", "QAl"}, {"Dev 1", "Dev 2"}, {"Coral", "Cora"}} {
+		assert.False(t, SameIdentity(c[0], c[1]), "%q and %q", c[0], c[1])
+	}
+	assert.Equal(t, "plain name", foldConfusables("plain name"))
+	assert.Equal(t, "日本語", foldConfusables("日本語"), "a script without a look-alike is kept")
+}
+
+func TestReservedNamesCatchLookAlikes(t *testing.T) {
+	cyrA, cyrE, cyrCapC, cyrO := string(rune(0x430)), string(rune(0x435)), string(rune(0x421)), string(rune(0x43e))
+	grEta := string(rune(0x397))
+	for _, s := range []string{
+		"Cor" + cyrA + "l", cyrCapC + "oral", "Syst" + cyrE + "m", "H" + cyrE + "alth", grEta + "ealth",
+		"CoraI", "Cora1", "Cora|", "C0ral", "Syst" + cyrE + "m ", "hub-user-1234abcd",
+		cyrCapC + "oral Task Queue", "C" + cyrO + "ral Hub", "Coral Task Queue",
+	} {
+		assert.True(t, IsReservedName(s), "%q", s)
+	}
+	for _, s := range []string{"Coral Task", "Dev", "Heaith", "Systems", "Coralie", "QA", "Security Reviewer"} {
+		assert.False(t, IsReservedName(s), "%q", s)
+	}
+}

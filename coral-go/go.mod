@@ -53,6 +53,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/esiqveland/notify v0.13.3 // indirect
+	github.com/eskriett/confusables v0.0.0-20250910043846-220432c5bd73
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/fatih/semgroup v1.2.0 // indirect
 	github.com/gitleaks/go-gitdiff v0.9.1 // indirect
