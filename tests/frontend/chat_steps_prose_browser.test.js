@@ -1,7 +1,8 @@
 // Only tool calls fold into a "N steps" group (#4105): the agent's own prose is never folded away. A turn that goes on after the agent's
 // answer (a Stop hook continuation, or a message sent mid-turn, then more tool calls) used to demote the earlier answer into the next
 // group, hiding it behind "5 steps". Now each answer stays on the page and splits the steps around it. Fixture: answer, a Stop hook
-// feedback continuation, tool calls, a second answer, more tool calls, a final answer; and the same without any entry between.
+// feedback continuation, tool calls, a second answer, more tool calls, a final answer; and the same without any entry between. Since #4171 the
+// stop-hook feedback is a Coral notice: the turn it starts folds whole when its replies are short (the other variant is #4105's).
 // Run against an isolated dev server; set STEPS_SHOT_DIR to save screenshots.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -54,10 +55,20 @@ const fixture = withHook => [
             const id = withHook ? 'steps-hook' : 'steps-plain';
             const t = await shape(id);
             const kinds = t.map(x => x.kind).join(',');
-            assert.equal(kinds, withHook ? 'user,group,reply,user,group,reply,group,reply' : 'user,group,reply,group,reply,group,reply', `${id}: groups and replies alternate: ${kinds}`);
+            if (withHook) {
+                // Stop hook feedback is a Coral notice (#4171): it starts the turn, so the short replies after it fold into the one group with it.
+                assert.equal(kinds, 'user,group,reply,group', `${id}: the turn the hook feedback started folds whole: ${kinds}`);
+                const groups = t.filter(x => x.kind === 'group');
+                assert.deepEqual(groups.map(g => g.steps), ['2 steps', '5 steps'], `${id}: step counts (the notice, the preamble and three calls; the folded replies are the label)`);
+                assert.deepEqual(groups.map(g => g.bubbles), [0, 3], `${id}: the preamble and the two short replies are inside`);
+                assert.deepEqual(t.filter(x => x.kind === 'reply').map(r => r.text.slice(0, 12)), [A1.slice(0, 12)], `${id}: the reply before the hook stays`);
+                console.log(`   ✓ ${id}: ${kinds}; counts ${groups.map(g => g.steps).join(', ')}`);
+                continue;
+            }
+            assert.equal(kinds, 'user,group,reply,group,reply,group,reply', `${id}: groups and replies alternate: ${kinds}`);
             const replies = t.filter(x => x.kind === 'reply');
             assert.deepEqual(replies.map(r => r.text.slice(0, 12)), [A1, A2, A3].map(x => x.slice(0, 12)), `${id}: the three replies, in order`);
-            assert.ok(replies.every(r => r.visible), `${id}: every reply is visible with nothing expanded, the one after the Stop hook continuation too`);
+            assert.ok(replies.every(r => r.visible), `${id}: every reply is visible with nothing expanded`);
             const groups = t.filter(x => x.kind === 'group');
             assert.ok(groups.every(g => !g.open), `${id}: groups are collapsed`);
             assert.deepEqual(groups.map(g => g.bubbles), [0, 1, 0], `${id}: only the one-line preamble (a message that also makes a tool call) is folded in with its calls`);

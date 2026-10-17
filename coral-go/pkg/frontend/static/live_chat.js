@@ -13,7 +13,7 @@ import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
 import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from './overload.js';
 import { storeKey, onAccountForgotten } from './local_store.js';
-import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, lastContent, updateWorkGroupSummary } from './chat_content.js';
+import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, isShortReply, lastContent, noticeStartedTurn, updateWorkGroupSummary } from './chat_content.js';
 import { flashCopied, makeBubble } from './chat_bubbles.js';
 import { unwrapPastedContent } from './pasted_content.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
@@ -347,7 +347,10 @@ function renderOneMessage(msg, container, agentType) {
             // in the steps group with the calls. Prose in a message with no tool calls (a question card is not a step)
             // is a reply: it always shows and it ends the group (#4105).
             const preamble = (msg.tool_uses || []).some(t => !adapter.toolView(t).isQuestion);
-            if (preamble || adapter.assistantPlacement(msg) === "work") appendWork(container, bubble);
+            // A short reply to a turn a Coral notice started folds into the group too, and labels it (#4171).
+            const folded = !preamble && (msg.tool_uses || []).length === 0 && isShortReply(msg.text) && noticeStartedTurn(container);
+            if (folded) bubble.classList.add("folded-reply");
+            if (preamble || folded || adapter.assistantPlacement(msg) === "work") appendWork(container, bubble);
             else appendTurnFinal(container, bubble);
         }
         for (const tool of msg.tool_uses || []) {

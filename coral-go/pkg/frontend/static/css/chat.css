@@ -254,6 +254,11 @@
     opacity: 0.85;
 }
 
+/* A Coral notice inside a group is one of its steps (#4171): tighter than the pill on its own. */
+.work-group-body > .chat-system {
+    margin: 4px 0 8px;
+}
+
 /* ── Tool Calls (collapsed one-line rows) ──────────────────── */
 
 .tool-call {

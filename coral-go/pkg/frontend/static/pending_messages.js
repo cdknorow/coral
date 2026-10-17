@@ -2,7 +2,7 @@
  * was; no behaviour change. They are the chat's trailing chrome rows (.pending-messages, .chat-working): each builds its row with
  * makeBubble (chat_bubbles.js) and places it with lastContent and appendContent (chat_content.js), which keep the rows below the
  * transcript. live_chat.js calls syncPendingBubbles and syncWorkingIndicator after it renders. */
-import { appendContent, lastContent } from './chat_content.js';
+import { appendWork, lastContent } from './chat_content.js';
 import { deriveSessionState } from './render.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
 import { makeBubble } from './chat_bubbles.js';
@@ -101,6 +101,7 @@ const CORAL_NUDGE_RES = [
     /^\[Task #\d+[^\]]*\]/i,
     /^\[Wait resolved\]/i,
 	/^\[Coral\b[^\]]*\]/i,
+	/^Stop hook feedback:/i, // Claude Code's block from a Stop hook (the board check): not something the user typed (#4171)
 ];
 
 const CORAL_HEALTH_NUDGE_RE = /^\[Coral health check\]/i;
@@ -112,7 +113,10 @@ function coralNoticeSummary(text) {
 }
 export function appendCoralNotice(container, text, health = false) {
     text = coralNoticeSummary(text);
-	const prev = lastContent(container);
+	// A notice is a step of the work it prompts, not a pill of its own (#4171): it goes into the steps group, which it starts when
+	// the last thing on the page is not one. Back-to-back notices still roll up into one.
+	const tail = lastContent(container);
+	const prev = tail && tail.classList.contains("work-group") ? tail.querySelector(":scope > .work-group-body").lastElementChild : tail;
 	const noticeClass = health ? "chat-system-health" : "chat-system-general";
 	if (prev && prev.classList.contains("chat-system") && prev.classList.contains(noticeClass)) {
         const count = (Number(prev.dataset.count) || 1) + 1;
@@ -130,8 +134,10 @@ export function appendCoralNotice(container, text, health = false) {
         badge.title = `${count} notices from Coral in a row`;
         return;
     }
-	appendContent(container, makeBubble(`chat-system ${noticeClass}`,
-		`<span class="material-icons" aria-hidden="true">${health ? "health_and_safety" : "notifications"}</span><span class="chat-system-label">${health ? "Coral · Health check" : "Coral"}</span><span class="chat-system-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`));
+	// A notice after a folded reply (the previous turn's end) starts a group of its own, so each turn keeps its label.
+	const ended = tail && tail.classList.contains("work-group") && tail.querySelector(":scope > .work-group-body").lastElementChild?.classList.contains("folded-reply");
+	appendWork(container, makeBubble(`chat-system ${noticeClass}`,
+		`<span class="material-icons" aria-hidden="true">${health ? "health_and_safety" : "notifications"}</span><span class="chat-system-label">${health ? "Coral · Health check" : "Coral"}</span><span class="chat-system-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`), { newGroup: !!ended });
 }
 
 export function normalizeNudgeText(content) {

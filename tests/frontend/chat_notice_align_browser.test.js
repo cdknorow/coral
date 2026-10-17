@@ -1,5 +1,5 @@
 // #3592 (the operator's request): in the agent chat view, Coral's notices (board and task nudges,
-// health checks) and the Esc "Interrupted" note start at the message column's left edge, where the
+// health checks; steps inside the folded groups since #4171) all share one left edge, and the Esc "Interrupted" note starts at the message column's left edge, where the
 // agent's reply text starts, instead of being centred: a short and a long notice share the same
 // left x, and each pill still shrinks to its text. Checked at a wide window (the 780px column is
 // centred) and a narrow one (the column fills the pane).
@@ -34,10 +34,11 @@ const MESSAGES = [
     const measure = () => ev(`(() => {
         const C = document.getElementById('history-messages');
         const left = el => Math.round(el.getBoundingClientRect().left);
-        const pills = [...C.querySelectorAll(':scope > .chat-system')];
+        C.querySelectorAll(':scope > .work-group').forEach(g => { g.open = true; }); // the notices are steps inside the groups now (#4171)
+        const pills = [...C.querySelectorAll('.work-group-body > .chat-system')];
         const short = pills.find(p => p.textContent.includes('unread message'));
         const long = pills.find(p => p.textContent.includes('[Task #3592'));
-        const health = C.querySelector(':scope > .chat-system-health');
+        const health = C.querySelector('.work-group-body > .chat-system-health');
         const note = C.querySelector(':scope > .chat-note');
         const prose = C.querySelector('.chat-bubble.assistant .message-text');
         return { pane: C.clientWidth, prose: left(prose), short: left(short), long: left(long), health: left(health), note: left(note),
@@ -54,17 +55,17 @@ const MESSAGES = [
                 (await import(${S}+'utils.js')).showView('history-session-view');
                 (await import(${S}+'render.js')).renderHistoryChat(${JSON.stringify(MESSAGES)});
                 return true; })()`);
-            await waitFor(`document.querySelectorAll('#history-messages > .chat-system').length === 3 && !!document.querySelector('#history-messages > .chat-note')`, 'the notices');
+            await waitFor(`document.querySelectorAll('#history-messages .work-group-body > .chat-system').length === 3 && !!document.querySelector('#history-messages > .chat-note')`, 'the notices');
             await nextFrame();
             const m = await measure();
             console.log(`#3592 ${label}: pane ${m.pane}px`);
             assert.equal(m.short, m.long, `a short and a long notice share the same left x (${JSON.stringify(m)})`);
-            assert.equal(m.short, m.prose, `the notices start where the reply text does (${JSON.stringify(m)})`);
-            assert.equal(m.health, m.prose, `the health notice too (${JSON.stringify(m)})`);
+            assert.equal(m.health, m.short, `the health notice too (${JSON.stringify(m)})`);
+            assert.ok(m.short > m.prose, `the notices are steps inside their groups, indented under the group's label (${JSON.stringify(m)})`);
             assert.equal(m.note, m.prose, `the Interrupted note too (${JSON.stringify(m)})`);
             assert.equal(m.noteAlign, 'left', 'the note is left-aligned text');
             assert.ok(m.shortW < m.longW, `each pill shrinks to its text (${m.shortW} < ${m.longW})`);
-            console.log('   ✓ short, long, health and note at the prose\'s left edge; pills shrink to fit');
+            console.log('   ✓ short, long and health notices share one left edge inside their groups; the note is at the prose\'s left edge; pills shrink to fit');
         }
         console.log('PASS chat_notice_align_browser');
     } finally {
