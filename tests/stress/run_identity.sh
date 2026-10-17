@@ -385,8 +385,11 @@ if [[ $STRICT == 1 ]]; then
     c=$(code_of -X POST "$BASE/api/cloud/cli-hello" -H "Content-Type: application/json" -d '{"nonce":"x"}'); [[ $c != 401 ]] && pass "STRICT: the CLI hello stays open ($c)" || fail "STRICT: cli-hello answered 401"
     hdr="$TMP/hdr2"; c=$(curl -s -m 10 -o /dev/null -D "$hdr" -w "%{http_code}" "$BASE/"); loc=$(sed -n 's/^[Ll]ocation: //p' "$hdr" | tr -d '\r')
     [[ $c == 307 && $loc == *"/auth?locked=1"* ]] && pass "STRICT: a page load without the cookie goes to the locked /auth ($loc)" || fail "STRICT: / without a cookie: $c $loc"
+    # /auth is the one sign-in page since #3948 (a password form, "Use an API key instead" behind a click), not a
+    # separate locked page: in strict mode it is marked strict and never carries the API key itself.
     page=$(body_of "$BASE/auth?locked=1")
-    if grep -qi "locked" <<<"$page" && ! grep -qiE "<input|<form" <<<"$page"; then pass "STRICT: the locked page says Coral is locked and has no input or form (no key asked)"; else fail "STRICT: the /auth page: ${page:0:120}"; fi
+    apikey=""; [[ -s "$DATA/api_key" ]] && apikey=$(tr -d '\n' < "$DATA/api_key")
+    if grep -q 'data-strict="true"' <<<"$page" && { [[ -z "$apikey" ]] || ! grep -qF -- "$apikey" <<<"$page"; }; then pass "STRICT: /auth is the sign-in page, marked strict, and does not show the API key"; else fail "STRICT: the /auth page: ${page:0:120}"; fi
 
     # The app/tray sign-in path: cookie-less page load -> /auth -> a fresh link from the CLI handshake -> the dashboard.
     link=$(coral_open); app_jar="$TMP/appjar"; rm -f "$app_jar"
