@@ -67,3 +67,45 @@ func TestSettingValuesAreScalars(t *testing.T) {
 	}
 	assert.Equal(t, "/tmp/kept", stored()["default_working_dir"], "a refused request saves nothing")
 }
+
+// #4432 (Security's #4431 SHOULD 2): a number is stored with all its digits, never in exponent form, a fraction is
+// refused, and the artifact store's cap must be a whole number of bytes.
+func TestSettingNumbersAreStoredWhole(t *testing.T) {
+	put, stored := settingsClient(t)
+	require.Equal(t, http.StatusOK, put(`{"artifact_store_max_bytes": 10737418240, "terminal_scrollback": 1000000}`))
+	s := stored()
+	assert.Equal(t, "10737418240", s["artifact_store_max_bytes"])
+	assert.Equal(t, "1000000", s["terminal_scrollback"])
+	require.Equal(t, http.StatusOK, put(`{"artifact_store_max_bytes": "0"}`))
+	assert.Equal(t, "0", stored()["artifact_store_max_bytes"])
+	for _, raw := range []string{
+		`{"terminal_font_size": 13.5}`,
+		`{"terminal_scrollback": 1e300}`,
+		`{"artifact_store_max_bytes": "lots"}`,
+		`{"artifact_store_max_bytes": "-1"}`,
+		`{"artifact_store_max_bytes": -5}`,
+		`{"artifact_store_max_bytes": true}`,
+	} {
+		assert.Equal(t, http.StatusBadRequest, put(raw), raw)
+	}
+	assert.Equal(t, "0", stored()["artifact_store_max_bytes"], "a refused value leaves the cap as it was")
+}
+
+// The store's cap reader never reads a value it can't parse as "no cap": the exponent form older versions stored is the
+// number it stands for, and anything else, or a settings read that fails, takes nothing new.
+func TestArtifactStoreCapReaderFailsClosed(t *testing.T) {
+	_, h, _, ss := setupSessionsTestServer(t)
+	ctx := t.Context()
+	for value, want := range map[string]int64{
+		"":                0,
+		"0":               0,
+		"10737418240":     10737418240,
+		"1.073741824e+10": 10737418240, // as v1.4.80 and earlier stored 10 GiB
+		"lots":            artifactStoreRefuse,
+		"-1":              artifactStoreRefuse,
+		"1.5":             artifactStoreRefuse,
+	} {
+		require.NoError(t, ss.SetSetting(ctx, ArtifactStoreMaxBytesSetting, value))
+		assert.Equal(t, want, h.artifactStoreMaxBytes(), "%q", value)
+	}
+}

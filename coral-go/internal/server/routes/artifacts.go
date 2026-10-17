@@ -76,19 +76,41 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 // ArtifactStoreMaxBytesSetting caps the artifact store's size in bytes (#3553); 0 or unset is no cap.
 const ArtifactStoreMaxBytesSetting = "artifact_store_max_bytes"
 
+// artifactStoreRefuse is the cap when the setting can't be read: one byte, so the store takes nothing new
+// rather than having no cap (#4432, Security's #4431 SHOULD 2).
+const artifactStoreRefuse int64 = 1
+
 func (h *SessionsHandler) artifactStoreMaxBytes() int64 {
 	if h.ss == nil {
 		return 0
 	}
 	s, err := h.ss.GetSettings(context.Background())
 	if err != nil {
-		return 0
+		return artifactStoreRefuse
 	}
-	n, err := strconv.ParseInt(strings.TrimSpace(s[ArtifactStoreMaxBytesSetting]), 10, 64)
-	if err != nil || n < 0 {
-		return 0
+	n, ok := parseStoreCap(s[ArtifactStoreMaxBytesSetting])
+	if !ok {
+		slog.Warn("artifact_store_max_bytes is not a whole number of bytes; the store takes nothing new until it is set again", "value", s[ArtifactStoreMaxBytesSetting])
+		return artifactStoreRefuse
 	}
 	return n
+}
+
+// parseStoreCap reads the cap: empty is 0 (no cap); a whole number of bytes, also in the exponent form older
+// versions stored a large one in ("1.073741824e+10"). ok is false for anything else.
+func parseStoreCap(v string) (int64, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, true
+	}
+	if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+		return n, n >= 0
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f < 0 || f != math.Trunc(f) || f > 1<<53 {
+		return 0, false
+	}
+	return int64(f), true
 }
 
 // getArtifactStore: GET /api/system/artifact-store, the object store's size, object count and

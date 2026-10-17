@@ -10,6 +10,7 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/updatecheck"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -203,10 +204,18 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 	// request-pool sizes already took it: it was stored as the text "<nil>", which as a CLI path broke
 	// every launch. An array or an object is refused, with nothing saved.
 	for k, v := range body {
-		switch v.(type) {
+		switch x := v.(type) {
 		case nil:
 			body[k] = ""
-		case string, bool, float64:
+		case float64:
+			// A whole number, stored with all its digits: %v wrote 1e6 and over in exponent form, which the
+			// artifact store's cap then read as 0, no cap (Security's #4431 SHOULD 2).
+			if x != math.Trunc(x) || math.Abs(x) > 1<<53 {
+				errBadRequest(w, k+" must be a whole number")
+				return
+			}
+			body[k] = strconv.FormatInt(int64(x), 10)
+		case string, bool:
 		default:
 			errBadRequest(w, k+" must be a string, true or false, or a number")
 			return
@@ -282,6 +291,16 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		body[agentprio.SettingKey] = lvl
+	}
+	// The artifact store's cap: a whole number of bytes, 0 for none.
+	if v, ok := body[ArtifactStoreMaxBytesSetting]; ok {
+		s, isString := v.(string) // a number is a string by now
+		n, valid := parseStoreCap(s)
+		if !isString || !valid {
+			errBadRequest(w, ArtifactStoreMaxBytesSetting+" must be a whole number of bytes (0 for no cap)")
+			return
+		}
+		body[ArtifactStoreMaxBytesSetting] = strconv.FormatInt(n, 10)
 	}
 	// Artifact retention (#3554): whole days from 0 (off) to 3650, and a list of kinds. Its
 	// bookkeeping keys are Coral's own.
