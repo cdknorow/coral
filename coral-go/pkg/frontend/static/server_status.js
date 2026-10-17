@@ -73,11 +73,14 @@ export function staleReason(s) {
 // required show anything, and nothing is ever disabled. The link is this
 // constant, never built from a field the server sent.
 export const RELEASES_URL = 'https://github.com/cdknorow/coral/releases/latest';
+const VERSION_SHAPE = /^v?\d{1,9}\.\d{1,9}\.\d{1,9}(?:-[0-9A-Za-z.]{1,40})?$/;
 
 /** {level, label, text} for an entry that needs an update, else null. */
 export function updateNotice(e) {
     if (!e || (e.update !== 'available' && e.update !== 'required')) return null;
-    const field = v => (typeof v === 'string' ? v.trim() : '');
+    // The same shape the server accepts for a GitHub release tag (updatecheck.tagShape, #4133): a field that
+    // isn't a version is not shown at all, so a hostile or broken Hub can't put its own sentence in the badge.
+    const field = v => { const t = typeof v === 'string' ? v.trim() : ''; return VERSION_SHAPE.test(t) ? t : ''; };
     const latest = field(e.latest_coral);
     if (e.update === 'available') {
         return { level: 'available', label: 'Update', text: latest ? `Update available: ${latest}` : 'Update available' };

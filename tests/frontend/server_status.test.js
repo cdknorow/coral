@@ -61,7 +61,15 @@ const { pathToFileURL } = require('url');
     assert.ok(/Update to the latest release\.$/.test(m.updateNotice({ update: 'required', coral_version: '1.3.40' }).text));
     const hostile = { update: 'required', coral_version: '<img src=x onerror=1>', latest_coral: '"><script>x</script>' };
     const ub = m.updateBadgeHtml(hostile);
-    assert.ok(!ub.includes('<img') && !ub.includes('<script') && ub.includes('&lt;img'), ub);
+    assert.ok(!ub.includes('<img') && !ub.includes('<script') && !ub.includes('&lt;'), 'a field that is not a version is not shown at all (#4133): ' + ub);
+    assert.strictEqual(m.updateNotice(hostile).text, 'Update required: this Coral is too old for some Coral Hub features. Update to the latest release.');
+    // Not a version, whatever it says or however long: dropped, never shown (the notice falls back to the generic text).
+    for (const bad of ['Update required: call 555-0100', 'v1.4', '1.4.4 now', '1.4.4-' + 'a'.repeat(41), '1234567890.1.1', '1.4.4\nline two', 42, null, {}, ['1.4.4']]) {
+        assert.strictEqual(m.updateNotice({ update: 'available', latest_coral: bad }).text, 'Update available', JSON.stringify(bad));
+        assert.ok(!/\d{1,3}\.\d/.test(m.updateNotice({ update: 'required', coral_version: bad }).text), JSON.stringify(bad));
+    }
+    // A version, with or without v, with a prerelease: shown.
+    for (const good of ['1.4.70', 'v1.4.70', '1.4.71-rc1', '2.0.0-beta.2']) assert.strictEqual(m.updateNotice({ update: 'available', latest_coral: good }).text, 'Update available: ' + good, good);
     assert.ok(ub.includes('href="https://github.com/cdknorow/coral/releases/latest"') && ub.includes('rel="noopener noreferrer"') && ub.includes('target="_blank"'));
     assert.strictEqual((ub.match(/href=/g) || []).length, 1, 'the only link is the constant one');
     const prevServers = state.servers;

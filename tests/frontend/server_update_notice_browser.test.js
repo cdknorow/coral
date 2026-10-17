@@ -29,7 +29,8 @@ const EXPECT = {
     'srv-avail-bare': { level: 'available', label: 'Update', text: 'Update available' },
     'srv-req': { level: 'required', label: 'Update required', text: 'Update required: this Coral (1.3.9) is too old for some Coral Hub features. Update to 1.5.0.' },
     'srv-req-bare': { level: 'required', label: 'Update required', text: 'Update required: this Coral is too old for some Coral Hub features. Update to the latest release.' },
-    'srv-hostile': { level: 'required', label: 'Update required', text: `Update required: this Coral (${HOSTILE_V}) is too old for some Coral Hub features. Update to ${HOSTILE_L}.` },
+    // Fields that are not a version are not shown at all (#4133): the generic text, nothing the Hub sent.
+    'srv-hostile': { level: 'required', label: 'Update required', text: 'Update required: this Coral is too old for some Coral Hub features. Update to the latest release.' },
 };
 const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
 
