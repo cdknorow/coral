@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
@@ -60,7 +61,7 @@ func TestScanAttachmentEncodingMatrix(t *testing.T) {
 	}
 	for name, body := range caught {
 		a := attachedArtifact{ID: "ab"}
-		r := scanAttachment(a, []byte(wrap(body)))
+		r := scanAttachment(context.Background(), a, []byte(wrap(body)))
 		if assert.NotNil(t, r, "%s should be caught", name) {
 			assert.Equal(t, "attach_secret", r.code, name)
 		}
@@ -81,7 +82,7 @@ func TestScanAttachmentEncodingMatrix(t *testing.T) {
 		"a percent-encoded sentence": url.QueryEscape("the quick brown fox jumps over the lazy dog"),
 	}
 	for name, body := range notCaught {
-		assert.Nil(t, scanAttachment(attachedArtifact{ID: "ab"}, []byte(wrap(body))), "%s is listed as not caught or clean", name)
+		assert.Nil(t, scanAttachment(context.Background(), attachedArtifact{ID: "ab"}, []byte(wrap(body))), "%s is listed as not caught or clean", name)
 	}
 }
 
@@ -108,23 +109,23 @@ func TestScanAttachmentBudgetFailsClosed(t *testing.T) {
 	for i := 0; i < scanMaxRuns-8; i++ {
 		fmt.Fprintln(&few, "note", run(i))
 	}
-	assert.Nil(t, scanAttachment(attachedArtifact{ID: "ab"}, []byte(few.String())), "under the bound passes")
+	assert.Nil(t, scanAttachment(context.Background(), attachedArtifact{ID: "ab"}, []byte(few.String())), "under the bound passes")
 	for i := 0; i < scanMaxRuns+8; i++ {
 		fmt.Fprintln(&many, "note", run(i))
 	}
-	r := scanAttachment(attachedArtifact{ID: "ab"}, []byte(many.String()))
+	r := scanAttachment(context.Background(), attachedArtifact{ID: "ab"}, []byte(many.String()))
 	require.NotNil(t, r)
 	assert.Equal(t, "attach_unchecked", r.code)
 	assert.Equal(t, http.StatusUnprocessableEntity, r.status)
 
 	// A secret behind the runs the budget did not reach is not passed either: it fails closed.
-	r = scanAttachment(attachedArtifact{ID: "ab"}, []byte(many.String()+"token=ghp_1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R\n"))
+	r = scanAttachment(context.Background(), attachedArtifact{ID: "ab"}, []byte(many.String()+"token=ghp_1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R\n"))
 	require.NotNil(t, r)
 
 	// The decoded-bytes bound: a few huge runs.
 	big := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a plain line of text\n", 60000)))
 	require.Greater(t, len(big), scanMaxDecoded/2)
-	r = scanAttachment(attachedArtifact{ID: "ab"}, []byte(big+"\n\n"+big+"\n\n"+big))
+	r = scanAttachment(context.Background(), attachedArtifact{ID: "ab"}, []byte(big+"\n\n"+big+"\n\n"+big))
 	require.NotNil(t, r)
 	assert.Equal(t, "attach_unchecked", r.code)
 }
@@ -138,7 +139,7 @@ func TestScanAttachmentLeavesTheAgentDocsAlone(t *testing.T) {
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		require.NoError(t, err)
-		assert.Nil(t, scanAttachment(attachedArtifact{ID: "ab"}, b), f)
+		assert.Nil(t, scanAttachment(context.Background(), attachedArtifact{ID: "ab"}, b), f)
 	}
 }
 
@@ -157,13 +158,13 @@ func TestScanAttachmentPathLogIsNotRefused(t *testing.T) {
 		fmt.Fprintf(&b, "2026-10-17T11:%02d:00 INFO opened /Users/someone/Software/coral/coral-go/internal/server/routes/file_%d.go in 12ms\n", i%60, i)
 		fmt.Fprintf(&b, "GET https://example.com/api/board/some-long-project-name/artifacts/%d?x=longIdentifierWithoutAnySpacesAtAll%d\n", i, i)
 	}
-	assert.Nil(t, scanAttachment(attachedArtifact{ID: "ab"}, []byte(b.String())))
+	assert.Nil(t, scanAttachment(context.Background(), attachedArtifact{ID: "ab"}, []byte(b.String())))
 	views, ok := scanViews([]byte(b.String()))
 	assert.True(t, ok)
 	_ = views
 
 	// And a secret in such a log is still found.
-	r := scanAttachment(attachedArtifact{ID: "ab"}, []byte(b.String()+"token="+base64.StdEncoding.EncodeToString([]byte("ghp_1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R"))+"\n"))
+	r := scanAttachment(context.Background(), attachedArtifact{ID: "ab"}, []byte(b.String()+"token="+base64.StdEncoding.EncodeToString([]byte("ghp_1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R"))+"\n"))
 	require.NotNil(t, r)
 	assert.Equal(t, "attach_secret", r.code)
 }

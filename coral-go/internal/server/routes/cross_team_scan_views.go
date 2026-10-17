@@ -2,8 +2,10 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"html"
 	"regexp"
 	"time"
@@ -55,6 +57,39 @@ const (
 	scanFileCap    = 100 * time.Second
 	textBudget     = 3 * time.Second
 )
+
+// One attachment scan at a time on this Coral (#4474, Security's #4464 INFO 1): the scan runs before the send
+// rate limiter, and with the size-scaled budget a compromised Orchestrator could otherwise keep several cores
+// busy scanning. A second send waits for the scan in progress, at most scanQueueWait and only while its
+// request lasts; past that it is refused (attach_busy). The command line's attachWait counts scanQueueWait for
+// every file on top of scanFileCap and the 125 s transfer (cmd/coral-board/send.go), so a send that waited the
+// whole time, then scanned and transferred for as long as each may take, still ends before the command gives up.
+const scanQueueWait = 30 * time.Second
+
+var scanSlot = make(chan struct{}, 1)
+
+// scanQueueAfter is the queue wait's clock (replaceable in tests).
+var scanQueueAfter = time.After
+
+var errScanBusy = errors.New("another attachment is being scanned")
+
+// acquireScanSlot takes the scan slot, waiting at most scanQueueWait and while ctx lasts. release gives it back.
+func acquireScanSlot(ctx context.Context) (release func(), err error) {
+	release = func() { <-scanSlot }
+	select {
+	case scanSlot <- struct{}{}:
+		return release, nil
+	default:
+	}
+	select {
+	case scanSlot <- struct{}{}:
+		return release, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-scanQueueAfter(scanQueueWait):
+		return nil, errScanBusy
+	}
+}
 
 // scanPassBudget is the budget of one pass over n bytes.
 func scanPassBudget(n int) time.Duration {

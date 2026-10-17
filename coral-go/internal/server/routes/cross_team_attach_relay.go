@@ -123,11 +123,16 @@ func attachLooksLikeText(data []byte) bool {
 // scanAttachment refuses a text file with a secret in it (a token or key by the same rules that redact
 // Coral Hub's replies, in the file and in a few re-encodings of it: scanViews), or one that could not be
 // checked in time: a file that leaves this computer is not redacted by the hub. Images, PDFs and other binary types are not scanned (the --attach help says so).
-func scanAttachment(a attachedArtifact, data []byte) *attachRefusal {
+func scanAttachment(ctx context.Context, a attachedArtifact, data []byte) *attachRefusal {
 	if !attachLooksLikeText(data) {
 		return nil
 	}
 	shown := "coral://artifacts/" + a.ID
+	release, err := acquireScanSlot(ctx)
+	if err != nil {
+		return &attachRefusal{http.StatusServiceUnavailable, "attach_busy", fmt.Sprintf("%s was not sent: another file is being checked for secrets on this computer; try again in a minute", shown)}
+	}
+	defer release()
 	switch scanSecrets(data) {
 	case scanUnchecked:
 		return &attachRefusal{http.StatusUnprocessableEntity, "attach_unchecked", fmt.Sprintf("%s could not be checked for secrets in time, so it was not sent; send a smaller file", shown)}
@@ -229,7 +234,7 @@ func (h *BoardHandler) prepareRelayAttachments(w http.ResponseWriter, r *http.Re
 	for _, a := range atts {
 		data, refused := h.loadAttachment(a)
 		if refused == nil {
-			refused = scanAttachment(a, data)
+			refused = scanAttachment(ctx, a, data)
 		}
 		if refused != nil {
 			refused.write(w)

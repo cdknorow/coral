@@ -297,7 +297,8 @@ func refusalText(code, words string) string {
 }
 
 // attachWait is how long a send with n attachments waits for the server: per file the 125 s of Coral Hub's
-// transfer limit and the 100 s the server may spend scanning it for secrets (scanFileCap), and 35 s for the message.
+// transfer limit, the 100 s the server may spend scanning it for secrets (scanFileCap) and the 30 s it may
+// wait for another send's scan to finish (scanQueueWait, #4474), and 35 s for the message.
 func attachWait(n int) time.Duration {
-	return time.Duration(n)*(125+100)*time.Second + 35*time.Second
+	return time.Duration(n)*(125+100+30)*time.Second + 35*time.Second
 }

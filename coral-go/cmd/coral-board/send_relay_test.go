@@ -223,12 +223,13 @@ func TestSendPrintsAnAttachmentRefusalsCode(t *testing.T) {
 	}
 }
 
-// A send waits for each attachment's scan (up to 100 s) as well as its transfer (up to 125 s).
+// A send waits for each attachment's scan (up to 100 s), the wait for another send's scan (up to 30 s, #4474)
+// and its transfer (up to 125 s).
 func TestAttachWaitCoversTheScanAndTheTransfer(t *testing.T) {
-	if got := attachWait(1); got != 260*time.Second {
+	if got := attachWait(1); got != 290*time.Second {
 		t.Errorf("one attachment: %v", got)
 	}
-	if got := attachWait(4); got != 935*time.Second {
+	if got := attachWait(4); got != 1055*time.Second {
 		t.Errorf("four attachments: %v", got)
 	}
 }
