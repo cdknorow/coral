@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
@@ -77,6 +78,13 @@ func loadTranscript(ctx context.Context, ss *store.SessionStore, sessionID strin
 // transcriptCutMarker stands for the middle of a transcript longer than maxTranscriptChars.
 const transcriptCutMarker = "\n\n[... middle of conversation truncated ...]\n\n"
 
+// condenseMessages' walk stops, keeping what it has, after maxUncheckedMessages messages that
+// couldn't be checked for secrets (each can take the redactor's whole time budget) or after
+// condenseWalkBudget in all, so no transcript makes it walk the whole file (#4414).
+const maxUncheckedMessages = 20
+
+var condenseWalkBudget = 10 * time.Second
+
 // condenseMessages extracts text from JSONL entries and truncates to maxTranscriptChars, keeping
 // the first and last half.
 //
@@ -97,17 +105,25 @@ func condenseMessages(data []byte) string {
 		}
 		return append(parts, part), n + len(part)
 	}
+	deadline, unchecked := time.Now().Add(condenseWalkBudget), 0
+	more := func() bool { return unchecked < maxUncheckedMessages && time.Now().Before(deadline) }
 	i, j := 0, len(lines)
-	for i < j && headLen < half {
-		if part, ok := condensedMessage(lines[i]); ok {
+	for i < j && headLen < half && more() {
+		part, ok, failed := condensedMessage(lines[i])
+		if ok {
 			head, headLen = add(head, headLen, part)
+		} else if failed {
+			unchecked++
 		}
 		i++
 	}
-	for j > i && tailLen < half {
+	for j > i && tailLen < half && more() {
 		j--
-		if part, ok := condensedMessage(lines[j]); ok {
+		part, ok, failed := condensedMessage(lines[j])
+		if ok {
 			tail, tailLen = add(tail, tailLen, part)
+		} else if failed {
+			unchecked++
 		}
 	}
 	for l, r := 0, len(tail)-1; l < r; l, r = l+1, r-1 {
@@ -115,9 +131,16 @@ func condenseMessages(data []byte) string {
 	}
 	headText, tailText := strings.Join(head, "\n\n"), strings.Join(tail, "\n\n")
 	if i < j {
-		// Lines in the middle were never read: the head and the tail each hold at least half,
-		// so the whole text is longer than the limit and the cut keeps only what was read.
-		return headText[:half] + transcriptCutMarker + tailText[len(tailText)-half:]
+		// Lines in the middle were never read: the head and the tail each hold at least half
+		// (then the whole text is longer than the limit and the cut keeps only what was read), or
+		// the walk stopped early and they hold what it read.
+		if len(headText) > half {
+			headText = headText[:half]
+		}
+		if len(tailText) > half {
+			tailText = tailText[len(tailText)-half:]
+		}
+		return headText + transcriptCutMarker + tailText
 	}
 	fullText := headText
 	if headText != "" && tailText != "" {
@@ -131,30 +154,34 @@ func condenseMessages(data []byte) string {
 }
 
 // condensedMessage is one JSONL line as condenseMessages shows it ("### Role\ntext"), redacted;
-// ok is false for a line that isn't a message with text, or can't be checked for secrets.
-func condensedMessage(line string) (string, bool) {
+// ok is false for a line that isn't a message with text, or can't be checked for secrets
+// (unchecked).
+func condensedMessage(line string) (part string, ok, unchecked bool) {
 	line = strings.TrimSpace(line)
 	if line == "" {
-		return "", false
+		return "", false, false
 	}
 	var entry map[string]any
 	if err := json.Unmarshal([]byte(line), &entry); err != nil {
-		return "", false
+		return "", false, false
 	}
 	msgType, _ := entry["type"].(string)
 	msg, _ := entry["message"].(map[string]any)
 	if msg == nil {
-		return "", false
+		return "", false, false
 	}
 	content, err := redactKnowledge(extractContent(msg))
-	if err != nil || content == "" {
-		return "", false
+	if err != nil {
+		return "", false, true
+	}
+	if content == "" {
+		return "", false, false
 	}
 	role := "Assistant"
 	if msgType == "human" || msgType == "user" {
 		role = "User"
 	}
-	return fmt.Sprintf("### %s\n%s", role, content), true
+	return fmt.Sprintf("### %s\n%s", role, content), true, false
 }
 
 // extractContent pulls text from a message content field (string or array of blocks).
