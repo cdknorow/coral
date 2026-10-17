@@ -173,6 +173,7 @@ func main() {
 	// and WKWebView layout fixes are active from the first layout pass.
 	// Also applies on <body> at DOMContentLoaded as a safety net.
 	log.Println("[WEBVIEW] injecting native app JS (class flags, external link handler)")
+	w.Init(logHintScript(config.ResolveCoralDir(*dataDir)))
 	w.Init(`window.__CORAL_APP__ = true;
 	document.documentElement.classList.add('native-app');
 	if (navigator.platform && navigator.platform.indexOf('Mac') !== -1) document.documentElement.classList.add('native-macos');
@@ -220,6 +221,9 @@ func main() {
 				+ '<span class="coral-reconnect-spinner" style="display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:coral-reconnect-spin 0.8s linear infinite"></span>'
 				+ '<span style="font-size:13px;color:#888">Reconnecting...</span>'
 				+ '</div></div>';
+			// The log this server writes, in its own data folder (#4151), as text.
+			var code = el.querySelector('code');
+			if (code && window.__CORAL_LOG_PATH__) code.textContent = window.__CORAL_LOG_PATH__;
 			// Add spinner animation
 			var style = document.createElement('style');
 			style.textContent = '@keyframes coral-reconnect-spin { to { transform: rotate(360deg); } }';
