@@ -138,6 +138,37 @@ func (s *TaskStore) ListAgentTasks(ctx context.Context, agentName string, sessio
 	return tasks, nil
 }
 
+// ListAgentTasksForSessions is ListAgentTasks for many sessions in one query (#4154): the tasks
+// of each session id, in sort order and hydrated as ListAgentTasks hydrates them. A caller that
+// also filters by agent name (as ListAgentTasks does) checks AgentName itself. The board status
+// asked once per agent, on every poll of every board.
+func (s *TaskStore) ListAgentTasksForSessions(ctx context.Context, sessionIDs []string) (map[string][]AgentTask, error) {
+	out := map[string][]AgentTask{}
+	if len(sessionIDs) == 0 {
+		return out, nil
+	}
+	ids, err := sessionIDsJSON(sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	var tasks []AgentTask
+	if err := s.reader().SelectContext(ctx, &tasks,
+		`SELECT id, agent_name, session_id, title, body, priority, completion_message, completed, sort_order, created_at, updated_at,
+		        started_at, completed_at, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, display_name
+		 FROM agent_tasks WHERE session_id IN (SELECT value FROM json_each(?)) ORDER BY session_id, sort_order`, ids); err != nil {
+		return nil, err
+	}
+	for i := range tasks {
+		if err := s.hydrateAgentTask(ctx, &tasks[i]); err != nil {
+			return nil, err
+		}
+		if tasks[i].SessionID != nil {
+			out[*tasks[i].SessionID] = append(out[*tasks[i].SessionID], tasks[i])
+		}
+	}
+	return out, nil
+}
+
 // CreateAgentTask creates a new task with auto-incrementing sort order.
 func (s *TaskStore) CreateAgentTask(ctx context.Context, agentName, title string, sessionID *string, displayName *string) (*AgentTask, error) {
 	return s.CreateAgentTaskWithWorkflow(ctx, agentName, title, sessionID, displayName, "", "medium", nil)

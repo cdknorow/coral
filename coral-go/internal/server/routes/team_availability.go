@@ -153,6 +153,12 @@ func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *htt
 	for i := range waits {
 		waitsBySubscriber[waits[i].SubscriberID] = &waits[i]
 	}
+	// Every listed agent's personal tasks in one query, not one per agent (#4154).
+	personalBySession, err := h.ts.ListAgentTasksForSessions(ctx, ids)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
 	agents := []availableAgent{}
 	seen := map[string]bool{}
 	for _, s := range sessions {
@@ -172,10 +178,12 @@ func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *htt
 		if a.SubscriberID != "" && h.boardHandler != nil {
 			a.ReminderIntervalSeconds, a.Reminder = h.boardHandler.SubscriberReminderInterval(name, a.SubscriberID)
 		}
-		personal, err := h.ts.ListAgentTasks(ctx, s.AgentName, &s.SessionID)
-		if err != nil {
-			errInternalServer(w, err.Error())
-			return
+		// As ListAgentTasks(agent name, session id): this session's tasks under this agent's name.
+		var personal []store.AgentTask
+		for _, t := range personalBySession[s.SessionID] {
+			if t.AgentName == s.AgentName {
+				personal = append(personal, t)
+			}
 		}
 		for _, t := range personal {
 			if openAvailabilityTask(t.Status) {
