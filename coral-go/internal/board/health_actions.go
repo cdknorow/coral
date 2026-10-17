@@ -62,7 +62,7 @@ func (s *Store) TakeHealthAction(ctx context.Context, project, rule, target stri
 	hourAgo := now.Add(-time.Hour).UTC().Format(healthTimeFormat)
 	if lim.TeamPerHour > 0 {
 		var n int
-		if err := tx.GetContext(ctx, &n, `SELECT COUNT(*) FROM health_actions WHERE project = ? AND at > ?`, project, hourAgo); err != nil {
+		if err := tx.GetContext(ctx, &n, `SELECT COUNT(*) FROM health_actions WHERE project = ? AND at > ? AND rule NOT LIKE '%-msg' AND rule != 'budget-reached'`, project, hourAgo); err != nil {
 			return "", err
 		}
 		if n >= lim.TeamPerHour {
@@ -80,7 +80,7 @@ func (s *Store) TakeHealthAction(ctx context.Context, project, rule, target stri
 	}
 	if lim.PerTargetPerHour > 0 {
 		var n int
-		if err := tx.GetContext(ctx, &n, `SELECT COUNT(*) FROM health_actions WHERE project = ? AND target = ? AND at > ?`, project, target, hourAgo); err != nil {
+		if err := tx.GetContext(ctx, &n, `SELECT COUNT(*) FROM health_actions WHERE project = ? AND target = ? AND at > ? AND rule NOT LIKE '%-msg'`, project, target, hourAgo); err != nil {
 			return "", err
 		}
 		if n >= lim.PerTargetPerHour {
@@ -185,4 +185,20 @@ func (s *Store) TaskLastActivity(ctx context.Context, project string, id int64) 
 		}
 	}
 	return time.Time{}, nil
+}
+
+// HealthActionTaken reports whether rule has ever acted on target (within the day the store
+// keeps): a once-only action checks it before acting.
+func (s *Store) HealthActionTaken(ctx context.Context, project, rule, target string) (bool, error) {
+	var n int
+	err := s.db.GetContext(ctx, &n, `SELECT COUNT(*) FROM health_actions WHERE project = ? AND rule = ? AND target = ?`, project, rule, target)
+	return n > 0, err
+}
+
+// RecordHealthAction records an action outside the limits (a marker, such as a message that
+// was already the reason for a reminder).
+func (s *Store) RecordHealthAction(ctx context.Context, project, rule, target string, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO health_actions(project, rule, target, at) VALUES (?, ?, ?, ?)`,
+		project, rule, target, now.UTC().Format(healthTimeFormat))
+	return err
 }

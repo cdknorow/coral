@@ -98,3 +98,23 @@ func (s *Store) LastPostBy(ctx context.Context, project, subscriberID string) (s
 	at, _ := time.Parse(time.RFC3339, row.CreatedAt)
 	return row.Content, at, nil
 }
+
+// MentionOf is a board message that mentions a member.
+type MentionOf struct {
+	ID        int64  `db:"id"`
+	Sender    string `db:"subscriber_id"`
+	CreatedAt string `db:"created_at"`
+}
+
+// MentionsOf lists agents' messages on project since since that mention name or title (as
+// "@name" or "@title", any case), oldest first, leaving out Coral's own lines and the member's
+// own posts.
+func (s *Store) MentionsOf(ctx context.Context, project, name, title string, since time.Time) ([]MentionOf, error) {
+	var out []MentionOf
+	err := s.reader().SelectContext(ctx, &out, `SELECT id, subscriber_id, created_at FROM board_messages
+		WHERE project = ? AND created_at > ? AND COALESCE(is_system, 0) = 0 AND subscriber_id != ?
+		  AND subscriber_id NOT IN ('Coral Task Queue', 'Coral Health Monitor', 'Coral')
+		  AND (instr(lower(content), lower('@' || ?)) > 0 OR (? != '' AND instr(lower(content), lower('@' || ?)) > 0))
+		ORDER BY id`, project, since.UTC().Format(time.RFC3339), name, name, title, title)
+	return out, err
+}

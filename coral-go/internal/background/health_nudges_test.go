@@ -46,7 +46,7 @@ func newNudgeHarness(t *testing.T, path string) *nudgeHarness {
 			return nil
 		},
 		now:        func() time.Time { return n.now },
-		ClaimAfter: 10 * time.Minute, ClaimNudges: 2, StatusAfter: 20 * time.Minute, SilentAfter: 10 * time.Minute, TeamBudget: 20,
+		ClaimAfter: 10 * time.Minute, ClaimNudges: 2, StatusAfter: 20 * time.Minute, SilentAfter: 10 * time.Minute, MentionAfter: 10 * time.Minute, TeamBudget: 20,
 	}
 	return n
 }
@@ -231,3 +231,44 @@ func TestEscalationEndsWithItsTask(t *testing.T) {
 	assert.Empty(t, esc)
 }
 
+
+// #4176 rule 9: an agent's @-mention of the orchestrator that it hasn't acted on for 10 minutes
+// gets one reminder: once per message, one per sender per window (later mentions coalesced),
+// none when the orchestrator posted or acted since, none for Coral's own line (case C7).
+func TestMentionRenudge(t *testing.T) {
+	n := newNudgeHarness(t, "")
+	ctx := context.Background()
+	orchID := "13131313-1313-1313-1313-131313131313"
+	n.agent("Orchestrator", orchID)
+	n.agent("Dev", "14141414-1414-1414-1414-141414141414")
+	n.sig[orchID] = agentSignal{Since: n.now.Add(-time.Hour), LastEvent: n.now.Add(-time.Hour)}
+	_, err := n.bs.PostMessage(ctx, "team", "Dev", "@Orchestrator can you look at #12?", nil)
+	require.NoError(t, err)
+	_, err = n.bs.PostSystemMessage(ctx, "team", "Coral Task Queue", "@Orchestrator [Task #9 in review]", nil)
+	require.NoError(t, err)
+
+	n.run(5 * time.Minute)
+	assert.Empty(t, n.sentTo("Orchestrator"), "not yet 10 minutes")
+	n.run(6 * time.Minute)
+	require.Len(t, n.sentTo("Orchestrator"), 1)
+	assert.Contains(t, n.sentTo("Orchestrator")[0], "Dev mentioned you at")
+	n.run(10 * time.Minute)
+	assert.Len(t, n.sentTo("Orchestrator"), 1, "once per message")
+
+	// Two more from Dev: one reminder for both, after the sender's window.
+	for i := 0; i < 2; i++ {
+		_, err = n.bs.PostMessage(ctx, "team", "Dev", "@Orchestrator ping", nil)
+		require.NoError(t, err)
+	}
+	n.run(25 * time.Minute)
+	require.Len(t, n.sentTo("Orchestrator"), 2)
+	assert.Contains(t, n.sentTo("Orchestrator")[1], "mentioned you 2 times")
+
+	// The orchestrator answers: nothing more.
+	_, err = n.bs.PostMessage(ctx, "team", "Dev", "@Orchestrator again", nil)
+	require.NoError(t, err)
+	_, err = n.bs.PostMessage(ctx, "team", "Orchestrator", "on it", nil)
+	require.NoError(t, err)
+	n.run(45 * time.Minute)
+	assert.Len(t, n.sentTo("Orchestrator"), 2, "it posted after the mention")
+}

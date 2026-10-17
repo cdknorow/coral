@@ -36,12 +36,13 @@ type HealthNudges struct {
 	deliver  func(ctx context.Context, a AgentInfo, key, text string) error
 	now      func() time.Time
 
-	Interval    time.Duration
-	ClaimAfter  time.Duration // idle with assigned work this long: a claim nudge
-	ClaimNudges int           // nudges before escalating
-	StatusAfter time.Duration // an in-progress task with no activity this long: a status nudge
-	SilentAfter time.Duration // still nothing this long after the status nudge: escalate
-	TeamBudget  int           // automatic actions per board per hour
+	Interval     time.Duration
+	ClaimAfter   time.Duration // idle with assigned work this long: a claim nudge
+	ClaimNudges  int           // nudges before escalating
+	StatusAfter  time.Duration // an in-progress task with no activity this long: a status nudge
+	SilentAfter  time.Duration // still nothing this long after the status nudge: escalate
+	MentionAfter time.Duration // an @-mention of the orchestrator unanswered this long: one re-nudge
+	TeamBudget   int           // automatic actions per board per hour
 }
 
 // agentSignal is an agent's state from its hook events.
@@ -73,7 +74,7 @@ func NewHealthNudges(bs *board.Store, ts *store.TaskStore, rt AgentRuntime, disc
 	h := &HealthNudges{
 		store: bs, runtime: rt, logger: slog.Default(), discover: discover, now: time.Now,
 		Interval: 5 * time.Minute, ClaimAfter: 10 * time.Minute, ClaimNudges: 2,
-		StatusAfter: 20 * time.Minute, SilentAfter: 10 * time.Minute, TeamBudget: 20,
+		StatusAfter: 20 * time.Minute, SilentAfter: 10 * time.Minute, MentionAfter: 10 * time.Minute, TeamBudget: 20,
 	}
 	h.signal = hookSignal(ts)
 	h.deliver = func(ctx context.Context, a AgentInfo, key, text string) error {
@@ -90,12 +91,20 @@ func (h *HealthNudges) Run(ctx context.Context) error {
 
 // Rule names (health_actions.rule and the counters).
 const (
-	ruleClaimNudge  = "claim-nudge"
-	ruleStatusNudge = "status-nudge"
+	ruleClaimNudge     = "claim-nudge"
+	ruleStatusNudge    = "status-nudge"
+	ruleMentionRenudge = "mention-renudge"
 )
 
 func claimNudgeText(id int64) string {
 	return fmt.Sprintf("[Coral] #%d is assigned to you and waiting. Run 'coral-board task claim %d' to start it.", id, id)
+}
+
+func mentionRenudgeText(sender string, n int, since time.Time) string {
+	if n == 1 {
+		return fmt.Sprintf("[Coral] %s mentioned you at %s and has no answer yet. Run 'coral-board read'.", sender, since.Format("15:04"))
+	}
+	return fmt.Sprintf("[Coral] %s mentioned you %d times since %s and has no answer yet. Run 'coral-board read'.", sender, n, since.Format("15:04"))
 }
 
 func statusNudgeText(id int64, minutes int) string {
@@ -142,7 +151,7 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 	limits := func(cooldown time.Duration) board.HealthLimits {
 		return board.HealthLimits{Cooldown: cooldown, PerTargetPerHour: 3, TeamPerHour: h.TeamBudget}
 	}
-	var claimed, statused, escalated []string
+	var claimed, statused, escalated, renudged []string
 	budgetHit := false
 	take := func(rule, target string, cooldown time.Duration) bool {
 		why, err := h.store.TakeHealthAction(ctx, project, rule, target, now, limits(cooldown))
@@ -228,6 +237,12 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 		}
 	}
 
+	// Re-nudge the orchestrator, once, for agents' @-mentions it has not acted on (#4176 rule 9):
+	// once per message, one nudge per sender per window, never for Coral's own lines.
+	if orch, err := h.store.TeamOrchestrator(ctx, project); err == nil && h.MentionAfter > 0 {
+		h.renudgeMentions(ctx, project, orch, subs, bySession, now, take, &renudged)
+	}
+
 	// An escalation ends with its task (completed, cancelled, reassigned).
 	if esc, err := h.store.HealthEscalations(ctx, project); err == nil {
 		open := map[string]bool{}
@@ -255,10 +270,78 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 	line("claim nudge sent to", claimed)
 	line("status asked of", statused)
 	line("escalated to the orchestrator", escalated)
+	line("orchestrator reminded of mentions from", renudged)
 	if budgetHit {
 		if why, err := h.store.TakeHealthAction(ctx, project, "budget-reached", "board", now, board.HealthLimits{Cooldown: time.Hour}); err == nil && why == "" {
 			h.store.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf(
 				"[Coral health actions paused] this board's budget of %d automatic actions an hour is used up; Coral acts again next hour", h.TeamBudget), nil)
 		}
+	}
+}
+
+// renudgeMentions finds agents' messages that mention orch, older than MentionAfter, after which
+// the orchestrator neither posted nor did anything (no hook event), and reminds it once per
+// sender, each message only once.
+func (h *HealthNudges) renudgeMentions(ctx context.Context, project, orch string, subs []board.Subscriber, bySession map[string]AgentInfo,
+	now time.Time, take func(rule, target string, cooldown time.Duration) bool, renudged *[]string) {
+	var orchSub *board.Subscriber
+	for i := range subs {
+		if subs[i].SubscriberID == orch {
+			orchSub = &subs[i]
+		}
+	}
+	if orchSub == nil {
+		return
+	}
+	a, live := bySession[orchSub.SessionName]
+	if !live {
+		return
+	}
+	mentions, err := h.store.MentionsOf(ctx, project, orch, orchSub.JobTitle, now.Add(-time.Hour))
+	if err != nil || len(mentions) == 0 {
+		return
+	}
+	_, lastPost, _ := h.store.LastPostBy(ctx, project, orch)
+	acted := lastPost
+	if sig, known := h.signal(ctx, a.SessionID); known && sig.LastEvent.After(acted) {
+		acted = sig.LastEvent
+	}
+	type pending struct {
+		n     int
+		first time.Time
+		ids   []int64
+	}
+	bySender := map[string]*pending{}
+	var senders []string
+	for _, m := range mentions {
+		at, err := time.Parse(time.RFC3339, m.CreatedAt)
+		if err != nil || now.Sub(at) < h.MentionAfter || !acted.Before(at) {
+			continue // too recent, or the orchestrator acted after it
+		}
+		if why, _ := h.store.HealthActionTaken(ctx, project, ruleMentionRenudge+"-msg", fmt.Sprint(m.ID)); why {
+			continue // this message was already the reason for a reminder
+		}
+		p := bySender[m.Sender]
+		if p == nil {
+			p = &pending{first: at}
+			bySender[m.Sender] = p
+			senders = append(senders, m.Sender)
+		}
+		p.n++
+		p.ids = append(p.ids, m.ID)
+	}
+	sort.Strings(senders)
+	for _, sender := range senders {
+		p := bySender[sender]
+		if !take(ruleMentionRenudge, sender, 30*time.Minute) {
+			continue
+		}
+		if h.deliver(ctx, a, "health-mention:"+project, mentionRenudgeText(teamhealth.Name(sender), p.n, p.first)) != nil {
+			continue
+		}
+		for _, id := range p.ids {
+			h.store.RecordHealthAction(ctx, project, ruleMentionRenudge+"-msg", fmt.Sprint(id), now)
+		}
+		*renudged = append(*renudged, teamhealth.Name(sender))
 	}
 }
