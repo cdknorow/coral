@@ -36,7 +36,6 @@ import (
 	"github.com/cdknorow/coral/internal/logrotate"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/cdknorow/coral/internal/updatecheck"
 	"github.com/gen2brain/beeep"
@@ -60,7 +59,14 @@ func main() {
 	debugMode := flag.Bool("debug", false, "Enable debug logging to ~/.coral/tray.log")
 	// "" = not given: Settings > Terminal backend, else tmux (pty on Windows) (#3634).
 	backendFlag := flag.String("backend", "", "Terminal backend: pty or tmux (default: Settings > Terminal backend, else tmux; pty on Windows)")
+	serverChild := flag.Bool("server-child", false, "Run Coral's server for the tray (used internally, #4163)")
 	flag.Parse()
+
+	// The tray's server child (#4163): the server only, supervised by the tray that started it.
+	if *serverChild {
+		runServerChild(*host, *port, *backendFlag)
+		return
+	}
 
 	// When launched from a .app bundle on macOS, run in foreground automatically
 	// (macOS expects the main process to keep running)
@@ -213,77 +219,41 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Start the HTTP server and all background services
+	// Coral's server runs as a child process the tray supervises (#4163): restarted after a
+	// crash with backoff, stopped after a crash loop, never restarted after a clean stop.
 	cfg := config.Load()
 	cfg.Host = host
 	cfg.Port = port
-	restartCh := make(chan struct{}, 1)
-	rs, err := startup.Start(ctx, cfg, startup.Options{
-		BackendType: backendType,
-		// Settings > Run as a hub's Restart button (#3460): handled in the menu loop below.
-		Restart: func() error {
-			select {
-			case restartCh <- struct{}{}:
-			default: // already restarting
-			}
-			return nil
-		},
-		PasswordPrompt: func() (string, error) {
-			return nativeDatabasePassword()
-		},
-		UnlockSurface: func() string {
-			if runtime.GOOS == "darwin" {
-				return "native"
-			}
-			return "headless"
-		}(),
-		OnServerError: func(err error) {
-			log.Printf("Server error: %v", err)
-			beeep.Notify("Coral", "Server failed to start: "+err.Error(), "")
-		},
-	})
+	coralAppDataDir = cfg.CoralDir()
+	url := fmt.Sprintf("http://localhost:%d", port)
+	// Every open of the dashboard signs in with a fresh single-use link from the server
+	// (#3394), asked for with the command-line token, as coral open does.
+	mintLink := func() (string, error) {
+		lctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return loginlink.FromCLI(lctx, url, cfg.CoralDir())
+	}
+
+	exe, err := os.Executable()
 	if err != nil {
-		log.Printf("Failed to start: %v", err)
-		beeep.Notify("Coral", "Failed to start: "+err.Error(), "")
-		// Still launch the tray, with the reason, the log that explains it and a retry (#4151).
-		systray.Run(func() {
-			systray.SetTemplateIcon(iconData, iconData)
-			systray.SetTooltip("Coral — Error")
-			mReason := systray.AddMenuItem(startFailureTitle(err), err.Error())
-			mReason.Disable()
-			mLog := systray.AddMenuItem("Open Log", "Open tray.log, which says why Coral could not start")
-			mRetry := systray.AddMenuItem("Retry", "Start Coral again")
-			mQuit := systray.AddMenuItem("Quit", "Exit Coral")
-			go func() {
-				defer safego.Recover("coral-tray/main:start-failure-menu")
-				for {
-					select {
-					case <-mLog.ClickedCh:
-						executil.OpenBrowser(filepath.Join(dataDir, "tray.log"))
-					case <-mRetry.ClickedCh:
-						// A new instance with the same arguments, once this one has exited.
-						if err := spawnRestart(dataDir); err != nil {
-							log.Printf("[retry] could not start a new instance: %v", err)
-							beeep.Notify("Coral", "Could not retry: "+err.Error(), "")
-							continue
-						}
-						systray.Quit()
-						return
-					case <-mQuit.ClickedCh:
-						systray.Quit()
-						return
-					}
-				}
-			}()
-		}, func() {})
+		log.Printf("Failed to start: cannot find this program: %v", err)
 		return
 	}
-	defer rs.Close()
-	httpServer := rs.HTTPServer
-	// Every open of the dashboard signs in with a fresh single-use link from this server
-	// (#3394): no API key, no prompt, also once the dashboard here needs a session.
-	mintLink := func() (string, error) { return rs.NewLoginLink(port) }
-	coralAppDataDir = cfg.CoralDir()
+	sup := newSupervisor(exe, []string{"--server-child", "--host", host, "--port", strconv.Itoa(port), "--backend", backendType}, log.Writer())
+	sup.password = nativeDatabasePassword
+	status := &trayStatus{}
+	sup.onState = status.set
+	ready, err := sup.start()
+	if err != nil {
+		log.Printf("Failed to start: %v", err)
+		status.set(stateFailed, err.Error())
+	} else {
+		go func() { defer safego.Recover("coral-tray/main:supervise"); sup.run() }()
+		if sup.awaitFirst(ready) {
+			status.set(stateRunning, "")
+		}
+	}
+	stopServer := func() { sup.stop(15 * time.Second) }
 
 	// Heartbeat — write timestamp+PID to ~/.coral/heartbeat every 10s.
 	// This is the only way to detect SIGKILL (which can't be caught).
@@ -322,14 +292,12 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		}
 	}()
 
-	// Open dashboard (try native app first, fall back to browser)
-	if !noBrowser {
+	// Open dashboard (try native app first, fall back to browser) once the server serves.
+	if !noBrowser && status.running() {
 		go func() {
 			defer safego.Recover("coral-tray/main:298")
-			time.Sleep(time.Second)
-			dashURL := fmt.Sprintf("http://localhost:%d", port)
-			if err := launchCoralApp(dashURL, mintLink); err != nil {
-				executil.OpenBrowser(loginlink.Or(dashURL, mintLink))
+			if err := launchCoralApp(url, mintLink); err != nil {
+				executil.OpenBrowser(loginlink.Or(url, mintLink))
 			}
 		}()
 	}
@@ -339,8 +307,6 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		defer safego.Recover("coral-tray/main:checkForUpdatesOnStartup")
 		checkForUpdatesOnStartup(port)
 	}()
-
-	url := fmt.Sprintf("http://localhost:%d", port)
 
 	// Kill an orphaned coral-app from an earlier run of this Coral (this data folder only)
 	killOrphanedCoralApp(cfg.CoralDir())
@@ -362,6 +328,13 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		hideTrayFromDock()
 
 		systray.AddSeparator() // workaround: macOS clips the first item on some configurations
+		// The server's state when it is not simply running (#4151, #4163): why it stopped, its
+		// log, and a retry.
+		mReason := systray.AddMenuItem("", "")
+		mReason.Disable()
+		mLog := systray.AddMenuItem("Open Log", "Open tray.log, which says why")
+		mRetry := systray.AddMenuItem("Retry", "Start Coral's server again")
+		status.attach(mReason, mLog, mRetry)
 		mOpenApp := systray.AddMenuItem("Open in App", "Open Coral in native window")
 		mOpenBrowser := systray.AddMenuItem("Open in Browser", "Open Coral in web browser")
 		mUpdate := systray.AddMenuItem("Check for Updates", "Check for new versions")
@@ -392,69 +365,36 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 					executil.OpenBrowser(loginlink.Or(url, mintLink))
 				case <-mUpdate.ClickedCh:
 					go func() { defer safego.Recover("coral-tray/main:checkForUpdates"); checkForUpdates() }()
+				case <-mLog.ClickedCh:
+					executil.OpenBrowser(filepath.Join(dataDir, "tray.log"))
+				case <-mRetry.ClickedCh:
+					log.Printf("[supervise] Retry from the menu")
+					sup.retry()
 				case <-mShutdown.ClickedCh:
 					go func() {
 						defer safego.Recover("coral-tray/main:362")
 						killed := killAllAgents(url, dataDir)
 						killCoralApp()
-						shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer cancel()
-						httpServer.Shutdown(shutdownCtx)
+						stopServer()
 						beeep.Notify("Coral", fmt.Sprintf("Shut down %d agent(s) and dashboard server.", killed), "")
 						systray.Quit()
 					}()
-				case <-restartCh:
-					// A new instance with the same arguments, which waits for this one
-					// to exit; agents keep running in tmux and the new server finds them.
-					if err := spawnRestart(dataDir); err != nil {
-						log.Printf("[restart] could not start a new instance: %v", err)
-						beeep.Notify("Coral", "Could not restart: "+err.Error(), "")
-						continue
-					}
-					log.Printf("[restart] new instance started; stopping this one")
-					killCoralApp()
-					func() {
-						shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer cancel()
-						httpServer.Shutdown(shutdownCtx)
-					}()
-					systray.Quit()
-					return
 				case <-mQuit.ClickedCh:
 					killCoralApp()
-					func() {
-						shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer cancel()
-						httpServer.Shutdown(shutdownCtx)
-					}()
+					stopServer()
 					systray.Quit()
 				case <-ctx.Done():
-					func() {
-						shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer cancel()
-						httpServer.Shutdown(shutdownCtx)
-					}()
+					stopServer()
 					systray.Quit()
 					return
 				}
 			}
 		}()
 	}, func() {
-		// onExit — kill coral-app subprocess and stop server
+		// onExit — kill coral-app subprocess and stop the server. The server writes its queued
+		// request metrics as it stops.
 		killCoralApp()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		httpServer.Shutdown(shutdownCtx)
-		// When macOS terminates the app (logout, restart, NSApp terminate),
-		// AppKit exits the process after this callback, so main's deferred
-		// rs.Close never runs. Write the queued request metrics here, with
-		// a context of their own: Shutdown can use up shutdownCtx waiting on
-		// long-polls such as coral-board wait.
-		flushCtx, cancelFlush := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancelFlush()
-		if err := rs.DB.FlushCallMetrics(flushCtx); err != nil {
-			log.Printf("[call-metrics] flush on exit: %v", err)
-		}
+		stopServer()
 		log.Println("coral-tray exited")
 	})
 }
@@ -798,34 +738,22 @@ func isInsideAppBundle() bool {
 
 // startFailureTitle is the tray menu's line for why the server did not start (#4151): the
 // error's first line, cut to fit a menu.
-func startFailureTitle(err error) string {
-	msg, _, _ := strings.Cut(err.Error(), "\n")
+func startFailureTitle(err error) string { return statusTitle("Not started: ", err.Error()) }
+
+// statusTitle is a menu line: prefix and the reason's first line, without the server's own
+// "Failed to start: cannot start Coral: " lead, cut to fit a menu.
+func statusTitle(prefix, reason string) string {
+	msg, _, _ := strings.Cut(reason, "\n")
+	msg = strings.TrimPrefix(msg, "Failed to start: ")
 	msg = strings.TrimPrefix(msg, "cannot start Coral: ")
 	if r := []rune(msg); len(r) > 70 {
 		msg = string(r[:69]) + "…"
 	}
-	return "Not started: " + msg
+	return prefix + msg
 }
 
 // restartWaitEnv carries the PID of the instance a restarted one replaces (#3460).
 const restartWaitEnv = "CORAL_TRAY_RESTART_WAIT_PID"
-
-// spawnRestart starts this program again with the same arguments, detached, logging to
-// tray.log; the new instance waits for this one to exit (restartWaitEnv).
-func spawnRestart(dataDir string) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(exe, os.Args[1:]...)
-	cmd.Env = append(os.Environ(), restartWaitEnv+"="+strconv.Itoa(os.Getpid()))
-	if lf, err := secfile.OpenNoFollow(filepath.Join(dataDir, "tray.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-		cmd.Stdout, cmd.Stderr = lf, lf
-		defer lf.Close() // the child has its own copy
-	}
-	cmd.SysProcAttr = detachProcessAttrs()
-	return cmd.Start()
-}
 
 // terminate asks p to exit: SIGTERM, or on Windows, which has no SIGTERM (Signal returns
 // EWINDOWS), Kill (#3463).
