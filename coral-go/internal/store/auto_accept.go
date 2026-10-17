@@ -74,9 +74,10 @@ type AutoAcceptState struct {
 	Until      sql.NullInt64  `db:"auto_accept_until"` // unix seconds
 	Source     sql.NullString `db:"auto_accept_source"`
 	PausedCode sql.NullString `db:"auto_accept_paused_code"`
+	PausedAt   sql.NullInt64  `db:"auto_accept_paused_at"` // unix seconds, set and cleared with PausedCode (#4521)
 }
 
-const autoAcceptCols = "session_id, agent_type, agent_name, working_dir, auto_accept, auto_accept_until, auto_accept_source, auto_accept_paused_code"
+const autoAcceptCols = "session_id, agent_type, agent_name, working_dir, auto_accept, auto_accept_until, auto_accept_source, auto_accept_paused_code, auto_accept_paused_at"
 
 // EnableAutoAccept turns auto-accept on for an active, awake session. until is
 // unix seconds, 0 for no limit. It reports false when no such session exists.
@@ -86,7 +87,7 @@ func (s *SessionStore) EnableAutoAccept(ctx context.Context, sessionID, source s
 		u = until
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE live_sessions SET auto_accept = 1, auto_accept_source = ?, auto_accept_until = ?, auto_accept_paused_code = NULL
+		`UPDATE live_sessions SET auto_accept = 1, auto_accept_source = ?, auto_accept_until = ?, auto_accept_paused_code = NULL, auto_accept_paused_at = NULL
 		 WHERE session_id = ? AND status = 'active' AND is_sleeping = 0`, source, u, sessionID)
 	if err != nil {
 		return false, err
@@ -98,7 +99,7 @@ func (s *SessionStore) EnableAutoAccept(ctx context.Context, sessionID, source s
 // DisableAutoAccept turns auto-accept off at the user's request (no paused code).
 func (s *SessionStore) DisableAutoAccept(ctx context.Context, sessionID string) (bool, error) {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE live_sessions SET auto_accept = 0, auto_accept_source = NULL, auto_accept_until = NULL, auto_accept_paused_code = NULL
+		`UPDATE live_sessions SET auto_accept = 0, auto_accept_source = NULL, auto_accept_until = NULL, auto_accept_paused_code = NULL, auto_accept_paused_at = NULL
 		 WHERE session_id = ? AND status = 'active'`, sessionID)
 	if err != nil {
 		return false, err
@@ -111,8 +112,8 @@ func (s *SessionStore) DisableAutoAccept(ctx context.Context, sessionID string) 
 // The caller records the event.
 func (s *SessionStore) PauseAutoAccept(ctx context.Context, sessionID, code string) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE live_sessions SET auto_accept = 0, auto_accept_source = NULL, auto_accept_until = NULL, auto_accept_paused_code = ?
-		 WHERE session_id = ?`, code, sessionID)
+		`UPDATE live_sessions SET auto_accept = 0, auto_accept_source = NULL, auto_accept_until = NULL, auto_accept_paused_code = ?, auto_accept_paused_at = ?
+		 WHERE session_id = ?`, code, time.Now().Unix(), sessionID)
 	return err
 }
 
@@ -153,9 +154,12 @@ func clearAutoAcceptTx(ctx context.Context, tx execer, sessionID, code string, s
 	if setPaused {
 		paused = code
 	}
+	// paused_at goes with the code: set when a code is, NULL otherwise (both read the row's old auto_accept).
 	_, err := tx.ExecContext(ctx,
 		`UPDATE live_sessions SET auto_accept = 0, auto_accept_source = NULL, auto_accept_until = NULL,
-		 auto_accept_paused_code = CASE WHEN auto_accept = 1 THEN ? ELSE NULL END WHERE session_id = ?`, paused, sessionID)
+		 auto_accept_paused_code = CASE WHEN auto_accept = 1 THEN ? ELSE NULL END,
+		 auto_accept_paused_at = CASE WHEN auto_accept = 1 AND ? IS NOT NULL THEN ? ELSE NULL END WHERE session_id = ?`,
+		paused, paused, time.Now().Unix(), sessionID)
 	return err
 }
 

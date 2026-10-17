@@ -265,6 +265,9 @@ var columnMigrations = []struct {
 	{"live_sessions", "auto_accept_until", "INTEGER"},    // unix seconds; NULL = no time limit
 	{"live_sessions", "auto_accept_source", "TEXT"},      // 'local' (dashboard) or 'hub' (Coral Hub)
 	{"live_sessions", "auto_accept_paused_code", "TEXT"}, // why Coral turned it off (see store/auto_accept.go)
+	// When Coral turned it off (#4521): unix seconds, set and cleared with the paused code. A client tells a pause it has
+	// already shown from a new one by it (the code alone is the same on every reload).
+	{"live_sessions", "auto_accept_paused_at", "INTEGER"},
 	// The version of the CLI the agent was launched with (#3481), e.g. "2.1.300"; NULL = unknown.
 	{"live_sessions", "cli_version", "TEXT"},
 	// The hook set a Claude agent loaded at launch (#3665), e.g. 3; NULL = unknown.

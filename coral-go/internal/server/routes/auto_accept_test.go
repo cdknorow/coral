@@ -653,7 +653,7 @@ func TestAutoAcceptClearedOnANewRun(t *testing.T) {
 	assert.Equal(t, sid, rows[0].SessionID)
 }
 
-// Every list, single-session and feed entry carries all six fields, false and
+// Every list, single-session and feed entry carries all seven fields, false and
 // null included (clients merge entries, so an omitted false would keep the AUTO
 // chip on), and codes only, never prompt text.
 func TestAutoAcceptFieldsAlwaysPresent(t *testing.T) {
@@ -662,7 +662,7 @@ func TestAutoAcceptFieldsAlwaysPresent(t *testing.T) {
 	asleep := "22222222-2222-3333-4444-555555555555"
 	require.NoError(t, h.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: asleep, AgentType: at.Gemini, AgentName: "gem", WorkingDir: "/tmp/gem"}))
 	require.NoError(t, h.ss.SetSessionSleeping(ctx, asleep, true))
-	keys := []string{"auto_accept", "auto_accept_until", "auto_accept_source", "auto_accept_supported", "auto_accept_unsupported_code", "auto_accept_paused_code"}
+	keys := []string{"auto_accept", "auto_accept_until", "auto_accept_source", "auto_accept_supported", "auto_accept_unsupported_code", "auto_accept_paused_code", "auto_accept_paused_at"}
 
 	check := func(phase string, want map[string]map[string]any) {
 		w := httptest.NewRecorder()
@@ -706,20 +706,29 @@ func TestAutoAcceptFieldsAlwaysPresent(t *testing.T) {
 			assert.Equal(t, want[awake][k], v, "%s resolve: %s", phase, k)
 		}
 	}
-	fields := func(on bool, until, source, paused any) map[string]any {
+	fields := func(on bool, until, source, paused any, pausedAt ...any) map[string]any {
+		var at any
+		if len(pausedAt) > 0 {
+			at = pausedAt[0]
+		}
 		return map[string]any{"auto_accept": on, "auto_accept_until": until, "auto_accept_source": source, "auto_accept_supported": true,
-			"auto_accept_unsupported_code": nil, "auto_accept_paused_code": paused}
+			"auto_accept_unsupported_code": nil, "auto_accept_paused_code": paused, "auto_accept_paused_at": at}
 	}
 	gem := map[string]any{"auto_accept": false, "auto_accept_until": nil, "auto_accept_source": nil, "auto_accept_supported": false,
-		"auto_accept_unsupported_code": "agent_type_unsupported", "auto_accept_paused_code": nil}
+		"auto_accept_unsupported_code": "agent_type_unsupported", "auto_accept_paused_code": nil, "auto_accept_paused_at": nil}
 	check("never used", map[string]map[string]any{awake: fields(false, nil, nil, nil), asleep: gem})
 
 	_, err := h.ss.EnableAutoAccept(ctx, awake, store.AutoAcceptSourceHub, 1_900_000_000)
 	require.NoError(t, err)
 	check("on from the hub", map[string]map[string]any{awake: fields(true, float64(1_900_000_000), "hub", nil), asleep: gem})
 
+	before := time.Now().Unix()
 	require.NoError(t, h.ss.PauseAutoAccept(ctx, awake, store.AutoAcceptRepeatLoop))
-	check("paused", map[string]map[string]any{awake: fields(false, nil, nil, "repeat_loop"), asleep: gem})
+	st, err := h.ss.GetAutoAcceptState(ctx, awake)
+	require.NoError(t, err)
+	require.True(t, st.PausedAt.Valid && st.PausedAt.Int64 >= before && st.PausedAt.Int64 <= time.Now().Unix(), "paused_at is when it paused")
+	// When it paused rides with the code (#4521): a client shows each pause once, not on every reload.
+	check("paused", map[string]map[string]any{awake: fields(false, nil, nil, "repeat_loop", float64(st.PausedAt.Int64)), asleep: gem})
 }
 
 // Claude's permission notification wakes the engine at once (no 2 s wait);

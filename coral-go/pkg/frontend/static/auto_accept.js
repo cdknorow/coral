@@ -19,6 +19,8 @@ import { responseErrorText } from './server_status.js';
 import { scheduleLiveSessionsRender } from './render.js';
 import { isPopout } from './popout.js';
 import { onBuilt } from './lazy_dom.js';
+import { browserLocal } from './safe_storage.js';
+import { storeKey } from './local_store.js';
 
 const WARNING_TITLE = 'Turn on auto-accept for this agent?';
 // The operator's exact words (#3182), in parts so the risk stands out and what still waits gets
@@ -184,7 +186,7 @@ async function refusalText(resp, server) {
 }
 
 function applyState(s, data) {
-    for (const k of ['auto_accept', 'auto_accept_until', 'auto_accept_source', 'auto_accept_paused_code']) {
+    for (const k of ['auto_accept', 'auto_accept_until', 'auto_accept_source', 'auto_accept_paused_code', 'auto_accept_paused_at']) {
         if (k in data) s[k] = data[k];
     }
 }
@@ -275,19 +277,35 @@ export function syncAutoAcceptHeader() {
     if (left != null) _headerTimer = setTimeout(syncAutoAcceptHeader, 30000); // sleep-ok: a minute countdown, not a wait
 }
 
-const _pausedSeen = new Set();
+// Pauses already shown (#4521, a coral-hub report): the paused code is resent on every connect and reload, so each pause is
+// remembered by server|session_id|auto_accept_paused_at (a new pause has a new time) in this browser, for the signed-in account
+// on Coral Hub (storeKey; sign-out and an account change remove it, local_store.js). At most PAUSED_SEEN_MAX, the oldest
+// dropped; never forgotten because a row was briefly absent or came without the code. Without storage, safe_storage.js keeps
+// the list for this page load, so each pause still shows once.
+const PAUSED_SEEN_KEY = 'coral-auto-accept-seen';
+const PAUSED_SEEN_MAX = 200;
+function readPausedSeen() {
+    try {
+        const list = JSON.parse(browserLocal.get(storeKey(PAUSED_SEEN_KEY)) || '[]');
+        return Array.isArray(list) ? list.filter(k => typeof k === 'string') : [];
+    } catch { return []; } // not JSON: start again
+}
+function rememberPauseShown(key) {
+    const list = readPausedSeen().filter(k => k !== key);
+    list.push(key);
+    browserLocal.set(storeKey(PAUSED_SEEN_KEY), JSON.stringify(list.slice(-PAUSED_SEEN_MAX)));
+}
 // Codes for something the owner did themselves: no notice (they know), only the reason on the switch.
 const OWNER_CODES = new Set(['stopped_by_owner', 'hub_allow_off']);
 /** Tell the user once when Coral turned an agent's auto-accept off, and keep "Stop all" in step. */
 export function noteAutoAcceptPauses(sessions) {
     for (const s of sessions || []) {
-        const key = `${sessionServer(s)}|${s.session_id}`;
         if (s.auto_accept_paused_code && !s.auto_accept && !OWNER_CODES.has(s.auto_accept_paused_code)) {
-            if (_pausedSeen.has(key)) continue;
-            _pausedSeen.add(key);
+            // A server without paused_at (older than #4521): the code stands in, so a pause still shows once per code.
+            const key = `${sessionServer(s)}|${s.session_id}|${s.auto_accept_paused_at ?? s.auto_accept_paused_code}`;
+            if (readPausedSeen().includes(key)) continue;
+            rememberPauseShown(key);
             showToast(`Auto-accept turned off for "${s.display_name || s.name}": ${pausedText(s.auto_accept_paused_code)}`, true, 8000);
-        } else {
-            _pausedSeen.delete(key);
         }
     }
     syncStopAll();

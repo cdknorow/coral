@@ -572,9 +572,9 @@ func trimInput(s string) string {
 // ── API ────────────────────────────────────────────────────────────────────
 
 // autoAcceptFields are the auto-accept fields of a live session payload:
-// always all six, false/null included, and codes only (no prompt text).
+// always all seven, false/null included, and codes only (no prompt text).
 func autoAcceptFields(agentType string, st store.AutoAcceptState) map[string]any {
-	var until, source, unsupported, paused any
+	var until, source, unsupported, paused, pausedAt any
 	if st.Enabled && st.Until.Valid {
 		until = st.Until.Int64
 	}
@@ -587,6 +587,9 @@ func autoAcceptFields(agentType string, st store.AutoAcceptState) map[string]any
 	}
 	if st.PausedCode.Valid {
 		paused = st.PausedCode.String
+		if st.PausedAt.Valid {
+			pausedAt = st.PausedAt.Int64 // when: a client shows each pause once (#4521)
+		}
 	}
 	return map[string]any{
 		"auto_accept":                  st.Enabled,
@@ -595,6 +598,7 @@ func autoAcceptFields(agentType string, st store.AutoAcceptState) map[string]any
 		"auto_accept_supported":        supported,
 		"auto_accept_unsupported_code": unsupported,
 		"auto_accept_paused_code":      paused,
+		"auto_accept_paused_at":        pausedAt,
 	}
 }
 

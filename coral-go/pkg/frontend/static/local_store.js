@@ -17,7 +17,7 @@
 
 import { browserLocal, browserSession } from './safe_storage.js';
 
-const STORED_KINDS = ['coral-input-drafts', 'coral-pending-messages', 'coral-recent-dirs', 'coral-starred-files-'];
+const STORED_KINDS = ['coral-input-drafts', 'coral-pending-messages', 'coral-recent-dirs', 'coral-starred-files-', 'coral-auto-accept-seen'];
 const OWNER_KEY = 'coral-store-owner';
 // What a page keeps in sessionStorage of what people typed (#4116): the agent UI's panel-request draft, per session id. Not tied to an
 // account (the tab is), so sign-out and an account change remove it like the kinds above.
