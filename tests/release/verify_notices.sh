@@ -9,7 +9,7 @@ d=${1:?usage: verify_notices.sh LICENSES_DIR BINARY...}; shift
 root=$(cd "$(dirname "$0")/../.." && pwd)
 fail=0; bad() { echo "verify_notices: $*" >&2; fail=1; }
 
-for f in THIRD_PARTY_NOTICES.md Coral-LICENSE.txt THIRD_PARTY_NOTICES_MPL.md HASHICORP-MPL-2.0.txt; do
+for f in THIRD_PARTY_NOTICES.md Coral-LICENSE.txt THIRD_PARTY_NOTICES_MPL.md HASHICORP-MPL-2.0.txt UNICODE-LICENSE-V3.txt; do
   [ -s "$d/$f" ] || bad "missing $f"
 done
 [ -s "$d/THIRD_PARTY_NOTICES.md" ] || { echo "verify_notices: FAILED" >&2; exit 1; }

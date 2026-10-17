@@ -102,6 +102,12 @@ cp -R "$lic/vendor" "$out/vendor"; cp -R "$lic/fonts" "$out/fonts"
   echo "## MPL-2.0 components"
   echo
   echo "See \`THIRD_PARTY_NOTICES_MPL.md\` (Source Code Form locations) and \`HASHICORP-MPL-2.0.txt\`."
+  echo
+  echo "## Unicode data"
+  echo
+  echo "Tables derived from Unicode data files are linked into the Coral programs through golang.org/x/text and"
+  echo "github.com/eskriett/confusables (Unicode 17.0.0 confusables). Their notice, the Unicode License v3, is"
+  echo "\`UNICODE-LICENSE-V3.txt\`."
   if [ $macos -eq 1 ]; then
     echo
     echo "## Bundled tmux (macOS)"
@@ -112,6 +118,7 @@ cp -R "$lic/vendor" "$out/vendor"; cp -R "$lic/fonts" "$out/fonts"
 } >> "$idx"
 cp "$root/THIRD_PARTY_NOTICES_MPL.md" "$out/THIRD_PARTY_NOTICES_MPL.md"
 cp "$lic/HASHICORP-MPL-2.0.txt" "$out/HASHICORP-MPL-2.0.txt"
+cp "$lic/UNICODE-LICENSE-V3.txt" "$out/UNICODE-LICENSE-V3.txt"
 cp "$root/LICENSE" "$out/Coral-LICENSE.txt"
 
 echo "third-party-notices: $n Go modules, $(($(wc -l < "$lic/vendor/INDEX.tsv") - 1)) vendor components -> $out"
