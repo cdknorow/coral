@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -107,14 +109,32 @@ type MentionOf struct {
 }
 
 // MentionsOf lists agents' messages on project since since that mention name or title (as
-// "@name" or "@title", any case), oldest first, leaving out Coral's own lines and the member's
-// own posts.
+// "@name" or "@title", any case, ending at a word boundary: "@Dev" is not "@Developer"),
+// oldest first, leaving out Coral's own lines and the member's own posts.
 func (s *Store) MentionsOf(ctx context.Context, project, name, title string, since time.Time) ([]MentionOf, error) {
-	var out []MentionOf
-	err := s.reader().SelectContext(ctx, &out, `SELECT id, subscriber_id, created_at FROM board_messages
+	var rows []struct {
+		MentionOf
+		Content string `db:"content"`
+	}
+	// The substring test narrows the rows; the word-boundary test below decides.
+	err := s.reader().SelectContext(ctx, &rows, `SELECT id, subscriber_id, created_at, content FROM board_messages
 		WHERE project = ? AND created_at > ? AND COALESCE(is_system, 0) = 0 AND subscriber_id != ?
 		  AND subscriber_id NOT IN ('Coral Task Queue', 'Coral Health Monitor', 'Coral')
 		  AND (instr(lower(content), lower('@' || ?)) > 0 OR (? != '' AND instr(lower(content), lower('@' || ?)) > 0))
 		ORDER BY id`, project, since.UTC().Format(time.RFC3339), name, name, title, title)
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	terms := []string{regexp.QuoteMeta(name)}
+	if title != "" {
+		terms = append(terms, regexp.QuoteMeta(title))
+	}
+	re := regexp.MustCompile(`(?i)(^|[^\p{L}\p{N}])@(` + strings.Join(terms, "|") + `)($|[^\p{L}\p{N}])`)
+	var out []MentionOf
+	for _, r := range rows {
+		if re.MatchString(r.Content) {
+			out = append(out, r.MentionOf)
+		}
+	}
+	return out, nil
 }
