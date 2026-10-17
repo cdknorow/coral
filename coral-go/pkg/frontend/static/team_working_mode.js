@@ -2,6 +2,7 @@ import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 import { boardRenameControl } from './board_rename.js';
+import { changedFields, rebaseChanges } from './settings_diff.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
 
@@ -166,6 +167,12 @@ export async function showTeamWorkingMode(team, options = {}) {
     let presets = [];
     let workingMode = null;
     let settingsLoaded = false;
+    // What each part of the form showed when it loaded (#4423): Save sends only what the person changed since, so a
+    // setting another client changed while the dialog was open is not put back.
+    let opened = null;
+    const modeValues = () => ({ mode: form.elements.mode.value, dependency_guidance: form.elements.dependency_guidance.checked, custom_instructions: form.elements.custom_instructions.value });
+    const boardValues = () => ({ cross_team_messaging: form.elements.cross_team_messaging.checked, ...(isCloud() ? {} : { cross_team_artifacts: form.elements.cross_team_artifacts.checked }) });
+    const globalValues = () => ({ board_health_monitor: form.elements.board_health_monitor.checked ? 'true' : 'false' });
 
     function activatePanel(name, moveFocus = false) {
         tabs.forEach(tab => {
@@ -338,30 +345,46 @@ export async function showTeamWorkingMode(team, options = {}) {
             inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : '<p class="working-mode-hint">Prompt inspection is unavailable.</p>';
             setStatus('');
             form.dataset.initialState = settingsFormSnapshot(form);
+            opened = { mode: modeValues(), board: boardValues(), global: globalValues() };
             save.disabled = false;
         } catch (error) { setStatus(error.message, true); inspection.textContent = 'Prompt inspection could not be loaded.'; }
     }
     form.onsubmit = async event => {
         event.preventDefault(); save.disabled = true; setStatus('Saving…');
         let modeError = null; let healthError = null;
-        try {
-            const response = await fetch(workingModeURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: form.elements.mode.value, dependency_guidance: form.elements.dependency_guidance.checked, custom_instructions: form.elements.custom_instructions.value }) });
-            if (!response.ok) modeError = await jsonError(response, 'Could not save working mode.');
-            else workingMode = await response.json();
-        } catch (error) { modeError = error.message; }
-        // Team settings save before the global ones, so the status is final once those return.
-        if (boardSettingsLoaded) {
+        const base = opened || { mode: {}, board: {}, global: {} };
+        const mode = modeValues(), boardNow = boardValues(), globalNow = globalValues();
+        const modeChanged = Object.keys(changedFields(base.mode, mode)).length > 0;
+        const boardChanged = changedFields(base.board, boardNow);
+        const globalChanged = changedFields(base.global, globalNow);
+        if (modeChanged) {
             try {
-                const response = await fetch(boardSettingsURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', cross_team_messaging: form.elements.cross_team_messaging.checked, ...(isCloud() ? {} : { cross_team_artifacts: form.elements.cross_team_artifacts.checked }) }) });
+                // The working mode is saved whole: what the server has now, with only the fields changed here.
+                const current = await fetch(workingModeURL);
+                if (!current.ok) throw new Error(await jsonError(current, 'Could not read the working mode to save it.'));
+                const fresh = await current.json();
+                const body = rebaseChanges(base.mode, mode, { mode: fresh.mode || 'none', dependency_guidance: Boolean(fresh.dependency_guidance), custom_instructions: fresh.custom_instructions || '' });
+                const response = await fetch(workingModeURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                if (!response.ok) modeError = await jsonError(response, 'Could not save working mode.');
+                else { workingMode = await response.json(); base.mode = mode; }
+            } catch (error) { modeError = error.message; }
+        }
+        // Team settings save before the global ones, so the status is final once those return.
+        if (boardSettingsLoaded && Object.keys(boardChanged).length) {
+            try {
+                const response = await fetch(boardSettingsURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', ...boardChanged }) });
                 if (!response.ok) modeError = [modeError, await jsonError(response, 'Could not save cross-team messaging.')].filter(Boolean).join('; ');
+                else base.board = boardNow;
             } catch (error) { modeError = [modeError, error.message].filter(Boolean).join('; '); }
         }
-        if (settingsLoaded) {
+        if (settingsLoaded && Object.keys(globalChanged).length) {
             try {
-                const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ board_health_monitor: form.elements.board_health_monitor.checked ? 'true' : 'false' }) });
+                const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(globalChanged) });
                 if (!response.ok) healthError = 'Could not save board health setting.';
+                else base.global = globalNow;
             } catch (error) { healthError = error.message; }
         }
+        opened = base;
         if (!modeError && !healthError) setStatus('Saved. Working mode applies on first claim; global health monitor applies on server restart.');
         else if (modeError && healthError) setStatus(`Save failed: ${modeError}; ${healthError}`, true);
         else if (modeError) setStatus(`Working mode save failed: ${modeError}. Global health monitor setting was saved (applies on restart).`, true);

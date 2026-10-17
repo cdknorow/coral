@@ -4,9 +4,12 @@
  * refuses a recipient who is not a member of the team). Through Coral Hub the server leaves "health" out of the GET, and then there is no tab.
  *
  * The inputs' limits are the server's clamps (HEALTH_LIMITS mirrors internal/board/health_settings.go); the form saves on its own, not with the
- * main Save bar, and a field the form does not know (a rule the server added) is sent back as it was read. */
+ * main Save bar, and a field the form does not know (a rule the server added) is sent back as it was read. Since PUT replaces the whole
+ * object, Save reads it again first and changes only what the person changed (#4423): a rule another client changed while the tab was
+ * open keeps that change. */
 import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch } from './server_base.js';
+import { rebaseChanges } from './settings_diff.js';
 
 export const HEALTH_LIMITS = { minutes: [5, 1440], nudges: [1, 5], reviewers: 8 };
 
@@ -152,7 +155,11 @@ function bind(host, team, base, members, said) {
         if (problem) { say(problem.text, true); problem.el.focus(); return; }
         save.disabled = true; say('Saving…');
         try {
-            const resp = await boardFetch(team, '/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', health: readHealth(form, base) }) });
+            const now = await boardFetch(team, '/settings');
+            const fresh = now.ok ? (await now.json()).health : null;
+            if (!fresh || typeof fresh !== 'object') { say('Could not read the current health check to save it. Try again.', true); save.disabled = false; return; }
+            const health = rebaseChanges(base, readHealth(form, base), fresh);
+            const resp = await boardFetch(team, '/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', health }) });
             if (!resp.ok) {
                 let msg = 'Could not save the health check.';
                 try { const body = await resp.json(); msg = body.error || body.message || msg; } catch { /* keep the generic text */ }
