@@ -552,3 +552,26 @@ func TestRelayAttachSameBytesInAnotherFileAbortsWithNothingSent(t *testing.T) {
 	assert.Equal(t, "attach_changed", out["code"])
 	e.nothingSent("same bytes, another file")
 }
+
+// The sending board's switch is read again before each file: turned off while the first is on its way, the
+// second is not sent (it is already in memory), and neither is the message (#4440).
+func TestRelayAttachSwitchTurnedOffBetweenFiles(t *testing.T) {
+	e := newRelayAttachEnv(t, true)
+	a := e.upload(alphaOrchSID, "# one\n")
+	b := e.upload(alphaOrchSID, "# two\n")
+	e.wire.fileAnswer = func(i int, _ sentFile) (tunnel.RelayResponse, error) {
+		if i == 0 {
+			_, err := e.h.bs.UpdateBoardSettings(context.Background(), "alpha", board.BoardSettingsUpdate{CrossTeamArtifacts: ptrBool(false)})
+			require.NoError(t, err)
+		}
+		return tunnel.RelayResponse{Status: 200, Body: []byte(`{"ok":true}`)}, nil
+	}
+	code, out, _ := e.relay(alphaOrchSID, "msg-9", uri(a), uri(b))
+	assert.Equal(t, http.StatusForbidden, code)
+	assert.Equal(t, "artifacts_off", out["error"])
+	assert.Contains(t, out["message"], "attachment 2 of 2")
+	_, files, msgs := e.wire.snapshot()
+	assert.Len(t, files, 1, "the second file is not sent")
+	assert.Zero(t, msgs, "nor the message")
+	assert.Empty(t, e.sharedRows())
+}

@@ -41,6 +41,7 @@ var reviewedFileOpens = map[string]string{
 	"team_artifacts.go:uploadDirCache.list:ReadFile":                      "names read from the server's uploads folder",
 	"task_artifact_vet.go:BoardHandler.objectSidecarDigest:ReadFile":      "a managed artifact's 64-hex id (managedArtifactID), Lstat'ed as a regular file under the bound first (#4379)",
 	"cross_team_attach.go:BoardHandler.crossTeamRecord:ReadFile":          "a 64-hex id under <data>/artifacts/<kind>/<hash of the board>, Lstat'ed as a regular file under the bound first (#4379)",
+	"cross_team_pending.go:readPending:ReadFile":                          "a file in <data>/artifacts/pending/<hash of the board>, listed from that folder, Lstat'ed as a regular file under the bound first (#4440)",
 	"cross_team_attach.go:BoardHandler.objectMeta:ReadFile":               "a managed artifact's 64-hex id (managedArtifactID), Lstat'ed as a regular file under the bound first (#4379)",
 	"cross_team_attach.go:BoardHandler.writeCrossTeamRecord:OpenFile":     "the received row's fallback where the data folder can't hard-link: the final name is created O_EXCL (never follows a link at it, never replaces), under a bound folder named by a hash, the id a 64-hex string (#4379, Security's C1 INFO 1)",
 	"cross_team_attach.go:BoardHandler.readAttachment:OpenNoFollow":       "the attach read: a 64-hex id in the object store, opened once no-follow and checked through the handle (#4379, Security's one-step rule)",

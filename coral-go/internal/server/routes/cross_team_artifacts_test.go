@@ -46,6 +46,7 @@ func newArtifactEnv(t *testing.T) *artifactEnv {
 	e.r.Get("/api/board/{project}/settings", e.h.GetBoardSettings)
 	e.r.Put("/api/board/{project}/settings", e.h.UpdateBoardSettings)
 	e.r.Post("/api/board/{project}/external-artifacts", e.h.PostExternalArtifact)
+	e.r.Post("/api/board/{project}/external-messages", e.h.PostExternalMessage)
 	e.r.Get("/api/board/{project}/artifacts", e.h.ListTeamArtifacts)
 	_, err = bs.Subscribe(t.Context(), "beta", "Orchestrator", "Orchestrator", "tmux-beta", nil, "mentions")
 	require.NoError(t, err)
@@ -109,6 +110,22 @@ func (e *artifactEnv) send(via, src, hubUser string, body []byte) (int, map[stri
 	if hubUser != "" {
 		req.Header.Set(tunnel.HubUserHeader, hubUser)
 	}
+	rec := httptest.NewRecorder()
+	e.r.ServeHTTP(rec, req)
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+// deliver posts the relayed message relayID from src (the message the files named it come with).
+func (e *artifactEnv) deliver(src, relayID string) (int, map[string]any) {
+	e.t.Helper()
+	b, _ := json.Marshal(map[string]any{"from_board": "alpha", "subscriber_id": "Orchestrator", "content": "here are the files",
+		"relay": map[string]any{"message_id": relayID, "hops": 0}})
+	req := httptest.NewRequest("POST", "/api/board/beta/external-messages", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(tunnel.HubServerHeader, src)
+	req.Header.Set(tunnel.ViaHeader, cloud.ViaSecret())
 	rec := httptest.NewRecorder()
 	e.r.ServeHTTP(rec, req)
 	var out map[string]any
@@ -244,6 +261,11 @@ func TestReceivedArtifactIsStoredListedAndDeduplicated(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, data, got)
 
+	// Stored, but not listed until its message arrives (#4440).
+	assert.Empty(t, e.listed())
+	code, msg := e.deliver(relaySrc, "m1")
+	require.Equal(t, 200, code, msg)
+
 	rows := e.listed()
 	require.Len(t, rows, 1)
 	assert.Equal(t, "received", rows[0]["source"])
@@ -263,6 +285,8 @@ func TestReceivedArtifactIsStoredListedAndDeduplicated(t *testing.T) {
 	require.Equal(t, 200, status, out)
 	assert.Equal(t, first, out, "the same answer for new and stored bytes")
 	assert.NotContains(t, out, "duplicate")
+	code, msg = e.deliver(relaySrc, "m2")
+	require.Equal(t, 200, code, msg)
 	rows = e.listed()
 	require.Len(t, rows, 1)
 	assert.Equal(t, "plan.txt", rows[0]["name"])
@@ -407,6 +431,8 @@ func TestReceivedArtifactHostileNamesAreReduced(t *testing.T) {
 		data := []byte("echo hi\n")
 		status, out := e.ok(data, sent)
 		require.Equal(t, 200, status, out)
+		code, msg := e.deliver(relaySrc, "m1")
+		require.Equal(t, 200, code, msg)
 		rows := e.listed()
 		require.Len(t, rows, 1)
 		assert.Equal(t, want, rows[0]["name"], sent)
@@ -584,4 +610,124 @@ func TestReceivedArtifactCapIsTheHubsDefault(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.r.ServeHTTP(rec, req)
 	assert.Equal(t, 413, rec.Code)
+}
+
+func (e *artifactEnv) sendUnder(src, relayID string, data []byte) (int, map[string]any) {
+	m := meta(data, "f.txt")
+	m["message_id"] = relayID
+	return e.send("auth", src, "", frame(m, data))
+}
+
+const otherSrc = "7d1c0e55-3b6a-4f08-9e21-aa00bb11cc22"
+
+// A file whose message has not arrived is stored but not listed; the message lists it, naming the message
+// (#4440, Security's #4438 SHOULD 3).
+func TestReceivedFilesWaitForTheirMessage(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	one, two := []byte("first file\n"), []byte("second file\n")
+	for _, d := range [][]byte{one, two} {
+		status, out := e.sendUnder(relaySrc, "m1", d)
+		require.Equal(t, 200, status, out)
+	}
+	assert.Len(t, e.stored(), 4, "both files are in the store (object and sidecar)")
+	assert.Empty(t, e.listed(), "no message, nothing listed")
+
+	// A message with another id, or from another server, does not claim them.
+	_, _ = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc, otherSrc}}, false)
+	code, out := e.deliver(relaySrc, "m9")
+	require.Equal(t, 200, code, out)
+	code, out = e.deliver(otherSrc, "m1")
+	require.Equal(t, 200, code, out)
+	assert.Empty(t, e.listed(), "the id and the source must both match")
+
+	code, out = e.deliver(relaySrc, "m1")
+	require.Equal(t, 200, code, out)
+	assert.Len(t, e.listed(), 2)
+	id := strings.TrimPrefix(sha256Of(one), "sha256:")
+	rec, ok := e.h.crossTeamRecord("received", "beta", id)
+	require.True(t, ok)
+	assert.Equal(t, int64(out["target_message_id"].(float64)), rec.MessageID, "the row names the message it came with")
+	left, _ := os.ReadDir(e.h.boardRecordDir("pending", "beta"))
+	assert.Empty(t, left, "listed ones are no longer pending")
+}
+
+// A retry of a message whose earlier attempt failed partway is charged once, not once a push; the free
+// repeats of one file are bounded.
+func TestReceivedRetryOfAMessageIsChargedOnce(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	one := []byte("first file\n")
+	for i := 0; i < 4; i++ {
+		status, out := e.sendUnder(relaySrc, "m1", one)
+		require.Equal(t, 200, status, out)
+	}
+	assert.Len(t, e.h.received.events, 1, "four pushes of one file for one message, one charge")
+	status, out := e.sendUnder(relaySrc, "m2", one)
+	require.Equal(t, 200, status, out)
+	assert.Len(t, e.h.received.events, 2, "another message id is charged")
+
+	// The same message and file again and again: the sixth repeat pays.
+	for i := 0; i < 8; i++ {
+		_, _ = e.sendUnder(relaySrc, "m3", one)
+	}
+	assert.Len(t, e.h.received.events, 4, "m3: the first push, and the push after its five free repeats")
+}
+
+// No message within the time: the file is never listed, and it is not deleted.
+func TestReceivedFileWithoutAMessageInTimeIsNeverListed(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	data := []byte("late file\n")
+	status, out := e.sendUnder(relaySrc, "m1", data)
+	require.Equal(t, 200, status, out)
+	e.now = e.now.Add(receivedPendingFor + time.Minute)
+	code, out := e.deliver(relaySrc, "m1")
+	require.Equal(t, 200, code, out)
+	assert.Empty(t, e.listed())
+	_, err := os.Stat(filepath.Join(e.dir, "artifacts", "objects", strings.TrimPrefix(sha256Of(data), "sha256:")))
+	assert.NoError(t, err, "the stored file stays")
+
+	// The next receipt on the board sweeps the expired record.
+	status, out = e.sendUnder(relaySrc, "m2", []byte("another\n"))
+	require.Equal(t, 200, status, out)
+	left, _ := os.ReadDir(e.h.boardRecordDir("pending", "beta"))
+	assert.Len(t, left, 1, "only the new pending record")
+}
+
+// The switch is read again just before a file is stored: turned off while a file arrives, the file is not
+// stored; and with it off when the message comes, nothing is listed.
+func TestReceivedSwitchTurnedOffBetweenFilesStopsTheSecond(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	one, two := []byte("first file\n"), []byte("second file\n")
+	status, out := e.sendUnder(relaySrc, "m1", one)
+	require.Equal(t, 200, status, out)
+
+	receivedBeforeStore = func() {
+		_, _ = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_artifacts": false}, false)
+	}
+	t.Cleanup(func() { receivedBeforeStore = nil })
+	status, out = e.sendUnder(relaySrc, "m1", two)
+	assert.Equal(t, http.StatusForbidden, status, out)
+	assert.Equal(t, "artifacts_off", out["error"])
+	assert.Len(t, e.stored(), 2, "only the first file is stored (object and sidecar)")
+	receivedBeforeStore = nil
+
+	code, out := e.deliver(relaySrc, "m1")
+	require.Equal(t, 200, code, out)
+	assert.Empty(t, e.listed(), "files are off: the first one is not listed either")
+}
+
+// A file the Operator deleted while it waited is not listed when its message comes.
+func TestReceivedFileDeletedWhilePendingIsNotListed(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	data := []byte("deleted while waiting\n")
+	status, out := e.sendUnder(relaySrc, "m1", data)
+	require.Equal(t, 200, status, out)
+	require.NoError(t, os.Remove(filepath.Join(e.dir, "artifacts", "objects", strings.TrimPrefix(sha256Of(data), "sha256:"))))
+	code, out := e.deliver(relaySrc, "m1")
+	require.Equal(t, 200, code, out)
+	assert.Empty(t, e.listed())
 }

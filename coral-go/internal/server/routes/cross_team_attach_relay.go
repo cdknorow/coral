@@ -258,6 +258,12 @@ func (h *BoardHandler) sendRelayAttachments(w http.ResponseWriter, ctx context.C
 	for i, a := range p.atts {
 		which := fmt.Sprintf("attachment %d of %d (coral://artifacts/%s)", i+1, len(p.atts), a.ID)
 		retry := fmt.Sprintf("; nothing after it was sent and the message was not sent: retry with --message-id %s", messageID)
+		// The switch is read again before each file: the Operator may turn it off while earlier files
+		// are on their way, and the files already held in memory must not follow (#4440).
+		if on, err := h.bs.GetBoardSettings(ctx, fromBoard); err != nil || !on.CrossTeamArtifacts {
+			relayError(w, http.StatusForbidden, "artifacts_off", fmt.Sprintf("sending files was turned off on board %q while the files were being sent; %s was not sent and the message was not sent", fromBoard, which), 0)
+			return false, false
+		}
 		frame, err := relayArtifactFrame(messageID, toAddress, fromBoard, a, p.data[i])
 		if err != nil {
 			relayError(w, http.StatusInternalServerError, "attach_frame", which+" could not be prepared", 0)

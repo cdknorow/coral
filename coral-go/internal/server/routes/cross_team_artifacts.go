@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -141,6 +142,49 @@ type receivedLimiter struct {
 	now    func() time.Time
 	events []receivedEvent
 	busy   map[string]bool // sources with a transfer in flight
+	// charged are the (source, message id, file) transfers already charged, so a retry of a message
+	// whose earlier attempt failed partway is not charged again (#4440).
+	charged map[string]*receivedCharge
+}
+
+type receivedCharge struct {
+	at      time.Time
+	retries int
+}
+
+// receivedFreeRetries bounds the retries of one charged transfer that cost no quota: a sender that
+// repeats the same message id and file forever pays after these.
+const receivedFreeRetries = 5
+
+// admitTransfer is admit for a file named by its message: the first transfer of (src, message id, digest)
+// is charged; a repeat of it (a retry) is not, up to receivedFreeRetries a day, then it is charged again.
+func (l *receivedLimiter) admitTransfer(key, src, target string, size int64) (ok bool, limit string, retry time.Duration) {
+	l.mu.Lock()
+	now := time.Now()
+	if l.now != nil {
+		now = l.now()
+	}
+	for k, c := range l.charged {
+		if now.Sub(c.at) >= 24*time.Hour {
+			delete(l.charged, k)
+		}
+	}
+	if c := l.charged[key]; c != nil && c.retries < receivedFreeRetries {
+		c.retries++
+		l.mu.Unlock()
+		return true, "", 0
+	}
+	l.mu.Unlock()
+	if ok, limit, retry = l.admit(src, target, size); !ok {
+		return ok, limit, retry
+	}
+	l.mu.Lock()
+	if l.charged == nil {
+		l.charged = map[string]*receivedCharge{}
+	}
+	l.charged[key] = &receivedCharge{at: now}
+	l.mu.Unlock()
+	return true, "", 0
 }
 
 type receivedEvent struct {
@@ -268,13 +312,11 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		receivedRefuse(w, http.StatusNotFound, "not_found", "no such board", "")
 		return
 	}
-	settings, err := h.bs.GetBoardSettings(ctx, target)
-	if err != nil {
+	// One uniform answer for every switch that is off, so a sender cannot tell which.
+	if on, err := h.receivingOn(ctx, target, src); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
-	}
-	// One uniform answer for every switch that is off, so a sender cannot tell which.
-	if !settings.CrossTeamMessaging || !settings.AllowsServer(src) || !settings.CrossTeamArtifacts {
+	} else if !on {
 		receivedRefuse(w, http.StatusForbidden, "artifacts_off", "this board does not accept files from other computers", "")
 		return
 	}
@@ -324,7 +366,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		receivedRefuse(w, http.StatusBadRequest, "bad_frame", "the metadata is not valid", "")
 		return
 	}
-	if ok, limit, retry := h.received.admit(src, target, meta.Size); !ok {
+	if ok, limit, retry := h.received.admitTransfer(src+"\x00"+meta.MessageID+"\x00"+meta.Digest, src, target, meta.Size); !ok {
 		secs := int((retry + time.Second - 1) / time.Second)
 		httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "artifact_quota", "limit": limit, "message": "too many files received; retry later"})
 		return
@@ -356,6 +398,18 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		receivedRefuse(w, http.StatusBadRequest, "digest_mismatch", "the file does not match its digest", "")
 		return
 	}
+	// The Operator may have turned the switch off while the file was arriving (up to the connector's
+	// deadline): read again just before anything is stored, and store nothing if it is off (#4440).
+	if receivedBeforeStore != nil {
+		receivedBeforeStore()
+	}
+	if on, err := h.receivingOn(ctx, target, src); err != nil {
+		errInternalServer(w, "could not read the board's settings")
+		return
+	} else if !on {
+		receivedRefuse(w, http.StatusForbidden, "artifacts_off", "this board does not accept files from other computers", "")
+		return
+	}
 	// No session id: the file is no agent's upload, so it gets no upload record, only the receipt below.
 	// The same answer for new bytes and bytes already stored: a sender learns nothing about what this
 	// computer holds.
@@ -369,19 +423,32 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// The board's received row (C1's record: its Team Artifacts list it as received, apart from the team's
-	// own files and task results), written by this Coral from the hub's stamp and the metadata, and kept as
-	// first written: from_board is only what the sending Coral claimed. The name and type are the stored
-	// object's (the first writer's of these bytes).
-	if _, have := h.crossTeamRecord("received", target, hexID); !have {
-		if err := h.writeCrossTeamRecord("received", crossTeamArtifactRecord{
-			ID: hexID, Name: stored.Name, MediaType: stored.MediaType, Size: int64(len(res.Data)),
-			Board: target, OtherBoard: meta.FromBoard, Server: src, At: time.Now().UTC().Format(time.RFC3339),
-		}); err != nil {
-			errInternalServer(w, "could not record the file")
-			return
-		}
+	// own files and task results) is written when the message that names this file arrives
+	// (promotePending), not now: until then the receipt is pending, and a file whose message never comes
+	// is never listed (#4440). It is written by this Coral from the hub's stamp and the metadata, and kept
+	// as first written: from_board is only what the sending Coral claimed. The name and type are the
+	// stored object's (the first writer's of these bytes).
+	if err := h.writePendingReceipt(src, meta.MessageID, crossTeamArtifactRecord{
+		ID: hexID, Name: stored.Name, MediaType: stored.MediaType, Size: int64(len(res.Data)),
+		Board: target, OtherBoard: meta.FromBoard, Server: src, At: h.pendingNow().UTC().Format(time.RFC3339),
+	}); err != nil {
+		errInternalServer(w, "could not record the file")
+		return
 	}
 	// Ids, sizes and the outcome only: never the name or the content.
 	slog.Info("[cloud] relayed cross-team artifact", "source_server", src, "board", target, "bytes", len(res.Data))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "artifact_id": hexID})
+}
+
+// receivedBeforeStore, when set (tests), runs after a file's gate and digest checks and before the switch is
+// read for the last time and the file is stored.
+var receivedBeforeStore func()
+
+// receivingOn reports whether the board takes files from src right now: messaging on, src listed, files on.
+func (h *BoardHandler) receivingOn(ctx context.Context, target, src string) (bool, error) {
+	settings, err := h.bs.GetBoardSettings(ctx, target)
+	if err != nil {
+		return false, err
+	}
+	return settings.CrossTeamMessaging && settings.AllowsServer(src) && settings.CrossTeamArtifacts, nil
 }

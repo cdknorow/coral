@@ -537,6 +537,13 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 	}
 	// Ids, sizes and the outcome only: never the content (as Coral Hub's audit).
 	slog.Info("[cloud] relayed cross-team message", "source_server", src, "board", target, "bytes", len(body.Content), "duplicate", duplicate)
+	// The files this message names (pushed before it, with its message id) are listed now, if the board
+	// still takes files (#4440).
+	if settings.CrossTeamArtifacts {
+		if on, err := h.receivingOn(ctx, target, src); err == nil && on {
+			h.promotePending(target, src, body.Relay.MessageID, inbound.ID)
+		}
+	}
 	if duplicate {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "duplicate": true, "target_message_id": inbound.ID})
 		return
