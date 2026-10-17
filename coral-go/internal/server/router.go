@@ -296,6 +296,7 @@ func (s *Server) registerSessions(r *chi.Mux, h *routeHandlers) {
 
 	// Agent tasks
 	sessHandler.RegisterAgentArtifacts(r)
+	sessHandler.RegisterTerminalLogs(r)
 	r.Get("/api/sessions/live/{name}/tasks", sessHandler.ListTasks)
 	r.Post("/api/sessions/live/{name}/tasks", sessHandler.CreateTask)
 	r.Patch("/api/sessions/live/{name}/tasks/{taskID}", sessHandler.UpdateTask)

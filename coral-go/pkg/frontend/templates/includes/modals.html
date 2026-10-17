@@ -726,6 +726,14 @@
                     <button class="btn btn-small" type="button" id="settings-retention-review" hidden>Review and start…</button>
                 </dd>
                 <dt class="toggle-dt">
+                    <label for="settings-terminal-logs-delete">Terminal logs</label>
+                    <span class="toggle-desc">Each agent's terminal output is kept in the logs folder of Coral's data folder, and search reads it. Killing an agent keeps its log. You can delete the logs of agents that have ended; the log of a live, sleeping or archived agent is never touched.</span>
+                </dt>
+                <dd>
+                    <div id="settings-terminal-logs-status" class="settings-hint" role="status">Loading…</div>
+                    <button class="btn btn-small" type="button" id="settings-terminal-logs-delete" hidden>Delete terminal logs of ended agents</button>
+                </dd>
+                <dt class="toggle-dt">
                     <label for="settings-debug-input-log">Log terminal input (debug)</label>
                     <span class="toggle-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
                 </dt>

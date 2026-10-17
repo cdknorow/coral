@@ -156,6 +156,7 @@ c GET /api/system/qr
 c GET /api/system/status
 c GET /api/system/telemetry
 c GET /api/system/terminal-backend
+c GET /api/system/terminal-logs
 c GET /api/system/update-check
 c GET /api/tags
 c GET /api/tasks/active
@@ -314,6 +315,7 @@ b POST /api/system/login-token
 b POST /api/system/restart
 b POST /api/system/telemetry/acknowledge
 b POST /api/system/terminal-backend/end-leftover
+b POST /api/system/terminal-logs/delete-ended
 b POST /api/tags
 b POST /api/tasks/run
 b POST /api/tasks/runs/{runID}/kill

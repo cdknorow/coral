@@ -399,6 +399,18 @@ func (r *Root) CreateNew(rel string, perm os.FileMode) (*os.File, error) {
 // Lstat reports on rel inside the root without following its last name.
 func (r *Root) Lstat(rel string) (fs.FileInfo, error) { return r.root.Lstat(rel) }
 
+// Remove removes the regular file rel inside the root, by that exact name (#4447): never a symlink, a reparse point, a folder or a device as its last
+// name, never through a link in the path, nothing outside the root, and on Windows not a name CheckName refuses. A name that is not there is an error.
+func (r *Root) Remove(rel string) error {
+	if err := checkNames(rel); err != nil {
+		return err
+	}
+	if _, err := r.final(rel); err != nil {
+		return err
+	}
+	return r.root.Remove(rel)
+}
+
 // IsSafeID reports whether id is safe as one path element and as a command-line argument: 1 to
 // 128 ASCII letters, digits, '-' and '_', starting with a letter or digit (so never a flag, ".",
 // ".." or a separator).

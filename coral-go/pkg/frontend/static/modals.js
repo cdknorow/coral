@@ -2184,6 +2184,60 @@ async function loadArtifactStoreSize() {
     importOnce('./received_cap_notice.js').then(m => m.checkReceivedCap({ inSettings: true })).catch(() => {}); // remembered once at 80%; the line says it, no toast over this dialog (#4441)
 }
 
+// ── Terminal logs of ended agents (#4447) ─────────────────────────────
+let _endedLogs = null; // { count, bytes } as last shown: what a confirmation is for
+
+/** Settings: how many terminal logs there are and how many belong to ended agents. This computer's dashboard only. */
+async function loadTerminalLogs() {
+    const out = document.getElementById('settings-terminal-logs-status');
+    const button = document.getElementById('settings-terminal-logs-delete');
+    if (!out || !button) return;
+    try {
+        const r = await fetch('/api/system/terminal-logs');
+        if (!r.ok) throw new Error(String(r.status));
+        const d = await r.json();
+        const n = Number(d.ended?.count) || 0;
+        _endedLogs = { count: n, bytes: Number(d.ended?.bytes) || 0 };
+        const files = `${Number(d.files).toLocaleString()} terminal log${d.files === 1 ? '' : 's'}`;
+        out.textContent = n
+            ? `${files}, ${_gib(d.bytes)}. ${n.toLocaleString()} ${n === 1 ? 'belongs' : 'belong'} to ended agents (${_gib(_endedLogs.bytes)}).`
+            : `${files}, ${_gib(d.bytes)}. None belong to ended agents.`;
+        button.hidden = n === 0;
+        if (n) button.textContent = `Delete ${n.toLocaleString()} terminal log${n === 1 ? '' : 's'} of ended agents (${_gib(_endedLogs.bytes)})`;
+        if (!button.dataset.wired) { button.dataset.wired = '1'; button.addEventListener('click', confirmDeleteEndedLogs); }
+    } catch {
+        _endedLogs = null;
+        button.hidden = true;
+        out.textContent = "Couldn't read the terminal logs.";
+    }
+}
+
+function confirmDeleteEndedLogs() {
+    const shown = _endedLogs;
+    if (!shown || !shown.count) return;
+    const n = shown.count;
+    window.showConfirmModal?.('Delete terminal logs',
+        `Delete ${n.toLocaleString()} terminal log${n === 1 ? '' : 's'} of ended agents (${_gib(shown.bytes)})? Search can no longer show what ${n === 1 ? 'that agent\'s' : 'those agents\''} terminal${n === 1 ? '' : 's'} said. The logs of live, sleeping and archived agents are kept. This can't be undone.`,
+        async () => {
+            try {
+                const r = await fetch('/api/system/terminal-logs/delete-ended', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shown) });
+                const d = await r.json().catch(() => ({}));
+                if (r.status === 409) {
+                    showToast('The logs of ended agents changed since you looked, so nothing was deleted. Look at the new numbers and try again.', true, 8000);
+                } else if (!r.ok) {
+                    throw new Error(d.error || `HTTP ${r.status}`);
+                } else {
+                    const left = (d.failed || []).length;
+                    showToast(`Deleted ${Number(d.deleted || 0).toLocaleString()} terminal log${d.deleted === 1 ? '' : 's'}, ${_gib(d.bytes)} freed.${left ? ` ${left} could not be deleted or are not ended any more.` : ''}`, false, 8000);
+                }
+            } catch (e) {
+                showToast(`Couldn't delete the terminal logs: ${e.message}`, true);
+            }
+            loadTerminalLogs();
+        });
+    requestAnimationFrame(() => document.querySelector('#confirm-modal .modal-actions .btn:not(#confirm-modal-yes)')?.focus());
+}
+
 // ── Free space and automatic cleanup (#3554) ──────────────────────────
 const PRUNE_KINDS = { diffs: ['diffs'], objects: ['objects'], all: ['all'] };
 
@@ -2506,6 +2560,7 @@ export async function showSettingsModal() {
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
         loadArtifactStoreSize(); // the store's size next to its limit (#3553)
+        loadTerminalLogs(); // the terminal logs of ended agents (#4447)
         wireStorageActions(); // free space and automatic cleanup (#3554)
         const autoAttach = document.getElementById('settings-board-auto-attach');
         // Off unless the Operator turned it on (#3563); an empty value is unset.

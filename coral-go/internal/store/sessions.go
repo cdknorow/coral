@@ -1163,6 +1163,31 @@ func (s *SessionStore) GetLiveSessionPromptInfo(ctx context.Context, sessionID s
 	return &ls, err
 }
 
+// LiveSessionState is what the terminal-log cleanup needs to know about a session: whether it has ended.
+type LiveSessionState struct {
+	AgentType string `db:"agent_type"`
+	Status    string `db:"status"`
+	Sleeping  bool   `db:"is_sleeping"`
+	Archived  bool   `db:"is_archived"`
+}
+
+// LiveSessionStates returns every session row's state by session id, whatever its status: the cleanup of an ended agent's terminal log (#4447) asks
+// this and keeps anything it cannot match to a row that is stopped, awake-less (not sleeping) and not archived.
+func (s *SessionStore) LiveSessionStates(ctx context.Context) (map[string]LiveSessionState, error) {
+	var rows []struct {
+		SessionID string `db:"session_id"`
+		LiveSessionState
+	}
+	if err := s.reader().SelectContext(ctx, &rows, "SELECT session_id, agent_type, status, is_sleeping, is_archived FROM live_sessions"); err != nil {
+		return nil, err
+	}
+	out := make(map[string]LiveSessionState, len(rows))
+	for _, r := range rows {
+		out[r.SessionID] = r.LiveSessionState
+	}
+	return out, nil
+}
+
 // GetLiveSession returns a full live session record by session_id.
 func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*LiveSession, error) {
 	var ls LiveSession
