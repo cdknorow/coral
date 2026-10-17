@@ -63,7 +63,17 @@ type GitPoller struct {
 	// polling entirely, for repositories where scanning is too expensive to
 	// do on a timer at all.
 	intervalFn func() time.Duration
+
+	// failing holds the folders whose git query failed (most often not a repository: the
+	// soak's folders logged a warning every 2 minutes, #4098), and when to try each again.
+	// PollOnce runs on the poller's own goroutine only.
+	failing map[string]time.Time
+	now     func() time.Time
 }
+
+// gitFailureBackoff is how long a folder whose git query failed is left alone before it is
+// checked again (it may have become a repository since).
+const gitFailureBackoff = 30 * time.Minute
 
 // prCacheTTL is how long a found PR number is reused. A branch's PR number
 // rarely changes, and gh is the slowest call in a pass.
@@ -113,6 +123,8 @@ func NewGitPoller(gitStore *store.GitStore, runtime AgentRuntime, interval time.
 		logger:   slog.Default().With("service", "git_poller"),
 		prCache:  make(map[string]prCacheEntry),
 		written:  make(map[string]writtenFiles),
+		failing:  make(map[string]time.Time),
+		now:      time.Now,
 	}
 }
 
@@ -190,15 +202,36 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 	p.logger.Debug("git poll starting", "dirs", len(dirToAgents), "agents", len(agents))
 	seen := make(map[string]bool, len(agents))
 
+	// A folder that is no longer anyone's working directory is forgotten.
+	for workdir := range p.failing {
+		if _, live := dirToAgents[workdir]; !live {
+			delete(p.failing, workdir)
+		}
+	}
+
 	for workdir, dirAgents := range dirToAgents {
 		dirStart := time.Now()
+		retryAt, failed := p.failing[workdir]
+		if failed && p.now().Before(retryAt) {
+			continue
+		}
 
 		queryStart := time.Now()
 		gitInfo, err := queryGit(ctx, workdir)
 		queryDur := time.Since(queryStart)
 		if err != nil {
-			p.logger.Warn("git query failed", "workdir", workdir, "duration_ms", queryDur.Milliseconds(), "error", err)
+			// Warned once per folder; it is then checked again every gitFailureBackoff.
+			if !failed {
+				p.logger.Warn("git query failed (not a git repository?); checking this folder again every 30 minutes", "workdir", workdir, "duration_ms", queryDur.Milliseconds(), "error", err)
+			} else {
+				p.logger.Debug("git query still failing", "workdir", workdir, "error", err)
+			}
+			p.failing[workdir] = p.now().Add(gitFailureBackoff)
 			continue
+		}
+		if failed {
+			delete(p.failing, workdir)
+			p.logger.Info("git query works again", "workdir", workdir)
 		}
 		if gitInfo == nil {
 			continue
