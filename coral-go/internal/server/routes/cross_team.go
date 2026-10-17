@@ -240,6 +240,8 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		SessionName string `json:"session_name"`
 		Content     string `json:"content"`
 		To          string `json:"to"`
+		// Attach are coral://artifacts links sent with the message (#4379): see resolveAttachments.
+		Attach []string `json:"attach"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -277,6 +279,7 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 
 	// Only Orchestrators and the Operator may send.
 	role := crossTeamOperatorID
+	senderSession := "" // the sending Orchestrator's agent session name
 	if body.SubscriberID == crossTeamOperatorID {
 		if ok, err := h.bs.BoardExists(ctx, body.FromBoard); err != nil {
 			errInternalServer(w, err.Error())
@@ -300,6 +303,7 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		role = crossTeamSenderRole
+		senderSession = sub.SessionName
 	}
 
 	// An unknown target is a typo, not a disabled board.
@@ -345,6 +349,40 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Attachments (#4379): both boards must accept artifacts, and every one is checked and read
+	// through before anything is posted.
+	var attached []attachedArtifact
+	if len(body.Attach) > 0 {
+		var off []string
+		for _, b := range []string{body.FromBoard, target} {
+			settings, err := h.bs.GetBoardSettings(ctx, b)
+			if err != nil {
+				errInternalServer(w, err.Error())
+				return
+			}
+			if !settings.CrossTeamArtifacts {
+				off = append(off, strconv.Quote(b))
+			}
+		}
+		if len(off) > 0 {
+			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("sending artifacts is off on board %s; the Operator can turn on cross_team_artifacts in Team settings on this computer", strings.Join(off, " and "))})
+			return
+		}
+		sender := attachSender{person: body.SubscriberID == crossTeamOperatorID && callerActor(r).IsOperator(), windowKey: "operator"}
+		if !sender.person {
+			sender.windowKey = sharedUploadBucket
+			if owner, ok := VerifiedSession(ctx); ok && owner != nil && owner.SessionID != "" && senderSession != "" && owner.SessionName == senderSession {
+				sender.sessionID, sender.windowKey = owner.SessionID, "session:"+owner.SessionID
+			}
+		}
+		var refused *attachRefusal
+		if attached, refused = h.resolveAttachments(body.Attach, sender); refused != nil {
+			refused.write(w)
+			return
+		}
+		body.Content += attachmentLines(attached)
+	}
+
 	inbound, outbound, err := h.bs.PostCrossTeamMessage(ctx, board.CrossTeamPost{
 		Origin: board.MessageOrigin{
 			ServerID: store.LocalServerID, Board: body.FromBoard, Sender: body.SubscriberID, SenderRole: role,
@@ -363,7 +401,26 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		h.notifyFn(body.FromBoard)
 	}
 	h.goBG(func() { h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content) })
-	writeJSON(w, http.StatusOK, map[string]any{"message": inbound, "mirror": outbound, "delivered_to": recipients})
+	resp := map[string]any{"message": inbound, "mirror": outbound, "delivered_to": recipients}
+	if len(attached) > 0 {
+		now := time.Now().UTC().Format(time.RFC3339)
+		var ids []string
+		for _, a := range attached {
+			base := crossTeamArtifactRecord{ID: a.ID, Name: a.Name, MediaType: a.MediaType, Size: a.Size, Server: "local", By: body.SubscriberID, At: now}
+			shared, received := base, base
+			shared.Board, shared.OtherBoard, shared.MessageID = body.FromBoard, target, outbound.ID
+			received.Board, received.OtherBoard, received.MessageID = target, body.FromBoard, inbound.ID
+			if err := h.writeCrossTeamRecord("shared", shared); err != nil {
+				slog.Warn("cross-team artifact: could not record the shared row", "board", body.FromBoard, "id", a.ID, "error", err)
+			}
+			if err := h.writeCrossTeamRecord("received", received); err != nil {
+				slog.Warn("cross-team artifact: could not record the received row", "board", target, "id", a.ID, "error", err)
+			}
+			ids = append(ids, "coral://artifacts/"+a.ID)
+		}
+		resp["attached"] = ids
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // relayRefuse answers a relayed message with one of the fixed error codes Coral Hub maps

@@ -144,6 +144,9 @@ func (h *BoardHandler) uploadedByAny(id string, sessions []string) bool {
 }
 
 // receivedOn reports whether board project received id with a cross-team message (its received
-// record): citable by that board's tasks, never attachable onward. Filled in with the received
-// records (#4379); none yet.
-func (h *BoardHandler) receivedOn(project, id string) bool { return false }
+// record, #4379) and the object is still stored: citable by that board's tasks, never attachable
+// onward, and not by any other board.
+func (h *BoardHandler) receivedOn(project, id string) bool {
+	_, ok := h.crossTeamRecord("received", project, id)
+	return ok && h.objectIsStored(id)
+}
