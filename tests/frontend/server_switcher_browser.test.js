@@ -21,10 +21,14 @@ const THREE = [
 
 const SETTINGS_PRELOAD = `(() => {
     window.__settingsPuts = [];
+    window.__settingsPutsAnswered = []; // the same bodies, once the server has answered (#4240)
     const inner = window.fetch;
     window.fetch = (url, opts = {}) => {
         if (new URL(String(url), location.origin).pathname === '/api/settings' && (opts.method || 'GET').toUpperCase() === 'PUT') {
-            try { window.__settingsPuts.push(JSON.parse(opts.body)); } catch { window.__settingsPuts.push(opts.body); }
+            let body;
+            try { body = JSON.parse(opts.body); } catch { body = opts.body; }
+            window.__settingsPuts.push(body);
+            return inner(url, opts).then(r => { window.__settingsPutsAnswered.push(body); return r; });
         }
         return inner(url, opts);
     };
@@ -120,7 +124,9 @@ const SETTINGS_PRELOAD = `(() => {
         assert.equal(v.showServerRow, true, "'Show server' is offered with one server");
         assert.equal(await ev(`document.getElementById('display-show-server').checked`), false, 'off by default with one server');
         await ev(`(() => { const c = document.getElementById('display-show-server'); c.click(); return true; })()`);
-        await waitFor(`window.__settingsPuts.some(p => p && p.show_session_server === true)`, 'PUT /api/settings {show_session_server: true}', 3000);
+        // Its answer, not only its sending: a GET sent after the PUT can reach a loaded server first
+        // and read the setting as unset (the v1.4.73 gate's "(undefined)", #4240).
+        await waitFor(`window.__settingsPutsAnswered.some(p => p && p.show_session_server === true)`, 'PUT /api/settings {show_session_server: true} answered', 3000);
         const stored = await ev(`fetch('/api/settings').then(r => r.json()).then(d => String((d.settings || d).show_session_server))`);
         assert.equal(stored.toLowerCase(), 'true', `the server keeps the setting (${stored})`);
         await waitFor(`document.querySelectorAll('#live-sessions-list .row-server-prefix').length > 0`, 'server prefixes after Show server', 3000);
