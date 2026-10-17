@@ -601,6 +601,10 @@ export async function editWorkflow(id) {
     document.getElementById('wf-create-modal').style.display = 'flex';
 }
 
+// The step each editor row was loaded from: the editor shows only a step's name, type and command or prompt, and Save keeps
+// every other field (timeout_s, agent, continue_on_failure, hooks, interactive, output_artifact, and any it doesn't know).
+const loadedSteps = new WeakMap();
+
 export function workflowAddStep(step) {
     const editor = document.getElementById('wf-steps-editor');
     const idx = editor.children.length;
@@ -623,6 +627,7 @@ export function workflowAddStep(step) {
             <textarea class="wf-step-content" placeholder="${type === 'shell' ? 'Shell command...' : 'Agent prompt...'}" rows="2">${esc(content)}</textarea>
         </div>
     `;
+    if (step) loadedSteps.set(div, step);
     editor.appendChild(div);
 }
 
@@ -648,9 +653,10 @@ export async function saveWorkflow() {
         if (!stepName) { showError(errEl, 'All steps need a name'); return; }
         if (!content) { showError(errEl, `Step "${stepName}" needs a ${type === 'shell' ? 'command' : 'prompt'}`); return; }
 
-        const step = { name: stepName, type };
-        if (type === 'shell') step.command = content;
-        else step.prompt = content;
+        // What the step had, with what the editor shows written over it (a step whose type changed drops the other type's text).
+        const step = { ...(loadedSteps.get(item) || {}), name: stepName, type };
+        if (type === 'shell') { step.command = content; delete step.prompt; }
+        else { step.prompt = content; delete step.command; }
         steps.push(step);
     }
 
