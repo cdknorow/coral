@@ -51,17 +51,13 @@ type agentSignal struct {
 	LastEvent          time.Time // its latest hook event
 }
 
-// NewHealthNudges returns the rules with the design's defaults.
-func NewHealthNudges(bs *board.Store, ts *store.TaskStore, rt AgentRuntime, discover func(context.Context) ([]AgentInfo, error)) *HealthNudges {
-	h := &HealthNudges{
-		store: bs, runtime: rt, logger: slog.Default(), discover: discover, now: time.Now,
-		Interval: 5 * time.Minute, ClaimAfter: 10 * time.Minute, ClaimNudges: 2,
-		StatusAfter: 20 * time.Minute, SilentAfter: 10 * time.Minute, TeamBudget: 20,
-	}
-	h.signal = func(ctx context.Context, sessionID string) (agentSignal, bool) {
+// hookSignal reads an agent's state from its hook events. An agent with none is unknown: the
+// health rules never act on it.
+func hookSignal(ts *store.TaskStore) func(ctx context.Context, sessionID string) (agentSignal, bool) {
+	return func(ctx context.Context, sessionID string) (agentSignal, bool) {
 		events, err := ts.GetSessionStateEvents(ctx, []string{sessionID})
 		if err != nil || len(events[sessionID]) == 0 {
-			return agentSignal{}, false // no hook events: unknown, never nudged
+			return agentSignal{}, false
 		}
 		var in sessionstate.Input
 		for _, ev := range events[sessionID] {
@@ -70,6 +66,16 @@ func NewHealthNudges(bs *board.Store, ts *store.TaskStore, rt AgentRuntime, disc
 		st := sessionstate.Derive(in)
 		return agentSignal{InTurn: st.InTurn, NeedsInput: st.NeedsInput, Since: st.Since, LastEvent: st.LastEvent}, true
 	}
+}
+
+// NewHealthNudges returns the rules with the design's defaults.
+func NewHealthNudges(bs *board.Store, ts *store.TaskStore, rt AgentRuntime, discover func(context.Context) ([]AgentInfo, error)) *HealthNudges {
+	h := &HealthNudges{
+		store: bs, runtime: rt, logger: slog.Default(), discover: discover, now: time.Now,
+		Interval: 5 * time.Minute, ClaimAfter: 10 * time.Minute, ClaimNudges: 2,
+		StatusAfter: 20 * time.Minute, SilentAfter: 10 * time.Minute, TeamBudget: 20,
+	}
+	h.signal = hookSignal(ts)
 	h.deliver = func(ctx context.Context, a AgentInfo, key, text string) error {
 		_, err := deliverAutomated(ctx, h.runtime, h.logger, naming.SessionName(a.AgentType, a.SessionID), a.AgentType, a.SessionID, key, board.OneLine(text), "health nudge", false, false)
 		return err

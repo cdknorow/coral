@@ -618,8 +618,7 @@ for the authorized backend-only late-edit path and current product gaps.
    orchestrator step, and every reviewer, earlier approvers too, reviews the new revision.
 
 Only the task's reviewers approve or reject; only the orchestrator delegates, changes the
-reviewers (task review again, while a round is open) or completes a task in review. The board's health report lists each open review and its age, and each task in
-review that the orchestrator hasn't completed or delegated. `task release-review` remains for a
+reviewers (task review again, while a round is open) or completes a task in review. The orchestrator's health check names a reviewer whose reviews pile up while another is idle. `task release-review` remains for a
 candidate submitted before this flow (an in-progress task with a recorded candidate).
 
 ### Coral's own nudges to idle agents

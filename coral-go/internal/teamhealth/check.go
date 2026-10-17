@@ -1,0 +1,149 @@
+package teamhealth
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+)
+
+// The orchestrator's check (#4175 step 2): only what needs its judgment, ranked, each with its
+// evidence and a suggested next action; then what waits on the operator; then one line on what
+// moved. With nothing to judge it is one line, and it is still sent (the operator's direction:
+// never silence it). It goes to its recipient alone, through the typing gate, never to the board,
+// and is at most MaxCheck bytes (Security's #4176 rule 3).
+
+// MaxCheck is the check's size cap in bytes.
+const MaxCheck = 4096
+
+// Item is one thing for the orchestrator. Its fields hold member names (Name), task numbers,
+// durations and fixed phrases only; agent-written text goes in Said, already through ShownText.
+type Item struct {
+	Rank     int    // lower first
+	Agent    string // a member name, through Name
+	Problem  string // a fixed phrase with numbers ("silent on #12 for 34 min since Coral asked for a status")
+	Said     string // the agent's last words, quoted (ShownText), or ""
+	Evidence string // a fixed phrase with numbers, or ""
+	Suggest  string // a fixed phrase
+}
+
+// Question is a question waiting on the operator.
+type Question struct {
+	Asker string // a member name
+	Text  string // through ShownText
+	Since time.Time
+}
+
+// Progress is what moved since the last check.
+type Progress struct {
+	Since                      time.Time
+	Completed, Reviewed, Posts int
+}
+
+// CheckInput is everything the check says.
+type CheckInput struct {
+	Now       time.Time
+	Agents    int
+	Items     []Item
+	Questions []Question
+	Progress  Progress
+}
+
+// Compose writes the check.
+func Compose(in CheckInput) string {
+	since := in.Progress.Since.Format("15:04")
+	team := fmt.Sprintf("Since %s: %s.", since, progressPhrase(in.Progress))
+	if in.Progress.Completed+in.Progress.Reviewed+in.Progress.Posts == 0 {
+		team = fmt.Sprintf("No progress since the last check (%s).", since)
+	}
+	if len(in.Items) == 0 && len(in.Questions) == 0 {
+		if in.Progress.Completed+in.Progress.Reviewed+in.Progress.Posts == 0 {
+			return fmt.Sprintf("[Coral health check] Nothing needs you; no progress since the last check (%s).", since)
+		}
+		return fmt.Sprintf("[Coral health check] All %d agents progressing; %s since %s.", in.Agents, progressPhrase(in.Progress), since)
+	}
+	items := append([]Item(nil), in.Items...)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Rank < items[j].Rank })
+	var itemLines []string
+	for i, it := range items {
+		l := fmt.Sprintf("%d) %s: %s.", i+1, it.Agent, it.Problem)
+		if it.Evidence != "" {
+			l += " " + it.Evidence + "."
+		}
+		if it.Said != "" {
+			l += " Last said, " + it.Said
+		}
+		if it.Suggest != "" {
+			l += " Suggest: " + it.Suggest + "."
+		}
+		itemLines = append(itemLines, l)
+	}
+	qLine := ""
+	if len(in.Questions) > 0 {
+		var qs []string
+		for _, q := range in.Questions {
+			qs = append(qs, fmt.Sprintf("%s asked %s ago: %s", q.Asker, age(in.Now.Sub(q.Since)), q.Text))
+		}
+		qLine = "Waiting on the operator: " + strings.Join(qs, "; ") + "."
+	}
+	head := fmt.Sprintf("[Coral health check] %d need you:", len(items))
+	if len(items) == 0 {
+		head = "[Coral health check]"
+	}
+	// Within the cap: the lowest-ranked items are left out first, and counted.
+	for shown := len(itemLines); ; shown-- {
+		parts := append([]string{head}, itemLines[:shown]...)
+		if shown < len(itemLines) {
+			parts = append(parts, fmt.Sprintf("(%d more not shown.)", len(itemLines)-shown))
+		}
+		if qLine != "" {
+			parts = append(parts, qLine)
+		}
+		out := strings.Join(append(parts, team), " ")
+		if len(out) <= MaxCheck || shown == 0 {
+			if len(out) > MaxCheck {
+				out = strings.ToValidUTF8(out[:MaxCheck], "")
+			}
+			return out
+		}
+	}
+}
+
+func progressPhrase(p Progress) string {
+	var parts []string
+	if p.Completed > 0 {
+		parts = append(parts, plural(p.Completed, "task completed", "tasks completed"))
+	}
+	if p.Reviewed > 0 {
+		parts = append(parts, plural(p.Reviewed, "review done", "reviews done"))
+	}
+	if p.Posts > 0 {
+		parts = append(parts, plural(p.Posts, "post", "posts"))
+	}
+	if len(parts) == 0 {
+		return "nothing moved"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// age is a duration as the check says it ("34 min", "2 h 5 min").
+func age(d time.Duration) string {
+	m := int(d.Minutes())
+	if m < 60 {
+		return fmt.Sprintf("%d min", m)
+	}
+	if m%60 == 0 {
+		return fmt.Sprintf("%d h", m/60)
+	}
+	return fmt.Sprintf("%d h %d min", m/60, m%60)
+}
+
+// Age is age, for the rules that build items.
+func Age(d time.Duration) string { return age(d) }

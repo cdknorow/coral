@@ -3,54 +3,69 @@ package background
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/teamhealth"
 )
 
-// BoardHealthMonitor periodically audits task queues and sends a deduplicated
-// report to each board's Orchestrator.
+// BoardHealthMonitor is the orchestrator's check (#4175 step 2): every interval, for each board,
+// what needs the orchestrator's judgment, ranked, with evidence and a suggestion (escalations from
+// Coral's own rules, an agent with no work, a reviewer's growing queue, queue problems), then one
+// line on what moved; a single all-clear line when nothing needs it. It is typed to the
+// orchestrator through the gate (held while it is in a turn or at a prompt), never posted to the
+// board, and at most teamhealth.MaxCheck bytes (Security's #4176 rule 3). Agent text appears
+// only through teamhealth.ShownText (rule 2).
 type BoardHealthMonitor struct {
-	store         *board.Store
-	interval      time.Duration
-	idleAfter     time.Duration
-	escalateAfter time.Duration
-	mu            sync.Mutex
-	last          map[string]string
-	lastIssue     map[string]string
-	idleNotified  map[int64]time.Time
-	now           func() time.Time
-	postMessage   func(context.Context, string, string, string, *string) (*board.Message, error)
+	store     *board.Store
+	interval  time.Duration
+	idleAfter time.Duration // idle with nothing assigned this long: an item
+	logger    *slog.Logger
+	now       func() time.Time
+
+	discover func(ctx context.Context) ([]AgentInfo, error)
+	signal   func(ctx context.Context, sessionID string) (agentSignal, bool)
+	deliver  func(ctx context.Context, a AgentInfo, key, text string) error
+
+	mu        sync.Mutex
+	lastCheck map[string]time.Time // per board
 }
 
 func NewBoardHealthMonitor(store *board.Store, interval time.Duration) *BoardHealthMonitor {
 	if interval <= 0 {
 		interval = 10 * time.Minute
 	}
-	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), lastIssue: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now, postMessage: store.PostSystemMessage}
+	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, logger: slog.Default(), now: time.Now, lastCheck: map[string]time.Time{}}
 }
 
-// SetRuntime is retained for callers that share a monitor runtime. Health
-// monitoring never sends terminal input or captures terminal output.
+// SetAgents gives the check its view of the agents (hook events, discovery) and the gate to type
+// through. Without it the check has nobody to tell and does nothing.
+func (m *BoardHealthMonitor) SetAgents(ts *store.TaskStore, rt AgentRuntime, discover func(context.Context) ([]AgentInfo, error)) {
+	m.discover = discover
+	m.signal = hookSignal(ts)
+	m.deliver = func(ctx context.Context, a AgentInfo, key, text string) error {
+		_, err := deliverAutomated(ctx, rt, m.logger, naming.SessionName(a.AgentType, a.SessionID), a.AgentType, a.SessionID, key, board.OneLine(text), "health check", false, false)
+		return err
+	}
+}
+
+// SetRuntime is retained for callers that share a monitor runtime; SetAgents is what wires it.
 func (m *BoardHealthMonitor) SetRuntime(_ AgentRuntime) {}
 
-// SetIdleThresholds configures the first reminder and orchestrator escalation.
-func (m *BoardHealthMonitor) SetIdleThresholds(remindAfter, escalateAfter time.Duration) {
+// SetIdleThresholds sets how long an agent with nothing assigned is idle before the check names it
+// (the first value; the second is no longer used: Coral's status nudge escalates stale tasks).
+func (m *BoardHealthMonitor) SetIdleThresholds(remindAfter, _ time.Duration) {
 	if remindAfter > 0 {
 		m.idleAfter = remindAfter
-	}
-	if escalateAfter > 0 {
-		m.escalateAfter = escalateAfter
 	}
 }
 
 func (m *BoardHealthMonitor) Run(ctx context.Context) error {
-	// Scan shortly after startup, then on the configured cadence.
-	m.scan(ctx)
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
 	for {
@@ -63,115 +78,176 @@ func (m *BoardHealthMonitor) Run(ctx context.Context) error {
 	}
 }
 
-// boardHealthForgetAfter is how long the monitor remembers it already reported a task: past it, a
-// task that is still idle is reported again and the memory does not grow with every task ever seen
-// (#3999, the #3994 audit finding 5).
-const boardHealthForgetAfter = 14 * 24 * time.Hour
-
-// forgetOld drops reports older than boardHealthForgetAfter and the issue text of boards that are
-// gone or have no open issue.
-func (m *BoardHealthMonitor) forgetOld(now time.Time, projects map[string]bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for id, at := range m.idleNotified {
-		if now.Sub(at) > boardHealthForgetAfter {
-			delete(m.idleNotified, id)
-		}
-	}
-	for key, v := range m.last {
-		if at, err := time.Parse(time.RFC3339, v); err != nil || now.Sub(at) > boardHealthForgetAfter {
-			delete(m.last, key)
-		}
-	}
-	for project, issue := range m.lastIssue {
-		if issue == "" || !projects[project] {
-			delete(m.lastIssue, project)
-		}
-	}
-}
-
 func (m *BoardHealthMonitor) scan(ctx context.Context) {
+	if m.deliver == nil || m.discover == nil {
+		return
+	}
 	projects, err := m.store.ListProjects(ctx)
 	if err != nil {
 		return
 	}
-	known := make(map[string]bool, len(projects))
-	for _, p := range projects {
-		known[p.Project] = true
+	agents, err := m.discover(ctx)
+	if err != nil {
+		return
 	}
-	m.forgetOld(m.now(), known)
+	bySession := map[string]AgentInfo{}
+	for _, a := range agents {
+		bySession[naming.SessionName(a.AgentType, a.SessionID)] = a
+	}
 	for _, p := range projects {
-		m.scanProject(ctx, p.Project)
+		m.checkProject(ctx, p.Project, bySession)
 	}
 }
 
-func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
-	// Only open tasks matter here, and ListOpenTasks skips the per-task
-	// workflow hydration ListTasks does for every task, completed ones included.
-	tasks, err := m.store.ListOpenTasks(ctx, project)
+// checkProject composes one board's check and types it to the orchestrator.
+func (m *BoardHealthMonitor) checkProject(ctx context.Context, project string, bySession map[string]AgentInfo) {
+	orch, err := m.store.TeamOrchestrator(ctx, project)
+	if err != nil {
+		return // no orchestrator: nobody to tell
+	}
+	orchSub, err := m.store.GetProjectSubscription(ctx, project, orch)
+	if err != nil || orchSub == nil {
+		return
+	}
+	orchAgent, live := bySession[orchSub.SessionName]
+	if !live {
+		return
+	}
+	text, err := m.composeCheck(ctx, project, orch, bySession)
 	if err != nil {
 		return
 	}
+	if err := m.deliver(ctx, orchAgent, "health-check:"+project, text); err != nil {
+		m.logger.Warn("health check delivery failed", "project", project, "error", err)
+		return
+	}
+	m.mu.Lock()
+	m.lastCheck[project] = m.now()
+	m.mu.Unlock()
+}
+
+// composeCheck gathers a board's items and writes its check.
+func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch string, bySession map[string]AgentInfo) (string, error) {
+	now := m.now()
 	subs, err := m.store.ListSubscribers(ctx, project)
 	if err != nil {
-		return
+		return "", err
 	}
-	issues, assigned, planned := taskQueueIssues(tasks)
-	// What Coral's own rules escalated (#4175: an agent that didn't claim its work after the
-	// claim nudges, or stayed silent after a status nudge); the orchestrator's check in step 2.
+	tasks, err := m.store.ListOpenTasks(ctx, project)
+	if err != nil {
+		return "", err
+	}
+	waits, _ := m.store.ListActiveWaits(ctx, project)
+	waiting := map[string]bool{}
+	for _, w := range waits {
+		waiting[w.SubscriberID] = true
+	}
+	var items []teamhealth.Item
+	said := func(name string) string {
+		content, _, err := m.store.LastPostBy(ctx, project, name)
+		if err != nil || content == "" {
+			return ""
+		}
+		return teamhealth.ShownText(content, nil)
+	}
+
+	// 1. What Coral's own rules escalated.
 	if esc, err := m.store.HealthEscalations(ctx, project); err == nil {
 		for _, e := range esc {
+			at, _ := time.Parse("2006-01-02T15:04:05.000Z", e.At)
+			ago := teamhealth.Age(now.Sub(at))
 			switch e.Rule {
 			case ruleClaimNudge:
-				issues = append(issues, fmt.Sprintf("%s has not claimed task #%s after Coral's claim nudges", teamhealth.Name(e.Target), e.Subject))
+				items = append(items, teamhealth.Item{Rank: 1, Agent: teamhealth.Name(e.Target),
+					Problem: fmt.Sprintf("has not claimed #%s after Coral's claim nudges (escalated %s ago)", e.Subject, ago),
+					Suggest: fmt.Sprintf("ask it, or reassign #%s", e.Subject)})
 			case ruleStatusNudge:
-				issues = append(issues, fmt.Sprintf("%s has been silent on task #%s since Coral asked for a status", teamhealth.Name(e.Target), e.Subject))
+				items = append(items, teamhealth.Item{Rank: 1, Agent: teamhealth.Name(e.Target),
+					Problem: fmt.Sprintf("silent on #%s since Coral asked for a status (escalated %s ago)", e.Subject, ago),
+					Said:    said(e.Target), Suggest: fmt.Sprintf("check on it, or reassign #%s", e.Subject)})
 			}
 		}
 	}
-	recipients := orchestratorRecipients(subs)
-	if len(recipients) == 0 {
-		if len(issues) == 0 {
-			m.mu.Lock()
-			m.lastIssue[project] = ""
-			m.mu.Unlock()
+
+	// 2. An agent with nothing in progress and nothing assigned, idle: it needs work.
+	busy := map[string]bool{}
+	for _, t := range tasks {
+		if t.AssignedTo != nil && (t.Status == "in_progress" || t.Status == "pending") {
+			busy[*t.AssignedTo] = true
 		}
-		return
 	}
-	issueReport := ""
-	if len(issues) > 0 {
-		recipientTags := strings.Join(recipientMentions(recipients), " ")
-		issueReport = "[Coral board health] " + recipientTags + "\n- " + strings.Join(issues, "\n- ")
+	reviews, _ := m.store.OpenReviews(ctx, project)
+	reviewers, _ := m.store.Reviewers(ctx, project)
+	agents := 0
+	idleNoWork := map[string]bool{}
+	for _, sub := range subs {
+		a, live := bySession[sub.SessionName]
+		if !live {
+			continue
+		}
+		agents++
+		if board.SameIdentity(sub.SubscriberID, orch) || busy[sub.SubscriberID] || waiting[sub.SubscriberID] {
+			continue
+		}
+		sig, known := m.signal(ctx, a.SessionID)
+		if !known || sig.InTurn || sig.NeedsInput || sig.Since.IsZero() || now.Sub(sig.Since) < m.idleAfter {
+			continue
+		}
+		idleNoWork[sub.SubscriberID] = true
+		items = append(items, teamhealth.Item{Rank: 2, Agent: teamhealth.Name(sub.SubscriberID),
+			Problem: fmt.Sprintf("idle %s with nothing in progress or assigned", teamhealth.Age(now.Sub(sig.Since))),
+			Suggest: "assign it the next task"})
 	}
+
+	// 3. A reviewer with three or more reviews waiting while another reviewer is idle.
+	var names []string
+	for r := range reviews {
+		names = append(names, r)
+	}
+	sort.Strings(names)
+	for _, r := range names {
+		if len(reviews[r]) < 3 {
+			continue
+		}
+		for other := range reviewers {
+			if other != r && idleNoWork[other] {
+				items = append(items, teamhealth.Item{Rank: 3, Agent: teamhealth.Name(r),
+					Problem: fmt.Sprintf("%d reviews waiting (%s) while %s is idle", len(reviews[r]), taskList(reviews[r]), teamhealth.Name(other)),
+					Suggest: fmt.Sprintf("move one to %s", teamhealth.Name(other))})
+				break
+			}
+		}
+	}
+
+	// 4. Queue problems (task numbers only).
+	issues, _, _ := taskQueueIssues(tasks)
+	for _, is := range issues {
+		items = append(items, teamhealth.Item{Rank: 4, Agent: "Board", Problem: is})
+	}
+
 	m.mu.Lock()
-	lastIssue := m.lastIssue[project]
+	since, ok := m.lastCheck[project]
 	m.mu.Unlock()
-	includeIssues := issueReport != "" && issueReport != lastIssue
-	idleFindings := m.collectIdleFindings(ctx, project, recipients)
-	report := composeHealthReport(issueReport, includeIssues, assigned, planned, recipients, idleFindings)
-	if report == "" {
-		if issueReport == "" {
-			m.mu.Lock()
-			m.lastIssue[project] = ""
-			m.mu.Unlock()
+	if !ok {
+		since = now.Add(-m.interval)
+	}
+	p, _ := m.store.ProgressSince(ctx, project, since)
+	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items,
+		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts}}), nil
+}
+
+func taskList(ids []int64) string {
+	out := ""
+	for i, id := range ids {
+		if i == 3 {
+			return out + ", ..."
 		}
-		return
-	}
-	if _, err := m.postMessage(ctx, project, "Coral Health Monitor", report, nil); err != nil {
-		return
-	}
-	m.mu.Lock()
-	if includeIssues {
-		m.lastIssue[project] = issueReport
-	} else if issueReport == "" {
-		m.lastIssue[project] = ""
-	}
-	for _, finding := range idleFindings {
-		if finding.mark != nil {
-			finding.mark()
+		if i > 0 {
+			out += ", "
 		}
+		out += fmt.Sprintf("#%d", id)
 	}
-	m.mu.Unlock()
+	return out
 }
 
 // taskQueueIssues reports queue problems among a board's open tasks, the
@@ -231,104 +307,4 @@ func taskQueueIssues(tasks []board.Task) (issues []string, assigned map[string]i
 		issues = append(issues, fmt.Sprintf("%d unblocked tasks can potentially run in parallel", parallel))
 	}
 	return issues, assigned, planned
-}
-
-type idleFinding struct {
-	text string
-	mark func()
-}
-
-func composeHealthReport(issueReport string, includeIssues bool, assigned map[string]int, planned int, recipients []string, idleFindings []idleFinding) string {
-	sections := make([]string, 0, 3)
-	if includeIssues {
-		sections = append(sections, issueReport)
-	}
-	if len(assigned) > 0 {
-		owners := make([]string, 0, len(assigned))
-		total := 0
-		for owner, count := range assigned {
-			owners = append(owners, owner)
-			total += count
-		}
-		sort.Strings(owners)
-		parts := make([]string, 0, len(owners))
-		for _, owner := range owners {
-			parts = append(parts, fmt.Sprintf("%s (%d)", owner, assigned[owner]))
-		}
-		sections = append(sections, fmt.Sprintf("[Coral team status] %s\nactive work: %d in_progress task(s) across %d agent(s)\nplanned work: %d queued assignment(s), excluded from active counts\n- %s", strings.Join(recipientMentions(recipients), " "), total, len(owners), planned, strings.Join(parts, ", ")))
-	}
-	for _, finding := range idleFindings {
-		sections = append(sections, finding.text)
-	}
-	if len(sections) == 0 {
-		return ""
-	}
-	return strings.Join(sections, "\n") + "\nReview current assignments, progress, and blockers, then take the next appropriate coordination action."
-}
-
-func orchestratorRecipients(subs []board.Subscriber) []string {
-	seen := make(map[string]bool)
-	var recipients []string
-	for _, sub := range subs {
-		if sub.IsActive == 0 || (sub.CanPeek == 0 && !strings.EqualFold(strings.TrimSpace(sub.JobTitle), "Orchestrator")) || seen[sub.SubscriberID] {
-			continue
-		}
-		seen[sub.SubscriberID] = true
-		recipients = append(recipients, sub.SubscriberID)
-	}
-	sort.Strings(recipients)
-	return recipients
-}
-
-func recipientMentions(recipients []string) []string {
-	mentions := make([]string, len(recipients))
-	for i, recipient := range recipients {
-		mentions[i] = "@" + recipient
-	}
-	return mentions
-}
-
-func (m *BoardHealthMonitor) collectIdleFindings(ctx context.Context, project string, recipients []string) []idleFinding {
-	if len(recipients) == 0 {
-		return nil
-	}
-	now := m.now()
-	reminderBefore := now.Add(-m.idleAfter)
-	tasks, err := m.store.IdleTasks(ctx, project, reminderBefore)
-	if err != nil {
-		return nil
-	}
-	findings := make([]idleFinding, 0)
-	recipientTags := strings.Join(recipientMentions(recipients), " ")
-	for _, task := range tasks {
-		if task.AssignedTo == nil || *task.AssignedTo == "" {
-			continue
-		}
-		m.mu.Lock()
-		_, seen := m.idleNotified[task.ID]
-		m.mu.Unlock()
-		if !seen {
-			findings = append(findings, idleFinding{text: fmt.Sprintf("%s [Task #%d idle] %s is still active but has had no recorded activity. Review its status, blocker, or completion update; use the task reminder snooze if tests or long-running work are active.", recipientTags, task.ID, task.Title), mark: func() { m.idleNotified[task.ID] = now }})
-		}
-	}
-	escalationBefore := now.Add(-m.escalateAfter)
-	escalationTasks, err := m.store.IdleTasks(ctx, project, escalationBefore)
-	if err != nil {
-		return findings
-	}
-	for _, task := range escalationTasks {
-		if task.AssignedTo == nil || *task.AssignedTo == "" {
-			continue
-		}
-		assignee := *task.AssignedTo
-		key := fmt.Sprintf("escalated:%d", task.ID)
-		m.mu.Lock()
-		seen := m.last[key] != ""
-		m.mu.Unlock()
-		if seen {
-			continue
-		}
-		findings = append(findings, idleFinding{text: fmt.Sprintf("%s [Task #%d stale] %s remains in_progress after an inactivity reminder to %s. Review status, blocker, or reassignment; Coral did not change ownership or completion.", recipientTags, task.ID, task.Title, assignee), mark: func() { m.last[key] = now.UTC().Format(time.RFC3339) }})
-	}
-	return findings
 }

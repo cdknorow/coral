@@ -987,7 +987,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	boardSettings, _ := sessStore.GetSettings(ctx)
 	if boardSettings["board_health_monitor"] != "false" {
 		healthMonitor := background.NewBoardHealthMonitor(srv.BoardStore(), 10*time.Minute)
-		healthMonitor.SetRuntime(agentRT)
+		healthMonitor.SetAgents(taskStore, agentRT, discoverFn)
 		healthMonitor.SetIdleThresholds(time.Duration(cfg.TaskIdleReminderS)*time.Second, time.Duration(cfg.TaskIdleEscalationS)*time.Second)
 		safeGo(ctx, "board_health_monitor", func() { healthMonitor.Run(ctx) })
 		// Coral acts on the mechanical items itself (#4175): claim and status nudges.

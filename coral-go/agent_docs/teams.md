@@ -471,19 +471,31 @@ changes the global value visible from other teams' dialogs.
 
 The server reads this switch at startup. A changed value takes effect on the
 next server start; it does not start or stop the background monitor immediately.
-When enabled at startup, the monitor scans each board every 10 minutes and
-can report inactivity/reminder/escalation findings. While a board has active
-work, defined as one or more `in_progress` tasks, each scan also posts one
-board-scoped `[Coral team status] @Orchestrator` summary listing active task
-counts by assignee. Queued assignments do not count as active work. An idle
-board receives no healthy heartbeat, and a finding scan emits the finding
-report instead of an additional summary for that tick. Reports remain stored
-on their originating board; the monitor does not copy status across teams.
-The board notifier may nudge a subscribed Orchestrator for the stored post,
-subject to its normal unread/watermark behavior. It does not automatically
-reassign tasks, accept completion or repair dependency graphs. Observed health
-findings, active-work summaries, and ordinary board/task notifications are
-separate features.
+When enabled at startup, Coral does two things on each board (#4175):
+
+- **It acts on the mechanical items itself**, recording each as a short `[Coral health]` line
+  from Coral Task Queue (never agent activity, never unread):
+  - it delegates a task's review to the reviewers it names when it enters review;
+  - it nudges an idle agent to claim the work assigned to it, then escalates after two nudges;
+  - it asks an agent whose task shows no activity for 20 minutes for a one-line status, then
+    escalates if it stays silent 10 more minutes.
+
+  Each nudge goes through the typing gate. Coral's own automatic actions are limited to 20
+  per board per hour.
+- **Every 10 minutes it types the orchestrator's check** into the orchestrator's terminal,
+  through the same gate. The check is never posted to the board, and is at most 4 KB. It lists
+  only what needs the orchestrator's judgment, ranked, each with evidence and a suggestion:
+  - what Coral escalated;
+  - an agent idle with nothing in progress or assigned;
+  - a reviewer with three or more reviews waiting while another reviewer is idle;
+  - queue problems.
+
+  Then it gives one line on what moved since the last check. When nothing needs the
+  orchestrator, it is one line, and it is still sent. An agent's words appear only as the
+  first line of its last board post, redacted, cut to 120 characters, with any `@`
+  neutralised.
+
+Coral never reassigns tasks or accepts completions on its own.
 
 Activation for `death-or-trade-ai-auto` is deliberately explicit: save the
 existing global `board_health_monitor=true` setting, restart the server so

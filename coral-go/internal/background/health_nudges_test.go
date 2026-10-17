@@ -231,24 +231,3 @@ func TestEscalationEndsWithItsTask(t *testing.T) {
 	assert.Empty(t, esc)
 }
 
-// #4175 step 1, Security's note 4: an escalation reaches the orchestrator before step 2's check.
-// It goes into the health report, which @-mentions the orchestrator, from the Coral Health
-// Monitor sender, which the notifier turns into the orchestrator's health nudge.
-func TestEscalationReachesTheOrchestrator(t *testing.T) {
-	s := healthMonitorStore(t)
-	healthMonitorBoard(t, s, "team")
-	ctx := context.Background()
-	task, err := s.CreateTask(ctx, "team", "work", "", "high", "Operator", "Worker")
-	require.NoError(t, err)
-	require.NoError(t, s.MarkHealthEscalated(ctx, "team", ruleClaimNudge, "Worker", fmt.Sprint(task.ID), time.Now()))
-	var posted []string
-	m := NewBoardHealthMonitor(s, time.Hour)
-	m.postMessage = func(_ context.Context, _, sender, content string, _ *string) (*board.Message, error) {
-		posted = append(posted, sender+": "+content)
-		return &board.Message{}, nil
-	}
-	m.scan(ctx)
-	all := strings.Join(posted, "\n")
-	assert.Contains(t, all, "Coral Health Monitor: [Coral board health] @Orchestrator")
-	assert.Contains(t, all, fmt.Sprintf("Worker has not claimed task #%d after Coral's claim nudges", task.ID))
-}
