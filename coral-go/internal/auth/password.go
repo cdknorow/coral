@@ -183,20 +183,18 @@ func WritePasswordHash(dir, phc string) error {
 
 // CreatePasswordHash writes <dir>/password only if none exists, atomically: a private temp file,
 // synced, then hard-linked to the name (which fails if the name exists), so of two concurrent
-// creations exactly one wins and the other gets ErrPasswordExists.
+// creations exactly one wins and the other gets ErrPasswordExists. Each creation's temp file is
+// its own, in dir: a shared temp folder, removed by whichever creation finished, could vanish
+// under another one about to use it (#4240).
 func CreatePasswordHash(dir, phc string) error {
 	path := filepath.Join(dir, PasswordFile)
-	tmpDir := filepath.Join(dir, ".password-new")
-	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(tmpDir, "p-*")
+	beforePasswordTemp()
+	f, err := os.CreateTemp(dir, ".password-new-*")
 	if err != nil {
 		return err
 	}
 	tmp := f.Name()
 	f.Close()
-	defer os.Remove(tmpDir) // once empty
 	defer os.Remove(tmp)
 	if err := writeKeyFile(tmp, phc); err != nil {
 		return err
@@ -218,3 +216,6 @@ func RemovePasswordHash(dir string) error {
 	}
 	return err
 }
+
+// beforePasswordTemp runs just before CreatePasswordHash makes its temp file (tests).
+var beforePasswordTemp = func() {}
