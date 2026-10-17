@@ -95,7 +95,10 @@ FROM (SELECT MAX(id) AS id, session_id, agent_name, agent_type, team_id, board_n
       GROUP BY session_id, COALESCE(source, 'jsonl'), model, agent_name, agent_type, team_id, board_name) g`
 
 // tokenHourBounds is the recorded_at range of the hour with prefix p ("2006-01-02T15", or with
-// a space for the T), or ok false for a prefix that is not an hour.
+// a space for the T): the values that start with p, as the hour column and the skip trigger
+// define an hour. The upper bound is p followed by '~', which sorts after every character of a
+// timestamp: the next hour would not do, as a space-format hour's range would then hold every
+// 'T'-format row of its date (#4179 review). ok is false for a prefix that is not an hour.
 func tokenHourBounds(p string) (from, to string, ok bool) {
 	if len(p) != 13 || (p[10] != 'T' && p[10] != ' ') {
 		return "", "", false
@@ -104,11 +107,10 @@ func tokenHourBounds(p string) (from, to string, ok bool) {
 	if p[10] == ' ' {
 		layout = "2006-01-02 15"
 	}
-	t, err := time.Parse(layout, p)
-	if err != nil {
+	if _, err := time.Parse(layout, p); err != nil {
 		return "", "", false
 	}
-	return p, t.Add(time.Hour).Format(layout), true
+	return p, p + "~", true
 }
 
 // RollupTokenUsage rolls raw token usage from hours that ended before cutoff into hourly rows,
