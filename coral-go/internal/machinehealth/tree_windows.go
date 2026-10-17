@@ -31,3 +31,8 @@ func childrenFunc(_ context.Context) (func(int32) []int32, error) {
 	}
 	return childrenMap(parents), nil
 }
+
+// procUsage is a process's CPU seconds and resident bytes (gopsutil here; Linux reads /proc directly).
+func procUsage(ctx context.Context, pid int32) (float64, uint64, bool) {
+	return procUsageGopsutil(ctx, pid)
+}

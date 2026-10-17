@@ -178,15 +178,12 @@ func (s *Sampler) Sample(ctx context.Context) Health {
 	var h Health
 
 	// Coral itself.
-	if p, err := process.NewProcessWithContext(ctx, int32(os.Getpid())); err == nil {
-		cpu := cpuSeconds(ctx, p)
+	if cpu, rss, ok := procUsage(ctx, int32(os.Getpid())); ok {
 		if !first && elapsed > 0 {
 			h.Coral.CPUPercent = percent(cpu-s.prevSelf, elapsed)
 		}
 		s.prevSelf = cpu
-		if m, err := p.MemoryInfoWithContext(ctx); err == nil {
-			h.Coral.RSSBytes = m.RSS
-		}
+		h.Coral.RSSBytes = rss
 	}
 
 	// The agents: every process under their roots.
@@ -203,18 +200,15 @@ func (s *Sampler) Sample(ctx context.Context) Health {
 	if len(roots) > 0 {
 		var cpuDelta float64
 		for _, pid := range descendants(ctx, roots) {
-			p, err := process.NewProcessWithContext(ctx, pid)
-			if err != nil {
+			cpu, rss, ok := procUsage(ctx, pid)
+			if !ok {
 				continue
 			}
-			cpu := cpuSeconds(ctx, p)
 			agentCPU[pid] = cpu
 			if prev, ok := s.prevAgents[pid]; ok && cpu >= prev {
 				cpuDelta += cpu - prev
 			}
-			if m, err := p.MemoryInfoWithContext(ctx); err == nil {
-				h.Agents.RSSBytes += m.RSS
-			}
+			h.Agents.RSSBytes += rss
 		}
 		if !first && elapsed > 0 {
 			h.Agents.CPUPercent = percent(cpuDelta, elapsed)
@@ -274,6 +268,20 @@ func classify(h Health, r Responsiveness, haveR bool, now time.Time) (status, re
 }
 
 // cpuSeconds is a process's user plus system CPU time so far.
+// procUsageGopsutil is a process's CPU seconds (user and system) and resident bytes through gopsutil:
+// procUsage everywhere but Linux, which reads both from one /proc/<pid>/stat (tree_linux.go).
+func procUsageGopsutil(ctx context.Context, pid int32) (cpu float64, rss uint64, ok bool) {
+	p, err := process.NewProcessWithContext(ctx, pid)
+	if err != nil {
+		return 0, 0, false
+	}
+	cpu = cpuSeconds(ctx, p)
+	if m, err := p.MemoryInfoWithContext(ctx); err == nil {
+		rss = m.RSS
+	}
+	return cpu, rss, true
+}
+
 func cpuSeconds(ctx context.Context, p *process.Process) float64 {
 	t, err := p.TimesWithContext(ctx)
 	if err != nil {
