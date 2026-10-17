@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // Cross-team artifacts, the hub-to-machine leg (coral-hub's Security asked): the hub opens a stream and POSTs a file
@@ -207,4 +211,64 @@ func TestInteractiveRequestsWhileAPushIsStalled(t *testing.T) {
 	t.Logf("with a stalled push: UI p50 %v p95 %v, keystroke p50 %v p95 %v", ui.p50.Round(time.Millisecond), ui.p95.Round(time.Millisecond), key.p50.Round(time.Millisecond), key.p95.Round(time.Millisecond))
 	assert.Less(t, ui.p95, hubCriterion)
 	assert.Less(t, key.p95, hubCriterion)
+}
+
+// ── The downlink shaped too ────────────────────────────────────────────
+
+// pacedRead is the machine's downlink as a bottleneck: Read hands bytes on at rate bytes/s, so what the hub has written
+// waits in the kernel's buffers, and the hub's own writes block once they are full, as on a real slow downlink. A push and
+// a keystroke's request both travel it, in the order the hub wrote them.
+type pacedRead struct {
+	net.Conn
+	rate float64
+}
+
+func (p pacedRead) Read(b []byte) (int, error) {
+	n, err := p.Conn.Read(b)
+	if n > 0 {
+		time.Sleep(time.Duration(float64(n) / p.rate * float64(time.Second)))
+	}
+	return n, err
+}
+
+// connectShapedBothWays is connectShaped with the downlink paced at downMbit as well as the uplink shaped.
+func connectShapedBothWays(t testing.TB, h *hubHarness, local http.Handler, shape linkShape, downMbit float64) *Session {
+	ls := httptest.NewServer(local)
+	t.Cleanup(ls.Close)
+	tr := &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		c, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		return newShapedConn(pacedRead{c, downMbit * 1e6 / 8}, shape.mbit*1e6/8, shape.rtt/2, shape.queue), nil
+	}}
+	cs, err := Dial(context.Background(), h.URL(), testToken, ClientOptions{
+		SessionConfig: h.Cfg, Handler: &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll, Redactor: redact.Rules},
+		CoralVersion: "test", AllowInsecure: true, HTTPClient: &http.Client{Transport: tr}, uplink: uplinkConfig{},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { cs.Close() })
+	return h.next(t)
+}
+
+// With the downlink shaped as well, the hub's pushed file and a keystroke's request share one slow path in the order the
+// hub wrote them. Measures (and logs) a keystroke and a UI request during an 8 MiB push at several downlink speeds: this
+// decides whether the hub's own side needs a lane for hub-opened streams (#4427).
+func TestInteractiveRequestsDuringAPushOnAShapedDownlink(t *testing.T) {
+	if testing.Short() {
+		t.Skip("throttled-link measurement")
+	}
+	for _, down := range []float64{5, 20, 100} {
+		t.Run(fmt.Sprintf("down=%gMbit", down), func(t *testing.T) {
+			var received atomic.Int64
+			shape := hol
+			shape.queue = sendLowWater
+			s := connectShapedBothWays(t, newHub(t, SessionConfig{}), pushApp(&received), shape, down)
+			idleUI, idleKey := interactiveLatency(t, s, &received, false)
+			ui, key := interactiveLatency(t, s, &received, true)
+			t.Logf("downlink %g Mbit: idle UI p50 %v p95 %v, keystroke p50 %v p95 %v; during an 8 MiB push: UI p50 %v p95 %v, keystroke p50 %v p95 %v",
+				down, idleUI.p50.Round(time.Millisecond), idleUI.p95.Round(time.Millisecond), idleKey.p50.Round(time.Millisecond), idleKey.p95.Round(time.Millisecond),
+				ui.p50.Round(time.Millisecond), ui.p95.Round(time.Millisecond), key.p50.Round(time.Millisecond), key.p95.Round(time.Millisecond))
+		})
+	}
 }
