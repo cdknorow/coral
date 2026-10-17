@@ -43,6 +43,7 @@ import (
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/jmoiron/sqlx"
 )
 
 const devStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-01"
@@ -1028,6 +1029,15 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// (call_metrics_retention_days, 14 days by default) in short batches (#3261).
 	metricsRetention := background.NewCallMetricsRetention(db)
 	safeGo(ctx, "call_metrics_retention", func() { metricsRetention.Run(ctx) })
+
+	// PRAGMA quick_check on both databases, once, a minute after start (#4157): damage is
+	// logged and shown on the dashboard; nothing is repaired or deleted.
+	integrityTargets := map[string]*sqlx.DB{"sessions.db": db.Reader()}
+	if bs := srv.BoardStore(); bs != nil {
+		integrityTargets["messageboard.db"] = bs.Reader()
+	}
+	dbIntegrity := background.NewDBIntegrity(integrityTargets)
+	safego.Go("db_integrity", func() { dbIntegrity.Run(ctx) })
 
 	// A pty Coral wakes the agents that were running when it last stopped (#3636): one pass per
 	// start. Restart, not safeGo: safeGo restarts a service that returns, so the pass (and its

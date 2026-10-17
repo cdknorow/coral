@@ -91,9 +91,18 @@ function showUpdateToast(data) {
  * while the folder is still open to others. Text only, never HTML.
  */
 export function showSecurityWarning(message) {
-    if (!message || document.getElementById("security-warning-toast")) return;
+    showWarningToast("security-warning-toast", "Security warning", message);
+}
+
+/** Damage the server's integrity check found in a database (#4157): what to do, as text. */
+export function showDatabaseWarning(message) {
+    showWarningToast("database-warning-toast", "Database damage", message);
+}
+
+function showWarningToast(id, heading, message) {
+    if (!message || document.getElementById(id)) return;
     const toast = document.createElement("div");
-    toast.id = "security-warning-toast";
+    toast.id = id;
     toast.className = "update-toast security-warning-toast";
     toast.setAttribute("role", "alert");
     const body = document.createElement("div");
@@ -102,7 +111,7 @@ export function showSecurityWarning(message) {
     header.className = "update-toast-header";
     const title = document.createElement("span");
     title.className = "update-toast-title";
-    title.textContent = "Security warning";
+    title.textContent = heading;
     const close = document.createElement("button");
     close.className = "update-toast-close";
     close.title = "Dismiss";
