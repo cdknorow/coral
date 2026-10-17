@@ -203,7 +203,7 @@ const SETTINGS_PRELOAD = `(() => {
         assert.equal(lay.dots, 0, 'no status dot on a server header'); assert.equal(lay.icons, lay.n, 'every server header has the computer icon');
         assert.ok(lay.headerLeft < lay.rowMin, `server headers sit left of every team and agent row (icon ${lay.headerLeft} < rows ${lay.rowMin})`);
         assert.ok(lay.m3.down && lay.m3.op < lay.m2op && lay.m3.opName < 1, `the offline server is dimmed (${JSON.stringify(lay.m3)})`);
-        assert.equal(lay.m3.title, 'Old Laptop: Unreachable'); assert.match(lay.m3.aria, /^Server Old Laptop: Unreachable, 2 agents\. Collapse$/);
+        assert.equal(lay.m3.title, 'Old Laptop: Unreachable'); assert.match(lay.m3.aria, /^Server Old Laptop: Unreachable, 2 agents$/); // aria-expanded says open or collapsed; the name does not repeat it (#4272)
         assert.ok(lay.agents.length >= 4 && lay.agents.every(a => a.dot && a.title), `agent state dots kept under server headers (${JSON.stringify(lay.agents)})`);
         console.log(`   ✓ grouped: headers outermost (icon at ${lay.headerLeft}px, rows from ${lay.rowMin}px), computer icon, no dots, offline dimmed + tooltip + aria; ${lay.agents.length} agent rows keep their state dot`);
         const m2rows = ['solo-m2-id', 'team-m2-id'];

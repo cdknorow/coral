@@ -65,29 +65,32 @@ if (typeof document !== 'undefined') {
             if (!d.contains(e.target)) d.open = false;
         }
     }, true);
-    // Arrow keys in the server list: Down on the button opens it, then Up and Down, Home and End move through the rows and the footer.
+    // Arrow keys in the sidebar's menus (the server list, a server's details, the display options): Down on the button opens the menu,
+    // then Up and Down, Home and End move through its controls.
+    const MENUS = 'details[data-server-switcher], details[data-server-details], details[data-list-display-menu]';
+    const menuItems = d => [...d.querySelectorAll(d.matches('[data-server-switcher]') ? '.server-switcher-item, .server-open-btn'
+        : 'button:not(:disabled), input:not(:disabled), a[href]')].filter(x => !x.closest('[hidden]'));
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
-        const d = e.target.closest && e.target.closest('details[data-server-switcher]');
+        const d = e.target.closest && e.target.closest(MENUS);
         if (!d) return;
-        const items = () => [...d.querySelectorAll('.server-switcher-item, .server-open-btn')];
         if (e.target.matches('summary')) {
             if (e.key !== 'ArrowDown') return;
             e.preventDefault();
             d.open = true;
-            requestAnimationFrame(() => items()[0] && items()[0].focus());
+            requestAnimationFrame(() => menuItems(d)[0] && menuItems(d)[0].focus());
             return;
         }
-        const list = items(), at = list.indexOf(document.activeElement);
+        const list = menuItems(d), at = list.indexOf(document.activeElement);
         if (!list.length || at < 0) return;
         e.preventDefault();
         const to = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : e.key === 'ArrowDown' ? Math.min(at + 1, list.length - 1) : Math.max(at - 1, 0);
         list[to].focus();
     });
-    // Escape closes an open server disclosure and returns focus to its button.
+    // Escape closes an open menu and returns focus to its button.
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
-        const d = e.target.closest && e.target.closest('details[data-server-switcher][open], details[data-server-details][open]');
+        const d = e.target.closest && e.target.closest('details[data-server-switcher][open], details[data-server-details][open], details[data-list-display-menu][open]');
         if (!d) return;
         d.open = false;
         const sum = d.querySelector('summary');

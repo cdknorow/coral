@@ -124,7 +124,8 @@ function sessionsBlock(data) {
         if (!res.ok) { showToast(errorText(res, 'Could not sign out the other browsers.'), true); out.disabled = false; return; }
         const n = Number(res.data.signed_out) || 0;
         showToast(n ? `Signed out ${n} other browser${n === 1 ? '' : 's'}.` : 'No other browsers were signed in.');
-        loadSecurityRow();
+        await loadSecurityRow();
+        document.getElementById('sec-signout')?.focus(); // the button just used is redrawn disabled (nobody else is signed in now): keep focus in the block
     });
     // This browser's own Sign out, next to it: confirm-free (signing in again undoes it), a plain button for keyboard and touch.
     const me = el('button', 'btn btn-small', 'Sign out'); me.type = 'button'; me.id = 'sec-signout';

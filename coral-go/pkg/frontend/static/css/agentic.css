@@ -208,6 +208,7 @@ body.panel-dragging .agentic-state {
 .tc-move[aria-disabled="true"] { opacity: 0.35; cursor: default; }
 .tc-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border); margin-top: 6px; padding: 8px 8px 2px; }
 .tc-note { font-size: 0.6875rem; color: var(--text-secondary); }
+.tc-status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; } /* spoken, never drawn */
 .tab-customize .tc-reset { font-size: 0.8125rem; }
 
 @media (max-width: 767px) {

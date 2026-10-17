@@ -147,6 +147,15 @@ function render(focus) {
     if (focus) pop.querySelector(focus)?.focus();
 }
 
+/** Say what a change did, politely, in the popover's own status line: after a move the list is redrawn and focus goes back to the
+ *  control that was used, which reads that control's name again but not the result. */
+function announce(text) {
+    const s = popover()?.querySelector('.tc-status');
+    if (s) s.textContent = text;
+}
+
+const nameOf = id => document.getElementById(`agentic-tab-${id}`)?.getAttribute('aria-label') || id;
+
 function place(pop) {
     const btn = document.getElementById('agentic-tab-customize');
     if (!btn || window.matchMedia('(max-width: 767px)').matches) return; // the sheet is fixed to the bottom by CSS
@@ -166,6 +175,7 @@ function move(id, dir, refocus) {
     save();
     applyTabPrefs();
     render(refocus);
+    announce(`${nameOf(id)} moved to position ${j + 1} of ${ids.length}`);
 }
 
 function setShown(id, shown) {
@@ -176,6 +186,7 @@ function setShown(id, shown) {
     save();
     applyTabPrefs();
     render(`.tc-check[data-tab="${CSS.escape(id)}"]`);
+    announce(`${nameOf(id)} ${shown ? 'shown' : 'hidden'}`);
 }
 
 function reset() {
@@ -183,6 +194,7 @@ function reset() {
     save();
     applyTabPrefs();
     render('.tc-reset');
+    announce('Tabs reset to the default');
 }
 
 function onOutside(e) {
@@ -215,6 +227,7 @@ export function openCustomize() {
     pop.setAttribute('aria-labelledby', 'tab-customize-title');
     pop.innerHTML = `<h3 id="tab-customize-title" class="tc-title">Customize tabs</h3>
         <ul class="tc-list"></ul>
+        <div class="tc-status" role="status" aria-live="polite"></div>
         <div class="tc-foot"><span class="tc-note">Saved for you, applies to every agent</span><button type="button" class="btn btn-small tc-reset">Reset to default</button></div>`;
     document.body.appendChild(pop);
     document.getElementById('agentic-tab-customize')?.setAttribute('aria-expanded', 'true');
@@ -229,6 +242,12 @@ export function openCustomize() {
     pop.addEventListener('change', e => {
         const c = e.target.closest('.tc-check');
         if (c) setShown(c.dataset.tab, c.checked);
+    });
+    // Tab past either end leaves the popover: it closes and focus goes back to the button that opened it, not to the page's start.
+    pop.addEventListener('keydown', e => {
+        if (e.key !== 'Tab' || e.altKey || e.ctrlKey || e.metaKey) return;
+        const stops = [...pop.querySelectorAll('input:not(:disabled), button')];
+        if (e.target === stops[e.shiftKey ? 0 : stops.length - 1]) { e.preventDefault(); closeCustomize(true); }
     });
     pop.addEventListener('keydown', e => {
         if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;

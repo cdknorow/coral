@@ -291,7 +291,7 @@ export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) 
     return `<li class="server-group-header server-${m.cls}${off ? ' is-down' : ''}" data-server-group="${escHtml(e.id)}">`
         + `<button type="button" class="server-group-toggle" data-server-toggle="${escHtml(e.id)}" aria-expanded="${collapsed ? 'false' : 'true'}"`
         + ` title="${escHtml(`${e.label || e.id}: ${m.label}`)}"`
-        + ` aria-label="${escHtml(`Server ${e.label || e.id}: ${m.label}, ${count} agents. ${collapsed ? 'Expand' : 'Collapse'}`)}">`
+        + ` aria-label="${escHtml(`Server ${e.label || e.id}: ${m.label}, ${count} agents`)}">`
         + SERVER_ICON + `<span class="server-group-name">${escHtml(name)}</span>`
         + (off ? `<span class="server-group-state">${escHtml(m.label.toLowerCase())}</span>` : '')
         + ((n => n ? `<span class="server-update-marker server-update-${n.level}">${n.level === 'required' ? 'Update required' : 'Update'}</span>` : '')(normServer(e.id) === LOCAL_SERVER ? null : updateNotice(e)))

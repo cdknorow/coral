@@ -24,12 +24,15 @@ const [MIN_LO, MIN_HI] = HEALTH_LIMITS.minutes;
 const [N_LO, N_HI] = HEALTH_LIMITS.nudges;
 
 function knob(name, label, value, lo, hi, unit) {
-    return `<label class="health-knob">${escapeHtml(label)}<span class="health-knob-box"><input type="number" name="${escapeAttr(name)}" value="${Number(value)}" min="${Number(lo)}" max="${Number(hi)}" step="1" inputmode="numeric" required> ${escapeHtml(unit)}</span><span class="health-limits">${Number(lo)} to ${Number(hi)}</span></label>`;
+    // The name is the label and the unit ("After minutes idle"); the limits are its description, not part of the name.
+    const id = `hk-${name}`;
+    return `<label class="health-knob"><span id="${escapeAttr(id)}-l">${escapeHtml(label)}</span><span class="health-knob-box"><input type="number" name="${escapeAttr(name)}" value="${Number(value)}" min="${Number(lo)}" max="${Number(hi)}" step="1" inputmode="numeric" required aria-labelledby="${escapeAttr(id)}-l ${escapeAttr(id)}-u" aria-describedby="${escapeAttr(id)}-d"> <span id="${escapeAttr(id)}-u">${escapeHtml(unit)}</span></span><span class="health-limits" id="${escapeAttr(id)}-d">${Number(lo)} to ${Number(hi)}</span></label>`;
 }
 
 function rule(key, title, why, on, knobs, extra = '') {
-    return `<div class="health-rule" data-rule="${escapeAttr(key)}"><label class="health-rule-head"><input type="checkbox" name="${escapeAttr(key)}_on"${on ? ' checked' : ''}> ${escapeHtml(title)}</label>
-        <p class="health-why">${escapeHtml(why)}</p><div class="health-knobs">${knobs}${extra}</div></div>`;
+    // The title names the switch and the group of numbers under it, so "After minutes" is heard inside its rule; the explanation describes the switch.
+    return `<div class="health-rule" data-rule="${escapeAttr(key)}" role="group" aria-labelledby="hr-${escapeAttr(key)}-t"><label class="health-rule-head"><input type="checkbox" name="${escapeAttr(key)}_on"${on ? ' checked' : ''} aria-labelledby="hr-${escapeAttr(key)}-t" aria-describedby="hr-${escapeAttr(key)}-w"> <span id="hr-${escapeAttr(key)}-t">${escapeHtml(title)}</span></label>
+        <p class="health-why" id="hr-${escapeAttr(key)}-w">${escapeHtml(why)}</p><div class="health-knobs">${knobs}${extra}</div></div>`;
 }
 
 /** The panel's HTML for a health object and the team's members (active subscribers: { subscriber_id, job_title }). */
@@ -39,17 +42,17 @@ export function healthPanelHTML(h, members) {
     const options = [`<option value="">The orchestrator (default)</option>`]
         .concat(members.map(m => `<option value="${escapeAttr(m.subscriber_id)}"${m.subscriber_id === rcpt ? ' selected' : ''}>${escapeHtml(m.subscriber_id)}${m.job_title ? ` (${escapeHtml(m.job_title)})` : ''}</option>`));
     if (rcpt && !names.includes(rcpt)) options.push(`<option value="${escapeAttr(rcpt)}" selected>${escapeHtml(rcpt)} (not in the team now)</option>`);
-    const reviewers = `<label class="health-knob health-wide">Default reviewers <span class="health-limits">Names of agents on this team, up to ${HEALTH_LIMITS.reviewers}, separated by commas. None: reviews wait for the orchestrator.</span>
-        <input type="text" name="default_reviewers" value="${escapeAttr((h.default_reviewers || []).join(', '))}" list="health-members" autocomplete="off" maxlength="400" placeholder="Names, separated by commas"><datalist id="health-members">${names.map(n => `<option value="${escapeAttr(n)}">`).join('')}</datalist></label>`;
+    const reviewers = `<label class="health-knob health-wide"><span id="hk-default_reviewers-l">Default reviewers</span> <span class="health-limits" id="hk-default_reviewers-d">Names of agents on this team, up to ${HEALTH_LIMITS.reviewers}, separated by commas. None: reviews wait for the orchestrator.</span>
+        <input type="text" name="default_reviewers" aria-labelledby="hk-default_reviewers-l" aria-describedby="hk-default_reviewers-d" value="${escapeAttr((h.default_reviewers || []).join(', '))}" list="health-members" autocomplete="off" maxlength="400" placeholder="Names, separated by commas"><datalist id="health-members">${names.map(n => `<option value="${escapeAttr(n)}">`).join('')}</datalist></label>`;
     const held = h.held_notice ? rule('held_notice', 'Tell the Operator about a held delivery',
         'A message Coral could not type into an agent (its terminal is on a dialog) and has held back for a while is reported to the Operator.',
         !!h.held_notice.on, knob('held_notice_after_min', 'After', h.held_notice.after_min, MIN_LO, MIN_HI, 'minutes held')) : '';
     return `<form class="health-form working-mode-form" autocomplete="off" novalidate>
       <fieldset class="team-settings-section"><legend>The check</legend>
-        <label class="health-rule-head"><input type="checkbox" name="on"${h.on ? ' checked' : ''}><span><b>Send a health check to this team</b><br><span class="health-why">Coral looks at the team on a schedule and tells one person who is idle, stuck or waiting, and what changed.</span></span></label>
+        <label class="health-rule-head"><input type="checkbox" name="on"${h.on ? ' checked' : ''} aria-labelledby="hc-on-t" aria-describedby="hc-on-w"><span><b id="hc-on-t">Send a health check to this team</b><br><span class="health-why" id="hc-on-w">Coral looks at the team on a schedule and tells one person who is idle, stuck or waiting, and what changed.</span></span></label>
         <div class="health-row">${knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'minutes')}
           <label class="health-wide-select">Send it to<select name="recipient">${options.join('')}</select></label></div>
-        <label class="health-rule-head"><input type="checkbox" name="all_clear"${h.all_clear ? ' checked' : ''}><span>Also post one short line when nothing needs attention<br><span class="health-why">So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.</span></span></label>
+        <label class="health-rule-head"><input type="checkbox" name="all_clear"${h.all_clear ? ' checked' : ''} aria-labelledby="hc-clear-t" aria-describedby="hc-clear-w"><span><span id="hc-clear-t">Also post one short line when nothing needs attention</span><br><span class="health-why" id="hc-clear-w">So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.</span></span></label>
       </fieldset>
       <fieldset class="team-settings-section"><legend>Automatic rules</legend>
         <p class="working-mode-hint">Coral acts on these by itself between checks. Each can be turned off.</p>
