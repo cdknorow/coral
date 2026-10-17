@@ -107,3 +107,35 @@ func TestBoardNotifier_RunServesAScopedPass(t *testing.T) {
 	cancel()
 	<-done
 }
+
+// A post to board a while a pass for board b is running is not lost: the running pass already
+// took its pending set, so a's post sets a new one and signals again, and a's pass follows
+// (Security's #4109 note).
+func TestBoardNotifier_APostDuringAPassGetsItsOwnPass(t *testing.T) {
+	n, rt := twoBoards(t)
+	agents, err := n.discoverFn(context.Background())
+	require.NoError(t, err)
+	inPass, release := make(chan struct{}), make(chan struct{})
+	first := true
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		if first { // only the Run goroutine calls it
+			first = false
+			close(inPass)
+			<-release
+		}
+		return agents, nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { defer close(done); _ = n.Run(ctx) }()
+
+	n.NotifyBoard("b")
+	<-inPass // b's pass is running and has taken its pending set
+	n.NotifyBoard("a")
+	close(release)
+	require.Eventually(t, func() bool { return len(sentTo(rt)) == 2 }, 5*time.Second, 10*time.Millisecond)
+	assert.ElementsMatch(t, []string{"claude-bbbb-0001", "claude-aaaa-0001"}, sentTo(rt), "b's pass, then a's own")
+	cancel()
+	<-done
+}
