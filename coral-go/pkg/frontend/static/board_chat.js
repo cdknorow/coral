@@ -25,6 +25,11 @@ let _boardChatLoaded = false;
 let _boardChatInFlight = 0;   // the panel generation whose load is in flight (0: none)
 let _boardChatAgain = false;  // a load was asked for while one was in flight (after a send)
 const _BOARD_CHAT_PAGE = 50;
+// The panel keeps the newest _BOARD_CHAT_KEEP messages while the reader is at the bottom (#4318): a tab
+// left open on a busy board kept every message it ever received and re-templated all of them for each
+// new one. Older messages stay behind "Load earlier". The list is cut back a page at a time, so it is
+// rebuilt once per page of new messages, not shifted on every one.
+const _BOARD_CHAT_KEEP = 300;
 let _boardChatSelectMode = false;
 let _boardChatSelectedIds = new Set();
 
@@ -176,6 +181,7 @@ async function _loadBoardPanelChat(boardName, { full = false } = {}) {
                 _boardChatMessages = [...byId.values()].sort((a, b) => a.id - b.id);
                 _boardChatTotal = expected;
                 const el = document.getElementById('board-panel-msgs');
+                _trimBoardChatWindow(el);
                 if (el) _renderBoardPanelMessages(el, false);
                 return;
             }
@@ -206,6 +212,16 @@ async function _loadBoardPanelChat(boardName, { full = false } = {}) {
             if (_boardChatAgain && !stale()) { _boardChatAgain = false; _loadBoardPanelChat(boardName); }
         }
     }
+}
+
+// Drops the oldest messages beyond _BOARD_CHAT_KEEP (they count as not loaded, so "Load earlier"
+// brings them back), unless the reader is scrolled up among them or selecting messages to export.
+function _trimBoardChatWindow(msgsEl) {
+    if (_boardChatSelectMode || _boardChatMessages.length <= _BOARD_CHAT_KEEP + _BOARD_CHAT_PAGE) return;
+    if (msgsEl && msgsEl.scrollTop < msgsEl.scrollHeight - msgsEl.clientHeight - 20) return;
+    const drop = _boardChatMessages.length - _BOARD_CHAT_KEEP;
+    _boardChatMessages = _boardChatMessages.slice(drop);
+    _boardChatOffset += drop;
 }
 
 async function _loadEarlierBoardChat() {

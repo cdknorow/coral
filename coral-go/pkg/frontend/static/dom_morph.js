@@ -37,12 +37,19 @@ const ATOMIC = new Set(['svg', 'math', 'table', 'thead', 'tbody', 'tr', 'select'
 // contain '<' and '>'. Sticky, so each match starts exactly at the '<' found.
 const TAG = /<(\/?)([A-Za-z][\w:-]*)(?:[^"'>]|"[^"]*"|'[^']*')*>/y;
 
+// A part's source outlives the markup it was cut from: it is compared with the next update's.
+// html.slice() keeps a view of the whole string in V8 (a sliced string), so the parts of a list
+// that grows one node at a time (a board taking a message every few seconds) each held on to the
+// full markup of the update they arrived in: one copy per update, 40 MB in 6 minutes on a busy
+// board (#4318). A copy holds only its own characters.
+const own = s => (s.length < 13 ? s : JSON.parse(JSON.stringify(s)));
+
 /** Split markup into its top-level nodes: [{ src, tag, openEnd }] (tag null for text/comments). */
  function splitTopLevel(html) {
     const out = [];
     const n = html.length;
     let i = 0, depth = 0, start = 0, top = null;
-    const flushText = (end) => { if (end > start) out.push({ src: html.slice(start, end), tag: null, openEnd: 0 }); };
+    const flushText = (end) => { if (end > start) out.push({ src: own(html.slice(start, end)), tag: null, openEnd: 0 }); };
     while (i < n) {
         const lt = html.indexOf('<', i);
         if (lt < 0) break;
@@ -50,7 +57,7 @@ const TAG = /<(\/?)([A-Za-z][\w:-]*)(?:[^"'>]|"[^"]*"|'[^']*')*>/y;
         if (html.startsWith('<!--', i)) {
             const end = html.indexOf('-->', i + 4);
             const stop = end < 0 ? n : end + 3;
-            if (depth === 0) { flushText(i); out.push({ src: html.slice(i, stop), tag: null, openEnd: 0 }); start = stop; }
+            if (depth === 0) { flushText(i); out.push({ src: own(html.slice(i, stop)), tag: null, openEnd: 0 }); start = stop; }
             i = stop;
             continue;
         }
@@ -62,14 +69,14 @@ const TAG = /<(\/?)([A-Za-z][\w:-]*)(?:[^"'>]|"[^"]*"|'[^']*')*>/y;
         if (m[1]) { // closing tag
             depth = Math.max(0, depth - 1);
             i = tagEnd;
-            if (depth === 0 && top) { out.push({ src: html.slice(top.start, i), tag: top.tag, openEnd: top.openEnd - top.start }); start = i; top = null; }
+            if (depth === 0 && top) { out.push({ src: own(html.slice(top.start, i)), tag: top.tag, openEnd: top.openEnd - top.start }); start = i; top = null; }
             continue;
         }
         const selfClosing = VOID.has(name) || html.charCodeAt(tagEnd - 2) === 47; // '/>'
         if (depth === 0) { flushText(i); top = { start: i, tag: name, openEnd: tagEnd }; }
         if (selfClosing) {
             i = tagEnd;
-            if (depth === 0) { out.push({ src: html.slice(top.start, i), tag: name, openEnd: tagEnd - top.start }); start = i; top = null; }
+            if (depth === 0) { out.push({ src: own(html.slice(top.start, i)), tag: name, openEnd: tagEnd - top.start }); start = i; top = null; }
             continue;
         }
         depth++;
@@ -80,7 +87,7 @@ const TAG = /<(\/?)([A-Za-z][\w:-]*)(?:[^"'>]|"[^"]*"|'[^']*')*>/y;
         }
         i = tagEnd;
     }
-    if (top) out.push({ src: html.slice(top.start), tag: top.tag, openEnd: top.openEnd - top.start }); // unclosed: keep as one node
+    if (top) out.push({ src: own(html.slice(top.start)), tag: top.tag, openEnd: top.openEnd - top.start }); // unclosed: keep as one node
     else flushText(n);
     return out;
 }
