@@ -27,12 +27,34 @@ async function _ensureDefaultPrompts() {
     return _defaultPrompts;
 }
 
+// The four prompts, by setting key, and the field each one is edited in.
+const PROMPT_FIELDS = {
+    default_prompt_orchestrator: "settings-prompt-orchestrator",
+    default_prompt_worker: "settings-prompt-worker",
+    team_reminder_orchestrator: "settings-team-reminder-orchestrator",
+    team_reminder_worker: "settings-team-reminder-worker",
+};
+
+// What each field held when the dialog opened: Save writes only the prompts the person changed (#4423), so saving
+// one never puts back the other three as this page last saw them.
+let _openedPrompts = null;
+
 export async function showDefaultPromptsModal() {
     const defaults = await _ensureDefaultPrompts();
     if (defaults.unavailable) {
         showToast("Default prompts are unavailable; reload and try again.", true);
         return;
     }
+    // The prompts as the server has them now, not as this page loaded them (another tab may have saved one).
+    try {
+        const res = await fetch("/api/settings");
+        if (res.ok) {
+            const fresh = (await res.json()).settings || {};
+            const update = {};
+            for (const key of Object.keys(PROMPT_FIELDS)) update[key] = fresh[key] || "";
+            state.settings = { ...state.settings, ...update };
+        }
+    } catch { /* the dialog opens with the prompts this page has */ }
     const s = state.settings || {};
     const orchEl = document.getElementById("settings-prompt-orchestrator");
     const workerEl = document.getElementById("settings-prompt-worker");
@@ -42,6 +64,8 @@ export async function showDefaultPromptsModal() {
     const teamWorkerEl = document.getElementById("settings-team-reminder-worker");
     if (teamOrchEl) teamOrchEl.value = s.team_reminder_orchestrator || defaults.team_reminder_orchestrator;
     if (teamWorkerEl) teamWorkerEl.value = s.team_reminder_worker || defaults.team_reminder_worker;
+    _openedPrompts = {};
+    for (const [key, id] of Object.entries(PROMPT_FIELDS)) _openedPrompts[key] = document.getElementById(id)?.value ?? "";
     document.getElementById("default-prompts-modal").style.display = "flex";
 }
 
@@ -66,29 +90,30 @@ export async function resetDefaultPrompt(type) {
 
 export async function saveDefaultPrompts() {
     const defaults = await _ensureDefaultPrompts();
-    const orchValue = document.getElementById("settings-prompt-orchestrator")?.value || "";
-    const workerValue = document.getElementById("settings-prompt-worker")?.value || "";
-    const teamOrchValue = document.getElementById("settings-team-reminder-orchestrator")?.value || "";
-    const teamWorkerValue = document.getElementById("settings-team-reminder-worker")?.value || "";
-
-    // Save empty string when value matches default — so future default updates are picked up
-    const payload = {
-        default_prompt_orchestrator: orchValue === defaults.default_prompt_orchestrator ? "" : orchValue,
-        default_prompt_worker: workerValue === defaults.default_prompt_worker ? "" : workerValue,
-        team_reminder_orchestrator: teamOrchValue === defaults.team_reminder_orchestrator ? "" : teamOrchValue,
-        team_reminder_worker: teamWorkerValue === defaults.team_reminder_worker ? "" : teamWorkerValue,
-    };
+    // Only the prompts the person changed since the dialog opened. Save an empty string when the value matches the
+    // default, so future default updates are picked up.
+    const payload = {};
+    for (const [key, id] of Object.entries(PROMPT_FIELDS)) {
+        const value = document.getElementById(id)?.value || "";
+        if (_openedPrompts && value === _openedPrompts[key]) continue;
+        payload[key] = value === defaults[key] ? "" : value;
+    }
 
     try {
-        await fetch("/api/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
-        state.settings = { ...state.settings, ...payload };
+        if (Object.keys(payload).length > 0) {
+            const res = await fetch("/api/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error(`save failed (${res.status})`);
+            state.settings = { ...state.settings, ...payload };
+            if (_openedPrompts) for (const key of Object.keys(payload)) _openedPrompts[key] = document.getElementById(PROMPT_FIELDS[key])?.value ?? "";
+        }
         showToast("Default prompts saved");
     } catch (e) {
         showToast("Failed to save prompts", true);
+        return; // the dialog stays open with what was typed
     }
 
     hideDefaultPromptsModal();
