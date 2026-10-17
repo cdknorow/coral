@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/secfile"
 )
 
@@ -33,6 +34,12 @@ type attachRefusal struct {
 }
 
 func (e *attachRefusal) write(w http.ResponseWriter) {
+	if e.status == http.StatusTooManyRequests {
+		// The hourly attach limit limits one action, not the server: marked, so the dashboard's pollers do
+		// not pause on it (the 429 census, #3434). Same body as every other refusal.
+		httputil.WriteActionLimit(w, 0, e.code, e.msg)
+		return
+	}
 	writeJSON(w, e.status, map[string]string{"code": e.code, "error": e.msg})
 }
 

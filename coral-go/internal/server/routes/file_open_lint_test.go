@@ -42,6 +42,7 @@ var reviewedFileOpens = map[string]string{
 	"task_artifact_vet.go:BoardHandler.objectSidecarDigest:ReadFile":      "a managed artifact's 64-hex id (managedArtifactID), Lstat'ed as a regular file under the bound first (#4379)",
 	"cross_team_attach.go:BoardHandler.crossTeamRecord:ReadFile":          "a 64-hex id under <data>/artifacts/<kind>/<hash of the board>, Lstat'ed as a regular file under the bound first (#4379)",
 	"cross_team_attach.go:BoardHandler.objectMeta:ReadFile":               "a managed artifact's 64-hex id (managedArtifactID), Lstat'ed as a regular file under the bound first (#4379)",
+	"cross_team_attach.go:BoardHandler.writeCrossTeamRecord:OpenFile":     "the received row's fallback where the data folder can't hard-link: the final name is created O_EXCL (never follows a link at it, never replaces), under a bound folder named by a hash, the id a 64-hex string (#4379, Security's C1 INFO 1)",
 	"cross_team_attach.go:BoardHandler.readAttachment:OpenNoFollow":       "the attach read: a 64-hex id in the object store, opened once no-follow and checked through the handle (#4379, Security's one-step rule)",
 	"cross_team_attach_relay.go:BoardHandler.loadAttachment:OpenNoFollow": "an object named by its 64-hex id in the server's objects folder, opened once without following a link, checked through the handle and re-checked by name after the read",
 	"themes.go:ThemesHandler.GetTheme:ReadFile":                           "the theme name keeps only [A-Za-z0-9-_ ] (safeNameRE)",
