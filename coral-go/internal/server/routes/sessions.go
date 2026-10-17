@@ -97,6 +97,13 @@ type SessionsHandler struct {
 
 	autoAccept *AutoAcceptor // answers approval prompts for auto-accept sessions (auto_accept.go)
 
+	// autoAcceptOrder orders an enable's store write against a disable-all (auto_accept.go). autoAcceptStops counts the disable-alls; an enable that began before one must
+	// not turn the run on after it. The Cloud Hub sends a disable-all the moment an owner lowers a machine's access and does not wait for an enable that is still deciding.
+	autoAcceptOrder sync.Mutex
+	autoAcceptStops atomic.Uint64
+	// onAutoEnableDeciding (tests only) runs after an enable passed its checks and before its write, the window the order closes.
+	onAutoEnableDeciding func()
+
 	wsList wsTickCache // one /ws/coral build shared by all clients (ws_shared_list.go)
 	wsKick wsKicker    // prompt /ws/coral rebuilds after state changes (ws_kick.go)
 

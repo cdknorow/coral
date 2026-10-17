@@ -670,6 +670,7 @@ func (h *SessionsHandler) autoAcceptTarget(w http.ResponseWriter, r *http.Reques
 // not stand against a hostile process on the same computer. The stamp, being a
 // secret, cannot be forged by one.
 func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Request) {
+	began := h.autoAcceptStops.Load() // a disable-all after this point ends this enable before it turns anything on
 	var body struct {
 		SessionID    string `json:"session_id"`
 		Acknowledged bool   `json:"acknowledged"`
@@ -736,7 +737,14 @@ func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Reques
 	if limit > 0 {
 		until = h.autoAcceptNow().Add(limit).Unix()
 	}
-	found, err := h.ss.EnableAutoAccept(r.Context(), ls.SessionID, source, until)
+	if f := h.onAutoEnableDeciding; f != nil {
+		f()
+	}
+	found, stopped, err := h.enableUnlessStopped(r.Context(), began, ls.SessionID, source, until)
+	if stopped {
+		refuseAutoAccept(w, http.StatusConflict, "stopped_meanwhile", "Auto-accept was stopped while this request was being handled; turn it on again if you still want it")
+		return
+	}
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -754,6 +762,18 @@ func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Reques
 	h.autoAccept.Kick() // a prompt already open is answered now
 	defer h.kickWS()
 	writeJSON(w, http.StatusOK, h.autoAcceptPayload(r.Context(), ls.SessionID))
+}
+
+// enableUnlessStopped writes the enable unless a disable-all ran since the request began (began is the count it saw). The check and the write are one step under the
+// lock that disable-all also takes, so an enable is ordered wholly before a disable-all (which then ends it) or wholly after it (a new request, which began after).
+func (h *SessionsHandler) enableUnlessStopped(ctx context.Context, began uint64, sessionID, source string, until int64) (found, stopped bool, err error) {
+	h.autoAcceptOrder.Lock()
+	defer h.autoAcceptOrder.Unlock()
+	if h.autoAcceptStops.Load() != began {
+		return false, true, nil
+	}
+	found, err = h.ss.EnableAutoAccept(ctx, sessionID, source, until)
+	return found, false, err
 }
 
 func (h *SessionsHandler) autoAcceptNow() time.Time {
@@ -804,7 +824,10 @@ func (h *SessionsHandler) DisableAutoAccept(w http.ResponseWriter, r *http.Reque
 // auto-accept"; also `coral auto-accept off --all`). Always allowed.
 // POST /api/auto-accept/disable-all -> {"stopped": N}
 func (h *SessionsHandler) DisableAllAutoAccept(w http.ResponseWriter, r *http.Request) {
+	h.autoAcceptOrder.Lock()
 	n, err := h.ss.ClearAllAutoAccept(r.Context())
+	h.autoAcceptStops.Add(1) // also on an error: an enable that began before this must not slip past a stop that may have half run
+	h.autoAcceptOrder.Unlock()
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return

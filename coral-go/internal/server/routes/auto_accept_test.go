@@ -923,3 +923,37 @@ func TestAutoAcceptApprovalNeverTiesWithANewerPrompt(t *testing.T) {
 	assert.Less(t, approvals[0].CreatedAt, instant.Format(store.ISOFormat), "stamped before the instant it read")
 	assert.True(t, r.h.deriveSingleSessionState(context.Background(), sid, 0).NeedsInput, "a notification at the very same instant is still open")
 }
+
+// The Cloud Hub sends a disable-all the moment an owner lowers a machine's access and does not wait for an enable that is still deciding: an enable that began before a
+// disable-all must not turn the run on after it, or the run stays on at the lowered access with nothing left to stop it.
+func TestAutoAcceptEnableThatBeganBeforeADisableAllDoesNotTurnTheRunOn(t *testing.T) {
+	r := newAutoAcceptRig(t)
+	hub := map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}
+	sid := r.agent(at.Claude, "dev", "")
+
+	// the disable-all lands while the enable has passed its checks and not yet written
+	var stopped any
+	r.h.onAutoEnableDeciding = func() {
+		code, body := r.post("/api/auto-accept/disable-all", map[string]any{}, nil)
+		require.Equal(t, http.StatusOK, code)
+		stopped = body["stopped"]
+	}
+	code, body := r.enableAs(sid, sid, hub, nil)
+	assert.Equal(t, http.StatusConflict, code, body)
+	assert.Equal(t, "stopped_meanwhile", body["code"])
+	assert.Equal(t, float64(0), stopped, "nothing was running yet when the disable-all ran")
+	assert.False(t, r.state(sid).Enabled, "the overtaken enable never turned the run on")
+	assert.Empty(t, r.events(sid, "auto_accept_enabled"), "and recorded no enable")
+
+	// an enable that begins after the disable-all is an ordinary one
+	r.h.onAutoEnableDeciding = nil
+	code, body = r.enableAs(sid, sid, hub, nil)
+	require.Equal(t, http.StatusOK, code, body)
+	assert.True(t, r.state(sid).Enabled)
+
+	// and a disable-all after an enable still ends it
+	code, body = r.post("/api/auto-accept/disable-all", map[string]any{}, nil)
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, float64(1), body["stopped"])
+	assert.False(t, r.state(sid).Enabled)
+}
