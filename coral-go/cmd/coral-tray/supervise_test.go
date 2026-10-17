@@ -56,6 +56,14 @@ func TestHelperChild(t *testing.T) {
 	case "stops-itself":
 		fmt.Println(childSaysReady)
 		os.Exit(0)
+	case "password-check": // accepts only "good", as a server opening an encrypted database
+		fmt.Println(childSaysNeedPassword)
+		pw, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		if strings.TrimSpace(pw) != "good" {
+			fmt.Fprintln(os.Stderr, "Failed to start: failed to open database: wrong password")
+			os.Exit(childExitStartFailed)
+		}
+		serve()
 	case "password":
 		fmt.Println(childSaysNeedPassword)
 		pw, _ := bufio.NewReader(os.Stdin).ReadString('\n')
@@ -248,4 +256,30 @@ func TestExitReasonPrefersTheServersLine(t *testing.T) {
 	fmt.Fprint(tail, "2026/10/17 [STARTUP] starting\n2026/10/17 Failed to start: can't listen on 127.0.0.1 port 8420 (in use?)\n")
 	assert.Equal(t, "Failed to start: can't listen on 127.0.0.1 port 8420 (in use?)", exitReason(nil, tail))
 	assert.Equal(t, "Not running: can't listen on 127.0.0.1 port 8420 (in use?)", statusTitle("Not running: ", exitReason(nil, tail)))
+}
+
+// #4163 review (Security): a wrong password is never kept. The server refuses it and stops
+// (a start failure, not restarted); Retry starts a server that asks again, and the right
+// password gets it running.
+func TestSupervisorAsksAgainAfterAWrongPassword(t *testing.T) {
+	s, states, starts, _ := newTestSupervisor(t, "password-check")
+	var mu sync.Mutex
+	answers, asked := []string{"bad", "good"}, 0
+	s.password = func() (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		asked++
+		return answers[asked-1], nil
+	}
+	ready := startAndRun(t, s)
+	require.False(t, s.awaitFirst(ready), "the wrong password: the server stops")
+	go s.servePasswords()
+	require.Eventually(t, func() bool { return states.has(stateFailed) }, 10*time.Second, 10*time.Millisecond)
+	assert.Contains(t, states.reason(), "wrong password")
+
+	s.retry()
+	require.Eventually(t, func() bool { return starts() == 2 && states.has(stateRunning) }, 10*time.Second, 10*time.Millisecond)
+	mu.Lock()
+	assert.Equal(t, 2, asked, "asked again after the wrong one")
+	mu.Unlock()
 }
