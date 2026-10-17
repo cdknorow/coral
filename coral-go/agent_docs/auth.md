@@ -198,7 +198,7 @@ Board messages Coral posts itself (the task queue, the health monitor) carry `is
 
 ### Strict local auth (the default)
 
-On by default since #3936, for `coral`, the tray and `launch-coral` alike; on the first start the log says so once. **Turning it off is weaker:** start Coral with `CORAL_STRICT_LOCAL_AUTH=0` (or `off`, `false`, `no`; for `coral` also `--strict-local-auth=false`), and any program on this computer can use Coral without a credential, as before. A value that is neither on nor off is taken as on, with a warning. It is a startup switch only: no setting or API turns it on or off, so neither Coral Hub nor an agent can change it. Agents never inherit the variable.
+On by default since #3936, for `coral`, the tray and `launch-coral` alike; on the first start the log says so once. **Turning it off is weaker:** start Coral with `--strict-local-auth=false` (a dev build also reads `CORAL_STRICT_LOCAL_AUTH=0`, or `off`, `false`, `no`; every other build ignores the variable and says so in the log), and any program on this computer can use Coral without a credential, as before. A value that is neither on nor off is taken as on, with a warning. It is a startup switch only: no setting or API turns it on or off, so neither Coral Hub nor an agent can change it. Agents never inherit the variable.
 
 With it on, a request **from this computer** needs one of:
 

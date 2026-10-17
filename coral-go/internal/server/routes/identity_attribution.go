@@ -174,6 +174,8 @@ func attributedJoin(w http.ResponseWriter, r *http.Request, claimName, claimSess
 	case a.Kind == ActorOperator:
 		return claimName, claimSession, true
 	case hubUser:
+		// Reached only if the tunneled branch above is bypassed; a Hub actor should then pass an
+		// empty session.
 		// A Hub user joins as the name the tunnel decided, never as the Operator (unless it is the
 		// Hub operator) or as another member: the claim is ignored, and a claim of the Operator's
 		// name by anyone else is refused, as attributedTo's guard would.

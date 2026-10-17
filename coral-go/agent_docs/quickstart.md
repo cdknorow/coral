@@ -165,7 +165,7 @@ Coral stops at startup and says so.
 > Coral, but [strict local auth](auth.md#strict-local-auth-the-default) (the default) makes every request from
 > this computer need an agent's session token, the dashboard sign-in, the command line's
 > signature or the API key, which your agents and the `coral` command already send. Keep it
-> on (don't set `CORAL_STRICT_LOCAL_AUTH=0`) and keep the loopback listener.
+> on (don't start Coral with `--strict-local-auth=false`) and keep the loopback listener.
 > `--no-auto-loopback` is not the stricter setup where Coral runs agents: they would reach it
 > through the network address, where only the API key or a dashboard sign-in is accepted, and
 > their board and task calls would be refused. Use it only on a computer where Coral runs no
