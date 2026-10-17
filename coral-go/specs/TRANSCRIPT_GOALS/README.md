@@ -38,7 +38,9 @@ The goal half of this spec shipped, simpler than planned:
   transcript has grown, ≥ 30 min have passed since the last goal, either it
   has been quiet 20 s (turn ended) or 60 min have passed, **and** the user's
   requests (the two the model reads) differ from the ones the goal was made
-  from; replies alone never rerun the CLI. Backoff after a failure: 30 min,
+  from; replies alone never rerun the CLI. The operator's refresh runs at
+  once, at most once a minute per session (a second click inside the minute
+  answers 202 with the goal pending). Backoff after a failure: 30 min,
   doubling for each failure in a row, at most 4 h. Gating state is in memory;
   the goal event carries its requests' hash (`basis`), so a restart does not
   regenerate a goal whose requests are unchanged. Settings > "Name each

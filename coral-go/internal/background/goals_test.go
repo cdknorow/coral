@@ -281,9 +281,11 @@ func outcomes(rows []store.GoalGeneration) []string {
 func TestGoalGenerator_RecordsEveryAttemptWithTriggerOutcomeAndCost(t *testing.T) {
 	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g010", AgentType: "claude", AgentName: "coral-go"})
 
+	advance := f.fakeClock(t)
 	f.poll()                 // first -> stored
 	f.gen.RequestGoal(f.sid) // manual -> same answer
 	f.poll()
+	advance(time.Minute)
 	f.gen.RequestGoal(f.sid)
 	f.err = errors.New("exit status 1")
 	f.poll() // manual -> failed
@@ -301,11 +303,13 @@ func TestGoalGenerator_RecordsEveryAttemptWithTriggerOutcomeAndCost(t *testing.T
 func TestGoalGenerator_RecordsTheOperatorsGoalAndAMissingCLIOnce(t *testing.T) {
 	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g011", AgentType: "claude", AgentName: "coral-go"})
 	f.gen.resolveCLI = func(map[string]string) string { return "" }
+	advance := f.fakeClock(t)
 
 	f.poll()
 	f.gen.RequestGoal(f.sid)
 	f.poll()
 	assert.Equal(t, []string{"first:no_cli"}, outcomes(f.attempts(t)), "one row per outage, not per tick")
+	advance(time.Minute)
 
 	f.gen.resolveCLI = func(map[string]string) string { return "claude" }
 	detail := `{"source":"user"}`
@@ -439,4 +443,33 @@ func TestGoalGenerator_ARestartKeepsAGoalMadeFromTheSameRequests(t *testing.T) {
 	advance(30 * time.Minute)
 	f.poll()
 	assert.Equal(t, int32(2), f.calls.Load())
+}
+
+// The operator's refresh runs the CLI at once, but at most once a minute per session: a second
+// click inside the minute adds nothing to the goal already pending or just made (#4204).
+func TestGoalGenerator_AtMostOneManualRunAMinute(t *testing.T) {
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g016", AgentType: "claude", AgentName: "coral-go"})
+	advance := f.fakeClock(t)
+	f.poll()
+	require.Equal(t, int32(1), f.calls.Load())
+
+	f.gen.RequestGoal(f.sid)
+	f.poll()
+	assert.Equal(t, int32(2), f.calls.Load(), "the first click runs at once")
+	for i := 0; i < 5; i++ {
+		advance(10 * time.Second)
+		f.gen.RequestGoal(f.sid)
+		f.poll()
+	}
+	assert.Equal(t, int32(2), f.calls.Load(), "clicks inside the minute run nothing more")
+	advance(11 * time.Second)
+	f.gen.RequestGoal(f.sid)
+	f.poll()
+	assert.Equal(t, int32(3), f.calls.Load(), "a click a minute after the last one runs")
+
+	other := "00000000-0000-0000-0000-00000000g017"
+	f.gen.RequestGoal(other)
+	f.gen.mu.Lock()
+	assert.True(t, f.gen.states[other].force, "the floor is per session")
+	f.gen.mu.Unlock()
 }

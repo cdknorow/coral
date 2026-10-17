@@ -58,6 +58,9 @@ const (
 	goalMaxFailureBackoff = 4 * time.Hour
 	// goalCLITimeout bounds one CLI call, including its startup.
 	goalCLITimeout = 60 * time.Second
+	// goalManualFloor is the least time between two operator refreshes of one session that
+	// run the CLI: a second click inside it finds the first one's goal pending (#4204).
+	goalManualFloor = time.Minute
 	// goalConcurrency caps CLI calls running at once.
 	goalConcurrency = 2
 	// goalMaxWords caps the stored goal even if the model runs long.
@@ -178,8 +181,9 @@ type goalState struct {
 	failedAt    time.Time // last CLI failure
 	failures    int       // CLI failures in a row
 	inFlight    bool
-	force       bool   // operator asked for a refresh
-	trigger     string // why the in-flight generation was started
+	force       bool      // operator asked for a refresh
+	manualAt    time.Time // the last operator refresh that was taken
+	trigger     string    // why the in-flight generation was started
 	// transcript is read incrementally; only generate touches it and basis, and only
 	// one generate runs per session (inFlight).
 	transcript goalTranscript
@@ -354,7 +358,9 @@ func (g *GoalGenerator) Run(ctx context.Context) error {
 
 // RequestGoal asks for a fresh goal for a session on the next poll, which
 // runs right away. The interval and backoff are bypassed; a goal the operator
-// typed is still never replaced.
+// typed is still never replaced. At most one refresh a minute per session runs
+// the CLI (goalManualFloor); one inside that minute adds nothing to the one
+// already pending or just made.
 func (g *GoalGenerator) RequestGoal(sessionID string) {
 	g.mu.Lock()
 	st := g.states[sessionID]
@@ -362,6 +368,12 @@ func (g *GoalGenerator) RequestGoal(sessionID string) {
 		st = &goalState{}
 		g.states[sessionID] = st
 	}
+	now := g.now()
+	if !st.manualAt.IsZero() && now.Sub(st.manualAt) < goalManualFloor {
+		g.mu.Unlock()
+		return
+	}
+	st.manualAt = now
 	st.force = true
 	g.mu.Unlock()
 	select {
