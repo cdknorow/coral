@@ -7,6 +7,9 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // Actor is who a request is from, as the identity layer decided it (#4244, identity phase 2 of
@@ -22,8 +25,11 @@ type Actor struct {
 	//   ActorToken    an agent's session token: Name is the member name the token's session holds on
 	//                 this board ("" for a session that is not on it yet, e.g. one joining);
 	//   ActorOperator the Operator: the dashboard's cookie, the signed command line, an API key;
-	//   ActorHub      Coral Hub: the tunnel's own guard decides the name (a Hub user, or the Operator
-	//                 for the Hub operator), so Name is empty here;
+	//   ActorHub      Coral Hub: the name is what the tunnel decides, "Operator" when TunnelIdentityGuard
+	//                 admitted the write as the Hub operator (HubUser is then the Hub user acting for
+	//                 it), else the Hub user itself (a chat post, a read), or "" when the request names
+	//                 no valid Hub user. A chat post is not the guard's: PostMessage decides whether
+	//                 one is the Operator's, so there Name is the Hub user whatever the post claims;
 	//   ActorClaimed  nothing backs it: a caller with no credential (an install that opted out of
 	//                 strict local auth, a script, a bare command line). Name is empty; the request's
 	//                 claim is a claim. Nothing privileged may accept it (rule 13, park, ack,
@@ -33,6 +39,8 @@ type Actor struct {
 	Name string
 	// Session is the agent session name the token belongs to (ActorToken).
 	Session string
+	// HubUser is the validated Coral Hub user of an ActorHub request (hub-user-<8 hex>), or "".
+	HubUser string
 }
 
 // Actor kinds.
@@ -58,12 +66,12 @@ func withActor(r *http.Request, a Actor) *http.Request {
 
 // actorFor is the actor of a request that carries no agent token, by how the identity layer
 // classified its caller.
-func actorFor(caller string) (Actor, bool) {
+func actorFor(r *http.Request, caller string) (Actor, bool) {
 	switch caller {
 	case callerCLISigned, callerAPIKey, callerDashCookie:
 		return Actor{Kind: ActorOperator, Name: "Operator"}, true
 	case callerHub:
-		return Actor{Kind: ActorHub}, true
+		return hubActor(r), true
 	case callerOpen:
 		return Actor{}, false // the liveness check and the command line's hello: nobody acts
 	}
@@ -160,7 +168,7 @@ func routeOf(r *http.Request) string {
 // serveAs passes a request that carries no agent token on, with its actor set and, for a board
 // request, its claim compared with it (log mode).
 func (o *IdentityObserver) serveAs(w http.ResponseWriter, r *http.Request, next http.Handler, caller string) {
-	actor, ok := actorFor(caller)
+	actor, ok := actorFor(r, caller)
 	if !ok {
 		next.ServeHTTP(w, r)
 		return
@@ -176,4 +184,22 @@ func (o *IdentityObserver) serveAs(w http.ResponseWriter, r *http.Request, next 
 	if isBoard {
 		o.countActor(r, actor, given, readErr)
 	}
+}
+
+// hubActor is the actor of a request that came through Coral Hub: what the tunnel's guard decided
+// (it runs before the identity layer). The Hub user is read only from the header the connector
+// stamps, and only when the request carries the connector's own stamp (a forged one is refused
+// before this): exactly one value, in the form the guard requires.
+func hubActor(r *http.Request) Actor {
+	a := Actor{Kind: ActorHub}
+	if cloud.TunneledAuthentic(r) {
+		if values := r.Header[http.CanonicalHeaderKey(tunnel.HubUserHeader)]; len(values) == 1 && len(values[0]) <= 32 && hubUserRe.MatchString(values[0]) {
+			a.HubUser = values[0]
+			a.Name = values[0]
+		}
+	}
+	if op := hubOperatorUser(r); op != "" { // the guard admitted this write as the Hub operator
+		a.Name, a.HubUser = "Operator", op
+	}
+	return a
 }

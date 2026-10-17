@@ -150,3 +150,81 @@ func TestIdentityLayerDecidesTheActor(t *testing.T) {
 	b, _ := json.Marshal(rep)
 	assert.NotContains(t, string(b), token, "the report never shows a token")
 }
+
+// Through Coral Hub the actor is what the tunnel decided (#4244 follow-up (b)): the Hub user for a
+// chat post or a read, the Operator (for that Hub user) when TunnelIdentityGuard admitted the write
+// as the Hub operator, nothing for a malformed Hub user, and no actor at all for a forged stamp or a
+// write the guard refused. The real guard runs in front of the identity layer, as in the router.
+func TestHubActorIsWhatTheTunnelDecided(t *testing.T) {
+	_, bh := setupBoardTestServer(t)
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	_, err = bh.bs.Subscribe(context.Background(), "p", "Dev", "Developer", "claude-dev", nil, "")
+	require.NoError(t, err)
+
+	operatorAllowed := true
+	o := NewIdentityObserver(db, bh.bs, func(*http.Request) bool { return false })
+	var seen Actor
+	var reached bool
+	record := func(w http.ResponseWriter, r *http.Request) { seen, reached = ActorOf(r.Context()); reached = true }
+	h := chi.NewRouter()
+	h.Use(TunnelIdentityGuard(bh.bs, func(*http.Request) bool { return operatorAllowed }))
+	h.Use(o.Middleware)
+	h.Post("/api/board/{project}/messages", record)
+	h.Get("/api/board/{project}/messages", record)
+	h.Post("/api/board/{project}/tasks", record)
+	do := func(method, target, body string, hdr map[string]string, extra ...[2]string) *httptest.ResponseRecorder {
+		seen, reached = Actor{}, false
+		r := httptest.NewRequest(method, target, strings.NewReader(body))
+		for k, v := range hdr {
+			r.Header.Set(k, v)
+		}
+		for _, kv := range extra {
+			r.Header.Add(kv[0], kv[1])
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec
+	}
+	const user = "hub-user-1a2b3c4d"
+	hub := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubUserHeader: user}
+
+	// A chat post and a read: the Hub user, whatever the post claims.
+	do("POST", "/api/board/p/messages", `{"content":"hi"}`, hub)
+	assert.Equal(t, Actor{Kind: ActorHub, Name: user, HubUser: user}, seen)
+	do("POST", "/api/board/p/messages", `{"subscriber_id":"Operator","content":"hi"}`, hub)
+	assert.Equal(t, Actor{Kind: ActorHub, Name: user, HubUser: user}, seen, "a claim of the Operator in a chat post does not make the Hub user the Operator here")
+	do("GET", "/api/board/p/messages", ``, hub)
+	assert.Equal(t, Actor{Kind: ActorHub, Name: user, HubUser: user}, seen)
+
+	// A write the guard admitted as the Hub operator: the Operator, for that Hub user.
+	rec := do("POST", "/api/board/p/tasks", `{"created_by":"Operator","title":"x"}`, hub)
+	require.True(t, reached, "%d %s", rec.Code, rec.Body.String())
+	assert.Equal(t, Actor{Kind: ActorHub, Name: "Operator", HubUser: user}, seen)
+	// ...and when the guard refuses it (the owner turned the Hub operator off), nothing is served.
+	operatorAllowed = false
+	rec = do("POST", "/api/board/p/tasks", `{"created_by":"Operator","title":"x"}`, hub)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.False(t, reached)
+	operatorAllowed = true
+	// Another member's name through the Hub is the guard's 409, never an actor.
+	rec = do("POST", "/api/board/p/tasks", `{"created_by":"Dev","title":"x"}`, hub)
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	assert.False(t, reached)
+
+	// A Hub user that is not exactly one well-formed value names nobody.
+	for _, bad := range []string{"HUB-USER-1A2B3C4D", "hub-user-1a2b3c4", "hub-user-1a2b3c4d5", "hub-user-1a2b3c4d\n", "someone", strings.Repeat("a", 40)} {
+		do("GET", "/api/board/p/messages", ``, map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubUserHeader: bad})
+		assert.Equal(t, Actor{Kind: ActorHub}, seen, "Hub user %q", bad)
+	}
+	do("GET", "/api/board/p/messages", ``, map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}, [2]string{tunnel.HubUserHeader, user}, [2]string{tunnel.HubUserHeader, "hub-user-ffffffff"})
+	assert.Equal(t, Actor{Kind: ActorHub}, seen, "two Hub users are none")
+	do("GET", "/api/board/p/messages", ``, map[string]string{tunnel.ViaHeader: cloud.ViaSecret()})
+	assert.Equal(t, Actor{Kind: ActorHub}, seen, "no Hub user header")
+
+	// A forged tunnel stamp is refused before any handler: it is not a Hub actor, however well formed its user.
+	rec = do("GET", "/api/board/p/messages", ``, map[string]string{tunnel.ViaHeader: "not-the-connectors-secret", tunnel.HubUserHeader: user})
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.False(t, reached)
+}
