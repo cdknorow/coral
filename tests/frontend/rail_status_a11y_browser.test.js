@@ -37,6 +37,23 @@ const { connect } = require('./agent_view_harness');
         }
         ok('each rail tile\'s name ends with its state in the sidebar\'s words, its tip matches, and the dot is aria-hidden');
 
+        // An unread count is in the name too (and only then); the badge itself is hidden so it is read once.
+        const unreadSid = 'sid-w-working';
+        const read = () => ev(`(() => { const t = document.querySelector('#sidebar-rail-list .sidebar-rail-item[data-session-id="${unreadSid}"]'); const b = t.querySelector('.rail-tile-unread');
+            return { label: t.getAttribute('aria-label'), title: t.getAttribute('title'), badge: b ? { text: b.textContent, hidden: b.getAttribute('aria-hidden') } : null }; })()`);
+        for (const [count, text] of [[3, '3'], [14, '9+']]) {
+            await ev(`(() => { const s = window.__RAIL_LIVE.find(x => x.session_id === '${unreadSid}'); s.board_unread = ${count}; T.render.renderLiveSessions(window.__RAIL_LIVE); return true; })()`);
+            const u = await read();
+            if (u.badge) {
+                assert.equal(u.label, `w-working, Working, ${count} unread`, 'the name carries the real count');
+                assert.deepEqual(u.badge, { text, hidden: 'true' }, 'the badge is hidden from assistive technology');
+                assert.equal(u.title, u.label);
+            } else assert.fail('no unread badge drawn: ' + JSON.stringify(u));
+        }
+        await ev(`(() => { window.__RAIL_LIVE.find(x => x.session_id === '${unreadSid}').board_unread = 0; T.render.renderLiveSessions(window.__RAIL_LIVE); return true; })()`);
+        assert.equal((await read()).label, 'w-working, Working', 'no unread: no count in the name');
+        ok('an unread count is in the tile\'s name ("w-working, Working, 14 unread", the real number) and its badge is aria-hidden; no unread, no count');
+
         // The accessibility tree: the tile is one named button; the state is in its name once.
         await DOM.enable(); await Accessibility.enable();
         const doc = await DOM.getDocument({ depth: -1 });
