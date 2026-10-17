@@ -50,11 +50,23 @@ func (h *SessionsHandler) InstallAutomatedInputHooks() {
 
 // GateSignalsClaudeSetting turns on gate phase 2 for Claude agents (#3578): automated input
 // follows the agent's own signals, so a routine board nudge or message waits for the turn to end
-// and a mention is typed in at once. On unless "false" (#3662: the operator's go-live after the
+// and a mention is typed in at once. On unless false, 0, no or off (#3662: the operator's go-live after the
 // post-relaunch shadow day); a settings read that fails means off, the screen rule. Set only on
 // this computer: PUT /api/settings is Operator-only and never reachable through Coral Hub.
 // CORAL_GATE_MODE=screen overrides it (the kill switch).
 const GateSignalsClaudeSetting = "gate_signals_claude"
+
+// gateSettingOff reports whether the stored value turns phase 2 off: false, 0, no or off, in any
+// case, around spaces (the spellings strict local auth's switch takes too). Anything else, and
+// no value, is on, so a mistyped "on" stays on; the kill switch that does not depend on the
+// setting is CORAL_GATE_MODE=screen.
+func gateSettingOff(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "false", "0", "no", "off":
+		return true
+	}
+	return false
+}
 
 // gateSignalsFromSettings reads the setting at most once a second.
 func gateSignalsFromSettings(ss *store.SessionStore) func() bool {
@@ -68,7 +80,7 @@ func gateSignalsFromSettings(ss *store.SessionStore) func() bool {
 			return on
 		}
 		s, err := ss.GetSettings(context.Background())
-		on, at = err == nil && s[GateSignalsClaudeSetting] != "false", time.Now()
+		on, at = err == nil && !gateSettingOff(s[GateSignalsClaudeSetting]), time.Now()
 		return on
 	}
 }

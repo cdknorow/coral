@@ -22,7 +22,10 @@ func TestGateSignalsAreOnByDefault(t *testing.T) {
 		{"true", true, true},   // on
 		{"false", true, false}, // the Operator's off switch
 		{"", true, true},       // cleared: the default
-		{"no", true, true},     // only "false" turns it off
+		{"nope", true, true},   // a value that is not an off spelling stays on
+		{" Off ", true, false}, // the other spellings of off
+		{"0", true, false},
+		{"NO", true, false},
 	} {
 		if c.set {
 			require.NoError(t, ss.SetSetting(ctx, GateSignalsClaudeSetting, c.value))
