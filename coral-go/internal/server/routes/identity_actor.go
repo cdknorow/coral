@@ -64,6 +64,35 @@ func withActor(r *http.Request, a Actor) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), actorKey{}, a))
 }
 
+// callerActor is who a handler that attributes a request attributes it to: the identity layer's
+// decision. A request that did not pass through the layer (a test calling the handler directly) has
+// none, and is claimed: nothing backs a name it gives. Handlers read this, never the claim.
+func callerActor(r *http.Request) Actor {
+	if a, ok := ActorOf(r.Context()); ok {
+		return a
+	}
+	return Actor{Kind: ActorClaimed}
+}
+
+// IsOperator reports whether the actor is the Operator: the dashboard, the signed command line, an
+// API key, or the Hub operator the tunnel's guard admitted. Never a token, never claimed.
+func (a Actor) IsOperator() bool {
+	return a.Name == "Operator" && (a.Kind == ActorOperator || a.Kind == ActorHub)
+}
+
+// Member is the board member name a token actor holds on the board, and whether it has one: a token
+// with no name is joining (or on no board), and a claimed, Operator or Hub actor is not a member.
+func (a Actor) Member() (string, bool) {
+	if a.Kind == ActorToken && a.Name != "" {
+		return a.Name, true
+	}
+	return "", false
+}
+
+// A token with no member name yet may only join: subscribe is the one board route it may use.
+// (Identity phase 2 counts it in log mode; enforce would refuse the rest, not attribute them to "".)
+const joiningRoute = "POST /api/board/{project}/subscribe"
+
 // actorFor is the actor of a request that carries no agent token, by how the identity layer
 // classified its caller.
 func actorFor(r *http.Request, caller string) (Actor, bool) {
@@ -138,9 +167,18 @@ func (o *IdentityObserver) countActor(r *http.Request, a Actor, given []string, 
 	if readErr == nil {
 		outcome = claimOutcome(a, given)
 	}
-	key := fmt.Sprintf("%s %s %s %s", a.Kind, outcome, r.Method, routeOf(r))
+	route := routeOf(r)
+	key := fmt.Sprintf("%s %s %s %s", a.Kind, outcome, r.Method, route)
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if a.Kind == ActorToken && a.Name == "" && strings.HasPrefix(route, "/api/board/{project}") && r.Method+" "+route != joiningRoute {
+		// A joining token on a route other than subscribe: what enforce would refuse.
+		jk := r.Method + " " + route
+		if _, ok := o.joiningWould[jk]; !ok && len(o.joiningWould) >= identityBreakKeysMax {
+			jk = "other"
+		}
+		o.joiningWould[jk]++
+	}
 	if _, ok := o.actorClaims[key]; !ok && len(o.actorClaims) >= identityBreakKeysMax {
 		key = a.Kind + " " + outcome + " other"
 	}

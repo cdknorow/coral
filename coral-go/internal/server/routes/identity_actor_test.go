@@ -228,3 +228,79 @@ func TestHubActorIsWhatTheTunnelDecided(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.False(t, reached)
 }
+
+// A token with no member name yet may only subscribe (#4255). checkBoard already refuses such a token
+// (403 cross_board, "not subscribed") on every board route but subscribe and external-messages, in every
+// mode; the log-mode counter is the evidence for the rule actor-only attribution will rely on: it counts
+// a joining token's request that REACHED a handler outside subscribe, which today is only what
+// acrossBoards lets through, so a healthy flow that would be refused shows up by name.
+func TestJoiningTokenOutsideSubscribeIsRefusedAndCounted(t *testing.T) {
+	_, bh := setupBoardTestServer(t)
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	ctx := context.Background()
+	_, err = bh.bs.Subscribe(ctx, "p", "Dev", "Developer", "claude-dev", nil, "")
+	require.NoError(t, err)
+	member, err := db.MintSessionToken(ctx, "sid-dev", "claude-dev")
+	require.NoError(t, err)
+	joining, err := db.MintSessionToken(ctx, "sid-new", "claude-new") // on no board
+	require.NoError(t, err)
+
+	o := NewIdentityObserver(db, bh.bs, func(*http.Request) bool { return false })
+	ok := func(http.ResponseWriter, *http.Request) {}
+	h := chi.NewRouter()
+	h.Use(o.Middleware)
+	h.Post("/api/board/{project}/subscribe", ok)
+	h.Post("/api/board/{project}/external-messages", ok)
+	h.Post("/api/board/{project}/messages", ok)
+	h.Get("/api/board/{project}/messages", ok)
+	h.Post("/api/board/{project}/tasks", ok)
+	h.Get("/api/sessions/live", ok)
+	do := func(token, method, target, body string) int {
+		r := httptest.NewRequest(method, target, strings.NewReader(body))
+		r.Header.Set(store.SessionTokenHeader, token)
+		r.Header.Set("User-Agent", "coral-board/dev")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec.Code
+	}
+	assert.Equal(t, http.StatusOK, do(joining, "POST", "/api/board/p/subscribe", `{"subscriber_id":"New One"}`), "a joining token may subscribe")
+	// Every other attributing route refuses it already, before any handler.
+	assert.Equal(t, http.StatusForbidden, do(joining, "POST", "/api/board/p/messages", `{"content":"x"}`))
+	assert.Equal(t, http.StatusForbidden, do(joining, "GET", "/api/board/p/messages", ``))
+	assert.Equal(t, http.StatusForbidden, do(joining, "POST", "/api/board/p/tasks", `{"title":"t"}`))
+	assert.Equal(t, http.StatusOK, do(joining, "GET", "/api/sessions/live", ``), "not a board route")
+	assert.Equal(t, http.StatusOK, do(member, "POST", "/api/board/p/messages", `{"content":"z"}`), "a member is not joining")
+	// What acrossBoards lets through is what the counter can see.
+	assert.Equal(t, http.StatusOK, do(joining, "POST", "/api/board/p/external-messages", `{}`))
+
+	counts := o.Report()["joining_would_refuse"].(map[string]int64)
+	assert.Equal(t, map[string]int64{"POST /api/board/{project}/external-messages": 1}, counts,
+		"a refused request never reaches the counter; subscribe and a member's requests are not counted")
+}
+
+func TestActorAccessors(t *testing.T) {
+	assert.Equal(t, Actor{Kind: ActorClaimed}, callerActor(httptest.NewRequest("GET", "/", nil)), "a request that did not pass the identity layer is claimed")
+	r := withActor(httptest.NewRequest("GET", "/", nil), Actor{Kind: ActorToken, Name: "Dev", Session: "s"})
+	assert.Equal(t, "Dev", callerActor(r).Name)
+	name, ok := callerActor(r).Member()
+	assert.True(t, ok)
+	assert.Equal(t, "Dev", name)
+	for _, c := range []struct {
+		a        Actor
+		op, memb bool
+	}{
+		{Actor{Kind: ActorOperator, Name: "Operator"}, true, false},
+		{Actor{Kind: ActorHub, Name: "Operator", HubUser: "hub-user-1a2b3c4d"}, true, false},
+		{Actor{Kind: ActorHub, Name: "hub-user-1a2b3c4d"}, false, false},
+		{Actor{Kind: ActorToken, Name: "Dev"}, false, true},
+		{Actor{Kind: ActorToken}, false, false},
+		{Actor{Kind: ActorClaimed, Name: "Operator"}, false, false},
+		{Actor{Kind: ActorToken, Name: "Operator"}, false, true}, // never a name a session can hold, and not the Operator's rights
+	} {
+		_, member := c.a.Member()
+		assert.Equal(t, c.op, c.a.IsOperator(), "%+v", c.a)
+		assert.Equal(t, c.memb, member, "%+v", c.a)
+	}
+}

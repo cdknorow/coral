@@ -106,16 +106,19 @@ type IdentityObserver struct {
 	// actorClaims counts board requests by "actor-kind outcome METHOD /route" (#4244): how the
 	// names a request gives for itself compared with the actor the identity layer decided.
 	actorClaims map[string]int64
-	recent      []IdentityMismatch
-	lastLog     map[string]time.Time
-	now         func() time.Time
+	// joiningWould counts requests from a token with no member name yet (joining, or on no board) to a
+	// board route other than subscribe, by "METHOD /route": what the joining rule would refuse (#4255).
+	joiningWould map[string]int64
+	recent       []IdentityMismatch
+	lastLog      map[string]time.Time
+	now          func() time.Time
 }
 
 // NewIdentityObserver returns the observer; hasSession reports a valid dashboard cookie.
 func NewIdentityObserver(db *store.DB, bs *board.Store, hasSession func(*http.Request) bool) *IdentityObserver {
 	return &IdentityObserver{db: db, bs: bs, hasSession: hasSession,
 		callers: map[string]int64{}, bySession: map[string]int64{}, byTool: map[string]int64{},
-		mismatches: map[string]int64{}, breakBy: map[string]int64{}, refused: map[string]int64{}, actorClaims: map[string]int64{}, operatorCalls: map[string]int64{}, lastLog: map[string]time.Time{}, now: time.Now}
+		mismatches: map[string]int64{}, breakBy: map[string]int64{}, refused: map[string]int64{}, actorClaims: map[string]int64{}, joiningWould: map[string]int64{}, operatorCalls: map[string]int64{}, lastLog: map[string]time.Time{}, now: time.Now}
 }
 
 var agentToolPrefixes = []string{"coral-board/", "coral-agent/", "coral-hook-"}
@@ -997,6 +1000,10 @@ func (o *IdentityObserver) Report() map[string]any {
 	for k, v := range o.actorClaims {
 		actorClaims[k] = v
 	}
+	joining := map[string]int64{}
+	for k, v := range o.joiningWould {
+		joining[k] = v
+	}
 	opCalls := map[string]int64{}
 	for k, v := range o.operatorCalls {
 		opCalls[k] = v
@@ -1013,7 +1020,7 @@ func (o *IdentityObserver) Report() map[string]any {
 	if o.effectiveStrict() {
 		mode = "strict"
 	}
-	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls, "actor_claims": actorClaims,
+	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls, "actor_claims": actorClaims, "joining_would_refuse": joining,
 		"mismatches": mm, "recent_mismatches": recent, "attributed_by_session": sessions, "attributed_by_tool": tools}
 }
 
