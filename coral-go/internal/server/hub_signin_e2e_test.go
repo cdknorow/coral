@@ -28,7 +28,7 @@ func TestHubSigninThroughTheRouter(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	stack := newTermStack(t)
-	srv := NewWithKey(cfg, db, stack.backend, stack.terminal, "")
+	srv := mustServer(NewWithKey(cfg, db, stack.backend, stack.terminal, ""))
 	t.Cleanup(srv.Close) // its loops and the board database, which Windows won't remove while open (#3914)
 	require.NotNil(t, srv.hubSignin)
 	local := httptest.NewServer(srv.Router())

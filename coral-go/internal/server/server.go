@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/safego"
 	"html/template"
@@ -26,7 +27,6 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/machinehealth"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
@@ -86,8 +86,9 @@ var remoteAgentHubConfig background.RemoteAgentHubConfig
 type templateData = frontend.PageData
 
 // NewWithKey constructs the server and opens its separate board database with
-// the same optional SQLCipher key used by the primary store.
-func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, dbKey string) *Server {
+// the same optional SQLCipher key used by the primary store. An error (the API key store
+// can't be read or made) is returned, so the tray can show it, never an exit (#4157).
+func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, dbKey string) (*Server, error) {
 	tightenDataPermissions(cfg.CoralDir()) // #3552
 	// Initialize upload directory from config
 	routes.InitUploadDir(cfg.CoralDir())
@@ -134,7 +135,10 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	// Initialize API key auth
 	keyStore, err := auth.NewKeyStore(cfg.CoralDir())
 	if err != nil {
-		logexit.Fatalf("Failed to initialize API key store: %v", err)
+		if boardStore != nil {
+			boardStore.Close()
+		}
+		return nil, fmt.Errorf("could not read or create the API key (%s): %w", filepath.Join(cfg.CoralDir(), "api_key"), err)
 	}
 	// Never log any part of the key (#3356): Settings > Remote Access shows it on this machine.
 	log.Printf("API key loaded (Settings > Remote Access shows it on this computer)")
@@ -189,7 +193,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 
 	s.router = s.buildRouter()
 
-	return s
+	return s, nil
 }
 
 // goBackground runs f on the server's background context, tracked for Close.

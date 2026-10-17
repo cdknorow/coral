@@ -16,8 +16,16 @@ import (
 // database (#3914).
 func newTestServer(t testing.TB, cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal) *Server {
 	t.Helper()
-	srv := NewWithKey(cfg, db, backend, terminal, "")
+	srv := mustServer(NewWithKey(cfg, db, backend, terminal, ""))
 	t.Cleanup(srv.Close)
+	return srv
+}
+
+// mustServer is NewWithKey's server, for tests whose setup can't fail.
+func mustServer(srv *Server, err error) *Server {
+	if err != nil {
+		panic(err)
+	}
 	return srv
 }
 
