@@ -48,7 +48,7 @@ boolean settings in any case, so `true` and `"true"` mean the same.
 | Key | Default | Effect |
 |---|---|---|
 | `auto_summarize` | off | `true` runs the batch summarizer over finished sessions. Read at startup: restart Coral after changing it. |
-| `auto_goals` | on | `false` stops the short goal line Coral keeps for each live agent (and `POST /api/sessions/live/{name}/goal` answers 409). Read on every pass, so it applies within a minute. |
+| `auto_goals` | on | `false` stops the short goal line Coral keeps for each live agent (and `POST /api/sessions/live/{name}/goal` answers 409). Read on every pass, so it applies within a minute. Each goal is one short call to the Claude Code CLI on the user's account (about 1,300 input tokens, Haiku): after the first goal an agent's goal is asked for again only when the user's requests changed, at most every 30 minutes (60 in a turn that never goes quiet), with a failure backoff of 30 minutes doubling to 4 hours. The sparkle refresh (`POST .../goal`) runs at once, at most once a minute per session. A boolean only (`true` or `false`). |
 | `terminal_replay_bytes` | 262144 | How much recent terminal output a newly opened terminal is sent first (see websockets.md), clamped to 4 KiB to 16 MiB. Applies to terminals opened from then on. |
 
 **CLI paths:** `cli_path_<type>` (Settings › CLI Paths: `claude`, `codex`, `agy`,

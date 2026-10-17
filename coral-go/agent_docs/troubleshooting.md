@@ -471,8 +471,9 @@ at 200 characters.
 
 Coral never types automated text (board messages and nudges, task notifications, wait results,
 a launch's first prompt) into an agent that is waiting on a prompt for you: a permission or
-selection menu, an approval question, the trust-this-folder screen or a login or model picker.
-Typed there, the text and its Enter would answer the prompt. It holds the text and types it,
+selection menu, an approval question, the trust-this-folder screen, a login or model picker,
+Claude Code's bug-report draft or its session survey (those take single digit keys). The agent
+shows "delivery held: a dialog is open". Typed there, the text and its Enter would answer the prompt. It holds the text and types it,
 once, after you answer the prompt in the agent's terminal or the chat. If a message has been
 held for two minutes, the agent shows as needing your input on the dashboard. A newer unread
 count replaces a held one. A held nudge or notification is dropped after an hour; a new agent's

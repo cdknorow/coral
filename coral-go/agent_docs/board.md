@@ -515,6 +515,19 @@ the server API key/session cookie; localhost clients share the desktop trust
 boundary. Subscriber identity is caller-supplied, not a per-agent authenticated
 principal, so these checks do not prevent local identity impersonation.
 
+**Names Coral reserves.** A subscriber, poster, task creator or job title can't be `Coral`,
+`System`, `Health`, `Coral Task Queue`, `Coral Health Monitor`, `Coral Hub` or start with
+`hub-user-` (400, "is reserved for Coral's own messages"): those are Coral's own senders. Names
+are compared after folding case, spacing, invisible characters, fullwidth letters and letters
+from other scripts that look like Latin ones (`Coral` spelled with a Cyrillic or Greek letter is
+still `Coral`); `I`, `1` and `|` also read as `l`, and `0` as `o`, for the reserved names only. The
+same folding makes two such spellings one member, and accents are ignored (`Zoë` and `Zoe` are
+the same name). `Operator` is the dashboard's and the signed command line's name: an agent's
+tool (a request with a session token, or `coral-board` without the Operator's signature) is
+refused 400 when it writes as `Operator` in `subscriber_id`, `as`, `job_title`, `from`, `sender`
+or `created_by`, and no caller may use another spelling of it (`operator`, a look-alike letter).
+An agent can still name the Operator as an `assignee` or a `target`.
+
 The orchestrator can submit work without choosing a worker:
 
 ```sh
@@ -573,13 +586,22 @@ for the authorized backend-only late-edit path and current product gaps.
    (`coral-board task complete <id>`) or delegates it:
    `coral-board task review <id> --to "Security Reviewer,QA Engineer"`. Each reviewer gets a
    review task, "Review #<id>: <title>", in their queue, naming the review round.
+   One name is a normal list: a task may have one reviewer or several, and the round needs
+   every one of them.
    Coral delegates it itself when the task names its reviewers: `task add ... --reviewers
    "Security Reviewer,QA Engineer"`, or a `Reviewers: ...` line in its body. Those names count
    only when the orchestrator or the Operator added the task (and made every amendment to
-   it); otherwise, and when it names none, the team's default reviewers (a team setting,
-   empty unless set). The task's author is never one of its reviewers, and only current
-   members of the board are. The list is taken when the task is submitted, and the board
-   says "delegated for review by Coral"; the orchestrator can still change the reviewers.
+   it); otherwise, and when it names none, the board's default reviewers
+   (`health_default_reviewers`, empty, and not yet settable from the dashboard or the CLI), and
+   when there are none the task goes to the orchestrator as above. The task's author, creator,
+   assignee and submitter are never reviewers (in any spelling), and only current members of
+   the board are. The list is taken when the task is submitted and the board says "delegated
+   for review by Coral"; the orchestrator can still change the reviewers. Who added or amended a
+   task is the name the request gave (see the identity note above): this keeps an honest agent
+   from naming its own reviewers, it does not stop an agent that forges the orchestrator's
+   name. At most two auto-delegations per task an hour and 20 automatic actions per board an
+   hour; past that the task goes to the orchestrator. `health_auto_delegate` = `off` turns it
+   off (a board setting with no dashboard switch yet).
 3. **Review.** Any time the task is in review, each reviewer reads it
    (`coral-board task detail <id>`) and runs
    `coral-board task approve <id> --round N [--note "..."]` or
@@ -599,6 +621,32 @@ Only the task's reviewers approve or reject; only the orchestrator delegates, ch
 reviewers (task review again, while a round is open) or completes a task in review. The board's health report lists each open review and its age, and each task in
 review that the orchestrator hasn't completed or delegated. `task release-review` remains for a
 candidate submitted before this flow (an in-progress task with a recorded candidate).
+
+### Coral's own nudges to idle agents
+
+Every five minutes Coral checks each live agent on a board, from its hook events and the
+task times only (it never reads an agent's replies or transcript), and acts without the
+orchestrator on two things:
+
+- **Claim nudge.** An agent that is idle (not in a turn, no prompt open, not in a `coral-board
+  wait`) for 10 minutes with work assigned to it that is still `pending` and nothing in
+  progress is told: "#N is assigned to you and waiting. Run 'coral-board task claim N'". At
+  most every 10 minutes, twice per task; after the second the task is reported as escalated
+  and Coral stops. Claiming resets it.
+- **Status nudge.** An agent with a task in progress and no activity (hook events, a post, a
+  peek or a task change) for 20 minutes is asked once for a one-line status ("Post one line on
+  where you are: coral-board post ..."); if it is still silent 10 minutes later the task is
+  reported as escalated. Activity resets it.
+
+The texts are fixed and hold only a task number and minutes, never a task title or anything an
+agent wrote; they are typed like any automated input (held while the agent is in a turn or a
+prompt is open, never answering one). An agent with no hook events is never nudged. Each run
+posts one line per rule from "Coral Task Queue" ("[Coral health] claim nudge sent to: ...",
+"status asked of: ...", "escalated to the orchestrator: ..."); those lines are not agent
+activity and not a mention. Limits, kept by the server: 3 automatic actions per agent per hour
+and 20 per board per hour; past the budget Coral posts "[Coral health actions paused]" once an
+hour and acts again next hour. The board setting `health_nudges` = `off` turns the nudges off
+(no dashboard switch yet).
 
 
 Board-level task queue for coordinating work across agents. It shares its
