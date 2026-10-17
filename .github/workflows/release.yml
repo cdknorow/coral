@@ -26,7 +26,7 @@ jobs:
       commands: ${{ steps.r.outputs.commands }}
       gui_commands: ${{ steps.r.outputs.gui_commands }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Resolve the tier, version and program lists
         id: r
         run: |
@@ -52,9 +52,9 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
@@ -135,9 +135,9 @@ jobs:
     needs: [resolve]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
@@ -222,7 +222,7 @@ jobs:
 
       - name: Sign executables
         if: vars.WINDOWS_SIGNING == 'true'
-        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -265,7 +265,7 @@ jobs:
 
       - name: Sign MSI
         if: vars.WINDOWS_SIGNING == 'true'
-        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -319,7 +319,7 @@ jobs:
       contents: read
       attestations: read # the cached tmux payload's attestation (bundled-tmux)
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855). The Go caches are
       # main's (release-cache-warm.yml), restored only (#4126 item 2).
       - uses: ./.github/actions/setup-go-macos
@@ -380,7 +380,7 @@ jobs:
       contents: read
       attestations: read # the cached tmux payload's attestation (bundled-tmux)
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855).
       - uses: ./.github/actions/setup-go-macos
         with:
@@ -435,7 +435,7 @@ jobs:
     needs: [resolve, build-macos-arm64, build-macos-amd64]
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Go from go.dev, checksum-pinned: one copy for the three macOS jobs (#3855).
       - uses: ./.github/actions/setup-go-macos
       - name: Require macOS release signing credentials
@@ -688,7 +688,7 @@ jobs:
     needs: [resolve, build-linux, build-windows, build-macos]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download all artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

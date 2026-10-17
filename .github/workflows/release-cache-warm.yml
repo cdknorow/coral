@@ -50,7 +50,7 @@ jobs:
           - { arch: arm64, runner: macos-14, dist: macos-arm64 }
           - { arch: x86_64, runner: macos-15-intel, dist: macos-amd64 }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/bundled-tmux
         with:
           arch: ${{ matrix.arch }}
@@ -72,7 +72,7 @@ jobs:
           - { arch: arm64, runner: macos-14, dist: macos-arm64 }
           - { arch: x86_64, runner: macos-15-intel, dist: macos-amd64 }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-go-macos
       - id: tmux
         uses: ./.github/actions/bundled-tmux
@@ -101,7 +101,7 @@ jobs:
           - { arch: arm64, runner: macos-14 }
           - { arch: amd64, runner: macos-15-intel }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: go
         uses: ./.github/actions/setup-go-macos
         with:
@@ -142,9 +142,9 @@ jobs:
           - { arch: amd64, runner: ubuntu-24.04 }
           - { arch: arm64, runner: ubuntu-24.04-arm }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Exactly release.yml's build-linux setup, so this run saves under the key a tag looks for.
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
@@ -193,13 +193,13 @@ jobs:
           - { os: linux, arch: amd64, runner: ubuntu-24.04 }
           - { os: linux, arch: arm64, runner: ubuntu-24.04-arm }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: matrix.os == 'macos'
         uses: ./.github/actions/setup-go-macos
         with:
           cache: restore
       - if: matrix.os == 'linux'
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
