@@ -28,6 +28,28 @@ type Routes struct {
 	peerUser   func(*http.Request) (same, supported bool)
 	// hub is Sign in with Coral Hub (#3966), nil when the server has none.
 	hub *HubSignin
+	// isOperator: the identity layer decided this request is the Operator's (the dashboard
+	// sign-in, the API key, the signed command line). nil: no further check (tests of this
+	// package alone). With strict local auth off a bare local request is not one (#4290).
+	isOperator func(*http.Request) bool
+}
+
+// SetOperatorCheck sets how the key routes ask whether the identity layer verified the Operator.
+func (ar *Routes) SetOperatorCheck(f func(*http.Request) bool) { ar.isOperator = f }
+
+// keyRoutesRefuse writes the refusal and returns true unless r may read or rotate the API key: a
+// request straight from this computer (never through Coral Hub) that the identity layer verified as
+// the Operator, whatever strict local auth says (#4290, Security's SHOULD 3 in #4288).
+func (ar *Routes) keyRoutesRefuse(w http.ResponseWriter, r *http.Request) bool {
+	if !localOperator(r) {
+		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "localhost only"})
+		return true
+	}
+	if ar.isOperator != nil && !ar.isOperator(r) {
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "the API key is shown only to a signed-in Operator: sign in (coral open) or send the key or a command-line signature", "code": "operator_only"})
+		return true
+	}
+	return false
 }
 
 // SetStrictLocal makes /auth show LockedPageHTML to a browser on this computer that isn't
@@ -114,8 +136,7 @@ func (ar *Routes) Logout(w http.ResponseWriter, r *http.Request) {
 // GetAPIKey returns the API key (localhost only).
 // GET /api/system/api-key
 func (ar *Routes) GetAPIKey(w http.ResponseWriter, r *http.Request) {
-	if !localOperator(r) {
-		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "localhost only"})
+	if ar.keyRoutesRefuse(w, r) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"key": ar.ks.Key()})
@@ -124,8 +145,7 @@ func (ar *Routes) GetAPIKey(w http.ResponseWriter, r *http.Request) {
 // RegenerateKey generates a new API key (localhost only).
 // POST /api/system/api-key/regenerate
 func (ar *Routes) RegenerateKey(w http.ResponseWriter, r *http.Request) {
-	if !localOperator(r) {
-		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "localhost only"})
+	if ar.keyRoutesRefuse(w, r) {
 		return
 	}
 	newKey, err := ar.ks.RegenerateKey()

@@ -139,6 +139,11 @@ func (s *Server) registerAuth(r *chi.Mux) {
 	// Auth endpoints
 	authRoutes := s.authRoutes
 	authRoutes.SetStrictLocal(s.cfg.StrictLocalAuth) // /auth here shows the locked page (#3418)
+	// The key routes need the Operator the identity layer verified, strict or not (#4290).
+	authRoutes.SetOperatorCheck(func(r *http.Request) bool {
+		a, ok := routes.ActorOf(r.Context())
+		return ok && a.Kind == routes.ActorOperator && a.IsOperator()
+	})
 	r.Get("/auth", authRoutes.AuthPage)
 	r.Post("/auth/key", authRoutes.ValidateKey)
 	r.Post("/auth/logout", authRoutes.Logout)
