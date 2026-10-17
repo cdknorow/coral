@@ -53,6 +53,12 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
             await waitFor(`document.documentElement.dataset.authReady === 'true'`, 'the page script');   // the module script runs after load
             assert.equal(await ev(`(() => { const i = document.querySelector('.brand img'); return !!i && i.complete && i.naturalWidth > 0; })()`), true, `${name}: Coral's logo loads (from /static, with no credential)`);
         };
+        // A 409 makes the page reload itself. A test that goes on after seeing the markup it expects can be looking at the OLD document (the hub page already holds the
+        // form a 409 reloads to) or at the reload while it is still loading, and the next open()'s navigation then races it: two documents carry the same stamp, the
+        // first one satisfies the wait and the second replaces it under the test. So mark the document before the submit, and wait for a NEW one that is fully loaded and
+        // has run its script, then for the markup (#4414).
+        const markOld = () => ev(`window.__zzOld = true; true`);
+        const reloaded = (cond, what) => waitFor(`!window.__zzOld && document.readyState === 'complete' && document.documentElement.dataset.authReady === 'true' && (${cond})`, what);
         const $ = (id, prop = 'value') => ev(`document.getElementById('${id}').${prop}`);
         const type = (id, v) => ev(`(() => { const i = document.getElementById('${id}'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
         const submit = id => ev(`document.getElementById('${id}').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); true`);
@@ -153,8 +159,8 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         await open('create');
         replies = [json(409, { code: 'password_set', error: 'A password is already set' })];
         page = 'signin';   // what the server serves after the race
-        await type('password', 'x'); await type('confirm', 'x'); await submit('create-form');
-        await waitFor(`!!document.getElementById('signin-form')`, 'the sign-in page after a 409');
+        await type('password', 'x'); await type('confirm', 'x'); await markOld(); await submit('create-form');
+        await reloaded(`!!document.getElementById('signin-form')`, 'the sign-in page after a 409');
 
         // ── create with the setup code (another computer) ──
         await open('setup');
@@ -250,8 +256,8 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         assert.deepEqual(posts[0], { url: '/auth/hub/link', body: { enable_signin: false, setup_code: 'ABCD-1234' } }, 'the code is normalised; unticked means enable_signin false');
         page = 'hub-ready';
         replies = [json(409, { code: 'already_linked' })];
-        await submit('hub-link-form');
-        await waitFor(`!!document.getElementById('hub-start-form')`, 'a 409 reloads as the page that offers the sign-in');
+        await markOld(); await submit('hub-link-form');
+        await reloaded(`!!document.getElementById('hub-start-form')`, 'a 409 reloads as the page that offers the sign-in');
         // this computer is asked for a code only when the server demands one
         await open('hub-unpaired');
         await ev(`document.getElementById('hub-link-open').click(); true`);
