@@ -1,0 +1,83 @@
+name: Release cache warm
+
+# Writes the caches a release restores (#4126 items 1, 2 and 6), from main. A cache saved on a tag
+# can't be read by any other tag, and one saved on a ci/ branch is visible only to that branch, so
+# the caches a release can read are main's: the bundled tmux payload and the macOS Go caches
+# (restored by release.yml, which never saves them), and the Linux setup-go cache (a tag that finds
+# main's exact key restores it and saves nothing, instead of uploading ~400 MB it can't share).
+#
+# A run on another ref (workflow_dispatch on a ci/ branch) writes that branch's caches only: that
+# is how a change here is proved, and none of it can reach a release.
+#
+# Every run also proves the restore path: tmux-restore restores the payload just saved, requires a
+# hit, checks it against its manifest and runs the bundled-tmux smoke test, as a release does.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - coral-go/go.mod
+      - coral-go/go.sum
+      - tools/build-bundled-tmux.sh
+      - tools/bundled-tmux-sources.tsv
+      - .github/actions/bundled-tmux/**
+      - .github/actions/setup-go-macos/**
+      - .github/workflows/release-cache-warm.yml
+  # Caches unread for 7 days are evicted; a release reads them, and this keeps them between releases
+  # (and follows runner image updates, which change the tmux and Go keys).
+  schedule:
+    - cron: "23 5 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  tmux:
+    name: tmux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-14, dist: macos-arm64 }
+          - { arch: x86_64, runner: macos-15-intel, dist: macos-amd64 }
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/bundled-tmux
+        with:
+          arch: ${{ matrix.arch }}
+          out: dist/${{ matrix.dist }}/tmux-payload
+          save: "true"
+
+  tmux-restore:
+    name: tmux restore check (${{ matrix.arch }})
+    needs: [tmux]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-14, dist: macos-arm64 }
+          - { arch: x86_64, runner: macos-15-intel, dist: macos-amd64 }
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: ./.github/actions/setup-go-macos
+      - id: tmux
+        uses: ./.github/actions/bundled-tmux
+        with:
+          arch: ${{ matrix.arch }}
+          out: dist/${{ matrix.dist }}/tmux-payload
+      - name: The payload came from the cache
+        env:
+          HIT: ${{ steps.tmux.outputs.cache-hit }}
+        run: test "$HIT" = true || { echo "::error::the tmux payload was not restored"; exit 1; }
+      - name: Smoke test bundled tmux (${{ matrix.arch }})
+        working-directory: coral-go
+        env:
+          CORAL_BUNDLED_TMUX_BIN: ${{ github.workspace }}/dist/${{ matrix.dist }}/tmux-payload/bin/tmux
+          CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/${{ matrix.dist }}/tmux-payload/terminfo
+        run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1

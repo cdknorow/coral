@@ -329,10 +329,11 @@ jobs:
           for cmd in $GUI_COMMANDS; do
             MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 go build -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
-      - name: Build bundled tmux (arm64)
-        run: |
-          tools/build-bundled-tmux.sh arm64 dist/macos-arm64/tmux-payload
-          tests/release/verify_bundled_tmux_slice.sh dist/macos-arm64/tmux-payload arm64
+      # Restored from main's cache when its inputs are unchanged, else built; checked either way (#4126).
+      - uses: ./.github/actions/bundled-tmux
+        with:
+          arch: arm64
+          out: dist/macos-arm64/tmux-payload
       - name: Smoke test bundled tmux (arm64)
         working-directory: coral-go
         env:
@@ -383,10 +384,11 @@ jobs:
           for cmd in $GUI_COMMANDS; do
             MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 go build -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
-      - name: Build bundled tmux (x86_64)
-        run: |
-          tools/build-bundled-tmux.sh x86_64 dist/macos-amd64/tmux-payload
-          tests/release/verify_bundled_tmux_slice.sh dist/macos-amd64/tmux-payload x86_64
+      # Restored from main's cache when its inputs are unchanged, else built; checked either way (#4126).
+      - uses: ./.github/actions/bundled-tmux
+        with:
+          arch: x86_64
+          out: dist/macos-amd64/tmux-payload
       - name: Smoke test bundled tmux (x86_64)
         working-directory: coral-go
         env:
