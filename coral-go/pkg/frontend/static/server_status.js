@@ -7,6 +7,7 @@
 
 import { state } from './state.js';
 import { LOCAL_SERVER, normServer, isHub } from './server_base.js';
+import { launchBlockReason } from './launch_server.js';
 
  const STATUS_META = {
     online:           { label: 'Online',           cls: 'online',       hint: 'Connected' },
@@ -255,6 +256,23 @@ export function serverSwitcherHtml(open = false) {
         + `<div class="server-switcher-panel${single ? '' : ' server-switcher-panel-list'}">${body}</div></details>`;
 }
 
+/** Launch team / Open folder / Launch agent at the top of a server's menu. Each opens the launch flow with this server chosen;
+ *  one that cannot run is disabled with its reason shown (launch_server.js decides: offline, key rejected, no hub). A pinned
+ *  folder lives on this Coral (pinned_folders.js), so Open folder is for the hub itself only. */
+function serverLaunchActionsHtml(e) {
+    const id = normServer(e.id);
+    const blocked = launchBlockReason(id, isHub(), state.servers);
+    const actions = [
+        ['team', 'Launch team', blocked],
+        ['folder', 'Open folder', blocked || (id === LOCAL_SERVER ? '' : 'Pinned folders live on this Coral: launch an agent here and choose its folder')],
+        ['agent', 'Launch agent', blocked],
+    ];
+    return `<div class="server-launch-actions" role="group" aria-label="${escHtml(`Launch on ${e.label || e.id}`)}">`
+        + actions.map(([kind, label, why]) => `<button type="button" class="server-launch-btn" data-server-launch="${escHtml(kind)}" data-server-id="${escHtml(e.id)}"`
+            + (why ? ` disabled aria-disabled="true" title="${escHtml(why)}"` : '') + `>${label}${why ? `<span class="server-launch-why">${escHtml(why)}</span>` : ''}</button>`).join('')
+        + `</div>`;
+}
+
 /** A collapsible server group header for the agent list (2+ servers). */
 // A computer (monitor) icon for a server header (#3507: replaces the status dot).
 const SERVER_ICON = '<svg class="server-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
@@ -276,9 +294,9 @@ export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) 
         + (off ? `<span class="server-group-state">${escHtml(m.label.toLowerCase())}</span>` : '')
         + ((n => n ? `<span class="server-update-marker server-update-${n.level}">${n.level === 'required' ? 'Update required' : 'Update'}</span>` : '')(normServer(e.id) === LOCAL_SERVER ? null : updateNotice(e)))
         + `<span class="session-group-count">${count}</span></button>`
-        + `<details class="server-group-more" data-server-details="${escHtml(e.id)}"${detailsOpen ? ' open' : ''}>`
-        + `<summary class="server-group-more-btn" aria-label="${escHtml(`Details for ${e.label || e.id}`)}" title="${escHtml(serverHoverText(e.id))}">⋮</summary>`
-        + `<div class="server-switcher-panel">${serverDetailsHtml(e)}`
+        + `<details class="server-group-more sidebar-kebab-wrapper group-kebab" data-server-details="${escHtml(e.id)}"${detailsOpen ? ' open' : ''}>`
+        + `<summary class="server-group-more-btn sidebar-kebab-btn group-kebab-btn" aria-label="${escHtml(`Details for ${e.label || e.id}`)}" title="${escHtml(serverHoverText(e.id))}">⋮</summary>`
+        + `<div class="server-switcher-panel">${serverLaunchActionsHtml(e)}${serverDetailsHtml(e)}`
         + `<button type="button" class="btn btn-small server-open-btn" data-server-open="${escHtml(e.id)}">Open in Servers</button>`
         + `<button type="button" class="btn btn-small" data-server-toggle="${escHtml(e.id)}">${collapsed ? 'Expand' : 'Collapse'}</button></div></details>`
         + `</li>`;

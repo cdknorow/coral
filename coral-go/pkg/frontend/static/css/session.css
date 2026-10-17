@@ -532,6 +532,11 @@
     flex-shrink: 0;
     margin-right: 3px;
 }
+/* The team card is inset 8px from the list's right edge; its header's and its agents' kebabs sit in the folder and server headers' column (#4185). */
+@media (min-width: 768px) {
+    .session-team-group > .board-card-header .group-kebab { margin-right: -8px; }
+}
+.board-card-agents .session-name-row .sidebar-kebab-wrapper { margin-right: -8px; }
 .session-team-group.team-sleeping > .board-card-header .group-name-line {
     color: var(--text-secondary);
 }
@@ -2167,7 +2172,7 @@
    computer icon and no status dot; an offline server is dimmed (#3507). */
 .session-list .server-group-header {
     display: flex; align-items: center; gap: var(--space-xs);
-    margin: var(--space-md) 0 2px; padding: 0; list-style: none;
+    margin: var(--space-md) 0 2px; padding: 0 12px 0 0; list-style: none; /* the right gutter team and folder headers have, so the kebabs share a column */
 }
 .server-group-toggle {
     display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
@@ -2183,7 +2188,15 @@
 /* A team or folder header is the button that collapses its group (no chevron, #3507 v4). */
 .session-group-header[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-md); }
 .server-group-toggle .session-group-count { margin-left: auto; }
-.server-group-more-btn { padding: 2px 8px; border-radius: var(--radius-md); color: var(--text-secondary); }
+.server-group-more > summary.sidebar-kebab-btn { display: block; } /* a <summary> sized and placed as the other headers' kebab buttons */
+.server-launch-actions { display: flex; flex-direction: column; margin: 0 0 var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border); }
+.server-launch-btn {
+    display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 6px var(--space-sm);
+    border: 0; border-radius: var(--radius-sm, 4px); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.server-launch-btn:hover:not(:disabled), .server-launch-btn:focus-visible { background: var(--bg-hover); }
+.server-launch-btn:disabled { cursor: not-allowed; color: var(--text-muted); }
+.server-launch-why { font-size: 0.85em; color: var(--text-secondary); white-space: normal; }
 /* 'Show server': the server before a team/folder name, "pro-coral-hub", server in italics (#3507). */
 .row-name-with-server { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-server-prefix { font-style: italic; font-weight: 500; opacity: 0.7; white-space: nowrap; }
@@ -2194,10 +2207,10 @@
     .sidebar-header.sidebar-header, .mobile-list-header.mobile-list-header { --ctl-h: var(--control-touch-height, 44px); }
 }
 @media (pointer: coarse) {
-    .server-switcher-btn, .server-group-toggle, .server-group-more-btn, .server-switcher-item, .server-open-footer, .list-display-option {
+    .server-switcher-btn, .server-group-toggle, .server-switcher-item, .server-open-footer, .server-launch-btn, .list-display-option {
         min-height: var(--control-touch-height, 44px);
     }
-    .server-group-more-btn { min-width: var(--control-touch-height, 44px); display: inline-flex; align-items: center; justify-content: center; }
+    .server-group-more > summary.sidebar-kebab-btn { display: inline-flex; align-items: center; justify-content: center; } /* the kebab's own touch size (touch.css) */
 }
 /* The phone's list header: the title, the server button, the display menu and + New share one height (#4062). */
 /* flex-wrap: a narrow phone wraps the header's controls instead of pushing them off the screen (#4086). */

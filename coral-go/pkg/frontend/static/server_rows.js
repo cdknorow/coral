@@ -35,6 +35,20 @@ if (typeof document !== 'undefined') {
         const again = document.querySelector(`#live-sessions-list .server-group-toggle[data-server-toggle="${CSS.escape(id)}"]`);
         if (again) again.focus();
     });
+    // The server menu's Launch team / Open folder / Launch agent: the launch flow, with that server chosen.
+    document.addEventListener('click', (e) => {
+        const b = e.target.closest && e.target.closest('[data-server-launch]');
+        if (!b || b.disabled) return;
+        e.preventDefault();
+        const kind = b.dataset.serverLaunch;
+        const id = b.dataset.serverId || '';
+        const d = b.closest('details[data-server-details]');
+        if (d) d.open = false;
+        if (kind === 'folder') { window.showOpenFolderModal?.(); return; }
+        if (kind !== 'team' && kind !== 'agent') return;
+        window.showLaunchModal?.(id);
+        window._selectLaunchType?.(kind);
+    });
     // <details> toggle does not bubble: listen in the capture phase.
     document.addEventListener('toggle', (e) => {
         const d = e.target;
