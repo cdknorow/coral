@@ -7,6 +7,11 @@ trap 'echo "package verification failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PACKAGE_DIR="$(cd "${1:?usage: verify_encrypted_bundle.sh PACKAGE_DIR}" && pwd -P)"
 cd "$ROOT/coral-go"
+# The shipped programs: tests/release/commands.txt (and, in the macOS package, gui_commands.txt) (#3855).
+list() { grep -vE '^[[:space:]]*(#|$)' "$ROOT/tests/release/$1"; }
+cli_binaries=(); while IFS= read -r c; do cli_binaries+=("$PACKAGE_DIR/$c"); done < <(list commands.txt)
+all_binaries=("${cli_binaries[@]}"); while IFS= read -r c; do all_binaries+=("$PACKAGE_DIR/$c"); done < <(list gui_commands.txt)
+[ "${#cli_binaries[@]}" -gt 0 ] || { echo "verify_encrypted_bundle.sh: commands.txt lists no programs" >&2; exit 2; }
 
 NOTICE_DIR="$PACKAGE_DIR"
 if [[ ! -f "$NOTICE_DIR/THIRD_PARTY_NOTICES_SQLCIPHER.md" ]]; then
@@ -36,7 +41,7 @@ require_macos_slices() {
 if [[ "$(uname -s)" == "Darwin" ]]; then
   test -f "$PACKAGE_DIR/libcrypto.3.dylib"
   require_macos_slices "$PACKAGE_DIR/libcrypto.3.dylib"
-  for binary in "$PACKAGE_DIR"/coral "$PACKAGE_DIR"/launch-coral "$PACKAGE_DIR"/coral-board "$PACKAGE_DIR"/coral-agent "$PACKAGE_DIR"/coral-hook-agentic-state "$PACKAGE_DIR"/coral-hook-message-check "$PACKAGE_DIR"/coral-hook-session-start "$PACKAGE_DIR"/coral-hook-task-sync "$PACKAGE_DIR"/coral-tray "$PACKAGE_DIR"/coral-app; do
+  for binary in "${all_binaries[@]}"; do
     test -x "$binary"
     require_macos_slices "$binary"
     deps="$(otool -L "$binary")"
@@ -51,7 +56,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   export CGO_LDFLAGS="-L$OPENSSL_PREFIX/lib"
 elif [[ "$(uname -s)" == "Linux" ]]; then
   test -f "$PACKAGE_DIR/libcrypto.so.3"
-  for binary in "$PACKAGE_DIR"/coral "$PACKAGE_DIR"/launch-coral "$PACKAGE_DIR"/coral-board "$PACKAGE_DIR"/coral-agent "$PACKAGE_DIR"/coral-hook-agentic-state "$PACKAGE_DIR"/coral-hook-message-check "$PACKAGE_DIR"/coral-hook-session-start "$PACKAGE_DIR"/coral-hook-task-sync; do
+  for binary in "${cli_binaries[@]}"; do
     test -x "$binary"
     deps="$(readelf -d "$binary")"
     if grep -q 'NEEDED.*libcrypto.so.3' <<<"$deps"; then
