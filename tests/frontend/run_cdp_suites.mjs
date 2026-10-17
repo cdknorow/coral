@@ -227,7 +227,13 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-cdp-'));
 // with tests/lib/mock_sandbox.sh and coral-go/internal/testguard (TestHarnessScriptsUseTheMockAgentSandbox).
 const STUB_BIN = path.join(tmp, 'stub-bin'); fs.mkdirSync(STUB_BIN);
 const STUB_MARKER = path.join(tmp, 'REAL_CLI_WAS_CALLED');
-for (const cli of ['claude', 'codex', 'gemini']) {
+// Every CLI-backed agent type (agenttypes minus 'terminal'), matching tests/lib/mock_sandbox.sh's
+// CORAL_TEST_STUB_CLIS: each test server points cli_path_<type> at the built mock-agent (below), so a
+// suite that opens the Launch dialog, probes a CLI version or lists models uses the mock; the stub only
+// fires on a genuine PATH fallback.
+const CLI_TYPES = ['claude', 'codex', 'gemini', 'agy', 'pi', 'antigravity'];
+const MOCK_AGENT = path.join(tmp, 'mock-agent');
+for (const cli of CLI_TYPES) {
   fs.writeFileSync(path.join(STUB_BIN, cli), `#!/bin/sh\nprintf '%s %s\\n' "${cli}" "$*" >> "${STUB_MARKER}"\nexit 1\n`, { mode: 0o755 });
 }
 const REAL_CLAUDE_PROJECTS = path.join(os.homedir(), '.claude', 'projects');
@@ -287,7 +293,8 @@ const bin = path.join(tmp, 'coral');
 // This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
 // installed app's (#3492), so without them its agents would send no status events.
 const toolPackages = ['./cmd/coral', './cmd/coral-board', './cmd/coral-agent', './cmd/coral-hook-agentic-state',
-  './cmd/coral-hook-session-start', './cmd/coral-hook-message-check', './cmd/coral-hook-task-sync'];
+  './cmd/coral-hook-session-start', './cmd/coral-hook-message-check', './cmd/coral-hook-task-sync',
+  './cmd/mock-agent']; // #4354: every test server points cli_path_<type> at this, so a UI launch/version/model probe uses it, not the PATH CLI
 const goBuildArgs = ['build', '-tags', 'dev fts5', '-o', tmp + path.sep, ...toolPackages];
 const b = spawnSync('go', goBuildArgs, { cwd: goDir, stdio: 'inherit' });
 if (b.status !== 0) process.exit(2);
@@ -396,6 +403,17 @@ async function startShard(n, gen = 0, strict = false) {
   }
   if (coralExit) throw new Error(`coral exited during startup (${coralExit}); see ${log}`);
   await waitHttp(`http://127.0.0.1:${port}/api/health`);
+  // #4354: point every agent type's cli_path at the built mock-agent, so a suite that opens the Launch
+  // dialog, probes a CLI version or lists models runs the mock and never the real CLI on PATH (which the
+  // stub would then catch and fail the run; phone_layout and other Launch-dialog suites hit this). Set as
+  // the Operator (the data dir's api_key authenticates on both strict and non-strict shards).
+  {
+    const key = fs.readFileSync(path.join(data, 'api_key'), 'utf8').trim();
+    const body = {}; for (const t of CLI_TYPES) body['cli_path_' + t] = MOCK_AGENT;
+    const r = await fetch(`http://127.0.0.1:${port}/api/settings`, { method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`could not set the mock cli_path on :${port} (#4354): HTTP ${r.status} ${await r.text()}`);
+  }
   // On CI runners (Ubuntu 24.04) unprivileged user namespaces are restricted, so Chrome's sandbox cannot start; the runner is a
   // throwaway VM running only our own test pages, so the sandbox is switched off there and only there.
   // Port 0: Chrome picks a free DevTools port itself and writes it to <profile>/DevToolsActivePort, so the
