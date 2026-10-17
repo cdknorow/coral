@@ -4,11 +4,14 @@ import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { registerActions, idOf, uuidOf } from './actions.js';
 import { pollEvery } from './overload.js';
+import { changedFields } from './settings_diff.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
 let editingJobId = null;  // non-null when editing an existing job
 let currentJobType = 'workflow'; // 'workflow' or 'prompt'
+// What the editor showed for the job it opened (#4423): Save sends only what the person changed since.
+let openedJob = null;
 
 // ── API helpers ──────────────────────────────────────────────────────────
 
@@ -303,6 +306,7 @@ async function _loadWorkflowOptions() {
 
 export function showJobModal() {
     editingJobId = null;
+    openedJob = null;
     document.getElementById('job-modal-title').textContent = 'New Scheduled Job';
     document.getElementById('job-modal-submit').textContent = 'Create Job';
     document.getElementById('job-modal').style.display = 'flex';
@@ -327,9 +331,14 @@ export function showJobModal() {
     validateCronPreview();
 }
 
-export function editScheduledJob(jobId) {
-    const job = scheduledJobs.find(j => j.id === jobId);
-    if (!job) return;
+export async function editScheduledJob(jobId) {
+    // The job as the server has it now, not the list this page last polled (#4423).
+    let job = null;
+    try {
+        const resp = await fetch(`/api/scheduled/jobs/${encodeURIComponent(jobId)}`);
+        if (resp.ok) job = await resp.json();
+    } catch { /* below */ }
+    if (!job || job.error) { showToast('Could not load the job. Try again.', true); return; }
 
     editingJobId = jobId;
     document.getElementById('job-modal-title').textContent = 'Edit Scheduled Job';
@@ -349,7 +358,40 @@ export function editScheduledJob(jobId) {
     document.getElementById('cron-preview').innerHTML = '';
     // Sync flag button active states
     document.getElementById('job-modal-flags').dispatchEvent(new Event('input'));
+    // The job's own type, and its workflow selected (the editor kept whatever the last one left).
+    const type = job.job_type || (job.workflow_id ? 'workflow' : 'prompt');
+    switchJobType(type);
+    if (type === 'workflow') {
+        await _loadWorkflowOptions();
+        document.getElementById('job-modal-workflow').value = job.workflow_id ? String(job.workflow_id) : '';
+    }
+    openedJob = jobFormValues();
     validateCronPreview();
+}
+
+/** jobFormValues is what the editor's fields hold, as the job's fields (those of the type it shows). */
+function jobFormValues() {
+    const v = id => document.getElementById(id).value;
+    const values = {
+        name: v('job-modal-name').trim(),
+        description: v('job-modal-description').trim(),
+        cron_expr: v('job-modal-cron').trim(),
+        timezone: v('job-modal-timezone').trim() || 'UTC',
+        max_duration_s: parseInt(v('job-modal-timeout')) || 3600,
+        cleanup_worktree: document.getElementById('job-modal-cleanup').checked ? 1 : 0,
+        job_type: currentJobType,
+    };
+    if (currentJobType === 'workflow') {
+        const wfId = v('job-modal-workflow');
+        values.workflow_id = wfId ? parseInt(wfId) : null;
+    } else {
+        values.repo_path = v('job-modal-repo').trim();
+        values.base_branch = v('job-modal-branch').trim() || 'main';
+        values.agent_type = v('job-modal-agent');
+        values.prompt = v('job-modal-prompt').trim();
+        values.flags = v('job-modal-flags').trim();
+    }
+    return values;
 }
 
 export function hideJobModal() {
@@ -389,37 +431,26 @@ export async function saveScheduledJob() {
         return;
     }
 
-    const body = {
-        name: name,
-        description: document.getElementById('job-modal-description').value.trim(),
-        cron_expr: cron,
-        timezone: document.getElementById('job-modal-timezone').value.trim() || 'UTC',
-        max_duration_s: parseInt(document.getElementById('job-modal-timeout').value) || 3600,
-        cleanup_worktree: document.getElementById('job-modal-cleanup').checked ? 1 : 0,
-        job_type: currentJobType,
-    };
-
+    const values = jobFormValues();
     if (currentJobType === 'workflow') {
-        const wfId = document.getElementById('job-modal-workflow').value;
-        if (!wfId) {
+        if (!values.workflow_id) {
             showToast('Please select a workflow', true);
             return;
         }
-        body.workflow_id = parseInt(wfId);
-    } else {
-        body.repo_path = document.getElementById('job-modal-repo').value.trim();
-        body.base_branch = document.getElementById('job-modal-branch').value.trim() || 'main';
-        body.agent_type = document.getElementById('job-modal-agent').value;
-        body.prompt = document.getElementById('job-modal-prompt').value.trim();
-        body.flags = document.getElementById('job-modal-flags').value.trim();
-        if (!body.repo_path || !body.prompt) {
-            showToast('Repo path and prompt are required for agent jobs', true);
-            return;
-        }
+    } else if (!values.repo_path || !values.prompt) {
+        showToast('Repo path and prompt are required for agent jobs', true);
+        return;
     }
 
     try {
         const isEdit = editingJobId !== null;
+        // An edit sends only what the person changed since the editor opened, so a field another client changed
+        // meanwhile keeps that change (#4423); a new job sends everything.
+        const body = isEdit && openedJob ? changedFields(openedJob, values) : values;
+        if (isEdit && !Object.keys(body).length) {
+            hideJobModal();
+            return;
+        }
         const url = isEdit ? `/api/scheduled/jobs/${editingJobId}` : '/api/scheduled/jobs';
         const method = isEdit ? 'PUT' : 'POST';
 
