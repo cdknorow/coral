@@ -46,7 +46,13 @@ async function launchStandIn(api, { workingDir = '/tmp', displayName = 'Stand-in
     const stop = async () => {
         const d = launch && launch.data;
         if (d && d.session_id) await api('POST', `/api/sessions/live/${encodeURIComponent(d.session_name)}/kill`, { agent_type: 'claude', session_id: d.session_id }).catch(() => {});
-        await api('PUT', '/api/settings', { cli_path_claude: prevCLI }).catch(() => {});
+        // Restore cli_path_claude only to undo OUR own change, and never write an empty value over a path
+        // someone else set (#4354): if cli_path_claude is still this stand-in's script, put back the value
+        // we replaced -- but only if that value was non-empty. If there was no previous value (prevCLI
+        // empty), or another client has changed cli_path_claude since (so it is no longer our script), we
+        // leave it alone rather than clearing it to empty, which used to wipe a path set elsewhere.
+        const cur = (((await api('GET', '/api/settings').catch(() => ({}))).data || {}).settings || {}).cli_path_claude || '';
+        if (cur === cli && prevCLI) await api('PUT', '/api/settings', { cli_path_claude: prevCLI }).catch(() => {});
         fs.rmSync(dir, { recursive: true, force: true });
     };
 

@@ -401,6 +401,21 @@ async function startShard(n, gen = 0, strict = false) {
   const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile,
     PATH: stubBin + path.delimiter + (testEnv.PATH || process.env.PATH || '') };  // #4354: this shard's stub CLI first on PATH
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
+  // #4354: seed cli_path_<type> at the mock-agent BEFORE the server starts, so the server resolves the
+  // mock from its very first request -- no window (not even for an async model-list/version probe that
+  // resolves in the instant before the post-health PUT would land) in which a CLI resolution falls to the
+  // stub on PATH. user_settings is (key TEXT PRIMARY KEY, value TEXT NOT NULL) created IF NOT EXISTS, so
+  // pre-creating it and the rows is safe; the server opens the DB (WAL set on open) and keeps these rows.
+  // The post-health PUT below and the stub stay as backstops.
+  {
+    const vals = CLI_TYPES.map(t => `('cli_path_${t}','${MOCK_AGENT.replace(/'/g, "''")}')`).join(',');
+    const sql = `CREATE TABLE IF NOT EXISTS user_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);\nINSERT OR REPLACE INTO user_settings (key,value) VALUES ${vals};`;
+    try {
+      execFileSync('sqlite3', [path.join(data, 'sessions.db'), sql], { stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (e) {
+      throw new Error(`#4354: could not seed cli_path into ${path.join(data, 'sessions.db')} (is sqlite3 installed?): ${e.stderr || e.message}`);
+    }
+  }
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
     ...(strict ? ['--strict-local-auth'] : ['--strict-local-auth=false']), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
     { env: serverEnv, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
@@ -418,17 +433,19 @@ async function startShard(n, gen = 0, strict = false) {
   }
   if (coralExit) throw new Error(`coral exited during startup (${coralExit}); see ${log}`);
   await waitHttp(`http://127.0.0.1:${port}/api/health`);
-  // #4354: point every agent type's cli_path at the built mock-agent, so a suite that opens the Launch
-  // dialog, probes a CLI version or lists models runs the mock and never the real CLI on PATH (which the
-  // stub would then catch and fail the run; phone_layout and other Launch-dialog suites hit this). Set as
-  // the Operator (the data dir's api_key authenticates on both strict and non-strict shards).
+  // #4354: cli_path_<type> was seeded into this shard's DB before the server started (above), so every
+  // launch, version probe and model-list read uses the mock from the first request -- there is no window
+  // in which a resolution falls to the stub on PATH, and no suite's stand-in helper can read an empty
+  // cli_path and 'restore' it to empty. Here we only VERIFY the server read the seed (a read, not a
+  // write): GET the settings and confirm all six paths are the mock, so a seed the server somehow ignored
+  // fails the shard loudly. Then arm the stub's recording (a PATH call after this is a genuine fallback).
   {
     const key = fs.readFileSync(path.join(data, 'api_key'), 'utf8').trim();
-    const body = {}; for (const t of CLI_TYPES) body['cli_path_' + t] = MOCK_AGENT;
-    const r = await fetch(`http://127.0.0.1:${port}/api/settings`, { method: 'PUT',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify(body) });
-    if (!r.ok) throw new Error(`could not set the mock cli_path on :${port} (#4354): HTTP ${r.status} ${await r.text()}`);
-    // cli_path is set: from now a PATH-CLI fallback on this shard is a real leak, so start recording.
+    const r = await fetch(`http://127.0.0.1:${port}/api/settings`, { headers: { authorization: 'Bearer ' + key } });
+    if (!r.ok) throw new Error(`#4354: could not read settings on :${port} to verify the cli_path seed: HTTP ${r.status} ${await r.text()}`);
+    const s = (await r.json()).settings || {}; // GET /api/settings answers { settings: {...} }
+    const bad = CLI_TYPES.filter(t => s['cli_path_' + t] !== MOCK_AGENT);
+    if (bad.length) throw new Error(`#4354: the cli_path seed did not take on :${port} (the server ignored the pre-seeded DB?); wrong for: ${bad.join(', ')}; got ${JSON.stringify(Object.fromEntries(CLI_TYPES.map(t => ['cli_path_' + t, s['cli_path_' + t]])))}`);
     fs.writeFileSync(stubReady, '');
   }
   // On CI runners (Ubuntu 24.04) unprivileged user namespaces are restricted, so Chrome's sandbox cannot start; the runner is a
