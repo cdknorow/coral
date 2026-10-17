@@ -16,6 +16,8 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     const ev = async x => { const r = await Runtime.evaluate({ expression: x, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails)); return r.result.value; };
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: layout settles after a font-size change; there is no completion event
     const waitFor = async (expr, what, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev(expr)) return; await sleep(20); } throw new Error('timed out waiting for ' + what); };
+    // The focus lands when the page script has run, a moment after the load event: wait for it (bounded) instead of reading it once, which lost the race on a slower runner.
+    const focusOn = async (id, what) => { try { await waitFor(`document.activeElement && document.activeElement.id === ${JSON.stringify(id)}`, what, 4000); } catch (e) { assert.equal(await ev(`document.activeElement ? document.activeElement.id : ''`), id, what); } };
     const ok = name => console.log(`   ✓ ${name}`);
     let page = 'signin';
     let reply = { status: 401, body: { error: 'wrong' } };
@@ -42,7 +44,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
 
         // ── sign in ──
         await open('signin');
-        assert.equal(await active(), 'password', 'the password has focus when the page opens');
+        await focusOn('password', 'the password has focus when the page opens');
         assert.equal(await ev(`document.head.querySelector('link[rel=icon]') && document.head.querySelector('link[rel=icon]').getAttribute('href')`), '/static/favicon.png', 'the page names its icon');
         await ev(`document.getElementById('show-key').focus(); true`);
         await submit('signin-form');
@@ -67,7 +69,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
 
         // ── create a password ──
         await open('create');
-        assert.equal(await active(), 'password', 'a local create page opens on the password');
+        await focusOn('password', 'a local create page opens on the password');
         await submit('create-form');
         assert.equal(await active(), 'password'); assert.deepEqual(await state('password'), { invalid: 'true', by: 'strength err' });
         await type('password', 'a-password'); await type('confirm', 'different');
@@ -76,7 +78,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         assert.equal(await active(), 'confirm', 'a mismatch focuses the confirmation'); assert.equal((await state('confirm')).invalid, 'true');
         ok('create: focus starts in the password; an empty password focuses it, a mismatch focuses and marks the confirmation');
         await open('setup');
-        assert.equal(await active(), 'setup-code', 'a remote create page opens on the setup code');
+        await focusOn('setup-code', 'a remote create page opens on the setup code');
         await submit('create-form');
         assert.equal(await ev(`document.getElementById('err').textContent`), 'Enter the setup code.'); assert.equal(await active(), 'setup-code');
         ok('create from another computer: focus starts in the setup code; an empty one is marked and focused');
