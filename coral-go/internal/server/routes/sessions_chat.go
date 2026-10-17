@@ -222,7 +222,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
 	workingDir := r.URL.Query().Get("working_directory")
-	var resumeFromID string
+	var resumeFromID, agentName string
 	var resumeLookupDone bool
 	metaCache := "not_needed" // hit: from memory; miss: read from the sessions DB (#3438)
 	trace.begin("metadata_lookup")
@@ -240,6 +240,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			metaCache = "hit"
 			resumeLookupDone = true
 			resumeFromID = m.resumeFromID
+			agentName = m.agentName
 			if agentType == "" {
 				agentType = m.agentType
 			}
@@ -257,7 +258,8 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			targetID = name
 		}
 		if ls, err := h.ss.GetLiveSession(r.Context(), targetID); err == nil && ls != nil {
-			h.chatMeta.put(chatMeta{agentType: ls.AgentType, workingDir: ls.WorkingDir, sessionID: ls.SessionID, resumeFromID: ptr.Value(ls.ResumeFromID)}, targetID, ls.SessionID)
+			h.chatMeta.put(chatMeta{agentType: ls.AgentType, workingDir: ls.WorkingDir, sessionID: ls.SessionID, resumeFromID: ptr.Value(ls.ResumeFromID), agentName: ls.AgentName}, targetID, ls.SessionID)
+			agentName = ls.AgentName
 			resumeLookupDone = true
 			resumeFromID = ptr.Value(ls.ResumeFromID)
 			h.rememberResumeFromID(ls.SessionID, resumeFromID)
@@ -286,7 +288,8 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 					if matches == 1 {
 						keys = append(keys, name)
 					}
-					h.chatMeta.put(chatMeta{agentType: s.AgentType, workingDir: s.WorkingDir, sessionID: s.SessionID, resumeFromID: ptr.Value(s.ResumeFromID)}, keys...)
+					h.chatMeta.put(chatMeta{agentType: s.AgentType, workingDir: s.WorkingDir, sessionID: s.SessionID, resumeFromID: ptr.Value(s.ResumeFromID), agentName: s.AgentName}, keys...)
+					agentName = s.AgentName
 					resumeLookupDone = true
 					resumeFromID = ptr.Value(s.ResumeFromID)
 					h.rememberResumeFromID(s.SessionID, resumeFromID)
@@ -309,6 +312,11 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// can read its trusted ancestor rollout until the new marker is emitted.
 	if !resumeLookupDone && sessionID != "" {
 		resumeFromID = h.cachedResumeFromID(r.Context(), sessionID)
+	}
+	// A request that names the session by its id (the dashboard starts a deep-linked chat's history before the live list has said the agent's name,
+	// #4326) is answered as the request with the agent's own name: the prompt, login and screen reads below go by name.
+	if sessionID != "" && name == sessionID && agentName != "" {
+		name = agentName
 	}
 	trace.endPool("metadata_lookup", h.db, "meta_cache", metaCache)
 

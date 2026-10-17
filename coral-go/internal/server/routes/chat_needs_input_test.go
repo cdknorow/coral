@@ -264,3 +264,39 @@ func TestChatReplySharedReadOutlivesItsFirstPoller(t *testing.T) {
 	o, _ := np["options"].([]any)
 	assert.Len(t, o, 4)
 }
+
+// #4326: the dashboard starts a deep-linked chat's history before the live list has said the agent's name, naming the session by its id in the
+// route. The reply is the one the agent's own name gets: the prompt's options (read from the agent's pane by name) are there, and a pane is only
+// read for the agent it belongs to.
+func TestChatNamedBySessionIdIsAnsweredAsTheAgentsOwnName(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-00000000c4b0"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "claude-need4", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-need4", "/tmp/test")
+	terminal.mu.Lock()
+	terminal.outputs["claude-need4"] = screenPermission
+	terminal.mu.Unlock()
+	options := func(r map[string]any) int {
+		po, ok := r["prompt_options"].(map[string]any)
+		if !ok {
+			return -1
+		}
+		o, _ := po["options"].([]any)
+		return len(o)
+	}
+	// Only the session id: no agent type, no folder, as the page knows them before the list.
+	q := url.Values{"session_id": {sid}, "after": {"0"}, "limit": {"30"}, "offset": {"0"}, "trim": {"2048"}}
+	byOwnName := chatReply(t, server.URL+"/api/sessions/live/claude-need4", q)
+	byId := chatReply(t, server.URL+"/api/sessions/live/"+sid, q)
+	assert.Equal(t, 4, options(byOwnName), "by the agent's own name the options are read")
+	assert.Equal(t, options(byOwnName), options(byId), "by the session id the reply has the same options")
+	assert.Equal(t, byOwnName["messages"], byId["messages"])
+	assert.Equal(t, byOwnName["total"], byId["total"])
+	assert.Equal(t, byOwnName["needs_login"], byId["needs_login"])
+
+	// Another session's id in the name's place does not borrow this agent's pane: the id must be the request's own session_id.
+	const other = "00000000-0000-0000-0000-00000000c4b1"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: other, AgentType: "claude", AgentName: "claude-other", WorkingDir: "/tmp/test"}))
+	mismatch := chatReply(t, server.URL+"/api/sessions/live/"+other, q) // names `other`, asks for sid's session
+	assert.NotEqual(t, 4, options(mismatch), "a name that is not this session's id is not resolved to this agent: no pane borrowed")
+}

@@ -8,8 +8,8 @@ import (
 // chatMeta is what a chat request needs from a live session's record: its type, its
 // working directory, its id and the session it was resumed from.
 type chatMeta struct {
-	agentType, workingDir, sessionID, resumeFromID string
-	at                                             time.Time
+	agentType, workingDir, sessionID, resumeFromID, agentName string
+	at                                                        time.Time
 }
 
 // chatMetaCache keeps it in memory (#3438). A chat through Coral Hub leaves out the
