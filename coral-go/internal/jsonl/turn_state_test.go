@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+// coldCodexTurnEvent is a first read of the transcript, as a session's first refresh does.
+func coldCodexTurnEvent(p string) (string, time.Time) {
+	var state codexTurnCache
+	return readCodexTurnEventIncremental(p, &state)
+}
+
+// coldAgyTurnEvent is a first read of the transcript, as a session's first refresh does.
+func coldAgyTurnEvent(p string) (string, time.Time, string) {
+	var state agyTurnCache
+	return readAgyTurnEventIncremental(p, &state)
+}
+
 func TestCodexTurnEvent(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "rollout.jsonl")
 	complete := `{"timestamp":"2026-09-26T16:29:51.825Z","type":"event_msg","payload":{"type":"task_complete"}}` + "\n"
@@ -24,7 +36,7 @@ func TestCodexTurnEvent(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			require.NoError(t, os.WriteFile(p, []byte(c.data), 0600))
-			kind, _ := CodexTurnEvent(p)
+			kind, _ := coldCodexTurnEvent(p)
 			require.Equal(t, c.want, kind)
 		})
 	}
@@ -43,7 +55,7 @@ func TestCodexTurnEventLongTurnBeyondOriginalTail(t *testing.T) {
 	if err := os.WriteFile(p, []byte(b.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
-	kind, at := CodexTurnEvent(p)
+	kind, at := coldCodexTurnEvent(p)
 	require.Equal(t, "prompt_submit", kind)
 	require.False(t, at.IsZero())
 
@@ -54,7 +66,7 @@ func TestCodexTurnEventLongTurnBeyondOriginalTail(t *testing.T) {
 	if err := os.WriteFile(p, []byte(completed), 0600); err != nil {
 		t.Fatal(err)
 	}
-	kind, at = CodexTurnEvent(p)
+	kind, at = coldCodexTurnEvent(p)
 	require.Equal(t, "prompt_submit", kind)
 	require.Equal(t, "2026-09-30T04:31:00Z", at.Format(time.RFC3339))
 }
@@ -145,7 +157,7 @@ func TestAgyTurnEvent(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			require.NoError(t, os.WriteFile(p, []byte(c.data), 0600))
-			kind, at, summary := AgyTurnEvent(p)
+			kind, at, summary := coldAgyTurnEvent(p)
 			require.Equal(t, c.wantKind, kind)
 			if c.wantSummary != "" {
 				require.Equal(t, c.wantSummary, summary)

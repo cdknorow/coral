@@ -43,11 +43,7 @@ func TestTask1594_IncrementalCodexActivityTracking(t *testing.T) {
 		evt1M, _ := scanCodexTail(p, 1024*1024)
 		require.Empty(t, evt1M, "baseline 1 MiB scan must reproduce false idle on >1 MiB turn")
 
-		// 2. Mitigation 8 MiB window (#1591) fails on >8 MiB:
-		evt8M, _ := CodexTurnEvent(p) // uses 8 MiB limit
-		require.Empty(t, evt8M, "mitigation 8 MiB scan must fail when turn > 8 MiB")
-
-		// 3. Durable incremental cache (#1592) retains active prompt_submit state:
+		// 2. Durable incremental cache (#1592) retains active prompt_submit state:
 		var state codexTurnCache
 		evtInc, atInc := readCodexTurnEventIncremental(p, &state)
 		require.Equal(t, "prompt_submit", evtInc, "incremental tracker must preserve active state beyond 8 MiB")

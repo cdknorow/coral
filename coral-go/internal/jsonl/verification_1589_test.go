@@ -244,11 +244,8 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 		}
 		require.NoError(t, os.WriteFile(rolloutVeryLong, b.Bytes(), 0644))
 
-		// CodexTurnEvent currently has limit = 8 MiB (Lead #1591 mitigation)
-		fixedEvt, _ := CodexTurnEvent(rolloutVeryLong)
-		require.Empty(t, fixedEvt, "PROOF OF BOUNDARY FAILURE: Fixed 8 MiB window loses active state when turn > 8 MiB!")
-
-		// In contrast, readCodexTurnEventIncremental (Lead #1592 durable repair) tracks full lifecycle incrementally
+		// readCodexTurnEventIncremental (Lead #1592 durable repair) tracks the full lifecycle; the
+		// fixed 8 MiB window it replaced (#1591) lost the active state here.
 		var incCache codexTurnCache
 		durableEvt, durableAt := readCodexTurnEventIncremental(rolloutVeryLong, &incCache)
 		require.Equal(t, "prompt_submit", durableEvt, "incremental cache correctly retains active state beyond 8 MiB")

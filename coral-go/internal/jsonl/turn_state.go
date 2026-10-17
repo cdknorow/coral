@@ -3,95 +3,12 @@ package jsonl
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"os"
 	"strings"
 	"time"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 )
-
-// CodexTurnEvent reads an explicit lifecycle signal from a bounded transcript
-// tail. The window is deliberately larger than a typical turn because Codex
-// can emit more than 1 MiB of tool/output records before task_complete. It
-// never infers idle from silence, assistant text, or file age.
-func CodexTurnEvent(path string) (event string, at time.Time) {
-	f, err := openTranscriptFile(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return
-	}
-	const limit int64 = 8 * 1024 * 1024
-	start := info.Size() - limit
-	if start < 0 {
-		start = 0
-	}
-	if _, err = f.Seek(start, io.SeekStart); err != nil {
-		return
-	}
-	data, err := io.ReadAll(io.LimitReader(f, limit))
-	if err != nil {
-		return
-	}
-	if start > 0 {
-		i := bytes.IndexByte(data, '\n')
-		if i < 0 {
-			return
-		}
-		data = data[i+1:]
-	}
-	lines := bytes.Split(data, []byte{'\n'})
-	// A trailing partial record is not committed evidence.
-	active := false
-	for _, line := range lines[:len(lines)-1] {
-		var entry struct {
-			Timestamp string `json:"timestamp"`
-			Type      string `json:"type"`
-			Payload   struct {
-				Type string `json:"type"`
-			} `json:"payload"`
-		}
-		if json.Unmarshal(line, &entry) != nil || entry.Type != "event_msg" {
-			// Codex writes response/tool records between task_started and
-			// task_complete. They are transcript activity even when no Coral
-			// hook event has been emitted for the latest write.
-			var activity struct {
-				Timestamp string `json:"timestamp"`
-			}
-			if active && json.Unmarshal(line, &activity) == nil {
-				if timestamp, err := time.Parse(time.RFC3339Nano, activity.Timestamp); err == nil {
-					event, at = "prompt_submit", timestamp
-				}
-			}
-			continue
-		}
-		kind := ""
-		switch entry.Payload.Type {
-		case "task_started", "user_message":
-			kind = "prompt_submit"
-			active = true
-		case "task_complete":
-			kind = "stop"
-			active = false
-		case "turn_aborted":
-			kind = "session_reset"
-			active = false
-		}
-		if kind == "" {
-			continue
-		}
-		timestamp, err := time.Parse(time.RFC3339Nano, entry.Timestamp)
-		if err != nil {
-			continue
-		}
-		event, at = kind, timestamp
-	}
-	return
-}
 
 // ReadCodexTurnEvent reuses the session reader's resolved path so frequent UI
 // updates do not rescan the transcript directory for every agent.
@@ -161,59 +78,6 @@ func updateCodexTurnState(state *codexTurnCache, line []byte) {
 			state.event, state.at = "prompt_submit", timestamp
 		}
 	}
-}
-
-// AgyTurnEvent reads an explicit lifecycle signal from a bounded transcript
-// tail for Antigravity (and legacy Gemini) sessions.
-func AgyTurnEvent(path string) (event string, at time.Time, summary string) {
-	if path == "" {
-		return
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return
-	}
-	const limit int64 = 1024 * 1024
-	start := info.Size() - limit
-	if start < 0 {
-		start = 0
-	}
-	if _, err = f.Seek(start, io.SeekStart); err != nil {
-		return
-	}
-	data, err := io.ReadAll(io.LimitReader(f, limit))
-	if err != nil {
-		return
-	}
-
-	trimmed := bytes.TrimSpace(data)
-	if bytes.HasPrefix(trimmed, []byte{'['}) || strings.HasSuffix(path, ".json") {
-		return geminiLegacyTurnEvent(data)
-	}
-
-	if start > 0 {
-		i := bytes.IndexByte(data, '\n')
-		if i < 0 {
-			return
-		}
-		data = data[i+1:]
-	}
-	lines := bytes.Split(data, []byte{'\n'})
-	if len(lines) == 0 {
-		return
-	}
-	// A trailing partial record is not committed evidence.
-	candidates := lines
-	if len(lines) > 1 {
-		candidates = lines[:len(lines)-1]
-	}
-
-	return agyTurnLines(candidates)
 }
 
 func agyTurnLines(candidates [][]byte) (event string, at time.Time, summary string) {
@@ -293,32 +157,6 @@ func agyTurnLines(candidates [][]byte) (event string, at time.Time, summary stri
 			at = timestamp
 			summary = ""
 		}
-	}
-	return
-}
-
-func geminiLegacyTurnEvent(data []byte) (event string, at time.Time, summary string) {
-	var messages []struct {
-		Role      string `json:"role"`
-		Timestamp string `json:"timestamp"`
-	}
-	if err := json.Unmarshal(data, &messages); err != nil || len(messages) == 0 {
-		return
-	}
-	last := messages[len(messages)-1]
-	tsStr := last.Timestamp
-	if tsStr != "" {
-		if t, err := time.Parse(time.RFC3339Nano, tsStr); err == nil {
-			at = t
-		} else if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
-			at = t
-		}
-	}
-	switch last.Role {
-	case "user":
-		event = "prompt_submit"
-	case "model":
-		event = "stop"
 	}
 	return
 }
