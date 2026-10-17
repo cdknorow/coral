@@ -5,6 +5,7 @@ package agentprio
 import (
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -26,6 +27,14 @@ func niceOf(t *testing.T, pid int) int {
 }
 
 // startSleep starts a process the test owns and kills it at the end.
+// maxNice is the highest nice a process can have: 20 on macOS and the BSDs, 19 on Linux.
+func maxNice() int {
+	if runtime.GOOS == "linux" {
+		return 19
+	}
+	return 20
+}
+
 func startSleep(t *testing.T, cmd *exec.Cmd) int {
 	t.Helper()
 	require.NoError(t, cmd.Start())
@@ -89,11 +98,18 @@ func TestApplyGroupNeverRaisesAMember(t *testing.T) {
 	require.Eventually(t, func() bool { return len(groupMembers(pid)) >= 3 }, 5*time.Second, 50*time.Millisecond)
 	members := groupMembers(pid)
 	nicer := members[len(members)-1]
-	require.NoError(t, syscall.Setpriority(syscall.PRIO_PROCESS, nicer, 15))
+	// A member nicer than what ApplyGroup sets, relative to it (#4136): a fixed 15 is below the
+	// members' own nice when the tests run niced (epoch, or inside an agent), and lowering nice
+	// takes privileges. At the highest nice nothing can be nicer, so there is nothing to check.
+	target := min(want+5, maxNice())
+	if target <= want {
+		t.Skipf("the tests run at nice %d: no member can be nicer than what ApplyGroup sets", want)
+	}
+	require.NoError(t, syscall.Setpriority(syscall.PRIO_PROCESS, nicer, target))
 	ApplyGroup(pid)
 	for _, p := range members {
 		if p == nicer {
-			assert.Equal(t, 15, niceOf(t, p), "the member already at 15 keeps it")
+			assert.Equal(t, target, niceOf(t, p), "the member already nicer keeps its nice")
 		} else {
 			assert.Equal(t, want, niceOf(t, p), "pid %d of the group", p)
 		}
