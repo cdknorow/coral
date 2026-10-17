@@ -306,12 +306,15 @@ function render() {
             ['Sent to', item.source === 'shared' ? item.shared_to : null],
             ['Sent by', item.source === 'shared' || item.source === 'received' ? item.sent_by : null],
             ['Received from', item.source === 'received' ? item.received_from : null],
-            ['Also received from', item.source === 'received' && item.also_received_from ? item.also_received_from.join(', ') : null],
             ['Board (claimed by the sender)', item.source === 'received' ? item.from_board : null],
+            ['Also received from', item.source === 'received' ? alsoReceivedLines(item.also_received_from) : null],
             ['Checked', item.source === 'received' ? 'Not scanned: this file came from another computer' : null],
             ['Source', item.source], ['References', item.reference_count],
         ]) {
-            if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
+            if (Array.isArray(value)) {
+                // One line per source: server names hold spaces, brackets and hyphens, so a comma list is not readable.
+                if (value.length) fields.append(el('dt', '', label), ...value.map(v => el('dd', '', v)));
+            } else if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
         }
         details.append(summary, fields);info.append(details);row.append(info);
         row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-created', created));
@@ -416,6 +419,18 @@ export function selectFilesSource(next) {
     if(!(next in panels) || source===next) return;
     if(isArtifactSource())cancel(caches[source]);
     source=next; activate();
+}
+
+// alsoReceivedLines: the later senders of a received file ("<server>/<board>" each), worded as the first
+// source's two fields are: the server, then the board with the caveat that it is only the sender's claim.
+function alsoReceivedLines(list) {
+    if (!Array.isArray(list)) return null;
+    return list.map(v => {
+        const at = String(v).indexOf('/');
+        const server = at < 0 ? String(v) : String(v).slice(0, at);
+        const board = at < 0 ? '' : String(v).slice(at + 1);
+        return board ? `${server}, board ${board} (claimed by the sender)` : server;
+    });
 }
 
 export function initFilesSourcePicker(onPreview, onFilePreview) {
