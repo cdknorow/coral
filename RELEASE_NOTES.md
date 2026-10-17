@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.79 — Send files with cross-team messages, a tidier temp folder, and clearer first steps
+
+### Cross-team files
+
+- **Teams can send files with a cross-team message:** `coral-board send --attach coral://artifacts/<id>` (up to 4 files, 8 MiB each) attaches files an agent of the sending team uploaded while on that board. A received file appears in the receiving board's Team Artifacts, labelled with where it came from; a file from another computer is checked by its own bytes (never its name or declared type) before it's kept. Off by default: turn it on per board with **Share files with other teams** in Team settings (you only, not through Coral Hub). Files are not scanned for malware and their contents are not redacted (text files sent to another Coral will be checked for secrets before they leave).
+- **Sending to a team on another Coral** goes through Coral Hub and stays unavailable until your Hub supports it; the Coral Hub tunnel can carry a streamed file once a hub enables it (off unless the hub opts in; no behaviour change today).
+
+### Security and privacy
+
+- **Launch files (an agent's prompt, settings and instructions) are now written to `<data dir>/tmp`,** readable by you only, instead of the shared system temp folder; ones a crash left behind are removed at startup once they're over a day old and no running agent uses them (in the old system temp folder, only files of sessions this Coral saw end). The first start of this version clears old leftovers, which can take a few seconds in the background.
+- **A long message Coral pastes into an agent's terminal no longer stays in tmux's paste buffer** afterwards.
+- **A resumed session's copied files and `coral-board export --output` are readable by you only.**
+- **The retired proxy's CA private key and certificate are deleted from the data folder.** If you ever added that proxy's CA to a browser or keychain by hand, remove it.
+
+### Dashboard
+
+- **A new agent's empty chat says what to do next** (type below, wake it, or that it ended without messages).
+- **Every Kill confirmation says that, on the tmux backend, Kill also deletes the agent's terminal log (Sleep and Archive keep it),** and a new docs page, *What Coral stores*, lists what Coral keeps on this computer and when it's deleted.
+- **On a phone, the agent header keeps the branch name when there's room** and stays on one row at every phone width.
+
+### Fixes
+
+- **Restarting a plain terminal pane no longer starts a Claude agent in it.** It typed `claude --session-id ...` into the shell, using whatever `claude` is on PATH rather than the one set in Settings > CLI Paths; it now restarts as a shell in the same folder.
+
 ## v1.4.78 — Launches always use your CLI path, an idle dashboard stays small, and a faster first load
 
 ### Fixes
