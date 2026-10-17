@@ -2355,6 +2355,11 @@ func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
 		// A question for the Operator: the reason is the question. It is shown to the
 		// orchestrator only through teamhealth.ShownText, and is kept short here.
 		body.TargetID = "Operator"
+		// Only a current member asks, so a made-up name can't add lines to the check.
+		if sub, err := h.bs.GetProjectSubscription(r.Context(), project, body.SubscriberID); err != nil || sub == nil {
+			errBadRequest(w, "only a member of this board can ask the Operator")
+			return
+		}
 		body.Reason = strings.TrimSpace(body.Reason)
 		if body.Reason == "" {
 			errBadRequest(w, "a question for the Operator needs its text")

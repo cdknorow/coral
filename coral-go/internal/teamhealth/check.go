@@ -27,6 +27,10 @@ type Item struct {
 	Suggest  string // a fixed phrase
 }
 
+// MaxQuestions is how many questions waiting on the operator the check lists, oldest first;
+// the rest are counted.
+const MaxQuestions = 5
+
 // Question is a question waiting on the operator.
 type Question struct {
 	Asker string // a member name
@@ -81,7 +85,11 @@ func Compose(in CheckInput) string {
 	qLine := ""
 	if len(in.Questions) > 0 {
 		var qs []string
-		for _, q := range in.Questions {
+		for i, q := range in.Questions {
+			if i == MaxQuestions {
+				qs = append(qs, fmt.Sprintf("(%d more)", len(in.Questions)-MaxQuestions))
+				break
+			}
 			qs = append(qs, fmt.Sprintf("%s asked %s ago: %s", q.Asker, age(in.Now.Sub(q.Since)), q.Text))
 		}
 		qLine = "Waiting on the operator: " + strings.Join(qs, "; ") + "."

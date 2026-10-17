@@ -1,9 +1,11 @@
 package teamhealth
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -95,4 +97,28 @@ func TestShownTextInvisibleCharactersDoNotSplitASecret(t *testing.T) {
 			assert.NotContains(t, out, "battery", "%s with %q", name, mark)
 		}
 	}
+}
+
+// Combining marks inside a token (an accent, a variation selector, the grapheme joiner) must not
+// end the redactor's match either (Security's follow-up on MUST 1).
+func TestShownTextCombiningMarksDoNotSplitASecret(t *testing.T) {
+	for _, r := range []rune{0x0301, 0xFE0F, 0x034F, 0x20DD} {
+		in := "token=ghp_A1b2C3d4E5A1b2C3" + string(r) + "d4E5A1b2C3d4E5F6g7H8"
+		out := ShownText(in, nil)
+		assertShownLine(t, out)
+		assert.NotContains(t, out, "d4E5A1b2C3d4E5F6g7H8", "mark U+%04X", r)
+	}
+}
+
+// At most MaxQuestions questions are listed; the rest are counted.
+func TestComposeCapsTheQuestionsListed(t *testing.T) {
+	now := time.Now()
+	var qs []Question
+	for i := 0; i < 8; i++ {
+		qs = append(qs, Question{Asker: fmt.Sprintf("Agent%d", i), Text: "quoted: why", Since: now.Add(-time.Hour)})
+	}
+	out := Compose(CheckInput{Now: now, Agents: 8, Questions: qs, Progress: Progress{Since: now.Add(-10 * time.Minute)}})
+	assert.Contains(t, out, "Agent4 asked")
+	assert.NotContains(t, out, "Agent5 asked")
+	assert.Contains(t, out, "(3 more)")
 }

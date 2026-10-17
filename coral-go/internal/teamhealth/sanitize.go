@@ -51,7 +51,7 @@ func ShownText(text string, rd redact.Redactor) string {
 }
 
 // dropInvisibles removes escape sequences, control and format (bidi, zero-width, soft hyphen)
-// characters, keeping the line breaks, which the first-line cut needs.
+// characters and combining marks (accents, variation selectors, the grapheme joiner), keeping the line breaks, which the first-line cut needs.
 func dropInvisibles(s string) string {
 	s = csi.ReplaceAllString(s, "")
 	var b strings.Builder
@@ -59,7 +59,7 @@ func dropInvisibles(s string) string {
 		switch {
 		case r == '\n', r == '\r', r == '\u2028', r == '\u2029', r == '\u0085', r == '\x0b', r == '\x0c':
 			b.WriteRune(r)
-		case r == utf8.RuneError, unicode.IsControl(r), unicode.Is(unicode.Cf, r):
+		case r == utf8.RuneError, unicode.IsControl(r), unicode.Is(unicode.Cf, r), unicode.In(r, unicode.Mn, unicode.Me):
 			continue
 		default:
 			b.WriteRune(r)

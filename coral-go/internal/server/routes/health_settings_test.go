@@ -143,3 +143,26 @@ func TestBoardSettingsThroughTheHubLeaveOutHealth(t *testing.T) {
 	assert.NotContains(t, hub, "health")
 	assert.NotEmpty(t, hub, "the rest of the settings are still returned")
 }
+
+// Only a member of the board can register a question for the Operator.
+func TestOperatorQuestionNeedsAMember(t *testing.T) {
+	_, h := setupBoardTestServer(t)
+	ctx := context.Background()
+	_, err := h.bs.Subscribe(ctx, "team", "Dev", "Developer", "claude-a", nil, "all")
+	require.NoError(t, err)
+	register := func(who string) int {
+		body := []byte(`{"subscriber_id":"` + who + `","wait_type":"operator","reason":"ship it?"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/board/team/waits", bytes.NewReader(body))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("project", "team")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		h.RegisterWait(rec, req)
+		return rec.Code
+	}
+	assert.Equal(t, http.StatusBadRequest, register("Ghost"))
+	assert.Equal(t, http.StatusCreated, register("Dev"))
+	qs, err := h.bs.ListOperatorQuestions(ctx, "team")
+	require.NoError(t, err)
+	assert.Len(t, qs, 1)
+}
