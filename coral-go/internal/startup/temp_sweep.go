@@ -55,6 +55,9 @@ func setupLaunchTempDir(db *store.DB, dataDir string) <-chan struct{} {
 			ended[id] = true
 		}
 		for _, dir := range dirs {
+			if launchSweepGuard != nil {
+				launchSweepGuard(dir)
+			}
 			opt := agent.TempSweep{
 				MinAge:  staleTempAge,
 				Live:    func(id string) bool { return live[id] },
@@ -75,6 +78,10 @@ func setupLaunchTempDir(db *store.DB, dataDir string) <-chan struct{} {
 	})
 	return done
 }
+
+// launchSweepGuard, when set (the package's tests), is told every folder the startup sweep is about
+// to sweep, so the tests can fail if one is the machine's real temp folder.
+var launchSweepGuard func(dir string)
 
 // listRunningCommandLines is runningCommandLines, replaceable in tests.
 var listRunningCommandLines = runningCommandLines
