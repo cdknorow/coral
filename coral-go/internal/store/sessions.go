@@ -118,6 +118,20 @@ func (s *SessionStore) GetSettings(ctx context.Context) (map[string]string, erro
 	return result, nil
 }
 
+// settingsForCLITimeout bounds GetSettingsForCLI.
+const settingsForCLITimeout = 10 * time.Second
+
+// GetSettingsForCLI is GetSettings for a caller that is about to run an agent CLI and must not
+// fall back to the one on PATH when the read fails (#4350): it reads with a context the caller's
+// cancellation cannot end (a client that hangs up in the middle of a team launch), bounded by
+// settingsForCLITimeout so a stuck database cannot hold the launch for ever. A caller treats an
+// error as "do not run anything".
+func (s *SessionStore) GetSettingsForCLI(ctx context.Context) (map[string]string, error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settingsForCLITimeout)
+	defer cancel()
+	return s.GetSettings(ctx)
+}
+
 // SetSetting upserts a user setting.
 func (s *SessionStore) SetSetting(ctx context.Context, key, value string) error {
 	_, err := s.db.ExecContext(ctx,

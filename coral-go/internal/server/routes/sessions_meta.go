@@ -161,7 +161,10 @@ func (h *SessionsHandler) BackfillCLIVersions(ctx context.Context) {
 		return
 	}
 	have, _ := h.ss.CLIVersions(ctx)
-	settings, _ := h.ss.GetSettings(ctx)
+	settings, serr := h.ss.GetSettingsForCLI(ctx)
+	if serr != nil { // never ask the CLI on PATH instead of the configured one for its version (#4350)
+		return
+	}
 	for _, s := range live {
 		if have[s.SessionID] != "" || s.AgentType == "" {
 			continue
@@ -185,7 +188,10 @@ func (h *SessionsHandler) ensureCLIVersion(sessionID, agentType string) {
 	}
 	go func() {
 		defer safego.Recover("server/routes/sessions_meta:185")
-		settings, _ := h.ss.GetSettings(context.Background())
+		settings, err := h.ss.GetSettingsForCLI(context.Background())
+		if err != nil { // never ask the CLI on PATH instead of the configured one for its version (#4350)
+			return
+		}
 		h.recordCLIVersion(sessionID, agentType, settings)
 	}()
 }

@@ -112,3 +112,20 @@ func TestSessionTokenOwnerCacheDropsAnAnswerFromBeforeAnInvalidation(t *testing.
 	_, ok = c.get("hash")
 	assert.True(t, ok)
 }
+
+// GetSettingsForCLI (#4350) reads with a context the caller's cancellation cannot end: a client that
+// hangs up in the middle of a team launch must not make the next agent read no settings.
+func TestGetSettingsForCLISurvivesACancelledContext(t *testing.T) {
+	db := openTestDB(t)
+	ss := NewSessionStore(db)
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", "/mock/claude"))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := ss.GetSettings(ctx)
+	require.Error(t, err, "a plain read with that context fails, which is the bug")
+	got, err := ss.GetSettingsForCLI(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "/mock/claude", got["cli_path_claude"])
+	assert.Greater(t, settingsForCLITimeout, time.Duration(0))
+	assert.LessOrEqual(t, settingsForCLITimeout, 30*time.Second, "bounded")
+}

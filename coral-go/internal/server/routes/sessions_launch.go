@@ -708,7 +708,7 @@ var errLaunchSettings = errors.New("Coral's settings could not be read, so the a
 // no settings and started the CLI found on PATH, the real one, instead of the configured one), and
 // a read that fails fails the launch: it never falls back to PATH (#4350).
 func (h *SessionsHandler) launchSettings(ctx context.Context) (map[string]string, error) {
-	s, err := h.ss.GetSettings(context.WithoutCancel(ctx))
+	s, err := h.ss.GetSettingsForCLI(ctx)
 	if err != nil || s == nil {
 		slog.Error("reading settings for a launch failed", "error", err)
 		return nil, errLaunchSettings

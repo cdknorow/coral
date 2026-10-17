@@ -102,7 +102,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 			// A read that fails fails the launch: without the settings the command would run the
 			// CLI found on PATH instead of the configured one (#4350). The context is not the
 			// caller's cancellation either.
-			st, err := l.sessDB.GetSettings(context.WithoutCancel(ctx))
+			st, err := l.sessDB.GetSettingsForCLI(ctx)
 			if err != nil {
 				slog.Error("reading settings for the agent CLI path failed", "error", err)
 				return nil, fmt.Errorf("reading Coral's settings for the agent CLI path: %w", err)
@@ -331,7 +331,11 @@ func FindProtocolMD() string {
 // the CLI (--version, cached per binary), so it runs after the launch, not before.
 func recordCLIVersion(ss *store.SessionStore, sessionID, agentType string) {
 	ctx := context.Background()
-	settings, _ := ss.GetSettings(ctx)
+	settings, err := ss.GetSettingsForCLI(ctx)
+	if err != nil { // without the settings the version would be asked of the CLI on PATH, not the configured one (#4350)
+		slog.Warn("could not read settings; the agent's CLI version is not recorded", "session_id", sessionID, "error", err)
+		return
+	}
 	if v := agent.CLIVersion(settings, agentType); v != "" {
 		if err := ss.SetCLIVersion(ctx, sessionID, v); err != nil {
 			slog.Warn("could not record the agent's CLI version", "session_id", sessionID, "error", err)

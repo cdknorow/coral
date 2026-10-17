@@ -637,7 +637,7 @@ func (wr *WorkflowRunner) settings(ctx context.Context) (map[string]string, erro
 	if wr.store == nil || wr.store.DB() == nil {
 		return nil, nil
 	}
-	return store.NewSessionStore(wr.store.DB()).GetSettings(context.WithoutCancel(ctx))
+	return store.NewSessionStore(wr.store.DB()).GetSettingsForCLI(ctx)
 }
 
 // printStepCLIs lists the agent CLIs a non-interactive ("print") workflow step may use, and

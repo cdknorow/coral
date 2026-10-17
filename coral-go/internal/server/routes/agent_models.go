@@ -13,7 +13,7 @@ import (
 // newAgentModels finds each CLI the way a launch does (Settings > CLI Paths, then PATH).
 func (h *SystemHandler) newAgentModels() *agentmodels.Service {
 	return agentmodels.NewService(func(agentType string) (string, error) {
-		settings, err := h.ss.GetSettings(context.Background())
+		settings, err := h.ss.GetSettingsForCLI(context.Background())
 		if err != nil {
 			return "", err // never ask the CLI found on PATH instead of the configured one (#4350)
 		}

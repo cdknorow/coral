@@ -40,7 +40,7 @@ func BuildSummarizeFn(sessionStore *store.SessionStore) func(ctx context.Context
 		}
 
 		// Call Claude CLI to generate summary
-		settings, serr := sessionStore.GetSettings(context.WithoutCancel(ctx))
+		settings, serr := sessionStore.GetSettingsForCLI(ctx)
 		var summary string
 		if serr != nil { // never run the CLI found on PATH instead of the configured one (#4350)
 			err = fmt.Errorf("reading Coral's settings: %w", serr)
