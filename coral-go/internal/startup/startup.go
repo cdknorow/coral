@@ -360,6 +360,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// Per-session agent tokens, before anything can launch an agent (#3387).
 	setupSessionTokens(db, cfg.CoralDir())
 	setupAgentTools(cfg.CoralDir())
+	removeOrphanProxyCA(cfg.CoralDir())
 	// Launch scripts a shell never sourced (its pane died first) are removed a day later (#4361).
 	if n := cmdhandoff.Sweep(); n > 0 {
 		log.Printf("[startup] removed %d launch script(s) older than a day from the temp folder", n)

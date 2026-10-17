@@ -1,0 +1,32 @@
+package startup
+
+import (
+	"log"
+	"os"
+	"path/filepath"
+)
+
+// orphanProxyCAFiles are what the removed MITM proxy (gone in 8997a45f) left in the data folder:
+// its CA certificate, its private key and the bundle with the CA added. Nothing reads them now.
+var orphanProxyCAFiles = []string{"proxy-ca-key.pem", "proxy-ca.pem", "proxy-ca-bundle.pem"}
+
+// removeOrphanProxyCA deletes those files from dataDir (#4381, Security's #4371 SHOULD 3): by their
+// exact names, and only regular files (a symlink or a folder by that name is left alone). It
+// returns the names it removed, each also logged.
+func removeOrphanProxyCA(dataDir string) []string {
+	var removed []string
+	for _, name := range orphanProxyCAFiles {
+		path := filepath.Join(dataDir, name)
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			log.Printf("[startup] could not remove the old proxy CA file %s: %v", path, err)
+			continue
+		}
+		log.Printf("[startup] removed the old proxy CA file %s (left by the removed cost proxy; if you added that CA to a browser or keychain by hand, remove it there too)", path)
+		removed = append(removed, name)
+	}
+	return removed
+}
