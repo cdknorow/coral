@@ -182,8 +182,8 @@ func mentionLikePatterns(subscriberID, jobTitle string) []string {
 
 func likeAny(s string, patterns []string) bool {
 	for _, p := range patterns {
-		if inner := p[1 : len(p)-1]; !strings.ContainsAny(inner, "%_") {
-			if asciiContainsFold(s, inner) { // "%term%" with no wildcard inside: a substring
+		if len(p) >= 2 && p[0] == '%' && p[len(p)-1] == '%' && !strings.ContainsAny(p[1:len(p)-1], "%_") {
+			if asciiContainsFold(s, p[1:len(p)-1]) { // "%term%" with no wildcard inside: a substring
 				return true
 			}
 		} else if likeMatch(s, p) {

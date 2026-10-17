@@ -96,6 +96,32 @@ func TestLikeMatchIsSQLiteLike(t *testing.T) {
 		{"abc", "%ABC%", true},
 		{"", "%a%", false},
 		{"a%b", "%a%b%", true},
+		// QA's #4121 cases: whitespace, empty, the wildcards alone, multi-byte characters, and
+		// letters SQLite does not fold (only A-Z is folded). The expectation is SQLite's own.
+		{"name ", "%name %", true},
+		{" name", "% name%", true},
+		{"", "", true},
+		{"x", "", false},
+		{"", "%", true},
+		{"abc", "%", true},
+		{"", "_", false},
+		{"a", "_", true},
+		{"ab", "_", false},
+		{"%", "%\\%%", false},
+		{"a_b", "%a_b%", true},
+		{"axb", "%a_b%", true},
+		{"a\\b", "%a\\b%", true},
+		{"😀x", "_x", true},
+		{"😀x", "%😀%", true},
+		{"日本語", "%本%", true},
+		{"日本語", "__語", true},
+		{"İstanbul", "%istanbul%", false},
+		{"ISTANBUL", "%istanbul%", true},
+		{"ΣΟΦΙΑ", "%σοφια%", false},
+		{"café DEV", "%CAFÉ dev%", false},
+		{"cafe DEV", "%CAFE dev%", true},
+		{"@Backend Dev 2 here", "%@backend dev%", true},
+		{"@BackendDev", "%@backenddev%", true},
 	} {
 		assert.Equal(t, c.want, likeMatch(c.s, c.p), "%q LIKE %q", c.s, c.p)
 		var sqlite bool
