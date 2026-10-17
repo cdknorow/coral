@@ -45,6 +45,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
                 { id: 'uri:coral://artifacts/' + other, name: "Another team's report.pdf", task_id: 13, created_at: '2026-10-02T15:20:00Z', uri: 'coral://artifacts/' + other, available: false, source: 'completion', provenance: 'unverified' },
                 { id: 'shared:' + sent + ':1', name: 'Test report.txt', media_type: 'text/plain', size: 900, task_id: 0, created_at: '2026-10-02T16:00:00Z', uri: 'coral://artifacts/' + sent, available: true, source: 'shared', shared_to: 'homelab/qa', sent_by: 'Orchestrator', produced_by: null, session_id: null },
                 { id: 'received:' + got, name: 'Their logs.txt', media_type: 'text/plain', size: 2048, task_id: 0, created_at: '2026-10-02T17:00:00Z', uri: 'coral://artifacts/' + got, available: true, source: 'received', received_from: 'homelab (ab12cd34)', from_board: 'platform', sent_by: 'Orchestrator (platform)', produced_by: null, session_id: null },
+                { id: hex.replace(/a/g, 'b'), name: 'Their logs (cited).txt', media_type: 'text/plain', size: 2048, task_id: 14, created_at: '2026-10-02T17:30:00Z', uri: 'coral://artifacts/' + hex.replace(/a/g, 'b'), available: true, source: 'completion', provenance: 'received', produced_by: 'Worker A' },
                 { id: 'old', name: 'Earlier screenshot.png', media_type: 'image/png', task_id: 9, created_at: '2026-10-01T10:00:00Z', uri: 'coral://artifacts/' + 'f'.repeat(64), available: false, source: 'completion' },
             ];
             const real = window.fetch;
@@ -57,7 +58,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
             files.initFileSearch(); files.syncFilesViewerSession();
         })()`);
         await ev(`localStorage.removeItem('coral-agentic-tab-top'); document.getElementById('agentic-tab-team-artifacts').click()`); await settle();
-        assert.equal(await ev(`document.querySelectorAll('tr.team-artifact-row').length`), 6, 'every row is listed: the unverified one is not merged into the real row with the same id');
+        assert.equal(await ev(`document.querySelectorAll('tr.team-artifact-row').length`), 7, 'every row is listed: the unverified one is not merged into the real row with the same id');
 
         console.log('1. An unverified row says so and offers nothing to open');
         const unv = await ev(`(() => { const rows = [...document.querySelectorAll('tr.team-artifact-row')].filter(r => r.dataset.origin === 'unverified'); return rows.map(r => ({ name: r.querySelector('.team-artifact-name').textContent, tag: r.querySelector('.team-artifact-name').tagName, badge: r.querySelector('.team-artifact-badge').textContent, type: r.querySelector('td.team-artifact-col-type').textContent, preview: r.querySelectorAll('.team-artifact-preview').length, links: r.querySelectorAll('a[href]').length, action: r.querySelector('.team-artifact-col-actions').textContent, details: r.querySelector('dl').textContent })); })()`);
@@ -85,6 +86,9 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         assert.equal(rc.badge, 'From homelab (ab12cd34)'); assert.equal(rc.preview, 1);
         assert.doesNotMatch(rc.details, /Producer/);
         assert.match(rc.details, /Board \(claimed by the sender\)platform/); assert.match(rc.details, /CheckedNot scanned/); assert.match(rc.details, /Sent byOrchestrator \(platform\)/);
+
+        const cited = await ev(`(() => { const r = ${rowOf('Their logs (cited).txt')}; return { badge: r.querySelector('.team-artifact-badge').textContent, preview: r.querySelectorAll('.team-artifact-preview').length }; })()`);
+        assert.deepEqual(cited, { badge: 'Received file', preview: 1 }, 'a task result citing a received file is labelled and still opens');
 
         console.log('4. A legacy row renders as before');
         const old = await ev(`(() => { const r = ${rowOf('Earlier screenshot.png')}; return { badge: !!r.querySelector('.team-artifact-badge'), action: r.querySelector('.team-artifact-col-actions').textContent, origin: r.dataset.origin || '' }; })()`);

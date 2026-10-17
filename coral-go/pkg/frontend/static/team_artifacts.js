@@ -107,6 +107,7 @@ function readableName(item) {
 function isUnverified(item) { return item.provenance === 'unverified'; }
 function originBadge(item) {
     if (isUnverified(item)) return { kind: 'unverified', text: 'Link not verified' };
+    if (item.provenance === 'received' && item.source !== 'received') return { kind: 'received', text: 'Received file' }; // a task result that cites a file this board received
     if (item.source === 'shared') return { kind: 'shared', text: `Sent to ${item.shared_to || 'another team'}` };
     if (item.source === 'received') return { kind: 'received', text: `From ${item.received_from || 'another computer'}` };
     return null;
