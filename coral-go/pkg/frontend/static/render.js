@@ -783,9 +783,10 @@ function _railTile(s, active) {
     let badge = '';
     if (unread > 0) badge = `<span class="rail-tile-badge rail-tile-unread">${unread > 9 ? '9+' : unread}</span>`;
     else if (dot === 'done') badge = '<span class="rail-tile-badge rail-tile-done material-icons" aria-hidden="true">check</span>';
-    else badge = `<span class="rail-tile-dot avatar-status-dot ${dot}"></span>`;
+    // The dot is colour only: the tile's own name says the state, in the words the sidebar uses, so it is read once and the dot is skipped (#4276).
+    else badge = `<span class="rail-tile-dot avatar-status-dot ${dot}" aria-hidden="true"></span>`;
     const railStale = isStaleSession(s);
-    const railLabel = railStale ? `${label}: ${staleReason(s)}` : (showServerLabels() ? `${label} · ${serverLabel(sessionServer(s))}` : label);
+    const railLabel = railStale ? `${label}: ${staleReason(s)}` : `${showServerLabels() ? `${label} · ${serverLabel(sessionServer(s))}` : label}, ${sessionStateInfo(s).label}`;
     return `<button type="button" class="sidebar-rail-item${active ? ' active' : ''}${railStale ? ' session-stale' : ''}" title="${escapeAttr(railLabel)}" aria-label="${escapeAttr(railLabel)}"${railStale ? ' disabled' : ''}
         ${railStale ? '' : `data-on-click="session-open" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(s.session_id || '')}" data-server="${escapeAttr(sessionServer(s))}"`}><span class="rail-tile"${agentNameColor(s) ? ` style="--agent-name-color:${escapeAttr(agentNameColor(s))}"` : ''}>${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
 }

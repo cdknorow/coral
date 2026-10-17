@@ -61,7 +61,7 @@ const BASE = require('./test_base').BASE;
                     if(window.__mode==='network-error')return new Response('{}',{status:503});
                     return new Response(JSON.stringify({primary:'192.168.1.50',port:8468}));
                 }
-                if(u==='/api/system/api-key'){window.__calls.push({url:u});return new Response(JSON.stringify({key:'test-key-not-a-credential'}));}
+                if(u==='/api/system/api-key'){window.__calls.push({url:u});if(window.__keyStatus)return new Response('{"error":"dashboard_auth_required"}',{status:window.__keyStatus});return new Response(JSON.stringify({key:'test-key-not-a-credential'}));}
                 return real(url,opts);
             };
             const opener=document.createElement('button');opener.id='qr-test-opener';opener.textContent='Mobile QR';document.body.append(opener);opener.focus();
@@ -106,6 +106,13 @@ const BASE = require('./test_base').BASE;
         assert.match(await status(),/Could not enable mobile access \(403\)/);await noQR();
         await ev('window.__saved=true;window.__effective=true;window.__mode="network-error";window._showMobileConnectModal()');
         assert.match(await status(),/Could not load the mobile connection details/);await noQR();
+        // No sign-in: the key answers 401 (or 403): say how to see it, with no QR, no key and no generic error.
+        for (const code of [401, 403]) {
+            await ev(`window.__saved=true;window.__effective=true;window.__mode="normal";window.__keyStatus=${code};window._showMobileConnectModal()`);await tick();
+            assert.equal(await status(),'Sign in to see the API key (run: coral open)',`a ${code} says to sign in`);await noQR();
+            assert.equal(await ev(`[...document.querySelectorAll('#mobile-connect-actions button')].map(b=>b.textContent).join()`),'Close');
+        }
+        await ev(`window.__keyStatus=0`);
         // Closing during a delayed status check cannot re-open/populate the modal.
         await ev('window.__mode="delay";window._showMobileConnectModal();undefined');
         assert.match(await status(),/Checking mobile access/);

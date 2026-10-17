@@ -86,6 +86,11 @@ async function renderAccess(status, gen, signal) {
         fetch('/api/system/network-info', { signal }),
         fetch('/api/system/api-key', { signal }),
     ]);
+    // Without a sign-in the server refuses the key (and the details): say how to see them, with no QR and no key shown.
+    if ([networkResponse, keyResponse].some(r => r.status === 401 || r.status === 403)) {
+        renderState('Sign in to see the API key (run: coral open)', [button('Close', hideMobileConnectModal)]);
+        return;
+    }
     if (!networkResponse.ok || !keyResponse.ok) throw new Error('Could not load the mobile connection details.');
     const [network, key] = await Promise.all([networkResponse.json(), keyResponse.json()]);
     if (!current(gen)) return;
