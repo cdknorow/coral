@@ -362,6 +362,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	setupAgentTools(cfg.CoralDir())
 	removeOrphanProxyCA(cfg.CoralDir())
 	setupLaunchTempDir(db, cfg.CoralDir())
+	setupSessionStateSweep(db, cfg.CoralDir())
 	// Launch scripts a shell never sourced (its pane died first) are removed a day later (#4361).
 	if n := cmdhandoff.Sweep(); n > 0 {
 		log.Printf("[startup] removed %d launch script(s) older than a day from the temp folder", n)
