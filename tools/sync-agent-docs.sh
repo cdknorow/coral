@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sync agent_docs/ to the embedded static directory.
 # Run this before `go build` or `go run` during development.
-# Production builds run this automatically via bundle-frontend.sh.
+# Production builds run it too: each build job in .github/workflows/release.yml, before go build.
 
 set -euo pipefail
 
