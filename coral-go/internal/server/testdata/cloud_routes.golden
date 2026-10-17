@@ -8,6 +8,7 @@ DELETE /api/board/{project}/groups/{groupID}/members/{sessionID} never
 DELETE /api/board/{project}/messages/{messageID} launch
 DELETE /api/board/{project}/reminder interact
 DELETE /api/board/{project}/subscribe never
+DELETE /api/board/{project}/tasks/{taskID}/park never
 DELETE /api/board/{project}/tasks/{taskID}/reminder interact
 DELETE /api/board/{project}/waits never
 DELETE /api/folder-tags/{folderName}/{tagID} never
@@ -210,6 +211,7 @@ POST /api/auto-accept/disable-all interact
 POST /api/board/remotes never
 POST /api/board/{project}/external-messages interact
 POST /api/board/{project}/groups/{groupID}/members never
+POST /api/board/{project}/health/ack never
 POST /api/board/{project}/hub-notice interact
 POST /api/board/{project}/messages interact
 POST /api/board/{project}/messages/mark-read never
@@ -225,6 +227,7 @@ POST /api/board/{project}/tasks/{taskID}/approve never
 POST /api/board/{project}/tasks/{taskID}/cancel interact
 POST /api/board/{project}/tasks/{taskID}/complete interact
 POST /api/board/{project}/tasks/{taskID}/nudge interact
+POST /api/board/{project}/tasks/{taskID}/park never
 POST /api/board/{project}/tasks/{taskID}/publish interact
 POST /api/board/{project}/tasks/{taskID}/reassign interact
 POST /api/board/{project}/tasks/{taskID}/reject never

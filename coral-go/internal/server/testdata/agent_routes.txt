@@ -14,6 +14,7 @@ b DELETE /api/board/{project}/groups/{groupID}/members/{sessionID}
 b DELETE /api/board/{project}/messages/{messageID}
 a DELETE /api/board/{project}/reminder
 a DELETE /api/board/{project}/subscribe
+a DELETE /api/board/{project}/tasks/{taskID}/park
 a DELETE /api/board/{project}/tasks/{taskID}/reminder
 a DELETE /api/board/{project}/waits
 b DELETE /api/folder-tags/{folderName}/{tagID}
@@ -224,6 +225,7 @@ c POST /api/auto-accept/disable-all
 b POST /api/board/remotes
 a POST /api/board/{project}/external-messages
 b POST /api/board/{project}/groups/{groupID}/members
+a POST /api/board/{project}/health/ack
 c POST /api/board/{project}/hub-notice
 a POST /api/board/{project}/messages
 a POST /api/board/{project}/messages/mark-read
@@ -239,6 +241,7 @@ a POST /api/board/{project}/tasks/{taskID}/approve
 a POST /api/board/{project}/tasks/{taskID}/cancel
 a POST /api/board/{project}/tasks/{taskID}/complete
 a POST /api/board/{project}/tasks/{taskID}/nudge
+a POST /api/board/{project}/tasks/{taskID}/park
 a POST /api/board/{project}/tasks/{taskID}/publish
 a POST /api/board/{project}/tasks/{taskID}/reassign
 a POST /api/board/{project}/tasks/{taskID}/reject
