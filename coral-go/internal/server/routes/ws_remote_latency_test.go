@@ -154,24 +154,35 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	}
 	burst := time.Since(burstStart)
 	// The other nine changes come as one diff with the latest state, within the
-	// limit, and no further diff follows.
+	// limit, and no further diff follows. Read until the latest state has come (a loaded machine
+	// can send it later than a fixed window: the test failed that way under load after #4136),
+	// then one more window for a diff that should not come.
 	var diffs []string
-	rctx, stop := context.WithTimeout(ctx, 3*h.cfg.WSRemoteDebounce)
-	defer stop()
-	for {
-		var msg struct {
-			Type    string           `json:"type"`
-			Changed []map[string]any `json:"changed"`
-		}
-		if err := wsjson.Read(rctx, conn, &msg); err != nil {
-			break
-		}
-		for _, e := range msg.Changed {
-			if e["session_id"] == "ra-1" {
-				diffs = append(diffs, fmt.Sprint(e["status"]))
+	// read takes the diffs that come within d; it stops at the one carrying the latest state when
+	// untilLatest is set.
+	read := func(d time.Duration, untilLatest bool) {
+		rctx, stop := context.WithTimeout(ctx, d)
+		defer stop()
+		for {
+			var msg struct {
+				Type    string           `json:"type"`
+				Changed []map[string]any `json:"changed"`
+			}
+			if err := wsjson.Read(rctx, conn, &msg); err != nil {
+				return
+			}
+			for _, e := range msg.Changed {
+				if e["session_id"] == "ra-1" {
+					diffs = append(diffs, fmt.Sprint(e["status"]))
+					if untilLatest && e["status"] == "b-10" {
+						return
+					}
+				}
 			}
 		}
 	}
+	read(10*h.cfg.WSRemoteDebounce, true)
+	read(2*h.cfg.WSRemoteDebounce, false) // nothing more should come
 	// One coalesced diff per debounce window the burst spanned: one when it fit in a window (the
 	// 180 ms it takes unloaded), more only when a loaded machine stretched its sleeps past the
 	// window, which then rightly sends what was pending. Never a diff per change, and the last one
