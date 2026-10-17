@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 )
 
 // GzipAPIMinBytes is the smallest /api/ JSON reply GzipAPI compresses: below about 1 KB the
@@ -53,12 +52,33 @@ const (
 	gzOn                         // compressing
 )
 
-// gzipWriters reuses gzip writers across replies: each new one allocated its compressor's
-// tables (about 8% of a busy server's allocated bytes, #4028).
-var gzipWriters = sync.Pool{New: func() any {
-	zw, _ := gzip.NewWriterLevel(io.Discard, gzip.BestSpeed)
-	return zw
-}}
+// gzipWriters keeps up to gzipIdleWriters gzip writers between replies. Each new one allocates its
+// compressor's tables (814 KB at BestSpeed). A sync.Pool (#4028) is emptied at every garbage
+// collection, so on a busy server it was refilled a few times per cycle: about 19% of all allocated
+// bytes (#4446). A small free list survives collections; past it a writer is made and dropped as
+// before. At most gzipIdleWriters x 814 KB stays allocated while idle.
+const gzipIdleWriters = 4
+
+var gzipWriters = make(chan *gzip.Writer, gzipIdleWriters)
+
+func getGzipWriter() *gzip.Writer {
+	select {
+	case zw := <-gzipWriters:
+		return zw
+	default:
+		zw, _ := gzip.NewWriterLevel(io.Discard, gzip.BestSpeed)
+		return zw
+	}
+}
+
+// putGzipWriter keeps zw for the next reply, unless the free list is full.
+func putGzipWriter(zw *gzip.Writer) {
+	zw.Reset(io.Discard) // drop the reference to the reply it wrote
+	select {
+	case gzipWriters <- zw:
+	default:
+	}
+}
 
 type gzipAPIWriter struct {
 	http.ResponseWriter
@@ -67,6 +87,8 @@ type gzipAPIWriter struct {
 	headerOut bool
 	buf       bytes.Buffer
 	zw        *gzip.Writer
+	// writeFailed: a write of this reply's compressed bytes failed, so its writer isn't reused.
+	writeFailed bool
 }
 
 func (g *gzipAPIWriter) WriteHeader(code int) {
@@ -122,10 +144,11 @@ func (g *gzipAPIWriter) compress() error {
 	h.Set("Content-Encoding", "gzip")
 	h.Add("Vary", "Accept-Encoding")
 	g.sendHeader()
-	g.zw = gzipWriters.Get().(*gzip.Writer)
+	g.zw = getGzipWriter()
 	g.zw.Reset(g.ResponseWriter)
 	_, err := g.zw.Write(g.buf.Bytes())
 	g.buf.Reset()
+	g.writeFailed = g.writeFailed || err != nil
 	return err
 }
 
@@ -134,7 +157,9 @@ func (g *gzipAPIWriter) Write(p []byte) (int, error) {
 	case gzPlain:
 		return g.ResponseWriter.Write(p)
 	case gzOn:
-		return g.zw.Write(p)
+		n, err := g.zw.Write(p)
+		g.writeFailed = g.writeFailed || err != nil
+		return n, err
 	}
 	if g.status == 0 {
 		g.status = http.StatusOK
@@ -160,7 +185,9 @@ func (g *gzipAPIWriter) Flush() {
 	case gzUndecided:
 		_ = g.plain()
 	case gzOn:
-		_ = g.zw.Flush()
+		if g.zw.Flush() != nil {
+			g.writeFailed = true
+		}
 	}
 	if f, ok := g.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
@@ -168,7 +195,9 @@ func (g *gzipAPIWriter) Flush() {
 }
 
 // finish ends the reply: a held one goes out plain (it stayed under the threshold), a gzip one
-// is closed.
+// is closed. Its writer is kept for the next reply only after a whole reply: one that failed to
+// write (the client went away mid-reply) is dropped, and a reply whose handler panicked never gets
+// here (GzipAPI re-panics before finish).
 func (g *gzipAPIWriter) finish() {
 	switch g.state {
 	case gzUndecided:
@@ -176,9 +205,9 @@ func (g *gzipAPIWriter) finish() {
 			_ = g.plain()
 		}
 	case gzOn:
-		_ = g.zw.Close()
-		g.zw.Reset(io.Discard) // drop the reference to this reply's writer before it is reused
-		gzipWriters.Put(g.zw)
+		if err := g.zw.Close(); err == nil && !g.writeFailed {
+			putGzipWriter(g.zw)
+		}
 		g.zw = nil
 	}
 }
