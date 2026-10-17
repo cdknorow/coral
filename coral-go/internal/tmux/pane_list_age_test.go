@@ -115,6 +115,7 @@ func TestAChangedPaneIsSeenByTheNextCallerThatNeedsIt(t *testing.T) {
 	t.Cleanup(func() {
 		_ = exec.Command(c.resolveTmuxBin(), append(socketArgs(c.SocketPath), "kill-session", "-t", outside)...).Run()
 	})
+	ageSnapshot(t, c, DisplayPaneListAge-time.Second) // deterministic on a slow runner: still within the age
 	assert.False(t, hasPane(t, c, display, outside), "within DisplayPaneListAge a display caller may not see it yet")
 	ageSnapshot(t, c, paneStateTTL+100*time.Millisecond)
 	assert.False(t, hasPane(t, c, display, outside), "still within DisplayPaneListAge")
