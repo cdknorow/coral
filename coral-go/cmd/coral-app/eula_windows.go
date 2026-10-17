@@ -13,20 +13,21 @@ var (
 )
 
 const (
-	mbYesNo           = 0x00000004
-	mbIconInformation = 0x00000040
-	idYes             = 6
+	mbYesNo        = 0x00000004
+	mbIconQuestion = 0x00000020
+	mbDefButton2   = 0x00000100 // the second button, No, is the default: Enter must not accept terms nobody has read
+	idYes          = 6
 )
 
 func showEULADialog(tosText string) bool {
-	title, _ := syscall.UTF16PtrFromString("Coral — Terms of Service")
-	text, _ := syscall.UTF16PtrFromString(tosText + "\n\nDo you accept the Terms of Service?")
+	title, _ := syscall.UTF16PtrFromString(eulaDialogTitle)
+	text, _ := syscall.UTF16PtrFromString(tosText + "\n\n" + eulaDialogIntro + "\nYes = " + eulaAcceptLabel + ", No = " + eulaDeclineLabel + " (the default).")
 
 	ret, _, _ := messageBox.Call(
 		0,
 		uintptr(unsafe.Pointer(text)),
 		uintptr(unsafe.Pointer(title)),
-		uintptr(mbYesNo|mbIconInformation),
+		uintptr(mbYesNo|mbIconQuestion|mbDefButton2),
 	)
 	return ret == idYes
 }
