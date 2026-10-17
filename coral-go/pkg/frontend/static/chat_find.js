@@ -69,7 +69,8 @@ function collectRanges(query) {
         acceptNode(n) {
             if (!n.nodeValue || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
             const p = n.parentElement;
-            if (p && p.closest('.load-more-btn, script, style')) return NodeFilter.FILTER_REJECT;
+            // A steps group's bar (and a roll-up's) repeats text that is in its body: only the body is searched, so one match is one.
+            if (p && p.closest('.load-more-btn, script, style, .work-group-count, .work-group-latest')) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
         },
     });

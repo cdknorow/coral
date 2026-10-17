@@ -143,9 +143,10 @@ function rollUpRun(groups, bars) {
     }
     const bar = bars[0] || createRollup();
     bars.slice(1).forEach(b => b.remove());
-    // A group the reader opened (before it was rolled) or that holds focus keeps the bar open: hiding it would lose the focus and the reading
-    // position. An open bar stays open while a member holds focus, whatever streams in.
-    if (groups.some(g => (!g.classList.contains("rolled") && g.open) || g.contains(document.activeElement))) bar.open = true;
+    // A bar formed now around a group the reader opened, or that holds focus, starts open: hiding that group would lose the focus and the
+    // reading position. A bar that already exists is left as the reader set it: one they closed (even over a group they had expanded)
+    // stays closed when another group streams in.
+    if (!bars[0] && groups.some(g => g.open || g.contains(document.activeElement))) bar.open = true;
     if (bar.nextElementSibling !== groups[0]) groups[0].before(bar);
     const steps = groups.reduce((n, g) => n + stepCount(g), 0);
     bar.querySelector(".work-group-count").textContent = `${groups.length} updates \u00b7 ${steps} step${steps === 1 ? "" : "s"}`;
