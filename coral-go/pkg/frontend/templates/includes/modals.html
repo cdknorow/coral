@@ -701,6 +701,7 @@
                     <span class="toggle-desc">Shrink rewrites saved diffs of finished tasks without secrets, dot-files, binaries and big files (the code changes stay). Prune deletes saved diffs of finished tasks and stopped sessions, and artifacts nothing links, older than the days you choose. Kept artifacts and anything still linked are never touched. Each shows what it would do first.</span>
                 </dt>
                 <dd>
+                    <div class="settings-controls-row">
                     <label class="settings-inline">Older than <input type="number" id="settings-prune-days" min="1" max="3650" step="1" value="14" inputmode="numeric"> days</label>
                     <select id="settings-prune-kind" aria-label="What to prune">
                         <option value="diffs">Saved diffs</option>
@@ -709,6 +710,7 @@
                     </select>
                     <button class="btn btn-small" type="button" id="settings-storage-shrink">Shrink…</button>
                     <button class="btn btn-small" type="button" id="settings-storage-prune">Prune…</button>
+                    </div>
                     <div id="settings-storage-result" class="settings-hint" role="status"></div>
                 </dd>
                 <dt class="toggle-dt">

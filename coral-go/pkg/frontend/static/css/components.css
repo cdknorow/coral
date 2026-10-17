@@ -1991,7 +1991,12 @@ button.subscriber-history-link {
     margin-top: 2px;
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning); }
-.settings-hint[data-state="warn"] { color: var(--warning); }
+.settings-hint[data-state="warn"], .settings-hint [data-state="warn"] { color: var(--warning); }
+/* The controls of one setting on one wrapping row (field, kind, then the buttons side by side) instead of a stack that grows tall (#4469). */
+.settings-controls-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); }
+.settings-controls-row > * { margin: 0; }
+.settings-controls-row .settings-inline { display: inline-flex; align-items: center; gap: var(--space-xs); white-space: nowrap; }
+.settings-controls-row .settings-inline input { display: inline-block; margin: 0; }
 .settings-hint[data-state="error"] { color: var(--danger); }
 .settings-database-encryption-warning {
     display: block;

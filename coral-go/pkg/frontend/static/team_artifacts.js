@@ -53,7 +53,15 @@ function forget(hex) {
     if (isArtifactSource()) render();
 }
 
+// After a delete the row the focus was on is gone: the focus goes to the same place in the list (the next row, else the one before), else to Refresh, never to the page (#4469).
+let afterDeleteRow = null;
+function activeRowIndex() {
+    const row = document.activeElement?.closest?.('tr.team-artifact-row');
+    return row ? [...row.parentElement.children].indexOf(row) : -1;
+}
+
 function deleteArtifact(hex, name, size) {
+    const wasRow = activeRowIndex();
     window.showConfirmModal?.('Delete artifact',
         `Delete ${name}${size ? ` (${size})` : ''}? It is removed from Coral, and links to it in board posts and task results will show "unavailable". A copy a browser already cached may remain. This can't be undone.`,
         async () => {
@@ -61,6 +69,7 @@ function deleteArtifact(hex, name, size) {
                 const r = await fetch(`/api/artifacts/${hex}`, { method: 'DELETE' });
                 if (r.ok || r.status === 404) {
                     notice = r.ok ? `Deleted ${name}.` : `${name} was already gone.`;
+                    afterDeleteRow = wasRow;
                     forget(hex);
                     deletions?.postMessage(hex);
                 } else {
@@ -183,7 +192,29 @@ function focusKeyOf(root) {
     const row = a.closest('tr.team-artifact-row');
     return { row: row ? [...row.parentElement.children].indexOf(row) : -1, label: (a.getAttribute('aria-label') || a.textContent || '').trim() };
 }
+let afterRetry = false;
+function focusAfterAction(root) {
+    const rows = [...root.querySelectorAll('tr.team-artifact-row')];
+    const refresh = root.querySelector('.team-artifacts-heading .team-artifacts-action');
+    if (afterDeleteRow !== null) {
+        const at = afterDeleteRow; afterDeleteRow = null;
+        const target = at >= 0 ? (rows[at] || rows[at - 1] || null) : null;
+        (target?.querySelector('button, a[href], summary') || refresh)?.focus();
+        focusKey = null;
+        return true;
+    }
+    if (afterRetry && !caches[source].busy) {
+        afterRetry = false;
+        // A retry that worked: the list is new, start at its first control; one that failed again: back on Retry.
+        (caches[source].error ? root.querySelector('.team-artifacts-retry') : (rows[0]?.querySelector('button, a[href], summary') || refresh))?.focus();
+        focusKey = null;
+        return true;
+    }
+    return false;
+}
+
 function restoreFocus(root) {
+    if (focusAfterAction(root)) return;
     if (!focusKey) return;
     if (focusKey.more) {
         const more = root.querySelector('.team-artifacts-more');
@@ -212,8 +243,9 @@ function render() {
     const heading = el('div', 'team-artifacts-heading');
     heading.append(el('span', '', (personal || team) ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
     const refresh = el('button', 'team-artifacts-action', 'Refresh');
-    refresh.type = 'button'; refresh.disabled = busy || (personal ? !sessionID : !team);
-    refresh.addEventListener('click', () => load(false));
+    refresh.type = 'button'; refresh.disabled = personal ? !sessionID : !team;
+    if (busy) refresh.setAttribute('aria-disabled', 'true'); // not disabled: the focus stays on it while the list loads
+    refresh.addEventListener('click', () => { if (!caches[source].busy) load(false); });
     const help = el('button', 'team-artifacts-action team-artifacts-help');
     help.type = 'button';
     help.title = 'Copy instructions for agents on how to publish an artifact';
@@ -230,20 +262,24 @@ function render() {
     });
     heading.append(refresh, help); root.append(heading);
     if (notice) {
+        // The visible line is for the eye; screen readers get it from the live region that is always in the page (a region that appears with its text is often missed).
         const n = el('div', 'team-artifacts-status team-artifacts-notice', notice);
-        n.setAttribute('role', 'status');
+        n.setAttribute('aria-hidden', 'true');
         root.append(n);
+        const live = document.getElementById(`${panels[source]}-live`);
+        if (live) live.textContent = notice;
         notice = '';
     }
     const status = el('div', 'team-artifacts-status');
     status.setAttribute('role', error ? 'alert' : 'status');
     status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
         : error ? error : busy ? (personal ? 'Loading agent artifacts…' : 'Loading team artifacts…')
-        : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : 'No artifacts shared by this team yet.') : `${items.length} artifacts`;
+        : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : 'No artifacts shared by this team yet.') : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
+    if (error) status.dataset.state = 'error';
     root.append(status);
     if (error) {
-        const retry = el('button', 'team-artifacts-action', 'Retry');
-        retry.type = 'button'; retry.addEventListener('click', () => load(items.length > 0));
+        const retry = el('button', 'team-artifacts-action team-artifacts-retry', 'Retry');
+        retry.type = 'button'; retry.addEventListener('click', () => { afterRetry = true; load(items.length > 0); });
         root.append(retry);
     }
     // The table fits its panel at any width: Size and Task live in each row's
@@ -285,6 +321,7 @@ function render() {
         info.append(title);
         if (badge) {
             const chip = el('span', `team-artifact-badge team-artifact-badge-${badge.kind}`, badge.text);
+            chip.title = badge.text; // one line with an ellipsis; the whole text is here and in Details
             info.append(chip);
             row.dataset.origin = badge.kind;
         }
@@ -364,7 +401,7 @@ function render() {
         } else actionCell.append(el('span', 'team-artifact-missing', unverified ? 'Not verified' : item.available === false ? 'Missing' : 'Unavailable'));
         rows.append(row);
     }
-    scroll.append(list);root.append(scroll);
+    if (items.length) { scroll.append(list); root.append(scroll); } // no header over nothing: an empty list or a failed load shows its line only
     if (hasMore) {
         const more = el('button', 'team-artifacts-action team-artifacts-more', busy ? 'Loading…' : 'Load more');
         more.type = 'button'; more.disabled = busy;

@@ -42,7 +42,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await ev(`window.showSettingsModal(); true`);
         await until(`/By age: /.test((document.getElementById('settings-storage-detail') || {}).textContent || '')`, 'the breakdown');
         const detail = await ev(`document.getElementById('settings-storage-detail').innerText`);
-        check('Settings shows the store by age', /By age: artifacts <1d /.test(detail) && /task diffs/.test(detail), JSON.stringify(detail));
+        check('Settings shows the store by age', /Artifacts by age: <1d /.test(detail) && /Task diffs by age: /.test(detail), JSON.stringify(detail));
         await ev(`document.getElementById('settings-prune-kind').value = 'objects'; document.getElementById('settings-prune-days').value = '7'; document.getElementById('settings-storage-prune').click(); true`);
         await until(`(document.getElementById('settings-storage-result') || {}).textContent === 'Nothing to do.'`, 'the prune check');
         check('Prune of week-old unlinked artifacts finds nothing on a fresh store, and asks nothing',

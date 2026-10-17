@@ -2160,25 +2160,52 @@ function _gib(n) {
 
 /** Settings: the artifact store's size and the saved diffs' sizes, as separate lines, next to the
  *  store limit (which counts the artifacts only). This computer's dashboard only. */
-async function loadArtifactStoreSize() {
+async function loadArtifactStoreSize({ fresh = false } = {}) {
     const out = document.getElementById('settings-artifact-store-size');
     const input = document.getElementById('settings-artifact-store-max');
     if (!out || !input) return;
+    const rin = document.getElementById('settings-received-max');
+    const rout = document.getElementById('settings-received-size');
+    if (fresh) {
+        // Each open starts from nothing: the numbers of the last open must not outlive it. A failed or slow load then leaves the fields empty and off (a limit that was not
+        // read is never saved back: the flag is gone), and the lines say that it is loading, not what it showed last time (#4469, UX's #4456 SHOULD 9).
+        for (const [i, o] of [[input, out], [rin, rout]]) {
+            if (!i || !o) continue;
+            i.value = ''; delete i.dataset.loaded; i.disabled = true;
+            o.textContent = 'Loading…'; delete o.dataset.state;
+        }
+        const ub = document.getElementById('settings-received-unlisted'); if (ub) ub.hidden = true;
+    }
     try {
         const r = await fetch('/api/system/artifact-store');
         if (!r.ok) throw new Error(String(r.status));
         const d = await r.json();
         input.value = d.max_bytes > 0 ? String(Math.round(d.max_bytes / GIB)) : '0';
         input.dataset.loaded = '1'; // only a limit read from Coral is saved back
-        const lines = [
-            `Artifacts: ${_gib(d.bytes)} in ${Number(d.objects).toLocaleString()} file${d.objects === 1 ? '' : 's'}${d.max_bytes > 0 ? ` (limit ${_gib(d.max_bytes)})` : ''}`,
-            `Saved task diffs: ${_gib(d.task_diffs?.bytes || 0)} in ${Number(d.task_diffs?.files || 0).toLocaleString()} files (not limited)`,
-            `Saved session diffs: ${_gib(d.session_diffs?.bytes || 0)} in ${Number(d.session_diffs?.files || 0).toLocaleString()} files (not limited)`,
+        input.disabled = false;
+        const plural = (n, one, many) => `${Number(n).toLocaleString()} ${Number(n) === 1 ? one : many}`;
+        // The same three states as the received files' line: below 80%, from 80% with what to do, and at the limit that new uploads are refused, in the warning colour.
+        let art = `Artifacts: ${_gib(d.bytes)} in ${plural(d.objects, 'file', 'files')}`;
+        const atLimit = d.max_bytes > 0 && d.bytes >= d.max_bytes;
+        if (d.max_bytes > 0) {
+            const full = atLimit || d.bytes * 5 >= d.max_bytes * 4;
+            art += atLimit ? ` (limit ${_gib(d.max_bytes)} reached: new uploads are refused)` : full ? ` (limit ${_gib(d.max_bytes)}, ${Math.floor((d.bytes / d.max_bytes) * 100)}% full)` : ` (limit ${_gib(d.max_bytes)})`;
+            if (full) art += '. Delete artifacts in Team Artifacts to make room, or raise the limit.';
+        }
+        const artNode = document.createElement('span');
+        artNode.textContent = art;
+        if (atLimit) artNode.dataset.state = 'warn';
+        const rest = [
+            `Saved task diffs: ${_gib(d.task_diffs?.bytes || 0)} in ${plural(d.task_diffs?.files || 0, 'file', 'files')} (not limited)`,
+            `Saved session diffs: ${_gib(d.session_diffs?.bytes || 0)} in ${plural(d.session_diffs?.files || 0, 'file', 'files')} (not limited)`,
         ];
-        out.replaceChildren(...lines.flatMap((l, i) => (i ? [document.createElement('br'), l] : [l])));
+        out.replaceChildren(artNode, ...rest.flatMap(l => [document.createElement('br'), l]));
         showReceivedCap(d.received);
     } catch {
-        out.textContent = "Couldn't read the store's size.";
+        if (fresh) {
+            out.textContent = "Couldn't read the store's size, so the limit is not shown.";
+            if (rout) rout.textContent = "Couldn't read the received files' size, so their limit is not shown.";
+        } else out.textContent = "Couldn't read the store's size.";
     }
     loadStorageDetail();
     importOnce('./received_cap_notice.js').then(m => m.checkReceivedCap({ inSettings: true })).catch(() => {}); // remembered once at 80%; the line says it, no toast over this dialog (#4441)
@@ -2258,8 +2285,8 @@ async function loadStorageDetail() {
         if (!d) throw new Error('no detail');
         const age = (k) => ['<1d', '1-7d', '7-30d', '>30d'].map(b => `${b} ${_gib(d.by_age?.[k]?.[b]?.bytes || 0)}`).join(' · ');
         const lines = [
-            `By age: artifacts ${age('objects')}`,
-            `task diffs ${age('task_diffs')}`,
+            `Artifacts by age: ${age('objects')}`,
+            `Task diffs by age: ${age('task_diffs')}`,
         ];
         const boards = (d.by_board || []).slice(0, 5).map(b => `${b.label || b.board} ${_gib(b.bytes)}`);
         if (boards.length) lines.push(`Largest boards: ${boards.join(' · ')}`);
@@ -2309,9 +2336,11 @@ async function pruneRequest(body) {
     return d;
 }
 
+// The page's own words for what a prune removes, never the server's kind names (#4469, UX's #4456 SHOULD 11).
+const PRUNE_NAMES = { diffs: ['saved diff', 'saved diffs'], objects: ['unlinked artifact', 'unlinked artifacts'], 'diff-objects': ['stored diff copy', 'stored diff copies'] };
 function pruneSummary(rep) {
     const n = Object.values(rep.kinds || {}).reduce((a, k) => a + (k.count || 0), 0);
-    return { n, text: Object.entries(rep.kinds || {}).map(([k, v]) => `${v.count} ${k} (${_gib(v.bytes)})`).join(', ') };
+    return { n, text: Object.entries(rep.kinds || {}).map(([k, v]) => `${Number(v.count).toLocaleString()} ${(PRUNE_NAMES[k] || [k, k])[v.count === 1 ? 0 : 1]} (${_gib(v.bytes)})`).join(', ') };
 }
 
 /** A dry run, a confirmation (focus on Cancel), then the real run. */
@@ -2334,16 +2363,18 @@ async function previewAndRun(body, verb) {
     }
     result.textContent = '';
     const what = verb === 'Shrink' ? `saving about ${_gib(dry.freed)}. The code changes in them stay.` : `freeing about ${_gib(dry.freed)}. This can't be undone.`;
+    const asker = document.getElementById(verb === 'Shrink' ? 'settings-storage-shrink' : 'settings-storage-prune');
     window.showConfirmModal?.(`${verb} saved data`, `${verb} ${s.text}, ${what}`, async () => {
         result.textContent = `${verb === 'Shrink' ? 'Shrinking' : 'Pruning'}…`;
         try {
             const done = await pruneRequest({ ...body, dry_run: false });
-            result.textContent = `${verb === 'Shrink' ? 'Saved' : 'Freed'} ${_gib(done.freed)}: ${done.removed} done${done.skipped ? `, ${done.skipped} left alone because they changed` : ''}${done.errors ? `, ${done.errors} errors` : ''}.`;
+            result.textContent = `${verb === 'Shrink' ? 'Saved' : 'Freed'} ${_gib(done.freed)} from ${Number(done.removed).toLocaleString()} item${done.removed === 1 ? '' : 's'}${done.skipped ? `; ${done.skipped} left alone because ${done.skipped === 1 ? 'it' : 'they'} changed` : ''}${done.errors ? `; ${done.errors} error${done.errors === 1 ? '' : 's'}` : ''}.`;
             loadArtifactStoreSize();
         } catch (e) {
             result.dataset.state = 'error';
             result.textContent = `Couldn't finish: ${e.message}`;
         }
+        asker?.focus(); // Yes closed the confirmation: the focus goes back to the button that asked, not to the page (#4469, UX's #4456 SHOULD 10)
     });
     // No default: focus starts on Cancel.
     requestAnimationFrame(() => document.querySelector('#confirm-modal .modal-actions .btn:not(#confirm-modal-yes)')?.focus());
@@ -2412,6 +2443,7 @@ function showReceivedCap(r) {
     if (!out || !input || !r) return;
     input.value = r.max_bytes > 0 ? String(Math.round(r.max_bytes / GIB)) : '0';
     input.dataset.loaded = '1'; // only a limit read from Coral is saved back
+    input.disabled = false;
     const { line, atLimit } = receivedLine(r);
     out.textContent = line;
     if (atLimit) out.dataset.state = 'warn'; else delete out.dataset.state; // at the limit new files are refused: the warning colour
@@ -2559,7 +2591,7 @@ export async function showSettingsModal() {
     if (!isCloud()) {
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
-        loadArtifactStoreSize(); // the store's size next to its limit (#3553)
+        loadArtifactStoreSize({ fresh: true }); // the store's size next to its limit (#3553)
         loadTerminalLogs(); // the terminal logs of ended agents (#4447)
         wireStorageActions(); // free space and automatic cleanup (#3554)
         const autoAttach = document.getElementById('settings-board-auto-attach');

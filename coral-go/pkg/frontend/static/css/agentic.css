@@ -2558,29 +2558,33 @@ body.panel-dragging .agentic-state {
 .team-artifacts-list th { color: var(--text-secondary); font-weight: 500; }
 .team-artifact-col-type { width: 88px; }
 .team-artifact-col-created { width: 170px; }
-.team-artifact-col-actions { width: 124px; }
+.team-artifact-col-actions { width: calc(176px + 2 * var(--space-lg)); } /* five 32 px icon buttons and their gaps: Preview, Download, Copy link, Keep, Delete (#4469) */
 /* Long names wrap to two lines, then ellipsize; the full name is the tooltip. */
 .team-artifact-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding: 0; background: none; border: 0; color: var(--text-primary); font: 500 var(--fs-md)/1.4 var(--font-sans); text-align: left; overflow-wrap: anywhere; }
 button.team-artifact-name { cursor: pointer; }
 .team-artifact-missing { font-size: var(--fs-base); color: var(--text-secondary); }
 /* Where a row came from: a file this team sent, one from another computer, or a link Coral could not verify (#4396). Words, not colour alone. */
-.team-artifact-badge { display: inline-block; max-width: 100%; margin-top: var(--space-xs); padding: 0.125rem 0.5rem; border: 1px solid var(--border); border-radius: 0.75rem; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.4; overflow-wrap: anywhere; }
+.team-artifact-badge { display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; margin-top: var(--space-xs); padding: 0.125rem 0.5rem; border: 1px solid var(--border); border-radius: 0.75rem; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.4; overflow-wrap: anywhere; }
 .team-artifact-badge-unverified { border-color: var(--warning); color: var(--text-primary); }
 .team-artifact-details { margin-top: var(--space-xs); color: var(--text-secondary); font-size: var(--fs-base); }
 .team-artifact-details summary { width: fit-content; padding: var(--space-xs) 0; cursor: pointer; }
 .team-artifact-details dl { margin: var(--space-md) 0 0; }
 .team-artifact-details dt { font-weight: 600; margin-top: var(--space-md); }
 .team-artifact-details dd { margin: 0; overflow-wrap: anywhere; }
+.team-artifact-details dd + dd { margin-top: var(--space-xs); } /* several senders of one file are one line each, with a gap between them (#4460) */
 /* A narrow panel shows Name and Actions; Type and Created are in Details. */
 @container (max-width: 520px) {
     .team-artifacts-list :is(.team-artifact-col-type, .team-artifact-col-created) { display: none; }
     .team-artifacts-list :is(th, td) { padding-left: var(--space-md); padding-right: var(--space-md); }
 }
 .team-artifacts-more { align-self: center; margin: 12px; }
-.team-artifacts-action:disabled { opacity: 0.6; cursor: default; }
+.team-artifacts-action:disabled, .team-artifacts-action[aria-disabled="true"] { opacity: 0.6; cursor: default; }
+.team-artifacts-status[data-state="error"] { color: var(--danger); } /* the same red as Settings' error lines */
+/* A live region for the outcome of a delete: always in the page, empty until there is something to say, so screen readers announce it (a region that appears already filled is often missed). */
+.team-artifacts-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
 /* The icons sit in one row so rows stay short. */
-.team-artifact-actions { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: var(--space-xs); flex-shrink: 0; }
+.team-artifact-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-xs); flex-shrink: 0; }
 .team-artifact-icon-btn { padding: var(--space-xs); min-width: 32px; min-height: 32px; border-radius: var(--radius-md); }
 .artifact-linked-preview { display: flex; flex-direction: column; height: 100%; min-height: 320px; }
 .artifact-linked-notice, .artifact-linked-status { margin: 0; padding: 10px 12px; font-size: 0.75rem; color: var(--text-secondary); }
@@ -2588,6 +2592,14 @@ button.team-artifact-name { cursor: pointer; }
 .artifact-linked-preview iframe { flex: 1; min-height: 240px; width: 100%; border: 0; background: #fff; }
 @media (max-width: 767px) {
     .team-artifacts-action,     .team-artifact-details summary { box-sizing: border-box; padding-top: var(--space-lg); }
+}
+/* On a touch screen every control of the table is a 44 px target, and the five icons wrap into two rows of three and two inside their column (#4469). */
+@media (pointer: coarse) {
+    .team-artifact-icon-btn { min-width: 44px; min-height: 44px; }
+    .team-artifact-col-actions { width: calc(3 * 44px + 2 * var(--space-xs) + 2 * var(--space-lg)); }
+    .team-artifacts-help { min-width: 44px; min-height: 44px; }
+    .team-artifact-details summary { min-height: 44px; display: flex; align-items: center; }
+    button.team-artifact-name { min-height: 44px; align-content: center; }
 }
 
 /* Human-readable JSON artifacts, without changing their source/download. */

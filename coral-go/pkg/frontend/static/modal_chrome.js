@@ -41,6 +41,14 @@ const DIALOGS = Object.assign(Object.create(null), { // no prototype: an element
     'mobile-connect-modal': { hide: () => window._hideMobileConnectModal() },
 });
 
+// Modals top-first: the confirmation is painted above Settings (z-index) though it comes earlier in the page, so Escape and Tab must reach it first (#4469).
+function modalsTopFirst() {
+    const all = [...document.querySelectorAll('.modal')].reverse();
+    const confirm = all.findIndex((m) => m.id === 'confirm-modal');
+    if (confirm > 0) all.unshift(...all.splice(confirm, 1));
+    return all;
+}
+
 function hideDialog(modal) {
     const d = DIALOGS[modal.id];
     if (d && d.hide) d.hide();
@@ -57,10 +65,9 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
         // Find topmost visible modal and close only that one
-        const modals = document.querySelectorAll('.modal');
-        for (let i = modals.length - 1; i >= 0; i--) {
-            if (modals[i].style.display !== 'none' && modals[i].getClientRects().length > 0) {
-                hideDialog(modals[i]);
+        for (const modal of modalsTopFirst()) {
+            if (modal.style.display !== 'none' && modal.getClientRects().length > 0) {
+                hideDialog(modal);
                 e.preventDefault();
                 return;
             }
@@ -69,17 +76,16 @@ document.addEventListener("keydown", (e) => {
 
     // Focus trapping: Tab/Shift+Tab stays inside the topmost visible modal
     if (e.key === "Tab") {
-        const modals = document.querySelectorAll('.modal');
-        for (let i = modals.length - 1; i >= 0; i--) {
-            if (modals[i].style.display !== 'none' && modals[i].getClientRects().length > 0) {
-                const focusable = Array.from(modals[i].querySelectorAll(
+        for (const modal of modalsTopFirst()) {
+            if (modal.style.display !== 'none' && modal.getClientRects().length > 0) {
+                const focusable = Array.from(modal.querySelectorAll(
                     'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
                 )).filter(el => el.getClientRects().length > 0);
                 if (focusable.length === 0) return;
                 const first = focusable[0];
                 const last = focusable[focusable.length - 1];
                 // Focus outside the modal (left on the control that opened it) comes in too.
-                const outside = !modals[i].contains(document.activeElement);
+                const outside = !modal.contains(document.activeElement);
                 if (e.shiftKey && (outside || document.activeElement === first)) {
                     e.preventDefault();
                     last.focus();
