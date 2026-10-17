@@ -151,6 +151,7 @@ type Store struct {
 	completionChecksEnabled bool
 	unreadCounts            unreadCountCache
 	waitChanges             waitSignal
+	stmts                   *hotStmts // the hot fixed queries, prepared (#4463); nil: unprepared
 }
 
 func isInMemoryPath(dbPath string) bool {
@@ -253,6 +254,7 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 
 	if isInMemoryPath(dbPath) {
 		s.readDB = db
+		s.stmts = prepareHotStmts(context.Background(), s.reader())
 		return s, nil
 	}
 
@@ -268,12 +270,14 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	readDB.SetMaxOpenConns(4)
 	readDB.SetMaxIdleConns(4)
 	s.readDB = readDB
+	s.stmts = prepareHotStmts(context.Background(), s.reader())
 	return s, nil
 }
 
 // Close closes the database connection.
 func (s *Store) Close() error {
-	var firstErr error
+	// The prepared statements first: each holds its pool connections' statements.
+	firstErr := s.stmts.close()
 	if s.readDB != nil && s.readDB != s.db {
 		if err := s.readDB.Close(); err != nil {
 			firstErr = err
@@ -739,8 +743,7 @@ func (s *Store) GetTask(ctx context.Context, project string, taskID int64) (*Tas
 // multiple active subscriptions across different boards.
 func (s *Store) GetSubscriptionBySessionName(ctx context.Context, sessionName string) (*Subscriber, error) {
 	var sub Subscriber
-	err := s.reader().GetContext(ctx, &sub,
-		"SELECT * FROM board_subscribers WHERE session_name = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", sessionName)
+	err := getHot(ctx, s.hot().subscriptionBySessionName, s.reader(), &sub, sqlSubscriptionBySessionName, sessionName)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -965,9 +968,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 
 	// Skip past own messages
 	var ownMax int64
-	s.reader().GetContext(ctx, &ownMax,
-		"SELECT COALESCE(MAX(id), 0) FROM board_messages WHERE project = ? AND subscriber_id = ?",
-		project, subscriberID)
+	getHot(ctx, s.hot().ownMaxMessageID, s.reader(), &ownMax, sqlOwnMaxMessageID, project, subscriberID)
 	if ownMax > newCursor {
 		newCursor = ownMax
 	}

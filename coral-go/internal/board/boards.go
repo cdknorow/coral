@@ -118,7 +118,7 @@ func (s *Store) ensureBoardRow(ctx context.Context, key string) {
 // GetBoard returns the board with this exact id.
 func (s *Store) GetBoard(ctx context.Context, id string) (*Board, error) {
 	var b Board
-	err := s.reader().GetContext(ctx, &b, `SELECT id, label, created_at, created_by FROM boards WHERE id = ?`, id)
+	err := getHot(ctx, s.hot().boardByID, s.reader(), &b, sqlBoardByID, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrBoardNotFound
 	}
@@ -133,11 +133,7 @@ func (s *Store) GetBoard(ctx context.Context, id string) (*Board, error) {
 // never makes a name taken or ambiguous.
 func (s *Store) BoardsLabelled(ctx context.Context, label string) ([]Board, error) {
 	var out []Board
-	err := s.reader().SelectContext(ctx, &out, `SELECT b.id, b.label, b.created_at, b.created_by FROM boards b WHERE b.label = ?
-		AND (EXISTS (SELECT 1 FROM board_subscribers WHERE project = b.id)
-		  OR EXISTS (SELECT 1 FROM board_messages WHERE project = b.id)
-		  OR EXISTS (SELECT 1 FROM board_tasks WHERE board_id = b.id))
-		ORDER BY b.created_at, b.id`, label)
+	err := selectHot(ctx, s.hot().boardsLabelled, s.reader(), &out, sqlBoardsLabelled, label)
 	return out, err
 }
 
