@@ -148,3 +148,27 @@ func TestStrictLocalAuthEnvIsHonouredOnlyInDevBuilds(t *testing.T) {
 		t.Errorf("--strict-local-auth=false: strict = %v, err %v, want off in every tier", got, err)
 	}
 }
+
+// #4290 review: a different case on a case-insensitive volume (macOS, Windows) names the default
+// folder too, and an 8.3 or symlinked spelling does as well: the file system decides, not the string.
+func TestStrictOffRefusalSeesADifferentCaseOfTheDefaultFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	def := filepath.Join(home, ".coral")
+	if err := os.MkdirAll(def, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	upper := filepath.Join(home, ".CORAL")
+	if _, err := os.Stat(upper); err != nil {
+		t.Skip("a case-sensitive file system: .CORAL is another folder here")
+	}
+	err := refuseStrictOffOnDefaultDir(false, upper)
+	if err == nil || !strings.Contains(err.Error(), "CORAL_DATA_DIR") {
+		t.Errorf("strict off on %q: got %v, want a refusal", upper, err)
+	}
+	// A folder that does not exist yet is compared as a string.
+	if err := refuseStrictOffOnDefaultDir(false, filepath.Join(home, "elsewhere")); err != nil {
+		t.Errorf("a folder of its own: %v", err)
+	}
+}

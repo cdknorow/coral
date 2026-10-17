@@ -63,8 +63,16 @@ func refuseStrictOffOnDefaultDir(strict bool, dataDir string) error {
 	return fmt.Errorf("strict local auth is off and the data folder is the default %s: any program on this computer could use Coral without a credential, with your real sessions and keys. Set CORAL_DATA_DIR (or --home) to a folder of its own for a test server, or turn strict local auth back on", dataDir)
 }
 
-// sameDir reports whether a and b name the same folder, resolving symlinks where the folder exists.
+// sameDir reports whether a and b name the same folder. Two folders that exist are compared as the
+// file system does (os.SameFile), so a different case on a case-insensitive volume (macOS, Windows),
+// an 8.3 short name or a symlink can't hide the default folder; when one does not exist the paths
+// are compared as strings (cleaned, absolute, symlinks resolved).
 func sameDir(a, b string) bool {
+	if ia, err := os.Stat(a); err == nil {
+		if ib, err := os.Stat(b); err == nil {
+			return os.SameFile(ia, ib)
+		}
+	}
 	norm := func(p string) string {
 		p = filepath.Clean(p)
 		if abs, err := filepath.Abs(p); err == nil {
