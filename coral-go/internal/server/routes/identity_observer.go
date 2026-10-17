@@ -401,6 +401,15 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/servers/{id}/test": "test a remote server",
 	"POST /api/board/remotes":     "subscribe to a remote board",
 	"DELETE /api/board/remotes":   "unsubscribe from a remote board",
+	// #4297 (Security's #4295, SHOULD 6 and INFO 2): no agent tool reads the registry or the remote
+	// boards (grep of coral-board, coral-agent and the hooks found none), so reading them is the
+	// Operator's too.
+	"GET /api/servers":       "list the remote servers",
+	"GET /api/board/remotes": "list the remote board subscriptions",
+	"GET /api/board/remotes/proxy/{remoteServer}/projects":                 "read a remote server's boards",
+	"GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/all":   "read a remote board's messages",
+	"GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers":    "read a remote board's members",
+	"GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/check": "check a remote board for unread messages",
 	// #3929 step 2 (Security's #3965 classification, the Orchestrator's call): routes no agent tool
 	// or hook calls, which act on OTHER agents, on what every agent is told, or on the machine and
 	// the dashboard's own data. Agents talk to each other through the board, not by typing into
@@ -479,7 +488,7 @@ var operatorOnlyRoutes = map[string]string{
 // hubModeRoutes are entries the router serves only in hub mode (--hub): ValidateGuardedRoutes
 // lets them be absent otherwise.
 var hubModeRoutes = map[string]bool{
-	"POST /api/servers": true, "PATCH /api/servers/{id}": true, "DELETE /api/servers/{id}": true, "POST /api/servers/{id}/test": true,
+	"GET /api/servers": true, "POST /api/servers": true, "PATCH /api/servers/{id}": true, "DELETE /api/servers/{id}": true, "POST /api/servers/{id}/test": true,
 	"CONNECT /api/remote/{server}/*": true,
 	"DELETE /api/remote/{server}/*":  true,
 	"GET /api/remote/{server}/*":     true,

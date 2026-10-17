@@ -51,11 +51,11 @@ b GET /api/auth/hub-signin
 b GET /api/auth/sessions
 b GET /api/auth/setup-code
 a GET /api/board/projects
-c GET /api/board/remotes
-c GET /api/board/remotes/proxy/{remoteServer}/projects
-c GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/all
-c GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/check
-c GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers
+b GET /api/board/remotes
+b GET /api/board/remotes/proxy/{remoteServer}/projects
+b GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/all
+b GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/check
+b GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers
 c GET /api/board/tasks
 c GET /api/board/{project}
 a GET /api/board/{project}/artifacts
@@ -93,7 +93,7 @@ c GET /api/scheduled/jobs
 c GET /api/scheduled/jobs/{jobID}
 c GET /api/scheduled/jobs/{jobID}/runs
 c GET /api/scheduled/runs/recent
-c GET /api/servers
+b GET /api/servers
 c GET /api/session-artifacts
 c GET /api/sessions/history
 c GET /api/sessions/history/search

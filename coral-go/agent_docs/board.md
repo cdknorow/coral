@@ -973,7 +973,7 @@ pending | in_progress → pending (reassign)
 
 ## Remote Board Proxying
 
-Proxy endpoints for subscribing to boards on other Coral server instances. All remote URLs are validated against SSRF protection rules.
+Proxy endpoints for subscribing to boards on other Coral server instances. All remote URLs are validated against SSRF protection rules. These routes are the Operator's (the dashboard, the API key, the signed command line): an agent's session token is refused with `forbidden_for_agent`.
 
 ### Add Remote Subscription
 

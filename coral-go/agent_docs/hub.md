@@ -16,8 +16,8 @@ User guide: [Multi-server hub](https://cdknorow.github.io/coral/multi-server-hub
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/servers` | List servers: `id`, `label`, `url`, `status`, `last_seen`, `last_error`, `allow_private`. Never returns the API key. |
-| POST | `/api/servers` | Add `{id, label, url, api_key, allow_private?}`. The hub calls the remote's `/api/health` with the key before saving. |
+| GET | `/api/servers` | List servers: `id`, `label`, `url`, `status`, `last_seen`, `last_error`, `allow_private`, and `warning` (only for a server reached over plain http at an address that is not this computer: "the key crosses the network unencrypted; use https or a tunnel"). Never returns the API key. The Operator's: an agent's session token is refused. |
+| POST | `/api/servers` | Add `{id, label, url, api_key, allow_private?}`. The hub calls the remote's `/api/health` with the key before saving. A server not marked `allow_private` must be `https`. |
 | PATCH | `/api/servers/{id}` | Edit label, URL, `allow_private` or key (the key is write-only; omit to keep it). |
 | DELETE | `/api/servers/{id}` | Remove. |
 | POST | `/api/servers/{id}/test` | Re-run the connectivity and key check. |
