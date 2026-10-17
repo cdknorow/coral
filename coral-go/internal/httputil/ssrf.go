@@ -67,6 +67,7 @@ func init() {
 		"192.0.2.0/24",    // Documentation (TEST-NET-1)
 		"198.51.100.0/24", // Documentation (TEST-NET-2)
 		"203.0.113.0/24",  // Documentation (TEST-NET-3)
+		"64:ff9b:1::/48",  // local-use NAT64 (RFC 8215): never a public destination
 	} {
 		_, network, _ := net.ParseCIDR(cidr)
 		blockedCIDRs = append(blockedCIDRs, network)
@@ -86,5 +87,26 @@ func isIPBlocked(ip net.IP) bool {
 		}
 	}
 
+	// An IPv6 form that carries an IPv4 address reaches that address through a translator or
+	// tunnel: NAT64 (64:ff9b::/96, the last 32 bits) and 6to4 (2002::/16, the 32 bits after the
+	// prefix). The embedded address is held to the IPv4 rules (#4297).
+	if ip.To4() == nil {
+		if ip16 := ip.To16(); ip16 != nil {
+			var embedded net.IP
+			switch {
+			case nat64Prefix.Contains(ip):
+				embedded = net.IP(ip16[12:16])
+			case ip16[0] == 0x20 && ip16[1] == 0x02:
+				embedded = net.IP(ip16[2:6])
+			}
+			if embedded != nil && isIPBlocked(embedded) {
+				return true
+			}
+		}
+	}
+
 	return false
 }
+
+// nat64Prefix is the well-known NAT64 prefix (RFC 6052).
+var nat64Prefix = func() *net.IPNet { _, n, _ := net.ParseCIDR("64:ff9b::/96"); return n }()
