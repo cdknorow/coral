@@ -14,6 +14,10 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     const ev = async x => { const r = await Runtime.evaluate({ expression: x, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: settle
     const waitFor = async (expr, what, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev(expr)) return; await sleep(20); } throw new Error('timed out waiting for ' + what); };
+    // The redirect under test is a navigation to return_to, so the wait is for the address, not for the stub's body: the stub answers /zz-done, but in cdp-gate 39053381027 the
+    // browser's navigation to it was answered by the real server (it is in the navigation log and not in the served one) and a wait for the stub's #done timed out on a page that
+    // was at /zz-done, complete.
+    const DONE = `location.pathname === '/zz-done' && document.readyState === 'complete'`;
     let navSeq = 0;                // the navigation open() last started: the stamp on the page served for it
     let page = 'signin';            // which golden /auth serves
     const posts = [];              // {url, body}
@@ -110,7 +114,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         // success: keep = true goes to return_to
         replies = [json(200, { ok: true })];
         await type('password', 'right'); await ev(`document.getElementById('keep').click(); true`); await submit('signin-form');
-        await waitFor(`!!document.getElementById('done')`, 'the redirect to return_to');
+        await waitFor(DONE, 'the redirect to return_to');
         assert.deepEqual(posts[posts.length - 1], { url: '/auth/password', body: { password: 'right', keep: true } });
         // forgot password
         await open('signin');
@@ -126,7 +130,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         await type('api-key', 'bad-key'); await submit('key-form');
         await waitFor(`document.getElementById('key-err').textContent === 'Invalid API key'`, 'key error');
         replies = [json(200, { ok: true })];
-        await submit('key-form'); await waitFor(`!!document.getElementById('done')`, 'key redirect');
+        await submit('key-form'); await waitFor(DONE, 'key redirect');
         assert.deepEqual(posts[posts.length - 1], { url: '/auth/key', body: { key: 'bad-key' } });
         // a key in the address (the QR link): the fragment is read first, ?api_key= still works, both leave the address bar
         await openWith('signin', '#api_key=FRAGKEY', [json(401, { error: 'Invalid API key' })]);
@@ -151,7 +155,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         // redirect like that replaced the NEXT step's page under it with a freshly stamped one (the flake: 'timed out waiting for redirect after creating'). End it
         // here: go to the page this test serves for done, which has no script, and wait for it (#4414).
         await Page.navigate({ url: BASE + '/zz-done' });
-        await waitFor(`!!document.getElementById('done')`, 'the dashboard page to be replaced by the plain done page');
+        await waitFor(DONE, 'the dashboard page to be replaced by the done page');
 
         // ── create (this computer) ──
         await open('create');
@@ -165,7 +169,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         assert.equal(await text('err'), 'Enter a password.');
         replies = [json(200, { ok: true })];
         await type('password', '  a b  '); await type('confirm', '  a b  '); await submit('create-form');
-        try { await waitFor(`!!document.getElementById('done')`, 'redirect after creating'); } catch (e) {
+        try { await waitFor(DONE, 'redirect after creating'); } catch (e) {
             // Say what the page was when the wait gave up, so a rare failure on a slow runner names its cause: this document or a replacement, and what it was sent.
             const d = await ev(`({ href: location.href, ready: document.readyState, doc: window.__zzDoc || 'replaced', stamp: (document.querySelector('meta[name=zz-nav]') || {}).content || '', pw: (document.getElementById('password') || {}).value, err: (document.getElementById('err') || {}).textContent })`).catch(x => ({ evalError: String(x.message).slice(0, 120) }));
             throw new Error(`${e.message}: ${JSON.stringify({ ...d, navSeq, posts: posts.map(p => p.url), navLog, servedLog })}`);
