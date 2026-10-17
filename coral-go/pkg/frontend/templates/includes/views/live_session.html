@@ -101,6 +101,14 @@
                             </div>
                             <!-- Chat view: rendered JSONL transcript (shown when the view toggle is on Chat) -->
                             <div id="live-history-messages" class="chat-messages chat-prose live-history-panel live-history-center"></div>
+                            <!-- Jump to latest (#4511): shown while reading higher up in the Chat view; the region stays displayed, its text announced -->
+                            <div id="chat-jump-latest" class="chat-jump-latest" role="status" aria-live="polite">
+                                <button type="button" class="chat-jump-latest-btn" data-on-click="chat-jump-latest" aria-label="Jump to latest" title="Jump to latest" hidden>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="6 13 12 19 18 13"/></svg>
+                                    <span class="chat-jump-latest-count" aria-hidden="true" hidden></span>
+                                </button>
+                                <span class="chat-jump-latest-status"></span>
+                            </div>
                             <div id="session-ended-overlay" class="session-ended-overlay" style="display:none">
                                 <div class="session-ended-content" id="session-ended-default">
                                     <p>Session ended</p>

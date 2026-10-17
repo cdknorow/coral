@@ -585,6 +585,61 @@
     padding: 12px 20px;
 }
 
+/* Jump to latest (#4511): a round down arrow at the bottom right of the chat, above the input, while you read higher up; the count
+   of messages that came in since. --accent-dim, as the board's pill (#4502): white on it clears 4.5:1. It grows with the text up
+   to 56 px (at 200% it would be 80 px and cover more of the messages); the count's text grows with it. */
+.chat-jump-latest {
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    z-index: 5;
+    pointer-events: none;
+}
+.capture-wrapper:not(.chat-mode) .chat-jump-latest { display: none; }
+.chat-jump-latest-btn {
+    pointer-events: auto;
+    position: relative;
+    width: min(2.5rem, 56px);
+    height: min(2.5rem, 56px);
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    color: var(--text-on-accent, #fff);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.chat-jump-latest-btn[hidden] { display: none; }
+.chat-jump-latest-btn:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.chat-jump-latest-btn svg { width: min(1.125rem, 24px); height: min(1.125rem, 24px); }
+.chat-jump-latest-count {
+    position: absolute;
+    top: -0.375rem;
+    right: -0.375rem;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.3125rem;
+    border-radius: 0.625rem;
+    background: var(--text-primary);
+    color: var(--bg-primary);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.25rem;
+    text-align: center;
+}
+.chat-jump-latest-count[hidden] { display: none; }
+@media (pointer: coarse) { .chat-jump-latest-btn { min-width: 44px; min-height: 44px; } }
+.chat-jump-latest-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 /* Icon-only toggle (the tooltips and aria-labels name the views) */
 .live-view-toggle-btn > span:not(.material-icons) {
     display: none;
