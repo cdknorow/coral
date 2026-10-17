@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,8 @@ type RegisteredWait struct {
 
 func (w *RegisteredWait) TargetLabel() string {
 	switch w.WaitType {
+	case WaitOperator:
+		return "the Operator's reply"
 	case "message":
 		if w.TargetID != "" {
 			return fmt.Sprintf("message from '%s'", w.TargetID)
@@ -73,6 +76,27 @@ func (s *Store) ensureWaitsSchema(ctx context.Context) error {
 }
 
 const DefaultWaitTimeout = 2 * time.Hour
+
+// WaitOperator is the wait type of a question the agent has asked the Operator
+// (coral-board wait --operator "question"); its reason is the question, and the
+// orchestrator's health check lists it, with its age, until the Operator posts.
+const WaitOperator = "operator"
+
+// ListOperatorQuestions returns the active operator waits on a project, oldest first.
+func (s *Store) ListOperatorQuestions(ctx context.Context, project string) ([]RegisteredWait, error) {
+	waits, err := s.ListActiveWaits(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	var out []RegisteredWait
+	for _, w := range waits {
+		if w.WaitType == WaitOperator {
+			out = append(out, w)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt < out[j].CreatedAt })
+	return out, nil
+}
 
 // RegisterWait creates or replaces an active registered wait for a subscriber on a project.
 func (s *Store) RegisterWait(ctx context.Context, project, subscriberID, sessionName, waitType, targetID, reason string, timeout time.Duration) (*RegisteredWait, error) {
@@ -209,6 +233,20 @@ func (s *Store) ResolveMatchingMessageWaits(ctx context.Context, project, sender
 	_ = s.reader().SelectContext(ctx, &subscribers, "SELECT subscriber_id, job_title FROM board_subscribers WHERE project = ?", project)
 	for _, w := range waits {
 		if w.SubscriberID == senderID {
+			continue
+		}
+		if w.WaitType == WaitOperator {
+			// A question for the Operator ends only with the Operator's own message. The name
+			// is reserved (no agent can subscribe as it), so an exact match is enough.
+			if senderID == "Operator" {
+				if _, err := s.db.ExecContext(ctx,
+					"UPDATE board_waits SET status = 'resolved', resolved_at = ? WHERE id = ?", nowStr, w.ID); err == nil {
+					w.Status = "resolved"
+					resAt := nowStr
+					w.ResolvedAt = &resAt
+					matched = append(matched, w)
+				}
+			}
 			continue
 		}
 		if w.WaitType != "message" && w.WaitType != "any" {

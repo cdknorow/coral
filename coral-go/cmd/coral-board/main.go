@@ -495,7 +495,8 @@ Commands:
                                Message a team on another Coral through Coral Hub
                                (a target from 'targets'; --message-id retries)
   targets                      Teams on other Corals this board may message
-  wait [--from <agent>] [--task <id>] [--commit <hash>] [--reason <text>]
+  wait [--from <agent>] [--task <id>] [--commit <hash>] [--operator <question>]
+       [--reason <text>]
        [--timeout <dur>] [--status] [--cancel] [--block]
                                Park work and wait for an event. Coral will wake
                                you up via terminal notification. STOP after wait.
@@ -2638,6 +2639,7 @@ func cmdWait() {
 		fromAgent string
 		taskID    string
 		commitRef string
+		operatorQ string
 		reason    string
 		timeout   string
 		isStatus  bool
@@ -2669,6 +2671,9 @@ func cmdWait() {
 			i++
 		case "--commit":
 			commitRef = needWaitValue(args, i, args[i])
+			i++
+		case "--operator":
+			operatorQ = needWaitValue(args, i, args[i])
 			i++
 		case "--reason":
 			reason = needWaitValue(args, i, args[i])
@@ -2703,8 +2708,11 @@ func cmdWait() {
 	if commitRef != "" {
 		targets++
 	}
+	if operatorQ != "" {
+		targets++
+	}
 	if targets > 1 {
-		failWaitArgs("choose only one of --from, --task, or --commit")
+		failWaitArgs("choose only one of --from, --task, --commit, or --operator")
 	}
 	if (isStatus || isCancel) && (targets > 0 || reason != "" || isBlock) {
 		failWaitArgs("--status and --cancel cannot be combined with wait registration options")
@@ -2793,6 +2801,12 @@ func cmdWait() {
 	} else if commitRef != "" {
 		waitType = "commit"
 		targetID = commitRef
+	} else if operatorQ != "" {
+		// The question is the wait's reason; Coral lists it in the orchestrator's check
+		// until the Operator posts.
+		waitType = "operator"
+		targetID = "Operator"
+		reason = operatorQ
 	}
 
 	body := map[string]string{

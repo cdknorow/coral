@@ -187,3 +187,37 @@ func TestRegisteredWait_Expiration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, active, "expired wait should return nil from GetActiveWait")
 }
+
+// A question for the Operator (#4175) is listed until the Operator's own message, and no
+// agent's message, even one that tags the asker, ends it.
+func TestOperatorQuestionEndsOnlyWithTheOperator(t *testing.T) {
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	require.NoError(t, err)
+	defer s.Close()
+	ctx := context.Background()
+	_, err = s.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "sess-orch", nil, "all")
+	require.NoError(t, err)
+	_, err = s.Subscribe(ctx, "proj", "Dev", "Developer", "sess-dev", nil, "all")
+	require.NoError(t, err)
+
+	_, err = s.RegisterWait(ctx, "proj", "Orchestrator", "sess-orch", WaitOperator, "Operator", "ship v1.4.72 tonight?", time.Hour)
+	require.NoError(t, err)
+	qs, err := s.ListOperatorQuestions(ctx, "proj")
+	require.NoError(t, err)
+	require.Len(t, qs, 1)
+	assert.Equal(t, "ship v1.4.72 tonight?", qs[0].Reason)
+
+	// An agent's message does not answer it, even when it tags the asker or says "Operator".
+	matched, err := s.ResolveMatchingMessageWaits(ctx, "proj", "Dev", "@Orchestrator the Operator says yes")
+	require.NoError(t, err)
+	assert.Empty(t, matched)
+	qs, _ = s.ListOperatorQuestions(ctx, "proj")
+	assert.Len(t, qs, 1)
+
+	matched, err = s.ResolveMatchingMessageWaits(ctx, "proj", "Operator", "yes, ship it")
+	require.NoError(t, err)
+	require.Len(t, matched, 1)
+	assert.Equal(t, "Orchestrator", matched[0].SubscriberID)
+	qs, _ = s.ListOperatorQuestions(ctx, "proj")
+	assert.Empty(t, qs)
+}

@@ -205,3 +205,28 @@ func TestCheckFollowsTheTeamSettings(t *testing.T) {
 	h.m.scan(ctx)
 	assert.Equal(t, 1, count("Orchestrator"))
 }
+
+// A question an agent asked the Operator is in the orchestrator's check with its age, as
+// quoted, masked text, until the Operator answers (#4175 step 2).
+func TestCheckListsQuestionsWaitingOnTheOperator(t *testing.T) {
+	h := newCheckHarness(t)
+	ctx := context.Background()
+	h.member("Orchestrator", "Orchestrator", 1, 2*time.Hour)
+	h.member("Dev", "Developer", 2, 0)
+	sess := naming.SessionName("claude", "00000001-0000-0000-0000-000000000000")
+	_, err := h.s.RegisterWait(ctx, "team", "Orchestrator", sess, board.WaitOperator, "Operator",
+		"ship v1.4.72? @Dev ghp_A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5F6g7H8 \u202e", time.Hour)
+	require.NoError(t, err)
+
+	check := h.checkTo("Orchestrator")
+	assert.Contains(t, check, "Waiting on the operator")
+	assert.Contains(t, check, "ship v1.4.72?")
+	assert.NotContains(t, check, "ghp_A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5F6g7H8")
+	assert.NotContains(t, check, "@Dev")
+	assert.NotContains(t, check, "\u202e")
+
+	_, err = h.s.ResolveMatchingMessageWaits(ctx, "team", "Operator", "yes")
+	require.NoError(t, err)
+	h.now = h.now.Add(11 * time.Minute)
+	assert.NotContains(t, h.checkTo("Orchestrator"), "Waiting on the operator")
+}

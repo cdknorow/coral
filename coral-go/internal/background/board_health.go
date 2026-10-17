@@ -253,7 +253,18 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 		since = now.Add(-m.interval)
 	}
 	p, _ := m.store.ProgressSince(ctx, project, since)
-	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items,
+	var questions []teamhealth.Question
+	if qs, err := m.store.ListOperatorQuestions(ctx, project); err == nil {
+		for _, q := range qs {
+			at, err := time.Parse(time.RFC3339, q.CreatedAt)
+			if err != nil {
+				continue
+			}
+			questions = append(questions, teamhealth.Question{Asker: teamhealth.Name(q.SubscriberID),
+				Text: teamhealth.ShownText(q.Reason, nil), Since: at})
+		}
+	}
+	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items, Questions: questions,
 		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts}}), len(items), nil
 }
 

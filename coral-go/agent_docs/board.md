@@ -602,6 +602,9 @@ for the authorized backend-only late-edit path and current product gaps.
    name. At most two auto-delegations per task an hour and 20 automatic actions per board an
    hour; past that the task goes to the orchestrator. `health_auto_delegate` = `off` turns it
    off (a board setting with no dashboard switch yet).
+   Coral already records, for the task and each amendment, how that name was backed
+   (`created_identity`, `amend_identity` in the task: `token`, `operator` or `claimed`), set by
+   the server only. Nothing uses it yet; it is there for when identity is strict.
 3. **Review.** Any time the task is in review, each reviewer reads it
    (`coral-board task detail <id>`) and runs
    `coral-board task approve <id> --round N [--note "..."]` or
@@ -1042,6 +1045,10 @@ coral-board wait --task 876 --reason "waiting for design task completion"
 
 # Wait for a git commit to land
 coral-board wait --commit abc1234 --reason "waiting for upstream merge"
+
+# Ask the Operator a question. The orchestrator's health check lists it, with its age,
+# until the Operator posts (no agent's message ends it)
+coral-board wait --operator "ship v1.4.72 tonight?"
 
 # Check active wait
 coral-board wait --status

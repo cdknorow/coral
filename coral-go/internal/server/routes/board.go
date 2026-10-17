@@ -2351,6 +2351,19 @@ func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
+	if body.WaitType == board.WaitOperator {
+		// A question for the Operator: the reason is the question. It is shown to the
+		// orchestrator only through teamhealth.ShownText, and is kept short here.
+		body.TargetID = "Operator"
+		body.Reason = strings.TrimSpace(body.Reason)
+		if body.Reason == "" {
+			errBadRequest(w, "a question for the Operator needs its text")
+			return
+		}
+		if r := []rune(body.Reason); len(r) > 500 {
+			body.Reason = string(r[:500])
+		}
+	}
 	if body.SessionName == "" {
 		if sub, err := h.bs.GetProjectSubscription(r.Context(), project, body.SubscriberID); err == nil && sub != nil {
 			body.SessionName = sub.SessionName
