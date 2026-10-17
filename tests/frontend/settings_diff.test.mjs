@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const { changedSettings } = await import(pathToFileURL(path.resolve(here, '../../coral-go/pkg/frontend/static/settings_diff.js')).href);
+const { changedSettings, rebaseChanges, changedFields } = await import(pathToFileURL(path.resolve(here, '../../coral-go/pkg/frontend/static/settings_diff.js')).href);
 
 const GIB = 1024 ** 3;
 const base = { cli_path_claude: '/opt/claude', cli_path_codex: '/opt/codex', terminal_font_size: '13', fit_pane_width: 'True', theme: 'dark', agent_priority: 'low' };
@@ -60,4 +60,22 @@ assert.deepEqual(changedSettings({ cli_path_agy: '/opt/gemini', cli_path_gemini:
 // With no baseline (the dialog was never opened) everything is sent, as before.
 assert.deepEqual(changedSettings({ a: '1', cli_path_claude: '' }, null), { a: '1', cli_path_claude: '' });
 assert.deepEqual(changedSettings({ a: '1' }, undefined), { a: '1' });
+
+// #4423: a form that saves a whole object puts what the person changed onto what the server has now.
+const opened = { on: true, interval_min: 10, default_reviewers: ['QA'], claim_nudge: { on: true, after_min: 10, nudges: 2 }, extra: 'x' };
+const edited = { on: true, interval_min: 15, default_reviewers: ['QA'], claim_nudge: { on: true, after_min: 10, nudges: 3 }, extra: 'x' };
+const fresh = { on: false, interval_min: 10, default_reviewers: ['QA', 'Dev'], claim_nudge: { on: false, after_min: 30, nudges: 2 }, extra: 'y', added: 1 };
+assert.deepEqual(rebaseChanges(opened, edited, fresh),
+    { on: false, interval_min: 15, default_reviewers: ['QA', 'Dev'], claim_nudge: { on: false, after_min: 30, nudges: 3 }, extra: 'y', added: 1 },
+    'changed values win; everything else, nested ones and arrays included, is what the server has now; a key only the server has stays');
+assert.deepEqual(rebaseChanges(opened, opened, fresh), fresh, 'nothing changed: the server\'s object as it is');
+// An array is one value: a reviewer list the person edited replaces the server's whole.
+assert.deepEqual(rebaseChanges(opened, { ...opened, default_reviewers: ['Ops'] }, fresh).default_reviewers, ['Ops']);
+// A nested object the server does not have yet is built from what the form opened with.
+assert.deepEqual(rebaseChanges({ r: { a: 1, b: 2 } }, { r: { a: 1, b: 3 } }, {}), { r: { a: 1, b: 3 } });
+
+// changedFields: what a merging PUT needs.
+assert.deepEqual(changedFields({ a: true, b: 'x', c: 'false' }, { a: false, b: 'x', c: 'false' }), { a: false });
+assert.deepEqual(changedFields({ a: 1 }, { a: 1 }), {});
+assert.deepEqual(changedFields(null, { a: 1 }), { a: 1 }, 'no baseline: everything');
 console.log('PASS settings diff');

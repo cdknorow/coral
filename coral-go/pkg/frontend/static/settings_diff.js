@@ -57,3 +57,32 @@ export function changedSettings(payload, baseline, themeValue, edited) {
     }
     return out;
 }
+
+const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * rebaseChanges is for a form that saves a whole object (#4423): it returns fresh (what the server has now) with what the person
+ * changed applied, so a Save never puts back a value another client changed while the form was open. A value in current (what the
+ * form holds) that differs from opened (what the form showed when it opened) is changed; plain objects are compared key by key,
+ * anything else (arrays included) whole. Everything else keeps fresh's value, and a key only fresh has is kept.
+ */
+export function rebaseChanges(opened, current, fresh) {
+    if (!isPlainObject(current) || !isPlainObject(opened)) return sameValue(opened, current) ? fresh : current;
+    const out = isPlainObject(fresh) ? { ...fresh } : {};
+    for (const [k, v] of Object.entries(current)) {
+        if (isPlainObject(v) && isPlainObject(opened[k])) {
+            if (!sameValue(opened[k], v)) out[k] = rebaseChanges(opened[k], v, isPlainObject(out[k]) ? out[k] : opened[k]);
+        } else if (!sameValue(opened[k], v)) {
+            out[k] = v;
+        }
+    }
+    return out;
+}
+
+/** changedFields is the part of current whose value differs from opened (compared whole): what a merging PUT needs. */
+export function changedFields(opened, current) {
+    const out = {};
+    for (const [k, v] of Object.entries(current)) if (!sameValue(opened?.[k], v)) out[k] = v;
+    return out;
+}
