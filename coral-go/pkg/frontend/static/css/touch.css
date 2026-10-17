@@ -183,3 +183,27 @@
         min-height: var(--control-touch-height);
     }
 }
+
+/* Inline icons drawn as <svg width="N" height="N"> follow the text size like the icon font's glyphs do (#4344, #4352): the attributes are pixels, so a
+   larger browser text size left them small beside their rem labels. Same size at the default text size (N / 16 rem). A stylesheet rule that gives
+   a particular icon its own width wins over these by being more specific. */
+svg[width="8"][height="8"] { width: 0.5rem; height: 0.5rem; }
+svg[width="10"][height="10"] { width: 0.625rem; height: 0.625rem; }
+svg[width="12"][height="12"] { width: 0.75rem; height: 0.75rem; }
+svg[width="13"][height="13"] { width: 0.8125rem; height: 0.8125rem; }
+svg[width="14"][height="14"] { width: 0.875rem; height: 0.875rem; }
+svg[width="15"][height="15"] { width: 0.9375rem; height: 0.9375rem; }
+svg[width="16"][height="16"] { width: 1rem; height: 1rem; }
+svg[width="18"][height="18"] { width: 1.125rem; height: 1.125rem; }
+svg[width="24"][height="24"] { width: 1.5rem; height: 1.5rem; }
+svg[width="32"][height="32"] { width: 2rem; height: 2rem; }
+svg[width="48"][height="48"] { width: 3rem; height: 3rem; }
+
+/* A tablet or a touch laptop is wider than the phone rules above reach (768 px and up) but still touched: the command pane's key and send buttons and
+   the history search box are 44 px targets on any touch screen (#4352). */
+@media (pointer: coarse) {
+    .command-pane-toolbar .btn-nav, #command-pane .btn-nav { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); }
+    #history-search { min-height: var(--control-touch-height, 44px); }
+    .board-task-sort, .board-task-status-wrap, .board-task-open { min-height: var(--control-touch-height, 44px); display: inline-flex; align-items: center; box-sizing: border-box; }
+    .board-task-id { min-width: var(--control-touch-height, 44px); justify-content: center; }
+}

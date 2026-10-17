@@ -8,6 +8,7 @@ const src = fs.readFileSync(__dirname + '/phone_layout_browser.test.js', 'utf8')
 const SCAN = eval(src.match(/const SCAN = (`[\s\S]*?`);/)[1]);
 const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden';
     const root = window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body;
+    for (const e of root.querySelectorAll('svg[width][height]')) { if (!vis(e) || !/^[0-9.]+$/.test(e.getAttribute('width'))) continue; const w = e.getBoundingClientRect().width; if ('${stage}' === 'a') e.__w16 = w; else if (e.__w16 && w / e.__w16 < 1.6 && e.__w16 > 0) out.push('svg[' + e.getAttribute('width') + '] in ' + (e.parentElement.id ? '#' + e.parentElement.id : e.parentElement.tagName.toLowerCase() + '.' + String(e.parentElement.className).trim().split(/\\s+/)[0]) + ' ' + Math.round(e.__w16) + '->' + Math.round(w)); }
     for (const e of root.querySelectorAll('*')) { if (!vis(e)) continue; const own = [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()); if (!own) continue;
         const fs = parseFloat(getComputedStyle(e).fontSize);
         if ('${stage}' === 'a') e.__fs16 = fs; else if (e.__fs16 && fs / e.__fs16 < 1.6) out.push((e.id ? '#' + e.id : e.tagName.toLowerCase()) + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') + ' ' + e.__fs16 + '->' + fs + ' "' + e.textContent.trim().slice(0, 24) + '"'); }
@@ -36,26 +37,27 @@ const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRec
         await ev(`window.__hubStub = ${JSON.stringify(SERVERS)}; (async () => { const s = await import((window.__coralStatic || '/static/') + 'state.js'); s.state.hub = true; s.state.servers = ${JSON.stringify(SERVERS)}; return true; })()`);
         const probe = async (name, open, root) => {
             try {
+                await ev(`if (!document.getElementById('t200-no-transition')) { const st = document.createElement('style'); st.id = 't200-no-transition'; st.textContent = '* { transition: none !important; animation: none !important; }'; document.head.appendChild(st); } true`); // a transition would leave a computed size mid-way when the page's timeline is paused
                 await ev(`document.documentElement.style.fontSize = ''; window.__scanRoot = ${JSON.stringify(root || '')}; true`);
                 await open(); await sleep(900); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
                 await ev(FONTS('a'));
                 await ev(`document.documentElement.style.fontSize = '32px'; true`); await sleep(700); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
                 const r = await ev(SCAN); const grew = await ev(FONTS('b'));
-                const off = await ev(`[...(window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body).querySelectorAll('button, a[href], select, input:not([type=hidden])')].filter(e => { if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden' || e.closest('.top-nav-tabs, .xterm, [data-scan-skip], .modal-content, #mobile-session-list')) return false; const b = e.getBoundingClientRect(); return if (!(b.width > 0 && (b.right > innerWidth + 1 || b.left < -1))) return false; for (let p = e.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p); if (/(auto|scroll)/.test(o.overflowX) && p.scrollWidth > p.clientWidth + 1) return false; } return true; }).map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().split(/\\s+/).slice(0, 2).join('.')) + ' ' + Math.round(e.getBoundingClientRect().left) + '..' + Math.round(e.getBoundingClientRect().right) + ' "' + e.textContent.trim().slice(0, 16) + '"')`);
+                const off = await ev(`[...(window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body).querySelectorAll('button, a[href], select, input:not([type=hidden])')].filter(e => { if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden' || e.closest('.top-nav-tabs, .xterm, [data-scan-skip], .modal-content, #mobile-session-list')) return false; const b = e.getBoundingClientRect(); if (!(b.width > 0 && (b.right > innerWidth + 1 || b.left < -1))) return false; for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const pr = p.getBoundingClientRect(); if (pr.width > 0 && (pr.right <= 1 || pr.left >= innerWidth - 1)) return false; } /* inside a drawer that is closed, off the screen by design */ for (let p = e.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p); if (/(auto|scroll)/.test(o.overflowX) && p.scrollWidth > p.clientWidth + 1) return false; } return true; }).map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().split(/\\s+/).slice(0, 2).join('.')) + ' ' + Math.round(e.getBoundingClientRect().left) + '..' + Math.round(e.getBoundingClientRect().right) + ' "' + e.textContent.trim().slice(0, 16) + '"')`);
                 if (off.length) problems.push(`${name}: controls off the edge of the screen ${off.slice(0, 4).join('; ')}`);
-                const spill = await ev(`[...(window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body).querySelectorAll('button, .btn, a.btn, summary, [role=tab]')].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && e.scrollHeight > e.clientHeight + 2 && !/(auto|scroll)/.test(getComputedStyle(e).overflowY)).map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().split(/\\s+/).slice(0, 2).join('.')) + ' ' + e.scrollHeight + '>' + e.clientHeight + ' "' + e.textContent.trim().slice(0, 20) + '"')`);
-                if (spill.length) problems.push(`${name}: text spills out of its button ${spill.slice(0, 4).join('; ')}`);
+                const spill = await ev(`[...(window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body).querySelectorAll('button, .btn, a.btn, summary, [role=tab]')].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && e.scrollHeight > e.clientHeight + 8 && !/(auto|scroll)/.test(getComputedStyle(e).overflowY)).map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().split(/\\s+/).slice(0, 2).join('.')) + ' ' + e.scrollHeight + '>' + e.clientHeight + ' "' + e.textContent.trim().slice(0, 20) + '"')`);
+                if (spill.length) problems.push(`${name}: text spills out of its button (a wrapped label taller than the button; a few px of glyph line, like the row kebab's dots, is not counted) ${spill.slice(0, 4).join('; ')}`);
                 if (r.missing) problems.push(name + ': scene not found');
                 else {
                     if (r.docOver > 0 || r.nWide) problems.push(`${name}: wider than the screen (docOver ${r.docOver}) ${r.wide.slice(0, 3).join('; ')}`);
-                    const clipped = r.clipped.filter(c => !/team-artifacts-caption/.test(c)); // a visually hidden table caption
+                    const clipped = r.clipped.filter(c => !/team-artifacts-caption|sr-only/.test(c)); // visually hidden text (a table caption, screen-reader-only spans)
                     if (clipped.length) problems.push(`${name}: clipped ${clipped.slice(0, 3).join('; ')}`);
                     if (r.nSmall) problems.push(`${name}: smaller than 44 px ${r.small.slice(0, 4).join('; ')}`);
-                    const grow = grew.filter(g => !/pw-toggle|sec-change-save/.test(g)); // two buttons built after the first measure (Settings' Browser sign-in), listed in the report
+                    const grow = grew;
                     if (grow.length) problems.push(`${name}: text that did not grow with the root font ${[...new Set(grow)].slice(0, 5).join('; ')}`);
                 }
                 report.push(`${name}: ${r.missing ? 'SCENE MISSING' : `docOver=${r.docOver} wide=${r.nWide}${r.wide.length ? ' [' + r.wide.slice(0, 3).join('; ') + ']' : ''} clipped=${r.nClipped}${r.clipped.length ? ' [' + r.clipped.slice(0, 3).join('; ') + ']' : ''} small=${r.nSmall}${r.small.length ? ' [' + r.small.slice(0, 6).join('; ') + ']' : ''}`} | no-grow=${grew.length}${grew.length ? ' [' + [...new Set(grew)].slice(0, 8).join('; ') + ']' : ''}`);
-            } catch (e) { report.push(`${name}: ERROR ${String(e.message).slice(0, 120)}`); }
+            } catch (e) { report.push(`${name}: ERROR ${String(e.message).slice(0, 1400)}`); problems.push(`${name}: the probe itself failed: ${String(e.message).slice(0, 300)}`); }
             await ev(`document.documentElement.style.fontSize = ''; true`);
         };
         for (const tab of ['agents', 'history', 'workflows', 'jobs', 'tokens', 'docs', 'servers', 'board']) await probe('tab ' + tab, () => ev(`window.switchNavTab('${tab}'); true`));
@@ -73,6 +75,32 @@ const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRec
             await ev(`{ const d = [...document.querySelectorAll('summary')].find(b => b.textContent.trim() === 'Agent Configuration'); if (d) d.parentElement.open = true; } true`); }, '#launch-modal');
         await ev(`document.getElementById('launch-modal').style.display = 'none'; true`);
         await ev(`document.documentElement.style.fontSize = ''; true`);
+        // (#4352) a long list and a task with real content, then the same views on a tablet, in landscape and in the light theme
+        await ev(`for (let i = 0; i < 30; i++) window.__m.add('list-agent-' + i + '-with-a-longer-name', 'L', 2, { sleeping: i % 3 === 0 }); true`); await sleep(1200); // sleep-ok: the list renders from several answers
+        await probe('agents list, 30 agents', () => ev(`window.switchNavTab('agents'); window.goHome && window.goHome(); true`));
+        const taskId = await ev(`(async () => { const r = await fetch('/api/board/${board}/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'A task with a rather long title that has to wrap in the dialog at large text sizes', body: 'Line one of the body.\\n\\n- a bullet with a long run of words that wraps\\n- another bullet\\n\\n~~~\\nsome_long_command --with-many --flags and-a-very-long-argument-that-does-not-wrap\\n~~~', created_by: 'Operator' }) }).catch(() => null); const d = r && r.ok ? await r.json().catch(() => null) : null; return d && (d.id || (d.task && d.task.id)) || null; })()`);
+        if (taskId) {
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); (document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); window.switchAgenticTab('tasks', 'top'); true`); await sleep(1500); // sleep-ok: the board's tasks load over a few answers
+            await probe('task details with content', () => ev(`window.showTaskDetailModal(${JSON.stringify(taskId)}); true`), '#task-detail-modal');
+            await ev(`window.hideTaskDetailModal && window.hideTaskDetailModal(); (document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`);
+        } else report.push('task details: the board refused the task here, not probed');
+        const subset = async (tag) => {
+            for (const tab of ['agents', 'history', 'workflows', 'tokens', 'docs']) await probe(tag + ' tab ' + tab, () => ev(`window.switchNavTab('${tab}'); true`));
+            await probe(tag + ' settings', () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`), '#settings-modal');
+            await ev(`window.hideSettingsModal(); true`);
+            await probe(tag + ' launch step 2', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await sleep(800); // sleep-ok: the dialog fills from several answers
+                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await sleep(1000); }, '#launch-modal'); // sleep-ok: the dialog fills from several answers
+            await ev(`document.getElementById('launch-modal').style.display = 'none'; window.switchNavTab('agents'); true`);
+        };
+        await Emulation.setDeviceMetricsOverride({ width: 820, height: 1180, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
+        await subset('tablet 820');
+        await Emulation.setDeviceMetricsOverride({ width: 844, height: 390, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
+        await subset('landscape 844x390');
+        await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars && m.clearCustomThemeVars(); m.applyTheme('light'); return true; })()`); await sleep(500); // sleep-ok: the theme applies over a frame
+        await subset('light theme');
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.applyTheme('dark'); return true; })()`);
+
         // the header's glyph buttons scale: the svg icons are drawn in rem
         await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(900); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
         const gl = async () => ev(`[...document.querySelectorAll('.terminal-header-btn svg, .top-bar-btn svg')].filter(e => e.getClientRects().length).map(e => Math.round(e.getBoundingClientRect().width * 10) / 10)`);
@@ -81,6 +109,7 @@ const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRec
         report.push('HEADER GLYPHS ' + JSON.stringify(g16) + ' -> ' + JSON.stringify(g32));
         report.push('HEADER BUTTONS: ' + JSON.stringify(await ev(`[...document.querySelectorAll('.terminal-header button, .terminal-header-btn, .terminal-header a')].filter(e => e.getClientRects().length).map(e => ({ c: String(e.className).slice(0, 30), w: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height), icon: (e.querySelector('.material-icons, svg') ? (parseFloat(getComputedStyle(e.querySelector('.material-icons') || e.querySelector('svg')).fontSize) || e.querySelector('svg').getBoundingClientRect().width) : null) }))`)));
     } finally { await client.close(); }
+    if (process.env.T200_REPORT) throw new Error('\nREPORT (T200_REPORT is set: failing on purpose to print it)\n' + report.join('\n'));
     if (problems.length) throw new Error('\n' + problems.join('\n') + '\n\nFULL REPORT\n' + report.join('\n'));
     console.log('   ✓ ' + report.length + ' scenes at 390 px, 200% text, touch: no overflow, no clipped text, 44 px targets, text grows, header glyphs scale');
 })().catch(e => { console.error(e.message); process.exitCode = 1; });
