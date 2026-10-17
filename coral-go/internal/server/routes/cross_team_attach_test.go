@@ -223,7 +223,7 @@ func TestAttachReceivedAndSharedRowsAreNotAttachable(t *testing.T) {
 
 	// beta's tasks may cite what beta received; gamma's may not.
 	_, task := completeVia(t, e.h, "beta", vetCaller{actor: Actor{Kind: ActorToken, Name: "Orchestrator"}, session: betaOrchSID}, false, board.TaskArtifact{Name: "in.md", URI: uri(d)})
-	assert.Equal(t, provenanceUploaded, task.Workflow.Artifacts[0].Provenance)
+	assert.Equal(t, provenanceReceived, task.Workflow.Artifacts[0].Provenance, "received, not uploaded (Security's INFO 2)")
 	_, task = completeVia(t, e.h, "gamma", vetCaller{actor: Actor{Kind: ActorToken, Name: "Orchestrator"}, session: "cccc4444-0000-4000-8000-000000000004"}, false, board.TaskArtifact{Name: "in.md", URI: uri(d)})
 	assert.Equal(t, provenanceUnverified, task.Workflow.Artifacts[0].Provenance)
 
@@ -461,4 +461,36 @@ func TestAttachTeamScopeIsFromWhenASessionJoined(t *testing.T) {
 	code, out = e.send("alpha", "beta", alphaOrchSID, uri(tooEarly))
 	require.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "not_yours", out["code"])
+}
+
+// Security's C1 review: a received row is write-once (the first receipt's provenance stands), and an
+// Operator attach of an object whose sidecar is missing or names another digest is attach_not_found.
+func TestReceivedRowsAreWriteOnceAndOperatorNeedsAGoodSidecar(t *testing.T) {
+	e := newAttachEnv(t, true)
+	first := crossTeamArtifactRecord{ID: strings.Repeat("ab", 32), Name: "first", Board: "beta", OtherBoard: "alpha", Server: "local", By: "Orchestrator", At: "2026-10-17T00:00:00Z"}
+	require.NoError(t, e.h.writeCrossTeamRecord("received", first))
+	second := first
+	second.OtherBoard, second.Name = "gamma", "second"
+	require.NoError(t, e.h.writeCrossTeamRecord("received", second))
+	got, ok := e.h.crossTeamRecord("received", "beta", first.ID)
+	require.True(t, ok)
+	assert.Equal(t, "alpha", got.OtherBoard, "the first receipt stands")
+	shared := first
+	shared.Board, shared.OtherBoard = "alpha", "beta"
+	require.NoError(t, e.h.writeCrossTeamRecord("shared", shared))
+	shared.OtherBoard = "gamma"
+	require.NoError(t, e.h.writeCrossTeamRecord("shared", shared))
+	got, _ = e.h.crossTeamRecord("shared", "alpha", first.ID)
+	assert.Equal(t, "gamma", got.OtherBoard, "a shared row keeps the newest send")
+
+	noSidecar := storeManagedArtifact(t, e.coralDir, "no sidecar here", true, false)
+	code, out := e.send("alpha", "beta", "operator", uri(noSidecar))
+	require.Equal(t, http.StatusNotFound, code)
+	assert.Equal(t, "attach_not_found", out["code"])
+	wrong := storeManagedArtifact(t, e.coralDir, "wrong sidecar", true, false)
+	bad, _ := json.Marshal(agentArtifactMeta{Name: "x", Digest: "sha256:" + strings.Repeat("0", 64)})
+	require.NoError(t, os.WriteFile(filepath.Join(e.coralDir, "artifacts", "objects", wrong+".json"), bad, 0o644))
+	code, out = e.send("alpha", "beta", "operator", uri(wrong))
+	require.Equal(t, http.StatusNotFound, code)
+	assert.Equal(t, "attach_not_found", out["code"])
 }

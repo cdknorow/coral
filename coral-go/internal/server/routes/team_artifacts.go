@@ -50,7 +50,8 @@ type teamArtifact struct {
 	// cannot be established); see board.ArtifactProducer.
 	SessionID  *string `json:"session_id"`
 	ProducedBy *string `json:"produced_by"`
-	// Provenance is how a task result's managed link was checked (#4379): "uploaded", "person", or
+	// Provenance is how a task result's managed link was checked (#4379): "uploaded", "person",
+	// "received" (a file the board received with a cross-team message), or
 	// "unverified" (a coral://artifacts link the team never uploaded: listed as a plain link, with no
 	// size, type, preview or download from the store, "link not verified"). Omitted otherwise.
 	Provenance string `json:"provenance,omitempty"`

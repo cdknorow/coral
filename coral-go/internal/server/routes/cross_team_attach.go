@@ -280,7 +280,9 @@ func (h *BoardHandler) boardRecordDir(kind, board string) string {
 	return filepath.Join(h.coralDir, "artifacts", kind, hex.EncodeToString(sum[:16]))
 }
 
-// writeCrossTeamRecord stores rec as <dir>/<id>.json (a newer send of the same object replaces it).
+// writeCrossTeamRecord stores rec as <dir>/<id>.json. A shared row is replaced by a newer send of the
+// same object; a received row is write-once (Security's C1 review (b)): the first receipt's
+// provenance stands, and a later one never rewrites where the file came from.
 func (h *BoardHandler) writeCrossTeamRecord(kind string, rec crossTeamArtifactRecord) error {
 	dir := h.boardRecordDir(kind, rec.Board)
 	if dir == "" {
@@ -306,7 +308,16 @@ func (h *BoardHandler) writeCrossTeamRecord(kind string, rec crossTeamArtifactRe
 		os.Remove(tmp.Name())
 		return err
 	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, rec.ID+".json"))
+	final := filepath.Join(dir, rec.ID+".json")
+	if kind == "received" {
+		// A hard link fails if the name exists, so of two receipts at once only one wins.
+		defer os.Remove(tmp.Name())
+		if err := os.Link(tmp.Name(), final); err != nil && !errors.Is(err, os.ErrExist) {
+			return err
+		}
+		return nil
+	}
+	return os.Rename(tmp.Name(), final)
 }
 
 // crossTeamRecords lists a board's records of one kind (nil when none).

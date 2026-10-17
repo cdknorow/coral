@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/cdknorow/coral/internal/board"
 )
@@ -32,6 +33,7 @@ const (
 	provenanceUploaded   = "uploaded"   // the object is there and the team has an upload record of it
 	provenancePerson     = "person"     // recorded by the Operator or a Coral Hub user, and the object is there
 	provenanceUnverified = "unverified" // a managed-looking link the check did not pass: listed as a plain link
+	provenanceReceived   = "received"   // a file this board received with a cross-team message (not one of its uploads)
 )
 
 // vetTaskArtifacts checks every managed link in a task result before it is recorded (#4379): an
@@ -46,18 +48,11 @@ func (h *BoardHandler) vetTaskArtifacts(r *http.Request, project string, artifac
 	}
 	actor := callerActor(r)
 	person := actor.Kind == ActorOperator || actor.Kind == ActorHub
-	var sessions []string
+	var team map[string]time.Time
 	if !person {
-		if owner, ok := VerifiedSession(r.Context()); ok && owner != nil && owner.SessionID != "" {
-			sessions = append(sessions, owner.SessionID)
-		}
-		if subs, err := h.bs.TeamSubscriberSessions(r.Context(), project); err == nil {
-			for _, sid := range subs {
-				if sid != "" {
-					sessions = append(sessions, sid)
-				}
-			}
-		}
+		// The same team set as --attach (Security's C1 review INFO 3): the board's subscribers and
+		// task claimers, each from when it joined the board.
+		team = h.teamSessions(r.Context(), project)
 	}
 	var unverified []string
 	for i := range artifacts {
@@ -72,8 +67,10 @@ func (h *BoardHandler) vetTaskArtifacts(r *http.Request, project string, artifac
 			a.Provenance = provenanceUnverified
 		case person:
 			a.Provenance = provenancePerson
-		case h.uploadedByAny(id, sessions) || h.receivedOn(project, id):
+		case h.teamHasUpload(team, id):
 			a.Provenance = provenanceUploaded
+		case h.receivedOn(project, id):
+			a.Provenance = provenanceReceived
 		default:
 			a.Provenance = provenanceUnverified
 		}
@@ -133,14 +130,11 @@ func (h *BoardHandler) uploadRecordOf(sessionID, id string) (agentUploadRecord, 
 	return agentUploadRecord{}, false
 }
 
-// uploadedByAny reports whether any of sessions has a genuine upload record of id.
-func (h *BoardHandler) uploadedByAny(id string, sessions []string) bool {
-	for _, sid := range sessions {
-		if _, ok := h.uploadRecordOf(sid, id); ok {
-			return true
-		}
-	}
-	return false
+// teamHasUpload reports whether one of the team's sessions has a genuine upload record of id from its
+// time on the board.
+func (h *BoardHandler) teamHasUpload(team map[string]time.Time, id string) bool {
+	_, ok := h.teamUploadRecordOf(team, id)
+	return ok
 }
 
 // receivedOn reports whether board project received id with a cross-team message (its received

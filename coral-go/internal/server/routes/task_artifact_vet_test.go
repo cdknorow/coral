@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
@@ -99,7 +100,7 @@ func rowFor(t *testing.T, srv *httptest.Server, project, name string) teamArtifa
 // uploads the same bytes, citing it gives a managed row.
 func TestVetAnotherTeamsFileIsUnverifiedUntilUploaded(t *testing.T) {
 	h, coralDir, srv := vetEnv(t)
-	d := writeUpload(t, coralDir, vetSessionY, "team y's report", "y.md", "2026-10-17T00:00:00Z")
+	d := writeUpload(t, coralDir, vetSessionY, "team y's report", "y.md", afterJoin())
 
 	out, task := completeVia(t, h, "x", agentOf(vetSessionX), false, link(d))
 	assert.Equal(t, float64(1), out["artifacts_unverified"])
@@ -114,7 +115,7 @@ func TestVetAnotherTeamsFileIsUnverifiedUntilUploaded(t *testing.T) {
 	assert.Empty(t, row.DownloadURL)
 	assert.Empty(t, row.PreviewURL)
 
-	writeUpload(t, coralDir, vetSessionX, "team y's report", "mine.md", "2026-10-17T01:00:00Z") // same bytes, x's own upload
+	writeUpload(t, coralDir, vetSessionX, "team y's report", "mine.md", afterJoin()) // same bytes, x's own upload
 	out, task = completeVia(t, h, "x", agentOf(vetSessionX), false, board.TaskArtifact{Name: "again.md", URI: "coral://artifacts/" + d})
 	assert.NotContains(t, out, "artifacts_unverified")
 	assert.Equal(t, provenanceUploaded, task.Workflow.Artifacts[0].Provenance)
@@ -128,15 +129,15 @@ func TestVetAnotherTeamsFileIsUnverifiedUntilUploaded(t *testing.T) {
 // name the file, or an object whose sidecar disagrees.
 func TestVetAHandWrittenUploadRecordDoesNotCount(t *testing.T) {
 	h, coralDir, _ := vetEnv(t)
-	d := writeUpload(t, coralDir, vetSessionY, "y's bytes", "y.md", "2026-10-17T00:00:00Z")
+	d := writeUpload(t, coralDir, vetSessionY, "y's bytes", "y.md", afterJoin())
 	dir := uploadsDir(coralDir, vetSessionX)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	forged, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "f", Digest: "sha256:" + strings.Repeat("0", 64)}, "2026-10-17T00:00:00Z"})
+	forged, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "f", Digest: "sha256:" + strings.Repeat("0", 64)}, afterJoin()})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, d+".json"), forged, 0o644))
 	_, task := completeVia(t, h, "x", agentOf(vetSessionX), false, link(d))
 	assert.Equal(t, provenanceUnverified, task.Workflow.Artifacts[0].Provenance, "digest field names another object")
 
-	right, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "f", Digest: "sha256:" + d}, "2026-10-17T00:00:00Z"})
+	right, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "f", Digest: "sha256:" + d}, afterJoin()})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, d+".json"), right, 0o644))
 	sidecar := filepath.Join(coralDir, "artifacts", "objects", d+".json")
 	bad, _ := json.Marshal(agentArtifactMeta{Name: "m", Digest: "sha256:" + strings.Repeat("1", 64)})
@@ -150,7 +151,7 @@ func TestVetAHandWrittenUploadRecordDoesNotCount(t *testing.T) {
 // missing object is unverified; a provenance the client sends is never kept.
 func TestVetLinkFormsMissingObjectsAndClientProvenance(t *testing.T) {
 	h, coralDir, _ := vetEnv(t)
-	d := writeUpload(t, coralDir, vetSessionX, "x's bytes", "x.md", "2026-10-17T00:00:00Z")
+	d := writeUpload(t, coralDir, vetSessionX, "x's bytes", "x.md", afterJoin())
 	forms := []board.TaskArtifact{
 		{Name: "upper", URI: "CORAL://ARTIFACTS/" + strings.ToUpper(d)},
 		{Name: "space", URI: "coral://artifacts/" + d + " "},
@@ -188,7 +189,7 @@ func TestManagedArtifactIDForms(t *testing.T) {
 // unverified.
 func TestVetAPersonNeedsOnlyTheObject(t *testing.T) {
 	h, coralDir, srv := vetEnv(t)
-	d := writeUpload(t, coralDir, vetSessionY, "y's bytes", "y.md", "2026-10-17T00:00:00Z")
+	d := writeUpload(t, coralDir, vetSessionY, "y's bytes", "y.md", afterJoin())
 	missing := strings.Repeat("ef", 32)
 	for _, c := range []vetCaller{operatorCaller, {actor: Actor{Kind: ActorHub, Name: "Operator", HubUser: "hub-user-0000abcd"}}} {
 		_, task := completeVia(t, h, "x", c, false, link(d), board.TaskArtifact{Name: "gone.md", URI: "coral://artifacts/" + missing})
@@ -212,9 +213,19 @@ func TestVetLegacyRowsListAsBefore(t *testing.T) {
 // L11: review artifacts go through the same check: a reviewer can't launder another team's file.
 func TestVetReviewArtifactsToo(t *testing.T) {
 	h, coralDir, _ := vetEnv(t)
-	d := writeUpload(t, coralDir, vetSessionY, "y's bytes", "y.md", "2026-10-17T00:00:00Z")
+	d := writeUpload(t, coralDir, vetSessionY, "y's bytes", "y.md", afterJoin())
 	out, task := completeVia(t, h, "x", agentOf(vetSessionX), true, link(d))
 	assert.Equal(t, float64(1), out["artifacts_unverified"])
 	require.NotNil(t, task.Workflow.CompletionReview)
 	assert.Equal(t, provenanceUnverified, task.Workflow.CompletionReview.Artifacts[0].Provenance)
+}
+
+// Security's INFO 3: the vet uses --attach's team set, time bound included: an upload a session
+// made before it joined this board is not the team's.
+func TestVetUsesTheTeamSetWithItsTimeBound(t *testing.T) {
+	h, coralDir, _ := vetEnv(t)
+	before := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	early := writeUpload(t, coralDir, vetSessionX, "made before joining x", "early.md", before)
+	_, task := completeVia(t, h, "x", agentOf(vetSessionX), false, link(early))
+	assert.Equal(t, provenanceUnverified, task.Workflow.Artifacts[0].Provenance)
 }
