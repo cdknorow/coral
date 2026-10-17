@@ -26,16 +26,18 @@ type sendIdentity struct {
 
 // runSend posts a cross-team message to another board's Orchestrator.
 //
-//	coral-board send --board <target> [--to <orchestrator>] "<message>"
+//	coral-board send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"
 //	coral-board send --address <server>/<team> [--reply-to <message id>] [--message-id <id>] "<message>"
 //
 // The server checks that the sender is an Orchestrator on its board (or the
 // Operator), that both boards allow cross-team messaging, and the rate limit. With
 // --address the message goes to another Coral through Coral Hub (#3489), to an address
 // `coral-board targets` lists; --message-id retries an earlier send without delivering it
-// twice.
+// twice. --attach (repeatable, at most 4) sends files the sender uploaded with the message
+// (#4379; the usage text says what it may send and what it is not).
 func runSend(args []string, id sendIdentity, out io.Writer) error {
 	var target, to, address, replyTo, messageID string
+	var attach []string
 	var msgParts []string
 	literal := false
 	for i := 0; i < len(args); i++ {
@@ -44,7 +46,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 			msgParts = append(msgParts, args[i+1:]...)
 			literal = true
 			i = len(args)
-		case "--board", "--to", "--address", "--reply-to", "--message-id":
+		case "--board", "--to", "--address", "--reply-to", "--message-id", "--attach":
 			if i+1 >= len(args) || args[i+1] == "" {
 				return fmt.Errorf("%s needs a value", args[i])
 			}
@@ -57,6 +59,8 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 				address = args[i+1]
 			case "--reply-to":
 				replyTo = args[i+1]
+			case "--attach":
+				attach = append(attach, args[i+1])
 			default:
 				messageID = args[i+1]
 			}
@@ -83,30 +87,41 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 		if target != "" || to != "" {
 			return fmt.Errorf("--address can't be combined with --board or --to")
 		}
+		if len(attach) > 0 {
+			return fmt.Errorf("--attach works only with --board (a board on this Coral) for now")
+		}
 		return runRelaySend(id, address, replyTo, messageID, message, out)
 	}
 	if replyTo != "" || messageID != "" {
 		return fmt.Errorf("--reply-to and --message-id go with --address")
 	}
 	if target == "" || message == "" {
-		return fmt.Errorf(`usage: coral-board send --board <target> [--to <orchestrator>] "<message>"`)
+		return fmt.Errorf(`usage: coral-board send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"`)
+	}
+	if len(attach) > 4 {
+		return fmt.Errorf("at most 4 --attach per send")
 	}
 	if id.Board == "" {
 		return fmt.Errorf("not subscribed to a board. Run: coral-board join <project> --as <role>")
 	}
-	data, status, err := apiCallRaw(http.MethodPost, "/"+url.PathEscape(target)+"/external-messages", map[string]string{
+	body := map[string]any{
 		"from_board":    id.Board,
 		"subscriber_id": id.SubscriberID,
 		"session_name":  id.SessionName,
 		"content":       message,
 		"to":            to,
-	})
+	}
+	if len(attach) > 0 {
+		body["attach"] = attach
+	}
+	data, status, err := apiCallRaw(http.MethodPost, "/"+url.PathEscape(target)+"/external-messages", body)
 	if err != nil {
 		return err
 	}
 	var result struct {
 		Error       string   `json:"error"`
 		DeliveredTo []string `json:"delivered_to"`
+		Attached    []string `json:"attached"`
 		Message     struct {
 			ID int64 `json:"id"`
 		} `json:"message"`
@@ -120,6 +135,9 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "Sent to '%s' (message #%d, delivered to %s). A copy is on '%s'.\n",
 		target, result.Message.ID, strings.Join(result.DeliveredTo, ", "), id.Board)
+	if len(result.Attached) > 0 {
+		fmt.Fprintf(out, "Attached %d file(s): %s\n", len(result.Attached), strings.Join(result.Attached, ", "))
+	}
 	return nil
 }
 

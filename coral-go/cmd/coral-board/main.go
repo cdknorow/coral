@@ -489,10 +489,17 @@ Commands:
                                Read or update custom team rules (mode unchanged)
                                (changing them is Operator only; reading works)
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
-  send --board <target> [--to <orchestrator>] "<message>"
+  send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"
                                Message another team's Orchestrator (Orchestrators
                                and the Operator only; both boards must allow it);
-                               "-" as the message reads it from stdin
+                               "-" as the message reads it from stdin.
+                               --attach: up to 4 files you uploaded, 8 MiB each,
+                               16 MiB per send; both boards need cross_team_artifacts
+                               on. Not scanned for malware, not redacted: never
+                               attach secrets. On one Coral an agent that knows an
+                               id can read the bytes and upload them again: team
+                               visibility stops accidents, it is not a boundary;
+                               the switches, allowlist and quotas are the limits
   send --address <server>/<team> [--reply-to <id>] [--message-id <id>] "<message>"
                                Message a team on another Coral through Coral Hub
                                (a target from 'targets'; --message-id retries)

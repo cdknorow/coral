@@ -94,7 +94,7 @@ func checkFreeText(args []string) error {
 				break
 			}
 			switch rest[i] {
-			case "--board", "--to", "--address", "--reply-to", "--message-id":
+			case "--board", "--to", "--address", "--reply-to", "--message-id", "--attach":
 				i++
 				continue
 			}

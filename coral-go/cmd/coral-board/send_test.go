@@ -94,3 +94,48 @@ func TestSendHelpAndFlagText(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// #4379: --attach (repeatable) goes in the request's attach list and the reply's attached links are
+// printed; at most 4; not with --address yet.
+func TestRunSendAttach(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		gotBody = nil
+		_ = json.Unmarshal(data, &gotBody)
+		_, _ = io.WriteString(w, `{"message":{"id":5},"delivered_to":["Orchestrator"],"attached":["coral://artifacts/aa","coral://artifacts/bb"]}`)
+	}))
+	defer server.Close()
+	oldURL := serverURL
+	serverURL = server.URL
+	defer func() { serverURL = oldURL }()
+	id := sendIdentity{Board: "alpha", SubscriberID: "Orchestrator", SessionName: "claude-abc"}
+
+	var out bytes.Buffer
+	if err := runSend([]string{"--board", "beta", "--attach", "coral://artifacts/aa", "--attach", "coral://artifacts/bb", "the", "report"}, id, &out); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := gotBody["attach"].([]any)
+	if len(got) != 2 || got[0] != "coral://artifacts/aa" || got[1] != "coral://artifacts/bb" {
+		t.Fatalf("attach = %v", gotBody["attach"])
+	}
+	if gotBody["content"] != "the report" {
+		t.Fatalf("content = %v", gotBody["content"])
+	}
+	if !strings.Contains(out.String(), "Attached 2 file(s): coral://artifacts/aa, coral://artifacts/bb") {
+		t.Fatalf("output = %q", out.String())
+	}
+	five := []string{"--board", "beta"}
+	for i := 0; i < 5; i++ {
+		five = append(five, "--attach", "coral://artifacts/x")
+	}
+	if err := runSend(append(five, "hi"), id, &out); err == nil || !strings.Contains(err.Error(), "at most 4") {
+		t.Fatalf("five attachments: %v", err)
+	}
+	if err := runSend([]string{"--address", "srv/team", "--attach", "coral://artifacts/aa", "hi"}, id, &out); err == nil || !strings.Contains(err.Error(), "only with --board") {
+		t.Fatalf("--address with --attach: %v", err)
+	}
+	if err := checkFreeText([]string{"send", "--board", "beta", "--attach", "coral://artifacts/aa", "hi"}); err != nil {
+		t.Fatalf("the pre-check refuses --attach: %v", err)
+	}
+}
