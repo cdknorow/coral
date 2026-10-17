@@ -22,6 +22,7 @@ import (
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -659,12 +660,30 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 		errNotFound(w, "artifact not found")
 		return
 	}
+	// The object is opened once and served from that handle, its length from the file itself
+	// (Security's #4438 INFO 4): a sidecar that disagrees with the file means the store is corrupt,
+	// and the download is refused rather than sent with a length that doesn't match its bytes.
+	f, err := secfile.OpenNoFollow(path, os.O_RDONLY, 0)
+	if err != nil {
+		errNotFound(w, "artifact not found")
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		errNotFound(w, "artifact not found")
+		return
+	}
+	if info.Size() != meta.Size {
+		slog.Warn("[artifacts] stored object and its sidecar disagree on the size; not served", "digest", id, "file_bytes", info.Size(), "sidecar_bytes", meta.Size)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "this artifact's stored copy is damaged", "code": "artifact_corrupt"})
+		return
+	}
 	// An agent chose these bytes and their type: an HTML or SVG upload must not
 	// run on the dashboard's origin when someone opens its link.
 	setUntrustedContentHeaders(w.Header(), meta.MediaType, meta.Name)
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", meta.Size))
 	// The bytes never change for an id, but an artifact can be deleted (#3553): private, so no
 	// shared cache (in front of Coral Hub, a proxy) keeps serving it after that.
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-	http.ServeFile(w, r, path)
+	http.ServeContent(w, r, "", info.ModTime(), f) // Content-Length (and ranges) from the open file
 }

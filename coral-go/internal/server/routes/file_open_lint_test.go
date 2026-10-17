@@ -21,6 +21,7 @@ var reviewedFileOpens = map[string]string{
 	"artifact_prune.go:recordTime:ReadFile":                               "server data folder (a sidecar the server wrote)",
 	"artifact_prune.go:scanKnowledgeReferences:Open":                      "server data folder (agent_knowledge), regular files only",
 	"artifacts.go:SessionsHandler.getAgentArtifact:ReadFile":              "{id} is 64 lower-case hex (checked), in the server's objects folder",
+	"artifacts.go:SessionsHandler.getAgentArtifact:OpenNoFollow":          "the same object, opened once without following a link to serve it and stat its size (#4443)",
 	"artifacts.go:SessionsHandler.uploadAgentArtifact:ReadFile":           "the server's own temp file and hex digest",
 	"artifacts.go:SessionsHandler.uploadAgentArtifact:WriteFile":          "uploads/<uploadsDir(session)>/<server hex>.json",
 	"artifacts.go:createSidecarExclusive:OpenFile":                        "O_EXCL in the server's objects folder, server hex name",
