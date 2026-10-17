@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/store"
 )
 
 // #3887: one capture answers the read-only pollers for screenSnapTTL; concurrent pollers share
@@ -156,4 +158,71 @@ func TestPollSharesCapturesOnlyForTheSameOutput(t *testing.T) {
 	assert.Equal(t, n+2, captures(), "new output: a fresh capture")
 	assert.Equal(t, "second screen", poll())
 	assert.Equal(t, n+2, captures(), "unchanged again: shared")
+}
+
+// #4077: the read-only readers of one agent's screen (the poll, the login-screen check and the
+// team status's activity line) share one capture while its output is unchanged, whatever name
+// they call the session by. Another line count is its own capture. Once the pane prints, the
+// next read of each shows it at once (the #3954 lesson). Without a session there's no sharing.
+func TestReadOnlyReadersShareOneCapturePerOutput(t *testing.T) {
+	defer func(old time.Duration) { screenSnapTTL = old }(screenSnapTTL)
+	screenSnapTTL = time.Hour                    // every read below is within the TTL
+	t.Setenv("CLAUDE_PROJECTS_DIR", t.TempDir()) // no transcript: the login check reads the screen
+	_, h, mock, _ := setupSessionsTestServer(t)
+	term := &loginScreenTerminal{mockSessionTerminal: mock}
+	h.terminal = term
+	b := &stampingBackend{stamp: "a"}
+	h.backend = b
+	ctx := context.Background()
+	const sid = "40774077-2222-4333-8444-555555555555"
+	name := naming.SessionName("claude", sid)
+	mock.addSession(name, "/tmp")
+	mock.addSession("Display Name", "/tmp")
+	mock.setOutput(name, "working on it")
+	mock.setOutput("Display Name", "working on it")
+	captures := func() int {
+		mock.mu.Lock()
+		defer mock.mu.Unlock()
+		return len(mock.captures)
+	}
+	read := func(as string, lines int) string {
+		t.Helper()
+		text, err := h.sharedCapture(ctx, as, lines, "claude", sid)
+		require.NoError(t, err)
+		return text
+	}
+	noEvents := func() []store.AgentEvent { return nil }
+
+	assert.Equal(t, "working on it", read(name, 40), "the team status's activity line")
+	on, _ := h.claudeLoginState(name, sid, "/tmp", noEvents)
+	assert.False(t, on)
+	assert.Equal(t, "working on it", read("Display Name", 40), "the same session by another name")
+	assert.Equal(t, 1, captures(), "one capture for the three readers")
+	term.mu.Lock()
+	assert.Zero(t, term.reads, "a stamped screen is read through the shared capture, not AgentScreen")
+	term.mu.Unlock()
+
+	poll, err := h.captureForPoll(ctx, name, "claude", sid)
+	require.NoError(t, err)
+	assert.Equal(t, "working on it", poll)
+	assert.Equal(t, 2, captures(), "the poll's 200 lines are their own capture")
+
+	// A keystroke's echo: the pane printed, so the stamp changed. Every reader shows it next time.
+	mock.setOutput(name, "working on it\n> x")
+	b.set("b")
+	assert.Equal(t, "working on it\n> x", read(name, 40))
+	poll, err = h.captureForPoll(ctx, name, "claude", sid)
+	require.NoError(t, err)
+	assert.Equal(t, "working on it\n> x", poll)
+	assert.Equal(t, 4, captures())
+	h.loginScreens = loginScreens{} // past the login check's own reuse: it reads the shared one
+	h.claudeLoginState(name, sid, "/tmp", noEvents)
+	assert.Equal(t, 4, captures(), "unchanged since: shared")
+
+	// No session id: nothing says which pane's output a capture is, so none is shared.
+	for i := 0; i < 2; i++ {
+		_, err := h.sharedCapture(ctx, name, 40, "", "")
+		require.NoError(t, err)
+	}
+	assert.Equal(t, 6, captures())
 }

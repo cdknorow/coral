@@ -161,20 +161,28 @@ const captureReuseMax = 5 * time.Second
 // captureCacheMax caps the cache; it starts over when full (a burst of short-lived sessions).
 const captureCacheMax = 256
 
-// captureForPoll is CaptureOutput for the poll: when the backend can stamp the session's output
-// and nothing was written since the last capture (and that is recent), the last capture is
-// reused. The stamp is taken before capturing, so output printed meanwhile is seen next time.
+// captureForPoll is CaptureOutput for the poll (sharedCapture's 200 lines).
 func (h *SessionsHandler) captureForPoll(ctx context.Context, name, agentType, sessionID string) (string, error) {
-	key := name + "\x00" + agentType + "\x00" + sessionID
+	return h.sharedCapture(ctx, name, 200, agentType, sessionID)
+}
+
+// sharedCapture is CaptureOutput for read-only readers (the poll, the login-screen check, the
+// team status's activity line; #4077): when the backend can stamp the session's output and
+// nothing was written since the last capture of these lines (and that is recent), the last
+// capture is reused, whoever asked for it. The stamp is taken before capturing, so output
+// printed meanwhile is seen next time. Readers that act on the screen (prompt answers, pastes,
+// auto-accept, the input gate) capture fresh and never come here.
+func (h *SessionsHandler) sharedCapture(ctx context.Context, name string, lines int, agentType, sessionID string) (string, error) {
 	fetch := func(c context.Context) (string, error) {
-		return h.terminal.CaptureOutput(c, name, 200, agentType, sessionID)
+		return h.terminal.CaptureOutput(c, name, lines, agentType, sessionID)
 	}
 	// Tabs polling this agent share one capture for a moment (#3887), but only while the pane's
 	// output is unchanged: the output stamp is part of the sharing key, so a poll that sees new
 	// output never gets a capture started before it (#3954: typed output showed up to 2 s late).
-	// Without a stamp nothing tells the captures apart, so none is shared.
+	// Without a stamp nothing tells the captures apart, so none is shared. The key is the
+	// session, not the name a caller used for it, so callers naming it differently share.
 	stamper, _ := h.backend.(ptymanager.OutputStamper)
-	if stamper == nil {
+	if stamper == nil || agentType == "" || sessionID == "" {
 		return fetch(ctx)
 	}
 	stampedAt := time.Now()
@@ -182,13 +190,14 @@ func (h *SessionsHandler) captureForPoll(ctx context.Context, name, agentType, s
 	if !ok {
 		return fetch(ctx)
 	}
+	key := agentType + "\x00" + sessionID + "\x00" + strconv.Itoa(lines)
 	h.captureMu.Lock()
 	c, hit := h.captureCache[key]
 	h.captureMu.Unlock()
 	if hit && c.stamp == stamp && time.Since(c.at) < captureReuseMax {
 		return c.text, nil
 	}
-	text, capturedAt, err := h.screens.capture(ctx, key+"\x00"+stamp, 200, time.Now(), fetch)
+	text, capturedAt, err := h.screens.capture(ctx, key+"\x00"+stamp, lines, time.Now(), fetch)
 	h.captureMu.Lock()
 	defer h.captureMu.Unlock()
 	// Kept against the stamp only when the capture started after the stamp was read: a shared
