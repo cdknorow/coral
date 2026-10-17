@@ -212,8 +212,10 @@ func (h *SessionsHandler) receivedArtifactsMaxBytes() int64 {
 }
 
 // receivedStatus is what GET /api/system/artifact-store reports for Settings: the total, the cap and whether the one-time notice is due (at 80%
-// of a cap the Operator has not yet been told about).
-func (h *SessionsHandler) receivedStatus() map[string]any {
+// of a cap the Operator has not yet been told about). The unlisted files' digests (items) go to the Operator only: a digest is enough to read the
+// file through GET /api/artifacts/{id}, and an unlisted file is one whose message never came to any board here (#4489, Security's #4488); everyone else
+// gets the count and size.
+func (h *SessionsHandler) receivedStatus(withItems bool) map[string]any {
 	dir := h.cfg.CoralDir()
 	used, objects, _, unlisted := receivedUsage(dir, time.Now())
 	max := h.receivedArtifactsMaxBytes()
@@ -231,7 +233,7 @@ func (h *SessionsHandler) receivedStatus() map[string]any {
 	if len(items) > receivedUnlistedItems {
 		items = items[:receivedUnlistedItems]
 	}
-	if items == nil {
+	if items == nil || !withItems {
 		items = []receivedObject{}
 	}
 	return map[string]any{"bytes": used, "objects": objects, "max_bytes": max, "default_bytes": defaultReceivedMaxBytes, "notice": notice,

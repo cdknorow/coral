@@ -1002,8 +1002,14 @@ func (h *SessionsHandler) sweepDiffObjects(o pruneOptions, rep *pruneReport, cap
 
 // ── Routes ──────────────────────────────────────────────────────────
 
+// isOperatorRequest is true for a person at this computer (the dashboard or the signed command line), false for an agent's token, a script and
+// Coral Hub: what refuseNonOperator lets through, for a route that answers everyone but shows the Operator more (#4489).
+func isOperatorRequest(r *http.Request) bool {
+	return !cloud.Tunneled(r) && humanInputCaller(r)
+}
+
 func refuseNonOperator(w http.ResponseWriter, r *http.Request, what string) bool {
-	if cloud.Tunneled(r) || !humanInputCaller(r) {
+	if !isOperatorRequest(r) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can " + what + ", from this computer's dashboard or the signed command line", "code": "operator_only"})
 		return true
 	}
