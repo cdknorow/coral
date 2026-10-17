@@ -298,10 +298,21 @@ func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, l
 			}
 			continue
 		}
-		if err := dst.Write(ctx, typ, data); err != nil {
+		if err := writeTimed(ctx, dst, typ, data); err != nil {
 			return
 		}
 	}
+}
+
+// wsWriteTimeout bounds each frame the bridge writes (#4161): a browser that stops reading
+// (a tab in the background, a stalled link) ends the bridge after this long instead of holding
+// it, and the machine's stream, until the tunnel ends. The dashboard reconnects.
+var wsWriteTimeout = 15 * time.Second
+
+func writeTimed(ctx context.Context, dst WSConn, typ websocket.MessageType, data []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
+	defer cancel()
+	return dst.Write(ctx, typ, data)
 }
 
 // StatusTooManyStreams closes a browser's WebSocket that the machine refused because too many

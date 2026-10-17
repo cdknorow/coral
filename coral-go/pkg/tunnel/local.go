@@ -1159,10 +1159,22 @@ func pump(ctx context.Context, cancel context.CancelFunc, src, dst wsEnd, gate f
 			}
 			continue
 		}
-		if err := dst.Write(ctx, typ, data); err != nil {
+		if err := writeTimed(ctx, dst, typ, data); err != nil {
 			return
 		}
 	}
+}
+
+// wsWriteTimeout bounds each frame written on a bridged WebSocket (#4161). A side that stops
+// reading (a Coral Hub viewer whose tab or link stalled) would otherwise hold this bridge, its
+// goroutines and its stream slot until the tunnel ends: nothing reads the other side's close
+// while a write is blocked. After this long the bridge ends; the dashboard reconnects.
+var wsWriteTimeout = 15 * time.Second
+
+func writeTimed(ctx context.Context, dst wsEnd, typ websocket.MessageType, data []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
+	defer cancel()
+	return dst.Write(ctx, typ, data)
 }
 
 // bodyAllowed: whether a response to method with status carries the body its

@@ -118,7 +118,7 @@ func (w *wsRedact) sendOut() error {
 }
 
 func (w *wsRedact) send(typ websocket.MessageType, data []byte) error {
-	if err := w.dst.Write(w.ctx, typ, data); err != nil {
+	if err := writeTimed(w.ctx, w.dst, typ, data); err != nil {
 		w.err = err
 		return err
 	}
