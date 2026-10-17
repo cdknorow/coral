@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -32,8 +33,21 @@ func MinifyAsset(name string, data []byte) []byte {
 	if (ext != ".js" && ext != ".css") || strings.HasPrefix(name, "vendor/") || strings.HasSuffix(name, ".min.js") || strings.HasPrefix(name, "agent_docs/") {
 		return data
 	}
+	opts := minifyOptions(ext)
+	opts.Sourcefile = name
+	res := api.Transform(string(data), opts)
+	if len(res.Errors) > 0 || len(res.Code) == 0 || len(res.Code) >= len(data) {
+		return data
+	}
+	return res.Code
+}
+
+// minifyOptions are the esbuild options MinifyAsset transforms a file of this extension (".js" or
+// ".css") with, except the file's own Sourcefile. The one place they are written: MinifyIdentity is
+// built from this value, so an option cannot change without the identity (and the build id that
+// hashes it, #4320) changing with it.
+func minifyOptions(ext string) api.TransformOptions {
 	opts := api.TransformOptions{
-		Sourcefile:        name,
 		Target:            api.ESNext,
 		MinifyWhitespace:  true,
 		MinifySyntax:      true,
@@ -47,25 +61,22 @@ func MinifyAsset(name string, data []byte) []byte {
 	} else {
 		opts.Loader = api.LoaderJS
 	}
-	res := api.Transform(string(data), opts)
-	if len(res.Errors) > 0 || len(res.Code) == 0 || len(res.Code) >= len(data) {
-		return data
-	}
-	return res.Code
+	return opts
 }
 
-// minifyFormat names the options MinifyAsset passes to esbuild: change it when they change, so
-// anything keyed on the minified bytes (the static build version, #4320) changes with them.
-const minifyFormat = "ws+syntax,esnext,utf8,legal-inline,no-rename:1"
+// optionsIdentity is the text a set of options is named by: every field of both, as Go prints them.
+func optionsIdentity(js, css api.TransformOptions) string {
+	return fmt.Sprintf("js:%+v css:%+v", js, css)
+}
 
 // MinifyIdentity names how MinifyAsset turns a file into the bytes it serves: the esbuild version,
-// its options (minifyFormat) and whether minifying is off (CORAL_NO_MINIFY=1 or SetMinifyDisabled).
+// its options (minifyOptions, every field), the bundle's format (bundleFormat) and whether minifying is off (CORAL_NO_MINIFY=1 or SetMinifyDisabled).
 // A version that names served bytes hashes it (#4320).
 func MinifyIdentity() string {
 	if disabled.Load() || os.Getenv("CORAL_NO_MINIFY") == "1" {
 		return "minify:off"
 	}
-	return "minify:esbuild " + esbuildVersion + " " + minifyFormat + " " + bundleFormat
+	return "minify:esbuild " + esbuildVersion + " " + optionsIdentity(minifyOptions(".js"), minifyOptions(".css")) + " " + bundleFormat
 }
 
 // esbuildVersion is the esbuild module version this binary is built with: a constant, not read
