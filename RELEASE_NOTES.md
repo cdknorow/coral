@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.4.82 — Stricter settings, and paced file pushes over Coral Hub
+
+### Security and privacy
+
+- **Settings are checked against a list of known keys.** A save with an unknown settings key is now refused (400) as a whole; it used to be stored silently. `terminal_replay_bytes` is clamped to 4 KiB-16 MiB, and values over 256 KiB (2 MiB for the saved lists) are refused.
+- **Agents can no longer read `/api/settings`;** only the Operator can.
+
+### Coral Hub
+
+- **The Coral Hub tunnel can pace a file pushed to a machine, so keystrokes stay responsive on slow links; Coral Hub opts in per push.** Below about a 1.3 Mbit downlink, a pushed file can still delay keystrokes, since the pace can't go lower and still finish within the 120 s limit.
+
 ## v1.4.81 — CLI paths that can't run are reported, stricter setting values, and one "Nothing to save" message
 
 ### Fixes
