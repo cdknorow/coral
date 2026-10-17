@@ -142,6 +142,18 @@ function page(q) {
         assert.equal(await ev(rowsHtml), await wholeRender(), 'after trimming, still the same as a whole render');
         await toBottom();
 
+        console.log('Keyboard focus on "Load earlier" stays across a poll (UX on #4492)');
+        await ev(`(() => { const b = ${C}.querySelector('.mb-load-earlier button'); b.__mark = true; b.focus({ preventScroll: true }); return document.activeElement === b; })()`);
+        const label0 = await ev(`${C}.querySelector('.mb-load-earlier button').textContent.trim()`);
+        add(60);
+        await pollUntil(`${C}.querySelector('[data-message-id="${nextId - 1}"]')`, 'the 60 new posts, focused on Load earlier');
+        const kept = await ev(`(() => { const a = document.activeElement; return { same: !!a && a.__mark === true && a.isConnected, text: a && a.textContent.trim() }; })()`);
+        assert.ok(kept.same, 'focus is still on the same button');
+        assert.notEqual(kept.text, label0, `its label follows (${label0} -> ${kept.text})`);
+        assert.equal(kept.text.replace(/\s+/g, ' '), `Load 50 earlier messages (${model.length - await shown()} remaining)`);
+        await ev(`document.activeElement.blur(); true`);
+        await toBottom();
+
         console.log('Not trimmed while reading higher up; trimmed again back at the bottom');
         await ev(`(() => { const c = ${C}; c.scrollTop = Math.round(c.scrollHeight / 2); return true; })()`);
         add(60);

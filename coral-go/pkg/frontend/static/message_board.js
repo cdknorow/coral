@@ -528,10 +528,20 @@ function trimBoardWindow(container) {
     }
 }
 
-// The "Load earlier" button and the count above the rows, after a poll changed them.
+// The "Load earlier" button and the count above the rows, after a poll changed them: their text changes in place, so keyboard
+// focus on the button stays (UX on #4492); the button's row goes in or out only when there are older messages or no longer.
 function updateBoardHeader(container) {
-    for (const el of container.querySelectorAll(':scope > .mb-load-earlier, :scope > .mb-message-count')) el.remove();
-    container.insertAdjacentHTML('afterbegin', boardHeaderHtml(_allMessages));
+    const tmp = document.createElement('template');
+    tmp.innerHTML = boardHeaderHtml(_allMessages);
+    const fresh = sel => tmp.content.querySelector(sel);
+    const count = container.querySelector(':scope > .mb-message-count');
+    if (count) count.textContent = fresh('.mb-message-count').textContent;
+    else container.prepend(fresh('.mb-message-count'));
+    const row = container.querySelector(':scope > .mb-load-earlier');
+    const newRow = fresh('.mb-load-earlier');
+    if (row && newRow) row.querySelector('button').textContent = newRow.querySelector('button').textContent;
+    else if (row) row.remove();
+    else if (newRow) container.prepend(newRow);
 }
 
 function formatTime(iso) {
