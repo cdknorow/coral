@@ -376,6 +376,7 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/artifacts/{id}/keep":                 "keep an artifact",
 	"POST /api/artifacts/received/unlisted/delete": "delete received files no board lists",
 	"DELETE /api/artifacts/{id}/keep":              "release a kept artifact",
+	"GET /api/system/terminal-logs":                "see the terminal logs",
 	"POST /api/system/terminal-logs/delete-ended":  "delete the terminal logs of ended agents",
 	// #3513 (Security's #3509 finding 3): the API key is the Operator's credential (with it an
 	// agent drops its token and is the Operator, settings included), and deleting a board

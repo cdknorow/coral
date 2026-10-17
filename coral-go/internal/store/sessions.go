@@ -1171,6 +1171,18 @@ type LiveSessionState struct {
 	Archived  bool   `db:"is_archived"`
 }
 
+// LiveSessionStateByID is one session row's state, ok false when there is no such row: asked again for each terminal log just before it is removed (#4447).
+func (s *SessionStore) LiveSessionStateByID(ctx context.Context, id string) (LiveSessionState, bool, error) {
+	var rows []LiveSessionState
+	if err := s.reader().SelectContext(ctx, &rows, "SELECT agent_type, status, is_sleeping, is_archived FROM live_sessions WHERE session_id = ?", id); err != nil {
+		return LiveSessionState{}, false, err
+	}
+	if len(rows) != 1 {
+		return LiveSessionState{}, false, nil
+	}
+	return rows[0], true, nil
+}
+
 // LiveSessionStates returns every session row's state by session id, whatever its status: the cleanup of an ended agent's terminal log (#4447) asks
 // this and keeps anything it cannot match to a row that is stopped, awake-less (not sleeping) and not archived.
 func (s *SessionStore) LiveSessionStates(ctx context.Context) (map[string]LiveSessionState, error) {

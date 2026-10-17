@@ -93,9 +93,12 @@ func (h *SessionsHandler) scanTerminalLogs(ctx context.Context) (*terminalLogSca
 	return out, nil
 }
 
-// terminalLogsStatus: GET /api/system/terminal-logs, the logs' count and size, and those of ended agents. This computer's dashboard only (not in the
-// tunnel table).
+// terminalLogsStatus: GET /api/system/terminal-logs, the logs' count and size, and those of ended agents. Operator only, like the delete (the names and sizes of other agents'
+// logs are not an agent's to read), and this computer's dashboard only (not in the tunnel table).
 func (h *SessionsHandler) terminalLogsStatus(w http.ResponseWriter, r *http.Request) {
+	if refuseNonOperator(w, r, "see the terminal logs") {
+		return
+	}
 	scan, err := h.scanTerminalLogs(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error(), "code": "logs_unavailable"})
@@ -134,20 +137,15 @@ func (h *SessionsHandler) deleteEndedTerminalLogs(w http.ResponseWriter, r *http
 		return
 	}
 	defer root.Close()
-	// Asked again just before the first removal: an agent woken, or archived, since the scan keeps its log.
-	if terminalLogsBeforeRecheck != nil {
-		terminalLogsBeforeRecheck()
-	}
-	states, err := h.ss.LiveSessionStates(r.Context())
-	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": errTerminalLogsUnavailable.Error() + ", so nothing was deleted", "code": "logs_unavailable"})
-		return
-	}
 	var freed int64
 	deleted := 0
 	failed := []string{}
+	// Asked again for each log just before it is removed: an agent woken, or archived, since the scan (or since the previous removal) keeps its log.
 	for _, l := range scanEndedIDs(scan) {
-		if !stillEnded(states, l.Name) {
+		if terminalLogsBeforeRecheck != nil {
+			terminalLogsBeforeRecheck(l.Name)
+		}
+		if !h.logStillEnded(r.Context(), l.Name) {
 			failed = append(failed, l.Name+": the agent is not ended any more")
 			continue
 		}
@@ -162,8 +160,21 @@ func (h *SessionsHandler) deleteEndedTerminalLogs(w http.ResponseWriter, r *http
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "bytes": freed, "failed": failed})
 }
 
-// terminalLogsBeforeRecheck, when set (tests), runs between the scan and the second look at the sessions: where an agent wakes up meanwhile.
-var terminalLogsBeforeRecheck func()
+// terminalLogsBeforeRecheck, when set (tests), runs before each log's second look at its session: where an agent wakes up meanwhile.
+var terminalLogsBeforeRecheck func(name string)
+
+// logStillEnded reads the session of the log called name afresh. A log it cannot check is kept.
+func (h *SessionsHandler) logStillEnded(ctx context.Context, name string) bool {
+	m := terminalLogName.FindStringSubmatch(name)
+	if m == nil {
+		return false
+	}
+	st, ok, err := h.ss.LiveSessionStateByID(ctx, m[2])
+	if err != nil || !ok {
+		return false
+	}
+	return stillEnded(map[string]store.LiveSessionState{m[2]: st}, name)
+}
 
 func scanEndedIDs(scan *terminalLogScan) []terminalLog { return scan.Ended }
 

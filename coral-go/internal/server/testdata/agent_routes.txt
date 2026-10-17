@@ -156,7 +156,7 @@ c GET /api/system/qr
 c GET /api/system/status
 c GET /api/system/telemetry
 c GET /api/system/terminal-backend
-c GET /api/system/terminal-logs
+b GET /api/system/terminal-logs
 c GET /api/system/update-check
 c GET /api/tags
 c GET /api/tasks/active

@@ -155,6 +155,12 @@ func TestDeleteEndedTerminalLogsOnlyEndedAgents(t *testing.T) {
 	assert.EqualValues(t, 350, ended["bytes"])
 	assert.EqualValues(t, 10+20+30+40+50+60+100+250, out["bytes"], "every Coral-named log is counted in the total, nothing else")
 
+	// Operator only, the status as well: it names the size of other agents' logs.
+	for name, hdr := range map[string]map[string]string{"an agent's token": {testAgentHeader: "s1"}, "a script": {}, "Coral Hub (the tunnel)": {tunnel.ViaHeader: "x"}} {
+		code, out := g.call("GET", "/api/system/terminal-logs", hdr, nil)
+		assert.Equal(t, http.StatusForbidden, code, "status: "+name)
+		assert.Equal(t, "operator_only", out["code"], "status: "+name)
+	}
 	// Operator only.
 	for name, hdr := range map[string]map[string]string{"an agent's token": {testAgentHeader: "s1"}, "a script": {}, "Coral Hub (the tunnel)": {tunnel.ViaHeader: "x"}} {
 		code, out := g.call("POST", "/api/system/terminal-logs/delete-ended", hdr, map[string]any{"count": 2, "bytes": 350})
@@ -251,14 +257,14 @@ func TestStillEndedAsksAgain(t *testing.T) {
 	assert.False(t, stillEnded(ended, strings.ReplaceAll(name, ".log", ".log.1")), "a rotated copy is not a log name")
 }
 
-// An agent woken between the look and the removal keeps its log: the sessions are asked again just before the first removal.
+// An agent woken between the look and the removal keeps its log: the session is asked again just before each removal.
 func TestEndedLogOfAnAgentWokenMeanwhileIsKept(t *testing.T) {
 	g := newLogsRig(t)
 	g.session(idEnded1, "claude", true, false, false)
 	g.session(idEnded2, "codex", true, false, false)
 	woken := g.log("claude", idEnded1, 100)
 	other := g.log("codex", idEnded2, 250)
-	terminalLogsBeforeRecheck = func() {
+	terminalLogsBeforeRecheck = func(string) {
 		_, err := g.h.db.ExecContext(context.Background(), "UPDATE live_sessions SET status = 'active' WHERE session_id = ?", idEnded1)
 		require.NoError(t, err)
 	}
@@ -270,4 +276,52 @@ func TestEndedLogOfAnAgentWokenMeanwhileIsKept(t *testing.T) {
 	assert.Len(t, out["failed"], 1, "the woken agent's log is reported, not deleted: %v", out)
 	assert.True(t, g.exists(woken), "its log is kept")
 	assert.False(t, g.exists(other))
+}
+
+// A session that falls asleep or is archived between the look and the removal keeps its log: the recheck asks for both, not only for the status.
+func TestEndedLogOfAnAgentAsleepOrArchivedMeanwhileIsKept(t *testing.T) {
+	for what, set := range map[string]string{"asleep": "is_sleeping = 1", "archived": "is_archived = 1"} {
+		t.Run(what, func(t *testing.T) {
+			g := newLogsRig(t)
+			g.session(idEnded1, "claude", true, false, false)
+			g.session(idEnded2, "codex", true, false, false)
+			changed := g.log("claude", idEnded1, 100)
+			other := g.log("codex", idEnded2, 250)
+			terminalLogsBeforeRecheck = func(string) {
+				_, err := g.h.db.ExecContext(context.Background(), "UPDATE live_sessions SET "+set+" WHERE session_id = ?", idEnded1)
+				require.NoError(t, err)
+			}
+			t.Cleanup(func() { terminalLogsBeforeRecheck = nil })
+			code, out := g.call("POST", "/api/system/terminal-logs/delete-ended", map[string]string{testDashboardHeader: "1"}, map[string]any{"count": 2, "bytes": 350})
+			require.Equal(t, http.StatusOK, code, out)
+			assert.EqualValues(t, 1, out["deleted"])
+			assert.True(t, g.exists(changed), "its log is kept")
+			assert.False(t, g.exists(other))
+		})
+	}
+}
+
+// Each log is checked just before its own removal, not once for the batch: an agent woken while the first logs are being removed keeps its log.
+func TestEndedLogWokenAfterTheFirstRemovalIsKept(t *testing.T) {
+	g := newLogsRig(t)
+	g.session(idEnded1, "claude", true, false, false)
+	g.session(idEnded2, "codex", true, false, false)
+	first := g.log("claude", idEnded1, 100)
+	second := g.log("codex", idEnded2, 250)
+	var calls []string
+	terminalLogsBeforeRecheck = func(name string) {
+		calls = append(calls, name)
+		if len(calls) == 2 { // the first log is already gone; the second agent wakes now
+			_, err := g.h.db.ExecContext(context.Background(), "UPDATE live_sessions SET status = 'active' WHERE agent_type = 'codex'")
+			require.NoError(t, err)
+		}
+	}
+	t.Cleanup(func() { terminalLogsBeforeRecheck = nil })
+	code, out := g.call("POST", "/api/system/terminal-logs/delete-ended", map[string]string{testDashboardHeader: "1"}, map[string]any{"count": 2, "bytes": 350})
+	require.Equal(t, http.StatusOK, code, out)
+	require.Len(t, calls, 2, "one recheck per log")
+	assert.EqualValues(t, 1, out["deleted"])
+	assert.Len(t, out["failed"], 1)
+	assert.False(t, g.exists(first))
+	assert.True(t, g.exists(second), "the log of the agent woken after the first removal is kept")
 }
