@@ -680,6 +680,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	if err != nil {
 		return
 	}
+	w = guardEventStream(s, resp.Header, w)
 	buf := make([]byte, maxChunk)
 	for {
 		n, rerr := respBody.Read(buf)
@@ -805,6 +806,7 @@ func (l *LocalHandler) serveRedacted(s *Stream, resp *http.Response, body io.Rea
 	if err != nil {
 		return
 	}
+	w = guardEventStream(s, resp.Header, w)
 	red := l.redactor().NewStream(w)
 	buf := make([]byte, maxChunk)
 	for {
@@ -1175,6 +1177,34 @@ func writeTimed(ctx context.Context, dst wsEnd, typ websocket.MessageType, data 
 	ctx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
 	defer cancel()
 	return dst.Write(ctx, typ, data)
+}
+
+// eventStreamWriteTimeout bounds one write of an event stream's reply to the hub (#4172). Other
+// replies are ended by the BodyIdle timer when the hub stops taking them, but an event stream is
+// silent between events by design and has no such timer, so a hub viewer that stopped reading
+// would hold the write, the local connection, the handler and the stream slot until the tunnel
+// ended. The time is spent blocked in a write only: silence between events is never counted.
+var eventStreamWriteTimeout = 15 * time.Second
+
+// guardEventStream wraps w, for an event stream only, so that a write blocked longer than
+// eventStreamWriteTimeout ends the stream (as abort does for other replies): the write returns an
+// error and the caller's deferred cleanup frees the slot.
+func guardEventStream(s *Stream, header http.Header, w io.WriteCloser) io.WriteCloser {
+	if !eventStream(header.Get("Content-Type")) {
+		return w
+	}
+	return guardedWriter{w, s.abort}
+}
+
+type guardedWriter struct {
+	io.WriteCloser
+	abort func()
+}
+
+func (g guardedWriter) Write(p []byte) (int, error) {
+	stop := time.AfterFunc(eventStreamWriteTimeout, g.abort)
+	defer stop.Stop()
+	return g.WriteCloser.Write(p)
 }
 
 // bodyAllowed: whether a response to method with status carries the body its
