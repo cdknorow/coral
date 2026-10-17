@@ -2,6 +2,26 @@ name: Encryption package verification
 
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build: all, or any of linux windows macos (space-separated)"
+        default: all
+  # A push to main runs it for the files an encrypted build depends on (the team lands on main,
+  # so pull requests alone left main uncovered), and warms the macOS OpenSSL cache.
+  push:
+    branches: [main]
+    paths:
+      - "coral-go/go.mod"
+      - "coral-go/go.sum"
+      - "coral-go/cmd/**"
+      - "coral-go/internal/dbcrypt/**"
+      - "coral-go/internal/store/**"
+      - "coral-go/internal/board/**"
+      - "coral-go/internal/startup/**"
+      - "tests/release/**"
+      - "licenses/**"
+      - "THIRD_PARTY_NOTICES_SQLCIPHER.md"
+      - ".github/workflows/encryption-verify.yml"
   pull_request:
     paths:
       - "coral-go/**"
@@ -17,7 +37,58 @@ permissions:
 # artifact. It records the exact native library selected by each ephemeral
 # runner before running the extracted-package verifier.
 jobs:
+  # Which platforms run (#4126): a dispatch names them; a push or pull request whose changed files
+  # are all one platform's (_windows.go and .ps1 files, _darwin.go, _linux.go) runs that platform
+  # only; anything else, or a change list that can't be read, runs all three.
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      platforms: ${{ steps.plan.outputs.platforms }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          INPUT: ${{ inputs.platforms }}
+          REPO: ${{ github.repository }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          all=" linux windows macos "
+          plan=""
+          if [ "$EVENT" = workflow_dispatch ]; then
+            if [ -z "$INPUT" ] || [ "$INPUT" = all ]; then plan="$all"; else
+              for p in $INPUT; do
+                case "$p" in linux|windows|macos) plan="$plan $p" ;; *) echo "::error::unknown platform: $p"; exit 1 ;; esac
+              done
+              plan="$plan "
+            fi
+          else
+            if [ "$EVENT" = pull_request ]; then base="$PR_BASE"; head="$PR_HEAD"; else base="$BEFORE"; head="$SHA"; fi
+            files=""
+            if [ -n "$base" ] && [ "$base" != 0000000000000000000000000000000000000000 ]; then
+              files="$(gh api "repos/$REPO/compare/$base...$head" --jq 'if (.files | length) < 300 then .files[].filename else "TOO-MANY" end' || echo UNREADABLE)"
+            fi
+            if [ -z "$files" ]; then files=UNREADABLE; fi
+            while IFS= read -r f; do
+              case "$f" in
+                *_windows.go|*_windows_test.go|*.ps1|tools/coral.wxs) plan="$plan windows" ;;
+                *_darwin.go|*_darwin_test.go) plan="$plan macos" ;;
+                *_linux.go|*_linux_test.go) plan="$plan linux" ;;
+                *) plan="$all"; break ;;
+              esac
+            done <<< "$files"
+            plan="$plan "
+          fi
+          echo "platforms:$plan"
+          echo "platforms=$plan" >> "$GITHUB_OUTPUT"
+
   linux:
+    needs: [plan]
+    if: contains(needs.plan.outputs.platforms, ' linux ')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -52,6 +123,8 @@ jobs:
           ../tests/release/verify_encrypted_bundle.sh ../dist/encryption-linux
 
   windows:
+    needs: [plan]
+    if: contains(needs.plan.outputs.platforms, ' windows ')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -133,6 +206,8 @@ jobs:
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\encryption-windows
 
   macos-arm64:
+    needs: [plan]
+    if: contains(needs.plan.outputs.platforms, ' macos ')
     runs-on: macos-14
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -177,6 +252,8 @@ jobs:
           path: dist/encryption-macos-arm64
 
   macos-amd64:
+    needs: [plan]
+    if: contains(needs.plan.outputs.platforms, ' macos ')
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
