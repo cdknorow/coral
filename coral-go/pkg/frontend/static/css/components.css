@@ -170,6 +170,17 @@
     padding-left: 20px !important;
     max-width: 840px;
     margin: 0 auto;
+    /* The auto margins centre it on a wide screen, but they also stop it stretching: it took the width of its widest
+       unbreakable content, which at 200% text on a phone (the nowrap "Load earlier" button) was wider than the screen,
+       and every row was laid out in that box and clipped (#4505, WCAG 1.4.10). Never wider than its column. */
+    width: 100%;
+    min-width: 0;
+}
+
+/* "Load earlier" wraps instead of running off the feed at large text (#4505). */
+.mb-load-earlier .btn {
+    white-space: normal;
+    max-width: 100%;
 }
 
 /* Message board — avatar rows (#3590, the operator's choice): the sender's initials in their
