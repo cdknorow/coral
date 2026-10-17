@@ -90,6 +90,54 @@ func validateRemoteURL(raw string, allowPrivate bool) (string, error) {
 	return norm, nil
 }
 
+// validateNewRemoteURL is validateRemoteURL for a URL being registered or changed (#4297): a server
+// that is not registered as private must be https, since its API key crosses a network Coral
+// can't vouch for. A private server may use http (a LAN box, a port forward); remoteURLWarning says
+// when that is a risk. An already registered http row is not re-checked here, so it keeps working.
+func validateNewRemoteURL(raw string, allowPrivate bool) (string, error) {
+	norm, err := validateRemoteURL(raw, allowPrivate)
+	if err != nil {
+		return "", err
+	}
+	if !allowPrivate && strings.HasPrefix(norm, "http://") {
+		return "", errors.New("URL must be https: the API key would cross the network unencrypted (a server on a private network or this computer can be registered with allow_private)")
+	}
+	return norm, nil
+}
+
+// remoteHTTPWarning is the warning for a server reached over plain http at an address that is
+// not this computer: its API key crosses the network unencrypted.
+const remoteHTTPWarning = "the key crosses the network unencrypted; use https or a tunnel"
+
+// remoteURLWarning is remoteHTTPWarning for such a URL, and "" for https and for a loopback host.
+func remoteURLWarning(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" {
+		return ""
+	}
+	host := u.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ""
+	}
+	return remoteHTTPWarning
+}
+
+// remoteServerView is a registered server as the API shows it, with the warning for its URL.
+type remoteServerView struct {
+	store.RemoteServer
+	Warning string `json:"warning,omitempty"`
+}
+
+func viewRemote(s *store.RemoteServer) remoteServerView {
+	if s == nil {
+		return remoteServerView{}
+	}
+	return remoteServerView{RemoteServer: *s, Warning: remoteURLWarning(s.URL)}
+}
+
 // CheckRemoteHealth calls GET {baseURL}/api/health with the key. Unless
 // allowPrivate, the hostname is resolved, validated and then dialled by IP so
 // DNS rebinding between check and connect cannot reach a private address.
@@ -202,8 +250,8 @@ func (h *RemoteServersHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]any, 0, len(servers)+1)
 	out = append(out, localServerEntry())
-	for _, s := range servers {
-		out = append(out, s)
+	for i := range servers {
+		out = append(out, viewRemote(&servers[i]))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -227,7 +275,7 @@ func (h *RemoteServersHandler) Add(w http.ResponseWriter, r *http.Request) {
 		label = strings.TrimSpace(*req.Label)
 	}
 	allowPrivate := req.AllowPrivate != nil && *req.AllowPrivate
-	norm, err := validateRemoteURL(*req.URL, allowPrivate)
+	norm, err := validateNewRemoteURL(*req.URL, allowPrivate)
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
@@ -248,7 +296,7 @@ func (h *RemoteServersHandler) Add(w http.ResponseWriter, r *http.Request) {
 	}
 	h.store.SetStatus(r.Context(), srv.ID, store.RemoteStatusOnline, "")
 	srv, _ = h.store.Get(r.Context(), srv.ID)
-	writeJSON(w, http.StatusCreated, srv)
+	writeJSON(w, http.StatusCreated, viewRemote(srv))
 }
 
 // Update handles PATCH /api/servers/{id}.
@@ -287,7 +335,13 @@ func (h *RemoteServersHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.URL != nil {
 		newURL = *req.URL
 	}
-	norm, err := validateRemoteURL(newURL, allowPrivate)
+	// A new URL, or private switched off, is held to the https rule; a label or key edit of an
+	// existing http row is not, so it keeps working (its warning shows in the list).
+	validate := validateRemoteURL
+	if req.URL != nil || (req.AllowPrivate != nil && !*req.AllowPrivate && cur.AllowPrivate) {
+		validate = validateNewRemoteURL
+	}
+	norm, err := validate(newURL, allowPrivate)
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
@@ -320,7 +374,7 @@ func (h *RemoteServersHandler) Update(w http.ResponseWriter, r *http.Request) {
 		h.tellStatus(id, store.RemoteStatusOnline)
 		srv, _ = h.store.Get(r.Context(), id)
 	}
-	writeJSON(w, http.StatusOK, srv)
+	writeJSON(w, http.StatusOK, viewRemote(srv))
 }
 
 // Delete handles DELETE /api/servers/{id}.
@@ -360,7 +414,7 @@ func (h *RemoteServersHandler) Test(w http.ResponseWriter, r *http.Request) {
 	h.store.SetStatus(r.Context(), id, health.Status, health.Err)
 	h.tellStatus(id, health.Status)
 	srv, _ := h.store.Get(r.Context(), id)
-	writeJSON(w, http.StatusOK, srv)
+	writeJSON(w, http.StatusOK, viewRemote(srv))
 }
 
 // SetStatusListener sets who hears the status an edit or a Test found (the hub's remote workers).
