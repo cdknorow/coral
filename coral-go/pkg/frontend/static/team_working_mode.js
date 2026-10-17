@@ -1,6 +1,6 @@
 import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
-import { splitKey, keyLabel, serverUrl } from './server_base.js';
+import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 import { boardRenameControl } from './board_rename.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
@@ -213,12 +213,18 @@ export async function showTeamWorkingMode(team, options = {}) {
         presetInstructions.value = preset.overridden
             ? (preset.instructions ?? '')
             : (preset.instructions ?? preset.default_instructions ?? '');
-        presetName.readOnly = Boolean(preset.builtin);
-        presetReset.hidden = !preset.builtin || !preset.overridden;
+        // Through Coral Hub a preset can be created but not changed or reset (the Hub refuses the PUT and the reset, #4274): those
+        // buttons are not drawn, and an existing preset reads as read-only with the reason in its status line.
+        const hubLocked = isCloud() && !preset.isNew;
+        presetName.readOnly = Boolean(preset.builtin) || hubLocked;
+        presetInstructions.readOnly = hubLocked;
+        presetSave.hidden = hubLocked;
+        presetReset.hidden = !preset.builtin || !preset.overridden || isCloud();
         presetSave.textContent = preset.builtin ? 'Save built-in override' : 'Save preset';
         presetState.textContent = preset.builtin
             ? (preset.overridden ? 'This built-in preset has a team-local override.' : 'This is the shipped built-in preset.')
             : 'This is a team-local custom preset.';
+        if (hubLocked) presetState.textContent += ' Through Coral Hub a preset can be added but not changed: edit it in Coral on that computer.';
     }
     function renderPresets() {
         presetSelect.innerHTML = presets.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(presetLabel(p))}</option>`).join('');
@@ -273,7 +279,7 @@ export async function showTeamWorkingMode(team, options = {}) {
     presetName.addEventListener('keydown', event => {
         if (event.key !== 'Enter' || event.isComposing) return;
         event.preventDefault();
-        presetSave.click();
+        if (!presetSave.hidden) presetSave.click();
     });
     presetReset.onclick = async () => {
         const preset = selectedPreset();
