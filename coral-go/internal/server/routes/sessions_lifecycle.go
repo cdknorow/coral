@@ -437,35 +437,43 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 
 	role := naming.SubscriberID(storedDisplayName, agentType)
 
-	userSettings, serr := h.launchSettings(ctx)
-	if serr != nil { // never start the restarted agent on the CLI found on PATH (#4350)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
-		return
-	}
+	// A plain terminal has no agent to start: its restart is a fresh shell in the same folder, as a launch
+	// of one is (isTerminal there). Before, the restart typed a launch command for the Claude implementation
+	// that stands in for the type into the shell, which ran the claude on PATH, whatever cli_path_claude
+	// said (found by the CDP gate's PATH-CLI check on a restarted terminal pane).
+	var cmd string
+	if agentType != at.Terminal {
+		userSettings, serr := h.launchSettings(ctx)
+		if serr != nil { // never start the restarted agent on the CLI found on PATH (#4350)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
+			return
+		}
 
-	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
-		SessionID:       newSessionID,
-		SessionName:     newSessionName,
-		ProtocolPath:    h.protocolPath(),
-		Flags:           allFlags,
-		WorkingDir:      workdir,
-		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
-		BoardName:       storedBoard,
-		BoardLabel:      h.boardLabel(storedBoard),
-		Role:            role,
-		Prompt:          storedPrompt,
-		PromptOverrides: promptOverrides(userSettings),
-		BoardType:       storedBoardType,
-		Capabilities:    storedCaps,
-		Tools:           storedTools,
-		PermissionMode:  userSettings["default_permission_mode"],
-		CoralDir:        h.cfg.CoralDir(),
-		CoralHost:       h.cfg.AgentHost(),
-		CoralPort:       h.cfg.Port,
-	})
-	if err != nil {
-		errInternalServer(w, fmt.Sprintf("launch command failed: %v", err))
-		return
+		var err error
+		cmd, err = launchCommand(agentImpl, agent.LaunchParams{
+			SessionID:       newSessionID,
+			SessionName:     newSessionName,
+			ProtocolPath:    h.protocolPath(),
+			Flags:           allFlags,
+			WorkingDir:      workdir,
+			CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
+			BoardName:       storedBoard,
+			BoardLabel:      h.boardLabel(storedBoard),
+			Role:            role,
+			Prompt:          storedPrompt,
+			PromptOverrides: promptOverrides(userSettings),
+			BoardType:       storedBoardType,
+			Capabilities:    storedCaps,
+			Tools:           storedTools,
+			PermissionMode:  userSettings["default_permission_mode"],
+			CoralDir:        h.cfg.CoralDir(),
+			CoralHost:       h.cfg.AgentHost(),
+			CoralPort:       h.cfg.Port,
+		})
+		if err != nil {
+			errInternalServer(w, fmt.Sprintf("launch command failed: %v", err))
+			return
+		}
 	}
 
 	// Now the terminal: a fresh one, or the old pane respawned and renamed.
@@ -525,24 +533,26 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
 	}
 
-	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
-	if usePTY {
-		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
-			log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", newSessionName)
-		}
-		// Route through the terminal abstraction so oversized commands use the
-		// protected script handoff instead of hitting the shell's canonical
-		// input limit while a fresh PTY is initializing.
-		if err := sendLaunchCommand(ctx, h.terminal, newSessionName, cmd); err != nil {
-			h.putSubscriptionBack(ctx, restartSubscription)
-			errInternalServer(w, fmt.Sprintf("pty launch command failed: %v", err))
-			return
-		}
-	} else {
-		if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
-			h.putSubscriptionBack(ctx, restartSubscription)
-			errInternalServer(w, fmt.Sprintf("launch command failed: %v", err))
-			return
+	if cmd != "" {
+		log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
+		if usePTY {
+			if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
+				log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", newSessionName)
+			}
+			// Route through the terminal abstraction so oversized commands use the
+			// protected script handoff instead of hitting the shell's canonical
+			// input limit while a fresh PTY is initializing.
+			if err := sendLaunchCommand(ctx, h.terminal, newSessionName, cmd); err != nil {
+				h.putSubscriptionBack(ctx, restartSubscription)
+				errInternalServer(w, fmt.Sprintf("pty launch command failed: %v", err))
+				return
+			}
+		} else {
+			if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
+				h.putSubscriptionBack(ctx, restartSubscription)
+				errInternalServer(w, fmt.Sprintf("launch command failed: %v", err))
+				return
+			}
 		}
 	}
 
