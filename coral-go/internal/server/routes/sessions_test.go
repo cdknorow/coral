@@ -84,9 +84,10 @@ type mockSessionTerminal struct {
 	raw              map[string][]string // keys sent with SendRawInput
 	killSessionCalls []string
 	sendErr          error
-	gone             bool              // the agent's own terminal is gone: writes fail with ErrTerminalGone (#3211)
-	onCapture        func(name string) // called (unlocked) after each capture, e.g. to change the screen
-	onRaw            func(name string) // called (unlocked) after each SendRawInput, e.g. the agent's next prompt
+	gone             bool                // the agent's own terminal is gone: writes fail with ErrTerminalGone (#3211)
+	onCapture        func(name string)   // called (unlocked) after each capture, e.g. to change the screen
+	onRaw            func(name string)   // called (unlocked) after each SendRawInput, e.g. the agent's next prompt
+	onSend           func(target string) // called (unlocked) before each SendToTarget is recorded, e.g. to look at the board then
 }
 
 func newMockTerminal() *mockSessionTerminal {
@@ -185,6 +186,12 @@ func (m *mockSessionTerminal) SendRawInput(_ context.Context, name string, keys 
 }
 
 func (m *mockSessionTerminal) SendToTarget(_ context.Context, target, command string) error {
+	m.mu.Lock()
+	hook := m.onSend
+	m.mu.Unlock()
+	if hook != nil {
+		hook(target)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.sendErr != nil {

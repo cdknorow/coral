@@ -491,6 +491,20 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		h.terminal.SetPaneTitle(ctx, target, fmt.Sprintf("%s — %s", folderName, agentType))
 	}
 
+	// The new session holds the board subscription before its process starts: its first request
+	// (a hook, a board call) carries the new token, and with no subscription under the new name it
+	// is refused as an agent that is not on the board (identity_mismatch). The identity harness
+	// saw a restarted agent's first post refused 39 ms after its launch command.
+	if restartSubscription != nil {
+		sub := restartSubscription
+		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
+			sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
+	}
+
 	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
 	if usePTY {
 		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
@@ -572,16 +586,8 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Re-subscribe to board if needed
-	if restartSubscription != nil {
-		sub := restartSubscription
-		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
-			sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
-	} else if storedBoard != "" {
+	// Re-subscribed above, before the launch; a restart with no subscription joins its board now.
+	if restartSubscription == nil && storedBoard != "" {
 		h.setupBoardAndPrompt(newSessionID, newSessionName, agentType, storedBoard, storedDisplayName)
 	}
 
@@ -753,6 +759,20 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
 		h.terminal.StartLogging(ctx, target, newLogPath)
 	}
+	// The agent's board subscription (job title, receive mode, peek), carried to the new session
+	// as restart does (#3216), before the process starts (see Restart: its first request carries
+	// the new token and needs the new name on the board).
+	var resumeSubscription *board.Subscriber
+	if h.bs != nil && body.CurrentSessionID != "" {
+		resumeSubscription, _ = h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(storedAgentType, body.CurrentSessionID))
+	}
+	if sub := resumeSubscription; sub != nil {
+		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
+			sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
+			log.Printf("[resume] re-subscribe %s to board %s: %v", newSessionName, sub.Project, err)
+		}
+		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
+	}
 	if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -764,13 +784,6 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		if pid, err := tmuxTerm.Client().GetPanePID(ctx, newSessionName); err == nil {
 			resumePID = pid
 		}
-	}
-
-	// The agent's board subscription (job title, receive mode, peek), carried to
-	// the new session as restart does (#3216).
-	var resumeSubscription *board.Subscriber
-	if h.bs != nil && body.CurrentSessionID != "" {
-		resumeSubscription, _ = h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(storedAgentType, body.CurrentSessionID))
 	}
 
 	h.chatMeta.forget(body.CurrentSessionID, newSessionID)
@@ -801,14 +814,9 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		h.boardHandler.SetPaused(storedBoard, false)
 	}
 
-	// Re-subscribe to board — subscriber_id (role) is stable, so the cursor persists automatically.
-	if sub := resumeSubscription; sub != nil {
-		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
-			sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
-			log.Printf("[resume] re-subscribe %s to board %s: %v", newSessionName, sub.Project, err)
-		}
-		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
-	} else if storedBoard != "" {
+	// Re-subscribed above, before the launch (subscriber_id, the role, is stable, so the cursor
+	// persists); a resume with no subscription joins its board now.
+	if resumeSubscription == nil && storedBoard != "" {
 		h.setupBoardAndPrompt(newSessionID, newSessionName, agentType, storedBoard, storedDisplayName)
 	}
 
