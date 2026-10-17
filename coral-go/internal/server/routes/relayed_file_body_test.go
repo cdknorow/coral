@@ -2,9 +2,11 @@ package routes
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -12,7 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // A file another Coral sends is a binary frame of up to 8 MiB: the board's 4 MiB cap on a request body (the
@@ -70,4 +74,80 @@ func TestRelayedFileRouteIsNotCappedAsABoardRequest(t *testing.T) {
 	h := o.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	h.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+}
+
+// The real handler behind the real guards (#4453, the Orchestrator's conditions): a file just over 4 MiB and
+// one of the full 8 MiB are stored and answered 200; a declared length over the frame limit is 413 (the
+// server-wide cap, before a byte is read); and the guards that were relaxed for the size still leave the hub
+// stamp, the authenticity secret and the Hub-user refusal to the handler, at full size too.
+func TestRelayedFileThroughTheRealGuards(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	o := NewIdentityObserver(db, e.h.bs, func(*http.Request) bool { return false })
+	r := chi.NewRouter()
+	r.Use(BodyLimit, CanonicalIdentityKeys, o.Middleware)
+	r.Post("/api/board/{project}/external-artifacts", e.h.PostExternalArtifact)
+
+	send := func(body []byte, src, via, hubUser string) (int, map[string]any) {
+		req := httptest.NewRequest("POST", "/api/board/beta/external-artifacts", bytes.NewReader(body))
+		if src != "" {
+			req.Header.Set(tunnel.HubServerHeader, src)
+		}
+		switch via {
+		case "auth":
+			req.Header.Set(tunnel.ViaHeader, cloud.ViaSecret())
+		case "forged":
+			req.Header.Set(tunnel.ViaHeader, "1")
+		}
+		if hubUser != "" {
+			req.Header.Set(tunnel.HubUserHeader, hubUser)
+		}
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	file := func(n int, tag string) []byte { // n bytes of text, unlike any other file
+		return bytes.Repeat([]byte(tag+" line of a large text file\n"), n/(len(tag)+27)+1)[:n]
+	}
+
+	over4 := file(4<<20+4096, "over4")
+	full := file(maxReceivedArtifact, "full")
+	for name, data := range map[string][]byte{"over 4 MiB": over4, "the full 8 MiB": full} {
+		status, out := send(frame(meta(data, name+".txt"), data), relaySrc, "auth", "")
+		require.Equal(t, 200, status, "%s: %v", name, out)
+		got, err := os.ReadFile(filepath.Join(e.dir, "artifacts", "objects", out["artifact_id"].(string)))
+		require.NoError(t, err)
+		assert.Equal(t, data, got, "%s: stored byte for byte", name)
+	}
+
+	// Over the frame limit: refused by its declared length, before a byte is read, and nothing is stored.
+	stored := len(e.stored())
+	status, out := send(bytes.Repeat([]byte("x"), 4+maxReceivedMeta+maxReceivedArtifact+1), relaySrc, "auth", "")
+	assert.Equal(t, http.StatusRequestEntityTooLarge, status, out)
+	assert.Equal(t, "body_too_large", out["code"])
+	assert.Len(t, e.stored(), stored)
+	// A file one byte over its own cap is the handler's refusal (the frame is within the limit).
+	tooBig := file(maxReceivedArtifact+1, "toobig")
+	status, out = send(frame(meta(tooBig, "big.txt"), tooBig), relaySrc, "auth", "")
+	assert.Equal(t, http.StatusBadRequest, status, out)
+	assert.Len(t, e.stored(), stored)
+
+	// The relaxed guards leave the stamp checks to the handler, at the full size too.
+	fullFrame := frame(meta(full, "again.txt"), full)
+	status, out = send(fullFrame, "", "", "")
+	assert.Equal(t, http.StatusForbidden, status, "no stamp: %v", out)
+	assert.Equal(t, "hub_server_untrusted", out["error"])
+	status, out = send(fullFrame, relaySrc, "", "")
+	assert.Equal(t, http.StatusForbidden, status, "a stamp without the connector's secret: %v", out)
+	status, out = send(fullFrame, relaySrc, "forged", "")
+	assert.Equal(t, http.StatusUnauthorized, status, "a forged secret is refused by the identity guard: %v", out)
+	status, out = send(fullFrame, relaySrc, "auth", "hub-user-1234abcd")
+	assert.Equal(t, http.StatusBadRequest, status, "a Hub user and a server: %v", out)
+	assert.Equal(t, "ambiguous_origin", out["error"])
+	assert.Len(t, e.stored(), stored, "none of them stored anything")
 }
