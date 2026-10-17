@@ -15,7 +15,7 @@ import (
 // rules as the file itself. It is a net, not a boundary: cross-team.md lists what it does not catch.
 
 const (
-	// scanMaxRuns bounds the base64 and hex runs decoded (the whole file, all levels together).
+	// scanMaxRuns bounds the base64 and hex runs that decode to text (the whole file, all levels together).
 	scanMaxRuns = 256
 	// scanMaxDecoded bounds the decoded bytes handed to the scan, so a file of nothing but encoded text
 	// cannot cost more than the budgeted scan of an ordinary file.
@@ -54,12 +54,14 @@ func scanViews(data []byte) (views [][]byte, ok bool) {
 		var next [][]byte
 		for _, text := range level {
 			for _, run := range candidateRuns(text) {
-				if runs++; runs > scanMaxRuns {
-					return nil, false
-				}
+				// A run counts only once it decodes to text: paths, URLs and long identifiers match the
+				// candidate pattern and decode to nothing, and a log full of them is not a refusal.
 				d := decodeRun(run)
 				if len(d) == 0 || !mostlyText(d) {
 					continue
+				}
+				if runs++; runs > scanMaxRuns {
+					return nil, false
 				}
 				if decoded += len(d); decoded > scanMaxDecoded {
 					return nil, false

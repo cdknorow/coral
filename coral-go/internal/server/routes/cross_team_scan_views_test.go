@@ -144,3 +144,22 @@ func TestDropSplittersKeepsProse(t *testing.T) {
 	assert.Equal(t, "ghp_abcd1234", string(dropSplitters([]byte("ghp_ab `cd` 1234"))))
 	assert.Equal(t, "token = x", string(dropSplitters([]byte("token = x"))))
 }
+
+// A log with a path on every line, or long URLs and identifiers, holds many candidate runs and none that
+// decodes to text: it is not refused (Security's #4439 round 1).
+func TestScanAttachmentPathLogIsNotRefused(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 600; i++ {
+		fmt.Fprintf(&b, "2026-10-17T11:%02d:00 INFO opened /Users/someone/Software/coral/coral-go/internal/server/routes/file_%d.go in 12ms\n", i%60, i)
+		fmt.Fprintf(&b, "GET https://example.com/api/board/some-long-project-name/artifacts/%d?x=longIdentifierWithoutAnySpacesAtAll%d\n", i, i)
+	}
+	assert.Nil(t, scanAttachment(attachedArtifact{ID: "ab"}, []byte(b.String())))
+	views, ok := scanViews([]byte(b.String()))
+	assert.True(t, ok)
+	_ = views
+
+	// And a secret in such a log is still found.
+	r := scanAttachment(attachedArtifact{ID: "ab"}, []byte(b.String()+"token="+base64.StdEncoding.EncodeToString([]byte("ghp_1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R"))+"\n"))
+	require.NotNil(t, r)
+	assert.Equal(t, "attach_secret", r.code)
+}
