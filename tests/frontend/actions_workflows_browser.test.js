@@ -17,6 +17,9 @@ const RUNS = { runs: [{ id: 31, workflow_id: 7, status: 'failed', trigger_type: 
 const RUN = { id: 31, workflow_id: 7, workflow_name: 'Nightly', status: 'running', trigger_type: 'manual', started_at: '2026-10-15T10:00:00Z',
     steps: [{ index: 0, name: 's1', type: 'shell', status: 'failed', exit_code: 1, output_tail: 'boom' },
         { index: 1, name: 'agent step', type: 'agent', status: 'completed', session_id: SID, session_name: 'claude-' + SID }] };
+// A run whose agent step is running: its Kill says what happens to the agent's terminal log (#4399).
+const RUN_AGENT = { id: 32, workflow_id: 7, workflow_name: 'Nightly', status: 'running', trigger_type: 'manual', started_at: '2026-10-15T10:00:00Z',
+    steps: [{ index: 0, name: 'agent step', type: 'agent', status: 'running', session_id: SID, session_name: 'claude-' + SID }] };
 const JOB = { id: 5, name: 'Hourly "job"', cron_expr: '0 * * * *', enabled: true, workflow_id: 7, workflow_name: 'Nightly', consecutive_failures: 0,
     workflow_runs: [{ id: 31, status: 'completed', current_step: 0, started_at: '2026-10-15T10:00:00Z', finished_at: '2026-10-15T10:01:00Z' }] };
 // An agent job: its runs table links each run's session.
@@ -47,6 +50,7 @@ const JOB_RUNS = { runs: [{ id: 44, status: 'completed', scheduled_at: '2026-10-
                 if (/^\\/api\\/workflows\\/7\\/runs/.test(u)) return hit(${JSON.stringify(RUNS)});
                 if (u === '/api/workflows/7' && m === 'GET') return hit(${JSON.stringify(WF)});
                 if (u === '/api/workflows/runs/31' && m === 'GET') return hit(${JSON.stringify(RUN)});
+                if (u === '/api/workflows/runs/32' && m === 'GET') return hit(${JSON.stringify(RUN_AGENT)});
                 if (/^\\/api\\/workflows\\//.test(u) || u === '/api/workflows') return hit({ ok: true, run_id: 32 });
                 if (u === '/api/scheduled/jobs' && m === 'GET') return hit({ jobs: [${JSON.stringify(JOB)}, ${JSON.stringify(AGENT_JOB)}] });
                 if (/^\\/api\\/scheduled\\/jobs\\/[56]\\/runs/.test(u)) return hit(${JSON.stringify(JOB_RUNS)});
@@ -129,12 +133,23 @@ const JOB_RUNS = { runs: [{ id: 44, status: 'completed', scheduled_at: '2026-10-
         await click('#confirm-modal .btn:not(#confirm-modal-yes)');
         await sleep(300); // sleep-ok: shows that Cancel sends nothing (no condition to wait for)
         check('Cancel closes the dialog and kills nothing', !(await modalState()).open && !(await reqs()).some(r => r.includes('/kill')), JSON.stringify(await reqs()));
+        check('a run with no running agent step does not mention the terminal log', !killAsked.message.includes('terminal log'), killAsked.message);
         await click('#wf-run-detail-container [data-on-click="wf-kill-run"]');
         await until(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm dialog again');
         await click('#confirm-modal-yes');
         check('Yes kills the run', await sent('POST /api/workflows/runs/31/kill', 'the kill'));
         await click('[data-on-click="wf-back"]');
         check('Back returns to the list', await ev(`document.getElementById('wf-list-container').style.display !== 'none'`));
+        // A run whose agent step is running: Kill says what happens to the agent's terminal log (Security's #4371 table, #4399).
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'workflows.js'); await m.selectWorkflowRun(32, { workflowId: 7 }); return true; })()`);
+        await until(`!!document.querySelector('#wf-run-detail-container [data-on-click="wf-kill-run"]')`, 'the run with a running agent step');
+        await clear();
+        await click('#wf-run-detail-container [data-on-click="wf-kill-run"]');
+        await until(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm dialog for the agent run');
+        const agentAsked = await modalState();
+        check('Kill Run with a running agent step says what happens to its terminal log', agentAsked.title === 'Kill Run' && agentAsked.message.endsWith("On the tmux terminal backend this also deletes the agent's terminal log, which search uses. Sleep or Archive keeps it."), JSON.stringify(agentAsked));
+        await click('#confirm-modal .btn:not(#confirm-modal-yes)');
+        check('...and Cancel kills nothing', !(await reqs()).some(r => r.includes('/kill')), JSON.stringify(await reqs()));
 
         // A bad id does nothing.
         await clear();

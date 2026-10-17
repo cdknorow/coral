@@ -6,6 +6,7 @@ import { apiFetch, loadLiveSessions } from './api.js';
 import { selectLiveSession } from './sessions.js';
 import { pollEvery } from './overload.js';
 import { note, currentRoute } from './nav.js';
+import { KILL_LOG_NOTE } from './render.js';
 
 let workflows = [];
 let selectedWorkflowId = null;
@@ -526,7 +527,9 @@ export async function triggerWorkflow(id) {
 // Kill asks first: it stops the run's agents mid-step and cannot be resumed (#3696).
  function confirmKillWorkflowRun(runId) {
     const name = shownRun && Number(shownRun.id) === runId && shownRun.workflow_name ? ` of workflow "${shownRun.workflow_name}"` : '';
-    window.showConfirmModal('Kill Run', `Stop run #${runId}${name}? Its steps stop where they are and the run cannot be resumed.`, () => killWorkflowRun(runId));
+    // Kill Run stops the step that is running; an agent step goes through the same kill as Kill Session, which deletes its terminal log on the tmux backend (#4399).
+    const agentRunning = !!shownRun && Number(shownRun.id) === runId && (shownRun.steps || []).some(s => s.type === 'agent' && s.status === 'running');
+    window.showConfirmModal('Kill Run', `Stop run #${runId}${name}? Its steps stop where they are and the run cannot be resumed.${agentRunning ? ' ' + KILL_LOG_NOTE : ''}`, () => killWorkflowRun(runId));
 }
 
 export async function killWorkflowRun(runId) {
