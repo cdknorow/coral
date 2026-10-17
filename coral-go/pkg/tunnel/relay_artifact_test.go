@@ -487,3 +487,83 @@ func TestRelayMessageKindsDoNotAcceptTheArtifactPath(t *testing.T) {
 	assert.Zero(t, signinCap(RelayArtifactPath))
 	assert.False(t, validInboundHeader(relayKind, Header{Kind: KindRelay, Method: http.MethodPost, Path: RelayArtifactPath, ContentLength: 10}))
 }
+
+// A body that delivers its n bytes and then blocks (the check for a byte past n) ends at the idle deadline, not
+// never: Security proved the call used to hang past both deadlines (#4378 follow-up).
+func TestRelayArtifactBodyThatBlocksAfterNBytesEndsAtIdle(t *testing.T) {
+	old := artifactIdleFor
+	artifactIdleFor = 300 * time.Millisecond
+	t.Cleanup(func() { artifactIdleFor = old })
+	h := artifactHub(t, SessionConfig{}, func(ctx context.Context, s *Session, req RelayArtifactRequest) RelayResponse {
+		_, _ = io.Copy(io.Discard, req.Body)
+		return RelayResponse{Status: 200, Body: okBody()}
+	})
+	_, cs := connect(t, h, noopLocal(), nil)
+	pr, pw := io.Pipe()
+	go func() { pw.Write(make([]byte, 100)) /* exactly n, then blocks */ }()
+	t.Cleanup(func() { pw.Close() })
+	begin := time.Now()
+	_, err := cs.RelayArtifact(context.Background(), 100, pr)
+	require.Error(t, err)
+	assert.Less(t, time.Since(begin), 4*time.Second, "ended by the idle deadline")
+}
+
+// A hub that refuses before reading the body (here: over the tunnel's one-at-a-time budget) is heard: the write of
+// the big body fails when the hub closes, and the connector reads the answer that is already there.
+func TestRelayArtifactEarlyRefusalReachesTheSender(t *testing.T) {
+	release := make(chan struct{})
+	var started atomic.Int32
+	h := artifactHub(t, SessionConfig{}, func(ctx context.Context, s *Session, req RelayArtifactRequest) RelayResponse {
+		if started.Add(1) == 1 {
+			<-release
+		}
+		_, _ = io.Copy(io.Discard, req.Body)
+		return RelayResponse{Status: 200, Body: okBody()}
+	})
+	_, cs := connect(t, h, noopLocal(), nil)
+	held := make(chan struct{})
+	go func() {
+		defer close(held)
+		cs.RelayArtifact(context.Background(), 4, bytes.NewReader([]byte("abcd")))
+	}()
+	require.Eventually(t, func() bool { return started.Load() == 1 }, 3*time.Second, 5*time.Millisecond)
+	resp, err := cs.RelayArtifact(context.Background(), 6<<20, newPattern(6<<20)) // far more than the stream window
+	require.NoError(t, err, "the hub's refusal is returned, not a stream error")
+	assert.Equal(t, http.StatusTooManyRequests, resp.Status)
+	assert.Equal(t, 1, resp.RetryAfter)
+	close(release)
+	<-held
+}
+
+// After the last byte the hub may be waiting on its target for longer than the idle time: the idle deadline is
+// about the body's bytes, and the answer still arrives (the total bounds the wait), on both sides.
+func TestRelayArtifactSlowAnswerAfterTheBodyIsNotIdle(t *testing.T) {
+	old := artifactIdleFor
+	artifactIdleFor = 200 * time.Millisecond
+	t.Cleanup(func() { artifactIdleFor = old })
+	h := artifactHub(t, SessionConfig{}, func(ctx context.Context, s *Session, req RelayArtifactRequest) RelayResponse {
+		_, _ = io.Copy(io.Discard, req.Body)
+		select {
+		case <-time.After(1 * time.Second): // 5 times the idle time: the target is slow
+		case <-ctx.Done():
+			return RelayResponse{Status: http.StatusGatewayTimeout, Body: okBody()}
+		}
+		return RelayResponse{Status: http.StatusOK, Body: okBody()}
+	})
+	_, cs := connect(t, h, noopLocal(), nil)
+	resp, err := cs.RelayArtifact(context.Background(), 1000, bytes.NewReader(make([]byte, 1000)))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.Status, "the hub's late answer, not a cut")
+}
+
+// A close with no answer after the connector began sending is its own error, not "unsupported" (the capability was advertised).
+func TestRelayArtifactClosedIsNotUnsupported(t *testing.T) {
+	h := artifactHub(t, SessionConfig{}, func(ctx context.Context, s *Session, req RelayArtifactRequest) RelayResponse {
+		return RelayResponse{Status: 200, Body: okBody()}
+	})
+	_, cs := connect(t, h, noopLocal(), nil)
+	err := cs.inboundErr(context.Background(), io.EOF, ErrRelayArtifactClosed)
+	assert.ErrorIs(t, err, ErrRelayArtifactClosed)
+	assert.NotErrorIs(t, err, ErrRelayArtifactUnsupported)
+	assert.NotEqual(t, ErrRelayArtifactClosed.Error(), ErrRelayArtifactUnsupported.Error())
+}
