@@ -164,6 +164,16 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 
+	// MOCK_AGENT_IDLE=1: an agent that finished its turn and waits (#4154, the idle-server profile):
+	// one turn (so a transcript, when written, ends like Claude's), then nothing until a line is
+	// typed in or it is stopped: no reads, posts or output.
+	if os.Getenv("MOCK_AGENT_IDLE") == "1" {
+		turn("ready")
+		<-sig
+		fmt.Fprintf(os.Stderr, "[mock-agent] shutting down session=%s\n", short(sessionID))
+		return
+	}
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 

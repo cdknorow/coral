@@ -10,7 +10,8 @@
 #
 # Env: PERF_RUN=1 (required), REPO (default: this checkout), GO, CHROME, PORT (8491), HUBPORT (8492),
 # PPROF (8493), MINUTES (15), WARMUP (300 s), PROFILE (120 s), AGENTS (20), OUT (results folder),
-# MOCK_TRANSCRIPT (1: the mock agents write transcripts; needs a mock-agent with --mock-transcript).
+# MOCK_TRANSCRIPT (1: the mock agents write transcripts; needs a mock-agent with --mock-transcript),
+# IDLE (1: the mock agents do nothing after one turn), TEAMS (3).
 set -u
 set -o pipefail
 if [[ "${PERF_RUN:-}" != "1" ]]; then echo "[perf] opt-in: set PERF_RUN=1" >&2; exit 2; fi
@@ -74,6 +75,8 @@ start_server() { # $1 data dir, $2 port, $3 log, rest: extra flags
 log "starting the busy server on $PORT (pprof on $PPROF)"
 # MOCK_TRANSCRIPT=1: the mock agents write Claude Code transcripts, as real agents do after their first turn.
 MOCK_ENV=(); [[ "${MOCK_TRANSCRIPT:-0}" == 1 ]] && MOCK_ENV=(MOCK_AGENT_TRANSCRIPT=1)
+# IDLE=1: the mock agents finish one turn and then do nothing (no posts, reads or output): an idle server.
+[[ "${IDLE:-0}" == 1 ]] && MOCK_ENV+=(MOCK_AGENT_IDLE=1)
 start_server "$WORK/d1" "$PORT" "$OUT/server.log" CORAL_PPROF_ADDR="127.0.0.1:$PPROF" GODEBUG=gctrace=1 ${MOCK_ENV[@]+"${MOCK_ENV[@]}"} # bash 3.2: an empty array is "unbound" under set -u
 SRV=${PIDS[$((${#PIDS[@]} - 1))]}
 KEY="$(cat "$WORK/d1/api_key")"
@@ -81,8 +84,10 @@ api(){ local m="$1" p="$2"; shift 2; curl -s -m 20 -X "$m" "http://127.0.0.1:$PO
 api PUT /api/settings -d "{\"cli_path_claude\": \"$WORK/bin/mock-agent\"}" >/dev/null
 
 log "launching $AGENTS mock agents in 3 teams"
-per=$(( (AGENTS + 2) / 3 )); n=0
-for team in alpha beta gamma; do
+# TEAMS (default 3): how many teams the agents are split into; the first is "alpha".
+TEAMS="${TEAMS:-3}"; per=$(( (AGENTS + TEAMS - 1) / TEAMS )); n=0
+team_names=(alpha); for i in $(seq 2 "$TEAMS"); do team_names+=("team$i"); done
+for team in "${team_names[@]}"; do
   agents=""
   for i in $(seq "$per"); do
     [[ $n -ge $AGENTS ]] && break
