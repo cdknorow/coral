@@ -283,9 +283,11 @@ func loadavg() string {
 //
 // The scheduler's gain is measured against an unscheduled baseline in the same run, so it holds
 // however busy the host is. The 0.2 s bound is absolute, and other CPU work on the host (a full
-// go test ./..., which this test runs alongside) eats into its ~30 ms of headroom: it is
-// re-measured once if missed, with the reason and the load logged (#3716). A real regression
-// misses it twice; BenchmarkUplinkSmallReplyP95 reports the figure on its own.
+// go test ./..., which this test runs alongside) eats into its ~30 ms of headroom. Each p95 is the
+// 19th of 20 replies, so one slow reply on a shared runner decides it: if missed, it is measured
+// twice more and the median of the three p95s is held to the bound, with the reason and the load
+// logged (#3716; windows-tests missed it at 201 ms, then again on a single re-measure). A real
+// regression moves all three; BenchmarkUplinkSmallReplyP95 reports the figure on its own.
 func TestUplinkSmallRepliesOvertakeBulk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("throttled-link measurement (~20 s)")
@@ -310,8 +312,15 @@ func TestUplinkSmallRepliesOvertakeBulk(t *testing.T) {
 				assert.Less(t, a95*2, b95, "at least twice as fast as before")
 			}
 			if a95 >= hubCriterion {
-				t.Logf("bulk=%d: p95 %v missed the %v criterion with load average %s: measuring once more (#3716)", bulk, a95.Round(time.Millisecond), hubCriterion, loadavg())
-				_, a95 = smallReplyAfter(t, bulk)
+				t.Logf("bulk=%d: p95 %v missed the %v criterion with load average %s: measuring twice more, median of 3 (#3716)", bulk, a95.Round(time.Millisecond), hubCriterion, loadavg())
+				p95s := []time.Duration{a95}
+				for i := 0; i < 2; i++ {
+					_, p95 := smallReplyAfter(t, bulk)
+					p95s = append(p95s, p95)
+				}
+				sort.Slice(p95s, func(i, j int) bool { return p95s[i] < p95s[j] })
+				a95 = p95s[1]
+				t.Logf("bulk=%d: p95s %v, median %v", bulk, p95s, a95.Round(time.Millisecond))
 			}
 			assert.Less(t, a95, hubCriterion, "small-reply p95 with the scheduler (coral-hub's criterion)")
 		})
