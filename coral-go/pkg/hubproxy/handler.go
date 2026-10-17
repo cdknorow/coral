@@ -196,8 +196,41 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			h.writeUpstreamErr(w, req.Context(), id, err)
 		},
 	}
-	rp.ServeHTTP(w, r.WithContext(ctx))
+	rp.ServeHTTP(deadlineWriter(w), r.WithContext(ctx))
 }
+
+// respWriteTimeout bounds each write of a proxied reply to the browser (#4172). A browser that
+// stops reading (a tab in the background, a stalled link) would otherwise block the proxy's copy
+// of the reply, and with it the machine's stream and its slot, for as long as the connection
+// lasts: an event stream has no idle timer to end it. The limit applies to a write that cannot
+// make progress, never to the silence between events.
+var respWriteTimeout = 15 * time.Second
+
+// deadlineWriter is w with a write deadline of respWriteTimeout set before every write and flush,
+// through http.ResponseController (a writer without deadline support is used as it is).
+func deadlineWriter(w http.ResponseWriter) http.ResponseWriter {
+	return &deadlineResponseWriter{ResponseWriter: w, rc: http.NewResponseController(w)}
+}
+
+type deadlineResponseWriter struct {
+	http.ResponseWriter
+	rc *http.ResponseController
+}
+
+func (d *deadlineResponseWriter) arm() { _ = d.rc.SetWriteDeadline(time.Now().Add(respWriteTimeout)) }
+
+func (d *deadlineResponseWriter) Write(p []byte) (int, error) {
+	d.arm()
+	return d.ResponseWriter.Write(p)
+}
+
+func (d *deadlineResponseWriter) Flush() {
+	d.arm()
+	_ = d.rc.Flush()
+}
+
+// Unwrap lets http.ResponseController reach the connection's own methods.
+func (d *deadlineResponseWriter) Unwrap() http.ResponseWriter { return d.ResponseWriter }
 
 func (h *Handler) writeUpstreamErr(w http.ResponseWriter, ctx context.Context, id string, err error) {
 	var se *tunnel.StreamError
