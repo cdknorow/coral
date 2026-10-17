@@ -1,5 +1,15 @@
 # Release Notes
 
+## v1.4.83 — Background service restart fix
+
+### Fixes
+
+- **A background service's restart loop reads its retry delays once, when it starts,** so changing them later (as the tests do) can no longer race with a loop that is still winding down. The delays and behaviour are unchanged.
+
+### Other changes
+
+- **Tests and CI:** the sign-in page test checks the address a redirect reaches instead of which server answered it, and the browser test gate reports only the newest attempt of a re-run part.
+
 ## v1.4.82 — Stricter settings, and paced file pushes over Coral Hub
 
 ### Security and privacy
