@@ -996,6 +996,11 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		safeGo(ctx, "health_nudges", func() { healthNudges.Run(ctx) })
 	}
 
+	// Tasks' one-time reminders (task add --remind-at, #4175 step 3): asked for by a person or
+	// the orchestrator, so they go out whatever the health monitor setting says.
+	taskReminders := background.NewTaskReminders(srv.BoardStore(), agentRT, discoverFn)
+	safeGo(ctx, "task_reminders", func() { taskReminders.Run(ctx) })
+
 	// Remote board poller
 	remotePoller := background.NewRemoteBoardPoller(rbStore, agentRT, 30*time.Second)
 	remotePoller.SetDiscoverFn(discoverFn)

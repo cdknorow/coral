@@ -1495,6 +1495,7 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		BlockedBy    json.RawMessage    `json:"blocked_by,omitempty"`
 		Draft        bool               `json:"draft,omitempty"`
 		Workflow     board.TaskWorkflow `json:"workflow,omitempty"`
+		RemindAt     string             `json:"remind_at,omitempty"` // RFC 3339: a one-time reminder (#4175 step 3)
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -1503,6 +1504,15 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	if body.Title == "" {
 		errBadRequest(w, "title required")
 		return
+	}
+	var remindAt time.Time
+	if body.RemindAt != "" {
+		at, err := time.Parse(time.RFC3339, body.RemindAt)
+		if now := time.Now(); err != nil || !at.After(now) || at.After(now.AddDate(0, 0, maxParkDays)) {
+			errBadRequest(w, fmt.Sprintf("remind_at: an RFC 3339 time in the next %d days", maxParkDays))
+			return
+		}
+		remindAt = at
 	}
 	if refuseNewBoardName(w, r, h.bs, project) {
 		return
@@ -1548,6 +1558,14 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
+	}
+	if !remindAt.IsZero() {
+		if err := h.bs.SetTaskRemindAt(r.Context(), project, task.ID, remindAt); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		at := remindAt.UTC().Format(time.RFC3339)
+		task.RemindAt = &at
 	}
 
 	assignee := ""

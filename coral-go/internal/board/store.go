@@ -73,10 +73,12 @@ type Task struct {
 	CacheWriteTokens  *int     `db:"cache_write_tokens" json:"cache_write_tokens,omitempty"`
 	// ParkedReason and ParkedUntil: a parked task (#4175 step 3, park.go). Read where the health
 	// rules and the task views need them; nil elsewhere.
-	ParkedReason *string      `db:"parked_reason" json:"parked_reason,omitempty"`
-	ParkedUntil  *string      `db:"parked_until" json:"parked_until,omitempty"`
-	BlockedBy    []TaskDep    `db:"-" json:"blocked_by,omitempty"`
-	Workflow     TaskWorkflow `db:"-" json:"workflow"`
+	ParkedReason *string `db:"parked_reason" json:"parked_reason,omitempty"`
+	ParkedUntil  *string `db:"parked_until" json:"parked_until,omitempty"`
+	// RemindAt: a one-time reminder of the task at that time (task add --remind-at, remind.go).
+	RemindAt  *string      `db:"remind_at" json:"remind_at,omitempty"`
+	BlockedBy []TaskDep    `db:"-" json:"blocked_by,omitempty"`
+	Workflow  TaskWorkflow `db:"-" json:"workflow"`
 }
 
 type TaskDep struct {
@@ -458,6 +460,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_messages ADD COLUMN hub_user TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN parked_reason TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN parked_until TEXT",
+		"ALTER TABLE board_tasks ADD COLUMN remind_at TEXT",
+		"ALTER TABLE board_tasks ADD COLUMN reminded_at TEXT",
 	}
 	for _, ddl := range alterColumns {
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
@@ -1971,7 +1975,7 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 func (s *Store) getTaskByID(ctx context.Context, project string, taskID int64) (*Task, error) {
 	var t Task
 	err := s.reader().GetContext(ctx, &t,
-		"SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
+		"SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
 	if err != nil {
 		return nil, err
 	}
@@ -2073,7 +2077,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 	var tasks []Task
 	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until FROM board_tasks WHERE board_id = ?
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE board_id = ?
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
 		project)
 	if err != nil {
@@ -2092,7 +2096,7 @@ func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 func (s *Store) ListOpenTasks(ctx context.Context, project string) ([]Task, error) {
 	var tasks []Task
 	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until FROM board_tasks
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks
 		 WHERE board_id = ? AND status IN ('pending', 'in_progress', 'blocked', 'draft')
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
 		project)
@@ -2133,7 +2137,7 @@ func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 	}
 	var tasks []Task
 	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until FROM board_tasks
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks
 		 ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err

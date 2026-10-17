@@ -175,3 +175,33 @@ func TestAckIsTheOrchestratorsOrTheOperators(t *testing.T) {
 	assert.Equal(t, http.StatusOK, ack(`{"item":"`+item+`"}`, nil), "the Operator")
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify(http.MethodPost, "/api/board/team/health/ack", ""), "not through Coral Hub")
 }
+
+// task add --remind-at (#4175 step 3): the time is stored on the task; one in the past, too far
+// ahead or not a time is refused.
+func TestCreateTaskTakesARemindAtTime(t *testing.T) {
+	srv, h := setupBoardTestServer(t)
+	ctx := context.Background()
+	_, err := h.bs.Subscribe(ctx, "team", "Orchestrator", "Orchestrator", "claude-orch", nil, "all")
+	require.NoError(t, err)
+	post := func(remindAt string) (int, board.Task) {
+		b, _ := json.Marshal(map[string]any{"title": "soak ends", "subscriber_id": "Orchestrator", "remind_at": remindAt})
+		resp, err := http.Post(srv.URL+"/api/board/team/tasks", "application/json", bytes.NewReader(b))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var task board.Task
+		_ = json.NewDecoder(resp.Body).Decode(&task)
+		return resp.StatusCode, task
+	}
+	at := time.Now().Add(3 * time.Hour).UTC().Format(time.RFC3339)
+	code, task := post(at)
+	require.Equal(t, http.StatusCreated, code)
+	require.NotNil(t, task.RemindAt)
+	assert.Equal(t, at, *task.RemindAt)
+	stored, err := h.bs.GetTask(ctx, "team", task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, at, *stored.RemindAt)
+	for _, bad := range []string{"2020-01-01T00:00:00Z", time.Now().AddDate(0, 0, 91).UTC().Format(time.RFC3339), "21:58"} {
+		code, _ := post(bad)
+		assert.Equal(t, http.StatusBadRequest, code, bad)
+	}
+}

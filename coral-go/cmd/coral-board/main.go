@@ -1682,7 +1682,7 @@ Subcommands:
 const taskUsageText = `Usage: coral-board task <subcommand> [args]
 
 Subcommands:
-  add "title" [--body "details"] [--priority P] [--assignee "Agent Name"]
+  add "title" [--body "details"] [--priority P] [--assignee "Agent Name"] [--remind-at TIME]
   list
   claim [id]                       Claim a specific task or the next available one
   current                          Show your current in-progress task
@@ -1737,6 +1737,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 	instructions := fs.String("workflow-instructions", "", "Additional instructions appended to Coral's default task workflow")
 	reviewers := fs.String("reviewers", "", "Who reviews it, comma separated (\"Security Reviewer,QA Engineer\"): Coral delegates the review to them when the task is submitted (used when the orchestrator or the Operator adds the task)")
 	completionGates := fs.String("completion-gates", "", "JSON completion gates (experimental and disabled by default)")
+	remindAt := fs.String("remind-at", "", "A one-time reminder to the assignee (or the orchestrator) at that time: \"2026-10-19 21:58\", 21:58, 2026-10-19, 30m, 2h or 3d")
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retryOf := fs.Int64("retry-of", 0, "Finished task ID this new task retries")
 	fs.Parse(reordered)
@@ -1758,6 +1759,14 @@ func cmdTaskAdd(st *boardState, args []string) {
 	}
 	if *assignee != "" {
 		reqBody["assigned_to"] = *assignee
+	}
+	if *remindAt != "" {
+		at, err := parseWhen(*remindAt, time.Now())
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "--remind-at:", err)
+			os.Exit(1)
+		}
+		reqBody["remind_at"] = at.UTC().Format(time.RFC3339)
 	}
 	if *blockedBy != "" {
 		var deps any
