@@ -2343,6 +2343,50 @@ function showReceivedCap(r) {
     input.dataset.loaded = '1'; // only a limit read from Coral is saved back
     const files = `${Number(r.objects).toLocaleString()} file${r.objects === 1 ? '' : 's'}`;
     out.textContent = r.max_bytes > 0 ? `Received: ${_gib(r.bytes)} in ${files} (limit ${_gib(r.max_bytes)})` : `Received: ${_gib(r.bytes)} in ${files} (no limit)`;
+    showUnlistedReceived(r.unlisted);
+}
+
+// Received files no board lists: their message never came. They count in the limit; the Operator can delete them, by exact digest, after a
+// confirmation. Never automatic (#4441, Security's #4440 INFO 2).
+let _unlistedItems = [];
+function showUnlistedReceived(u) {
+    const box = document.getElementById('settings-received-unlisted');
+    const text = document.getElementById('settings-received-unlisted-text');
+    const button = document.getElementById('settings-received-unlisted-delete');
+    if (!box || !text || !button) return;
+    const count = Number(u?.count) || 0;
+    _unlistedItems = Array.isArray(u?.items) ? u.items.map(i => i.id) : [];
+    box.hidden = count === 0;
+    if (!count) return;
+    const more = count > _unlistedItems.length ? ` Showing the oldest ${_unlistedItems.length}; delete them, then the rest.` : '';
+    text.textContent = `Not listed on any board: ${count.toLocaleString()} file${count === 1 ? '' : 's'}, ${_gib(u.bytes)}. Another Coral sent ${count === 1 ? 'it' : 'them'} but the message that names ${count === 1 ? 'it' : 'them'} never came. ${count === 1 ? 'It counts' : 'They count'} toward the limit.${more} `;
+    if (!button.dataset.wired) {
+        button.dataset.wired = '1';
+        button.addEventListener('click', confirmDeleteUnlisted);
+    }
+}
+
+function confirmDeleteUnlisted() {
+    const ids = _unlistedItems.slice();
+    if (!ids.length) return;
+    const n = ids.length;
+    window.showConfirmModal?.('Delete received files',
+        `Delete ${n.toLocaleString()} received file${n === 1 ? '' : 's'} that no board lists? ${n === 1 ? 'It is' : 'They are'} removed from Coral and can't be recovered. A file something now lists or links is left alone.`,
+        async () => {
+            let d;
+            try {
+                const r = await fetch('/api/artifacts/received/unlisted/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+                d = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+            } catch (e) {
+                showToast(`Couldn't delete the received files: ${e.message}`, true);
+                return;
+            }
+            const left = (d.skipped || []).length;
+            showToast(`Deleted ${Number(d.deleted || 0).toLocaleString()} received file${d.deleted === 1 ? '' : 's'}, ${_gib(d.bytes)} freed.${left ? ` ${left} left alone: something lists or links ${left === 1 ? 'it' : 'them'}.` : ''}`, false, 8000);
+            loadArtifactStoreSize();
+        });
+    requestAnimationFrame(() => document.querySelector('#confirm-modal .modal-actions .btn:not(#confirm-modal-yes)')?.focus());
 }
 
 /** The received-files limit to save, in bytes ({} when the field isn't on this page or was never read). */

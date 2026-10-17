@@ -688,11 +688,17 @@ func TestReceivedFileWithoutAMessageInTimeIsNeverListed(t *testing.T) {
 	_, err := os.Stat(filepath.Join(e.dir, "artifacts", "objects", strings.TrimPrefix(sha256Of(data), "sha256:")))
 	assert.NoError(t, err, "the stored file stays")
 
-	// The next receipt on the board sweeps the expired record.
+	// The next receipt on the board keeps the expired record (#4441): it is the memory of a stored file no board lists, which counts toward the
+	// received-files cap and can be deleted in Settings. A record whose object is gone is the one it sweeps.
 	status, out = e.sendUnder(relaySrc, "m2", []byte("another\n"))
 	require.Equal(t, 200, status, out)
 	left, _ := os.ReadDir(e.h.boardRecordDir("pending", "beta"))
-	assert.Len(t, left, 1, "only the new pending record")
+	assert.Len(t, left, 2, "the expired record and the new one")
+	require.NoError(t, os.Remove(filepath.Join(e.dir, "artifacts", "objects", strings.TrimPrefix(sha256Of(data), "sha256:"))))
+	status, out = e.sendUnder(relaySrc, "m3", []byte("a third\n"))
+	require.Equal(t, 200, status, out)
+	left, _ = os.ReadDir(e.h.boardRecordDir("pending", "beta"))
+	assert.Len(t, left, 2, "the record of the deleted object was swept")
 }
 
 // The switch is read again just before a file is stored: turned off while a file arrives, the file is not

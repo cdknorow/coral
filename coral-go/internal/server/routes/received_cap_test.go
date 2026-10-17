@@ -47,7 +47,7 @@ func TestReceivedCapRefusesNewBytesPastTheCap(t *testing.T) {
 	big := bytes.Repeat([]byte("x"), 500)
 	_, _, err := storeArtifact(e.dir, "s1", "local.txt", "text/plain", big)
 	require.NoError(t, err, "local uploads are not limited by the received cap")
-	used, objects, _ := receivedUsage(e.dir)
+	used, objects, _, _ := receivedUsage(e.dir, e.now)
 	assert.EqualValues(t, 20, used, "the local upload is not counted")
 	assert.Equal(t, 2, objects)
 
@@ -90,7 +90,7 @@ func TestReceivedUsageCountsEachObjectOnce(t *testing.T) {
 	bad, _ := json.Marshal(crossTeamArtifactRecord{ID: id, Size: 1000, Board: "beta"})
 	require.NoError(t, writeFileForTest(dir+"/"+hex.EncodeToString(bytes.Repeat([]byte{0x77}, 32))+".json", bad))
 
-	used, objects, ids := receivedUsage(e.dir)
+	used, objects, ids, _ := receivedUsage(e.dir, e.now)
 	assert.EqualValues(t, 12, used)
 	assert.Equal(t, 2, objects)
 	assert.True(t, ids[id] && ids[other])

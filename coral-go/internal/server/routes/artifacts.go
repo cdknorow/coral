@@ -66,7 +66,8 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	r.Post("/api/agent/artifacts", h.uploadAgentArtifact)
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
 	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
-	r.Get("/api/system/artifact-store/kept", h.keptListRoute) // #3554
+	r.Post("/api/artifacts/received/unlisted/delete", h.deleteUnlistedReceivedRoute) // #4441
+	r.Get("/api/system/artifact-store/kept", h.keptListRoute)                        // #3554
 	r.Post("/api/artifacts/prune", h.pruneArtifactsRoute)
 	r.Post("/api/artifacts/retention/ack", h.retentionAckRoute) // #3554
 	r.Put("/api/artifacts/{id}/keep", h.keepArtifactRoute)      // #3554
@@ -580,6 +581,12 @@ func deleteArtifactFilesLocked(coralDir, id string) (freed int64, records int, f
 					records++
 				}
 			}
+		}
+	}
+	// And its pending receipts (#4440): a file waiting for a message that was never listed.
+	for _, path := range pendingRecordPaths(coralDir, id) {
+		if os.Remove(path) == nil {
+			records++
 		}
 	}
 	// Every board's shared and received rows of it too (#4379): the Operator's delete removes the

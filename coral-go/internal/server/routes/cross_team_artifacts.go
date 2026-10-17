@@ -411,7 +411,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// The cap on received files (#4441): checked before the bytes are stored, for new objects only. Local uploads are not counted here and not refused by it.
-	if !receivedFits(h.coralDir, hexID, int64(len(res.Data))) {
+	if !receivedFits(h.coralDir, hexID, int64(len(res.Data)), h.pendingNow()) {
 		receivedRefuse(w, http.StatusRequestEntityTooLarge, "store_full", "this computer's limit on received files is reached", "")
 		return
 	}

@@ -215,6 +215,7 @@ a POST /api/agent/ui-request
 a POST /api/agent/ui/{id}/events
 b POST /api/agents/models/refresh
 b POST /api/artifacts/prune
+b POST /api/artifacts/received/unlisted/delete
 b POST /api/artifacts/retention/ack
 b POST /api/auth/hub-signin/dismiss
 b POST /api/auth/password/change

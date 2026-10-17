@@ -84,21 +84,22 @@ func readPending(path string) (pendingReceipt, bool) {
 	return p, true
 }
 
-// sweepPending removes this folder's pending records that expired or are unreadable. They are this
-// feature's own bookkeeping; the stored files are never touched.
+// sweepPending removes this folder's pending records that are unreadable or whose stored object is gone. They
+// are this feature's own bookkeeping; the stored files are never touched, and an expired record stays (#4441).
 func (h *BoardHandler) sweepPending(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
-	now := h.pendingNow()
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
 		p, ok := readPending(path)
-		if at, err := time.Parse(time.RFC3339, p.Rec.At); !ok || err != nil || now.Sub(at) > receivedPendingFor {
+		// An expired receipt stays: it is the memory of a stored file no board lists, which counts toward the received-files cap and which the
+		// Operator can delete in Settings (#4441). Only a record that is unreadable, or whose object is gone, is removed.
+		if _, err := os.Lstat(filepath.Join(h.coralDir, "artifacts", "objects", p.Rec.ID)); !ok || err != nil {
 			_ = os.Remove(path)
 		}
 	}

@@ -201,6 +201,7 @@ POST /api/agent/ui-request interact
 POST /api/agent/ui/{id}/events interact
 POST /api/agents/models/refresh never
 POST /api/artifacts/prune never
+POST /api/artifacts/received/unlisted/delete never
 POST /api/artifacts/retention/ack never
 POST /api/auth/hub-signin/dismiss never
 POST /api/auth/password/change never

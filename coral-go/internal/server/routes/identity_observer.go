@@ -371,10 +371,11 @@ var operatorOnlyRoutes = map[string]string{
 	// #3553: the Operator removes an artifact (also refused to anyone but a person, in every mode).
 	"DELETE /api/artifacts/{id}": "delete an artifact",
 	// #3554: pruning, and the keep mark that protects an artifact from it.
-	"POST /api/artifacts/retention/ack": "acknowledge artifact retention",
-	"POST /api/artifacts/prune":         "prune artifacts",
-	"PUT /api/artifacts/{id}/keep":      "keep an artifact",
-	"DELETE /api/artifacts/{id}/keep":   "release a kept artifact",
+	"POST /api/artifacts/retention/ack":            "acknowledge artifact retention",
+	"POST /api/artifacts/prune":                    "prune artifacts",
+	"PUT /api/artifacts/{id}/keep":                 "keep an artifact",
+	"POST /api/artifacts/received/unlisted/delete": "delete received files no board lists",
+	"DELETE /api/artifacts/{id}/keep":              "release a kept artifact",
 	// #3513 (Security's #3509 finding 3): the API key is the Operator's credential (with it an
 	// agent drops its token and is the Operator, settings included), and deleting a board
 	// deletes the team's whole history.

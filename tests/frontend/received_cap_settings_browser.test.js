@@ -3,6 +3,7 @@
 //  - the row: the total, the limit, a labelled number field described by its line, the default shown as 2 when nothing is saved
 //  - Save sends the limit only when it was changed (an untouched field never turns the default into a saved value), in whole bytes; 0 is no limit
 //  - the notice: shown once (the server remembers it by saving the cap it was shown for), not again on the next check, and again only for a different cap
+//  - received files no board lists (their message never came): counted in the limit, listed with their size, and deletable by the Operator after a confirmation, by the exact digests the server named; Cancel deletes nothing
 //  - a phone at 200% text: the label, the field and its line stay inside the dialog
 // The server side (the cap, store_full, the status block, the notice) is in internal/server/routes/received_cap_test.go; here the status is stubbed.
 // Run against an isolated dev server. CORAL_SCREENSHOT_DIR=<dir> saves screenshots.
@@ -23,9 +24,10 @@ const GIB = 1024 ** 3;
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
-        await ev(`(() => { const R = window.fetch; window.__puts = []; window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 3, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false };
+        await ev(`(() => { const R = window.fetch; window.__puts = []; window.__deletes = []; window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 3, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false };
             window.fetch = (u, o = {}) => { const p = new URL(String(u), location.origin).pathname; const m = (o.method || 'GET').toUpperCase();
                 if (p === '/api/system/artifact-store' && m === 'GET') return Promise.resolve(new Response(JSON.stringify({ bytes: 1000, objects: 1, max_bytes: 0, task_diffs: { bytes: 0, files: 0 }, session_diffs: { bytes: 0, files: 0 }, received: window.__status }), { headers: { 'content-type': 'application/json' } }));
+                if (p === '/api/artifacts/received/unlisted/delete' && m === 'POST') { const b = JSON.parse(o.body); window.__deletes.push(b); window.__status = { ...window.__status, unlisted: { count: 0, bytes: 0, items: [] } }; return Promise.resolve(new Response(JSON.stringify({ deleted: b.ids.length, bytes: 3000000, skipped: [] }), { headers: { 'content-type': 'application/json' } })); }
                 if (p === '/api/settings' && m === 'PUT') { window.__puts.push(JSON.parse(o.body)); if ('received_cap_notice_ack' in JSON.parse(o.body)) window.__status = { ...window.__status, notice: false }; return Promise.resolve(new Response('{}', { headers: { 'content-type': 'application/json' } })); }
                 return R(u, o); };
             return true; })()`);
@@ -76,7 +78,37 @@ const GIB = 1024 ** 3;
         assert.equal(await ev(`window.__puts.length`), 1, 'the next check, with the server no longer saying it is due, says and saves nothing');
         assert.equal(await toasts(), 1);
 
-        console.log('4. A phone at 200% text: the label, the field and its line stay inside the dialog');
+        console.log('4. Received files no board lists: listed, and deleted only after a confirmation, by the exact digests');
+        const ids = ['a', 'b', 'c'].map(c => c.repeat(64));
+        await ev(`window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 3, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false, unlisted: { count: 3, bytes: 3000000, items: ${JSON.stringify(ids.map(id => ({ id, size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' })))} } }; window.__deletes.length = 0; document.querySelectorAll('.toast').forEach(t => t.remove()); window.showSettingsModal(); true`);
+        await waitFor(`!document.getElementById('settings-received-unlisted').hidden`, 'the unlisted line', 8000);
+        const un = await ev(`(() => { const b = document.getElementById('settings-received-unlisted-delete'); return { text: document.getElementById('settings-received-unlisted-text').textContent.trim(), button: b.textContent, disabled: b.disabled }; })()`);
+        assert.match(un.text, /^Not listed on any board: 3 files, 3 MiB\. Another Coral sent them but the message that names them never came\. They count toward the limit\.$/);
+        assert.equal(un.button, 'Delete these files…'); assert.equal(un.disabled, false);
+        await waitFor(`/Received: /.test(document.getElementById('settings-received-size').textContent) && document.getElementById('settings-received-max').dataset.loaded === '1'`, 'the dialog to finish loading', 8000);
+        await sleep(400); // sleep-ok: the rest of the dialog finishes laying out
+        await showRow(); await sleep(300); // sleep-ok: the scroll settles
+        await shot('received-cap-unlisted');
+        await ev(`document.getElementById('settings-received-unlisted-delete').click(); true`);
+        await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation', 8000);
+        const ask = await ev(`({ title: document.getElementById('confirm-modal-title').textContent, message: document.getElementById('confirm-modal-message').textContent })`);
+        assert.equal(ask.title, 'Delete received files');
+        assert.match(ask.message, /^Delete 3 received files that no board lists\? They are removed from Coral and can't be recovered\./);
+        await waitFor(`document.activeElement && document.activeElement.closest('#confirm-modal') && document.activeElement.id !== 'confirm-modal-yes'`, 'focus on Cancel', 4000);
+        await ev(`document.querySelector('#confirm-modal .modal-actions .btn:not(#confirm-modal-yes)').click(); true`);
+        await sleep(300); // sleep-ok: shows that Cancel deletes nothing (no condition to wait for)
+        assert.equal(await ev(`window.__deletes.length`), 0, 'Cancel deletes nothing');
+        await ev(`document.getElementById('settings-received-unlisted-delete').click(); true`);
+        await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation again', 8000);
+        await ev(`document.getElementById('confirm-modal-yes').click(); true`);
+        await waitFor(`window.__deletes.length === 1`, 'the delete', 8000);
+        assert.deepEqual(await ev(`window.__deletes[0]`), { ids }, 'the exact digests the server named, nothing else');
+        await waitFor(`/Deleted 3 received files, 3 MiB freed\./.test(document.body.innerText)`, 'the result', 8000);
+        await waitFor(`document.getElementById('settings-received-unlisted').hidden`, 'the line to go once none are left', 8000);
+        await ev(`window.hideSettingsModal(); true`);
+        await waitFor(`(window.hideSettingsModal(), getComputedStyle(document.getElementById('settings-modal')).display === 'none')`, 'Settings to close', 6000);
+
+        console.log('5. A phone at 200% text: the label, the field and its line stay inside the dialog');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
         await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 });
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); document.documentElement.style.fontSize = '32px'; window.showSettingsModal(); true`);
