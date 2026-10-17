@@ -193,3 +193,37 @@ func TestReadMessagesUsesThePreparedCandidateStatement(t *testing.T) {
 	_, err = s.ReadMessages(context.Background(), "p", "backend-dev", 20)
 	assert.NoError(t, err)
 }
+
+// A delete that fails leaves the message indexed: its index rows are dropped in the same transaction as the message, so a
+// failed delete (here a trigger that aborts it) rolls them back and the message is still found by its mention (#4523 INFO).
+func TestFailedDeleteLeavesTheMessageIndexed(t *testing.T) {
+	isolateBoardTest(t)
+	s := testStore(t)
+	ctx := context.Background()
+	_, err := s.Subscribe(ctx, "p", "backend-dev", "Backend Dev", "s1", nil, "mentions")
+	require.NoError(t, err)
+	m, err := s.PostMessage(ctx, "p", "poster", "@Backend Dev keep this one", nil)
+	require.NoError(t, err)
+	require.NoError(t, s.catchUpMentionIndex(ctx))
+	rows := func() (n int) {
+		require.NoError(t, s.db.Get(&n, "SELECT COUNT(*) FROM board_message_mentions WHERE message_id = ?", m.ID))
+		return n
+	}
+	before := rows()
+	require.Positive(t, before)
+
+	_, err = s.db.Exec(`CREATE TRIGGER refuse_delete BEFORE DELETE ON board_messages BEGIN SELECT RAISE(ABORT, 'refused'); END`)
+	require.NoError(t, err)
+	ok, err := s.DeleteMessage(ctx, "p", m.ID)
+	require.Error(t, err)
+	assert.False(t, ok)
+	assert.Equal(t, before, rows(), "the index rows are still there after a failed delete")
+	assert.Equal(t, []int64{m.ID}, readIDs(t, s, "p", "backend-dev", 0, 10), "and the mention is still found")
+
+	_, err = s.db.Exec(`DROP TRIGGER refuse_delete`)
+	require.NoError(t, err)
+	ok, err = s.DeleteMessage(ctx, "p", m.ID)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Zero(t, rows(), "a delete that works forgets them")
+}

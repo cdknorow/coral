@@ -1887,9 +1887,19 @@ func (s *Store) ListGroups(ctx context.Context, project string) ([]GroupInfo, er
 // (#3668, the board authorization audit's finding 1).
 func (s *Store) DeleteMessage(ctx context.Context, project string, messageID int64) (bool, error) {
 	s.unreadCounts.invalidate()
-	forgetMentionTokens(ctx, s.db, "id = ? AND project = ?", messageID, project)
-	result, err := s.db.ExecContext(ctx, "DELETE FROM board_messages WHERE id = ? AND project = ?", messageID, project)
+	// The index rows and the message go in one transaction: a delete that fails leaves the message indexed (before, the
+	// rows went first and a failed delete left a message nobody could find by its mentions; Security's #4523 INFO).
+	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	forgetMentionTokens(ctx, tx, "id = ? AND project = ?", messageID, project)
+	result, err := tx.ExecContext(ctx, "DELETE FROM board_messages WHERE id = ? AND project = ?", messageID, project)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
 		return false, err
 	}
 	s.unreadCounts.invalidate()
