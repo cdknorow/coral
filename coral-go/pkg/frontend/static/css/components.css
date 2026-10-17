@@ -871,7 +871,7 @@ button.subscriber-history-link {
 
 /* A checkbox in a settings row is a box, not a field: the generic input width of 100% made it a full-width box with the tick
    centred in it, detached from its label on a phone (#3981). */
-.info-grid dd > input[type="checkbox"] { width: auto; margin: 0; flex: none; }
+.info-grid dd > input[type="checkbox"], .info-grid dd > .check-hit > input[type="checkbox"] { width: auto; margin: 0; flex: none; }
 .info-grid dd code {
     background: var(--bg-tertiary);
     padding: 2px 8px;
@@ -3933,3 +3933,14 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .sec-add { display: flex; gap: 8px; align-items: center; }
 .sec-add .btn { margin: 0; }
 #settings-modal .sec-sessions .btn { margin: 0; }   /* .btn-small's 20 px side margin pushed these buttons off their row */
+
+/* A Settings checkbox is wrapped in its own label, which is the tap target: 44 px square on a phone or a touch screen (the box is 13 px; the label for= sits in the
+   other column of the row), and unchanged on a mouse (#4252). */
+.check-hit { display: inline-flex; align-items: center; justify-content: flex-start; vertical-align: middle; } /* the box stays at the left of its column */
+/* (the hub switch's box was as wide as the generic input rule makes it; a checkbox is its own size) */
+.settings-hub-mode-toggle > input[type="checkbox"] { width: auto; flex: none; margin: 0; }
+@media (max-width: 767px), (pointer: coarse) {
+    .check-hit { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
+    /* A switch row whose label holds its own text is a target the height of a touch control. */
+    .settings-hub-mode-toggle { display: flex; align-items: center; gap: var(--space-sm, 8px); min-height: var(--control-touch-height, 44px); }
+}

@@ -652,7 +652,7 @@
                     <span class="toggle-desc">Allow anonymous product usage analytics. This applies immediately.</span>
                 </dt>
                 <dd>
-                    <input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-help">
+                    <label class="check-hit"><input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-help"></label>
                     <span id="settings-telemetry-help" class="settings-hint">No prompts, transcripts, or secrets are sent.</span>
                 </dd>
                 <dt class="toggle-dt">
@@ -660,21 +660,21 @@
                     <span class="toggle-desc">Off by default. When on, an agent's own board post that links a local image (png, jpg, gif, webp) or Markdown file changed in the last day has it stored as an artifact, so the team and Coral Hub can open it. When off, links stay as written and agents upload with coral-agent artifact upload.</span>
                 </dt>
                 <dd>
-                    <input type="checkbox" id="settings-board-auto-attach">
+                    <label class="check-hit"><input type="checkbox" id="settings-board-auto-attach"></label>
                 </dd>
                 <dt class="toggle-dt">
                     <label for="settings-auto-resume">Resume agents stopped by an API error</label>
                     <span class="toggle-desc">Off by default. When an agent's CLI stops on a rate limit, an overload or another API error, Coral wakes it again after about 2, then 5, then 15 minutes, and stops trying after the third. Waking the agent yourself starts the count again.</span>
                 </dt>
                 <dd>
-                    <input type="checkbox" id="settings-auto-resume">
+                    <label class="check-hit"><input type="checkbox" id="settings-auto-resume"></label>
                 </dd>
                 <dt class="toggle-dt">
                     <label for="settings-auto-goals">Name each agent's goal</label>
                     <span class="toggle-desc">On by default. Coral asks Claude Code's smallest model (Haiku) for a short goal line for each agent, from your requests only: once when the agent first answers, then for a new request at most every 30 minutes. Each one is a short call made with your Claude Code account (about 1,300 input tokens). When off, the goal shows your first prompt.</span>
                 </dt>
                 <dd>
-                    <input type="checkbox" id="settings-auto-goals">
+                    <label class="check-hit"><input type="checkbox" id="settings-auto-goals"></label>
                 </dd>
                 <dt class="toggle-dt">
                     <label for="settings-artifact-store-max">Artifact store limit (GiB)</label>
@@ -719,7 +719,7 @@
                     <span class="toggle-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
                 </dt>
                 <dd>
-                    <input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status">
+                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status"></label>
                     <div id="settings-debug-input-log-status" class="settings-hint" role="status" hidden></div>
                     <button class="btn btn-small" type="button" id="settings-debug-input-log-delete" hidden>Delete the log</button>
                 </dd>
@@ -728,7 +728,7 @@
                     <span class="toggle-desc">Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</span>
                 </dt>
                 <dd>
-                    <input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status">
+                    <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status"></label>
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
                 </dd>
                 <dt>Coral Hub</dt>
@@ -885,27 +885,27 @@
                     <label for="settings-fit-pane-width">Fit Pane Width</label>
                     <span class="toggle-desc">Auto-resize tmux pane to match browser width</span>
                 </dt>
-                <dd><input type="checkbox" id="settings-fit-pane-width"></dd>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-fit-pane-width"></label></dd>
                 <dt class="toggle-dt">
                     <label for="settings-notify-needs-input">Notifications</label>
                     <span class="toggle-desc">Show toast when an agent needs input</span>
                 </dt>
-                <dd><input type="checkbox" id="settings-notify-needs-input"></dd>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-notify-needs-input"></label></dd>
                 <dt class="toggle-dt">
                     <label for="settings-desktop-notify">Desktop alerts</label>
                     <span class="toggle-desc">This browser only: alert while this tab is in the background. Shows the agent and server names (your OS may keep them in its notification history), never agent output. May duplicate a local alert.</span>
                 </dt>
-                <dd><input type="checkbox" id="settings-desktop-notify"></dd>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-desktop-notify"></label></dd>
                 <dt class="toggle-dt">
                     <label for="settings-check-updates">Check for Updates</label>
                     <span class="toggle-desc">Notify when a new version of Coral is available</span>
                 </dt>
-                <dd><input type="checkbox" id="settings-check-updates"></dd>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-check-updates"></label></dd>
                 <dt class="toggle-dt">
                     <label for="settings-show-scrollbars">Show Scrollbars</label>
                     <span class="toggle-desc">Show scrollbars in terminal and chat views</span>
                 </dt>
-                <dd><input type="checkbox" id="settings-show-scrollbars" checked></dd>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-show-scrollbars" checked></label></dd>
                 <dt>
                     <label for="settings-file-search-mode">File Search Mode</label>
                     <span class="toggle-desc">How @ mentions and file browser search for files</span>
@@ -968,7 +968,7 @@
                     <span class="toggle-desc">On by default. Agents and everything they start (builds, test runs) run below Coral itself (nice +10 on Mac and Linux, below normal on Windows), so the dashboard, Coral Hub and your own apps stay quick while agents use every CPU. It changes scheduling only, never what an agent may do. Applies to agents started after the change.</span>
                 </dt>
                 <dd>
-                    <input type="checkbox" id="settings-agent-low-priority">
+                    <label class="check-hit"><input type="checkbox" id="settings-agent-low-priority"></label>
                 </dd>
                 </dl>
                 <button class="btn btn-primary settings-prompts-btn" data-on-click="m-hide-settings-modal-then-show-default-prompts-modal">
