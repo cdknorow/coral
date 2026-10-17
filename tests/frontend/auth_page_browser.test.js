@@ -48,6 +48,13 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
             const gold = GOLD(page);
             return fulfill(200, gold.includes('<head>') ? gold.replace('<head>', `<head><meta name="zz-nav" content="${navSeq}">`) : `<meta name="zz-nav" content="${navSeq}">` + gold, 'text/html; charset=utf-8');
         });
+        // Say what the page was when a wait gave up, so a rare failure on a slow runner names its cause: this document or a replacement, what it was sent, and what the
+        // browser navigated to and the test served (the last 14 of each). open()'s waits use it too: the create-page flake failed inside open() with no report (#4493).
+        const failReport = async (e) => {
+            const d = await ev(`({ href: location.href, ready: document.readyState, doc: window.__zzDoc || 'replaced', stamp: (document.querySelector('meta[name=zz-nav]') || {}).content || '', pw: (document.getElementById('password') || {}).value, err: (document.getElementById('err') || {}).textContent })`).catch(x => ({ evalError: String(x.message).slice(0, 120) }));
+            throw new Error(`${e.message}: ${JSON.stringify({ ...d, navSeq, posts: posts.map(p => p.url), navLog, servedLog })}`);
+        };
+        const waitR = async (expr, what, ms) => { try { await waitFor(expr, what, ms); } catch (e) { await failReport(e); } };
         let nextReplies = [];
         const openWith = (name, query, r) => { nextReplies = r; return open(name, query); };
         const open = async (name, query = '?return_to=/zz-done') => {
@@ -58,9 +65,9 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
             // it (the flake: "false !== true" on the setup page, "timed out waiting for redirect after creating").
             const seq = ++navSeq;
             await Page.navigate({ url: BASE + '/auth' + query });
-            await waitFor(`document.readyState === 'complete' && !!document.querySelector('meta[name=zz-nav]') && document.querySelector('meta[name=zz-nav]').content === '${seq}'`, `this navigation's page (${name})`);
-            await waitFor(`!!document.getElementById('submit') || !!document.getElementById('key-submit')`, 'the page');
-            await waitFor(`document.documentElement.dataset.authReady === 'true'`, 'the page script');   // the module script runs after load
+            await waitR(`document.readyState === 'complete' && !!document.querySelector('meta[name=zz-nav]') && document.querySelector('meta[name=zz-nav]').content === '${seq}'`, `this navigation's page (${name})`);
+            await waitR(`!!document.getElementById('submit') || !!document.getElementById('key-submit')`, 'the page');
+            await waitR(`document.documentElement.dataset.authReady === 'true'`, 'the page script');   // the module script runs after load
             await ev(`window.__zzDoc = '${seq}'; true`);   // survives only while this document does: a replacement by a late navigation shows in a failure's report
             assert.equal(await ev(`(() => { const i = document.querySelector('.brand img'); return !!i && i.complete && i.naturalWidth > 0; })()`), true, `${name}: Coral's logo loads (from /static, with no credential)`);
         };
@@ -169,11 +176,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         assert.equal(await text('err'), 'Enter a password.');
         replies = [json(200, { ok: true })];
         await type('password', '  a b  '); await type('confirm', '  a b  '); await submit('create-form');
-        try { await waitFor(DONE, 'redirect after creating'); } catch (e) {
-            // Say what the page was when the wait gave up, so a rare failure on a slow runner names its cause: this document or a replacement, and what it was sent.
-            const d = await ev(`({ href: location.href, ready: document.readyState, doc: window.__zzDoc || 'replaced', stamp: (document.querySelector('meta[name=zz-nav]') || {}).content || '', pw: (document.getElementById('password') || {}).value, err: (document.getElementById('err') || {}).textContent })`).catch(x => ({ evalError: String(x.message).slice(0, 120) }));
-            throw new Error(`${e.message}: ${JSON.stringify({ ...d, navSeq, posts: posts.map(p => p.url), navLog, servedLog })}`);
-        }
+        try { await waitFor(DONE, 'redirect after creating'); } catch (e) { await failReport(e); }
         assert.deepEqual(posts[0], { url: '/auth/password/create', body: { password: '  a b  ', keep: false } }, 'any non-empty password, exactly as typed, no code');
         // 409: someone set one first -> the page reloads as the sign-in page
         await open('create');
