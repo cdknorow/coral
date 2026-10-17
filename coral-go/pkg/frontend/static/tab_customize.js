@@ -7,7 +7,7 @@
  * The tab buttons stay the real ones (their counts and handlers move with them): a hidden tab only
  * gets .tab-hidden, and the order is the DOM order. What is read back is checked against the page's own
  * tab ids (unknown and repeated ids dropped, missing ones last). The locked tab (Chat when the agent is on a
- * board, else the context's first tab) can't be hidden, so the row is never empty, and a hidden tab
+ * board, else the context's first tab) can be put anywhere but can't be hidden, so the row is never empty, and a hidden tab
  * that is open falls back to it. */
 import { registerActions } from './actions.js';
 import { escapeHtml, escapeAttr } from './utils.js';
@@ -72,11 +72,13 @@ function lockedId(ids) {
     return ids.includes('board') ? 'board' : byDefault(ids)[0];
 }
 
-/** The ids in the user's order: the locked tab (Chat) first, always; then their saved order, then any tab they have not placed. */
+/** The ids in the user's order: their saved order, then any tab they have not placed. The locked tab (Chat) can sit anywhere the
+ *  user put it; one the saved order lacks goes first. */
 function orderedIds(ctx, ids) {
     const locked = lockedId(ids);
-    const saved = prefs[ctx].order.filter(id => ids.includes(id) && id !== locked);
-    return [locked, ...saved, ...byDefault(ids.filter(id => id !== locked && !saved.includes(id)))].filter(Boolean);
+    const saved = prefs[ctx].order.filter(id => ids.includes(id));
+    const rest = byDefault(ids.filter(id => !saved.includes(id)));
+    return locked && !saved.includes(locked) ? [locked, ...saved, ...rest.filter(id => id !== locked)] : [...saved, ...rest];
 }
 
 /** Put the saved choice on the real tab row. Safe to call at any time; it only changes what differs. */
@@ -122,15 +124,15 @@ function rowsHTML(ctx) {
         const icon = b.querySelector('.material-icons')?.textContent || '';
         const isLocked = id === locked;
         const on = isLocked || !hidden.has(id);
-        return `<li class="tc-row" draggable="${isLocked ? 'false' : 'true'}" data-tab="${escapeAttr(id)}">
+        return `<li class="tc-row" draggable="true" data-tab="${escapeAttr(id)}">
             <span class="material-icons tc-grip" aria-hidden="true">drag_indicator</span>
             <label class="tc-label"><input type="checkbox" class="tc-check" data-tab="${escapeAttr(id)}"${on ? ' checked' : ''}${isLocked ? ' disabled' : ''}
                 aria-label="Show ${escapeAttr(name)}${isLocked ? ' (always shown)' : ''}">
                 <span class="material-icons tc-icon" aria-hidden="true">${escapeHtml(icon)}</span><span class="tc-name">${escapeHtml(name)}</span></label>
             ${isLocked ? '<span class="material-icons tc-lock" aria-hidden="true" title="Always shown">lock</span>' : ''}
             <span class="tc-sp"></span>
-            <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="-1" aria-label="Move ${escapeAttr(name)} up"${i <= 1 || isLocked ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_up</span></button>
-            <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="1" aria-label="Move ${escapeAttr(name)} down"${i === ids.length - 1 || isLocked ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_down</span></button>
+            <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="-1" aria-label="Move ${escapeAttr(name)} up"${i === 0 ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_up</span></button>
+            <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="1" aria-label="Move ${escapeAttr(name)} down"${i === ids.length - 1 ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_down</span></button>
         </li>`;
     }).join('');
 }
@@ -158,7 +160,7 @@ function move(id, dir, refocus) {
     const ids = orderedIds(ctx, available(ctx).map(b => b.dataset.tab));
     const i = ids.indexOf(id);
     const j = i + dir;
-    if (i < 1 || j < 1 || j >= ids.length) return; // the first tab (Chat) neither moves nor is passed
+    if (i < 0 || j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
     prefs[ctx].order = ids;
     save();
@@ -257,7 +259,7 @@ export function openCustomize() {
         const from = ids.indexOf(dragId);
         const to = ids.indexOf(row.dataset.tab);
         dragId = null;
-        if (from < 1 || to < 1 || from === to) return; // the first tab stays first
+        if (from < 0 || to < 0 || from === to) return;
         ids.splice(to, 0, ids.splice(from, 1)[0]);
         prefs[ctx].order = ids;
         save();

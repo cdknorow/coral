@@ -51,11 +51,11 @@ const { connect } = require('./agent_view_harness');
         const st = await ev(`(() => { const rows = [...document.querySelectorAll('#tab-customize .tc-row')];
             const lock = rows[0].querySelector('.tc-check');
             return { expanded: document.getElementById('agentic-tab-customize').getAttribute('aria-expanded'), lockDisabled: lock.disabled, lockChecked: lock.checked, upDis: rows[0].querySelector('[data-dir="-1"]').getAttribute('aria-disabled'),
-                downDis: rows[rows.length - 1].querySelector('[data-dir="1"]').getAttribute('aria-disabled'), midUp: rows[2].querySelector('[data-dir="-1"]').getAttribute('aria-disabled'), belowLockUp: rows[1].querySelector('[data-dir="-1"]').getAttribute('aria-disabled'), lockDown: rows[0].querySelector('[data-dir="1"]').getAttribute('aria-disabled'),
+                downDis: rows[rows.length - 1].querySelector('[data-dir="1"]').getAttribute('aria-disabled'), midUp: rows[1].querySelector('[data-dir="-1"]').getAttribute('aria-disabled'), lockDown: rows[0].querySelector('[data-dir="1"]').getAttribute('aria-disabled'),
                 focus: document.activeElement.className, names: rows.map(r => r.querySelector('.tc-check').getAttribute('aria-label')) } })()`);
         assert.equal(st.expanded, 'true'); assert.ok(st.lockDisabled && st.lockChecked, 'first tab locked and shown');
         assert.equal(st.upDis, 'true'); assert.equal(st.downDis, 'true'); assert.equal(st.midUp, null);
-        assert.equal(st.belowLockUp, 'true', 'nothing moves above the first tab'); assert.equal(st.lockDown, 'true', 'the first tab does not move');
+        assert.equal(st.lockDown, null, 'the locked tab can move down');
         assert.ok(st.names.every(n => /^Show /.test(n)), JSON.stringify(st.names));
         assert.equal(st.focus, 'tc-check', 'focus goes into the popover');
         ok('popover: first tab locked and checked, edge arrows aria-disabled, every row labelled, focus inside');
@@ -151,6 +151,21 @@ const { connect } = require('./agent_view_harness');
         assert.ok((await row()).includes('tasks'), 'another account does not read the first one’s choice');
         await close();
         ok('the choice is kept per account (storeKey); another account reads its own');
+
+        // The locked tab can be put anywhere (the operator's call, #4103) but stays shown, in the saved place, across a reload.
+        await ev(`localStorage.clear(); true`);
+        await load();
+        await open();
+        await ev(`document.querySelector('#tab-customize .tc-move[data-tab="' + ${JSON.stringify(first)} + '"][data-dir="1"]').click(); true`);
+        const moved1 = await row();
+        assert.equal(moved1.indexOf(first), 1, 'moved down one: ' + JSON.stringify(moved1));
+        assert.equal(await ev(`document.querySelector('#tab-customize .tc-check[data-tab="' + ${JSON.stringify(first)} + '"]').disabled`), true, 'still locked on');
+        await ev(`localStorage.setItem('coral-agentic-tab-prefs', JSON.stringify({ agent: { order: ['notes', ${JSON.stringify(first)}], hidden: [${JSON.stringify(first)}] }, team: { order: [], hidden: [] } })); true`);
+        await close(); await load();
+        const placed = await row();
+        assert.deepEqual(placed.slice(0, 2), ['notes', first], 'the saved place is kept after a reload');
+        assert.ok(placed.includes(first), 'and the locked tab is shown even though the list says hidden');
+        ok('the locked tab can be moved anywhere, stays shown, and keeps its place across a reload');
 
         // Reset removes the key.
         await ev(`localStorage.clear(); true`);
