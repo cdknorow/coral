@@ -39,6 +39,10 @@ jobs:
   tmux:
     name: tmux (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      id-token: write # the payload manifest's build provenance attestation
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -52,11 +56,15 @@ jobs:
           arch: ${{ matrix.arch }}
           out: dist/${{ matrix.dist }}/tmux-payload
           save: "true"
+          attested-ref: ${{ github.ref }} # what it restores, it wrote on its own ref
 
   tmux-restore:
     name: tmux restore check (${{ matrix.arch }})
     needs: [tmux]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      attestations: read
     strategy:
       fail-fast: false
       matrix:
@@ -71,10 +79,11 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
           out: dist/${{ matrix.dist }}/tmux-payload
+          attested-ref: ${{ github.ref }} # this run's own ref (main on main); a release requires main
       - name: The payload came from the cache
         env:
           HIT: ${{ steps.tmux.outputs.cache-hit }}
-        run: test "$HIT" = true || { echo "::error::the tmux payload was not restored"; exit 1; }
+        run: test "$HIT" = true || { echo "::error::the tmux payload was not restored with a verified attestation"; exit 1; }
       - name: Smoke test bundled tmux (${{ matrix.arch }})
         working-directory: coral-go
         env:
