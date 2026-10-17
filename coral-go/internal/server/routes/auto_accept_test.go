@@ -957,3 +957,30 @@ func TestAutoAcceptEnableThatBeganBeforeADisableAllDoesNotTurnTheRunOn(t *testin
 	assert.Equal(t, float64(1), body["stopped"])
 	assert.False(t, r.state(sid).Enabled)
 }
+
+// #4471 (Security on #4468): a per-session Stop wins the same way. The Operator presses Stop on an agent while that agent's
+// enable has passed its checks and not yet written: the enable must not turn the run on after the Stop.
+func TestAutoAcceptStopOnOneAgentWinsOverItsEnableInFlight(t *testing.T) {
+	r := newAutoAcceptRig(t)
+	hub := map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}
+	sid := r.agent(at.Claude, "dev", "")
+
+	r.h.onAutoEnableDeciding = func() {
+		code, _ := r.post("/api/sessions/live/dev/auto-accept/disable", map[string]any{"session_id": sid}, nil)
+		require.Equal(t, http.StatusOK, code)
+	}
+	code, body := r.enableAs(sid, sid, hub, nil)
+	assert.Equal(t, http.StatusConflict, code, body)
+	assert.Equal(t, "stopped_meanwhile", body["code"])
+	assert.False(t, r.state(sid).Enabled, "the Stop won: the enable in flight never turned the run on")
+	assert.Empty(t, r.events(sid, "auto_accept_enabled"), "and recorded no enable")
+
+	// an enable that begins after the Stop is an ordinary one, and a Stop after it still ends it
+	r.h.onAutoEnableDeciding = nil
+	code, body = r.enableAs(sid, sid, hub, nil)
+	require.Equal(t, http.StatusOK, code, body)
+	assert.True(t, r.state(sid).Enabled)
+	code, _ = r.post("/api/sessions/live/dev/auto-accept/disable", map[string]any{"session_id": sid}, nil)
+	require.Equal(t, http.StatusOK, code)
+	assert.False(t, r.state(sid).Enabled)
+}

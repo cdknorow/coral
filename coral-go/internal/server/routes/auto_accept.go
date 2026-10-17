@@ -802,7 +802,15 @@ func (h *SessionsHandler) DisableAutoAccept(w http.ResponseWriter, r *http.Reque
 		errInternalServer(w, err.Error())
 		return
 	}
-	if _, err := h.ss.DisableAutoAccept(r.Context(), ls.SessionID); err != nil {
+	// A Stop always wins (Security on #4468): under the order an enable's write also takes, and it bumps
+	// the count an enable reads when it begins, so an enable still deciding ends without turning the run on.
+	// The count is shared with disable-all: an enable for another agent at that instant is refused too,
+	// and its person turns it on again.
+	h.autoAcceptOrder.Lock()
+	_, err = h.ss.DisableAutoAccept(r.Context(), ls.SessionID)
+	h.autoAcceptStops.Add(1) // also on an error, as disable-all does
+	h.autoAcceptOrder.Unlock()
+	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
