@@ -199,12 +199,6 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 	wg.Wait()
 }
 
-// pump copies frames from src to dst. When src ends, dst is closed with src's
-// close code and reason if it sent one, or with 1011 and lostMsg if it dropped.
-func pump(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostMsg string) {
-	pumpFrom(ctx, cancel, src, dst, lostMsg, clientGate{}, nil)
-}
-
 // clientGate is the read-only gate on frames from the browser (StreamPolicy).
 type clientGate struct {
 	allow  func() bool
@@ -239,9 +233,10 @@ func frameID(typ websocket.MessageType, data []byte) (int64, bool) {
 	return id, true
 }
 
-// pumpFrom is pump with an optional gate: while gate.allow returns false, frames read from
-// src are dropped instead of forwarded (a read-only terminal), and src is told when the gate
-// has a notice.
+// pumpFrom copies frames from src to dst. When src ends, dst is closed with src's close code
+// and reason if it sent one, or with 1011 and lostMsg if it dropped. While gate.allow returns
+// false, frames read from src are dropped instead of forwarded (a read-only terminal), and src
+// is told when the gate has a notice.
 func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostMsg string, gate clientGate, withdrawn <-chan struct{}) {
 	defer cancel()
 	var lastNotice time.Time

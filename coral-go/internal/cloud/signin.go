@@ -64,9 +64,8 @@ const signinVersion = 1
 const MaxSigninOrigins = 16
 
 var (
-	flowRe    = regexp.MustCompile(`^[A-Za-z0-9_-]{26,32}$`)
-	b64urlRe  = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-	statusSet = map[string]bool{"ok": true, "revoked": true, "unknown": true, "disabled": true}
+	flowRe   = regexp.MustCompile(`^[A-Za-z0-9_-]{26,32}$`)
+	b64urlRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 )
 
 // jsonFieldNames is the exact JSON names of the fields of the struct v points to (nil when v is not

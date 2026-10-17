@@ -34,21 +34,8 @@ func RedactionClass(method, pattern string) string {
 	return "redact"
 }
 
-// redactsReply reports whether the connector redacts the reply to a request: a View route
-// that isn't exempt, with a text body.
-func redactsReply(method, decodedPath string, respHeader http.Header) bool {
-	if method == http.MethodHead {
-		method = http.MethodGet
-	}
-	pattern, tier, ok := RuleFor(method, decodedPath)
-	if !ok || tier != TierView || RedactionClass(method, pattern) != "redact" {
-		return false
-	}
-	return textReply(respHeader.Get("Content-Type"))
-}
-
-// redactsRoute is redactsReply without the reply: whether a request's reply will be redacted
-// when it is text (the connector then drops Range, so no partial body starts mid-token).
+// redactsRoute reports whether a request's reply will be redacted when it is text: a View route
+// that isn't exempt (the connector then drops Range, so no partial body starts mid-token).
 func redactsRoute(method, decodedPath string) bool {
 	if method == http.MethodHead {
 		method = http.MethodGet
