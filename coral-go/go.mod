@@ -4,6 +4,8 @@ go 1.26.9
 
 require (
 	fyne.io/systray v1.12.0
+	// SQLCipher 4.17.0 on SQLite 3.53.3: at or past 3.51.3, which fixed the WAL-reset corruption bug
+	// (https://sqlite.org/wal.html, section 11; #3677).
 	// SQLCipher for the encrypted build. Kept as a plain dependency, not mirrored or vendored (#3677,
 	// #3679): go.sum pins these exact bytes, and tools/verify-sqlcipher-amalgamation.sh (CI:
 	// sqlcipher-amalgamation.yml, whenever go.mod or go.sum change) proves its bundled amalgamation is
@@ -31,6 +33,8 @@ require (
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
+	// SQLite 3.53.4 (from 3.50.4 in #3678): carries the WAL-reset corruption fix (3.51.3 and later,
+	// https://sqlite.org/wal.html section 11; #3677). It pins modernc.org/libc v1.77.1 below: keep the two in step.
 	modernc.org/sqlite v1.60.1
 )
 
