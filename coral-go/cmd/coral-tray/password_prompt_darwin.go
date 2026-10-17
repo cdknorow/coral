@@ -8,7 +8,7 @@ package main
 #include <Cocoa/Cocoa.h>
 #include <stdlib.h>
 
-char *coralDatabasePassword(void) {
+static char *coralDatabasePasswordOnMain(void) {
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Coral — Unlock database";
     alert.informativeText = @"Enter your database password. It is used only before Coral opens its databases.";
@@ -20,6 +20,15 @@ char *coralDatabasePassword(void) {
     [alert layout];
     if ([alert runModal] != NSAlertFirstButtonReturn) return NULL;
     return strdup(field.stringValue.UTF8String);
+}
+
+// The prompt runs on the main thread (AppKit's rule): directly when called there (the
+// tray's first start), else dispatched to it (a later start, while the tray's run loop runs).
+char *coralDatabasePassword(void) {
+    if ([NSThread isMainThread]) return coralDatabasePasswordOnMain();
+    __block char *out = NULL;
+    dispatch_sync(dispatch_get_main_queue(), ^{ out = coralDatabasePasswordOnMain(); });
+    return out;
 }
 */
 import "C"

@@ -131,16 +131,19 @@ type supervisor struct {
 	started  time.Time
 	stopping bool
 	policy   crashPolicy
-	pw       string
+	pw       string // the password a server accepted (it said ready after using it)
 	havePW   bool
+	pending  string // the password given to the server starting now, not yet accepted
+	havePend bool
 	ready    chan struct{} // closed when the current child says ready
 	exited   chan struct{} // closed when the current child has exited (run's Wait returned)
 	wake     chan struct{} // Retry, or stop, during a backoff or a failed state
 	pwAsk    chan io.WriteCloser
+	done     chan struct{} // closed by stop
 }
 
 func newSupervisor(exe string, args []string, logW io.Writer) *supervisor {
-	return &supervisor{exe: exe, args: args, log: logW, wake: make(chan struct{}, 1), pwAsk: make(chan io.WriteCloser, 1), onState: func(serverState, string) {}}
+	return &supervisor{exe: exe, args: args, log: logW, wake: make(chan struct{}, 1), pwAsk: make(chan io.WriteCloser, 1), done: make(chan struct{}), onState: func(serverState, string) {}}
 }
 
 // start launches a child; ready is closed when it says it is serving.
@@ -178,16 +181,21 @@ func (s *supervisor) start() (ready <-chan struct{}, err error) {
 			switch strings.TrimSpace(sc.Text()) {
 			case childSaysReady:
 				close(readyCh)
+				s.mu.Lock()
+				if s.havePend { // the server accepted it: kept for a restart after a crash
+					s.pw, s.havePW, s.pending, s.havePend = s.pending, true, "", false
+				}
+				s.mu.Unlock()
 				s.onState(stateRunning, "")
 			case childSaysNeedPassword:
 				if pw, ok := s.cachedPassword(); ok {
 					io.WriteString(in, pw+"\n")
 					continue
 				}
-				select { // awaitFirst prompts, on the tray's main thread
+				select { // awaitFirst or servePasswords prompts
 				case s.pwAsk <- in:
 				default:
-					in.Close() // nobody can ask: the child gives up and exits
+					in.Close() // a prompt is already open: the child gives up and exits
 				}
 			default:
 				fmt.Fprintln(s.log, sc.Text())
@@ -220,21 +228,42 @@ func (s *supervisor) awaitFirst(ready <-chan struct{}) bool {
 		case <-exited:
 			return false
 		case w := <-s.pwAsk:
-			if s.password == nil {
-				w.Close()
-				continue
-			}
-			pw, err := s.password()
-			if err != nil {
-				w.Close() // cancelled: the server can't open its databases and says why
-				continue
-			}
-			s.mu.Lock()
-			s.pw, s.havePW = pw, true
-			s.mu.Unlock()
-			io.WriteString(w, pw+"\n")
+			s.answerPassword(w)
 		}
 	}
+}
+
+// servePasswords answers the password requests of every later server (a Retry after a wrong
+// password, a start after a cached password stopped working) until stop. The tray starts it
+// once awaitFirst has returned: on macOS the prompt then runs on the main thread through the
+// run loop.
+func (s *supervisor) servePasswords() {
+	for {
+		select {
+		case <-s.done:
+			return
+		case w := <-s.pwAsk:
+			s.answerPassword(w)
+		}
+	}
+}
+
+// answerPassword prompts and hands the password to the server asking for it. It is kept only
+// once that server says ready: a wrong password is never reused.
+func (s *supervisor) answerPassword(w io.WriteCloser) {
+	if s.password == nil {
+		w.Close()
+		return
+	}
+	pw, err := s.password()
+	if err != nil {
+		w.Close() // cancelled: the server can't open its databases and says why
+		return
+	}
+	s.mu.Lock()
+	s.pending, s.havePend = pw, true
+	s.mu.Unlock()
+	io.WriteString(w, pw+"\n")
 }
 
 // run waits on the child and starts it again as the policy says, until stop. Call it once,
@@ -265,6 +294,10 @@ func (s *supervisor) run() {
 			}
 		case exitStartFailed:
 			log.Printf("[supervise] server could not start: %s", reason)
+			// A wrong or outdated password must not be reused: the next start asks again.
+			s.mu.Lock()
+			s.pw, s.havePW, s.pending, s.havePend = "", false, "", false
+			s.mu.Unlock()
 			s.onState(stateFailed, reason)
 			if !s.waitForRetry() {
 				return
@@ -339,6 +372,7 @@ func (s *supervisor) stop(limit time.Duration) {
 		return
 	}
 	s.stopping = true
+	close(s.done)
 	cmd, stdin, exited := s.cmd, s.stdin, s.exited
 	s.mu.Unlock()
 	s.retry() // wake run from a backoff or a failed state

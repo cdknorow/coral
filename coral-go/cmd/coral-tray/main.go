@@ -252,6 +252,8 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		if sup.awaitFirst(ready) {
 			status.set(stateRunning, "")
 		}
+		// Later starts (a Retry after a wrong password) ask through the run loop (#4163 review).
+		go func() { defer safego.Recover("coral-tray/main:passwords"); sup.servePasswords() }()
 	}
 	stopServer := func() { sup.stop(15 * time.Second) }
 
