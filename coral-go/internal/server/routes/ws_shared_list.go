@@ -1,10 +1,12 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"runtime/debug"
 	"sync"
@@ -53,6 +55,7 @@ type wsLocalPart struct {
 	serialized []string
 	activeRuns []map[string]any
 	runsJSON   string
+	reused     int // rows whose serialized form came from the previous tick (#4308)
 }
 
 // wsRemotePart is the hub's remote view, serialized.
@@ -151,7 +154,7 @@ func (h *SessionsHandler) buildSharedWSTick(r *http.Request, done chan struct{},
 		remote = h.buildWSRemotePart(gen, genOK)
 	}
 	if localStale || local.hasRemotes != remote.snap.Configured() {
-		local = h.buildWSLocalPart(r, remote.snap.Configured())
+		local = h.buildWSLocalPart(r, remote.snap.Configured(), local)
 		local.kickGen = kickGen // a kick during this build leaves it stale for the next request
 	}
 
@@ -170,7 +173,13 @@ func (h *SessionsHandler) buildSharedWSTick(r *http.Request, done chan struct{},
 // of every shared local build.
 var wsLocalBuildHook func()
 
-func (h *SessionsHandler) buildWSLocalPart(r *http.Request, hasRemotes bool) *wsLocalPart {
+// buildWSLocalPart builds this server's part of the list. prev is the part built before it (nil for
+// the first): a row that comes out exactly as it did then keeps the string it was serialized to
+// (#4308). The row is still built from scratch every tick, from every input, so nothing can go stale;
+// what is skipped is json.Marshal of a row that did not change, the largest allocator of a tick.
+// "Exactly as it did" is sameJSONValue over the whole built row: any value that is not a type it
+// knows counts as changed, and the row is serialized again.
+func (h *SessionsHandler) buildWSLocalPart(r *http.Request, hasRemotes bool, prev *wsLocalPart) *wsLocalPart {
 	if wsLocalBuildHook != nil {
 		wsLocalBuildHook()
 	}
@@ -178,6 +187,15 @@ func (h *SessionsHandler) buildWSLocalPart(r *http.Request, hasRemotes bool) *ws
 	defer cancel()
 	sessions, err := h.buildSessionListForWS(r.Clone(ctx))
 	p := &wsLocalPart{hasRemotes: hasRemotes, err: err, sessions: sessions}
+	var before map[string]int // key -> index in prev
+	if prev != nil && prev.err == nil && err == nil {
+		before = make(map[string]int, len(prev.keys))
+		for i, k := range prev.keys {
+			if k != "" {
+				before[k] = i
+			}
+		}
+	}
 	for _, s := range sessions {
 		if hasRemotes {
 			s["server"] = "local"
@@ -190,8 +208,13 @@ func (h *SessionsHandler) buildWSLocalPart(r *http.Request, hasRemotes bool) *ws
 		}
 		serialized := ""
 		if key != "" {
-			b, _ := json.Marshal(s)
-			serialized = string(b)
+			if i, ok := before[key]; ok && sameJSONValue(prev.sessions[i], s) {
+				serialized = prev.serialized[i]
+				p.reused++
+			} else {
+				b, _ := json.Marshal(s)
+				serialized = string(b)
+			}
 		}
 		p.keys = append(p.keys, key)
 		p.serialized = append(p.serialized, serialized)
@@ -252,4 +275,71 @@ func assembleWSTick(local *wsLocalPart, remote *wsRemotePart) *wsTick {
 		t.byKey[remote.keys[i]] = s
 	}
 	return t
+}
+
+// sameJSONValue reports whether a and b are the same value to json.Marshal: the same types holding
+// the same data. It knows the types a session row holds (strings, string pointers, bools, integers, floats compared
+// bit for bit so 0 and -0 differ, nil, maps, slices and raw JSON); anything else is "not the same",
+// which only costs a Marshal. It allocates nothing.
+func sameJSONValue(a, b any) bool {
+	switch x := a.(type) {
+	case nil:
+		return b == nil
+	case string:
+		y, ok := b.(string)
+		return ok && x == y
+	case bool:
+		y, ok := b.(bool)
+		return ok && x == y
+	case int:
+		y, ok := b.(int)
+		return ok && x == y
+	case int64:
+		y, ok := b.(int64)
+		return ok && x == y
+	case float64:
+		y, ok := b.(float64)
+		return ok && math.Float64bits(x) == math.Float64bits(y)
+	case *string: // a sleeping row's icon and name color
+		y, ok := b.(*string)
+		return ok && (x == nil) == (y == nil) && (x == nil || *x == *y)
+	case json.RawMessage:
+		y, ok := b.(json.RawMessage)
+		return ok && bytes.Equal(x, y)
+	case map[string]any:
+		y, ok := b.(map[string]any)
+		if !ok || len(x) != len(y) || (x == nil) != (y == nil) {
+			return false
+		}
+		for k, v := range x {
+			w, ok := y[k]
+			if !ok || !sameJSONValue(v, w) {
+				return false
+			}
+		}
+		return true
+	case map[string]string:
+		y, ok := b.(map[string]string)
+		if !ok || len(x) != len(y) || (x == nil) != (y == nil) {
+			return false
+		}
+		for k, v := range x {
+			if w, ok := y[k]; !ok || v != w {
+				return false
+			}
+		}
+		return true
+	case []any:
+		y, ok := b.([]any)
+		if !ok || len(x) != len(y) || (x == nil) != (y == nil) {
+			return false
+		}
+		for i := range x {
+			if !sameJSONValue(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
