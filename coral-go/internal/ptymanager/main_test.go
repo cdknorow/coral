@@ -1,6 +1,7 @@
 package ptymanager
 
 import (
+	"github.com/cdknorow/coral/internal/testleak"
 	"os"
 	"testing"
 	"time"
@@ -19,5 +20,5 @@ func TestMain(m *testing.M) {
 	// The tests drive shells, which need no 300ms between a command and its
 	// Enter (production keeps it for agent TUIs).
 	tmux.SetSendKeysSettleForTest(20 * time.Millisecond)
-	os.Exit(m.Run())
+	os.Exit(testleak.Check(m.Run())) // no goroutine left running (#4167)
 }
