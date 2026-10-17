@@ -195,6 +195,7 @@ func TestUpdateCheck_NeverOffersAnOlderRelease(t *testing.T) {
 // ── #4133: the route does not make one GitHub request per call ──────────
 
 func TestUpdateCheckTwentyCallsMakeOneRequest(t *testing.T) {
+	skipWhenUpdateCheckIsOff(t)
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
