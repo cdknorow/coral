@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/secfile"
 )
 
@@ -39,15 +41,16 @@ func (e *attachRefusal) write(w http.ResponseWriter) {
 // does not exist, another team stored it, only a task result or a received or shared row names it):
 // --attach must not tell an agent what other teams hold (coral-hub's design section 2).
 func notYours(raw string) *attachRefusal {
-	return &attachRefusal{http.StatusBadRequest, "not_yours", fmt.Sprintf("%s is not one of your uploads: attach only a file you uploaded with coral-agent artifact upload", raw)}
+	return &attachRefusal{http.StatusBadRequest, "not_yours", fmt.Sprintf("%s is not one of your team's uploads: attach only a file an agent of your team uploaded with coral-agent artifact upload", raw)}
 }
 
 // attachSender is who attaches: a person (the Operator, at the dashboard, the signed command line or
-// through Coral Hub) may send any stored object; an agent only what its own session uploaded.
+// through Coral Hub) may send any stored object; an agent what an agent of its team uploaded.
 type attachSender struct {
 	person    bool
-	sessionID string // the agent's verified session (empty: it can attach nothing)
-	windowKey string // its hourly upload window
+	sessionID string   // the agent's verified session (empty: it can attach nothing)
+	team      []string // the sessions whose uploads count: the sending board's team (the Orchestrator's own included)
+	windowKey string   // its hourly upload window
 }
 
 // attachedArtifact is one checked attachment.
@@ -61,8 +64,9 @@ type attachedArtifact struct {
 var attachBeforeHash func(path string)
 
 // resolveAttachments checks a send's --attach ids, and reads each one through (#4379): for an agent
-// the id must be in a genuine upload record of the sender's own session at the time of the send
-// (never a task result, a shared or a received row, or a stored flag); for a person, a stored object.
+// the id must be in a genuine upload record of a session of the sending board's team at the time of
+// the send (the Orchestrator's decision, 11:42: the team's uploads, as Team Artifacts lists them;
+// never a task result, a shared or a received row, or a stored flag); for a person, a stored object.
 // Each object is opened ONCE, no-follow, and everything uses that handle: fstat (a regular file,
 // within the size cap, the record's size), the sidecar's digest, then the bytes, hashed on the way
 // and compared with the id at the end, so a file deleted or rewritten in place between the check and
@@ -101,7 +105,7 @@ func (h *BoardHandler) resolveAttachments(raw []string, s attachSender) ([]attac
 			if s.sessionID == "" {
 				return nil, notYours(shown)
 			}
-			if rec, ok = h.uploadRecordOf(s.sessionID, id); !ok {
+			if rec, ok = h.teamUploadRecordOf(s.team, id); !ok {
 				return nil, notYours(shown)
 			}
 		}
@@ -171,6 +175,35 @@ func (h *BoardHandler) readAttachment(dir, id, shown string, s attachSender, rec
 		}
 	}
 	return a, nil
+}
+
+// teamUploadRecordOf is the first genuine upload record of id among sessions.
+func (h *BoardHandler) teamUploadRecordOf(sessions []string, id string) (agentUploadRecord, bool) {
+	for _, sid := range sessions {
+		if rec, ok := h.uploadRecordOf(sid, id); ok {
+			return rec, true
+		}
+	}
+	return agentUploadRecord{}, false
+}
+
+// teamSessions are the agent sessions of project's team, as Team Artifacts finds them: every
+// subscriber's session and the session that claimed one of its tasks.
+func (h *BoardHandler) teamSessions(ctx context.Context, project string) []string {
+	subscribers, err := h.bs.TeamSubscriberSessions(ctx, project)
+	if err != nil {
+		return nil
+	}
+	tasks, _, err := h.bs.ListTeamArtifactTasksQuery(ctx, board.TeamArtifactQuery{Project: project, Limit: board.MaxTeamArtifactTaskScan, Subscribers: subscribers})
+	if err != nil {
+		tasks = nil
+	}
+	var out []string
+	for sid := range teamUploadSessions(tasks, subscribers) {
+		out = append(out, sid)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // objectMeta is an object's sidecar metadata.
@@ -303,15 +336,20 @@ func (h *BoardHandler) mergeCrossTeamRows(items []teamArtifact, project string) 
 	added := false
 	for _, kind := range crossTeamRecordKinds {
 		for _, rec := range h.crossTeamRecords(kind, project) {
-			by := rec.By
+			// No producer and no session: the row names a send, not one of this team's agents' work.
 			item := teamArtifact{
 				ID: kind + ":" + rec.ID, Name: rec.Name, MediaType: rec.MediaType, CreatedAt: rec.At,
 				Source: kind, URI: "coral://artifacts/" + rec.ID, ReferenceCount: 1, managed: rec.ID,
-				OtherBoard: rec.OtherBoard, OtherServer: rec.Server, ProducedBy: &by,
+				SentBy: rec.By,
 			}
-			if kind == "received" {
-				item.ProducedBy = nil // not one of this team's agents (ArtifactProducer has none for it either)
-				item.SentBy = rec.By
+			where := rec.OtherBoard
+			if rec.Server != "" && rec.Server != "local" {
+				where = rec.Server + "/" + rec.OtherBoard // across Corals (C2/C3)
+			}
+			if kind == "shared" {
+				item.SharedTo = where
+			} else {
+				item.ReceivedFrom, item.FromBoard = where, rec.OtherBoard
 			}
 			items = append(items, item)
 			added = true

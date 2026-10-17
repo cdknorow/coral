@@ -50,15 +50,18 @@ type teamArtifact struct {
 	// cannot be established); see board.ArtifactProducer.
 	SessionID  *string `json:"session_id"`
 	ProducedBy *string `json:"produced_by"`
-	// Unverified: a coral://artifacts link the team never uploaded (#4379): listed as a plain
-	// link, with no size, type, preview or download from the store ("link not verified").
-	Unverified bool `json:"unverified,omitempty"`
-	// OtherBoard/OtherServer: for a "shared" row the board (and Coral, "local" for this one) the
-	// artifact was sent to; for a "received" row the one it came from, and SentBy who sent it
-	// (#4379). Received files are not scanned.
-	OtherBoard  string `json:"other_board,omitempty"`
-	OtherServer string `json:"other_server,omitempty"`
-	SentBy      string `json:"sent_by,omitempty"`
+	// Provenance is how a task result's managed link was checked (#4379): "uploaded", "person", or
+	// "unverified" (a coral://artifacts link the team never uploaded: listed as a plain link, with no
+	// size, type, preview or download from the store, "link not verified"). Omitted otherwise.
+	Provenance string `json:"provenance,omitempty"`
+	// A "shared" row (sent by this board) says where it went: SharedTo, the board on this Coral
+	// (<server>/<board> across Corals). A "received" row says where it came from: ReceivedFrom (the
+	// same form) and FromBoard (the sending board; only a claim across Corals). SentBy is who sent
+	// it. Received files are not scanned (#4379).
+	SharedTo     string `json:"shared_to,omitempty"`
+	ReceivedFrom string `json:"received_from,omitempty"`
+	FromBoard    string `json:"from_board,omitempty"`
+	SentBy       string `json:"sent_by,omitempty"`
 
 	index   int
 	managed string // 64-hex Coral object id for coral-managed artifacts
@@ -174,7 +177,7 @@ func collectTeamArtifacts(project string, tasks []board.TeamArtifactTask, subscr
 			return
 		}
 		for i, a := range refs {
-			item := teamArtifact{Name: a.Name, MediaType: a.MediaType, CreatedAt: created, TaskID: t.TaskID, TaskTitle: t.Title, Source: source, URI: a.URI, Digest: a.Digest, index: i, ReferenceCount: 1}
+			item := teamArtifact{Name: a.Name, MediaType: a.MediaType, CreatedAt: created, TaskID: t.TaskID, TaskTitle: t.Title, Source: source, URI: a.URI, Digest: a.Digest, index: i, ReferenceCount: 1, Provenance: a.Provenance}
 			if producer != "" {
 				p := producer
 				item.ProducedBy = &p
@@ -192,7 +195,9 @@ func collectTeamArtifacts(project string, tasks []board.TeamArtifactTask, subscr
 					item.ID = item.managed
 				} else {
 					item.ID = "uri:" + a.URI
-					item.Unverified = id != ""
+					if id != "" {
+						item.MediaType, item.Digest = "", "" // nothing from the store, nor what the agent claimed of it
+					}
 				}
 			case a.Content != "":
 				n := int64(len(a.Content))

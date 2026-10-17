@@ -106,7 +106,7 @@ func TestVetAnotherTeamsFileIsUnverifiedUntilUploaded(t *testing.T) {
 	assert.Equal(t, []any{"report.md"}, out["artifacts_unverified_names"])
 	assert.Equal(t, provenanceUnverified, task.Workflow.Artifacts[0].Provenance)
 	row := rowFor(t, srv, "x", "report.md")
-	assert.True(t, row.Unverified)
+	assert.Equal(t, provenanceUnverified, row.Provenance)
 	assert.Equal(t, "uri:coral://artifacts/"+d, row.ID)
 	assert.Nil(t, row.Size, "no size from the store")
 	assert.Empty(t, row.MediaType)
@@ -119,7 +119,7 @@ func TestVetAnotherTeamsFileIsUnverifiedUntilUploaded(t *testing.T) {
 	assert.NotContains(t, out, "artifacts_unverified")
 	assert.Equal(t, provenanceUploaded, task.Workflow.Artifacts[0].Provenance)
 	again := rowFor(t, srv, "x", "again.md")
-	assert.False(t, again.Unverified)
+	assert.Equal(t, provenanceUploaded, again.Provenance)
 	assert.Equal(t, d, again.ID)
 	assert.True(t, again.Available)
 }
@@ -205,7 +205,7 @@ func TestVetLegacyRowsListAsBefore(t *testing.T) {
 	completeWithArtifacts(t, h, "x", "old task", []board.TaskArtifact{link(d)})
 	row := rowFor(t, srv, "x", "report.md")
 	assert.Equal(t, d, row.ID)
-	assert.False(t, row.Unverified)
+	assert.Empty(t, row.Provenance, "a legacy row has none")
 	assert.True(t, row.Available)
 }
 

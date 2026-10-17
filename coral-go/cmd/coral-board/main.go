@@ -493,7 +493,7 @@ Commands:
                                Message another team's Orchestrator (Orchestrators
                                and the Operator only; both boards must allow it);
                                "-" as the message reads it from stdin.
-                               --attach: up to 4 files you uploaded, 8 MiB each,
+                               --attach: up to 4 files your team uploaded, 8 MiB each,
                                16 MiB per send; both boards need cross_team_artifacts
                                on. Not scanned for malware, not redacted: never
                                attach secrets. On one Coral an agent that knows an

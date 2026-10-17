@@ -24,6 +24,7 @@ import (
 // Sessions of the attach env: each Orchestrator's agent session (id and tmux name).
 const (
 	alphaOrchSID = "aaaa1111-0000-4000-8000-000000000001"
+	alphaDevSID  = "aaaa5555-0000-4000-8000-000000000005" // a worker on alpha's team
 	betaOrchSID  = "bbbb2222-0000-4000-8000-000000000002"
 	betaQASID    = "bbbb3333-0000-4000-8000-000000000003"
 )
@@ -71,6 +72,7 @@ func newAttachEnv(t *testing.T, artifactsOn bool) *attachEnv {
 	ctx := context.Background()
 	for _, s := range []struct{ board, id, role, sid string }{
 		{"alpha", "Orchestrator", "Orchestrator", alphaOrchSID},
+		{"alpha", "Dev", "Backend Dev", alphaDevSID},
 		{"beta", "Orchestrator", "Orchestrator", betaOrchSID},
 		{"beta", "QA", "QA Engineer", betaQASID},
 		{"gamma", "Orchestrator", "Orchestrator", "cccc4444-0000-4000-8000-000000000004"},
@@ -363,14 +365,17 @@ func TestSharedAndReceivedRowsListPruneAndDelete(t *testing.T) {
 	shared := find("alpha", "shared")
 	require.NotNil(t, shared)
 	assert.Equal(t, "shared:"+d, shared.ID)
-	assert.Equal(t, "beta", shared.OtherBoard)
-	assert.Equal(t, "local", shared.OtherServer)
+	assert.Equal(t, "beta", shared.SharedTo)
+	assert.Nil(t, shared.ProducedBy)
+	assert.Nil(t, shared.SessionID)
+	assert.Equal(t, "Orchestrator", shared.SentBy)
 	assert.True(t, shared.Available)
 	require.NotNil(t, shared.Size)
 	assert.Equal(t, int64(len("alpha's report")), *shared.Size)
 	received := find("beta", "received")
 	require.NotNil(t, received)
-	assert.Equal(t, "alpha", received.OtherBoard)
+	assert.Equal(t, "alpha", received.ReceivedFrom)
+	assert.Equal(t, "alpha", received.FromBoard)
 	assert.Equal(t, "Orchestrator", received.SentBy)
 	assert.Nil(t, received.ProducedBy, "not one of beta's agents")
 	assert.NotEmpty(t, received.DownloadURL)
@@ -389,4 +394,19 @@ func TestSharedAndReceivedRowsListPruneAndDelete(t *testing.T) {
 	assert.False(t, ok)
 	_, ok = e.h.crossTeamRecord("received", "beta", d)
 	assert.False(t, ok)
+}
+
+// Team scope (the Orchestrator's decision, 11:42): the sending board's Orchestrator may attach what
+// any agent of its team uploaded; another team's upload is still refused.
+func TestAttachATeammatesUpload(t *testing.T) {
+	e := newAttachEnv(t, true)
+	d := e.upload(alphaDevSID, "dev's build log")
+	code, out := e.send("alpha", "beta", alphaOrchSID, uri(d))
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Equal(t, []any{uri(d)}, out["attached"])
+
+	theirs := e.upload(betaQASID, "beta qa's notes")
+	code, out = e.send("alpha", "beta", alphaOrchSID, uri(theirs))
+	require.Equal(t, http.StatusBadRequest, code)
+	assert.Equal(t, "not_yours", out["code"])
 }
