@@ -9,8 +9,8 @@ const { connect } = require('./agent_view_harness');
     const { Accessibility, DOM } = client;
     const ok = name => console.log(`   ✓ ${name}`);
     const dot = () => ev(`(() => { const d = document.getElementById('terminal-status-dot'); const w = document.getElementById('terminal-state-word');
-        return { cls: d.className, title: d.title, role: d.getAttribute('role'), label: d.getAttribute('aria-label'), word: w.textContent, wordHidden: w.getAttribute('aria-hidden'),
-            wordShown: w.checkVisibility({ checkVisibilityCSS: true }) && getComputedStyle(w).display !== 'none' }; })()`);
+        return { cls: d.className, title: d.title, role: d.getAttribute('role'), label: d.getAttribute('aria-label'), word: w.dataset.word, wordHidden: w.getAttribute('aria-hidden'),
+            wordShown: w.checkVisibility({ checkVisibilityCSS: true }) && getComputedStyle(w).display !== 'none', textNodes: w.textContent }; })()`);
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -24,7 +24,7 @@ const { connect } = require('./agent_view_harness');
 
         let d = await dot();
         assert.equal(d.role, 'img'); assert.equal(d.title, d.label); assert.ok(d.label && d.label.length > 2, 'a state word: ' + d.label);
-        assert.equal(d.word, d.label, 'the word beside it is the same state'); assert.equal(d.wordHidden, 'true', 'the word is hidden from assistive technology');
+        assert.equal(d.word, d.label, 'the word beside it is the same state'); assert.equal(d.textNodes, '', 'it is generated content: the identity\'s own text is unchanged'); assert.equal(d.wordHidden, 'true', 'the word is hidden from assistive technology');
         assert.equal(d.wordShown, false, 'a mouse screen has the tip, not the word');
         ok('the dot has a role, a tip and an accessible name with the sidebar\'s state word; the word beside it is aria-hidden and not drawn with a mouse');
 

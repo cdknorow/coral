@@ -1691,7 +1691,8 @@
 /* Selected-agent header: the identity may shrink; the actions on the right
    never do. */
 .terminal-state-word { display: none; flex: none; font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; } /* #4327: the state in words where there is no hover (touch screens wider than a phone) */
-@media (pointer: coarse) and (min-width: 768px) { .terminal-state-word:not(:empty) { display: inline; } }
+.terminal-state-word::before { content: attr(data-word); } /* generated, so the identity's text stays the name (the pop-out and its tests read it) */
+@media (pointer: coarse) and (min-width: 768px) { .terminal-state-word[data-word]:not([data-word=""]) { display: inline; } }
 .terminal-header-left {
     flex: 1 1 auto;
     /* The identity keeps room (dot + at least ~120px of name) while the folder/branch in the actions shrink first. */
@@ -1723,7 +1724,7 @@
     min-width: 0;
     max-width: 100%;
     margin-left: 4px;
-    font-size: 10px;
+    font-size: 0.625rem; /* rem, not 10px: it grows with the text size (#4327) */
     color: var(--text-muted);
     white-space: nowrap;
 }
@@ -1751,11 +1752,14 @@
 /* A phone (#4081): the 44 px buttons (the toggle, Find, Open Agent Tab, side panel) need the width, so the name gives way first
    instead of pushing the last buttons off the screen at 320 to 414 px. */
 @media (max-width: 480px) {
-    .terminal-header { padding: 0 6px; }
-    .terminal-header-left { min-width: 0; }
+    /* #4327: at 200% text the buttons go to a second row instead of squeezing the name out (it was "al…", and gone with a branch beside it): the
+       header grows to its rows, the name keeps about 6 characters of room (em: it grows with the text), the branch is left out of the header on a phone. */
+    body .terminal-header { padding: 0 6px; flex-wrap: wrap; height: auto; min-height: 36px; row-gap: 2px; } /* body: output.css sets height: 36px and loads after this file */
+    .terminal-header-left { flex: 1 1 0; min-width: 3.5em; } /* basis 0: the row wraps only when even 5em of name cannot fit beside the buttons */
     .terminal-header-left .terminal-session-label,
     .terminal-header-left .terminal-identity { min-width: 0; }
-    .terminal-header-actions { flex: 0 0 auto; }
+    .terminal-header-actions { flex: 0 0 auto; margin-left: auto; }
+    .terminal-header-actions > .terminal-branch { display: none; } /* the folder is already left out of a phone's header (767 px); the branch goes too below 480, where it left the name no room at all */
 }
 /* 200 percent zoom on a phone is a page under 260 px wide: the header's buttons wrap to a second row instead of leaving the screen. */
 @media (max-width: 260px) {
@@ -1990,7 +1994,7 @@
     min-width: 0;
     flex: 0 1 auto;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 0.6875rem; /* rem, not 11px (#4327) */
     color: var(--text-secondary);
 }
 .terminal-branch[hidden] { display: none; }

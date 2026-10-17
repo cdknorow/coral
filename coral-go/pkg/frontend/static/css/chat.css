@@ -509,7 +509,7 @@
     border: 1px solid var(--border-color);
     border-radius: 6px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 0.75rem; /* rem, not 12px: it grows with the text size (#4327) */
     text-align: center;
     transition: background 0.15s, color 0.15s;
 }
