@@ -363,6 +363,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		limitNotice = h.usageLimitText(agentType, sessionID, workingDir, h.cachedLogStatus(h.findLogPath(agentType, sessionID)))
 	}
 	trace.end("log_status")
+	messages = markCoralDeliveries(messages, agentType, sessionID, name) // the whole transcript: a delivery is used by one turn (#4306)
 	if after > 0 {
 		messages = messages[min(after, len(messages)):]
 	}
@@ -395,7 +396,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			end = max(end-max(offset, 0), 0)
 		}
 		start := max(end-limit, 0)
-		page := markCoralDeliveries(messages[start:end], agentType, sessionID, name)
+		page := messages[start:end]
 		if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
 			page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
 		}
@@ -413,7 +414,6 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	messages = markCoralDeliveries(messages, agentType, sessionID, name)
 	reply := map[string]any{"messages": messages, "total": total, "limit_notice": limitNotice,
 		"needs_login": needsLogin, "login_reason": nilIf(!needsLogin || loginReason == "", loginReason)}
 	h.addNeedsInput(r, reply, name, agentType, sessionID)

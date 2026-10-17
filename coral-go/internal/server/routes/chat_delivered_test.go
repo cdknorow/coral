@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,4 +72,65 @@ func TestSessionsChat_FlagsTurnsCoralDelivered(t *testing.T) {
 	assert.Equal(t, []bool{false, true, false, false}, flagged(get("after=0&limit=30")), "only the turn Coral typed is flagged, the wrapped paste included")
 	assert.Equal(t, []bool{false, true, false, false}, flagged(get("after=0&limit=30&trim=300")), "also on a trimmed page")
 	assert.Equal(t, []bool{true, false, false}, flagged(get("after=1")), "and on the poll for new messages")
+}
+
+// #4306 follow-up: through the real route, a delivery flags one turn. The operator typing the same long text before Coral did, or
+// again after it, keeps their turns; a short text Coral delivered ("continue") never flags the operator's identical message; a
+// delivered text with a slash command in front is not the same text; and the flag does not depend on the page asked for.
+func TestSessionsChat_DeliveryFlagsOneTurnAndNeverAShortText(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+
+	sid := "00000000-0000-0000-0000-000000000431"
+	notice := "[Task #4300 completed by QA Engineer] Outcome: success. The same long text the operator may have typed."
+	now := time.Now().UTC()
+	line := func(at time.Time, text string) string {
+		b, _ := json.Marshal(map[string]any{"type": "user", "timestamp": at.Format(time.RFC3339Nano), "message": map[string]any{"role": "user", "content": text}})
+		return string(b) + "\n"
+	}
+	// 0: the operator types the long text an hour before Coral delivers it; 1: "continue" (also delivered, short); 2: the delivery
+	// (pasted); 3: the operator repeats the text; 4: a slash command in front of the delivered text; 5: the operator's "continue".
+	transcript := line(now.Add(-time.Hour), notice) + line(now.Add(-time.Minute), "continue") + line(now.Add(time.Second), "<pasted_content id=\"1\">\n"+notice+"\n</pasted_content id=\"1\">") +
+		line(now.Add(2*time.Second), notice) + line(now.Add(3*time.Second), "/status "+notice) + line(now.Add(4*time.Second), "continue")
+	require.NoError(t, os.WriteFile(filepath.Join(projectDir, sid+".jsonl"), []byte(transcript), 0644))
+
+	deliver := func(text string) {
+		t.Helper()
+		d, err := ptymanager.DeliverAutomated(context.Background(), ptymanager.AutomatedInput{
+			Name: "claude-" + sid, AgentType: "claude", SessionID: sid, Text: text, What: "test", Send: func(context.Context) error { return nil },
+		})
+		require.NoError(t, err)
+		require.Equal(t, ptymanager.Sent, d)
+	}
+	deliver("continue")
+	deliver(notice)
+
+	get := func(query string) (flags []bool, start int) {
+		t.Helper()
+		resp, err := http.Get(fmt.Sprintf("%s/api/sessions/live/claude-%s/chat?session_id=%s&agent_type=claude&%s", server.URL, sid, sid, query))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+			Start    int              `json:"start"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		for _, m := range body.Messages {
+			v, _ := m["coral_notice"].(bool)
+			flags = append(flags, v)
+		}
+		return flags, body.Start
+	}
+	want := []bool{false, false, true, false, false, false}
+	got, _ := get("after=0&limit=30")
+	assert.Equal(t, want, got, "only the delivered turn is flagged: not the operator's earlier or repeated copy, not 'continue', not the slash-prefixed text")
+	got, start := get("after=0&limit=3&before=4")
+	assert.Equal(t, 1, start)
+	assert.Equal(t, want[1:4], got, "an older page is flagged the same way (the delivery's turn is found in the whole transcript)")
+	got, _ = get("after=3")
+	assert.Equal(t, want[3:], got, "and the poll for new turns")
 }
