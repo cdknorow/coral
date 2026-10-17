@@ -449,7 +449,9 @@ type AgentInfo struct {
 
 func (h *SessionsHandler) discoverAgents(ctx *http.Request) ([]AgentInfo, error) {
 	h.maybePruneSessionCaches() // every list path discovers agents first
-	panes, err := h.terminal.ListSessions(ctx.Context())
+	// The list paths only show agents (the session list, the team view): the shared pane list
+	// may be a few seconds old (#4346); a launch or a kill from Coral still shows at once.
+	panes, err := h.terminal.ListSessions(tmux.WithPaneListMaxAge(ctx.Context(), tmux.DisplayPaneListAge))
 	if err != nil {
 		return nil, err
 	}

@@ -88,6 +88,30 @@ type paneState struct{ pid, cols, rows int }
 // and size); a command that changes a pane drops it at once.
 const paneStateTTL = time.Second
 
+// DisplayPaneListAge is how old a pane list may be for a caller that only discovers or shows
+// agents (#4346): the session list and team view, machine health. With every caller held to
+// paneStateTTL, callers arriving at different moments ran a list-panes every 1.3 s between them.
+const DisplayPaneListAge = 5 * time.Second
+
+type paneListMaxAgeKey struct{}
+
+// WithPaneListMaxAge lets the calls made with ctx answer from the shared pane list up to d old,
+// instead of paneStateTTL. A pane Coral starts, kills, resizes or renames drops the list at once
+// whatever the age, so only changes made outside Coral (a pane that exits on its own, an agent's
+// own title) show up to d late. Never for a caller about to type into a pane or decide whether
+// its agent has exited.
+func WithPaneListMaxAge(ctx context.Context, d time.Duration) context.Context {
+	return context.WithValue(ctx, paneListMaxAgeKey{}, d)
+}
+
+// paneListMaxAge is how old a shared pane list the calls made with ctx accept.
+func paneListMaxAge(ctx context.Context) time.Duration {
+	if d, ok := ctx.Value(paneListMaxAgeKey{}).(time.Duration); ok && d > paneStateTTL {
+		return d
+	}
+	return paneStateTTL
+}
+
 // paneChanging are the tmux commands after which the shared pane list is stale: a pane's size
 // (Coral's own resize must read back at once, v1.4.63's terminal size checks), its pid (a
 // respawn), its title or name, or the set of panes. Changes Coral doesn't make (an agent's own
@@ -868,11 +892,12 @@ func (c *Client) DisplayForAgent(ctx context.Context, agentName, agentType, sess
 // it is free-form text the agent sets and can contain the '|' separator (see listPanesOnSocket).
 const snapshotFormat = "#{session_name}|#S:#I.#P|#{pane_pid}|#{pane_width}|#{pane_height}|#{pane_current_path}|#{pane_title}"
 
-// paneSnapshot is the primary socket's panes from one list-panes at most every paneStateTTL,
-// shared by every caller (#4049); nil when tmux couldn't list them.
+// paneSnapshot is the primary socket's panes from one list-panes at most every paneStateTTL (or
+// the age ctx allows, WithPaneListMaxAge), shared by every caller (#4049); nil when tmux couldn't
+// list them.
 func (c *Client) paneSnapshot(ctx context.Context) *paneSnapshot {
 	c.paneStatesMu.Lock()
-	if c.snap != nil && time.Since(c.snap.at) < paneStateTTL {
+	if c.snap != nil && time.Since(c.snap.at) < paneListMaxAge(ctx) {
 		defer c.paneStatesMu.Unlock()
 		return c.snap
 	}
@@ -1308,14 +1333,15 @@ func (c *Client) SetPaneTitle(ctx context.Context, target, title string) {
 // GetPanePID returns the shell PID running in the first pane of the given session.
 // PanePIDs is the process of every pane on the socket (#3444).
 func (c *Client) PanePIDs(ctx context.Context) ([]int, error) {
-	out, err := c.run(ctx, "list-panes", "-a", "-F", "#{pane_pid}")
-	if err != nil {
-		return nil, err
+	// From the shared pane list (#4346), which has every pane's pid; it ran a list-panes of its own.
+	s := c.paneSnapshot(ctx)
+	if s == nil {
+		return nil, fmt.Errorf("tmux list-panes failed")
 	}
 	var pids []int
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil && pid > 0 {
-			pids = append(pids, pid)
+	for _, st := range s.states {
+		if st.pid > 0 {
+			pids = append(pids, st.pid)
 		}
 	}
 	return pids, nil

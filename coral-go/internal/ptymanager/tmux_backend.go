@@ -268,7 +268,8 @@ func (b *TmuxBackend) OutputStamp(agentType, sessionID string) (string, bool) {
 func (b *TmuxBackend) AgentPIDs() []int {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	pids, err := b.client.PanePIDs(ctx)
+	// For machine health's process totals: a pane list a few seconds old will do (#4346).
+	pids, err := b.client.PanePIDs(tmux.WithPaneListMaxAge(ctx, tmux.DisplayPaneListAge))
 	if err != nil {
 		return nil
 	}
