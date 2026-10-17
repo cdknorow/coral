@@ -26,7 +26,8 @@ const { connect } = require('./agent_view_harness');
         const read = () => ev(`(() => { const l = document.getElementById('terminal-header-label'); const lr = l.getBoundingClientRect(); const h = l.closest('.terminal-header'); const hr = h.getBoundingClientRect();
             const fs = sel => { const e = document.querySelector(sel); return e ? parseFloat(getComputedStyle(e).fontSize) : null; };
             const kids = [...h.children].map(c => Math.round(c.getBoundingClientRect().bottom - hr.top));
-            return { kidsBottom: Math.max(...kids), text: l.textContent, whole: l.scrollWidth <= l.clientWidth + 1, w: Math.round(lr.width), headerH: Math.round(hr.height), over: document.documentElement.scrollWidth - innerWidth,
+            const br = document.querySelector('.terminal-branch'); const branchShown = !!br && !br.hidden && getComputedStyle(br).display !== 'none' && br.getBoundingClientRect().width > 0;
+            return { branchShown, kidsBottom: Math.max(...kids), text: l.textContent, whole: l.scrollWidth <= l.clientWidth + 1, w: Math.round(lr.width), headerH: Math.round(hr.height), over: document.documentElement.scrollWidth - innerWidth,
                 team: fs('.terminal-context-team'), branch: fs('.terminal-branch-text'), more: fs('.load-more-btn'), root: parseFloat(getComputedStyle(document.documentElement).fontSize) }; })()`);
 
         const at100 = await read();
@@ -39,6 +40,7 @@ const { connect } = require('./agent_view_harness');
         assert.equal(at200.text, NAME);
         assert.ok(at200.whole, `at 200% the name is whole, not cut to "al…" (the label is ${at200.w}px wide, scrollWidth vs clientWidth: ${JSON.stringify(at200)})`);
         assert.ok(at200.over <= 0, 'no sideways scroll at 200%');
+        assert.equal(at200.branchShown, false, 'at 200% text the branch is left out of the header: the name keeps its room');
         ok('at 390 px and 200% text the agent name is whole (header wraps), no sideways scroll');
         for (const k of ['team', 'branch']) if (at100[k] && at200[k]) assert.ok(at200[k] / at100[k] >= 1.9, `${k} text grows with the root font (${at100[k]} px to ${at200[k]} px)`);
         const more = await ev(`(() => { const e = document.querySelector('.load-more-btn'); return e ? parseFloat(getComputedStyle(e).fontSize) : null; })()`);
@@ -48,14 +50,16 @@ const { connect } = require('./agent_view_harness');
         // The narrowest phones at normal text: the header stays one row (nothing wraps until the text is larger).
         await ev(`window.__m.add('phone-bot-with-a-long-name', 'B', 3, { sleeping: false, session_id: 'h200-long' }); true`); await sleep(600); // sleep-ok: the list renders from several answers
         await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'h200-long', 'local'); true`); await sleep(800); // sleep-ok: the header fills after the selection
+        await ev(`T.render.updateSessionBranch('fix-4327-header-wrap', 'coral', {}); true`); await sleep(300); // sleep-ok: the header redraws after the branch is set
         await ev(`document.documentElement.style.fontSize = ''; true`);
         for (const w of [320, 360, 375, 390]) {
             await Emulation.setDeviceMetricsOverride({ width: w, height: 800, deviceScaleFactor: 1, mobile: true }); await sleep(400); // sleep-ok: layout settles after the emulation change
             const r = await read();
             assert.ok(r.kidsBottom <= 40 && r.headerH <= 40, `${w} px at 100% text: one header row (rows end at ${r.kidsBottom}, header ${r.headerH}) with the name ${r.w}px wide`);
             assert.ok(r.w >= 48, `${w} px at 100% text: the name has room (${r.w}px)`);
+            assert.equal(r.branchShown, w >= 360, `${w} px at 100% text: the branch ${w >= 360 ? 'stays in' : 'is left out of'} the header`);
         }
-        ok('at 320, 360, 375 and 390 px with normal text the header is one row and the name has room');
+        ok('at 320, 360, 375 and 390 px with normal text the header is one row, the name has room, and the branch stays from 360 px up');
     } catch (e) {
         console.error(e);
         process.exitCode = 1;

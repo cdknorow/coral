@@ -1753,14 +1753,19 @@
    instead of pushing the last buttons off the screen at 320 to 414 px. */
 @media (max-width: 480px) {
     /* #4327: at 200% text the buttons go to a second row instead of squeezing the name out (it was "al…", and gone with a branch beside it): the
-       header grows to its rows, the name keeps about 6 characters of room (em: it grows with the text), the branch is left out of the header on a phone. */
+       header grows to its rows, the name keeps about 6 characters of room (em: it grows with the text), the branch stays at normal text and goes where the header is narrow for its text (below). */
     body .terminal-header { padding: 0 6px; flex-wrap: wrap; height: auto; min-height: 36px; row-gap: 2px; } /* body: output.css sets height: 36px and loads after this file */
     .terminal-header-left { flex: 1 1 0; min-width: 3.5em; } /* basis 0: the row wraps only when even 5em of name cannot fit beside the buttons */
     .terminal-header-left .terminal-session-label,
     .terminal-header-left .terminal-identity { min-width: 0; }
     .terminal-header-actions { flex: 0 0 auto; margin-left: auto; }
-    .terminal-header-actions > .terminal-branch { display: none; } /* the folder is already left out of a phone's header (767 px); the branch goes too below 480, where it left the name no room at all */
+    .terminal-header-actions > .terminal-branch { max-width: 4.5em; } /* kept on a phone at normal text, cut short: it is a hint, the name is what the header is for */
+    .terminal-header { container-type: inline-size; container-name: agent-header; }
 }
+/* The branch is dropped where the header is narrow for its text: under 21 rem, which is 336 px at normal text (a 320 px phone, where name, toggle and buttons
+   already fill the row) and any phone once the text is large (390 px at 200% is 12 rem). A container query: rem here is the root font size, which
+   follows the text size (a media query's em would not follow a root font override, and this way a test can) (#4327, #4360 follow-up). */
+@container agent-header (max-width: 21rem) { .terminal-header-actions > .terminal-branch { display: none; } }
 /* 200 percent zoom on a phone is a page under 260 px wide: the header's buttons wrap to a second row instead of leaving the screen. */
 @media (max-width: 260px) {
     .terminal-header { flex-wrap: wrap; height: auto; }
