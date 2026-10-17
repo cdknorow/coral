@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { registerActions, idOf, uuidOf } from './actions.js';
 import { pollEvery } from './overload.js';
-import { changedFields } from './settings_diff.js';
+import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -448,6 +448,7 @@ export async function saveScheduledJob() {
         // meanwhile keeps that change (#4423); a new job sends everything.
         const body = isEdit && openedJob ? changedFields(openedJob, values) : values;
         if (isEdit && !Object.keys(body).length) {
+            showToast(NOTHING_TO_SAVE);
             hideJobModal();
             return;
         }

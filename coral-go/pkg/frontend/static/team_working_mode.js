@@ -2,7 +2,7 @@ import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 import { boardRenameControl } from './board_rename.js';
-import { changedFields, rebaseChanges } from './settings_diff.js';
+import { changedFields, rebaseChanges, NOTHING_TO_SAVE } from './settings_diff.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
 
@@ -375,7 +375,7 @@ export async function showTeamWorkingMode(team, options = {}) {
         const boardChanged = changedFields(base.board, boardNow);
         const globalChanged = changedFields(base.global, globalNow);
         if (!modeChanged && !(boardSettingsLoaded && Object.keys(boardChanged).length) && !(settingsLoaded && Object.keys(globalChanged).length)) {
-            setStatus('Nothing to save: no setting changed.');
+            setStatus(NOTHING_TO_SAVE);
             save.disabled = false;
             return;
         }

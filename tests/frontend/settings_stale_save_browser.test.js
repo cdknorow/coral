@@ -63,6 +63,14 @@ const BASE = require('./test_base').BASE;
     s = await server();
     assert.equal(s.cli_path_codex || '', '', 'a path cleared on purpose is cleared');
     assert.equal(s.cli_path_claude, exe1, 'and the other is untouched');
+    // 5. Saving with nothing changed says so (one line for every form); a real change still says saved.
+    const lastToast = () => ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent).pop() || ''`);
+    assert.match(await lastToast(), /Settings saved/, 'a save of a change says saved');
+    await openDialog();
+    for (let i = 0; i < 60 && await value(CLAUDE) !== exe1; i++) await new Promise(r => setTimeout(r, 50));
+    await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
+    await save();
+    assert.match(await lastToast(), /Nothing to save: no setting changed\./, 'an unchanged Save says there was nothing to save');
     console.log('PASS settings dialog opens fresh and saves only what changed');
   } finally {
     // Back to the shard's own values.

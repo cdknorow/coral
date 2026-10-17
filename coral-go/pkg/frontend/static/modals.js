@@ -22,6 +22,7 @@ import {
     pickerVisible, pickerOptions, serverLabel, launchBlockReason, coerceSelection,
     bareBoardName, postLaunch, waitForLaunched,
 } from './launch_server.js';
+import { NOTHING_TO_SAVE } from './settings_diff.js';
 import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 import { pollEvery } from './overload.js';
 import { attachDialogFocus } from './dialog_focus.js';
@@ -2091,6 +2092,7 @@ function renderDatabaseEncryptionStatus(status, loadError = false) {
     }
     const mode = status.saved_mode || status.effective_mode || 'disabled';
     select.value = mode;
+    select.dataset.shown = mode; // what Save compares with, to tell a changed choice from none
     select.disabled = status.feature_available === false;
     const effective = status.effective_mode || 'disabled';
     const restart = status.restart_required === true;
@@ -2112,6 +2114,12 @@ async function loadDatabaseEncryptionStatus() {
         renderDatabaseEncryptionStatus(null, true);
         return null;
     }
+}
+
+// True when the database encryption choice differs from what the dialog showed.
+function databaseEncryptionChanged() {
+    const select = document.getElementById('settings-database-encryption');
+    return Boolean(select) && !select.disabled && select.dataset.shown !== undefined && select.value !== select.dataset.shown;
 }
 
 async function saveDatabaseEncryptionSettings() {
@@ -2749,6 +2757,9 @@ export async function applySettings() {
     const oldGitDiffMode = state.settings?.git_diff_mode || 'previous_commit';
 
     try {
+        // Nothing to save when no setting changed and neither the database encryption choice nor the backend and wake choices did (they are saved apart).
+        const sideChange = databaseEncryptionChanged() || await importOnce('./terminal_backend.js').then(tb => tb.hasUnsavedBackendChange(), () => true);
+        const nothingToSave = Object.keys(payload).length === 0 && !sideChange;
         if (!isCloud()) await saveDatabaseEncryptionSettings();
         // Nothing changed: nothing to write.
         const response = Object.keys(payload).length === 0 ? { ok: true } : await fetch("/api/settings", {
@@ -2827,7 +2838,7 @@ export async function applySettings() {
             refreshChangedFiles();
         }
 
-        showToast("Settings saved");
+        showToast(nothingToSave ? NOTHING_TO_SAVE : "Settings saved");
     } catch (e) {
         showToast(e && e.userMessage ? `Failed to save settings: ${e.userMessage}` : "Failed to save settings", true);
         return;

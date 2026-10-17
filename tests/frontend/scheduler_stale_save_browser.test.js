@@ -58,6 +58,7 @@ const { connect } = require('./agent_view_harness');
         await save();
         await waitFor(`document.getElementById('job-modal').style.display === 'none'`, 'the editor closed', 8000);
         assert.equal(await ev(`window.__jobPuts.length`), 0);
+        assert.match(await ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent).pop() || ''`), /Nothing to save: no setting changed\./, 'and it says so');
         console.log('PASS scheduled-job editor saves only what changed');
     } finally {
         try {

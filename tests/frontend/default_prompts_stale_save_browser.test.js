@@ -52,6 +52,7 @@ const BASE = require('./test_base').BASE;
     await open();
     await save();
     assert.deepEqual(await ev(`window.__puts`), [], 'nothing changed: nothing is sent');
+    assert.match(await ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent).pop() || ''`), /Nothing to save: no setting changed\./, 'and it says so, in the one line every form uses');
 
     // 4. A prompt set back to the shipped default is saved as empty.
     await open();

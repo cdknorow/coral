@@ -160,6 +160,16 @@ async function saveAutoWake() {
     return true;
 }
 
+/** True when the backend choice or the wake setting in the dialog differs from what it opened with: Save has something to apply
+ *  beyond the plain settings (the same tests applyTerminalBackendChange and saveAutoWake make). */
+export function hasUnsavedBackendChange() {
+    if (_autoWakeShown && ($('tb-autowake-on').checked !== _autoWakeShown.on || Number($('tb-autowake-cap').value) !== _autoWakeShown.cap)) return true;
+    const st = _status;
+    if (!st || !st.choice || st.forced || isCloud()) return false;
+    const want = picked();
+    return Boolean(want) && want !== nextBackend(st);
+}
+
 export async function applyTerminalBackendChange() {
     if (!(await saveAutoWake())) return false;
     const st = _status;

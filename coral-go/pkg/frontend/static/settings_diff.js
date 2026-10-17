@@ -81,6 +81,9 @@ export function rebaseChanges(opened, current, fresh) {
 }
 
 /** changedFields is the part of current whose value differs from opened (compared whole): what a merging PUT needs. */
+/** What every form says when Save finds nothing changed (#4423): one line, so the forms agree. */
+export const NOTHING_TO_SAVE = 'Nothing to save: no setting changed.';
+
 export function changedFields(opened, current) {
     const out = {};
     for (const [k, v] of Object.entries(current)) if (!sameValue(opened?.[k], v)) out[k] = v;

@@ -1,6 +1,7 @@
 /* Moved out of modals.js as it was (#3836): the Default Prompts dialog loads on its own the first time it opens. */
 import { state } from './state.js';
 import { showToast } from './utils.js';
+import { NOTHING_TO_SAVE } from './settings_diff.js';
 
 // ── Default Prompts Modal ──────────────────────────────────────────
 
@@ -110,7 +111,7 @@ export async function saveDefaultPrompts() {
             state.settings = { ...state.settings, ...payload };
             if (_openedPrompts) for (const key of Object.keys(payload)) _openedPrompts[key] = document.getElementById(PROMPT_FIELDS[key])?.value ?? "";
         }
-        showToast("Default prompts saved");
+        showToast(Object.keys(payload).length > 0 ? "Default prompts saved" : NOTHING_TO_SAVE);
     } catch (e) {
         showToast("Failed to save prompts", true);
         return; // the dialog stays open with what was typed
