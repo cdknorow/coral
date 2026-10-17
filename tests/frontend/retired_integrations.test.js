@@ -15,7 +15,8 @@ const BASE = require('./test_base').BASE;
     await Page.enable();
     await Page.navigate({ url: BASE });
     await Page.loadEventFired();
-    const checks = await ev(`(() => ({
+    const checks = await ev(`(window.__coral.buildAllLazy(), // the Settings dialog is built on first open (#4500): built, so a retired setting's absence means something
+      ({
       connectedMenu: !!document.getElementById('connected-apps-menu-btn'),
       connectedView: !!document.getElementById('connected-apps-view'),
       proxySetting: !!document.getElementById('settings-proxy-enabled'),
@@ -23,7 +24,7 @@ const BASE = require('./test_base').BASE;
       modelSelector: !!document.getElementById('settings-default-model-claude'),
       analyticsView: !!document.getElementById('cost-dashboard-view'),
       webhookModal: !!document.getElementById('webhook-modal')
-    }))()`);
+    }))`);
     assert.equal(checks.connectedMenu, false);
     assert.equal(checks.connectedView, false);
     assert.equal(checks.proxySetting, false);

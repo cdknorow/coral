@@ -25,6 +25,7 @@ const BASE = require('./test_base').BASE;
 
     // 1. Accessibility and element presence verification on real rendered template
     const elementsExist = await ev(`(() => {
+      window.__coral.buildAllLazy(); // the Settings dialog is built on first open (#4500)
       const tel = document.getElementById('settings-telemetry-enabled');
       const rem = document.getElementById('settings-remote-access-enabled');
       const status = document.getElementById('settings-remote-access-status');
