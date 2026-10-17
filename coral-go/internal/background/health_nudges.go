@@ -12,6 +12,7 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/teamhealth"
 )
 
 // HealthNudges is the part of the health check that acts by itself (#4175 step 1): it nudges an
@@ -175,12 +176,12 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 			case err != nil || c.Escalated:
 			case c.Count >= h.ClaimNudges:
 				if h.store.MarkHealthEscalated(ctx, project, ruleClaimNudge, sub.SubscriberID, subject, now) == nil {
-					escalated = append(escalated, fmt.Sprintf("%s has not claimed #%d after %d nudges", sub.SubscriberID, t.ID, c.Count))
+					escalated = append(escalated, fmt.Sprintf("%s has not claimed #%d after %d nudges", teamhealth.Name(sub.SubscriberID), t.ID, c.Count))
 				}
 			case take(ruleClaimNudge, sub.SubscriberID, h.ClaimAfter):
 				if h.deliver(ctx, a, "health-claim:"+project, claimNudgeText(t.ID)) == nil {
 					h.store.BumpHealthCounter(ctx, project, ruleClaimNudge, sub.SubscriberID, subject, now)
-					claimed = append(claimed, fmt.Sprintf("%s (#%d)", sub.SubscriberID, t.ID))
+					claimed = append(claimed, fmt.Sprintf("%s (#%d)", teamhealth.Name(sub.SubscriberID), t.ID))
 				}
 			}
 		}
@@ -205,7 +206,7 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 					c = board.HealthCounter{}
 				} else if !c.Escalated && perr == nil && now.Sub(at) >= h.SilentAfter {
 					if h.store.MarkHealthEscalated(ctx, project, ruleStatusNudge, sub.SubscriberID, subject, now) == nil {
-						escalated = append(escalated, fmt.Sprintf("%s silent on #%d after a status nudge", sub.SubscriberID, t.ID))
+						escalated = append(escalated, fmt.Sprintf("%s silent on #%d after a status nudge", teamhealth.Name(sub.SubscriberID), t.ID))
 					}
 					continue
 				} else {
@@ -215,7 +216,7 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 			if silent := now.Sub(last); silent >= h.StatusAfter && take(ruleStatusNudge, sub.SubscriberID, h.StatusAfter) {
 				if h.deliver(ctx, a, "health-status:"+project, statusNudgeText(t.ID, int(silent.Minutes()))) == nil {
 					h.store.BumpHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject, now)
-					statused = append(statused, fmt.Sprintf("%s (#%d)", sub.SubscriberID, t.ID))
+					statused = append(statused, fmt.Sprintf("%s (#%d)", teamhealth.Name(sub.SubscriberID), t.ID))
 				}
 			}
 		}

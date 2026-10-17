@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/teamhealth"
 )
 
 // Review auto-delegation (#4175 step 1): when a task enters review for the first time, Coral
@@ -58,15 +59,15 @@ func (h *BoardHandler) autoDelegateReview(ctx context.Context, project string, i
 	}
 	list := make([]string, 0, len(reviews))
 	for _, rt := range reviews {
-		list = append(list, fmt.Sprintf("%s (#%d)", *rt.AssignedTo, rt.ID))
+		list = append(list, fmt.Sprintf("%s (#%d)", teamhealth.Name(*rt.AssignedTo), rt.ID))
 	}
 	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf(
 		"[Task #%d delegated for review by Coral] to %s, %s. @%s change them with coral-board task review %d --to \"...\"",
-		id, strings.Join(list, ", "), source, orch, id), nil)
+		id, strings.Join(list, ", "), source, teamhealth.Name(orch), id), nil)
 	for _, rt := range reviews {
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf(
 			"@%s [Task #%d assigned to you: the review of #%d] run 'coral-board task claim %d', then 'coral-board task detail %d'",
-			*rt.AssignedTo, rt.ID, id, rt.ID, id), nil)
+			teamhealth.Name(*rt.AssignedTo), rt.ID, id, rt.ID, id), nil)
 		h.sendTaskNudge(ctx, project, *rt.AssignedTo, taskClaimNudge(rt.ID))
 	}
 	return true
@@ -84,5 +85,5 @@ func (h *BoardHandler) healthBudgetReached(ctx context.Context, project string) 
 		return
 	}
 	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf(
-		"@%s [Coral health actions paused] this board's budget of %d automatic actions an hour is used up; Coral acts again next hour", orch, healthTeamBudget), nil)
+		"@%s [Coral health actions paused] this board's budget of %d automatic actions an hour is used up; Coral acts again next hour", teamhealth.Name(orch), healthTeamBudget), nil)
 }

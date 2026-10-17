@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/teamhealth"
 )
 
 // BoardHealthMonitor periodically audits task queues and sends a deduplicated
@@ -122,9 +123,9 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 		for _, e := range esc {
 			switch e.Rule {
 			case ruleClaimNudge:
-				issues = append(issues, fmt.Sprintf("%s has not claimed task #%s after Coral's claim nudges", e.Target, e.Subject))
+				issues = append(issues, fmt.Sprintf("%s has not claimed task #%s after Coral's claim nudges", teamhealth.Name(e.Target), e.Subject))
 			case ruleStatusNudge:
-				issues = append(issues, fmt.Sprintf("%s has been silent on task #%s since Coral asked for a status", e.Target, e.Subject))
+				issues = append(issues, fmt.Sprintf("%s has been silent on task #%s since Coral asked for a status", teamhealth.Name(e.Target), e.Subject))
 			}
 		}
 	}
