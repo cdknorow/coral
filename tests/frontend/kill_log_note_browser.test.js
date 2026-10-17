@@ -1,12 +1,12 @@
-// #4399 (from Security's #4371 table): every Kill confirmation says that Kill deletes the agent's terminal log on the tmux backend, which search reads,
-// and that Sleep or Archive keeps it: Kill Session (the agent header and the sidebar row), Kill All Agents (a folder group), Kill Team and Reset Team (which
-// kills and restarts its agents). Cancel sends no kill. The code facts: tmux Client.KillSession removes the log, KillSessionOnly (Sleep, Archive) does not.
+// #4399 (from Security's #4371 table): every Kill confirmation says what happens to the agent's terminal log, that it is kept and where (#4437: Kill
+// keeps it on both backends): Kill Session (the agent header and the sidebar row), Kill All Agents (a folder group), Kill Team and Reset Team (which
+// kills and restarts its agents). Cancel sends no kill. The code fact: neither tmux Client.KillSession nor the pty backend's kill removes the log.
 // KILL_NOTE_SHOT=<dir> saves a screenshot of each confirmation. Drives Chrome over CDP through agent_view_harness.js; run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
-const NOTE = "On the tmux terminal backend this also deletes the agent's terminal log, which search uses. Sleep or Archive keeps it.";
+const NOTE = "Its terminal log is kept, in the logs folder of Coral's data folder.";
 
 (async () => {
     const { client, Page, ev, waitFor, PRELOAD, install, reqs, clearReqs } = await connect();

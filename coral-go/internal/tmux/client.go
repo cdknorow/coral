@@ -26,7 +26,6 @@ import (
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/logdedupe"
 	"github.com/cdknorow/coral/internal/logparse"
-	"github.com/cdknorow/coral/internal/naming"
 )
 
 // Pane represents a tmux pane with its metadata.
@@ -981,23 +980,15 @@ func (c *Client) PaneSizeForAgent(ctx context.Context, agentName, agentType, ses
 
 // KillSession kills the tmux session for a given agent.
 func (c *Client) KillSession(ctx context.Context, agentName, agentType, sessionID string) error {
-	if err := c.killTmuxSession(ctx, agentName, agentType, sessionID); err != nil {
-		return err
-	}
-
-	// Clean up the log file. The launch temp files (prompt, settings, ...) are removed by the
-	// session's teardown in routes (agent.CleanupTempFiles); a name built here never matched them
-	// (#4381).
-	if sessionID != "" {
-		logPath := naming.LogFile(naming.DefaultLogDir(), agentType, sessionID)
-		os.Remove(logPath)
-	}
-
-	return nil
+	// The agent's terminal log is kept: it is the user's record of the session, and Coral never
+	// deletes user data without asking (#4437; the pty backend keeps it too). The launch temp
+	// files (prompt, settings, ...) are removed by the session's teardown in routes
+	// (agent.CleanupTempFiles) (#4381).
+	return c.killTmuxSession(ctx, agentName, agentType, sessionID)
 }
 
-// KillSessionOnly kills a tmux session without cleaning up log/settings files.
-// Used by sleep to preserve state for later wake.
+// KillSessionOnly kills a tmux session. Used by sleep, to keep state for a later wake; since #4437
+// KillSession keeps the terminal log as well, so the two differ only in name.
 func (c *Client) KillSessionOnly(ctx context.Context, agentName, agentType, sessionID string) error {
 	return c.killTmuxSession(ctx, agentName, agentType, sessionID)
 }

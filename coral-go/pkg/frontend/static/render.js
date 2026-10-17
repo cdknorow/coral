@@ -67,9 +67,9 @@ function _getInitials(name) {
    // bumped whenever the board chat panel is rebuilt, to drop stale loads
 
 
-// Killing an agent on the tmux terminal backend deletes its terminal log, which search reads (tmux Client.KillSession); Sleep and Archive keep it (#4399).
-// The pty backend leaves the log alone, so the sentence names the backend and is true for every agent.
-export const KILL_LOG_NOTE = "On the tmux terminal backend this also deletes the agent's terminal log, which search uses. Sleep or Archive keeps it.";
+// What Kill does with the agent's terminal log, said in every Kill confirmation (#4399): it is kept, on both terminal backends
+// (#4437: tmux's KillSession no longer removes it), in <data dir>/logs.
+export const KILL_LOG_NOTE = "Its terminal log is kept, in the logs folder of Coral's data folder.";
 
 export function killSessionDirect(name, agentType, sessionId) {
     const server = serverForSession(name, sessionId);

@@ -147,7 +147,7 @@ const JOB_RUNS = { runs: [{ id: 44, status: 'completed', scheduled_at: '2026-10-
         await click('#wf-run-detail-container [data-on-click="wf-kill-run"]');
         await until(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirm dialog for the agent run');
         const agentAsked = await modalState();
-        check('Kill Run with a running agent step says what happens to its terminal log', agentAsked.title === 'Kill Run' && agentAsked.message.endsWith("On the tmux terminal backend this also deletes the agent's terminal log, which search uses. Sleep or Archive keeps it."), JSON.stringify(agentAsked));
+        check('Kill Run with a running agent step says what happens to its terminal log', agentAsked.title === 'Kill Run' && agentAsked.message.endsWith("Its terminal log is kept, in the logs folder of Coral's data folder."), JSON.stringify(agentAsked));
         await click('#confirm-modal .btn:not(#confirm-modal-yes)');
         check('...and Cancel kills nothing', !(await reqs()).some(r => r.includes('/kill')), JSON.stringify(await reqs()));
 

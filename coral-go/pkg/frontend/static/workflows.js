@@ -527,7 +527,7 @@ export async function triggerWorkflow(id) {
 // Kill asks first: it stops the run's agents mid-step and cannot be resumed (#3696).
  function confirmKillWorkflowRun(runId) {
     const name = shownRun && Number(shownRun.id) === runId && shownRun.workflow_name ? ` of workflow "${shownRun.workflow_name}"` : '';
-    // Kill Run stops the step that is running; an agent step goes through the same kill as Kill Session, which deletes its terminal log on the tmux backend (#4399).
+    // Kill Run stops the step that is running; an agent step goes through the same kill as Kill Session, which keeps its terminal log (#4399, #4437).
     const agentRunning = !!shownRun && Number(shownRun.id) === runId && (shownRun.steps || []).some(s => s.type === 'agent' && s.status === 'running');
     window.showConfirmModal('Kill Run', `Stop run #${runId}${name}? Its steps stop where they are and the run cannot be resumed.${agentRunning ? ' ' + KILL_LOG_NOTE : ''}`, () => killWorkflowRun(runId));
 }
