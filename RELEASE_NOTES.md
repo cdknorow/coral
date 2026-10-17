@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.4.77 — Long messages to agents arrive as text again (security fix)
+
+### Security
+
+- With the tmux backend, on v1.3.10 to v1.4.76, a dashboard message longer than 900 characters did not arrive as text (the agent got a line naming a script file); resend it after updating, or use the PTY backend meanwhile; a leftover coral-command-*.sh in the temp folder can be deleted (Coral now removes ones older than a day at startup). Only someone who could already type into that agent's terminal (you, a Coral Hub user with Interact access, or an API-key holder) could send such a message; agents could not.
+
 ## v1.4.76 — Nudges wait for an agent's turn, Coral's notices drawn as notices, and safer remote servers
 
 ### For teams
