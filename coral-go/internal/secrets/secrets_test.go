@@ -22,12 +22,14 @@ func TestRedactorIsTheLibrary(t *testing.T) {
 	require.NoError(t, Init())
 	s, ok := Redactor().(*redact.Scanner)
 	require.True(t, ok, "%T", Redactor())
-	_, ok = s.Detector.(*betterleaks.Detector)
-	assert.True(t, ok, "%T", s.Detector)
+	d, ok := s.Detector.(withExtraRules)
+	require.True(t, ok, "%T", s.Detector)
+	_, ok = d.base.(*betterleaks.Detector)
+	assert.True(t, ok, "%T", d.base)
 	assert.Equal(t, Budget, s.Budget)
 	l, ok := LogRedactor().(*redact.Scanner)
 	require.True(t, ok, "%T", LogRedactor())
-	assert.Same(t, s.Detector, l.Detector, "one detector for the process")
+	assert.Equal(t, s.Detector, l.Detector, "one detector for the process")
 	assert.Equal(t, LogBudget, l.Budget)
 }
 

@@ -1,7 +1,8 @@
 // Package secrets is Coral's secret redaction (#3808, the operator's decision): betterleaks'
 // rules, and only them, run through pkg/redact's Scanner, which frames streams, walks JSON and
 // fails closed. Coral Hub's replies and streams, agent events at rest and every coral.log line
-// go through it. pkg/redact's own rules (redact.Rules) are not used.
+// go through it, with a few rules of Coral's own beside the library's (extra.go, #4265).
+// pkg/redact's own rules (redact.Rules) are not used.
 package secrets
 
 import (
@@ -38,8 +39,9 @@ func build() {
 		initErr, red, logRed = err, redact.Refuse, redact.Refuse
 		return
 	}
-	red = &redact.Scanner{Detector: d, Budget: Budget}
-	logRed = &redact.Scanner{Detector: d, Budget: LogBudget}
+	det := withExtraRules{base: d}
+	red = &redact.Scanner{Detector: det, Budget: Budget}
+	logRed = &redact.Scanner{Detector: det, Budget: LogBudget}
 }
 
 // Init builds the detector (it compiles every rule): call it once at startup, before anything
