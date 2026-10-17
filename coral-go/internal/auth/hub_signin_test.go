@@ -548,6 +548,7 @@ func TestCanonicalOrigin(t *testing.T) {
 		"http://example.com", "http://8.8.8.8", "http://100.63.0.1", "https://user:pw@coral.example", "https://coral.example/path",
 		"https://coral.example?x=1", "https://coral.example#f", "https://*.coral.example", "ftp://coral.example", "coral.example",
 		"https://coral.example:0", "https://coral.example:70000", "javascript:alert(1)", "", "http://localhost.evil.example:8420",
+		"https://..", "https://.", "https://.coral.example", "https://coral..example", "https://coral.example..", "https://..:8443",
 	} {
 		_, err := CanonicalOrigin(bad)
 		assert.Error(t, err, bad)

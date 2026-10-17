@@ -1054,6 +1054,9 @@ func CanonicalOrigin(s string) (string, error) {
 	if host == "" || strings.ContainsAny(host, "*%") {
 		return "", errors.New("no wildcards")
 	}
+	if strings.HasPrefix(host, ".") || strings.Contains(host, "..") || strings.HasSuffix(host, ".") {
+		return "", errors.New("not a host name") // "https://.." trims to "." and is no origin a browser sends
+	}
 	if port != "" {
 		if p, err := strconv.Atoi(port); err != nil || p < 1 || p > 65535 {
 			return "", errors.New("the port must be 1 to 65535")
