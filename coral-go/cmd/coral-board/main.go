@@ -1727,6 +1727,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 	workflow := fs.String("workflow", "", "Workflow name (e.g. Build -> Test -> Release)")
 	stage := fs.String("stage", "", "Stage name")
 	instructions := fs.String("workflow-instructions", "", "Additional instructions appended to Coral's default task workflow")
+	reviewers := fs.String("reviewers", "", "Who reviews it, comma separated (\"Security Reviewer,QA Engineer\"): Coral delegates the review to them when the task is submitted (used when the orchestrator or the Operator adds the task)")
 	completionGates := fs.String("completion-gates", "", "JSON completion gates (experimental and disabled by default)")
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retryOf := fs.Int64("retry-of", 0, "Finished task ID this new task retries")
@@ -1734,7 +1735,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 	*taskBody = flagText(*taskBody, "task body")
 
 	if title == "" {
-		fmt.Fprintln(os.Stderr, `Usage: coral-board task add "title" [--body "details"] [--priority P] [--assignee "Agent Name"]`)
+		fmt.Fprintln(os.Stderr, `Usage: coral-board task add "title" [--body "details"] [--priority P] [--assignee "Agent Name"] [--reviewers "A,B"]`)
 		os.Exit(1)
 	}
 	subscriberID := resolveSubscriberID()
@@ -1772,6 +1773,15 @@ func cmdTaskAdd(st *boardState, args []string) {
 			os.Exit(1)
 		}
 		workflowBody["completion_gates"] = gates
+	}
+	if *reviewers != "" {
+		var names []string
+		for _, r := range strings.Split(*reviewers, ",") {
+			if r = strings.TrimSpace(r); r != "" {
+				names = append(names, r)
+			}
+		}
+		workflowBody["reviewers"] = names
 	}
 	reqBody["workflow"] = workflowBody
 

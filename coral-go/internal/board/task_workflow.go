@@ -67,6 +67,10 @@ type TaskWorkflow struct {
 	ReviewOf       int64         `json:"review_of,omitempty"`
 	ReviewRound    int           `json:"review_round,omitempty"` // a review task: the round it is for (#3805)
 	ReviewRounds   []ReviewRound `json:"review_rounds,omitempty"`
+	// Reviewers named when the task was made (task add --reviewers, #4175): who Coral delegates
+	// its review to when it enters review, if the task's creator was the orchestrator or the
+	// Operator (AutoReviewers).
+	Reviewers []string `json:"reviewers,omitempty"`
 }
 
 func (s *Store) initTaskWorkflows(ctx context.Context) error {

@@ -84,7 +84,10 @@ func badIdentityRune(r rune) bool {
 // ReservedNames are Coral's own senders. The server posts as them directly; a client
 // using one could have its message read as Coral's (muted in the chat, #3343, or taken
 // as a health report). Compared case-insensitively, ignoring surrounding spaces.
-var ReservedNames = []string{"Coral Task Queue", "Coral Health Monitor", HubUnknownSender}
+var ReservedNames = []string{"Coral Task Queue", "Coral Health Monitor", HubUnknownSender,
+	// Coral, System and Health: names an agent could use to pass its words off as Coral's
+	// (#4176 rule 4). CoralSender is Coral's own notice sender.
+	CoralSender, "System", "Health"}
 
 // HubUnknownSender is the sender of a Coral Hub chat post that names no Hub user (a hub
 // on an older pkg/hubproxy, #3377): reserved, so no member can look like it.

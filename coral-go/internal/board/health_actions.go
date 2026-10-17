@@ -1,0 +1,160 @@
+package board
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"time"
+)
+
+// Coral's own health actions (#4175: review auto-delegation, the claim and status nudges).
+// Every action goes through the limits here, in the store, out of any agent's reach
+// (Security's #4176 rule 5): a cooldown per (rule, target), a cap per target per hour and one
+// budget per team per hour. The escalate-after-N counters live here too, so a restart neither
+// forgets an escalation nor nudges again.
+
+// HealthLimits bound one rule's actions.
+type HealthLimits struct {
+	Cooldown         time.Duration // between two actions of this rule on the same target
+	PerTargetPerHour int           // actions of any rule on the target, per hour
+	TeamPerHour      int           // actions of any rule on this board, per hour
+}
+
+// Why a health action was refused.
+const (
+	HealthRefusedCooldown = "cooldown"
+	HealthRefusedTarget   = "target cap"
+	HealthRefusedBudget   = "team budget"
+)
+
+func (s *Store) ensureHealthSchema(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS health_actions (
+	project TEXT NOT NULL,
+	rule    TEXT NOT NULL,
+	target  TEXT NOT NULL,
+	at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_health_actions ON health_actions(project, at);
+CREATE TABLE IF NOT EXISTS health_counters (
+	project   TEXT NOT NULL,
+	rule      TEXT NOT NULL,
+	target    TEXT NOT NULL,
+	subject   TEXT NOT NULL,
+	count     INTEGER NOT NULL,
+	last_at   TEXT NOT NULL,
+	escalated INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (project, rule, target, subject)
+);`)
+	return err
+}
+
+const healthTimeFormat = "2006-01-02T15:04:05.000Z"
+
+// TakeHealthAction records an action of rule on target at now if the limits allow it, in one
+// transaction. It returns "" when the action may go ahead, else why it may not.
+func (s *Store) TakeHealthAction(ctx context.Context, project, rule, target string, now time.Time, lim HealthLimits) (string, error) {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	hourAgo := now.Add(-time.Hour).UTC().Format(healthTimeFormat)
+	if lim.TeamPerHour > 0 {
+		var n int
+		if err := tx.GetContext(ctx, &n, `SELECT COUNT(*) FROM health_actions WHERE project = ? AND at > ?`, project, hourAgo); err != nil {
+			return "", err
+		}
+		if n >= lim.TeamPerHour {
+			return HealthRefusedBudget, nil
+		}
+	}
+	if lim.Cooldown > 0 {
+		var last sql.NullString
+		if err := tx.GetContext(ctx, &last, `SELECT MAX(at) FROM health_actions WHERE project = ? AND rule = ? AND target = ?`, project, rule, target); err != nil {
+			return "", err
+		}
+		if last.Valid && last.String > now.Add(-lim.Cooldown).UTC().Format(healthTimeFormat) {
+			return HealthRefusedCooldown, nil
+		}
+	}
+	if lim.PerTargetPerHour > 0 {
+		var n int
+		if err := tx.GetContext(ctx, &n, `SELECT COUNT(*) FROM health_actions WHERE project = ? AND target = ? AND at > ?`, project, target, hourAgo); err != nil {
+			return "", err
+		}
+		if n >= lim.PerTargetPerHour {
+			return HealthRefusedTarget, nil
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO health_actions(project, rule, target, at) VALUES (?, ?, ?, ?)`,
+		project, rule, target, now.UTC().Format(healthTimeFormat)); err != nil {
+		return "", err
+	}
+	// A day is all the limits look at.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM health_actions WHERE project = ? AND at < ?`,
+		project, now.Add(-24*time.Hour).UTC().Format(healthTimeFormat)); err != nil {
+		return "", err
+	}
+	return "", tx.Commit()
+}
+
+// HealthCounter is how often a rule acted on one target about one subject (a task), and
+// whether it has escalated.
+type HealthCounter struct {
+	Count     int  `db:"count"`
+	Escalated bool `db:"escalated"`
+}
+
+// GetHealthCounter returns the counter, zero when there is none.
+func (s *Store) GetHealthCounter(ctx context.Context, project, rule, target, subject string) (HealthCounter, error) {
+	var c HealthCounter
+	err := s.db.GetContext(ctx, &c, `SELECT count, escalated FROM health_counters WHERE project = ? AND rule = ? AND target = ? AND subject = ?`,
+		project, rule, target, subject)
+	if errors.Is(err, sql.ErrNoRows) {
+		return HealthCounter{}, nil
+	}
+	return c, err
+}
+
+// BumpHealthCounter adds one to the counter and returns it.
+func (s *Store) BumpHealthCounter(ctx context.Context, project, rule, target, subject string, now time.Time) (HealthCounter, error) {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO health_counters(project, rule, target, subject, count, last_at) VALUES (?, ?, ?, ?, 1, ?)
+		ON CONFLICT(project, rule, target, subject) DO UPDATE SET count = count + 1, last_at = excluded.last_at`,
+		project, rule, target, subject, now.UTC().Format(healthTimeFormat)); err != nil {
+		return HealthCounter{}, err
+	}
+	return s.GetHealthCounter(ctx, project, rule, target, subject)
+}
+
+// MarkHealthEscalated records that the rule escalated for target and subject: it acts on them
+// no more until ResetHealthCounter.
+func (s *Store) MarkHealthEscalated(ctx context.Context, project, rule, target, subject string, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO health_counters(project, rule, target, subject, count, last_at, escalated) VALUES (?, ?, ?, ?, 0, ?, 1)
+		ON CONFLICT(project, rule, target, subject) DO UPDATE SET escalated = 1, last_at = excluded.last_at`,
+		project, rule, target, subject, now.UTC().Format(healthTimeFormat))
+	return err
+}
+
+// ResetHealthCounter forgets the counter (the state it counted is over: the task was claimed,
+// the agent became active).
+func (s *Store) ResetHealthCounter(ctx context.Context, project, rule, target, subject string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM health_counters WHERE project = ? AND rule = ? AND target = ? AND subject = ?`,
+		project, rule, target, subject)
+	return err
+}
+
+// HealthEscalations lists the escalated counters of a board, for the orchestrator's check.
+func (s *Store) HealthEscalations(ctx context.Context, project string) ([]HealthEscalation, error) {
+	var out []HealthEscalation
+	err := s.db.SelectContext(ctx, &out, `SELECT rule, target, subject, last_at FROM health_counters WHERE project = ? AND escalated = 1 ORDER BY last_at`, project)
+	return out, err
+}
+
+// HealthEscalation is one escalated counter.
+type HealthEscalation struct {
+	Rule    string `db:"rule"`
+	Target  string `db:"target"`
+	Subject string `db:"subject"`
+	At      string `db:"last_at"`
+}

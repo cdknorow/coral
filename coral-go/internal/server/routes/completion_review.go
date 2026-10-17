@@ -78,7 +78,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		}
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("%s [Task #%d resubmitted for review, round %d] %s submitted %q again (candidate: %s; %s). Review it again: coral-board task detail %d, then coral-board task approve %d --round %d, or reject %d --round %d --note \"why\". @%s the same reviewers have it; change them with coral-board task review %d --to \"...\"",
 			strings.Join(mentions, " "), id, reopened.Round, author, task.Title, candidate, body.Reason, id, id, reopened.Round, id, reopened.Round, orch, id), nil)
-	} else {
+	} else if !h.autoDelegateReview(ctx, project, id, orch) { // #4175: Coral delegates to the named reviewers
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d in review] %s submitted %q (candidate: %s; %s). Complete it with 'coral-board task complete %d', or delegate it: coral-board task review %d --to \"Security Reviewer,QA Engineer\"",
 			orch, id, author, task.Title, candidate, body.Reason, id, id), nil)
 	}

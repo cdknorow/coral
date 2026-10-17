@@ -573,6 +573,13 @@ for the authorized backend-only late-edit path and current product gaps.
    (`coral-board task complete <id>`) or delegates it:
    `coral-board task review <id> --to "Security Reviewer,QA Engineer"`. Each reviewer gets a
    review task, "Review #<id>: <title>", in their queue, naming the review round.
+   Coral delegates it itself when the task names its reviewers: `task add ... --reviewers
+   "Security Reviewer,QA Engineer"`, or a `Reviewers: ...` line in its body. Those names count
+   only when the orchestrator or the Operator added the task (and made every amendment to
+   it); otherwise, and when it names none, the team's default reviewers (a team setting,
+   empty unless set). The task's author is never one of its reviewers, and only current
+   members of the board are. The list is taken when the task is submitted, and the board
+   says "delegated for review by Coral"; the orchestrator can still change the reviewers.
 3. **Review.** Any time the task is in review, each reviewer reads it
    (`coral-board task detail <id>`) and runs
    `coral-board task approve <id> --round N [--note "..."]` or
