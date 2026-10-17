@@ -1,0 +1,95 @@
+# The bundled tmux payload for one macOS architecture (#4126 item 1): restored from the cache when
+# its inputs are unchanged, built from source otherwise; checked the same way either way.
+#
+# The cache key is the build script, the pinned sources (bundled-tmux-sources.tsv holds each
+# source's version, URL and sha256), the architecture, the runner image and the macOS SDK.
+# Only the main branch writes it (release-cache-warm.yml, save: "true"): a cache saved on a tag
+# can't be read by any other tag, and a ci/ branch's cache is never visible to tags, so what a
+# release restores was built by a main run of this same action. The release restores and never
+# saves (Security's #4126 conditions).
+#
+# On a restore the payload is checked against the manifest saved with it (every file's sha256),
+# and the restored tmux's version and sha256 go into the build log. Built or restored, the payload
+# then passes verify_bundled_tmux_slice.sh, and the job runs the bundled-tmux smoke test after.
+name: Bundled tmux payload (cached from main)
+description: Restores or builds tools/build-bundled-tmux.sh's payload, then verifies it.
+inputs:
+  arch:
+    description: arm64 or x86_64
+    required: true
+  out:
+    description: The payload folder (dist/macos-<arch>/tmux-payload)
+    required: true
+  save:
+    description: '"true" on main only (release-cache-warm.yml): save the payload when it was built'
+    required: false
+    default: "false"
+outputs:
+  cache-hit:
+    description: '"true" when the payload was restored from the cache'
+    value: ${{ steps.restore.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Cache key (tmux ${{ inputs.arch }})
+      id: key
+      shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+        INPUTS_HASH: ${{ hashFiles('tools/build-bundled-tmux.sh', 'tools/bundled-tmux-sources.tsv') }}
+      run: |
+        set -euo pipefail
+        sdk="$(xcrun --show-sdk-version)"
+        echo "key=bundled-tmux-v1-${ARCH}-${ImageOS:-unknown}-sdk${sdk}-${INPUTS_HASH}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the tmux payload (${{ inputs.arch }})
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ inputs.out }}
+          ${{ inputs.out }}.sha256
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Check the restored payload (${{ inputs.arch }})
+      if: steps.restore.outputs.cache-hit == 'true'
+      shell: bash
+      env:
+        OUT: ${{ inputs.out }}
+      run: |
+        set -euo pipefail
+        test -s "$OUT.sha256" || { echo "::error::restored tmux payload has no manifest"; exit 1; }
+        # Every file listed, and every file listed matches; nothing extra.
+        (cd "$OUT" && shasum -a 256 -c "../$(basename "$OUT").sha256" >/dev/null)
+        listed="$(awk '{ print $2 }' "$OUT.sha256" | sort)"
+        present="$(cd "$OUT" && find . -type f | sort)"
+        [ "$listed" = "$present" ] || { echo "::error::restored tmux payload differs from its manifest"; exit 1; }
+        echo "Restored bundled tmux: $("$OUT/bin/tmux" -V), sha256 $(shasum -a 256 "$OUT/bin/tmux" | cut -d ' ' -f 1)"
+
+    - name: Build bundled tmux (${{ inputs.arch }})
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+        OUT: ${{ inputs.out }}
+      run: |
+        set -euo pipefail
+        tools/build-bundled-tmux.sh "$ARCH" "$OUT"
+        (cd "$OUT" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256) > "$OUT.sha256"
+        echo "Built bundled tmux: $("$OUT/bin/tmux" -V), sha256 $(shasum -a 256 "$OUT/bin/tmux" | cut -d ' ' -f 1)"
+
+    - name: Verify the tmux slice (${{ inputs.arch }})
+      shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+        OUT: ${{ inputs.out }}
+      run: tests/release/verify_bundled_tmux_slice.sh "$OUT" "$ARCH"
+
+    - name: Save the tmux payload (${{ inputs.arch }}, main only)
+      if: inputs.save == 'true' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ inputs.out }}
+          ${{ inputs.out }}.sha256
+        key: ${{ steps.key.outputs.key }}
