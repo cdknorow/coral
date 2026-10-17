@@ -2217,7 +2217,7 @@ function confirmDeleteEndedLogs() {
     if (!shown || !shown.count) return;
     const n = shown.count;
     window.showConfirmModal?.('Delete terminal logs',
-        `Delete ${n.toLocaleString()} terminal log${n === 1 ? '' : 's'} of ended agents (${_gib(shown.bytes)})? Search can no longer show what ${n === 1 ? 'that agent\'s' : 'those agents\''} terminal${n === 1 ? '' : 's'} said. The logs of live, sleeping and archived agents are kept. This can't be undone.`,
+        `Delete ${n.toLocaleString()} terminal log${n === 1 ? '' : 's'} of ended agents (${_gib(shown.bytes)})? What ${n === 1 ? 'that agent\'s terminal' : 'those agents\' terminals'} showed can't be recovered. The logs of live, sleeping and archived agents are kept.`,
         async () => {
             try {
                 const r = await fetch('/api/system/terminal-logs/delete-ended', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shown) });

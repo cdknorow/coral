@@ -53,7 +53,7 @@ const MIB = 1024 ** 2;
         await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation', 8000);
         const ask = await ev(`({ title: document.getElementById('confirm-modal-title').textContent, message: document.getElementById('confirm-modal-message').textContent })`);
         assert.equal(ask.title, 'Delete terminal logs');
-        assert.equal(ask.message, "Delete 12 terminal logs of ended agents (45 MiB)? Search can no longer show what those agents' terminals said. The logs of live, sleeping and archived agents are kept. This can't be undone.");
+        assert.equal(ask.message, "Delete 12 terminal logs of ended agents (45 MiB)? What those agents' terminals showed can't be recovered. The logs of live, sleeping and archived agents are kept.");
         await waitFor(`document.activeElement && document.activeElement.closest('#confirm-modal') && document.activeElement.id !== 'confirm-modal-yes'`, 'focus on Cancel', 4000);
         await sleep(500); // sleep-ok: the dialog fades in
         assert.equal(await ev(`(() => { const r = document.querySelector('#confirm-modal .modal-content').getBoundingClientRect(); const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!at && !!at.closest('#confirm-modal'); })()`), true, 'the confirmation is above the Settings dialog that asked');

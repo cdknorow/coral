@@ -109,6 +109,15 @@ const GIB = 1024 ** 3;
         assert.equal(await ev(`(document.body.innerText.match(/Above it, new ones are refused/g) || []).length`), 1);
 
         console.log('4. Received files no board lists: listed, and deleted only after a confirmation, by the exact digests');
+        // More than the 50 the server names: the line counts all of them, says that the button takes the oldest 50, and the button names 50.
+        const many = Array.from({ length: 50 }, (_, i) => ({ id: i.toString(16).padStart(64, '0'), size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' }));
+        await ev(`window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 120, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false, unlisted: { count: 120, bytes: 120000000, items: ${JSON.stringify(many)} } }; document.querySelectorAll('.toast').forEach(t => t.remove()); window.showSettingsModal(); true`);
+        await waitFor(`!document.getElementById('settings-received-unlisted').hidden`, 'the unlisted button with more than 50', 8000);
+        const over = await ev(`({ text: document.getElementById('settings-received-size').textContent, button: document.getElementById('settings-received-unlisted-delete').textContent })`);
+        assert.match(over.text, /Not listed on any board: 120 files, 0\.1 GiB\./, 'the line counts all of them');
+        assert.match(over.text, / Showing the oldest 50; delete them, then the rest\.$/, 'and says the button takes the oldest 50');
+        assert.equal(over.button, 'Delete 50 unlisted files (48 MiB)', 'the button names the 50 it deletes');
+        await waitFor(`(window.hideSettingsModal(), getComputedStyle(document.getElementById('settings-modal')).display === 'none')`, 'Settings to close', 6000);
         const ids = ['a', 'b', 'c'].map(c => c.repeat(64));
         await ev(`window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 3, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false, unlisted: { count: 3, bytes: 3000000, items: ${JSON.stringify(ids.map(id => ({ id, size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' })))} } }; window.__deletes.length = 0; document.querySelectorAll('.toast').forEach(t => t.remove()); window.showSettingsModal(); true`);
         await waitFor(`!document.getElementById('settings-received-unlisted').hidden`, 'the unlisted line', 8000);
