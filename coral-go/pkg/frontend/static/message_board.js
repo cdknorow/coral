@@ -24,6 +24,8 @@ let _totalMessages = 0;
 let _loadedOffset = 0; // older messages not loaded yet (the offset of the first loaded one)
 let _loadedProject = null; // board whose initial page is loaded; polls wait for it
 let _pollInFlight = false;
+let _countedTotal = 0; // the board's total as the rows loaded account for it (see _pollNewMessages)
+let _staleRows = false; // a message shown may have been deleted: the latest page is loaded again at the bottom
 
 // Responses can arrive after a board switch or overlap another request; keep
 // each message once, in id order.
@@ -295,7 +297,8 @@ async function loadBoardMessages(project) {
         const result = await fetchMessages(project, PAGE_SIZE);
         if (currentProject !== project) return;
         _loadedProject = project;
-        _totalMessages = result.total;
+        _totalMessages = _countedTotal = result.total;
+        _staleRows = false;
         _allMessages = result.messages;
         _loadedOffset = result.beforeCount;
         renderMessages(_allMessages);
@@ -322,63 +325,82 @@ async function loadBoardMessages(project) {
 }
 let _boardBusyRetry = null;
 
+let _earlierInFlight = false;
+
 async function loadEarlierMessages() {
     const project = currentProject;
-    if (!project || _loadedProject !== project || _loadedOffset <= 0 || !_allMessages.length) return;
+    if (!project || _loadedProject !== project || _loadedOffset <= 0 || !_allMessages.length || _earlierInFlight) return;
+    _earlierInFlight = true;
+    const firstId = _allMessages[0].id;
+    let result;
     try {
-        const result = await fetchMessages(project, PAGE_SIZE, { before_id: _allMessages[0].id });
-        if (currentProject !== project) return;
-        _allMessages = mergeMessages(result.messages, _allMessages);
-        _loadedOffset = result.beforeCount;
-        renderMessages(_allMessages);
+        result = await fetchMessages(project, PAGE_SIZE, { before_id: firstId });
     } catch (e) {
         console.error('Failed to load earlier messages:', e);
+        return;
+    } finally {
+        _earlierInFlight = false; // before the render: a search jump that still misses its message loads the next page from it
     }
+    // A trim or a reload while it was out moved the oldest message loaded: this page would leave a gap.
+    if (currentProject !== project || !_allMessages.length || _allMessages[0].id !== firstId) return;
+    _allMessages = mergeMessages(result.messages, _allMessages);
+    _loadedOffset = result.beforeCount;
+    renderMessages(_allMessages, { keepAnchor: true });
 }
 (window.__coral ||= {}).loadEarlierMessages = loadEarlierMessages;
 
-function renderMessages(messages) {
-    const container = document.getElementById('mb-messages');
-    if (!messages.length) {
-        container.innerHTML = '<div class="empty-state">No messages yet</div>';
-        return;
-    }
-    // Save scroll position before replacing content
-    const prevScrollTop = container.scrollTop;
-    const wasAtBottom = (container.scrollHeight - prevScrollTop - container.clientHeight) < 50;
+// The board keeps about this many messages in the DOM while you read at the bottom (#4492): a poll appends what is new, and once
+// a page more than this has built up the oldest go (they count as not loaded, so scrolling up or "Load earlier" brings them back).
+// Nothing is dropped while you read higher up, select messages or wait for a search jump.
+const BOARD_KEEP = 300;
+const ROW = ':scope > .mb-message, :scope > .mb-queue-run';
 
+function isAtBottom(container) {
+    return (container.scrollHeight - container.scrollTop - container.clientHeight) < 50;
+}
+
+// Scrolling near the top loads the page before the oldest message shown, as "Load earlier" does.
+function wireBoardScroll(container) {
+    if (container._mbScrollWired) return;
+    container._mbScrollWired = true;
+    container.addEventListener('scroll', () => {
+        if (container.scrollTop < 80 && _loadedOffset > 0) loadEarlierMessages();
+    }, { passive: true });
+}
+
+function boardHeaderHtml(messages) {
     // "Load Earlier" button if there are older messages
     let loadEarlierHtml = '';
     if (_loadedOffset > 0) {
         const remaining = _loadedOffset;
-        loadEarlierHtml = `<div style="text-align:center;padding:8px 0 12px">
+        loadEarlierHtml = `<div class="mb-load-earlier" style="text-align:center;padding:8px 0 12px">
             <button class="btn btn-small" data-on-click="mb-earlier" class="mb-project-meta">
                 Load ${Math.min(remaining, PAGE_SIZE)} earlier messages (${remaining} remaining)
             </button>
         </div>`;
     }
-
     // Message count indicator
     const countHtml = `<div class="mb-message-count">
         Showing ${messages.length} of ${_totalMessages} messages
     </div>`;
+    return loadEarlierHtml + countHtml;
+}
 
-    // Runs of task-queue lines are one collapsed row (#3343), except in select mode.
-    const items = groupTaskQueueRuns(messages, !_selectMode);
-    container.innerHTML = loadEarlierHtml + countHtml + items.map((item, i) => {
-        if (item.kind === 'queue') return renderTaskQueueRun(item, formatTime);
-        const m = item.m;
-        const color = getAgentColor(m.job_title || 'Unknown');
-        const agent = m.job_title || 'Unknown';
-        const prev = i > 0 && items[i - 1].kind === 'msg' ? items[i - 1].m : null;
-        const prevAgent = prev ? (prev.job_title || 'Unknown') : null;
-        const sameAsPrev = agent === prevAgent;
-        const spacing = sameAsPrev ? 'mb-message-grouped' : 'mb-message-first';
-        const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id);
-        const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
-        const selectedClass = _selectMode && _selectedIds.has(m.id) ? ' mb-message-selected' : '';
-        const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_selectedIds.has(m.id) ? 'checked' : ''} data-on-click="mb-msg-select">` : '';
-        return `
+// One row: a message, or a collapsed run of task-queue lines. prev is the item before it (grouping by sender).
+function renderBoardItem(item, prev) {
+    if (item.kind === 'queue') return renderTaskQueueRun(item, formatTime);
+    const m = item.m;
+    const color = getAgentColor(m.job_title || 'Unknown');
+    const agent = m.job_title || 'Unknown';
+    const prevMsg = prev && prev.kind === 'msg' ? prev.m : null;
+    const prevAgent = prevMsg ? (prevMsg.job_title || 'Unknown') : null;
+    const sameAsPrev = agent === prevAgent;
+    const spacing = sameAsPrev ? 'mb-message-grouped' : 'mb-message-first';
+    const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id);
+    const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
+    const selectedClass = _selectMode && _selectedIds.has(m.id) ? ' mb-message-selected' : '';
+    const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_selectedIds.has(m.id) ? 'checked' : ''} data-on-click="mb-msg-select">` : '';
+    return `
         <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}" style="${boardMessageColorStyle(color)}">
             ${boardAvatar(m, agent)}
             <div class="mb-message-header">
@@ -390,7 +412,34 @@ function renderMessages(messages) {
             </div>
             <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
         </div>`;
-    }).join('');
+}
+
+// Where messages[i] is in the list, searching from the end (new rows are at the end).
+function indexOfId(messages, id) {
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i].id === id) return i;
+    return -1;
+}
+
+// A row's first message id: a message row's own, a task-queue run's first line.
+function rowFirstId(row) {
+    return Number(row.classList.contains('mb-queue-run') ? row.dataset.queueRun : row.dataset.messageId);
+}
+
+function renderMessages(messages, { keepAnchor = false } = {}) {
+    const container = document.getElementById('mb-messages');
+    wireBoardScroll(container);
+    if (!messages.length) {
+        container.innerHTML = '<div class="empty-state">No messages yet</div>';
+        return;
+    }
+    // Save scroll position before replacing content
+    const prevScrollTop = container.scrollTop;
+    const prevScrollHeight = container.scrollHeight;
+    const wasAtBottom = isAtBottom(container);
+
+    // Runs of task-queue lines are one collapsed row (#3343), except in select mode.
+    const items = groupTaskQueueRuns(messages, !_selectMode);
+    container.innerHTML = boardHeaderHtml(messages) + items.map((item, i) => renderBoardItem(item, i > 0 ? items[i - 1] : null)).join('');
     resolveBoardArtifacts(container, state.currentBoardServer);
     if (pendingMessageId) {
         const target = container.querySelector(`[data-message-id="${CSS.escape(pendingMessageId)}"]`);
@@ -400,17 +449,89 @@ function renderMessages(messages) {
             target.classList.add('chat-search-target');
             target.scrollIntoView({ block: 'center', behavior: 'smooth' });
             pendingMessageId = null;
+            return; // the jump decides the scroll position
         } else if (_loadedOffset > 0) {
             // Search hits may be older than the initial latest page. Keep
             // loading real pages until the stable message id is present.
             loadEarlierMessages();
         }
     }
-    if (wasAtBottom) {
+    if (keepAnchor) {
+        // Older messages went in above: what you were reading stays where it was.
+        container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight);
+    } else if (wasAtBottom) {
         container.scrollTop = container.scrollHeight;
     } else {
         container.scrollTop = prevScrollTop;
     }
+}
+
+// A poll's new messages (already merged into _allMessages) go in after the rows shown (#4492): message rows already shown are
+// left as they are, and only a task-queue run at the end is drawn again, since the new lines can extend it. Falls back to a whole
+// render when the rows shown don't match the loaded messages.
+function appendNewMessages(count) {
+    const container = document.getElementById('mb-messages');
+    const rows = container.querySelectorAll(ROW);
+    const last = rows[rows.length - 1];
+    const lastIdx = last ? indexOfId(_allMessages, rowFirstId(last)) : -1;
+    if (!last || lastIdx < 0 || lastIdx >= _allMessages.length - count || container.querySelector(':scope > .empty-state, :scope > .loading-indicator')) {
+        renderMessages(_allMessages);
+        return;
+    }
+    const wasAtBottom = isAtBottom(container);
+    const collapse = !_selectMode;
+    let start, prev, replace = null;
+    if (last.classList.contains('mb-queue-run') && collapse) {
+        start = lastIdx; // the run is drawn again with the new lines it gains
+        replace = last;
+        const before = rows.length > 1 ? rows[rows.length - 2] : null;
+        prev = before && before.classList.contains('mb-message') ? { kind: 'msg', m: _allMessages[indexOfId(_allMessages, rowFirstId(before))] } : null;
+        if (prev && !prev.m) prev = null;
+    } else {
+        start = lastIdx + 1; // a message row: kept, and the new rows group with it
+        prev = { kind: 'msg', m: _allMessages[lastIdx] };
+    }
+    const items = groupTaskQueueRuns(_allMessages.slice(start), collapse);
+    const tmp = document.createElement('template');
+    tmp.innerHTML = items.map((item, i) => renderBoardItem(item, i > 0 ? items[i - 1] : prev)).join('');
+    const added = [...tmp.content.children];
+    if (replace) replace.replaceWith(tmp.content); else container.appendChild(tmp.content);
+    for (const el of added) resolveBoardArtifacts(el, state.currentBoardServer);
+    if (wasAtBottom) trimBoardWindow(container);
+    updateBoardHeader(container);
+    if (wasAtBottom) container.scrollTop = container.scrollHeight;
+}
+
+// Drops the oldest loaded messages beyond BOARD_KEEP, and their rows, once a page more has built up (see BOARD_KEEP).
+function trimBoardWindow(container) {
+    if (_selectMode || pendingMessageId || _allMessages.length <= BOARD_KEEP + PAGE_SIZE) return;
+    const drop = _allMessages.length - BOARD_KEEP;
+    const firstKept = _allMessages[drop].id;
+    _allMessages = _allMessages.slice(drop);
+    _loadedOffset += drop;
+    for (const row of container.querySelectorAll(ROW)) {
+        if (row.classList.contains('mb-queue-run')) {
+            const lines = [...row.querySelectorAll('.mb-queue-line')].map(l => Number(l.dataset.messageId));
+            if (lines[lines.length - 1] < firstKept) { row.remove(); continue; }
+            if (lines[0] < firstKept) { // a run across the cut: drawn again from its first kept line
+                const run = groupTaskQueueRuns(_allMessages.slice(0, lines.filter(id => id >= firstKept).length), true)[0];
+                const tmp = document.createElement('template');
+                tmp.innerHTML = renderBoardItem(run, null);
+                row.replaceWith(tmp.content);
+            }
+            break;
+        }
+        if (rowFirstId(row) < firstKept) { row.remove(); continue; }
+        // The first message shown starts its group: there is no row above it now.
+        row.classList.replace('mb-message-grouped', 'mb-message-first');
+        break;
+    }
+}
+
+// The "Load earlier" button and the count above the rows, after a poll changed them.
+function updateBoardHeader(container) {
+    for (const el of container.querySelectorAll(':scope > .mb-load-earlier, :scope > .mb-message-count')) el.remove();
+    container.insertAdjacentHTML('afterbegin', boardHeaderHtml(_allMessages));
 }
 
 function formatTime(iso) {
@@ -618,6 +739,7 @@ export async function deleteBoardMessage(messageId) {
         // Remove locally and re-render
         _allMessages = _allMessages.filter(m => m.id !== messageId);
         _totalMessages = Math.max(0, _totalMessages - 1);
+        _countedTotal = Math.max(0, _countedTotal - 1);
         renderMessages(_allMessages);
     } catch (e) {
         console.error('Failed to delete message:', e);
@@ -668,13 +790,35 @@ async function _pollNewMessages() {
         const result = await fetchMessages(project, PAGE_SIZE, { after_id: last ? last.id : 0 });
         if (currentProject !== project || _loadedProject !== project) return;
         // With after_id every returned row is new, even if deletes kept the total flat.
-        if (result.messages.length > 0) {
-            _allMessages = mergeMessages(_allMessages, result.messages);
-            _totalMessages = result.total;
+        const fresh = result.messages.filter(m => !last || m.id > last.id);
+        if (fresh.length < PAGE_SIZE) {
+            // The total should be what was counted plus the new ones; less means messages were deleted (a secret taken down,
+            // say), also when one arrived in the same tick. A whole page means more are waiting: counted, checked once caught up.
+            if (result.total !== _countedTotal + fresh.length) _staleRows = true;
+            _countedTotal = result.total;
+        } else {
+            _countedTotal += fresh.length;
+        }
+        const totalChanged = _totalMessages !== result.total;
+        _totalMessages = result.total;
+        const container = document.getElementById('mb-messages');
+        if (_staleRows && !_selectMode && !pendingMessageId && (!container || isAtBottom(container))) {
+            // Rows shown may hold a deleted message: the latest page again. Not while you read higher up, select messages
+            // or wait for a search jump; then at a later poll.
+            const page = await fetchMessages(project, PAGE_SIZE);
+            if (currentProject !== project || _loadedProject !== project) return;
+            _allMessages = page.messages;
+            _totalMessages = _countedTotal = page.total;
+            _loadedOffset = page.beforeCount;
+            _staleRows = false;
             renderMessages(_allMessages);
-        } else if (result.total !== _totalMessages) {
-            // Messages were deleted — refresh
-            _totalMessages = result.total;
+            return;
+        }
+        if (fresh.length > 0) {
+            _allMessages = mergeMessages(_allMessages, fresh);
+            appendNewMessages(fresh.length);
+        } else if (totalChanged && container && container.querySelector(ROW)) {
+            updateBoardHeader(container);
         }
     } catch (e) {
         // Silent fail on poll
@@ -682,6 +826,8 @@ async function _pollNewMessages() {
         _pollInFlight = false;
     }
 }
+
+(window.__coral ||= {}).pollBoardNow = _pollNewMessages; // tests: a poll without waiting 10 s
 
 let _pollCount = 0;
 
