@@ -249,3 +249,21 @@ func (f fakeFS) Open(name string) (fs.File, error) {
 	}
 	return nil, fs.ErrNotExist
 }
+
+// The bundle's own names are mangled (it has a source map); every export keeps its name, so the stubs and the tests that import by URL hold (#4326).
+func TestBundleMangledNamesKeepExports(t *testing.T) {
+	b, _ := realBundle(t)
+	app := string(b.Files["app.js"])
+	// splitTopLevel is a local helper of dom_morph.js that nothing imports: mangled away.
+	if strings.Contains(app, "splitTopLevel") {
+		t.Error("a module-local name is still in the bundle: identifiers are not mangled")
+	}
+	// morphHtml is exported by dom_morph.js: its stub re-exports it by name.
+	stub := string(b.Files["dom_morph.js"])
+	if !strings.Contains(stub, "morphHtml") {
+		t.Errorf("dom_morph.js's stub does not re-export morphHtml: %s", stub)
+	}
+	if !strings.Contains(app, "$morphHtml") {
+		t.Error("the bundle does not export morphHtml under its alias")
+	}
+}

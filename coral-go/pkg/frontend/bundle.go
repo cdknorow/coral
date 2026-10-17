@@ -235,7 +235,11 @@ func bundleBuild(static fs.FS, entry, sourcefile string, final bool, registered 
 		Plugins:       []api.Plugin{embeddedFiles(static, registered)},
 	}
 	if final {
-		opts.MinifyWhitespace, opts.MinifySyntax = true, true // names stay the source's: as MinifyAsset
+		// Whitespace, syntax and identifiers. MinifyAsset keeps the source's names so a stack trace names what the source names; the bundle
+		// has a source map (below), which devtools and error reporters read, so its names are mangled: -23% raw and -14% gzip on app.js
+		// (1,071 KB to 826 KB; 284 KB to 245 KB gzip), which is both download and parse time on a phone (#4326). Nothing reads a function or class name (no
+		// fn.name, constructor.name or toString), and every export keeps its name, so the stubs, the tests and window assignments hold.
+		opts.MinifyWhitespace, opts.MinifySyntax, opts.MinifyIdentifiers = true, true, true
 		opts.Sourcemap = api.SourceMapLinked
 		opts.SourcesContent = api.SourcesContentInclude
 	}
