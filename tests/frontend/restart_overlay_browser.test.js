@@ -60,6 +60,8 @@ const fs = require('node:fs');
         let o = await overlay();
         assert.ok(o.shown && o.restarting && !o.ended, 'restarting words: ' + JSON.stringify(o));
         assert.ok(o.size[0] > 150 && o.size[1] > 100, 'covers the pane: ' + JSON.stringify(o));
+        const alpha = await ev(`(() => { const c = getComputedStyle(document.getElementById('session-ended-overlay')).backgroundColor; const m = c.match(/\\/\\s*([0-9.]+)\\)$/) || c.match(/rgba\\([^,]+,[^,]+,[^,]+,\\s*([0-9.]+)\\)$/); return m ? Number(m[1]) : 1; })()`);
+        assert.ok(alpha >= 0.9, 'the overlay is near-solid, so text behind it does not show through the words: ' + alpha);
         await shot('restart-overlay-' + label.split(' ')[0].toLowerCase());
         assert.equal(await barText(), 'Restarting', 'the bar over the chat says Restarting, not Session ended');
         await waitFor(`import((window.__coralStatic || '/static/') + 'session_overlay.js').then(m => m.isRestarting('ro-a-new'))`, "the restart's mark to be the replacement session's", 4000);
@@ -87,6 +89,13 @@ const fs = require('node:fs');
         await select('ro-b');
         assert.equal((await overlay()).shown, false);
         console.log('   ✓ hidden on the other agent, back on the restarting one');
+
+        // An agent with an empty chat: its "No messages yet" text must not show through the restarting words.
+        await select('ro-empty');
+        await restart();
+        await waitFor(`getComputedStyle(document.getElementById('session-ended-overlay')).display !== 'none'`, 'the overlay on the empty chat', 4000);
+        await shot('restart-overlay-empty-' + label.split(' ')[0].toLowerCase());
+        await select('ro-b');
     };
 
     try {
@@ -97,7 +106,7 @@ const fs = require('node:fs');
         await install();
         await ev(`localStorage.clear(); localStorage.setItem('coral-live-view-mode', 'chat')`);
         await ev(MOCK_RESTART);
-        await ev(`(() => { const m = window.__m; for (const n of ['ro-a', 'ro-a2', 'ro-b', 'ro-c', 'ro-d']) m.add(n, n[3].toUpperCase(), 40, { sleeping: false }); T.render.renderLiveSessions(T.state.liveSessions); })()`);
+        await ev(`(() => { const m = window.__m; for (const n of ['ro-a', 'ro-a2', 'ro-b', 'ro-c', 'ro-d']) m.add(n, n[3].toUpperCase(), 40, { sleeping: false }); m.add('ro-empty', 'Z', 0, { sleeping: false }); T.render.renderLiveSessions(T.state.liveSessions); })()`);
 
         await run('Desktop');
 

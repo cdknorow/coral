@@ -122,7 +122,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.6);
+    background: color-mix(in srgb, var(--bg-primary) 94%, transparent); /* near-solid: the chat's empty-state text must not show through the words (#4481, UX) */
     z-index: 10;
     border-radius: 6px;
 }
