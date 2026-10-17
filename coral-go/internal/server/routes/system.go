@@ -266,6 +266,11 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, HubModeSetting+" is set with PUT /api/system/hub-mode")
 		return
 	}
+	// Every key must be one the registry knows, with a value it accepts (Security's #4431 SHOULD 3).
+	if err := checkSettingKeys(body); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	// The Coral Hub request pools' sizes (#3642): whole numbers in range, or empty for the default.
 	if err := validateHubLimitSettings(body); err != nil {
 		errBadRequest(w, err.Error())

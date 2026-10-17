@@ -109,3 +109,20 @@ func TestArtifactStoreCapReaderFailsClosed(t *testing.T) {
 		assert.Equal(t, want, h.artifactStoreMaxBytes(), "%q", value)
 	}
 }
+
+// Security's ruling on #4432: null is empty for every key, so a key whose validator refuses an empty value refuses null
+// too; the boolean keys that read empty as false (auto_goals, require_auth_on_loopback) store false, as an Operator
+// sending false would.
+func TestNullIsEmptyForEveryValidator(t *testing.T) {
+	put, stored := settingsClient(t)
+	for _, k := range []string{"agent_priority", "auto_resume_after_api_error", "auto_wake_cap", "auto_wake_after_restart",
+		"artifact_retention_days", "artifact_retention_kinds", "no_such_key"} {
+		assert.Equal(t, http.StatusBadRequest, put(`{"`+k+`": null}`), k)
+		assert.Equal(t, http.StatusBadRequest, put(`{"`+k+`": ""}`), "%s: the same as empty", k)
+	}
+	for _, k := range []string{"auto_goals", "require_auth_on_loopback"} {
+		require.Equal(t, http.StatusOK, put(`{"`+k+`": true}`), k)
+		require.Equal(t, http.StatusOK, put(`{"`+k+`": null}`), k)
+		assert.Equal(t, "false", stored()[k], "%s: null is false, as empty is", k)
+	}
+}

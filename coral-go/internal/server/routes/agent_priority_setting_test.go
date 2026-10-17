@@ -43,10 +43,10 @@ func TestAgentPrioritySettingIsValidated(t *testing.T) {
 	assert.Equal(t, agentprio.Normal, agentprio.Level())
 
 	for _, bad := range []any{"turbo", "", 5, true, nil} {
-		assert.Equal(t, http.StatusBadRequest, put(map[string]any{"agent_priority": bad, "theme": "x-should-not-save"}), "%v", bad)
+		assert.Equal(t, http.StatusBadRequest, put(map[string]any{"agent_priority": bad, "default_working_dir": "/tmp/x-should-not-save"}), "%v", bad)
 	}
 	assert.Equal(t, "normal", stored()["agent_priority"], "a rejected value changes nothing")
-	assert.NotEqual(t, "x-should-not-save", stored()["theme"], "nothing in a rejected request is saved")
+	assert.NotEqual(t, "/tmp/x-should-not-save", stored()["default_working_dir"], "nothing in a rejected request is saved")
 	assert.Equal(t, agentprio.Normal, agentprio.Level())
 
 	assert.Equal(t, http.StatusOK, put(map[string]any{"agent_priority": "low"}))

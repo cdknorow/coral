@@ -69,11 +69,11 @@ func TestPutSettingsValidatesCLIPaths(t *testing.T) {
 		"newline":        {"cli_path_codex", exe + "\nid", "must not contain"},
 		"unknown type":   {"cli_path_bash", exe, "unknown agent type"},
 	} {
-		code, msg := putSettingsJSON(t, server.URL, map[string]any{tc.key: tc.value, "theme": "light-" + name})
+		code, msg := putSettingsJSON(t, server.URL, map[string]any{tc.key: tc.value, "default_working_dir": "/tmp/sentinel-" + name})
 		assert.Equal(t, http.StatusBadRequest, code, name)
 		assert.Contains(t, msg, tc.msg, name)
 		assert.Empty(t, saved(tc.key), "%s: not saved", name)
-		assert.NotEqual(t, "light-"+name, saved("theme"), "%s: nothing in the request is saved", name)
+		assert.NotEqual(t, "/tmp/sentinel-"+name, saved("default_working_dir"), "%s: nothing in the request is saved", name)
 	}
 
 	// A saved path whose CLI was removed since doesn't block saving other settings.

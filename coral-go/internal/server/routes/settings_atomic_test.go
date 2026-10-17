@@ -18,12 +18,17 @@ import (
 // editions_browser flake: welcome_choice from one save, welcome_pending from another).
 func TestPutSettingsIsAtomic(t *testing.T) {
 	srv, _ := setupSystemTestServer(t)
+	// Four free-text settings (the registry refuses keys it doesn't know, #4432).
+	keys := []string{"default_prompt_orchestrator", "default_prompt_worker", "team_reminder_orchestrator", "team_reminder_worker"}
 	put := func(v string) {
-		body, _ := json.Marshal(map[string]string{"atomic_a": v, "atomic_b": v, "atomic_c": v, "atomic_d": v})
+		body, _ := json.Marshal(map[string]string{keys[0]: v, keys[1]: v, keys[2]: v, keys[3]: v})
 		req, _ := http.NewRequest("PUT", srv.URL+"/api/settings", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("PUT answered %d", resp.StatusCode)
+			}
 			resp.Body.Close()
 		}
 	}
@@ -45,7 +50,8 @@ func TestPutSettingsIsAtomic(t *testing.T) {
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 		resp.Body.Close()
 		s := out.Settings
-		assert.True(t, s["atomic_a"] == s["atomic_b"] && s["atomic_b"] == s["atomic_c"] && s["atomic_c"] == s["atomic_d"],
-			"round %d: keys from different requests: %v %v %v %v", round, s["atomic_a"], s["atomic_b"], s["atomic_c"], s["atomic_d"])
+		require.NotEmpty(t, s[keys[0]], "round %d: the keys were saved", round)
+		assert.True(t, s[keys[0]] == s[keys[1]] && s[keys[1]] == s[keys[2]] && s[keys[2]] == s[keys[3]],
+			"round %d: keys from different requests: %v %v %v %v", round, s[keys[0]], s[keys[1]], s[keys[2]], s[keys[3]])
 	}
 }
