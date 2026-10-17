@@ -12,7 +12,7 @@ const { connect } = require('./agent_view_harness');
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a layout and a redraw settle over frames; there is no completion event
     const key = async (k, code, vk) => { for (const type of ['keyDown', 'keyUp']) await Input.dispatchKeyEvent({ type, key: k, code, windowsVirtualKeyCode: vk }); };
     const ok = name => console.log(`   ✓ ${name}`);
-    const TEAM = 'health-team';
+    const TEAM = 'health-team-' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36); // one board per run: a repeat on the same server (--stress) must not see the last run's saved recipient
     const P = `#team-settings-health`;
     const api = (path, opts) => ev(`fetch('/api/board/${TEAM}${path}', ${JSON.stringify(opts || {})}).then(async r => ({ status: r.status, body: await r.json().catch(() => null) }))`);
     try {
