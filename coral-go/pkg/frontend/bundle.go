@@ -64,10 +64,10 @@ func StylesheetsInShell(indexHTML []byte) []string {
 const bundleFormat = "bundle:ws+syntax+idents,self-registered-importonce,startup-lazy:1"
 
 // StartupLazyModules are the modules the dashboard's startup imports with importOnce (not statically), on every normal start: the
-// leftover-tmux check and the sign-in and set-password prompts. They are part of the bundle so those imports cost
+// leftover-tmux check, the received-files limit notice (#4441) and the sign-in and set-password prompts. They are part of the bundle so those imports cost
 // no request, and no second round trip for the stubs they import (#4326). Order matters: password_ui.js awaits importOnce('./password_rules.js') at its
 // top level, which is answered from the bundle only once password_rules.js has run, so that comes first. (hub_notice.js used to await password_ui.js the same way; it asks for it when it needs it now, so it can be bundled.) bundle_startup_requests_browser checks the list against a real start.
-var StartupLazyModules = []string{"terminal_backend.js", "password_rules.js", "password_ui.js", "hub_notice.js", "local_auth_banner.js", "import_once.js"}
+var StartupLazyModules = []string{"terminal_backend.js", "received_cap_notice.js", "password_rules.js", "password_ui.js", "hub_notice.js", "local_auth_banner.js", "import_once.js"}
 
 var importOnceSpec = regexp.MustCompile(`importOnce\(\s*['"]\./([^'"?]+)['"]`)
 
