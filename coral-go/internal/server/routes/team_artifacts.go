@@ -53,6 +53,12 @@ type teamArtifact struct {
 	// Unverified: a coral://artifacts link the team never uploaded (#4379): listed as a plain
 	// link, with no size, type, preview or download from the store ("link not verified").
 	Unverified bool `json:"unverified,omitempty"`
+	// OtherBoard/OtherServer: for a "shared" row the board (and Coral, "local" for this one) the
+	// artifact was sent to; for a "received" row the one it came from, and SentBy who sent it
+	// (#4379). Received files are not scanned.
+	OtherBoard  string `json:"other_board,omitempty"`
+	OtherServer string `json:"other_server,omitempty"`
+	SentBy      string `json:"sent_by,omitempty"`
 
 	index   int
 	managed string // 64-hex Coral object id for coral-managed artifacts
@@ -119,6 +125,7 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 		}
 	} else {
 		items = h.uploads.merge(items, h.coralDir, teamUploadSessions(tasks, subscribers))
+		items = h.mergeCrossTeamRows(items, project)
 	}
 	end := offset + limit
 	hasMore := end < len(items)

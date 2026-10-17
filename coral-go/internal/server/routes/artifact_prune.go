@@ -166,6 +166,9 @@ func (h *SessionsHandler) scanArtifactReferences(ctx context.Context) (map[strin
 	if err := scanKnowledgeReferences(ctx, filepath.Join(h.cfg.CoralDir(), "agent_knowledge"), refs); err != nil {
 		return nil, fmt.Errorf("knowledge files: %w", err)
 	}
+	if err := scanCrossTeamRecordRefs(h.cfg.CoralDir(), refs); err != nil {
+		return nil, fmt.Errorf("shared and received rows: %w", err)
+	}
 	return refs, nil
 }
 
@@ -303,6 +306,36 @@ func scanKnowledgeReferences(ctx context.Context, dir string, refs map[string]bo
 		return nil
 	}
 	return err
+}
+
+// scanCrossTeamRecordRefs adds every artifact a board's shared or received row lists (#4379): an
+// artifact a board lists is linked, whatever its message says now.
+func scanCrossTeamRecordRefs(coralDir string, refs map[string]bool) error {
+	for _, kind := range crossTeamRecordKinds {
+		root := filepath.Join(coralDir, "artifacts", kind)
+		boards, err := os.ReadDir(root)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err // unreadable: the scan can't vouch for it, so the run removes nothing
+		}
+		for _, b := range boards {
+			if !b.IsDir() {
+				continue
+			}
+			entries, err := os.ReadDir(filepath.Join(root, b.Name()))
+			if err != nil {
+				return err
+			}
+			for _, e := range entries {
+				if id := strings.TrimSuffix(e.Name(), ".json"); id != e.Name() && managedArtifactID("coral://artifacts/"+id) == id {
+					refs[id] = true
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // ── Kept artifacts ──────────────────────────────────────────────────

@@ -558,6 +558,19 @@ func deleteArtifactFilesLocked(coralDir, id string) (freed int64, records int, f
 			}
 		}
 	}
+	// Every board's shared and received rows of it too (#4379): the Operator's delete removes the
+	// object and every row that lists it.
+	for _, kind := range crossTeamRecordKinds {
+		boards, rerr := os.ReadDir(filepath.Join(coralDir, "artifacts", kind))
+		if rerr != nil {
+			continue
+		}
+		for _, b := range boards {
+			if b.IsDir() && boardDirName.MatchString(b.Name()) && os.Remove(filepath.Join(coralDir, "artifacts", kind, b.Name(), id+".json")) == nil {
+				records++
+			}
+		}
+	}
 	return freed, records, true, nil
 }
 

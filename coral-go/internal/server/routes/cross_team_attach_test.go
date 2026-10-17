@@ -336,3 +336,57 @@ func TestAttachRecordAndSizeChecksEachRefuse(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "not_yours", out["code"])
 }
+
+// The rows: the sender's Team Artifacts list a "shared" row (where it went), the receiver's a
+// "received" one (where it came from, who sent it, no producer on the team), each a reference to
+// the stored object; another board lists neither. Prune counts them as links; the Operator's delete
+// removes them with the object.
+func TestSharedAndReceivedRowsListPruneAndDelete(t *testing.T) {
+	e := newAttachEnv(t, true)
+	d := e.upload(alphaOrchSID, "alpha's report")
+	code, out := e.send("alpha", "beta", alphaOrchSID, uri(d))
+	require.Equal(t, http.StatusOK, code, out)
+
+	find := func(board, source string) *teamArtifact {
+		resp, err := http.Get(e.url + "/api/board/" + board + "/artifacts")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var got teamArtifactsResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+		for i := range got.Artifacts {
+			if got.Artifacts[i].Source == source {
+				return &got.Artifacts[i]
+			}
+		}
+		return nil
+	}
+	shared := find("alpha", "shared")
+	require.NotNil(t, shared)
+	assert.Equal(t, "shared:"+d, shared.ID)
+	assert.Equal(t, "beta", shared.OtherBoard)
+	assert.Equal(t, "local", shared.OtherServer)
+	assert.True(t, shared.Available)
+	require.NotNil(t, shared.Size)
+	assert.Equal(t, int64(len("alpha's report")), *shared.Size)
+	received := find("beta", "received")
+	require.NotNil(t, received)
+	assert.Equal(t, "alpha", received.OtherBoard)
+	assert.Equal(t, "Orchestrator", received.SentBy)
+	assert.Nil(t, received.ProducedBy, "not one of beta's agents")
+	assert.NotEmpty(t, received.DownloadURL)
+	assert.Nil(t, find("gamma", "received"))
+	assert.Nil(t, find("gamma", "shared"))
+
+	refs := map[string]bool{}
+	require.NoError(t, scanCrossTeamRecordRefs(e.coralDir, refs))
+	assert.True(t, refs[d], "a listed row is a link for prune")
+
+	_, removed, found, err := deleteArtifactFiles(e.coralDir, d)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, 3, removed, "the upload record, the shared row and the received row")
+	_, ok := e.h.crossTeamRecord("shared", "alpha", d)
+	assert.False(t, ok)
+	_, ok = e.h.crossTeamRecord("received", "beta", d)
+	assert.False(t, ok)
+}

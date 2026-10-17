@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -226,6 +228,12 @@ type crossTeamArtifactRecord struct {
 	At         string `json:"at"`
 }
 
+// crossTeamRecordKinds are the folders of cross-team artifact rows under <coralDir>/artifacts.
+var crossTeamRecordKinds = []string{"shared", "received"}
+
+// boardDirName is a board's folder name under them: 32 hex digits (a hash of the board's name).
+var boardDirName = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 // boardRecordDir is <coralDir>/artifacts/<kind>/<a hash of the board>: board names are free text.
 func (h *BoardHandler) boardRecordDir(kind, board string) string {
 	if h.coralDir == "" {
@@ -285,6 +293,34 @@ func (h *BoardHandler) crossTeamRecords(kind, board string) []crossTeamArtifactR
 		}
 	}
 	return out
+}
+
+// mergeCrossTeamRows adds a board's shared and received rows to its Team Artifacts (#4379): each is
+// a reference to the stored object (size, type, preview and download come from the store, as for any
+// managed row), listed apart from the team's own uploads and task results (its id says which kind),
+// and never makes the object one of the team's uploads.
+func (h *BoardHandler) mergeCrossTeamRows(items []teamArtifact, project string) []teamArtifact {
+	added := false
+	for _, kind := range crossTeamRecordKinds {
+		for _, rec := range h.crossTeamRecords(kind, project) {
+			by := rec.By
+			item := teamArtifact{
+				ID: kind + ":" + rec.ID, Name: rec.Name, MediaType: rec.MediaType, CreatedAt: rec.At,
+				Source: kind, URI: "coral://artifacts/" + rec.ID, ReferenceCount: 1, managed: rec.ID,
+				OtherBoard: rec.OtherBoard, OtherServer: rec.Server, ProducedBy: &by,
+			}
+			if kind == "received" {
+				item.ProducedBy = nil // not one of this team's agents (ArtifactProducer has none for it either)
+				item.SentBy = rec.By
+			}
+			items = append(items, item)
+			added = true
+		}
+	}
+	if added {
+		sort.SliceStable(items, func(i, j int) bool { return items[i].CreatedAt > items[j].CreatedAt })
+	}
+	return items
 }
 
 // crossTeamRecord is board's record of id, of one kind, when there is a well-formed one for it.
