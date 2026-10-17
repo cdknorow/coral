@@ -449,6 +449,8 @@ func main() {
 		cmdWorkflow()
 	case "wait":
 		cmdWait()
+	case "health":
+		cmdHealth()
 	case "send":
 		cmdSend()
 	case "targets":

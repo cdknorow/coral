@@ -503,6 +503,12 @@ Questions an agent asked the Operator (`coral-board wait --operator "question"`)
 the check as "Waiting on the operator", with how long ago each was asked, until the Operator
 posts on the board. The question is shown as quoted, masked text like any agent words.
 
+Each item ends with `[ack <id>]`. The orchestrator (or the Operator) runs `coral-board health
+ack <id>` once it has handled the item, and it stays off the check until its state changes (the
+agent goes idle again later, another escalation, a different set of reviews waiting). A parked
+task (`coral-board task park`, see board.md) raises no item and gets no nudge or reminder at all.
+An agent can do neither: an ack or a park with its token is refused.
+
 Coral never reassigns tasks or accepts completions on its own.
 
 **Health check settings** are per team, in the board's settings (`GET`/`PUT

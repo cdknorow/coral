@@ -8,6 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/teamhealth"
 )
 
 // #4175 step 3: a parked task gets no claim nudge and no status nudge while it is parked; its
@@ -64,4 +67,29 @@ func TestParkedTasksRaiseNoCheckItem(t *testing.T) {
 	out := h.checkTo("Orchestrator")
 	assert.NotContains(t, out, fmt.Sprintf("#%d", work.ID), out)
 	assert.Contains(t, out, "Nothing needs you")
+}
+
+// The orchestrator acknowledges an item (#4175 step 3): it stays off the check while its state is
+// the same, and comes back when it changes (here: the agent goes idle again later).
+func TestAcknowledgedItemsStayOffUntilTheyChange(t *testing.T) {
+	h := newCheckHarness(t)
+	ctx := context.Background()
+	h.member("Orchestrator", "Orchestrator", 1, 2*time.Hour)
+	h.member("QA", "QA Engineer", 3, 45*time.Minute)
+	out := h.checkTo("Orchestrator")
+	require.Contains(t, out, "QA: idle 45 min")
+	id := teamhealth.ItemID("idle|QA")
+	require.Contains(t, out, "[ack "+id+"]")
+
+	require.ErrorIs(t, h.s.AckHealthItem(ctx, "team", "00000000", "Orchestrator", h.now), board.ErrNoSuchHealthItem, "an id the check never showed")
+	require.NoError(t, h.s.AckHealthItem(ctx, "team", id, "Orchestrator", h.now))
+	h.now = h.now.Add(11 * time.Minute)
+	out = h.checkTo("Orchestrator")
+	assert.NotContains(t, out, "QA: idle", "acknowledged, same state")
+
+	// QA worked, then went idle again: a new state, so the item is back.
+	h.sig["00000003-0000-0000-0000-000000000000"] = agentSignal{Since: h.now.Add(-40 * time.Minute)}
+	h.now = h.now.Add(11 * time.Minute)
+	out = h.checkTo("Orchestrator")
+	assert.Contains(t, out, "QA: idle", "a changed state shows again")
 }

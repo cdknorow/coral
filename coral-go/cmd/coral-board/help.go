@@ -12,7 +12,7 @@ var commands = map[string]bool{
 	"join": true, "post": true, "read": true, "check": true, "projects": true,
 	"subscribers": true, "status": true, "working-mode": true, "leave": true,
 	"delete": true, "export": true, "peek": true, "task": true, "workflow": true,
-	"wait": true, "send": true, "targets": true,
+	"wait": true, "send": true, "targets": true, "health": true,
 }
 
 // textFlags take free text that is sent to the server.

@@ -656,6 +656,7 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 	r.Post("/api/board/{project}/tasks/{taskID}/snooze", boardHandler.SnoozeTaskReminder)
 	r.Post("/api/board/{project}/tasks/{taskID}/park", boardHandler.ParkTask)
 	r.Delete("/api/board/{project}/tasks/{taskID}/park", boardHandler.ParkTask)
+	r.Post("/api/board/{project}/health/ack", boardHandler.AckHealthItem)
 	r.Post("/api/board/{project}/tasks/{taskID}/reminder", boardHandler.RemindTask)
 	r.Delete("/api/board/{project}/tasks/{taskID}/reminder", boardHandler.RemindTask)
 	r.Post("/api/board/{project}/reminder", boardHandler.RemindSubscriber)

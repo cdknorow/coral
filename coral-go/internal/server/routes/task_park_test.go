@@ -130,3 +130,48 @@ func TestParkIsTheOrchestratorsOrTheOperatorsAndTheReasonIsCleaned(t *testing.T)
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify(http.MethodPost, "/api/board/team/tasks/1/park", ""))
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify(http.MethodDelete, "/api/board/team/tasks/1/park", ""))
 }
+
+// Case C8 e28 (#4176 rule 19): an agent can't acknowledge a check item (to hide that it, or a
+// teammate, is idle); the orchestrator by its own token and the Operator can.
+func TestAckIsTheOrchestratorsOrTheOperators(t *testing.T) {
+	_, h := setupBoardTestServer(t)
+	ctx := context.Background()
+	for _, s := range []struct{ id, title, session string }{{"Orchestrator", "Orchestrator", "claude-orch"}, {"Dev", "Developer", "claude-dev"}} {
+		_, err := h.bs.Subscribe(ctx, "team", s.id, s.title, s.session, nil, "all")
+		require.NoError(t, err)
+	}
+	item := "1a2b3c4d"
+	_, err := h.bs.NoteHealthItems(ctx, "team", map[string]string{item: "2026-10-17T04:00:00Z"}, time.Now())
+	require.NoError(t, err)
+	ack := func(body string, mod func(*http.Request)) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/board/team/health/ack", bytes.NewReader([]byte(body)))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("project", "team")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		if mod != nil {
+			mod(req)
+		}
+		rec := httptest.NewRecorder()
+		h.AckHealthItem(rec, req)
+		return rec.Code
+	}
+	as := func(session string) func(*http.Request) {
+		return func(r *http.Request) {
+			*r = *r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: "sid-" + session, SessionName: session}))
+		}
+	}
+	acked := func() bool {
+		got, err := h.bs.NoteHealthItems(ctx, "team", map[string]string{item: "2026-10-17T04:00:00Z"}, time.Now())
+		require.NoError(t, err)
+		return got[item]
+	}
+	assert.Equal(t, http.StatusForbidden, ack(`{"item":"`+item+`"}`, as("claude-dev")), "an agent")
+	assert.False(t, acked(), "the item stays on the list")
+	assert.Equal(t, http.StatusBadRequest, ack(`{"item":"idle:QA"}`, as("claude-orch")), "not an id")
+	assert.Equal(t, http.StatusNotFound, ack(`{"item":"00000000"}`, as("claude-orch")), "never shown")
+	assert.Equal(t, http.StatusOK, ack(`{"item":"`+item+`"}`, as("claude-orch")), "the orchestrator")
+	assert.True(t, acked())
+	assert.Equal(t, http.StatusOK, ack(`{"item":"`+item+`"}`, nil), "the Operator")
+	assert.Equal(t, tunnel.TierNever, tunnel.Classify(http.MethodPost, "/api/board/team/health/ack", ""), "not through Coral Hub")
+}

@@ -1,6 +1,8 @@
 package teamhealth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -25,6 +27,17 @@ type Item struct {
 	Said     string // the agent's last words, quoted (ShownText), or ""
 	Evidence string // a fixed phrase with numbers, or ""
 	Suggest  string // a fixed phrase
+	// Key names the item stably across checks (rule, member, task) and State what it says now;
+	// the orchestrator acknowledges it by ItemID(Key) and it stays off the list until State
+	// changes (#4175 step 3). An item without a Key can't be acknowledged.
+	Key   string
+	State string
+}
+
+// ItemID is the short id the check prints for an item ("coral-board health ack <id>").
+func ItemID(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:4])
 }
 
 // MaxQuestions is how many questions waiting on the operator the check lists, oldest first;
@@ -79,6 +92,9 @@ func Compose(in CheckInput) string {
 		}
 		if it.Suggest != "" {
 			l += " Suggest: " + it.Suggest + "."
+		}
+		if it.Key != "" {
+			l += " [ack " + ItemID(it.Key) + "]"
 		}
 		itemLines = append(itemLines, l)
 	}

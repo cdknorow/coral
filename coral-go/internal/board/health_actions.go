@@ -45,6 +45,16 @@ CREATE TABLE IF NOT EXISTS health_counters (
 	last_at   TEXT NOT NULL,
 	escalated INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (project, rule, target, subject)
+);
+CREATE TABLE IF NOT EXISTS health_items (
+	project     TEXT NOT NULL,
+	item        TEXT NOT NULL,
+	state       TEXT NOT NULL,
+	shown_at    TEXT NOT NULL,
+	acked_state TEXT,
+	acked_by    TEXT,
+	acked_at    TEXT,
+	PRIMARY KEY (project, item)
 );`)
 	return err
 }

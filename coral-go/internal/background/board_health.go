@@ -190,15 +190,16 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 			}
 			at, _ := time.Parse("2006-01-02T15:04:05.000Z", e.At)
 			ago := teamhealth.Age(now.Sub(at))
+			key := "escalation|" + e.Rule + "|" + e.Target + "|" + e.Subject
 			switch e.Rule {
 			case ruleClaimNudge:
 				items = append(items, teamhealth.Item{Rank: 1, Agent: teamhealth.Name(e.Target),
 					Problem: fmt.Sprintf("has not claimed #%s after Coral's claim nudges (escalated %s ago)", e.Subject, ago),
-					Suggest: fmt.Sprintf("ask it, or reassign #%s", e.Subject)})
+					Suggest: fmt.Sprintf("ask it, or reassign #%s", e.Subject), Key: key, State: e.At})
 			case ruleStatusNudge:
 				items = append(items, teamhealth.Item{Rank: 1, Agent: teamhealth.Name(e.Target),
 					Problem: fmt.Sprintf("silent on #%s since Coral asked for a status (escalated %s ago)", e.Subject, ago),
-					Said:    said(e.Target), Suggest: fmt.Sprintf("check on it, or reassign #%s", e.Subject)})
+					Said:    said(e.Target), Suggest: fmt.Sprintf("check on it, or reassign #%s", e.Subject), Key: key, State: e.At})
 			}
 		}
 	}
@@ -230,7 +231,7 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 		idleNoWork[sub.SubscriberID] = true
 		items = append(items, teamhealth.Item{Rank: 2, Agent: teamhealth.Name(sub.SubscriberID),
 			Problem: fmt.Sprintf("idle %s with nothing in progress or assigned", teamhealth.Age(now.Sub(sig.Since))),
-			Suggest: "assign it the next task"})
+			Suggest: "assign it the next task", Key: "idle|" + sub.SubscriberID, State: sig.Since.UTC().Format(time.RFC3339)})
 	}
 
 	// 3. A reviewer with three or more reviews waiting while another reviewer is idle.
@@ -254,7 +255,7 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 			if other != r && idleNoWork[other] {
 				items = append(items, teamhealth.Item{Rank: 3, Agent: teamhealth.Name(r),
 					Problem: fmt.Sprintf("%d reviews waiting (%s) while %s is idle", len(reviews[r]), taskList(reviews[r]), teamhealth.Name(other)),
-					Suggest: fmt.Sprintf("move one to %s", teamhealth.Name(other))})
+					Suggest: fmt.Sprintf("move one to %s", teamhealth.Name(other)), Key: "reviews|" + r, State: fmt.Sprint(reviews[r])})
 				break
 			}
 		}
@@ -263,7 +264,25 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 	// 4. Queue problems (task numbers only).
 	issues, _, _ := taskQueueIssues(tasks)
 	for _, is := range issues {
-		items = append(items, teamhealth.Item{Rank: 4, Agent: "Board", Problem: is})
+		items = append(items, teamhealth.Item{Rank: 4, Agent: "Board", Problem: is, Key: "queue|" + is, State: "shown"})
+	}
+
+	// What the orchestrator acknowledged stays off the list while its state is the same (#4175
+	// step 3): the states shown are recorded, and acknowledged ones left out.
+	states := map[string]string{}
+	for _, it := range items {
+		if it.Key != "" {
+			states[teamhealth.ItemID(it.Key)] = it.State
+		}
+	}
+	if acked, err := m.store.NoteHealthItems(ctx, project, states, now); err == nil {
+		kept := items[:0]
+		for _, it := range items {
+			if it.Key == "" || !acked[teamhealth.ItemID(it.Key)] {
+				kept = append(kept, it)
+			}
+		}
+		items = kept
 	}
 
 	m.mu.Lock()
