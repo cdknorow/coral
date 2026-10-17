@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.4.81 — CLI paths that can't run are reported, stricter setting values, and one "Nothing to save" message
+
+### Fixes
+
+- **A CLI path set in Settings > CLI Paths that can't be run now makes background jobs (model list, summaries, knowledge, goals, workflow agent steps) report it, instead of falling back to the claude on PATH.**
+- **Every settings form says the same thing when Save finds nothing to save: "Nothing to save: no setting changed."** The Settings dialog, the Default prompts dialog and the scheduler's job editor now say it, like Team settings, instead of "Settings saved", "Default prompts saved" or closing silently. A Save that changed something still says it saved.
+
+### Security and privacy
+
+- **Settings: a value must be text, true or false, or a whole number (lists and objects are refused); large numbers are stored in full; if the artifact storage cap can't be read, Coral stops taking new files instead of allowing unlimited storage.**
+
 ## v1.4.80 — No more stale tabs overwriting settings, redacted agent knowledge, and safer workflow saves
 
 ### Fixes
