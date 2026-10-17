@@ -647,6 +647,10 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	if agentType == "" {
 		agentType = at.Claude
 	}
+	if agentType == at.Terminal { // a plain shell has no conversation to resume (and no agent CLI to type)
+		errBadRequest(w, "Resume not supported for terminal")
+		return
+	}
 	if !agent.IsResumeID(agentType, body.SessionID) {
 		errBadRequest(w, "session_id is not a valid resume id") // #3582: it goes into file paths
 		return
