@@ -155,7 +155,8 @@ func attributedSubject(w http.ResponseWriter, r *http.Request, claim string) (st
 // refused. In log mode it is the claim, counted where enforce would decide otherwise.
 func attributedJoin(w http.ResponseWriter, r *http.Request, claimName, claimSession string) (string, string, bool) {
 	a := callerActor(r)
-	verified := a.Kind == ActorToken || a.Kind == ActorOperator
+	hubUser := a.Kind == ActorHub && a.Name != "" // the tunnel's guard named the Hub user
+	verified := a.Kind == ActorToken || a.Kind == ActorOperator || hubUser
 	if !identityActorEnforced() {
 		if !verified || (a.Kind == ActorToken && ((a.Name != "" && strings.TrimSpace(claimName) != "" && !board.SameIdentity(strings.TrimSpace(claimName), a.Name)) ||
 			(strings.TrimSpace(claimSession) != "" && claimSession != a.Session))) {
@@ -172,6 +173,14 @@ func attributedJoin(w http.ResponseWriter, r *http.Request, claimName, claimSess
 		return name, a.Session, true
 	case a.Kind == ActorOperator:
 		return claimName, claimSession, true
+	case hubUser:
+		// A Hub user joins as the name the tunnel decided, never as the Operator (unless it is the
+		// Hub operator) or as another member: the claim is ignored, and a claim of the Operator's
+		// name by anyone else is refused, as attributedTo's guard would.
+		if c := strings.TrimSpace(claimName); c != "" && board.SameIdentity(c, "Operator") && !a.IsOperator() {
+			break
+		}
+		return a.Name, claimSession, true
 	}
 	writeJSON(w, http.StatusForbidden, map[string]string{"error": "this request is not from a verified member of the board or the Operator", "code": "identity_unverified"})
 	return "", "", false

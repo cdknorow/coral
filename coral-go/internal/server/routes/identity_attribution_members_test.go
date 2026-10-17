@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -112,4 +113,45 @@ func TestMemberRoutesAttributeToTheActor(t *testing.T) {
 	// The Operator names the member it removes (the subject), and a member cannot remove another.
 	code, _ = a.callBody("operator", "DELETE", "/api/board/team/subscribe", `{"subscriber_id":"Orchestrator"}`)
 	assert.Equal(t, http.StatusOK, code, "the Operator removes the member it names")
+}
+
+// Under enforce a Hub user joins as the name the tunnel decided, a Hub request with no name is
+// refused, and nobody but the Hub operator joins as the Operator (#4287, Security INFO 1 on #4255).
+func TestAttributedJoinForAHubActor(t *testing.T) {
+	join := func(a Actor, name, session string) (string, string, int) {
+		r := withActor(httptest.NewRequest("POST", "/api/board/team/subscribe", nil), a)
+		w := httptest.NewRecorder()
+		n, s, ok := attributedJoin(w, r, name, session)
+		if ok {
+			return n, s, http.StatusOK
+		}
+		return n, s, w.Code
+	}
+	hubUser := Actor{Kind: ActorHub, Name: "alice", HubUser: "alice"}
+
+	setMode(t, true)
+	n, s, code := join(hubUser, "", "")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "alice", n, "no claim: the Hub user's own name")
+	assert.Empty(t, s)
+	n, _, code = join(hubUser, "Lead", "")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "alice", n, "a claim of another member's name is not taken")
+	for _, claim := range []string{"Operator", "operator", " OPERATOR "} {
+		_, _, code = join(hubUser, claim, "")
+		assert.Equal(t, http.StatusForbidden, code, "a Hub user claiming %q", claim)
+	}
+	_, _, code = join(Actor{Kind: ActorHub}, "alice", "")
+	assert.Equal(t, http.StatusForbidden, code, "a Hub request with no name")
+	n, _, code = join(Actor{Kind: ActorHub, Name: "Operator", HubUser: "op"}, "Operator", "")
+	assert.Equal(t, http.StatusOK, code, "the Hub operator may join as the Operator")
+	assert.Equal(t, "Operator", n)
+
+	setMode(t, false)
+	n, _, code = join(hubUser, "Lead", "sess")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "Lead", n, "log mode is unchanged: the claim")
+	before := enforceDiffersSnapshot()
+	join(Actor{Kind: ActorHub}, "alice", "")
+	assert.NotEqual(t, before, enforceDiffersSnapshot(), "a nameless Hub request is counted in log mode")
 }
