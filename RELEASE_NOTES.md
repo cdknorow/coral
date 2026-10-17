@@ -1,5 +1,49 @@
 # Release Notes
 
+## v1.4.73 — Your own side-panel tabs, a tray that restarts Coral, and a sturdier server
+
+v1.4.72 was tagged but never released (its release check found that the Operator's own command line was refused when joining or posting to a board); this release carries all of it, with that fixed.
+
+### Security
+
+- **Agent and subscriber names that only look like a reserved name (a Cyrillic or Greek letter, or C0ral) now count as that name,** and agents can no longer post as Operator.
+- **The update check never sends a credential:** a GITHUB_TOKEN in the environment is no longer attached to Coral's request to GitHub, and the answer is cached for an hour (Check for Updates asks GitHub again at most once a minute), so the dashboard can't make Coral call GitHub over and over.
+- **Values that end up in the page are checked first:** a team colour must be a #rrggbb colour, and a Coral Hub update notice must look like a version, or neither is shown.
+- **A request's identity fields could slip past the board's checks** when spelled in another case (SUBSCRIBER_ID) or followed by more JSON; every check now reads exactly what Coral acts on. A body declared over 4 MiB is refused on the agent routes too.
+- **Two parser fixes found by fuzzing:** strict JSON replies refuse a key that differs only in case, and an origin whose host is only dots is refused.
+
+### Dashboard
+
+- **Choose which tabs show in an agent's or a team's side panel and put them in any order:** the tune button at the end of the tab row, or right-click the row. Chat always stays shown. Reset to default puts them back.
+- **The sidebar header is one tidy row:** the collapse button is last on the right; the search box, server button and icons share one height; the server button always shows its dot, count and Update marker; and a click outside closes the server list and the display menu.
+- **A server's menu** sits in the same column as the team, folder and agent menus, and starts with Launch team, Open folder and Launch agent.
+- **The collapsed sidebar looks like the expanded one:** plain text in the same colours, with the selected agent on the same highlight.
+- **Coral's own notices (unread messages, health checks, stop-hook feedback) fold into the steps they prompted,** and a short reply to them folds too, with its first sentence as the group's title. Expanding a group shows them as before.
+- **Chat:** your messages use up to 85 percent of the reading width, and pasted text shows without Claude Code's pasted_content wrapper.
+- **"No goal yet" is readable on every row in the light theme** (at least 4.9:1), and an agent's goal is asked for again only when your requests changed, at most every 30 minutes (Settings can turn it off).
+- **Faster first load:** the dashboard tells the browser which of its scripts to fetch first.
+- **A Sign out button in Settings > Browser sign-in ends this browser's session and clears its saved drafts;** your display preferences stay.
+- **Blocked browser storage can no longer stop the dashboard,** and signing out of Coral Hub also clears the agent UI's saved drafts.
+
+### Stability
+
+- **The tray now runs Coral's server as a child it watches:** after a crash it restarts it (1, 5, then 30 seconds), and after 3 crashes in 5 minutes it stops and shows why, with Open Log and Retry. A wrong database password is never reused.
+- **When the server can't start,** the tray menu says why instead of offering only Quit, and the "Server Disconnected" window names the right log.
+- **A viewer that stops reading is cut off after a write has waited 15 seconds** (a terminal, the live feed, the Coral Hub bridges and event streams seen through the Hub), freeing its connection and stream slot. A terminal viewer that falls a whole buffer behind now redraws from a fresh replay instead of showing garbled output, and is closed if that keeps happening.
+- **Coral checks its databases a minute after start** and tells you on the dashboard if one is damaged, with what to do; a database that takes more than 5 seconds to open is logged while Coral waits.
+- **Turning the terminal input debug log off** now stops its writer and closes its file.
+
+### Performance
+
+- **Raw token usage is kept for 30 days, then rolled into hourly totals;** every total, count and latest value stays the same, and a re-read old turn is never counted twice.
+- **Both databases trim their write-ahead log** after a checkpoint and are optimized after start and every 6 hours.
+- **A quieter idle server:** the thinking tracker no longer opens every transcript every 2 seconds, board status reads every listed agent's tasks in one query, and the notifier reads every agent's subscription and unread count in one pass.
+- **Startup answers sooner:** the pass over existing tmux panes runs beside startup, and a one-time event repair no longer runs on every start.
+
+### For teams
+
+- **Coral sends a task's review to the reviewers it names** (task add --reviewers, or a "Reviewers:" line), nudges an idle agent to claim work assigned to it, and asks a quiet agent for a one-line status, reporting it on the board if it stays quiet. These are on by default, with fixed texts, at most 3 actions per agent and 20 per board an hour.
+
 ## v1.4.72 — Your own side-panel tabs, a tray that restarts Coral, and a sturdier server
 
 ### Security
