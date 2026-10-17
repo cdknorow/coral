@@ -2242,10 +2242,10 @@
 .server-switcher:not([open]) > .server-switcher-panel { display: none; }
 /* Keep the search box usable next to the server button (#3085). */
 /* The server button keeps its dot, count, Update marker and caret whole (operator, #4062): it may shrink only as far as those (7rem; the
-   word after the count gives way with an ellipsis). The search box is the control that gives up width, down to 5em, and a very narrow sidebar
+   word after the count gives way with an ellipsis). The search box is the control that gives up width, down to 6em (the whole "Search" placeholder, papercuts_browser), and a very narrow sidebar
    wraps the header rather than clip the button. */
 .sidebar-header { flex-wrap: wrap; }
-.sidebar-header .sidebar-search { flex: 1 1 5em; min-width: 5em; }
+.sidebar-header .sidebar-search { flex: 1 1 6em; min-width: 6em; }
 .sidebar-header .server-switcher-host:has(.server-switcher-multi), .mobile-list-header .server-switcher-host:has(.server-switcher-multi) { flex: none; min-width: max-content; max-width: none; } /* several servers: dot, count, marker, caret: it is its own width */
 .sidebar-header .server-switcher-host { flex: 1 1 0; min-width: 7rem; max-width: 12em; } /* 7rem holds the dot, count, marker and caret (min-content would count the whole word after the count); flex-basis 0 so a wrapping row is judged by that smallest size */
 .sidebar-header .server-switcher, .sidebar-header .server-switcher-btn { min-width: 0; max-width: 12em; width: 100%; }
