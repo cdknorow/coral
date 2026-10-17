@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/inputlog"
+	"github.com/cdknorow/coral/internal/logdedupe"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/tmux"
@@ -990,7 +991,7 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 			g.mu.Unlock()
 			return true
 		} else if err != nil {
-			slog.Warn("automated input: a held send failed", "session", name, "sender", h.in.What, "error", err)
+			logHeldSendFailure(name, h.in.What, err)
 		} else {
 			g.shadowForget(name, h.in.Key)
 			g.noteDelivered(name, h.in.Key)
@@ -1203,4 +1204,21 @@ func LastDelivered(name, key string) time.Time {
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
 	return gate.delivered[name][key]
+}
+
+// heldSendFailures coalesces the held-send failure warning (#4112 part 2, Security's #4107 audit:
+// 100 failed sends to a pane that was gone gave a warning each): the same session, sender and
+// error log once, then once every 5 minutes with how many were held back.
+var heldSendFailures = logdedupe.New(5 * time.Minute)
+
+func logHeldSendFailure(name, what string, err error) {
+	ok, heldBack := heldSendFailures.Allow(name + "\x00" + what + "\x00" + err.Error())
+	if !ok {
+		return
+	}
+	if heldBack > 0 {
+		slog.Warn("automated input: a held send failed", "session", name, "sender", what, "error", err, "more_like_it", heldBack, "in_the_last", "5m")
+		return
+	}
+	slog.Warn("automated input: a held send failed", "session", name, "sender", what, "error", err)
 }
