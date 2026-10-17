@@ -357,6 +357,11 @@ func (in AutomatedInput) screenWaiting(ctx context.Context) (waiting bool, why, 
 // DeliverAutomated types an automated send now if the agent is not waiting on
 // the user, and holds it otherwise. A held send is retried until the prompt is
 // gone and then typed once.
+// ErrNotWanted is returned by a send's Ready or Send when what it was about is over by the time
+// it would be typed (a board nudge whose messages the agent has read since, #4362): nothing is
+// typed, and the gate drops it quietly instead of reporting a failed send.
+var ErrNotWanted = errors.New("automated input no longer wanted")
+
 func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) {
 	if in.Send == nil {
 		return Sent, errors.New("automated input without a send function")
@@ -998,6 +1003,10 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 			g.held[name] = append([]*heldInput{h}, g.held[name]...)
 			g.mu.Unlock()
 			return true
+		} else if errors.Is(err, ErrNotWanted) {
+			g.shadowForget(name, h.in.Key)
+			slog.Info("automated input dropped after the hold ended: no longer wanted", "session", name, "sender", h.in.What,
+				"held_for", g.now().Sub(h.heldAt).Round(time.Second).String())
 		} else if err != nil {
 			logHeldSendFailure(name, h.in.What, err)
 		} else {

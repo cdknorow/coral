@@ -459,7 +459,15 @@ func (n *BoardNotifier) runPassWith(ctx context.Context, boards map[string]bool,
 		n.logger.Info("sending nudge", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "mention", mention)
 		// One line (#3376), through the automated-input gate (#3431): a newer
 		// unread count for this board replaces a held one.
-		skipped, err := deliverAutomated(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention)
+		// Counted again just before it is typed, held or not (#4362): a nudge held while the agent
+		// works must not be typed after the turn in which it read those messages. A count that
+		// fails keeps today's behaviour (the nudge goes).
+		project, reader := sub.Project, subscriberID
+		stillUnread := func(ctx context.Context) bool {
+			n, err := n.boardStore.CheckUnread(ctx, project, reader)
+			return err != nil || n > 0
+		}
+		skipped, err := deliverAutomatedIfWanted(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
 		if err != nil && cached && !skipped {
 			// The discovery was reused: if the session is still running, its pane may only
 			// have moved; send once more to the same session (never another).
@@ -467,7 +475,7 @@ func (n *BoardNotifier) runPassWith(ctx context.Context, boards map[string]bool,
 				n.logger.Info("agent gone since the last discovery; no nudge", "session", sessName)
 				continue
 			}
-			skipped, err = deliverAutomated(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention)
+			skipped, err = deliverAutomatedIfWanted(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
 		}
 		if skipped {
 			continue

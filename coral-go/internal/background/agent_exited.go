@@ -55,6 +55,13 @@ func skipIfAgentExited(ctx context.Context, rt any, logger *slog.Logger, name, w
 // launch's first prompt). mention: it is about a board message that tags the agent, which
 // the gate types in mid-turn when it follows the signals (#3578).
 func deliverAutomated(ctx context.Context, rt AgentRuntime, logger *slog.Logger, name, agentType, sessionID, key, text, what string, requireInputBox, mention bool) (skipped bool, err error) {
+	return deliverAutomatedIfWanted(ctx, rt, logger, name, agentType, sessionID, key, text, what, requireInputBox, mention, nil)
+}
+
+// deliverAutomatedIfWanted is deliverAutomated with wanted, when set, asked again just before the
+// text is typed, held or not: false skips it (#4362: a board nudge held while the agent worked was
+// typed after the turn in which it had read those messages).
+func deliverAutomatedIfWanted(ctx context.Context, rt AgentRuntime, logger *slog.Logger, name, agentType, sessionID, key, text, what string, requireInputBox, mention bool, wanted func(context.Context) bool) (skipped bool, err error) {
 	if skipIfAgentExited(ctx, rt, logger, name, what) {
 		return true, nil
 	}
@@ -67,6 +74,9 @@ func deliverAutomated(ctx context.Context, rt AgentRuntime, logger *slog.Logger,
 			if skipIfAgentExited(ctx, rt, logger, name, what) {
 				return errSkippedExited
 			}
+			if wanted != nil && !wanted(ctx) {
+				return ptymanager.ErrNotWanted
+			}
 			return nil
 		},
 		Send: func(ctx context.Context) error {
@@ -74,11 +84,17 @@ func deliverAutomated(ctx context.Context, rt AgentRuntime, logger *slog.Logger,
 			if skipIfAgentExited(ctx, rt, logger, name, what) {
 				return nil
 			}
+			if wanted != nil && !wanted(ctx) {
+				return ptymanager.ErrNotWanted
+			}
 			return rt.SendInput(ctx, name, text)
 		},
 	})
 	if errors.Is(err, errSkippedExited) {
 		return true, nil // the agent exited before its turn: skipped, as above
+	}
+	if errors.Is(err, ptymanager.ErrNotWanted) {
+		return true, nil // over before it could be typed: skipped
 	}
 	return false, err
 }

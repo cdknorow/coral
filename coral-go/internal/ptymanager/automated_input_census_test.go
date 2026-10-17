@@ -27,7 +27,7 @@ var sendCalls = map[string]bool{
 // allowedSenders is "file<TAB>function<TAB>call" -> why it may call it.
 var allowedSenders = map[string]string{
 	// The gate's send functions: they run only when nothing waits on the user.
-	"internal/background/agent_exited.go\tdeliverAutomated\tSendInput":                       "gate",
+	"internal/background/agent_exited.go\tdeliverAutomatedIfWanted\tSendInput":               "gate",
 	"internal/server/routes/agent_exited.go\tdeliverAutomated\tSendInput":                    "gate",
 	"internal/server/routes/agent_ui_request.go\tSessionsHandler.agentUIRequest\tSendPrompt": "gate (its send closure)",
 	"internal/ptymanager/automated_input.go\tinputGate.holdEnter\tSendEnter":                 "gate (a withheld Enter, sent once the prompt is gone)",
