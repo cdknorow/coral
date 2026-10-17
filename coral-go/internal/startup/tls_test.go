@@ -170,18 +170,25 @@ func TestStartWithTLSAnswersHealthOverHTTPS(t *testing.T) {
 
 	// freePort's port can be taken by another process before Start binds it (a busy host):
 	// try another one, up to five times.
+	// The server's background services run until its context ends, as the commands' do at exit:
+	// a test ends it, or they outlive the test (#4167, goleak).
+	ctx, cancel := context.WithCancel(context.Background())
 	var rs *RunningServer
 	for try := 0; try < 5; try++ {
 		cfg = config.Load(home)
 		cfg.Host = "127.0.0.1"
 		cfg.Port = freePort(t)
-		if rs, err = Start(context.Background(), cfg, Options{BackendType: "pty", TLSCert: certFile, TLSKey: keyFile}); err == nil || !addrInUse(err) {
+		if rs, err = Start(ctx, cfg, Options{BackendType: "pty", TLSCert: certFile, TLSKey: keyFile}); err == nil || !addrInUse(err) {
 			break
 		}
 		t.Logf("try %d: %v", try+1, err)
 	}
+	if err != nil {
+		cancel()
+	}
 	require.NoError(t, err)
 	t.Cleanup(func() {
+		cancel()
 		rs.Shutdown(5 * time.Second)
 		rs.Close() // the database and the instance lock, as the commands do: Windows can't delete them open (#3914)
 	})

@@ -149,6 +149,7 @@ func (s *shapedConn) Close() error {
 	s.closed = true
 	s.cond.Broadcast()
 	s.mu.Unlock()
+	s.pr.Close() // the delivery goroutine's write ends too (#4167: it blocked on the pipe for good)
 	return s.Conn.Close()
 }
 

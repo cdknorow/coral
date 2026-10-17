@@ -29,7 +29,11 @@ func TestEndingASessionClosesItsOpenRequests(t *testing.T) {
 			<-r.Context().Done()
 			close(done)
 		}))
-		go h.ServeHTTP(httptest.NewRecorder(), g.req("GET", "/ws/terminal/a", "", "10.0.0.5", c))
+		// Its own context, ended when the test ends, as a real connection's ends when it closes: a
+		// socket that rightly stays open must not outlive the test (#4167, goleak).
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		go h.ServeHTTP(httptest.NewRecorder(), g.req("GET", "/ws/terminal/a", "", "10.0.0.5", c).WithContext(ctx))
 		<-entered
 		return done
 	}
