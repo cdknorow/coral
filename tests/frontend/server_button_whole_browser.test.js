@@ -36,7 +36,7 @@ const SERVERS = [
                 ${JSON.stringify(SERVERS.map(s => s.id))}.forEach(id => window.__m.add('a-' + id, 'S', 3, { sleeping: false, server: id })); T.render.renderLiveSessions(T.state.liveSessions); true`);
             await waitFor(`!!(${SW})`, 'the server button', 8000);
             if (sidebarW) await ev(`document.querySelector('.sidebar').style.width = '${sidebarW}px'; true`);
-            await sleep(500);
+            await sleep(500); // sleep-ok: a layout settles over frames; there is no completion event
             const m = await whole();
             assert.deepEqual(m.bad, [], `${label}: nothing in the button is cut or runs past it: ${JSON.stringify(m)}`);
             assert.ok(m.btnScroll[0] <= m.btnScroll[1] + 1, `${label}: the button's content fits it: ${JSON.stringify(m)}`);

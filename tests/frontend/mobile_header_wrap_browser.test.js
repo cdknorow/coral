@@ -28,14 +28,14 @@ const SERVERS = [
             const kids = [...h.children].filter(c => c.getClientRects().length).map(c => { const r = c.getBoundingClientRect(); return { top: Math.round(r.top), mid: Math.round(r.top + r.height / 2), right: Math.round(r.right), left: Math.round(r.left) }; });
             return { kids, wrap: getComputedStyle(h).flexWrap, vw: innerWidth }; })()`);
         await waitFor(`!![...document.querySelectorAll('.mobile-list-header')].find(x => x.getClientRects().length)`, 'the phone list header', 8000);
-        await sleep(500);
+        await sleep(500); // sleep-ok: a layout settles over frames; there is no completion event
         let m = await measure();
         const mids = m.kids.map(k => k.mid);
         assert.ok(Math.max(...mids) - Math.min(...mids) <= 2, 'one centre line at 390px: ' + JSON.stringify(m));
         assert.ok(m.kids.every(k => k.right <= m.vw), 'all inside the screen: ' + JSON.stringify(m));
         console.log('   ✓ 390px: one row, one centre line');
         await ev(`document.documentElement.style.fontSize = '200%'; true`);
-        await sleep(600);
+        await sleep(600); // sleep-ok: the root text size change relays out over frames; there is no completion event
         m = await measure();
         const mids2 = m.kids.map(k => k.mid);
         assert.ok(Math.max(...mids2) - Math.min(...mids2) > 20, 'with 200% text the controls wrap to a second line: ' + JSON.stringify(m));
