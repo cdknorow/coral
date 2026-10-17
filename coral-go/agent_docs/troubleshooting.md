@@ -535,9 +535,12 @@ stacks can include fragments of session data.
 ### `sessions.db` is large
 
 Coral records one row per API call in `call_metrics` for the **Tool & API Calls**
-view. It keeps them for `call_metrics_retention_days` (default `14`, `1`-`90`; set
-it with `PUT /api/settings`), deleted by a background job in short batches: about
-2 minutes after start, then hourly, at most 500,000 rows a run. The dashboard's
+view. After a day those rows are rolled into one row per hour and kind of call
+(`call_metrics_hourly`: calls, errors, total duration, p50 and p95), about 800 rows
+into one, so the view keeps covering its whole window. Both are kept for
+`call_metrics_retention_days` (default `14`, `1`-`90`; set it with `PUT /api/settings`),
+by a background job in short batches: about 2 minutes after start, then hourly,
+at most 500,000 deleted rows and 48 rolled-up hours a run. The dashboard's
 own refresh polls (an open agent's chat, poll, prompt options and events, and a
 board's message list, when no agent identity is sent) are not recorded. The view
 never shows more than the retention window.

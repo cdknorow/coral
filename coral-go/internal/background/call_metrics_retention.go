@@ -13,7 +13,8 @@ import (
 // table had no retention: 6M rows and ~1.5 GB of a 2 GB sessions.db on a busy
 // server. Every request shares the database's single connection, so the job
 // deletes in short batches with a pause between them, and caps each run; what
-// is left over goes in the next run.
+// is left over goes in the next run. Raw rows older than a day are rolled into
+// hourly rows first (#4098), which are kept for the same window.
 type CallMetricsRetention struct {
 	db     *store.DB
 	ss     *store.SessionStore
@@ -25,7 +26,10 @@ type CallMetricsRetention struct {
 	BatchSize int
 	Pause     time.Duration // between batches: the connection is free for requests
 	RunCap    int64         // rows per run at most
-	now       func() time.Time
+	// RollupHours is how many hours of raw rows one run rolls up at most (one transaction
+	// each, with Pause between): after an upgrade the backlog clears over a few runs.
+	RollupHours int
+	now         func() time.Time
 }
 
 // NewCallMetricsRetention returns the job with its production settings.
@@ -34,7 +38,7 @@ func NewCallMetricsRetention(db *store.DB) *CallMetricsRetention {
 		db: db, ss: store.NewSessionStore(db), logger: slog.Default(),
 		FirstRun: 2 * time.Minute, Interval: time.Hour,
 		BatchSize: 5000, Pause: 50 * time.Millisecond, RunCap: 500_000,
-		now: time.Now,
+		RollupHours: 48, now: time.Now,
 	}
 }
 
@@ -79,11 +83,48 @@ func (j *CallMetricsRetention) RunOnce(ctx context.Context) int64 {
 		case <-time.After(j.Pause):
 		}
 	}
-	if total > 0 || capped {
+	// Rows past the window are deleted, never rolled up: while the prune is capped some are
+	// left, so the rollup waits for a run that finished it.
+	var rolledHours int
+	var rolledRows int64
+	if !capped {
+		rolledHours, rolledRows = j.rollup(ctx)
+	}
+	hourly, err := j.db.PruneCallMetricsHourly(ctx, cutoff)
+	if err != nil && ctx.Err() == nil {
+		j.logger.Warn("call metrics retention: deleting old hourly rows failed", "error", err)
+	}
+	if total > 0 || capped || rolledHours > 0 || hourly > 0 {
 		j.logger.Info("call metrics retention", "deleted", total, "keep_days", days,
-			"took_ms", j.now().Sub(started).Milliseconds(), "more_next_run", capped)
+			"rolled_up_hours", rolledHours, "rolled_up_rows", rolledRows, "hourly_deleted", hourly,
+			"took_ms", j.now().Sub(started).Milliseconds(), "more_next_run", capped || rolledHours >= j.RollupHours)
 	}
 	return total
+}
+
+// rollup rolls raw rows older than store.CallMetricsRawHours into hourly rows, one hour per
+// transaction with Pause between them, at most RollupHours hours.
+func (j *CallMetricsRetention) rollup(ctx context.Context) (hours int, rows int64) {
+	cutoff := j.now().Add(-store.CallMetricsRawHours * time.Hour)
+	for hours < j.RollupHours && ctx.Err() == nil {
+		h, n, err := j.db.RollupCallMetrics(ctx, cutoff, 1)
+		if err != nil {
+			if ctx.Err() == nil {
+				j.logger.Warn("call metrics retention: rollup failed", "error", err)
+			}
+			break
+		}
+		if h == 0 {
+			break // nothing older than a day left
+		}
+		hours += h
+		rows += n
+		select {
+		case <-ctx.Done():
+		case <-time.After(j.Pause):
+		}
+	}
+	return hours, rows
 }
 
 // runEvery calls fn after first and then every interval until ctx ends, and returns ctx's error.
