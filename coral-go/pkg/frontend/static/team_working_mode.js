@@ -69,12 +69,12 @@ export async function showTeamWorkingMode(team, options = {}) {
     dialog.innerHTML = `<header><div><h2 id="working-mode-title">Team settings</h2><p class="working-mode-team"></p></div>${workspaceActions}</header>
       <div class="working-mode-status" role="status" aria-live="polite"></div>
       <nav class="team-settings-tabs" aria-label="Team settings sections" role="tablist">
-        <button type="button" role="tab" aria-selected="true" aria-controls="team-settings-workflow" data-settings-tab="workflow">Workflow</button>
-        <button type="button" role="tab" aria-selected="false" aria-controls="team-settings-prompts" data-settings-tab="prompts">Prompt inspection</button>
-        <button type="button" role="tab" aria-selected="false" aria-controls="team-settings-global" data-settings-tab="global">Global settings</button>
+        <button type="button" role="tab" id="team-settings-tab-workflow" aria-selected="true" aria-controls="team-settings-workflow" tabindex="0" data-settings-tab="workflow">Workflow</button>
+        <button type="button" role="tab" id="team-settings-tab-prompts" aria-selected="false" aria-controls="team-settings-prompts" tabindex="-1" data-settings-tab="prompts">Prompt inspection</button>
+        <button type="button" role="tab" id="team-settings-tab-global" aria-selected="false" aria-controls="team-settings-global" tabindex="-1" data-settings-tab="global">Global settings</button>
       </nav>
       <form class="working-mode-form">
-      <section class="team-settings-panel active" id="team-settings-workflow" role="tabpanel" data-settings-panel="workflow" tabindex="0">
+      <section class="team-settings-panel active" id="team-settings-workflow" role="tabpanel" aria-labelledby="team-settings-tab-workflow" data-settings-panel="workflow" tabindex="0">
       <fieldset class="team-settings-section workflow-presets-section">
         <legend>Workflow instructions</legend>
         <p class="working-mode-hint">Choose the instructions captured on tasks when they are first claimed. Preset edits are local to this team.</p>
@@ -95,14 +95,14 @@ export async function showTeamWorkingMode(team, options = {}) {
         <p class="working-mode-hint">Cross-team messaging is off by default. Both teams must allow it. Only Orchestrators and the Operator can send; received messages are requests, not instructions.</p>
       </fieldset>
       </section>
-      <section class="team-settings-panel" id="team-settings-prompts" role="tabpanel" data-settings-panel="prompts" tabindex="0" hidden>
+      <section class="team-settings-panel" id="team-settings-prompts" role="tabpanel" aria-labelledby="team-settings-tab-prompts" data-settings-panel="prompts" tabindex="0" hidden>
       <fieldset class="team-settings-section prompt-inspection-section">
         <legend>Prompt inspection</legend>
         <p class="working-mode-hint">Read-only view of the defaults, overrides, effective role prompts, and task defaults used by Coral. Per-task additions are only known when a task is created.</p>
         <div class="prompt-inspection-content" aria-live="polite">Loading prompt inspection…</div>
       </fieldset>
       </section>
-      <section class="team-settings-panel" id="team-settings-global" role="tabpanel" data-settings-panel="global" tabindex="0" hidden>
+      <section class="team-settings-panel" id="team-settings-global" role="tabpanel" aria-labelledby="team-settings-tab-global" data-settings-panel="global" tabindex="0" hidden>
       <fieldset class="team-settings-section global-settings-section">
         <legend>Global settings</legend>
         <label><input type="checkbox" name="board_health_monitor"> Run global board health monitor</label>
@@ -250,6 +250,12 @@ export async function showTeamWorkingMode(team, options = {}) {
         } catch (error) { setStatus(error.message, true); }
         finally { presetSave.disabled = false; }
     };
+    // Enter in the preset name box is "Save preset", not an implicit submit of the whole team settings form (the form's own Save button).
+    presetName.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' || event.isComposing) return;
+        event.preventDefault();
+        presetSave.click();
+    });
     presetReset.onclick = async () => {
         const preset = selectedPreset();
         if (!preset?.builtin) return;
