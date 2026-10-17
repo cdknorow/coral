@@ -71,11 +71,9 @@ export function forgetAccountMemory() {
 /** An agent panel's unsent request (agent_ui.js keeps it per agent in sessionStorage); another person at this browser must not read it. */
 const PANEL_DRAFT_PREFIX = 'coral-panel-request:';
 export function purgePanelDrafts() {
-    let s;
-    try { s = sessionStorage; } catch { return 0; }
-    const keys = [];
-    try { for (let i = 0; i < s.length; i++) { const k = s.key(i); if (k && k.startsWith(PANEL_DRAFT_PREFIX)) keys.push(k); } } catch { return 0; }
-    for (const k of keys) { try { s.removeItem(k); } catch { /* storage refused */ } }
+    // Through safe_storage (#4116): it already answers a blocked sessionStorage with no keys.
+    const keys = browserSession.keys().filter(k => k.startsWith(PANEL_DRAFT_PREFIX));
+    for (const k of keys) browserSession.remove(k);
     return keys.length;
 }
 
