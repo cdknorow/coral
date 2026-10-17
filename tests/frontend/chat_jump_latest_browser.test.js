@@ -65,20 +65,22 @@ const BASE = require('./test_base').BASE;
                 const lum = c => { const [r, g, b2] = c.match(/[\\d.]+/g).slice(0, 3).map(Number).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b2; };
                 const circle = getComputedStyle(${BTN}, ${v.coarse ? "'::before'" : 'null'}); const a = lum(getComputedStyle(${BTN}).color), bg = lum(circle.backgroundColor);
                 const cw = ${v.coarse ? `parseFloat(circle.width) || (${BTN}.getBoundingClientRect().width - 8)` : `${BTN}.getBoundingClientRect().width`};
-                return { aboveInput: b.bottom <= i.top + 0.5, inside: b.left >= 0 && b.right <= vw, contrast: (Math.max(a, bg) + 0.05) / (Math.min(a, bg) + 0.05), circle: Math.round(cw),
-                    opacity: Number(getComputedStyle(${BTN}).opacity), bgColor: circle.backgroundColor }; })()`);
+                const m = document.getElementById('live-history-messages').getBoundingClientRect();
+                return { aboveInput: b.bottom <= i.top + 0.5, inside: b.left >= 0 && b.right <= vw, centre: Math.abs((b.left + b.right) / 2 - (m.left + m.right) / 2), contrast: (Math.max(a, bg) + 0.05) / (Math.min(a, bg) + 0.05), circle: Math.round(cw),
+                    opacity: Number(getComputedStyle(${BTN}).opacity), arrowAlpha: Number((getComputedStyle(${BTN}).color.split(',')[3] || '1').replace(')', '')), bgColor: circle.backgroundColor }; })()`);
             assert.ok(geo.aboveInput, `${v.name}: above the input, not over it`);
             assert.ok(geo.inside, `${v.name}: on the screen`);
+            assert.ok(geo.centre <= 1, `${v.name}: centred over the chat, clear of the replies' Copy and Save buttons at the right (off by ${geo.centre} px)`);
             assert.ok(geo.contrast >= 4.5, `${v.name}: the white arrow on the circle, contrast ${geo.contrast.toFixed(2)}:1`);
             assert.equal(geo.bgColor, 'rgb(0, 0, 0)', `${v.name}: a black circle (dark theme)`);
             assert.ok(geo.circle >= 32 && geo.circle <= 36, `${v.name}: a 32-36 px circle (${geo.circle})`);
-            assert.ok(geo.opacity < 1, `${v.name}: a little faded at rest (${geo.opacity})`);
+            assert.ok(geo.arrowAlpha < 1 && geo.opacity === 1, `${v.name}: the arrow a little faded at rest, the circle opaque (arrow alpha ${geo.arrowAlpha}, opacity ${geo.opacity})`);
             if (v.coarse) assert.ok(s.w >= 44 && s.h >= 44, `${v.name}: 44 px on touch (${s.w}x${s.h})`);
             if (!v.coarse) {
                 // The light theme: a dark grey circle, still a white arrow.
                 const light = await ev(`(() => { const r = document.documentElement, was = r.getAttribute('data-theme'); r.setAttribute('data-theme', 'light');
                     const b = ${BTN}, out = { bg: getComputedStyle(b).backgroundColor, fg: getComputedStyle(b).color }; if (was) r.setAttribute('data-theme', was); else r.removeAttribute('data-theme'); return out; })()`);
-                assert.deepEqual(light, { bg: 'rgb(58, 58, 58)', fg: 'rgb(255, 255, 255)' }, `${v.name}: light theme, a dark grey circle and a white arrow`);
+                assert.deepEqual(light, { bg: 'rgb(58, 58, 58)', fg: 'rgba(255, 255, 255, 0.78)' }, `${v.name}: light theme, a dark grey circle and a white arrow (faded at rest)`);
             }
             if (!v.coarse) {
                 // Tab reaches it: from the control before it in the page, the next Tab stop is the button.

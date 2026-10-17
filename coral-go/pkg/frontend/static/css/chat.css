@@ -585,14 +585,17 @@
     padding: 12px 20px;
 }
 
-/* Jump to latest (#4511): a quiet round button at the bottom right of the chat, above the input, while you read higher up (the
+/* Jump to latest (#4511): a quiet round button at the bottom centre of the chat, above the input, while you read higher up (the
    operator's restyle: it blends in). A black circle with a white down arrow, a thin light edge and a soft shadow so it reads on
-   the black chat, a little faded until hovered or focused; a dark grey circle in the light theme. 34 px on a desktop; on a touch
+   the black chat, its arrow a little faded until hovered or focused; a dark grey circle in the light theme. 34 px on a desktop; on a touch
    screen the button is a 44 px target and the 36 px circle is drawn inside it. New messages show as a small dot; the count is in
    its name and the live region. */
 .chat-jump-latest {
     position: absolute;
-    right: 16px;
+    /* Centred just above the input (the Orchestrator's call on UX's #4511 NIT): at the right edge it covered a reply's Copy
+       (and Save) buttons; here it covers a little of the bottom line's text, never a control, and needs no gutter. */
+    left: 50%;
+    transform: translateX(-50%);
     bottom: 12px;
     z-index: 5;
     pointer-events: none;
@@ -610,16 +613,15 @@
     border: 1px solid var(--jump-edge);
     border-radius: 50%;
     background: var(--jump-bg);
-    color: #fff;
+    color: rgba(255, 255, 255, 0.78); /* the arrow faded at rest; the circle stays opaque, so the text under it does not show through */
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
-    opacity: 0.75;
-    transition: opacity 0.15s ease;
+    transition: color 0.15s ease;
 }
-.chat-jump-latest-btn:hover, .chat-jump-latest-btn:focus-visible { opacity: 1; }
+.chat-jump-latest-btn:hover, .chat-jump-latest-btn:focus-visible { color: #fff; }
 .chat-jump-latest-btn[hidden] { display: none; }
 .chat-jump-latest-btn:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 .chat-jump-latest-btn svg { position: relative; width: 18px; height: 18px; }
