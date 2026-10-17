@@ -1,5 +1,39 @@
 # Release Notes
 
+## v1.4.84 — Kill keeps terminal logs, a limit on received files, and a stricter net for cross-Coral sends
+
+### Changes
+
+- **Behaviour change: Kill now keeps the agent's terminal log on tmux too.** Until now, killing an agent removed its terminal log when Coral used tmux (the pty backend always kept it), so if you relied on Kill to clear a log, it no longer does. The log stays in the `logs` folder of Coral's data folder, and every Kill confirmation (Kill Session, Kill All Agents, Kill Team, Kill Run when an agent step is running, Reset Team) now says so. Coral's search reads the CLIs' own transcripts, not these logs.
+- **Settings > Storage > Terminal logs lists your terminal logs and can delete the ones that belong to ended agents.** It shows how many logs there are, how big they are and how many are an ended agent's; the button ("Delete 12 terminal logs of ended agents (45 MiB)") asks first, says what those agents' terminals showed can't be recovered, and keeps the logs of live, sleeping and archived agents. It is never automatic, Operator only (the status is Operator-only too), and not available through Coral Hub. If anything about the set changed since it was shown, nothing is deleted. A crashed agent that was never marked stopped keeps its log, and logs with no matching session stay until you delete them by hand.
+- **Files received from another Coral are limited to 2 GiB in total by default.** Past the limit, new received files are refused (`store_full`); nothing already received is deleted, and your agents' own uploads are never counted. The limit, what is received so far and a warning from 80% (and at the limit) are in Settings > Storage > "Received files limit (GiB)"; 0 means no limit, and an empty field is left unchanged rather than saved as 0. The first time received files reach 80% you get one notice (a toast, or the status line if Settings is open).
+- **Received files that no message ever listed now count toward that limit, and Settings > Storage shows them with a "Delete N unlisted files" button** (Operator only, asks first, removes exactly the files it names).
+- **Team Artifacts > Details lists "Also received from"** when the same file arrives again from another Coral or board: one line per later sender (the first sender stays), each marked as the sender's own claim for the board name.
+
+### Security and privacy
+
+- **Sending a file or a message to another Coral now looks for secrets in more places.** The scan covers the file as written and re-encoded forms of it (percent-encoding, HTML entities, split fragments, reversed text, and base64 or hex that decodes to text, two layers deep), and the text of the message as well (refused as `message_secret`). A scan that can't finish in its time or size allowance refuses the send (`attach_unchecked` or `message_unchecked`) instead of letting it through. **This is a net, not a boundary:** rot13, base32, compressed data, three layers of encoding, other split characters and binary files are not caught, and the docs list them.
+- **Only one file is scanned at a time on a Coral:** a send that has to wait more than 30 seconds for another file's scan is refused as `attach_busy` (try again in a minute); `coral-board send --attach` waits long enough for that.
+- **A file from another Coral is listed only when its message arrives.** The sender pushes the files first; one whose message doesn't come within 30 minutes is never listed (it still counts toward the limit above, and Settings > Storage lists it so you can delete it), and a retry of the same message and file is not charged to the quota again (up to five free retries a day). The sending side also re-reads the switch before each file it pushes. The receiving side reads the board's cross-team switches again just before storing, so a switch turned off after a send began is respected.
+- **An agent can no longer read the ids of received files nobody has listed.**
+- **A download whose stored size disagrees with the file is refused** (`artifact_corrupt`, no bytes) instead of sending a wrong Content-Length.
+
+### Fixes
+
+- **Files over 4 MiB sent from another Coral were refused (413) since v1.4.79; they are accepted again,** up to the 8 MiB limit.
+- **A confirmation asked from the Settings dialog was drawn underneath it,** so you saw a dimmed page and no question. This hit Prune, Start automatic cleanup and the new delete buttons; confirmations now appear above Settings.
+- **The secret scan's time allowance now grows with the size of the file** (3 s plus 4 s per MiB, 100 s at most per file), so a large text file is no longer refused as unchecked on a busy machine.
+- **After restarting an agent in Chat view (the default, and the usual view on phones), the 'Agent is restarting' overlay now clears** once the agent is back, and no longer stays up when you switch to another agent. The bar above the chat says Restarting meanwhile, and switching agents during a restart no longer reconnects the terminal to the wrong agent. The Session ended overlay had the same gap.
+- **Settings > Storage no longer saves an old limit after its sizes fail to load**: the fields stay empty and off until the store answers.
+- **Turning auto-accept on just as Disable All runs, or just as you press Stop on that agent, can no longer leave it on afterwards** (the enable answers 409 `stopped_meanwhile`).
+- **`coral-board send` prints the refusal code** (for example `attach_secret: ...`) when a send is refused, so a script can tell refusals apart.
+
+### Other changes
+
+- **Less memory churn and a cheaper machine-health view:** compressed API replies reuse their compressors, and on Linux the machine-health process scan reads each process once (same numbers), and board lookups on every agent request use prepared statements.
+- **Team Artifacts and Settings > Storage:** keyboard focus returns to the right control after Delete, Retry, Prune and Shrink; 44 px touch targets; the Prune confirmation names saved diffs and unlinked artifacts in plain words; the artifact store limit shows when it is reached.
+- **Tests and CI:** new browser and Go tests for all of the above.
+
 ## v1.4.83 — Background service restart fix
 
 ### Fixes
