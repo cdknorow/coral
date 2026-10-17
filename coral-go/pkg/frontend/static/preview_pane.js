@@ -240,7 +240,7 @@ function _renderTabs() {
 /* ── Toolbar ───────────────────────────────────────────────── */
 
 function _modeBtn(mode, icon, title, tab) {
-    return `<button class="inline-preview-mode-btn${tab.mode === mode ? ' active' : ''}" data-action="mode" data-mode="${escapeAttr(mode)}" title="${escapeAttr(title)}"><span class="material-icons">${icon}</span></button>`;
+    return `<button class="inline-preview-mode-btn${tab.mode === mode ? ' active' : ''}" data-action="mode" data-mode="${escapeAttr(mode)}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}"><span class="material-icons" aria-hidden="true">${icon}</span></button>`;
 }
 
 function _renderToolbar(tab) {

@@ -572,13 +572,13 @@ function renderKnowledgePanel(panel, boardName) {
     // Single toolbar: Home + title on left, actions on right
     html += `<div class="knowledge-toolbar">
         <div class="knowledge-toolbar-left">
-            <button class="inline-preview-mode-btn knowledge-home-btn" title="Back to overview" style="display:${knowledgeActiveTab === 'index' ? 'none' : ''}"><span class="material-icons">home</span></button>
+            <button class="inline-preview-mode-btn knowledge-home-btn" title="Back to overview" style="display:${knowledgeActiveTab === 'index' ? 'none' : ''}" aria-label="Back to overview"><span class="material-icons" aria-hidden="true">home</span></button>
             <span class="knowledge-nav-title">${knowledgeActiveTab === 'index' ? 'Overview' : escapeHtml(knowledgeActiveTab)}</span>
         </div>
         <div class="knowledge-toolbar-actions">
-            <button class="inline-preview-mode-btn knowledge-redistill-btn" data-on-click="knowledge-distill" data-board="${escapeAttr(boardName)}" title="Re-distill"><span class="material-icons">refresh</span></button>
-            <button class="inline-preview-mode-btn${knowledgeMode === 'preview' ? ' active' : ''}" data-kmode="preview" title="Preview"><span class="material-icons">visibility</span></button>
-            <button class="inline-preview-mode-btn${knowledgeMode === 'edit' ? ' active' : ''}" data-kmode="edit" title="Edit"><span class="material-icons">edit</span></button>
+            <button class="inline-preview-mode-btn knowledge-redistill-btn" data-on-click="knowledge-distill" data-board="${escapeAttr(boardName)}" title="Re-distill" aria-label="Re-distill"><span class="material-icons" aria-hidden="true">refresh</span></button>
+            <button class="inline-preview-mode-btn${knowledgeMode === 'preview' ? ' active' : ''}" data-kmode="preview" title="Preview" aria-label="Preview"><span class="material-icons" aria-hidden="true">visibility</span></button>
+            <button class="inline-preview-mode-btn${knowledgeMode === 'edit' ? ' active' : ''}" data-kmode="edit" title="Edit" aria-label="Edit"><span class="material-icons" aria-hidden="true">edit</span></button>
             <button class="inline-preview-save knowledge-save-btn" style="display:${knowledgeMode === 'edit' ? '' : 'none'}">Save</button>
         </div>
     </div>`;

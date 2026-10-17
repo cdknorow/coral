@@ -1149,7 +1149,7 @@ function _renderLiveSessions(sessions) {
 
         html += `<li class="session-board-card session-board-card-toplevel session-wf-card" style="border-left-color: var(--color-tool-agent)">
             <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" data-on-click="group-collapse" data-group="wf:${escapeAttr(wfName)}"${_collapseAttrs(wfCollapsed)}>
-                <div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:0.875rem;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
+                <div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:0.875rem;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)" aria-hidden="true">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
             </div>
             <ul class="board-card-agents${wfCollapsed ? ' board-card-collapsed' : ''}">`;
 

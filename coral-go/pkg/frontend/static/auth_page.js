@@ -29,6 +29,21 @@ function showPanel(panel) {
     if (focus) focus.focus();
 }
 function setError(el, text) { if (!el) return; el.hidden = !text; el.textContent = text || ''; }
+// A refused field: the message in its error box, the field marked invalid and described by that box, and focus on it (it used to stay on the page body). Typing in
+// the field clears the mark.
+function fail(input, box, text) {
+    setError(box, text);
+    if (!input) return;
+    input.setAttribute('aria-invalid', 'true');
+    if (box && box.id) input.setAttribute('aria-describedby', [...new Set([...(input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean), box.id])].join(' '));
+    input.focus();
+}
+function clearInvalid(input, box) {
+    if (!input) return;
+    input.removeAttribute('aria-invalid');
+    if (box && box.id) { const left = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(x => x && x !== box.id).join(' '); if (left) input.setAttribute('aria-describedby', left); else input.removeAttribute('aria-describedby'); }
+}
+for (const input of document.querySelectorAll('input.pw-input')) input.addEventListener('input', () => clearInvalid(input, input.closest('section')?.querySelector('.err')));
 function say(text) { $('live').textContent = text; }
 function done() { say('Signed in. Opening Coral…'); window.location.replace(returnTo); }
 
@@ -75,15 +90,15 @@ if (passwordSet) {
         e.preventDefault();
         const err = $('err'), pw = $('password');
         const problem = passwordProblem(pw.value);
-        setError(err, problem === 'Enter a password.' ? 'Enter your password.' : ''); pw.classList.remove('bad');
-        if (problem) return;
+        setError(err, ''); pw.classList.remove('bad'); clearInvalid(pw, err);
+        if (problem) { fail(pw, err, problem === 'Enter a password.' ? 'Enter your password.' : problem); return; }
         $('submit').disabled = true;
         let res;
         try { res = await post('/auth/password', { password: pw.value, keep: $('keep').checked }); } catch { setError(err, NETWORK); $('submit').disabled = false; return; }
         if (res.ok) return done();
         $('submit').disabled = false;
         if (res.status === 429) { setError(err, ''); return lock(waitFor(res)); }
-        if (res.status === 401) { setError(err, 'That password is not right.'); pw.classList.add('bad'); pw.focus(); pw.select(); return; }
+        if (res.status === 401) { fail(pw, err, 'That password is not right.'); pw.classList.add('bad'); pw.select(); return; }
         setError(err, res.status === 403 ? CROSS : (res.data.error || 'Could not sign in.'));
     });
 } else {
@@ -100,8 +115,12 @@ if (passwordSet) {
         const err = $('err');
         const setup = code ? code.value.trim().toUpperCase().replace(/\s+/g, '') : '';
         const problem = (code && !setup) ? 'Enter the setup code.' : passwordProblem(pw.value, confirm.value);
-        setError(err, problem);
-        if (problem) return;
+        setError(err, ''); clearInvalid(pw, err); clearInvalid(confirm, err); if (code) clearInvalid(code, err);
+        if (problem) {   // the field the message is about: the setup code, the confirmation, else the password
+            const field = (code && !setup) ? code : (confirm.value && /match|same|confirm/i.test(problem)) ? confirm : pw;
+            fail(field, err, problem);
+            return;
+        }
         $('submit').disabled = true;
         const body = { password: pw.value, keep: $('keep').checked };
         if (code) body.code = setup;
@@ -111,7 +130,7 @@ if (passwordSet) {
         $('submit').disabled = false;
         if (res.status === 409) { window.location.reload(); return; }   // someone set one first: this is now the sign-in page
         if (res.status === 429) { setError(err, ''); return lock(waitFor(res)); }
-        if (res.data.code === 'bad_code') { setError(err, res.data.error || 'That setup code is not right.'); code.focus(); code.select(); return; }
+        if (res.data.code === 'bad_code') { fail(code, err, res.data.error || 'That setup code is not right.'); code.select(); return; }
         setError(err, res.status === 403 ? CROSS : (res.data.error || 'Could not create the password.'));
     });
 }
@@ -164,7 +183,8 @@ if ($('hub-link-open')) {
         const err = $('hub-link-err'), field = $('hub-setup-field');
         setError(err, '');
         const code = field.hidden ? '' : $('hub-setup-code').value.trim().toUpperCase().replace(/\s+/g, '');
-        if (!field.hidden && !code) { setError(err, 'Enter the setup code.'); return; }
+        clearInvalid($('hub-setup-code'), err);
+        if (!field.hidden && !code) { fail($('hub-setup-code'), err, 'Enter the setup code.'); return; }
         const body = { enable_signin: $('hub-enable').checked };
         if (code) body.setup_code = code;
         $('hub-link-go').disabled = true;
@@ -185,13 +205,14 @@ if ($('hub-link-open')) {
 const keyForm = $('key-form');
 async function sendKey() {
     const key = $('api-key').value.trim();
-    if (!key) return;
+    clearInvalid($('api-key'), $('key-err'));
+    if (!key) { fail($('api-key'), $('key-err'), 'Paste the API key.'); return; }
     $('key-submit').disabled = true; setError($('key-err'), '');
     let res;
     try { res = await post('/auth/key', { key }); } catch { setError($('key-err'), NETWORK); $('key-submit').disabled = false; return; }
     if (res.ok && res.data.ok !== false) return done();
     $('key-submit').disabled = false;
-    setError($('key-err'), res.data.error || 'Invalid API key.');
+    fail($('api-key'), $('key-err'), res.data.error || 'Invalid API key.');
 }
 keyForm.addEventListener('submit', e => { e.preventDefault(); sendKey(); });
 const hashParams = new URLSearchParams(window.location.hash.slice(1));

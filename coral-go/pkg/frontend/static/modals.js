@@ -493,7 +493,7 @@ function _populateGeneratedTeamDraft(team) {
         banner = document.createElement('div');
         banner.id = 'generated-team-banner';
         banner.className = 'generated-team-banner';
-        banner.innerHTML = '<span class="material-icons">auto_awesome</span> Your AI-generated team is ready — review and edit before launching.';
+        banner.innerHTML = '<span class="material-icons" aria-hidden="true">auto_awesome</span> Your AI-generated team is ready — review and edit before launching.';
         const h3 = stepEl.querySelector('h3');
         if (h3) h3.after(banner);
     }
@@ -635,7 +635,7 @@ function _handleGenerateResult(payload) {
             if (body) {
                 body.innerHTML = `
                     <div class="team-wizard-success">
-                        <span class="material-icons team-wizard-success-icon">check_circle</span>
+                        <span class="material-icons team-wizard-success-icon" aria-hidden="true">check_circle</span>
                         <strong>Team generated!</strong>
                         <p>${team.agents.length} agents created for "${escapeHtml(team.name)}"</p>
                         <button class="btn btn-primary" data-on-click="team-generated-review">Review Team</button>
@@ -703,7 +703,7 @@ async function testTeamWizard() {
     if (body) {
         body.innerHTML = `
             <div class="team-wizard-success">
-                <span class="material-icons team-wizard-success-icon">check_circle</span>
+                <span class="material-icons team-wizard-success-icon" aria-hidden="true">check_circle</span>
                 <strong>Team generated!</strong>
                 <p>${sampleTeam.agents.length} agents created for "${escapeHtml(sampleTeam.name)}"</p>
                 <button class="btn btn-primary" data-on-click="team-generated-review">Review Team</button>

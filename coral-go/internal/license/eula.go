@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -184,11 +185,33 @@ func CheckAndPromptEULA(showDialog func(tosText string) bool) bool {
 	return true
 }
 
+// executablePath is the running program's path; a variable so a test can name one.
+var executablePath = os.Executable
+
+// eulaCommand is the command a person types in a terminal to be asked: this very program, quoted when its path has a space or another character a shell
+// would split or expand, so it can be pasted as it is (#4360). When the path is unknown it is the program's usual name.
+func eulaCommand() string {
+	path, err := executablePath()
+	if err != nil || path == "" {
+		return "coral"
+	}
+	if !strings.ContainsAny(path, " \t'\"$`\\&;|<>()*?[]{}!#~") {
+		return path
+	}
+	if runtime.GOOS == "windows" {
+		return `"` + path + `"`
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+}
+
 // TerminalEULADialog shows the TOS in the terminal and prompts for acceptance.
 func TerminalEULADialog(tosText string) bool {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		// Nobody can answer: a background start must not block in read(0).
-		fmt.Println("The Terms of Service have not been accepted and stdin is not a terminal. Run Coral once from a terminal to accept them.")
+		fmt.Println("The Terms of Service have not been accepted and stdin is not a terminal, so Coral cannot ask.")
+		fmt.Println("To accept them, run this once in a terminal, read the terms and type 'accept':")
+		fmt.Println()
+		fmt.Println("    " + eulaCommand())
 		return false
 	}
 	fmt.Println(tosText)

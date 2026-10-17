@@ -81,12 +81,12 @@
         </div>
         <!-- Top bar search hidden due to browser autofill issues -->
         <div class="top-bar-search" id="top-bar-search" style="display:none">
-            <span class="material-icons top-bar-search-icon">search</span>
+            <span class="material-icons top-bar-search-icon" aria-hidden="true">search</span>
             <input type="search" id="topbar-file-search" class="top-bar-search-input" placeholder="Search files..." autocomplete="off" role="searchbox" data-form-type="other" data-lpignore="true" data-1p-ignore aria-label="Search files">
             <div id="topbar-search-dropdown" class="topbar-search-dropdown" style="display:none"></div>
         </div>
         <div class="top-bar-actions">
-            <button class="top-bar-btn" data-on-click="m-go-home" title="Home" aria-label="Home"><span class="material-icons top-bar-icon">home</span></button>
+            <button class="top-bar-btn" data-on-click="m-go-home" title="Home" aria-label="Home"><span class="material-icons top-bar-icon" aria-hidden="true">home</span></button>
             <button class="top-bar-btn" id="panel-toggle-btn" data-on-click="m-toggle-agentic-panel" title="Toggle side panel" aria-label="Toggle side panel"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="12" rx="1.5"/><line x1="10" y1="2" x2="10" y2="14"/></svg></button>
             <div class="top-bar-settings-wrapper">
                 <button class="top-bar-btn" data-on-click="m-toggle-top-bar-settings" title="Menu" aria-label="Settings menu" aria-controls="top-bar-settings-menu">
@@ -153,7 +153,7 @@
     </div>
 
     <div id="tmux-missing-banner" class="tmux-missing-banner" role="alert" style="display:none">
-        <span class="material-icons tmux-missing-banner-icon">warning</span>
+        <span class="material-icons tmux-missing-banner-icon" aria-hidden="true">warning</span>
         <div class="tmux-missing-banner-body">
             <strong>tmux is not installed.</strong>
             <span id="tmux-check-message"></span>
@@ -220,20 +220,20 @@
                     </header>
                     <div class="welcome-launch-list">
                         <button class="welcome-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="agent">
-                            <span class="welcome-launch-icon material-icons">smart_toy</span>
+                            <span class="welcome-launch-icon material-icons" aria-hidden="true">smart_toy</span>
                             <span class="welcome-launch-copy"><strong>Launch agent</strong><span>One agent in a folder you choose.</span></span>
-                            <span class="material-icons welcome-launch-arrow">arrow_forward</span>
+                            <span class="material-icons welcome-launch-arrow" aria-hidden="true">arrow_forward</span>
                         </button>
                         <button class="welcome-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="team">
-                            <span class="welcome-launch-icon material-icons">groups</span>
+                            <span class="welcome-launch-icon material-icons" aria-hidden="true">groups</span>
                             <span class="welcome-launch-copy"><strong>Launch team</strong><span>Agents with roles on a shared board.</span></span>
-                            <span class="material-icons welcome-launch-arrow">arrow_forward</span>
+                            <span class="material-icons welcome-launch-arrow" aria-hidden="true">arrow_forward</span>
                         </button>
                         <!-- #3630: pin a folder to the Agents list, ready to launch into -->
                         <button class="welcome-launch" id="welcome-open-folder" data-on-click="m-show-open-folder-modal">
-                            <span class="welcome-launch-icon material-icons">create_new_folder</span>
+                            <span class="welcome-launch-icon material-icons" aria-hidden="true">create_new_folder</span>
                             <span class="welcome-launch-copy"><strong>Open folder</strong><span>Pin a folder to the list, ready to launch into.</span></span>
-                            <span class="material-icons welcome-launch-arrow">arrow_forward</span>
+                            <span class="material-icons welcome-launch-arrow" aria-hidden="true">arrow_forward</span>
                         </button>
                     </div>
                     <!-- Coral Hub (#3221): hidden until settings load; the user can hide it -->
@@ -256,10 +256,10 @@
                         </div>
                     </section>
                     <nav class="welcome-links" aria-label="Learn more">
-                        <a href="https://cdknorow.github.io/coral/" target="_blank" rel="noopener"><span class="material-icons">menu_book</span>Documentation</a>
-                        <a href="https://github.com/cdknorow/coral" target="_blank" rel="noopener"><span class="material-icons">code</span>GitHub</a>
-                        <a href="https://github.com/cdknorow/coral/discussions" target="_blank" rel="noopener"><span class="material-icons">forum</span>Forum</a>
-                        <a href="#" role="button" data-on-click="m-mobile-connect-open"><span class="material-icons">qr_code_2</span>Mobile QR code</a>
+                        <a href="https://cdknorow.github.io/coral/" target="_blank" rel="noopener"><span class="material-icons" aria-hidden="true">menu_book</span>Documentation</a>
+                        <a href="https://github.com/cdknorow/coral" target="_blank" rel="noopener"><span class="material-icons" aria-hidden="true">code</span>GitHub</a>
+                        <a href="https://github.com/cdknorow/coral/discussions" target="_blank" rel="noopener"><span class="material-icons" aria-hidden="true">forum</span>Forum</a>
+                        <a href="#" role="button" data-on-click="m-mobile-connect-open"><span class="material-icons" aria-hidden="true">qr_code_2</span>Mobile QR code</a>
                     </nav>
                 </div>
             </div>
@@ -284,7 +284,7 @@
                 <div class="sched-view-header" id="sched-view-header">
                     <h2>Jobs</h2>
                     <button class="btn btn-sm btn-primary" data-on-click="job-new">
-                        <span class="material-icons" style="font-size:1rem">add</span> New Job
+                        <span class="material-icons" style="font-size:1rem" aria-hidden="true">add</span> New Job
                     </button>
                 </div>
                 <div id="scheduler-detail"></div>

@@ -209,7 +209,7 @@
                                         </select>
                                     </label>
                                     <div class="team-template-actions">
-                                        <button class="btn btn-small btn-subtle team-generate-ai-btn" data-on-click="m-show-team-wizard-modal" title="Generate a team with AI"><span class="material-icons icon-btn-inline">auto_awesome</span> Generate with AI</button>
+                                        <button class="btn btn-small btn-subtle team-generate-ai-btn" data-on-click="m-show-team-wizard-modal" title="Generate a team with AI"><span class="material-icons icon-btn-inline" aria-hidden="true">auto_awesome</span> Generate with AI</button>
                                         <button class="btn btn-small btn-subtle" data-on-click="m-import-team-templates" title="Import team templates from file">Import Template</button>
                                         <button class="btn btn-small btn-subtle" data-on-click="m-import-team-from-folder" title="Import team from a folder with .md agent files">Import from Folder</button>
                                         <button class="btn btn-small btn-subtle" data-on-click="m-save-team-template" title="Save team configuration as reusable template">Save as Template</button>
@@ -385,7 +385,7 @@
             <div class="modal-body team-wizard-body">
                 <div class="team-wizard-intro">
                     <div class="team-wizard-intro-icon">
-                        <span class="material-icons">auto_awesome</span>
+                        <span class="material-icons" aria-hidden="true">auto_awesome</span>
                     </div>
                     <div>
                         <strong>AI team builder</strong>
@@ -576,7 +576,7 @@
             </div>
             <div class="modal-body settings-modal-body">
                 <button class="btn btn-primary settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
-                    <span class="material-icons icon-inline">palette</span>
+                    <span class="material-icons icon-inline" aria-hidden="true">palette</span>
                     Customize Theme
                 </button>
                 <dl class="info-grid settings-grid">
@@ -641,7 +641,7 @@
                         <input type="password" id="settings-api-key" class="settings-input settings-mono-input" readonly autocomplete="off" placeholder="Loading..." aria-label="API key">
                         <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-show" aria-pressed="false" hidden>Show</button>
                         <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-copy" disabled>Copy</button>
-                        <button class="btn btn-small" type="button" data-on-click="m-show-mobile-connect-modal" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:0.875rem;vertical-align:middle">qr_code_2</span> Mobile QR</button>
+                        <button class="btn btn-small" type="button" data-on-click="m-show-mobile-connect-modal" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:0.875rem;vertical-align:middle" aria-hidden="true">qr_code_2</span> Mobile QR</button>
                     </div>
                     <span class="settings-hint">Used for remote/mobile access. Keep secret.</span>
                 </dd>
@@ -1059,10 +1059,10 @@
                 <!-- Job type toggle -->
                 <div class="job-type-toggle" id="job-type-toggle">
                     <button class="job-type-btn active" data-type="workflow" data-on-click="m-switch-job-type" data-arg="workflow">
-                        <span class="material-icons" style="font-size:1rem">account_tree</span> Workflow
+                        <span class="material-icons" style="font-size:1rem" aria-hidden="true">account_tree</span> Workflow
                     </button>
                     <button class="job-type-btn" data-type="prompt" data-on-click="m-switch-job-type" data-arg="prompt">
-                        <span class="material-icons" style="font-size:1rem">smart_toy</span> Agent Prompt
+                        <span class="material-icons" style="font-size:1rem" aria-hidden="true">smart_toy</span> Agent Prompt
                     </button>
                 </div>
 

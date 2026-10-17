@@ -42,10 +42,10 @@
                                     <!-- Center view toggle: raw terminal vs. rendered chat transcript -->
                                     <div class="live-view-toggle" role="group" aria-label="Center view">
                                         <button type="button" class="live-view-toggle-btn active" id="live-view-btn-chat" data-on-click="live-view-mode" data-mode="chat" aria-pressed="true" title="Chat view" aria-label="Chat view">
-                                            <span class="material-icons">chat</span><span>Chat</span>
+                                            <span class="material-icons" aria-hidden="true">chat</span><span>Chat</span>
                                         </button>
                                         <button type="button" class="live-view-toggle-btn" id="live-view-btn-terminal" data-on-click="live-view-mode" data-mode="terminal" aria-pressed="false" title="Terminal view" aria-label="Terminal view">
-                                            <span class="material-icons">terminal</span><span>Terminal</span>
+                                            <span class="material-icons" aria-hidden="true">terminal</span><span>Terminal</span>
                                         </button>
                                     </div>
                                 <div class="terminal-header-left" id="popout-header-identity" aria-live="polite">
@@ -175,51 +175,51 @@
                         <div class="agentic-block" id="agentic-block-top">
                             <div class="agentic-state-tabs" role="tablist" aria-label="Session panels" data-on-contextmenu="tabs-customize-menu">
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="board" data-where="top" id="agentic-tab-board" title="Board Chat — team message board" aria-label="Board Chat" style="display:none">
-                                    <span class="material-icons">forum</span>
+                                    <span class="material-icons" aria-hidden="true">forum</span>
                                 </button>
                                 <button class="agentic-tab active" data-on-click="agentic-tab" data-tab="files" data-where="top" data-scope="agent" id="agentic-tab-files" title="Files — changed files in this session" aria-label="Files">
-                                    <span class="material-icons">description</span>
+                                    <span class="material-icons" aria-hidden="true">description</span>
                                     <span class="agentic-tab-count" id="files-bar-count"></span>
                                 </button>
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="browse" data-where="top" data-scope="agent" id="agentic-tab-browse" title="Browse — repository file tree" aria-label="Browse">
-                                    <span class="material-icons">folder_open</span>
+                                    <span class="material-icons" aria-hidden="true">folder_open</span>
                                 </button>
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="artifacts" data-where="top" data-scope="agent" id="agentic-tab-artifacts" title="Artifacts — this agent's artifacts" aria-label="Artifacts">
-                                    <span class="material-icons">inventory_2</span>
+                                    <span class="material-icons" aria-hidden="true">inventory_2</span>
                                 </button>
                                 <button class="agentic-tab" data-scope="team" data-on-click="agentic-tab" data-tab="team-view" data-where="top" id="agentic-tab-team-view" title="Team View — agent availability and assigned work" aria-label="Team View">
-                                    <span class="material-icons">dashboard</span>
+                                    <span class="material-icons" aria-hidden="true">dashboard</span>
                                 </button>
                                 <button class="agentic-tab" data-scope="team" data-on-click="agentic-tab" data-tab="team-settings" data-where="top" id="agentic-tab-team-settings" title="Team Settings — workflow, working mode and prompts" aria-label="Team Settings">
-                                    <span class="material-icons">tune</span>
+                                    <span class="material-icons" aria-hidden="true">tune</span>
                                 </button>
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="team-artifacts" data-where="top" data-scope="team" id="agentic-tab-team-artifacts" title="Team Artifacts — artifacts from the whole team" aria-label="Team Artifacts">
-                                    <span class="material-icons">groups</span>
+                                    <span class="material-icons" aria-hidden="true">groups</span>
                                 </button>
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="knowledge" data-where="top" data-scope="team" id="agentic-tab-knowledge" title="Team Knowledge — distilled team knowledge" aria-label="Team Knowledge">
-                                    <span class="material-icons">psychology</span>
+                                    <span class="material-icons" aria-hidden="true">psychology</span>
                                 </button>
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="tasks" data-where="top" id="agentic-tab-tasks" title="Tasks — agent task list and progress" aria-label="Tasks">
-                                    <span class="material-icons">checklist</span>
+                                    <span class="material-icons" aria-hidden="true">checklist</span>
                                     <span class="agentic-tab-count" id="task-bar-count"></span>
                                 </button>
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="notes" data-where="top" id="agentic-tab-notes" title="Notes — agent notes and observations" aria-label="Notes">
-                                    <span class="material-icons">edit_note</span>
+                                    <span class="material-icons" aria-hidden="true">edit_note</span>
                                     <span class="agentic-tab-count" id="note-bar-count"></span>
                                 </button>
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="activity" data-where="top" data-scope="agent" id="agentic-tab-activity" title="Activity — tool use and event timeline" aria-label="Activity">
-                                    <span class="material-icons">timeline</span>
+                                    <span class="material-icons" aria-hidden="true">timeline</span>
                                 </button>
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="agent-ui" data-where="top" data-scope="agent" id="agentic-tab-agent-ui" title="Agent UI" aria-label="Agent UI">
-                                    <span class="material-icons">widgets</span><span class="agentic-tab-count" id="agent-ui-count"></span>
+                                    <span class="material-icons" aria-hidden="true">widgets</span><span class="agentic-tab-count" id="agent-ui-count"></span>
                                 </button>
                                 <!-- Custom view tabs (disabled for now) -->
                                 <span id="custom-view-tabs" style="display:none"></span>
                                 <button class="agentic-tab agentic-tab-customize" id="agentic-tab-customize" data-on-click="tabs-customize" aria-haspopup="dialog" aria-expanded="false" aria-controls="tab-customize" title="Customize tabs" aria-label="Customize tabs">
-                                    <span class="material-icons">tune</span>
+                                    <span class="material-icons" aria-hidden="true">tune</span>
                                 </button>
                                 <button class="agentic-tab agentic-tab-close" id="agentic-mobile-close-btn" data-on-click="agentic-panel-toggle" data-open="0" title="Back to Chat" aria-label="Close side panel and return to chat">
-                                    <span class="material-icons">close</span>
+                                    <span class="material-icons" aria-hidden="true">close</span>
                                 </button>
                             </div>
                             <!-- Files tab -->

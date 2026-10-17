@@ -534,13 +534,13 @@ export function renderBoardTaskList() {
             : isAgent ? ` role="button" tabindex="0" data-key-click data-on-click="task-open" data-kind="agent" data-task-id="${Number(t.id)}" style="cursor:pointer"`
             : ` role="button" tabindex="0" data-key-click data-on-click="task-open" data-kind="board" data-task-id="${Number(t.id)}" style="cursor:pointer"`;
         const typeCell = isSubagent
-            ? `<span class="board-task-type board-task-type-subagent" title="Subagent launched by ${escapeAttr(assignee)}"><span class="material-icons">account_tree</span>sub</span>`
+            ? `<span class="board-task-type board-task-type-subagent" title="Subagent launched by ${escapeAttr(assignee)}"><span class="material-icons" aria-hidden="true">account_tree</span>sub</span>`
             : `<span class="board-task-type">${isAgent ? 'agent' : 'board'}</span>`;
         const subagentBadge = isSubagent && t.subagent_type
             ? `<span class="board-task-subagent-badge">${escapeHtml(t.subagent_type)}</span>` : '';
         const claimedFor = !isAgent && !isSubagent ? _claimedFor(t) : null;
         const claimedBadge = claimedFor
-            ? `<span class="board-task-claimed" title="Claimed ${escapeAttr(formatTaskDate(t.claimed_at))}"><span class="material-icons">schedule</span>${claimedFor}</span>` : '';
+            ? `<span class="board-task-claimed" title="Claimed ${escapeAttr(formatTaskDate(t.claimed_at))}"><span class="material-icons" aria-hidden="true">schedule</span>${claimedFor}</span>` : '';
         // Blocked is conveyed by the status icon and its focusable detail;
         // avoid repeating a red text badge in the task description column.
         const blockedBadge = '';

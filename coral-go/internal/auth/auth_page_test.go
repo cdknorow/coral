@@ -130,3 +130,31 @@ func TestAuthPageHubStates(t *testing.T) {
 	assert.Contains(t, create, `id="create-form"`)
 	assert.Contains(t, create, `id="hub-start-form"`)
 }
+
+// #4360 (the #4356 first-run audit): the page's text follows the browser's text size (rem, no px font sizes), the browser finds its icon (no /favicon.ico 404),
+// the first field of the sign-in and create pages has focus when the page opens, and a long label wraps inside its button.
+func TestAuthPageFirstRunDetails(t *testing.T) {
+	for name, s := range map[string]PageState{
+		"signin": {PasswordSet: true, Local: true, Strict: true},
+		"create": {Local: true},
+		"setup":  {},
+	} {
+		page := AuthPage(s)
+		assert.NotRegexp(t, `font-size:\s*[0-9.]+px`, page, "%s: text sized in px does not follow the browser's text size", name)
+		assert.Contains(t, page, `<link rel="icon" type="image/png" href="/static/favicon.png">`, name)
+		assert.Contains(t, page, "min-height: 2.75rem", "%s: a touch target is 44 px", name)
+		assert.Contains(t, page, `.btn.wide, .btn.hub { white-space: normal;`, name)
+	}
+	// Exactly one field takes focus on load: the password on the sign-in page, the setup code on a remote create page, the password on a local one.
+	focus := func(s PageState) string {
+		page := AuthPage(s)
+		var ids []string
+		for _, m := range regexp.MustCompile(`<input[^>]*\bautofocus\b[^>]*>`).FindAllString(page, -1) {
+			ids = append(ids, regexp.MustCompile(`id="([^"]+)"`).FindStringSubmatch(m)[1])
+		}
+		return strings.Join(ids, ",")
+	}
+	assert.Equal(t, "password", focus(PageState{PasswordSet: true, Local: true, Strict: true}))
+	assert.Equal(t, "password", focus(PageState{Local: true}))
+	assert.Equal(t, "setup-code", focus(PageState{}))
+}

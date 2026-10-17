@@ -59,7 +59,7 @@ function _renderViewTabs() {
         `<button class="agentic-tab" data-on-click="custom-view-tab" data-view-id="${escapeAttr(v.id)}"
                  id="agentic-tab-custom-view-${Number(v.id)}" title="${escapeHtml(v.name)}" aria-label="${escapeHtml(v.name)}"
                  data-on-contextmenu="custom-view-menu">
-            <span class="material-icons">dashboard</span>
+            <span class="material-icons" aria-hidden="true">dashboard</span>
         </button>`
     ).join('');
 

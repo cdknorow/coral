@@ -21,7 +21,7 @@ export async function showDocsTab() {
  *  instead of a blank page (#3152). */
 async function loadDocsList() {
     const content = document.getElementById('docs-content');
-    if (content) content.innerHTML = '<div class="docs-empty"><span class="material-icons" style="font-size:1.5rem;animation:spin 1s linear infinite">refresh</span></div>';
+    if (content) content.innerHTML = '<div class="docs-empty"><span class="material-icons" style="font-size:1.5rem;animation:spin 1s linear infinite" aria-hidden="true">refresh</span></div>';
     const ok = await fetchDocsList();
     renderDocNav();
     if (!ok) {
@@ -120,7 +120,7 @@ export async function selectDoc(name, { noteRoute = true } = {}) {
     const content = document.getElementById('docs-content');
     if (!content) return;
 
-    content.innerHTML = '<div class="docs-empty"><span class="material-icons" style="font-size:1.5rem;animation:spin 1s linear infinite">refresh</span></div>';
+    content.innerHTML = '<div class="docs-empty"><span class="material-icons" style="font-size:1.5rem;animation:spin 1s linear infinite" aria-hidden="true">refresh</span></div>';
 
     const doc = await fetchDocContent(name);
     if (!doc || !doc.content) {

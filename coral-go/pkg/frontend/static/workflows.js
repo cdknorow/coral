@@ -68,7 +68,7 @@ export function showWorkflowsTab() {
 
 export async function launchWorkflowAgent() {
     const btn = document.getElementById('wf-build-agent-btn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons" style="font-size:1rem">hourglass_top</span> Launching\u2026'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons" style="font-size:1rem" aria-hidden="true">hourglass_top</span> Launching\u2026'; }
 
     try {
         // Fetch the skill prompt
@@ -114,7 +114,7 @@ export async function launchWorkflowAgent() {
     } catch (e) {
         showToast('Failed to launch workflow agent', true);
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-icons" style="font-size:1rem">smart_toy</span> Build with Agent'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-icons" style="font-size:1rem" aria-hidden="true">smart_toy</span> Build with Agent'; }
     }
 }
 
@@ -296,20 +296,20 @@ function renderWorkflowDetail(wf, runs) {
             </div>
             <div class="wf-detail-actions">
                 <button class="btn btn-sm btn-primary" data-on-click="wf-trigger" data-workflow-id="${Number(wf.id)}">
-                    <span class="material-icons" style="font-size:0.875rem">play_arrow</span> Run
+                    <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">play_arrow</span> Run
                 </button>
                 <button class="btn btn-sm" data-on-click="wf-edit" data-workflow-id="${Number(wf.id)}">Edit</button>
                 <button class="btn btn-sm" data-on-click="wf-edit-agent" data-workflow-id="${Number(wf.id)}">
-                    <span class="material-icons" style="font-size:0.875rem">smart_toy</span> Edit with Agent
+                    <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">smart_toy</span> Edit with Agent
                 </button>
                 <button class="btn btn-sm" style="color:var(--error)" data-on-click="wf-delete" data-workflow-id="${Number(wf.id)}" data-name="${escAttr(wf.name)}">Delete</button>
             </div>
         </div>
         <div class="wf-detail-meta">
-            <span><span class="material-icons">folder</span> ${esc(wf.repo_path || 'Not set')}</span>
-            <span><span class="material-icons">timer</span> Max ${wf.max_duration_s || 3600}s</span>
-            <span><span class="material-icons">schedule</span> Created ${formatTime(wf.created_at)}</span>
-            ${wf.enabled ? '' : '<span style="color:var(--warning)"><span class="material-icons">pause_circle</span> Disabled</span>'}
+            <span><span class="material-icons" aria-hidden="true">folder</span> ${esc(wf.repo_path || 'Not set')}</span>
+            <span><span class="material-icons" aria-hidden="true">timer</span> Max ${wf.max_duration_s || 3600}s</span>
+            <span><span class="material-icons" aria-hidden="true">schedule</span> Created ${formatTime(wf.created_at)}</span>
+            ${wf.enabled ? '' : '<span style="color:var(--warning)"><span class="material-icons" aria-hidden="true">pause_circle</span> Disabled</span>'}
         </div>
         <div class="wf-steps-section">
             <h3>Steps (${steps.length})</h3>
@@ -379,7 +379,7 @@ function renderRunDetail(run) {
     if (run.started_at) {
         const endTime = run.finished_at ? new Date(run.finished_at) : new Date();
         const durSec = Math.round((endTime - new Date(run.started_at)) / 1000);
-        durationHtml = `<span><span class="material-icons">hourglass_empty</span> ${formatDuration(durSec)}</span>`;
+        durationHtml = `<span><span class="material-icons" aria-hidden="true">hourglass_empty</span> ${formatDuration(durSec)}</span>`;
     }
 
     // Progress bar
@@ -444,7 +444,7 @@ function renderRunDetail(run) {
         if (files.length > 0) {
             const fileItems = files.map(f => `<span class="wf-step-file">${esc(f)}</span>`).join('');
             filesHtml = `<div class="wf-step-files">
-                <span class="material-icons" style="font-size:0.8125rem;color:var(--text-muted)">folder_open</span>
+                <span class="material-icons" style="font-size:0.8125rem;color:var(--text-muted)" aria-hidden="true">folder_open</span>
                 ${fileItems}
             </div>`;
         }
@@ -453,7 +453,7 @@ function renderRunDetail(run) {
         let agentHtml = '';
         if (s.type === 'agent' && s.session_id) {
             agentHtml = `<span class="wf-step-agent-link" data-on-click="wf-step-agent" data-session="${escAttr(s.session_name || s.session_id)}">
-                <span class="material-icons" style="font-size:0.8125rem">open_in_new</span> View agent
+                <span class="material-icons" style="font-size:0.8125rem" aria-hidden="true">open_in_new</span> View agent
             </span>`;
         }
 
@@ -476,13 +476,13 @@ function renderRunDetail(run) {
 
     const killBtn = isActive
         ? `<button class="btn btn-sm" style="color:var(--error)" data-on-click="wf-kill-run" data-run-id="${Number(run.id)}">
-            <span class="material-icons" style="font-size:0.875rem">stop</span> Kill
+            <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">stop</span> Kill
           </button>`
         : '';
 
     const retriggerBtn = !isActive && run.workflow_id
         ? `<button class="btn btn-sm" data-on-click="wf-trigger" data-workflow-id="${Number(run.workflow_id)}">
-            <span class="material-icons" style="font-size:0.875rem">replay</span> Re-run
+            <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">replay</span> Re-run
           </button>`
         : '';
 
@@ -493,11 +493,11 @@ function renderRunDetail(run) {
         </div>
         <div class="wf-run-meta">
             <span><span class="wf-status-badge ${esc(run.status)}">${esc(run.status)}</span></span>
-            <span><span class="material-icons">bolt</span> ${esc(run.trigger_type || 'api')}</span>
-            ${run.started_at ? `<span><span class="material-icons">schedule</span> ${formatTime(run.started_at)}</span>` : ''}
+            <span><span class="material-icons" aria-hidden="true">bolt</span> ${esc(run.trigger_type || 'api')}</span>
+            ${run.started_at ? `<span><span class="material-icons" aria-hidden="true">schedule</span> ${formatTime(run.started_at)}</span>` : ''}
             ${durationHtml}
-            ${run.finished_at ? `<span><span class="material-icons">check_circle</span> ${formatTime(run.finished_at)}</span>` : ''}
-            ${run.error_msg ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons">error</span> ${esc(run.error_msg)}${errorExcerpt ? `<span class="wf-run-error-excerpt">: ${esc(errorExcerpt)}</span>` : ''}</span>` : ''}
+            ${run.finished_at ? `<span><span class="material-icons" aria-hidden="true">check_circle</span> ${formatTime(run.finished_at)}</span>` : ''}
+            ${run.error_msg ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons" aria-hidden="true">error</span> ${esc(run.error_msg)}${errorExcerpt ? `<span class="wf-run-error-excerpt">: ${esc(errorExcerpt)}</span>` : ''}</span>` : ''}
         </div>
         ${progressBarHtml}
         <div class="wf-run-steps wf-timeline">${stepsHtml}</div>

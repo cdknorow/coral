@@ -24,7 +24,7 @@ function addCodeCopyButtons(root) {
         wrap.className = "code-block";
         pre.replaceWith(wrap);
         wrap.appendChild(pre);
-        wrap.insertAdjacentHTML("beforeend", `<button type="button" class="code-copy-btn" title="Copy code" aria-label="Copy code"><span class="material-icons">content_copy</span></button>`);
+        wrap.insertAdjacentHTML("beforeend", `<button type="button" class="code-copy-btn" title="Copy code" aria-label="Copy code"><span class="material-icons" aria-hidden="true">content_copy</span></button>`);
     }
 }
 
@@ -286,10 +286,10 @@ async function showFileRefMenu(el) {
     menu.className = "chat-file-menu";
     menu.setAttribute("role", "menu");
     menu.innerHTML = `<div class="chat-file-menu-path" title="${escapeHtml(displayPath)}">${escapeHtml(displayPath)}</div>
-        <button type="button" role="menuitem" data-action="preview"><span class="material-icons">visibility</span>Preview in Coral${line > 0 ? ` (line ${line})` : ""}</button>
-        ${artifactRef ? '' : `<button type="button" role="menuitem" data-action="edit"><span class="material-icons">edit</span>Edit in Coral${line > 0 ? ` (line ${line})` : ""}</button>
-        ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${Number(i)}"><span class="material-icons">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}`}
-        <button type="button" role="menuitem" data-action="copy"><span class="material-icons">content_copy</span>${artifactRef ? 'Copy artifact URI' : 'Copy path'}</button>`;
+        <button type="button" role="menuitem" data-action="preview"><span class="material-icons" aria-hidden="true">visibility</span>Preview in Coral${line > 0 ? ` (line ${line})` : ""}</button>
+        ${artifactRef ? '' : `<button type="button" role="menuitem" data-action="edit"><span class="material-icons" aria-hidden="true">edit</span>Edit in Coral${line > 0 ? ` (line ${line})` : ""}</button>
+        ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${Number(i)}"><span class="material-icons" aria-hidden="true">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}`}
+        <button type="button" role="menuitem" data-action="copy"><span class="material-icons" aria-hidden="true">content_copy</span>${artifactRef ? 'Copy artifact URI' : 'Copy path'}</button>`;
     document.body.appendChild(menu);
 
     const r = el.getBoundingClientRect();

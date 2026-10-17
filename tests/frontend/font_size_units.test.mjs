@@ -14,10 +14,11 @@ const walk = (d, ok) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => 
     const p = path.join(d, e.name);
     return e.isDirectory() ? (e.name === 'vendor' ? [] : walk(p, ok)) : ok(p) ? [p] : [];
 });
-const files = [...walk(path.join(fe, 'static'), p => /\.(css|js)$/.test(p)), ...walk(path.join(fe, 'templates'), p => p.endsWith('.html'))];
+const auth = path.resolve(here, '../../coral-go/internal/auth');   // the sign-in and create-password page is a Go template with its own inline CSS (#4360)
+const files = [...walk(path.join(fe, 'static'), p => /\.(css|js)$/.test(p)), ...walk(path.join(fe, 'templates'), p => p.endsWith('.html')), ...fs.readdirSync(auth).filter(n => n.endsWith('.go') && !n.endsWith('_test.go')).map(n => path.join(auth, n))];
 const bad = [];
 for (const f of files) {
-    const rel = path.relative(fe, f);
+    const rel = path.relative(path.resolve(here, '../..'), f).replace(/^coral-go\/pkg\/frontend\//, '');
     if (KEEP[rel]) continue;
     fs.readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
         if (/font-size:\s*[0-9.]+px|font:\s*(?:[0-9]+\s+)?[0-9.]+px/.test(line) && !/xterm|fontSize/.test(line)) bad.push(`${rel}:${i + 1}: ${line.trim().slice(0, 110)}`);

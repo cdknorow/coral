@@ -371,7 +371,7 @@ export function renderQuickActions() {
     }).join("");
 
     const navButtons = `
-        <button class="btn-nav btn-esc" data-on-click="cmd-raw-keys" data-keys="Escape" title="Stop — sends Escape to interrupt the agent or dismiss its prompt" aria-label="Stop (Escape)"><span class="esc-label-terminal" aria-hidden="true">Esc</span><span class="esc-label-chat" aria-hidden="true"><span class="material-icons">stop</span></span></button>
+        <button class="btn-nav btn-esc" data-on-click="cmd-raw-keys" data-keys="Escape" title="Stop — sends Escape to interrupt the agent or dismiss its prompt" aria-label="Stop (Escape)"><span class="esc-label-terminal" aria-hidden="true">Esc</span><span class="esc-label-chat" aria-hidden="true"><span class="material-icons" aria-hidden="true">stop</span></span></button>
         <button class="btn-nav btn-nav-key" data-on-click="cmd-raw-keys" data-keys="Up" title="Arrow Up" aria-label="Arrow Up">&uarr;</button>
         <button class="btn-nav btn-nav-key" data-on-click="cmd-raw-keys" data-keys="Down" title="Arrow Down" aria-label="Arrow Down">&darr;</button>
         <button class="btn-nav btn-enter btn-nav-key" data-on-click="cmd-raw-keys" data-keys="Enter" data-tooltip="Sends an Enter keypress to the terminal" aria-label="Enter">&#9166;</button>

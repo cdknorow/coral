@@ -305,7 +305,7 @@ export function stitchPages(lastOlder) {
 
 // Agent replies carry a copy button that copies the reply's markdown as the
 // agent wrote it (not the rendered text).
-const COPY_BUTTON = `<button type="button" class="chat-copy-btn" title="Copy" aria-label="Copy message"><span class="material-icons">content_copy</span></button>`;
+const COPY_BUTTON = `<button type="button" class="chat-copy-btn" title="Copy" aria-label="Copy message"><span class="material-icons" aria-hidden="true">content_copy</span></button>`;
 const bubbleSource = new WeakMap();
 
 document.addEventListener("click", async (e) => {
@@ -417,7 +417,7 @@ function syncUsageLimitNotice(container, notice) {
         existing.querySelector('.message-text').textContent = notice;
         return;
     }
-    const bubble = makeBubble('chat-note chat-usage-limit-notice', `<span class="material-icons">warning</span><span class="message-text">${escapeHtml(notice)}</span>`);
+    const bubble = makeBubble('chat-note chat-usage-limit-notice', `<span class="material-icons" aria-hidden="true">warning</span><span class="message-text">${escapeHtml(notice)}</span>`);
     container.append(bubble);
 }
 

@@ -165,7 +165,7 @@ function _renderSubagentDetail(sa) {
         <div class="task-detail-title">${escapeHtml(row.title)}</div>
         <div class="task-detail-meta">
             <span class="task-detail-status ${statusClass}">${statusLabel}</span>
-            <span class="board-task-type board-task-type-subagent subagent-detail-chip"><span class="material-icons">account_tree</span>subagent</span>
+            <span class="board-task-type board-task-type-subagent subagent-detail-chip"><span class="material-icons" aria-hidden="true">account_tree</span>subagent</span>
             ${sa.subagent_type ? `<span class="board-task-subagent-badge">${escapeHtml(sa.subagent_type)}</span>` : ''}
         </div>
         <div class="task-detail-fields subagent-detail-fields">
