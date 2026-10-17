@@ -75,6 +75,13 @@ func newAttributionHarness(t *testing.T) *attributionHarness {
 	r.Post("/api/board/{project}/tasks/{taskID}/snooze", bh.SnoozeTaskReminder)
 	r.Post("/api/board/{project}/tasks/{taskID}/reminder", bh.RemindTask)
 	r.Delete("/api/board/{project}/tasks/{taskID}/reminder", bh.RemindTask)
+	// The Operator-only routes and the cross-team relay (#4255 commit 4).
+	r.Post("/api/board/{project}/pause", bh.PauseBoard)
+	r.Post("/api/board/{project}/resume", bh.ResumeBoard)
+	r.Put("/api/board/{project}/working-mode", bh.SetWorkingMode)
+	r.Post("/api/board/{project}/working-mode/presets", bh.SaveWorkflowPreset)
+	r.Post("/api/board/{project}/relay-messages", bh.PostRelayMessage)
+	r.Get("/api/board/{project}/relay-targets", bh.ListRelayTargets)
 	a.bh = bh
 	a.h = r
 	return a
@@ -103,6 +110,10 @@ func (a *attributionHarness) callBody(actor, method, path, body string) (int, st
 	if tok, ok := a.tokens[actor]; ok {
 		r.Header.Set(store.SessionTokenHeader, tok)
 		r.Header.Set("User-Agent", "coral-board/test")
+	}
+	if actor == "browser" { // this computer's browser with no sign-in: claimed, and a person to humanInputCaller
+		r.Header.Set("Origin", "http://example.com") // the harness requests are to example.com
+		r.Header.Set("Sec-Fetch-Site", "same-origin")
 	}
 	rec := httptest.NewRecorder()
 	a.h.ServeHTTP(rec, r)

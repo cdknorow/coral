@@ -212,6 +212,19 @@ func (o *IdentityObserver) serveAs(w http.ResponseWriter, r *http.Request, next 
 		return
 	}
 	r = withActor(r, actor)
+	// A route only the Operator may use (operatorOnlyRoutes: working mode, presets, pause and resume, rename
+	// and delete, group members, message deletes, settings, workflow runs...): an agent's token is refused
+	// by the guard; a caller with no credential (claimed) is let through in log mode, counted, and refused
+	// under enforce (#4255). The Operator and the Hub (which has its own table and guard) are not asked.
+	if actor.Kind == ActorClaimed {
+		if _, only, ok := guardedRoute(r); ok && only {
+			if identityActorEnforced() {
+				o.refuse(w, http.StatusForbidden, "identity_unverified", "This is for the Operator (the dashboard, or the command line outside an agent), and nothing on this request says it is")
+				return
+			}
+			noteEnforceDiffers("operator-only route", r)
+		}
+	}
 	isBoard := strings.HasPrefix(r.URL.Path, "/api/board/")
 	var given []string
 	var readErr error

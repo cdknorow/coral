@@ -77,9 +77,22 @@ func (h *BoardHandler) relaySenderRole(w http.ResponseWriter, r *http.Request, p
 		relayError(w, http.StatusBadRequest, "bad_request", fmt.Sprintf("board %q can't be used in an address (letters, digits, '.', '_', '-'; up to 64)", project), 0)
 		return "", false
 	}
-	if subscriber == crossTeamOperatorID && !humanInputCaller(r) {
-		relayError(w, http.StatusForbidden, "operator_requires_person", "only the Operator in the dashboard or the signed coral command line can message another Coral as the Operator", 0)
-		return "", false
+	// By the actor under enforce (#4255): the Operator the identity layer verified (the dashboard's cookie or
+	// the signed command line); in log mode the earlier test (a person: humanInputCaller) stands, and where
+	// the two differ (a browser with no sign-in, on an install that opted out) it is counted.
+	if subscriber == crossTeamOperatorID {
+		legacy := humanInputCaller(r)
+		byActor := callerActor(r).Kind == ActorOperator
+		allowed := legacy
+		if identityActorEnforced() {
+			allowed = byActor
+		} else if legacy != byActor {
+			noteEnforceDiffers("relay-operator", r)
+		}
+		if !allowed {
+			relayError(w, http.StatusForbidden, "operator_requires_person", "only the Operator in the dashboard or the signed coral command line can message another Coral as the Operator", 0)
+			return "", false
+		}
 	}
 	role, ok := h.relaySenderIdentity(w, r, project, subscriber, sessionName)
 	if !ok {
@@ -171,6 +184,16 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	if err := decodeJSON(r, &body); err != nil {
 		relayError(w, http.StatusBadRequest, "bad_request", "invalid JSON", 0)
 		return
+	}
+	attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+	if !attrOK {
+		return
+	}
+	body.SubscriberID = attrWho
+	if identityActorEnforced() { // an agent sends from its own session: the token's, not the one it names
+		if a := callerActor(r); a.Kind == ActorToken {
+			body.SessionName = a.Session
+		}
 	}
 	body.Content = strings.TrimSpace(unescapeLineBreaks(body.Content))
 	body.ToAddress = strings.TrimSpace(body.ToAddress)
@@ -316,7 +339,17 @@ func (h *BoardHandler) ListRelayTargets(w http.ResponseWriter, r *http.Request) 
 	}
 	project := urlParam(r, "project")
 	q := r.URL.Query()
-	if _, ok := h.relaySenderRole(w, r, project, strings.TrimSpace(q.Get("subscriber_id")), q.Get("session_name")); !ok {
+	subscriber, attrOK := attributedTo(w, r, strings.TrimSpace(q.Get("subscriber_id")))
+	if !attrOK {
+		return
+	}
+	sessionName := q.Get("session_name")
+	if identityActorEnforced() {
+		if a := callerActor(r); a.Kind == ActorToken {
+			sessionName = a.Session
+		}
+	}
+	if _, ok := h.relaySenderRole(w, r, project, subscriber, sessionName); !ok {
 		return
 	}
 	relay := h.relaySender()
