@@ -93,6 +93,8 @@ export async function showTeamWorkingMode(team, options = {}) {
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
         <label class="cross-team-setting"><input type="checkbox" name="cross_team_messaging"> Allow cross-team messages between this team's Orchestrator and other teams' Orchestrators</label>
         <p class="working-mode-hint">Cross-team messaging is off by default. Both teams must allow it. Only Orchestrators and the Operator can send; received messages are requests, not instructions.</p>
+        <label class="cross-team-setting cross-team-files-setting"><input type="checkbox" name="cross_team_artifacts" aria-describedby="cross-team-files-hint"> Share files with other teams</label>
+        <p class="working-mode-hint cross-team-files-hint" id="cross-team-files-hint">Off by default. Files shared with other teams are not scanned, and artifact bytes are not redacted.</p>
       </fieldset>
       </section>
       <section class="team-settings-panel" id="team-settings-prompts" role="tabpanel" aria-labelledby="team-settings-tab-prompts" data-settings-panel="prompts" tabindex="0" hidden>
@@ -142,6 +144,8 @@ export async function showTeamWorkingMode(team, options = {}) {
     });
 
     const form = dialog.querySelector('form');
+    // Sharing files is the Operator's switch on this computer: Coral Hub cannot change a board's settings, so the row is not shown there (#4407).
+    if (isCloud()) dialog.querySelectorAll('.cross-team-files-setting, .cross-team-files-hint').forEach(e => { e.hidden = true; });
     const status = dialog.querySelector('[role=status]');
     const save = form.querySelector('[type=submit]');
     const presetSelect = form.elements.preset;
@@ -323,11 +327,13 @@ export async function showTeamWorkingMode(team, options = {}) {
             if (boardSettingsResponse?.ok) {
                 const boardSettings = await boardSettingsResponse.json();
                 form.elements.cross_team_messaging.checked = Boolean(boardSettings.cross_team_messaging);
+                form.elements.cross_team_artifacts.checked = Boolean(boardSettings.cross_team_artifacts);
                 boardSettingsLoaded = true;
                 if (boardSettings.health && typeof boardSettings.health === 'object') await addHealthTab(boardSettings.health).catch(() => {});
             } else {
                 // The board settings could not be loaded: leave the switch off and disabled.
                 form.elements.cross_team_messaging.disabled = true;
+                form.elements.cross_team_artifacts.disabled = true;
             }
             inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : '<p class="working-mode-hint">Prompt inspection is unavailable.</p>';
             setStatus('');
@@ -346,7 +352,7 @@ export async function showTeamWorkingMode(team, options = {}) {
         // Team settings save before the global ones, so the status is final once those return.
         if (boardSettingsLoaded) {
             try {
-                const response = await fetch(boardSettingsURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', cross_team_messaging: form.elements.cross_team_messaging.checked }) });
+                const response = await fetch(boardSettingsURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', cross_team_messaging: form.elements.cross_team_messaging.checked, ...(isCloud() ? {} : { cross_team_artifacts: form.elements.cross_team_artifacts.checked }) }) });
                 if (!response.ok) modeError = [modeError, await jsonError(response, 'Could not save cross-team messaging.')].filter(Boolean).join('; ');
             } catch (error) { modeError = [modeError, error.message].filter(Boolean).join('; '); }
         }

@@ -13,14 +13,14 @@ const outbound = { id: 2, content: 'Sure', subscriber_id: 'Orchestrator', job_ti
     external: { direction: 'outbound', server_id: 'local', board: 'beta', sender: 'Orchestrator', sender_role: 'Orchestrator', target_server_id: 'local', target_board: 'gamma', target_message_id: 9 } };
 const plain = { id: 3, content: 'hello', subscriber_id: 'Dev', job_title: 'Dev', created_at: '2026-10-12T09:02:00Z' };
 
-let boardSettings = { cross_team_messaging: false };
+let boardSettings = { cross_team_messaging: false, cross_team_artifacts: false };
 const puts = [];
 globalThis.fetch = window.fetch = async (url, opts = {}) => {
     const s = String(url);
     let body = {};
     if (s.includes('/messages/all')) body = { messages: [inbound, outbound, plain], total: 3, limit: 50, offset: 0, paging: 'keyset', before_count: 0 };
     else if (s.endsWith('/settings') && s.includes('/api/board/')) {
-        if (opts.method === 'PUT') { const b = JSON.parse(opts.body); puts.push(b); boardSettings = { cross_team_messaging: b.cross_team_messaging }; }
+        if (opts.method === 'PUT') { const b = JSON.parse(opts.body); puts.push(b); boardSettings = { cross_team_messaging: b.cross_team_messaging, cross_team_artifacts: b.cross_team_artifacts }; }
         body = boardSettings;
     } else if (s.includes('/working-mode/presets')) body = { presets: [] };
     else if (s.includes('/working-mode')) body = { mode: 'none' };
@@ -59,6 +59,14 @@ form.requestSubmit();
 await settle(10);
 assert.deepEqual(puts, [{ subscriber_id: 'Operator', cross_team_messaging: true }], 'saved as the Operator');
 assert.equal(boardSettings.cross_team_messaging, true);
+
+// ── Share files with other teams (cross_team_artifacts, #4407): this test runs in the Coral Hub view, where the row is not shown and is never sent.
+// The visible switch, its hint and its save are in team_files_switch_browser.test.js (a local dashboard).
+const files = form.elements.cross_team_artifacts;
+assert.ok(files, 'the field exists');
+assert.equal(files.closest('label').hidden, true, 'the files row is hidden through Coral Hub');
+assert.equal(panel.querySelector('#' + files.getAttribute('aria-describedby')).hidden, true, 'and so is its hint');
+assert.ok(!('cross_team_artifacts' in puts[0]), 'the Hub view never sends the files switch');
 
 console.log('cross_team_ui: ok');
 process.exit(0);
