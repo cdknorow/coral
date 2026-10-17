@@ -510,10 +510,12 @@ board registration (Orchestrator role or existing can_peek privilege), never a
 role field in a task request. The local API uses subscriber_id to identify the
 caller; created_by is a legacy creation alias and must match when both are set.
 PATCH assignment changes also require subscriber_id and the same privilege.
-The dashboard uses the reserved Operator identity. Remote access is gated by
-the server API key/session cookie; localhost clients share the desktop trust
-boundary. Subscriber identity is caller-supplied, not a per-agent authenticated
-principal, so these checks do not prevent local identity impersonation.
+A request with an agent's session token acts only as that session's member:
+another subscriber, the Operator or another board is refused (403
+`identity_mismatch`). The Operator is the dashboard or the signed command line.
+Strict local auth is on by default, so a request without a token needs another
+credential; with it off, a token-less local caller is trusted (see
+[auth.md](auth.md)).
 
 **Names Coral reserves.** A subscriber, poster, task creator or job title can't be `Coral`,
 `System`, `Health`, `Coral Task Queue`, `Coral Health Monitor`, `Coral Hub` or start with

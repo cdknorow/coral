@@ -387,9 +387,9 @@ first claimed. Existing active and completed tasks are not retroactively changed
 
 Here, a **workflow** means a team instruction preset. It is separate from launch
 workflows (`coral-board workflow`) and from task dependencies and release stages.
-Users and agents may create or edit these presets. This permission does not grant
-workers permission to create or reassign team tasks; those operations still
-require Operator or a registered Orchestrator.
+Only the Operator may create or edit these presets: from an agent's own tools the
+change is refused with 403 `forbidden_for_agent` (#3929). Creating or reassigning
+team tasks likewise requires the Operator or a registered Orchestrator.
 
 **New preset** creates a custom preset. Give it a name and instructions, then
 save the preset. Select it as the working mode and save team settings to use it.
@@ -420,7 +420,7 @@ and instructions at most 4096 UTF-8 bytes, after trimming surrounding whitespace
 Edits replace the preset content; concurrent edits use the last saved value.
 There is no delete operation. Reset supports built-ins only.
 
-The CLI reads them (specify `--board` outside a joined board). Changing a working mode or a preset is the Operator's (#3929): from an agent's own tools the changes below get 403 `forbidden_for_agent`. The Operator runs them in their own terminal, or uses the dashboard:
+The CLI reads them (specify `--board` outside a joined board). Changing a working mode or a preset is the Operator's (#3929): from an agent's own tools the changes below get 403 `forbidden_for_agent`. Through Coral Hub these changes are Interact tier (reading the working mode and the presets list is View); changing cross-team board settings is never reachable through the Hub. The Operator runs them in their own terminal, or uses the dashboard:
 
 ```bash
 coral-board working-mode --presets
@@ -509,8 +509,10 @@ agent goes idle again later, another escalation, a different set of reviews wait
 task (`coral-board task park`, see board.md) raises no item and gets no nudge or reminder at all;
 the check's team line counts them ("2 parked"), and names a task whose park ended by itself
 once ("back from park: #12"). An acknowledged item whose state changed comes back marked
-"back: changed since it was acknowledged", once. An agent can do neither: an ack or a park
-with its token is refused, and neither is possible through Coral Hub.
+"back: changed since it was acknowledged", once. A worker agent can do neither: an ack or a park with its own token, to hide that
+its task is stuck, is refused. The team's orchestrator, known by its own token's
+board subscription (never by a name the request gives), can ack and park, and so
+can the Operator; neither is possible through Coral Hub.
 
 Coral never reassigns tasks or accepts completions on its own.
 

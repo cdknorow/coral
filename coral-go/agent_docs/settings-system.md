@@ -12,6 +12,8 @@ GET /api/settings
 
 Returns all user settings as key-value pairs. Sensitive keys are filtered out.
 
+**Access:** Operator only — an agent's token gets 403 `forbidden_for_agent`, and the route is not reachable through Coral Hub.
+
 **Response:**
 ```json
 {
@@ -29,6 +31,8 @@ PUT /api/settings
 ```
 
 Upserts arbitrary key-value settings.
+
+**Access:** Operator only — an agent's token gets 403 `forbidden_for_agent`, and the route is not reachable through Coral Hub. A value is a string, `true`/`false` or a whole number (`null` clears it); an array, an object or a fraction is refused with 400 and nothing is saved. Keys that have their own route (terminal backend, the Hub link's trust switches, Sign in with Coral Hub, the identity mode, Run as a hub) are refused here and named in the error.
 
 **Request Body:**
 ```json
@@ -193,7 +197,7 @@ Verifies whether a CLI tool is installed and returns its path and version.
 
 One of `type` or `binary` must be provided.
 
-`binary` is the Operator's (the dashboard or the command line outside an agent): with an agent's token, or through Coral Hub, it returns 403 `operator_only`. A path must be the CLI path configured in Settings or a file named like the CLI's binary (for `type`'s CLI when `type` is given), and it is refused (400, nothing runs) when it or what it links to is in Coral's data folder, a live agent's working folder or a temp folder. Only live agents' folders are known to Coral: a path inside any other project folder is the Operator's own responsibility, the same as a CLI path typed in Settings. `type` alone needs no permission.
+`binary` is the Operator's (the dashboard or the command line outside an agent): with an agent's token it returns 403 `operator_only`, and through Coral Hub the whole route is refused — it is never carried on the tunnel. A path must be the CLI path configured in Settings or a file named like the CLI's binary (for `type`'s CLI when `type` is given), and it is refused (400, nothing runs) when it or what it links to is in Coral's data folder, a live agent's working folder or a temp folder. Only live agents' folders are known to Coral: a path inside any other project folder is the Operator's own responsibility, the same as a CLI path typed in Settings. `type` alone needs no permission.
 
 **Response (found):**
 ```json
@@ -479,7 +483,7 @@ POST /api/teams/import
 
 Imports a team definition from a folder of markdown files: `SKILL.md` (the orchestrator) and `agents/*.md`.
 
-The Operator's only: an agent's token gets 403 `operator_only`. The path must be an absolute folder that is not the file system's root, the home folder, a dot-folder or a sensitive location (`.ssh`, `.aws`, `.git` and the like). Only regular files are read, never a symlink, a dot-file or a sensitive name; each file is at most 256 KiB and `agents/` at most 50 files (400 otherwise).
+The Operator's only: an agent's token gets 403 `forbidden_for_agent` (the identity layer answers before the handler). Through Coral Hub it is Launch tier. The path must be an absolute folder that is not the file system's root, the home folder, a dot-folder or a sensitive location (`.ssh`, `.aws`, `.git` and the like). Only regular files are read, never a symlink, a dot-file or a sensitive name; each file is at most 256 KiB and `agents/` at most 50 files (400 otherwise).
 
 **Request Body:**
 ```json

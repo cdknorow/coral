@@ -104,8 +104,11 @@ and two choices. Publish it, click a choice in Coral, then read its events.
 
 ## HTTP API
 
-All routes require `?session_id=YOUR_SESSION_ID`, using the existing local API
-trust boundary. Session identifiers scope records; they are not credentials.
+All routes take `?session_id=YOUR_SESSION_ID`. Writing a panel (PUT) needs the
+agent's own session token; with a token, a `session_id` naming another session
+is refused (403 `identity_mismatch`). The dashboard (the Operator) reads,
+removes and answers panels. Through Coral Hub: View reads, Interact posts
+events, and PUT and DELETE are never reachable.
 
 - `GET /api/agent/ui`: metadata array (`id`, `session_id`, `title`, `revision`, `updated_at`, `event_count`). `event_count` is the total number of saved interactions across all panel revisions and can expose unexpectedly noisy panels.
 - `PUT /api/agent/ui/{id}`: JSON `{ "title": "Title", "html": "..." }`; returns metadata.

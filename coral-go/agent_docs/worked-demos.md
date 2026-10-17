@@ -202,7 +202,7 @@ surfaced in the UI. If a team stalls, check that agents can actually reach the b
 
 > **Operator only** (#3929): sleeping and waking a team is the Operator's. Run these yourself with
 > the API key (`-H "Authorization: Bearer $(coral api-key)"`), or from the dashboard; an agent's token
-> gets 403 `forbidden_for_agent`.
+> gets 403 `forbidden_for_agent`. Through Coral Hub both are Launch tier — a session below Launch cannot reach them.
 
 ```console
 $ curl -s -X POST .../api/sessions/live/team/demo-sleepwake/sleep

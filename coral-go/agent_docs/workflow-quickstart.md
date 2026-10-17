@@ -2,6 +2,8 @@
 
 Workflows are multi-step automations that chain shell commands and AI agents together. You define a sequence of steps — run a test suite, have an agent analyze the results, send a notification — and Coral executes them in order, passing output from one step to the next.
 
+> **These are Operator actions.** Creating, triggering or deleting a workflow (`/api/workflows…`) and scheduling or toggling a job (`/api/scheduled/jobs…`) are Operator-only: run the `curl` commands below from the Operator's own signed command line (your own terminal) or use the dashboard. An agent's session token is refused on them (403 `forbidden_for_agent`; a token-less call is 401 under strict local auth).
+
 ---
 
 ## Your First Workflow: Daily Motivation
@@ -41,6 +43,7 @@ Notice `{{prev_stdout}}` in the shell step — this is a **template variable** t
 
 ```bash
 curl -X POST http://localhost:8420/api/workflows \
+  -H "Authorization: Bearer $(coral api-key)" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "daily-motivation",
@@ -66,7 +69,8 @@ The response includes the workflow's `id` — you'll need it to trigger runs.
 ### Trigger it
 
 ```bash
-curl -X POST http://localhost:8420/api/workflows/12/trigger
+curl -X POST http://localhost:8420/api/workflows/12/trigger \
+  -H "Authorization: Bearer $(coral api-key)"
 ```
 
 This returns a `run_id`. The workflow starts executing immediately.
@@ -74,7 +78,8 @@ This returns a `run_id`. The workflow starts executing immediately.
 ### Check the run
 
 ```bash
-curl http://localhost:8420/api/workflows/runs/44
+curl http://localhost:8420/api/workflows/runs/44 \
+  -H "Authorization: Bearer $(coral api-key)"
 ```
 
 The response shows the overall run status and a `steps` array with per-step `status`, `stdout`, `stderr`, `started_at`, and `finished_at`. Poll this endpoint until the status is `completed`, `failed`, or `killed`.
@@ -82,7 +87,8 @@ The response shows the overall run status and a `steps` array with per-step `sta
 You can also trigger and monitor workflows by name:
 
 ```bash
-curl -X POST http://localhost:8420/api/workflows/by-name/daily-motivation/trigger
+curl -X POST http://localhost:8420/api/workflows/by-name/daily-motivation/trigger \
+  -H "Authorization: Bearer $(coral api-key)"
 ```
 
 ### Schedule it
@@ -90,7 +96,8 @@ curl -X POST http://localhost:8420/api/workflows/by-name/daily-motivation/trigge
 Want your motivational popup every weekday morning? Create a scheduled job:
 
 ```bash
-curl -X POST http://localhost:8420/api/jobs \
+curl -X POST http://localhost:8420/api/scheduled/jobs \
+  -H "Authorization: Bearer $(coral api-key)" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "morning-motivation",
@@ -109,15 +116,18 @@ You can manage jobs from the **Jobs** tab in the UI, or via the API:
 
 ```bash
 # List all jobs
-curl http://localhost:8420/api/jobs
+curl http://localhost:8420/api/scheduled/jobs \
+  -H "Authorization: Bearer $(coral api-key)"
 
 # Disable a job
-curl -X PUT http://localhost:8420/api/jobs/1 \
+curl -X PUT http://localhost:8420/api/scheduled/jobs/1 \
+  -H "Authorization: Bearer $(coral api-key)" \
   -H "Content-Type: application/json" \
   -d '{"enabled": 0}'
 
 # Check recent runs
-curl http://localhost:8420/api/jobs/1/runs
+curl http://localhost:8420/api/scheduled/jobs/1/runs \
+  -H "Authorization: Bearer $(coral api-key)"
 ```
 
 > **Tip:** Coral ships with the daily-motivation workflow and morning-motivation job pre-installed. Try triggering it from the Jobs tab to see it in action.

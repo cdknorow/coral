@@ -1,6 +1,6 @@
 # What Coral stores on this computer
 
-Coral keeps its data in one folder, `<data dir>` (`~/.coral` unless `CORAL_DATA_DIR` says otherwise). The files in the table are readable only by you (file mode 0600, in a 0700 folder). This page says what is kept, how long, whether it is cleaned of secrets, and where to change it. Nothing here is sent to anyone: the last section says what reaches Coral Hub.
+Coral keeps its data in one folder, `<data dir>` (`~/.coral` unless `CORAL_DATA_DIR` says otherwise). The files in the table are readable only by you (file mode 0600, in a 0700 folder). This page says what is kept, how long, whether it is cleaned of secrets, and where to change it. Coral does not send this data anywhere on its own; what you deliberately share is the exception — an artifact link, or a file you attach to a cross-team message bound for another Coral. The last section says what reaches Coral Hub.
 
 | What | Kept | Cleaned of secrets? | To change it |
 |---|---|---|---|
@@ -24,4 +24,4 @@ Coral keeps its data in one folder, `<data dir>` (`~/.coral` unless `CORAL_DATA_
 
 ## What reaches Coral Hub
 
-Only what Coral's redacting connector sends: View-tier replies and the redacted terminal and agent-list streams. A raw file on this page is never sent to Coral Hub. Two things to know: **artifact downloads are served byte for byte** (they are exempt from redaction on purpose, so an artifact you share can be opened and is shown exactly), and **uploads are not served back through Coral Hub**. Whatever you see through Coral Hub that is not an artifact has been redacted on this computer first. See [hub.md](hub.md).
+Only what Coral's redacting connector sends: View-tier replies and the redacted terminal and agent-list streams. A raw file on this page is never sent to Coral Hub. Two things to know: **artifact downloads are served byte for byte** (they are exempt from redaction on purpose, so an artifact you share can be opened and is shown exactly), and **uploads are not served back through Coral Hub**. Whatever you see through Coral Hub that is not an artifact has been redacted on this computer first. A file you attach to a cross-team message addressed to another Coral is also sent through Coral Hub, in memory (the hub does not store it), byte for byte — not redacted, but scanned for secrets first, and a send whose file looks like it holds a token or key is refused (`attach_secret`). See [hub.md](hub.md) and [cross-team.md](cross-team.md#attaching-artifacts).

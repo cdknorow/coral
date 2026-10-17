@@ -24,12 +24,12 @@ To turn it off, clear the setting and restart. Existing remote connections are n
 
 ## Authentication
 
-Requests from the same machine (localhost) are accepted without a key. Other devices must present Coral's API key, which is generated on first run and shown with the QR code. Treat it like a password. Coral does not classify clients using forwarded headers or `Host` values.
+By default every request needs a credential, including ones from this computer: the dashboard's sign-in (run `coral open`), the password, a signed command line, an agent's session token or the API key (generated on first run and shown with the QR code; treat it like a password). A request a same-machine reverse proxy forwarded (it carries a forwarding header such as `X-Forwarded-For`) is treated like a remote one, but a proxy that strips those headers still looks local: set the password first, or turn on `require_auth_on_loopback`.
 
 ## What this does and does not cover
 
 - Coral controls its own listener. A reverse proxy, SSH tunnel or port forward that you set up separately can still expose a loopback listener. Disable those yourself.
-- The direct listener serves plain HTTP, not HTTPS. Use it on a network you trust or put your own encrypted tunnel in front of it.
+- The direct listener serves plain HTTP by default. Start Coral with `--tls-cert` and `--tls-key` (PEM files) to serve HTTPS (and WSS) on the port, or use it on a network you trust or put your own encrypted tunnel in front of it.
 - Turning remote access off does not change agent permission or sandbox settings.
 
 For the status and setting names used by the API, see `GET /api/system/privacy`.

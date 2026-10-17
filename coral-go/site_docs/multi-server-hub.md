@@ -16,7 +16,7 @@ On every remote server:
 1. Turn on [remote access](remote-access.md) and restart, so Coral listens on a network address and not only on `127.0.0.1`.
 2. Copy its API key. It is shown with the QR code, and stored in `~/.coral/api_key`.
 
-Coral serves plain HTTP. Use a network you trust, a VPN or tailnet, or put your own encrypted tunnel in front of it.
+Coral serves plain HTTP by default; start it with `--tls-cert` and `--tls-key` to serve HTTPS on the port. Otherwise use a network you trust, a VPN or tailnet, or put your own encrypted tunnel in front of it.
 
 ### 2. Start the hub
 

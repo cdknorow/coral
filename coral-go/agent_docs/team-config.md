@@ -1,6 +1,6 @@
 # Team Configuration (agent.json)
 
-A JSON format for defining multi-agent teams with global defaults and per-agent overrides. Supports heterogeneous teams (mixed models/vendors), fine-grained permissions, custom hooks, and individual prompts.
+A JSON format for defining multi-agent teams with global defaults and per-agent overrides. Supports heterogeneous teams (mixed models/vendors), fine-grained capabilities, custom hooks, and individual prompts.
 
 Team config files are stored at `~/.coral/teams/<name>.json` and can also be launched inline via the API.
 
@@ -25,7 +25,7 @@ All fields are optional. Values apply to every agent unless overridden at the ag
 |-------|------|---------|-------------|
 | `agent_type` | string | `"claude"` | CLI to use: `"claude"`, `"codex"`, `"agy"` (Antigravity), or `"pi"`. **In v1.0.8 any other value silently falls back to `"claude"`** — fixed in the repo (unreleased), where an unknown value is rejected. Omitting the field still means `claude`. |
 | `model` | string | CLI default | Model identifier, vendor-specific (e.g. `"opus"`, `"sonnet"`, `"gemini-3.8-flash-high"`). |
-| `permissions` | object | none | Coral-level capability permissions (see [Permissions](#permissions)). |
+| `capabilities` | object | none | Capabilities (`allow`/`deny`) translated to the agent CLI's own permissions at launch (see [Capabilities](#capabilities)). |
 | `flags` | string[] | `[]` | Extra CLI flags passed to every agent. |
 | `env` | object | `{}` | Extra environment variables (string key-value pairs). |
 | `hooks` | object | `{}` | Agent hooks in Claude Code settings.json format (see [Hooks](#hooks)). |
@@ -43,8 +43,7 @@ Each entry in the `agents` array defines one agent.
 | `prompt` | string | No | Agent-specific instructions/goal. |
 | `agent_type` | string | No | Override default CLI. |
 | `model` | string | No | Override default model. |
-| `permissions` | object | No | Override default permissions entirely (see [Permissions](#permissions)). |
-| `permissions_preset` | string | No | Use a named preset instead of inline permissions (see [Presets](#permission-presets)). |
+| `capabilities` | object | No | Override default capabilities entirely (see [Capabilities](#capabilities)). |
 | `flags` | string[] | No | Override default flags. |
 | `env` | object | No | Merged with default env (agent wins on key conflict). |
 | `hooks` | object | No | Merged with default hooks (agent entries appended per event). |
@@ -56,26 +55,28 @@ Each entry in the `agents` array defines one agent.
 
 | Field | Behavior | Rationale |
 |-------|----------|-----------|
-| `permissions` / `permissions_preset` | **Replaces** global | Partial merge of allow/deny lists creates confusing interactions. |
+| `capabilities` | **Replaces** global | Partial merge of allow/deny lists creates confusing interactions. |
 | `flags` | **Replaces** global | Flag conflicts (e.g. `--verbose` vs `--quiet`) are unresolvable via merge. |
 | `env` | **Merges** with global (agent wins) | Env vars are independent key-value pairs; merge is safe. |
 | `hooks` | **Merges** with global (appended per event) | Team-wide hooks should always fire; agent adds extras. |
 | All other fields | **Replaces** global | Scalar values, no merge needed. |
 
-## Permissions
+## Capabilities
 
-Permissions use Coral's abstract capability system. They are translated to each agent CLI's native format at launch time.
+Capabilities use Coral's abstract capability system. They are translated to each agent CLI's native permission format at launch time. Coral does not add an enforcement layer of its own: an agent is restricted only as far as its CLI's own permissions restrict it.
+
+The field name is `capabilities` (an object with `allow` and `deny` lists). An unknown key in the config is ignored — the config is parsed with standard JSON, which does not reject unknown fields — so a misspelled field name, or the old `permissions` / `permissions_preset` keys, which nothing reads, applies no restriction at all.
 
 ```json
 {
-  "permissions": {
+  "capabilities": {
     "allow": ["file_read", "file_write", "shell"],
     "deny": []
   }
 }
 ```
 
-### Capabilities
+### Capability reference
 
 | Capability | Description |
 |------------|-------------|
@@ -89,22 +90,6 @@ Permissions use Coral's abstract capability system. They are translated to each 
 | `notebook` | Edit Jupyter notebooks |
 
 All agents automatically receive `Bash(coral-board *)` permission for message board communication.
-
-### Permission Presets
-
-Built-in presets that can be referenced by name via `permissions_preset`:
-
-| Preset | Allow | Deny |
-|--------|-------|------|
-| `full_access` | file_read, file_write, shell, git_write, agent_spawn, web_access, notebook | -- |
-| `lead_dev` | file_read, file_write, shell, git_write, agent_spawn | -- |
-| `devops` | file_read, file_write, shell, git_write | -- |
-| `frontend_dev` | file_read, file_write, shell:npm *, shell:npx *, web_access | -- |
-| `orchestrator` | file_read, agent_spawn, web_access | -- |
-| `qa` | file_read | file_write, shell |
-| `read_only` | file_read, web_access | -- |
-
-If both `permissions` and `permissions_preset` are set on an agent, `permissions` wins.
 
 ### Agent-Native Translation
 
@@ -176,9 +161,8 @@ At launch time, the server validates:
 4. Each agent must have a non-empty `name`
 5. Agent names must be unique within the team
 6. `agent_type` must be a registered type or empty (defaults to `"claude"`)
-7. `permissions_preset` must reference a known preset name
-8. `permissions.allow` and `permissions.deny` entries must be valid capability strings
-9. At most one agent should have `role: "orchestrator"` (warning, not error)
+7. `capabilities`, if given, is an object with `allow` and `deny` string lists; the capability strings themselves are **not** validated — an unrecognised one is passed through to the agent CLI as-is rather than rejected
+8. At most one agent should have `role: "orchestrator"` (warning, not error)
 
 ## API Endpoints
 
@@ -213,7 +197,7 @@ Coral does not expose an HTTP endpoint that saves a team definition to
 
 ### Minimal
 
-Two agents with all defaults (Claude, no special permissions):
+Two agents with all defaults (Claude, no special capabilities):
 
 ```json
 {
@@ -226,7 +210,7 @@ Two agents with all defaults (Claude, no special permissions):
 }
 ```
 
-### With Defaults and Presets
+### With Defaults and Capabilities
 
 ```json
 {
@@ -235,7 +219,9 @@ Two agents with all defaults (Claude, no special permissions):
   "defaults": {
     "agent_type": "claude",
     "model": "sonnet",
-    "permissions_preset": "lead_dev"
+    "capabilities": {
+      "allow": ["file_read", "file_write", "shell", "git_write", "agent_spawn"]
+    }
   },
   "agents": [
     {
@@ -243,7 +229,9 @@ Two agents with all defaults (Claude, no special permissions):
       "role": "orchestrator",
       "prompt": "Coordinate API development.",
       "model": "opus",
-      "permissions_preset": "orchestrator"
+      "capabilities": {
+        "allow": ["file_read", "file_write", "shell", "git_write", "agent_spawn", "web_access", "notebook"]
+      }
     },
     {
       "name": "Backend Dev",
@@ -252,7 +240,9 @@ Two agents with all defaults (Claude, no special permissions):
     {
       "name": "QA",
       "prompt": "Write tests and review code.",
-      "permissions_preset": "qa"
+      "capabilities": {
+        "allow": ["file_read", "shell"]
+      }
     }
   ]
 }
@@ -269,7 +259,7 @@ Mixed-vendor team with full customization:
   "defaults": {
     "agent_type": "claude",
     "model": "sonnet",
-    "permissions": {
+    "capabilities": {
       "allow": ["file_read", "file_write", "shell"],
       "deny": []
     },
@@ -284,19 +274,25 @@ Mixed-vendor team with full customization:
       "role": "orchestrator",
       "prompt": "You coordinate the full-stack feature build.",
       "model": "opus",
-      "permissions_preset": "orchestrator"
+      "capabilities": {
+        "allow": ["file_read", "file_write", "shell", "git_write", "agent_spawn", "web_access", "notebook"]
+      }
     },
     {
       "name": "Backend Dev",
       "prompt": "Implement API endpoints and database migrations.",
-      "permissions_preset": "lead_dev"
+      "capabilities": {
+        "allow": ["file_read", "file_write", "shell", "git_write", "agent_spawn"]
+      }
     },
     {
       "name": "Frontend Dev",
       "prompt": "Build React components and pages.",
       "agent_type": "agy",
       "model": "gemini-3.8-flash-high",
-      "permissions_preset": "frontend_dev",
+      "capabilities": {
+        "allow": ["file_read", "file_write", "shell:npm *", "shell:npx *", "web_access"]
+      },
       "env": {
         "BROWSER": "none"
       }
@@ -304,7 +300,7 @@ Mixed-vendor team with full customization:
     {
       "name": "Security Reviewer",
       "prompt": "Audit all changes for OWASP top 10 vulnerabilities.",
-      "permissions": {
+      "capabilities": {
         "allow": ["file_read", "web_access"],
         "deny": ["file_write", "shell", "git_write"]
       },
@@ -372,11 +368,11 @@ When launching an agent, the effective configuration is resolved as:
 
 1. Start with `defaults` (or empty if no defaults block)
 2. For each field the agent defines:
-   - `permissions` / `permissions_preset`: resolve preset, then **replace** global
+   - `capabilities`: **replace** global
    - `flags`: **replace** global
    - `env`: **merge** with global (agent values win on key conflict)
    - `hooks`: **merge** with global (agent entries appended per event)
    - All other fields: **replace** global
 3. Inject Coral system hooks (always added, never overridden)
-4. Translate permissions to agent-native format
+4. Translate capabilities to agent-native format
 5. Build launch command

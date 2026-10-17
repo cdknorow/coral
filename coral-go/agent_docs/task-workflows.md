@@ -180,10 +180,12 @@ Orchestrator title or the existing persisted orchestrator `can_peek` flag), or
 the dashboard's reserved Operator identity. Worker task-body role assertions
 are ignored. `subscriber_id` identifies the caller; `created_by` is a legacy
 creation alias and must match when both are supplied. Assignment PATCHes also
-need the actor. This uses Coral's existing trusted caller-identity model:
-localhost clients share desktop access, and remote access uses a global API key
-or session cookie. It is not per-agent authentication and cannot prevent local
-identity impersonation. These planning permissions do not automatically grant
+need the actor. A request with an agent's session token acts only as that session's member:
+another subscriber, the Operator or another board is refused (403
+`identity_mismatch`). The Operator is the dashboard or the signed command line.
+Strict local auth is on by default, so a request without a token needs another
+credential; with it off, a token-less local caller is trusted (see
+[auth.md](auth.md)). These planning permissions do not automatically grant
 all other review operations; see the reviewer requirements below.
 
 For a single bounded fix, no multi-stage workflow is required:
