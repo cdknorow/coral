@@ -494,3 +494,22 @@ func TestReceivedRowsAreWriteOnceAndOperatorNeedsAGoodSidecar(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, code)
 	assert.Equal(t, "attach_not_found", out["code"])
 }
+
+// Security's C1 INFO 1: where the data folder can't hard-link, a received row is still written once:
+// the first receipt is created exclusively, a second never replaces it.
+func TestReceivedRowsWithoutHardLinks(t *testing.T) {
+	e := newAttachEnv(t, true)
+	linkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: os.ErrPermission} }
+	t.Cleanup(func() { linkFile = os.Link })
+	rec := crossTeamArtifactRecord{ID: strings.Repeat("cd", 32), Name: "first", Board: "beta", OtherBoard: "alpha", Server: "local", At: "2026-10-17T00:00:00Z"}
+	require.NoError(t, e.h.writeCrossTeamRecord("received", rec))
+	again := rec
+	again.OtherBoard = "gamma"
+	require.NoError(t, e.h.writeCrossTeamRecord("received", again))
+	got, ok := e.h.crossTeamRecord("received", "beta", rec.ID)
+	require.True(t, ok)
+	assert.Equal(t, "alpha", got.OtherBoard, "the first receipt stands")
+	entries, err := os.ReadDir(e.h.boardRecordDir("received", "beta"))
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "no temp file left behind")
+}

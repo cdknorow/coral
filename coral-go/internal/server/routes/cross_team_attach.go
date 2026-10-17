@@ -265,6 +265,9 @@ type crossTeamArtifactRecord struct {
 	At         string `json:"at"`
 }
 
+// linkFile is os.Link, replaceable in tests (a folder that can't hard-link).
+var linkFile = os.Link
+
 // crossTeamRecordKinds are the folders of cross-team artifact rows under <coralDir>/artifacts.
 var crossTeamRecordKinds = []string{"shared", "received"}
 
@@ -312,10 +315,25 @@ func (h *BoardHandler) writeCrossTeamRecord(kind string, rec crossTeamArtifactRe
 	if kind == "received" {
 		// A hard link fails if the name exists, so of two receipts at once only one wins.
 		defer os.Remove(tmp.Name())
-		if err := os.Link(tmp.Name(), final); err != nil && !errors.Is(err, os.ErrExist) {
-			return err
+		err := linkFile(tmp.Name(), final)
+		if err == nil || errors.Is(err, os.ErrExist) {
+			return nil
 		}
-		return nil
+		// A folder that can't hard-link (FAT, exFAT, some network shares: Security's C1 INFO 1):
+		// create the final name exclusively instead, so the first receipt still wins and is kept.
+		f, cerr := os.OpenFile(final, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(cerr, os.ErrExist) {
+			return nil
+		}
+		if cerr != nil {
+			return cerr
+		}
+		if _, werr := f.Write(data); werr != nil {
+			f.Close()
+			os.Remove(final)
+			return werr
+		}
+		return f.Close()
 	}
 	return os.Rename(tmp.Name(), final)
 }
