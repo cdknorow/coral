@@ -885,7 +885,7 @@ body.panel-dragging .sidebar {
 .welcome-eyebrow { display: block; margin-bottom: 10px; color: var(--accent); font-size: 0.6875rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .welcome-header h1 { margin: 0 0 8px; color: var(--text-primary); font-size: clamp(1.625rem, 3.4vw, 2.375rem); line-height: 1.15; letter-spacing: -.035em; }
 .welcome-header p { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
-.welcome-launch:hover { border-color: var(--border-light); background: var(--bg-hover); }
+.welcome-launch:hover { border-color: var(--border-light); background: var(--bg-tertiary); } /* --bg-hover takes the muted line under 4.5:1 (#4218) */
 .welcome-launch-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; } /* agent, team, Open folder (#3630) */
 .welcome-launch { position: relative; display: flex; border: 1px solid var(--border); font-family: inherit; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; flex-direction: column; align-items: flex-start; gap: 14px; min-width: 0; padding: 20px; border-radius: 14px; background: var(--bg-secondary); color: var(--text-secondary); text-align: left; }
 .welcome-launch:hover { transform: translateY(-1px); }
@@ -915,7 +915,7 @@ body.panel-dragging .sidebar {
 @media (pointer: coarse), (max-width: 1024px) { .editions-home-hide { width: 44px; height: 44px; margin: -8px -8px -8px 0; } }
 .editions-home-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .editions-home-item { position: relative; display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 14px 40px 14px 14px; border: 1px solid var(--border); border-radius: 12px; background: transparent; color: var(--text-secondary); font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
-.editions-home-item:hover, .editions-home-item:focus-visible { border-color: var(--border-light); background: var(--bg-hover); }
+.editions-home-item:hover, .editions-home-item:focus-visible { border-color: var(--border-light); background: var(--bg-tertiary); } /* as .welcome-launch (#4218) */
 .editions-home-icon { flex-shrink: 0; color: var(--text-muted); font-size: 1.25rem; }
 .editions-home-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .editions-home-copy strong { color: var(--text-primary); font-size: 0.875rem; font-weight: 600; }

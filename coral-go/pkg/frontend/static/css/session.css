@@ -1792,8 +1792,10 @@
     color: color-mix(in srgb, var(--agent-name-color) 62%, black);
 }
 
-/* On the selected row the muted name is 4.3:1 in the light theme; the primary colour passes (#4023). A colour the user picked still wins. */
-.session-group-item.active:not(.sleeping):not(.session-done) .session-label-name:not([style]) {
+/* On the selected row the muted name is 4.3:1 in the light theme; the primary colour passes (#4023), and on a
+   hovered row too (4.4:1 there, #4218). A colour the user picked still wins. */
+.session-group-item.active:not(.sleeping):not(.session-done) .session-label-name:not([style]),
+.session-group-item:hover:not(.sleeping):not(.session-done) .session-label-name:not([style]) {
     color: var(--text-primary);
 }
 

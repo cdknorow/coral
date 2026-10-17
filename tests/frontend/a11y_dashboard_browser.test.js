@@ -163,23 +163,56 @@ const contrast = (a, b) => {
         console.log(`   ✓ ${dialogs.length} dialogs named and modal`);
 
         console.log('6. Contrast in both themes at 1280 and 390 px');
-        const CONTRAST = `(() => {
+        // The contrast scan of root's text (an expression's source; root is an expression too).
+        const CONTRAST_AT = root => `((root) => {
             const vis = e => { const r = e.getBoundingClientRect(); const c = getComputedStyle(e); return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none' && c.opacity !== '0'; };
-            const parse = s => { const m = s.match(/rgba?\\(([^)]+)\\)/); if (!m) return null; const p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+            // rgb()/rgba(), and color(srgb r g b / a) with 0-1 channels: how Chrome reports a color-mix() colour (#4218).
+            const parse = s => { let m = s.match(/rgba?\\(([^)]+)\\)/); if (m) { const p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; }
+                m = s.match(/color\\(srgb ([^)]+)\\)/); if (!m) return null; const p = m[1].split(/[ \\/]+/).filter(Boolean).map(Number); return { r: p[0] * 255, g: p[1] * 255, b: p[2] * 255, a: p.length > 3 ? p[3] : 1 }; };
             const blend = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
             const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
             const bgOf = e => { const layers = []; let n = e; while (n && n.nodeType === 1) { const cs = getComputedStyle(n); if (cs.backgroundImage && cs.backgroundImage !== 'none') return null; const c = parse(cs.backgroundColor); if (c && c.a > 0) { layers.push(c); if (c.a === 1) break; } n = n.parentElement; } let base = { r: 255, g: 255, b: 255, a: 1 }; const root = parse(getComputedStyle(document.body).backgroundColor); if (layers.length && layers[layers.length - 1].a < 1 && root && root.a > 0) base = root; for (let i = layers.length - 1; i >= 0; i--) base = blend(layers[i], base); return base; };
-            const bad = []; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); const seen = new Set();
+            const bad = []; const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); const seen = new Set();
             for (let n = w.nextNode(); n; n = w.nextNode()) {
                 if (!n.nodeValue.trim()) continue; const e = n.parentElement; if (!e || seen.has(e) || !vis(e) || e.closest('script, style, svg')) continue; seen.add(e);
-                const cs = getComputedStyle(e); const fg = parse(cs.color); const bg = bgOf(e); if (!fg || !bg) continue; const f = blend(fg, bg);
+                const cs = getComputedStyle(e); const fg = parse(cs.color); if (!fg) { bad.push('unreadable colour ' + cs.color); continue; } const bg = bgOf(e); if (!bg) continue; const f = blend(fg, bg);
                 const ratio = (Math.max(lum(f), lum(bg)) + 0.05) / (Math.min(lum(f), lum(bg)) + 0.05); const size = parseFloat(cs.fontSize); const large = size >= 24 || (size >= 18.66 && parseInt(cs.fontWeight) >= 700);
-                const need = e.classList.contains('material-icons') ? 3 : (large ? 3 : 4.5);
+                // An icon, or a control drawn as one glyph with a name of its own (the kebab's "⋮"), is a UI part: 3:1 (#4218).
+                const glyph = /^[^\\p{L}\\p{N}]{1,2}$/u.test(n.nodeValue.trim()) && !!e.closest('button[aria-label], button[title], [role=button][aria-label], [role=button][title]');
+                const need = e.classList.contains('material-icons') || glyph ? 3 : (large ? 3 : 4.5);
                 if (ratio < need - 0.01) bad.push((e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).split(' ').slice(0, 2).join('.')) + ' "' + n.nodeValue.trim().slice(0, 20) + '" ' + Math.round(ratio * 100) / 100 + ' < ' + need);
             }
             return [...new Set(bad)];
-        })()`;
+        })(${root})`;
+        const CONTRAST = CONTRAST_AT('document.body');
+        // States a scan of the page as it rests never sees (#4218): each visible control and row is
+        // scanned again with :hover, :focus-visible and both forced (CSS.forcePseudoState, so the
+        // pointer's position plays no part), and each sidebar row again as the selected row.
+        const FORCED = '.session-group-item, button, a[href], select, input, [role=button], [role=menuitem], [role=tab], [role=option], .overflow-menu-item';
+        const forcedStates = async () => {
+            const n = await ev(`(() => { let i = 0; for (const e of document.querySelectorAll(${JSON.stringify(FORCED)})) { e.removeAttribute('data-a11y-i'); const r = e.getBoundingClientRect(); if (r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden') e.setAttribute('data-a11y-i', String(i++)); } return i; })()`);
+            const { root } = await DOM.getDocument({ depth: 0 });
+            const bad = [];
+            for (let i = 0; i < n; i++) {
+                const sel = `[data-a11y-i="${i}"]`;
+                const { nodeId } = await DOM.querySelector({ nodeId: root.nodeId, selector: sel });
+                if (!nodeId) continue;
+                const isRow = await ev(`document.querySelector('${sel}').classList.contains('session-group-item') && !document.querySelector('${sel}').classList.contains('active')`);
+                for (const active of isRow ? [false, true] : [false]) {
+                    if (active) await ev(`document.querySelector('${sel}').classList.add('active')`);
+                    for (const pseudo of active ? [[], ['hover'], ['focus-visible']] : [['hover'], ['focus-visible'], ['hover', 'focus-visible']]) {
+                        await CSS.forcePseudoState({ nodeId, forcedPseudoClasses: pseudo });
+                        for (const b of await ev(CONTRAST_AT(`document.querySelector('${sel}')`))) bad.push(`${b} [${active ? 'selected' : ''}${pseudo.map(p => ':' + p).join('')}]`);
+                    }
+                    await CSS.forcePseudoState({ nodeId, forcedPseudoClasses: [] });
+                    if (active) await ev(`document.querySelector('${sel}').classList.remove('active')`);
+                }
+            }
+            return { n, bad: [...new Set(bad)] };
+        };
         const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a scene settles over several answers; there is no single completion event
+        const forcedFound = []; let forcedCount = 0;
+        await DOM.enable(); await CSS.enable();
         for (const [dev, w, h, mobile] of [['desktop', 1280, 800, false], ['phone', 390, 844, true]]) {
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
             for (const theme of ['dark', 'light']) {
@@ -193,10 +226,15 @@ const contrast = (a, b) => {
                     if (act) { await ev(act); await sleep(name === 'settings' ? 1200 : 1000); }   // sleep-ok: a scene settles over several answers; there is no single completion event
                     const bad = await ev(CONTRAST);
                     assert.deepEqual(bad, [], `${name} / ${theme} / ${dev}: text and icons reach contrast: ${bad.join('; ')}`);
+                    const forced = await forcedStates();
+                    forcedFound.push(...forced.bad.map(b => `${name} / ${theme} / ${dev}: ${b}`));
+                    forcedCount += forced.n;
                 }
             }
         }
-        console.log('   ✓ home, Chat and Settings: no text under 4.5:1, no icon under 3:1, both themes, 1280 and 390 px');
+        if (process.env.A11Y_FORCED_REPORT) require('node:fs').writeFileSync(process.env.A11Y_FORCED_REPORT, forcedFound.join('\n') + '\n');
+        assert.deepEqual(forcedFound, [], `hovered, focused and selected states reach contrast: ${forcedFound.join('; ')}`);
+        console.log(`   ✓ home, Chat and Settings: no text under 4.5:1, no icon under 3:1, both themes, 1280 and 390 px, at rest and with ${forcedCount} controls and rows hovered, focused and selected`);
 
         console.log('7. Every kind of focusable control shows a focus indicator');
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });

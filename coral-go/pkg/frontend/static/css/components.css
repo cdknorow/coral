@@ -32,10 +32,12 @@
     color: var(--text-on-accent);
 }
 
+/* .btn:hover sets the primary text colour, which on the accent fill was 2.2:1 (dark) and 3.0:1
+   (light); a hovered primary button keeps its white text on a slightly deeper fill (>= 5.5:1, #4218). */
 .btn-primary:hover {
-    background: var(--accent);
-    border-color: var(--accent);
-    opacity: 0.9;
+    background: color-mix(in srgb, var(--accent-dim) 85%, var(--bg-primary));
+    border-color: color-mix(in srgb, var(--accent-dim) 85%, var(--bg-primary));
+    color: var(--text-on-accent);
 }
 
 .btn-primary:active {
