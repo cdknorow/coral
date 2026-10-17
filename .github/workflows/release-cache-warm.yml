@@ -14,7 +14,7 @@ name: Release cache warm
 
 on:
   push:
-    branches: [main]
+    branches: [main, ci/4126-cache2] # CI-ONLY (proof run on the ci/ branch): never land this line
     paths:
       - coral-go/go.mod
       - coral-go/go.sum
