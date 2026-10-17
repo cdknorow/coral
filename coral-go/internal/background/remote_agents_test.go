@@ -93,7 +93,8 @@ type fakeRemote struct {
 	feedDeaf    bool // the feed socket is never read, so pings go unanswered
 	listGets    int
 	healthGets  int
-	feedQuery   string // raw query of the last /ws/coral request
+	feedQuery   string        // raw query of the last /ws/coral request
+	stop        chan struct{} // closed at cleanup: ends the feeds (a hijacked socket's request context isn't)
 }
 
 func (fr *fakeRemote) counts() (list, health int) {
@@ -103,7 +104,7 @@ func (fr *fakeRemote) counts() (list, health int) {
 }
 
 func newFakeRemote(t *testing.T, sessions ...map[string]any) *fakeRemote {
-	fr := &fakeRemote{sessions: sessions, feedConn: make(chan *websocket.Conn, 8)}
+	fr := &fakeRemote{sessions: sessions, feedConn: make(chan *websocket.Conn, 8), stop: make(chan struct{})}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		fr.mu.Lock()
@@ -162,7 +163,11 @@ func newFakeRemote(t *testing.T, sessions ...map[string]any) *fakeRemote {
 			ctx = c.CloseRead(ctx) // reading answers the hub's pings, as the real server does
 		}
 		fr.feedConn <- c
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-fr.stop: // the test is over (#4167: the handler outlived it)
+			c.Close(websocket.StatusGoingAway, "test over")
+		}
 	})
 	fr.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+testKey {
@@ -171,7 +176,7 @@ func newFakeRemote(t *testing.T, sessions ...map[string]any) *fakeRemote {
 		}
 		mux.ServeHTTP(w, r)
 	}))
-	t.Cleanup(fr.Close)
+	t.Cleanup(func() { close(fr.stop); fr.Close() })
 	return fr
 }
 

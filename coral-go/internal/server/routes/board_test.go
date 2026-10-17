@@ -1255,8 +1255,10 @@ func TestBoardDraftCannotBeClaimed(t *testing.T) {
 	}).Body.Close()
 
 	// Create draft and a pending task
-	http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft","created_by":"Orchestrator","draft":true,"priority":"high"}`)))
+	// The reply is closed (#4167: an unread reply kept its connection busy past the test).
+	draft, err := http.Post(base+"/tasks", "application/json", bytes.NewReader([]byte(`{"title":"Draft","created_by":"Orchestrator","draft":true,"priority":"high"}`)))
+	require.NoError(t, err)
+	draft.Body.Close()
 	postJSON(t, base+"/tasks", map[string]string{
 		"title": "Pending", "created_by": "Orchestrator", "priority": "low",
 	}).Body.Close()
@@ -1341,8 +1343,10 @@ func TestBoardDraftCanBeCancelled(t *testing.T) {
 	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
-	http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft cancel","created_by":"Orchestrator","draft":true}`)))
+	// The reply is closed (#4167: an unread reply kept its connection busy past the test).
+	draft, err := http.Post(base+"/tasks", "application/json", bytes.NewReader([]byte(`{"title":"Draft cancel","created_by":"Orchestrator","draft":true}`)))
+	require.NoError(t, err)
+	draft.Body.Close()
 
 	resp := postJSON(t, base+"/tasks/1/cancel", map[string]string{
 		"subscriber_id": "Operator", // cancel needs the assignee or a planner (#3668)
@@ -1359,8 +1363,10 @@ func TestBoardDraftCanBeEdited(t *testing.T) {
 	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
-	http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft edit","created_by":"Orchestrator","draft":true}`)))
+	// The reply is closed (#4167: an unread reply kept its connection busy past the test).
+	draft, err := http.Post(base+"/tasks", "application/json", bytes.NewReader([]byte(`{"title":"Draft edit","created_by":"Orchestrator","draft":true}`)))
+	require.NoError(t, err)
+	draft.Body.Close()
 
 	resp := patchJSON(t, base+"/tasks/1", map[string]any{
 		"title":         "Updated draft",

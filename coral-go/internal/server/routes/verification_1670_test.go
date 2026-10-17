@@ -67,6 +67,7 @@ func TestTask1670_HTTPPlannerAuthorization(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	defer resp.Body.Close() // (#4167: unclosed replies kept their connections busy)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 
 	// 2. Orchestrator tries to amend -> 200 OK
@@ -81,6 +82,7 @@ func TestTask1670_HTTPPlannerAuthorization(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	defer resp.Body.Close() // (#4167: unclosed replies kept their connections busy)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	var amended board.Task
@@ -107,6 +109,7 @@ func TestTask1670_HTTPLegacyPatchBodyBypassPrevention(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	defer resp.Body.Close() // (#4167: unclosed replies kept their connections busy)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 
 	var errResp map[string]string
@@ -123,6 +126,7 @@ func TestTask1670_HTTPLegacyPatchBodyBypassPrevention(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	defer resp.Body.Close() // (#4167: unclosed replies kept their connections busy)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	detail, err := bs.GetTask(ctx, "proj", task.ID)
@@ -162,6 +166,7 @@ func TestTask1670_HTTPCompletionAndReviewStaleRevision409(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	defer resp.Body.Close() // (#4167: unclosed replies kept their connections busy)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 
 	// 2. Completion with matching revision (expected_revision: 2) -> 200 OK
@@ -175,6 +180,7 @@ func TestTask1670_HTTPCompletionAndReviewStaleRevision409(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	defer resp.Body.Close() // (#4167: unclosed replies kept their connections busy)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	finalDetail, err := bs.GetTask(ctx, "proj", task.ID)
@@ -205,6 +211,7 @@ func TestTask1670_HTTPNoticeEmissionOnAmend(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	defer resp.Body.Close() // (#4167: unclosed replies kept their connections busy)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Give background notice goroutine a moment to commit

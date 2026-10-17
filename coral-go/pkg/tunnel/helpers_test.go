@@ -86,6 +86,7 @@ type flakyProxy struct {
 	mu    sync.Mutex
 	conns []net.Conn
 	black bool
+	done  bool // the test is over: a black-holed pipe stops waiting (#4167)
 }
 
 func newFlakyProxy(t *testing.T, target string) *flakyProxy {
@@ -93,7 +94,13 @@ func newFlakyProxy(t *testing.T, target string) *flakyProxy {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	p := &flakyProxy{ln: ln}
-	t.Cleanup(func() { ln.Close(); p.Drop() })
+	t.Cleanup(func() {
+		ln.Close()
+		p.mu.Lock()
+		p.done = true
+		p.mu.Unlock()
+		p.Drop()
+	})
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -122,8 +129,11 @@ func (p *flakyProxy) pipe(dst, src net.Conn) {
 		if n > 0 {
 			for {
 				p.mu.Lock()
-				b := p.black
+				b, done := p.black, p.done
 				p.mu.Unlock()
+				if done {
+					return
+				}
 				if !b {
 					break
 				}
