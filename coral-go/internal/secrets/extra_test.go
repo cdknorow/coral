@@ -3,6 +3,7 @@ package secrets
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -107,4 +108,77 @@ func TestCoralsKeyRulesMaskInAStream(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(out), id)
 	assert.NotContains(t, string(out), ant[8:])
+}
+
+// #4265 commit 2: header values, JWTs, more provider tokens, and a key with an invisible character in it.
+func TestCoralMasksHeadersJWTsAndMoreKeys(t *testing.T) {
+	require.NoError(t, Init())
+	jwt := "eyJ" + fake(20, urlSafe, 21) + ".eyJ" + fake(30, urlSafe, 22) + "." + fake(43, urlSafe, 23)
+	cases := []struct{ name, text, secret string }{
+		{"bearer header", "Authorization: Bearer " + fake(40, alnumAZ, 24), ""},
+		{"bearer in a curl trace", "> Authorization: Bearer " + fake(40, alnumAZ, 25) + "\r", ""},
+		{"bearer in JSON", `{"Authorization": "Bearer ` + fake(40, alnumAZ, 26) + `"}`, fake(40, alnumAZ, 26)},
+		{"basic header", "Authorization: Basic " + fake(24, alnumAZ+"+/", 27) + "==", fake(24, alnumAZ+"+/", 27)},
+		{"jwt", "token " + jwt + " ok", jwt},
+		{"hugging face", "HF_TOKEN=hf_" + fake(34, alnumAZ, 28), ""},
+		{"google oauth", "ya29." + fake(60, urlSafe, 29), ""},
+		{"aws secret, spaced", "aws_secret_access_key = " + fake(40, alnumAZ+"+/", 30), ""},
+	}
+	for _, c := range cases {
+		out, err := Redactor().Text([]byte(c.text))
+		require.NoError(t, err, c.name)
+		secret := c.secret
+		if secret == "" { // the value is what follows the last space or equals sign
+			secret = c.text[strings.LastIndexAny(c.text, " =\"")+1:]
+			secret = strings.TrimRight(secret, "\"}\r")
+		}
+		assert.NotContains(t, string(out), secret[len(secret)/2:], c.name)
+		assert.NotEqual(t, c.text, string(out), c.name)
+	}
+}
+
+func TestCoralKeyRulesLeaveProseAndNamesAlone(t *testing.T) {
+	require.NoError(t, Init())
+	for _, s := range []string{
+		"the bearer of the news arrived yesterday afternoon",
+		"bearer token support is planned for the next release of the tool",
+		"Authorization: Basic is described in RFC 7617",
+		"a basic example of the configuration file format",
+		"eyJ is how a base64 encoded JSON object starts",
+		"hf_hub_download is the function name to call here",
+		"the ya29 prefix marks a Google token",
+	} {
+		out, err := Redactor().Text([]byte(s))
+		require.NoError(t, err)
+		assert.Equal(t, s, string(out))
+	}
+}
+
+// An invisible character inside a key ends a rule's match and used to leave the rest showing.
+func TestAnInvisibleCharacterInsideAKeyDoesNotHideIt(t *testing.T) {
+	require.NoError(t, Init())
+	for _, mark := range []rune{0x200B, 0x200C, 0x200D, 0x2060, 0x2062, 0xFEFF, 0x00AD, 0x202E, 0x061C, 0xFFF9, 0xE0041, 0xFE0F, 0x0301, 0x034F, 0x0000, 0x001B, 0x0085} {
+		id := "AKIA" + fake(8, upperNum, 31) + string(mark) + fake(8, upperNum, 32)
+		out, err := Redactor().Text([]byte("id: " + id + " end"))
+		require.NoError(t, err)
+		assert.NotContains(t, string(out), "AKIA", "mark %U", mark)
+		assert.Contains(t, string(out), "id: ", "the rest of the line is kept")
+		assert.Contains(t, string(out), " end", "the rest of the line is kept")
+		ant := "sk-ant-api03-" + fake(20, urlSafe, 33) + string(mark) + fake(20, urlSafe, 34)
+		out, err = Redactor().Text([]byte(ant))
+		require.NoError(t, err)
+		assert.NotContains(t, string(out), fake(20, urlSafe, 34), "mark %U", mark)
+	}
+	// A genuine U+FFFD beside a mark, around a key: valid output, the key masked, the rest kept.
+	mixed := "x" + string(rune(0xFFFD)) + string(rune(0x200B)) + " AKIA" + fake(16, upperNum, 35) + " y"
+	out, err := Redactor().Text([]byte(mixed))
+	require.NoError(t, err)
+	assert.True(t, utf8.ValidString(string(out)))
+	assert.NotContains(t, string(out), "AKIA")
+	assert.True(t, strings.HasPrefix(string(out), "x"+string(rune(0xFFFD))))
+	// Text with an invisible character but no key is unchanged.
+	plain := "cafe notes" + string(rune(0x200B)) + " and a line"
+	out, err = Redactor().Text([]byte(plain))
+	require.NoError(t, err)
+	assert.Equal(t, plain, string(out))
 }

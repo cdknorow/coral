@@ -4,6 +4,8 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/cdknorow/coral/pkg/redact"
 )
@@ -17,11 +19,26 @@ import (
 // (task-force-..., risk-assessment-...) out of it.
 type extraRule struct {
 	re *regexp.Regexp
+	// group is the capture group that holds the secret (0: the whole match); what surrounds it, such
+	// as "Authorization: Bearer ", is left showing.
+	group int
 	// ok decides a match the pattern alone cannot: it is given the matched text.
 	ok func(match string) bool
 }
 
 var extraRules = []extraRule{
+	// A bearer token in a header, a JSON field or a log line: "Authorization: Bearer <token>",
+	// "Bearer <token>". A token mixes letters and digits, so the word "bearer" in prose is left alone.
+	{re: regexp.MustCompile(`(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{20,})`), group: 1, ok: mixesLettersAndDigits},
+	// "Authorization: Basic <base64>": needs the header's name, since "basic" is an ordinary word.
+	{re: regexp.MustCompile(`(?i)\bauthorization["']?\s*[:=]\s*["']?basic\s+([A-Za-z0-9+/]{12,}={0,2})`), group: 1},
+	// A JSON web token: header.payload.signature, the first two segments base64url of an object ("eyJ").
+	{re: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`)},
+	// Hugging Face and Google OAuth access tokens.
+	{re: regexp.MustCompile(`\bhf_[A-Za-z0-9]{34,}`), ok: mixesLettersAndDigits},
+	{re: regexp.MustCompile(`\bya29\.[A-Za-z0-9_-]{30,}`)},
+	// An AWS secret access key after its name, with or without spaces around the "=".
+	{re: regexp.MustCompile(`(?i)aws_?secret_?access_?key["']?\s*[:=]\s*["']?([A-Za-z0-9/+=]{40})`), group: 1},
 	// sk-ant-api03-..., sk-ant-admin01-..., any later or shorter form.
 	{re: regexp.MustCompile(`\bsk-ant-[A-Za-z0-9_-]{16,}`)},
 	// OpenAI: sk-<about 48 letters and digits> (no hyphen in the body), and the typed forms sk-proj-,
@@ -55,6 +72,29 @@ func notDocumentationKey(s string) bool { return !strings.HasSuffix(s, "EXAMPLE"
 type withExtraRules struct{ base redact.Detector }
 
 func (d withExtraRules) Find(ctx context.Context, text string) ([]redact.Span, error) {
+	spans, err := d.find(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	// An invisible character inside a key ends a rule's match and leaves the rest showing (a
+	// zero-width space typed into a token, #4265): look at the text with them dropped too, and map what
+	// is found there back, over the invisibles between.
+	if stripped, at := dropInvisibles(text); at != nil {
+		more, err := d.find(ctx, stripped)
+		if err != nil {
+			return nil, err
+		}
+		for _, sp := range more {
+			if sp.Start < 0 || sp.End > len(at) || sp.Start >= sp.End {
+				continue
+			}
+			spans = append(spans, redact.Span{Start: at[sp.Start], End: at[sp.End-1] + 1})
+		}
+	}
+	return spans, nil
+}
+
+func (d withExtraRules) find(ctx context.Context, text string) ([]redact.Span, error) {
 	spans, err := d.base.Find(ctx, text)
 	if err != nil {
 		return nil, err
@@ -62,12 +102,53 @@ func (d withExtraRules) Find(ctx context.Context, text string) ([]redact.Span, e
 	return append(spans, extraSpans(text)...), nil
 }
 
+// invisible reports the characters that show nothing, or only change how their neighbours show, and
+// can sit inside a token: every format character (Unicode Cf: zero-width and joiner marks, the soft
+// hyphen, the byte-order mark, bidi marks and isolates, invisible operators, tag characters,
+// variation selectors are Mn), combining marks (Mn, Me) and control characters other than line
+// ends and the tab. Only the scan's copy loses them; the text shown is never changed.
+func invisible(r rune) bool {
+	if r < 0x80 {
+		return r < 0x20 && r != '\n' && r != '\r' && r != '\t' || r == 0x7f
+	}
+	return unicode.Is(unicode.Cf, r) || unicode.In(r, unicode.Mn, unicode.Me) || (r >= 0x80 && r < 0xA0)
+}
+
+// dropInvisibles returns text without its invisible characters and, for each byte of the result,
+// its offset in text; nil when there are none (the common case costs one scan).
+func dropInvisibles(text string) (string, []int) {
+	has := false
+	for _, r := range text {
+		if invisible(r) {
+			has = true
+			break
+		}
+	}
+	if !has {
+		return text, nil
+	}
+	var b strings.Builder
+	at := make([]int, 0, len(text))
+	for i, r := range text {
+		if invisible(r) {
+			continue
+		}
+		_, n := utf8.DecodeRuneInString(text[i:])
+		b.WriteString(text[i : i+n])
+		for k := 0; k < n; k++ {
+			at = append(at, i+k)
+		}
+	}
+	return b.String(), at
+}
+
 func extraSpans(text string) []redact.Span {
 	var out []redact.Span
 	for _, r := range extraRules {
-		for _, m := range r.re.FindAllStringIndex(text, -1) {
-			if r.ok == nil || r.ok(text[m[0]:m[1]]) {
-				out = append(out, redact.Span{Start: m[0], End: m[1]})
+		for _, m := range r.re.FindAllStringSubmatchIndex(text, -1) {
+			a, b := m[2*r.group], m[2*r.group+1]
+			if a >= 0 && (r.ok == nil || r.ok(text[a:b])) {
+				out = append(out, redact.Span{Start: a, End: b})
 			}
 		}
 	}
