@@ -43,8 +43,8 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
                 { id: hex, name: 'Design review.md', media_type: 'text/markdown', size: 1800, task_id: 11, task_title: 'Review', created_at: '2026-10-02T15:00:00Z', uri: 'coral://artifacts/' + hex, available: true, source: 'completion', provenance: 'uploaded', produced_by: 'Worker A', session_id: 'w-a' },
                 { id: 'uri:coral://artifacts/' + hex, name: 'Design review.md', task_id: 12, task_title: 'Cites the same id', created_at: '2026-10-02T15:10:00Z', uri: 'coral://artifacts/' + hex, available: false, source: 'completion', provenance: 'unverified' },
                 { id: 'uri:coral://artifacts/' + other, name: "Another team's report.pdf", task_id: 13, created_at: '2026-10-02T15:20:00Z', uri: 'coral://artifacts/' + other, available: false, source: 'completion', provenance: 'unverified' },
-                { id: 'shared:' + sent + ':1', name: 'Test report.txt', media_type: 'text/plain', size: 900, task_id: 0, created_at: '2026-10-02T16:00:00Z', uri: 'coral://artifacts/' + sent, available: true, source: 'shared', shared_to: 'homelab/qa', produced_by: null, session_id: null },
-                { id: 'received:' + got, name: 'Their logs.txt', media_type: 'text/plain', size: 2048, task_id: 0, created_at: '2026-10-02T17:00:00Z', uri: 'coral://artifacts/' + got, available: true, source: 'received', received_from: 'homelab (ab12cd34)', from_board: 'platform', produced_by: null, session_id: null },
+                { id: 'shared:' + sent + ':1', name: 'Test report.txt', media_type: 'text/plain', size: 900, task_id: 0, created_at: '2026-10-02T16:00:00Z', uri: 'coral://artifacts/' + sent, available: true, source: 'shared', shared_to: 'homelab/qa', sent_by: 'Orchestrator', produced_by: null, session_id: null },
+                { id: 'received:' + got, name: 'Their logs.txt', media_type: 'text/plain', size: 2048, task_id: 0, created_at: '2026-10-02T17:00:00Z', uri: 'coral://artifacts/' + got, available: true, source: 'received', received_from: 'homelab (ab12cd34)', from_board: 'platform', sent_by: 'Orchestrator (platform)', produced_by: null, session_id: null },
                 { id: 'old', name: 'Earlier screenshot.png', media_type: 'image/png', task_id: 9, created_at: '2026-10-01T10:00:00Z', uri: 'coral://artifacts/' + 'f'.repeat(64), available: false, source: 'completion' },
             ];
             const real = window.fetch;
@@ -80,11 +80,11 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         console.log('3. A shared row and a received row are labelled and never show a producer');
         const sh = await ev(`(() => { const r = ${rowOf('Test report.txt')}; return { badge: r.querySelector('.team-artifact-badge').textContent, preview: r.querySelectorAll('.team-artifact-preview').length, details: r.querySelector('dl').textContent }; })()`);
         assert.equal(sh.badge, 'Sent to homelab/qa'); assert.equal(sh.preview, 1);
-        assert.doesNotMatch(sh.details, /Producer/); assert.match(sh.details, /Sent tohomelab\/qa/);
+        assert.doesNotMatch(sh.details, /Producer/); assert.match(sh.details, /Sent tohomelab\/qa/); assert.match(sh.details, /Sent byOrchestrator/);
         const rc = await ev(`(() => { const r = ${rowOf('Their logs.txt')}; return { badge: r.querySelector('.team-artifact-badge').textContent, preview: r.querySelectorAll('.team-artifact-preview').length, details: r.querySelector('dl').textContent }; })()`);
         assert.equal(rc.badge, 'From homelab (ab12cd34)'); assert.equal(rc.preview, 1);
         assert.doesNotMatch(rc.details, /Producer/);
-        assert.match(rc.details, /Board \(claimed by the sender\)platform/); assert.match(rc.details, /CheckedNot scanned/);
+        assert.match(rc.details, /Board \(claimed by the sender\)platform/); assert.match(rc.details, /CheckedNot scanned/); assert.match(rc.details, /Sent byOrchestrator \(platform\)/);
 
         console.log('4. A legacy row renders as before');
         const old = await ev(`(() => { const r = ${rowOf('Earlier screenshot.png')}; return { badge: !!r.querySelector('.team-artifact-badge'), action: r.querySelector('.team-artifact-col-actions').textContent, origin: r.dataset.origin || '' }; })()`);

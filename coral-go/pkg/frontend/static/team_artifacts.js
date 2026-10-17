@@ -303,6 +303,7 @@ function render() {
             ['Created', created], ['Producer', item.produced_by],
             ['Status', unverified ? 'Link not verified: this team has not uploaded this file, so Coral shows no size, type or preview' : null],
             ['Sent to', item.source === 'shared' ? item.shared_to : null],
+            ['Sent by', item.source === 'shared' || item.source === 'received' ? item.sent_by : null],
             ['Received from', item.source === 'received' ? item.received_from : null],
             ['Board (claimed by the sender)', item.source === 'received' ? item.from_board : null],
             ['Checked', item.source === 'received' ? 'Not scanned: this file came from another computer' : null],
