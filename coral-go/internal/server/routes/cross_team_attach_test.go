@@ -513,3 +513,42 @@ func TestReceivedRowsWithoutHardLinks(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "no temp file left behind")
 }
+
+// Security's C1 INFO: a received row left half-written (a crash on a folder with no hard links) is
+// absent to every reader, and the next receipt writes it whole, with links or without.
+func TestABrokenReceivedRowIsRewritten(t *testing.T) {
+	for _, noLinks := range []bool{false, true} {
+		e := newAttachEnv(t, true)
+		if noLinks {
+			linkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: os.ErrPermission} }
+		}
+		rec := crossTeamArtifactRecord{ID: strings.Repeat("ef", 32), Name: "r", Board: "beta", OtherBoard: "alpha", Server: "local", At: "2026-10-17T00:00:00Z"}
+		dir := e.h.boardRecordDir("received", "beta")
+		require.NoError(t, os.MkdirAll(dir, 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, rec.ID+".json"), []byte(`{"id":"`+rec.ID[:10]), 0o600))
+		_, ok := e.h.crossTeamRecord("received", "beta", rec.ID)
+		require.False(t, ok, "a broken row reads as absent")
+		require.NoError(t, e.h.writeCrossTeamRecord("received", rec))
+		got, ok := e.h.crossTeamRecord("received", "beta", rec.ID)
+		require.True(t, ok, "rewritten (no links: %v)", noLinks)
+		assert.Equal(t, "alpha", got.OtherBoard)
+		linkFile = os.Link
+	}
+}
+
+// Security's C1 INFO 2: a receipt whose rename over a broken row fails (here a folder at the
+// row's name) returns the error and leaves no temp file behind.
+func TestAFailedReceivedRenameLeavesNoTempFile(t *testing.T) {
+	e := newAttachEnv(t, true)
+	rec := crossTeamArtifactRecord{ID: strings.Repeat("cd", 32), Name: "r", Board: "beta", OtherBoard: "alpha", Server: "local", At: "2026-10-17T00:00:00Z"}
+	dir := e.h.boardRecordDir("received", "beta")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, rec.ID+".json"), 0o700))
+	require.Error(t, e.h.writeCrossTeamRecord("received", rec))
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	var names []string
+	for _, en := range entries {
+		names = append(names, en.Name())
+	}
+	assert.Equal(t, []string{rec.ID + ".json"}, names, "only the folder that was there")
+}

@@ -318,10 +318,20 @@ func (h *BoardHandler) writeCrossTeamRecord(kind string, rec crossTeamArtifactRe
 		os.Remove(tmp.Name())
 		return err
 	}
+	// Whatever happens below, the temp file doesn't stay: after a rename it is already gone, and
+	// a failed rename (early or last) or a link leaves it to remove (Security's C1 INFO 2).
+	defer os.Remove(tmp.Name())
 	final := filepath.Join(dir, rec.ID+".json")
 	if kind == "received" {
+		// A row that is there but doesn't parse (a crash mid-write on a folder with no hard links,
+		// where the exclusive create below writes in place) counts as absent, as every reader treats
+		// it: this receipt replaces it, so the row isn't lost for good (Security's C1 INFO).
+		if _, err := os.Lstat(final); err == nil {
+			if _, ok := h.crossTeamRecord(kind, rec.Board, rec.ID); !ok {
+				return os.Rename(tmp.Name(), final)
+			}
+		}
 		// A hard link fails if the name exists, so of two receipts at once only one wins.
-		defer os.Remove(tmp.Name())
 		err := linkFile(tmp.Name(), final)
 		if err == nil || errors.Is(err, os.ErrExist) {
 			return nil
