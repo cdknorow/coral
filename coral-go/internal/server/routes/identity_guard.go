@@ -24,12 +24,13 @@ var identityFields = []string{"subscriber_id", "session_id", "job_title", "assig
 var selfIdentityFields = map[string]bool{"subscriber_id": true, "session_id": true, "job_title": true, "as": true, "from": true, "sender": true, "created_by": true}
 
 // isAgentCaller reports whether the request comes from an agent's tool: it carries a session
-// token, or it is the agent command line without the Operator's signature.
+// token, or it is the agent command line without a signature the server has checked (the
+// Operator's own command line is signed, and the identity layer marks it verified).
 func isAgentCaller(r *http.Request) bool {
 	if r.Header.Get(store.SessionTokenHeader) != "" {
 		return true
 	}
-	return isAgentTool(r) && r.Header.Get(cliauth.CLIAuthHeader) == ""
+	return isAgentTool(r) && !cliauth.Verified(r)
 }
 
 // RejectBadIdentities refuses a board or agent-task request whose identity fields
@@ -85,17 +86,18 @@ func RejectBadIdentities(next http.Handler) http.Handler {
 	})
 }
 
-// RejectOperatorImpersonation refuses a board or agent-task write that says it is from the
-// Operator when it is not (#4207). It runs after the identity layer, so a request an agent
-// token's identity binding already refused (403 identity_mismatch) is answered by that, and
-// before the handlers. The dashboard and the signed command line write as exactly "Operator"; an
-// agent's tool (a session token, or the agent command line without the Operator's signature)
-// does not, and no local caller writes another spelling of it. A request that came through
-// Coral Hub is left to the tunnel's own identity guard (TunnelIdentityGuard), which accepts the
-// Hub operator's spellings and attributes the post to the Hub user.
+// RejectOperatorImpersonation refuses an agent's board or agent-task write that says it is from
+// the Operator, in any spelling normalizeName reads as the same name (case, spacing, invisible
+// characters, look-alike letters) (#4207). It runs after the identity layer, so a request an agent
+// token's identity binding already refused (403 identity_mismatch) is answered by that. It asks
+// only agents (a session token, or the agent command line without a signature the server checked):
+// the dashboard, the signed command line and an API-key script hold a credential of their own, and
+// what they write for the Operator is theirs to spell (#4207's first version refused a lower-case
+// "operator" from the signed command line: the signature decides for them, not the spelling). A
+// request through Coral Hub is left to the tunnel's own identity guard (TunnelIdentityGuard).
 func RejectOperatorImpersonation(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if (!strings.HasPrefix(r.URL.Path, "/api/board/") && !strings.HasPrefix(r.URL.Path, "/api/agent/")) || cloud.Tunneled(r) ||
+		if (!strings.HasPrefix(r.URL.Path, "/api/board/") && !strings.HasPrefix(r.URL.Path, "/api/agent/")) || cloud.Tunneled(r) || !isAgentCaller(r) ||
 			r.Body == nil || r.Body == http.NoBody || (r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch) {
 			next.ServeHTTP(w, r)
 			return
@@ -119,7 +121,7 @@ func RejectOperatorImpersonation(next http.Handler) http.Handler {
 					continue
 				}
 				// Fields that only name someone (assignee, target) are not asked.
-				if board.IsOperatorName(s) && (strings.TrimSpace(s) != board.OperatorName || isAgentCaller(r)) {
+				if board.IsOperatorName(s) {
 					errBadRequest(w, f+" "+strconvQuote(s)+" is reserved for the Operator")
 					return
 				}
