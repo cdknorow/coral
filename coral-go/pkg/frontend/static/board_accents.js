@@ -4,10 +4,16 @@ import { redrawLiveList } from './list_hooks.js';
 import { browserLocal } from './safe_storage.js';
 
 // ── Board accent colors (localStorage) ────────────────────────────────
+// The stored colour goes into style attributes (the full list and the icon rail), so only a
+// #rrggbb colour is ever returned: anything else in storage (an older or hand-edited value, a
+// value some other script wrote) shows as no colour (#4195).
+const _boardColorRe = /^#[0-9a-f]{6}$/i;
+
 export function _getBoardColor(boardName) {
     try {
         const colors = JSON.parse(browserLocal.get('coral-board-colors') || '{}');
-        return colors[boardName] || null;
+        const c = Object.prototype.hasOwnProperty.call(colors, boardName) ? colors[boardName] : null;
+        return typeof c === 'string' && _boardColorRe.test(c) ? c : null;
     } catch { return null; }
 }
 
