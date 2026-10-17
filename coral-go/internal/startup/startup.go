@@ -1029,6 +1029,9 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// (call_metrics_retention_days, 14 days by default) in short batches (#3261).
 	metricsRetention := background.NewCallMetricsRetention(db)
 	safeGo(ctx, "call_metrics_retention", func() { metricsRetention.Run(ctx) })
+	// Raw token usage older than 30 days becomes hourly rows; totals stay the same (#4163).
+	tokenRetention := background.NewTokenUsageRetention(db)
+	safeGo(ctx, "token_usage_retention", func() { tokenRetention.Run(ctx) })
 
 	// PRAGMA quick_check on both databases, once, a minute after start (#4157): damage is
 	// logged and shown on the dashboard; nothing is repaired or deleted.

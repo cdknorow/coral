@@ -2469,7 +2469,7 @@ func (s *Store) computeAndStoreTaskCost(ctx context.Context, project string, tas
 		        COALESCE(SUM(output_tokens), 0) AS output_tokens,
 		        COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
 		        COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens
-		 FROM token_usage
+		 FROM token_usage_all
 		 WHERE session_id = ? AND recorded_at >= ? AND recorded_at <= ?`,
 		*task.SessionID, *task.ClaimedAt, *task.CompletedAt)
 	if err != nil {
@@ -3128,8 +3128,8 @@ func (s *Store) GetTaskLiveCost(ctx context.Context, project string, taskID int6
 		        COALESCE(SUM(output_tokens), 0) AS output_tokens,
 		        COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
 		        COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
-		        COUNT(*) AS request_count
-		 FROM token_usage
+		        COALESCE(SUM(n_rows), 0) AS request_count
+		 FROM token_usage_all
 		 WHERE session_id = ? AND recorded_at >= ?`,
 		*task.SessionID, *task.ClaimedAt)
 	if err != nil {

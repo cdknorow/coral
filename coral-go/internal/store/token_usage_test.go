@@ -709,6 +709,9 @@ func TestTokenUsageSchema_ModelColumnIsMigratedIn(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, NewTokenUsageStore(db).RecordUsage(ctx, &TokenUsage{SessionID: "old", AgentName: "a",
 		InputTokens: 777, CostUSD: 4.5, RecordedAt: "2026-08-01T00:00:00Z"}))
+	// A database from then had no token_usage_all view either (#4163; it names the column).
+	_, err = db.ExecContext(ctx, "DROP TRIGGER token_usage_rollup_update_rebuild; DROP TRIGGER token_usage_rollup_delete; DROP VIEW token_usage_all")
+	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, "ALTER TABLE token_usage DROP COLUMN model")
 	require.NoError(t, err)
 	require.NoError(t, db.Close())

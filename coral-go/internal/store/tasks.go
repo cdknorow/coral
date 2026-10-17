@@ -328,7 +328,7 @@ func (s *TaskStore) computeAgentTaskCost(ctx context.Context, taskID int64, comp
 		        COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
 		        COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
 		        COALESCE(SUM(cost_usd), 0) as cost_usd
-		 FROM token_usage
+		 FROM token_usage_all
 		 WHERE session_id = ? AND datetime(recorded_at) >= datetime(?) AND datetime(recorded_at) <= datetime(?)`,
 		*task.SessionID, *task.StartedAt, completedAt)
 	if err != nil {

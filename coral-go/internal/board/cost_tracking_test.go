@@ -91,6 +91,8 @@ func testStoreWithSessionsDB(t *testing.T) (*Store, *sqlx.DB) {
 		source           TEXT NOT NULL DEFAULT 'jsonl'
 	)`)
 	sessDB.MustExec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_token_usage_session_time ON token_usage(session_id, recorded_at)`)
+	// Task costs read raw and rolled-up usage together (#4163); here there are only raw rows.
+	sessDB.MustExec(`CREATE VIEW IF NOT EXISTS token_usage_all AS SELECT *, 1 AS n_rows FROM token_usage`)
 
 	s.SetSessionsDB(sessDB)
 	return s, sessDB

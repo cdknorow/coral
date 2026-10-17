@@ -71,7 +71,7 @@ type AgentUsageSummary struct {
 // sourceDedup is a SQL filter that prefers JSONL records over proxy records
 // for the same session. When both sources exist, only JSONL is counted to
 // avoid double-counting tokens.
-const sourceDedup = `(COALESCE(source,'jsonl') = 'jsonl' OR session_id NOT IN (SELECT DISTINCT session_id FROM token_usage WHERE source = 'jsonl'))`
+const sourceDedup = `(COALESCE(source,'jsonl') = 'jsonl' OR session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl'))`
 
 // TurnCost represents a single turn's cost data for charting.
 type TurnCost struct {
@@ -195,14 +195,14 @@ func (s *TokenUsageStore) GetSessionUsage(ctx context.Context, sessionID string)
 		 COALESCE(SUM(input_tokens), 0) as input_tokens, COALESCE(SUM(output_tokens), 0) as output_tokens,
 		 COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens, COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
 		 COALESCE(SUM(total_tokens), 0) as total_tokens, COALESCE(SUM(cost_usd), 0) as cost_usd,
-		 COUNT(*) as num_turns,
+		 SUM(n_rows) as num_turns,
 		 COALESCE(MIN(session_start_at), '') as session_start_at,
 		 COALESCE(MAX(last_activity_at), '') as last_activity_at,
 		 CASE WHEN MIN(NULLIF(session_start_at, '')) IS NOT NULL AND MAX(NULLIF(last_activity_at, '')) IS NOT NULL
 		      THEN MAX(0, CAST(ROUND((julianday(MAX(NULLIF(last_activity_at, ''))) - julianday(MIN(NULLIF(session_start_at, '')))) * 86400) AS INTEGER))
 		      ELSE 0 END as execution_time_sec,
 		 MAX(recorded_at) as recorded_at
-		 FROM token_usage WHERE session_id = ? AND `+sourceDedup+` GROUP BY session_id`, sessionID)
+		 FROM token_usage_all WHERE session_id = ? AND `+sourceDedup+` GROUP BY session_id`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -223,7 +223,7 @@ func (s *TokenUsageStore) GetTeamUsage(ctx context.Context, teamID int64) (*Usag
 		        COALESCE(SUM(total_tokens), 0) as total_tokens,
 		        COALESCE(SUM(cost_usd), 0) as cost_usd,
 		        COUNT(DISTINCT session_id) as num_sessions
-		 FROM token_usage WHERE team_id = ? AND `+sourceDedup, teamID)
+		 FROM token_usage_all WHERE team_id = ? AND `+sourceDedup, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func (s *TokenUsageStore) GetBoardUsage(ctx context.Context, boardName string) (
 		        COALESCE(SUM(total_tokens), 0) as total_tokens,
 		        COALESCE(SUM(cost_usd), 0) as cost_usd,
 		        COUNT(DISTINCT session_id) as num_sessions
-		 FROM token_usage WHERE board_name = ? AND `+sourceDedup, boardName)
+		 FROM token_usage_all WHERE board_name = ? AND `+sourceDedup, boardName)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func (s *TokenUsageStore) GetUsageSummary(ctx context.Context, since string) ([]
 	          COALESCE(SUM(total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(cost_usd), 0) as cost_usd,
 	          COUNT(DISTINCT session_id) as num_sessions
-	   FROM token_usage WHERE ` + sourceDedup + ` AND 1=1`
+	   FROM token_usage_all WHERE ` + sourceDedup + ` AND 1=1`
 	var args []interface{}
 	if since != "" {
 		query += " AND recorded_at >= ?"
@@ -287,14 +287,14 @@ func (s *TokenUsageStore) GetUsageSummaryByAgent(ctx context.Context, since stri
 	          COALESCE(SUM(t.cache_write_tokens), 0) as cache_write_tokens,
 	          COALESCE(SUM(t.total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(t.cost_usd), 0) as cost_usd,
-	          COUNT(*) as num_records,
+	          SUM(t.n_rows) as num_records,
 	          MIN(t.recorded_at) as first_seen,
 	          MAX(t.recorded_at) as last_seen,
 	          ls.created_at as launched_at,
 	          ls.stopped_at as stopped_at
-	   FROM token_usage t
+	   FROM token_usage_all t
 	   LEFT JOIN live_sessions ls ON ls.session_id = t.session_id
-	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage WHERE source = 'jsonl')) AND 1=1`
+	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl')) AND 1=1`
 	var args []interface{}
 	if since != "" {
 		query += " AND t.recorded_at >= ?"
@@ -314,7 +314,7 @@ func (s *TokenUsageStore) ListUsage(ctx context.Context, f UsageFilter) ([]Token
 	          COALESCE(SUM(t.input_tokens), 0) as input_tokens, COALESCE(SUM(t.output_tokens), 0) as output_tokens,
 	          COALESCE(SUM(t.cache_read_tokens), 0) as cache_read_tokens, COALESCE(SUM(t.cache_write_tokens), 0) as cache_write_tokens,
 	          COALESCE(SUM(t.total_tokens), 0) as total_tokens, COALESCE(SUM(t.cost_usd), 0) as cost_usd,
-	          COUNT(*) as num_turns,
+	          SUM(t.n_rows) as num_turns,
 	          COALESCE(MIN(NULLIF(t.session_start_at, '')), '') as session_start_at,
 	          COALESCE(MAX(NULLIF(t.last_activity_at, '')), '') as last_activity_at,
 	          CASE WHEN MIN(NULLIF(t.session_start_at, '')) IS NOT NULL AND MAX(NULLIF(t.last_activity_at, '')) IS NOT NULL
@@ -322,7 +322,7 @@ func (s *TokenUsageStore) ListUsage(ctx context.Context, f UsageFilter) ([]Token
 	               ELSE 0 END as execution_time_sec,
 	          MAX(t.recorded_at) as recorded_at,
 	          COALESCE(MAX(t.source), 'jsonl') as source
-	   FROM token_usage t LEFT JOIN live_sessions ls ON ls.session_id = t.session_id WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage WHERE source = 'jsonl')) AND 1=1`
+	   FROM token_usage_all t LEFT JOIN live_sessions ls ON ls.session_id = t.session_id WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl')) AND 1=1`
 	var args []interface{}
 
 	if f.SessionID != "" {
@@ -427,7 +427,7 @@ func (s *TokenUsageStore) GetLatestTurnContextBySessionIDs(ctx context.Context, 
 func (s *TokenUsageStore) GetSessionTurns(ctx context.Context, sessionID string) ([]TurnCost, error) {
 	var turns []TurnCost
 	err := s.db.SelectContext(ctx, &turns,
-		`SELECT cost_usd, recorded_at FROM token_usage
+		`SELECT cost_usd, recorded_at FROM token_usage_all
 		 WHERE session_id = ? AND `+sourceDedup+`
 		 ORDER BY recorded_at ASC`, sessionID)
 	return turns, err
@@ -467,8 +467,8 @@ func (s *TokenUsageStore) GetUsageTimeSeries(ctx context.Context, since string, 
 	          COALESCE(SUM(output_tokens), 0) as output_tokens,
 	          COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
 	          COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
-	          COUNT(*) as num_requests
-	   FROM token_usage WHERE ` + sourceDedup + ` AND 1=1`
+	          SUM(n_rows) as num_requests
+	   FROM token_usage_all WHERE ` + sourceDedup + ` AND 1=1`
 
 	var args []interface{}
 	if since != "" {
@@ -526,7 +526,7 @@ func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since str
 	          COALESCE(SUM(t.total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(t.cost_usd), 0) as cost_usd,
 	          COUNT(DISTINCT t.session_id) as num_agents
-	   FROM token_usage t
+	   FROM token_usage_all t
 	   INNER JOIN (
 	       SELECT session_id, branch, COALESCE(pr_number, 0) as pr_number, COALESCE(remote_url, '') as remote_url
 	       FROM git_snapshots
@@ -537,7 +537,7 @@ func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since str
 	           GROUP BY session_id
 	       )
 	   ) gs ON t.session_id = gs.session_id
-	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage WHERE source = 'jsonl')) AND 1=1`
+	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl')) AND 1=1`
 	var args []interface{}
 	if since != "" {
 		query += " AND t.recorded_at >= ?"
@@ -563,8 +563,8 @@ func (s *TokenUsageStore) GetUsageSummaryByBoard(ctx context.Context, since stri
 	          COALESCE(SUM(t.total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(t.cost_usd), 0) as cost_usd,
 	          COUNT(DISTINCT t.session_id) as num_agents
-	   FROM token_usage t LEFT JOIN live_sessions ls ON ls.session_id = t.session_id
-	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage WHERE source = 'jsonl')) AND 1=1`
+	   FROM token_usage_all t LEFT JOIN live_sessions ls ON ls.session_id = t.session_id
+	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl')) AND 1=1`
 	var args []interface{}
 	if since != "" {
 		query += " AND t.recorded_at >= ?"
