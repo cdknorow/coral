@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -67,6 +68,18 @@ func setupAgentHistoryTestEnv(t *testing.T) *testHistoryEnv {
 	}
 
 	r := chi.NewRouter()
+	// Requests are tagged as the identity middleware tags them: the agent a request names with testAgentHeader by its
+	// verified session, everything else as the dashboard (the Operator), which may name any session (#4512).
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if sid := req.Header.Get(testAgentHeader); sid != "" {
+				req = req.WithContext(context.WithValue(req.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: sid, SessionName: "agent-" + sid}))
+			} else {
+				req = req.WithContext(context.WithValue(req.Context(), callerKindKey{}, callerDashCookie))
+			}
+			next.ServeHTTP(w, req)
+		})
+	})
 	r.Get("/api/agent/history/search", h.SearchAgentHistory)
 	r.Get("/api/agent/history/context", h.GetAgentHistoryContext)
 	r.Get("/api/sessions/live/{name}/history/search", h.SearchAgentHistoryForLive)
@@ -548,4 +561,56 @@ func TestAgentHistorySearch_ConcurrentRequests(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// An agent's token decides whose history it searches or reads (#4512, Security's #4508 H1): agent A's token with
+// agent B's session_id is refused on every route, an agent that names no session gets its own, and the Operator
+// still names any.
+func TestAgentHistoryIsBoundToTheCallersToken(t *testing.T) {
+	env := setupAgentHistoryTestEnv(t)
+	ctx := context.Background()
+	workDir := filepath.Join(env.claudeHome, "bound-project")
+	require.NoError(t, os.MkdirAll(workDir, 0o755))
+	for _, s := range []struct{ id, name string }{{"sess-a", "alice"}, {"sess-b", "bob"}} {
+		require.NoError(t, env.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: s.id, AgentType: at.Claude, AgentName: s.name, WorkingDir: workDir}))
+	}
+	get := func(agent, path string) (int, string) {
+		req, _ := http.NewRequest("GET", env.server.URL+path, nil)
+		if agent != "" {
+			req.Header.Set(testAgentHeader, agent)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	for _, route := range []string{"/api/agent/history/search?query=secret&", "/api/agent/history/context?message_index=0&", "/api/sessions/live/bob/history/search?query=secret&", "/api/sessions/live/bob/history/context?message_index=0&"} {
+		// Alice's token, Bob's session: refused (403 identity_mismatch), and nothing of Bob's is searched.
+		code, body := get("sess-a", route+"session_id=sess-b")
+		assert.Equal(t, http.StatusForbidden, code, route)
+		assert.Contains(t, body, "identity_mismatch", route)
+		// Her own session named: allowed past the binding (the lineage rules then decide).
+		code, _ = get("sess-a", route+"session_id=sess-a")
+		assert.NotEqual(t, http.StatusForbidden, code, route+" own session")
+		assert.NotEqual(t, http.StatusUnauthorized, code, route+" own session")
+		// The Operator (the dashboard) names any session.
+		code, _ = get("", route+"session_id=sess-b")
+		assert.NotEqual(t, http.StatusForbidden, code, route+" Operator")
+		assert.NotEqual(t, http.StatusUnauthorized, code, route+" Operator")
+	}
+	// The live route names Bob by his agent name: Alice's token is refused there too, though she named no session_id.
+	code, body := get("sess-a", "/api/sessions/live/bob/history/search?query=secret")
+	assert.Equal(t, http.StatusForbidden, code)
+	assert.Contains(t, body, "identity_mismatch")
+	// An agent that names no session searches its own: the token decides.
+	code, _ = get("sess-a", "/api/agent/history/search?query=hello")
+	assert.Equal(t, http.StatusOK, code)
+	// Nothing at all (no token, not the dashboard) is refused, not given a session.
+	req, _ := http.NewRequest("GET", env.server.URL+"/api/agent/history/search?query=hello", nil)
+	rec := httptest.NewRecorder()
+	r := chi.NewRouter()
+	r.Get("/api/agent/history/search", env.handler.SearchAgentHistory)
+	r.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }

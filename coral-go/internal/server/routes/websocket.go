@@ -671,6 +671,13 @@ func (h *SessionsHandler) getActiveRuns(ctx context.Context) []map[string]any {
 // Replay for initial seed. Stream data is sent as binary WebSocket frames;
 // control messages (terminal_closed) remain JSON text frames.
 func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
+	// The terminal stream is the Operator's (#4512, Security's #4508 H2): an agent's session token reads and types
+	// into no terminal through it, whatever the identity middleware did before. No agent tool opens it.
+	if _, agent := VerifiedSession(r.Context()); agent {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden_for_agent",
+			"message": "An agent can't read or type into a terminal through the terminal stream: that is for the Operator (the dashboard)"})
+		return
+	}
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")

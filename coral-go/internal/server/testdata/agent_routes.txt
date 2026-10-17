@@ -30,7 +30,7 @@ b DELETE /api/system/debug-input-log
 b DELETE /api/tags/{tagID}
 b DELETE /api/teams/detail/{name}
 b DELETE /api/themes/{name}
-c DELETE /api/upload/{name}
+b DELETE /api/upload/{name}
 b DELETE /api/views/{id}
 b DELETE /api/workflows/{workflowID}
 c GET /api/agent-docs
@@ -194,7 +194,7 @@ c GET /api/workflows/runs/{runID}/steps/{stepIndex}/files/*
 c GET /api/workflows/{workflowID}
 c GET /api/workflows/{workflowID}/runs
 c GET /ws/coral
-c GET /ws/terminal/{name}
+b GET /ws/terminal/{name}
 b HEAD /api/remote/{server}/*
 b OPTIONS /api/remote/{server}/*
 a PATCH /api/agent/tasks/{taskID}
@@ -223,7 +223,7 @@ b POST /api/auth/password/change
 b POST /api/auth/password/reset
 b POST /api/auth/password/set
 b POST /api/auth/sessions/sign-out-others
-c POST /api/auto-accept/disable-all
+b POST /api/auto-accept/disable-all
 b POST /api/board/remotes
 a POST /api/board/{project}/external-messages
 a POST /api/board/{project}/external-artifacts
@@ -294,7 +294,7 @@ b POST /api/sessions/live/{name}/goal
 b POST /api/sessions/live/{name}/keys
 b POST /api/sessions/live/{name}/kill
 a POST /api/sessions/live/{name}/notes
-c POST /api/sessions/live/{name}/open-in-editor
+b POST /api/sessions/live/{name}/open-in-editor
 a POST /api/sessions/live/{name}/pending-tool
 b POST /api/sessions/live/{name}/resize
 b POST /api/sessions/live/{name}/restart
@@ -326,7 +326,7 @@ b POST /api/teams/import
 b POST /api/themes/generate
 b POST /api/themes/import
 b POST /api/tracking/event
-c POST /api/upload
+b POST /api/upload
 b POST /api/views
 b POST /api/workflows
 b POST /api/workflows/by-name/{name}/trigger

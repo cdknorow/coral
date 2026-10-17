@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -73,12 +74,8 @@ type AgentHistoryContextResponse struct {
 func (h *SessionsHandler) SearchAgentHistory(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	sessionID := strings.TrimSpace(q.Get("session_id"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(r.Header.Get("X-Coral-Session-ID"))
-	}
-	if sessionID == "" {
-		errBadRequest(w, "session_id parameter is required")
+	sessionID, ok := historyCaller(w, r, q)
+	if !ok {
 		return
 	}
 
@@ -297,12 +294,8 @@ func (h *SessionsHandler) SearchAgentHistory(w http.ResponseWriter, r *http.Requ
 func (h *SessionsHandler) GetAgentHistoryContext(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	sessionID := strings.TrimSpace(q.Get("session_id"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(r.Header.Get("X-Coral-Session-ID"))
-	}
-	if sessionID == "" {
-		errBadRequest(w, "session_id parameter is required")
+	sessionID, ok := historyCaller(w, r, q)
+	if !ok {
 		return
 	}
 
@@ -717,4 +710,24 @@ func parseFlexibleTimestamp(ts string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("unknown timestamp format: %s", ts)
+}
+
+// historyCaller is the session whose history a request searches or reads (#4512, Security's #4508 H1): the
+// caller's own. With an agent's session token the token decides (a session_id naming another session is 403
+// identity_mismatch, and none means the token's); without one only the Operator (the dashboard, the verified
+// command line, an authentic Coral Hub request) names a session, which the live routes do from the agent's name.
+func historyCaller(w http.ResponseWriter, r *http.Request, q url.Values) (string, bool) {
+	claimed := strings.TrimSpace(q.Get("session_id"))
+	if claimed == "" {
+		claimed = strings.TrimSpace(r.Header.Get("X-Coral-Session-ID"))
+	}
+	sessionID, ok := callerSession(w, r, claimed, true, nil)
+	if !ok {
+		return "", false
+	}
+	if sessionID == "" {
+		errBadRequest(w, "session_id parameter is required")
+		return "", false
+	}
+	return sessionID, true
 }

@@ -376,8 +376,17 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/artifacts/{id}/keep":                 "keep an artifact",
 	"POST /api/artifacts/received/unlisted/delete": "delete received files no board lists",
 	"DELETE /api/artifacts/{id}/keep":              "release a kept artifact",
-	"GET /api/system/terminal-logs":                "see the terminal logs",
-	"POST /api/system/terminal-logs/delete-ended":  "delete the terminal logs of ended agents",
+	// #4512 (Security's #4508 H2 and the class-c routes beside it; a grep of coral-board, coral-agent, the hooks
+	// and the mock agent found no agent-side use of any of them): the terminal stream (and with it typing into and
+	// resizing any agent's terminal), turning every agent's auto-accept off, the dashboard's file upload and
+	// opening a file in the Operator's editor are the Operator's.
+	"GET /ws/terminal/{name}":                       "read or type into an agent's terminal",
+	"POST /api/auto-accept/disable-all":             "turn off auto-accept for every agent",
+	"POST /api/upload":                              "upload a file from the dashboard",
+	"DELETE /api/upload/{name}":                     "remove an uploaded file",
+	"POST /api/sessions/live/{name}/open-in-editor": "open a file in the Operator's editor",
+	"GET /api/system/terminal-logs":                 "see the terminal logs",
+	"POST /api/system/terminal-logs/delete-ended":   "delete the terminal logs of ended agents",
 	// #3513 (Security's #3509 finding 3): the API key is the Operator's credential (with it an
 	// agent drops its token and is the Operator, settings included), and deleting a board
 	// deletes the team's whole history.

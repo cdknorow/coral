@@ -294,7 +294,7 @@ When an agent's context window is compacted or when resuming work across restart
 
 ### Trust Boundary & Authorization
 
-- **Caller Scope**: Endpoints require `session_id`, authenticated against active Coral agent sessions.
+- **Caller Scope**: An agent's session token decides whose history it searches or reads (#4512): a `session_id` naming another session is refused with 403 `identity_mismatch`, and none means the token's own. Only the Operator (the dashboard, the command line, an authentic Coral Hub request) names a session; a caller with neither is refused with 401 `session_token_required`.
 - **Lineage Boundary**: Search strictly defaults to the caller's own session plus its proven `resume_from_id` ancestor chain.
 - **Cross-Agent Isolation**: Querying arbitrary session IDs outside the caller's proven ancestry is rejected with HTTP 403 Forbidden. Shared workspace fallback is forbidden.
 - **Honest Availability**: When transcript files are not ready or missing, the API returns status `"partial"` or `"unavailable"` with diagnostic status per session rather than misleading zero results.
