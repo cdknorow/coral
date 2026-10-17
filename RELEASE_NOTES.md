@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.4.80 — No more stale tabs overwriting settings, redacted agent knowledge, and safer workflow saves
+
+### Fixes
+
+- **A second or stale dashboard tab no longer overwrites settings it didn't change.** Settings, Team settings (including the Health check tab) and the scheduler's job editor now save only the fields you changed (and refresh from the server when they open), so a CLI path, a cross-team switch or a job edited elsewhere is kept. The default prompts dialog and working-mode presets do the same; saved personas, team templates and macros keep items added elsewhere, and deleting a macro removes the one you clicked.
+- **Saving a workflow in the dashboard no longer erases step settings it doesn't show.**
+- **Saving the Settings dialog before it finished loading could clear your CLI paths; it no longer can.**
+- **Resuming a plain terminal pane is refused** ("Resume not supported for terminal") instead of typing a Claude resume line into the shell.
+
+### Security and privacy
+
+- **Distilled agent knowledge is now redacted with Coral's secret rules:** before a transcript is sent for distilling, before anything is written (distill, Save, team import), and whenever it is shown or put in an agent's prompt. Knowledge files written by older versions are redacted when read but may still hold secrets on disk; distill the team again, or open and Save each agent's knowledge, to rewrite them.
+- **Coral removes per-session state files and Pi session folders of sessions that ended over 30 days ago** (exact names, your own files only; nothing on Windows).
+
+### Other changes
+
+- **An agent that exits on its own can show in the session list for up to 5 s,** since the list now reuses one tmux pane listing for a few seconds.
+
 ## v1.4.79 — Send files with cross-team messages, a tidier temp folder, and clearer first steps
 
 ### Cross-team files
