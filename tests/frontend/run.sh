@@ -93,6 +93,7 @@ cleanup() {
     rm -rf "$CORAL_HOME" "$CHROME_PROFILE" 2>/dev/null || true
     # The binaries this run built (not a CORAL_BIN it was given).
     [ -n "$BUILT_BIN_DIR" ] && rm -rf "$BUILT_BIN_DIR" 2>/dev/null || true
+    coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir (runs the check too on a crash)
 }
 trap cleanup EXIT
 
@@ -106,7 +107,11 @@ mkdir -p "$CORAL_HOME/host-home"
 (umask 077 && printf '%s\n' coral-cdp-suites-test-password > "$CORAL_HOME/initial-password")
 # Strict local auth is the default (#3936); these suites' node-side calls send no credential, as
 # in run_cdp_suites.mjs's regular shards, so it is off here (its strict phase covers strict).
-env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR CORAL_INITIAL_PASSWORD_FILE="$CORAL_HOME/initial-password" HOME="$CORAL_HOME/host-home" \
+# #4354 sandbox: an isolated HOME and a stub for every agent CLI first on PATH, so a launch that fell
+# back to a PATH CLI (the hang-up bug) hits the stub, not the operator's real CLI, and mock transcripts
+# stay out of the real ~/.claude. The check at the end asserts it.
+coral_test_sandbox
+env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR CORAL_INITIAL_PASSWORD_FILE="$CORAL_HOME/initial-password" HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
     "$CORAL_BIN" --host 127.0.0.1 --port "$CORAL_PORT" --home "$CORAL_HOME" --no-browser --cloud-url off --strict-local-auth=false \
     > "$CORAL_HOME/server.log" 2>&1 &
 CORAL_PID=$!
@@ -214,3 +219,7 @@ node privacy_settings.test.js
 node mobile_connect_browser.test.js
 node privacy_verification_e2e.test.js
 node retired_integrations.test.js
+
+# #4354: every suite above ran against the sandboxed server; assert no real CLI was reached and the
+# real ~/.claude/projects did not grow. set -e fails the run if the check does.
+coral_test_sandbox_check

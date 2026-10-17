@@ -32,7 +32,9 @@ fi
 # ── Start server ─────────────────────────────────────────────
 mkdir -p "$HOME_DIR"
 echo "==> Starting server on port $PORT (home: $HOME_DIR)..."
-"$BINARY" --host 127.0.0.1 --port "$PORT" --home "$HOME_DIR" --no-browser &
+# CORAL_NO_DEMO_SEED: the demo seed can launch a real agent CLI on PATH against the real ~/.claude
+# (#4354); this dev helper takes a screenshot, it does not need the demo, so keep it from launching one.
+CORAL_NO_DEMO_SEED=1 "$BINARY" --host 127.0.0.1 --port "$PORT" --home "$HOME_DIR" --no-browser &
 SERVER_PID=$!
 echo "    PID: $SERVER_PID"
 

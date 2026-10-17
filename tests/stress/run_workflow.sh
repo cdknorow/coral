@@ -26,6 +26,7 @@ cleanup() {
         wait "$SERVER_PID" 2>/dev/null || true
     fi
     rm -rf "$TMPDIR_WF" 2>/dev/null || true
+    coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir (runs the check too on a crash)
 }
 trap cleanup EXIT
 
@@ -122,9 +123,11 @@ go build -tags "dev fts5" -o "$TMPDIR_WF/coral" ./cmd/coral/
 
 log "Starting coral server on port $PORT..."
 # The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
-# ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
-mkdir -p "$TMPDIR_WF/host-home"
-env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_WF/host-home" "$TMPDIR_WF/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_WF/server.log" 2>&1 &
+# ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results). The #4354
+# sandbox supplies that isolated HOME and puts a stub for every agent CLI first on PATH, so a launch
+# that fell back to a PATH CLI (the hang-up bug) hits the stub, not the operator's real CLI.
+coral_test_sandbox
+env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_WF/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_WF/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 
@@ -774,6 +777,8 @@ echo "  WORKFLOW TEST RESULTS"
 echo "  Passed: $PASS"
 echo "  Failed: $FAIL"
 echo "================================"
+
+coral_test_sandbox_check || FAIL=$((FAIL + 1))   # #4354: no real CLI called, real ~/.claude unchanged
 
 if [[ $FAIL -gt 0 ]]; then
     exit 1

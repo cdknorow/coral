@@ -7,22 +7,32 @@
 # before starting the server, runs the server (and thus its mock agents) with
 # HOME="$CORAL_TEST_HOME" and PATH="$CORAL_TEST_STUB_BIN:$PATH", and calls coral_test_sandbox_check
 # at the end (coral_test_sandbox_cleanup in its trap). This makes two failures impossible to miss:
-#  - a stub 'claude'/'codex'/'gemini' is first on PATH, so if a launch ever falls back to the PATH
-#    CLI (the hang-up bug) it hits the stub, which records a marker and exits 1 — the real CLI on
-#    the operator's account never runs;
+#  - a stub for every CLI-backed agent type (claude, codex, gemini, agy, pi, antigravity; see
+#    CORAL_TEST_STUB_CLIS) is first on PATH, so if a launch ever falls back to the PATH CLI (the
+#    hang-up bug) it hits the stub, which records a marker and exits 1 -- the real CLI on the
+#    operator's account never runs;
 #  - the server's HOME is an isolated temp dir, so mock transcripts land there, not in the real
 #    ~/.claude/projects.
 # The check then fails the run loudly if the stub was ever called or anything new appeared under the
 # real ~/.claude/projects. Keep in step with the harness lint in coral-go/internal/testguard
 # (TestHarnessScriptsUseTheMockAgentSandbox).
 
+# Every CLI-backed agent type's launch binary gets a stub, not just claude/codex/gemini (#4354 INFO 2):
+# the binaries internal/agent's agentCLIs maps every agenttypes type (except 'terminal', which is a
+# shell, not a CLI) to -- claude, codex, agy (agy/antigravity/gemini), pi -- plus the type names
+# themselves, so a path that execs the type rather than the resolved binary is covered too. A Go test
+# (TestMockSandboxStubsEveryAgentCLI in coral-go/internal/testguard) fails if a new agent type or
+# binary is not in this list, so it stays in step automatically.
+CORAL_TEST_STUB_CLIS="${CORAL_TEST_STUB_CLIS:-claude codex gemini agy pi antigravity}"
+
 coral_test_sandbox() {
     CORAL_TEST_HOME="$(mktemp -d "${TMPDIR:-/tmp}/coral-test-home.XXXXXX")"
     mkdir -p "$CORAL_TEST_HOME/.claude/projects"
     CORAL_TEST_STUB_BIN="$(mktemp -d "${TMPDIR:-/tmp}/coral-test-stub.XXXXXX")"
     CORAL_TEST_STUB_MARKER="$CORAL_TEST_STUB_BIN/REAL_CLI_WAS_CALLED"
+    CORAL_TEST_SANDBOX_CHECKED=""   # reset: the end check (or the EXIT trap) sets it
     local _cli
-    for _cli in claude codex gemini; do
+    for _cli in $CORAL_TEST_STUB_CLIS; do
         # The stub answers nothing: any call means a test tried the PATH CLI instead of its mock.
         printf '#!/bin/sh\nprintf "%%s %%s\\n" "%s" "$*" >> "%s"\nexit 1\n' \
             "$_cli" "$CORAL_TEST_STUB_MARKER" > "$CORAL_TEST_STUB_BIN/$_cli"
@@ -51,10 +61,18 @@ coral_test_sandbox_check() {
         _fail=1
     fi
     [[ $_fail -eq 0 ]] && echo "[#4354] sandbox check ok: no real CLI called, real ~/.claude/projects unchanged"
+    CORAL_TEST_SANDBOX_CHECKED=1   # so the EXIT trap does not run the check a second time
     return $_fail
 }
 
 coral_test_sandbox_cleanup() {
+    # INFO 3 (#4354): a crash skips the harness's explicit end check. Run it here (from the EXIT trap)
+    # if it has not run, so a leak still prints loudly. It only prints -- it does not change the exit
+    # status, so an already-failing run keeps its code and a clean run's failure is surfaced by the
+    # explicit end check, which every wired harness calls.
+    if [[ -z "${CORAL_TEST_SANDBOX_CHECKED:-}" && -n "${CORAL_TEST_STUB_BIN:-}" ]]; then
+        coral_test_sandbox_check || true
+    fi
     [[ -n "${CORAL_TEST_HOME:-}" ]] && rm -rf "$CORAL_TEST_HOME"
     [[ -n "${CORAL_TEST_STUB_BIN:-}" ]] && rm -rf "$CORAL_TEST_STUB_BIN"
 }

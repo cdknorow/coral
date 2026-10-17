@@ -22,6 +22,10 @@ fi
 GO="${GO:-$HOME/go-install/go/bin/go}"
 REPO="${REPO:-$HOME/coral}"
 CORALGO="$REPO/coral-go"
+# #4354 mock-agent sandbox: this harness starts a server (which resumes seeded sessions), so it runs
+# under an isolated HOME with a stub for every agent CLI first on PATH; a CLI reach hits the stub, not
+# the operator's real CLI, and the end check fails the run if it was hit.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/mock_sandbox.sh"
 # Epoch rule (tests/EPOCH.md): keep temp + seeded data under /sd2/$USER/qa-tmp (830 GB free,
 # not the ~92%-full /), delete on exit. Fall back to /tmp when /sd2 is absent (a non-epoch box).
 QA_BASE="${QA_BASE:-$([ -d "/sd2/$USER" ] && echo "/sd2/$USER/qa-tmp" || echo /tmp)}"
@@ -62,6 +66,7 @@ cleanup() {
   rm -rf "$CORALGO/cmd/qa3713seed" 2>/dev/null
   # Delete the run's data on exit (tests/EPOCH.md); the table and pass/fail are on stdout.
   [[ "${KEEP_TEST_DATA:-0}" == 1 ]] && log "KEEP_TEST_DATA=1: left $QA and $WORK" || rm -rf "$QA" "$WORK" 2>/dev/null
+  coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir (runs the check too on a crash)
 }
 trap cleanup EXIT
 
@@ -85,8 +90,10 @@ log "seeding dataset: $NSESS sessions ($NBIG x ${BIGMB}MB transcripts), $FILESN 
 cp "$TARGETS" "$WORK/targets.json"
 
 # ---- start server ----
+coral_test_sandbox   # #4354: isolated HOME + stub-CLI PATH
 log "starting server on $BASE (isolated data dir, cloud off)"
 env -u CORAL_CLOUD_URL \
+  HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
   CORAL_DATA_DIR="$DATADIR" \
   CLAUDE_PROJECTS_DIR="$PROJECTS" \
   CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
@@ -179,5 +186,6 @@ sys.exit(1 if bad else 0)
 PY
 BUDGET_RC=$?
 if [[ $BUDGET_RC -ne 0 ]]; then log "BUDGET CHECK FAILED (a p95 is over budget)"; else log "all p95 budgets met"; fi
+coral_test_sandbox_check || { log "FAIL (#4354): a real agent CLI on PATH was reached during the latency run"; BUDGET_RC=1; }
 log "done. artifacts in $WORK (idle.csv, hog.csv, targets.json, server.log)"
 exit $BUDGET_RC

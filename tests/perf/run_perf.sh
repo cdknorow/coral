@@ -36,6 +36,10 @@ fi
 GO="${GO:-$HOME/go-install/go/bin/go}"
 REPO="${REPO:-$HOME/coral}"
 CORALGO="$REPO/coral-go"
+# #4354 mock-agent sandbox: this harness starts a server and sessions, so it runs under an isolated
+# HOME with a stub for every agent CLI first on PATH; a CLI reach falls on the stub, never the
+# operator's real CLI, and the end check fails the run if the stub was hit.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/mock_sandbox.sh"
 # Epoch rule (tests/EPOCH.md): keep temp + seeded data under /sd2/$USER/qa-tmp (830 GB free,
 # not the ~92%-full /), delete on exit. Fall back to /tmp when /sd2 is absent (a non-epoch box).
 QA_BASE="${QA_BASE:-$([ -d "/sd2/$USER" ] && echo "/sd2/$USER/qa-tmp" || echo /tmp)}"
@@ -90,6 +94,7 @@ cleanup() {
   else
     log "KEEP_PERF_DATA=1: left $QA and $WORK"
   fi
+  coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir (runs the check too on a crash)
 }
 trap cleanup EXIT
 
@@ -98,6 +103,7 @@ start_server() {
   local label="$1" straceout="${2:-}"
   : > "$SERVER_LOG"
   local env_cmd=(env -u CORAL_CLOUD_URL GODEBUG=gctrace=1
+    HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH"
     CORAL_DATA_DIR="$DATADIR" CLAUDE_PROJECTS_DIR="$PROJECTS"
     CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 CORAL_DEBUG=1
     CORAL_PPROF_ADDR="127.0.0.1:$PPROF_PORT")
@@ -157,6 +163,7 @@ log "bulk: $NMSG board messages, $NEVENT agent events (server stopped)"
 python3 "$HERE/bulk.py" "$DATADIR" "$TARGETS" "$NMSG" "$NEVENT" || exit 1
 
 # ============ Phase A: idle ============
+coral_test_sandbox   # #4354: isolated HOME + stub-CLI PATH for every start_server below
 log "=== Phase A (idle) ==="
 start_server A || exit 1
 log "warm-up ${WARMUP_S}s (indexer, pollers)"; sleep "$WARMUP_S"
@@ -200,5 +207,6 @@ stop_server
 
 # ============ The table ============
 log "========================= BASELINE TABLE ========================="
+coral_test_sandbox_check || { log "FAIL (#4354): a real agent CLI on PATH was reached during the perf run"; exit 1; }
 GO="$GO" python3 "$HERE/table.py" "$OUT" "$QA/coral" "$STRACE_S" "$TABS" "$NSESS" "$NMSG" "$NEVENT" "$(cat /proc/loadavg)"
 log "artifacts in $OUT (cpu_*.pprof, *.csv, strace_C.txt, tabs_*.txt, ps_*.txt) — removed on exit unless KEEP_PERF_DATA=1"
