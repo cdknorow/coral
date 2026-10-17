@@ -170,8 +170,7 @@ func CoralToolsSource() (dir, source string) {
 // single quote with the POSIX apostrophe-backslash-apostrophe-apostrophe sequence.
 // Inside single quotes, POSIX shells perform no expansion at all, so this is
 // the right way to pass arbitrary values such as
-// URLs and paths through an `export` line. Prefer this over SanitizeShellValue
-// for anything that may legitimately contain ':' or '/'.
+// URLs and paths through an `export` line.
 func singleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
@@ -213,21 +212,6 @@ func formatCatSubstitution(path string) string {
 	default:
 		return fmt.Sprintf("$(cat %s)", shellQuoteLiteral(path))
 	}
-}
-
-// SanitizeShellValue strips characters that could enable shell injection.
-// Only allows alphanumeric characters, hyphens, underscores, dots, and spaces.
-// This is used for values interpolated into shell command strings.
-func SanitizeShellValue(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
-			r == '-' || r == '_' || r == '.' || r == ' ' {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 
 // PrefixWithPathEnv returns a shell command prefix that prepends the given

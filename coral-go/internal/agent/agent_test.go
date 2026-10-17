@@ -1125,33 +1125,6 @@ func TestTranslateToClaudePermissions_ShellPattern(t *testing.T) {
 	}
 }
 
-// ── TranslatePermissions Dispatcher Tests ───────────────────
-
-func TestTranslatePermissions_Claude(t *testing.T) {
-	if _, ok := TranslatePermissions("claude", &Capabilities{Allow: []string{CapFileRead}}).(*ClaudePermissions); !ok {
-		t.Error("expected *ClaudePermissions")
-	}
-}
-
-func TestTranslatePermissions_Codex(t *testing.T) {
-	cp, ok := TranslatePermissions("codex", &Capabilities{Allow: []string{CapShell}}).(*CodexPermissions)
-	if !ok || !cp.FullAuto {
-		t.Error("expected CodexPermissions with FullAuto")
-	}
-}
-
-func TestTranslatePermissions_Agy(t *testing.T) {
-	if _, ok := TranslatePermissions("agy", &Capabilities{Allow: []string{CapFileRead}}).(*AgyPermissions); !ok {
-		t.Error("expected *AgyPermissions")
-	}
-}
-
-func TestTranslatePermissions_NilCaps(t *testing.T) {
-	if cp, ok := TranslatePermissions("claude", nil).(*ClaudePermissions); ok && cp != nil {
-		t.Error("expected nil inner value")
-	}
-}
-
 // ── Capabilities.IsEmpty Tests ──────────────────────────────
 
 func TestCapabilities_IsEmpty(t *testing.T) {
@@ -1187,6 +1160,21 @@ func TestPresets_FullAccessHasAll(t *testing.T) {
 			t.Errorf("full_access missing %s", cap)
 		}
 	}
+}
+
+// translatePreset is the translation each agent's launch makes (TranslateTo<Agent>Permissions).
+func translatePreset(t *testing.T, agentType string, caps *Capabilities) any {
+	t.Helper()
+	switch agentType {
+	case "claude":
+		return TranslateToClaudePermissions(caps)
+	case "codex":
+		return TranslateToCodexPermissions(caps)
+	case "agy":
+		return TranslateToAgyPermissions(caps)
+	}
+	t.Fatalf("no translation for %q", agentType)
+	return nil
 }
 
 func TestPresetTranslations(t *testing.T) {
@@ -1267,35 +1255,8 @@ func TestPresetTranslations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.check(t, TranslatePermissions(tt.agentType, Presets[tt.preset]))
+			tt.check(t, translatePreset(t, tt.agentType, Presets[tt.preset]))
 		})
-	}
-}
-
-// ── SanitizeShellValue Tests ────────────────────────────────
-
-func TestSanitizeShellValue_Clean(t *testing.T) {
-	if got := SanitizeShellValue("my-session_123"); got != "my-session_123" {
-		t.Errorf("got %q", got)
-	}
-}
-
-func TestSanitizeShellValue_StripsDangerousChars(t *testing.T) {
-	tests := []struct {
-		input, expected string
-	}{
-		{`$(whoami)`, "whoami"},
-		{"`id`", "id"},
-		{`role"; rm -rf /; echo "`, "role rm -rf  echo "},
-		{"a'b", "ab"},
-		{"a;b", "ab"},
-		{"a|b", "ab"},
-		{"a&b", "ab"},
-	}
-	for _, tt := range tests {
-		if got := SanitizeShellValue(tt.input); got != tt.expected {
-			t.Errorf("SanitizeShellValue(%q) = %q, want %q", tt.input, got, tt.expected)
-		}
 	}
 }
 

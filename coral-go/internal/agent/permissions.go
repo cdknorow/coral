@@ -2,8 +2,6 @@ package agent
 
 import (
 	"strings"
-
-	at "github.com/cdknorow/coral/internal/agenttypes"
 )
 
 // Capability represents a Coral-level permission capability.
@@ -102,37 +100,6 @@ func mapCapToClaudeTools(cap string) []string {
 	default:
 		// Pass through unknown capabilities as-is (future-proof)
 		return []string{cap}
-	}
-}
-
-// TranslatePermissions dispatches capability translation to the appropriate
-// agent-specific translator. Returns nil if no translation is needed.
-func TranslatePermissions(agentType string, caps *Capabilities) any {
-	// Ensure every agent can use coral-board for message board communication
-	if caps != nil {
-		hasBoardCap := false
-		for _, c := range caps.Allow {
-			if c == "shell:coral-board *" {
-				hasBoardCap = true
-				break
-			}
-		}
-		if !hasBoardCap {
-			caps.Allow = append(caps.Allow, "shell:coral-board *")
-		}
-	}
-
-	switch agentType {
-	case at.Claude:
-		return TranslateToClaudePermissions(caps)
-	case at.Codex:
-		return TranslateToCodexPermissions(caps)
-	case at.Agy, at.Antigravity, at.Gemini:
-		return TranslateToAgyPermissions(caps)
-	case at.Pi:
-		return nil
-	default:
-		return TranslateToClaudePermissions(caps)
 	}
 }
 
