@@ -11,11 +11,17 @@ name: fuzz-nightly
 # cache a scheduled run wrote could be read by a release, #4251). It never commits: a crash is made
 # visible by uploading the crasher and failing the job.
 #
-# Replaying a crasher locally:
+# Lifetime: GitHub disables a scheduled workflow after 60 days with no repository activity (a commit on
+# the default branch); a push or a manual run (Actions > fuzz-nightly > Run workflow) re-enables it. If
+# the nightly goes quiet on a slow repo, that is why.
+#
+# Replaying a crasher locally. A crasher is a HOSTILE input by design (that is what the fuzzer was
+# looking for): do not open it in an editor, a viewer or a shell -- hand it only to the Go test, which
+# feeds it to the target function in a sandbox and never executes it.
 #   1. Open the failed job, download its "fuzz-crashers-<target>" artifact, and unzip it.
 #   2. Copy the crasher file it contains (testdata/fuzz/<Target>/<id>) into your checkout at the
 #      same path: coral-go/internal/server/routes/testdata/fuzz/<Target>/<id>
-#   3. Re-run just that input (it fails the same way, fast, no fuzzing):
+#   3. Re-run just that input through the test (it fails the same way, fast, no fuzzing):
 #        cd coral-go && go test -tags fts5 -run '<Target>/<id>' ./internal/server/routes/
 #      e.g. go test -tags fts5 -run 'FuzzStripJPEG/5bd3151860' ./internal/server/routes/
 #   Or fuzz the target yourself: go test -tags fts5 -run '^$' -fuzz '^<Target>$' ./internal/server/routes/
@@ -40,7 +46,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzStripJPEG, FuzzStripPNG, FuzzStripGIF, FuzzGateReceived]
+        # The image strippers and the receive gate (#4380), and the cross-team receive frame (#4389):
+        # the metadata parser and the whole-frame handler.
+        target: [FuzzStripJPEG, FuzzStripPNG, FuzzStripGIF, FuzzGateReceived, FuzzParseReceivedMeta, FuzzReceiveExternalArtifactFrame]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -51,8 +59,10 @@ jobs:
           cache: false # nothing cached here: see the header
       - name: fuzz ${{ matrix.target }} for ~10 minutes
         working-directory: coral-go
+        env:
+          TARGET: ${{ matrix.target }} # into the shell as an env var, never interpolated into the run script
         run: |
-          go test -tags fts5 -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 10m ./internal/server/routes/
+          go test -tags fts5 -run '^$' -fuzz "^${TARGET}\$" -fuzztime 10m ./internal/server/routes/
       - name: upload the crasher on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
