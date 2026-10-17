@@ -863,10 +863,11 @@ function pollStartupStatus() {
             const data = await resp.json();
             if (!data || typeof data.startup_complete !== 'boolean') throw new SyntaxError('Invalid startup status');
             if (data.startup_complete) {
-                // The local sign-in banner's strip is settled before the page shows, so the terminal is sized once with it (or without it): a
-                // check that is slow or fails does not hold the page past 1.5 s (#4291).
-                await Promise.race([importOnce('./local_auth_banner.js').then(m => m.startLocalAuthBanner()), new Promise(r => setTimeout(r, 1500))]).catch(() => {});
-                el.classList.add('hidden');
+                // The local sign-in banner's strip is settled before the page shows, so the terminal is sized once with it (or without it). Only the
+                // startup overlay waits for it (a check that is slow or fails does not hold the page past 1.5 s): the rest of startup, the list load
+                // included, keeps the timing it had, so nothing else moves when the check is slow (#4291).
+                Promise.race([importOnce('./local_auth_banner.js').then(m => m.startLocalAuthBanner()), new Promise(r => setTimeout(r, 1500))])
+                    .catch(() => {}).then(() => el.classList.add('hidden'));
                 if (data.security_warning) showSecurityWarning(data.security_warning); // #3637
                 // The server checks its databases a minute after it starts (#4157): look again then.
                 if (data.database_warning) showDatabaseWarning(data.database_warning);
