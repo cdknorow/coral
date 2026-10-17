@@ -672,23 +672,17 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 // Uses paste-buffer -p which respects the pane's bracketed paste mode setting.
 func (c *Client) pasteToTarget(ctx context.Context, target, text string) error {
 	inputlog.Record(target, inputlog.Paste, text)
-	// Load text into tmux buffer via stdin
-	args := []string{"load-buffer", "-"}
+	// A private named buffer, deleted by the paste (-d) or on an error, as SendPrompt's (#4381,
+	// Security's #4371 SHOULD 2): the unnamed one stayed in tmux's buffer stack (its last 50), on a
+	// tmux server that outlives Coral's upgrades.
 	countExec("load-buffer")
-	socketPath := c.SocketPath
-	if socketPath != "" {
-		args = append(socketArgs(socketPath), args...)
+	buffer, err := c.loadPromptBuffer(ctx, text)
+	if err != nil {
+		return err
 	}
-	bin := c.resolveTmuxBin()
-	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Env = tmuxEnv(bin)
-	cmd.Stdin = strings.NewReader(text)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("load-buffer failed: %w", err)
-	}
-
-	// Paste buffer into the target pane (-p = bracket paste aware)
-	if _, err := c.run(ctx, "paste-buffer", "-t", target, "-p"); err != nil {
+	// -p: bracketed paste where the pane asked for it.
+	if _, err := c.run(ctx, "paste-buffer", "-d", "-p", "-b", buffer, "-t", target); err != nil {
+		_, _ = c.run(context.WithoutCancel(ctx), "delete-buffer", "-b", buffer)
 		return fmt.Errorf("paste-buffer failed: %w", err)
 	}
 	return nil
