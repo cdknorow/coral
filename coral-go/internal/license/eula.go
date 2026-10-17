@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/term"
 
@@ -185,11 +186,14 @@ func CheckAndPromptEULA(showDialog func(tosText string) bool) bool {
 	return true
 }
 
+// powerShellQuote doubles every character PowerShell reads as a single quote: the ASCII apostrophe and U+2018, U+2019, U+201A and U+201B.
+var powerShellQuote = strings.NewReplacer("'", "''", "\u2018", "\u2018\u2018", "\u2019", "\u2019\u2019", "\u201a", "\u201a\u201a", "\u201b", "\u201b\u201b")
+
 // executablePath is the running program's path; a variable so a test can name one.
 var executablePath = os.Executable
 
 // eulaCommandLines are the lines a person can paste into a terminal to be asked: this very program, quoted for the shell it runs in (#4360). A path with a
-// control character in it (a newline, a carriage return, an escape, anything under 0x20, or 0x7f) is never printed as it is, so a hostile path cannot rewrite
+// control character in it (anything unicode.IsPrint refuses except an ordinary space: a newline, an escape, 0x7f, a C1 control, U+2028 or U+2029, a bidi or zero-width character) is never printed as it is, so a hostile path cannot rewrite
 // the terminal or smuggle in a second command: the program's usual name stands in. On Windows both forms are given, PowerShell's call operator with a
 // single-quoted path (an apostrophe doubled) and the Command Prompt's double-quoted path; elsewhere one POSIX single-quoted form when a shell would split
 // or expand the path.
@@ -198,13 +202,13 @@ func eulaCommandLines(goos, path string) []string {
 		return []string{"coral"}
 	}
 	for _, r := range path {
-		if r < 0x20 || r == 0x7f {
+		if r != ' ' && !unicode.IsPrint(r) {
 			return []string{"coral"}
 		}
 	}
 	if goos == "windows" {
 		return []string{
-			"PowerShell:      & '" + strings.ReplaceAll(path, "'", "''") + "'",
+			"PowerShell:      & '" + powerShellQuote.Replace(path) + "'",
 			"Command Prompt:  \"" + path + "\"",
 		}
 	}

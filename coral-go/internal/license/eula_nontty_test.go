@@ -55,7 +55,7 @@ func TestEULACommandLines(t *testing.T) {
 // A path with a control character is never printed raw, on any OS: a newline would start a second command line, an escape could rewrite the terminal.
 func TestEULACommandLinesNeverPrintAControlCharacter(t *testing.T) {
 	for _, goos := range []string{"linux", "darwin", "windows"} {
-		for _, bad := range []string{"/tmp/a\nb/coral", "/tmp/a\rb/coral", "/tmp/a\x1b[2Jb/coral", "/tmp/a\x00b/coral", "/tmp/a\x7fb/coral", "C:\\x\x1fy\\coral.exe", "/tmp/tab\there/coral"} {
+		for _, bad := range []string{"/tmp/a\nb/coral", "/tmp/a\rb/coral", "/tmp/a\x1b[2Jb/coral", "/tmp/a\x00b/coral", "/tmp/a\x7fb/coral", "C:\\x\x1fy\\coral.exe", "/tmp/tab\there/coral", "/tmp/c1\u0085x/coral", "/tmp/ls\u2028x/coral", "/tmp/ps\u2029x/coral", "/tmp/bidi\u202ex/coral", "/tmp/zw\u200bx/coral", "/tmp/zwj\u200dx/coral"} {
 			got := eulaCommandLines(goos, bad)
 			if len(got) != 1 || got[0] != "coral" {
 				t.Errorf("%s %q must fall back to the word coral, got %q", goos, bad, got)
@@ -105,6 +105,17 @@ func TestTerminalEULADialogNonTTYNamesTheCommand(t *testing.T) {
 	for _, want := range []string{"not been accepted", "type 'accept'", "'/opt/coral dir/coral'"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the message %q lacks %q", msg, want)
+		}
+	}
+}
+
+// PowerShell reads the curly single quotes as delimiters too, so each is doubled like the apostrophe (O'Brien, with each spelling).
+func TestEULACommandLinesPowerShellCurlyQuotes(t *testing.T) {
+	for _, q := range []string{"'", "\u2018", "\u2019", "\u201a", "\u201b"} {
+		got := eulaCommandLines("windows", "C:\\Users\\O"+q+"Brien\\coral.exe")
+		want := "PowerShell:      & 'C:\\Users\\O" + q + q + "Brien\\coral.exe'"
+		if len(got) != 2 || got[0] != want {
+			t.Errorf("quote %q: got %q, want first line %q", q, got, want)
 		}
 	}
 }
