@@ -95,8 +95,11 @@ export function loadLiveSessions(onFailure) {
 async function _loadLiveSessions(onFailure) {
     let rendering = false;
     try {
-        await initHub();
+        // /api/health (is this a hub?) and the list are asked for together: the list used to wait for the health answer, one more round trip
+        // before the first paint (#4326). The list is read only once the flag is known.
+        const hubReady = initHub();
         const raw = await apiFetchValidated("/api/sessions/live");
+        await hubReady;
         // With remotes registered the list may arrive as {sessions, servers}.
         const sessions = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.sessions) ? raw.sessions : null);
         if (!sessions) throw new SyntaxError('Invalid live session list');
