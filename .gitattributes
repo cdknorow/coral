@@ -14,3 +14,5 @@ tests/windows/windows_only_tests.sh text eol=lf
 *.golden text eol=lf
 coral-go/pkg/tunnel/routes_query.go text eol=lf
 coral-go/internal/auth/testdata/*.html text eol=lf
+# The health check's adversarial fixture is checked byte for byte (TestAdversarialFixtureFileHasNoLiteralInvisibles): no CRLF on Windows checkouts (#4175).
+coral-go/internal/teamhealth/testdata/** -text
