@@ -213,6 +213,24 @@ func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) err
 
 	liveSessions := make(map[string]bool)
 
+	// Every agent's subscription and unread count in one batch (#4121): one query for the
+	// subscriptions and one read per board, instead of several statements per agent. A failed
+	// batch falls back to the lookups one agent at a time.
+	var names []string
+	for _, a := range agents {
+		if a.SessionID == "" || a.AgentType == "terminal" {
+			continue
+		}
+		if sn := naming.SessionName(a.AgentType, a.SessionID); onBoards == nil || onBoards[sn] {
+			names = append(names, sn)
+		}
+	}
+	batch, batchErr := n.boardStore.UnreadForSessions(ctx, names)
+	if batchErr != nil {
+		n.logger.Warn("batched unread counts failed; counting one agent at a time", "error", batchErr)
+		batch = nil
+	}
+
 	for _, a := range agents {
 		if a.SessionID == "" {
 			n.logger.Debug("skipping agent with no session ID", "agent", a.AgentName)
@@ -234,7 +252,16 @@ func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) err
 		// Do not fall back to subscriber_id: legacy rows may have an empty or
 		// stale session_name, and inferring ownership from a display name can
 		// deliver another agent's unread messages.
-		sub, err := n.boardStore.GetSubscriptionBySessionName(ctx, sessName)
+		var sub *board.Subscriber
+		var batched *board.SessionUnread
+		if batch != nil {
+			if b, ok := batch[sessName]; ok {
+				sub, batched = b.Sub, &b
+			}
+			err = nil
+		} else {
+			sub, err = n.boardStore.GetSubscriptionBySessionName(ctx, sessName)
+		}
 		if err != nil {
 			n.logger.Warn("subscription lookup failed", "subscriber_id", subscriberID, "session_name", sessName, "error", err)
 			continue
@@ -259,7 +286,12 @@ func (n *BoardNotifier) runPass(ctx context.Context, boards map[string]bool) err
 			continue
 		}
 
-		unread, err := n.boardStore.CheckUnread(ctx, sub.Project, subscriberID)
+		var unread int
+		if batched != nil {
+			unread, err = batched.Unread, batched.Err
+		} else {
+			unread, err = n.boardStore.CheckUnread(ctx, sub.Project, subscriberID)
+		}
 		if err != nil {
 			n.logger.Warn("check unread failed", "subscriber_id", subscriberID, "error", err)
 			continue
