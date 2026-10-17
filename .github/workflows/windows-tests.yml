@@ -59,4 +59,5 @@ jobs:
           grep -E -- "small 2 KB reply|--- FAIL|Error:|^(ok|FAIL)" up.log | head -60
           go test -tags fts5 -count=50 -run 'TestRedactedJSON' ./pkg/tunnel || rc=1
           go test -tags fts5 -count=1 ./internal/peercred ./internal/server/routes -run 'PCB|TestWSCoral_RemoteBurstIsStillCoalesced' || rc=1
+          go test -tags fts5 -count=50 -run '^TestTask1589_CodexActivityAssociation$' ./internal/jsonl || rc=1
           exit $rc
