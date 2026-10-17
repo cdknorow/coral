@@ -27,6 +27,7 @@ import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode, effectiveLive
 import { agentViewVisible, onAgentView } from './agent_view.js';
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
+import { syncSessionOverlay } from './session_overlay.js';
 import { loadXterm, xtermReady, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
 import { agentSwitchStarted, agentViewReady } from './ready.js';
 import { getRendererMode } from './renderers.js';
@@ -60,7 +61,10 @@ onAgentView('coral:terminal-wanted', attachTerminalIfWanted);
 // The view is shown just before an agent tap's selectLiveSession runs: wait a tick, so the terminal that attaches
 // is the one for the agent being selected, not the one left behind.
 onAgentView('coral:agent-view-shown', () => setTimeout(attachTerminalIfWanted, 0));
-onAgentView('coral:terminal-unwanted', () => { if (_terminalStarted) closeTerminalSocket(); });
+onAgentView('coral:terminal-unwanted', () => {
+    if (_terminalStarted) closeTerminalSocket();
+    if (!isPopout()) syncSessionOverlay(); // Chat view: no "Session ended" over the transcript; a restart in progress still shows
+});
 onAgentView('coral:agent-view-hidden', () => { if (_terminalStarted) closeTerminalSocket(); });
 
 export async function selectLiveSession(name, agentType, sessionId, server) {
@@ -177,6 +181,8 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     // Keep the sleeping placeholder over the awake one just set.
     if (state.currentSession.sleeping && !isPopout()) applySleepingView(true);
 
+    // One overlay serves every agent: the new one's own state (restarting or not) replaces the previous agent's (#4481).
+    if (!isPopout()) syncSessionOverlay();
     // Reset summary/status before loading new session detail
     const summaryEl = document.getElementById("session-summary");
     if (summaryEl) summaryEl.style.display = "none";

@@ -2,6 +2,7 @@
 
 import { setTerminalFocused, setTerminalSize, setTerminalState } from './terminal_statusbar.js';
 import { state } from './state.js';
+import { markRestarting, currentIsRestarting, showRestartingOverlay, hideSessionOverlay } from './session_overlay.js';
 import { isInteractiveOwner, claimOwnership, ownershipSessionId } from './ownership.js';
 import { dbg, showToast } from './utils.js';
 import { normServer, serverWsBase, sessionServer } from './server_base.js';
@@ -298,17 +299,17 @@ let _termFailures = 0;
 let _termFailureSession = null;
 export const terminalHooks = { schedule: (fn, ms) => setTimeout(fn, ms) };
 let _paneClosed = false;  // true when server reports pane is gone
-let _restarting = false;  // true when a restart is in progress
 let _needsScrollToBottom = false;  // set on connect, cleared after settling
 let _bottomWhenHidden = null;      // while the container is hidden: whether it was at the bottom
 let _scrollSettleTimer = null;
 
-export function setRestarting(value) {
-    _restarting = value;
-    if (value) {
-        // Show restarting overlay immediately
-        _setSessionEndedOverlay(true);
-    }
+// A restart of the agent with this session id starts or ends (#4481). The overlay follows the agent on screen: ending a restart
+// of another agent leaves it alone, and so does starting one.
+export function setRestarting(value, sessionId = state.currentSession && state.currentSession.session_id) {
+    markRestarting(sessionId, value);
+    if (!state.currentSession || state.currentSession.session_id !== sessionId) return;
+    if (value) _setSessionEndedOverlay(true);
+    else hideSessionOverlay();
 }
 
 function _setSessionEndedOverlay(visible) {
@@ -316,32 +317,36 @@ function _setSessionEndedOverlay(visible) {
     if (!overlay) return;
     if (visible) setTerminalState('ended');
 
-    if (visible && !_restarting) {
+    if (visible && !currentIsRestarting()) {
         // Before showing "Session ended", check if we can reach the server.
         // If we can't, show "Lost connection" instead of "Restart Agent".
+        const forSession = state.currentSession && state.currentSession.session_id;
+        const stillHere = () => !!state.currentSession && state.currentSession.session_id === forSession; // the answer of a switched-away agent shows nothing
         fetch("/api/sessions", { method: "GET", signal: AbortSignal.timeout(3000) })
             .then(() => {
+                if (!stillHere()) return;
                 overlay.style.display = "";
                 const defaultContent = document.getElementById("session-ended-default");
                 const lostConn = document.getElementById("session-lost-connection");
+                const restartingContent = document.getElementById("session-restarting");
+                if (restartingContent) restartingContent.style.display = "none";
                 if (defaultContent) defaultContent.style.display = "";
                 if (lostConn) lostConn.style.display = "none";
             })
             .catch(() => {
+                if (!stillHere()) return;
                 overlay.style.display = "";
                 const defaultContent = document.getElementById("session-ended-default");
                 const lostConn = document.getElementById("session-lost-connection");
+                const restartingContent = document.getElementById("session-restarting");
+                if (restartingContent) restartingContent.style.display = "none";
                 if (defaultContent) defaultContent.style.display = "none";
                 if (lostConn) lostConn.style.display = "";
             });
-    } else if (visible && _restarting) {
-        overlay.style.display = "";
-        const defaultContent = document.getElementById("session-ended-default");
-        const restartingContent = document.getElementById("session-restarting");
-        const lostConn = document.getElementById("session-lost-connection");
-        if (defaultContent) defaultContent.style.display = "none";
-        if (restartingContent) restartingContent.style.display = "";
-        if (lostConn) lostConn.style.display = "none";
+    } else if (visible) {
+        showRestartingOverlay();
+    } else if (currentIsRestarting()) {
+        showRestartingOverlay(); // a terminal that attaches to an agent still restarting does not take its overlay away
     } else {
         overlay.style.display = "none";
     }
@@ -691,7 +696,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             }
             if (terminal) {
                 _paneClosed = false;
-                _restarting = false;
+                markRestarting(sessionId, false);
                 _setSessionEndedOverlay(false);
                 // xterm parses writes later: scroll once this chunk is in the buffer (#3464).
                 terminal.write(new Uint8Array(event.data), () => { if (_needsScrollToBottom && terminal) terminal.scrollToBottom(); });

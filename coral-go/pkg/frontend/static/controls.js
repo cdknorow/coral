@@ -1,4 +1,5 @@
 import { importOnce } from './import_once.js';
+import { moveRestarting } from './session_overlay.js';
 import { dashboardPromptRequested } from './dashboard_analytics.js';
 /* Quick actions, command sending, mode toggling, and session controls */
 
@@ -590,15 +591,41 @@ export function hideRestartModal() {
     document.getElementById("restart-modal").style.display = "none";
 }
 
+// Polls until the replacement session is live, then ends its restart (the overlay goes if that agent is on screen) and runs onLive; ~30 s at most.
+function watchRestarted(xtermMod, name, sessionId, agentType, onLive) {
+    let pollCount = 0;
+    const pollInterval = pollEvery(async () => {
+        pollCount++;
+        try {
+            // The detail route needs the exact target, agent_type with session_id; without it the
+            // answer is 400 and the terminal never reattached after a restart (#3469).
+            const liveResp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(name)}?session_id=${encodeURIComponent(sessionId)}&agent_type=${encodeURIComponent(agentType || '')}`);
+            if (liveResp.ok) {
+                clearInterval(pollInterval);
+                xtermMod.setRestarting(false, sessionId);
+                onLive();
+                return;
+            }
+        } catch (_) { /* ignore fetch errors during poll */ }
+        if (pollCount >= 15) {
+            // Timeout after ~30s: the overlay goes and the Operator is told
+            clearInterval(pollInterval);
+            xtermMod.setRestarting(false, sessionId);
+            showToast("Restart timed out — session may not have started", true);
+        }
+    }, 2000, { whenHidden: true }); // follows a Restart the user just asked for
+}
+
 export async function confirmRestart() {
     const config = window.getAgentConfig ? window.getAgentConfig('restart-acf') : {};
 
     hideRestartModal();
 
+    const restartId = state.currentSession && state.currentSession.session_id;
     try {
         // Show restarting overlay instead of session-ended
         const xtermMod = await _getXtermModule();
-        if (xtermMod.setRestarting) xtermMod.setRestarting(true);
+        if (xtermMod.setRestarting) xtermMod.setRestarting(true, restartId);
         showToast(`Restarting ${state.currentSession.name}...`);
         const payload = { agent_type: config.agentType || state.currentSession.agent_type, session_id: state.currentSession.session_id };
         if (config.flags) {
@@ -614,7 +641,15 @@ export async function confirmRestart() {
         });
         const result = await resp.json();
         if (result.error) {
+            xtermMod.setRestarting(false, restartId);
             showToast(result.error, true);
+        } else if (!state.currentSession || state.currentSession.session_id !== restartId) {
+            // The Operator switched to another agent while this one restarted: the screen belongs to that agent now, so nothing of it is
+            // touched; the restarting mark moves to the replacement session and ends when that one is live (#4481).
+            const replacement = result.session_id || restartId;
+            moveRestarting(restartId, replacement);
+            const name = result.session_name || result.agent_name || '';
+            watchRestarted(xtermMod, name, replacement, config.agentType || payload.agent_type, () => {});
         } else {
             // A restarted sleeping agent is running again
             state.currentSession.sleeping = false;
@@ -622,6 +657,7 @@ export async function confirmRestart() {
             // Update state with the new session_id (tmux session was renamed)
             if (result.session_id) {
                 state.currentSession.session_id = result.session_id;
+                moveRestarting(restartId, result.session_id); // the restart is now the replacement session's
             }
             if (config.agentType) {
                 state.currentSession.agent_type = config.agentType;
@@ -651,29 +687,13 @@ export async function confirmRestart() {
             const newName = state.currentSession.name;
             const newSessionId = state.currentSession.session_id;
             const newAgentType = state.currentSession.agent_type;
-            let pollCount = 0;
-            const pollInterval = pollEvery(async () => {
-                pollCount++;
-                try {
-                    // The detail route needs the exact target, agent_type with session_id; without it the
-                    // answer is 400 and the terminal never reattached after a restart (#3469).
-                    const liveResp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(newName)}?session_id=${encodeURIComponent(newSessionId)}&agent_type=${encodeURIComponent(newAgentType || '')}`);
-                    if (liveResp.ok) {
-                        clearInterval(pollInterval);
-                        // Chat view has no terminal socket to take over (#3719): the Terminal view attaches when it is shown.
-                        if (effectiveLiveViewMode() === 'terminal') xtermMod.connectTerminalWs(state.currentSession.tmux_session || newName, newAgentType, newSessionId, currentServer());
-                        else xtermMod.setRestarting(false);
-                    }
-                } catch (_) { /* ignore fetch errors during poll */ }
-                if (pollCount >= 15) {
-                    // Timeout after ~30s — clear overlay and show error
-                    clearInterval(pollInterval);
-                    xtermMod.setRestarting(false);
-                    showToast("Restart timed out — session may not have started", true);
-                }
-            }, 2000, { whenHidden: true }); // follows a Restart the user just asked for
+            watchRestarted(xtermMod, newName, newSessionId, newAgentType, () => {
+                // Chat view has no terminal socket to take over (#3719): the Terminal view attaches when it is shown.
+                if (state.currentSession && state.currentSession.session_id === newSessionId && effectiveLiveViewMode() === 'terminal') xtermMod.connectTerminalWs(state.currentSession.tmux_session || newName, newAgentType, newSessionId, currentServer());
+            });
         }
     } catch (e) {
+        if (restartId) _getXtermModule().then((m) => m.setRestarting(false, restartId)).catch(() => {});
         showToast("Failed to restart session", true);
         console.error("confirmRestart exception:", e);
     }
