@@ -170,7 +170,7 @@ export function applyTerminalDot(dot, s) {
     dot.setAttribute('role', 'img');
     dot.setAttribute('aria-label', info.label);
     const word = document.getElementById('terminal-state-word');
-    if (word) word.dataset.word = info.label;
+    if (word) word.setAttribute('data-word', info.label);
 }
 
 export function getMobileStatusChip(s) {
