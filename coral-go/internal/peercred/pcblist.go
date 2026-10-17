@@ -52,12 +52,19 @@ func parsePCBList(b []byte, client, server netip.AddrPort, le bool) (int, error)
 		return -1, fmt.Errorf("peercred: pcblist of %d bytes", len(b))
 	}
 	off := int(order.Uint32(b))
+	header := off // the list starts and ends with an xinpgen of this length
 	uid, found, pending := -1, false, false
 	for off+8 <= len(b) {
 		n := int(order.Uint32(b[off:]))
 		kind := order.Uint32(b[off+4:])
 		if n < 8 || off+n > len(b) {
-			break // the trailing xinpgen, or a short read
+			break // a short read
+		}
+		if n == header && off+n == len(b) {
+			// The trailing xinpgen. Its second word is the socket count, not an item kind:
+			// with exactly 16 sockets it reads as XSO_INPCB (0x10) and was taken for an inpcb
+			// of an unknown size, so every owner check failed (#4136, a macOS CI flake).
+			break
 		}
 		item := b[off : off+n]
 		switch kind {

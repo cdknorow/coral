@@ -51,7 +51,25 @@ func pcbList(o binary.ByteOrder, pcbs ...pcb) []byte {
 		}
 		b = append(b, item(0x020, 208)...) // the tcpcb, ignored
 	}
-	return append(b, item(0, 24)[:24]...) // the trailing xinpgen
+	return append(b, item(uint32(len(pcbs)), 24)...) // the trailing xinpgen: {len, socket count, gen, sogen}
+}
+
+// #4136: the trailing xinpgen's second word is the socket count. With 16 sockets it equals
+// XSO_INPCB, and the trailer was read as an inpcb item of 24 bytes: an unknown layout, so the
+// owner check failed whenever the computer had exactly 16 TCP sockets (seen on a macOS runner).
+func TestParsePCBListTrailerIsNotAnItem(t *testing.T) {
+	client := netip.MustParseAddrPort("127.0.0.1:51234")
+	server := netip.MustParseAddrPort("127.0.0.1:8420")
+	for count := 1; count <= 40; count++ {
+		var pcbs []pcb
+		for i := 0; i < count-1; i++ {
+			pcbs = append(pcbs, pcb{inpIPv4, netip.AddrPortFrom(client.Addr(), uint16(40000+i)), server, 0, false})
+		}
+		pcbs = append(pcbs, pcb{inpIPv4, client, server, 501, false})
+		uid, err := parsePCBList(pcbList(binary.LittleEndian, pcbs...), client, server, true)
+		require.NoError(t, err, "%d sockets", count)
+		assert.Equal(t, 501, uid, "%d sockets", count)
+	}
 }
 
 func TestParsePCBList(t *testing.T) {
