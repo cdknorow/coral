@@ -7,6 +7,7 @@ const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
 const NOTE = "Its terminal log is kept, in the logs folder of Coral's data folder.";
+const NOTE_MANY = "Their terminal logs are kept, in the logs folder of Coral's data folder.";
 
 (async () => {
     const { client, Page, ev, waitFor, PRELOAD, install, reqs, clearReqs } = await connect();
@@ -23,15 +24,17 @@ const NOTE = "Its terminal log is kept, in the logs folder of Coral's data folde
             window.__m.add('team-agent', 'K', 3, { sleeping: false, session_id: 't1', board_project: 'team-k' });
             T.render.renderLiveSessions(T.state.liveSessions); true`);
         const open = `getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`;
-        const asked = async (label, start, title) => {
+        const asked = async (label, start, title, note = NOTE, says = '') => {
             await clearReqs();
             await ev(`(async () => { ${start}; return true; })()`);
             await waitFor(open, `the ${label} confirmation`, 8000);
             const d = await ev(`({ title: document.getElementById('confirm-modal-title').textContent, message: document.getElementById('confirm-modal-message').textContent })`);
             if (process.env.KILL_NOTE_SHOT) require('node:fs').writeFileSync(`${process.env.KILL_NOTE_SHOT}/${title.replace(/ /g, '-').toLowerCase()}-${label.includes('header') ? 'header' : 'x'}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
             assert.equal(d.title, title, `${label}: title`);
-            assert.ok(d.message.endsWith(NOTE), `${label}: the message ends with the log note: ${d.message}`);
-            assert.equal(d.message.split(NOTE).length, 2, `${label}: the note is said once`);
+            assert.ok(d.message.endsWith(note), `${label}: the message ends with the log note: ${d.message}`);
+            assert.equal(d.message.split(note).length, 2, `${label}: the note is said once`);
+            assert.ok(!d.message.includes('agent(s)'), `${label}: a count, not agent(s): ${d.message}`);
+            if (says) assert.ok(d.message.includes(says), `${label}: says ${says}: ${d.message}`);
             await ev(`document.querySelector('#confirm-modal .btn:not(#confirm-modal-yes)').click(); true`);
             await waitFor(`!(${open})`, `the ${label} confirmation to close`, 4000);
             assert.equal((await reqs()).filter(r => r.kind === 'kill').length, 0, `${label}: Cancel sends no kill`);
@@ -40,9 +43,9 @@ const NOTE = "Its terminal log is kept, in the logs folder of Coral's data folde
         console.log('Every Kill confirmation says what happens to the terminal log');
         await asked('Kill Session (sidebar row)', `T.render.killSessionDirect('repo', 'claude', 's1')`, 'Kill Session');
         await asked('Kill Session (agent header)', `T.state.currentSession = { type: 'live', name: 'repo', session_id: 's1', agent_type: 'claude' }; (await import((window.__coralStatic || '/static/') + 'controls.js')).killSession()`, 'Kill Session');
-        await asked('Kill All Agents (folder)', `T.render.killGroup('repo')`, 'Kill All Agents');
-        await asked('Kill Team', `T.render.killBoard('team-k')`, 'Kill Team');
-        await asked('Reset Team', `window.resetTeam('team-k')`, 'Reset Team');
+        await asked('Kill All Agents (folder)', `T.render.killGroup('repo')`, 'Kill All Agents', NOTE_MANY, 'Kill all 2 agents in');
+        await asked('Kill Team (one agent)', `T.render.killBoard('team-k')`, 'Kill Team', NOTE, 'Kill the 1 agent on board');
+        await asked('Reset Team', `window.resetTeam('team-k')`, 'Reset Team', NOTE_MANY);
         console.log('PASS');
     } catch (e) {
         console.error(e && e.stack || e);

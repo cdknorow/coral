@@ -70,6 +70,14 @@ function _getInitials(name) {
 // What Kill does with the agent's terminal log, said in every Kill confirmation (#4399): it is kept, on both terminal backends
 // (#4437: tmux's KillSession no longer removes it), in <data dir>/logs.
 export const KILL_LOG_NOTE = "Its terminal log is kept, in the logs folder of Coral's data folder.";
+// The same for a confirmation about several agents (Kill All Agents, Kill Team, Reset Team: Reset kills each agent and
+// starts it again under a new session id, so the old logs stay as they are).
+export const KILL_LOG_NOTE_MANY = "Their terminal logs are kept, in the logs folder of Coral's data folder.";
+
+// killCount is "the 1 agent" or "all 3 agents", and its log note to match.
+function killCount(n) {
+    return n === 1 ? { agents: 'the 1 agent', note: KILL_LOG_NOTE } : { agents: `all ${n} agents`, note: KILL_LOG_NOTE_MANY };
+}
 
 export function killSessionDirect(name, agentType, sessionId) {
     const server = serverForSession(name, sessionId);
@@ -253,7 +261,7 @@ export async function killGroup(groupName) {
 
     showConfirmModal(
         "Kill All Agents",
-        `Kill all ${groupSessions.length} agent(s) in "${groupName.startsWith('wf:') ? groupName.slice(3) : keyLabel(groupName)}"? This will terminate them. ${KILL_LOG_NOTE}`,
+        `Kill ${killCount(groupSessions.length).agents} in "${groupName.startsWith('wf:') ? groupName.slice(3) : keyLabel(groupName)}"? This will terminate ${groupSessions.length === 1 ? 'it' : 'them'}. ${killCount(groupSessions.length).note}`,
         async () => {
             for (const s of groupSessions) {
                 try {
@@ -310,7 +318,7 @@ export async function killBoard(boardName) {
 
     showConfirmModal(
         "Kill Team",
-        `Kill all ${boardSessions.length} agent(s) on board "${keyLabel(boardName)}"? This will terminate them. ${KILL_LOG_NOTE}`,
+        `Kill ${killCount(boardSessions.length).agents} on board "${keyLabel(boardName)}"? This will terminate ${boardSessions.length === 1 ? 'it' : 'them'}. ${killCount(boardSessions.length).note}`,
         async () => {
             for (const s of boardSessions) {
                 try {

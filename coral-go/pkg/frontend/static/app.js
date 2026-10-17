@@ -21,7 +21,7 @@ import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
 import { connectCoralWs, handleCoralMessage, _resetWaitingSeedForTests } from './websocket.js';
 import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys, sendModeToggle, cycleModeToggle, sendQuickCommand, refreshModeLabel, executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart, initImageDrop, removeAttachment, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon, showEmojiPicker } from './sessions.js';
-import { KILL_LOG_NOTE, buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, sleepAllAgents, wakeAllAgents, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, renderServerSwitcher, groupHeaderKey } from './render.js';
+import { KILL_LOG_NOTE_MANY, buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, sleepAllAgents, wakeAllAgents, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, renderServerSwitcher, groupHeaderKey } from './render.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
@@ -410,7 +410,7 @@ Object.assign(window, {
 
 // ── Reset Team ───────────────────────────────────────────────────────
 function resetTeam(boardName) {
-    showConfirmModal('Reset Team', `Reset all agents in "${keyLabel(boardName)}"? Their context will be cleared and they'll restart with their original prompts. ${KILL_LOG_NOTE}`, async () => {
+    showConfirmModal('Reset Team', `Reset all agents in "${keyLabel(boardName)}"? Their context will be cleared and they'll restart with their original prompts. ${KILL_LOG_NOTE_MANY}`, async () => {
         try {
             const resp = await teamFetch(boardName, n => `/api/sessions/live/team/${encodeURIComponent(n)}/reset`, { method: 'POST' });
             if (resp.ok) {
