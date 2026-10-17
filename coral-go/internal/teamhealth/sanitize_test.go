@@ -76,3 +76,23 @@ func TestNameForCoralLines(t *testing.T) {
 	assert.Equal(t, "first", Name("first"+string(rune(10))+"second"))
 	assert.LessOrEqual(t, utf8.RuneCountInString(Name(strings.Repeat("n", 200))), 64)
 }
+
+// An invisible character inside a secret must not end the redactor's match and leave the rest
+// of the secret showing (Security's MUST 1 on step 2).
+func TestShownTextInvisibleCharactersDoNotSplitASecret(t *testing.T) {
+	secrets := map[string]string{
+		"ghp token":    "token=ghp_A1b2C3d4E5A1b2C3%sd4E5A1b2C3d4E5F6g7H8",
+		"aws key":      "key AKIAIOSFODNN7%sEXAMPLE end",
+		"quoted value": `password="correct horse%s battery staple"`,
+	}
+	for _, mark := range []string{"\u202e", "\u200b", "\u200d", "\u00ad", "\x1b[0m", "\x00"} {
+		for name, tmpl := range secrets {
+			in := strings.Replace(tmpl, "%s", mark, 1)
+			out := ShownText(in, nil)
+			assertShownLine(t, out)
+			assert.NotContains(t, out, "d4E5A1b2C3d4E5F6g7H8", "%s with %q", name, mark)
+			assert.NotContains(t, out, "EXAMPLE", "%s with %q", name, mark)
+			assert.NotContains(t, out, "battery", "%s with %q", name, mark)
+		}
+	}
+}

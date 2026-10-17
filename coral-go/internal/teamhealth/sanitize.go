@@ -25,8 +25,9 @@ var csi = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]")
 
 // ShownText is the one line of agent-authored text Coral may show (the last reply's first line,
 // a task title in the orchestrator's check), by Security's #4176 rule 2, in this order:
-// redacted whole with the Hub redactor (rd; redact.Rules when nil), failing closed; then its
-// first line; escape sequences, control, format (bidi, zero-width) characters dropped; every @
+// invisible characters dropped (an invisible mark inside a token would end the redactor's match
+// and leave the rest of the secret showing), then redacted whole with the Hub redactor (rd;
+// redact.Rules when nil), failing closed; then its first line; escape sequences, control, format (bidi, zero-width) characters dropped; every @
 // neutralised so it can't mention anyone; spaces collapsed; then cut, so a cut can never split a
 // secret the redactor would have caught. The result is labelled as quoted agent text and at most
 // MaxShown characters long.
@@ -34,7 +35,7 @@ func ShownText(text string, rd redact.Redactor) string {
 	if rd == nil {
 		rd = redact.Rules
 	}
-	red, err := rd.Text([]byte(text))
+	red, err := rd.Text([]byte(dropInvisibles(text)))
 	if err != nil || !utf8.Valid(red) {
 		return NotShown
 	}
@@ -47,6 +48,24 @@ func ShownText(text string, rd redact.Redactor) string {
 		return ""
 	}
 	return quotedLabel + s
+}
+
+// dropInvisibles removes escape sequences, control and format (bidi, zero-width, soft hyphen)
+// characters, keeping the line breaks, which the first-line cut needs.
+func dropInvisibles(s string) string {
+	s = csi.ReplaceAllString(s, "")
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\n', r == '\r', r == '\u2028', r == '\u2029', r == '\u0085', r == '\x0b', r == '\x0c':
+			b.WriteRune(r)
+		case r == utf8.RuneError, unicode.IsControl(r), unicode.Is(unicode.Cf, r):
+			continue
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // Name is a member's name as it goes into a Coral line or nudge (#4176 note 1 on step 1): the
