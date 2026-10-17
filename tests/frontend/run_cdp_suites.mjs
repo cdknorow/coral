@@ -225,7 +225,6 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-cdp-'));
 // the operator's real CLI. HOME already points into each shard, so transcripts never reach the real
 // ~/.claude; STUB_MARKER and the ~/.claude/projects baseline are checked before exit. Keep in step
 // with tests/lib/mock_sandbox.sh and coral-go/internal/testguard (TestHarnessScriptsUseTheMockAgentSandbox).
-const STUB_BIN = path.join(tmp, 'stub-bin'); fs.mkdirSync(STUB_BIN);
 const STUB_MARKER = path.join(tmp, 'REAL_CLI_WAS_CALLED');
 // Every CLI-backed agent type (agenttypes minus 'terminal'), matching tests/lib/mock_sandbox.sh's
 // CORAL_TEST_STUB_CLIS: each test server points cli_path_<type> at the built mock-agent (below), so a
@@ -233,8 +232,19 @@ const STUB_MARKER = path.join(tmp, 'REAL_CLI_WAS_CALLED');
 // fires on a genuine PATH fallback.
 const CLI_TYPES = ['claude', 'codex', 'gemini', 'agy', 'pi', 'antigravity'];
 const MOCK_AGENT = path.join(tmp, 'mock-agent');
-for (const cli of CLI_TYPES) {
-  fs.writeFileSync(path.join(STUB_BIN, cli), `#!/bin/sh\nprintf '%s %s\\n' "${cli}" "$*" >> "${STUB_MARKER}"\nexit 1\n`, { mode: 0o755 });
+// Each shard gets its OWN stub dir on its server's PATH (writeStubs, in startShard). A stub ALWAYS exits
+// 1, so a real CLI never runs; it RECORDS the call to STUB_MARKER only once that shard's readyPath exists,
+// which startShard creates after it has PUT cli_path_<type> at the mock. So the brief server-startup window
+// before that PUT -- a model-list/version fetch on a fresh or replacement shard, which resolves a CLI
+// while cli_path is not set yet and falls to PATH (#4354 race, CI-only) -- is not counted: it is harness
+// setup, not a product leak. A reach once the shard is ready (cli_path set) is a real fallback and fails
+// the run. Per-shard readyPath so one shard's setup never silences another's suites.
+function writeStubs(binDir, readyPath) {
+  fs.mkdirSync(binDir, { recursive: true });
+  for (const cli of CLI_TYPES) {
+    fs.writeFileSync(path.join(binDir, cli),
+      `#!/bin/sh\n[ -e "${readyPath}" ] && printf '%s %s\\n' "${cli}" "$*" >> "${STUB_MARKER}"\nexit 1\n`, { mode: 0o755 });
+  }
 }
 const REAL_CLAUDE_PROJECTS = path.join(os.homedir(), '.claude', 'projects');
 const claudeBaseline = (() => { try { return new Set(fs.readdirSync(REAL_CLAUDE_PROJECTS)); } catch { return new Set(); } })();
@@ -365,6 +375,11 @@ async function startShard(n, gen = 0, strict = false) {
   fs.mkdirSync(dir, { recursive: true });
   const port = await freePort();
   const data = path.join(dir, 'data'); fs.mkdirSync(data);
+  // This shard's stub dir + ready flag (#4354): stubs record only after readyPath exists, which is written
+  // once cli_path has been PUT below. readyPath does not exist yet, so the server-startup window is not counted.
+  const stubBin = path.join(dir, 'stub-bin');
+  const stubReady = path.join(dir, 'stub-ready');
+  writeStubs(stubBin, stubReady);
   const tmuxSock = path.join(data, 'tmux.sock');
   tmuxSocks.add(tmuxSock);
   recordPids();
@@ -384,7 +399,7 @@ async function startShard(n, gen = 0, strict = false) {
   const pwFile = path.join(dir, 'initial-password');
   fs.writeFileSync(pwFile, TEST_PASSWORD + '\n', { mode: 0o600 }); fs.chmodSync(pwFile, 0o600);
   const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile,
-    PATH: STUB_BIN + path.delimiter + (testEnv.PATH || process.env.PATH || '') };  // #4354: stub CLI first on PATH
+    PATH: stubBin + path.delimiter + (testEnv.PATH || process.env.PATH || '') };  // #4354: this shard's stub CLI first on PATH
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
     ...(strict ? ['--strict-local-auth'] : ['--strict-local-auth=false']), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
@@ -413,6 +428,8 @@ async function startShard(n, gen = 0, strict = false) {
     const r = await fetch(`http://127.0.0.1:${port}/api/settings`, { method: 'PUT',
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error(`could not set the mock cli_path on :${port} (#4354): HTTP ${r.status} ${await r.text()}`);
+    // cli_path is set: from now a PATH-CLI fallback on this shard is a real leak, so start recording.
+    fs.writeFileSync(stubReady, '');
   }
   // On CI runners (Ubuntu 24.04) unprivileged user namespaces are restricted, so Chrome's sandbox cannot start; the runner is a
   // throwaway VM running only our own test pages, so the sandbox is switched off there and only there.
