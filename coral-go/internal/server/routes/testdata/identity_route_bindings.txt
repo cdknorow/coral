@@ -1,0 +1,179 @@
+DELETE /api/agent/ui/{id} | token-bound
+DELETE /api/board/remotes | board-unchecked | operator-only
+DELETE /api/board/{project} | board-claims | operator-only
+DELETE /api/board/{project}/groups/{groupID}/members/{sessionID} | board-claims | operator-only
+DELETE /api/board/{project}/messages/{messageID} | board-claims | operator-only
+DELETE /api/board/{project}/reminder | board-claims
+DELETE /api/board/{project}/subscribe | board-claims
+DELETE /api/board/{project}/tasks/{taskID}/reminder | board-claims
+DELETE /api/board/{project}/waits | board-claims
+DELETE /api/sessions/history/{sessionID}/tags/{tagID} | unbound | operator-only
+DELETE /api/sessions/live/{name}/events | token-bound
+DELETE /api/sessions/live/{name}/notes/{noteID} | token-bound
+DELETE /api/sessions/live/{name}/tasks/{taskID} | token-bound
+GET /api/agent/history/context | unbound
+GET /api/agent/history/search | unbound
+GET /api/agent/tasks | token-bound
+GET /api/agent/tasks/{taskID} | token-bound
+GET /api/agent/ui | token-bound
+GET /api/agent/ui/{id}/content | token-bound
+GET /api/agent/ui/{id}/events | token-bound
+GET /api/board/projects | board-unchecked
+GET /api/board/remotes | board-unchecked
+GET /api/board/remotes/proxy/{remoteServer}/projects | board-unchecked
+GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/all | board-unchecked
+GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/check | board-unchecked
+GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers | board-unchecked
+GET /api/board/tasks | board-unchecked
+GET /api/board/{project} | board-claims
+GET /api/board/{project}/artifacts | board-claims
+GET /api/board/{project}/groups | board-claims
+GET /api/board/{project}/groups/{groupID}/members | board-claims
+GET /api/board/{project}/messages | board-claims
+GET /api/board/{project}/messages/all | board-claims
+GET /api/board/{project}/messages/check | board-claims
+GET /api/board/{project}/paused | board-claims
+GET /api/board/{project}/peek | board-claims
+GET /api/board/{project}/relay-targets | board-claims
+GET /api/board/{project}/settings | board-claims
+GET /api/board/{project}/status | board-claims
+GET /api/board/{project}/subscribers | board-claims
+GET /api/board/{project}/tasks | board-claims
+GET /api/board/{project}/tasks/{taskID} | board-claims
+GET /api/board/{project}/tasks/{taskID}/artifact-content | board-claims
+GET /api/board/{project}/tasks/{taskID}/changes.diff | board-claims
+GET /api/board/{project}/tasks/{taskID}/cost | board-claims
+GET /api/board/{project}/waits | board-claims
+GET /api/board/{project}/waits/poll | board-claims
+GET /api/board/{project}/working-mode | board-claims
+GET /api/board/{project}/working-mode/presets | board-claims
+GET /api/session-artifacts | token-session
+GET /api/sessions/history | unbound
+GET /api/sessions/history/search | unbound
+GET /api/sessions/history/{sessionID} | unbound
+GET /api/sessions/history/{sessionID}/agent-notes | unbound
+GET /api/sessions/history/{sessionID}/events | unbound
+GET /api/sessions/history/{sessionID}/files | unbound
+GET /api/sessions/history/{sessionID}/git | unbound
+GET /api/sessions/history/{sessionID}/notes | unbound
+GET /api/sessions/history/{sessionID}/resume-info | unbound
+GET /api/sessions/history/{sessionID}/tags | unbound
+GET /api/sessions/history/{sessionID}/tasks | unbound
+GET /api/sessions/live | unbound
+GET /api/sessions/live/team/{boardName}/sleep-status | unbound
+GET /api/sessions/live/{name} | unbound
+GET /api/sessions/live/{name}/capture | unbound
+GET /api/sessions/live/{name}/changes.diff | unbound
+GET /api/sessions/live/{name}/chat | unbound
+GET /api/sessions/live/{name}/diff | unbound
+GET /api/sessions/live/{name}/events | unbound
+GET /api/sessions/live/{name}/events/counts | unbound
+GET /api/sessions/live/{name}/file-content | unbound
+GET /api/sessions/live/{name}/file-original | unbound
+GET /api/sessions/live/{name}/files | unbound
+GET /api/sessions/live/{name}/git | unbound
+GET /api/sessions/live/{name}/history/context | unbound
+GET /api/sessions/live/{name}/history/search | unbound
+GET /api/sessions/live/{name}/info | unbound
+GET /api/sessions/live/{name}/notes | unbound
+GET /api/sessions/live/{name}/poll | unbound
+GET /api/sessions/live/{name}/resolve-path | unbound
+GET /api/sessions/live/{name}/search-files | unbound
+GET /api/sessions/live/{name}/subagents | unbound
+GET /api/sessions/live/{name}/subagents/{subagentID} | unbound
+GET /api/sessions/live/{name}/tasks | unbound
+GET /api/sessions/resolve | unbound
+GET /api/sessions/{sessionID}/changes | unbound
+GET /api/sessions/{sessionID}/changes.diff | unbound
+GET /api/sessions/{sessionID}/resolve | unbound
+GET /api/sessions/{sessionID}/status | unbound
+PATCH /api/agent/tasks/{taskID} | token-bound
+PATCH /api/board/{project} | board-claims | operator-only
+PATCH /api/board/{project}/tasks/{taskID} | board-claims
+PATCH /api/board/{project}/tasks/{taskID}/amend | board-claims
+PATCH /api/sessions/live/{name}/notes/{noteID} | token-bound
+PATCH /api/sessions/live/{name}/tasks/{taskID} | token-bound
+POST /api/agent/artifacts | token-bound
+POST /api/agent/tasks | token-bound
+POST /api/agent/tasks/claim | token-bound
+POST /api/agent/tasks/current | token-bound
+POST /api/agent/tasks/{taskID}/cancel | token-bound
+POST /api/agent/tasks/{taskID}/complete | token-bound
+POST /api/agent/tasks/{taskID}/publish | token-bound
+POST /api/agent/ui-request | unbound
+POST /api/agent/ui/{id}/events | token-bound
+POST /api/board/remotes | board-unchecked | operator-only
+POST /api/board/{project}/external-messages | board-claims
+POST /api/board/{project}/groups/{groupID}/members | board-claims | operator-only
+POST /api/board/{project}/hub-notice | board-claims
+POST /api/board/{project}/messages | board-claims +token-session
+POST /api/board/{project}/messages/mark-read | board-claims
+POST /api/board/{project}/pause | board-claims | operator-only
+POST /api/board/{project}/relay-messages | board-claims
+POST /api/board/{project}/reminder | board-claims
+POST /api/board/{project}/resume | board-claims | operator-only
+POST /api/board/{project}/subscribe | board-claims
+POST /api/board/{project}/tasks | board-claims
+POST /api/board/{project}/tasks/claim | board-claims
+POST /api/board/{project}/tasks/current | board-claims
+POST /api/board/{project}/tasks/{taskID}/approve | board-claims
+POST /api/board/{project}/tasks/{taskID}/cancel | board-claims
+POST /api/board/{project}/tasks/{taskID}/complete | board-claims
+POST /api/board/{project}/tasks/{taskID}/nudge | board-claims
+POST /api/board/{project}/tasks/{taskID}/publish | board-claims
+POST /api/board/{project}/tasks/{taskID}/reassign | board-claims
+POST /api/board/{project}/tasks/{taskID}/reject | board-claims
+POST /api/board/{project}/tasks/{taskID}/release-review | board-claims
+POST /api/board/{project}/tasks/{taskID}/reminder | board-claims
+POST /api/board/{project}/tasks/{taskID}/review | board-claims
+POST /api/board/{project}/tasks/{taskID}/snooze | board-claims
+POST /api/board/{project}/tasks/{taskID}/submit-review | board-claims
+POST /api/board/{project}/waits | board-claims
+POST /api/board/{project}/working-mode/presets | board-claims | operator-only
+POST /api/board/{project}/working-mode/presets/{presetID}/reset | board-claims | operator-only
+POST /api/notifications | token-bound
+POST /api/sessions/history/{sessionID}/resummarize | unbound | operator-only
+POST /api/sessions/history/{sessionID}/tags | unbound | operator-only
+POST /api/sessions/launch | token-session
+POST /api/sessions/launch-team | token-session
+POST /api/sessions/live/sleep-all | unbound | operator-only
+POST /api/sessions/live/team/{boardName}/kill | unbound | operator-only
+POST /api/sessions/live/team/{boardName}/reset | unbound | operator-only
+POST /api/sessions/live/team/{boardName}/sleep | unbound | operator-only
+POST /api/sessions/live/team/{boardName}/wake | unbound | operator-only
+POST /api/sessions/live/wake-all | unbound | operator-only
+POST /api/sessions/live/{name}/answer-prompt | unbound | operator-only
+POST /api/sessions/live/{name}/attach | unbound | operator-only
+POST /api/sessions/live/{name}/auto-accept/disable | unbound | operator-only
+POST /api/sessions/live/{name}/auto-accept/enable | unbound | operator-only
+POST /api/sessions/live/{name}/context-window | token-bound
+POST /api/sessions/live/{name}/events | token-session
+POST /api/sessions/live/{name}/files/refresh | unbound
+POST /api/sessions/live/{name}/goal | unbound | operator-only
+POST /api/sessions/live/{name}/keys | unbound | operator-only
+POST /api/sessions/live/{name}/kill | unbound | operator-only
+POST /api/sessions/live/{name}/notes | token-bound
+POST /api/sessions/live/{name}/open-in-editor | unbound
+POST /api/sessions/live/{name}/pending-tool | token-session
+POST /api/sessions/live/{name}/resize | unbound | operator-only
+POST /api/sessions/live/{name}/restart | unbound | operator-only
+POST /api/sessions/live/{name}/resume | unbound | operator-only
+POST /api/sessions/live/{name}/send | unbound | operator-only
+POST /api/sessions/live/{name}/tasks | token-bound
+POST /api/sessions/live/{name}/tasks/reorder | token-bound
+POST /api/sessions/live/{name}/token-usage | token-bound
+POST /api/sessions/live/{name}/turn-end | token-session
+POST /api/sessions/live/{sessionID}/archive | unbound | operator-only
+POST /api/sessions/live/{sessionID}/refresh-hooks | unbound | operator-only
+POST /api/sessions/live/{sessionID}/sleep | unbound | operator-only
+POST /api/sessions/live/{sessionID}/unarchive | unbound | operator-only
+POST /api/sessions/live/{sessionID}/wake | unbound | operator-only
+PUT /api/agent/ui/{id} | token-bound
+PUT /api/board/{project}/settings | board-claims | operator-only
+PUT /api/board/{project}/working-mode | board-claims | operator-only
+PUT /api/board/{project}/working-mode/presets/{presetID} | board-claims | operator-only
+PUT /api/sessions/history/{sessionID}/notes | unbound | operator-only
+PUT /api/sessions/live/{name}/display-name | unbound
+PUT /api/sessions/live/{name}/file-content | unbound | operator-only
+PUT /api/sessions/live/{name}/icon | unbound
+PUT /api/sessions/live/{name}/name-color | unbound
