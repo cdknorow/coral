@@ -112,3 +112,63 @@ func TestDeliveredTextsAreBounded(t *testing.T) {
 	delivered.Unlock()
 	assert.LessOrEqual(t, n, deliveredTextSessions)
 }
+
+// Turns stamped before the oldest remembered delivery are not hashed (a long transcript costs what its recent turns cost); the flags are
+// the same as when every turn is hashed, and an unstamped turn is still checked (#4306 follow-up, Frontend's cost review).
+func TestOldTurnsAreNotHashed(t *testing.T) {
+	name := "claude-delivered-cutoff"
+	now := time.Now()
+	notice := "[Task #4300 completed by QA Engineer] Outcome: success, the cutoff test notice."
+	noteDeliveredText(name, notice)
+
+	var texts []string
+	var stamps []time.Time
+	for i := 0; i < 1000; i++ { // an hour-old history: none of it can be the delivery
+		texts = append(texts, fmt.Sprintf("an older operator message that is long enough to be hashed, number %d", i))
+		stamps = append(stamps, now.Add(-time.Hour+time.Duration(i)*time.Second))
+	}
+	texts = append(texts, notice, "an unstamped turn that is long enough to be hashed, so it is checked", notice)
+	stamps = append(stamps, now.Add(time.Second), time.Time{}, now.Add(-time.Hour)) // the delivery's turn, an unstamped one, an old identical text
+
+	before := flagHashed.Load()
+	got := FlagDelivered(texts, stamps, name)
+	hashed := flagHashed.Load() - before
+	assert.EqualValues(t, 2, hashed, "only the delivery's turn and the unstamped one were hashed, not the 1000 old turns or the old identical text")
+	want := make([]bool, len(texts))
+	want[1000] = true
+	assert.Equal(t, want, got, "the flags are those of hashing every turn")
+
+	// The same turns with no stamps at all: every one is hashed, the first identical one is the delivery's.
+	before = flagHashed.Load()
+	got = FlagDelivered(texts, make([]time.Time, len(texts)), name)
+	assert.EqualValues(t, len(texts), flagHashed.Load()-before, "without stamps nothing can be skipped")
+	assert.True(t, got[1000], "and the delivery is still found")
+	assert.False(t, got[1002], "its repeat is not")
+}
+
+// BenchmarkFlagDelivered times a 5,000-turn transcript of 2 KB user turns, the whole of it hashed (no stamps) and with stamps (only the last
+// minutes are).
+func BenchmarkFlagDelivered(b *testing.B) {
+	name := "claude-delivered-bench"
+	noteDeliveredText(name, "[Task #1 completed by QA Engineer] Outcome: success, the benchmark notice text.")
+	now := time.Now()
+	body := strings.Repeat("a user message of about two kilobytes, ", 52)
+	texts := make([]string, 5000)
+	stamps := make([]time.Time, 5000)
+	for i := range texts {
+		texts[i] = fmt.Sprintf("%d %s", i, body)
+		stamps[i] = now.Add(-time.Duration(5000-i) * time.Minute)
+	}
+	stamps[4999] = now
+	b.Run("unstamped", func(b *testing.B) {
+		none := make([]time.Time, len(texts))
+		for i := 0; i < b.N; i++ {
+			FlagDelivered(texts, none, name)
+		}
+	})
+	b.Run("stamped", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			FlagDelivered(texts, stamps, name)
+		}
+	})
+}

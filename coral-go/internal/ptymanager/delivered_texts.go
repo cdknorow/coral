@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -30,6 +31,9 @@ const (
 	// deliveredSkew is how far before its delivery a transcript turn may be stamped and still be that delivery (clock noise).
 	deliveredSkew = 5 * time.Second
 )
+
+// flagHashed counts the turns FlagDelivered hashed (a test reads it to see that old turns are skipped).
+var flagHashed atomic.Int64
 
 type deliveredEntry struct {
 	hash [sha256.Size]byte
@@ -125,11 +129,24 @@ func FlagDelivered(texts []string, stamps []time.Time, names ...string) []bool {
 	if len(pending) == 0 {
 		return nil
 	}
+	// A turn stamped before the oldest remembered delivery (less the clock slack) can't be any of them: it is not even hashed, so
+	// reading a long transcript costs what the recent turns cost. An unstamped turn is still checked.
+	var oldest time.Time
+	for _, ats := range pending {
+		if oldest.IsZero() || ats[0].Before(oldest) {
+			oldest = ats[0]
+		}
+	}
+	cutoff := oldest.Add(-deliveredSkew)
 	out := make([]bool, len(texts))
 	for i, text := range texts {
 		if len(text) < minDeliveredLen { // normalising only shortens
 			continue
 		}
+		if !stamps[i].IsZero() && stamps[i].Before(cutoff) {
+			continue
+		}
+		flagHashed.Add(1)
 		h, ok := deliveredHash(text)
 		if !ok {
 			continue
