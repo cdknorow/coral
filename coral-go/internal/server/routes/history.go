@@ -471,6 +471,11 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if key := r.URL.Query().Get("find_key"); key != "" {
+		writeKeyLookup(w, messageKeySecretFor(h.cfg), messages, key) // Save for Later: is that message still in the transcript, and where (#4510)
+		return
+	}
+
 	// A page (#3718): ?limit=N&offset=M is the N messages ending M before the newest, as the
 	// live chat pages, with the total and the page's first index. Through Coral Hub a JSON reply
 	// is held whole to be checked for secrets, and one over 2 MiB is refused, so the dashboard
@@ -485,7 +490,7 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id": sid,
 		"agent_type": agentType,
-		"messages":   messages,
+		"messages":   withKeys(messageKeySecretFor(h.cfg), messages), // each message's stable key, for Save for Later (#4510)
 		"total":      total,
 		"start":      start,
 	})

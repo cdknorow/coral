@@ -19,6 +19,7 @@ a DELETE /api/board/{project}/tasks/{taskID}/reminder
 a DELETE /api/board/{project}/waits
 b DELETE /api/folder-tags/{folderName}/{tagID}
 b DELETE /api/pinned-folders
+b DELETE /api/saved/{id}
 b DELETE /api/remote/{server}/*
 b DELETE /api/scheduled/jobs/{jobID}
 b DELETE /api/servers/{id}
@@ -88,6 +89,7 @@ c GET /api/folder-tags/{folderName}
 c GET /api/goals/metrics
 c GET /api/health
 c GET /api/pinned-folders
+b GET /api/saved
 b GET /api/remote/{server}/*
 c GET /api/scheduled/jobs
 c GET /api/scheduled/jobs/{jobID}
@@ -202,6 +204,7 @@ b PATCH /api/board/{project}
 a PATCH /api/board/{project}/tasks/{taskID}
 a PATCH /api/board/{project}/tasks/{taskID}/amend
 b PATCH /api/remote/{server}/*
+b PATCH /api/saved/{id}
 b PATCH /api/servers/{id}
 a PATCH /api/sessions/live/{name}/notes/{noteID}
 a PATCH /api/sessions/live/{name}/tasks/{taskID}
@@ -267,6 +270,7 @@ b POST /api/folder-tags/{folderName}
 b POST /api/indexer/refresh
 a POST /api/notifications
 b POST /api/pinned-folders
+b POST /api/saved
 b POST /api/remote/{server}/*
 b POST /api/scheduled/jobs
 b POST /api/scheduled/jobs/{jobID}/toggle

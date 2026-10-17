@@ -456,6 +456,11 @@ func (s *Server) registerSystem(r *chi.Mux, h *routeHandlers) {
 	r.Get("/api/pinned-folders", sysHandler.ListPinnedFolders)
 	r.Post("/api/pinned-folders", sysHandler.PinFolder)
 	r.Delete("/api/pinned-folders", sysHandler.UnpinFolder)
+	// Save for Later (#4510): the Operator's bookmarks on chat and board messages.
+	r.Get("/api/saved", sysHandler.SavedList)
+	r.Post("/api/saved", sysHandler.SavedAdd)
+	r.Patch("/api/saved/{id}", sysHandler.SavedUpdate)
+	r.Delete("/api/saved/{id}", sysHandler.SavedDelete)
 
 	// History
 	r.Get("/api/sessions/history", histHandler.ListSessions)

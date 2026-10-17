@@ -87,6 +87,10 @@ coral --home /tmp/coral-two --port 8452 --no-browser
 
 A non-default data directory no longer reads the default tmux socket, so it does not list the first instance's agents. Set `CORAL_TMUX_FALLBACK=1` only if you want the old merged view.
 
+## Save a message for later
+
+Hover a message in an agent's Chat view (or a board message) and use its bookmark button, **Save for later**, to add it to your **Saved** list; a toast offers **View saved** (and **Undo** when you remove one). **Saved** is a tab of the right sidebar, and the bookmark in the top bar (it shows how many are open) opens the sidebar on it, so the list stays in view while you read something else. It has an **Open** and a **Done** list, newest saved first, each item showing where the message was said, a short snippet, and when it was said and saved. **Open chat**, **Open board** or **Open in Chats** (for an agent that has ended) takes you back to that point of the conversation: Coral loads older messages until it finds the message, outlines it, tags it **Saved** and puts the focus on it, with a bar above to go **Back to Saved**. If the message is gone (the transcript no longer has it, or it was deleted from the board), the item is marked **Gone**, keeps its snippet, and can only be removed. The list is yours alone: agents cannot add to it, and the snippet is cleaned of tokens when it is saved. It lives on this computer in `sessions.db`; agents and boards on a registered remote server do not have the button yet.
+
 ## Desktop alerts
 
 Coral shows a toast in the page when an agent needs input. You can also turn on **Desktop alerts** in Settings to get a browser notification while the tab is in the background. Desktop alerts are this browser only; the alert shows the agent's name and the server's name, which your operating system may keep in its notification history. It never includes what the agent said or asked. On the machine running Coral, a desktop alert may duplicate the local alert.

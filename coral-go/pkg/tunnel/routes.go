@@ -196,6 +196,8 @@ var routeTable = cat(
 		"/api/token-usage/by-team", "/api/token-usage/by-branch", "/api/token-usage/session/{id}/turns",
 		"/api/goals/metrics", "/api/call-metrics/summary",
 		"/api/tags", "/api/folder-tags", "/api/folder-tags/{name}", "/api/pinned-folders",
+		// The Operator's saved messages (#4510): his own bookmarks, snippets redacted when saved.
+		"/api/saved",
 		"/api/scheduled/jobs", "/api/scheduled/jobs/{id}", "/api/scheduled/jobs/{id}/runs", "/api/scheduled/runs/recent",
 		"/api/workflows", "/api/workflows/runs/recent", "/api/workflows/by-name/{name}", "/api/workflows/{id}",
 		"/api/workflows/{id}/runs", "/api/workflows/runs/{id}",
@@ -254,6 +256,8 @@ var routeTable = cat(
 		"/api/board/{project}/tasks/{id}/reminder",
 		"/api/board/{project}/tasks/{id}/publish",
 		"/api/board/{project}/working-mode/presets",
+		// Save for Later (#4510): a bookmark is the Operator's own note, it moves no work.
+		"/api/saved",
 	),
 	rules(http.MethodPut, TierInteract,
 		// Only the changed-files comparison base (validated to three values); PUT /api/settings itself stays never.
@@ -269,12 +273,14 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}/amend",
+		"/api/saved/{id}",
 	),
 	rules(http.MethodDelete, TierInteract,
 		"/api/sessions/live/{name}/notes/{id}",
 		"/api/sessions/live/{name}/tasks/{id}",
 		"/api/board/{project}/reminder",
 		"/api/board/{project}/tasks/{id}/reminder",
+		"/api/saved/{id}",
 	),
 	// Deleting a whole board (its messages, tasks and members) can't be undone: Launch, not
 	// Interact (#3433). It stays the Operator's (attributed, recorded, refused with the opt-out).

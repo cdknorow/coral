@@ -7,6 +7,7 @@ import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
+import { BOARD_SAVE_BUTTON } from './saved_marks.js';
 import { identityKey, keyLabel, noteBoardLabel, noteBoardLabels, hasBoardLabel, onBoardLabelsChanged, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
 import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
@@ -418,6 +419,7 @@ function renderBoardItem(item, prev) {
                 <span class="mb-agent-name">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
                 ${externalMessageBadge(m)}${hubUserBadge(m)}
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
+                ${BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''))}
                 <button class="mb-delete-msg-btn" data-on-click="mb-msg-delete" data-msg-id="${Number(m.id)}" title="Delete message">&times;</button>
             </div>
             <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
@@ -469,6 +471,8 @@ function renderMessages(messages, { keepAnchor = false } = {}) {
             if (run) run.open = true; // a task-queue line inside a collapsed row
             target.classList.add('chat-search-target');
             target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            target.setAttribute('tabindex', '-1'); // the focus goes to the message, for Save for Later's jump and the search's (#4510)
+            target.focus({ preventScroll: true });
             pendingMessageId = null;
             return; // the jump decides the scroll position
         } else if (_loadedOffset > 0) {

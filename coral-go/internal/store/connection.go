@@ -368,6 +368,22 @@ CREATE TABLE IF NOT EXISTS pinned_folders (
 	pinned_at TEXT NOT NULL
 );
 
+-- Messages the Operator saved for later (#4510): a bookmark on one message of an agent's chat or a board, with a snippet, until it is removed.
+-- msg_key is the message's stable key (the chat route's "key", a board message's id), so a bookmark survives a reload and transcript paging.
+CREATE TABLE IF NOT EXISTS saved_messages (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	kind       TEXT NOT NULL,
+	ref        TEXT NOT NULL,
+	msg_key    TEXT NOT NULL,
+	agent_type TEXT NOT NULL DEFAULT '',
+	title      TEXT NOT NULL DEFAULT '',
+	snippet    TEXT NOT NULL DEFAULT '',
+	said_at    TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL,
+	done_at    TEXT,
+	UNIQUE (kind, ref, msg_key)
+);
+
 CREATE TABLE IF NOT EXISTS session_index (
 	session_id      TEXT PRIMARY KEY,
 	source_type     TEXT NOT NULL,

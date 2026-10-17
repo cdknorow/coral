@@ -1522,3 +1522,38 @@
         display: none;
     }
 }
+
+/* Save for later (#4510): a bookmark one slot to the left of Copy on each reply, and on your own messages; filled and in the accent colour when saved. Shown on
+   hover or keyboard focus, always while saved; on touch both are always shown at 44 px (touch.css). */
+.chat-bubble .chat-save-btn {
+    position: absolute;
+    top: 6px;
+    right: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+}
+.chat-bubble.human .chat-save-btn { right: 6px; }
+.chat-bubble .chat-save-btn svg { width: var(--icon-inline-size); height: var(--icon-inline-size); }
+.chat-bubble:hover .chat-save-btn,
+.chat-bubble .chat-save-btn:focus-visible,
+.chat-bubble .chat-save-btn[aria-pressed="true"] { opacity: 1; }
+.chat-bubble .chat-save-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.chat-bubble .chat-save-btn[aria-pressed="true"] { color: var(--accent); }
+.chat-bubble .chat-save-btn[aria-pressed="true"] svg path, .mb-save-btn[aria-pressed="true"] svg path { fill: currentColor; }
+.chat-bubble .chat-save-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chat-prose.chat-messages .chat-bubble .chat-save-btn { top: 100%; margin-top: 1px; right: 22px; }
+.chat-prose.chat-messages .chat-bubble.human .chat-save-btn { right: -4px; }
+.chat-bubble .chat-save-btn[hidden] { display: none; }
+@media (hover: none) {
+    .chat-bubble .chat-save-btn, .chat-bubble.assistant .chat-copy-btn { opacity: 1; }
+}

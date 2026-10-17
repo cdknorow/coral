@@ -73,6 +73,8 @@
     .live-view-toggle-btn,
     #chat-find-btn,
     .chat-copy-btn,
+    .chat-save-btn,
+    .mb-save-btn,
     .copy-btn,
     .modal-close-btn,
     .job-type-btn,
@@ -83,6 +85,11 @@
         min-width: var(--control-touch-height);
         min-height: var(--control-touch-height);
     }
+    /* Save for later (#4510) sits beside the 44 px Copy, not on it; both are always shown on touch. */
+    .chat-prose.chat-messages .chat-bubble .chat-save-btn { right: calc(var(--control-touch-height) - 4px); }
+    .chat-prose.chat-messages .chat-bubble.human .chat-save-btn { right: -4px; }
+    .chat-bubble .chat-save-btn { right: calc(var(--control-touch-height) - 4px); opacity: 1; }
+    .chat-bubble.human .chat-save-btn { right: 6px; }
     .board-chat-title {
         display: inline-flex;
         align-items: center;

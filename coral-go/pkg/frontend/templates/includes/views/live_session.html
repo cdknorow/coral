@@ -221,6 +221,10 @@
                                 <button class="agentic-tab" data-on-click="agentic-tab" data-tab="agent-ui" data-where="top" data-scope="agent" id="agentic-tab-agent-ui" title="Agent UI" aria-label="Agent UI">
                                     <span class="material-icons" aria-hidden="true">widgets</span><span class="agentic-tab-count" id="agent-ui-count"></span>
                                 </button>
+                                <!-- Saved for later (#4510): the Operator's bookmarks, beside whatever the main view shows -->
+                                <button class="agentic-tab" data-on-click="agentic-tab" data-tab="saved" data-where="top" id="agentic-tab-saved" data-local-only title="Saved for later: messages you bookmarked" aria-label="Saved for later">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg><span class="agentic-tab-count" id="saved-tab-count"></span>
+                                </button>
                                 <!-- Custom view tabs (disabled for now) -->
                                 <span id="custom-view-tabs" style="display:none"></span>
                                 <button class="agentic-tab agentic-tab-customize" id="agentic-tab-customize" data-on-click="tabs-customize" aria-haspopup="dialog" aria-expanded="false" aria-controls="tab-customize" title="Customize tabs" aria-label="Customize tabs">
@@ -290,6 +294,16 @@
                             </div>
                             <!-- Custom view panels inserted here dynamically -->
                             <div id="agentic-panel-agent-ui" class="agentic-panel"></div>
+                            <div id="agentic-panel-saved" class="agentic-panel saved-pane" data-local-only>
+                                <div class="saved-tabs" role="tablist" aria-label="Saved messages">
+                                    <button type="button" class="saved-tab" role="tab" id="saved-tab-open" aria-selected="true" aria-controls="saved-panel">Open <span class="n" id="saved-count-open"></span></button>
+                                    <button type="button" class="saved-tab" role="tab" id="saved-tab-done" aria-selected="false" aria-controls="saved-panel" tabindex="-1">Done <span class="n" id="saved-count-done"></span></button>
+                                </div>
+                                <div id="saved-panel" class="saved-panel" role="tabpanel" tabindex="-1" aria-labelledby="saved-tab-open">
+                                    <ul id="saved-list" class="saved-list"></ul>
+                                </div>
+                                <div id="saved-status" class="saved-status" role="status" aria-live="polite"></div>
+                            </div>
                             <div id="custom-view-panels"></div>
                         </div>
                         <!-- Preview pane (file viewer with tabs) — bottom of right sidebar -->

@@ -15,6 +15,7 @@ import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from 
 import { storeKey, onAccountForgotten } from './local_store.js';
 import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, isShortReply, lastContent, noticeStartedTurn, rollUpGroups, updateWorkGroupSummary } from './chat_content.js';
 import { flashCopied, makeBubble } from './chat_bubbles.js';
+import { SAVE_BUTTON } from './saved_marks.js';
 import { unwrapPastedContent } from './pasted_content.js';
 import { CHAT_TRIM, FIRST_PAGE, takeChatPrefetch } from './chat_page.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
@@ -346,13 +347,16 @@ function renderOneMessage(msg, container, agentType) {
 		const text = unwrapPastedContent(msg.content);
 		appendCoralNotice(container, normalizeNudgeText(text), isCoralHealthNudge(text));
     } else if (msg.type === "user") {
-        appendContent(container, makeBubble("chat-bubble human",
-            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>`));
+        const bubble = makeBubble("chat-bubble human",
+            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>${msg.key ? SAVE_BUTTON : ""}`);
+        if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
+        appendContent(container, bubble);
     } else if (msg.type === "assistant") {
         if (msg.text) {
             const bubble = makeBubble(`chat-bubble assistant${msg.phase === "commentary" ? " commentary" : ""}`,
-                `<div class="message-text">${renderMarkdown(msg.text, undefined, 'chat')}</div>${COPY_BUTTON}`);
+                `<div class="message-text">${renderMarkdown(msg.text, undefined, 'chat')}</div>${msg.key ? SAVE_BUTTON : ""}${COPY_BUTTON}`);
             bubbleSource.set(bubble, msg.text);
+            if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
             // Prose in a message that also makes tool calls is a one-line preamble ("Checking the CSS first."): it goes
             // in the steps group with the calls. Prose in a message with no tool calls (a question card is not a step)
             // is a reply: it always shows and it ends the group (#4105).
@@ -722,6 +726,35 @@ function sentinelInReach() {
     const btn = container && container.querySelector(":scope > .load-more-btn");
     if (!btn || !container.clientHeight) return false;
     return btn.getBoundingClientRect().bottom >= container.getBoundingClientRect().top - AUTO_LOAD_PX;
+}
+
+/** Save for Later's jump (#4510): page up until the message with this key (whose index in the transcript is index) is on screen, then show it:
+ *  open the steps it sits in, scroll it to the middle, mark it and give it the focus. Resolves false when it is not there. */
+export async function jumpToLiveMessage(key, index) {
+    const container = document.getElementById("live-history-messages");
+    if (!container) return false;
+    const find = () => container.querySelector(`[data-msg-key="${CSS.escape(key)}"]`);
+    const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+    for (let i = 0; i < 80 && !(initialLoadDone && container.querySelector("[data-msg-key]")); i++) await pause(100); // the agent's newest page first
+    for (let guard = 0; guard < 400 && !find() && historyHasMore && historyStart > index; guard++) {
+        if (loadingMore) { await pause(50); continue; }
+        const generation = historyGeneration;
+        loadingMore = true;
+        try {
+            if (!(await _loadMoreHistory(generation))) break;
+        } finally {
+            if (generation === historyGeneration) loadingMore = false;
+        }
+    }
+    const target = find();
+    if (!target) return false;
+    for (let d = target.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
+    for (const old of container.querySelectorAll(".chat-search-target")) old.classList.remove("chat-search-target");
+    target.classList.add("chat-search-target");
+    target.scrollIntoView({ block: "center" });
+    target.setAttribute("tabindex", "-1");
+    target.focus({ preventScroll: true });
+    return true;
 }
 
 async function _loadMoreHistory(generation) {

@@ -372,6 +372,10 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 	trace.end("log_status")
 	messages = markCoralDeliveries(messages, agentType, sessionID, name) // the whole transcript: a delivery is used by one turn (#4306)
+	if key := r.URL.Query().Get("find_key"); key != "" {
+		writeKeyLookup(w, messageKeySecretFor(h.cfg), messages, key) // Save for Later: is that message still in the transcript, and where (#4510)
+		return
+	}
 	if after > 0 {
 		messages = messages[min(after, len(messages)):]
 	}
@@ -404,7 +408,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			end = max(end-max(offset, 0), 0)
 		}
 		start := max(end-limit, 0)
-		page := messages[start:end]
+		page := withKeys(messageKeySecretFor(h.cfg), messages[start:end]) // each message's stable key, for Save for Later (#4510)
 		if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
 			page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
 		}
@@ -422,7 +426,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reply := map[string]any{"messages": messages, "total": total, "limit_notice": limitNotice,
+	reply := map[string]any{"messages": withKeys(messageKeySecretFor(h.cfg), messages), "total": total, "limit_notice": limitNotice,
 		"needs_login": needsLogin, "login_reason": nilIf(!needsLogin || loginReason == "", loginReason)}
 	h.addNeedsInput(r, reply, name, agentType, sessionID)
 	writeJSON(w, http.StatusOK, reply)

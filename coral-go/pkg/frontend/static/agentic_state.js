@@ -1,6 +1,7 @@
 import { refreshAgentUI } from './agent_ui.js';
 /* Agentic State — event loading, timeline rendering, tab switching, filtering */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { loadChangedFiles } from './changed_files.js';
 import { selectFilesSource } from './team_artifacts.js';
@@ -305,6 +306,9 @@ export function switchAgenticTab(tabName, blockId) {
     if (tabName === 'team-settings') window.renderTeamSettingsTab?.();
 
     if (tabName === 'agent-ui') refreshAgentUI();
+
+    // Saved for later (#4510): the list is read when its tab is shown
+    if (tabName === 'saved') importOnce('./saved.js').then(m => m.showSaved()).catch(() => {});
 
     // Start/stop board task polling based on tab
     if (tabName === 'tasks') {

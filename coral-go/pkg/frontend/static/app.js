@@ -203,6 +203,7 @@ registerActions({
     'm-dismiss-auto-wake': () => { window.dismissAutoWake(); },
     'm-end-leftover-tmux': () => { window.endLeftoverTmux(); },
     'm-go-home': () => { window.__coral._goHome(); },
+    'm-show-saved': () => { importOnce('./saved.js').then(m => m.openSaved()).catch(() => {}); }, // the Saved list loads the first time it is opened (#4510)
     'm-mobile-connect-open': (el, event) => { event.preventDefault(); window._showMobileConnectModal(); },
     'm-show-launch-modal-then-select-launch-type': el => { if (["agent", "team"].includes(el.dataset.arg)) { window.showLaunchModal(); window._selectLaunchType(el.dataset.arg); } },
     'm-switch-mobile-tab': el => { if (["agents", "board", "chat"].includes(el.dataset.arg)) { window.switchMobileTab(el.dataset.arg); } },
@@ -228,7 +229,7 @@ registerActions({
 // The live agent view's header, view toggle, side panel tabs and command row (#3645). Restart is
 // destructive (actions.js DESTRUCTIVE_ACTIONS: a popout hides it) and still asks first
 // (restartSession's own confirmation). A side panel tab must be one the panel has.
-const AGENTIC_TABS = new Set(['board', 'files', 'browse', 'artifacts', 'team-view', 'team-settings', 'team-artifacts', 'knowledge', 'tasks', 'notes', 'activity', 'agent-ui']);
+const AGENTIC_TABS = new Set(['board', 'files', 'browse', 'artifacts', 'team-view', 'team-settings', 'team-artifacts', 'knowledge', 'tasks', 'notes', 'activity', 'agent-ui', 'saved']);
 registerActions({
     'mobile-back': () => window.mobileBack(),
     'goal-refresh': () => window.refreshGoal(),

@@ -129,6 +129,8 @@ curl -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_
 curl -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&limit=200&before=742"
 ```
 
+**Message keys (#4510):** each message in a chat or history reply carries `key`, a stable 20-hex-character key for Save for later, and `find_key=KEY` answers `{found, index, total}` instead of a page: see [saved-messages.md](saved-messages.md#the-message-key).
+
 **Dashboard behaviour:** the Chat view loads the newest 100 messages, then polls every second with `after=<count>`. Older pages (200 messages, `before=<start>`) load automatically as you scroll near the top; the **Load older messages** button at the top is the scroll sentinel and stays for find-in-chat and retrying a failed load. If a server or hub route refuses `before=` (400/403/404, or 502 `path_not_allowed`), the dashboard pages that server by `offset` instead. Sleeping and archived agents show the same scrollable history.
 
 ---

@@ -299,6 +299,8 @@
     .top-bar-actions {
         flex-shrink: 0;
     }
+    /* Four icon buttons (Saved included, #4510) must fit at 200% text on a 390 px phone. */
+    .top-bar-actions { gap: 0; }
     .nav-select {
         display: flex;
         align-items: center;
