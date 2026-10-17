@@ -570,3 +570,18 @@ func TestReceivedArtifactOneInFlightPerSource(t *testing.T) {
 	e.h.received.end(relaySrc)
 	assert.True(t, e.h.received.begin("other-source"), "another source is not held up")
 }
+
+// The receiver takes what the hub's default relays: 8 MiB a file, plus the frame (the hub's own default is
+// the same 8 MiB + 4 + 4 KiB + 256), so a bigger file is refused before it is read.
+func TestReceivedArtifactCapIsTheHubsDefault(t *testing.T) {
+	assert.EqualValues(t, 8<<20, maxReceivedArtifact)
+	e := newArtifactEnv(t)
+	e.open()
+	req := httptest.NewRequest("POST", "/api/board/beta/external-artifacts", &neverRead{t})
+	req.ContentLength = 4 + maxReceivedMeta + 8<<20 + 1
+	req.Header.Set(tunnel.HubServerHeader, relaySrc)
+	req.Header.Set(tunnel.ViaHeader, cloud.ViaSecret())
+	rec := httptest.NewRecorder()
+	e.r.ServeHTTP(rec, req)
+	assert.Equal(t, 413, rec.Code)
+}
