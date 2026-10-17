@@ -29,8 +29,8 @@ type Routes struct {
 	// hub is Sign in with Coral Hub (#3966), nil when the server has none.
 	hub *HubSignin
 	// isOperator: the identity layer decided this request is the Operator's (the dashboard
-	// sign-in, the API key, the signed command line). nil: no further check (tests of this
-	// package alone). With strict local auth off a bare local request is not one (#4290).
+	// sign-in, the API key, the signed command line). nil refuses every request (fail
+	// closed: a server that did not wire the check shows no key). With strict local auth off a bare local request is not one (#4290).
 	isOperator func(*http.Request) bool
 }
 
@@ -45,7 +45,7 @@ func (ar *Routes) keyRoutesRefuse(w http.ResponseWriter, r *http.Request) bool {
 		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "localhost only"})
 		return true
 	}
-	if ar.isOperator != nil && !ar.isOperator(r) {
+	if ar.isOperator == nil || !ar.isOperator(r) { // no check wired: refuse (fail closed)
 		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "the API key is shown only to a signed-in Operator: sign in (coral open) or send the key or a command-line signature", "code": "operator_only"})
 		return true
 	}

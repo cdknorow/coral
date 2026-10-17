@@ -20,6 +20,7 @@ func TestTunnelStampIsNeverLocal(t *testing.T) {
 	ks, err := NewKeyStore(t.TempDir())
 	require.NoError(t, err)
 	ar := NewRoutes(ks)
+	ar.SetOperatorCheck(func(*http.Request) bool { return true }) // the identity layer's verdict, not what this test is about
 	req := func(method, path string, stamp bool) *http.Request {
 		r := httptest.NewRequest(method, path, nil)
 		r.RemoteAddr = "127.0.0.1:50000"
@@ -75,4 +76,31 @@ func TestTunnelStampIsNeverLocal(t *testing.T) {
 	assert.Equal(t, false, status(req("GET", "/api/system/auth-status", false))["strict_local_auth"], "strict off is reported (#4290)")
 	assert.Equal(t, "localhost", status(req("GET", "/api/system/auth-status", false))["method"], "opt-out: as before")
 	assert.Equal(t, "none", status(req("GET", "/api/system/auth-status", true))["method"], "never for the tunnel")
+}
+
+// #4290: with no operator check wired, the key routes refuse (fail closed); with one, the verdict decides.
+func TestKeyRoutesFailClosedWithoutAnOperatorCheck(t *testing.T) {
+	ks, err := NewKeyStore(t.TempDir())
+	require.NoError(t, err)
+	ar := NewRoutes(ks)
+	local := func() *http.Request {
+		r := httptest.NewRequest("GET", "/api/system/api-key", nil)
+		r.RemoteAddr = "127.0.0.1:50000"
+		r.Host = "localhost:8420"
+		return r
+	}
+	for name, h := range map[string]http.HandlerFunc{"read": ar.GetAPIKey, "rotate": ar.RegenerateKey} {
+		w := httptest.NewRecorder()
+		h(w, local())
+		assert.Equal(t, http.StatusUnauthorized, w.Code, name)
+		assert.NotContains(t, w.Body.String(), ks.Key(), name)
+	}
+	ar.SetOperatorCheck(func(*http.Request) bool { return false })
+	w := httptest.NewRecorder()
+	ar.GetAPIKey(w, local())
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	ar.SetOperatorCheck(func(*http.Request) bool { return true })
+	w = httptest.NewRecorder()
+	ar.GetAPIKey(w, local())
+	assert.Equal(t, http.StatusOK, w.Code)
 }
