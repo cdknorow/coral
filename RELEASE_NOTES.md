@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.78 — Launches always use your CLI path, an idle dashboard stays small, and a faster first load
+
+### Fixes
+
+- **A launch no longer falls back to the CLI on PATH when Coral's settings can't be read** (it fails with a message), and a team launch whose client hangs up uses the CLI set in Settings > CLI Paths for every agent. Restart, resume and wake, scheduled jobs and workflow steps do the same.
+- **When Coral's settings can't be read, the agent model list says so** instead of reporting that the CLI isn't installed.
+- **An agent is no longer told "You have N unread messages" when it already read them during its turn** (a notice held until the turn ended is re-checked just before it's typed).
+
+### Dashboard
+
+- **An idle dashboard no longer grows its memory:** in a test with 20 agents and a busy board (about 80 messages a minute), the page's heap grew from 5.7 MB to 46.6 MB in 6 minutes (109 MB in 10); it now stays at about 6 MB. The board panel keeps the newest 300 messages while you're at the bottom, and Load earlier brings back the rest.
+- **Faster first load:** measured on a test setup with 20 agents and a 650-turn chat, the first message shows in 2.33 s instead of 3.10 s on a slow (4G) connection with a cold cache, and in 0.29 s instead of 0.90 s when cached. The startup modules are in the bundle, the bundle is smaller, the agent list loads alongside the hub check, and a linked agent's chat is fetched while the list loads.
+- **Text sizes follow your browser's text size across the dashboard** (they were fixed pixels almost everywhere), header icons scale, and at 200 percent text on a phone the Files, Analytics, Workflows and dialog controls no longer run off the screen. Icons grow with the text too, and buttons on tablets and touch laptops are 44 px.
+- **Screen readers no longer read icon names aloud as words** (decorative icons are hidden from them, and icon-only buttons have labels).
+- **The create-password and sign-in page** follows your text size, its controls are 44 px on touch screens, the first field has focus when it opens, and a refused field is focused and says why.
+- **Started without a terminal, Coral names the exact command to run to accept the terms**, on Windows in both PowerShell and Command Prompt forms.
+- **The desktop app's Terms of Service dialog defaults to Decline,** so pressing Return never accepts; it's readable by keyboard and screen reader and uses the system font.
+- **The dashboard's cached files are refreshed once with this update;** the build id now also changes when any minifier option or the bundle's format changes.
+
 ## v1.4.77 — Long messages to agents arrive as text again (security fix)
 
 ### Security
