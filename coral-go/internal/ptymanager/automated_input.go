@@ -1042,8 +1042,8 @@ func (g *inputGate) giveUpMentionsBehindDialog(name string) (headGone bool) {
 func (g *inputGate) startLoop() {
 	g.loops.Add(1)
 	go func() {
-		defer g.loops.Done()
 		defer safego.Recover("ptymanager/automated_input:g.loop")
+		defer g.loops.Done() // runs first on a panic, so a stop never waits for a loop that has died
 		g.loop()
 	}()
 }
@@ -1087,7 +1087,7 @@ func (g *inputGate) stopLoop(timeout time.Duration) bool {
 	}
 	g.mu.Unlock()
 	done := make(chan struct{})
-	go func() { g.loops.Wait(); close(done) }()
+	go func() { defer safego.Recover("ptymanager/automated_input:stopLoop"); g.loops.Wait(); close(done) }()
 	ok := true
 	select {
 	case <-done:
