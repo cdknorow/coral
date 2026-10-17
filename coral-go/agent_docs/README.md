@@ -35,6 +35,7 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 ### Configuration
 - [Multi-Server Hub](hub.md) — Register remote Coral servers, merged agent list, proxy and remote launch, Coral Hub tunnel refusals, versions
 - [Settings & System](settings-system.md) — App settings, status, CLI checks, network info
+- [What Coral Stores](what-coral-stores.md) — What Coral keeps on this computer, for how long, whether it is cleaned of secrets, where to change it, what reaches Coral Hub
 - [Teams](teams.md) — Team lifecycle management, members, and resurrection
 - [Team Configuration](team-config.md) — Agent team configuration (agent.json schema)
 - [Hooks](hooks.md) — Per-agent and per-step hook configuration (lifecycle events, cross-agent support)
