@@ -179,9 +179,9 @@ const BASE = require('./test_base').BASE;
     assert.ok(saveStatus.includes('server restart'), 'Status must clarify server restart for health monitor');
     console.log('✓ Team settings saved successfully with restart applicability notice');
 
-    // Verify fieldset sectioning
+    // Verify fieldset sectioning (the last two are the Health check tab's, #4230)
     const legends = await ev(`Array.from(document.querySelectorAll('.team-settings-section legend')).map(l => l.textContent)`);
-    assert.deepEqual(legends, ['Workflow instructions', 'Team working mode', 'Prompt inspection', 'Global settings'], 'Form must clearly separate team and global settings');
+    assert.deepEqual(legends, ['Workflow instructions', 'Team working mode', 'Prompt inspection', 'Global settings', 'The check', 'Automatic rules'], 'Form must clearly separate team and global settings');
     console.log('✓ Clear fieldset separation verified (team working mode vs global settings)');
 
     // Verify partial failure feedback when global settings PUT fails
