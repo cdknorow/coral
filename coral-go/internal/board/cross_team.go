@@ -50,6 +50,11 @@ type BoardSettings struct {
 	// CrossTeamServers are the other Corals (Coral Hub server ids) whose Orchestrators may
 	// message this board through Coral Hub (#3489). Empty: none. Needs CrossTeamMessaging.
 	CrossTeamServers []string `json:"cross_team_servers"`
+	// CrossTeamArtifacts lets this board send and receive artifacts with its cross-team messages
+	// (coral-board send --attach, #4379). Off by default; only the Operator on this computer may
+	// turn it on (never through Coral Hub). Needs CrossTeamMessaging. Received files are not
+	// scanned, and artifact bytes are not redacted.
+	CrossTeamArtifacts bool `json:"cross_team_artifacts"`
 	// Health is the team's health check configuration (#4175).
 	Health HealthSettings `json:"health"`
 }
@@ -58,6 +63,7 @@ type BoardSettings struct {
 type BoardSettingsUpdate struct {
 	CrossTeamMessaging *bool     `json:"cross_team_messaging"`
 	CrossTeamServers   *[]string `json:"cross_team_servers"`
+	CrossTeamArtifacts *bool     `json:"cross_team_artifacts"`
 	// Health replaces the whole health configuration (clamped; the handler checks the recipient).
 	Health *HealthSettings `json:"health"`
 }
@@ -65,6 +71,7 @@ type BoardSettingsUpdate struct {
 const (
 	settingCrossTeamMessaging = "cross_team_messaging"
 	settingCrossTeamServers   = "cross_team_servers"
+	settingCrossTeamArtifacts = "cross_team_artifacts"
 )
 
 // AllowsServer reports whether a relayed message from server may reach this board.
@@ -136,6 +143,8 @@ func (s *Store) GetBoardSettings(ctx context.Context, project string) (BoardSett
 			out.CrossTeamMessaging = r.Value == "true"
 		case settingCrossTeamServers:
 			_ = json.Unmarshal([]byte(r.Value), &out.CrossTeamServers)
+		case settingCrossTeamArtifacts:
+			out.CrossTeamArtifacts = r.Value == "true"
 		}
 	}
 	out.Health = s.GetHealthSettings(ctx, project)
@@ -149,6 +158,14 @@ func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u Board
 			`INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)
 			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`,
 			project, settingCrossTeamMessaging, fmt.Sprint(*u.CrossTeamMessaging)); err != nil {
+			return BoardSettings{}, err
+		}
+	}
+	if u.CrossTeamArtifacts != nil {
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)
+			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`,
+			project, settingCrossTeamArtifacts, fmt.Sprint(*u.CrossTeamArtifacts)); err != nil {
 			return BoardSettings{}, err
 		}
 	}

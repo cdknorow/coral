@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 type crossTeamEnv struct {
@@ -219,4 +220,40 @@ func TestCrossTeamUnknownTargetIsNotFound(t *testing.T) {
 		"from_board": "alpha", "subscriber_id": "Orchestrator", "session_name": "tmux-alphaOrchestrator", "content": "hi"})
 	require.Equal(t, http.StatusNotFound, code)
 	require.Contains(t, out["error"], `board "no-such-board" not found`)
+}
+
+// #4379: cross_team_artifacts is off by default, the Operator's alone to turn on, and never
+// through Coral Hub.
+func TestCrossTeamArtifactsSwitch(t *testing.T) {
+	e := newCrossTeamEnv(t)
+	code, out := e.do("GET", "/api/board/alpha/settings", nil)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, false, out["cross_team_artifacts"], "off by default")
+	for _, who := range []string{"Orchestrator", "Dev", ""} {
+		code, _ = e.do("PUT", "/api/board/alpha/settings", map[string]any{"subscriber_id": who, "cross_team_artifacts": true})
+		require.Equal(t, http.StatusForbidden, code, "%q cannot turn it on", who)
+	}
+	put := func(hub bool) (int, map[string]any) {
+		b, _ := json.Marshal(map[string]any{"subscriber_id": "Operator", "cross_team_artifacts": true})
+		req, _ := http.NewRequest("PUT", e.url+"/api/board/alpha/settings", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		if hub {
+			req.Header.Set(tunnel.ViaHeader, "1")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out
+	}
+	code, out = put(true)
+	require.Equal(t, http.StatusForbidden, code, "not through Coral Hub")
+	require.Equal(t, "local_only", out["code"])
+	code, out = e.do("GET", "/api/board/alpha/settings", nil)
+	require.Equal(t, false, out["cross_team_artifacts"], "still off")
+	code, out = put(false)
+	require.Equal(t, http.StatusOK, code, out)
+	require.Equal(t, true, out["cross_team_artifacts"])
+	require.Equal(t, false, out["cross_team_messaging"], "a separate switch")
 }

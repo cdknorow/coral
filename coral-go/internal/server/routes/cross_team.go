@@ -174,6 +174,12 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		errForbidden(w, "only the Operator can change board settings")
 		return
 	}
+	if body.CrossTeamArtifacts != nil && cloud.Tunneled(r) {
+		// Accepting files from other teams is decided on this computer only (#4379; coral-hub's
+		// design, section 10 C3): never through Coral Hub.
+		writeJSON(w, http.StatusForbidden, map[string]string{"code": "local_only", "error": "cross_team_artifacts can be changed only on this computer, not through Coral Hub"})
+		return
+	}
 	if body.CrossTeamServers != nil {
 		var clean []string
 		seen := map[string]bool{}
