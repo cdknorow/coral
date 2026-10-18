@@ -650,3 +650,39 @@ func TestSavedBoardAuthorIsTheBoardsNotTheRequests(t *testing.T) {
 	assert.Equal(t, []string{"message 11"}, view("QA Engineer"), "its author is the board's")
 	assert.Empty(t, view("Orchestrator"), "the request's label is in nobody's view: not the unreadable one, not the missing one")
 }
+
+// A board bookmark whose author is not known (the board failed when asked) is nobody's: it must not show in an agent's list, which a NULL treated as a match would do.
+func TestSavedUnknownAuthorIsNotAMatchWhenTheBoardFails(t *testing.T) {
+	g := newSavedRig(t)
+	code, out := g.do("POST", "/api/saved", savedAsOperator, map[string]any{"kind": "board", "ref": "busy-team", "key": "31", "title": "busy-team", "snippet": "no author yet"})
+	require.Equal(t, http.StatusOK, code, out)
+	g.h.SetBoardAuthor(func(_ context.Context, _ string, _ int64) (string, bool, error) {
+		return "", false, fmt.Errorf("board busy")
+	})
+	_, out = g.do("GET", "/api/saved?agent=sess-qa&team=busy-team&author="+url.QueryEscape("QA Engineer"), savedAsOperator, nil)
+	assert.Empty(t, out["items"], "the fill failed: the bookmark is in no agent's list")
+	assert.EqualValues(t, 0, out["open"])
+	_, out = g.do("GET", "/api/saved?team=busy-team", savedAsOperator, nil)
+	assert.Len(t, out["items"], 1, "it is still the team's")
+}
+
+// The fill looks up at most maxSavedAuthorFill board messages per request; the rest wait for the next ask.
+func TestSavedAuthorFillIsCappedPerRequest(t *testing.T) {
+	g := newSavedRig(t)
+	for i := 0; i < maxSavedAuthorFill+5; i++ {
+		code, out := g.do("POST", "/api/saved", savedAsOperator, map[string]any{"kind": "board", "ref": "big-team", "key": strconv.Itoa(1000 + i), "title": "big-team", "snippet": "old"})
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	asked := 0
+	g.h.SetBoardAuthor(func(_ context.Context, _ string, _ int64) (string, bool, error) {
+		asked++
+		return "QA Engineer", true, nil
+	})
+	q := "/api/saved?agent=sess-qa&team=big-team&author=" + url.QueryEscape("QA Engineer")
+	_, out := g.do("GET", q, savedAsOperator, nil)
+	assert.Equal(t, maxSavedAuthorFill, asked, "one request asks at most the cap")
+	assert.Len(t, out["items"], maxSavedAuthorFill)
+	_, out = g.do("GET", q, savedAsOperator, nil)
+	assert.Equal(t, maxSavedAuthorFill+5, asked, "the next ask does the rest, each message once")
+	assert.Len(t, out["items"], maxSavedAuthorFill+5)
+}

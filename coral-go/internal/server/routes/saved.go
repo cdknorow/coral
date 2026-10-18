@@ -31,6 +31,7 @@ const (
 	maxSavedSnippet    = 200
 	maxSavedField      = 300
 	maxSavedSearchText = 200
+	maxSavedAuthorFill = 500 // board bookmarks whose author one request looks up
 )
 
 var (
@@ -146,6 +147,9 @@ func (h *SystemHandler) fillSavedAuthors(ctx context.Context, team string) {
 	unknown, err := h.ss.UnknownSavedAuthors(ctx, team)
 	if err != nil {
 		return
+	}
+	if len(unknown) > maxSavedAuthorFill {
+		unknown = unknown[:maxSavedAuthorFill] // one request never holds on a very old team: the rest waits for the next ask
 	}
 	for _, it := range unknown {
 		id, perr := strconv.ParseInt(it.Key, 10, 64)
