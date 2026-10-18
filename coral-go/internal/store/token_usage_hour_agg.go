@@ -168,7 +168,7 @@ func usageRelation(ctx context.Context, db sqlGetter, since string) (frag string
 		return `(` + raw + ` WHERE recorded_at >= ? UNION ALL ` + hourly + ` WHERE recorded_at >= ?)`, []any{since, since}
 	}
 	var last sql.NullString
-	if since != "" && !canonicalSince.MatchString(since) {
+	if !tokenUsageHourAggOn || (since != "" && !canonicalSince.MatchString(since)) {
 		return plain()
 	}
 	if err := db.GetContext(ctx, &last, `SELECT MAX(hour) FROM token_usage_hour_agg`); err != nil || !last.Valid {
@@ -217,6 +217,9 @@ func usageRelation(ctx context.Context, db sqlGetter, since string) (frag string
 	}
 	return frag + `)`, args
 }
+
+// tokenUsageHourAggOn is false only in the tests that compare the aggregate with the raw rows.
+var tokenUsageHourAggOn = true
 
 // sqlGetter is what usageRelation needs of the database.
 type sqlGetter interface {
