@@ -16,6 +16,17 @@
 const POLL_MS = 20;
 const tick = () => new Promise(r => setTimeout(r, POLL_MS));
 
+// A poll that lands while the page is navigating (a redirect, a reload) is refused by Chrome: "Inspected target navigated or closed", "Execution context was destroyed" or "Cannot find
+// context with specified id". That is the page changing under the wait, not a failure, so a wait looks again on the new document and gives up only at its own deadline; any other error
+// still throws (#4858, #4879). Every wait that polls the page with ev() must treat these so: a suite's own waitFor uses isNavigationError (waitfor_hygiene.test.js checks it).
+const NAVIGATING = /Inspected target navigated or closed|Execution context was destroyed|Cannot find context with specified id/;
+const isNavigationError = e => NAVIGATING.test(String((e && e.message) || e));
+const NAV = Symbol('the page was navigating');
+/** ev(expression), or NAV when the page was navigating under it (the caller polls again; a poll that legitimately answers undefined is not that). */
+async function pollEv(ev, expression) {
+    try { return await ev(expression); } catch (e) { if (!isNavigationError(e)) throw e; return NAV; }
+}
+
 // Polls `expression` in the page until it is truthy and returns that value. On timeout, throws naming
 // `what`, the last value seen, and `diag` (another expression) if given. With `soft: true` it returns the
 // last value instead of throwing, for suites that report through their own check() so the failing
@@ -25,8 +36,9 @@ async function waitFor(ev, expression, what, { timeout = 5000, diag = null, soft
     const until = Date.now() + timeout;
     let last;
     for (;;) {
-        last = await ev(expression);
-        if (last) return last;
+        const got = await pollEv(ev, expression);
+        if (got !== NAV) last = got; // a poll refused mid-navigation keeps the last answer seen
+        if (got !== NAV && got) return got;
         if (Date.now() > until) {
             if (soft) { if (process.env.QA_WAIT_DEBUG) require('node:fs').appendFileSync(process.env.QA_WAIT_DEBUG, `${require('node:path').basename(process.argv[1])}: soft timeout: ${what}\n`); return last; }
             const extra = diag ? ' ' + JSON.stringify(await ev(diag).catch(e => String(e))) : '';
@@ -42,7 +54,9 @@ async function waitStable(ev, expression, what, quietMs = 300, { timeout = 5000,
     const until = Date.now() + timeout;
     let prev, since = 0;
     for (;;) {
-        const v = JSON.stringify(await ev(expression));
+        const got = await pollEv(ev, expression);
+        if (got === NAV) { if (Date.now() > until) throw new Error(`timed out after ${timeout}ms waiting for ${what} to settle (the page kept navigating)`); await tick(); continue; } // refused mid-navigation: look again
+        const v = JSON.stringify(got);
         if (v === prev && accept(JSON.parse(v ?? 'null'))) { if (Date.now() - since >= quietMs) return JSON.parse(v ?? 'null'); }
         else { prev = v; since = Date.now(); }
         if (Date.now() > until) {
@@ -101,7 +115,7 @@ async function settle(ev, ms, quietMs = 120) {
 }
 
 module.exports = {
-    waitFor, waitStable, coralReady, nextFrame, framesJs, settle,
+    waitFor, waitStable, coralReady, nextFrame, framesJs, settle, isNavigationError,
     bind: ev => ({
         nextFrame: () => nextFrame(ev),
         waitFor: (expression, what, opts) => waitFor(ev, expression, what, opts),

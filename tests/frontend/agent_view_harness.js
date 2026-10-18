@@ -4,6 +4,7 @@
 // what the reader sees. Everything else goes to the isolated test server.
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
+const { isNavigationError } = require('./helpers/wait');
 
 async function connect() {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -31,7 +32,9 @@ async function connect() {
     const waitFor = async (expression, what, timeoutMs = 5000, diag = null) => {
         const until = Date.now() + timeoutMs;
         for (;;) {
-            if (await ev(expression)) return;
+            let ok = false;
+            try { ok = await ev(expression); } catch (e) { if (!isNavigationError(e)) throw e; } // the page navigating under the poll: look again (#4879)
+            if (ok) return;
             if (Date.now() > until) throw new Error(`timed out waiting for ${what}` + (diag ? ' ' + JSON.stringify(await ev(diag)) : ''));
             await new Promise(r => setTimeout(r, 20));
         }

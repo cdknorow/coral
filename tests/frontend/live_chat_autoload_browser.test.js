@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
-const { framesJs, waitStable } = require('./helpers/wait');
+const { framesJs, waitStable, isNavigationError } = require('./helpers/wait');
 
 // The first page must be smaller than the old 400-message page.
 const MAX_FIRST_PAGE = 200;
@@ -25,7 +25,9 @@ const MAX_FIRST_PAGE = 200;
     const waitFor = async (expression, what, timeoutMs = 5000) => {
         const until = Date.now() + timeoutMs;
         for (;;) {
-            if (await ev(expression)) return;
+            let ok = false;
+            try { ok = await ev(expression); } catch (e) { if (!isNavigationError(e)) throw e; } // a poll during a navigation: look again (#4879)
+            if (ok) return;
             if (Date.now() > until) throw new Error(`timed out waiting for ${what}`);
             await new Promise(r => setTimeout(r, 20));
         }

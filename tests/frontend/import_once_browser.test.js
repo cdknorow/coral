@@ -7,6 +7,7 @@
 const assert = require('node:assert/strict');
 const { safePaused } = require('./helpers/paused');
 const CDP = require('chrome-remote-interface');
+const { isNavigationError } = require('./helpers/wait');
 const BASE = require('./test_base').BASE;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -19,7 +20,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         return r.result.value;
     };
     const waitFor = async (expr, what, ms = 8000) => {
-        for (const t = Date.now(); Date.now() - t < ms; await sleep(100)) if (await ev(expr)) return;
+        for (const t = Date.now(); Date.now() - t < ms; await sleep(100)) { try { if (await ev(expr)) return; } catch (e) { if (!isNavigationError(e)) throw e; } } // a poll during a navigation: look again (#4879)
         throw new Error('timed out waiting for ' + what);
     };
     const json = body => ({ responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });

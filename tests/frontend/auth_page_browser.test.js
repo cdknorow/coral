@@ -14,14 +14,13 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     const { Page, Runtime, Fetch, Emulation } = client;
     const ev = async x => { const r = await Runtime.evaluate({ expression: x, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: settle
-    // A poll that lands while the page is navigating (a redirect, a reload) is refused by Chrome ("Inspected target navigated or closed"): that is the page changing under the wait, not a
-    // failure, so the wait looks again on the new document and gives up only at its own deadline (the create-page flake on a loaded machine, #4858).
-    const NAVIGATING = /Inspected target navigated or closed|Execution context was destroyed|Cannot find context with specified id/;
+    // A poll that lands while the page is navigating is refused by Chrome: the wait looks again on the new document (helpers/wait.js isNavigationError, #4858, #4879).
+    const { isNavigationError } = require('./helpers/wait');
     const waitFor = async (expr, what, ms = 6000) => {
         const end = Date.now() + ms;
         while (Date.now() < end) {
             let ok = false;
-            try { ok = await ev(expr); } catch (e) { if (!NAVIGATING.test(String((e && e.message) || e))) throw e; }
+            try { ok = await ev(expr); } catch (e) { if (!isNavigationError(e)) throw e; }
             if (ok) return;
             await sleep(20);
         }
