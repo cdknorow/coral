@@ -96,7 +96,7 @@ The **Inbox** tab, in the top bar of every Coral (on a phone, in the view dropdo
 - **Needs you**: the agents that are waiting for input, each one a button that opens that agent. The number on the tab is how many are waiting.
 - **Saved for later**: the messages you bookmarked (below), with an **Open** and a **Done** list.
 
-On a Coral running as a hub over several servers, Saved for later shows every online server's items together, each naming its server. Through Coral Hub the Inbox tab is the hub's own Inbox page. The bookmark in the top bar (it shows how many are open) opens the Inbox at Saved for later when you are not looking at an agent or a team. **Escape**, a second press of the bookmark, or your browser's Back button leaves it.
+On a Coral running as a hub over several servers, Saved for later shows every online server's items together, each naming its server. Through Coral Hub the Inbox tab is the hub's own Inbox page. The bookmark in the top bar always opens the Inbox at Saved for later, on every page, an agent's or a team's too, and its number is everything's open items (so the same on every page). **Escape**, a second press of the bookmark, or your browser's Back button leaves it.
 
 ## Save a message for later
 
@@ -108,7 +108,7 @@ Hover a message in an agent's Chat view (or a board message) and use its bookmar
 | A team's page (opened from the agent list, or its board) | The team's bookmarks: its board's messages and its agents' chats. |
 | Home, Chats, Workflows, Jobs, Analytics, Docs, Servers | Everything, in the Inbox. |
 
-A heading says which ("Saved: QA Engineer", "Saved: my-team", "Saved: all"), and the **Open** and **Done** numbers, the tab's number and the top bar's number are all of that page. Each item shows where the message was said, a short snippet, and when it was said and saved. Newest saved is first; you can search and sort them (see the next section).
+A heading says which ("Saved: QA Engineer", "Saved: my-team", "Saved: all"), and the **Open** and **Done** numbers and the tab's number are of that page; the top bar's bookmark is always the Inbox's, everything's list and number. The toast's **View saved** opens the page's own Saved tab. Each item shows where the message was said, a short snippet, and when it was said and saved. Newest saved is first; you can search and sort them (see the next section).
 
 On an item:
 
