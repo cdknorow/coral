@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -230,140 +231,42 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	target := urlParam(r, "project")
-	var body struct {
-		FromBoard    string `json:"from_board"`
-		SubscriberID string `json:"subscriber_id"`
-		// SessionName is the caller's own session (coral-board sends
-		// CORAL_SESSION_NAME). It must match the sender's subscription: a
-		// speed bump against sending as another agent, not authentication;
-		// local identity is trusted at the OS-user level.
-		SessionName string `json:"session_name"`
-		Content     string `json:"content"`
-		To          string `json:"to"`
-		// Attach are coral://artifacts links sent with the message (#4379): see resolveAttachments.
-		Attach []string `json:"attach"`
-	}
+	var body externalMessage
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
 	body.Content = strings.TrimSpace(unescapeLineBreaks(body.Content))
 	body.FromBoard = strings.TrimSpace(body.FromBoard)
-	switch {
-	case body.Content == "":
-		errBadRequest(w, "content required")
-		return
-	case len(body.Content) > maxCrossTeamContent:
-		errBadRequest(w, fmt.Sprintf("content must be at most %d bytes", maxCrossTeamContent))
-		return
-	case body.FromBoard == "" || body.SubscriberID == "":
-		errBadRequest(w, "from_board and subscriber_id are required")
-		return
-	case body.FromBoard == target:
-		errBadRequest(w, "use a normal board post to message your own board")
+	if refused := body.refusal(target); refused != nil {
+		refused(w)
 		return
 	}
 	ctx := r.Context()
-
-	// The Operator through Coral Hub (#3404): admitted by TunnelIdentityGuard with the
-	// Coral Hub user, and the text says so, so the receiving Orchestrator can tell it
-	// from the local Operator.
-	if body.SubscriberID == crossTeamOperatorID && cloud.Tunneled(r) {
-		hubUser := hubOperatorUser(r)
-		if hubUser == "" {
-			writeJSON(w, http.StatusForbidden, map[string]any{"code": "operator_identity_required", "error": "Through Coral Hub you can't act as the Operator here"})
-			return
-		}
-		body.Content = HubOperatorPrefix(hubUser) + body.Content
-	}
-
-	// Only Orchestrators and the Operator may send.
-	role, senderSession, refusal, err := h.checkCrossTeamSender(ctx, body.FromBoard, body.SubscriberID, body.SessionName)
-	switch {
-	case err != nil:
-		errInternalServer(w, err.Error())
-		return
-	case refusal == senderNoBoard:
-		errNotFound(w, fmt.Sprintf("board %q not found", body.FromBoard))
-		return
-	case refusal == senderNotOrchestrator:
-		errForbidden(w, fmt.Sprintf("only an active Orchestrator of %q or the Operator can send cross-team messages", body.FromBoard))
-		return
-	case refusal == senderSessionMismatch:
-		errForbidden(w, fmt.Sprintf("session_name does not match %q's subscription on %q; send from that agent's own session", body.SubscriberID, body.FromBoard))
+	if refused := body.hubOperatorPrefix(r); refused != nil {
+		refused(w)
 		return
 	}
-
-	// An unknown target is a typo, not a disabled board.
-	if ok, err := h.bs.BoardExists(ctx, target); err != nil {
-		errInternalServer(w, err.Error())
-		return
-	} else if !ok {
-		errNotFound(w, fmt.Sprintf("board %q not found", target))
+	role, senderSession, refused := h.crossTeamSenderRole(ctx, &body)
+	if refused != nil {
+		refused(w)
 		return
 	}
-
-	// Both boards must have opted in.
-	var disabled []string
-	for _, b := range []string{body.FromBoard, target} {
-		settings, err := h.bs.GetBoardSettings(ctx, b)
-		if err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-		if !settings.CrossTeamMessaging {
-			disabled = append(disabled, strconv.Quote(b))
-		}
-	}
-	if len(disabled) > 0 {
-		errForbidden(w, fmt.Sprintf("cross-team messaging is disabled on board %s; the Operator can enable it in Team settings", strings.Join(disabled, " and ")))
+	recipients, refused := h.crossTeamRecipients(ctx, body.FromBoard, target, body.To)
+	if refused != nil {
+		refused(w)
 		return
 	}
-
-	recipients, err := h.bs.TargetOrchestrators(ctx, target, strings.TrimSpace(body.To))
-	if err != nil {
-		if errors.Is(err, board.ErrNoTargetOrchestrator) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": fmt.Sprintf("board %q has no active Orchestrator to receive the message", target)})
-			return
-		}
-		errNotFound(w, err.Error())
-		return
-	}
-
 	if secs, limited := h.crossTeamWait(body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); limited {
 		// A limit on this sender's posts, not a busy server (#3434).
 		httputil.WriteActionLimit(w, secs, "rate_limited", fmt.Sprintf("too many messages to %q; retry in %ds", target, secs))
 		return
 	}
-
-	// Attachments (#4379): both boards must accept artifacts, and every one is checked and read
-	// through before anything is posted.
-	var attached []attachedArtifact
-	if len(body.Attach) > 0 {
-		var off []string
-		for _, b := range []string{body.FromBoard, target} {
-			settings, err := h.bs.GetBoardSettings(ctx, b)
-			if err != nil {
-				errInternalServer(w, err.Error())
-				return
-			}
-			if !settings.CrossTeamArtifacts {
-				off = append(off, strconv.Quote(b))
-			}
-		}
-		if len(off) > 0 {
-			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("sending artifacts is off on board %s; the Operator can turn on cross_team_artifacts in Team settings on this computer", strings.Join(off, " and "))})
-			return
-		}
-		sender := h.attachSenderFor(ctx, r, body.FromBoard, body.SubscriberID, senderSession)
-		var refused *attachRefusal
-		if attached, refused = h.resolveAttachments(body.Attach, sender); refused != nil {
-			refused.write(w)
-			return
-		}
-		body.Content += attachmentLines(attached)
+	attached, refused := h.crossTeamAttachments(ctx, r, &body, target, senderSession)
+	if refused != nil {
+		refused(w)
+		return
 	}
-
 	inbound, outbound, err := h.bs.PostCrossTeamMessage(ctx, board.CrossTeamPost{
 		Origin: board.MessageOrigin{
 			ServerID: store.LocalServerID, Board: body.FromBoard, Sender: body.SubscriberID, SenderRole: role,
@@ -384,24 +287,165 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 	h.goBG(func() { h.resolveMessageWaits(target, inbound.SubscriberID, inbound.Content) })
 	resp := map[string]any{"message": inbound, "mirror": outbound, "delivered_to": recipients}
 	if len(attached) > 0 {
-		now := time.Now().UTC().Format(time.RFC3339)
-		var ids []string
-		for _, a := range attached {
-			base := crossTeamArtifactRecord{ID: a.ID, Name: a.Name, MediaType: a.MediaType, Size: a.Size, Server: "local", By: body.SubscriberID, At: now}
-			shared, received := base, base
-			shared.Board, shared.OtherBoard, shared.MessageID = body.FromBoard, target, outbound.ID
-			received.Board, received.OtherBoard, received.MessageID = target, body.FromBoard, inbound.ID
-			if err := h.writeCrossTeamRecord("shared", shared); err != nil {
-				slog.Warn("cross-team artifact: could not record the shared row", "board", body.FromBoard, "id", a.ID, "error", err)
-			}
-			if err := h.writeCrossTeamRecord("received", received); err != nil {
-				slog.Warn("cross-team artifact: could not record the received row", "board", target, "id", a.ID, "error", err)
-			}
-			ids = append(ids, "coral://artifacts/"+a.ID)
-		}
-		resp["attached"] = ids
+		resp["attached"] = h.recordCrossTeamArtifacts(attached, body.FromBoard, target, body.SubscriberID, outbound.ID, inbound.ID)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// externalMessage is a PostExternalMessage request.
+type externalMessage struct {
+	FromBoard    string `json:"from_board"`
+	SubscriberID string `json:"subscriber_id"`
+	// SessionName is the caller's own session (coral-board sends
+	// CORAL_SESSION_NAME). It must match the sender's subscription: a
+	// speed bump against sending as another agent, not authentication;
+	// local identity is trusted at the OS-user level.
+	SessionName string `json:"session_name"`
+	Content     string `json:"content"`
+	To          string `json:"to"`
+	// Attach are coral://artifacts links sent with the message (#4379): see resolveAttachments.
+	Attach []string `json:"attach"`
+}
+
+// refusal refuses a message with no text, text over the limit, no sender, or sent to its own board.
+func (m *externalMessage) refusal(target string) answer {
+	switch {
+	case m.Content == "":
+		return func(w http.ResponseWriter) { errBadRequest(w, "content required") }
+	case len(m.Content) > maxCrossTeamContent:
+		return func(w http.ResponseWriter) {
+			errBadRequest(w, fmt.Sprintf("content must be at most %d bytes", maxCrossTeamContent))
+		}
+	case m.FromBoard == "" || m.SubscriberID == "":
+		return func(w http.ResponseWriter) { errBadRequest(w, "from_board and subscriber_id are required") }
+	case m.FromBoard == target:
+		return func(w http.ResponseWriter) { errBadRequest(w, "use a normal board post to message your own board") }
+	}
+	return nil
+}
+
+// hubOperatorPrefix: the Operator through Coral Hub (#3404) is admitted by TunnelIdentityGuard with the Coral Hub
+// user, and the text says so, so the receiving Orchestrator can tell it from the local Operator. Without that user
+// it is refused.
+func (m *externalMessage) hubOperatorPrefix(r *http.Request) answer {
+	if m.SubscriberID != crossTeamOperatorID || !cloud.Tunneled(r) {
+		return nil
+	}
+	hubUser := hubOperatorUser(r)
+	if hubUser == "" {
+		return func(w http.ResponseWriter) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"code": "operator_identity_required", "error": "Through Coral Hub you can't act as the Operator here"})
+		}
+	}
+	m.Content = HubOperatorPrefix(hubUser) + m.Content
+	return nil
+}
+
+// crossTeamSenderRole is the sender's role and session on its board: only its active Orchestrators and the Operator
+// may send, from the sender's own session.
+func (h *BoardHandler) crossTeamSenderRole(ctx context.Context, m *externalMessage) (string, string, answer) {
+	role, senderSession, refusal, err := h.checkCrossTeamSender(ctx, m.FromBoard, m.SubscriberID, m.SessionName)
+	switch {
+	case err != nil:
+		return "", "", func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
+	case refusal == senderNoBoard:
+		return "", "", func(w http.ResponseWriter) { errNotFound(w, fmt.Sprintf("board %q not found", m.FromBoard)) }
+	case refusal == senderNotOrchestrator:
+		return "", "", func(w http.ResponseWriter) {
+			errForbidden(w, fmt.Sprintf("only an active Orchestrator of %q or the Operator can send cross-team messages", m.FromBoard))
+		}
+	case refusal == senderSessionMismatch:
+		return "", "", func(w http.ResponseWriter) {
+			errForbidden(w, fmt.Sprintf("session_name does not match %q's subscription on %q; send from that agent's own session", m.SubscriberID, m.FromBoard))
+		}
+	}
+	return role, senderSession, nil
+}
+
+// crossTeamRecipients is who receives the message on the target board: its active Orchestrators, or the one named
+// by to. The target must exist (an unknown one is a typo, not a disabled board), and both boards must have opted in.
+func (h *BoardHandler) crossTeamRecipients(ctx context.Context, from, target, to string) ([]string, answer) {
+	if ok, err := h.bs.BoardExists(ctx, target); err != nil {
+		return nil, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
+	} else if !ok {
+		return nil, func(w http.ResponseWriter) { errNotFound(w, fmt.Sprintf("board %q not found", target)) }
+	}
+	var disabled []string
+	for _, b := range []string{from, target} {
+		settings, err := h.bs.GetBoardSettings(ctx, b)
+		if err != nil {
+			return nil, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
+		}
+		if !settings.CrossTeamMessaging {
+			disabled = append(disabled, strconv.Quote(b))
+		}
+	}
+	if len(disabled) > 0 {
+		return nil, func(w http.ResponseWriter) {
+			errForbidden(w, fmt.Sprintf("cross-team messaging is disabled on board %s; the Operator can enable it in Team settings", strings.Join(disabled, " and ")))
+		}
+	}
+	recipients, err := h.bs.TargetOrchestrators(ctx, target, strings.TrimSpace(to))
+	if err != nil {
+		if errors.Is(err, board.ErrNoTargetOrchestrator) {
+			return nil, func(w http.ResponseWriter) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": fmt.Sprintf("board %q has no active Orchestrator to receive the message", target)})
+			}
+		}
+		return nil, func(w http.ResponseWriter) { errNotFound(w, err.Error()) }
+	}
+	return recipients, nil
+}
+
+// crossTeamAttachments (#4379): both boards must accept artifacts, and every one is checked and read through before
+// anything is posted; their links are appended to the message.
+func (h *BoardHandler) crossTeamAttachments(ctx context.Context, r *http.Request, m *externalMessage, target, senderSession string) ([]attachedArtifact, answer) {
+	if len(m.Attach) == 0 {
+		return nil, nil
+	}
+	var off []string
+	for _, b := range []string{m.FromBoard, target} {
+		settings, err := h.bs.GetBoardSettings(ctx, b)
+		if err != nil {
+			return nil, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
+		}
+		if !settings.CrossTeamArtifacts {
+			off = append(off, strconv.Quote(b))
+		}
+	}
+	if len(off) > 0 {
+		return nil, func(w http.ResponseWriter) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("sending artifacts is off on board %s; the Operator can turn on cross_team_artifacts in Team settings on this computer", strings.Join(off, " and "))})
+		}
+	}
+	sender := h.attachSenderFor(ctx, r, m.FromBoard, m.SubscriberID, senderSession)
+	attached, refused := h.resolveAttachments(m.Attach, sender)
+	if refused != nil {
+		return nil, refused.write
+	}
+	m.Content += attachmentLines(attached)
+	return attached, nil
+}
+
+// recordCrossTeamArtifacts writes each attached artifact's shared row (on the sender's board, with the mirror) and
+// received row (on the target board, with the message), and returns their links.
+func (h *BoardHandler) recordCrossTeamArtifacts(attached []attachedArtifact, from, target, by string, outboundID, inboundID int64) []string {
+	now := time.Now().UTC().Format(time.RFC3339)
+	var ids []string
+	for _, a := range attached {
+		base := crossTeamArtifactRecord{ID: a.ID, Name: a.Name, MediaType: a.MediaType, Size: a.Size, Server: "local", By: by, At: now}
+		shared, received := base, base
+		shared.Board, shared.OtherBoard, shared.MessageID = from, target, outboundID
+		received.Board, received.OtherBoard, received.MessageID = target, from, inboundID
+		if err := h.writeCrossTeamRecord("shared", shared); err != nil {
+			slog.Warn("cross-team artifact: could not record the shared row", "board", from, "id", a.ID, "error", err)
+		}
+		if err := h.writeCrossTeamRecord("received", received); err != nil {
+			slog.Warn("cross-team artifact: could not record the received row", "board", target, "id", a.ID, "error", err)
+		}
+		ids = append(ids, "coral://artifacts/"+a.ID)
+	}
+	return ids
 }
 
 // relayRefuse answers a relayed message with one of the fixed error codes Coral Hub maps
