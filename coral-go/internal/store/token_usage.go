@@ -204,7 +204,7 @@ func (s *TokenUsageStore) RecordUsage(ctx context.Context, u *TokenUsage) error 
 // GetSessionUsage returns aggregated token usage for a session (sum of all per-turn records).
 func (s *TokenUsageStore) GetSessionUsage(ctx context.Context, sessionID string) (*TokenUsage, error) {
 	var u TokenUsage
-	err := s.db.GetContext(ctx, &u,
+	err := s.db.Reader().GetContext(ctx, &u,
 		`SELECT MAX(id) as id, session_id, MAX(agent_name) as agent_name, MAX(agent_type) as agent_type,
 		 MAX(team_id) as team_id, MAX(board_name) as board_name,
 		 COALESCE(SUM(input_tokens), 0) as input_tokens, COALESCE(SUM(output_tokens), 0) as output_tokens,
@@ -230,7 +230,7 @@ func (s *TokenUsageStore) GetSessionUsage(ctx context.Context, sessionID string)
 // GetTeamUsage returns aggregated token usage for a team (sum of all per-turn records).
 func (s *TokenUsageStore) GetTeamUsage(ctx context.Context, teamID int64) (*UsageSummary, error) {
 	var summary UsageSummary
-	err := s.db.GetContext(ctx, &summary,
+	err := s.db.Reader().GetContext(ctx, &summary,
 		`SELECT COALESCE(SUM(input_tokens), 0) as input_tokens,
 		        COALESCE(SUM(output_tokens), 0) as output_tokens,
 		        COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
@@ -248,7 +248,7 @@ func (s *TokenUsageStore) GetTeamUsage(ctx context.Context, teamID int64) (*Usag
 // GetBoardUsage returns aggregated token usage for a board (sum of all per-turn records).
 func (s *TokenUsageStore) GetBoardUsage(ctx context.Context, boardName string) (*UsageSummary, error) {
 	var summary UsageSummary
-	err := s.db.GetContext(ctx, &summary,
+	err := s.db.Reader().GetContext(ctx, &summary,
 		`SELECT COALESCE(SUM(input_tokens), 0) as input_tokens,
 		        COALESCE(SUM(output_tokens), 0) as output_tokens,
 		        COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
@@ -281,7 +281,7 @@ func (s *TokenUsageStore) GetUsageSummary(ctx context.Context, since string) ([]
 		args = append(args, since)
 	}
 	query += ` GROUP BY agent_type`
-	err := s.db.SelectContext(ctx, &summaries, query, args...)
+	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
 }
 
@@ -306,7 +306,7 @@ func (s *TokenUsageStore) GetUsageSummaryByModel(ctx context.Context, since stri
 		args = append(args, since)
 	}
 	query += ` GROUP BY agent_type, COALESCE(model, '') ORDER BY cost_usd DESC, agent_type, model`
-	err := s.db.SelectContext(ctx, &summaries, query, args...)
+	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
 }
 
@@ -341,7 +341,7 @@ func (s *TokenUsageStore) GetUsageSummaryByAgent(ctx context.Context, since stri
 		args = append(args, since)
 	}
 	query += ` GROUP BY t.session_id ORDER BY cost_usd DESC`
-	err := s.db.SelectContext(ctx, &summaries, query, args...)
+	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
 }
 
@@ -385,7 +385,7 @@ func (s *TokenUsageStore) ListUsage(ctx context.Context, f UsageFilter) ([]Token
 	query += ` GROUP BY t.session_id ORDER BY MAX(t.recorded_at) DESC`
 
 	var results []TokenUsage
-	err := s.db.SelectContext(ctx, &results, query, args...)
+	err := s.db.Reader().SelectContext(ctx, &results, query, args...)
 	return results, err
 }
 
@@ -466,7 +466,7 @@ func (s *TokenUsageStore) GetLatestTurnContextBySessionIDs(ctx context.Context, 
 // GetSessionTurns returns per-turn cost data for a session, ordered by time.
 func (s *TokenUsageStore) GetSessionTurns(ctx context.Context, sessionID string) ([]TurnCost, error) {
 	var turns []TurnCost
-	err := s.db.SelectContext(ctx, &turns,
+	err := s.db.Reader().SelectContext(ctx, &turns,
 		`SELECT cost_usd, recorded_at FROM token_usage_all
 		 WHERE session_id = ? AND `+sourceDedup+`
 		 ORDER BY recorded_at ASC`, sessionID)
@@ -518,7 +518,7 @@ func (s *TokenUsageStore) GetUsageTimeSeries(ctx context.Context, since string, 
 	query += ` GROUP BY bucket ORDER BY bucket ASC`
 
 	var buckets []TimeSeriesBucket
-	err := s.db.SelectContext(ctx, &buckets, query, args...)
+	err := s.db.Reader().SelectContext(ctx, &buckets, query, args...)
 	return buckets, err
 }
 
@@ -589,7 +589,7 @@ func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since str
 	}
 	query += ` GROUP BY gs.branch, gs.remote_url, COALESCE(t.board_name, '') ORDER BY cost_usd DESC`
 	var summaries []BranchUsageSummary
-	err := s.db.SelectContext(ctx, &summaries, query, args...)
+	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
 }
 
@@ -612,7 +612,7 @@ func (s *TokenUsageStore) GetUsageSummaryByBoard(ctx context.Context, since stri
 	}
 	query += ` GROUP BY COALESCE(NULLIF(t.board_name, ''), ls.board_name, '') ORDER BY cost_usd DESC`
 	var summaries []BoardUsageSummary
-	err := s.db.SelectContext(ctx, &summaries, query, args...)
+	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
 }
 
