@@ -476,87 +476,111 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 		rendered = rs.RenderedScreen()
 	}
 	if in.pasteRetry > 0 && sr != nil {
-		// Its turn again (#3457 v2): what is in the input box decides. Our text: only
-		// its Enter. Empty (or a placeholder): a menu dropped the paste, so paste
-		// again, at most maxPasteRetries times. Anything else (a person's draft, or
-		// text Coral can't recognise): never added to; held, and reported.
-		screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
-		if serr != nil {
-			if g.pasteStuck(in) {
-				return false, g.giveUpPaste(in, "the screen couldn't be read"), true
-			}
-			g.holdPaste(in, "the screen couldn't be read", false, "")
-			return true, nil, true
-		}
-		if open, why := PromptOnScreen(screen); open {
-			g.holdPaste(in, "a prompt is still open", false, promptKind(why))
-			return true, nil, true
-		}
-		state := boxOurs // a PTY's raw output can't show the box: Enter only, never paste again
-		if rendered {
-			state = in.boxState(ctx, screen, agentType, sessionID)
-		} else {
-			slog.Info("automated input: unconfirmed delivery (the terminal's box can't be read; sending only the Enter)",
-				"session", in.Name, "sender", in.What)
-		}
-		switch state {
-		case boxOurs:
-			held, err := g.enterAndConfirm(ctx, in, sr, rendered, agentType, sessionID)
+		if held, err, decided := g.pasteRetryTurn(ctx, in, sr, rendered, agentType, sessionID); decided {
 			return held, err, true
-		case boxEmpty:
-			if in.entered {
-				// Its Enter took effect after the last look: delivered, never pasted again.
-				g.setLastPasted(in.Name, "")
-				return false, nil, true
-			}
-			if in.pasteRetry > maxPasteRetries {
-				if g.pasteStuck(in) {
-					return false, g.giveUpPaste(in, "pasted again but it never reached the input box"), true
-				}
-				g.holdPaste(in, "pasted again but it never reached the input box", false, "")
-				return true, nil, true
-			}
-		case boxOther:
-			// Text Coral can't place is in the box after Coral's own paste: never Entered (it
-			// could be a person's draft), and given up once stuck rather than blocking (#3708).
-			if g.pasteStuck(in) {
-				return false, g.giveUpPaste(in, "the input box holds text Coral can't place"), true
-			}
-			g.holdPaste(in, whyDraft, false, "")
-			return true, nil, true
-		default:
-			if g.pasteStuck(in) {
-				return false, g.giveUpPaste(in, "the input box couldn't be found on screen"), true
-			}
-			g.holdPaste(in, "the input box isn't on screen", false, "")
-			return true, nil, true
 		}
 	}
 	if in.pasteRetry == 0 && rendered {
-		// Before the first paste (#3457 v3): a box holding someone else's text (a
-		// person's draft, or their own paste) is never added to, so it is never
-		// submitted with ours; the send waits. Our text already there (an earlier
-		// attempt): only its Enter. Checked for every agent type (#3478: agy's
-		// drafts were skipped because its box wasn't listed as known): an input
-		// line holding other text holds the send whatever the agent.
-		if screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID); serr == nil {
-			in.hadPlaceholder = hasPlaceholder(screen)
-			switch in.boxState(ctx, screen, agentType, sessionID) {
-			case boxOther:
-				if held, err, own := g.submitLeftover(ctx, in, sr, screen, agentType, sessionID); own {
-					if held || err != nil {
-						return held, err, true
-					}
-					break // Coral's earlier text was sent: now ours
-				}
-				g.holdPaste(in, whyDraft, false, "")
-				return true, nil, true
-			case boxOurs:
-				held, err := g.enterAndConfirm(ctx, in, sr, rendered, agentType, sessionID)
-				return held, err, true
-			}
+		if held, err, decided := g.boxBeforeFirstPaste(ctx, &in, sr, rendered, agentType, sessionID); decided {
+			return held, err, true
 		}
 	}
+	return g.pasteAndEnter(ctx, in, ps, sr, rendered, agentType, sessionID)
+}
+
+// pasteRetryTurn is a held paste's turn again (#3457 v2): what is in the input box decides. Our text: only
+// its Enter. Empty (or a placeholder): a menu dropped the paste, so paste
+// again, at most maxPasteRetries times (decided false: the caller pastes). Anything else (a person's draft, or
+// text Coral can't recognise): never added to; held, and reported.
+func (g *inputGate) pasteRetryTurn(ctx context.Context, in AutomatedInput, sr ScreenReader, rendered bool, agentType, sessionID string) (held bool, err error, decided bool) {
+	screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
+	if serr != nil {
+		if g.pasteStuck(in) {
+			return false, g.giveUpPaste(in, "the screen couldn't be read"), true
+		}
+		g.holdPaste(in, "the screen couldn't be read", false, "")
+		return true, nil, true
+	}
+	if open, why := PromptOnScreen(screen); open {
+		g.holdPaste(in, "a prompt is still open", false, promptKind(why))
+		return true, nil, true
+	}
+	state := boxOurs // a PTY's raw output can't show the box: Enter only, never paste again
+	if rendered {
+		state = in.boxState(ctx, screen, agentType, sessionID)
+	} else {
+		slog.Info("automated input: unconfirmed delivery (the terminal's box can't be read; sending only the Enter)",
+			"session", in.Name, "sender", in.What)
+	}
+	switch state {
+	case boxOurs:
+		held, err := g.enterAndConfirm(ctx, in, sr, rendered, agentType, sessionID)
+		return held, err, true
+	case boxEmpty:
+		if in.entered {
+			// Its Enter took effect after the last look: delivered, never pasted again.
+			g.setLastPasted(in.Name, "")
+			return false, nil, true
+		}
+		if in.pasteRetry > maxPasteRetries {
+			if g.pasteStuck(in) {
+				return false, g.giveUpPaste(in, "pasted again but it never reached the input box"), true
+			}
+			g.holdPaste(in, "pasted again but it never reached the input box", false, "")
+			return true, nil, true
+		}
+		return false, nil, false
+	case boxOther:
+		// Text Coral can't place is in the box after Coral's own paste: never Entered (it
+		// could be a person's draft), and given up once stuck rather than blocking (#3708).
+		if g.pasteStuck(in) {
+			return false, g.giveUpPaste(in, "the input box holds text Coral can't place"), true
+		}
+		g.holdPaste(in, whyDraft, false, "")
+		return true, nil, true
+	default:
+		if g.pasteStuck(in) {
+			return false, g.giveUpPaste(in, "the input box couldn't be found on screen"), true
+		}
+		g.holdPaste(in, "the input box isn't on screen", false, "")
+		return true, nil, true
+	}
+}
+
+// boxBeforeFirstPaste looks at the input box before the first paste (#3457 v3): a box holding someone else's text
+// (a person's draft, or their own paste) is never added to, so it is never
+// submitted with ours; the send waits. Our text already there (an earlier
+// attempt): only its Enter. Checked for every agent type (#3478: agy's
+// drafts were skipped because its box wasn't listed as known): an input
+// line holding other text holds the send whatever the agent. It notes in in whether the box showed a paste
+// placeholder; decided false: the caller pastes.
+func (g *inputGate) boxBeforeFirstPaste(ctx context.Context, in *AutomatedInput, sr ScreenReader, rendered bool, agentType, sessionID string) (held bool, err error, decided bool) {
+	screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
+	if serr != nil {
+		return false, nil, false
+	}
+	in.hadPlaceholder = hasPlaceholder(screen)
+	switch in.boxState(ctx, screen, agentType, sessionID) {
+	case boxOther:
+		if held, err, own := g.submitLeftover(ctx, *in, sr, screen, agentType, sessionID); own {
+			if held || err != nil {
+				return held, err, true
+			}
+			return false, nil, false // Coral's earlier text was sent: now ours
+		}
+		g.holdPaste(*in, whyDraft, false, "")
+		return true, nil, true
+	case boxOurs:
+		held, err := g.enterAndConfirm(ctx, *in, sr, rendered, agentType, sessionID)
+		return held, err, true
+	}
+	return false, nil, false
+}
+
+// pasteAndEnter pastes in's text and presses its Enter once the text shows in the box (looked for up to
+// pasteVerifyWait) with no prompt open; then confirms it was submitted. A withheld Enter holds the send; done is
+// false when bracketed paste is unavailable (the caller types instead).
+func (g *inputGate) pasteAndEnter(ctx context.Context, in AutomatedInput, ps PromptSender, sr ScreenReader, rendered bool, agentType, sessionID string) (enterHeld bool, err error, done bool) {
 	pctx := ctx
 	if _, known := BracketedPasteHint(ctx); !known {
 		if enabled, known := BracketedPasteFromLog(naming.DefaultLogDir(), agentType, sessionID); known {
