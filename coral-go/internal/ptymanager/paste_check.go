@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"log/slog"
@@ -160,18 +161,57 @@ func boxTextState(box, text string, hadPlaceholder bool) boxState {
 // Codex's placeholder "Ask Codex to do anything" contains "do", is not it), the start of a long one, or the
 // placeholder an agent shows for a long paste.
 func TextInInputBox(screen, text string) bool {
+	return MarkOf(text).InBox(screen)
+}
+
+// BoxMark is what is kept of a message to know it again, in an input box or as a later send, without keeping the
+// message (#4587, Security's INFO): its hash and length, and at most boxMarkPrefixRunes of it with the white space
+// dropped (all of a short one, which an exact match in the box needs). The zero BoxMark is no message.
+type BoxMark struct {
+	sum         [sha256.Size]byte
+	length      int    // the message's length in bytes
+	squeezed    int    // runes in the message with its white space dropped
+	prefix      string // the first boxMarkPrefixRunes of those
+	collapsible bool   // an agent may show it as a paste placeholder
+}
+
+// boxMarkPrefixRunes bounds the text a BoxMark keeps.
+const boxMarkPrefixRunes = 200
+
+// MarkOf is text's BoxMark.
+func MarkOf(text string) BoxMark {
+	sq := []rune(squeeze(text))
+	m := BoxMark{sum: sha256.Sum256([]byte(text)), length: len(text), squeezed: len(sq), collapsible: collapsible(text)}
+	if len(sq) > boxMarkPrefixRunes {
+		sq = sq[:boxMarkPrefixRunes]
+	}
+	m.prefix = string(sq)
+	return m
+}
+
+// IsZero reports whether m is no message.
+func (m BoxMark) IsZero() bool { return m == BoxMark{} }
+
+// Of reports whether m is text's mark: the same message.
+func (m BoxMark) Of(text string) bool {
+	return !m.IsZero() && m.length == len(text) && m.sum == sha256.Sum256([]byte(text))
+}
+
+// InBox reports whether screen's input box (read under anything drawn above it) holds the message: all of a short
+// one and nothing else, the start of a long one, or the placeholder an agent shows for a long paste.
+func (m BoxMark) InBox(screen string) bool {
 	box, ok := inputBoxTextAny(screen)
 	if !ok {
 		return false
 	}
 	if strings.Contains(box, pastePlaceholder) {
-		return collapsible(text)
+		return m.collapsible
 	}
-	want, got := []rune(squeeze(text)), squeeze(box)
-	if len(want) > pastePrefixRunes {
-		return strings.Contains(got, string(want[:pastePrefixRunes]))
+	got := squeeze(box)
+	if m.squeezed > pastePrefixRunes {
+		return strings.Contains(got, string([]rune(m.prefix)[:pastePrefixRunes]))
 	}
-	return len(want) > 0 && got == string(want)
+	return m.squeezed > 0 && got == m.prefix
 }
 
 // InputBoxEmpty reports whether screen shows the agent's input box empty (or holding only its placeholder), with

@@ -31,7 +31,7 @@ import (
 // gone and both said "sent" with nothing submitted. A second send waits for the first to be confirmed or refused and
 // starts from a fresh screen; waiters are bounded (humanSendMaxWaiting per agent, humanSendMaxInFlight in all), over
 // that it is refused untyped (409 agent_busy), and a cancelled request gives up its place. A message left in the box
-// unsubmitted is remembered: while it is still there, a different message is refused untyped (409 box_not_empty)
+// unsubmitted is remembered by its mark (a hash, its length and at most 200 characters, not the message): while it is still there, a different message is refused untyped (409 box_not_empty)
 // rather than typed after it; the same message gets Enter, as above.
 
 var (
@@ -57,27 +57,28 @@ type humanSendGate struct {
 	mu        sync.Mutex
 	agents    map[string]*humanSendTurn
 	inFlight  int
-	leftovers map[string]string // agent -> a message of ours left in its box unsubmitted
+	leftovers map[string]ptymanager.BoxMark // agent -> a message of ours left in its box unsubmitted: its mark, never its text
 }
 
-// leftover is the message last left unsubmitted in the agent's box ("" for none); setLeftover records or ("") clears it.
-func (g *humanSendGate) leftover(key string) string {
+// leftover is the mark of the message last left unsubmitted in the agent's box (zero for none); setLeftover records
+// or (a zero mark) clears it.
+func (g *humanSendGate) leftover(key string) ptymanager.BoxMark {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.leftovers[key]
 }
 
-func (g *humanSendGate) setLeftover(key, text string) {
+func (g *humanSendGate) setLeftover(key string, m ptymanager.BoxMark) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if text == "" {
+	if m.IsZero() {
 		delete(g.leftovers, key)
 		return
 	}
 	if g.leftovers == nil {
-		g.leftovers = map[string]string{}
+		g.leftovers = map[string]ptymanager.BoxMark{}
 	}
-	g.leftovers[key] = text
+	g.leftovers[key] = m
 }
 
 // humanSendTurn is one agent's turn: a one-slot channel held by the message being delivered, and how many hold or
@@ -171,9 +172,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	defer func() {
 		switch {
 		case err == errSendNotSubmit:
-			h.sendGate.setLeftover(key, text)
-		case err == nil && lo == text:
-			h.sendGate.setLeftover(key, "") // the leftover itself, submitted now
+			h.sendGate.setLeftover(key, ptymanager.MarkOf(text))
+		case err == nil && lo.Of(text):
+			h.sendGate.setLeftover(key, ptymanager.BoxMark{}) // the leftover itself, submitted now
 		}
 	}()
 	send := func() error { return h.terminal.SendInput(ctx, name, text, agentType, sessionID) }
@@ -202,11 +203,11 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	if open, _ := ptymanager.PromptOnScreen(screen); open {
 		return send() // an answer to the prompt, typed as before: no input box to confirm it in
 	}
-	if lo != "" && lo != text {
-		if ptymanager.TextInInputBox(screen, lo) {
+	if !lo.IsZero() && !lo.Of(text) {
+		if lo.InBox(screen) {
 			return errSendLeftover
 		}
-		h.sendGate.setLeftover(key, "") // submitted or cleared since
+		h.sendGate.setLeftover(key, ptymanager.BoxMark{}) // submitted or cleared since
 	}
 	es, canEnter := h.terminal.(ptymanager.EnterSender)
 	base := h.latestEventID(ctx, sessionID)
