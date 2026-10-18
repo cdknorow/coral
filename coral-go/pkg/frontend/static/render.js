@@ -871,120 +871,17 @@ function _rowSession(item) {
     return (state.liveSessions || []).find(same) || Object.values(state.killedSessions || {}).find(same) || null;
 }
 
-function _renderLiveSessions(sessions) {
-    // Single-agent popout: the sidebar is chrome. Never render rows there —
-    // they would carry session ids and destructive kebab actions into the DOM.
-    if (document.body.classList.contains('popout-mode')) {
-        const list = liveListEl();
-        if (list) list.innerHTML = '';
-        return;
-    }
+// A team's color: the one the user picked for it (the team's color menu, kept per viewer),
+// else none, so every team shows in the same neutral color (#3507, the operator's request;
+// teams used to get a color hashed from their name).
+function _boardAccentStyle(name) {
+    const custom = _getBoardColor(name);
+    return custom ? ` style="--team-accent: ${escapeAttr(custom)}"` : '';
+}
 
-    // Merge killed sessions back so they appear as "done" with history links.
-    // Use a copy to avoid mutating state.liveSessions.
-    const liveIds = new Set(sessions.map(s => s.session_id));
-    sessions = [...sessions];
-    for (const [sid, ks] of Object.entries(state.killedSessions)) {
-        if (!liveIds.has(sid)) {
-            sessions.push(ks);
-        }
-    }
-
-    applySessionSummaryPref();
-    const unfilteredCount = sessions.length;
-    if (getAgentFilter()) sessions = sessions.filter(s => _agentMatches(s, getAgentFilter()));
-    _filteredMatches = sessions;
-    // Archived agents leave the main list, its groups and counts; they are
-    // listed in their own section at the bottom.
-    const archived = sessions.filter(s => s.archived);
-    sessions = sessions.filter(s => !s.archived);
-
-    _renderSidebarRail(sessions);
-
-    const list = liveListEl();
-    // Re-render replaces every row: remember which row had keyboard focus.
-    const focusedRow = document.activeElement && document.activeElement.closest
-        ? document.activeElement.closest('.session-group-item[data-session-id]') : null;
-    const focusedSid = focusedRow ? focusedRow.dataset.sessionId : null;
-    // Focus inside the row's action menu (or on its button) goes back to the button when the row is redrawn, not to the row (#4621).
-    const focusedInMenu = !!(focusedRow && document.activeElement.closest('.sidebar-kebab-wrapper'));
-    _wireListKeyboard(list);
-    _wireListKeyboard(document.getElementById('mobile-agent-list'));
-
-    // Pinned folders count too: the list shows them with no agents (#3630).
-    const pinsShown = pinnedFolders().filter(p => _pinMatchesFilter(p)).length;
-    updateSectionVisibility('live-sessions', unfilteredCount + pinnedFolders().length);
-
-    if (!sessions.length && !archived.length && !pinsShown) {
-        renderServerSwitcher();
-        // Coral Hub with no machine connected: say what to do (the same list is the phone's Agents page), not just that there is nothing
-        list.innerHTML = (!unfilteredCount && hubEmptyListHtml(machineState())) || `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
-        return;
-    }
-
-    // Sync the Group by Team checkmark
-    const groupByTeam = browserLocal.get('coral-group-by-team') !== 'false';
-    const check = document.getElementById('group-by-team-check-top');
-    if (check) check.style.opacity = groupByTeam ? '1' : '0.2';
-
-    // A team's color: the one the user picked for it (the team's color menu, kept per viewer),
-    // else none, so every team shows in the same neutral color (#3507, the operator's request;
-    // teams used to get a color hashed from their name).
-    function _boardAccentStyle(name) {
-        const custom = _getBoardColor(name);
-        return custom ? ` style="--team-accent: ${escapeAttr(custom)}"` : '';
-    }
-
-    // The servers UI (#3085): a compact button in the search row; with two or
-    // more servers the groups below are wrapped in collapsible server headers.
-    renderServerSwitcher();
-    const renderGroups = (sessions, withPins = true) => {
+// Team-first mode: one team as a card: its header, its menu and its agents.
+function _renderTeamCard(boardName, boardSessions) {
     let html = '';
-
-    if (groupByTeam) {
-    // ── Team-first mode: teams at top level, standalone by folder below ──
-
-    // Step 1: Separate into team (has board_project) vs workflow vs standalone
-    const teamGroups = {};
-    const workflowGroups = {};
-    const standaloneByFolder = {};
-    for (const s of sessions) {
-        if (s.board_project) {
-            const tk = sessionTeamKey(s);
-            if (!teamGroups[tk]) teamGroups[tk] = [];
-            teamGroups[tk].push(s);
-        } else if (s.workflow_name) {
-            const wfKey = s.workflow_name;
-            if (!workflowGroups[wfKey]) workflowGroups[wfKey] = [];
-            workflowGroups[wfKey].push(s);
-        } else {
-            const key = sessionFolderKey(s);
-            if (!standaloneByFolder[key]) standaloneByFolder[key] = [];
-            standaloneByFolder[key].push(s);
-        }
-    }
-    // Pinned folders with no agent here are listed as empty folder entries (#3630).
-    if (withPins) {
-        const empty = emptyPins(sessions.filter(s => !s.board_project && !s.workflow_name), new Set(Object.keys(standaloneByFolder)));
-        notePinKeys(empty);
-        for (const p of empty) if (_pinMatchesFilter(p)) standaloneByFolder[p.key] = [];
-    }
-
-    // Step 2: Render team groups at top level
-    // Apply saved group order first, then sort active before sleeping
-    const teamEntries = localFirst(_sortGroups(Object.entries(teamGroups)));
-    // Secondary sort: if no saved order, put sleeping teams after active
-    const hasOrder = _getGroupOrder().length > 0;
-    if (!hasOrder) {
-        teamEntries.sort((a, b) => {
-            const aAllSleeping = a[1].every(s => s.sleeping);
-            const bAllSleeping = b[1].every(s => s.sleeping);
-            if (aAllSleeping !== bAllSleeping) return aAllSleeping ? 1 : -1;
-            return 0;
-        });
-    }
-
-    for (const [boardName, boardSessions] of teamEntries) {
         const accentStyle = _boardAccentStyle(boardName);
         const boardCollapsed = _isGroupCollapsed(boardName);
         const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
@@ -1076,10 +973,12 @@ function _renderLiveSessions(sessions) {
         });
         html += _renderAgentListWithSubgroups(orderedBoard, boardWorkDir, true, boardName);
         html += `</ul></li>`;
-    }
+    return html;
+}
 
-    // Step 2b: Render workflow agent groups
-    for (const [wfName, wfSessions] of Object.entries(workflowGroups)) {
+// Team-first mode: one workflow's agents, as a card.
+function _renderWorkflowCard(wfName, wfSessions) {
+    let html = '';
         const wfCollapsed = _isGroupCollapsed('wf:' + wfName);
         const wfRunId = wfSessions[0]?.workflow_run_id || '';
         const wfSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg> Workflow · ${wfSessions.length} agent${wfSessions.length !== 1 ? 's' : ''}${wfRunId ? ' · Run #' + wfRunId : ''}</div>`;
@@ -1107,11 +1006,12 @@ function _renderLiveSessions(sessions) {
             html += _renderSessionItem(s, 'wf:' + wfName, true, wfCollapsed, '');
         }
         html += `</ul></li>`;
-    }
+    return html;
+}
 
-    // Step 3: Render standalone agents grouped by folder
-    const sortedFolders = localFirst(_sortGroups(Object.entries(standaloneByFolder)));
-    for (const [groupName, groupSessions] of sortedFolders) {
+// Team-first mode: one folder group of the agents that are on no team or workflow.
+function _renderFolderGroup(groupName, groupSessions) {
+    let html = '';
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
         const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
@@ -1166,26 +1066,12 @@ function _renderLiveSessions(sessions) {
         if (!collapsed && sorted.length) {
             html += _renderAgentListWithSubgroups(sorted, groupWorkDir, false, groupName);
         }
-    }
+    return html;
+}
 
-    } else {
-    // ── Folder-first mode: all sessions grouped by folder, boards nested inside ──
-
-    // Group sessions by folder name (primary grouping)
-    const groups = {};
-    for (const s of sessions) {
-        const key = sessionFolderKey(s);
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(s);
-    }
-    if (withPins) {
-        const empty = emptyPins(sessions, new Set(Object.keys(groups)));
-        notePinKeys(empty);
-        for (const p of empty) if (_pinMatchesFilter(p)) groups[p.key] = [];
-    }
-
-    const sortedGroups = localFirst(_sortGroups(Object.entries(groups)));
-    for (const [groupName, groupSessions] of sortedGroups) {
+// Folder-first mode: one folder group, with its boards nested inside as cards.
+function _renderFolderFirstGroup(groupName, groupSessions) {
+    let html = '';
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
         const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
@@ -1336,26 +1222,98 @@ function _renderLiveSessions(sessions) {
             // Render unboarded items as flat list with subgroups
             html += _renderAgentListWithSubgroups(unboardedItems, groupWorkDir, false, groupName);
         }
+    return html;
+}
+
+// The groups of a list of sessions as markup: teams, workflows and folders (team first), or folders with their boards nested (folder first); with pins, pinned folders that have no agent here are listed too.
+function _renderGroups(sessions, groupByTeam, withPins = true) {
+    let html = '';
+
+    if (groupByTeam) {
+    // ── Team-first mode: teams at top level, standalone by folder below ──
+
+    // Step 1: Separate into team (has board_project) vs workflow vs standalone
+    const teamGroups = {};
+    const workflowGroups = {};
+    const standaloneByFolder = {};
+    for (const s of sessions) {
+        if (s.board_project) {
+            const tk = sessionTeamKey(s);
+            if (!teamGroups[tk]) teamGroups[tk] = [];
+            teamGroups[tk].push(s);
+        } else if (s.workflow_name) {
+            const wfKey = s.workflow_name;
+            if (!workflowGroups[wfKey]) workflowGroups[wfKey] = [];
+            workflowGroups[wfKey].push(s);
+        } else {
+            const key = sessionFolderKey(s);
+            if (!standaloneByFolder[key]) standaloneByFolder[key] = [];
+            standaloneByFolder[key].push(s);
+        }
+    }
+    // Pinned folders with no agent here are listed as empty folder entries (#3630).
+    if (withPins) {
+        const empty = emptyPins(sessions.filter(s => !s.board_project && !s.workflow_name), new Set(Object.keys(standaloneByFolder)));
+        notePinKeys(empty);
+        for (const p of empty) if (_pinMatchesFilter(p)) standaloneByFolder[p.key] = [];
+    }
+
+    // Step 2: Render team groups at top level
+    // Apply saved group order first, then sort active before sleeping
+    const teamEntries = localFirst(_sortGroups(Object.entries(teamGroups)));
+    // Secondary sort: if no saved order, put sleeping teams after active
+    const hasOrder = _getGroupOrder().length > 0;
+    if (!hasOrder) {
+        teamEntries.sort((a, b) => {
+            const aAllSleeping = a[1].every(s => s.sleeping);
+            const bAllSleeping = b[1].every(s => s.sleeping);
+            if (aAllSleeping !== bAllSleeping) return aAllSleeping ? 1 : -1;
+            return 0;
+        });
+    }
+
+    for (const [boardName, boardSessions] of teamEntries) {
+        html += _renderTeamCard(boardName, boardSessions);
+    }
+
+    // Step 2b: Render workflow agent groups
+    for (const [wfName, wfSessions] of Object.entries(workflowGroups)) {
+        html += _renderWorkflowCard(wfName, wfSessions);
+    }
+
+    // Step 3: Render standalone agents grouped by folder
+    const sortedFolders = localFirst(_sortGroups(Object.entries(standaloneByFolder)));
+    for (const [groupName, groupSessions] of sortedFolders) {
+        html += _renderFolderGroup(groupName, groupSessions);
+    }
+
+    } else {
+    // ── Folder-first mode: all sessions grouped by folder, boards nested inside ──
+
+    // Group sessions by folder name (primary grouping)
+    const groups = {};
+    for (const s of sessions) {
+        const key = sessionFolderKey(s);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(s);
+    }
+    if (withPins) {
+        const empty = emptyPins(sessions, new Set(Object.keys(groups)));
+        notePinKeys(empty);
+        for (const p of empty) if (_pinMatchesFilter(p)) groups[p.key] = [];
+    }
+
+    const sortedGroups = localFirst(_sortGroups(Object.entries(groups)));
+    for (const [groupName, groupSessions] of sortedGroups) {
+        html += _renderFolderFirstGroup(groupName, groupSessions);
     }
 
     } // end if/else groupByTeam
     return html;
-    };
+}
 
-    let html = '';
-    const shownServers = serversShown();
-    if (isGroupedByServer()) {
-        for (const e of shownServers) {
-            const own = sessions.filter(x => sessionServer(x) === e.id);
-            const collapsed = _isServerCollapsed(e.id);
-            html += serverGroupHeaderHtml(e, own.length, collapsed, _openServerDetails.has(e.id));
-            if (!collapsed) html += renderGroups(own, e.id === LOCAL_SERVER);
-        }
-    } else {
-        html += renderGroups(sessions);
-    }
-
-    html += _renderArchivedSection(archived);
+// Puts the markup in the list and wires what is new: tooltips, drag and drop, team token usage, the keyboard focus the redraw took, and the phone's page.
+function _applyListHtml(list, html, focusedSid, focusedInMenu) {
     // Only the parts that changed are re-parsed; unchanged rows keep their nodes,
     // listeners and late-filled text (#3121). `added` is what is new.
     _lastListHtml = html;
@@ -1398,6 +1356,10 @@ function _renderLiveSessions(sessions) {
     // The phone's page takes the list itself (it is not copied: #4497)
     syncMobileAgentList();
 
+}
+
+// Keep sidebar status aligned with the team availability API (see below).
+function _refreshTeamBadges(sessions) {
     // Keep sidebar status aligned with the team availability API. The first
     // render uses the transcript state; the cached API snapshot replaces it
     // asynchronously when an assigned task is idle.
@@ -1409,6 +1371,85 @@ function _renderLiveSessions(sessions) {
             if (changed) scheduleLiveSessionsRender(); // several teams changing: one render
         });
     }
+}
+
+function _renderLiveSessions(sessions) {
+    // Single-agent popout: the sidebar is chrome. Never render rows there —
+    // they would carry session ids and destructive kebab actions into the DOM.
+    if (document.body.classList.contains('popout-mode')) {
+        const list = liveListEl();
+        if (list) list.innerHTML = '';
+        return;
+    }
+
+    // Merge killed sessions back so they appear as "done" with history links.
+    // Use a copy to avoid mutating state.liveSessions.
+    const liveIds = new Set(sessions.map(s => s.session_id));
+    sessions = [...sessions];
+    for (const [sid, ks] of Object.entries(state.killedSessions)) {
+        if (!liveIds.has(sid)) {
+            sessions.push(ks);
+        }
+    }
+
+    applySessionSummaryPref();
+    const unfilteredCount = sessions.length;
+    if (getAgentFilter()) sessions = sessions.filter(s => _agentMatches(s, getAgentFilter()));
+    _filteredMatches = sessions;
+    // Archived agents leave the main list, its groups and counts; they are
+    // listed in their own section at the bottom.
+    const archived = sessions.filter(s => s.archived);
+    sessions = sessions.filter(s => !s.archived);
+
+    _renderSidebarRail(sessions);
+
+    const list = liveListEl();
+    // Re-render replaces every row: remember which row had keyboard focus.
+    const focusedRow = document.activeElement && document.activeElement.closest
+        ? document.activeElement.closest('.session-group-item[data-session-id]') : null;
+    const focusedSid = focusedRow ? focusedRow.dataset.sessionId : null;
+    // Focus inside the row's action menu (or on its button) goes back to the button when the row is redrawn, not to the row (#4621).
+    const focusedInMenu = !!(focusedRow && document.activeElement.closest('.sidebar-kebab-wrapper'));
+    _wireListKeyboard(list);
+    _wireListKeyboard(document.getElementById('mobile-agent-list'));
+
+    // Pinned folders count too: the list shows them with no agents (#3630).
+    const pinsShown = pinnedFolders().filter(p => _pinMatchesFilter(p)).length;
+    updateSectionVisibility('live-sessions', unfilteredCount + pinnedFolders().length);
+
+    if (!sessions.length && !archived.length && !pinsShown) {
+        renderServerSwitcher();
+        // Coral Hub with no machine connected: say what to do (the same list is the phone's Agents page), not just that there is nothing
+        list.innerHTML = (!unfilteredCount && hubEmptyListHtml(machineState())) || `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
+        return;
+    }
+
+    // Sync the Group by Team checkmark
+    const groupByTeam = browserLocal.get('coral-group-by-team') !== 'false';
+    const check = document.getElementById('group-by-team-check-top');
+    if (check) check.style.opacity = groupByTeam ? '1' : '0.2';
+
+
+    // The servers UI (#3085): a compact button in the search row; with two or
+    // more servers the groups below are wrapped in collapsible server headers.
+    renderServerSwitcher();
+
+    let html = '';
+    const shownServers = serversShown();
+    if (isGroupedByServer()) {
+        for (const e of shownServers) {
+            const own = sessions.filter(x => sessionServer(x) === e.id);
+            const collapsed = _isServerCollapsed(e.id);
+            html += serverGroupHeaderHtml(e, own.length, collapsed, _openServerDetails.has(e.id));
+            if (!collapsed) html += _renderGroups(own, groupByTeam, e.id === LOCAL_SERVER);
+        }
+    } else {
+        html += _renderGroups(sessions, groupByTeam);
+    }
+
+    html += _renderArchivedSection(archived);
+    _applyListHtml(list, html, focusedSid, focusedInMenu);
+    _refreshTeamBadges(sessions);
 }
 
 // Hidden tabs skip availability polls; catch up as soon as the tab is shown.
