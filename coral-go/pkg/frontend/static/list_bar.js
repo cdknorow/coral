@@ -63,7 +63,11 @@ export function buildListBar(spec, onChange) {
     q.setAttribute('aria-label', spec.searchLabel);
     const clearQ = make('button', 'list-bar-clear-q', '×'); clearQ.type = 'button'; clearQ.setAttribute('aria-label', 'Clear search'); clearQ.hidden = true;
     wrap.append(q, clearQ);
-    const count = make('span', 'list-bar-count'); count.setAttribute('role', 'status'); count.setAttribute('aria-live', 'polite');
+    const count = make('span', 'list-bar-count');
+    // The count is not a live region itself: a list that changes under the person (agents coming and going, a poll) would have a screen reader announce it again and again. A hidden status region says it
+    // only after the person changed the search or a filter (apply), which is when they want to hear how many are left.
+    const live = make('span', 'list-bar-live'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
+    let announce = false;
     if (noSearch) searchRow.hidden = true; else searchRow.append(wrap, count);
 
     const controls = make('div', 'list-bar-controls');
@@ -82,9 +86,9 @@ export function buildListBar(spec, onChange) {
 
     const chipList = make('ul', 'list-bar-chips'); chipList.setAttribute('aria-label', 'Active filters'); chipList.hidden = true;
     if (noSearch) node.classList.add('list-bar-nosearch');
-    node.append(...(noSearch ? [] : [searchRow]), controls, menu, chipList);
+    node.append(...(noSearch ? [] : [searchRow]), controls, menu, chipList, live);
 
-    const apply = next => { f = clean(next); onChange({ ...f }); };
+    const apply = next => { f = clean(next); announce = true; onChange({ ...f }); };
     const later = next => { clearTimeout(timer); timer = setTimeout(() => apply(next), DEBOUNCE_MS); };
     const closeMenu = (focus) => { if (menu.hidden) return; menu.hidden = true; filterBtn.setAttribute('aria-expanded', 'false'); if (focus) filterBtn.focus(); };
 
@@ -140,8 +144,9 @@ export function buildListBar(spec, onChange) {
             chipList.hidden = !list.length;
             filterBtn.textContent = isFiltered(f) ? `Filters (${list.filter(c => c.key !== 'q').length})` : 'Filters';
             const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned
-            if (counts && counts.text != null) { count.textContent = counts.text; return; } // a panel that words its own count (the agent list's: its search text narrows it too)
-            count.textContent = !counts ? '' : isFiltered(f) ? `${counts.matched} of ${all}` : `${all} ${counts.all === 1 && !counts.truncated ? spec.noun : (spec.plural || spec.noun + 's')}`;
+            const say = text => { count.textContent = text; if (announce) { announce = false; live.textContent = text; } };
+            if (counts && counts.text != null) { say(counts.text); return; } // a panel that words its own count (the agent list's: its search text narrows it too)
+            say(!counts ? '' : isFiltered(f) ? `${counts.matched} of ${all}` : `${all} ${counts.all === 1 && !counts.truncated ? spec.noun : (spec.plural || spec.noun + 's')}`);
         },
         /** The names seen in the list, offered in the text field that has a datalist (typed text still works). */
         names(list) { const fld = fields.find(x => x.list); if (fld) fld.list.replaceChildren(...list.map(n => new Option(n))); },
