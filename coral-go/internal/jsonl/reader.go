@@ -307,7 +307,9 @@ func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType s
 	if c.path == "" {
 		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
 			c.lastResolved = time.Now()
-			c.path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
+			// A live session's first prompt comes from its own transcript: for agy, the one
+			// carrying its marker, never the newest in its folder (#4590).
+			c.path = resolveTranscriptPathMode(sessionID, workingDirectory, agentType, isAgyAgentType(agentType))
 		}
 		if c.path == "" {
 			return ""
@@ -667,6 +669,11 @@ func openTranscriptFile(path string) (*os.File, error) {
 	}
 	return os.Open(path)
 }
+
+// CodexTranscriptPath is the rollout file of a Coral Codex session, found only by what names
+// that session: the link its hook wrote from Codex's own payload, the session id in the file
+// name, or the Coral marker in the rollout's developer message. Never by folder or time (#4590).
+func CodexTranscriptPath(sessionID string) string { return resolveCodexTranscript(sessionID) }
 
 func resolveCodexTranscript(sessionID string) string {
 	if link := transcriptlink.Codex(sessionID); link.Path != "" {

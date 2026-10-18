@@ -2,16 +2,15 @@ package background
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/subagent"
@@ -272,139 +271,12 @@ func extractCodexUsage(path string) *codexUsageData {
 	return &p.codexUsageData
 }
 
-// findCodexRollout finds the Codex rollout file for a live session.
-// Since Codex rollout UUIDs don't match Coral session IDs, we match by:
-// 1. Session ID substring in filename (works when Coral controls the ID)
-// 2. Most recently modified rollout file whose cwd matches the session's working dir
-// 3. Most recently created rollout file near the session's creation time
+// findCodexRollout finds the Codex rollout file for a live session, by what names the session
+// (its link, its id in the file name, its Coral marker): never by working directory or time
+// (#4590). Another Codex session in the same folder and CODEX_HOME would be picked up as this
+// one's, and its tokens and cost counted here.
 func findCodexRollout(ls *store.LiveSession) string {
-	home, _ := os.UserHomeDir()
-	codexHome := os.Getenv("CODEX_HOME")
-	if codexHome == "" {
-		codexHome = filepath.Join(home, ".codex")
-	}
-	basePath := filepath.Join(codexHome, "sessions")
-
-	// Strategy 1: Try matching session ID in filename
-	matches, err := filepath.Glob(filepath.Join(basePath, "*", "*", "*", "rollout-*"+ls.SessionID+"*.jsonl"))
-	if err == nil && len(matches) > 0 {
-		return matches[0]
-	}
-
-	// Strategy 2: Find recently modified rollout files and match by working dir
-	type rolloutFile struct {
-		path  string
-		mtime time.Time
-	}
-	var candidates []rolloutFile
-
-	// Parse session creation time (stored as RFC3339 with microseconds)
-	sessionCreated, _ := time.Parse(time.RFC3339Nano, ls.CreatedAt)
-	if sessionCreated.IsZero() {
-		sessionCreated, _ = time.Parse(time.RFC3339, ls.CreatedAt)
-	}
-	if sessionCreated.IsZero() {
-		sessionCreated, _ = time.Parse("2006-01-02T15:04:05Z", ls.CreatedAt)
-	}
-	if sessionCreated.IsZero() {
-		sessionCreated, _ = time.Parse("2006-01-02 15:04:05", ls.CreatedAt)
-	}
-
-	_ = filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".jsonl") {
-			return nil
-		}
-		// Only consider files modified in the last hour or created near session start
-		if time.Since(info.ModTime()) < time.Hour {
-			candidates = append(candidates, rolloutFile{path: path, mtime: info.ModTime()})
-		} else if !sessionCreated.IsZero() && info.ModTime().After(sessionCreated.Add(-5*time.Minute)) {
-			candidates = append(candidates, rolloutFile{path: path, mtime: info.ModTime()})
-		}
-		return nil
-	})
-
-	// Sort by most recently modified
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].mtime.After(candidates[j].mtime)
-	})
-
-	// Check each candidate's cwd against the session's working dir
-	for _, c := range candidates {
-		cwd := peekCodexCWD(c.path)
-		if cwd != "" && cwd == ls.WorkingDir {
-			return c.path
-		}
-	}
-
-	// Fallback: if we have a session creation time, pick the rollout file
-	// created closest to it
-	if !sessionCreated.IsZero() && len(candidates) > 0 {
-		var bestPath string
-		var bestDelta time.Duration = time.Hour * 24
-		for _, c := range candidates {
-			// Parse timestamp from filename: rollout-YYYY-MM-DDTHH-MM-SS-{uuid}.jsonl
-			base := filepath.Base(c.path)
-			if !strings.HasPrefix(base, "rollout-") {
-				continue
-			}
-			// Extract timestamp portion
-			parts := strings.SplitN(strings.TrimPrefix(base, "rollout-"), "-", 7)
-			if len(parts) >= 6 {
-				ts := strings.Join(parts[:6], "-")
-				// Format: 2026-03-29T00-03-11 → 2006-01-02T15-04-05
-				if t, err := time.Parse("2006-01-02T15-04-05", ts); err == nil {
-					delta := t.Sub(sessionCreated).Abs()
-					if delta < bestDelta {
-						bestDelta = delta
-						bestPath = c.path
-					}
-				}
-			}
-		}
-		if bestPath != "" && bestDelta < 5*time.Minute {
-			return bestPath
-		}
-	}
-
-	return ""
-}
-
-// peekCodexCWD reads the first few lines of a Codex rollout file to extract
-// the working directory from a turn_context entry.
-func peekCodexCWD(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-
-	// Read first 32KB — turn_context is usually in the first few entries
-	buf := make([]byte, 32*1024)
-	n, _ := f.Read(buf)
-	if n == 0 {
-		return ""
-	}
-
-	for _, line := range strings.Split(string(buf[:n]), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var entry struct {
-			Type    string `json:"type"`
-			Payload struct {
-				CWD string `json:"cwd"`
-			} `json:"payload"`
-		}
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-		// Both session_meta and turn_context have cwd
-		if (entry.Type == "session_meta" || entry.Type == "turn_context") && entry.Payload.CWD != "" {
-			return entry.Payload.CWD
-		}
-	}
-	return ""
+	return jsonl.CodexTranscriptPath(ls.SessionID)
 }
 
 // ── Claude JSONL token tracking ───────────────────────────────

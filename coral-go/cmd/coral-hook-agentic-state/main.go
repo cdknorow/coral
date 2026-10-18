@@ -75,11 +75,7 @@ func main() {
 	base := hooks.CoralBase()
 	sessionID := hooks.ResolveSessionID(hooks.StrVal(d, "session_id"))
 	if strings.HasPrefix(os.Getenv("CORAL_SESSION_NAME"), "codex-") {
-		threadID := os.Getenv("CODEX_THREAD_ID")
-		if threadID == "" {
-			threadID = hooks.StrVal(d, "session_id")
-		}
-		if threadID != "" && threadID != sessionID {
+		if threadID := codexThreadID(d); threadID != "" && threadID != sessionID {
 			if err := transcriptlink.BindCodex(sessionID, threadID); err != nil {
 				hooks.DebugLog(fmt.Sprintf("CODEX_LINK_FAILED: %v", err))
 			}
@@ -334,6 +330,14 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 	}
 
 	return nil
+}
+
+// codexThreadID is the Codex thread this hook fires for: the session_id of Codex's own
+// payload, nothing else (#4590). The environment is not a source: CODEX_THREAD_ID is exported
+// to a session's shell commands, so a Codex session started from another one's shell inherits
+// its parent's id, and binding that would show the parent's transcript in the child's chat.
+func codexThreadID(d map[string]any) string {
+	return hooks.StrVal(d, "session_id")
 }
 
 // fromAgy translates an agy (Antigravity CLI 1.3.5) hook payload into the Claude shape

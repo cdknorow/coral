@@ -170,7 +170,7 @@ func (r *SessionReader) ReadAgyTurnEvent(sessionID, workingDir string) (string, 
 	if c.path == "" {
 		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
 			c.lastResolved = time.Now()
-			c.path = resolveTranscriptPath(sessionID, workingDir, at.Agy)
+			c.path = resolveTranscriptPathMode(sessionID, workingDir, at.Agy, true) // a live session: its own marker, never the folder (#4590)
 		}
 	}
 	return readAgyTurnEventIncremental(c.path, &c.agyState)
