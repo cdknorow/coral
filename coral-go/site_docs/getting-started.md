@@ -16,7 +16,7 @@ This page describes Coral v1.3.23. Coral runs the agent CLIs you already use, ea
 |---|---|---|
 | **macOS** (13 or later) | `Coral.v<version>.dmg`, a universal (Apple Silicon and Intel) signed and notarized app | Bundled tmux 3.7c with its terminal definitions. Keep the app bundle intact. |
 | **Linux** (x86-64 or ARM64) | `coral-linux-amd64-<version>.tar.gz` or `coral-linux-arm64-<version>.tar.gz`, statically linked CLI/server tools, no desktop app | Not bundled. Install tmux yourself, or start with `--backend pty`. |
-| **Windows** (x64) | `Coral-<version>-x64.msi` (installer) or `Coral-<version>-x64-portable.zip`. Not code-signed: SmartScreen warns that the publisher is unknown, so check the file as the [README](https://github.com/cdknorow/coral#verify-your-download) describes before you run it. The default port is 8450, not 8420. | Not used: Windows always runs agents with its native terminal (the pty backend). |
+| **Windows** (x64) | `Coral-<version>-x64.msi` (installer) or `Coral-<version>-x64-portable.zip`. Not code-signed: SmartScreen warns that the publisher is unknown, so check the file as the [README](https://github.com/cdknorow/coral#verify-your-download) describes before you run it. The default port is 8450, not 8420. | Not used: Windows uses the native PTY backend (ConPTY; there is no tmux on Windows). |
 
 The macOS 13 minimum is checked in the shipped binaries. It has not been tested on a macOS 13 machine.
 

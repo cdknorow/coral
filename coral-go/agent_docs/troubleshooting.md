@@ -573,8 +573,8 @@ backup once Coral works as before. Measured on a 2 GB database: 15 s, 2.0 GB to
 
 Each release publishes `Coral-<version>-x64.msi` and `Coral-<version>-x64-portable.zip`. They are
 not code-signed, so SmartScreen warns that the publisher is unknown; verify the download (README,
-"Verify your download") before running it. On Windows Coral always uses the native PTY backend
-(ConPTY; there is no tmux) and listens on port 8450 by default, not 8420, which svchost can hold.
+"Verify your download") before running it. On Windows Coral uses the native PTY backend
+(ConPTY; there is no tmux on Windows) and listens on port 8450 by default, not 8420, which svchost can hold.
 
 ### Linux
 
