@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.89 — A Codex transcript privacy fix, a health check that says who waits on whom, and agy prompts answered from Chat
+
+### Security and privacy
+
+- **A Codex session's chat shows only its own transcript.** A Codex started from another Codex session's shell inherited that session's thread id from the environment, so its chat showed the parent's conversation; and the token poller could pick another session's rollout in a shared folder by its creation time. A session's transcript is now found only by what names it (Codex's own payload, the recorded link), never by folder, time or the environment; transcript lookups accept only a well-formed session id, and a bound session keeps its link unless the new rollout is marked as its own.
+- **agy's exit codes are read only from that step's own files,** through the safe file layer, under the conversation folder the payload names.
+
+### Changes
+
+- **The Orchestrator's health check says what each agent is doing and who waits on whom:** working, waiting (and on whom, for how long), at a prompt, idle or asleep, with a wait the awaited agent has already answered marked stale; a wait longer than 10 minutes is escalated once to the agent it waits on. An @mention that names nobody still posts, with a warning and the closest name.
+- **Antigravity (agy) prompts are answered from Chat:** its menus with the arrow keys and Enter, its trust menu too; a launch's start shows as a start, its tool calls read as commands, reads, writes, edits, searches and fetches, and a command that exited non-zero shows as a failed tool with its exit code. Auto-accept for agy comes in a later release.
+- **The agent hover shows the model, and Analytics by model has separate Provider and Model columns, with real model names;** a session that switched models is split across them.
+- **The gear menu ends with the running Coral version.**
+- **The sign-in page, the home-screen icons and the docs site use the current Coral mark** instead of the old multicolour logo.
+
+### Other changes
+
+- **Tests and CI:** new tests for all of the above; the sign-in page suites no longer flake (the dashboard's service worker hid their navigations); six terminal-capture fixtures restored byte for byte.
+
 ## v1.4.88 — A navigable Settings, Team Artifacts search, and working install links
 
 ### Changes
@@ -13,15 +32,12 @@
 ### Fixes
 
 - **The Antigravity install command points at Google's live installer,** and a missing CLI links its vendor's official install page, in the theme's link colour.
-- **Through Coral Hub, the New Agent dialog can check whether a CLI is installed** (it showed "Could not check claude CLI (HTTP 404)"); the check is at the Launch tier and its reply carries no path.
+- **Coral also finds agy in ~/.local/bin, where the installer puts it, even when that folder isn't on PATH;** the install note says how to add it to your own PATH.
+- **Through Coral Hub, the New Agent dialog can check whether a CLI is installed** (it showed "Could not check claude CLI (HTTP 404)"); the check runs the CLI's --version on your computer, so it needs the Launch tier, and its reply carries no path.
 
 ### Security and privacy
 
 - **Through Coral Hub, the Team Artifacts search matches what the viewer sees, after redaction,** so it can't be used to guess a redacted secret a character at a time; and the task filters (assigned_to, created_by, board) now refuse a value containing a secret.
-
-### Known issue
-
-- **The Team Artifacts search's Clear buttons can be reached by Tab while hidden;** fixed in v1.4.89.
 
 ### Other changes
 
