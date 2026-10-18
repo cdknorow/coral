@@ -14,6 +14,14 @@ import (
 // change yet (it polls less often than this).
 const fileListTTL = 15 * time.Second
 
+// The cache is bounded (#4620, Security's M13): at most fileListMaxEntries repositories (the oldest
+// out), and a list longer than fileListMaxFiles is answered but not kept: a repository that big is
+// listed again, which costs a git call and not hundreds of megabytes of paths held for 15 s each.
+const (
+	fileListMaxEntries = 32
+	fileListMaxFiles   = 200_000
+)
+
 // fileLists caches each repository's file list for the file search (#3721): listing it (git
 // ls-files with the untracked files) was the slowest request of every agent switch, 124 to 302
 // ms. One listing per repository at a time (concurrent callers share it); a list is dropped
@@ -78,13 +86,31 @@ func (c *fileListCache) get(ctx context.Context, workdir string) ([]string, erro
 		files, err := c.list(ctx, workdir)
 		c.mu.Lock()
 		delete(c.flights, workdir)
-		if err == nil {
-			c.entries[workdir] = fileListEntry{files: files, at: c.now()}
+		if err == nil && len(files) <= fileListMaxFiles {
+			c.keep(workdir, files)
 		}
 		c.mu.Unlock()
 		close(done)
 		return files, err
 	}
+}
+
+// keep stores a list, dropping the oldest entries when there are fileListMaxEntries already.
+// c.mu is held.
+func (c *fileListCache) keep(workdir string, files []string) {
+	if _, ok := c.entries[workdir]; !ok {
+		for len(c.entries) >= fileListMaxEntries {
+			oldest, first := "", true
+			var oldestAt time.Time
+			for k, e := range c.entries {
+				if first || e.at.Before(oldestAt) {
+					oldest, oldestAt, first = k, e.at, false
+				}
+			}
+			delete(c.entries, oldest)
+		}
+	}
+	c.entries[workdir] = fileListEntry{files: files, at: c.now()}
 }
 
 // invalidate drops the lists of workdir and of any repository containing it or inside it (the
