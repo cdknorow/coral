@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -124,4 +125,45 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// Only a shell command has an exit code: another Codex tool call (its response a string too) never waits on
+// the transcript lookup (Security's INFO on #4545).
+func TestCodexLookupOnlyForShellTools(t *testing.T) {
+	calls := 0
+	orig := codexToolResult
+	codexToolResult = func(path, callID string) (int, string, bool) { calls++; return orig(path, callID) }
+	t.Cleanup(func() { codexToolResult = orig })
+	d := codexCorpus(t, "PostToolUse-failed.json")
+	d["tool_name"] = "apply_patch"
+	d["tool_input"] = map[string]any{"input": "*** Begin Patch"}
+	ev := parseAgenticEvent(d, "PostToolUse", "sid")
+	if calls != 0 || strings.HasPrefix(ev["summary"].(string), "Failed") {
+		t.Errorf("a non-shell tool looked up the transcript (%d) or was marked failed: %v", calls, ev)
+	}
+	parseAgenticEvent(codexCorpus(t, "PostToolUse-failed.json"), "PostToolUse", "sid")
+	if calls != 1 {
+		t.Errorf("the shell command is looked up once, got %d", calls)
+	}
+}
+
+// The rollout path comes from the hook payload: a symlink named like a rollout is not followed.
+func TestCodexLookupDoesNotFollowASymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows; safefs checks the final name there with Lstat")
+	}
+	roll, err := filepath.Abs(filepath.Join("testdata", "codex-0.155.1", "rollout-2026-10-17T21-38-46-01a14d4e-1a66-7893-b33a-f0de799b1d64.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "rollout-link.jsonl")
+	if err := os.Symlink(roll, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := findCodexToolResult(link, "call_1"); ok {
+		t.Error("a symlinked rollout file was read")
+	}
+	if _, _, ok := findCodexToolResult(roll, "call_1"); !ok {
+		t.Error("the file itself is read")
+	}
 }

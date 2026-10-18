@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
@@ -265,7 +266,7 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 		// Codex's PostToolUse gives a shell command's output as a plain string, with no exit code: its
 		// transcript has it (#4545).
 		codexFailed := false
-		if _, isText := d["tool_response"].(string); isText && hookType == "PostToolUse" {
+		if _, isText := d["tool_response"].(string); isText && hookType == "PostToolUse" && codexShellTools[tool] {
 			if code, status, ok := codexToolResult(hooks.StrVal(d, "transcript_path"), hooks.StrVal(d, "tool_use_id")); ok {
 				detail = withDetail(detail, "exit_code", code)
 				codexFailed = status == "failed" || code != 0
@@ -526,6 +527,10 @@ func sessionStartSummary(d map[string]any) string {
 	return "Session reset: /clear"
 }
 
+// codexShellTools: the tool names Codex's hooks give a shell command (0.155.1 says "Bash"). Only those have
+// an exit code, so no other tool call waits on the transcript lookup (Security's INFO on #4545).
+var codexShellTools = map[string]bool{"Bash": true, "shell": true, "exec_command": true, "local_shell": true}
+
 // codexToolResult is the exit code and status of a Codex tool call, from the item_completed record its
 // transcript (the rollout file Codex names in transcript_path) holds for the call. Codex writes that record
 // just before it runs PostToolUse, so a record not there yet is looked for again, briefly.
@@ -547,17 +552,20 @@ var codexToolResult = func(path, callID string) (int, string, bool) {
 // codexTranscriptTail: how much of the transcript's end is read for a call's record.
 const codexTranscriptTail = 256 << 10
 
-// findCodexToolResult reads the end of a Codex rollout file for the item_completed record of callID.
+// findCodexToolResult reads the end of a Codex rollout file for the item_completed record of callID. The
+// path comes from the hook payload: the file is opened through safefs (no symlink as its name, a regular
+// file, checked on the handle).
 func findCodexToolResult(path, callID string) (int, string, bool) {
-	f, err := os.Open(path)
+	root, err := safefs.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return 0, "", false
+	}
+	defer root.Close()
+	f, fi, err := root.Open(filepath.Base(path))
 	if err != nil {
 		return 0, "", false
 	}
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() {
-		return 0, "", false
-	}
 	start := fi.Size() - codexTranscriptTail
 	if start < 0 {
 		start = 0
