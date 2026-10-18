@@ -762,6 +762,7 @@ func (s *Server) registerStatic(r *chi.Mux) {
 	if err != nil {
 		log.Printf("Warning: failed to load agent_docs: %v", err)
 	} else {
+		log.Print(agentDocsStartupLine(agentDocsSub)) // a synced copy: say what this build carries (agent_docs_digest.go)
 		docsHandler := routes.NewAgentDocsHandler(agentDocsSub)
 		r.Get("/api/agent-docs", docsHandler.List)
 		r.Get("/api/agent-docs/all", docsHandler.GetAll)
