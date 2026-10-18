@@ -104,6 +104,31 @@ func spawnTestSession(t *testing.T, backend *ptymanager.TmuxBackend, agentName, 
 	return naming.SessionName("claude", sessionID)
 }
 
+// waitForPane waits until tmux answers for the session's pane (a few milliseconds after Spawn returns), instead of a fixed half second (#4852).
+func waitForPane(t *testing.T, client *tmux.Client, session string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if out, err := client.DisplayMessage(context.Background(), session, "#{pane_pid}"); err == nil && strings.TrimSpace(out) != "" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// waitForSize waits until the session's window has the size want ("120x40"), at most 5 s, then returns: the caller's own assertion reports a size
+// that never came (#4852: a fixed half second after every resize).
+func waitForSize(t *testing.T, client *tmux.Client, session, want string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if out, err := client.DisplayMessage(context.Background(), session, "#{window_width}x#{window_height}"); err == nil && strings.TrimSpace(out) == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // waitForForegroundCommand waits until command is the foreground process of
 // the session's pane, so input is read by it rather than typed ahead into the
 // shell that launches it.
@@ -210,7 +235,7 @@ func TestWSTerminal_ResizeUpdatesPane(t *testing.T) {
 	server := setupTerminalTestServer(t, backend)
 
 	tmuxName := spawnTestSession(t, backend, "resize-agent", "bbbbbbbb-1111-2222-3333-444444444444", "sleep 120")
-	time.Sleep(500 * time.Millisecond)
+	waitForPane(t, client, tmuxName)
 
 	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
 	defer cancel()
@@ -224,7 +249,7 @@ func TestWSTerminal_ResizeUpdatesPane(t *testing.T) {
 		"cols": 120,
 		"rows": 40,
 	})
-	time.Sleep(500 * time.Millisecond)
+	waitForSize(t, client, tmuxName, "120x40")
 
 	dimCtx := context.Background()
 	size, err := client.DisplayMessage(dimCtx, tmuxName, "#{window_width}x#{window_height}")
@@ -237,7 +262,7 @@ func TestWSTerminal_ResizeUpdatesPane(t *testing.T) {
 		"cols": 80,
 		"rows": 24,
 	})
-	time.Sleep(500 * time.Millisecond)
+	waitForSize(t, client, tmuxName, "80x24")
 
 	size, err = client.DisplayMessage(dimCtx, tmuxName, "#{window_width}x#{window_height}")
 	require.NoError(t, err)
@@ -249,11 +274,11 @@ func TestWSTerminal_ResizeUpdatesPane(t *testing.T) {
 // TestWSTerminal_LiveStreamAfterReplay verifies that terminal output produced
 // after WebSocket connection arrives as live binary frames.
 func TestWSTerminal_LiveStreamAfterReplay(t *testing.T) {
-	backend, _ := newTerminalTestTmuxBackend(t)
+	backend, client := newTerminalTestTmuxBackend(t)
 	server := setupTerminalTestServer(t, backend)
 
 	tmuxName := spawnTestSession(t, backend, "live-agent", "cccccccc-1111-2222-3333-444444444444", "sh")
-	time.Sleep(500 * time.Millisecond)
+	waitForPane(t, client, tmuxName)
 
 	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
 	defer cancel()
@@ -391,11 +416,11 @@ func TestWSTerminal_BinaryFrameType(t *testing.T) {
 // TestWSTerminal_GoroutineCleanup verifies that WebSocket connect/disconnect
 // cycles do not leak goroutines.
 func TestWSTerminal_GoroutineCleanup(t *testing.T) {
-	backend, _ := newTerminalTestTmuxBackend(t)
+	backend, client := newTerminalTestTmuxBackend(t)
 	server := setupTerminalTestServer(t, backend)
 
 	tmuxName := spawnTestSession(t, backend, "leak-agent", "11111111-2222-3333-4444-555555555555", "sleep 120")
-	time.Sleep(500 * time.Millisecond)
+	waitForPane(t, client, tmuxName)
 
 	baseline := runtime.NumGoroutine()
 
@@ -458,7 +483,7 @@ func TestWSTerminal_ResizeOnConnect(t *testing.T) {
 	server := setupTerminalTestServer(t, backend)
 
 	tmuxName := spawnTestSession(t, backend, "roc-agent", "33333333-4444-5555-6666-777777777777", "sleep 120")
-	time.Sleep(500 * time.Millisecond)
+	waitForPane(t, client, tmuxName)
 
 	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
 	defer cancel()
@@ -472,7 +497,7 @@ func TestWSTerminal_ResizeOnConnect(t *testing.T) {
 		"cols": 132,
 		"rows": 43,
 	})
-	time.Sleep(500 * time.Millisecond)
+	waitForSize(t, client, tmuxName, "132x43")
 
 	// Verify the resize was applied
 	dimCtx := context.Background()
@@ -492,7 +517,7 @@ func TestWSTerminal_ResizeOnConnect(t *testing.T) {
 		"cols": 100,
 		"rows": 30,
 	})
-	time.Sleep(500 * time.Millisecond)
+	waitForSize(t, client, tmuxName, "100x30")
 
 	size, err = client.DisplayMessage(dimCtx, tmuxName, "#{window_width}x#{window_height}")
 	require.NoError(t, err)
@@ -516,7 +541,7 @@ func TestWSTerminal_ResizeIsCapped(t *testing.T) {
 	backend, client := newTerminalTestTmuxBackend(t)
 	server := setupTerminalTestServer(t, backend)
 	tmuxName := spawnTestSession(t, backend, "resize-cap-agent", "bbbbbbbb-4602-2222-3333-444444444444", "sleep 120")
-	time.Sleep(500 * time.Millisecond)
+	waitForPane(t, client, tmuxName)
 	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
 	defer cancel()
 	readOneBinaryFrame(t, ctx, conn)
@@ -529,7 +554,7 @@ func TestWSTerminal_ResizeIsCapped(t *testing.T) {
 		{120, 40, "120x40"},
 	} {
 		sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_resize", "cols": c.cols, "rows": c.rows})
-		time.Sleep(500 * time.Millisecond)
+		waitForSize(t, client, tmuxName, c.want)
 		size, err := client.DisplayMessage(context.Background(), tmuxName, "#{window_width}x#{window_height}")
 		require.NoError(t, err)
 		assert.Equal(t, c.want, strings.TrimSpace(size), "cols %d rows %d", c.cols, c.rows)
