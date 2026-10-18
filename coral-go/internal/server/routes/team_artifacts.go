@@ -92,9 +92,35 @@ func parseBoundedInt(raw string, def, min, max int) (int, bool) {
 // results. It reads only task workflow records and, for the returned page, the
 // small metadata sidecar of Coral-managed objects (and stats the blob); it never scans the artifact
 // directory or loads artifact bytes.
-// GET /api/board/{project}/artifacts?limit=&offset=
+// GET /api/board/{project}/artifacts?limit=&offset=[&q=&kind=&origin=&by=&board=&kept=&since=&until=&sort=&cursor=]
+//
+// With only limit, offset and session_id the reply is the plain list. Any of the others makes it a query (team_artifacts_query.go,
+// #4572): the reply then also has total, and next_cursor when there is another page.
 func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
+	// A query string Go cannot parse (a ";" or a bad %-escape) is dropped part by part by r.URL.Query(), which would answer a mistyped
+	// filter with the unfiltered list: refuse it. An unknown parameter is refused by name (#4572).
+	vals, perr := url.ParseQuery(r.URL.RawQuery)
+	if perr != nil {
+		errBadRequest(w, "the query string is not valid (no ';', and %-escapes must be two hex digits)")
+		return
+	}
+	var unknown []string
+	for k := range vals {
+		if !teamArtifactParamNames[k] {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		errBadRequest(w, "unknown parameter "+strings.Join(unknown, ", "))
+		return
+	}
+	tq, qerr := parseTeamArtifactQuery(vals)
+	if qerr != nil {
+		errBadRequest(w, strings.TrimPrefix(qerr.Error(), errTeamArtifactQuery.Error()+": "))
+		return
+	}
 	limit, ok := parseBoundedInt(r.URL.Query().Get("limit"), defaultTeamArtifactLimit, 1, maxTeamArtifactLimit)
 	if !ok {
 		errBadRequest(w, fmt.Sprintf("limit must be an integer between 1 and %d", maxTeamArtifactLimit))
@@ -132,6 +158,10 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 	} else {
 		items = h.uploads.merge(items, h.coralDir, teamUploadSessions(tasks, subscribers))
 		items = h.mergeCrossTeamRows(items, project)
+	}
+	if tq != nil {
+		h.queryTeamArtifacts(w, r, project, items, scanTruncated, limit, offset, sessionFilter, tq)
+		return
 	}
 	end := offset + limit
 	hasMore := end < len(items)

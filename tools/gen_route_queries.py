@@ -32,6 +32,9 @@ EXTRA = {
     # The recorded hub UI sends session_id with the board task list (pkg/tunnel TestRealUIQueriesAreNotRefused); the list
     # is per board, so BoardHandler.ListTasks ignores it. It was allowed before only because a same-named handler read it.
     'GET /api/board/{}/tasks': {'session_id'},
+    # The Team Artifacts list's query (#4572): parseTeamArtifactQuery reads these from a url.Values it is handed, not from the request,
+    # which the scan above does not follow. Search, filters, sort and cursor paging on the existing route.
+    'GET /api/board/{}/artifacts': {'q', 'kind', 'origin', 'by', 'board', 'kept', 'since', 'until', 'sort', 'cursor'},
     # The recorded hub UI sends limit with an agent's personal task list; SessionsHandler.ListTasks returns them all.
     'GET /api/sessions/live/{}/tasks': {'limit'},
     # file_explorer.js pages a directory listing with offset; the handler returns the first page regardless.

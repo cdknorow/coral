@@ -59,3 +59,44 @@ func TestTaskQueryRepliesAreRedactedThroughTheTunnel(t *testing.T) {
 	assert.Contains(t, string(b), redact.Marker)
 	assert.True(t, json.Valid(b), string(b))
 }
+
+// GET /api/board/{project}/artifacts takes the Team Artifacts query's parameters at the View tier, and only those (#4572).
+func TestTeamArtifactsQueryIsViewTier(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		want  Tier
+	}{
+		{"", TierView},
+		{"limit=50&offset=10&session_id=abc", TierView},
+		{"q=report&kind=pdf,image&origin=received&by=Lead&board=beta&kept=true&since=2026-10-01T00:00:00Z&until=2026-10-18T00:00:00Z&sort=size&cursor=abc", TierView},
+		{"q=100%25&sort=name", TierView},
+		{"search=report", TierNever},
+		{"filter=pdf", TierNever},
+		{"order=asc", TierNever},
+		{"fields=name", TierNever},
+	} {
+		assert.Equal(t, tc.want, Classify("GET", "/api/board/alpha/artifacts", tc.query), tc.query)
+	}
+	assert.Equal(t, TierNever, Classify("POST", "/api/board/alpha/artifacts", "q=a"))
+}
+
+// An artifact's name is redacted in the query's reply as in the plain list's (the route is a View route).
+func TestTeamArtifactsQueryRepliesAreRedactedThroughTheTunnel(t *testing.T) {
+	tok := fake("ghp_", 36, alnum)
+	reply, _ := json.Marshal(map[string]any{"total": 1, "artifacts": []map[string]any{{"name": "deploy GITHUB_TOKEN=" + tok + ".txt", "task_title": "Authorization: Bearer " + fake("", 40, alnum)}}})
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(reply)
+	})
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, local, func(l *LocalHandler) { l.RedactTokens = func() bool { return true } })
+	resp := do(t, sess, "GET", "/api/board/alpha/artifacts?q=deploy&sort=name", "", nil, nil)
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	assert.NotContains(t, string(b), tok)
+	assert.Contains(t, string(b), redact.Marker)
+	assert.True(t, json.Valid(b), string(b))
+	assert.Equal(t, "redact", RedactionClass("GET", "/api/board/{project}/artifacts"))
+}

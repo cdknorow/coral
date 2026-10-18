@@ -219,3 +219,20 @@ func (s *Store) ListTeamArtifactTasksQuery(ctx context.Context, q TeamArtifactQu
 	}
 	return tasks, truncated, nil
 }
+
+// KeptArtifactIDs is the set of artifact ids (64 hex) the Operator marked Keep (the artifact_keep table of the main sessions
+// database; the prune never removes them). Empty when that database is not attached (#4572).
+func (s *Store) KeptArtifactIDs(ctx context.Context) (map[string]bool, error) {
+	kept := map[string]bool{}
+	if s.sessionsDB == nil {
+		return kept, nil
+	}
+	var ids []string
+	if err := s.sessionsDB.SelectContext(ctx, &ids, "SELECT hex FROM artifact_keep"); err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		kept[id] = true
+	}
+	return kept, nil
+}
