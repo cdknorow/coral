@@ -175,9 +175,16 @@ const { framesJs } = require('./helpers/wait');
         // render can replace the node and move focus between the read above and the key press, so the
         // Enter would land on nothing. Entering the team view is async (enterTeamContext lazy-renders it),
         // so wait for the condition with headroom rather than the 5 s default (#4868).
-        await ev(`document.querySelector('.team-open-btn')?.focus(); true`);
-        await key('Enter', 'Enter', 13);
-        await waitFor(`window.__state.selectedTeam === 'alpha' && !document.getElementById('team-center-view').hidden`, 'the team view after Enter', { timeout: 15000 });
+        // A sidebar re-render can still replace the button between the focus and the key (the keystroke then lands on nothing), so the keyboard check is a real Enter on the
+        // focused button, tried again (re-queried and re-focused) while the team view has not opened: a few tries of a few seconds, not one long wait for a key that was lost.
+        const inTeam = `window.__state.selectedTeam === 'alpha' && !document.getElementById('team-center-view').hidden`;
+        let entered = false;
+        for (let tries = 0; tries < 4 && !entered; tries++) {
+            await ev(`document.querySelector('.team-open-btn')?.focus(); true`);
+            await key('Enter', 'Enter', 13);
+            entered = await waitFor(inTeam, 'the team view after Enter', { timeout: 4000, soft: true });
+        }
+        assert.ok(entered, 'the team view opens from the keyboard (Enter on the focused Open team view button), in up to four tries');
         const kebab = await ev(`(() => { const k = document.querySelector('.session-group-header .group-kebab-btn'); k.focus(); return { focused: document.activeElement === k }; })()`);
         assert.ok(kebab.focused, 'the group kebab takes focus');
         await waitFor(`getComputedStyle(document.querySelector('.session-group-header .group-kebab-btn')).opacity === '1'`, 'the focused kebab to be visible', { diag: `getComputedStyle(document.querySelector('.session-group-header .group-kebab-btn')).opacity` });
