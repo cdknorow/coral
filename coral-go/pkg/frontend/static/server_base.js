@@ -76,9 +76,12 @@ export function assertInProxy(full, base) {
     const refuse = why => { throw new Error(`refused a request that would leave the proxy of ${base || 'a server'} (${why})`); };
     if (!raw.startsWith(base + '/')) refuse('not under the proxy');
     let path = raw.split(/[?#]/)[0];
+    // The browser drops TAB, LF and CR from a URL before it reads it (so ".\t." is ".."), and a space or any other control character has no place in a path Coral builds
+    // (its own values are escaped): refuse them outright, and below resolve the path with them stripped as well, at every layer of decoding.
+    if (/[\u0000-\u0020\u007f]/.test(path)) refuse('a control character or a space in the path');
     let root = base;
     for (let layer = 0; layer < 4; layer++) {
-        if (!resolveDots(path).startsWith(root + '/')) refuse('dot segments leave it');
+        if (!resolveDots(path.replace(/[\t\n\r]/g, '')).startsWith(root + '/')) refuse('dot segments leave it');
         let nextPath, nextRoot;
         try { nextPath = decodeURIComponent(path); nextRoot = decodeURIComponent(root); } catch { refuse('a bad percent escape'); }
         if (nextPath === path) return full;
@@ -93,6 +96,14 @@ export function serverFetch(server, url, options) {
     let target;
     try { target = serverUrl(url, server); } catch (e) { return Promise.reject(e); }
     return fetch(target, options);
+}
+
+/** An id that goes into a request path: a positive safe integer, as a number, or an error. Ids come from lists a registered server sent, and that is another machine: an id
+ *  such as "1/../../x" must never become part of a URL (Security, #4551). */
+export function pathId(v) {
+    const n = Number(v);
+    if ((typeof v !== 'number' && typeof v !== 'string') || !Number.isSafeInteger(n) || n <= 0 || String(v) !== String(n)) throw new Error('not a valid id');
+    return n;
 }
 
 /** The server a session/agent object belongs to ("local" when untagged). */

@@ -1,5 +1,6 @@
 /* Optional, lazy team artifact source for the existing Files viewer. */
 import { state } from './state.js';
+import { inlineArtifactPath } from './artifact_paths.js';
 import { boardOfPage } from './dock_page.js';
 import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
 import { registerActions, idOf, textOf, tokenOf } from './actions.js';
@@ -130,9 +131,9 @@ function artifactLink(item) {
     if (item.available === false || isUnverified(item)) return null;
     const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})(?:\?v=\d+)?$/i.exec(item.uri || '');
     if (managed) return { url: serverUrl(artifactPath(managed[1]), splitKey(team).server), preview: true };
-    const contentPath = `/api/board/${encodeURIComponent(splitKey(team).name)}/tasks/${item.task_id}/artifact-content`;
-    if (item.inline && item.content_url?.startsWith(contentPath + '?')) {
-        return { url: serverUrl(item.content_url, splitKey(team).server), preview: true };
+    const inline = item.inline ? inlineArtifactPath(item.content_url, splitKey(team).name) : null;
+    if (inline) {
+        return { url: serverUrl(inline, splitKey(team).server), preview: true };
     }
     try {
         const url = new URL(item.uri);

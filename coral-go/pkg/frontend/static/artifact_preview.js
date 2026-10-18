@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { escapeHtml, escapeAttr, renderImagePanes } from './utils.js';
 import { renderJSONReport } from './artifact_report.js';
 import { splitKey, serverUrl, contextServer, isCloud, artifactPath } from './server_base.js';
+import { inlineArtifactPath } from './artifact_paths.js';
 import { isSvg, svgDataUrl } from './image_source.js';
 import { wireDownloads } from './artifact_download.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
@@ -167,8 +168,7 @@ function _responseFilename(disposition) {
 export function resolveArtifactSource(uri, options = {}) {
     const match = CORAL_ARTIFACT_URI_RE.exec(uri);
     const board = state.selectedTeam ? splitKey(state.selectedTeam).name : (state.currentSession?.board_project || '');
-    const teamPrefix = `/api/board/${encodeURIComponent(board)}/tasks/`;
-    const inlineURL = options.contentURL?.startsWith(teamPrefix) && /\/artifact-content\?/.test(options.contentURL) ? options.contentURL : null;
+    const inlineURL = inlineArtifactPath(options.contentURL, board); // exactly the shape this route has, for this board (a registered server's value must name no other route)
     let externalURL = null;
     try {
         const parsed = new URL(options.externalURL);

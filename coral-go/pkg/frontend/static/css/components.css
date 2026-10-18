@@ -4156,7 +4156,8 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .saved-item .server { font-size: 0.6875rem; color: var(--text-muted); line-height: 17px; flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; }
 /* In a narrow panel (a phone's overlay, a narrowed sidebar, large text) the name and the server wrap under the title instead of being cut (UX, #4551). */
 @container (max-width: 480px) {
-    .saved-item .top { flex-wrap: wrap; row-gap: 2px; }
+    .saved-item .top { flex-wrap: wrap; row-gap: 0.5rem; } /* rem, so it grows with the text: at 200% a fixed gap let the wrapped server name touch the chip */
+    .saved-item .kind, .saved-item .server { line-height: 1.4; }
     .saved-item .src { white-space: normal; overflow-wrap: anywhere; flex: 1 1 8em; }
     .saved-item .server { flex: 1 0 100%; max-width: 100%; margin-left: 0; white-space: normal; overflow-wrap: anywhere; }
 }

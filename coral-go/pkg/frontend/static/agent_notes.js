@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { showToast, sanitizeMarkdown } from './utils.js';
 import { serverFetch, serverForSession } from './server_base.js';
-import { currentServer } from './server_base.js';
+import { currentServer, pathId } from './server_base.js';
 
 // ID of the persisted note row (null until first save)
 let _noteId = null;
@@ -94,7 +94,7 @@ async function saveContent(content) {
 
     try {
         if (_noteId != null) {
-            await serverFetch(server, `/api/sessions/live/${encodeURIComponent(agentName)}/notes/${_noteId}`, {
+            await serverFetch(server, `/api/sessions/live/${encodeURIComponent(agentName)}/notes/${pathId(_noteId)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content }),

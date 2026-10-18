@@ -50,7 +50,7 @@ const REMOTE = `(() => {
 })()`;
 
 (async () => {
-    const { client, Page, ev, waitFor, sleep, PRELOAD, install, select } = await connect();
+    const { client, Page, Emulation, ev, waitFor, sleep, PRELOAD, install, select } = await connect();
     const api = (method, path, body) => ev(`fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${body ? JSON.stringify(JSON.stringify(body)) : 'undefined'} }).then(async r => ({ status: r.status, body: await r.json().catch(() => null) }))`);
     const C = `document.getElementById('live-history-messages')`;
     // This server answers the chat's keys too (the harness's mock does not): a key from the message's absolute index, and ?find_key= answered from it.
@@ -200,6 +200,23 @@ const REMOTE = `(() => {
         assert.deepEqual({ title: narrow.title === narrow.text && !!narrow.text, under: narrow.under, inside: narrow.inside, clipped: narrow.clipped }, { title: true, under: true, inside: true, clipped: false }, JSON.stringify(narrow));
         await shot('saved-servers-narrow');
         await ev(`document.getElementById('agentic-state').style.width = ''; true`);
+
+        console.log('6c. A phone at 200% text: the wrapped server name does not touch the kind chip');
+        await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+        await Emulation.setTouchEmulationEnabled({ enabled: true });
+        await ev(`document.documentElement.style.fontSize = '32px'; document.getElementById('agentic-state').style.width = ''; true`);
+        await sleep(400); // sleep-ok: the layout settles over frames after a viewport change; there is no completion event
+        await ev(`window.toggleAgenticPanel(true); window.switchAgenticTab('saved', 'top'); true`);
+        await refresh();
+        await waitFor(`document.querySelectorAll('#saved-list .saved-item .server').length >= 2`, 'items with server names', 6000);
+        const gap = await ev(`[...document.querySelectorAll('#saved-list .saved-item')].map(li => { const k = li.querySelector('.kind').getBoundingClientRect(), s = li.querySelector('.server').getBoundingClientRect();
+            const overlap = !(s.bottom <= k.top || s.top >= k.bottom || s.right <= k.left || s.left >= k.right); return { overlap, gap: Math.round(Math.max(s.top - k.bottom, k.top - s.bottom)), wrapped: s.top >= k.bottom - 1 }; })`);
+        assert.ok(gap.length >= 2 && gap.every(g => !g.overlap), 'the server name overlaps the kind chip: ' + JSON.stringify(gap));
+        await shot('saved-servers-phone-200');
+        await ev(`document.documentElement.style.fontSize = ''; window.toggleAgenticPanel(false); true`);
+        await Emulation.setTouchEmulationEnabled({ enabled: false });
+        await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+        await sleep(300); // sleep-ok: as above
 
         console.log('7. A deleted message on a remote board is Gone; an ended agent on a remote server is kept and says it cannot be opened from here');
         await ev(`window.__box.boardGone.add('9'); window.__box.items.push({ id: 103, kind: 'agent', ref: 'ended-b', key: '${hex(3)}', agent_type: 'claude', title: 'old agent', snippet: 'from an agent that ended', said_at: '', saved_at: new Date().toISOString(), done_at: null }); true`);

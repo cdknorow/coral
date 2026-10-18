@@ -23,7 +23,7 @@ const { pathToFileURL } = require('url');
     {
         const sent = [];
         globalThis.fetch = (u) => { sent.push(String(u)); return Promise.resolve({ ok: true }); };
-        const hostile = ['/api/saved/../../../../servers/x', '/api/saved/%2e%2e/%2e%2e/%2e%2e/%2e%2e/servers/x', '/api/saved/%2E%2E/%2E%2E/%2E%2E/servers/x', '/api/saved/..%2f..%2f..%2fservers/x',
+        const hostile = ['/api/saved/.\t./.\t./.\t./.\t./servers/x', '/api/saved/.\n./.\n./.\n./.\n./servers/x', '/api/saved/..\r/..\r/..\r/..\r/servers/x', '/api/saved/\t../\t../\t../\t../servers/x', '/api/saved/a\t/../../../../servers/x', '/api/saved/x y/../../../../servers/x', '/api/saved/%2e%09%2e/%2e%09%2e/%2e%09%2e/%2e%09%2e/servers/x', '/api/saved/\u0000x', '/api/saved/../../../../servers/x', '/api/saved/%2e%2e/%2e%2e/%2e%2e/%2e%2e/servers/x', '/api/saved/%2E%2E/%2E%2E/%2E%2E/servers/x', '/api/saved/..%2f..%2f..%2fservers/x',
             '/api/saved/%252e%252e%252f%252e%252e%252f%252e%252e%252fservers', '/api/saved/..\\..\\..\\servers', '/api/saved/%2e%2e%5c%2e%2e%5c%2e%2e%5cservers', 'api/no-leading-slash', '/api/saved/%zz'];
         for (const srv of ['ws1', 'a b']) {
             for (const h of hostile) {
@@ -32,7 +32,7 @@ const { pathToFileURL } = require('url');
             }
         }
         assert.deepStrictEqual(sent, [], 'nothing was sent');
-        const fine = ['/api/x', '/api/saved/12', '/api/board/a%2Fb/messages?limit=1&q=../..', '/api/sessions/live/n..x/chat?after=0', '/api/artifacts/abc?v=2', '/api/board/.hidden/messages', '/api/files/a%20b/c.txt'];
+        const fine = ['/api/saved/a%09b', '/api/files/a%0Ab', '/api/x', '/api/saved/12', '/api/board/a%2Fb/messages?limit=1&q=../..', '/api/sessions/live/n..x/chat?after=0', '/api/artifacts/abc?v=2', '/api/board/.hidden/messages', '/api/files/a%20b/c.txt'];
         for (const f of fine) {
             assert.strictEqual(m.serverUrl(f, 'ws1'), '/api/remote/ws1' + f, `serverUrl passes ${f}`);
             await m.serverFetch('ws1', f);
@@ -43,7 +43,42 @@ const { pathToFileURL } = require('url');
         // The boards' and teams' helpers go through the same check.
         assert.throws(() => m.boardFetch('@ws1/b', '/../../../../../servers/x'), /refused/);
         assert.throws(() => m.teamFetch('@ws1/b', () => '/api/teams/../../../servers'), /refused/);
+        for (const dots of ['.\t.', '.\n.', '..\r', '\t..', '%2e%09%2e']) {
+            const up = Array(6).fill(dots).join('/');
+            assert.throws(() => m.boardFetch('@ws1/b', '/' + up + '/servers/x'), /refused/, `boardFetch refuses ${JSON.stringify(dots)}`);
+            assert.throws(() => m.teamFetch('@ws1/b', () => '/api/teams/' + up + '/servers/x'), /refused/, `teamFetch refuses ${JSON.stringify(dots)}`);
+        }
+        assert.deepStrictEqual(sent.length, fine.length, 'still nothing sent by the refused ones');
         delete globalThis.fetch;
+    }
+
+    // An id from a list a registered server sent goes into a path only as a positive safe integer (#4551).
+    assert.strictEqual(m.pathId(12), 12);
+    assert.strictEqual(m.pathId('12'), 12);
+    for (const bad of ['1/../../x', '../x', '%2e%2e', -1, 0, 1.5, '1e3', ' 12', '12 ', '', null, undefined, '0x1f', 2 ** 60, NaN, {}, [1]]) assert.throws(() => m.pathId(bad), /not a valid id/, `pathId refuses ${String(bad)}`);
+    // And no request path in the dashboard takes a task, message or note id raw.
+    {
+        const fs = require('fs');
+        const raw = [];
+        for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.js'))) {
+            fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach((line, i) => {
+                if (/(boardFetch|serverFetch|teamFetch)\(/.test(line) && /\$\{(taskId|t\.id|messageId|_noteId)\}/.test(line)) raw.push(`${f}:${i + 1}`);
+            });
+        }
+        assert.deepStrictEqual(raw, [], 'a task, message or note id is put raw in a request path: ' + raw.join(', '));
+    }
+
+    // An artifact's content path from a registered server has exactly the shape this server's route makes, for the board on screen (#4551).
+    {
+        const ap = await import(pathToFileURL(path.join(dir, 'artifact_paths.js')).href);
+        const ok = '/api/board/team%20a/tasks/2176/artifact-content?source=completion&index=0';
+        assert.strictEqual(ap.inlineArtifactPath(ok, 'team a'), ok);
+        assert.strictEqual(ap.inlineArtifactPath('/api/board/t/tasks/7/artifact-content?source=review&index=12', 't'), '/api/board/t/tasks/7/artifact-content?source=review&index=12');
+        for (const bad of ['/api/board/team%20a/tasks/../../../servers/x/artifact-content?source=completion&index=0', '/api/board/team%20a/tasks/2176/artifact-content?source=completion&index=0&x=1', '/api/board/team%20a/tasks/2176/artifact-content?source=other&index=0',
+            '/api/board/team%20a/tasks/21 76/artifact-content?source=completion&index=0', '/api/board/team%20a/tasks/0/artifact-content?source=completion&index=0', '/api/board/other/tasks/2176/artifact-content?source=completion&index=0',
+            '/api/board/team%20a/tasks/2176/artifact-content?source=completion&index=../x', 'https://evil.example/api/board/team%20a/tasks/1/artifact-content?source=review&index=0', '/api/board/a%2Fb/tasks/1/artifact-content?source=review&index=0', null, 5]) {
+            assert.strictEqual(ap.inlineArtifactPath(bad, 'team a'), null, `refused: ${bad}`);
+        }
     }
 
     // Identity: local keys stay bare (legacy storage keeps working); remote keys never collide.

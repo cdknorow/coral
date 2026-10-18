@@ -8,7 +8,7 @@ import { registerTaskView, redrawBoardTaskList, closeTaskDetailModal } from './t
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
 import { registerActions, idOf, tokenOf, textOf } from './actions.js';
 import { addPendingMessage } from './live_chat.js';
-import { serverUrl, artifactPath, contextServer, keyLabel, boardKeyName, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
+import { pathId, serverUrl, artifactPath, contextServer, keyLabel, boardKeyName, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
 import { platform } from './platform/detect.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { _agentTaskStatus, _formatCost, _formatTaskTime, _formatTokenCount, _priorityLabel, _priorityOrder, formatTaskDate } from './task_format.js';
@@ -95,7 +95,7 @@ async function _fetchLiveCosts(boardProject) {
     const newCosts = {};
     await Promise.all(inProgress.map(async (t) => {
         try {
-            const resp = await boardFetch(boardProject, `/tasks/${t.id}/cost`);
+            const resp = await boardFetch(boardProject, `/tasks/${pathId(t.id)}/cost`);
             if (resp.ok) {
                 const data = await resp.json();
                 if (data) newCosts[t.id] = data;
@@ -149,7 +149,7 @@ export async function addAgentTask() {
 export async function toggleAgentTask(taskId, completed) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     try {
-        const response = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
+        const response = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${pathId(taskId)}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ completed: completed ? 1 : 0 }),
@@ -164,7 +164,7 @@ export async function toggleAgentTask(taskId, completed) {
 export async function deleteAgentTask(taskId) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     try {
-        const response = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
+        const response = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${pathId(taskId)}`, {
             method: 'DELETE',
         });
         if (!response.ok) {const data = await response.json(); throw new Error(data.error || 'Failed to delete task');}
@@ -195,7 +195,7 @@ export function editAgentTaskTitle(taskId, spanEl) {
             return;
         }
         try {
-            await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
+            await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${pathId(taskId)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title: newTitle }),
@@ -1321,7 +1321,7 @@ export async function saveTaskEdit(taskId) {
         if (Object.keys(amendmentChanges).length) {
             const reason = document.getElementById('task-edit-reason')?.value.trim() || '';
             if (!reason) throw new Error('An amendment reason is required for description or instruction changes');
-            const amendmentResp = await boardFetch(boardProject, `/tasks/${taskId}/amend`, {
+            const amendmentResp = await boardFetch(boardProject, `/tasks/${pathId(taskId)}/amend`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ subscriber_id: 'Operator', base_revision: Number(task.revision || 1), reason, changes: amendmentChanges }),
@@ -1332,7 +1332,7 @@ export async function saveTaskEdit(taskId) {
             }
         }
         if (Object.keys(updates).length) {
-            const resp = await boardFetch(boardProject, `/tasks/${taskId}`, {
+            const resp = await boardFetch(boardProject, `/tasks/${pathId(taskId)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates),
@@ -1429,8 +1429,8 @@ export async function _doCompleteTask(taskId, personal = false) {
         if (missingOutputs.length) throw new Error(`Required outputs missing: ${missingOutputs.join(', ')}`);
         const outcome = document.getElementById('task-complete-outcome')?.value || 'success';
         const send = init => personal
-            ? serverFetch(currentServer(), `/api/agent/tasks/${taskId}/complete`, init)
-            : boardFetch(boardProject, `/tasks/${taskId}/complete`, init);
+            ? serverFetch(currentServer(), `/api/agent/tasks/${pathId(taskId)}/complete`, init)
+            : boardFetch(boardProject, `/tasks/${pathId(taskId)}/complete`, init);
         const identity = personal ? { session_id: state.currentSession.session_id } : { subscriber_id: 'Operator' };
         const expectedRevision = !personal && task ? Number(task.revision || 1) : undefined;
         const resp = await send({
@@ -1474,7 +1474,7 @@ export async function nudgeBoardTask(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
     try {
-        const resp = await boardFetch(boardProject, `/tasks/${taskId}/nudge?subscriber_id=Operator`, { method: 'POST' });
+        const resp = await boardFetch(boardProject, `/tasks/${pathId(taskId)}/nudge?subscriber_id=Operator`, { method: 'POST' });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
         showToast(`Nudged ${data.assignee || 'the assignee'}`);
@@ -1494,7 +1494,7 @@ export async function remindBoardTask(taskId) {
         return;
     }
     try {
-        const resp = await boardFetch(boardProject, `/tasks/${taskId}/reminder`, {
+        const resp = await boardFetch(boardProject, `/tasks/${pathId(taskId)}/reminder`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ interval_seconds: intervalSeconds, subscriber_id: 'Operator' }),
         });
@@ -1507,7 +1507,7 @@ export async function remindBoardTask(taskId) {
 export async function stopBoardTaskReminder(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
-    await boardFetch(boardProject, `/tasks/${taskId}/reminder?subscriber_id=Operator`, { method: 'DELETE' });
+    await boardFetch(boardProject, `/tasks/${pathId(taskId)}/reminder?subscriber_id=Operator`, { method: 'DELETE' });
     showToast('Periodic reminders stopped');
 }
 
@@ -1528,7 +1528,7 @@ export async function _doCancelTask(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
     try {
-        const resp = await boardFetch(boardProject, `/tasks/${taskId}/cancel`, {
+        const resp = await boardFetch(boardProject, `/tasks/${pathId(taskId)}/cancel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subscriber_id: 'Operator' }),
@@ -1549,7 +1549,7 @@ export async function publishBoardTask(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
     try {
-        const resp = await boardFetch(boardProject, `/tasks/${taskId}/publish`, {
+        const resp = await boardFetch(boardProject, `/tasks/${pathId(taskId)}/publish`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subscriber_id: 'Operator' }), // publishing is a planner's step (#3668)

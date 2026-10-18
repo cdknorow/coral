@@ -9,7 +9,7 @@ import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js'
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
 import { BOARD_SAVE_BUTTON } from './saved_marks.js';
-import { identityKey, keyLabel, noteBoardLabel, noteBoardLabels, hasBoardLabel, onBoardLabelsChanged, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
+import { pathId, identityKey, keyLabel, noteBoardLabel, noteBoardLabels, hasBoardLabel, onBoardLabelsChanged, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
 import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { note } from './nav.js';
@@ -796,7 +796,7 @@ export async function toggleBoardPause() {
 export async function deleteBoardMessage(messageId) {
     if (!currentProject) return;
     try {
-        const resp = await boardFetch(currentProject, `/messages/${messageId}`, {
+        const resp = await boardFetch(currentProject, `/messages/${pathId(messageId)}`, {
             method: 'DELETE',
         });
         if (!resp.ok) {
