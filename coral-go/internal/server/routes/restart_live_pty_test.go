@@ -238,6 +238,14 @@ func (b *oldKillFails) Kill(name string) error {
 	return b.err
 }
 
+// KillWithin is the restart's way of ending the old terminal (#4842): the same failure.
+func (b *oldKillFails) KillWithin(name string, grace time.Duration) error {
+	if name != b.name {
+		return b.PTYBackend.KillWithin(name, grace)
+	}
+	return b.Kill(name)
+}
+
 // #4767 follow-up (Backend's SHOULD and INFO): when the old pty terminal can't be ended, the new one is ended
 // too and the request fails, leaving no orphan shell running with no agent; when it is already gone (its process
 // exited just before), it counts as ended and the restart goes on.
@@ -281,5 +289,44 @@ func TestRestartOfALivePTYSessionWhoseOldTerminalCantBeEnded(t *testing.T) {
 				assert.Empty(t, started, "the new terminal is ended: no orphan shell")
 			})
 		}
+	}
+}
+
+// #4842: restarting or resuming a live pty agent whose process ignores SIGTERM no longer waits for Kill's 5 s: the old terminal is given
+// restartKillGrace and then force-killed. (The tester measured a restart of a real agy at 5.42 s on pty against 0.40 s on tmux; a resume,
+// with no live terminal to end, took 0.46 s.) The old terminal here is a real pty process that ignores SIGTERM.
+func TestRestartAndResumeOfAPTYAgentThatIgnoresSIGTERMAreNotHeldForFiveSeconds(t *testing.T) {
+	old := restartKillGrace
+	restartKillGrace = 300 * time.Millisecond
+	t.Cleanup(func() { restartKillGrace = old })
+	dataDir, db, ss, pty := livePTYFixture(t)
+	h := NewSessionsHandler(db, config.Load(dataDir), pty, ptymanager.NewPTYSessionTerminal(pty), nil)
+	r := ptyLifecycleRouter(h)
+	for _, route := range []string{"restart", "resume"} {
+		t.Run(route, func(t *testing.T) {
+			sid := map[string]string{"restart": "4842aaaa-0000-4000-8000-000000000001", "resume": "4842bbbb-0000-4000-8000-000000000002"}[route]
+			name := naming.SessionName("claude", sid)
+			require.NoError(t, pty.Spawn(name, "claude", dataDir, sid, "trap '' TERM HUP; exec sleep 600", 80, 24))
+			time.Sleep(300 * time.Millisecond)
+			onPTY := "pty"
+			require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentName: "tester", AgentType: "claude", WorkingDir: dataDir, Backend: &onPTY}))
+			fields := map[string]any{"session_id": sid, "agent_type": "claude"}
+			if route == "resume" {
+				fields = map[string]any{"session_id": "4842eeee-0000-4000-8000-000000000005", "agent_type": "claude", "current_session_id": sid}
+			}
+			body, _ := json.Marshal(fields)
+			rec := httptest.NewRecorder()
+			start := time.Now()
+			r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/"+route, bytes.NewReader(body)))
+			took := time.Since(start)
+			assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			assert.Less(t, took, 3*time.Second, "not held for Kill's 5 s")
+			assert.False(t, pty.IsRunning(name), "the old terminal that ignored SIGTERM was force-killed")
+			var out struct {
+				SessionName string `json:"session_name"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+			assert.True(t, pty.IsRunning(out.SessionName), "the new terminal runs")
+		})
 	}
 }

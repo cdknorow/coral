@@ -542,7 +542,7 @@ func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (
 			if p.pane != nil {
 				// A live pty terminal: ended once its replacement runs under the new name (pty has no rename), so a
 				// spawn that fails leaves the agent running. One whose process exited since it was found is ended.
-				if err := h.backend.Kill(p.pane.SessionName); err != nil && !errors.Is(err, ptymanager.ErrTerminalGone) {
+				if err := h.endOldTerminal(p.pane.SessionName); err != nil && !errors.Is(err, ptymanager.ErrTerminalGone) {
 					h.backend.Kill(p.newSessionName)
 					return "", fail(fmt.Sprintf("pty %s failed: %v", p.verb(), err))
 				}
@@ -588,6 +588,21 @@ func (p *restartPlan) verb() string {
 
 // paneRespawnSettle is how long a respawned pane is given before its history is cleared and its log started.
 var paneRespawnSettle = 500 * time.Millisecond
+
+// restartKillGrace is how long a restart or resume gives the old pty terminal to exit on SIGTERM before it is force-killed. The new terminal
+// already runs, the conversation continues from the agent's transcript, and tmux's respawn is immediate: an agent that ignores SIGTERM held
+// every pty restart for Kill's full 5 s (#4842). A var for the tests.
+var restartKillGrace = time.Second
+
+// endOldTerminal ends the old terminal of a restart or resume: a pty one with the short grace, any other backend as Kill does.
+func (h *SessionsHandler) endOldTerminal(name string) error {
+	if k, ok := h.backend.(interface {
+		KillWithin(name string, grace time.Duration) error
+	}); ok {
+		return k.KillWithin(name, restartKillGrace)
+	}
+	return h.backend.Kill(name)
+}
 
 func (p *restartPlan) folderName() string { return filepath.Base(strings.TrimRight(p.workdir, "/")) }
 

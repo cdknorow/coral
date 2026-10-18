@@ -44,7 +44,11 @@ func (m *PTYBackend) Spawn(name, agentType, workDir, sessionID, command string, 
 	return nil
 }
 
-func (m *PTYBackend) Kill(name string) error {
+func (m *PTYBackend) Kill(name string) error { return m.KillWithin(name, 5*time.Second) }
+
+// KillWithin is Kill with the time the process is given to exit on SIGTERM before it is force-killed: a restart or a resume
+// ends the old terminal with a short one (an agent that ignores SIGTERM held every pty restart for the full 5 s, #4842).
+func (m *PTYBackend) KillWithin(name string, grace time.Duration) error {
 	DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	m.mu.Lock()
 	s, ok := m.sessions[name]
@@ -55,7 +59,7 @@ func (m *PTYBackend) Kill(name string) error {
 	delete(m.sessions, name)
 	m.mu.Unlock()
 
-	return s.kill()
+	return s.killWithin(grace)
 }
 
 func (m *PTYBackend) Restart(name, command string) error {

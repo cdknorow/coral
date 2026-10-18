@@ -253,7 +253,10 @@ func (s *session) replayBytes() []byte {
 }
 
 // kill terminates the session and all child processes.
-func (s *session) kill() error {
+func (s *session) kill() error { return s.killWithin(5 * time.Second) }
+
+// killWithin ends the session: SIGTERM, then a force kill if the process is still there after grace.
+func (s *session) killWithin(grace time.Duration) error {
 	// Graceful termination
 	if terminateTypesCtrlC {
 		// On Windows, Terminate types Ctrl-C into the console (pty_windows.go).
@@ -261,11 +264,11 @@ func (s *session) kill() error {
 	}
 	s.proc.Terminate()
 
-	// Wait for graceful exit (5s timeout)
+	// Wait for graceful exit
 	select {
 	case <-s.proc.Done():
 		// Clean exit
-	case <-time.After(5 * time.Second):
+	case <-time.After(grace):
 		// Force kill
 		s.proc.ForceKill()
 		<-s.proc.Done()
