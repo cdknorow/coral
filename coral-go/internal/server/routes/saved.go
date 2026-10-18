@@ -241,6 +241,16 @@ func (h *SystemHandler) SavedAdd(w http.ResponseWriter, r *http.Request) {
 	if m.Kind == "board" {
 		m.Team = ref // a board message belongs to its own board
 		m.Author = cleanSavedField(body.Author)
+		if h.boardAuthor != nil {
+			// The board says who wrote it, not the request: a bookmark labelled as another agent's would show in that agent's view (#4816).
+			// Unreadable or gone: no author kept, and it is looked up when a scope asks (a gone message is then kept as no author).
+			m.Author = ""
+			if id, perr := strconv.ParseInt(body.Key, 10, 64); perr == nil {
+				if author, found, aerr := h.boardAuthor(r.Context(), ref, id); aerr == nil && found {
+					m.Author = cleanSavedField(author)
+				}
+			}
+		}
 	}
 	out, err := h.ss.SaveMessage(r.Context(), m)
 	if errors.Is(err, store.ErrTooManySaved) {

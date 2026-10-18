@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -612,4 +613,40 @@ func TestSavedScopeOfBookmarksFromBeforeTheyWereKept(t *testing.T) {
 	_, out = g.do("GET", q, savedAsOperator, nil)
 	assert.Len(t, out["items"], 1)
 	assert.Equal(t, map[int64]int{21: 1, 22: 1, 23: 1}, asked, "each message is asked once, the deleted one too")
+}
+
+// #4816 (Security): who wrote a board message is the board's word, not the request's. A client that labels a bookmark with another agent's
+// name would put it in that agent's view (the agent, team and author scope), so with the board wired the request's author is not kept.
+func TestSavedBoardAuthorIsTheBoardsNotTheRequests(t *testing.T) {
+	g := newSavedRig(t)
+	g.h.SetBoardAuthor(func(_ context.Context, project string, id int64) (string, bool, error) {
+		assert.Equal(t, "coral-go-team", project)
+		switch id {
+		case 11:
+			return "QA Engineer", true, nil
+		case 12:
+			return "", false, errors.New("the board is busy")
+		}
+		return "", false, nil // 13: no such message
+	})
+	save := func(key, claimed string) {
+		t.Helper()
+		code, out := g.do("POST", "/api/saved", savedAsOperator, map[string]any{"kind": "board", "ref": "coral-go-team", "key": key, "title": "coral-go-team",
+			"snippet": "message " + key, "author": claimed, "agent_type": "claude", "said_at": "2026-10-17T08:00:00Z"})
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	save("11", "Orchestrator") // written by the QA Engineer, labelled as the Orchestrator's
+	save("12", "Orchestrator") // the board can't be read just now
+	save("13", "Orchestrator") // no such message
+	view := func(author string) []string {
+		t.Helper()
+		_, out := g.do("GET", "/api/saved?agent=sess-x&team=coral-go-team&author="+url.QueryEscape(author), savedAsOperator, nil)
+		var got []string
+		for _, it := range out["items"].([]any) {
+			got = append(got, it.(map[string]any)["snippet"].(string))
+		}
+		return got
+	}
+	assert.Equal(t, []string{"message 11"}, view("QA Engineer"), "its author is the board's")
+	assert.Empty(t, view("Orchestrator"), "the request's label is in nobody's view: not the unreadable one, not the missing one")
 }
