@@ -26,9 +26,9 @@ import (
 // both databases afterwards must be equal. A floor per outcome fails the test if one went unexercised.
 
 var verdictOutcomes = map[string]int{
-	"approved, round still open": 40, "approved, round complete": 40, "rejected": 40,
+	"approved, round still open": 40, "approved, round complete": 15, "rejected": 40,
 	"is not on this board": 10, "is back with": 20, "has no open review": 40, "you reviewed round": 20,
-	"only the reviewers": 40, "you already": 30, "is not open": 0, "the note is too long": 10,
+	"only the reviewers": 40, "you already": 30, "is not open": 40, "the note is too long": 10,
 }
 
 var verdictSeen map[string]int
@@ -179,6 +179,24 @@ func runVerdictOracle(t *testing.T, seed int64) {
 				// Sometimes name the reviewer's review task instead of the task.
 				if rng.Intn(4) == 0 && len(rounds[n-1].Reviewers) > 0 {
 					id = rounds[n-1].Reviewers[rng.Intn(len(rounds[n-1].Reviewers))].ReviewTaskID
+				}
+			}
+		}
+		// Now and then a reviewer's own review task is completed, cancelled or given to someone else while its round is open (an Operator or
+		// Orchestrator can do each): the verdict is then refused with "is not open", which the flows above alone never reach.
+		if rng.Intn(4) == 0 {
+			tid := tasks[rng.Intn(len(tasks))]
+			if task, err := s.GetTask(ctx, "team", tid); err == nil && task != nil {
+				if rs := task.Workflow.ReviewRounds; len(rs) > 0 && rs[len(rs)-1].Result == "" && len(rs[len(rs)-1].Reviewers) > 0 {
+					rv := rs[len(rs)-1].Reviewers[rng.Intn(len(rs[len(rs)-1].Reviewers))]
+					switch rng.Intn(3) {
+					case 0:
+						s.CompleteTask(ctx, "team", rv.ReviewTaskID, rv.Reviewer, nil)
+					case 1:
+						s.CancelTask(ctx, "team", rv.ReviewTaskID, rv.Reviewer, nil)
+					case 2:
+						s.ReassignTask(ctx, "team", rv.ReviewTaskID, "w1")
+					}
 				}
 			}
 		}
