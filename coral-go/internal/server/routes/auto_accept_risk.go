@@ -93,115 +93,185 @@ func shellRiskFrom(command, workDir, dir string) string {
 		if len(words) == 0 {
 			continue
 		}
-		for _, w := range words {
-			if b := filepath.Base(bareCommand(w)); b == "sudo" || b == "doas" {
-				return "it uses sudo"
-			} else if b == "su" && bareCommand(w) != w {
-				return "it switches user (su)" // $(su …), (su …), `su …`: a command, not the word "su"
-			}
+		if why := switchesUser(words); why != "" {
+			return why
 		}
 		cmd := filepath.Base(bareCommand(words[0]))
 		args := words[1:]
-		switch cmd {
-		case "cd", "pushd":
+		if cmd == "cd" || cmd == "pushd" {
 			cwd = changeDir(cwd, args)
-		case "rm":
-			if hasFlag(args, "r", "R", "--recursive") {
-				if t := outsideTarget(at(args), workDir); t != "" {
-					return "it deletes recursively outside the working directory (" + t + ")"
-				}
+			continue
+		}
+		if check, ok := shellCommandRisks[cmd]; ok {
+			if why := check(cmd, args, at, workDir); why != "" {
+				return why
 			}
-		case "tee", "cp", "mv", "install", "ln", "dd":
-			if t := outsideTarget(at(notDevices(writeTargets(cmd, args))), workDir); t != "" {
-				return "it writes outside the working directory (" + t + ")"
-			}
-		case "find":
-			if roots, deletes := findDeletes(args); deletes {
-				if t := outsideTarget(at(roots), workDir); t != "" {
-					return "it deletes files outside the working directory (" + t + ")"
-				}
-			}
-		case "su":
-			return "it switches user (su)"
-		case "perl":
-			if files, inPlace := perlInPlaceFiles(args); inPlace {
-				if t := outsideTarget(at(files), workDir); t != "" {
-					return "it edits a file outside the working directory (" + t + ")"
-				}
-			}
-		case "sed":
-			if files, inPlace := sedInPlaceFiles(args); inPlace {
-				if t := outsideTarget(at(files), workDir); t != "" {
-					return "it edits a file outside the working directory (" + t + ")"
-				}
-			}
-		case "chmod", "chown":
-			if hasFlag(args, "R", "", "--recursive") {
-				if t := outsideTarget(at(args), workDir); t != "" {
-					return "it changes ownership or permissions recursively outside the working directory (" + t + ")"
-				}
-			}
-		case "git":
-			sub, rest := gitSubcommand(args)
-			switch sub {
-			case "push":
-				for _, a := range rest {
-					if a == "-f" || a == "--force" || a == "--mirror" || strings.HasPrefix(a, "--force-with-lease") || strings.HasPrefix(a, "--force-if-includes") ||
-						(strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "f")) ||
-						(strings.HasPrefix(a, "+") && len(a) > 1) {
-						return "it force-pushes"
+			continue
+		}
+		// bash -c '…' / zsh -lc '…': inspect the inner command.
+		if shellWrapperRe.MatchString(words[0]) {
+			for i, a := range args {
+				if strings.HasPrefix(a, "-") && strings.Contains(a, "c") && i+1 < len(args) {
+					if why := shellRiskFrom(strings.Join(args[i+1:], " "), workDir, cwd); why != "" {
+						return why
 					}
-					if a == "--delete" || a == "-d" || (strings.HasPrefix(a, ":") && len(a) > 1) {
-						return "it deletes a remote branch"
-					}
-				}
-			case "reset":
-				for _, a := range rest {
-					if a == "--hard" {
-						return "it runs git reset --hard"
-					}
-				}
-			case "clean":
-				if !hasFlag(rest, "n", "", "--dry-run") {
-					return "it runs git clean (deletes untracked files)"
-				}
-			case "checkout":
-				for i, a := range rest {
-					if a == "." || a == "-f" || a == "--force" || (a == "--" && i+1 < len(rest)) {
-						return "it discards uncommitted changes (git checkout " + strings.Join(rest, " ") + ")"
-					}
-				}
-			case "restore":
-				staged, worktree := false, false
-				for _, a := range rest {
-					switch {
-					case a == "--staged" || a == "-S":
-						staged = true
-					case a == "--worktree" || a == "-W":
-						worktree = true
-					case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "W"):
-						worktree = true
-					case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "S"):
-						staged = true
-					}
-				}
-				if !staged || worktree {
-					return "it discards uncommitted changes (git restore)"
-				}
-			}
-		default:
-			// bash -c '…' / zsh -lc '…': inspect the inner command.
-			if shellWrapperRe.MatchString(words[0]) {
-				for i, a := range args {
-					if strings.HasPrefix(a, "-") && strings.Contains(a, "c") && i+1 < len(args) {
-						if why := shellRiskFrom(strings.Join(args[i+1:], " "), workDir, cwd); why != "" {
-							return why
-						}
-						break
-					}
+					break
 				}
 			}
 		}
+	}
+	return ""
+}
+
+// switchesUser is why a command's words run something as another user: sudo or doas anywhere (also as \sudo,
+// (sudo …), $(sudo …), `sudo …`, /usr/bin/sudo), or su as a command ($(su …), (su …), `su …`), not the word "su".
+func switchesUser(words []string) string {
+	for _, w := range words {
+		if b := filepath.Base(bareCommand(w)); b == "sudo" || b == "doas" {
+			return "it uses sudo"
+		} else if b == "su" && bareCommand(w) != w {
+			return "it switches user (su)"
+		}
+	}
+	return ""
+}
+
+// commandRisk is why one command, with its arguments, is high-risk ("" when it isn't). at resolves paths from the
+// directory the command runs in.
+type commandRisk func(cmd string, args []string, at func([]string) []string, workDir string) string
+
+// shellCommandRisks: the commands shellRiskFrom inspects, each with its rule (cd and the shell wrappers are handled
+// there: one moves the directory later commands run in, the other holds a command of its own).
+var shellCommandRisks = map[string]commandRisk{
+	"rm":      rmRisk,
+	"tee":     writeRisk,
+	"cp":      writeRisk,
+	"mv":      writeRisk,
+	"install": writeRisk,
+	"ln":      writeRisk,
+	"dd":      writeRisk,
+	"find":    findRisk,
+	"su":      func(string, []string, func([]string) []string, string) string { return "it switches user (su)" },
+	"perl":    perlRisk,
+	"sed":     sedRisk,
+	"chmod":   chmodRisk,
+	"chown":   chmodRisk,
+	"git":     gitRisk,
+}
+
+func rmRisk(_ string, args []string, at func([]string) []string, workDir string) string {
+	if hasFlag(args, "r", "R", "--recursive") {
+		if t := outsideTarget(at(args), workDir); t != "" {
+			return "it deletes recursively outside the working directory (" + t + ")"
+		}
+	}
+	return ""
+}
+
+func writeRisk(cmd string, args []string, at func([]string) []string, workDir string) string {
+	if t := outsideTarget(at(notDevices(writeTargets(cmd, args))), workDir); t != "" {
+		return "it writes outside the working directory (" + t + ")"
+	}
+	return ""
+}
+
+func findRisk(_ string, args []string, at func([]string) []string, workDir string) string {
+	if roots, deletes := findDeletes(args); deletes {
+		if t := outsideTarget(at(roots), workDir); t != "" {
+			return "it deletes files outside the working directory (" + t + ")"
+		}
+	}
+	return ""
+}
+
+func perlRisk(_ string, args []string, at func([]string) []string, workDir string) string {
+	if files, inPlace := perlInPlaceFiles(args); inPlace {
+		if t := outsideTarget(at(files), workDir); t != "" {
+			return "it edits a file outside the working directory (" + t + ")"
+		}
+	}
+	return ""
+}
+
+func sedRisk(_ string, args []string, at func([]string) []string, workDir string) string {
+	if files, inPlace := sedInPlaceFiles(args); inPlace {
+		if t := outsideTarget(at(files), workDir); t != "" {
+			return "it edits a file outside the working directory (" + t + ")"
+		}
+	}
+	return ""
+}
+
+func chmodRisk(_ string, args []string, at func([]string) []string, workDir string) string {
+	if hasFlag(args, "R", "", "--recursive") {
+		if t := outsideTarget(at(args), workDir); t != "" {
+			return "it changes ownership or permissions recursively outside the working directory (" + t + ")"
+		}
+	}
+	return ""
+}
+
+// gitRisk: the git subcommands that rewrite a remote or destroy uncommitted work.
+func gitRisk(_ string, args []string, _ func([]string) []string, _ string) string {
+	sub, rest := gitSubcommand(args)
+	switch sub {
+	case "push":
+		return gitPushRisk(rest)
+	case "reset":
+		for _, a := range rest {
+			if a == "--hard" {
+				return "it runs git reset --hard"
+			}
+		}
+	case "clean":
+		if !hasFlag(rest, "n", "", "--dry-run") {
+			return "it runs git clean (deletes untracked files)"
+		}
+	case "checkout":
+		for i, a := range rest {
+			if a == "." || a == "-f" || a == "--force" || (a == "--" && i+1 < len(rest)) {
+				return "it discards uncommitted changes (git checkout " + strings.Join(rest, " ") + ")"
+			}
+		}
+	case "restore":
+		return gitRestoreRisk(rest)
+	}
+	return ""
+}
+
+// gitPushRisk: a force push (-f, --force, --force-with-lease, --force-if-includes, a short-flag group with f, a
+// +refspec, --mirror), or a remote branch deleted (--delete, -d, :branch); the first such argument decides.
+func gitPushRisk(args []string) string {
+	for _, a := range args {
+		if a == "-f" || a == "--force" || a == "--mirror" || strings.HasPrefix(a, "--force-with-lease") || strings.HasPrefix(a, "--force-if-includes") ||
+			(strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "f")) ||
+			(strings.HasPrefix(a, "+") && len(a) > 1) {
+			return "it force-pushes"
+		}
+		if a == "--delete" || a == "-d" || (strings.HasPrefix(a, ":") && len(a) > 1) {
+			return "it deletes a remote branch"
+		}
+	}
+	return ""
+}
+
+// gitRestoreRisk: git restore touches the working tree unless it is --staged (-S) only.
+func gitRestoreRisk(args []string) string {
+	staged, worktree := false, false
+	for _, a := range args {
+		switch {
+		case a == "--staged" || a == "-S":
+			staged = true
+		case a == "--worktree" || a == "-W":
+			worktree = true
+		case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "W"):
+			worktree = true
+		case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "S"):
+			staged = true
+		}
+	}
+	if !staged || worktree {
+		return "it discards uncommitted changes (git restore)"
 	}
 	return ""
 }
