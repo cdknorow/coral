@@ -61,6 +61,7 @@ async function run() {
             const st = window.__coralStatic || '/static/';
             const T = window.T = { state: (await import(st + 'state.js')).state, as: await import(st + 'agentic_state.js') };
             T.state.currentSession = { name: '${AGENT}', type: 'live', session_id: '${SID}', agent_type: 'claude' };
+            (await import(st + 'utils.js')).showView('live-session-view'); // the agent's page: on a page with no agent or team the sidebar is not shown (#4811)
             T.as.switchAgenticTab('activity', 'top');
             document.getElementById('agentic-state').classList.remove('collapsed');
             await T.as.loadAgentEvents('${AGENT}', '${SID}');
