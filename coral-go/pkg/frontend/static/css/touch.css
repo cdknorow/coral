@@ -187,10 +187,14 @@
        the Servers tab's Access select. */
     .explorer-item,
     .files-search-input,
+    .ta-search, .ta-filter-btn, .ta-clear-all, .ta-select, .ta-by, .ta-chip, .ta-field input[type="date"],
     .team-artifacts-action,
     .cs-launch select {
         min-height: var(--control-touch-height);
     }
+    .ta-kept { min-height: var(--control-touch-height); }
+    .ta-kept input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
+    .ta-clear-q { width: var(--control-touch-height); height: var(--control-touch-height); right: 0; }
 }
 
 /* Inline icons drawn as <svg width="N" height="N"> follow the text size like the icon font's glyphs do (#4344, #4352): the attributes are pixels, so a

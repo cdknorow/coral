@@ -8,15 +8,40 @@ import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud } from './server_base.js';
 import { refreshDistill, startDistill, distillJob } from './knowledge_distill.js';
+import { browserLocal } from './safe_storage.js';
+import { buildBar } from './team_artifact_bar.js';
+import { EMPTY, isFiltered, loadFilters, saveFilters, toParams } from './team_artifact_filters.js';
 
 let source = 'files';
 let team = null;
 let sessionID = null;
 let previewArtifact = null;
 let previewFile = null;
-const fresh = () => ({items:[], loaded:false, busy:false, error:'', hasMore:false, truncated:false, controller:null, generation:0});
+const fresh = () => ({items:[], loaded:false, busy:false, error:'', hasMore:false, truncated:false, cursor:'', controller:null, generation:0});
 const caches = {artifacts:fresh(), 'team-artifacts':fresh()};
 let notice = ''; // the outcome of the last delete (#3553), shown once under the heading
+
+// The search box, filters and sort of the Team Artifacts list (#4573): asked of the server (a search covers every artifact, not just the loaded page), kept per board.
+let filters = { ...EMPTY };
+let filtersTeam = null;
+let bar = null; // built once: the list is rebuilt on every change, which would drop the keyboard focus out of a search box
+let counts = null; // {matched, all}: the server's totals for the list on screen
+function syncFilters() {
+    if (team === filtersTeam) return;
+    filtersTeam = team;
+    filters = loadFilters(team, browserLocal);
+    counts = null;
+}
+/** The list's totals from the reply: total (after the search and filters) and all (the whole list before them: "12 of 340"). */
+function noteCounts(data, cache) {
+    const matched = Number.isSafeInteger(data.total) ? data.total : cache.items.length;
+    counts = { matched, all: Number.isSafeInteger(data.all) ? Math.max(data.all, matched) : matched };
+}
+function setFilters(next) {
+    filters = next;
+    saveFilters(team, filters, browserLocal);
+    if (source === 'team-artifacts' && team) load(false);
+}
 
 // ── Delete (#3553): the Operator removes a stored artifact ──────────────────
 // Only on this computer's own dashboard (not through Coral Hub, not in the pop-out), and only for
@@ -243,7 +268,13 @@ function render() {
     const {items, busy, error, hasMore, truncated} = caches[source];
     const personal = source === 'artifacts';
     const scopeName = personal ? state.currentSession?.display_name || state.currentSession?.name || 'Selected agent' : team;
-    root.replaceChildren();
+    // Everything but the search bar is rebuilt: the bar keeps what is typed in it and its focus (only the team list has one).
+    syncFilters();
+    const showBar = !personal && !!team;
+    if (!bar) bar = buildBar(setFilters);
+    for (const c of [...root.children]) if (c !== bar.node) c.remove();
+    if (showBar) { if (bar.node.parentElement !== root) root.append(bar.node); } else bar.node.remove();
+    const before = node => (showBar ? root.insertBefore(node, bar.node) : root.append(node));
     root.setAttribute('aria-busy', String(busy));
     const heading = el('div', 'team-artifacts-heading');
     heading.append(el('span', '', (personal || team) ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
@@ -265,12 +296,12 @@ function render() {
         } catch { helpIcon.textContent = 'error_outline'; }
         setTimeout(() => { helpIcon.textContent = 'content_copy'; }, 1500);
     });
-    heading.append(refresh, help); root.append(heading);
+    heading.append(refresh, help); before(heading);
     if (notice) {
         // The visible line is for the eye; screen readers get it from the live region that is always in the page (a region that appears with its text is often missed).
         const n = el('div', 'team-artifacts-status team-artifacts-notice', notice);
         n.setAttribute('aria-hidden', 'true');
-        root.append(n);
+        before(n);
         const live = document.getElementById(`${panels[source]}-live`);
         if (live) live.textContent = notice;
         notice = '';
@@ -279,7 +310,7 @@ function render() {
     status.setAttribute('role', error ? 'alert' : 'status');
     status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
         : error ? error : busy ? (personal ? 'Loading agent artifacts…' : 'Loading team artifacts…')
-        : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : 'No artifacts shared by this team yet.') : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
+        : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : isFiltered(filters) ? 'No artifacts match this search.' : 'No artifacts shared by this team yet.') : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
     if (error) status.dataset.state = 'error';
     root.append(status);
     if (error) {
@@ -413,12 +444,17 @@ function render() {
         more.addEventListener('click', () => load(true)); root.append(more);
     }
     if (truncated) root.append(el('div', 'team-artifacts-status', 'Some older artifacts are not included in this list.'));
+    if (showBar) {
+        bar.names([...new Set(items.flatMap(i => [i.produced_by, i.sent_by]).filter(n => typeof n === 'string' && n))].sort().slice(0, 50)); // the names on screen, offered in the Uploaded by field
+        bar.set(filters, counts ? counts : items.length || !busy ? { matched: items.length, all: items.length } : null);
+    }
     restoreFocus(root);
 }
 
 async function load(append = false) {
     if (!isArtifactSource() || (source === 'artifacts' ? !sessionID : !team)) return;
     const scope = source;
+    syncFilters(); // this board's remembered search and filters, before the first ask
     const cache = caches[scope];
     cancel(cache);
     const gen = cache.generation;
@@ -427,11 +463,18 @@ async function load(append = false) {
     // A standalone agent has no team board: its artifacts are the files it uploaded.
     const standalone = scope === 'artifacts' && !team;
     const requestedSession = sessionID;
-    if (!append) { cache.items=[]; cache.hasMore=false; cache.truncated=false; cache.loaded=false; }
+    if (!append) { cache.items=[]; cache.hasMore=false; cache.truncated=false; cache.loaded=false; cache.cursor=''; }
     cache.busy=true; cache.error=''; render();
     try {
-        const params = new URLSearchParams({limit:'100',offset:String(cache.items.length)});
-        if (scope === 'artifacts') params.set('session_id',requestedSession);
+        const params = new URLSearchParams({limit:'100'});
+        if (scope === 'artifacts') { params.set('offset',String(cache.items.length)); params.set('session_id',requestedSession); }
+        else if (!standalone) {
+            // The search, the filters and the sort are the server's to apply; the next page is asked for by the cursor the last one gave (not by offset).
+            for (const [k, v] of Object.entries(toParams(filters))) params.set(k, v);
+            if (!append) params.set('offset', '0');
+            else if (cache.cursor) params.set('cursor', cache.cursor);
+            else params.set('offset', String(cache.items.length)); // a reply with no cursor is paged by offset
+        } else params.set('offset',String(cache.items.length));
         const response = await (standalone
             ? fetch(serverUrl(`/api/session-artifacts?${params}`, sessionServer(state.currentSession)), {signal:cache.controller.signal})
             : boardFetch(team, `/artifacts?${params}`, {signal:cache.controller.signal}));
@@ -441,6 +484,8 @@ async function load(append = false) {
         if ((!standalone && data.project !== splitKey(requestedTeam).name) || !Array.isArray(data.artifacts) || (scope === 'artifacts' && data.session_id !== requestedSession)) throw new Error('Unable to load artifacts: unexpected response scope.');
         cache.items = append ? [...cache.items,...data.artifacts] : data.artifacts;
         cache.hasMore=!!data.has_more; cache.truncated=!!data.truncated; cache.loaded=true;
+        cache.cursor = typeof data.next_cursor === 'string' ? data.next_cursor : '';
+        if (scope === 'team-artifacts' && !standalone) noteCounts(data, cache);
         if (!append) kept = await loadKept(); // the Keep toggles' state (#3554)
     } catch (error) {
         if (gen !== cache.generation || caches[scope] !== cache || error.name === 'AbortError') return;
