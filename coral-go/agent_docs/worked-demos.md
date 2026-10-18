@@ -150,10 +150,10 @@ This did not work out of the box on a non-default data directory.
 1. **Agents do not receive `CORAL_PORT` / `CORAL_URL`.** The generated settings file
    contains only `CORAL_SESSION_NAME`, `CORAL_SUBSCRIBER_ID`, and `PATH`, so `coral-board`
    falls back to `http://localhost:8420` regardless of the server's port
-   (`cmd/coral-board/main.go:25-28`).
+   (`serverURL` in `cmd/coral-board/main.go`).
 2. **Board subscription state is read from `~/.coral`, always.**
    `stateFilePath()` builds `$HOME/.coral/board_state_<session>.json`
-   (`cmd/coral-board/main.go:41-44`) and never consults the server. With
+   (`cmd/coral-board/state.go`) and never consults the server. With
    `--home /tmp/coral-t1` the server wrote the state file to the right place and the CLI
    looked in the wrong one:
 

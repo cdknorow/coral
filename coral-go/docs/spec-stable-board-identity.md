@@ -116,7 +116,7 @@ The `Subscribe` endpoint gains an optional `session_name` field so the server kn
 - `ReadMessages` / `ListMessages`: JOIN changes from `m.session_id = s.session_id` to `m.subscriber_id = s.subscriber_id`
 - Cursor carry-forward logic in `Subscribe()` simplified: just check if the same `subscriber_id` exists (it will, because it's stable)
 
-### cmd/coral-board/main.go
+### cmd/coral-board (state.go, api.go)
 
 - `resolveSessionName()` → `resolveSubscriberID()`: reads `CORAL_SUBSCRIBER_ID` first, falls back to `CORAL_SESSION_NAME`, then tmux, then hostname
 - All API calls use `subscriber_id` parameter instead of `session_id`
