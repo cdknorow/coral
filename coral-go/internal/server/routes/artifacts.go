@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/mediatype"
@@ -395,8 +396,12 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 		return
 	}
 	name := strings.TrimSpace(r.Header.Get("X-Artifact-Name"))
-	if name == "" || len(name) > 160 || strings.ContainsAny(name, "\x00\r\n") {
-		errBadRequest(w, "X-Artifact-Name must be 1–160 characters")
+	if name == "" || !board.ValidLabel(name, 160) { // plain text: the name goes into cross-team messages typed into agents' terminals (#4901)
+		errBadRequest(w, "X-Artifact-Name must be 1–160 characters of plain text, with no control or formatting characters")
+		return
+	}
+	if !board.ValidLabel(strings.TrimSpace(r.Header.Get("X-Artifact-Media-Type")), 127) {
+		errBadRequest(w, "X-Artifact-Media-Type must be at most 127 characters of plain text, with no control or formatting characters")
 		return
 	}
 	mediaType := mediatype.Resolve(r.Header.Get("X-Artifact-Media-Type"), name)

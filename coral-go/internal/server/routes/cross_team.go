@@ -506,6 +506,9 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 	case body.Content == "" || body.FromBoard == "" || body.SubscriberID == "":
 		relayRefuse(w, http.StatusBadRequest, "bad_request", "from_board, subscriber_id and content are required")
 		return
+	case !plainLabel(body.FromBoard): // shown as the message's origin: bounded plain text, as a received file's from_board already is (#4901)
+		relayRefuse(w, http.StatusBadRequest, "bad_request", "from_board must be plain text of at most 200 bytes")
+		return
 	case len(body.Content) > maxRelayedContent:
 		relayRefuse(w, http.StatusRequestEntityTooLarge, "too_large", fmt.Sprintf("content must be at most %d bytes", maxRelayedContent))
 		return

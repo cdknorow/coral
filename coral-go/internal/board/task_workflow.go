@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -589,6 +590,34 @@ func isLocalArtifactPath(uri string) bool {
 		strings.HasPrefix(strings.ToLower(u), "file://")
 }
 
+// ValidLabel reports whether s is a label a client may set on something the dashboard shows and agents are told about (an artifact's
+// name, media type, kind...): at most maxBytes bytes of valid UTF-8 with no control character (C0, DEL, C1, a line or paragraph separator)
+// and no format character (a direction override, a zero-width mark). Empty is fine: whether a field is required is its own rule.
+func ValidLabel(s string, maxBytes int) bool {
+	if len(s) > maxBytes || !utf8.ValidString(s) {
+		return false
+	}
+	for _, r := range s {
+		if badIdentityRune(r) || r == '\u2028' || r == '\u2029' {
+			return false
+		}
+	}
+	return true
+}
+
+// validCommand is an evidence command line: one line (a tab is fine), no other control character.
+func validCommand(s string, maxBytes int) bool {
+	if len(s) > maxBytes || !utf8.ValidString(s) {
+		return false
+	}
+	for _, r := range s {
+		if (r < 0x20 && r != '\t') || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == '\u2028' || r == '\u2029' {
+			return false
+		}
+	}
+	return true
+}
+
 func validateTaskArtifacts(artifacts []TaskArtifact) ([]string, error) {
 	if len(artifacts) > maxTaskArtifacts {
 		return nil, fmt.Errorf("at most %d artifacts allowed", maxTaskArtifacts)
@@ -607,6 +636,21 @@ func validateTaskArtifacts(artifacts []TaskArtifact) ([]string, error) {
 		}
 		if len(a.Kind) > 64 || len(a.Command) > 4096 || len(a.Runner) > 256 || len(a.OutputDigest) > 256 || len(a.StartedAt) > 64 || len(a.FinishedAt) > 64 || len(a.Branch) > 256 || len(a.Remote) > 256 {
 			return nil, fmt.Errorf("artifact %q evidence metadata exceeds size limits", a.Name)
+		}
+		// What the Team Artifacts panel, the Inbox and a cross-team message show of an artifact is what its writer sent: bounded, and plain
+		// text (#4901). The name, media type, revision and digest had no check beyond the name's length.
+		for _, f := range []struct {
+			what, v string
+			max     int
+		}{{"name", a.Name, 128}, {"media_type", a.MediaType, 127}, {"revision", a.Revision, 256}, {"digest", a.Digest, 256}, {"kind", a.Kind, 64},
+			{"runner", a.Runner, 256}, {"output_digest", a.OutputDigest, 256}, {"started_at", a.StartedAt, 64}, {"finished_at", a.FinishedAt, 64},
+			{"branch", a.Branch, 256}, {"remote", a.Remote, 256}} {
+			if !ValidLabel(f.v, f.max) {
+				return nil, fmt.Errorf("artifact %q: %s must be plain text of at most %d bytes (no control or formatting characters)", a.Name, f.what, f.max)
+			}
+		}
+		if !validCommand(a.Command, 4096) {
+			return nil, fmt.Errorf("artifact %q: command must be one line of plain text of at most 4096 bytes", a.Name)
 		}
 	}
 	if err := validNames(names); err != nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -304,4 +305,24 @@ func TestRelayedMessageRateLimitIsAnActionLimit(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 	assert.Equal(t, false, out["ok"])
 	assert.Equal(t, "rate_limited", out["error"])
+}
+
+// #4901: the sending board's name of a relayed message is shown as its origin: bounded plain text, as a received file's from_board already
+// is. A control or formatting character, or more than 200 bytes, is a 400 and nothing is delivered.
+func TestRelayedMessageFromBoardIsAPlainLabel(t *testing.T) {
+	e := newCrossTeamEnv(t)
+	e.enable("beta", true)
+	_, _ = e.allowServers(relaySrc)
+	n := len(e.betaMessages())
+	for i, bad := range []string{"epoch\x1b[2Jtests", "epoch\u0085tests", "epoch\u2028tests", "epoch\u202etests", "epoch\u200btests", "epoch\ntests", strings.Repeat("b", 201)} {
+		body := relayBody(fmt.Sprintf("bad-%d", i), 0, "hi")
+		body["from_board"] = bad
+		code, out := e.relay("auth", "", body)
+		assert.Equal(t, http.StatusBadRequest, code, "from_board %q: %v", bad, out)
+	}
+	assert.Len(t, e.betaMessages(), n, "nothing was delivered")
+	body := relayBody("good-1", 0, "hi")
+	body["from_board"] = "epoch tests (v2) 🙂"
+	code, out := e.relay("auth", "", body)
+	assert.Equal(t, http.StatusOK, code, out)
 }

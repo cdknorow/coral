@@ -11,6 +11,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,5 +120,38 @@ func TestAgentArtifactLinkVersion(t *testing.T) {
 		require.NoError(t, err)
 		resp.Body.Close()
 		require.Equal(t, want, resp.StatusCode, q)
+	}
+}
+
+// #4901: an uploaded artifact's name and declared media type are plain text: the name goes into cross-team messages that are typed into
+// agents' terminals, so an escape, a C1 code, a line separator, a direction override or a tab in either is a 400 and nothing is stored.
+func TestAgentArtifactUploadRefusesControlCharactersInItsLabels(t *testing.T) {
+	_, h, _, ss := setupSessionsTestServer(t)
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "label-session", AgentName: "label-agent", AgentType: "codex", WorkingDir: t.TempDir()}))
+	r := chi.NewRouter()
+	r.Use(testIdentity(h.db))
+	h.RegisterAgentArtifacts(r)
+	server := httptest.NewServer(r)
+	defer server.Close()
+	upload := func(name, mediaType string) int {
+		req, err := http.NewRequest(http.MethodPost, server.URL+"/api/agent/artifacts?session_id=label-session", strings.NewReader("payload"))
+		require.NoError(t, err)
+		req.Header.Set("X-Artifact-Name", name)
+		if mediaType != "" {
+			req.Header.Set("X-Artifact-Media-Type", mediaType)
+		}
+		resp, err := agentClient.Do(req)
+		if err != nil { // the client itself refuses a header value it cannot send: nothing reached the server either
+			return http.StatusBadRequest
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	assert.Equal(t, http.StatusCreated, upload("notes 🙂 (final).md", "text/markdown; charset=utf-8"))
+	for _, bad := range []string{"a\x1bb.txt", "a\u0085b.txt", "a\u2028b.txt", "a\u202eb.txt", "a\tb.txt", "a\u200bb.txt", strings.Repeat("n", 161)} {
+		assert.Equal(t, http.StatusBadRequest, upload(bad, ""), "name %q", bad)
+	}
+	for _, bad := range []string{"text/plain\x1bx", "text/\u2028plain", "text/plain\u202e", strings.Repeat("t", 128)} {
+		assert.Equal(t, http.StatusBadRequest, upload("ok.txt", bad), "media type %q", bad)
 	}
 }
