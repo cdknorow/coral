@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,12 +38,18 @@ func FetchFromAPI(serverURL, board string) ([]Task, []Message, *BoardStatus, err
 	var tasks []Task
 	if err := json.Unmarshal(bodyBytes, &tasks); err != nil {
 		var wrapper struct {
-			Tasks []Task `json:"tasks"`
+			Tasks     []Task `json:"tasks"`
+			Truncated bool   `json:"truncated"`
 		}
 		if err2 := json.Unmarshal(bodyBytes, &wrapper); err2 != nil {
 			return nil, nil, nil, fmt.Errorf("failed to decode tasks JSON: %w", err)
 		}
 		tasks = wrapper.Tasks
+		if wrapper.Truncated {
+			// A server cuts the full list at 500 tasks (#4602), keeping every open task and then the newest done ones, so the
+			// report sees the board's state and its recent history, not the whole of it. Say so: never a silent cut.
+			slog.Warn("coordination report: the server sent only the open tasks and the newest done ones of a long task list", "board", board, "tasks", len(tasks))
+		}
 	}
 
 	// 2. Fetch messages

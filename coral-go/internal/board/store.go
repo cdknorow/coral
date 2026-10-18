@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2203,10 +2204,45 @@ func (s *Store) ListTasksCapped(ctx context.Context, project string, max int) (t
 		return nil, false, err
 	}
 	if max > 0 && len(tasks) > max {
-		tasks, more = tasks[:max], true
+		// More than the cap: keep what a reader of the whole list needs first, every open task and then the newest done ones
+		// (the coordination report reads full=1 for the board's state: the first 500 by priority and id were the OLDEST
+		// critical tasks, done long ago, and dropped the newest and the low-priority open ones, #4622). The kept rows come out
+		// in the same order as before.
+		more = true
+		tasks = tasks[:0]
+		q = `SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE board_id = ?
+		 ORDER BY CASE WHEN ` + doneTaskStatusSQL + ` THEN 1 ELSE 0 END ASC,
+		          CASE WHEN ` + doneTaskStatusSQL + ` THEN 0 ELSE CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END END ASC,
+		          CASE WHEN ` + doneTaskStatusSQL + ` THEN -id ELSE id END ASC LIMIT ?`
+		if err = s.reader().SelectContext(ctx, &tasks, q, project, max); err != nil {
+			return nil, false, err
+		}
+		sort.SliceStable(tasks, func(i, j int) bool {
+			ri, rj := taskPriorityRank(tasks[i].Priority), taskPriorityRank(tasks[j].Priority)
+			if ri != rj {
+				return ri < rj
+			}
+			return tasks[i].ID < tasks[j].ID
+		})
 	}
 	s.populateTaskDeps(ctx, tasks)
 	return tasks, more, nil
+}
+
+// taskPriorityRank is the order ListTasks sorts priorities in (critical first); an unknown value sorts first, as SQLite
+// sorts a NULL.
+func taskPriorityRank(priority string) int {
+	switch priority {
+	case "critical":
+		return 0
+	case "high":
+		return 1
+	case "medium":
+		return 2
+	case "low":
+		return 3
+	}
+	return -1
 }
 
 // ListOpenTasks returns the board's pending, in-progress, blocked and draft
