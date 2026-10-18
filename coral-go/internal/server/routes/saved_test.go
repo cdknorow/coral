@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -33,6 +34,8 @@ import (
 type savedRig struct {
 	t   *testing.T
 	srv *httptest.Server
+	h   *SystemHandler
+	db  *store.DB
 }
 
 func newSavedRig(t *testing.T) *savedRig {
@@ -61,7 +64,7 @@ func newSavedRig(t *testing.T) *savedRig {
 	r.Delete("/api/saved/{id}", h.SavedDelete)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
-	return &savedRig{t: t, srv: srv}
+	return &savedRig{t: t, srv: srv, h: h, db: db}
 }
 
 func (g *savedRig) do(method, path string, hdr map[string]string, body any) (int, map[string]any) {
@@ -508,4 +511,105 @@ func TestSavedSearch(t *testing.T) {
 	assert.EqualValues(t, 1, out["total"], "a local caller searches the stored title")
 	code, out = get("q=redacted", savedAsOperator)
 	assert.EqualValues(t, 0, out["total"])
+}
+
+// #4792: Saved for later is scoped to where it is opened from: an agent, a team, or everything. The server matches the scope (not the dashboard over a capped list), and the counts are of the scope.
+func TestSavedScope(t *testing.T) {
+	g := newSavedRig(t)
+	save := func(body map[string]any) {
+		t.Helper()
+		body["agent_type"], body["said_at"] = "claude", "2026-10-17T08:00:00Z"
+		code, out := g.do("POST", "/api/saved", savedAsOperator, body)
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	// two teams, an agent on each (the QA Engineer and the Frontend Dev), and the board messages each wrote or others did
+	save(map[string]any{"kind": "agent", "ref": "sess-qa", "key": strings.Repeat("a1", 10), "title": "QA Engineer", "snippet": "qa chat one", "team": "coral-go-team"})
+	save(map[string]any{"kind": "agent", "ref": "sess-qa", "key": strings.Repeat("a2", 10), "title": "QA Engineer", "snippet": "qa chat two", "team": "coral-go-team"})
+	save(map[string]any{"kind": "agent", "ref": "sess-fe", "key": strings.Repeat("b1", 10), "title": "Frontend Dev", "snippet": "fe chat", "team": "coral-hub-team"})
+	save(map[string]any{"kind": "board", "ref": "coral-go-team", "key": "11", "title": "coral-go-team", "snippet": "qa on the board", "author": "QA Engineer", "team": "ignored"})
+	save(map[string]any{"kind": "board", "ref": "coral-go-team", "key": "12", "title": "coral-go-team", "snippet": "someone else on the board", "author": "Orchestrator"})
+	save(map[string]any{"kind": "board", "ref": "coral-hub-team", "key": "13", "title": "coral-hub-team", "snippet": "fe on the hub board", "author": "Frontend Dev"})
+	save(map[string]any{"kind": "board", "ref": "coral-hub-team", "key": "14", "title": "coral-hub-team", "snippet": "a QA Engineer of another team", "author": "QA Engineer"})
+	// a mark done, to see the counts
+	_, all := g.do("GET", "/api/saved?state=open", savedAsOperator, nil)
+	var doneID int64
+	for _, it := range all["items"].([]any) {
+		if m := it.(map[string]any); m["snippet"] == "qa chat two" {
+			doneID = int64(m["id"].(float64))
+		}
+	}
+	code, _ := g.do("PATCH", fmt.Sprintf("/api/saved/%d", doneID), savedAsOperator, map[string]any{"done": true})
+	require.Equal(t, 200, code)
+	snippets := func(out map[string]any) []string {
+		var ts []string
+		for _, it := range out["items"].([]any) {
+			ts = append(ts, it.(map[string]any)["snippet"].(string))
+		}
+		slices.Sort(ts)
+		return ts
+	}
+	get := func(query string) map[string]any {
+		t.Helper()
+		code, out := g.do("GET", "/api/saved?"+query, savedAsOperator, nil)
+		require.Equal(t, 200, code, out)
+		return out
+	}
+	home := get("")
+	assert.Len(t, home["items"], 7, "home: everything")
+	assert.EqualValues(t, 6, home["open"])
+	assert.EqualValues(t, 1, home["done"])
+	team := get("team=coral-go-team")
+	assert.Equal(t, []string{"qa chat one", "qa chat two", "qa on the board", "someone else on the board"}, snippets(team), "a team: its board's messages and its agents' chats")
+	assert.EqualValues(t, 3, team["open"], "the counts are the team's")
+	assert.EqualValues(t, 1, team["done"])
+	other := get("team=coral-hub-team")
+	assert.Equal(t, []string{"a QA Engineer of another team", "fe chat", "fe on the hub board"}, snippets(other))
+	agent := get("agent=sess-qa&team=coral-go-team&author=" + url.QueryEscape("QA Engineer"))
+	assert.Equal(t, []string{"qa chat one", "qa chat two", "qa on the board"}, snippets(agent), "an agent: its chat and the board messages it wrote, not another team's namesake")
+	assert.EqualValues(t, 2, agent["open"])
+	assert.EqualValues(t, 1, agent["done"])
+	assert.Equal(t, []string{"fe chat"}, snippets(get("agent=sess-fe")), "an agent alone (no board): its chat only")
+	assert.EqualValues(t, 1, get("agent=sess-fe")["open"])
+	assert.Equal(t, []string{"qa chat one"}, snippets(get("team=coral-go-team&q=chat+one")), "the scope with a search")
+	assert.EqualValues(t, 3, get("team=coral-go-team&q=chat+one&state=done&limit=0")["open"], "the counts ignore the search and the state")
+	assert.Empty(t, snippets(get("team=no-such-team")))
+	// refusals
+	for query, want := range map[string]string{"author=QA": "author goes with agent and team", "agent=a&author=b": "author goes with agent and team", "team=a&team=b": "given once",
+		"team=a%00b": "without control characters", "agent=" + strings.Repeat("x", 301): "at most 300"} {
+		code, out := g.do("GET", "/api/saved?"+query, savedAsOperator, nil)
+		assert.Equal(t, 400, code, query)
+		assert.Contains(t, fmt.Sprint(out["error"]), want, query)
+	}
+}
+
+// Bookmarks saved before the team and the author were kept: a board bookmark belongs to its board's team, and its author is read from the board when an agent's scope asks (once).
+func TestSavedScopeOfBookmarksFromBeforeTheyWereKept(t *testing.T) {
+	g := newSavedRig(t)
+	for _, k := range []string{"21", "22", "23"} {
+		code, out := g.do("POST", "/api/saved", savedAsOperator, map[string]any{"kind": "board", "ref": "old-team", "key": k, "title": "old-team", "snippet": "old " + k})
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	asked := map[int64]int{}
+	g.h.SetBoardAuthor(func(_ context.Context, project string, id int64) (string, bool, error) {
+		asked[id]++
+		assert.Equal(t, "old-team", project)
+		switch id {
+		case 21:
+			return "QA Engineer", true, nil
+		case 22:
+			return "Orchestrator", true, nil
+		}
+		return "", false, nil // 23: the message was deleted
+	})
+	_, out := g.do("GET", "/api/saved?team=old-team", savedAsOperator, nil)
+	assert.Len(t, out["items"], 3, "a board bookmark belongs to its board's team with no lookup")
+	assert.Empty(t, asked, "a team scope asks the board nothing")
+	q := "/api/saved?agent=sess-qa&team=old-team&author=" + url.QueryEscape("QA Engineer")
+	_, out = g.do("GET", q, savedAsOperator, nil)
+	require.Len(t, out["items"], 1)
+	assert.Equal(t, "old 21", out["items"].([]any)[0].(map[string]any)["snippet"])
+	assert.Equal(t, "QA Engineer", out["items"].([]any)[0].(map[string]any)["author"])
+	_, out = g.do("GET", q, savedAsOperator, nil)
+	assert.Len(t, out["items"], 1)
+	assert.Equal(t, map[int64]int{21: 1, 22: 1, 23: 1}, asked, "each message is asked once, the deleted one too")
 }

@@ -25,7 +25,7 @@ var routeQueries = map[string]string{
 	"GET /api/filesystem/is-git":                  "path*",
 	"GET /api/filesystem/list":                    "path*",
 	"GET /api/goals/metrics":                      "hours",
-	"GET /api/saved":                              "conv,kind,limit,q,sort,state",
+	"GET /api/saved":                              "agent,author,conv,kind,limit,q,sort,state,team",
 	"GET /api/scheduled/jobs/{}/runs":             "limit",
 	"GET /api/scheduled/runs/recent":              "limit",
 	"GET /api/session-artifacts":                  "limit,offset,session_id",

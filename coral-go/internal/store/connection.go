@@ -166,6 +166,9 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 		d.ExecContext(ctx, sql) // Ignore error — column may already exist
 	}
 
+	// A board bookmark belongs to its board's team (#4792); an agent's takes the team it was saved with.
+	d.ExecContext(ctx, `UPDATE saved_messages SET team = ref WHERE kind = 'board' AND team = ''`)
+
 	// Archived implies sleeping. A Coral older than is_archived can wake an
 	// archived agent without clearing the flag; restore the invariant on open.
 	d.ExecContext(ctx, `UPDATE live_sessions SET is_archived = 0 WHERE is_archived = 1 AND is_sleeping = 0`)
@@ -218,6 +221,9 @@ var columnMigrations = []struct {
 }{
 	// Existing views have unknown provenance, so they migrate as "api": the dashboard asks once before running them.
 	{"custom_views", "created_via", "TEXT NOT NULL DEFAULT 'api'"},
+	// Where a bookmark belongs (#4792): its team (the board), and for a board message who wrote it (NULL: not looked up yet).
+	{"saved_messages", "team", "TEXT NOT NULL DEFAULT ''"},
+	{"saved_messages", "author", "TEXT"},
 	{"agent_notes", "session_id", "TEXT"},
 	{"agent_tasks", "session_id", "TEXT"},
 	{"session_meta", "display_name", "TEXT"},

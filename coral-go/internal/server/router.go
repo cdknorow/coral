@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"github.com/cdknorow/coral/internal/cloud"
 	"io/fs"
 	"log"
@@ -205,6 +207,18 @@ func (s *Server) newRouteHandlers() *routeHandlers {
 	routes.ProtectDataDir(s.cfg.CoralDir())
 	sysHandler := routes.NewSystemHandler(s.db, s.cfg)
 	sysHandler.SetTerminal(s.terminal)
+	if s.boardStore != nil {
+		sysHandler.SetBoardAuthor(func(ctx context.Context, project string, id int64) (string, bool, error) {
+			m, err := s.boardStore.GetMessageByID(ctx, project, id)
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", false, nil
+			}
+			if err != nil {
+				return "", false, err
+			}
+			return m.JobTitle, true, nil
+		})
+	}
 	s.systemHandler = sysHandler
 	histHandler := routes.NewHistoryHandler(s.db, s.cfg, s.boardStore)
 	s.historyHandler = histHandler

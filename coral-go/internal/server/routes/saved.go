@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,7 +38,8 @@ var (
 	savedBoardKey = regexp.MustCompile(`^[0-9]{1,18}$`)
 )
 
-// SavedList: GET /api/saved?state=open|done (default: both; kind and conv (the session id or the board) narrow it to one conversation, for the buttons' saved state; q (#4745) keeps the bookmarks whose title or snippet holds that text, a plain case-insensitive substring of at most 200 characters; sort=newest|oldest; limit keeps the first N of the sort's order (the newest by default)).
+// SavedList: GET /api/saved?team=T keeps the bookmarks of one team (#4792: its board's messages and the messages of its agents), agent=REF those of one agent (its chat, and with team and author
+// both, the messages that author wrote on that team's board); the open and done counts are of the scope too. author needs agent and team. State=open|done (default: both; kind and conv (the session id or the board) narrow it to one conversation, for the buttons' saved state; q (#4745) keeps the bookmarks whose title or snippet holds that text, a plain case-insensitive substring of at most 200 characters; sort=newest|oldest; limit keeps the first N of the sort's order (the newest by default)).
 func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 	if refuseUnlessOperator(w, r, "see the saved messages") {
 		return
@@ -51,8 +53,19 @@ func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 	if state == "all" {
 		state = ""
 	}
-	if len(q["q"]) > 1 || len(q["sort"]) > 1 {
-		errBadRequest(w, "q and sort are given once")
+	if len(q["q"]) > 1 || len(q["sort"]) > 1 || len(q["team"]) > 1 || len(q["agent"]) > 1 || len(q["author"]) > 1 {
+		errBadRequest(w, "q, sort, team, agent and author are given once")
+		return
+	}
+	scope := store.SavedScope{Team: q.Get("team"), Agent: q.Get("agent"), Author: q.Get("author")}
+	for _, v := range []string{scope.Team, scope.Agent, scope.Author} {
+		if len(v) > maxSavedField || cleanSavedField(v) != v {
+			errBadRequest(w, fmt.Sprintf("team, agent and author are at most %d characters, without control characters", maxSavedField))
+			return
+		}
+	}
+	if scope.Author != "" && (scope.Agent == "" || scope.Team == "") {
+		errBadRequest(w, "author goes with agent and team")
 		return
 	}
 	text := strings.ToLower(strings.TrimSpace(q.Get("q")))
@@ -79,7 +92,10 @@ func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 		}
 		shown = shownTextMemoized
 	}
-	items, err := h.ss.ListSaved(r.Context(), state, q.Get("kind"), q.Get("conv"))
+	if scope.Author != "" {
+		h.fillSavedAuthors(r.Context(), scope.Team)
+	}
+	items, err := h.ss.ListSaved(r.Context(), state, q.Get("kind"), q.Get("conv"), scope)
 	if err != nil {
 		errInternalServer(w, "could not read the saved messages")
 		return
@@ -108,12 +124,45 @@ func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 			items = items[:n]
 		}
 	}
-	open, done, err := h.ss.SavedCounts(r.Context())
+	open, done, err := h.ss.SavedCounts(r.Context(), scope)
 	if err != nil {
 		errInternalServer(w, "could not read the saved messages")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "open": open, "done": done, "total": total})
+}
+
+// SetBoardAuthor injects how a board message's author is read (the board's job title for its sender), for the bookmarks saved before the author was kept (#4792): found is false when the message is gone.
+func (h *SystemHandler) SetBoardAuthor(fn func(ctx context.Context, project string, id int64) (author string, found bool, err error)) {
+	h.boardAuthor = fn
+}
+
+// fillSavedAuthors asks the board who wrote each bookmarked message of a team whose author is not known yet, and keeps the answer (a message that is gone is kept as no author).
+// An error leaves the rest to the next ask.
+func (h *SystemHandler) fillSavedAuthors(ctx context.Context, team string) {
+	if h.boardAuthor == nil {
+		return
+	}
+	unknown, err := h.ss.UnknownSavedAuthors(ctx, team)
+	if err != nil {
+		return
+	}
+	for _, it := range unknown {
+		id, perr := strconv.ParseInt(it.Key, 10, 64)
+		if perr != nil {
+			continue
+		}
+		author, found, aerr := h.boardAuthor(ctx, it.Ref, id)
+		if aerr != nil {
+			return
+		}
+		if !found {
+			author = ""
+		}
+		if h.ss.SetSavedAuthor(ctx, it.ID, author) != nil {
+			return
+		}
+	}
 }
 
 // savedSnippet is text redacted, one line, and cut to maxSavedSnippet bytes where no token can be split. Text that can't be checked is not kept.
@@ -147,7 +196,7 @@ func cleanSavedField(s string) string {
 	}, s)
 }
 
-// SavedAdd: POST /api/saved {kind, ref, key, agent_type, title, snippet, said_at}. Saving a saved message again answers the bookmark that exists.
+// SavedAdd: POST /api/saved {kind, ref, key, agent_type, title, snippet, said_at, team, author}: team is the board an agent was on (a board message's is its board), author who wrote a board message. Saving a saved message again answers the bookmark that exists.
 func (h *SystemHandler) SavedAdd(w http.ResponseWriter, r *http.Request) {
 	if refuseUnlessOperator(w, r, "save a message") {
 		return
@@ -160,6 +209,8 @@ func (h *SystemHandler) SavedAdd(w http.ResponseWriter, r *http.Request) {
 		Title     string `json:"title"`
 		Snippet   string `json:"snippet"`
 		SaidAt    string `json:"said_at"`
+		Team      string `json:"team"`
+		Author    string `json:"author"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -186,7 +237,11 @@ func (h *SystemHandler) SavedAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := store.SavedMessage{Kind: body.Kind, Ref: ref, Key: body.Key, AgentType: cleanSavedField(body.AgentType), Title: cleanSavedField(body.Title),
-		Snippet: savedSnippet(body.Snippet), SaidAt: cleanSavedField(body.SaidAt)}
+		Snippet: savedSnippet(body.Snippet), SaidAt: cleanSavedField(body.SaidAt), Team: cleanSavedField(body.Team)}
+	if m.Kind == "board" {
+		m.Team = ref // a board message belongs to its own board
+		m.Author = cleanSavedField(body.Author)
+	}
 	out, err := h.ss.SaveMessage(r.Context(), m)
 	if errors.Is(err, store.ErrTooManySaved) {
 		errConflict(w, "at most "+strconv.Itoa(store.MaxSavedMessages)+" messages can be saved; remove some first")

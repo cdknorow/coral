@@ -58,6 +58,9 @@ type SystemHandler struct {
 	cfg     *config.Config
 	indexer Indexer
 
+	// boardAuthor reads who wrote a board message, for the bookmarks saved before the author was kept (#4792); set by the server wiring.
+	boardAuthor func(ctx context.Context, project string, id int64) (string, bool, error)
+
 	generateJobs   map[string]*generateJob
 	generateJobsMu sync.Mutex
 
