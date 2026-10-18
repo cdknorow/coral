@@ -109,6 +109,8 @@
                                 </button>
                                 <span class="chat-jump-latest-status"></span>
                             </div>
+                            <!-- What a send is doing (#4680): one region that stays in the page, its text changed in place (Sending message, Message sent, Message not sent...), so a screen reader announces each change; the bubbles' own labels have no role -->
+                            <div id="chat-send-status" class="chat-send-status" role="status" aria-live="polite" aria-atomic="true"></div>
                             <div id="session-ended-overlay" class="session-ended-overlay" style="display:none">
                                 <div class="session-ended-content" id="session-ended-default">
                                     <p>Session ended</p>

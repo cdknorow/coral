@@ -166,6 +166,17 @@ export function isCoralNudge(content) {
 	return CORAL_NUDGE_RES.some(re => re.test(text));
 }
 
+// What a send is doing, said once in one persistent live region (#4680): the bubbles' labels are made in their final words each time (a bubble moves between groups), which some screen readers
+// do not announce, so they carry no role; this element stays in the page and its text changes in place. Only for the agent on screen.
+function announceSend(sessionId, words) {
+    if (!(state.currentSession && state.currentSession.session_id === sessionId)) return;
+    const el = document.getElementById("chat-send-status");
+    if (!el) return;
+    if (el.textContent !== words) { el.textContent = words; return; }
+    el.textContent = ""; // the same words again (two sends in a row): cleared first so the change is heard
+    requestAnimationFrame(() => { el.textContent = words; });
+}
+
 /** Record a message just sent to an agent so the chat can show it right away. sending: it shows "Sending…" until
  *  confirmPendingMessage (the server said it was submitted) or removePendingMessage (it was not). */
 export function addPendingMessage(sessionId, text, sentAt = Date.now(), { sending = false } = {}) {
@@ -194,6 +205,7 @@ export function addPendingMessage(sessionId, text, sentAt = Date.now(), { sendin
         syncWorkingIndicator(container, state.currentSession);
         container.scrollTop = container.scrollHeight;
     }
+    if (sending) announceSend(sessionId, "Sending message");
 }
 
 /** The server said the send at sentAt was submitted: its bubble says Sent (or Queued) from now on (#4587). */
@@ -207,6 +219,7 @@ export function confirmPendingMessage(sessionId, sentAt) {
         syncPendingBubbles(container, sessionId);
         syncWorkingIndicator(container, state.currentSession); // the Sent bubble moves to the end: Working goes back below it
     }
+    announceSend(sessionId, p.queued ? "Message queued" : "Message sent");
 }
 
 /** Withdraw the pending bubble of a send that was refused (its terminal was gone, #3218). */
@@ -222,6 +235,7 @@ export function removePendingMessage(sessionId, sentAt) {
         syncPendingBubbles(container, sessionId);
         syncWorkingIndicator(container, state.currentSession);
     }
+    announceSend(sessionId, "Message not sent, your text is back in the box");
 }
 
 // An interrupt ends the current work; Claude Code then submits whatever was
@@ -337,8 +351,8 @@ function syncPendingGroup(container, cls, items, label) {
         const coral = /^\[Coral UI panel request\b/i.test(normalizeNudgeText(p.text));
         const summary = coralNoticeSummary(normalizeNudgeText(p.text));
         const el = coral
-            ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label" role="status">${label}</span>`)
-            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(unwrapPastedContent(p.text), undefined, 'chat')}</div><div class="pending-label" role="status">${label}</div>`);
+            ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label">${label}</span>`)
+            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(unwrapPastedContent(p.text), undefined, 'chat')}</div><div class="pending-label">${label}</div>`);
         el.dataset.pendingId = String(p.id);
         // Keep send order even when a message moves between groups
         const next = Array.from(wrap.children).find(c => Number(c.dataset.pendingId) > p.id);

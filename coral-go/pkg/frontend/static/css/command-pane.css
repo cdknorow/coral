@@ -494,3 +494,6 @@
     35% { box-shadow: 0 0 0 2px var(--accent-primary); }
 }
 #command-input.empty-send-nudge { animation: empty-send-nudge 0.5s ease-out; }
+
+/* The chat's send-state live region (#4680): heard, not seen */
+.chat-send-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

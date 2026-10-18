@@ -5,7 +5,9 @@
 //     Reload the page to try again." when it fails;
 //   - a message shows "Sending…" until its own request answers, and "Sent" only when that answer says it was
 //     submitted; a refusal (not submitted, agent not ready) takes the bubble away and puts the text back in the box,
-//     never "Sent"; a second click while it is sending sends nothing more.
+//     never "Sent"; a second click while it is sending sends nothing more;
+//   - what a send is doing is said in one live region that stays in the page (#4680), its text changed in place: Sending message, Message sent,
+//     Message not sent, your text is back in the box; the bubbles' own labels carry no role.
 // The agent and its chat and send routes are mocked in the page (agent_view_harness.js); the rest is the isolated
 // test server. Drives Chrome over CDP; run_cdp_suites.mjs finds CDP suites by the harness's name.
 const assert = require('node:assert/strict');
@@ -79,11 +81,17 @@ const HOLD = `(() => {
         console.log('A message: Sending… until its request answers, Sent only on a submitted answer');
         await select('cs-a');
         await waitFor(`window.__rendered().length > 0`, 'the conversation');
+        const REGION = `document.getElementById('chat-send-status')`;
+        assert.deepEqual(await ev(`({ n: document.querySelectorAll('#chat-send-status').length, role: ${REGION}.getAttribute('role'), live: ${REGION}.getAttribute('aria-live'), text: ${REGION}.textContent })`), { n: 1, role: 'status', live: 'polite', text: '' }, 'the send-state region is in the page before any send, empty');
+        await ev(`window.__sendRegion = ${REGION}; true`);
+        const labelRoles = () => ev(`[...document.querySelectorAll('#live-history-messages .pending-label')].map(l => l.getAttribute('role'))`);
         await type('first message');
         await ev(`window.sendCommand(); true`);
         await waitFor(`window.__hold.send.length === 1`, 'the send request');
         await waitFor(`document.querySelectorAll('#live-history-messages .pending-sending .chat-bubble').length === 1`, 'the Sending bubble');
         assert.deepEqual(await pending(), [{ text: 'first message', label: 'Sending…' }]);
+        assert.equal(await ev(`${REGION}.textContent`), 'Sending message', 'the region says it is sending');
+        assert.deepEqual(await labelRoles(), [null], 'the bubble label has no role of its own');
         assert.equal(await ev(`document.getElementById('command-input').value`), '', 'the box is emptied while it sends');
         await ev(`window.sendCommand({ nudge: true }); true`); // a second click while it sends
         await ev(`new Promise(r => setTimeout(r, 200))`); // sleep-ok: a second request, if any, would be made within this
@@ -92,6 +100,9 @@ const HOLD = `(() => {
         await answer(200, { ok: true });
         await waitFor(`document.querySelectorAll('#live-history-messages .pending-sent .chat-bubble').length === 1`, 'the Sent bubble');
         assert.deepEqual(await pending(), [{ text: 'first message', label: 'Sent' }]);
+        assert.equal(await ev(`${REGION}.textContent`), 'Message sent', 'the region says it was sent');
+        assert.equal(await ev(`${REGION} === window.__sendRegion`), true, 'the same element: its text changed in place');
+        assert.deepEqual(await labelRoles(), [null], 'still no role on the label');
 
         console.log('A message not submitted: no Sent, the text back in the box, the reason under it');
         await type('second message');
@@ -101,6 +112,8 @@ const HOLD = `(() => {
         await answer(409, { error: "Your message is in the agent's input box but wasn't submitted. Send it again to submit it, or press Enter in its terminal.", code: 'not_submitted', not_sent: false });
         await waitFor(`document.getElementById('command-input').value === 'second message'`, 'the text back');
         assert.deepEqual(await pending(), [{ text: 'first message', label: 'Sent' }], 'its bubble is gone');
+        assert.equal(await ev(`${REGION}.textContent`), 'Message not sent, your text is back in the box', 'the region says so');
+        assert.equal(await ev(`${REGION} === window.__sendRegion`), true, 'the same element again');
         assert.equal(await ev(`document.getElementById('composer-error').hidden`), false, 'the reason is shown');
         assert.match(await ev(`document.getElementById('composer-error').textContent`), /wasn't submitted/);
         assert.deepEqual(await sentToasts(), ['Sent: first message'], 'no Sent for it');
