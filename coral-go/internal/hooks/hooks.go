@@ -49,7 +49,7 @@ func ResolveSessionID(payloadSessionID string) string {
 		return id
 	}
 	if os.Getenv("TMUX") != "" {
-		out, err := executil.Output(3*time.Second, tmux.BinaryFromEnv(), "display-message", "-p", "#{session_name}")
+		out, err := runTmux(tmux.BinaryFromEnv(), "display-message", "-p", "#{session_name}")
 		if err == nil {
 			if id := sessionIDFromName(strings.TrimSpace(string(out))); id != "" {
 				return id
@@ -57,6 +57,12 @@ func ResolveSessionID(payloadSessionID string) string {
 		}
 	}
 	return payloadSessionID
+}
+
+// runTmux runs the tmux binary for the session lookup, bounded (tests replace it: a real process can take longer
+// than the bound on a loaded machine).
+var runTmux = func(bin string, args ...string) ([]byte, error) {
+	return executil.Output(3*time.Second, bin, args...)
 }
 
 // sessionIDFromName extracts the lowercase UUID from a "{type}-{uuid}" Coral
