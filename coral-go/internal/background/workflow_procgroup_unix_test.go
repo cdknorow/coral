@@ -148,7 +148,10 @@ func TestShutdownKillsRunningSteps(t *testing.T) {
 	start := time.Now()
 	runner.Shutdown(ctx)
 	assert.Less(t, time.Since(start), 15*time.Second, "Shutdown returned once the run ended")
-	assert.False(t, alive(grandchild), "the backgrounded sleep survived Shutdown")
+	// Killed with its group, the sleep can still answer kill(pid, 0) for a moment: once its shell is gone it is
+	// reparented and reaped by init, after Shutdown has returned (#4827: an immediate check failed now and then).
+	// It must be gone soon after, as in the KillRun test above.
+	assert.Eventually(t, func() bool { return !alive(grandchild) }, 10*time.Second, 20*time.Millisecond, "the backgrounded sleep survived Shutdown")
 	stepGroupsGone(t, []int{pgid})
 	got, err := wfStore.GetWorkflowRunDirect(context.Background(), run.ID)
 	require.NoError(t, err)
