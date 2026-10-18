@@ -55,7 +55,7 @@ const STEPS = [
             const T = window.T = { state: (await import(st + 'state.js')).state, ws: await import(st + 'websocket.js') };
             window.__calls = [];
             window.selectLiveSession = (...a) => { window.__calls.push('select ' + JSON.stringify(a)); return Promise.resolve(); };
-            const realRaf = window.requestAnimationFrame; window.__raf = 0; window.requestAnimationFrame = cb => { window.__raf++; return realRaf(cb); };
+            const realFrames = window.requestAnimationFrame; window.__sched = 0; window.requestAnimationFrame = cb => { window.__sched++; return realFrames(cb); }; // raf-ok: a spy that counts the page's own frame requests (a sidebar render is scheduled by one); it waits for none
             const json = (b, status = 200) => Promise.resolve(new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } }));
             const real = window.fetch;
             window.fetch = (u, o = {}) => { const p = new URL(String(u), location.href); if (p.pathname === '/api/sessions/live') { window.__calls.push('reload ' + p.pathname); return json([]); } return real(u, o); };
@@ -68,9 +68,9 @@ const STEPS = [
                 header: [(q('session-name') || {}).textContent, (q('terminal-header-label') || {}).textContent, (q('command-input') || {}).placeholder].join(' | '),
                 current: cs ? [cs.name, cs.session_id, cs.tmux_session, cs.display_name, cs.summary].join('/') : null,
                 toasts: [...document.querySelectorAll('[class*="toast"]')].map(e => e.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean).join(' || '),
-                calls: window.__calls.join(' ; '), raf: window.__raf, prevWaiting: JSON.stringify(Object.fromEntries(Object.entries(T.state.prevWaitingState || {}).sort())) }; })()`;
+                calls: window.__calls.join(' ; '), sched: window.__sched, prevWaiting: JSON.stringify(Object.fromEntries(Object.entries(T.state.prevWaitingState || {}).sort())) }; })()`;
         for (const [name, msg, setup] of STEPS) {
-            await ev(`window.__calls.length = 0; window.__raf = 0; document.querySelectorAll('[class*="toast"]').forEach(e => e.remove()); ${setup || ''} T.ws.handleCoralMessage(${JSON.stringify(msg)}); true`);
+            await ev(`window.__calls.length = 0; window.__sched = 0; document.querySelectorAll('[class*="toast"]').forEach(e => e.remove()); ${setup || ''} T.ws.handleCoralMessage(${JSON.stringify(msg)}); true`);
             await ev(`new Promise(r => setTimeout(r, 80))`); // sleep-ok: a resync and the toasts land over a few frames; there is no completion event
             out[name] = await ev(SNAP);
         }
@@ -78,7 +78,7 @@ const STEPS = [
         assert.equal(out['still waiting is not a new toast'].toasts, '');
         assert.match(out['a field-level diff of an unknown row reloads the list'].calls, /reload/);
         const hashes = {}, lines = {};
-        for (const [name, s] of Object.entries(out)) { hashes[name] = sha(JSON.stringify(s)); lines[name] = `${s.sessions.join(' ; ')} | servers ${s.servers} | header ${s.header} | current ${s.current} | toasts ${s.toasts} | calls ${s.calls} | raf>0 ${s.raf > 0}`; }
+        for (const [name, s] of Object.entries(out)) { hashes[name] = sha(JSON.stringify(s)); lines[name] = `${s.sessions.join(' ; ')} | servers ${s.servers} | header ${s.header} | current ${s.current} | toasts ${s.toasts} | calls ${s.calls} | sched>0 ${s.sched > 0}`; }
         if (process.env.CORAL_UPDATE_GOLDEN) {
             fs.mkdirSync(path.dirname(GOLDEN), { recursive: true });
             fs.writeFileSync(GOLDEN, JSON.stringify({ about: 'what handleCoralMessage did with each feed message, for feed_message_golden_browser.test.js: sha256 of the list, servers, header, toasts, calls and render count, and the readable lines. CORAL_UPDATE_GOLDEN=1 rewrites it.', hashes, lines }, null, 2) + '\n');
