@@ -78,6 +78,7 @@ async function run() {
         let r = await rows();
         check('the results are the matches, newest first, 50 of them with a Load more', r.length === 50 && r[0] === 'Edit file-69.go' && (await ev(`!!document.querySelector('#agentic-state-events .event-more')`)), `${r.length} rows, first ${r[0]}`);
         check('the live feed\'s own filter is hidden while the results show', (await ev(`document.getElementById('event-filters').hidden`)));
+        await settle(`document.querySelector('#event-search-bar .list-bar-live').textContent === '70 events'`, 'the status region says the settled count');
         check('a screen reader is told the count once, after the change', (await live()) === '70 events', await live());
         await ev(`document.querySelector('#agentic-state-events .event-more').click(); true`);
         await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 70`, 'the second page');
