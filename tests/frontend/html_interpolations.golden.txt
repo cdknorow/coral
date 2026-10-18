@@ -1,0 +1,666 @@
+1	agent_config_form.js	CAPABILITY_LABELS[cap] || cap
+1	agent_config_form.js	autoPermissionsHTML
+1	agent_config_form.js	modelPickerHtml()
+1	agent_config_form.js	nameHTML
+1	agent_config_form.js	presetHTML
+1	agent_config_form.js	title
+1	agent_config_form.js	uid
+1	agentic_state.js	activeCount
+1	agentic_state.js	badge
+2	agentic_state.js	count
+1	agentic_state.js	formatClockTime(ev.created_at)
+1	agentic_state.js	items
+1	agentic_state.js	recentHtml
+1	agentic_state.js	statusText
+1	artifact_preview.js	rows
+1	artifact_viewer.js	renderMarkdownStrict(content)
+1	auto_accept.js	`<button type="button" class="overflow-menu-item auto-accept-menu-item" role="menuitemcheckbox" aria-checked="
+1	auto_accept.js	`Auto-accept prompts<span class="auto-accept-state">${stateText}</span></button>`
+1	auto_accept.js	on
+1	auto_accept.js	stateText
+1	board_accents.js	_colorSwatches.map(c => `<button class="color-swatch${c === current ? ' active' : ''}" style="background:${c}"
+1	board_accents.js	c
+1	board_chat.js	_formatTime(m.created_at)
+1	board_chat.js	alignClass
+1	board_chat.js	boardAvatar(m, agent)
+1	board_chat.js	boardMessageColorStyle(color)
+1	board_chat.js	checkbox
+1	board_chat.js	count
+1	board_chat.js	externalMessageBadge(m)
+1	board_chat.js	hubUserBadge(m)
+1	board_chat.js	remaining
+1	board_chat.js	renderBoardMessageBody(m)
+1	board_chat.js	selectedClass
+1	board_chat.js	spacing
+1	board_system_lines.js	lines
+1	browser.js	machineBlock()
+1	changed_files.js	adds
+1	changed_files.js	agentOnlyCls
+1	changed_files.js	agentsHtml
+2	changed_files.js	cls
+2	changed_files.js	copyBtn
+1	changed_files.js	dels
+1	changed_files.js	dirHeader
+2	changed_files.js	editBtn
+1	changed_files.js	emptyOptions
+1	changed_files.js	emptySelect
+1	changed_files.js	f.additions
+1	changed_files.js	f.deletions
+1	changed_files.js	fileIconHtml(name)
+1	changed_files.js	modeSelect
+1	changed_files.js	options
+2	changed_files.js	previewBtn
+2	changed_files.js	starBtn
+2	changed_files.js	stats
+1	changed_files.js	statusCls
+1	changed_files.js	totals.adds
+1	changed_files.js	totals.dels
+1	chat_bubbles.js	artifactRef ? '' : `<button type="button" role="menuitem" data-action="edit"><span class="material-icons" aria
+1	chat_bubbles.js	editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${Number(i)}">
+2	chat_bubbles.js	line > 0 ? ` (line ${line})` : ""
+1	chat_search.js	highlightExcerpt(hit.excerpt, hit.match_offsets)
+3	cli_dialogs.js	name
+1	cli_dialogs.js	where
+1	commits.js	agent
+1	commits.js	branch
+1	commits.js	shortHash
+1	commits.js	subject
+1	commits.js	ts
+1	controls.js	macroButtons
+1	controls.js	modeButtons
+1	controls.js	navButtons
+6	cost_dashboard.js	H
+5	cost_dashboard.js	PAD
+1	cost_dashboard.js	PAD + 4
+3	cost_dashboard.js	PAD + plotH
+2	cost_dashboard.js	PAD + plotH + 16
+1	cost_dashboard.js	PAD + plotH + 4
+2	cost_dashboard.js	PAD + plotW
+4	cost_dashboard.js	PAD.left
+4	cost_dashboard.js	PAD.left + plotW
+1	cost_dashboard.js	PAD.left + plotW / 2
+2	cost_dashboard.js	PAD.top
+1	cost_dashboard.js	PAD.top + 4
+2	cost_dashboard.js	PAD.top + plotH
+1	cost_dashboard.js	PAD.top + plotH + 4
+2	cost_dashboard.js	PAD.top + plotH / 2
+1	cost_dashboard.js	PAD.top + plotH / 2 + 4
+6	cost_dashboard.js	W
+1	cost_dashboard.js	_formatCost(b.cost_usd || 0)
+2	cost_dashboard.js	_formatCost(maxCost)
+1	cost_dashboard.js	_formatCost(midCost)
+3	cost_dashboard.js	_formatCost(r.cost_usd)
+2	cost_dashboard.js	_formatCost(t.cost_usd || 0)
+1	cost_dashboard.js	_formatDate(r.started_at)
+1	cost_dashboard.js	_formatLatency(r.latency_ms)
+1	cost_dashboard.js	_sortHeader('agent', 'agent_name', 'Agent', '', true)
+1	cost_dashboard.js	_sortHeader('agent', 'board_name', 'Team', '', true)
+1	cost_dashboard.js	_sortHeader('agent', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('agent', 'cache_write_tokens', 'Cache Write', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('agent', 'cost_usd', 'Cost', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('agent', 'duration', 'Duration', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('agent', 'first_seen', 'Launched', '')
+1	cost_dashboard.js	_sortHeader('agent', 'folder', 'Folder', '', true)
+1	cost_dashboard.js	_sortHeader('agent', 'input_tokens', 'Input', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('agent', 'output_tokens', 'Output', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('agent', 'requests', 'Requests', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('branch', 'board_name', 'Team', '', true)
+1	cost_dashboard.js	_sortHeader('branch', 'branch', 'Branch', '', true)
+1	cost_dashboard.js	_sortHeader('branch', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('branch', 'cache_write_tokens', 'Cache Write', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('branch', 'cost_usd', 'Cost', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('branch', 'input_tokens', 'Input', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('branch', 'num_agents', 'Agents', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('branch', 'output_tokens', 'Output', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('branch', 'pr_number', 'PR', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('model', 'agent_type', 'Provider', '', true)
+1	cost_dashboard.js	_sortHeader('model', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('model', 'cache_write_tokens', 'Cache Write', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('model', 'cost_usd', 'Cost', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('model', 'input_tokens', 'Input', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('model', 'model', 'Model', '', true)
+1	cost_dashboard.js	_sortHeader('model', 'output_tokens', 'Output', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('model', 'requests', 'Requests', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('request', 'agent_name', 'Agent', '')
+1	cost_dashboard.js	_sortHeader('request', 'cache_read_tokens', 'Cache R', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('request', 'cache_write_tokens', 'Cache W', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('request', 'cost_usd', 'Cost', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('request', 'input_tokens', 'Input', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('request', 'latency_ms', 'Latency', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('request', 'model_used', 'Model', '', true)
+1	cost_dashboard.js	_sortHeader('request', 'output_tokens', 'Output', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('request', 'started_at', 'Time', '')
+1	cost_dashboard.js	_sortHeader('request', 'status', 'Status', '', true)
+1	cost_dashboard.js	_sortHeader('task', 'assigned_to', 'Agent', '', true)
+1	cost_dashboard.js	_sortHeader('task', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('task', 'cache_write_tokens', 'Cache Write', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('task', 'claimed_at', 'Start Time', '')
+1	cost_dashboard.js	_sortHeader('task', 'cost_usd', 'Cost', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('task', 'duration', 'Duration', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('task', 'input_tokens', 'Input', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('task', 'output_tokens', 'Output', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('task', 'priority', 'Priority', '', true)
+1	cost_dashboard.js	_sortHeader('task', 'title', 'Task', '')
+1	cost_dashboard.js	_sortHeader('team', 'board_name', 'Team', '', true)
+1	cost_dashboard.js	_sortHeader('team', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('team', 'cache_write_tokens', 'Cache Write', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('team', 'cost_usd', 'Cost', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('team', 'input_tokens', 'Input', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('team', 'num_agents', 'Agents', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('team', 'output_tokens', 'Output', 'cost-col-right')
+2	cost_dashboard.js	areaPoints.join(' ')
+1	cost_dashboard.js	arrow
+1	cost_dashboard.js	b.num_agents || 0
+2	cost_dashboard.js	barWidth
+1	cost_dashboard.js	bars
+1	cost_dashboard.js	checked
+1	cost_dashboard.js	color
+1	cost_dashboard.js	duration
+1	cost_dashboard.js	durationHtml
+1	cost_dashboard.js	endedSuffix
+1	cost_dashboard.js	filterIcon
+1	cost_dashboard.js	folderHtml
+1	cost_dashboard.js	formatBucketLabel(buckets[0].bucket)
+1	cost_dashboard.js	formatBucketLabel(buckets[Math.floor(n / 2)].bucket)
+1	cost_dashboard.js	formatBucketLabel(buckets[n - 1].bucket)
+1	cost_dashboard.js	formatTokens(b.cache_read_tokens || 0)
+1	cost_dashboard.js	formatTokens(b.cache_write_tokens || 0)
+1	cost_dashboard.js	formatTokens(b.input_tokens || 0)
+1	cost_dashboard.js	formatTokens(b.output_tokens || 0)
+3	cost_dashboard.js	formatTokens(r.cache_read_tokens || 0)
+3	cost_dashboard.js	formatTokens(r.cache_write_tokens || 0)
+2	cost_dashboard.js	formatTokens(r.input_tokens || 0)
+1	cost_dashboard.js	formatTokens(r.input_tokens)
+2	cost_dashboard.js	formatTokens(r.output_tokens || 0)
+1	cost_dashboard.js	formatTokens(r.output_tokens)
+2	cost_dashboard.js	formatTokens(t.cache_read_tokens || 0)
+2	cost_dashboard.js	formatTokens(t.cache_write_tokens || 0)
+2	cost_dashboard.js	formatTokens(t.input_tokens || 0)
+2	cost_dashboard.js	formatTokens(t.output_tokens || 0)
+1	cost_dashboard.js	label
+1	cost_dashboard.js	launchedHtml
+1	cost_dashboard.js	maxTurn
+1	cost_dashboard.js	nameHtml
+2	cost_dashboard.js	pct
+3	cost_dashboard.js	points.join(' ')
+1	cost_dashboard.js	points[points.length - 1].split(',')[0]
+1	cost_dashboard.js	points[points.length - 1].split(',')[1]
+1	cost_dashboard.js	prCell
+1	cost_dashboard.js	prNumber
+1	cost_dashboard.js	priorityClass
+1	cost_dashboard.js	r.calls
+1	cost_dashboard.js	r.errors
+2	cost_dashboard.js	r.requests
+1	cost_dashboard.js	rows.map(r => `<tr><td>${escapeHtml(r.operation)}</td><td>${escapeHtml(r.call_type)}</td><td>${escapeHtml(r.ag
+1	cost_dashboard.js	startTime
+1	cost_dashboard.js	statusClass
+1	cost_dashboard.js	statusIcon(t.status)
+1	cost_dashboard.js	t.id
+1	cost_dashboard.js	t.num_agents || 0
+2	cost_dashboard.js	teamHtml
+1	event_row.js	durationChip(ev)
+1	event_row.js	formatClockTime(ev.created_at)
+1	event_row.js	icon.char
+1	event_row.js	icon.cls
+1	event_row.js	pct
+1	event_row.js	r.cls
+1	event_row.js	slow
+1	event_row.js	typeCls
+1	filter_dropdown.js	countHtml
+1	filter_dropdown.js	group.label
+1	folder_tags.js	available.map(t => `<span class="tag-dropdown-item" style="background:${escapeHtml(t.color)}" data-on-click="f
+1	folder_tags.js	availableHtml
+1	folder_tags.js	createHtml
+1	folder_tags.js	currentHtml
+1	folder_tags.js	currentTags.map(t => `<span class="tag-pill" style="background:${escapeHtml(t.color)}"> ${escapeHtml(t.name)} 
+1	folder_tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeHtml(t.color)}" title="${escapeHtml(t.
+1	history_tabs.js	activeCount
+1	history_tabs.js	badge
+1	history_tabs.js	count
+1	history_tabs.js	durationChip(ev)
+1	history_tabs.js	formatClockTime(ev.created_at)
+1	history_tabs.js	icon
+1	history_tabs.js	icon.char
+1	history_tabs.js	icon.cls
+1	history_tabs.js	statusClass
+1	history_tabs.js	typeCls
+1	live_chat.js	COPY_BUTTON
+2	live_chat.js	bodyHtml
+1	live_chat.js	cls
+3	live_chat.js	getToolIcon(view.icon)
+2	live_chat.js	msg.key ? SAVE_BUTTON : ""
+3	live_chat.js	outputHtml
+1	live_chat.js	renderDiffLines(tool.old_string || "", tool.new_string || "")
+1	live_chat.js	renderMarkdown(msg.text, undefined, 'chat')
+1	live_chat.js	renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')
+1	live_chat.js	renderPatchLines(tool.patch)
+1	live_chat.js	trim
+1	live_jobs.js	clickable
+1	live_jobs.js	dotClass
+1	live_jobs.js	elapsed
+1	live_jobs.js	onClick
+1	live_jobs.js	triggerBadge
+1	message_board.js	BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''))
+1	message_board.js	_totalMessages
+1	message_board.js	agentCheckboxes || '<p style="font-size:0.8125rem;color:var(--text-muted)">No subscribers</p>'
+1	message_board.js	alignClass
+1	message_board.js	boardAvatar(m, agent)
+1	message_board.js	boardMessageColorStyle(color)
+1	message_board.js	checkbox
+1	message_board.js	cls
+1	message_board.js	color
+1	message_board.js	count
+1	message_board.js	d.stats.agent_chat
+1	message_board.js	d.stats.agent_chat > 0 ? `<span>Board: ${d.stats.board}</span><span>Agent chats: ${d.stats.agent_chat}</span>`
+1	message_board.js	d.stats.board
+1	message_board.js	d.stats.total
+1	message_board.js	d.subscribers.length ? `<details class="subscribers"><summary>${d.subscribers.length} Subscribers</summary><di
+1	message_board.js	externalMessageBadge(m)
+1	message_board.js	formatTime(m.created_at)
+1	message_board.js	hubUserBadge(m)
+1	message_board.js	icon
+1	message_board.js	msgs
+2	message_board.js	p.message_count
+1	message_board.js	p.subscriber_count
+1	message_board.js	remaining
+1	message_board.js	renderBoardMessageBody(m)
+1	message_board.js	renderMarkdown(e.content, undefined, 'board')
+1	message_board.js	role
+1	message_board.js	selectedClass
+1	message_board.js	spacing
+1	message_board.js	subList
+1	message_board.js	tag
+1	needs_input_card.js	controls.foot
+1	needs_input_card.js	hint
+2	needs_input_card.js	kicker
+1	needs_input_card.js	o.n
+1	needs_input_card.js	q.options.map(o => `<li>${escapeHtml(typeof o === "string" ? o : (o && o.label) || "")}</li>`).join("")
+1	needs_input_card.js	renderMarkdown(inp.plan, undefined, 'chat')
+1	notes.js	content.replace(/</g, '&lt;')
+1	notes.js	label
+2	pending_messages.js	label
+1	pending_messages.js	renderMarkdown(unwrapPastedContent(p.text), undefined, 'chat')
+1	preview_pane.js	_fileIcon(tab)
+1	preview_pane.js	active
+1	preview_pane.js	buttons
+1	preview_pane.js	content
+1	preview_pane.js	icon
+1	preview_pane.js	lang
+1	preview_pane.js	link
+1	preview_pane.js	preview
+1	preview_pane.js	renderMarkdownStrict(content)
+1	preview_pane.js	safe
+2	render.js	FOLDER_GROUP_ICON
+1	render.js	PIN_ICON
+1	render.js	_RAIL_ICONS[g.kind]
+2	render.js	_collapseAttrs(boardCollapsed)
+2	render.js	_collapseAttrs(collapsed)
+1	render.js	_collapseAttrs(wfCollapsed)
+1	render.js	_formatCost(a.total_cost_usd || 0)
+1	render.js	_formatCost(totalCost)
+2	render.js	_pinMenuItem(groupName, groupDirRaw)
+1	render.js	_railRoleIcon(s)
+2	render.js	_rowNameWithServer(boardName)
+2	render.js	_rowNameWithServer(groupName)
+2	render.js	accentStyle
+2	render.js	bKebab
+1	render.js	badge
+1	render.js	bg
+2	render.js	boardLink
+2	render.js	boardSleepIcon
+1	render.js	bottomMeta
+1	render.js	bottomMeta ? `<div class="session-row-bottom">${bottomMeta}</div>` : ""
+2	render.js	branchLine
+2	render.js	copyBtn
+2	render.js	countBadge
+2	render.js	distillChip(boardName)
+1	render.js	dot
+1	render.js	durTag
+1	render.js	executionTimeRow
+1	render.js	formatDuration(usageData.totals.execution_time_sec)
+1	render.js	formatTokens(a.total_cache_read_tokens || 0)
+1	render.js	formatTokens(a.total_cache_write_tokens || 0)
+1	render.js	formatTokens(a.total_input_tokens || 0)
+1	render.js	formatTokens(a.total_output_tokens || 0)
+1	render.js	formatTokens(totalCacheR)
+1	render.js	formatTokens(totalCacheW)
+1	render.js	formatTokens(totalIn)
+1	render.js	formatTokens(totalOut)
+1	render.js	g.kind
+2	render.js	groupKebab
+3	render.js	icon
+2	render.js	killAllItem(boardName)
+1	render.js	name
+1	render.js	page
+1	render.js	prefix
+2	render.js	sleepLabel
+1	render.js	sleepingClass
+1	render.js	st.cls
+1	render.js	style
+3	render.js	tagDots
+2	render.js	timeTag
+2	render.js	total
+1	render.js	totalPages
+1	render.js	totalReqs
+1	render.js	typeTag
+1	render.js	unread > 9 ? '9+' : unread
+1	render.js	wfKebab
+1	render.js	wfRunId ? ' · Run #' + wfRunId : ''
+1	render.js	wfSubline
+1	sandbox_frame.js	DOC_CSP
+1	sandbox_frame.js	content
+2	saved_marks.js	BOOKMARK_SVG
+1	scheduler.js	data.next_fire_times.slice(0, 3).map(t => new Date(t).toLocaleString()).join(', ')
+1	scheduler.js	dot
+2	scheduler.js	duration
+1	scheduler.js	enabledLabel
+1	scheduler.js	failBadge
+1	scheduler.js	failBanner
+1	scheduler.js	fails
+1	scheduler.js	fails === 1 ? 'The last run failed.' : `The last ${fails} runs all failed.`
+1	scheduler.js	job.max_duration_s
+1	scheduler.js	jobTypeHtml
+1	scheduler.js	nextFire
+1	scheduler.js	r.id
+1	scheduler.js	r.session_id.substring(0, 8)
+2	scheduler.js	r.status
+1	scheduler.js	runs.map(r => { const scheduled = new Date(r.scheduled_at).toLocaleString(); const duration = r.started_at && 
+1	scheduler.js	runs.map(r => { const statusClass = r.status === 'completed' ? 'status-ok' : r.status === 'failed' || r.status
+1	scheduler.js	runsHtml
+1	scheduler.js	scheduled
+1	scheduler.js	sessionLink
+1	scheduler.js	started
+1	scheduler.js	status
+2	scheduler.js	statusClass
+1	scheduler.js	stepsInfo
+1	scheduler.js	toggleLabel
+1	scheduler.js	typeIcon
+1	scheduler.js	workflows.map(w => `<option value="${Number(w.id)}">${escapeHtml(w.name)}${w.description ? ' — ' + escapeHtml(
+1	server_status.js	body
+1	server_status.js	count
+1	server_status.js	extraClass ? ' ' + extraClass : ''
+1	server_status.js	level
+1	server_status.js	list.map(x => { const xm = statusMeta(x.status); // Which server needs the update (#3059): a marker and the ac
+4	server_status.js	m.cls
+2	server_status.js	n.level
+1	server_status.js	rows
+1	server_status.js	rows.map(([k, v]) => `<dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd>`).join('')
+1	server_status.js	serverAgentCount(x)
+1	server_status.js	serverDetailsHtml(e)
+1	server_status.js	serverLaunchActionsHtml(e)
+1	server_status.js	updateBadgeHtml(e)
+1	server_status.js	xm.cls
+1	server_status.js	xn ? `<span class="server-update-marker server-update-${xn.level}">${xn.level === 'required' ? 'Update require
+1	server_status.js	xn.level
+1	servers.js	_editing !== null ? formHtml() : many ? '' : '<div class="servers-form-actions"><button type="button" class="b
+1	servers.js	adding ? '' : warningHtml((_servers.find(x => x.id === _editing) || {}).warning)
+1	servers.js	attention
+1	servers.js	badge ? ' ' + badge : ''
+1	servers.js	cls
+1	servers.js	localMeta.map(escHtml).join(' &middot; ')
+1	servers.js	m.cls
+1	servers.js	many && _editing === null ? topBar : ''
+1	servers.js	meta.map(escHtml).join(' &middot; ')
+1	servers.js	online
+1	servers.js	remotes.map(rowHtml).join('')
+1	servers.js	rowHtml(local)
+1	servers.js	statusPill('online')
+1	servers.js	statusPill(s.status)
+1	servers.js	title
+1	servers.js	warningHtml(s.warning)
+1	session_rows.js	(stateInfo.key !== 'ended' && (goalLine || unreadChip)) ? `<div class="session-line2">${goalLine}${unreadChip}
+1	session_rows.js	_WORKTREE_ICON
+2	session_rows.js	_archiveItem
+1	session_rows.js	_gitStateSummary(gsWt)
+1	session_rows.js	agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''
+1	session_rows.js	attentionClass
+1	session_rows.js	autoAcceptChip(s)
+1	session_rows.js	autoAcceptMenuItem(s)
+1	session_rows.js	branchTag
+1	session_rows.js	clickHandler
+1	session_rows.js	collapsedClass
+1	session_rows.js	compactClass
+1	session_rows.js	count
+1	session_rows.js	dirChip
+1	session_rows.js	doneClass
+1	session_rows.js	dotClass
+1	session_rows.js	goalBtn
+1	session_rows.js	goalLine
+1	session_rows.js	label
+1	session_rows.js	mobileAttentionBanner
+1	session_rows.js	mobileStatusChip
+1	session_rows.js	mobileUnread
+1	session_rows.js	nameTail ? `<span class="session-label-tags">${reminderTag}${typeTag}${dirChip}</span>` : `${reminderTag}${typ
+1	session_rows.js	pillKind
+1	session_rows.js	reminderTag
+1	session_rows.js	sleepingClass
+1	session_rows.js	stale ? '' : kebabMenu
+1	session_rows.js	stale ? '' : waitingBadge + ctxPill
+1	session_rows.js	staleClass
+1	session_rows.js	stateInfo.pill
+1	session_rows.js	stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''
+1	session_rows.js	stuckClass
+1	session_rows.js	terminalGoneChip(s)
+1	session_rows.js	typeTag
+1	session_rows.js	unreadBoardBadge
+1	session_rows.js	unreadChip
+1	session_state.js	gs.ahead
+1	session_state.js	gs.behind
+1	session_state.js	gs.dirty
+1	session_state.js	held
+1	session_state.js	rows.join("")
+1	session_state.js	s.changed_file_count
+1	session_state.js	stateLabel.toLowerCase().replace(/ /g, '-')
+1	session_state.js	tokenText
+1	session_state.js	ttUnread
+1	session_state.js	unreadBadge
+1	sessions.js	EMOJI_CATEGORIES.map(cat => ` <div class="emoji-picker-category">${escapeHtml(cat.name)}</div> <div class="emo
+2	sessions.js	cat.emojis.map(e => `<button class="emoji-picker-btn" data-emoji="${escapeAttr(e)}">${e}</button>`).join("")
+3	sessions.js	e
+1	sessions.js	filtered.map(e => `<button class="emoji-picker-btn" data-emoji="${escapeAttr(e)}">${e}</button>`).join("")
+1	settings_dialog.js	label
+1	settings_nav.js	p.dataset.icon
+1	subagents.js	_formatCost(sa.cost_usd || 0, true)
+1	subagents.js	_formatTokenCount(n || 0)
+1	subagents.js	extraClass
+1	subagents.js	field('API Calls', sa.api_calls ? String(sa.api_calls) : '')
+1	subagents.js	field('Launched By', escapeHtml(row.assigned_to || '\u2014'))
+1	subagents.js	field('Model', sa.model ? escapeHtml(sa.model) : '')
+1	subagents.js	field('Started', sa.started_at ? formatTaskDate(sa.started_at) : '')
+1	subagents.js	field('Subagent ID', escapeHtml(sa.subagent_id || ''), ' subagent-detail-mono')
+1	subagents.js	field(running ? 'Last Activity' : 'Finished', sa.last_activity_at ? formatTaskDate(sa.last_activity_at) : '')
+1	subagents.js	field(running ? 'Running For' : 'Duration', duration || '')
+1	subagents.js	html
+1	subagents.js	inner
+3	subagents.js	label
+1	subagents.js	statusClass
+1	subagents.js	statusLabel
+1	subagents.js	tok('Cache Read', sa.cache_read_tokens)
+1	subagents.js	tok('Cache Write', sa.cache_write_tokens)
+1	subagents.js	tok('Input', sa.input_tokens)
+1	subagents.js	tok('Output', sa.output_tokens)
+1	subagents.js	value
+1	subagents.js	warningClass
+1	tab_customize.js	iconHtml
+1	tab_customize.js	svg.outerHTML
+1	tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeHtml(t.color)}" title="${escapeHtml(t.
+1	tasks.js	(input.artifacts || []).map(artifactHtml).join('')
+1	tasks.js	(review.artifacts || []).map(artifactHtml).join('')
+1	tasks.js	(workflow.gate_results || []).length ? `<div>Gate results: ${(workflow.gate_results || []).map(g => `<span cla
+1	tasks.js	(workflow.gate_results || []).map(g => `<span class="task-gate-result ${g.passed ? 'passed' : 'failed'}">${esc
+1	tasks.js	_formatCost(lc.cost_usd, true)
+1	tasks.js	_formatCost(task.cost_usd, true)
+1	tasks.js	_formatTokenCount(lc.cache_read_tokens)
+1	tasks.js	_formatTokenCount(lc.cache_write_tokens)
+1	tasks.js	_formatTokenCount(lc.input_tokens)
+1	tasks.js	_formatTokenCount(lc.output_tokens)
+1	tasks.js	_formatTokenCount(task.cache_read_tokens)
+1	tasks.js	_formatTokenCount(task.cache_write_tokens)
+1	tasks.js	_formatTokenCount(task.input_tokens)
+1	tasks.js	_formatTokenCount(task.output_tokens)
+1	tasks.js	_verifyLine(task)
+1	tasks.js	amendments.length ? `<details class="task-amendment-history"><summary>Changed since task creation</summary>${a
+1	tasks.js	amendments.map(amendment => { const previous = amendment.previous_snapshot || {}; const effective = amendment.
+1	tasks.js	arrow('assignee')
+1	tasks.js	arrow('cost')
+2	tasks.js	arrow('created_at')
+1	tasks.js	arrow('id')
+1	tasks.js	arrow('priority')
+1	tasks.js	arrow('type')
+1	tasks.js	assigneeOptions
+1	tasks.js	blockedBadge
+1	tasks.js	boardPrefix
+1	tasks.js	checked
+1	tasks.js	claimedAt
+1	tasks.js	claimedBadge
+2	tasks.js	claimedFor
+1	tasks.js	claimedFor ? ` <span class="task-detail-claimed-for">(${claimedFor} ago)</span>` : ''
+1	tasks.js	className
+1	tasks.js	clickHandler
+1	tasks.js	clickable
+1	tasks.js	completedAt
+1	tasks.js	completedCount
+1	tasks.js	costClass
+1	tasks.js	costText
+1	tasks.js	createdAt
+1	tasks.js	dep.task_id
+1	tasks.js	depStatusClass
+1	tasks.js	depStatusLabel
+1	tasks.js	depTitle
+1	tasks.js	depsHtml
+1	tasks.js	fields
+1	tasks.js	icon
+1	tasks.js	isSubagent || isAgent ? '' : _verifyMark(t)
+1	tasks.js	label
+1	tasks.js	lc.request_count
+1	tasks.js	left ? ` (${left} not shown)` : ''
+1	tasks.js	notLoaded ? ` (${notLoaded} not shown)` : ''
+1	tasks.js	p
+2	tasks.js	priorityClass
+1	tasks.js	priorityOptions
+1	tasks.js	requiredLabel
+1	tasks.js	requiredOutputs.map(output => `<li>${escapeHtml(output)}</li>`).join('')
+2	tasks.js	revision
+2	tasks.js	statusClass
+1	tasks.js	statusIcon
+1	tasks.js	statusLabel
+1	tasks.js	subagentBadge
+1	tasks.js	t.id
+1	tasks.js	t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'
+1	tasks.js	task.priority ? (_priorityLabel[task.priority] || escapeHtml(task.priority)) : '\u2014'
+1	tasks.js	taskIdLabel
+1	tasks.js	timeStr
+1	tasks.js	title
+1	tasks.js	tooltip
+1	tasks.js	typeCell
+1	tasks.js	uri ? `<div>${uriDisplay}</div>` : ''
+1	tasks.js	uriDisplay
+1	tasks.js	v.icon
+1	tasks.js	v.state
+2	tasks.js	warningClass
+1	tasks.js	workflow.artifacts.map(artifactHtml).join('')
+1	team_artifacts.js	_SPIN
+1	team_artifacts.js	agent
+1	team_artifacts.js	html
+1	team_artifacts.js	pct
+1	team_artifacts.js	renderKnowledgeMD(content, agentNames)
+1	team_artifacts.js	renderKnowledgeMD(indexContent, agentNames)
+1	team_artifacts.js	sanitized
+1	team_availability.js	(data.health_report || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')
+1	team_availability.js	Object.entries(labels).filter(([key]) => data.summary[key] || key === 'available').map(([key,label]) => `<div 
+1	team_availability.js	a.tasks.length ? `<ul>${tasks(a.tasks)}</ul>` : '<small>No open assigned tasks</small>'
+1	team_availability.js	actions
+1	team_availability.js	data.agents.map(a => { const every = a.reminder_interval_seconds ? ` every ${Math.round(a.reminder_interval_se
+1	team_availability.js	data.unassigned_tasks.length ? `<section class="availability-unassigned"><h3>Unassigned work</h3><ul>${tasks(d
+1	team_availability.js	key
+1	team_availability.js	label
+1	team_availability.js	tasks(a.tasks)
+1	team_availability.js	tasks(data.unassigned_tasks)
+1	team_dialogs.js	failList
+1	team_dialogs.js	successCount
+1	team_dialogs.js	suffix
+1	team_health_settings.js	HEALTH_LIMITS.reviewers
+1	team_health_settings.js	extra
+1	team_health_settings.js	held
+1	team_health_settings.js	knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'minutes')
+1	team_health_settings.js	knobs
+1	team_health_settings.js	names.map(n => `<option value="${escapeAttr(n)}">`).join('')
+1	team_health_settings.js	options.join('')
+1	team_health_settings.js	rule('auto_delegate', 'Hand reviews to the default reviewers', 'When a task is submitted for review and nobody
+1	team_health_settings.js	rule('claim_nudge', 'Nudge an idle agent to claim its work', 'An agent that is idle with ready work gets a rem
+1	team_health_settings.js	rule('mention_renudge', 'Remind the orchestrator of an unanswered mention', 'A message that @mentions the orch
+1	team_health_settings.js	rule('status_nudge', 'Ask a quiet agent for a status', 'An agent that has done nothing for a while is asked wh
+1	team_working_mode.js	fragment('action_default', 'Action default')
+1	team_working_mode.js	fragment('default_instructions', 'Default task instructions')
+1	team_working_mode.js	fragment('effective_action', 'Effective action')
+1	team_working_mode.js	fragment('effective_system', 'Effective system')
+1	team_working_mode.js	fragment('override', 'Override')
+1	team_working_mode.js	fragment('system_default', 'System default')
+2	team_working_mode.js	label
+1	team_working_mode.js	title
+1	team_working_mode.js	workspaceActions
+1	template_browser.js	active
+1	template_browser.js	btnLabel
+1	template_browser.js	meta.length ? `<div class="template-preview-meta">${meta.map(m => escapeHtml(m)).join(' &middot; ')}</div>` : 
+1	template_browser.js	meta.map(m => escapeHtml(m)).join(' &middot; ')
+1	theme_config.js	groups
+1	theme_config.js	rows
+1	theme_config.js	themeOptions
+1	update_check.js	downloadBtn
+1	update_check.js	items.join("")
+1	update_check.js	notesHtml
+1	utils.js	agentLabel
+1	utils.js	detail
+1	utils.js	detailHtml
+1	utils.js	html
+2	utils.js	icon
+1	utils.js	linkHtml
+1	view_sandbox.js	JSON.stringify(ctx).replace(/</g, '\\u003c')
+1	view_sandbox.js	VIEW_CSP
+1	view_sandbox.js	html
+1	view_sandbox.js	prelude(ctx)
+1	workflows.js	agentHtml
+1	workflows.js	autoExpand
+1	workflows.js	completedCount
+1	workflows.js	durationHtml
+1	workflows.js	ecClass
+1	workflows.js	enabledBadge
+1	workflows.js	escAttr(isFailed)
+1	workflows.js	escAttr(name)
+2	workflows.js	escAttr(outputId)
+1	workflows.js	escAttr(s.session_name || s.session_id)
+1	workflows.js	escAttr(wf.name)
+1	workflows.js	exitCodeHtml
+1	workflows.js	fileItems
+1	workflows.js	filesHtml
+1	workflows.js	formatDuration(dur)
+1	workflows.js	formatDuration(durSec)
+1	workflows.js	formatDuration(elapsed)
+1	workflows.js	formatTime(run.finished_at)
+1	workflows.js	formatTime(run.started_at)
+1	workflows.js	formatTime(wf.created_at)
+1	workflows.js	i
+1	workflows.js	icon
+2	workflows.js	iconClass
+1	workflows.js	killBtn
+1	workflows.js	lastRunHtml
+1	workflows.js	lr.started_at ? '&middot; ' + formatTime(lr.started_at) : ''
+1	workflows.js	outputHtml
+1	workflows.js	progressBarHtml
+1	workflows.js	progressPct
+1	workflows.js	r.finished_at ? formatTime(r.finished_at) : '—'
+1	workflows.js	r.id
+1	workflows.js	r.started_at ? formatTime(r.started_at) : '—'
+1	workflows.js	retriggerBtn
+1	workflows.js	rowsHtml
+1	workflows.js	run.finished_at ? `<span><span class="material-icons" aria-hidden="true">check_circle</span> ${formatTime(run.
+1	workflows.js	run.id
+1	workflows.js	run.started_at ? `<span><span class="material-icons" aria-hidden="true">schedule</span> ${formatTime(run.start
+1	workflows.js	runsHtml
+1	workflows.js	s.exit_code
+1	workflows.js	statusIcon
+1	workflows.js	stepCount
+2	workflows.js	stepsHtml
+1	workflows.js	timingHtml
+1	workflows.js	totalSteps
+1	workflows.js	wf.max_duration_s || 3600

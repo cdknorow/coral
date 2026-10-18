@@ -55,6 +55,7 @@ window._verifyAllCLIs = async function() {
 
 function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
     const info = CLI_INSTALL_INSTRUCTIONS[agentType] || { name: agentType, cmd: `Install ${agentType} CLI` };
+    const name = escapeHtml(info.name); // an agent type the table does not know is shown as it came (#4853)
     const remote = normServer(server) !== LOCAL_SERVER;
     const where = remote ? `on ${escapeHtml(serverLabel(server, state.servers))}` : 'on this system';
     const modal = document.createElement('div');
@@ -62,9 +63,9 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
     modal.style.display = 'flex';
     modal.innerHTML = `
         <div class="modal-content" style="width:480px">
-            <h3>${info.name} CLI Not Found</h3>
+            <h3>${name} CLI Not Found</h3>
             <p style="color:var(--text-secondary);font-size:0.8125rem;line-height:1.5;margin:8px 0 12px">
-                The <code>${info.name}</code> command was not found ${where}. Install it there to launch ${info.name} agents.
+                The <code>${name}</code> command was not found ${where}. Install it there to launch ${name} agents.
             </p>
             <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:0.8125rem;display:flex;align-items:center;gap:8px">
                 <code style="flex:1;user-select:all">${escapeHtml(info.cmd)}</code>
