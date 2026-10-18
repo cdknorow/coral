@@ -60,8 +60,8 @@ function renderInspection(data, workingMode) {
     }).join('');
 }
 
-export async function showTeamWorkingMode(team, options = {}) {
-    const workspaceMode = Boolean(options.workspace);
+// The empty team settings: a section for the sidebar or a dialog, with its three tabs and the form (filled by the load).
+function _teamSettingsShell(workspaceMode) {
     document.getElementById(workspaceMode ? 'team-settings-workspace' : 'team-working-mode-dialog')?.remove();
     const dialog = document.createElement(workspaceMode ? 'section' : 'dialog');
     dialog.id = 'team-working-mode-dialog';
@@ -120,6 +120,11 @@ export async function showTeamWorkingMode(team, options = {}) {
       </section>
       <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span>Saves selected working mode, additional guidance, and global health. Save preset instructions separately.</span></div>
       </form>`;
+    return dialog;
+}
+
+// Puts the dialog on the page: the team's name and its rename control, the sidebar panel or a modal, and the link to the docs.
+function _mountTeamSettings(dialog, team, workspaceMode) {
     dialog.querySelector('.working-mode-team').textContent = keyLabel(team);
     dialog.querySelector('.working-mode-team').dataset.team = team; // which team, as data (the text is its label)
     // Rename the board (#3536): its label only; the heading and every list follow.
@@ -149,37 +154,12 @@ export async function showTeamWorkingMode(team, options = {}) {
             importOnce('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(docName)).catch(() => {});
         }
     });
+}
 
-    const form = dialog.querySelector('form');
-    // Sharing files is the Operator's switch on this computer: Coral Hub cannot change a board's settings, so the row is not shown there (#4407).
-    if (isCloud()) dialog.querySelectorAll('.cross-team-files-setting, .cross-team-files-hint').forEach(e => { e.hidden = true; });
-    const status = dialog.querySelector('[role=status]');
-    const save = form.querySelector('[type=submit]');
-    const presetSelect = form.elements.preset;
-    const presetName = form.elements.preset_name;
-    const presetInstructions = form.elements.preset_instructions;
-    const presetState = dialog.querySelector('.preset-state');
-    const presetReset = dialog.querySelector('.preset-reset');
-    const presetSave = dialog.querySelector('.preset-save');
-    const inspection = dialog.querySelector('.prompt-inspection-content');
+// The tab strip: which panel shows, the click and the Arrow, Home and End keys. Returns the tabs and panels (the Health check tab adds one) and bindTab.
+function _wireSettingsTabs(dialog, form) {
     const tabs = [...dialog.querySelectorAll('[data-settings-tab]')];
     const panels = [...dialog.querySelectorAll('[data-settings-panel]')];
-    const { server: teamServer, name: teamName } = splitKey(team);
-    const workingModeURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode`, teamServer);
-    const presetsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode/presets`, teamServer);
-    const boardSettingsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/settings`, teamServer);
-    let boardSettingsLoaded = false;
-    const inspectionURL = serverUrl(`/api/settings/prompt-inspection?board=${encodeURIComponent(teamName)}`, teamServer);
-    let presets = [];
-    let workingMode = null;
-    let settingsLoaded = false;
-    // What each part of the form showed when it loaded (#4423): Save sends only what the person changed since, so a
-    // setting another client changed while the dialog was open is not put back.
-    let opened = null;
-    const modeValues = () => ({ mode: form.elements.mode.value, dependency_guidance: form.elements.dependency_guidance.checked, custom_instructions: form.elements.custom_instructions.value });
-    const boardValues = () => ({ cross_team_messaging: form.elements.cross_team_messaging.checked, ...(isCloud() ? {} : { cross_team_artifacts: form.elements.cross_team_artifacts.checked }) });
-    const globalValues = () => ({ board_health_monitor: form.elements.board_health_monitor.checked ? 'true' : 'false' });
-
     function activatePanel(name, moveFocus = false) {
         tabs.forEach(tab => {
             const active = tab.dataset.settingsTab === name;
@@ -207,6 +187,43 @@ export async function showTeamWorkingMode(team, options = {}) {
         };
     }
     tabs.forEach(bindTab);
+    return { tabs, panels, bindTab };
+}
+
+export async function showTeamWorkingMode(team, options = {}) {
+    const workspaceMode = Boolean(options.workspace);
+    const dialog = _teamSettingsShell(workspaceMode);
+    _mountTeamSettings(dialog, team, workspaceMode);
+
+    const form = dialog.querySelector('form');
+    // Sharing files is the Operator's switch on this computer: Coral Hub cannot change a board's settings, so the row is not shown there (#4407).
+    if (isCloud()) dialog.querySelectorAll('.cross-team-files-setting, .cross-team-files-hint').forEach(e => { e.hidden = true; });
+    const status = dialog.querySelector('[role=status]');
+    const save = form.querySelector('[type=submit]');
+    const presetSelect = form.elements.preset;
+    const presetName = form.elements.preset_name;
+    const presetInstructions = form.elements.preset_instructions;
+    const presetState = dialog.querySelector('.preset-state');
+    const presetReset = dialog.querySelector('.preset-reset');
+    const presetSave = dialog.querySelector('.preset-save');
+    const inspection = dialog.querySelector('.prompt-inspection-content');
+    const { server: teamServer, name: teamName } = splitKey(team);
+    const workingModeURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode`, teamServer);
+    const presetsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode/presets`, teamServer);
+    const boardSettingsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/settings`, teamServer);
+    let boardSettingsLoaded = false;
+    const inspectionURL = serverUrl(`/api/settings/prompt-inspection?board=${encodeURIComponent(teamName)}`, teamServer);
+    let presets = [];
+    let workingMode = null;
+    let settingsLoaded = false;
+    // What each part of the form showed when it loaded (#4423): Save sends only what the person changed since, so a
+    // setting another client changed while the dialog was open is not put back.
+    let opened = null;
+    const modeValues = () => ({ mode: form.elements.mode.value, dependency_guidance: form.elements.dependency_guidance.checked, custom_instructions: form.elements.custom_instructions.value });
+    const boardValues = () => ({ cross_team_messaging: form.elements.cross_team_messaging.checked, ...(isCloud() ? {} : { cross_team_artifacts: form.elements.cross_team_artifacts.checked }) });
+    const globalValues = () => ({ board_health_monitor: form.elements.board_health_monitor.checked ? 'true' : 'false' });
+
+    const { tabs, panels, bindTab } = _wireSettingsTabs(dialog, form);
     // The Health check tab (#4230) exists only when the settings GET returned a "health" object: not through Coral Hub, which leaves it out.
     async function addHealthTab(health) {
         const m = await importOnce('./team_health_settings.js');
