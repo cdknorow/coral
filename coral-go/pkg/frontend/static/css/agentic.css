@@ -163,6 +163,7 @@ body.panel-dragging .agentic-state {
     font-size: var(--fs-sm);
     font-weight: 600;
     background: var(--bg-hover);
+    color: var(--text-primary); /* not the tab's own colour: the muted tab text on this chip was 4.4:1 (the Files one 3.7:1) in the light theme */
     border-radius: 8px;
     padding: 0 5px;
     line-height: 16px;

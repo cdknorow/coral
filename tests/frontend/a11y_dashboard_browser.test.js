@@ -225,6 +225,8 @@ const contrast = (a, b) => {
                 const scenes = [['home', null], ['chat', `window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`], ['settings', `(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`]];
                 for (const [name, act] of scenes) {
                     if (act) { await ev(act); await sleep(name === 'settings' ? 1200 : 1000); }   // sleep-ok: a scene settles over several answers; there is no single completion event
+                    // Every count badge of the sidebar's tab strip shows a count while it is measured (an empty one is hidden, so the check only ever met them by chance): #4539's Saved tab was 4.4:1 in the light theme.
+                    await ev(`(() => { for (const el of document.querySelectorAll('.agentic-tab-count')) if (!el.textContent) el.textContent = '3'; return true; })()`);
                     const bad = await ev(CONTRAST);
                     assert.deepEqual(bad, [], `${name} / ${theme} / ${dev}: text and icons reach contrast: ${bad.join('; ')}`);
                     const forced = await forcedStates();
