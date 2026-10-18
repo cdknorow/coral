@@ -113,10 +113,10 @@ func TestAgyInLocalBinIsFoundWithoutPathAndConfiguredPathsStayClosed(t *testing.
 	assert.Error(t, err, "a configured path that cannot be run does not fall back to ~/.local/bin")
 }
 
-// The Launch dialog's "CLI not found" modal shows the vendor's page and the PATH note from the same table (modals.js builds it
+// The Launch dialog's "CLI not found" modal shows the vendor's page and the PATH note from the same table (cli_dialogs.js builds it
 // from CLI_INSTALL_INSTRUCTIONS; a source check, since the modal opens only from a failed launch).
 func TestNotFoundModalShowsTheOfficialPageAndNote(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "frontend", "static", "modals.js"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "frontend", "static", "cli_dialogs.js"))
 	require.NoError(t, err)
 	js := string(b)
 	i := strings.Index(js, "function _showCLINotFoundModal")

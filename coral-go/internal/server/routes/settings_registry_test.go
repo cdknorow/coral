@@ -138,7 +138,7 @@ func TestDashboardSettingKeysAreRegistered(t *testing.T) {
 		require.NoError(t, err)
 		return string(b)
 	}
-	modals := read("modals.js")
+	modals := read("settings_dialog.js")
 	start := strings.Index(modals, "let payload = {")
 	require.Positive(t, start, "the Settings dialog's payload")
 	end := strings.Index(modals[start:], "};")
