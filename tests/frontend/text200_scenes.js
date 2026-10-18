@@ -5,6 +5,7 @@
 // Also the header's glyph buttons (the svg icons and the Chat/Terminal toggle) scale. Run against an isolated dev server.
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
+const { framesJs } = require('./helpers/wait');
 const src = fs.readFileSync(__dirname + '/phone_layout_browser.test.js', 'utf8');
 const SCAN = eval(src.match(/const SCAN = (`[\s\S]*?`);/)[1]);
 const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden';
@@ -18,7 +19,21 @@ const GROUPS = ['tabs', 'drawers', 'dialogs', 'wide', 'light'];
 module.exports = async function runScenes(group) {
     if (!GROUPS.includes(group)) throw new Error('text200_scenes: unknown group ' + JSON.stringify(group) + ', expected one of ' + GROUPS.join(', '));
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    // settle(ms): return as soon as the page geometry has held still for ~120 ms, or after ms at most -- never
+    // longer, never throwing. A no-worse replacement for the fixed settle-sleeps (#4768): the views and dialogs
+    // fill over frames with no completion event, and the scans below measure geometry, so each must run once the
+    // layout has settled. If geometry never settles it falls back to the full ms, exactly as the sleep did.
+    // framesJs keeps a backgrounded page advancing (raf_hygiene).
+    const settle = ms => ev(`(async () => {
+        const fp = () => { let s = 0; for (const e of document.querySelectorAll('body *')) { const b = e.getBoundingClientRect(); s += b.left + b.top + b.width + b.height; } return Math.round(s); };
+        const start = performance.now(); let prev = fp(), since = start;
+        while (performance.now() - start < ${ms}) {
+            await ${framesJs(1)};
+            const v = fp();
+            if (v === prev) { if (performance.now() - since >= 120) return true; } else { prev = v; since = performance.now(); }
+        }
+        return true;
+    })()`);
     const report = []; const problems = [];
     try {
         await Page.enable();
@@ -35,16 +50,16 @@ module.exports = async function runScenes(group) {
         const board = 'probe-' + Date.now();
         await ev(`(async () => { for (const c of ['hello team', 'a longer second message with some words']) await fetch('/api/board/${board}/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'a', content: c }) }).catch(() => {});
             localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('phone-bot-with-a-long-name', 'A', 8, { sleeping: false, board_project: '${board}' }); window.__m.add('second-bot', 'B', 5, { sleeping: true }); return true; })()`);
-        await sleep(900); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+        await settle(900);
         const SERVERS = [{ id: 'local', label: 'studio-mac.local', local: true, status: 'online' }, { id: 'm2', label: 'Old Laptop with a rather long display name', url: 'http://192.168.1.50:8420', status: 'unreachable', last_error: 'dial tcp i/o timeout', warning: 'the key crosses the network unencrypted; use https or a tunnel' }];
         await ev(`window.__hubStub = ${JSON.stringify(SERVERS)}; (async () => { const s = await import((window.__coralStatic || '/static/') + 'state.js'); s.state.hub = true; s.state.servers = ${JSON.stringify(SERVERS)}; return true; })()`);
         const probe = async (name, open, root) => {
             try {
                 await ev(`if (!document.getElementById('t200-no-transition')) { const st = document.createElement('style'); st.id = 't200-no-transition'; st.textContent = '* { transition: none !important; animation: none !important; }'; document.head.appendChild(st); } true`); // a transition would leave a computed size mid-way when the page's timeline is paused
                 await ev(`document.documentElement.style.fontSize = ''; window.__scanRoot = ${JSON.stringify(root || '')}; true`);
-                await open(); await sleep(900); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+                await open(); await settle(900);
                 await ev(FONTS('a'));
-                await ev(`document.documentElement.style.fontSize = '32px'; true`); await sleep(700); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+                await ev(`document.documentElement.style.fontSize = '32px'; true`); await settle(700);
                 const r = await ev(SCAN); const grew = await ev(FONTS('b'));
                 const off = await ev(`[...(window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body).querySelectorAll('button, a[href], select, input:not([type=hidden])')].filter(e => { if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden' || e.closest('.top-nav-tabs, .xterm, [data-scan-skip], .modal-content, #mobile-session-list')) return false; const b = e.getBoundingClientRect(); if (!(b.width > 0 && (b.right > innerWidth + 1 || b.left < -1))) return false; for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const pr = p.getBoundingClientRect(); if (pr.width > 0 && (pr.right <= 1 || pr.left >= innerWidth - 1)) return false; } /* inside a drawer that is closed, off the screen by design */ for (let p = e.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p); if (/(auto|scroll)/.test(o.overflowX) && p.scrollWidth > p.clientWidth + 1) return false; } return true; }).map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().split(/\\s+/).slice(0, 2).join('.')) + ' ' + Math.round(e.getBoundingClientRect().left) + '..' + Math.round(e.getBoundingClientRect().right) + ' "' + e.textContent.trim().slice(0, 16) + '"')`);
                 if (off.length) problems.push(`${name}: controls off the edge of the screen ${off.slice(0, 4).join('; ')}`);
@@ -69,8 +84,8 @@ module.exports = async function runScenes(group) {
             await probe('agent chat', () => ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`));
         }
         if (group === 'drawers') {
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(900); // sleep-ok: the agent view fills from several answers; there is no completion event
-            await ev(`(document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); true`); await sleep(800); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(900);
+            await ev(`(document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); true`); await settle(800);
             for (const tab of ['tasks', 'board', 'files', 'notes', 'activity', 'artifacts']) await probe('drawer ' + tab, () => ev(`window.switchAgenticTab('${tab}', 'top'); true`), '#agentic-state');
             await ev(`(document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`);
         }
@@ -79,19 +94,19 @@ module.exports = async function runScenes(group) {
             await ev(`window.hideSettingsModal(); true`);
             const ids = await ev(`[...document.querySelectorAll('.modal[role=dialog]')].map(m => m.id).filter(id => id !== 'settings-modal')`);
             for (const id of ids) { await probe('dialog ' + id, () => ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'flex'; true`), '#' + id); await ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'none'; true`); }
-            await probe('launch step 2 (agent) with Agent Configuration open', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await sleep(800); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
-                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await sleep(1000); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+            await probe('launch step 2 (agent) with Agent Configuration open', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await settle(800);
+                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1000);
                 await ev(`{ const d = [...document.querySelectorAll('summary')].find(b => b.textContent.trim() === 'Agent Configuration'); if (d) d.parentElement.open = true; } true`); }, '#launch-modal');
             await ev(`document.getElementById('launch-modal').style.display = 'none'; true`);
             await ev(`document.documentElement.style.fontSize = ''; true`);
         }
         if (group === 'drawers') {
             // (#4352) a long list and a task with real content, then the same views on a tablet, in landscape and in the light theme
-            await ev(`for (let i = 0; i < 30; i++) window.__m.add('list-agent-' + i + '-with-a-longer-name', 'L', 2, { sleeping: i % 3 === 0 }); true`); await sleep(1200); // sleep-ok: the list renders from several answers
+            await ev(`for (let i = 0; i < 30; i++) window.__m.add('list-agent-' + i + '-with-a-longer-name', 'L', 2, { sleeping: i % 3 === 0 }); true`); await settle(1200);
             await probe('agents list, 30 agents', () => ev(`window.switchNavTab('agents'); window.goHome && window.goHome(); true`));
             const taskId = await ev(`(async () => { const r = await fetch('/api/board/${board}/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'A task with a rather long title that has to wrap in the dialog at large text sizes', body: 'Line one of the body.\\n\\n- a bullet with a long run of words that wraps\\n- another bullet\\n\\n~~~\\nsome_long_command --with-many --flags and-a-very-long-argument-that-does-not-wrap\\n~~~', created_by: 'Operator' }) }).catch(() => null); const d = r && r.ok ? await r.json().catch(() => null) : null; return d && (d.id || (d.task && d.task.id)) || null; })()`);
             if (taskId) {
-                await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); (document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); window.switchAgenticTab('tasks', 'top'); true`); await sleep(1500); // sleep-ok: the board's tasks load over a few answers
+                await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); (document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); window.switchAgenticTab('tasks', 'top'); true`); await settle(1500);
                 await probe('task details with content', () => ev(`window.showTaskDetailModal(${JSON.stringify(taskId)}); true`), '#task-detail-modal');
                 await ev(`window.hideTaskDetailModal && window.hideTaskDetailModal(); (document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`);
             } else report.push('task details: the board refused the task here, not probed');
@@ -100,29 +115,29 @@ module.exports = async function runScenes(group) {
             for (const tab of ['agents', 'history', 'workflows', 'tokens', 'docs']) await probe(tag + ' tab ' + tab, () => ev(`window.switchNavTab('${tab}'); true`));
             await probe(tag + ' settings', () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`), '#settings-modal');
             await ev(`window.hideSettingsModal(); true`);
-            await probe(tag + ' launch step 2', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await sleep(800); // sleep-ok: the dialog fills from several answers
-                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await sleep(1000); }, '#launch-modal'); // sleep-ok: the dialog fills from several answers
+            await probe(tag + ' launch step 2', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await settle(800);
+                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1000); }, '#launch-modal');
             await ev(`document.getElementById('launch-modal').style.display = 'none'; window.switchNavTab('agents'); true`);
         };
         if (group === 'wide') {
-            await Emulation.setDeviceMetricsOverride({ width: 820, height: 1180, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
+            await Emulation.setDeviceMetricsOverride({ width: 820, height: 1180, deviceScaleFactor: 1, mobile: true }); await settle(600);
             await subset('tablet 820');
-            await Emulation.setDeviceMetricsOverride({ width: 844, height: 390, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
+            await Emulation.setDeviceMetricsOverride({ width: 844, height: 390, deviceScaleFactor: 1, mobile: true }); await settle(600);
             await subset('landscape 844x390');
         }
         if (group === 'light') {
-            await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await sleep(600); // sleep-ok: layout settles after the emulation change
-            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars && m.clearCustomThemeVars(); m.applyTheme('light'); return true; })()`); await sleep(500); // sleep-ok: the theme applies over a frame
+            await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await settle(600);
+            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars && m.clearCustomThemeVars(); m.applyTheme('light'); return true; })()`); await settle(500);
             await subset('light theme');
             await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.applyTheme('dark'); return true; })()`);
         }
         if (group === 'tabs') {
 
             // the header's glyph buttons scale: the svg icons are drawn in rem
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(900); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(900);
             // Each glyph is tagged on the first pass and measured again by tag, so a button that moves into a menu at large text (Saved, #4510) is not compared against its neighbour.
             const gl = async (tag) => ev(`[...document.querySelectorAll('.terminal-header-btn svg, .top-bar-btn svg')].filter(e => e.getClientRects().length).map((e, i) => { if (${tag}) e.dataset.t200 = String(i); return [e.dataset.t200, Math.round(e.getBoundingClientRect().width * 10) / 10]; })`);
-            const first = await gl(true); const g16 = first.map(x => x[1]); await ev(`document.documentElement.style.fontSize = '32px'; true`); await sleep(500); const at32 = new Map((await gl(false)).map(x => [x[0], x[1]])); const g32 = first.map(x => at32.get(x[0])).filter(w => w !== undefined); const g16m = first.filter(x => at32.has(x[0])).map(x => x[1]); await ev(`document.documentElement.style.fontSize = ''; true`); // sleep-ok: views and dialogs fill from several answers and the layout settles over frames; there is no completion event
+            const first = await gl(true); const g16 = first.map(x => x[1]); await ev(`document.documentElement.style.fontSize = '32px'; true`); await settle(500); const at32 = new Map((await gl(false)).map(x => [x[0], x[1]])); const g32 = first.map(x => at32.get(x[0])).filter(w => w !== undefined); const g16m = first.filter(x => at32.has(x[0])).map(x => x[1]); await ev(`document.documentElement.style.fontSize = ''; true`);
             if (!g16m.length || g16m.some((w, i) => !(g32[i] / w >= 1.9))) problems.push(`header glyph buttons did not scale: ${JSON.stringify(g16)} -> ${JSON.stringify(g32)}`);
             report.push('HEADER GLYPHS ' + JSON.stringify(g16) + ' -> ' + JSON.stringify(g32));
             report.push('HEADER BUTTONS: ' + JSON.stringify(await ev(`[...document.querySelectorAll('.terminal-header button, .terminal-header-btn, .terminal-header a')].filter(e => e.getClientRects().length).map(e => ({ c: String(e.className).slice(0, 30), w: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height), icon: (e.querySelector('.material-icons, svg') ? (parseFloat(getComputedStyle(e.querySelector('.material-icons') || e.querySelector('svg')).fontSize) || e.querySelector('svg').getBoundingClientRect().width) : null) }))`)));
