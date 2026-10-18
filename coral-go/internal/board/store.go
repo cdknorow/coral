@@ -2963,14 +2963,56 @@ func (s *Store) ListDownstreamTasks(ctx context.Context, project string, upstrea
 // AddTaskDependencies inserts dependency rows and sets status to 'blocked'
 // if any blockers are unresolved. Validates circular deps and depth limit.
 func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID int64, deps []TaskDep, maxDepth int) error {
-	// Fill in default board_id
+	if err := checkDependenciesChangeable(ctx, s.db, project, taskID); err != nil {
+		return err
+	}
+	if err := normalizeTaskDeps(project, deps); err != nil {
+		return err
+	}
+	if err := s.checkBlockers(ctx, deps); err != nil {
+		return err
+	}
+	if err := s.validateNoCycles(ctx, taskID, deps); err != nil {
+		return err
+	}
+	if err := s.ValidateDependencyDepth(ctx, taskID, deps, maxDepth); err != nil {
+		return err
+	}
+
+	// Replace dependencies and their conditions atomically.
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// A claim may have raced the validation before this transaction.
+	if err := checkDependenciesChangeable(ctx, tx, project, taskID); err != nil {
+		return err
+	}
+	if err := validateTaskCycles(ctx, tx, taskID, deps); err != nil {
+		return err
+	}
+	if err := replaceTaskDependencies(ctx, tx, project, taskID, deps); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// checkDependenciesChangeable refuses a task that has started (or finished): its dependencies are fixed by then.
+func checkDependenciesChangeable(ctx context.Context, db sqlx.QueryerContext, project string, taskID int64) error {
 	var taskStatus string
-	if err := s.db.GetContext(ctx, &taskStatus, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project); err != nil {
+	if err := sqlx.GetContext(ctx, db, &taskStatus, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project); err != nil {
 		return err
 	}
 	if taskStatus == "review_pending" || taskStatus == "in_progress" || taskStatus == "completed" || taskStatus == "skipped" {
 		return fmt.Errorf("dependencies can only change before a task starts")
 	}
+	return nil
+}
+
+// normalizeTaskDeps checks each dependency (no duplicates, a known condition, valid artifact names) and fills in, in place,
+// the defaults: the success condition and the task's own board.
+func normalizeTaskDeps(project string, deps []TaskDep) error {
 	seen := map[int64]bool{}
 	for i := range deps {
 		if seen[deps[i].TaskID] {
@@ -2992,8 +3034,12 @@ func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID 
 			deps[i].BoardID = project
 		}
 	}
+	return nil
+}
 
-	// Validate all blocked_by tasks exist
+// checkBlockers refuses a blocker that isn't on its board, or one asked for an artifact its output contract doesn't
+// promise.
+func (s *Store) checkBlockers(ctx context.Context, deps []TaskDep) error {
 	for _, d := range deps {
 		var exists int
 		err := s.db.GetContext(ctx, &exists,
@@ -3001,55 +3047,43 @@ func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID 
 		if err != nil || exists == 0 {
 			return fmt.Errorf("blocker task #%d not found on board %s", d.TaskID, d.BoardID)
 		}
-		// When the producer has declared an output contract, reject a consumer
-		// dependency that asks for a name the producer never promised to publish.
-		// Older tasks with no declared outputs remain compatible and are checked
-		// against their immutable completion artifacts at readiness time.
-		if len(d.RequiredArtifacts) > 0 {
-			upstream, err := loadWorkflow(ctx, s.db, d.TaskID)
-			if err != nil {
-				return err
-			}
-			if len(upstream.RequiredOutputs) > 0 {
-				declared := make(map[string]bool, len(upstream.RequiredOutputs))
-				for _, name := range upstream.RequiredOutputs {
-					declared[name] = true
-				}
-				for _, name := range d.RequiredArtifacts {
-					if !declared[name] {
-						return fmt.Errorf("dependency #%d cannot require artifact %q: upstream declares outputs [%s]", d.TaskID, name, strings.Join(upstream.RequiredOutputs, ", "))
-					}
-				}
-			}
+		if err := s.checkRequiredArtifactsDeclared(ctx, d); err != nil {
+			return err
 		}
 	}
+	return nil
+}
 
-	// Validate no circular dependencies
-	if err := s.validateNoCycles(ctx, taskID, deps); err != nil {
-		return err
+// checkRequiredArtifactsDeclared: when the producer has declared an output contract, reject a consumer
+// dependency that asks for a name the producer never promised to publish.
+// Older tasks with no declared outputs remain compatible and are checked
+// against their immutable completion artifacts at readiness time.
+func (s *Store) checkRequiredArtifactsDeclared(ctx context.Context, d TaskDep) error {
+	if len(d.RequiredArtifacts) == 0 {
+		return nil
 	}
-
-	// Validate depth limit
-	if err := s.ValidateDependencyDepth(ctx, taskID, deps, maxDepth); err != nil {
-		return err
-	}
-
-	// Replace dependencies and their conditions atomically.
-	tx, err := s.db.BeginTxx(ctx, nil)
+	upstream, err := loadWorkflow(ctx, s.db, d.TaskID)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	// A claim may have raced the validation before this transaction.
-	if err := tx.GetContext(ctx, &taskStatus, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project); err != nil {
-		return err
+	if len(upstream.RequiredOutputs) == 0 {
+		return nil
 	}
-	if taskStatus == "review_pending" || taskStatus == "in_progress" || taskStatus == "completed" || taskStatus == "skipped" {
-		return fmt.Errorf("dependencies can only change before a task starts")
+	declared := make(map[string]bool, len(upstream.RequiredOutputs))
+	for _, name := range upstream.RequiredOutputs {
+		declared[name] = true
 	}
-	if err := validateTaskCycles(ctx, tx, taskID, deps); err != nil {
-		return err
+	for _, name := range d.RequiredArtifacts {
+		if !declared[name] {
+			return fmt.Errorf("dependency #%d cannot require artifact %q: upstream declares outputs [%s]", d.TaskID, name, strings.Join(upstream.RequiredOutputs, ", "))
+		}
 	}
+	return nil
+}
+
+// replaceTaskDependencies swaps the task's dependencies and their rules for deps, then sets it pending when every
+// blocker already satisfies its rule, else blocked (only from pending or blocked).
+func replaceTaskDependencies(ctx context.Context, tx *sqlx.Tx, project string, taskID int64, deps []TaskDep) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM task_dependency_rules WHERE task_id = ?", taskID); err != nil {
 		return err
 	}
@@ -3075,10 +3109,8 @@ func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID 
 	if ready {
 		status = "pending"
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = ? WHERE id = ? AND board_id = ? AND status IN ('pending', 'blocked')", status, taskID, project); err != nil {
-		return err
-	}
-	return tx.Commit()
+	_, err = tx.ExecContext(ctx, "UPDATE board_tasks SET status = ? WHERE id = ? AND board_id = ? AND status IN ('pending', 'blocked')", status, taskID, project)
+	return err
 }
 
 func (s *Store) validateNoCycles(ctx context.Context, taskID int64, deps []TaskDep) error {
