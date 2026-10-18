@@ -124,7 +124,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hub"}}
 </head>
 <body data-password-set="{{.PasswordSet}}" data-local="{{.Local}}" data-strict="{{.Strict}}">
 <main class="card">
-  <div class="brand"><img src="/static/coral.png" alt="" width="44" height="44">Coral</div>
+  <div class="brand"><img src="/static/icon-192.png" alt="" width="44" height="44">Coral</div>
   <div id="live" class="panel" role="status" aria-live="polite"></div>
   <div id="hub-flash" class="err" role="alert" hidden></div>
 {{if .PasswordSet}}

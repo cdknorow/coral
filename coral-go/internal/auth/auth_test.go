@@ -373,7 +373,7 @@ func TestMiddleware_AuthPageAccessible(t *testing.T) {
 func TestMiddleware_LogoLoadsBeforeSignIn(t *testing.T) {
 	_, handler := newMiddlewareTest(t)
 	for _, from := range []string{"192.168.1.5:54321", "127.0.0.1:54321"} {
-		r := httptest.NewRequest("GET", "/static/coral.png", nil)
+		r := httptest.NewRequest("GET", "/static/icon-192.png", nil)
 		r.RemoteAddr = from
 		if strings.HasPrefix(from, "127.") {
 			r.Host = "localhost:8420" // a browser on this computer names it; another Host from loopback is refused as DNS rebinding

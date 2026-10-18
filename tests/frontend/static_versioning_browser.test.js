@@ -59,7 +59,7 @@ const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html', '/st
         const man = await Page.getAppManifest();
         assert.equal(new URL(man.url).pathname, prefix + 'manifest.json', 'the manifest is linked under the prefix');
         const icons = JSON.parse(man.data).icons.map(i => new URL(i.src, man.url).pathname);
-        assert.ok(icons.includes(prefix + 'coral.png'), 'coral.png resolves under the prefix: ' + JSON.stringify(icons));
+        assert.ok(icons.includes(prefix + 'icon-512.png'), 'icon-512.png resolves under the prefix: ' + JSON.stringify(icons));
         assert.deepEqual(icons.filter(p => !p.startsWith(prefix)), [], 'every manifest icon resolves under the prefix');
         const versioned = cold.filter(r => new URL(r.url).pathname.startsWith(prefix));
         assert.ok(versioned.length >= 3 && versioned.length < 40, 'one script and one stylesheet, not 160 files, load under the prefix: ' + versioned.length);

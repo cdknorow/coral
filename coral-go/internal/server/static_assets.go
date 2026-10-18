@@ -257,7 +257,7 @@ func (p *renderedPage) serve(w http.ResponseWriter, r *http.Request, key string,
 // rootManifestHandler serves the PWA manifest at /manifest.json. The embedded
 // manifest's icon URLs are relative, so a manifest loaded from /static/ or a
 // versioned /static/b/<build>/ fetches icons under that same prefix; at the
-// root they would resolve to /coral.png, so this copy anchors them at /static/.
+// root they would resolve to /icon-512.png, so this copy anchors them at /static/.
 func rootManifestHandler(fsys fs.FS) http.HandlerFunc {
 	var (
 		once  sync.Once

@@ -255,7 +255,7 @@ func TestIndexUsesVersionedStaticBase(t *testing.T) {
 }
 
 // The manifest names its icons relatively, so the copy linked under the
-// versioned prefix fetches them under it (no unversioned coral.png). The root
+// versioned prefix fetches them under it (no unversioned icon-512.png). The root
 // /manifest.json anchors the same icons at /static/ so they still resolve.
 func TestManifestIconsFollowTheManifestURL(t *testing.T) {
 	sub, err := fs.Sub(frontend.Static, "static")
@@ -297,7 +297,7 @@ func TestManifestIconsFollowTheManifestURL(t *testing.T) {
 	assert.Equal(t, "no-cache", resp.Header.Get("Cache-Control"))
 	assert.NotEmpty(t, resp.Header.Get("ETag"))
 	root := icons(body)
-	assert.Contains(t, root, "/static/coral.png")
+	assert.Contains(t, root, "/static/icon-512.png")
 	for _, src := range root {
 		require.True(t, strings.HasPrefix(src, "/static/"), src)
 		_, err := fs.Stat(sub, strings.TrimPrefix(src, "/static/"))
