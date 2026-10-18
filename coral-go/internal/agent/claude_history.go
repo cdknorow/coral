@@ -20,14 +20,21 @@ import (
 // growing transcript is read from where the last pass stopped, never decoded again from the
 // start, and a file that held no session isn't read again until it changes.
 type claudeHistory struct {
-	mu      sync.Mutex
-	cursors map[string]*claudeCursor // the most recently read transcripts, at most maxClaudeCursors
-	empty   map[string]fileStamp     // transcripts read whole that held no session, by stamp
+	mu        sync.Mutex
+	cursors   map[string]*claudeCursor // the most recently read transcripts, within maxClaudeCursors and maxClaudeCursorBytes
+	empty     map[string]fileStamp     // transcripts read whole that held no session, by stamp
+	fullReads int64                    // transcripts read from their first byte, for tests and the scale runs
 }
 
-// maxClaudeCursors bounds the cursors kept: each holds up to ftsBodyLimit of search text, and
-// only the transcripts being written (the live agents') need one.
-const maxClaudeCursors = 64
+// The cursors kept are bounded by their number and by the search text they hold (each up to ftsBodyLimit): only the
+// transcripts being written (the live agents') need one. They were bounded by number alone, at 64, and a Coral with more live
+// agents than that read every one of them, whole, on every indexer pass, because the least recently used cursor is always
+// the next file in a pass: 250 agents with 1.8 GB of transcripts decoded all of it every two minutes (#4669). The bytes
+// bound is what keeps the memory down; the number is only a guard against very many tiny sessions.
+var (
+	maxClaudeCursors     = 4096
+	maxClaudeCursorBytes = 128 << 20
+)
 
 type fileStamp struct {
 	size  int64
@@ -47,9 +54,13 @@ type claudeCursor struct {
 	msgCount int
 	summary  string
 	fts      FTSBodyBuilder
-	ftsSent  string // the search body last returned, to say when it is unchanged
+	ftsVer   int // counts the changes to the search body (its text or the summary it opens with)
+	ftsSent  int // the ftsVer of the body last returned, 0 when none was
 	used     time.Time
 }
+
+// weight is the memory the cursor holds, for the bytes bound: the search text, its summary and tail, and a share for the rest.
+func (c *claudeCursor) weight() int { return c.fts.b.Cap() + len(c.summary) + cap(c.tail) + 512 }
 
 const cursorTailLen = 64
 
@@ -86,6 +97,9 @@ func (h *claudeHistory) session(fpath string, info os.FileInfo, mtime float64, i
 			delete(h.cursors, fpath)
 			return nil, err
 		}
+		if next != cur {
+			h.fullReads++ // a new fold from the first byte, not a read of what the file gained
+		}
 		next.info, next.stamp = info, stamp
 		cur = next
 	}
@@ -98,7 +112,11 @@ func (h *claudeHistory) session(fpath string, info os.FileInfo, mtime float64, i
 	delete(h.empty, fpath)
 	h.cursors[fpath] = cur
 	h.evict()
-	body := buildFTSBody(cur.summary, &cur.fts)
+	unchanged := indexed && cur.ftsSent == cur.ftsVer
+	body := ""
+	if !unchanged { // the body is only built when the index needs it
+		body = buildFTSBody(cur.summary, &cur.fts)
+	}
 	s := &IndexedSession{
 		SessionID:      strings.TrimSuffix(filepath.Base(fpath), ".jsonl"),
 		SourceType:     "claude",
@@ -107,19 +125,23 @@ func (h *claudeHistory) session(fpath string, info os.FileInfo, mtime float64, i
 		MessageCount:   cur.msgCount,
 		DisplaySummary: cur.summary,
 		FTSBody:        body,
-		FTSUnchanged:   indexed && body == cur.ftsSent,
+		FTSUnchanged:   unchanged,
 	}
 	if cur.firstTS != "" {
 		first, last := cur.firstTS, cur.lastTS
 		s.FirstTimestamp, s.LastTimestamp = &first, &last
 	}
-	cur.ftsSent = body
+	cur.ftsSent = cur.ftsVer
 	return s, nil
 }
 
-// evict drops the least recently used cursors past maxClaudeCursors.
+// evict drops the least recently used cursors past maxClaudeCursors or maxClaudeCursorBytes (the cursor just used stays).
 func (h *claudeHistory) evict() {
-	for len(h.cursors) > maxClaudeCursors {
+	total := 0
+	for _, c := range h.cursors {
+		total += c.weight()
+	}
+	for len(h.cursors) > 1 && (len(h.cursors) > maxClaudeCursors || total > maxClaudeCursorBytes) {
 		var oldest string
 		var at time.Time
 		for p, c := range h.cursors {
@@ -127,6 +149,7 @@ func (h *claudeHistory) evict() {
 				oldest, at = p, c.used
 			}
 		}
+		total -= h.cursors[oldest].weight()
 		delete(h.cursors, oldest)
 	}
 }
@@ -317,11 +340,16 @@ func (c *claudeCursor) add(line []byte) {
 		return
 	}
 	text := string(e.Message.Content)
+	before := c.fts.b.Len()
 	c.fts.Add(text)
+	if c.fts.b.Len() != before {
+		c.ftsVer++
+	}
 	if e.Type == "assistant" && c.summary == "" && text != "" {
 		if len(text) > 200 {
 			text = text[:200]
 		}
 		c.summary = text
+		c.ftsVer++ // the body opens with the summary
 	}
 }

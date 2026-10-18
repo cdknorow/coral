@@ -204,8 +204,17 @@ func TestClaudeHistoryEmptyFilesAndUnchangedBodies(t *testing.T) {
 	assert.Contains(t, s.FTSBody, "more words")
 }
 
+// lowerCursorBounds sets the cursor bounds for one test and puts them back.
+func lowerCursorBounds(t *testing.T, count, bytes int) {
+	t.Helper()
+	c, b := maxClaudeCursors, maxClaudeCursorBytes
+	maxClaudeCursors, maxClaudeCursorBytes = count, bytes
+	t.Cleanup(func() { maxClaudeCursors, maxClaudeCursorBytes = c, b })
+}
+
 // At most maxClaudeCursors cursors are kept, and a deleted transcript's are dropped.
 func TestClaudeHistoryCursorsAreBounded(t *testing.T) {
+	lowerCursorBounds(t, 64, maxClaudeCursorBytes)
 	base := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(base, "p"), 0o755))
 	for i := 0; i < maxClaudeCursors+10; i++ {
@@ -274,4 +283,82 @@ func BenchmarkClaudeHistoryPass(b *testing.B) {
 			}
 		}
 	})
+}
+
+// writeLiveTranscripts makes n one-turn transcripts under base/p and returns a function appending a turn to each.
+func writeLiveTranscripts(t *testing.T, base string, n int) (appendAll func(round int)) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "p"), 0o755))
+	path := func(i int) string { return filepath.Join(base, "p", fmt.Sprintf("s%03d.jsonl", i)) }
+	line := func(typ, text string) string {
+		return fmt.Sprintf(`{"type":%q,"timestamp":"2026-10-18T00:00:00Z","message":{"content":%q}}`+"\n", typ, text)
+	}
+	for i := 0; i < n; i++ {
+		require.NoError(t, os.WriteFile(path(i), []byte(line("user", fmt.Sprintf("question %d", i))+line("assistant", "answer")), 0o600))
+	}
+	return func(round int) {
+		for i := 0; i < n; i++ {
+			f, err := os.OpenFile(path(i), os.O_APPEND|os.O_WRONLY, 0o600)
+			require.NoError(t, err)
+			_, err = f.WriteString(line("assistant", fmt.Sprintf("more words, round %d", round)))
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+		}
+	}
+}
+
+// #4669: more live transcripts than the old 64 cursors are each read from where the last pass stopped. With the cursor count
+// bound at 64 the least recently used cursor was always the next file of a pass, so every file was read whole every pass;
+// the bytes bound keeps all of 150 small ones, and a pass after an append reads none from its first byte.
+func TestClaudeHistoryReadsMoreLiveTranscriptsThanSixtyFourIncrementally(t *testing.T) {
+	run := func(t *testing.T) int64 {
+		base := t.TempDir()
+		appendAll := writeLiveTranscripts(t, base, 150)
+		a := &ClaudeAgent{}
+		known := map[string]float64{}
+		pass := func() {
+			got, err := a.ExtractSessions(base, known)
+			require.NoError(t, err)
+			for _, s := range got {
+				known[s.SourceFile] = -1 // indexed, but never equal to the file's mtime
+			}
+		}
+		pass()
+		first := a.hist.fullReads
+		require.EqualValues(t, 150, first)
+		appendAll(1)
+		pass()
+		appendAll(2)
+		pass()
+		return a.hist.fullReads - first
+	}
+	t.Run("default bounds", func(t *testing.T) {
+		assert.Zero(t, run(t), "no transcript is read from its first byte again")
+	})
+	t.Run("the old count bound of 64", func(t *testing.T) {
+		lowerCursorBounds(t, 64, maxClaudeCursorBytes)
+		assert.Greater(t, run(t), int64(150), "what the bound did: nearly every file read whole, every pass")
+	})
+}
+
+// The bytes bound evicts the least recently used cursors, and keeps the one just read.
+func TestClaudeHistoryCursorsAreBoundedByBytes(t *testing.T) {
+	base := t.TempDir()
+	writeLiveTranscripts(t, base, 40)
+	probe := &ClaudeAgent{}
+	_, err := probe.ExtractSessions(base, nil)
+	require.NoError(t, err)
+	var w int
+	for _, c := range probe.hist.cursors {
+		w = c.weight()
+		break
+	}
+	require.Greater(t, w, 0)
+	lowerCursorBounds(t, 4096, 5*w)
+	a := &ClaudeAgent{}
+	got, err := a.ExtractSessions(base, nil)
+	require.NoError(t, err)
+	assert.Len(t, got, 40, "every transcript is still indexed")
+	assert.LessOrEqual(t, len(a.hist.cursors), 5)
+	assert.GreaterOrEqual(t, len(a.hist.cursors), 1)
 }
