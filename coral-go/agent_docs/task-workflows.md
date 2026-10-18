@@ -307,6 +307,43 @@ Agents can use `coral-board task claim 101` to select a specific available task,
 or `task claim` to take the next task. Blocked tasks and tasks assigned to another
 agent cannot be claimed. One agent may hold one active task per board.
 
+## Before you post a Go patch
+
+Run `tools/check-patch.sh` first, from anywhere in the checkout, after you commit
+your work (its scan reads the commits in `origin/main..HEAD`). It runs every check
+DevOps's pre-push gate runs, so a census or route-query drift failure shows up for
+you instead of at the gate, and prints one `PASS`/`FAIL` line per step, exiting
+non-zero if any failed:
+
+```sh
+tools/check-patch.sh
+```
+
+The steps, each on the whole module so the cross-package censuses and the
+route-query drift test actually run:
+
+- `gofmt -l` (any output fails);
+- `go vet` on both tag sets (default and `dev fts5`) and once for Windows
+  (`GOOS=windows`, `-tags fts5`, CGO off), as the Windows CI vets it;
+- `go test -count=1 ./...` on both tag sets — the whole module runs, so the
+  `safego` goroutine census and the `pkg/tunnel` route-query drift test (both
+  outside the package you touched) run too; each gets its own short `TMPDIR`;
+- `npm run test:cloud` in `tests/frontend` — the frontend node checks, lints and
+  censuses; a Go-only patch can still break them (they read the `pkg/frontend`
+  sources). It fails with a hint if `tests/frontend/node_modules` is missing
+  (`npm ci` there), never skips silently;
+- the route-query allowlist regenerator (`tools/gen_route_queries.py`), compared
+  to the committed table with `git diff` — a handler that reads a new query
+  parameter must regenerate `pkg/tunnel/routes_query.go`;
+- a scan of `origin/main..HEAD` for the operator's personal data and binaries (the
+  same `scan_patch` the landing uses), invisible characters in added lines, and
+  every commit's author/committer identity (each must be a role address).
+
+On a failure it shows the lines that matter (for a test run, the `--- FAIL` and
+`_test.go:line:` lines) and keeps the full logs, naming the folder. Fix every
+`FAIL` before posting. Every role runs this; it is the cheapest way to keep a patch
+from bouncing at the gate.
+
 ## Submit outputs
 
 Save a JSON artifact manifest, for example `build-artifacts.json`:
