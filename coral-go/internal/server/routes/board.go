@@ -1786,7 +1786,13 @@ func (h *BoardHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 
 // ListAllTasks returns the most recent tasks across all boards.
 // GET /api/board/tasks?limit=100
+//
+// With no parameters (or only limit) the reply is the whole rows of the newest tasks, as it has always been. Any other
+// parameter is the task query (queryAllTasks, board_task_query.go, #4540): filters, sort, cursor paging and a choice of fields.
 func (h *BoardHandler) ListAllTasks(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawQuery != "" && h.queryAllTasks(w, r) {
+		return
+	}
 	limit := 100
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
 		limit = l

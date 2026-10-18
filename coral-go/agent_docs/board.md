@@ -738,6 +738,46 @@ as before.
 To list recent tasks across every board, use
 `GET /api/board/tasks?limit=100` (default `100`).
 
+### Task query (`GET /api/board/tasks` with parameters)
+
+`GET /api/board/tasks` also filters, sorts and pages, and lets the caller leave out the long fields, for clients that show
+their own filtered view (Coral Hub's Needs you page). With no parameters, or only `limit`, the reply is exactly what it has
+always been: the whole rows of the newest tasks (`limit` read as before, default `100`; an unusable one is ignored).
+Any other parameter makes it a query. Through Coral Hub it is the View tier, with the same token redaction as any View reply,
+and the connector accepts only the parameters below.
+
+**Parameters** (all optional; one given twice is a 400 unless it is multi-value):
+
+| Parameter | Values |
+|---|---|
+| `fields` | Which fields come back: comma list (or repeated) of `summary` and/or `id`, `revision`, `board_id`, `board_label`, `title`, `status`, `priority`, `created_by`, `assigned_to`, `completed_by`, `parked_reason`, `parked_until`, `remind_at`, `created_at`, `claimed_at`, `completed_at`, `updated_at`, `body`, `completion_message`. `summary` stands for `id`, `title`, `status`, `priority`, `assigned_to`, `board_id`, `board_label`, `parked_reason`, `parked_until`, `created_at`, `updated_at`: no long text. `body` and `completion_message` come back only when named. Without `fields` the reply carries the whole task rows as the plain list does. `board_label` is left out for a board that has no label. |
+| `status` | Multi: `pending`, `in_progress`, `completed`, `skipped`, `blocked`, `draft`, `review_pending` |
+| `assigned_to`, `board`, `created_by` | Multi: exact names (a board is its `board_id`) |
+| `priority` | Multi: `critical`, `high`, `medium`, `low` |
+| `parked` | `true`: parked now (a reason, and a park time not yet past or none); `false`: not parked |
+| `created_since`, `updated_since` | RFC 3339 time (an offset is read as that instant); tasks created or updated at or after it |
+| `sort` | `created_at` (default) or `updated_at` |
+| `order` | `desc` (default, newest first) or `asc` |
+| `limit` | 1 to 500, default 100; 1 to 100 when the reply carries `body` or `completion_message` (named, or whole rows) |
+| `cursor` | The `next_cursor` of the previous page, with the same filters, sort and order |
+
+Multi-value parameters take comma-separated or repeated values (`status=pending,blocked` or `status=pending&status=blocked`),
+at most 50 values; the values of one parameter are alternatives (OR) and different parameters combine with AND. There is no
+`unassigned` filter and no review-state filter yet. A task has no `updated_at` column: `updated_at` is the newest of
+`created_at`, `claimed_at`, `completed_at` and the task's last activity (a nudge, an amendment), so `updated_since` and
+`sort=updated_at` use that. Times are UTC text and compare as text.
+
+**Reply:** `{"tasks": [ ... ], "next_cursor": "..."}`. Each task holds only the fields asked for, with `null` for an empty
+one (whole rows as before). `next_cursor` is present only when there is another page; pass it back as `cursor`. Paging is by
+key (the sort value, then the task id), so tasks created or finished meanwhile do not shift the next page, and ties on the
+sort time are broken by id.
+
+**Errors:** a 400 `{"error": "..."}` that names what was wrong: an unknown parameter (`unknown parameter x`; this includes any
+parameter this route did not read before, such as a cache-buster), field (`unknown field x`), status, priority, sort or order
+value, a bad time, a `limit` out of range, a `cursor` this server did not give or made for a different sort or order, a value
+given twice, an empty value, and a query string that does not parse (a `;` or a bad `%` escape: the server refuses it rather
+than ignoring the part it cannot read). Every filter runs in SQL as a bound parameter; no value becomes part of the statement.
+
 **Response:**
 ```json
 {
