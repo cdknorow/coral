@@ -143,6 +143,20 @@ func (p *PTYSessionTerminal) SendEnter(_ context.Context, name, _, sessionID str
 	return p.backend.SendInput(key, []byte("\r"))
 }
 
+// SendArrow implements ArrowSender: the cursor key's escape sequence (Claude Code's and Codex's input
+// readers take it in either cursor-key mode).
+func (p *PTYSessionTerminal) SendArrow(_ context.Context, name, _, sessionID string, up bool) error {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return err
+	}
+	seq := "\x1b[B"
+	if up {
+		seq = "\x1b[A"
+	}
+	return p.backend.SendInput(key, []byte(seq))
+}
+
 func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, sessionID string) error {
 	resolved, err := p.keyFor(name, sessionID)
 	if err != nil {

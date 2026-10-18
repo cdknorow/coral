@@ -64,6 +64,10 @@ func (h *SessionsHandler) applyTranscriptState(input *SessionStateInput, events 
 		// A failed sign-in ends a turn like any API error; the transcript says which (#3830).
 		input.NeedsLogin, input.LoginReason = h.claudeLoginState(name, sessionID, workingDir, func() []store.AgentEvent { return events })
 	}
+	// No event at all, from hooks or the transcript: the CLI may still be on a prompt it draws at launch (#4543).
+	if len(input.Events) == 0 && !input.NeedsLogin && !input.Archived && !input.Sleeping {
+		input.StartupPrompt, input.StartupSummary = h.startupPromptState(name, agentType, sessionID)
+	}
 }
 
 // claudeTurnOpen reports whether the latest of a session's state events leaves a turn

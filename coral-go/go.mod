@@ -42,6 +42,8 @@ require go.uber.org/goleak v1.3.0
 
 require github.com/evanw/esbuild v0.25.0
 
+require github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
+
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	git.sr.ht/~jackmordaunt/go-toast v1.1.2 // indirect

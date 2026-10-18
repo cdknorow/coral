@@ -1,0 +1,3 @@
+# Terminal captures (#4543): raw PTY output and pane text, read byte for byte; no CRLF on Windows checkouts.
+codex_hook_trust/** -text
+claude_unnumbered/** -text

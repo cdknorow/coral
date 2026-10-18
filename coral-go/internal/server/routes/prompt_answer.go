@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/ptymanager"
 )
 
@@ -50,10 +52,28 @@ type promptScreen struct {
 	Question string             `json:"question"`
 	Options  []promptOption     `json:"options"`
 	Review   []promptReviewItem `json:"review,omitempty"`
+	// Unnumbered: the options carry no numbers (Claude Code's folder-trust and API-key menus at launch,
+	// #4543); n is an option's place in the list, and it is answered with the arrow keys and Enter.
+	Unnumbered bool `json:"unnumbered,omitempty"`
+	// The few lines above the question (a permission prompt's command): with the question and the labels,
+	// what tells this prompt from the next one the agent opens (samePrompt).
+	context string
 }
 
 // Time for the dialog to turn an option into a text field before typing
 var promptTextDelay = 300 * time.Millisecond
+
+// After an answer is sent the screen is read again (#4543): the answer is ok only once the prompt it
+// answered has gone (the next question, the review step, or the agent at work), and Codex's menus that only
+// move their selection on a digit are confirmed with Enter.
+var (
+	promptPollEvery = 50 * time.Millisecond
+	// How long the same prompt must stay up, with the chosen option selected, before Enter confirms it:
+	// a menu that a digit answers redraws within a frame or two, and must not get the Enter as well.
+	promptSettle = 250 * time.Millisecond
+	// How long an answered prompt has to go.
+	promptClearTimeout = 2500 * time.Millisecond
+)
 
 var (
 	promptOptionRe = regexp.MustCompile(`^\s*([❯›>]\s*)?(\d{1,2})\.\s+(.+?)\s*$`)
@@ -99,7 +119,7 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 		}
 	}
 	if end < 0 {
-		return promptScreen{}, false
+		return parseUnnumberedMenu(lines)
 	}
 	var opts []promptOption
 	question := ""
@@ -152,7 +172,135 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 	if !selected {
 		return promptScreen{}, false
 	}
-	return promptScreen{Question: question, Options: opts, Review: parseReview(lines, questionAt)}, true
+	return promptScreen{Question: question, Options: opts, Review: parseReview(lines, questionAt), context: promptContext(lines, questionAt)}, true
+}
+
+var (
+	// A menu's footer: Claude Code's "Enter to confirm · Esc to cancel"
+	menuFooterRe = regexp.MustCompile(`(?i)\benter to (confirm|select|continue)\b|\besc to cancel\b`)
+	// The selected option of an unnumbered menu: its marker, then its label
+	markedLineRe = regexp.MustCompile(`^(\s*)[❯›>]\s+(\S.*?)\s*$`)
+)
+
+// parseUnnumberedMenu reads a menu whose options carry no numbers from the bottom of a capture (lines, with
+// trailing blank lines removed): a menu footer within the last three lines, and just above it one block of
+// lines that are all options, one of them marked and the others aligned with its label. Its question is the
+// nearest paragraph above with a "?" in it (Claude's trust menu has its "Security guide" link in between),
+// else the nearest paragraph.
+func parseUnnumberedMenu(lines []string) (promptScreen, bool) {
+	footer := -1
+	for i, seen := len(lines)-1, 0; i >= 0 && seen < 3; i-- {
+		t := strings.TrimSpace(lines[i])
+		if t == "" {
+			continue
+		}
+		seen++
+		if menuFooterRe.MatchString(t) {
+			footer = i
+			break
+		}
+	}
+	if footer < 0 {
+		return promptScreen{}, false
+	}
+	last := footer - 1
+	for last >= 0 && strings.TrimSpace(lines[last]) == "" {
+		last--
+	}
+	first := last
+	for first > 0 && strings.TrimSpace(lines[first-1]) != "" {
+		first--
+	}
+	if last < 0 || last-first < 1 {
+		return promptScreen{}, false
+	}
+	marked, col := -1, -1
+	for i := first; i <= last; i++ {
+		if m := markedLineRe.FindStringSubmatchIndex(lines[i]); m != nil {
+			if marked >= 0 {
+				return promptScreen{}, false
+			}
+			marked, col = i, utf8.RuneCountInString(lines[i][:m[4]])
+		}
+	}
+	if marked < 0 {
+		return promptScreen{}, false
+	}
+	var opts []promptOption
+	for i := first; i <= last; i++ {
+		line := lines[i]
+		label := strings.TrimSpace(line)
+		if i == marked {
+			label = markedLineRe.FindStringSubmatch(line)[2]
+		} else if utf8.RuneCountInString(line)-utf8.RuneCountInString(strings.TrimLeft(line, " ")) != col || promptOptionRe.MatchString(line) {
+			return promptScreen{}, false // not aligned with the marked option: not a list of options
+		}
+		label = strings.TrimSpace(strings.TrimPrefix(label, "✔")) // the current choice's check mark
+		opts = append(opts, promptOption{N: len(opts) + 1, Label: label, Selected: i == marked, Action: "select"})
+	}
+	question, questionAt := "", -1
+	for i := first - 1; i >= 0 && i >= first-16 && !separatorRe.MatchString(lines[i]); i-- {
+		if strings.Contains(lines[i], "?") {
+			question, questionAt = paragraphAt(lines, i)
+			break
+		}
+	}
+	if questionAt < 0 {
+		for i := first - 1; i >= 0 && !separatorRe.MatchString(lines[i]); i-- {
+			if strings.TrimSpace(lines[i]) != "" {
+				question, questionAt = paragraphAt(lines, i)
+				break
+			}
+		}
+	}
+	if questionAt < 0 {
+		questionAt = first
+	}
+	return promptScreen{Question: question, Options: opts, Unnumbered: true, context: promptContext(lines, questionAt)}, true
+}
+
+// paragraphAt is the paragraph (non-blank lines between blank lines and rules) holding lines[i], joined, and
+// the index of its first line.
+func paragraphAt(lines []string, i int) (string, int) {
+	in := func(j int) bool {
+		return j >= 0 && j < len(lines) && strings.TrimSpace(lines[j]) != "" && !separatorRe.MatchString(lines[j])
+	}
+	start, end := i, i
+	for in(start - 1) {
+		start--
+	}
+	for in(end + 1) {
+		end++
+	}
+	var parts []string
+	for _, l := range lines[start : end+1] {
+		parts = append(parts, strings.TrimSpace(l))
+	}
+	return strings.Join(parts, " "), start
+}
+
+// promptContext is up to three non-blank lines above the question, trimmed.
+func promptContext(lines []string, questionAt int) string {
+	var above []string
+	for i := questionAt - 1; i >= 0 && len(above) < 3; i-- {
+		if t := strings.TrimSpace(lines[i]); t != "" {
+			above = append([]string{t}, above...)
+		}
+	}
+	return strings.Join(above, "\n")
+}
+
+// samePrompt reports whether two reads show the same prompt, wherever its selection is.
+func samePrompt(a, b promptScreen) bool {
+	if a.Question != b.Question || a.context != b.context || len(a.Options) != len(b.Options) {
+		return false
+	}
+	for i := range a.Options {
+		if normalizeLabel(a.Options[i].Label) != normalizeLabel(b.Options[i].Label) {
+			return false
+		}
+	}
+	return true
 }
 
 // parseReview reads the "Review your answers" list shown above the Submit
@@ -201,11 +349,25 @@ func parseReview(lines []string, questionAt int) []promptReviewItem {
 const reviewMarkers = " \t│┃▎▍▌|>"
 
 func (h *SessionsHandler) capturePromptScreen(ctx context.Context, name, agentType, sessionID string) (promptScreen, bool) {
-	text, err := h.terminal.CaptureOutput(ctx, name, 80, agentType, sessionID)
-	if err != nil || text == "" {
-		return promptScreen{}, false
+	s, ok, err := h.readPromptScreen(ctx, name, agentType, sessionID)
+	return s, ok && err == nil
+}
+
+// readPromptScreen reads the prompt open on the agent's screen; an error is a screen that couldn't be read,
+// which is not a screen without a prompt.
+func (h *SessionsHandler) readPromptScreen(ctx context.Context, name, agentType, sessionID string) (promptScreen, bool, error) {
+	var text string
+	var err error
+	if rs, ok := h.terminal.(ptymanager.RenderedScreenReader); ok {
+		text, err = rs.RenderedScreen(ctx, name, agentType, sessionID) // the PTY's output is not the screen as drawn (#4543)
+	} else {
+		text, err = h.terminal.CaptureOutput(ctx, name, 80, agentType, sessionID)
 	}
-	return parsePromptScreen(text)
+	if err != nil {
+		return promptScreen{}, false, err
+	}
+	s, ok := parsePromptScreen(text)
+	return s, ok, nil
 }
 
 func normalizeLabel(s string) string {
@@ -259,11 +421,22 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "text is required for this option")
 		return
 	}
-	if err := h.terminal.SendRawInput(r.Context(), name, []string{strconv.Itoa(body.N)}, body.AgentType, body.SessionID); err != nil {
+	action := opt.Action
+	if screen.Unnumbered {
+		action = "unnumbered" // its Enter is sent here, never by confirmAnswer
+		if moved, err := h.selectUnnumbered(r.Context(), name, body.AgentType, body.SessionID, screen, body.N); err != nil {
+			writeTerminalError(w, err)
+			return
+		} else if !moved {
+			writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
+				"error": "The prompt's selection didn't move to that option. Answer it in the terminal."})
+			return
+		}
+	} else if err := h.terminal.SendRawInput(r.Context(), name, []string{strconv.Itoa(body.N)}, body.AgentType, body.SessionID); err != nil {
 		writeTerminalError(w, err)
 		return
 	}
-	if opt.Action == "text" {
+	if opt.Action == "text" && !screen.Unnumbered {
 		// The digit turns the option into a text field; type into it, then Enter
 		time.Sleep(promptTextDelay)
 		if err := h.terminal.SendInput(r.Context(), name, text, body.AgentType, body.SessionID); err != nil {
@@ -272,5 +445,100 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.hints.forget(body.SessionID) // the prompt was answered: the next poll reads what replaced it
+	h.startupScreens.forget(promptReadKey(body.SessionID, name, body.AgentType))
+	cleared, err := h.confirmAnswer(r.Context(), name, body.AgentType, body.SessionID, screen, body.N, action)
+	if err != nil {
+		writeTerminalError(w, err)
+		return
+	}
+	if !cleared {
+		writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
+			"error": "The answer was sent, but the agent's prompt is still open. Check the terminal."})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answered": opt.Label})
+}
+
+// selectUnnumbered answers option n of a menu without numbers: the arrow keys move its selection from the
+// option selected now, and Enter is sent only once the screen shows the same menu with option n selected.
+// It reports false, having sent no Enter, when that isn't seen in time (the menu changed or went).
+func (h *SessionsHandler) selectUnnumbered(ctx context.Context, name, agentType, sessionID string, before promptScreen, n int) (bool, error) {
+	as, isArrow := h.terminal.(ptymanager.ArrowSender)
+	es, isEnter := h.terminal.(ptymanager.EnterSender)
+	if !isArrow || !isEnter {
+		return false, nil
+	}
+	from := 0
+	for i, o := range before.Options {
+		if o.Selected {
+			from = i + 1
+		}
+	}
+	steps, up := n-from, n < from
+	if up {
+		steps = -steps
+	}
+	for i := 0; i < steps; i++ {
+		if err := as.SendArrow(ctx, name, agentType, sessionID, up); err != nil {
+			return false, err
+		}
+	}
+	deadline := time.Now().Add(promptClearTimeout)
+	for {
+		now, ok, err := h.readPromptScreen(ctx, name, agentType, sessionID)
+		if err == nil && ok && samePrompt(before, now) && now.Options[n-1].Selected {
+			return true, es.SendEnter(ctx, name, agentType, sessionID)
+		}
+		if err == nil && (!ok || !samePrompt(before, now)) || time.Now().After(deadline) {
+			return false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(promptPollEvery):
+		}
+	}
+}
+
+// confirmAnswer waits, a bounded time, for the prompt an answer was sent to to go, and says whether it went.
+// Codex has menus a digit answers (its sign-in choice) and menus where a digit only moves the selection and
+// Enter confirms it (its hook review, "Press enter to confirm"; #4543): for a Codex select option, while the
+// same prompt stays up with that option selected for promptSettle, Enter is sent once. Claude Code's digits
+// answer, so it never gets an Enter here. The screen is what is read: Codex runs no hook before its trust
+// menus are answered, so there is no event to wait for.
+func (h *SessionsHandler) confirmAnswer(ctx context.Context, name, agentType, sessionID string, before promptScreen, n int, action string) (bool, error) {
+	mayConfirm := agentType == at.Codex && action == "select"
+	deadline := time.Now().Add(promptClearTimeout)
+	var heldSince time.Time
+	for {
+		now, ok, err := h.readPromptScreen(ctx, name, agentType, sessionID)
+		if err == nil && (!ok || !samePrompt(before, now)) {
+			return true, nil
+		}
+		if err == nil && mayConfirm && n <= len(now.Options) && now.Options[n-1].Selected {
+			if heldSince.IsZero() {
+				heldSince = time.Now()
+			} else if time.Since(heldSince) >= promptSettle {
+				es, isSender := h.terminal.(ptymanager.EnterSender)
+				if !isSender {
+					return false, nil
+				}
+				if err := es.SendEnter(ctx, name, agentType, sessionID); err != nil {
+					return false, err
+				}
+				mayConfirm = false // one Enter, never a second into whatever comes next
+				deadline = time.Now().Add(promptClearTimeout)
+			}
+		} else {
+			heldSince = time.Time{}
+		}
+		if time.Now().After(deadline) {
+			return false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(promptPollEvery):
+		}
+	}
 }

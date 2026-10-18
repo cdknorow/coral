@@ -386,3 +386,12 @@ func (m *PTYBackend) ReplayScreen(name string) (string, error) {
 func (t *TmuxSessionTerminal) SendEnter(ctx context.Context, name, agentType, sessionID string) error {
 	return t.client.SendRawKeys(ctx, name, []string{"Enter"}, agentType, sessionID)
 }
+
+// SendArrow implements ArrowSender for tmux: its key names, which it sends in the pane's cursor-key mode.
+func (t *TmuxSessionTerminal) SendArrow(ctx context.Context, name, agentType, sessionID string, up bool) error {
+	key := "Down"
+	if up {
+		key = "Up"
+	}
+	return t.client.SendRawKeys(ctx, name, []string{key}, agentType, sessionID)
+}

@@ -81,6 +81,8 @@ type SessionsHandler struct {
 	hints   promptHints  // whether a prompt may be open on a session's terminal (its latest hook events), for the chat reply
 	// loginScreens: whether a Claude agent with no transcript yet shows its login screen (#3830).
 	loginScreens loginScreens
+	// startupScreens: whether an agent that has sent no event yet waits on a prompt its CLI drew at launch (#4543).
+	startupScreens loginScreens
 	// screens: captures the read-only pollers (the agent poll) share for a moment (#3887)
 	screens screenSnaps
 	// hooksRev is the hook set each session's agent loaded at its launch, from its events
@@ -286,8 +288,9 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 // NewSessionsHandler creates a SessionsHandler with the given dependencies.
 func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, bs *board.Store) *SessionsHandler {
 	return &SessionsHandler{
-		autoWake: autoWaker{sleep: background.SleepCtx, now: time.Now},
-		exits:    exitWatch{after: defaultAfter},
+		autoWake:       autoWaker{sleep: background.SleepCtx, now: time.Now},
+		exits:          exitWatch{after: defaultAfter},
+		startupScreens: loginScreens{stampDecides: true},
 		inOldTmux: func(ctx context.Context, name string) bool {
 			return tmux.HasPrivateAgentSession(ctx, tmux.PrivateSocketPath(cfg.CoralDir()), name)
 		},

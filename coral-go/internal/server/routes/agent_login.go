@@ -35,6 +35,9 @@ const loginScreenTimeout = 2 * time.Second
 type loginScreens struct {
 	mu sync.Mutex
 	m  map[string]loginScreenRead
+	// stampDecides: a reading taken with another output stamp is never reused, however young: the
+	// terminal has written since (startup prompts, #4543, whose state must follow the screen).
+	stampDecides bool
 }
 
 type loginScreenRead struct {
@@ -52,7 +55,8 @@ func (l *loginScreens) read(key, stamp string, now time.Time, fn func() (bool, s
 	l.mu.Lock()
 	if r, ok := l.m[key]; ok {
 		age := now.Sub(r.at)
-		if age < loginScreenTTL || (stamp != "" && r.stamp == stamp && age < loginScreenStampMax) {
+		changed := l.stampDecides && stamp != "" && r.stamp != stamp
+		if !changed && (age < loginScreenTTL || (stamp != "" && r.stamp == stamp && age < loginScreenStampMax)) {
 			l.mu.Unlock()
 			return r.on, r.why
 		}
@@ -73,6 +77,13 @@ func (l *loginScreens) read(key, stamp string, now time.Time, fn func() (bool, s
 	}
 	l.m[key] = loginScreenRead{at: now, stamp: stamp, on: on, why: why}
 	return on, why
+}
+
+// forget drops key's reading: the next read takes the screen again.
+func (l *loginScreens) forget(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.m, key)
 }
 
 // claudeLoginState reports whether a Claude agent needs the user to sign in, and the CLI's

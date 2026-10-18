@@ -87,6 +87,10 @@ type mockSessionTerminal struct {
 	gone             bool                // the agent's own terminal is gone: writes fail with ErrTerminalGone (#3211)
 	onCapture        func(name string)   // called (unlocked) after each capture, e.g. to change the screen
 	onRaw            func(name string)   // called (unlocked) after each SendRawInput, e.g. the agent's next prompt
+	enters           map[string]int      // Enters sent with SendEnter
+	onEnter          func(name string)   // called (unlocked) after each SendEnter, e.g. a menu it confirms
+	arrows           map[string][]string // "Up" and "Down", sent with SendArrow
+	onArrow          func(name string)   // called (unlocked) after each SendArrow, e.g. the selection moving
 	onSend           func(target string) // called (unlocked) before each SendToTarget is recorded, e.g. to look at the board then
 }
 
@@ -181,6 +185,40 @@ func (m *mockSessionTerminal) SendRawInput(_ context.Context, name string, keys 
 		m.mu.Unlock()
 		hook(name)
 		m.mu.Lock()
+	}
+	return nil
+}
+
+// SendArrow implements ptymanager.ArrowSender, as both real terminals do.
+func (m *mockSessionTerminal) SendArrow(_ context.Context, name, _, _ string, up bool) error {
+	m.mu.Lock()
+	if m.arrows == nil {
+		m.arrows = map[string][]string{}
+	}
+	key := "Down"
+	if up {
+		key = "Up"
+	}
+	m.arrows[name] = append(m.arrows[name], key)
+	hook := m.onArrow
+	m.mu.Unlock()
+	if hook != nil {
+		hook(name)
+	}
+	return nil
+}
+
+// SendEnter implements ptymanager.EnterSender, as both real terminals do.
+func (m *mockSessionTerminal) SendEnter(_ context.Context, name, _, _ string) error {
+	m.mu.Lock()
+	if m.enters == nil {
+		m.enters = map[string]int{}
+	}
+	m.enters[name]++
+	hook := m.onEnter
+	m.mu.Unlock()
+	if hook != nil {
+		hook(name)
 	}
 	return nil
 }

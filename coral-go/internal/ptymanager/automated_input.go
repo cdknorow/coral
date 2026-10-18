@@ -128,6 +128,12 @@ type EnterSender interface {
 	SendEnter(ctx context.Context, name, agentType, sessionID string) error
 }
 
+// ArrowSender is implemented by terminals that can press Up or Down in an agent's terminal: what moves the
+// selection of a menu whose options carry no numbers (Claude Code's folder-trust and API-key menus, #4543).
+type ArrowSender interface {
+	SendArrow(ctx context.Context, name, agentType, sessionID string, up bool) error
+}
+
 // ScreenReader is implemented by terminals that can show an agent's visible
 // screen (the bottom of its tmux pane, or its PTY output).
 type ScreenReader interface {

@@ -21,7 +21,7 @@ var sendCalls = map[string]bool{
 	"SendInput": true, "SendRawInput": true, "SendPrompt": true, "SendToTarget": true,
 	"SendKeysToTarget": true, "SendKeys": true, "SendTerminalInput": true, "SendLine": true,
 	"SendTerminalInputToTarget": true, "SendRawKeys": true, "pasteToTarget": true,
-	"AutoAcceptSend": true, "SendEnter": true,
+	"AutoAcceptSend": true, "SendEnter": true, "SendArrow": true,
 }
 
 // allowedSenders is "file<TAB>function<TAB>call" -> why it may call it.
@@ -38,11 +38,14 @@ var allowedSenders = map[string]string{
 	"internal/server/routes/auto_accept.go\tAutoAcceptor.check\tAutoAcceptSend": "auto-accept exemption",
 	"internal/server/routes/auto_accept.go\tAutoAcceptor.check\tSendRawInput":   "inside AutoAcceptSend",
 	// A person's input. /send and /keys gate any caller that isn't a person.
-	"internal/server/routes/websocket.go\tSessionsHandler.WSTerminal\tSendInput":          "human: terminal typing",
-	"internal/server/routes/prompt_answer.go\tSessionsHandler.AnswerPrompt\tSendInput":    "human: picks an option",
-	"internal/server/routes/prompt_answer.go\tSessionsHandler.AnswerPrompt\tSendRawInput": "human: picks an option",
-	"internal/server/routes/sessions_input.go\tSessionsHandler.Send\tSendInput":           "human, else gated",
-	"internal/server/routes/sessions_input.go\tSessionsHandler.Keys\tSendRawInput":        "human, else gated",
+	"internal/server/routes/websocket.go\tSessionsHandler.WSTerminal\tSendInput":           "human: terminal typing",
+	"internal/server/routes/prompt_answer.go\tSessionsHandler.AnswerPrompt\tSendInput":     "human: picks an option",
+	"internal/server/routes/prompt_answer.go\tSessionsHandler.AnswerPrompt\tSendRawInput":  "human: picks an option",
+	"internal/server/routes/prompt_answer.go\tSessionsHandler.selectUnnumbered\tSendArrow": "human: picks an option (a menu without numbers, #4543)",
+	"internal/server/routes/prompt_answer.go\tSessionsHandler.selectUnnumbered\tSendEnter": "human: picks an option (once the arrows have selected it)",
+	"internal/server/routes/prompt_answer.go\tSessionsHandler.confirmAnswer\tSendEnter":    "human: picks an option (the Enter a Codex menu needs once the digit has selected it, #4543)",
+	"internal/server/routes/sessions_input.go\tSessionsHandler.Send\tSendInput":            "human, else gated",
+	"internal/server/routes/sessions_input.go\tSessionsHandler.Keys\tSendRawInput":         "human, else gated",
 	// Launch commands typed into a fresh shell, before any agent CLI runs.
 	"internal/server/routes/sessions_lifecycle.go\tsendLaunchCommand\tSendToTarget": "launch command",
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SpawnAgent\tSendKeysToTarget": "launch command",
@@ -75,6 +78,8 @@ var allowedSenders = map[string]string{
 	"internal/background/runtime_pty.go\tPTYRuntime.SendPrompt\tSendPrompt":                "primitive",
 	"internal/background/runtime_pty.go\tPTYRuntime.SendEnter\tSendInput":                  "primitive",
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendEnter\tSendInput": "primitive",
+	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendArrow\tSendInput": "primitive",
+	"internal/ptymanager/prompt_screen.go\tTmuxSessionTerminal.SendArrow\tSendRawKeys":     "primitive",
 	"internal/tmux/client.go\tClient.typeToTarget\tpasteToTarget":                          "primitive", // SendKeys (text) and SendKeysToTarget (a launch command) type through it (#4361)
 	"internal/tmux/client.go\tClient.SendTerminalInputToTarget\tpasteToTarget":             "primitive",
 	"internal/tmux/client.go\tClient.SendTerminalInputToTarget\tSendTerminalInputToTarget": "primitive",

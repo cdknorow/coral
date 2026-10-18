@@ -65,7 +65,18 @@ type Input struct {
 	// screen is open. LoginReason is the CLI's own message, when it gave one.
 	NeedsLogin  bool
 	LoginReason string
+	// StartupPrompt: the agent has sent no event yet and its CLI waits on a prompt it draws at launch,
+	// before any hook runs (#4543): the reason (ptymanager.StartupTrust, StartupUpdate, StartupPrompt), and
+	// StartupSummary the prompt's question when it could be read.
+	StartupPrompt  string
+	StartupSummary string
 }
+
+// KindStartup is the WaitingKind of an agent held by a prompt its CLI draws at launch (#4543).
+const KindStartup = "startup"
+
+// StartupSummary is the WaitingSummary of such an agent when its prompt's question couldn't be read.
+const StartupSummary = "The agent waits on a prompt in its terminal before it starts"
 
 // KindLogin is the WaitingKind of an agent that needs the user to sign in (#3830).
 const KindLogin = "login"
@@ -275,6 +286,16 @@ func Derive(in Input) State {
 		state.WaitingSummary = in.LoginReason
 		if state.WaitingSummary == "" {
 			state.WaitingSummary = LoginSummary
+		}
+		state.OwnRequest = true
+	}
+	if in.StartupPrompt != "" && !in.NeedsLogin {
+		// Nothing runs until the prompt is answered: a request to the user, as a login is.
+		state.NeedsInput, state.AwaitingUser, state.Working, state.InTurn, state.NotStarted = true, false, false, false, false
+		state.WaitingReason, state.WaitingKind = in.StartupPrompt, KindStartup
+		state.WaitingSummary = in.StartupSummary
+		if state.WaitingSummary == "" {
+			state.WaitingSummary = StartupSummary
 		}
 		state.OwnRequest = true
 	}

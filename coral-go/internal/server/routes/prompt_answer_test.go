@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -185,12 +186,15 @@ func TestAnswerPrompt(t *testing.T) {
 	terminal.addSession("claude-ask", "/tmp/test")
 	ident := map[string]any{"session_id": sid, "agent_type": "claude"}
 	promptTextDelay = 0
+	fastPromptChecks(t)
 	base := server.URL + "/api/sessions/live/claude-ask"
 	setScreen := func(s string) {
 		terminal.mu.Lock()
 		terminal.outputs["claude-ask"] = s
 		terminal.mu.Unlock()
 	}
+	// The agent takes each answer: the prompt goes
+	terminal.onRaw = func(string) { setScreen(screenIdleList) }
 	sentKeys := func() []string {
 		terminal.mu.Lock()
 		defer terminal.mu.Unlock()
@@ -237,6 +241,7 @@ func TestAnswerPrompt(t *testing.T) {
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, []string{"4"}, sentKeys())
 
+	setScreen(screenPermission)
 	code, _ = answer(1, "No")
 	assert.Equal(t, http.StatusConflict, code, "a label that no longer matches its number is refused")
 	// A typed answer: the digit opens the field, then the text and Enter
@@ -248,6 +253,7 @@ func TestAnswerPrompt(t *testing.T) {
 	assert.Equal(t, []string{"4", "4"}, sentKeys())
 	assert.Equal(t, []string{"Mango please"}, sentText(), "typed as one line, then Enter")
 	// Chat about this is just its digit
+	setScreen(screenQuestion)
 	code, _ = answer(5, "Chat about this")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, []string{"4", "4", "5"}, sentKeys())
@@ -266,6 +272,14 @@ func TestAnswerPrompt(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "session_id_required", body["code"])
 	assert.Equal(t, []string{"4", "4", "5"}, sentKeys(), "a bare-name answer sends no keys")
+	assert.Zero(t, terminal.enters["claude-ask"], "Claude Code's digits answer: no Enter")
+}
+
+// fastPromptChecks shortens the waits after an answer for a test.
+func fastPromptChecks(t *testing.T) {
+	every, settle, clear := promptPollEvery, promptSettle, promptClearTimeout
+	promptPollEvery, promptSettle, promptClearTimeout = 2*time.Millisecond, 20*time.Millisecond, 300*time.Millisecond
+	t.Cleanup(func() { promptPollEvery, promptSettle, promptClearTimeout = every, settle, clear })
 }
 
 // Codex's startup menus, captured from a fresh install: the sign-in choice

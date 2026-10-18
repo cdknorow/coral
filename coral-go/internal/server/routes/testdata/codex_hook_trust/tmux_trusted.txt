@@ -1,0 +1,40 @@
+╭───────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.155.1)                │
+│                                           │
+│ model:     gpt-6-astra   /model to change │
+│ directory: /private/tmp/q4543/project     │
+╰───────────────────────────────────────────╯
+
+  Tip: New Build faster with the Desktop app. Run 'codex app' or visit https://chatgpt.com/codex?app-landing-page=true
+
+
+› Ask Codex to do anything
+
+  gpt-6-astra default · /private/tmp/q4543/project
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
