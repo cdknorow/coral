@@ -86,8 +86,12 @@ func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 				require.NoError(t, ss.AddSessionTag(ctx, sid, t2.ID))
 			}
 		}
-		for i, project := range []string{"team-alpha", "deploy-crew", "quiet", "long-board", "tie-board"} {
-			for k := 0; k <= i%3; k++ {
+		for i, project := range []string{"team-alpha", "deploy-crew", "quiet", "long-board", "tie-board", "tie-board-z"} {
+			n := i % 3
+			if project == "long-board" {
+				n = 1 // two messages: its first and its last are different ones (with one, the later stamp below would be both)
+			}
+			for k := 0; k <= n; k++ {
 				_, err := h.bs.Subscribe(ctx, project, fmt.Sprintf("member-%d", k), "Developer", fmt.Sprintf("s-%s-%d", project, k), nil, "all")
 				require.NoError(t, err)
 				_, err = h.bs.PostMessage(ctx, project, fmt.Sprintf("member-%d", k), []string{"let's deploy", "fix it", "hello team"}[k%3], nil)
@@ -102,6 +106,7 @@ func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 		for _, u := range []struct{ project, order, at string }{
 			{"long-board", "ASC", "2026-09-10T08:00:00Z"}, {"long-board", "DESC", "2026-10-12T09:00:00Z"},
 			{"tie-board", "ASC", "2026-10-14T08:00:00Z"}, {"tie-board", "DESC", "2026-10-15T12:00:00+00:00"},
+			{"tie-board-z", "ASC", "2026-10-16T08:00:00Z"}, {"tie-board-z", "DESC", "2026-10-16T12:00:00Z"},
 		} {
 			_, err := raw.ExecContext(ctx, "UPDATE board_messages SET created_at = ? WHERE id = (SELECT id FROM board_messages WHERE project = ? ORDER BY id "+u.order+" LIMIT 1)", u.at, u.project)
 			require.NoError(t, err)
@@ -109,6 +114,11 @@ func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 		tie, tieFirst := "2026-10-15T12:00:00Z", "2026-10-15T09:00:00Z"
 		require.NoError(t, ss.UpsertSessionIndex(ctx, &store.SessionIndex{SessionID: "0000aaaa-4713-4000-8000-00000000aaaa", SourceType: "claude",
 			SourceFile: "/tmp/none-tie", FirstTimestamp: &tieFirst, LastTimestamp: &tie, MessageCount: 5, DisplaySummary: "the tie", AgentName: "lead"}))
+		// and the other way round: the board's last is Z and the session's +00:00 (which of two equal instants comes first must not depend on the
+		// zone's spelling in either direction: an unnormalised compare puts the Z one first, the normalised one keeps the order they came in)
+		tieB, tieBFirst := "2026-10-16T12:00:00+00:00", "2026-10-16T09:00:00+00:00"
+		require.NoError(t, ss.UpsertSessionIndex(ctx, &store.SessionIndex{SessionID: "0000bbbb-4713-4000-8000-00000000bbbb", SourceType: "claude",
+			SourceFile: "/tmp/none-tie-z", FirstTimestamp: &tieBFirst, LastTimestamp: &tieB, MessageCount: 5, DisplaySummary: "the other tie", AgentName: "qa"}))
 	}
 	r := chi.NewRouter()
 	r.Get("/old", h.listSessionsBefore4713)
@@ -182,17 +192,26 @@ func TestListSessionsAgreesWithBefore4713(t *testing.T) {
 				id, _ := s["session_id"].(string)
 				ids[id] = true
 			}
-			if ids["board:long-board"] && q.Get("date_from") > "2026-09-10" {
-				kinds["a board spanning date_from"]++
+			for _, s := range out.Sessions { // the long board is listed with its first message before date_from and its last on or after it
+				if s["session_id"] == "board:long-board" {
+					first, _ := s["first_timestamp"].(string)
+					last, _ := s["last_timestamp"].(string)
+					if df := q.Get("date_from"); df != "" && first < df && last >= df {
+						kinds["a board spanning date_from"]++
+					}
+				}
 			}
 			if ids["board:tie-board"] && ids["0000aaaa-4713-4000-8000-00000000aaaa"] {
 				kinds["the same instant as Z and +00:00 on one page"]++
+			}
+			if ids["board:tie-board-z"] && ids["0000bbbb-4713-4000-8000-00000000bbbb"] {
+				kinds["the same instant as +00:00 and Z on one page"]++
 			}
 		}
 	}
 	t.Logf("compared, per kind: %v", kinds)
 	for _, k := range []string{"cold start", "rows (all)", "rows (agent)", "rows (group)", "empty page (all)", "empty page (agent)", "empty page (group)",
-		"merged agent and group rows", "a page of more", "a board spanning date_from", "the same instant as Z and +00:00 on one page"} {
+		"merged agent and group rows", "a page of more", "a board spanning date_from", "the same instant as Z and +00:00 on one page", "the same instant as +00:00 and Z on one page"} {
 		assert.GreaterOrEqual(t, kinds[k], 10, "%q went (almost) unexercised", k)
 	}
 }
