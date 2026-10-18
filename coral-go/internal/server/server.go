@@ -127,10 +127,12 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	} else if n > 0 {
 		log.Printf("[store] dropped the retired connected_apps table (%d rows)", n-1)
 	}
-	if n, err := boardStore.WipeWebhookURLs(context.Background()); err != nil {
-		log.Printf("[webhooks] clearing board subscriptions' webhook URLs: %v", err)
-	} else if n > 0 {
-		log.Printf("[webhooks] cleared the webhook URL of %d board subscriptions", n)
+	if boardStore != nil { // a board that could not be opened is logged above and left out (#4888)
+		if n, err := boardStore.WipeWebhookURLs(context.Background()); err != nil {
+			log.Printf("[webhooks] clearing board subscriptions' webhook URLs: %v", err)
+		} else if n > 0 {
+			log.Printf("[webhooks] cleared the webhook URL of %d board subscriptions", n)
+		}
 	}
 
 	// Initialize API key auth
