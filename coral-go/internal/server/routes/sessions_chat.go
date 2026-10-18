@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -219,18 +220,85 @@ func (h *SessionsHandler) sharedCapture(ctx context.Context, name string, lines 
 func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	trace := newPhaseTrace("live-chat")
 	defer trace.finish()
-	name := chi.URLParam(r, "name")
-	agentType := r.URL.Query().Get("agent_type")
-	sessionID := r.URL.Query().Get("session_id")
-	workingDir := r.URL.Query().Get("working_directory")
+	trace.begin("metadata_lookup")
+	t := h.resolveChatTarget(r, chi.URLParam(r, "name"), r.URL.Query().Get("agent_type"), r.URL.Query().Get("session_id"), r.URL.Query().Get("working_directory"))
+	trace.endPool("metadata_lookup", h.db, "meta_cache", t.metaCache)
+	name, agentType, sessionID, workingDir := t.name, t.agentType, t.sessionID, t.workingDir
+
+	// Use session_id if provided, otherwise use name as session_id
+	id := sessionID
+	if id == "" {
+		id = name
+	}
+
+	// When after=0, the client wants the full conversation history (e.g. after
+	// switching to the Chat tab). Return all accumulated messages, not just new ones.
+	// Supports pagination: ?after=0&limit=100&offset=0 returns the last 100 messages.
+	// Otherwise return messages[after:]. The reader's cache is shared by every
+	// client, so "new since the last read" would split new messages between
+	// windows polling the same session; each client's own count is used instead.
+	after, _ := strconv.Atoi(r.URL.Query().Get("after"))
+	trace.begin("transcript_read")
+	tv := h.readChatTranscript(r.Context(), id, t)
+	messages, total := tv.Window, tv.Total
+	trace.end("transcript_read", "messages", total)
+	trace.begin("log_status")
+	needsLogin, loginReason, limitNotice := h.chatNotices(r, name, agentType, sessionID, workingDir)
+	trace.end("log_status")
+	messages = markCoralDeliveries(messages, agentType, sessionID, name) // the window: a delivery is used by one turn (#4306)
+	if key := r.URL.Query().Get("find_key"); key != "" {
+		writeKeyLookup(w, r.Context(), messageKeySecretFor(h.cfg), tv, key) // Save for Later: is that message still in the transcript, and where (#4510)
+		return
+	}
+	if after > 0 {
+		messages = chatSlice(r.Context(), tv, messages, after, total)
+	}
+	messages = emptyIfNil(messages)
+
+	if after == 0 {
+		page, start, err := h.chatHistoryPage(r, tv, messages, total)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		reply := map[string]any{
+			"messages":     page,
+			"total":        total,
+			"start":        start,
+			"has_more":     start > 0,
+			"limit_notice": limitNotice,
+			"needs_login":  needsLogin,
+			"login_reason": nilIf(!needsLogin || loginReason == "", loginReason),
+		}
+		h.addNeedsInput(r, reply, name, agentType, sessionID)
+		httputil.WriteJSONCompressed(w, r, http.StatusOK, reply)
+		return
+	}
+
+	reply := map[string]any{"messages": withKeys(messageKeySecretFor(h.cfg), messages), "total": total, "limit_notice": limitNotice,
+		"needs_login": needsLogin, "login_reason": nilIf(!needsLogin || loginReason == "", loginReason)}
+	h.addNeedsInput(r, reply, name, agentType, sessionID)
+	writeJSON(w, http.StatusOK, reply)
+}
+
+// chatTarget is the session a chat request reads: the name its prompt, login and screen reads go by, its agent
+// type, id, working directory and resume lineage, and where its metadata came from (for the trace).
+type chatTarget struct {
+	name, agentType, sessionID, workingDir string
+	resumeFromID                           string
+	metaCache                              string // not_needed; hit: from memory; miss: read from the sessions DB (#3438)
+}
+
+// resolveChatTarget completes the request's metadata. Missing fields come from memory when they were read recently
+// (#3438: a chat through Coral Hub always lacks the working directory, and the sessions DB has one connection shared
+// with every background writer), else from the live session by id or name, else from the first live session with
+// that name (cached under the name only when one session has it). A request with all of it still loads the resume
+// lineage. A request naming the session by its id is answered as the one with the agent's own name.
+func (h *SessionsHandler) resolveChatTarget(r *http.Request, name, agentType, sessionID, workingDir string) chatTarget {
 	var resumeFromID, agentName string
 	var resumeLookupDone bool
-	metaCache := "not_needed" // hit: from memory; miss: read from the sessions DB (#3438)
-	trace.begin("metadata_lookup")
+	metaCache := "not_needed"
 
-	// If missing metadata, attempt lookup by session_id or name: from memory when it was
-	// read recently (#3438: a chat through Coral Hub always lacks the working directory,
-	// and the sessions DB has one connection shared with every background writer).
 	if agentType == "" || workingDir == "" || sessionID == "" {
 		targetID := sessionID
 		if targetID == "" {
@@ -258,21 +326,25 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		if targetID == "" {
 			targetID = name
 		}
-		if ls, err := h.ss.GetLiveSession(r.Context(), targetID); err == nil && ls != nil {
-			h.chatMeta.put(chatMeta{agentType: ls.AgentType, workingDir: ls.WorkingDir, sessionID: ls.SessionID, resumeFromID: ptr.Value(ls.ResumeFromID), agentName: ls.AgentName}, targetID, ls.SessionID)
-			agentName = ls.AgentName
+		// fill takes what a live session row has for the fields still missing, and remembers it under keys.
+		fill := func(s store.LiveSession, keys ...string) {
+			h.chatMeta.put(chatMeta{agentType: s.AgentType, workingDir: s.WorkingDir, sessionID: s.SessionID, resumeFromID: ptr.Value(s.ResumeFromID), agentName: s.AgentName}, keys...)
+			agentName = s.AgentName
 			resumeLookupDone = true
-			resumeFromID = ptr.Value(ls.ResumeFromID)
-			h.rememberResumeFromID(ls.SessionID, resumeFromID)
-			if agentType == "" && ls.AgentType != "" {
-				agentType = ls.AgentType
+			resumeFromID = ptr.Value(s.ResumeFromID)
+			h.rememberResumeFromID(s.SessionID, resumeFromID)
+			if agentType == "" && s.AgentType != "" {
+				agentType = s.AgentType
 			}
-			if workingDir == "" && ls.WorkingDir != "" {
-				workingDir = ls.WorkingDir
+			if workingDir == "" && s.WorkingDir != "" {
+				workingDir = s.WorkingDir
 			}
 			if sessionID == "" {
-				sessionID = ls.SessionID
+				sessionID = s.SessionID
 			}
+		}
+		if ls, err := h.ss.GetLiveSession(r.Context(), targetID); err == nil && ls != nil {
+			fill(*ls, targetID, ls.SessionID)
 		} else if all, err := h.ss.GetAllLiveSessions(r.Context()); err == nil {
 			matches := 0
 			for _, s := range all {
@@ -289,20 +361,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 					if matches == 1 {
 						keys = append(keys, name)
 					}
-					h.chatMeta.put(chatMeta{agentType: s.AgentType, workingDir: s.WorkingDir, sessionID: s.SessionID, resumeFromID: ptr.Value(s.ResumeFromID), agentName: s.AgentName}, keys...)
-					agentName = s.AgentName
-					resumeLookupDone = true
-					resumeFromID = ptr.Value(s.ResumeFromID)
-					h.rememberResumeFromID(s.SessionID, resumeFromID)
-					if agentType == "" && s.AgentType != "" {
-						agentType = s.AgentType
-					}
-					if workingDir == "" && s.WorkingDir != "" {
-						workingDir = s.WorkingDir
-					}
-					if sessionID == "" {
-						sessionID = s.SessionID
-					}
+					fill(s, keys...)
 					break
 				}
 			}
@@ -319,119 +378,76 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	if sessionID != "" && name == sessionID && agentName != "" {
 		name = agentName
 	}
-	trace.endPool("metadata_lookup", h.db, "meta_cache", metaCache)
-
 	if agentType == "" {
 		agentType = at.Claude
 	}
+	return chatTarget{name: name, agentType: agentType, sessionID: sessionID, workingDir: workingDir, resumeFromID: resumeFromID, metaCache: metaCache}
+}
 
-	// Use session_id if provided, otherwise use name as session_id
-	id := sessionID
-	if id == "" {
-		id = name
+// readChatTranscript reads the transcript of the session id names. Live requests carry an exact session ID.
+// Antigravity's native conversation IDs can also be UUIDs, so strict marker validation belongs only on this
+// explicit live-session path, not generic history browsing. The reader keeps a session's newest messages (its
+// window) and counts the rest: every index is the message's number in the whole transcript, and a page that reaches
+// before the window is read from the file (#4620).
+func (h *SessionsHandler) readChatTranscript(ctx context.Context, id string, t chatTarget) *jsonl.Transcript {
+	if t.sessionID == "" {
+		return h.jsonl.ReadTranscriptContext(ctx, id, t.workingDir, t.agentType)
 	}
+	if t.resumeFromID != "" {
+		return h.jsonl.ReadTranscriptForLiveWithLineageContext(ctx, id, t.workingDir, t.agentType, t.resumeFromID)
+	}
+	return h.jsonl.ReadTranscriptForLiveContext(ctx, id, t.workingDir, t.agentType)
+}
 
-	// When after=0, the client wants the full conversation history (e.g. after
-	// switching to the Chat tab). Return all accumulated messages, not just new ones.
-	// Supports pagination: ?after=0&limit=100&offset=0 returns the last 100 messages.
-	// Otherwise return messages[after:]. The reader's cache is shared by every
-	// client, so "new since the last read" would split new messages between
-	// windows polling the same session; each client's own count is used instead.
-	after, _ := strconv.Atoi(r.URL.Query().Get("after"))
-	// Live requests carry an exact session ID. Antigravity's native
-	// conversation IDs can also be UUIDs, so strict marker validation belongs
-	// only on this explicit live-session path, not generic history browsing.
-	// The reader keeps a session's newest messages (its window) and counts the rest: every index
-	// here is the message's number in the whole transcript, and a page that reaches before the
-	// window is read from the file (#4620).
-	var tv *jsonl.Transcript
-	trace.begin("transcript_read")
-	if sessionID != "" {
-		if resumeFromID != "" {
-			tv = h.jsonl.ReadTranscriptForLiveWithLineageContext(r.Context(), id, workingDir, agentType, resumeFromID)
-		} else {
-			tv = h.jsonl.ReadTranscriptForLiveContext(r.Context(), id, workingDir, agentType)
-		}
-	} else {
-		tv = h.jsonl.ReadTranscriptContext(r.Context(), id, workingDir, agentType)
-	}
-	messages, total := tv.Window, tv.Total
-	trace.end("transcript_read", "messages", total)
-	trace.begin("log_status")
-	// Reuse the bounded log-status cache used by the live-session list. Chat
-	// polls run every second; reparsing the same 256KB log tail on each poll
-	// adds avoidable filesystem and parsing work when the log is unchanged.
-	// A pending sign-in is said by its own card; the limit notice only when there is none (#3830).
-	var needsLogin bool
-	var loginReason string
+// chatNotices are the chat's sign-in state (Claude's) and its usage-limit notice: a pending sign-in is said by its
+// own card, so the limit notice only when there is none (#3830). It reuses the bounded log-status cache used by the
+// live-session list: chat polls run every second, and reparsing the same 256KB log tail on each poll adds avoidable
+// filesystem and parsing work when the log is unchanged.
+func (h *SessionsHandler) chatNotices(r *http.Request, name, agentType, sessionID, workingDir string) (needsLogin bool, loginReason, limitNotice string) {
 	if agentType == at.Claude {
 		needsLogin, loginReason = h.claudeLoginState(name, sessionID, workingDir, func() []store.AgentEvent {
 			byID, _ := h.ts.GetSessionStateEvents(r.Context(), []string{sessionID})
 			return byID[sessionID]
 		})
 	}
-	limitNotice := ""
 	if !needsLogin {
 		limitNotice = h.usageLimitText(agentType, sessionID, workingDir, h.cachedLogStatus(h.findLogPath(agentType, sessionID)))
 	}
-	trace.end("log_status")
-	messages = markCoralDeliveries(messages, agentType, sessionID, name) // the window: a delivery is used by one turn (#4306)
-	if key := r.URL.Query().Get("find_key"); key != "" {
-		writeKeyLookup(w, r.Context(), messageKeySecretFor(h.cfg), tv, key) // Save for Later: is that message still in the transcript, and where (#4510)
-		return
-	}
-	if after > 0 {
-		messages = chatSlice(r.Context(), tv, messages, after, total)
-	}
-	messages = emptyIfNil(messages)
+	return needsLogin, loginReason, limitNotice
+}
 
-	// Pagination for full history: return the `limit` messages before a
-	// cursor. `before` is an absolute message index (exclusive), so an older
-	// page stays put while new messages are appended; pass the previous page's
-	// `start` to get the page above it. `offset` counts backwards from the
-	// current end and is kept for older clients, but it shifts whenever a
-	// message arrives between two pages. `start` is the absolute index of the
-	// first message returned. An empty transcript is a page too (start 0), and
-	// a bad before is refused whether or not there are messages.
-	if after == 0 {
-		// 100 by default, never more than 500 a page (#4602: a huge limit was the whole transcript, and a copy of it).
-		limit := clampLimit(queryInt(r, "limit", 100), 100, 500)
-		end := total
-		if raw := r.URL.Query().Get("before"); raw != "" {
-			before, err := strconv.Atoi(raw)
-			if err != nil || before < 0 {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "before must be a non-negative integer"})
-				return
-			}
-			end = min(before, end)
-		} else {
-			// offset=0 means the most recent messages; offset=100 means skip the last 100
-			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-			end = max(end-max(offset, 0), 0)
-		}
-		start := max(end-limit, 0)
-		page := withKeys(messageKeySecretFor(h.cfg), chatSlice(r.Context(), tv, messages, start, end)) // each message's stable key, for Save for Later (#4510)
-		if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
-			page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
-		}
-		reply := map[string]any{
-			"messages":     page,
-			"total":        total,
-			"start":        start,
-			"has_more":     start > 0,
-			"limit_notice": limitNotice,
-			"needs_login":  needsLogin,
-			"login_reason": nilIf(!needsLogin || loginReason == "", loginReason),
-		}
-		h.addNeedsInput(r, reply, name, agentType, sessionID)
-		httputil.WriteJSONCompressed(w, r, http.StatusOK, reply)
-		return
-	}
+// errChatBefore is a history page asked for before a bad index.
+var errChatBefore = errors.New("before must be a non-negative integer")
 
-	reply := map[string]any{"messages": withKeys(messageKeySecretFor(h.cfg), messages), "total": total, "limit_notice": limitNotice,
-		"needs_login": needsLogin, "login_reason": nilIf(!needsLogin || loginReason == "", loginReason)}
-	h.addNeedsInput(r, reply, name, agentType, sessionID)
-	writeJSON(w, http.StatusOK, reply)
+// chatHistoryPage is the page of full history a request asks for: the `limit` messages before a
+// cursor. `before` is an absolute message index (exclusive), so an older
+// page stays put while new messages are appended; pass the previous page's
+// `start` to get the page above it. `offset` counts backwards from the
+// current end and is kept for older clients, but it shifts whenever a
+// message arrives between two pages. `start` is the absolute index of the
+// first message returned. An empty transcript is a page too (start 0), and
+// a bad before is refused whether or not there are messages.
+func (h *SessionsHandler) chatHistoryPage(r *http.Request, tv *jsonl.Transcript, messages []map[string]any, total int) (page []map[string]any, start int, err error) {
+	// 100 by default, never more than 500 a page (#4602: a huge limit was the whole transcript, and a copy of it).
+	limit := clampLimit(queryInt(r, "limit", 100), 100, 500)
+	end := total
+	if raw := r.URL.Query().Get("before"); raw != "" {
+		before, err := strconv.Atoi(raw)
+		if err != nil || before < 0 {
+			return nil, 0, errChatBefore
+		}
+		end = min(before, end)
+	} else {
+		// offset=0 means the most recent messages; offset=100 means skip the last 100
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		end = max(end-max(offset, 0), 0)
+	}
+	start = max(end-limit, 0)
+	page = withKeys(messageKeySecretFor(h.cfg), chatSlice(r.Context(), tv, messages, start, end)) // each message's stable key, for Save for Later (#4510)
+	if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
+		page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
+	}
+	return page, start, nil
 }
 
 // Info returns enriched metadata for the session info modal.
