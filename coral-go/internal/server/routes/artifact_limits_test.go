@@ -251,6 +251,28 @@ func TestArtifactStoreCapAndDeleteFreesIt(t *testing.T) {
 	require.EqualValues(t, 1000, st["max_bytes"])
 }
 
+// #4602: with no limit set the store has one, 20 GiB: a new upload is refused at it (nothing is deleted), a duplicate is still free,
+// the refusal says how to raise it, and an explicit 0 turns the limit off.
+func TestArtifactStoreHasADefaultCap(t *testing.T) {
+	rig := newArtifactRig(t)
+	code, out := rig.upload("s1", "first.txt", "", strings.NewReader("first"))
+	require.Equal(t, http.StatusCreated, code, out)
+	st := storeFor(rig.coralDir)
+	b, _, max := st.size()
+	require.EqualValues(t, 20<<30, max, "nothing set: the default limit")
+	st.added(max - b) // the store is exactly at its limit
+	code, out = rig.upload("s1", "second.txt", "", strings.NewReader("second"))
+	require.Equal(t, http.StatusRequestEntityTooLarge, code, out)
+	require.Equal(t, "store", out["limit"])
+	require.Contains(t, out["message"], ArtifactStoreMaxBytesSetting, "the refusal names the setting that raises it")
+	code, _ = rig.upload("s1", "first-again.txt", "", strings.NewReader("first"))
+	require.Equal(t, http.StatusCreated, code, "bytes already stored are free at the limit")
+
+	require.NoError(t, rig.ss.SetSetting(context.Background(), ArtifactStoreMaxBytesSetting, "0"))
+	code, out = rig.upload("s1", "second.txt", "", strings.NewReader("second"))
+	require.Equal(t, http.StatusCreated, code, "0 is the Operator's no limit: %v", out)
+}
+
 func TestArtifactDeleteIsTheOperators(t *testing.T) {
 	rig := newArtifactRig(t)
 	data := []byte("delete me")

@@ -48,7 +48,12 @@ assert.deepEqual(changedSettings({ theme: 'dark', custom_theme: '' }, {}, 'dark'
 assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(GIB) }, { artifact_store_max_bytes: String(GIB) }), {});
 assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(GIB) }, { artifact_store_max_bytes: String(GIB + 12345) }), {});
 assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(2 * GIB) }, { artifact_store_max_bytes: String(GIB) }), { artifact_store_max_bytes: String(2 * GIB) });
-assert.deepEqual(changedSettings({ artifact_store_max_bytes: '0' }, {}), {});
+// Unset is the default 20 GiB, not no limit (#4602): the untouched field is unchanged, 0 is a real change from it, and so is any other size.
+assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(20 * GIB) }, {}), {});
+assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(20 * GIB) }, { artifact_store_max_bytes: '' }), {});
+assert.deepEqual(changedSettings({ artifact_store_max_bytes: '0' }, {}), { artifact_store_max_bytes: '0' }, '0 is a real change from the default');
+assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(50 * GIB) }, {}), { artifact_store_max_bytes: String(50 * GIB) });
+assert.deepEqual(changedSettings({ artifact_store_max_bytes: String(20 * GIB) }, { artifact_store_max_bytes: '0' }), { artifact_store_max_bytes: String(20 * GIB) }, 'from no limit back to 20 GiB is a change');
 // #4441: the received-files limit; unset is the default 2 GiB (not 0, which is no limit), so a field left alone writes nothing.
 assert.deepEqual(changedSettings({ received_artifacts_max_bytes: String(2 * GIB) }, {}), {});
 assert.deepEqual(changedSettings({ received_artifacts_max_bytes: String(5 * GIB) }, {}), { received_artifacts_max_bytes: String(5 * GIB) });

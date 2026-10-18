@@ -47,8 +47,10 @@ export function changedSettings(payload, baseline, themeValue, edited) {
         if (skip.has(k)) continue;
         if (force.has(k)) { out[k] = v; continue; }
         if (k === 'artifact_store_max_bytes') {
-            // The field shows whole GiB: a limit that is not a whole number of them is unchanged until it is edited.
-            if (Math.floor(Number(v) / GIB) === Math.floor(Number(baseline[k]) / GIB || 0)) continue;
+            // The field shows whole GiB: a limit that is not a whole number of them is unchanged until it is edited. Unset is the default 20 GiB
+            // (not 0, which is no limit, #4602): a field left alone must not turn the default into a saved value.
+            const was = baseline[k] === undefined || baseline[k] === '' ? 20 * GIB : Number(baseline[k]);
+            if (Math.floor(Number(v) / GIB) === Math.floor(was / GIB)) continue;
         } else if (k === 'received_artifacts_max_bytes') {
             // Same, but unset is the default 2 GiB (not 0, which is no limit): a field left alone must not turn the default into a saved value (#4441).
             const was = baseline[k] === undefined || baseline[k] === '' ? 2 * GIB : Number(baseline[k]);

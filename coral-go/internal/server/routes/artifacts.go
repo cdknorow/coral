@@ -76,8 +76,13 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	r.Get("/api/system/artifact-store", h.getArtifactStore)
 }
 
-// ArtifactStoreMaxBytesSetting caps the artifact store's size in bytes (#3553); 0 or unset is no cap.
+// ArtifactStoreMaxBytesSetting caps the artifact store's size in bytes (#3553). Unset (or blank) is the default,
+// defaultArtifactStoreMaxBytes (#4602: a store with no cap grows until the disk is full); a stored 0 is no cap, the Operator's choice.
 const ArtifactStoreMaxBytesSetting = "artifact_store_max_bytes"
+
+// defaultArtifactStoreMaxBytes is the cap when the Operator has set none: 20 GiB. Above it new uploads are refused, nothing is
+// deleted (#4602, the Orchestrator's decision 2); Settings > Storage shows the store from 80% of it.
+const defaultArtifactStoreMaxBytes int64 = 20 << 30
 
 // artifactStoreRefuse is the cap when the setting can't be read: one byte, so the store takes nothing new
 // rather than having no cap (#4432, Security's #4431 SHOULD 2).
@@ -90,6 +95,9 @@ func (h *SessionsHandler) artifactStoreMaxBytes() int64 {
 	s, err := h.ss.GetSettings(context.Background())
 	if err != nil {
 		return artifactStoreRefuse
+	}
+	if strings.TrimSpace(s[ArtifactStoreMaxBytesSetting]) == "" {
+		return defaultArtifactStoreMaxBytes
 	}
 	n, ok := parseStoreCap(s[ArtifactStoreMaxBytesSetting])
 	if !ok {
@@ -430,7 +438,7 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 	if errors.Is(err, errStoreFull) {
 		b, _, max := st.size()
 		artifactRefusal(w, http.StatusRequestEntityTooLarge, "artifact_quota", "store",
-			fmt.Sprintf("the artifact store is full (%s of %s): ask the Operator to delete old artifacts", humanBytes(b), humanBytes(max)))
+			fmt.Sprintf("the artifact store is full (%s of %s): ask the Operator to delete old artifacts or raise the limit (Settings > Storage; artifact_store_max_bytes, 0 for none)", humanBytes(b), humanBytes(max)))
 		return
 	}
 	if err != nil {

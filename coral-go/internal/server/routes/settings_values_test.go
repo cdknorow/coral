@@ -120,9 +120,12 @@ func TestReceivedCapSettings(t *testing.T) {
 func TestArtifactStoreCapReaderFailsClosed(t *testing.T) {
 	_, h, _, ss := setupSessionsTestServer(t)
 	ctx := t.Context()
+	assert.Equal(t, defaultArtifactStoreMaxBytes, h.artifactStoreMaxBytes(), "nothing set: the 20 GiB default (#4602), not no cap")
+	assert.EqualValues(t, 20<<30, defaultArtifactStoreMaxBytes)
 	for value, want := range map[string]int64{
-		"":                0,
-		"0":               0,
+		"":                defaultArtifactStoreMaxBytes, // blank is unset
+		"  ":              defaultArtifactStoreMaxBytes,
+		"0":               0, // the Operator's explicit no cap
 		"10737418240":     10737418240,
 		"1.073741824e+10": 10737418240, // as v1.4.80 and earlier stored 10 GiB
 		"lots":            artifactStoreRefuse,
