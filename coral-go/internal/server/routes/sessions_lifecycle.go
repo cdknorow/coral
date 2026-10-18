@@ -386,10 +386,7 @@ func (h *SessionsHandler) restartResolve(ctx context.Context, name string, req r
 	// Find the terminal before anything is touched.
 	if p.fresh != nil {
 		p.workdir = p.fresh.WorkingDir
-		p.usePTY = p.fresh.Backend != nil && *p.fresh.Backend == "pty" && h.backend != nil
-		if _, onPTY := h.backend.(*ptymanager.PTYBackend); onPTY {
-			p.usePTY = true // a pty Coral restarts every agent the pty way (#3634)
-		}
+		p.usePTY = h.restartsOnPTY(p.fresh)
 		return p, nil
 	}
 	pane, err := h.terminal.FindSession(ctx, name, p.agentType, req.SessionID)
@@ -400,7 +397,22 @@ func (h *SessionsHandler) restartResolve(ctx context.Context, name string, req r
 		return nil, func(w http.ResponseWriter) { errNotFound(w, "Pane not found") }
 	}
 	p.pane, p.workdir = pane, pane.CurrentPath
+	// A live agent restarts on the backend it runs on: a pty one in a new pty terminal (pty has no rename, and a
+	// tmux-style "<name>:0.0" target names no pty session, #4767).
+	p.usePTY = h.restartsOnPTY(p.stored)
 	return p, nil
+}
+
+// restartsOnPTY reports whether a restart runs the pty way: on a pty Coral every agent does (#3634); otherwise an
+// agent the store records as on the pty backend, when there is one.
+func (h *SessionsHandler) restartsOnPTY(ls *store.LiveSession) bool {
+	if h.backend == nil {
+		return false
+	}
+	if _, onPTY := h.backend.(*ptymanager.PTYBackend); onPTY {
+		return true
+	}
+	return ls != nil && ls.Backend != nil && *ls.Backend == "pty"
 }
 
 // restartSettings is what the agent starts with: the stored session's settings (its board and title from its
@@ -515,13 +527,20 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 	return cmd, nil
 }
 
-// restartTerminal gives the agent its terminal under the new session name: a fresh one, or the old pane respawned
-// and renamed, with its log started and (on tmux) its title set. It returns where the start command is typed.
+// restartTerminal gives the agent its terminal under the new session name: a fresh one (on pty also for a live
+// agent, whose terminal is ended first), or on tmux the old pane respawned and renamed, with its log started and its
+// title set. It returns where the start command is typed.
 func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (string, answer) {
 	fail := func(msg string) answer { return func(w http.ResponseWriter) { errInternalServer(w, msg) } }
 	var target string
-	if p.fresh != nil {
+	if p.fresh != nil || p.usePTY {
 		if p.usePTY {
+			if p.pane != nil {
+				// A live pty terminal: ended, and started again under the new name below (pty has no rename).
+				if err := h.backend.Kill(p.pane.SessionName); err != nil {
+					return "", fail(fmt.Sprintf("pty restart failed: %v", err))
+				}
+			}
 			if err := h.backend.Spawn(p.newSessionName, p.agentType, p.workdir, p.newSessionID, "", 200, 50); err != nil {
 				return "", fail(fmt.Sprintf("pty spawn failed: %v", err))
 			}
@@ -803,7 +822,25 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	target := fmt.Sprintf("%s:0.0", newSessionName)
-	if pane == nil {
+	switch {
+	case h.restartsOnPTY(ls):
+		// On pty, as Restart (#4767): a new pty terminal under the new name, a live one ended first (pty has no rename,
+		// and no pty session is named "<name>:0.0" or "<name>.0"); the start command goes to the session by name.
+		if pane != nil {
+			if err := h.backend.Kill(pane.SessionName); err != nil {
+				errInternalServer(w, fmt.Sprintf("pty resume failed: %v", err))
+				return
+			}
+		}
+		if err := h.backend.Spawn(newSessionName, agentType, workdir, newSessionID, "", 200, 50); err != nil {
+			errInternalServer(w, fmt.Sprintf("pty spawn failed: %v", err))
+			return
+		}
+		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
+			log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", newSessionName)
+		}
+		target = newSessionName
+	case pane == nil:
 		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
 		if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
 			errInternalServer(w, err.Error())
@@ -811,7 +848,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		}
 		target = newSessionName + ".0"
 		h.terminal.StartLogging(ctx, newSessionName, newLogPath)
-	} else {
+	default:
 		h.terminal.StopLogging(ctx, pane.Target)
 		h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath)
 		h.terminal.RenameSession(ctx, pane.SessionName, newSessionName)
