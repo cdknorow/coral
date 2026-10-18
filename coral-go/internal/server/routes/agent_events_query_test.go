@@ -155,3 +155,49 @@ func TestAgentEventsSearchThroughTheHubMatchesTheMarker(t *testing.T) {
 	code, _ = count("q="+tok, true)
 	assert.Equal(t, 400, code)
 }
+
+// #4745 (Security INFO): events are redacted when they are stored, so a tunneled search is safe today only because no raw token is in the table.
+// This row is put there by SQL, as an older version or a direct write could have left it: a tunneled q that is any slice of the token matches
+// nothing (the match is on what the viewer sees, the redaction marker), and the handler sets Shown itself rather than relying on the storage.
+func TestAgentEventsTunneledSearchNeverMatchesARawTokenInTheTable(t *testing.T) {
+	const tok = "ghp_aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
+	server, handler, _, _ := setupSessionsTestServer(t)
+	_, err := handler.db.ExecContext(context.Background(),
+		`INSERT INTO agent_events (agent_name, event_type, tool_name, summary, created_at) VALUES ('alpha', 'tool_use', 'Bash', ?, '2026-10-18T10:00:00.000000+00:00')`, "export TOKEN="+tok)
+	require.NoError(t, err)
+	get := func(q string, tunneled bool) (int, int) {
+		req, err := http.NewRequest("GET", server.URL+"/api/sessions/live/alpha/events?q="+url.QueryEscape(q), nil)
+		require.NoError(t, err)
+		if tunneled {
+			req.Header.Set(tunnel.ViaHeader, "1")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out evReply
+		b, _ := io.ReadAll(resp.Body)
+		_ = json.Unmarshal(b, &out)
+		return resp.StatusCode, out.Total
+	}
+	code, n := get("TOKEN=", false)
+	require.Equal(t, 200, code)
+	require.Equal(t, 1, n, "the row is there, and a local search finds it")
+	shown := strings.ToLower(shownText("export TOKEN="+tok) + " Bash tool_use alpha")
+	require.NotContains(t, shown, strings.ToLower(tok[:8]), "the shown text hides the token")
+	checked := 0
+	for i := 0; i < len(tok); i++ {
+		for j := i + 1; j <= len(tok); j++ {
+			if strings.Contains(shown, strings.ToLower(tok[i:j])) {
+				continue // a slice that is also visible text ("x" in "export") may match: it reveals nothing
+			}
+			code, n := get(tok[i:j], true)
+			checked++
+			assert.Zero(t, n, "slice %q matched through the tunnel", tok[i:j])
+			assert.Contains(t, []int{200, 400}, code)
+		}
+	}
+	assert.Greater(t, checked, 500)
+	code, n = get("TOKEN=", true)
+	assert.Equal(t, 200, code)
+	assert.Equal(t, 1, n, "the part of the summary the redaction leaves is still searchable")
+}
