@@ -1,5 +1,31 @@
 # Release Notes
 
+## v1.4.96 — History events search, a Servers search, agy waiting states, and faster boards with many agents
+
+### Changes
+
+- **A past session's Activity in History can be searched,** with the same event search as a live agent's: text, type, day range and order, paged.
+- **The Servers list has a search box from six machines up:** name, id or address, with the count.
+- **The Activity and History events panels have one Filters button:** the tool groups are checkboxes in its menu, two to a line. The old per-group counts and Toggle All are gone; Clear all resets the groups.
+- **Faster board status and board posts with many agents:** the first read of a Claude transcript starts at its end instead of decoding the whole file, and reading messages no longer waits behind a mention index being rebuilt.
+
+### Fixes
+
+- **An Antigravity (agy) agent waiting on a permission prompt or a question shows as waiting for input** in the live list, so the sidebar badge, the health check and the Inbox count it.
+- **Resume no longer types into a terminal it couldn't prepare:** a live tmux pane whose respawn or rename fails is refused instead of carried on. Resume also sets the tmux terminal's title, and a launch failure now reads "launch command failed: ...".
+- **Every search field trims what you type before it is sent,** so a pasted tab at either end no longer fails the search.
+
+### Security and privacy
+
+- **Only you can change an agent's display name, icon or name colour:** those routes refuse an agent's token, which could have set them on any session.
+- **The task, message, event, Saved and Team Artifacts searches refuse control characters** (C0, DEL and C1) in their text parameters, checked before trimming.
+
+### Other changes
+
+- **Searches of an agent's or a session's events through Coral Hub can no longer take a computer's CPU for seconds:** they count in the Hub's search pool; the plain Activity list is not counted.
+- **Simpler code, behaviour unchanged:** paged session lists, cross-team relays, Resume and agent history search are split into named steps, each compared with the old code; about 50 unused imports, unused functions, 40 needlessly exported names, dead CSS and the top bar's file search (hidden since April; the Files panel keeps its search) are removed from the dashboard.
+- **Tests and tools:** `tools/check-patch.sh` runs every check a patch needs before it is posted (formatting, vet, the whole test suite on both tag sets, the frontend checks, the route-query drift and a scan of the commits, including their author identity); several timing-sensitive tests now wait for what they check instead of a fixed time.
+
 ## v1.4.95 — Search everywhere, a faster Cost view, and pty restarts that keep the agent
 
 ### Changes
