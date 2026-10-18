@@ -195,7 +195,7 @@ function render() {
     // A long list pushes "Add server" screens below the fold: with many machines it sits above the list, beside how many answer.
     const many = remotes.length > 5;
     const online = remotes.filter(s => s.status === 'online').length;
-    const topBar = `<div class="servers-top"><span class="servers-summary" role="status">${remotes.length} servers, ${online} online${online < remotes.length ? `, ${remotes.length - online} not` : ''}</span><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>`;
+    const topBar = `<div class="servers-top"><span class="servers-summary">${remotes.length} servers, ${online} online${online < remotes.length ? `, ${remotes.length - online} not` : ''}</span><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>`;
     m.innerHTML = `<p class="servers-intro">Servers whose agents and teams appear in this hub. The hub stores each server's API key (encrypted); a key grants full control of that server.</p>
             ${_loadError ? `<div class="servers-form-error" role="alert">${escHtml(_loadError)}</div>` : ''}
             ${many && _editing === null ? topBar : ''}

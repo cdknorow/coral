@@ -49,6 +49,7 @@ const { connect } = require('./agent_view_harness');
         await ev(`window.__servers = ${JSON.stringify(servers(8))}; (async () => { const s = await import((window.__coralStatic || '/static/') + 'state.js'); s.state.servers = window.__servers; const t = await import((window.__coralStatic || '/static/') + 'servers_tab.js'); await t.showServersTabContent(); })(); true`);
         await waitFor(`!!document.querySelector('#server-row-m8')`, 'eight servers');
         assert.deepEqual(await where(), { above: true, n: 1, summary: '8 servers, 6 online, 2 not' }, 'eight machines: one button, above the list, with the count');
+        assert.equal(await ev(`document.querySelector('#servers-view .servers-summary').hasAttribute('role')`), false, 'the count is plain text: the list is rebuilt on every refresh, a live region would be read out each time');
         const top = await ev(`document.querySelector('#servers-view [data-action="add"]').getBoundingClientRect().top < innerHeight`);
         assert.equal(top, true, 'the button is on the first screen');
 
