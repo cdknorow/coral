@@ -823,9 +823,21 @@ func cmdPost() {
 	}
 	if id, ok := result["id"]; ok {
 		fmt.Printf("Message #%.0f posted to '%s'\n", id, st.Project)
+		printMentionWarnings(os.Stderr, result)
 	} else {
 		fmt.Fprintln(os.Stderr, "Error: Coral accepted the request but returned no message id")
 		os.Exit(1)
+	}
+}
+
+// printMentionWarnings prints what the server said about @mentions that name no member (#4583): the post went out, and a name that
+// does not exist is the likeliest reason nobody answers it.
+func printMentionWarnings(w io.Writer, result map[string]any) {
+	list, _ := result["warnings"].([]any)
+	for _, x := range list {
+		if text, ok := x.(string); ok && text != "" {
+			fmt.Fprintf(w, "Warning: %s\n", text)
+		}
 	}
 }
 

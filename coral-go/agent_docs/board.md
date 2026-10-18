@@ -200,6 +200,8 @@ Posts a message to a board. Optionally auto-subscribes the poster.
 | `target_group_id` | string\|null | No | Route message to a specific group |
 | `as` | string | No | Auto-subscribe poster with this job title |
 
+**Mentions of nobody:** a post that mentions a name no member of the board has (an `@Name` that is no subscriber's name or role, no spaceless form of one, and not `@all`, `@notify-all` or `@Operator`) is still posted; the reply also has `"warnings": ["no subscriber named 'DO Expert'; did you mean 'Digital Ocean Expert'?"]` (at most five, never when every mention is a member), and `coral-board post` prints each as `Warning: ...` on stderr. A mention at the start of the message (what `post --to` writes) is warned about with or without a close name; one in the middle of the text only when a member's name is close to it (an `@param` or `user@host` is not a mistake). The closest name is found by edit distance and by abbreviation ("DO Expert" for "Digital Ocean Expert"). A board with no members warns of nothing.
+
 **Terminal control:** `content` is stored without terminal control: escape sequences (colours, cursor moves, window titles, clipboard writes, OSC 8 links), other control characters, and the bidirectional and format characters that reorder or hide text (the Trojan-source overrides and isolates, the left/right marks, line and paragraph separators, and the byte-order mark) are removed, keeping newlines, tabs and the zero-width joiners emoji need; a post that is nothing else is refused (400 `content required`). `coral-board` and `coral-agent` also remove them from everything the server sends before printing it (task titles, a peeked screen); `--raw` prints the exact bytes.
 
 **Files in a message:** to show the user or a teammate a file (an image, screenshot, log or review artifact), upload it with `coral-agent artifact upload <file>` and put the returned `coral://artifacts/<hex>` link in `content`. Never post a bare local path (`/tmp/shot.png`): users often view Coral through Coral Hub, where it does not open, and other agents and other Corals can't reach it. See [Artifacts](artifacts.md#showing-the-user-a-file).
@@ -651,6 +653,27 @@ activity and not a mention. Limits, kept by the server: 3 automatic actions per 
 and 20 per board per hour; past the budget Coral posts "[Coral health actions paused]" once an
 hour and acts again next hour. The board setting `health_nudges` = `off` turns the nudges off
 (no dashboard switch yet).
+
+### The orchestrator's health check
+
+Every few minutes (the board's `health` settings: on, interval, recipient, all-clear line) Coral types a check to the orchestrator, or the recipient the team chose, alone, never as a board post. It is one line of at most 4096 bytes (a newline typed into a terminal would be an Enter), shown here as a list. It says what each agent is really doing, not how many posts there were:
+
+```
+[Coral health check] 08:05Z · 2 working · 8 WAITING · 4 asleep · 0 claimable tasks
+- Waiting on YOU (Orchestrator), 6: DevOps Engineer 19m, QA Engineer 12m, ...
+- Waiting on Security Reviewer, 2: Frontend Dev 37m, Lead Developer 17m (STALE: Security Reviewer has posted a message mentioning them since the wait started)
+- Asleep with unread tagged messages: Digital Ocean Expert (2 tagged since 07:23)
+- Needs you, 1: 1) Dev: silent on #12 for 34 min since Coral asked for a status. Suggest: check on it. [ack 3fa9c1d2]
+- Waiting on the operator: Orchestrator asked 50 min ago: ship v1.4.89 tonight?
+- Since 07:55: 3 tasks completed, 12 posts.
+```
+
+- **States**, from the agent's hook events and its session record (the recipient is left out): `working` (in a turn), `WAITING` (parked in `coral-board wait`), `at a prompt` (stopped for input), `idle` (awake, in no turn and no wait), `of unknown state` (no hook events), `asleep`, `offline` (a session with nothing running). The check says "All N awake agents are working. Nothing needs you." only when every awake agent is in a turn and nothing else needs the reader; post counts appear only as "Since HH:MM: N posts", never as "progressing".
+- **Waits** are grouped by who they wait on, the recipient's group first ("Waiting on YOU"), then the larger groups; each waiter is listed longest first with how long it has waited (at most eight, the rest counted). What a wait waits on is read from `coral-board wait`: `--from <name or role>` waits on that member, `--task N` on the task's owner, `--commit` on "a commit", no argument on "any board update"; an `--operator` question is listed with the operator's questions, not as a group. A wait is **STALE** when the party it waits on has posted a message tagging the waiter since the wait began and the waiter has not woken.
+- **Asleep with unread tagged messages**: a sleeping agent with messages tagged to it (its name or role) after the last one it read, how many and since when.
+- `claimable tasks` counts pending tasks nobody holds (not parked, not blocked).
+- The items that need the orchestrator's judgment (Coral's escalations, idle agents with nothing assigned, queue problems), each with its `[ack <id>]` (`coral-board health ack <id>`), the operator's questions and the parked count are as before. With the all-clear line off, the check is still sent whenever a wait, a prompt, an idle or unknown agent or a sleeper with tags unread is in it.
+- **Escalation, once per wait:** when an agent has waited on another member for more than 10 minutes, Coral posts that member one direct mention from "Coral Health Monitor" ("@Security Reviewer Lead Developer has waited 17 min on you ..."). It is recorded per wait (a restart never repeats it), counts against the health actions' per-agent and per-team limits (a refused one is tried again at the next scan), and is not sent for an operator wait, a commit or a name that is no member.
 
 
 Board-level task queue for coordinating work across agents. It shares its

@@ -1083,6 +1083,14 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	// Resolve any active registered waits for this message
 	h.goBG(func() { h.resolveMessageWaits(project, subscriberID, body.Content) })
 
+	// A mention that names no member is warned about, never refused (#4583): the post is already made.
+	if warnings := h.bs.MentionWarnings(r.Context(), project, body.Content); len(warnings) > 0 {
+		writeJSON(w, http.StatusOK, struct {
+			*board.Message
+			Warnings []string `json:"warnings"`
+		}{msg, warnings})
+		return
+	}
 	writeJSON(w, http.StatusOK, msg)
 }
 

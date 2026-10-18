@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -27,14 +28,15 @@ func healthMonitorStore(t *testing.T) *board.Store {
 // checkHarness is the orchestrator's check (#4175 step 2) over a real board store, with the
 // agents, their hook state and the gate faked.
 type checkHarness struct {
-	t      *testing.T
-	s      *board.Store
-	m      *BoardHealthMonitor
-	now    time.Time
-	agents []AgentInfo
-	sig    map[string]agentSignal
-	mu     sync.Mutex
-	sent   map[string][]string // agent display name -> texts typed to it
+	t        *testing.T
+	s        *board.Store
+	m        *BoardHealthMonitor
+	now      time.Time
+	agents   []AgentInfo
+	sig      map[string]agentSignal
+	mu       sync.Mutex
+	sent     map[string][]string // agent display name -> texts typed to it
+	sessions *sqlx.DB            // the sessions database the store reads, when a test needs one
 }
 
 func newCheckHarness(t *testing.T) *checkHarness {
@@ -86,7 +88,7 @@ func TestCheckGoesToTheOrchestratorOnly(t *testing.T) {
 	require.NoError(t, err)
 	before := len(msgs)
 	out := h.checkTo("Orchestrator")
-	assert.Equal(t, "[Coral health check] Nothing needs you; no progress since the last check ("+h.now.Add(-10*time.Minute).Format("15:04")+").", out)
+	assert.Equal(t, "[Coral health check] "+h.now.UTC().Format("15:04Z")+" · 1 working · 0 WAITING · 0 asleep · 0 claimable tasks • No progress since the last check ("+h.now.Add(-10*time.Minute).Format("15:04")+"). • The 1 awake agent is working. Nothing needs you.", out)
 	h.mu.Lock()
 	assert.Empty(t, h.sent["Dev"], "nobody else gets it")
 	h.mu.Unlock()

@@ -103,6 +103,8 @@ func (m *BoardHealthMonitor) checkProject(ctx context.Context, project string, b
 	if !hs.On {
 		return
 	}
+	// A long wait is escalated to who it waits on at every scan, not only when the check goes out (#4583).
+	m.escalateWaits(ctx, project)
 	m.mu.Lock()
 	last, checked := m.lastCheck[project]
 	m.mu.Unlock()
@@ -131,7 +133,7 @@ func (m *BoardHealthMonitor) checkProject(ctx context.Context, project string, b
 	if !live {
 		return
 	}
-	text, items, err := m.composeCheck(ctx, project, orch, bySession)
+	text, items, err := m.composeCheck(ctx, project, orch, rcptSub, bySession)
 	if err != nil || (items == 0 && !hs.AllClear) {
 		return
 	}
@@ -145,7 +147,7 @@ func (m *BoardHealthMonitor) checkProject(ctx context.Context, project string, b
 }
 
 // composeCheck gathers a board's items and writes its check.
-func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch string, bySession map[string]AgentInfo) (string, int, error) {
+func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch string, rcpt *board.Subscriber, bySession map[string]AgentInfo) (string, int, error) {
 	now := m.now()
 	subs, err := m.store.ListSubscribers(ctx, project)
 	if err != nil {
@@ -309,9 +311,10 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 				Text: teamhealth.ShownText(q.Reason, nil), Since: at})
 		}
 	}
+	roster, attention := m.buildRoster(ctx, rosterInputs{project: project, recipient: rcpt, subs: subs, bySession: bySession, waits: waits, tasks: tasks, now: now})
 	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items, Questions: questions,
 		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts},
-		Parked:   len(parked), BackFromPark: backFromPark}), len(items), nil
+		Parked:   len(parked), BackFromPark: backFromPark, Roster: roster}), len(items) + attention, nil
 }
 
 func taskList(ids []int64) string {

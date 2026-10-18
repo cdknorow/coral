@@ -70,6 +70,9 @@ type CheckInput struct {
 	// aside, and names, once, a task whose park ended by itself (#4175 step 3, Security's SHOULD).
 	Parked       int
 	BackFromPark []int64
+	// Roster, when set, is what the agents are doing and who waits on whom (#4583): the check is then the roster's header and list, and
+	// never says "progressing" from post volume. Without it the check is the earlier one.
+	Roster *Roster
 }
 
 // parkedNote is the team line's note on parked tasks, or "".
@@ -93,6 +96,9 @@ func parkedNote(in CheckInput) string {
 
 // Compose writes the check.
 func Compose(in CheckInput) string {
+	if in.Roster != nil {
+		return composeRoster(in)
+	}
 	since := in.Progress.Since.Format("15:04")
 	team := fmt.Sprintf("Since %s: %s.", since, progressPhrase(in.Progress))
 	if in.Progress.Completed+in.Progress.Reviewed+in.Progress.Posts == 0 {
@@ -108,37 +114,10 @@ func Compose(in CheckInput) string {
 	}
 	items := append([]Item(nil), in.Items...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Rank < items[j].Rank })
-	var itemLines []string
-	for i, it := range items {
-		l := fmt.Sprintf("%d) %s: %s.", i+1, it.Agent, it.Problem)
-		if it.Evidence != "" {
-			l += " " + it.Evidence + "."
-		}
-		if it.Said != "" {
-			l += " Last said, " + it.Said
-		}
-		if it.Suggest != "" {
-			l += " Suggest: " + it.Suggest + "."
-		}
-		if it.Back {
-			l += " (back: changed since it was acknowledged)"
-		}
-		if it.Key != "" {
-			l += " [ack " + ItemID(it.Key) + "]"
-		}
-		itemLines = append(itemLines, l)
-	}
+	itemLines := itemTexts(items)
 	qLine := ""
 	if len(in.Questions) > 0 {
-		var qs []string
-		for i, q := range in.Questions {
-			if i == MaxQuestions {
-				qs = append(qs, fmt.Sprintf("(%d more)", len(in.Questions)-MaxQuestions))
-				break
-			}
-			qs = append(qs, fmt.Sprintf("%s asked %s ago: %s", q.Asker, age(in.Now.Sub(q.Since)), q.Text))
-		}
-		qLine = "Waiting on the operator: " + strings.Join(qs, "; ") + "."
+		qLine = questionsLine(in)
 	}
 	head := fmt.Sprintf("[Coral health check] %d need you:", len(items))
 	if len(items) == 0 {
@@ -201,3 +180,41 @@ func age(d time.Duration) string {
 
 // Age is age, for the rules that build items.
 func Age(d time.Duration) string { return age(d) }
+
+// itemTexts is each item as the check says it, numbered; an item the orchestrator can acknowledge ends with its id.
+func itemTexts(items []Item) []string {
+	var itemLines []string
+	for i, it := range items {
+		l := fmt.Sprintf("%d) %s: %s.", i+1, it.Agent, it.Problem)
+		if it.Evidence != "" {
+			l += " " + it.Evidence + "."
+		}
+		if it.Said != "" {
+			l += " Last said, " + it.Said
+		}
+		if it.Suggest != "" {
+			l += " Suggest: " + it.Suggest + "."
+		}
+		if it.Back {
+			l += " (back: changed since it was acknowledged)"
+		}
+		if it.Key != "" {
+			l += " [ack " + ItemID(it.Key) + "]"
+		}
+		itemLines = append(itemLines, l)
+	}
+	return itemLines
+}
+
+// questionsLine lists the questions waiting on the operator, oldest first, and counts the rest.
+func questionsLine(in CheckInput) string {
+	var qs []string
+	for i, q := range in.Questions {
+		if i == MaxQuestions {
+			qs = append(qs, fmt.Sprintf("(%d more)", len(in.Questions)-MaxQuestions))
+			break
+		}
+		qs = append(qs, fmt.Sprintf("%s asked %s ago: %s", q.Asker, age(in.Now.Sub(q.Since)), q.Text))
+	}
+	return "Waiting on the operator: " + strings.Join(qs, "; ") + "."
+}
