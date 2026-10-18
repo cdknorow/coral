@@ -657,6 +657,16 @@ document.addEventListener('keydown', e => {
     if (to >= 0 && items.length) { e.preventDefault(); items[to].focus(); }
 }, true);
 
+// Tab (or Shift+Tab) out of an open menu closes it: the focus has left the button and its menu, and nothing is left open behind it.
+document.addEventListener('focusout', e => {
+    const wrap = e.target.closest?.('.sidebar-kebab-wrapper');
+    if (!wrap || !document.hasFocus()) return;
+    const to = e.relatedTarget;
+    if (to && wrap.contains(to)) return;
+    const menu = wrap.querySelector('.sidebar-kebab-menu');
+    if (menu && menu.style.display !== 'none') closeSidebarKebabs();
+});
+
 function toggleSidebarKebab(btn, event) {
     const menu = btn.nextElementSibling;
     const wasOpen = menu.style.display !== 'none';

@@ -80,6 +80,14 @@ export function openRowMenu(btn, menu) {
     return true;
 }
 
+/** A DOM id for a row's or group's menu, so its button can say aria-controls (#4621): the same on every render and different for every key (a short hash with the key's letters). */
+export function kebabId(kind, key) {
+    const k = String(key);
+    let h = 5381;
+    for (const c of k) h = ((h * 33) ^ c.codePointAt(0)) >>> 0;
+    return `kebab-${kind}-${k.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24)}-${h.toString(36)}`;
+}
+
 const LABEL_TAIL = 7, LABEL_SPLIT_OVER = 16;
 /** [head, tail] for a name longer than 16 characters (the tail is its last 7, never in the middle of a character), else [name, '']. */
 export function splitLabel(name) {
@@ -297,9 +305,10 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
     const kebabMenuContent = isDone ? _doneMenu : (s.archived ? _archivedMenu : (s.sleeping ? _sleepingMenu : _awakeMenu));
     // The menu's items (about 50 elements a row) are drawn when it opens (#4611): the row holds an empty menu and this module the text for it.
     rememberRowMenu(s, kebabMenuContent);
+    const rowMenuId = kebabId('agent', rowMenuKey(s.session_id, sessionServer(s), s.name));
     const kebabMenu = `<div class="sidebar-kebab-wrapper">
-        <button class="sidebar-kebab-btn" data-on-click="kebab-toggle" title="More actions" aria-label="More actions for ${escapeAttr(identity)}" aria-haspopup="menu" aria-expanded="false">&#x22EE;</button>
-        <div class="sidebar-kebab-menu" style="display:none" data-lazy-menu="1" role="menu" aria-label="Actions for ${escapeAttr(identity)}"></div>
+        <button class="sidebar-kebab-btn" data-on-click="kebab-toggle" title="More actions" aria-label="More actions for ${escapeAttr(identity)}" aria-haspopup="menu" aria-expanded="false" aria-controls="${escapeAttr(rowMenuId)}">&#x22EE;</button>
+        <div class="sidebar-kebab-menu" id="${escapeAttr(rowMenuId)}" style="display:none" data-lazy-menu="1" role="menu" aria-label="Actions for ${escapeAttr(identity)}"></div>
     </div>`;
     const compactClass = isCompact ? ' session-compact' : '';
     const collapsedClass = collapsed ? ' group-collapsed' : '';

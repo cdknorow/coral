@@ -14,7 +14,7 @@ const { connect } = require('./agent_view_harness');
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     const { Input } = client;
     const sleep = ms => new Promise(r => setTimeout(r, ms));
-    const key = async (k, code) => { const base = { key: k, code: k === ' ' ? 'Space' : k, windowsVirtualKeyCode: code }; await Input.dispatchKeyEvent({ type: 'keyDown', ...base, ...(k === ' ' ? { text: ' ' } : k === 'Enter' ? { text: '\r' } : {}) }); await Input.dispatchKeyEvent({ type: 'keyUp', ...base }); };
+    const key = async (k, code, shift = false) => { const base = { key: k, code: k === ' ' ? 'Space' : k, windowsVirtualKeyCode: code, modifiers: shift ? 8 : 0 }; await Input.dispatchKeyEvent({ type: 'keyDown', ...base, ...(k === ' ' ? { text: ' ' } : k === 'Enter' ? { text: '\r' } : {}) }); await Input.dispatchKeyEvent({ type: 'keyUp', ...base }); };
     const load = async (w, h, mobile = false) => {
         await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
@@ -110,6 +110,18 @@ const { connect } = require('./agent_view_harness');
         await key('Escape', 27); w = await where();
         assert.ok(w.onButton && !w.shown && w.expanded === 'false', 'Escape closes it with the focus on the button: ' + JSON.stringify(w));
         await key(' ', 32); await waitFor(`document.activeElement.closest('.sidebar-kebab-menu') !== null`, 'Space opens it too', 4000);
+        const ctl = await ev(`(() => { const b = ${BTN}; const id = b.getAttribute('aria-controls'); const m = document.getElementById(id); return { id, owns: !!m && m === b.nextElementSibling, unique: document.querySelectorAll('[id="' + id + '"]').length, allDistinct: new Set([...document.querySelectorAll('#live-sessions-list .sidebar-kebab-btn')].map(x => x.getAttribute('aria-controls'))).size === document.querySelectorAll('#live-sessions-list .sidebar-kebab-btn').length }; })()`);
+        assert.ok(ctl.id && ctl.owns && ctl.unique === 1 && ctl.allDistinct, 'aria-controls names the button\'s own menu, by a unique id: ' + JSON.stringify(ctl));
+        // Tab out of the last item closes the menu; Shift+Tab from the first item goes back to the button.
+        await key('End', 35); await key('Tab', 9);
+        await waitFor(`${BTN}.getAttribute('aria-expanded') === 'false' && getComputedStyle(${BTN}.nextElementSibling).display === 'none'`, 'Tab out of the last item closes the menu', 4000);
+        assert.equal(await ev(`!!document.activeElement.closest('.sidebar-kebab-menu')`), false, 'and the focus is not in a hidden menu');
+        await ev(`${BTN}.focus(); true`); await key('Enter', 13);
+        await waitFor(`document.activeElement.closest('.sidebar-kebab-menu') !== null`, 'Enter opens it again', 4000);
+        await key('Tab', 9, true);
+        await waitFor(`document.activeElement === ${BTN}`, 'Shift+Tab from the first item goes back to the button (the menu stays open beside it)', 4000);
+        await key('Escape', 27); assert.equal(await ev(`${BTN}.getAttribute('aria-expanded')`), 'false', 'Escape on the button closes it');
+        await ev(`${BTN}.focus(); true`); await key(' ', 32); await waitFor(`document.activeElement.closest('.sidebar-kebab-menu') !== null`, 'Space opens it for the redraw check', 4000);
         // A redraw of the list while it is open (the feed): the focus lands on the button, not the row.
         await ev(`(() => { const s = T.state.liveSessions[0]; s.summary = 'changed while the menu is open'; s.status = 'working'; s.staleness_seconds = 99; T.render.renderLiveSessions(T.state.liveSessions); return true; })()`);
         await sleep(300); // sleep-ok: the redraw is scheduled on a frame; there is no completion event
