@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.4.98 — Tag colours checked on both sides, colours that meet AA, and focus that survives a redraw
+
+### Security
+
+- **A tag's colour is only ever a hex colour:** the server refuses a tag colour that is not `#rgb`, `#rrggbb` or `#rrggbbaa` (400 "color must be #rgb, #rrggbb or #rrggbbaa"), from the API, and in the store the scheduler uses, and the dashboard draws only such a colour, falling back to the default blue, so a colour like `red;position:fixed;inset:0` can no longer restyle the page, including from a tag stored before this release. An empty colour still means the default.
+
+### Changes
+
+- **Colours that meet AA in both themes:** placeholders use the muted text colour instead of the browser's own grey; the warning amber, a chip's ×, the Critical priority and red on its own tint are darker or lighter where they missed 4.5:1; blue text on a light tint (the History tab strip's open tab, a phone's Working chip) uses the deeper accent; a phone's side panel shows its open tab's icon; and the browser's own controls follow the light or dark theme.
+- **Keyboard focus stays put through a background refresh:** the sidebar's team button, the lists that refresh in place and the Servers lists keep focus on the control you were on.
+- **The Tasks table no longer cuts off Cost and Created** in a narrow dock: it wraps below 790 px instead of scrolling sideways.
+- **Docs:** the Inbox tab, Saved for later following the page you are on, and the search bar every list shares.
+
+### Other changes
+
+- **Simpler code, behaviour unchanged:** the Codex agent's launch command is built in separate steps, compared with the old code by a test.
+- **Tests and CI:** the browser gate fails a suite that leaves the server's settings changed, and the 16 suites that did now put them back; a census checks that every server test closes its board store; a test checks that a cursor's summary shares no memory with its message; several flaky browser and terminal tests wait for what they check instead of for a fixed time.
+
 ## v1.4.97 — An Inbox on every Coral, Saved for later by agent or team, and a label-escaping sweep
 
 ### Changes
