@@ -358,7 +358,10 @@ func (t *TmuxSessionTerminal) AgentScreenStyled(ctx context.Context, name, agent
 
 // AgentScreen implements ScreenReader for the PTY backend: the end of the
 // session's output.
-func (p *PTYSessionTerminal) AgentScreen(_ context.Context, name, _, sessionID string) (string, error) {
+func (p *PTYSessionTerminal) AgentScreen(ctx context.Context, name, agentType, sessionID string) (string, error) {
+	if rendered, err := p.RenderedScreen(ctx, name, agentType, sessionID); err == nil && rendered != "" {
+		return rendered, nil
+	}
 	key, err := p.keyFor(name, sessionID)
 	if err != nil {
 		return "", err

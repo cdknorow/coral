@@ -170,3 +170,135 @@ func TestAnswerPrompt_AgyPermissionMenu142(t *testing.T) {
 	_, still := parsePromptScreen(agyMenu(t, "perm142_after.txt"))
 	assert.False(t, still, "the menu is gone")
 }
+
+func TestParseAgyPermissionMenu_WrappedLines(t *testing.T) {
+	const wrappedScreen = `Command
+────────────────────────────────────────────────────────────────────────────────
+
+Requesting permission for:
+   printf 'INITIAL_BOOT\n'
+
+Run this command?
+> 1. Yes, run command
+  2. Yes, and always allow in this conversation for commands that start with
+'printf'
+  3. Yes, and always allow for commands that start with 'printf' (Persist to
+settings.json)
+  4. No, cancel
+
+   ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command
+esc to cancel                                            Gemini 3.8 Flash · high
+`
+	s, ok := parsePromptScreen(wrappedScreen)
+	require.True(t, ok, "wrapped agy permission menu should parse as a prompt")
+	assert.Equal(t, "Run this command?", s.Question)
+	require.Len(t, s.Options, 4)
+	assert.Equal(t, "Yes, run command", s.Options[0].Label)
+	assert.True(t, s.Options[0].Selected)
+	assert.False(t, s.Options[0].Wrapped)
+	assert.True(t, s.Options[1].Wrapped)
+	assert.True(t, s.Options[2].Wrapped)
+	assert.False(t, s.Options[3].Wrapped)
+	assert.Equal(t, "No, cancel", s.Options[3].Label)
+
+	dec := classifyApproval("agy", wrappedScreen)
+	assert.True(t, dec.Prompt)
+	assert.True(t, dec.Approve)
+	assert.Equal(t, 1, dec.N)
+	assert.Equal(t, "Yes, run command", dec.Label)
+}
+
+func TestParseAgyPermissionMenu_WrappedOptionRefused(t *testing.T) {
+	const screen = `Command
+────────────────────────────────────────────────────────────────────────────────
+
+Requesting permission for:
+   rm -rf something
+
+Run this command?
+  > 1. Yes, and always allow for commands that start with 'rm'
+    2. Yes, run command
+  and remember it
+    3. No, cancel
+
+   ↑/↓ Navigate · tab Amend
+esc to cancel                                            Gemini 3.8 Flash · high
+`
+	s, ok := parsePromptScreen(screen)
+	require.True(t, ok)
+	require.Len(t, s.Options, 3)
+	assert.False(t, s.Options[0].Wrapped)
+	assert.True(t, s.Options[1].Wrapped)
+	assert.False(t, s.Options[2].Wrapped)
+
+	dec := classifyApproval("agy", screen)
+	assert.True(t, dec.Prompt)
+	assert.False(t, dec.Approve, "wrapped option 2 should not be approved")
+}
+
+func TestParseAgyPermissionMenu_WrappedSlot1Refused(t *testing.T) {
+	const screen = `Command
+────────────────────────────────────────────────────────────────────────────────
+
+Requesting permission for:
+   something
+
+Run this command?
+  > 1. Yes, run command
+  and remember it
+    2. No, cancel
+
+   ↑/↓ Navigate · tab Amend
+esc to cancel                                            Gemini 3.8 Flash · high
+`
+	s, ok := parsePromptScreen(screen)
+	require.True(t, ok)
+	require.Len(t, s.Options, 2)
+	assert.True(t, s.Options[0].Wrapped)
+	assert.False(t, s.Options[1].Wrapped)
+
+	dec := classifyApproval("agy", screen)
+	assert.True(t, dec.Prompt)
+	assert.False(t, dec.Approve, "wrapped option 1 should not be approved")
+}
+
+func TestParseAgyPermissionMenu_WrappedLastOptionRefused(t *testing.T) {
+	// Full screen with footer
+	const screen = `Command
+────────────────────────────────────────────────────────────────────────────────
+
+Requesting permission for:
+   something
+
+Run this command?
+> 1. No, cancel
+  2. Yes, run command
+  and remember it
+
+   ↑/↓ Navigate · tab Amend
+esc to cancel                                            Gemini 3.8 Flash · high
+`
+	s, ok := parsePromptScreen(screen)
+	require.True(t, ok)
+	require.Len(t, s.Options, 2)
+	assert.False(t, s.Options[0].Wrapped)
+	assert.True(t, s.Options[1].Wrapped)
+
+	dec := classifyApproval("agy", screen)
+	assert.True(t, dec.Prompt)
+	assert.False(t, dec.Approve, "wrapped option 2 should not be approved")
+
+	// Minimal screen: > 1. No, cancel \n 2. Yes, run command \n and remember it
+	const minimalScreen = "Run this command?\n> 1. No, cancel\n  2. Yes, run command\n  and remember it\n"
+	sMin, okMin := parsePromptScreen(minimalScreen)
+	require.True(t, okMin)
+	require.Len(t, sMin.Options, 2)
+	assert.False(t, sMin.Options[0].Wrapped)
+	assert.True(t, sMin.Options[1].Wrapped)
+
+	decMin := classifyApproval("agy", minimalScreen)
+	assert.True(t, decMin.Prompt)
+	assert.False(t, decMin.Approve, "wrapped option 2 on minimal screen should not be approved")
+}
+
+

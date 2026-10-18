@@ -40,6 +40,7 @@ type promptOption struct {
 	Label    string `json:"label"`
 	Selected bool   `json:"selected"`
 	Action   string `json:"action"`
+	Wrapped  bool   `json:"wrapped,omitempty"`
 }
 
 // One line of the "Review your answers" step of a multi-question dialog.
@@ -124,15 +125,41 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 	var opts []promptOption
 	question := ""
 	questionAt := -1
+	sawContinuation := false
+	for j := end + 1; j < len(lines); j++ {
+		t := strings.TrimSpace(lines[j])
+		if t == "" || separatorRe.MatchString(t) || menuFooterRe.MatchString(t) {
+			continue
+		}
+		sawContinuation = true
+		break
+	}
 	for i := end; i >= 0; i-- {
 		line := lines[i]
 		if m := promptOptionRe.FindStringSubmatch(line); m != nil && indentOf(line) < 5 {
 			n, _ := strconv.Atoi(m[2])
 			label := m[3]
-			opts = append([]promptOption{{N: n, Label: label, Selected: m[1] != "", Action: optionAction(label)}}, opts...)
+			opts = append([]promptOption{{
+				N:        n,
+				Label:    label,
+				Selected: m[1] != "",
+				Action:   optionAction(label),
+				Wrapped:  sawContinuation,
+			}}, opts...)
+			sawContinuation = false
 			continue
 		}
-		if strings.TrimSpace(line) == "" || separatorRe.MatchString(line) || indentOf(line) >= 5 {
+		if strings.TrimSpace(line) == "" || separatorRe.MatchString(line) {
+			continue
+		}
+		if indentOf(line) >= 5 {
+			sawContinuation = true
+			continue
+		}
+		if len(opts) > 0 && opts[0].N > 1 {
+			// Option 1 has not been reached yet: intervening lines between options
+			// (such as wrapped option lines on narrow terminals) cannot be the question.
+			sawContinuation = true
 			continue
 		}
 		// Codex's update menu puts a release-notes link between its

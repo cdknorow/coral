@@ -154,7 +154,7 @@ func classifyApproval(agentType, capture string) approvalDecision {
 			return false
 		}
 		for _, o := range screen.Options {
-			if o.Action == "select" && match(normalizedLabel(o.Label)) {
+			if o.Action == "select" && !o.Wrapped && match(normalizedLabel(o.Label)) {
 				d.N, d.Label, d.Approve = o.N, o.Label, true
 				return true
 			}
@@ -494,6 +494,12 @@ func (a *AutoAcceptor) capture(ctx context.Context, s store.AutoAcceptState) str
 	if !a.ownPane(ctx, s) {
 		return ""
 	}
+	if rs, ok := a.h.terminal.(ptymanager.RenderedScreenReader); ok {
+		text, err := rs.RenderedScreen(ctx, paneName(s), s.AgentType, s.SessionID)
+		if err == nil && text != "" {
+			return text
+		}
+	}
 	text, err := a.h.terminal.CaptureOutput(ctx, paneName(s), 80, s.AgentType, s.SessionID)
 	if err != nil {
 		return ""
@@ -692,7 +698,7 @@ func (h *SessionsHandler) autoAcceptTarget(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return nil
 	}
-	if ls == nil || (ls.AgentName != name && ls.SessionID != name) {
+	if ls == nil || (ls.AgentName != name && ls.SessionID != name && naming.SessionName(ls.AgentType, ls.SessionID) != name) {
 		errNotFound(w, "session not found")
 		return nil
 	}
