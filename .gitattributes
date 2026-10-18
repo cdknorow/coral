@@ -16,3 +16,13 @@ coral-go/pkg/tunnel/routes_query.go text eol=lf
 coral-go/internal/auth/testdata/*.html text eol=lf
 # The health check's adversarial fixture is checked byte for byte (TestAdversarialFixtureFileHasNoLiteralInvisibles): no CRLF on Windows checkouts (#4175).
 coral-go/internal/teamhealth/testdata/** -text
+# Terminal captures (screen text and raw PTY output) are read byte for byte. A Windows checkout turned their LF into
+# CRLF, and a test's end-of-line match then never fired (the input-gate oracles at v1.4.94, the third CRLF incident
+# after v1.4.87's docs and v1.4.89's git am). Every capture keeps its committed bytes on every platform.
+*.ansi -text
+*.raw -text
+coral-go/internal/ptymanager/testdata/** -text
+coral-go/internal/server/routes/testdata/auto_accept/** -text
+# Captured CLI output (agy and pi model lists, an agy step's output), parsed as the CLI printed it.
+coral-go/internal/agentmodels/testdata/** -text
+coral-go/cmd/coral-hook-agentic-state/testdata/** -text
