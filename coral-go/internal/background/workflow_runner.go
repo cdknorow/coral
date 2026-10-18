@@ -297,7 +297,8 @@ var (
 	afterKillCheck func(runID int64)
 )
 
-// executeRun is the main execution loop for a workflow run.
+// executeRun is the main execution loop for a workflow run: its definition read, its folder made, then each step
+// in turn, until one fails (unless it may), the run is cancelled (a kill or its time limit), or all are done.
 func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(workflow.MaxDurationS)*time.Second)
 	defer cancel()
@@ -314,37 +315,55 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 		wr.mu.Unlock()
 	}()
 
-	// Parse step definitions
-	var steps []StepDef
-	if err := json.Unmarshal([]byte(workflow.StepsJSON), &steps); err != nil {
-		errMsg := fmt.Sprintf("failed to parse steps: %v", err)
+	steps, defaultAgent, errMsg := parseRunDefinition(workflow)
+	if errMsg != "" {
 		wr.store.SetRunStatus(ctx, runID, "failed", &errMsg)
 		return
 	}
-
-	// Parse default agent config
-	var defaultAgent *AgentStepConfig
-	if workflow.DefaultAgentJSON != "" {
-		defaultAgent = &AgentStepConfig{}
-		if err := json.Unmarshal([]byte(workflow.DefaultAgentJSON), defaultAgent); err != nil {
-			errMsg := fmt.Sprintf("failed to parse default_agent: %v", err)
-			wr.store.SetRunStatus(ctx, runID, "failed", &errMsg)
+	rf, results, ok := wr.startRun(ctx, runID, workflow, steps)
+	if !ok {
+		return
+	}
+	defer rf.Close()
+	for i, step := range steps {
+		if ctx.Err() != nil {
+			wr.endCancelledRun(ctx, runID, i, results)
+			return
+		}
+		if !wr.runStep(ctx, runID, workflow, steps, i, step, rf, defaultAgent, results) {
 			return
 		}
 	}
+	// All steps completed — only set if not already killed
+	if !wr.isRunKilled(runID) {
+		wr.store.SetRunStatus(context.Background(), runID, "completed", nil)
+	}
+}
 
-	// Create the run folder, fresh, and hold it open: every step file is made and read
-	// through it, never by a path an earlier step could have planted a symlink on (#3587).
+// parseRunDefinition reads a workflow's steps and its default agent config; errMsg says what failed to parse.
+func parseRunDefinition(workflow *store.Workflow) (steps []StepDef, defaultAgent *AgentStepConfig, errMsg string) {
+	if err := json.Unmarshal([]byte(workflow.StepsJSON), &steps); err != nil {
+		return nil, nil, fmt.Sprintf("failed to parse steps: %v", err)
+	}
+	if workflow.DefaultAgentJSON != "" {
+		defaultAgent = &AgentStepConfig{}
+		if err := json.Unmarshal([]byte(workflow.DefaultAgentJSON), defaultAgent); err != nil {
+			return nil, nil, fmt.Sprintf("failed to parse default_agent: %v", err)
+		}
+	}
+	return steps, defaultAgent, ""
+}
+
+// startRun creates the run folder, fresh, and holds it open: every step file is made and read through it, never by
+// a path an earlier step could have planted a symlink on (#3587). It writes context.json, marks every step pending
+// and the run running. ok is false when the folder can't be made (the run is then failed).
+func (wr *WorkflowRunner) startRun(ctx context.Context, runID int64, workflow *store.Workflow, steps []StepDef) (*runFiles, []StepResult, bool) {
 	rf, err := openRunFolder(wr.dataDir, runID)
 	if err != nil {
 		errMsg := fmt.Sprintf("failed to create run directory: %v", err)
 		wr.store.SetRunStatus(ctx, runID, "failed", &errMsg)
-		return
+		return nil, nil, false
 	}
-	defer rf.Close()
-	runDir := rf.dir
-
-	// Write context.json
 	contextData, _ := json.MarshalIndent(map[string]interface{}{
 		"workflow_name": workflow.Name,
 		"workflow_id":   workflow.ID,
@@ -354,140 +373,116 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 	if err := rf.writeNew("context.json", contextData); err != nil {
 		slog.Warn("[workflow] context.json not written", "run", runID, "error", err)
 	}
-
-	// Initialize step results
 	results := make([]StepResult, len(steps))
 	for i, step := range steps {
-		results[i] = StepResult{
-			Index:  i,
-			Name:   step.Name,
-			Type:   step.Type,
-			Status: "pending",
-			Files:  []string{},
-		}
+		results[i] = StepResult{Index: i, Name: step.Name, Type: step.Type, Status: "pending", Files: []string{}}
 	}
-
-	// Mark run as running
 	wr.store.SetRunStatus(ctx, runID, "running", nil)
 	wr.persistResults(ctx, runID, 0, results)
+	return rf, results, true
+}
 
-	// Execute steps sequentially
-	for i, step := range steps {
-		// Check if context is cancelled (timeout or kill)
-		if ctx.Err() != nil {
-			// Mark remaining steps as skipped
-			for j := i; j < len(steps); j++ {
-				results[j].Status = "skipped"
-			}
-			wr.persistResults(context.Background(), runID, i, results)
+// endCancelledRun ends a run whose context ended before step i (a kill, or its time limit): the steps left are
+// skipped, and the run is killed (with "workflow timeout exceeded" when it ran out of time).
+func (wr *WorkflowRunner) endCancelledRun(ctx context.Context, runID int64, i int, results []StepResult) {
+	for j := i; j < len(results); j++ {
+		results[j].Status = "skipped"
+	}
+	wr.persistResults(context.Background(), runID, i, results)
+	var errMsg *string
+	if ctx.Err() == context.DeadlineExceeded {
+		msg := "workflow timeout exceeded"
+		errMsg = &msg
+	}
+	wr.store.SetRunStatus(context.Background(), runID, "killed", errMsg)
+}
 
-			status := "killed"
-			var errMsg *string
-			if ctx.Err() == context.DeadlineExceeded {
-				msg := "workflow timeout exceeded"
-				errMsg = &msg
-			}
-			wr.store.SetRunStatus(context.Background(), runID, status, errMsg)
-			return
-		}
+// failRemaining fails step i with the steps after it skipped, records them, and fails the run with errMsg.
+func (wr *WorkflowRunner) failRemaining(runID int64, i int, results []StepResult, errMsg string) {
+	for j := i + 1; j < len(results); j++ {
+		results[j].Status = "skipped"
+	}
+	wr.persistResults(context.Background(), runID, i, results)
+	wr.store.SetRunStatus(context.Background(), runID, "failed", &errMsg)
+}
 
-		// Create step directory: a new one (one an earlier step made fails this step).
-		sf, serr := rf.step(i)
-		stepDir := sf.dir
-		if serr != nil {
-			errMsg := fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, serr)
-			results[i].Status = "failed"
-			results[i].OutputTail = serr.Error()
-			for j := i + 1; j < len(steps); j++ {
-				results[j].Status = "skipped"
-			}
-			wr.persistResults(context.Background(), runID, i, results)
-			wr.store.SetRunStatus(context.Background(), runID, "failed", &errMsg)
-			return
-		}
-
-		// Build environment variables
-		env := wr.buildStepEnv(workflow, runID, runDir, i, stepDir, len(steps), steps)
-
-		// Connected Apps and workflow token injection are retired. Preserve the
-		// workflow JSON, but fail this legacy step before execution so it cannot
-		// silently run without the credentials it declared.
-		if len(step.Connections) > 0 {
-			err := fmt.Errorf("workflow step %q requires retired Connected Apps credentials; remove its connections before running", step.Name)
-			errMsg := err.Error()
-			wr.store.SetRunStatus(ctx, runID, "failed", &errMsg)
-			results[i].Status = "failed"
-			results[i].OutputTail = err.Error()
-			wr.persistResults(ctx, runID, i, results)
-			return
-		}
-
-		// Mark step as running
-		now := time.Now().UTC().Format(store.ISOFormat)
-		results[i].Status = "running"
-		results[i].StartedAt = &now
+// runStep runs step i in its own new folder (one an earlier step made fails it): marked running, executed by its
+// type, its files listed, its StepComplete or StepFailed hooks fired, and its result recorded. It reports whether
+// the run goes on: a step that fails ends it unless the step may fail (a run KillRun already marked killed is not
+// marked failed). A step that still names retired Connected Apps credentials fails before it runs.
+func (wr *WorkflowRunner) runStep(ctx context.Context, runID int64, workflow *store.Workflow, steps []StepDef, i int, step StepDef, rf *runFiles, defaultAgent *AgentStepConfig, results []StepResult) bool {
+	sf, serr := rf.step(i)
+	stepDir := sf.dir
+	if serr != nil {
+		results[i].Status = "failed"
+		results[i].OutputTail = serr.Error()
+		wr.failRemaining(runID, i, results, fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, serr))
+		return false
+	}
+	env := wr.buildStepEnv(workflow, runID, rf.dir, i, stepDir, len(steps), steps)
+	// Connected Apps and workflow token injection are retired. Preserve the workflow JSON, but fail this legacy
+	// step before execution so it cannot silently run without the credentials it declared.
+	if len(step.Connections) > 0 {
+		err := fmt.Errorf("workflow step %q requires retired Connected Apps credentials; remove its connections before running", step.Name)
+		errMsg := err.Error()
+		wr.store.SetRunStatus(ctx, runID, "failed", &errMsg)
+		results[i].Status = "failed"
+		results[i].OutputTail = err.Error()
 		wr.persistResults(ctx, runID, i, results)
+		return false
+	}
+	now := time.Now().UTC().Format(store.ISOFormat)
+	results[i].Status = "running"
+	results[i].StartedAt = &now
+	wr.persistResults(ctx, runID, i, results)
 
-		// Execute step
-		var stepErr error
-		switch step.Type {
-		case "shell":
-			stepErr = wr.executeShellStep(ctx, runID, step, sf, workflow.RepoPath, env, &results[i])
-		case "agent":
-			stepErr = wr.executeAgentStep(ctx, runID, step, sf, workflow.RepoPath, env, defaultAgent, &results[i])
-		default:
-			stepErr = fmt.Errorf("unknown step type: %s", step.Type)
-		}
+	var stepErr error
+	switch step.Type {
+	case "shell":
+		stepErr = wr.executeShellStep(ctx, runID, step, sf, workflow.RepoPath, env, &results[i])
+	case "agent":
+		stepErr = wr.executeAgentStep(ctx, runID, step, sf, workflow.RepoPath, env, defaultAgent, &results[i])
+	default:
+		stepErr = fmt.Errorf("unknown step type: %s", step.Type)
+	}
+	finishedAt := time.Now().UTC().Format(store.ISOFormat)
+	results[i].FinishedAt = &finishedAt
+	results[i].Files = listStepFiles(stepDir)
 
-		// Record step completion
-		finishedAt := time.Now().UTC().Format(store.ISOFormat)
-		results[i].FinishedAt = &finishedAt
-
-		// List files in step directory
-		results[i].Files = listStepFiles(stepDir)
-
-		// Fire Coral-level hooks (StepComplete/StepFailed) — works for all step types
-		stepHooks := parseStepHooks(step.Hooks)
-		if stepHooks != nil {
-			statusEnv := append(env, "CORAL_STEP_STATUS="+stepStatusStr(stepErr))
-			if stepErr != nil {
-				wr.fireHooks(ctx, stepHooks, "StepFailed", hookDir(workflow.RepoPath, stepDir), statusEnv)
-			} else {
-				wr.fireHooks(ctx, stepHooks, "StepComplete", hookDir(workflow.RepoPath, stepDir), statusEnv)
-			}
-		}
-
+	// Coral-level hooks (StepComplete/StepFailed), for every step type.
+	if stepHooks := parseStepHooks(step.Hooks); stepHooks != nil {
+		statusEnv := append(env, "CORAL_STEP_STATUS="+stepStatusStr(stepErr))
+		event := "StepComplete"
 		if stepErr != nil {
-			results[i].Status = "failed"
-
-			if !step.ContinueOnFailure {
-				// Skip remaining steps
-				for j := i + 1; j < len(steps); j++ {
-					results[j].Status = "skipped"
-				}
-				wr.persistResults(context.Background(), runID, i, results)
-				// Only set failed if not already killed by KillRun
-				killed := wr.isRunKilled(runID)
-				if afterKillCheck != nil {
-					afterKillCheck(runID)
-				}
-				if !killed {
-					errMsg := fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, stepErr)
-					wr.store.SetRunStatus(context.Background(), runID, "failed", &errMsg)
-				}
-				return
-			}
-		} else {
-			results[i].Status = "completed"
+			event = "StepFailed"
 		}
+		wr.fireHooks(ctx, stepHooks, event, hookDir(workflow.RepoPath, stepDir), statusEnv)
+	}
 
+	if stepErr == nil {
+		results[i].Status = "completed"
 		wr.persistResults(ctx, runID, i, results)
+		return true
 	}
-
-	// All steps completed — only set if not already killed
-	if !wr.isRunKilled(runID) {
-		wr.store.SetRunStatus(context.Background(), runID, "completed", nil)
+	results[i].Status = "failed"
+	if step.ContinueOnFailure {
+		wr.persistResults(ctx, runID, i, results)
+		return true
 	}
+	for j := i + 1; j < len(results); j++ {
+		results[j].Status = "skipped"
+	}
+	wr.persistResults(context.Background(), runID, i, results)
+	// Only set failed if not already killed by KillRun
+	killed := wr.isRunKilled(runID)
+	if afterKillCheck != nil {
+		afterKillCheck(runID)
+	}
+	if !killed {
+		errMsg := fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, stepErr)
+		wr.store.SetRunStatus(context.Background(), runID, "failed", &errMsg)
+	}
+	return false
 }
 
 // executeShellStep runs a shell command, capturing stdout/stderr.
