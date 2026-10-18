@@ -608,7 +608,6 @@ const loadedSteps = new WeakMap();
 
 export function workflowAddStep(step) {
     const editor = document.getElementById('wf-steps-editor');
-    const idx = editor.children.length;
     const type = step ? step.type || 'shell' : 'shell';
     const name = step ? step.name || '' : '';
     const content = step ? (type === 'shell' ? step.command || '' : step.prompt || '') : '';

@@ -12,31 +12,6 @@ import { ensureBuilt } from './lazy_dom.js';
 let _views = [];       // cached views from API
 let _cmEditor = null;  // CodeMirror editor for the view code
 
-const DEFAULT_VIEW_HTML = `<!DOCTYPE html>
-<html>
-<head>
-<style>
-  body { font-family: -apple-system, sans-serif; color: #e0e0e4; background: #1a1a1e; padding: 12px; font-size: 0.8125rem; }
-  h3 { margin: 0 0 12px; font-size: 0.875rem; color: #8c8c94; }
-</style>
-</head>
-<body>
-<h3>My Custom View</h3>
-<div id="content">Loading...</div>
-<script>
-  const ctx = window.CORAL_CONTEXT || {};
-  // The view runs in a sandbox: it can read Coral's status through coral.get() (GET endpoints listed at /api/spec.json)
-  // but cannot call anything else.
-  coral.get('/api/sessions/live')
-    .then(data => {
-      const sessions = data.sessions || [];
-      document.getElementById('content').innerHTML =
-        sessions.map(s => '<div>' + s.display_name + ' (' + s.agent_type + ')</div>').join('');
-    });
-</script>
-</body>
-</html>`;
-
 /** Load saved views from the API and render tabs. */
 export async function loadCustomViews() {
     try {

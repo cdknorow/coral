@@ -18,7 +18,6 @@ let _selectionDisposable = null;
 let _onDataDisposable = null;
 let _onResizeDisposable = null;
 let _resizeObserver = null;
-let _terminalFocused = false;
 let _panelDragging = false;
 
 // ── The pane's one size (#3422) ──────────────────────────────────────────
@@ -645,12 +644,10 @@ function _wireFocusAndResize(containerEl) {
     // (terminal.textarea is only available after open())
     if (terminal.textarea) {
         terminal.textarea.addEventListener('focus', () => {
-            _terminalFocused = true;
             containerEl.classList.add('xterm-focused');
             setTerminalFocused(true);
         });
         terminal.textarea.addEventListener('blur', () => {
-            _terminalFocused = false;
             containerEl.classList.remove('xterm-focused');
             setTerminalFocused(false);
         });
@@ -928,7 +925,6 @@ export function disposeTerminal() {
         _onResizeDisposable.dispose();
         _onResizeDisposable = null;
     }
-    _terminalFocused = false;
     _inputQueue = [];
     _pane = null;
     _following = false;

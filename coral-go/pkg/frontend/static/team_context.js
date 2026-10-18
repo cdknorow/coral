@@ -18,8 +18,6 @@ import { renderLiveSessions, showBoardChatTab, hideBoardChatTab, getActiveBoardC
 import { note, currentRoute } from './nav.js';
 import { keyRoute, liveRoute } from './routes.js';
 
-let _boardTeam = null;   // team whose group chat is mounted in the center
-
  function getSelectedTeam() {
     return state.selectedTeam || null;
 }
@@ -44,7 +42,6 @@ function mountGroupChat(team) {
     if (!host || !panel) return;
     // The panel keeps its content when moved, so only rebuild it for a different board.
     if (getActiveBoardChat() !== team) showBoardChatTab(team);
-    _boardTeam = team;
     if (panel.parentElement !== host) host.appendChild(panel);
     if (!host.querySelector('.team-center-close')) {
         const close = document.createElement('button');
@@ -72,7 +69,6 @@ function unmountGroupChat() {
     const panel = document.getElementById('agentic-panel-board');
     host?.querySelector('.team-center-close')?.remove();
     if (panel && host && panel.parentElement === host) document.getElementById('agentic-block-top')?.appendChild(panel);
-    _boardTeam = null;
     // In the center the panel is shown whatever its class, and the sidebar's tab switches never
     // reach it, so it can come back marked active beside another tab (Tasks): match the sidebar.
     if (panel) panel.classList.toggle('active', activeTabName() === 'board');

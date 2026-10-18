@@ -603,28 +603,6 @@
     white-space: nowrap;
 }
 
-.branch-copy-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 3px;
-    line-height: 1;
-    flex-shrink: 0;
-    opacity: 0.5;
-    transition: opacity 0.15s;
-}
-
-.branch-copy-btn:hover {
-    opacity: 1;
-    color: var(--text-primary);
-    background: var(--bg-hover);
-}
-
 .agent-dir-chip {
     font-size: var(--fs-base);
     background: var(--bg-tertiary);
@@ -743,19 +721,6 @@
     gap: 4px;
     color: var(--text-primary);
     font-weight: 600;
-}
-
-.group-branch-line {
-    font-size: var(--fs-base);
-    font-weight: 400;
-    color: var(--text-secondary);
-    text-transform: none;
-    letter-spacing: 0;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    margin-top: 1px;
-    font-family: var(--font-mono);
 }
 
 .group-kebab .sidebar-kebab-btn {

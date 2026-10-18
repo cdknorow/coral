@@ -155,7 +155,6 @@ export function renderAgentConfigForm(containerId, opts = {}) {
     const uid = `acf-${_acfCounter}`;
     container.dataset.acfUid = uid;
 
-    const mode = opts.mode || 'full';
     const showPreset = opts.showPreset !== false;
     const showName = opts.showName !== false;
     const showAutoPermissions = opts.showAutoPermissions !== false;

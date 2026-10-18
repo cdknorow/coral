@@ -548,7 +548,6 @@ let knowledgeLoading = false;
 let knowledgeData = null;
 let knowledgeMode = 'preview'; // 'preview' or 'edit'
 let knowledgeActiveTab = 'index';
-let knowledgeDirty = {};
 
 async function loadKnowledgeTab() {
     const panel = document.getElementById('team-knowledge-view');
@@ -564,7 +563,6 @@ async function loadKnowledgeTab() {
     knowledgeLoading = true;
     knowledgeMode = 'preview';
     knowledgeActiveTab = 'index';
-    knowledgeDirty = {};
 
     panel.innerHTML = '<div class="knowledge-empty">Loading...</div>';
 

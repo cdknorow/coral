@@ -2,7 +2,6 @@
 import { formatMonthDayHourMinute, formatMonthDayTime, formatCost } from './format.js';
 
 export const _priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-const _priorityRank = { critical: 1, high: 2, medium: 3, low: 4 };
 // Priority as the words people choose it by (the create dialog and the CLI), not its sort rank.
 export const _priorityLabel = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' };
 

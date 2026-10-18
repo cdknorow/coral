@@ -432,7 +432,6 @@ function showUnlistedReceived(u) {
     const box = document.getElementById('settings-received-unlisted');
     const button = document.getElementById('settings-received-unlisted-delete');
     if (!box || !button) return;
-    const count = Number(u?.count) || 0;
     _unlistedItems = Array.isArray(u?.items) ? u.items.map(i => i.id) : [];
     _unlistedBytes = (u?.items || []).reduce((sum, i) => sum + (Number(i.size) || 0), 0);
     box.hidden = _unlistedItems.length === 0;

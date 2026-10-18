@@ -7,8 +7,6 @@ import { note, backIs } from './nav.js';
 
 const MOBILE_BREAKPOINT = 767;
 
-let _currentMobileTab = 'agents';
-
 function isMobile() {
     return window.innerWidth <= MOBILE_BREAKPOINT;
 }
@@ -28,8 +26,6 @@ window.toggleTabletSidebar = toggleTabletSidebar;
 // ── Bottom Tab Bar Navigation ─────────────────────────────────────────────
 
 function switchMobileTab(tab) {
-    _currentMobileTab = tab;
-
     // Tab bar is hidden on mobile via CSS — don't override with inline styles
 
     // Update tab active states
@@ -67,7 +63,6 @@ function mobileBack() {
     const panelTab = document.getElementById('mobile-tab-panel');
     if (panelTab) panelTab.style.display = 'none';
 
-    _currentMobileTab = 'agents';
     document.querySelectorAll('.mobile-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === 'agents');
     });
@@ -156,7 +151,6 @@ function restoreSidebarList() {
 
 // ── Intercept Session Selection on Mobile ─────────────────────────────────
 
-const _origSelectLiveSession = window.selectLiveSession;
  function wrapSelectLiveSession() {
     const orig = window.selectLiveSession;
     if (!orig) return;

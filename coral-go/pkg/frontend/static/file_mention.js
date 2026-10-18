@@ -8,7 +8,7 @@ import { createMentionList, findTriggerStart, highlightRuns } from './mention_li
 const list = createMentionList({ dropdown: 'file-mention-dropdown', item: 'file-mention-item' }, {
     onInput: e => onInput(e),
     onPick: i => selectItem(i),
-    onHide: () => { currentDir = ''; clearTimeout(renderTimer); },
+    onHide: () => { clearTimeout(renderTimer); },
 });
 
 // Client-side file list cache (fetched once per session, refreshed on TTL)
@@ -20,7 +20,6 @@ let fetchPromise = null;    // dedup concurrent fetches
 let renderTimer = null;     // 30ms render throttle
 
 // Directory browsing state
-let currentDir = '';        // current directory path for directory browsing mode
 let dirCache = {};          // cached directory listings: { dir: { entries, timestamp } }
 const DIR_CACHE_TTL_MS = 30_000;
 
@@ -235,7 +234,6 @@ async function onInputDirectory(query) {
         return;
     }
 
-    currentDir = browse.dir;
     list.results = browse.results;
     list.selected = 0;
     renderDropdownDirectory(browse.entries, browse.dir, browse.filter);

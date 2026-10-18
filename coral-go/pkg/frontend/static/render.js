@@ -50,14 +50,6 @@ export { getActiveBoardChat, hideBoardChatTab, showBoardChatTab } from './board_
 
 /* ── Agent Avatars ──────────────────────────────────────────────────── */
 
-const _roleAvatars = {
-    'orchestrator': '👑', 'lead': '🔨', 'lead dev': '🔨', 'architect': '📐',
-    'frontend': '🎨', 'backend': '⚙️', 'qa': '🔍', 'quality': '🔍', 'test': '🧪',
-    'security': '🛡️', 'devops': '🚀', 'data': '📊', 'llm': '🧠', 'ai': '🤖',
-    'design': '✏️', 'writer': '📝', 'content': '📝', 'research': '🔬',
-    'marketing': '📣', 'seo': '📈', 'product': '💡', 'manager': '📋',
-    'terminal': '💻', 'ops': '🔧', 'infra': '☁️',
-};
 
 function _getInitials(name) {
     if (!name) return '?';
@@ -893,11 +885,8 @@ function _renderTeamCard(boardName, boardSessions) {
     let html = '';
         const accentStyle = _boardAccentStyle(boardName);
         const boardCollapsed = _isGroupCollapsed(boardName);
-        const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
         const boardLink = '';
         const boardWorkDir = boardSessions[0]?.working_directory || '';
-        const boardBranchSession = boardSessions.find(s => s.branch);
-        const boardBranch = _repoBranch(boardBranchSession?.repo_name, boardBranchSession?.branch);
         const boardIsSleeping = boardSessions.every(s => s.sleeping);
         const boardSleepIcon = boardIsSleeping ? ' <span class="agent-icon" title="Team is sleeping">🌙</span>' : '';
         const sleepLabel = boardIsSleeping ? 'Wake Team' : 'Sleep Team';
@@ -961,9 +950,6 @@ function _renderTeamCard(boardName, boardSessions) {
                 </button>
             </div>
         </div>`;
-        const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" data-on-click="team-branch-copy" data-branch="${escapeAttr(boardBranch)}" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
-        const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
-        const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents<span class="team-token-usage" data-board="${escapeAttr(boardName)}"></span></div>`;
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}"${accentStyle}>
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" data-on-click="group-collapse" data-group="${escapeAttr(boardName)}"${_collapseAttrs(boardCollapsed)}>
@@ -1061,13 +1047,9 @@ function _renderFolderGroup(groupName, groupSessions) {
                 </button>` : ''}
             </div>
         </div>`;
-        const groupBranchSession = sorted.find(s => s.branch);
-        const groupBranch = _repoBranch(groupBranchSession?.repo_name, groupBranchSession?.branch);
-        const groupBranchLine = groupBranch ? `<div class="group-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg> ${escapeHtml(groupBranch)}</div>` : "";
         const fTags = getFolderTags(groupName);
         const tagDots = renderFolderTagPills(fTags);
         const groupWorkDir = groupDirRaw;
-        const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" data-on-click="folder-copy" data-dir="${escapeAttr(groupWorkDir)}" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" data-on-click="group-collapse" data-group="${escapeAttr(groupName)}"${_collapseAttrs(collapsed)}>
             <div class="group-header-text"><div class="group-name-line">${FOLDER_GROUP_ICON}${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
@@ -1121,13 +1103,9 @@ function _renderFolderFirstGroup(groupName, groupSessions) {
                 </button>` : ''}
             </div>
         </div>`;
-        const groupBranchSession = sorted.find(s => s.branch);
-        const groupBranch = _repoBranch(groupBranchSession?.repo_name, groupBranchSession?.branch);
-        const groupBranchLine = groupBranch ? `<div class="group-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg> ${escapeHtml(groupBranch)}</div>` : "";
         const fTags = getFolderTags(groupName);
         const tagDots = renderFolderTagPills(fTags);
         const groupWorkDir = groupDirRaw;
-        const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" data-on-click="folder-copy" data-dir="${escapeAttr(groupWorkDir)}" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" data-on-click="group-collapse" data-group="${escapeAttr(groupName)}"${_collapseAttrs(collapsed)}>
             <div class="group-header-text"><div class="group-name-line">${FOLDER_GROUP_ICON}${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
@@ -1152,11 +1130,8 @@ function _renderFolderFirstGroup(groupName, groupSessions) {
             for (const [boardName, boardSessions] of Object.entries(boardSubs)) {
                 const accentStyle = _boardAccentStyle(boardName);
                 const boardCollapsed = _isGroupCollapsed(boardName);
-                const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
                 const boardLink = '';
                 const boardWorkDir = boardSessions[0]?.working_directory || '';
-                const boardBranchSession = boardSessions.find(s => s.branch);
-                const boardBranch = _repoBranch(boardBranchSession?.repo_name, boardBranchSession?.branch);
                 const boardIsSleeping = boardSessions.some(s => s.sleeping);
                 const boardSleepIcon = boardIsSleeping ? ' <span class="agent-icon" title="Team is sleeping">🌙</span>' : '';
                 const sleepLabel = boardIsSleeping ? 'Wake Team' : 'Sleep Team';
@@ -1208,9 +1183,6 @@ function _renderFolderFirstGroup(groupName, groupSessions) {
                         </button>
                     </div>
                 </div>`;
-                const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" data-on-click="team-branch-copy" data-branch="${escapeAttr(boardBranch)}" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
-                const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
-                const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
                 html += `<li class="session-board-card session-team-group"${accentStyle}>
                     <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" data-on-click="group-collapse" data-group="${escapeAttr(boardName)}"${_collapseAttrs(boardCollapsed)}>
                         <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${escapeAttr(state.selectedTeam === boardName ? ' is-selected' : '')}" data-on-click="team-enter" data-board="${escapeAttr(boardName)}" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
@@ -2019,15 +1991,6 @@ registerActions({
     'team-add-terminal': menu(el => { const b = textOf(el.dataset.board); if (b) W('launchTerminalToBoard')(b, dirOf(el) || ''); }),
     'team-accent': (el, event) => { event.stopPropagation(); const b = textOf(el.dataset.board); if (b) window.setBoardAccentColor(b); window.closeSidebarKebabs(); },
     'team-enter': (el, event) => { event.stopPropagation(); const b = textOf(el.dataset.board); if (b) window.enterTeamContext(b); },
-    'team-branch-copy': (el, event) => {
-        event.stopPropagation();
-        const branch = textOf(el.dataset.branch, 500);
-        if (!branch) return;
-        navigator.clipboard.writeText(branch);
-        const icon = el.innerHTML;
-        el.textContent = '✓';
-        setTimeout(() => { el.innerHTML = icon; }, 1000);
-    },
     'group-move': menu(el => { const g = textOf(el.dataset.group); if (g && UPDOWN[el.dataset.dir]) W(el.dataset.dir === 'up' ? 'moveGroupUp' : 'moveGroupDown')(g); }),
     'group-kill': menu(el => { const g = textOf(el.dataset.group); if (g) W('killGroup')(g); }),
     'group-collapse': el => { const g = textOf(el.dataset.group); if (g) window.toggleGroupCollapse(g); },

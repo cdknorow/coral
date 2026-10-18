@@ -65,7 +65,6 @@ export function getToolIcon(toolName, eventType) {
     if (icon) return { ...icon, title: toolName };
     // Generic fallback for unknown event types
     if (eventType && !toolName) {
-        const label = eventType.charAt(0).toUpperCase();
         const title = eventType.charAt(0).toUpperCase() + eventType.slice(1);
         return { char: '&#xe87e;', cls: 'tool-pulse', title };
     }

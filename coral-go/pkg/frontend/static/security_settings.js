@@ -13,7 +13,6 @@ const { passwordProblem, timeMs, timeLeft, ageText } = await importOnce('./passw
 const { postJson, sendJson, passwordField, usernameStub, strengthMeter, errorText, showSetPasswordModal } = await importOnce('./password_ui.js');
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-let _root = null;
 
 async function getJson(url) {
     const r = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
@@ -34,7 +33,6 @@ async function getSessions() {
 export async function loadSecurityRow() {
     const root = document.getElementById('settings-security');
     if (!root) return;
-    _root = root;
     if (isCloud()) { root.hidden = true; return; }
     let st = null;
     try { st = await getJson('/api/system/auth-status'); } catch { /* shown as hidden */ }

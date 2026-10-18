@@ -958,7 +958,6 @@ export function initImageDrop() {
     });
 
     // Also support paste — listen on document so it works even when textarea isn't focused
-    const input = document.getElementById("command-input");
     const pasteHandler = async (e) => {
         // Only handle when a live session is selected
         if (!state.currentSession || state.currentSession.type !== "live") return;
