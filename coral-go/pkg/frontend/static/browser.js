@@ -3,7 +3,7 @@
 import { escapeHtml, escapeAttr } from './utils.js';
 import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { serverFetch, LOCAL_SERVER, normServer } from './server_base.js';
-import { recentDirsKey } from './launch_server.js';
+import { recentDirsKey, noMachine, CONNECT_FIRST } from './launch_server.js';
 import { browserLocal } from './safe_storage.js';
 
 /* Multi-server hub: a directory input may belong to a remote server. The
@@ -122,6 +122,8 @@ async function loadBrowserEntries(path) {
     list.innerHTML = '<li class="empty-state">Loading...</li>';
 
     const server = activeServer();
+    // Coral Hub with no machine connected has no folders to browse: say what to do, not "Failed to load".
+    if (noMachine()) { list.innerHTML = `<li class="empty-state">${CONNECT_FIRST}</li>`; return; }
     try {
         const resp = await serverFetch(server, `/api/filesystem/list?path=${encodeURIComponent(path)}`);
         const data = await resp.json();

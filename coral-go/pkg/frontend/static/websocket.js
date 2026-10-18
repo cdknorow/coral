@@ -186,6 +186,7 @@ export function handleCoralMessage(data) {
         if (data.type === "coral_update") {
             // Per-server status ([{id,label,status}]) is only sent when remotes exist.
             state.servers = (state.hub && Array.isArray(data.servers)) ? data.servers : [];
+            state.serversKnown = true;
             updateServersTabVisibility();
             // Detect sessions that just transitioned to "needs input"
             for (const s of data.sessions || []) {

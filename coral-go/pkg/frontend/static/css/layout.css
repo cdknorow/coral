@@ -910,6 +910,15 @@ body.panel-dragging .sidebar {
 .welcome-header h1 { margin: 0 0 8px; color: var(--text-primary); font-size: clamp(1.625rem, 3.4vw, 2.375rem); line-height: 1.15; letter-spacing: -.035em; }
 .welcome-header p { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
 .welcome-launch:hover { border-color: var(--border-light); background: var(--bg-tertiary); } /* --bg-hover takes the muted line under 4.5:1 (#4218) */
+.welcome-connect { display: none; align-items: center; flex-wrap: wrap; gap: 14px 16px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-secondary); }
+/* Coral Hub with no machine connected (#4586): the connect card stands in for the launch cards, which have nowhere to launch. */
+body.hub-no-machine .welcome-connect { display: flex; }
+body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p { display: none; }
+.welcome-connect-icon { display: flex; align-items: center; justify-content: center; width: 2.625rem; height: 2.625rem; border-radius: 11px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); flex: none; }
+.welcome-connect-copy { flex: 1 1 14rem; min-width: 0; }
+.welcome-connect-copy h2 { margin: 0 0 4px; font-size: 0.9375rem; color: var(--text-primary); }
+.welcome-connect-copy p { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--text-secondary); }
+.hub-connect-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px 12px; }
 .welcome-launch-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; } /* agent, team, Open folder (#3630) */
 .welcome-launch { position: relative; display: flex; border: 1px solid var(--border); font-family: inherit; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; flex-direction: column; align-items: flex-start; gap: 14px; min-width: 0; padding: 20px; border-radius: 14px; background: var(--bg-secondary); color: var(--text-secondary); text-align: left; }
 .welcome-launch:hover { transform: translateY(-1px); }

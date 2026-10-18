@@ -227,6 +227,15 @@
                         <h1>What do you want to work on?</h1>
                         <p>Launch a single agent, or a team that works together on a shared message board.</p>
                     </header>
+                    <!-- Coral Hub with no machine connected (#4586; body.hub-no-machine, hub_first_run.js): nothing can be launched yet, so this replaces the launch cards -->
+                    <section class="welcome-connect" aria-labelledby="welcome-connect-title">
+                        <span class="welcome-connect-icon material-icons" aria-hidden="true">device_hub</span>
+                        <div class="welcome-connect-copy">
+                            <h2 id="welcome-connect-title">Connect a machine to get started</h2>
+                            <p>Agents run on your own computers. Connect one to this account and it appears here, ready to launch agents.</p>
+                        </div>
+                        <button type="button" class="btn btn-primary welcome-connect-btn" data-on-click="hub-connect-machine">Connect a machine</button>
+                    </section>
                     <div class="welcome-launch-list">
                         <button class="welcome-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="agent">
                             <span class="welcome-launch-icon material-icons" aria-hidden="true">smart_toy</span>

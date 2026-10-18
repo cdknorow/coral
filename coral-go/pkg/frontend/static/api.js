@@ -104,6 +104,7 @@ async function _loadLiveSessions(onFailure) {
         const sessions = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.sessions) ? raw.sessions : null);
         if (!sessions) throw new SyntaxError('Invalid live session list');
         state.servers = (state.hub && raw && !Array.isArray(raw) && Array.isArray(raw.servers)) ? raw.servers : [];
+        state.serversKnown = true;
         updateServersTabVisibility();
         state.liveSessions = sessions;
         // Drafts of sessions that have ended (and were left a day) go (#3681), at most hourly.

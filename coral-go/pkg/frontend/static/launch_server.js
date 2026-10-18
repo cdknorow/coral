@@ -58,9 +58,16 @@ export function serverLabel(server, servers) {
 }
 
 /** Why `server` cannot be launched on right now, or "" when it can. */
+export const CONNECT_FIRST = 'Connect a machine first';
+
+/** Coral Hub on its first run: the servers are known and not one is usable (none connected yet, or every one offline). Anything the hub would do on a machine has nowhere to go. */
+export function noMachine(servers = state.servers) {
+    return state.cloud === true && state.serversKnown === true && !remoteServers(servers).some(s => !UNUSABLE_STATUS_REASON[s.status]);
+}
+
 export function launchBlockReason(server, hub, servers) {
     const id = normServer(server);
-    if (id === LOCAL_SERVER) return state.cloud === true ? 'The Coral Hub has no local agents. Choose one of your servers.' : '';
+    if (id === LOCAL_SERVER) return state.cloud === true ? (noMachine(servers) ? CONNECT_FIRST : 'The Coral Hub has no local agents. Choose one of your servers.') : '';
     if (hub !== true) return 'Hub mode is off; remote servers are unavailable.';
     const hit = remoteServers(servers).find(s => s.id === id);
     if (!hit) return `Server "${id}" is not registered.`;

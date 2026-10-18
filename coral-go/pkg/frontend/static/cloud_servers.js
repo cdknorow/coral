@@ -317,7 +317,7 @@ function row(s) {
 }
 
 function enrollBlock() {
-    const input = h('input', { type: 'text', className: 'cloud-code', placeholder: 'XXXX-XXXX', maxLength: 9, autocomplete: 'off', spellcheck: false, 'aria-label': 'Enrollment code' });
+    const input = h('input', { type: 'text', className: 'cloud-code', placeholder: 'XXXX-XXXX', maxLength: 9, autocomplete: 'off', spellcheck: false, 'aria-label': 'Enrollment code', id: 'cs-enroll-code' });
     const go = () => {
         const v = input.value.trim().toUpperCase();
         location.href = '/enroll' + (v ? '?code=' + encodeURIComponent(v) : '');

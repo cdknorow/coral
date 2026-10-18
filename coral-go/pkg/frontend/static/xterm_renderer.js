@@ -164,6 +164,34 @@ function _box() {
     return _containerEl ? _containerEl.offsetWidth + 'x' + _containerEl.offsetHeight : '';
 }
 
+// A terminal that follows a pane taller than its window (Coral Hub's View mode, a viewer, a phone) scrolls inside its container, and the container starts at the top: the prompt, at
+// the bottom of the pane, was below the visible area (#4586). Keep the cursor line in view as the pane's size arrives, the window resizes and output moves the cursor, until the
+// person scrolls the cursor out of view themselves; typing brings it back.
+let _scrolledAway = false;  // the person scrolled so that the cursor line is out of view: leave it
+let _revealing = false;     // our own scroll, which is not theirs
+let _revealScroll = null;
+let _cursorDisposable = null;
+
+function _cursorBox(el) {
+    const screen = terminal && terminal.element && terminal.element.querySelector('.xterm-screen');
+    if (!screen || !(terminal.rows > 0)) return null;
+    const sr = screen.getBoundingClientRect(), cr = el.getBoundingClientRect();
+    const cell = sr.height / terminal.rows;
+    const top = sr.top - cr.top + el.scrollTop + terminal.buffer.active.cursorY * cell;
+    return { top, bottom: top + cell, pad: parseFloat(getComputedStyle(el).paddingBottom) || 0 };
+}
+
+export function revealCursor() {
+    const el = _containerEl;
+    if (!terminal || !el || !_following || _scrolledAway) return;
+    const box = _cursorBox(el);
+    if (!box) return;
+    _revealing = true;
+    if (box.bottom + box.pad > el.scrollTop + el.clientHeight) el.scrollTop = box.bottom + box.pad - el.clientHeight;
+    else if (box.top < el.scrollTop) el.scrollTop = box.top;
+    requestAnimationFrame(() => { _revealing = false; });
+}
+
 // Render at the pane's size (horizontal scroll when it is wider than the window).
 function _followPane() {
     if (!terminal || !_pane) return;
@@ -172,6 +200,7 @@ function _followPane() {
     if (_containerEl) _containerEl.classList.add('xterm-follow-pane');
     if (terminal.cols !== _pane.cols || terminal.rows !== _pane.rows) terminal.resize(_pane.cols, _pane.rows);
     _applyFitWidth();
+    requestAnimationFrame(revealCursor); // the pane's rows are in: show the prompt
 }
 
 // FitAddon counts rows from the container's computed height, which includes its padding (the page is border-box), so the last row
@@ -501,6 +530,7 @@ export function createTerminal(containerEl) {
     }
 
     _onDataDisposable = terminal.onData((data) => {
+        _scrolledAway = false; revealCursor(); // typing brings the prompt back into view
         if (_marksInput && !_userInput) return; // xterm's own reply to a query in the output
         _userInput = false;
         if (!state.currentSession || state.currentSession.type !== "live") return;
@@ -595,9 +625,22 @@ export function createTerminal(containerEl) {
             _bottomWhenHidden = null;
             if (fitAddon && !_panelDragging) _sizeLocal(true);
             if (wasBottom && terminal) requestAnimationFrame(() => { if (terminal) terminal.scrollToBottom(); });
+            requestAnimationFrame(revealCursor); // the window changed size: the prompt stays in view while following
         });
         _resizeObserver.observe(containerEl);
     }
+
+    // Following a taller pane: the container scrolls, and the cursor line (the prompt) is kept in view (revealCursor).
+    _scrolledAway = false;
+    if (_revealScroll) containerEl.removeEventListener('scroll', _revealScroll);
+    _revealScroll = () => {
+        if (_revealing || !_following) return;
+        const box = _cursorBox(containerEl);
+        _scrolledAway = !!box && (box.bottom < containerEl.scrollTop || box.top > containerEl.scrollTop + containerEl.clientHeight);
+    };
+    containerEl.addEventListener('scroll', _revealScroll, { passive: true });
+    if (_cursorDisposable) _cursorDisposable.dispose();
+    _cursorDisposable = typeof terminal.onCursorMove === 'function' ? terminal.onCursorMove(() => revealCursor()) : null;
 
     // Focus management: track terminal focus state
     // (terminal.textarea is only available after open())
@@ -851,6 +894,10 @@ export function disposeTerminal() {
     _following = false;
     _seq = 0;
     if (_containerEl) _containerEl.classList.remove('xterm-follow-pane');
+    if (_containerEl && _revealScroll) _containerEl.removeEventListener('scroll', _revealScroll);
+    _revealScroll = null;
+    if (_cursorDisposable) { _cursorDisposable.dispose(); _cursorDisposable = null; }
+    _scrolledAway = false;
     _containerEl = null;
     _updateFitButton(false);
     if (_resizeObserver) {

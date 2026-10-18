@@ -36,6 +36,24 @@ const { pathToFileURL } = require('url');
     assert.ok(by.d.disabled);
     assert.strictEqual(by.e.disabled, false);
 
+    // Coral Hub's first run (#4586): the servers known and none usable means "Connect a machine first", for a launch on the hub itself and for Browse; a local Coral and a hub with a usable machine never say it.
+    {
+        const { state } = await import(pathToFileURL(path.join(dir, 'state.js')).href);
+        const was = { cloud: state.cloud, known: state.serversKnown, servers: state.servers };
+        state.cloud = true; state.serversKnown = false;
+        assert.strictEqual(m.noMachine([]), false, 'not known yet: nothing is claimed');
+        state.serversKnown = true;
+        assert.strictEqual(m.noMachine([]), true, 'known and none connected');
+        assert.strictEqual(m.noMachine([{ id: 'b', status: 'unreachable' }, { id: 'c', status: 'unauthorized' }]), true, 'every one unusable');
+        assert.strictEqual(m.noMachine(servers), false, 'one usable machine');
+        assert.strictEqual(m.launchBlockReason('local', true, []), 'Connect a machine first');
+        assert.strictEqual(m.CONNECT_FIRST, 'Connect a machine first');
+        assert.match(m.launchBlockReason('local', true, servers), /no local agents/, 'machines exist: choose one');
+        state.cloud = false;
+        assert.strictEqual(m.noMachine([]), false, 'a local Coral never says it');
+        Object.assign(state, { cloud: was.cloud, serversKnown: was.known, servers: was.servers });
+    }
+
     // Block reasons / coercion: remote without hub mode or unusable never launches.
     assert.strictEqual(m.launchBlockReason('local', false, []), '');
     assert.ok(m.launchBlockReason('a', false, servers));

@@ -4,6 +4,7 @@ import { fitTerminal } from './xterm_renderer.js';
 import { makeDraggable, makeDelegatedDraggable } from './draggable.js';
 import { browserLocal } from './safe_storage.js';
 import { dockKey, dockOpenByDefault, onDockPage } from './dock_page.js';
+import { noMachine } from './launch_server.js';
 
 /* Layout persistence is scoped per entry mode: a narrow popout window must
    never overwrite the dashboard's saved panel sizes. */
@@ -208,7 +209,8 @@ export function updateSectionVisibility(sectionId, itemCount) {
 
     // Keep History available when a search/filter has no matches. Collapsing the
     // section would also hide the controls needed to change or clear the filter.
-    const canAutoCollapseWhenEmpty = sectionId !== 'history';
+    // On Coral Hub with no machine connected the empty list carries the way forward (Connect a machine): it stays open (#4586).
+    const canAutoCollapseWhenEmpty = sectionId !== 'history' && !(sectionId === 'live-sessions' && noMachine());
 
     // Auto-collapse empty sections (unless user manually expanded)
     if (itemCount === 0 && canAutoCollapseWhenEmpty && !section.dataset.manualExpand) {

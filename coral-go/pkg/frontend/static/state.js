@@ -52,6 +52,7 @@ export const state = {
     hub: false,                 // server runs in hub mode (from /api/health, read once at startup)
     currentBoardServer: 'local', // server id of the open team/board context ("local" = the hub)
     servers: [],                // [{id,label,status}] from the live list when remotes are registered
+    serversKnown: false,        // true once a live list or a feed message has said which servers there are (Coral Hub's first run is "none yet", not "not known yet")
 };
 
 export function sessionKey(session) {
