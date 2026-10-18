@@ -122,3 +122,20 @@ func TestBoardMessageSearchIsViewTier(t *testing.T) {
 	}
 	assert.Equal(t, "redact", RedactionClass("GET", "/api/board/proj/messages/search"), "its replies are redacted like any View reply")
 }
+
+// GET /api/sessions/live/{name}/events takes the events search's parameters at the View tier, and only those (#4745).
+func TestAgentEventsSearchIsViewTier(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		want  Tier
+	}{
+		{"", TierView},
+		{"limit=50&session_id=abc", TierView},
+		{"type=tool_use&q=read&since=2026-10-18T00:00:00Z&until=2026-10-19T00:00:00Z&sort=oldest&limit=50&cursor=abc&session_id=abc", TierView},
+		{"search=x", TierNever},
+		{"offset=5", TierNever},
+		{"events_limit=5", TierNever},
+	} {
+		assert.Equal(t, tc.want, Classify("GET", "/api/sessions/live/agent/events", tc.query), "?"+tc.query)
+	}
+}

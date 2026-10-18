@@ -794,6 +794,28 @@ Structured events tracking agent activity (tool calls, notifications, etc.).
 ]
 ```
 
+#### Searching the events (#4745)
+
+With any of `type`, `q`, `since`, `until`, `sort` or `cursor` the route is a search: the same parameter names and reply shape as the Team
+Artifacts and board message searches, so one client bar serves every panel. Without them the reply is the plain array above (newest
+`limit` events, at most 200; parameters it does not know are ignored). In a search an unknown or malformed parameter is a 400 naming it.
+
+| Parameter | Values |
+|---|---|
+| `type` | Multi: an event type (`tool_use`, `prompt_submit`, `notification`, `stop`, `permission_request`, `auto_accept` ...), a lower-case word; comma separated or repeated, at most 20 |
+| `q` | A plain, case-insensitive substring of the event's summary or tool name (not its detail): at most 200 characters, no control characters, given once; `%` and `_` are ordinary characters; an empty `q` is no search |
+| `since`, `until` | RFC 3339 times; `since` inclusive, `until` exclusive, compared in the microsecond layout the events are stored in |
+| `sort` | `newest` (default) or `oldest` |
+| `limit` | 1 to 200, default 50 |
+| `cursor` | A `next_cursor` or `prev_cursor` of an earlier reply, with the same filters, sort, agent and `session_id` |
+| `session_id` | As in the plain list |
+
+**Reply:** `{"events": [ ... ], "total": N, "limit": N, "next_cursor": "...", "prev_cursor": "..."}`: whole events (detail included) in the
+sort's order; `total` is every match, whatever the page; `next_cursor` goes on, `prev_cursor` goes back (each present only when there is such
+a page); `"truncated": true` says the search stopped at its bound (200,000 events or 64 MiB of text) and the total and pages are those of
+what it read. Through Coral Hub the match is made on what the viewer sees (events are stored with tokens already redacted, and the connector
+redacts the reply), and a `q` holding a token, key or password is refused with a 400.
+
 ### POST `/api/sessions/live/{name}/events`
 
 **Request Body:**

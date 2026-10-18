@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -365,9 +366,24 @@ func (h *SessionsHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 
 // ── Events ──────────────────────────────────────────────────────────────
 
+// ListEvents: GET /api/sessions/live/{name}/events[?session_id=&limit=]: the newest events, a bare array. With type, q, since, until, sort or
+// cursor it is the search of #4745 (agent_events_query.go): type (an event type, comma separated or repeated), q (a plain, case-insensitive
+// substring of the summary or tool name, at most 200 characters), since (inclusive) and until (exclusive), sort=newest|oldest, limit 1 to 200
+// and cursor; the reply is then {"events": [...], "total": N, "limit": N, "next_cursor": "...", "prev_cursor": "...", "truncated": true},
+// paging both ways, with the same parameter names and reply shape as the other searches. An unknown or malformed parameter is a 400 naming it.
+// Through Coral Hub the match is made on what the viewer sees, and a q holding a secret is refused.
 func (h *SessionsHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	sidPtr := querySessionID(r)
+	vals, perr := url.ParseQuery(r.URL.RawQuery)
+	if perr != nil {
+		errBadRequest(w, "the query string is not valid (no ';', and %-escapes must be two hex digits)")
+		return
+	}
+	if store.QueriesEvents(vals) {
+		h.queryEvents(w, r, name, sidPtr, vals)
+		return
+	}
 	limit := clampLimit(queryInt(r, "limit", 50), 50, 200)
 	events, err := h.ts.ListAgentEvents(r.Context(), name, limit, sidPtr)
 	if err != nil || events == nil {
