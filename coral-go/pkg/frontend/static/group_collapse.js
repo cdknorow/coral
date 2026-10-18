@@ -34,6 +34,18 @@ export function groupHeaderKey(event, header = event.currentTarget) {
     toggleGroupCollapse(header.dataset.groupName);
 }
 
+/** Collapse every team and folder group in the list, or open them all: the two buttons of the Display options panel. A group the person
+ *  opened or closed by hand keeps its state until one of these is used; the result is stored the way a single collapse is. */
+export function setAllGroupsCollapsed(collapsed) {
+    if (!collapsed) browserLocal.set('coral_collapsed_groups', '[]');
+    else {
+        const names = new Set(_getCollapsedGroups());
+        for (const h of document.querySelectorAll('.session-group-header[data-group-name]')) names.add(h.dataset.groupName);
+        browserLocal.set('coral_collapsed_groups', JSON.stringify([...names]));
+    }
+    redrawLiveList();
+}
+
 export function toggleGroupCollapse(groupName) {
     const groups = _getCollapsedGroups();
     const idx = groups.indexOf(groupName);

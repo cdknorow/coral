@@ -38,7 +38,7 @@ const SERVERS = [
             // 1 + 2: order, heights, centre line, gaps
             const row = await ev(`(() => { const sw = ${SW}; const header = sw.closest('.sidebar-header, .mobile-list-header'); const r = e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, h: b.height, cy: b.top + b.height / 2 }; };
                 const search = document.querySelector('.sidebar-header .sidebar-search-input'), pill = sw.querySelector('summary'), menu = header.querySelector('[data-list-display-menu] summary'), collapse = header.querySelector('.sidebar-collapse-btn:not([data-display-button])');
-                const btn = header.querySelector('.btn');
+                const btn = header.querySelector(':scope > .btn'); // the header's own + New, not a button inside the Display options panel (#4746)
                 return { header: header.className, search: search && search.getClientRects().length ? r(search) : null, pill: r(pill), menu: r(menu), collapse: collapse && collapse.getClientRects().length ? r(collapse) : null, newBtn: btn && btn.getClientRects().length ? r(btn) : null, last: header.lastElementChild.className }; })()`);
             const ctl = [row.search, row.pill, row.menu, row.collapse, row.newBtn].filter(Boolean);
             assert.ok(ctl.length >= 3, `${dev}: controls found (${JSON.stringify(Object.keys(row).filter(k => row[k]))})`);

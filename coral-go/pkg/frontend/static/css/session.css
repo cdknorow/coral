@@ -2206,6 +2206,8 @@
 .list-display-panel { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 12em; }
 .list-display-option { display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: 4px 0; }
 .list-display-option[hidden] { display: none; }
+.list-display-actions { display: flex; gap: var(--space-sm); margin-top: var(--space-xs); padding-top: var(--space-sm); border-top: 1px solid var(--border-subtle, var(--border)); }
+.list-display-actions .btn { flex: 1 1 0; white-space: nowrap; }
 /* Group headers (Group by server): the outermost level of the list, flush left, with a
    computer icon and no status dot; an offline server is dimmed (#3507). */
 .session-list .server-group-header {
@@ -2248,7 +2250,7 @@
 }
 @media (pointer: coarse) {
     .server-switcher-item { min-width: var(--control-touch-height, 44px); }
-    .server-switcher-btn, .server-group-toggle, .server-switcher-item, .server-open-footer, .server-launch-btn, .list-display-option {
+    .server-switcher-btn, .server-group-toggle, .server-switcher-item, .server-open-footer, .server-launch-btn, .list-display-option, .list-display-actions .btn {
         min-height: var(--control-touch-height, 44px);
     }
     .server-group-more > summary.sidebar-kebab-btn { display: inline-flex; align-items: center; justify-content: center; } /* the kebab's own touch size (touch.css) */

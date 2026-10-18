@@ -102,6 +102,7 @@ function _listHeader(agentList) {
                     <label class="list-display-option"><input type="checkbox" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>
                     <label class="list-display-option" data-display-row="server" hidden><input type="checkbox" data-display-input="server" data-on-change="toggle-show-server"> Show server</label>
                     <label class="list-display-option" data-display-row="group" hidden><input type="checkbox" data-display-input="group" data-on-change="toggle-group-by-server"> Group by server</label>
+                    <div class="list-display-actions"><button type="button" class="btn btn-small" data-on-click="groups-collapse-all">Collapse all</button><button type="button" class="btn btn-small" data-on-click="groups-expand-all">Expand all</button></div>
                 </div>
             </details>
             <button class="btn btn-small btn-primary" data-on-click="launch-show">+ New</button>
