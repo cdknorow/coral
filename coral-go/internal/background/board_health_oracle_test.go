@@ -26,17 +26,24 @@ import (
 // start from the same bytes (timestamps included); then the old check runs on A and the new one on B, and the text,
 // the item count and every table of the two databases afterwards (the parks cleared, the items noted) must be equal.
 
-var checkOracleTotals struct{ checks, items, unparked, acked int }
+// checkPhrases: what each section of the check prints, counted over every check; each has a floor.
+var checkPhrases = map[string]int{
+	"has not claimed #": 20, "silent on #": 20, "idle ": 30, "reviews waiting": 10, "Board": 0,
+	"Since ": 30, "No progress since": 30, "awake agents are working": 5, "Nothing needs you": 5,
+	"Waiting on the operator": 20, "(back": 10, "parked": 10, "Needs you,": 30, "Waiting on ": 20,
+}
+
+var checkSeen map[string]int
 
 func TestComposeCheckAgreesWithBefore4599(t *testing.T) {
-	checkOracleTotals.checks, checkOracleTotals.items, checkOracleTotals.unparked, checkOracleTotals.acked = 0, 0, 0, 0
-	for seed := int64(1); seed <= 60; seed++ {
+	checkSeen = map[string]int{}
+	for seed := int64(1); seed <= 120; seed++ {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) { runCheckOracle(t, seed) })
 	}
-	t.Logf("compared: %d checks, %d items, %d parks ended, %d acknowledgements", checkOracleTotals.checks, checkOracleTotals.items, checkOracleTotals.unparked, checkOracleTotals.acked)
-	require.Greater(t, checkOracleTotals.items, 300)
-	require.Greater(t, checkOracleTotals.unparked, 10)
-	require.Greater(t, checkOracleTotals.acked, 10)
+	t.Logf("compared, per phrase: %v", checkSeen)
+	for phrase, floor := range checkPhrases {
+		require.GreaterOrEqual(t, checkSeen[phrase], floor, "%q went (almost) unprinted", phrase)
+	}
 }
 
 func copyBoardFile(t *testing.T, from, to string) {
@@ -98,15 +105,17 @@ func dumpBoard(t *testing.T, path string) []string {
 func runCheckOracle(t *testing.T, seed int64) {
 	ctx := context.Background()
 	rng := rand.New(rand.NewSource(seed))
+	calm := seed%8 == 0 // everyone working, nothing to judge: the all-clear lines
 	dir := t.TempDir()
 	pathA, pathB := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
 	bs, err := board.NewStoreWithKey(pathA, "")
 	require.NoError(t, err)
-	now := time.Now().UTC().Truncate(time.Second).Add(24 * time.Hour) // after the database's own stamps
-	names := []string{"Orchestrator"}
-	for i := 0; i < 2+rng.Intn(5); i++ {
-		names = append(names, fmt.Sprintf("Dev %d", i))
+	devs := []string{}
+	for i := 0; i < 2+rng.Intn(4); i++ {
+		devs = append(devs, fmt.Sprintf("Dev %d", i))
 	}
+	reviewers := []string{"Rev 1", "Rev 2"}
+	names := append(append([]string{"Orchestrator"}, devs...), reviewers...)
 	sid := func(name string) string {
 		return fmt.Sprintf("%08d-2222-2222-2222-222222222222", len(name)*7+int(name[len(name)-1]))
 	}
@@ -114,102 +123,149 @@ func runCheckOracle(t *testing.T, seed int64) {
 		_, err := bs.Subscribe(ctx, "team", name, name, naming.SessionName("claude", sid(name)), nil, "all")
 		require.NoError(t, err)
 	}
+	// review takes a new task of dev's through submit and delegation to reviewers (each gets a review task). A step
+	// the board refuses (dev has a task in progress already) ends it there; it runs on board A before the copy, so
+	// both sides see the same result.
+	review := func(dev string, to ...string) {
+		task, err := bs.CreateTask(ctx, "team", "work", "", "medium", "Orchestrator", dev)
+		require.NoError(t, err)
+		if _, err = bs.ClaimTask(ctx, "team", dev, task.ID); err != nil {
+			return
+		}
+		if _, err = bs.SubmitCompletionReview(ctx, "team", task.ID, dev, "built", "success", "needs review", nil); err != nil {
+			return
+		}
+		if _, err = bs.ReleaseCompletionReview(ctx, "team", task.ID, "Orchestrator", "review"); err != nil {
+			return
+		}
+		bs.DelegateReview(ctx, "team", task.ID, "Orchestrator", to)
+	}
+	// Rev 2 has reviewed before (so it is a reviewer) and is done: idle with no work, unless it gets more.
+	review(devs[0], "Rev 2")
+	_, err = bs.ApproveReview(ctx, "team", 0+1, "Rev 2", "ok", 0)
+	_ = err // the id is the first task's; a refusal only leaves Rev 2 with work, the same on both sides
+	if calm {
+		for _, d := range devs {
+			task, err := bs.CreateTask(ctx, "team", "work", "", "medium", "Orchestrator", d)
+			require.NoError(t, err)
+			bs.ClaimTask(ctx, "team", d, task.ID) // refused for one already working: still working
+		}
+	}
 	signals := map[string]agentSignal{}
 	known := map[string]bool{}
 	var taskIDs []int64
 	keysSeen := map[string]bool{}
 	lastCheck := map[string]time.Time{}
 	for step := 0; step < 10; step++ {
+		// The database's own clock, a few minutes on: its stamps (posts, claims, completions) fall after the
+		// last check or before it, as the check's progress line needs both.
+		now := time.Now().UTC().Truncate(time.Second).Add(time.Duration(rng.Intn(5)) * time.Minute)
 		bySession := map[string]AgentInfo{}
 		for _, name := range names {
-			if rng.Intn(6) != 0 {
+			if calm || rng.Intn(6) != 0 {
 				a := AgentInfo{AgentType: "claude", SessionID: sid(name), DisplayName: name}
 				bySession[naming.SessionName(a.AgentType, a.SessionID)] = a
 			}
-			known[sid(name)] = rng.Intn(5) != 0
-			signals[sid(name)] = agentSignal{InTurn: rng.Intn(4) == 0, NeedsInput: rng.Intn(8) == 0,
+			known[sid(name)] = calm || rng.Intn(5) != 0
+			signals[sid(name)] = agentSignal{InTurn: calm || rng.Intn(4) == 0, NeedsInput: !calm && rng.Intn(8) == 0,
 				Since: now.Add(-time.Duration(rng.Intn(90)) * time.Minute)}
 		}
-		for k := rng.Intn(3); k > 0; k-- {
-			assignee := names[1+rng.Intn(len(names)-1)]
-			if rng.Intn(4) == 0 {
-				assignee = ""
-			}
-			task, err := bs.CreateTask(ctx, "team", "work", "", []string{"high", "medium", "low"}[rng.Intn(3)], "Operator", assignee)
-			require.NoError(t, err)
-			taskIDs = append(taskIDs, task.ID)
-		}
-		for k := rng.Intn(3); k > 0 && len(taskIDs) > 0; k-- {
-			id := taskIDs[rng.Intn(len(taskIDs))]
-			task, err := bs.GetTask(ctx, "team", id)
-			if err != nil || task == nil {
-				continue
-			}
-			switch rng.Intn(4) {
-			case 0:
-				if task.AssignedTo != nil {
-					bs.ClaimTask(ctx, "team", *task.AssignedTo, id)
+		if !calm {
+			signals[sid("Rev 2")] = agentSignal{Since: now.Add(-45 * time.Minute)} // idle: the review rule's other reviewer
+			for k := rng.Intn(3); k > 0; k-- {
+				assignee := devs[rng.Intn(len(devs))]
+				if rng.Intn(4) == 0 {
+					assignee = ""
 				}
-			case 1: // parked until a moment already past, or still ahead
-				bs.ParkTask(ctx, "team", id, "a long test", now.Add(time.Duration(rng.Intn(60)-30)*time.Minute))
-			case 2:
-				if task.AssignedTo != nil {
-					rule := []string{ruleClaimNudge, ruleStatusNudge}[rng.Intn(2)]
-					bs.BumpHealthCounter(ctx, "team", rule, *task.AssignedTo, fmt.Sprint(id), now.Add(-time.Hour))
-					bs.MarkHealthEscalated(ctx, "team", rule, *task.AssignedTo, fmt.Sprint(id), now.Add(-time.Duration(rng.Intn(120))*time.Minute))
-					keysSeen["escalation|"+rule+"|"+*task.AssignedTo+"|"+fmt.Sprint(id)] = true
-				}
-			case 3:
-				bs.CancelTask(ctx, "team", id, "Operator", nil)
+				task, err := bs.CreateTask(ctx, "team", "work", "", []string{"high", "medium", "low"}[rng.Intn(3)], "Operator", assignee)
+				require.NoError(t, err)
+				taskIDs = append(taskIDs, task.ID)
 			}
-		}
-		if rng.Intn(3) == 0 {
-			who := names[1+rng.Intn(len(names)-1)]
+			for k := rng.Intn(3); k > 0 && len(taskIDs) > 0; k-- {
+				id := taskIDs[rng.Intn(len(taskIDs))]
+				task, err := bs.GetTask(ctx, "team", id)
+				if err != nil || task == nil {
+					continue
+				}
+				switch rng.Intn(5) {
+				case 0:
+					if task.AssignedTo != nil {
+						bs.ClaimTask(ctx, "team", *task.AssignedTo, id)
+					}
+				case 1: // parked until a moment already past, or still ahead
+					bs.ParkTask(ctx, "team", id, "a long test", now.Add(time.Duration(rng.Intn(60)-30)*time.Minute))
+				case 2:
+					if task.AssignedTo != nil {
+						rule := []string{ruleClaimNudge, ruleStatusNudge}[rng.Intn(2)]
+						bs.BumpHealthCounter(ctx, "team", rule, *task.AssignedTo, fmt.Sprint(id), now.Add(-time.Hour))
+						bs.MarkHealthEscalated(ctx, "team", rule, *task.AssignedTo, fmt.Sprint(id), now.Add(-time.Duration(rng.Intn(120))*time.Minute))
+						keysSeen["escalation|"+rule+"|"+*task.AssignedTo+"|"+fmt.Sprint(id)] = true
+					}
+				case 3:
+					bs.CancelTask(ctx, "team", id, "Operator", nil)
+				case 4:
+					if task.AssignedTo != nil {
+						bs.CompleteTask(ctx, "team", id, *task.AssignedTo, nil)
+					}
+				}
+			}
+			// Reviews: mostly to Rev 1, whose queue grows; some approved or rejected.
 			if rng.Intn(2) == 0 {
-				bs.RegisterWait(ctx, "team", who, naming.SessionName("claude", sid(who)), "operator", "Operator", "may I ship?", time.Hour)
-			} else {
-				bs.RegisterWait(ctx, "team", who, naming.SessionName("claude", sid(who)), "message", "Orchestrator", "", time.Hour)
+				to := "Rev 1"
+				if rng.Intn(5) == 0 {
+					to = "Rev 2"
+				}
+				review(devs[rng.Intn(len(devs))], to)
+			}
+			if open, _ := bs.OpenReviews(ctx, "team"); len(open["Rev 1"]) > 0 && rng.Intn(4) == 0 {
+				id := open["Rev 1"][rng.Intn(len(open["Rev 1"]))]
+				if rng.Intn(2) == 0 {
+					bs.ApproveReview(ctx, "team", id, "Rev 1", "ok", 0)
+				} else {
+					bs.RejectReview(ctx, "team", id, "Rev 1", "not yet", 0)
+				}
+			}
+			if rng.Intn(3) == 0 {
+				who := devs[rng.Intn(len(devs))]
+				if rng.Intn(2) == 0 {
+					bs.RegisterWait(ctx, "team", who, naming.SessionName("claude", sid(who)), "operator", "Operator", "may I ship?", time.Hour)
+				} else {
+					bs.RegisterWait(ctx, "team", who, naming.SessionName("claude", sid(who)), "message", "Orchestrator", "", time.Hour)
+				}
+			}
+			var keys []string
+			for k := range keysSeen {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				if rng.Intn(3) == 0 {
+					bs.AckHealthItem(ctx, "team", teamhealth.ItemID(k), "Orchestrator", now) // refused for one never shown
+				}
 			}
 		}
 		if rng.Intn(2) == 0 {
-			from := names[rng.Intn(len(names))]
-			bs.PostMessage(ctx, "team", from, "an update on my work", nil)
+			bs.PostMessage(ctx, "team", names[rng.Intn(len(names))], "an update on my work", nil)
 		}
-		// The orchestrator acknowledges some of what it was shown.
-		var keys []string
-		for k := range keysSeen {
-			keys = append(keys, k)
+		// The last check: none (the check counts from an interval ago), or just ahead of this step's activity.
+		switch rng.Intn(3) {
+		case 0:
+			delete(lastCheck, "team")
+		case 1:
+			lastCheck["team"] = time.Now().UTC().Add(time.Minute)
 		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			if rng.Intn(3) == 0 {
-				if bs.AckHealthItem(ctx, "team", teamhealth.ItemID(k), "Orchestrator", now) == nil { // refused for one never shown
-					checkOracleTotals.acked++
-				}
-			}
-		}
-		now = now.Add(time.Duration(rng.Intn(20)) * time.Minute)
 
-		// Parks that end at this check.
-		for _, id := range taskIDs {
-			if task, err := bs.GetTask(ctx, "team", id); err == nil && task != nil && task.ParkedReason != nil && !task.Parked(now) && (task.Status == "pending" || task.Status == "in_progress" || task.Status == "blocked" || task.Status == "draft") {
-				checkOracleTotals.unparked++
-			}
-		}
 		// The same bytes on both sides.
 		require.NoError(t, bs.Close())
 		copyBoardFile(t, pathA, pathB)
-		stores := make([]*board.Store, 2)
-		for i, p := range []string{pathA, pathB} {
-			stores[i], err = board.NewStoreWithKey(p, "")
-			require.NoError(t, err)
-		}
-		results := make([]struct {
+		var results [2]struct {
 			text  string
 			count int
 			err   error
-		}, 2)
-		for i, s := range stores {
+		}
+		for i, p := range []string{pathA, pathB} {
+			s, err := board.NewStoreWithKey(p, "")
+			require.NoError(t, err)
 			m := &BoardHealthMonitor{store: s, interval: 10 * time.Minute, idleAfter: 30 * time.Minute, now: func() time.Time { return now },
 				signal:    func(_ context.Context, id string) (agentSignal, bool) { return signals[id], known[id] },
 				lastCheck: map[string]time.Time{}}
@@ -223,20 +279,16 @@ func runCheckOracle(t *testing.T, seed int64) {
 			} else {
 				results[i].text, results[i].count, results[i].err = m.composeCheck(ctx, "team", "Orchestrator", rcpt, bySession)
 			}
-		}
-		require.Equal(t, results[0], results[1], "step %d: the check", step)
-		for _, s := range stores {
 			require.NoError(t, s.Close())
 		}
+		require.Equal(t, results[0], results[1], "step %d: the check", step)
 		require.Equal(t, dumpBoard(t, pathA), dumpBoard(t, pathB), "step %d: the databases after the check", step)
-		checkOracleTotals.checks++
-		checkOracleTotals.items += results[1].count
-		// The keys shown this time, for the orchestrator to acknowledge later.
+		for phrase := range checkPhrases {
+			checkSeen[phrase] += strings.Count(results[1].text, phrase)
+		}
 		for _, name := range names {
 			keysSeen["idle|"+name] = true
-		}
-		if rng.Intn(4) == 0 {
-			lastCheck["team"] = now
+			keysSeen["reviews|"+name] = true
 		}
 		bs, err = board.NewStoreWithKey(pathA, "")
 		require.NoError(t, err)
