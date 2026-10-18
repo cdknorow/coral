@@ -34,6 +34,8 @@ const (
 	rateLimitMax     = 10
 	// maxRateIPs is the most addresses the failed-key limiter tracks at once.
 	maxRateIPs = 10000
+	// rateSweepEvery is the least time between two sweeps of a full map: a flood of fresh addresses must not cost a scan each.
+	rateSweepEvery = time.Second
 )
 
 // Session represents an authenticated session.
@@ -53,6 +55,7 @@ type KeyStore struct {
 	sessions   SessionBackend // browser sign-ins (#3949): memory, or sessions.db once the server sets it
 	live       liveRequests   // the requests in flight for each session, closed when it ends (#3966)
 	rateMap    map[string]*rateLimitEntry
+	rateSweep  time.Time    // when the full map was last swept: at most once a rateSweepEvery
 	trusted    []*net.IPNet // reverse proxies whose X-Forwarded-Proto is believed (#3356)
 	// loginTokens maps a login token's SHA-256 to its expiry (#3387).
 	loginTokens map[string]time.Time
@@ -347,9 +350,12 @@ func (ks *KeyStore) CheckRateLimit(ip string) bool {
 		// new one is not counted, as the password throttle does; a wrong key is refused all the same.
 		if len(ks.rateMap) >= maxRateIPs {
 			now := time.Now()
-			for k, e := range ks.rateMap {
-				if now.Sub(e.windowAt) > rateLimitWindow {
-					delete(ks.rateMap, k)
+			if now.Sub(ks.rateSweep) >= rateSweepEvery {
+				ks.rateSweep = now
+				for k, e := range ks.rateMap {
+					if now.Sub(e.windowAt) > rateLimitWindow {
+						delete(ks.rateMap, k)
+					}
 				}
 			}
 			if len(ks.rateMap) >= maxRateIPs {

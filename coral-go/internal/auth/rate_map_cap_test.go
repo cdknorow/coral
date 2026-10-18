@@ -45,3 +45,32 @@ func TestRateMapIsCappedAndSweptOnlyWhenFull(t *testing.T) {
 	assert.True(t, ks.CheckRateLimit("new-1"))
 	assert.Len(t, ks.rateMap, 1, "the expired ones were swept and the new address is tracked")
 }
+
+// A full map is swept at most once a rateSweepEvery: a flood of fresh addresses that finds the map full of live entries must
+// not scan it for each one (Security's SHOULD on #4646). Entries that expire inside the second wait for the next sweep.
+func TestFullRateMapIsNotRescannedWithinTheSecond(t *testing.T) {
+	ks := &KeyStore{rateMap: make(map[string]*rateLimitEntry)}
+	for i := 0; i < maxRateIPs; i++ {
+		ks.rateMap[fmt.Sprintf("live-%d", i)] = &rateLimitEntry{count: 1, windowAt: time.Now()}
+	}
+	assert.True(t, ks.CheckRateLimit("flood-1")) // the first full-map call sweeps (nothing has expired)
+	assert.Len(t, ks.rateMap, maxRateIPs)
+	swept := ks.rateSweep
+	assert.False(t, swept.IsZero(), "the sweep was recorded")
+
+	// Every entry now expires, but the second has not passed: no rescan, so the map stays full and nothing is dropped.
+	old := time.Now().Add(-2 * rateLimitWindow)
+	for _, e := range ks.rateMap {
+		e.windowAt = old
+	}
+	for i := 0; i < 50; i++ {
+		assert.True(t, ks.CheckRateLimit(fmt.Sprintf("flood-%d", i+2)))
+	}
+	assert.Len(t, ks.rateMap, maxRateIPs, "no scan inside the second")
+	assert.Equal(t, swept, ks.rateSweep, "and no new sweep time")
+
+	// Once the second has passed the next new address sweeps the expired entries away and is tracked.
+	ks.rateSweep = time.Now().Add(-2 * rateSweepEvery)
+	assert.True(t, ks.CheckRateLimit("after-1"))
+	assert.Len(t, ks.rateMap, 1, "swept, and the new address tracked")
+}
