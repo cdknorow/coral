@@ -70,17 +70,26 @@ const SCEN = [
                 window.__fetched = [];
                 const real = window.fetch; const json = (b, s = 200) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } }));
                 const A = ${JSON.stringify(answers)};
+                window.__inflight = 0; // requests the dialog has started and not yet finished (the data-ready signal)
                 window.fetch = (u, o = {}) => {
                     const url = String(u), p = new URL(url, location.href).pathname; if (p !== '/api/system/auto-wake') window.__fetched.push(((o.method) || 'GET').toUpperCase() + ' ' + p); // the page's own auto-wake poll comes when it comes, not from the dialog: it is left out of the fetches
-                    if (p === '/api/system/privacy') return A.privacy === 500 ? json({}, 500) : json({ remote_access_enabled: true, debug_input_log: true, bind_host: '127.0.0.1' });
-                    if (p === '/api/themes') return A.themes === 500 ? json({}, 500) : json({ themes: A.themes ? [{ name: 'Mine' }, { name: 'Other' }] : [] });
-                    if (p === '/api/agent-models') return A.models === 500 ? json({}, 500) : json({ claude: ['opus', 'sonnet'], codex: ['gpt'], agy: ['gem'], pi: ['p1'] });
-                    if (p === '/api/system/api-key') return A.key === 401 ? json({}, 401) : json({ key: typeof A.key === 'string' ? A.key : '' });
-                    if (p === '/api/system/status') return A.status === 500 ? json({}, 500) : json({ version: '9.9.9' });
-                    return real(u, o);
+                    let pr;
+                    if (p === '/api/system/privacy') pr = A.privacy === 500 ? json({}, 500) : json({ remote_access_enabled: true, debug_input_log: true, bind_host: '127.0.0.1' });
+                    else if (p === '/api/themes') pr = A.themes === 500 ? json({}, 500) : json({ themes: A.themes ? [{ name: 'Mine' }, { name: 'Other' }] : [] });
+                    else if (p === '/api/agent-models') pr = A.models === 500 ? json({}, 500) : json({ claude: ['opus', 'sonnet'], codex: ['gpt'], agy: ['gem'], pi: ['p1'] });
+                    else if (p === '/api/system/api-key') pr = A.key === 401 ? json({}, 401) : json({ key: typeof A.key === 'string' ? A.key : '' });
+                    else if (p === '/api/system/status') pr = A.status === 500 ? json({}, 500) : json({ version: '9.9.9' });
+                    else pr = real(u, o);
+                    window.__inflight++;
+                    Promise.resolve(pr).then(() => { window.__inflight--; }, () => { window.__inflight--; }); // count it done whether it answers or errors
+                    return pr;
                 };
                 state.settings = ${JSON.stringify(settings)};
-                try { await modals.showSettingsModal(${JSON.stringify(group)}); await (async () => { const start = performance.now(); let n = -1, since = start; while (performance.now() - start < 1200) { await ${framesJs(1)}; if (window.__fetched.length === n) { if (performance.now() - since >= 150) break; } else { n = window.__fetched.length; since = performance.now(); } } })(); /* wait for the dialog's fetches to arrive (the data) before reading, capped at 1200 ms -- no fixed sleep */ } finally { window.fetch = real; }
+                try { await modals.showSettingsModal(${JSON.stringify(group)}); await (async () => { const start = performance.now();
+                    while (performance.now() - start < 1200 && window.__inflight > 0) { await ${framesJs(1)}; } // the data is in once no request is in flight
+                    let prev = -1, since = performance.now(); // then let the dialog's geometry settle before reading, within the same 1200 ms cap
+                    while (performance.now() - start < 1200) { await ${framesJs(1)}; let s = 0; for (const e of document.querySelectorAll('#settings-modal *')) { const b = e.getBoundingClientRect(); s += b.left + b.top + b.width + b.height; } s = Math.round(s); if (s === prev) { if (performance.now() - since >= 120) break; } else { prev = s; since = performance.now(); } }
+                })(); /* wait until in-flight requests are 0, then settle; capped at 1200 ms -- no fixed sleep */ } finally { window.fetch = real; }
                 return true;
             })()`);
             void out;
