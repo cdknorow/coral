@@ -49,8 +49,7 @@ import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } fro
 import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
 import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize, loadPendingFromStorage } from './live_chat.js';
-import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
-import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
+import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents } from './agentic_state.js';
 import { copyBranchName, escapeHtml, showView, showToast, viewChanges, buildWelcome } from './utils.js';
 import { initPreviewPane, openPreviewTab, closeTab as closePreviewTab, closeAllTabs as closeAllPreviewTabs, resetPreviewPane } from './preview_pane.js';
 import { initScheduler, selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
@@ -361,9 +360,6 @@ Object.assign(window, {
     switchAgenticTab, loadAgentEvents,
     // live_chat
     setLiveViewMode, showTerminalView,
-    toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup,
-    // history_tabs
-    toggleHistoryEventFilter, toggleAllHistoryEventFilters,
     // scheduler
     selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob,
     showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset,

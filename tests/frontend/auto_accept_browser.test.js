@@ -159,7 +159,7 @@ const BASE = require('./test_base').BASE;
         console.log('7. Activity shows the auto-accept events with their own icon and filter');
         await ev(`(async () => {
             const as = await import(${S}+'agentic_state.js');
-            if (!document.getElementById('agentic-state-events')) document.body.insertAdjacentHTML('beforeend', '<div id="event-filters"></div><div id="agentic-state-events"></div>');
+            if (!document.getElementById('agentic-state-events')) document.body.insertAdjacentHTML('beforeend', '<div id="event-search-bar"></div><div id="agentic-state-events"></div>');
             window.__state.currentAgentEvents = [
                 { id: 5, event_type: 'auto_accept_enabled', summary: 'Auto-accept turned on from the dashboard', created_at: '2026-10-13T10:00:05Z' },
                 { id: 4, event_type: 'auto_accept_cleared', summary: 'Auto-accept turned off: the agent restarted', created_at: '2026-10-13T10:00:04Z' },
@@ -177,9 +177,10 @@ const BASE = require('./test_base').BASE;
         assert.match(items[3].icon, /tool-auto-accept-skipped/);
         assert.match(items[1].icon, /tool-auto-accept-skipped/);
         assert.match(items[0].icon, /tool-auto-accept-paused/);
-        await ev(`(async () => { const as = await import(${S}+'agentic_state.js'); as.toggleEventFilter('autoaccept'); return true; })()`);
+        await ev(`document.getElementById('ev-g-autoaccept').click(); true`); // the bar's Show Auto-accept box (#4798)
         assert.equal(await ev(`document.querySelectorAll('#agentic-state-events .event-item').length`), 0, 'the Auto-accept filter hides them');
-        await ev(`(async () => { const as = await import(${S}+'agentic_state.js'); as.toggleEventFilter('autoaccept'); return true; })()`);
+        await ev(`document.getElementById('ev-g-autoaccept').click(); true`);
+        assert.equal(await ev(`document.querySelectorAll('#agentic-state-events .event-item').length`), 5, 'and unticking again shows them');
         console.log('   ✓ five events, own icons, filterable');
 
         console.log('8. Stop all auto-accept: shown only while some agent has it on; stops them all');

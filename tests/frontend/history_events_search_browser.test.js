@@ -65,7 +65,7 @@ async function run() {
         await settle(`!!document.querySelector('#history-event-search-bar .list-bar-search') && document.querySelectorAll('#history-events-list .event-item').length === 120`, 'the bar and the session\'s 120 events');
 
         console.log('The session\'s events, with nothing asked for');
-        check('the bar is above the list, with the list\'s own filter beside it, and the events are all there', (await ev(`!document.getElementById('history-event-search-bar').hidden && !document.getElementById('history-event-filters').hidden`)) && (await rows()).length === 120);
+        check('the bar is above the list and is its only filter button (the older tool-group menu is gone), and the events are all there', (await ev(`!document.getElementById('history-event-search-bar').hidden && document.querySelectorAll('#history-tab-activity .list-bar-filter-btn').length === 1 && !document.querySelector('.filter-dropdown-btn, #history-event-filters')`)) && (await rows()).length === 120);
         check('the count says nothing yet, and so does the status region', (await count()) === '' && (await region()) === '', JSON.stringify([await count(), await region()]));
 
         console.log('A text search covers every event of the session');
@@ -73,7 +73,6 @@ async function run() {
         await settle(`document.querySelector('#history-event-search-bar .list-bar-count').textContent === '70 events'`, 'the count of the matches');
         let r = await rows();
         check('the results are the matches, newest first, 50 of them with a Load more', r.length === 50 && r[0] === 'Edit file-69.go' && (await ev(`!!document.querySelector('#history-events-list .event-more')`)), `${r.length} rows, first ${r[0]}`);
-        check('the list\'s own filter is hidden while the results show', (await ev(`document.getElementById('history-event-filters').hidden`)));
         await settle(`document.querySelector('#history-event-search-bar .list-bar-live').textContent === '70 events'`, 'the status region says the settled count');
         await ev(`document.querySelector('#history-events-list .event-more').click(); true`);
         await settle(`document.querySelectorAll('#history-events-list .event-item').length === 70`, 'the second page');
@@ -82,7 +81,7 @@ async function run() {
 
         console.log('A type, the order, a day range');
         await clearAll();
-        await settle(`document.querySelectorAll('#history-events-list .event-item').length === 120 && document.getElementById('history-event-filters').hidden === false`, 'the whole list back');
+        await settle(`document.querySelectorAll('#history-events-list .event-item').length === 120 && !document.querySelector('#history-events-list .event-more')`, 'the whole list back');
         await pick('#hev-type', 'prompt');
         await settle(`document.querySelector('#history-event-search-bar .list-bar-count').textContent === '10 events'`, 'the prompts');
         r = await rows();
@@ -100,7 +99,7 @@ async function run() {
         check('Until today includes today (the last day picked is included)', (await count()) === '10 events', await count());
 
         console.log('A search the server cut says N+');
-        await clearAll(); await settle(`document.getElementById('history-event-filters').hidden === false`, 'the list');
+        await clearAll(); await settle(`document.querySelectorAll('#history-events-list .event-item').length === 120`, 'the list');
         await ev(`(() => { const real = window.fetch; window.__cut = real; window.fetch = async (u, o) => { const r = await real(u, o); if (/\\/events\\?/.test(String(u)) && /[?&]q=/.test(String(u))) { const d = await r.json(); d.truncated = true; return new Response(JSON.stringify(d), { status: 200, headers: { 'content-type': 'application/json' } }); } return r; }; return true; })()`);
         await type('#hev-search', 'read notes');
         await settle(`document.querySelector('#history-event-search-bar .list-bar-count').textContent === '30+ events'`, 'the cut count');
@@ -108,7 +107,7 @@ async function run() {
         await ev(`window.fetch = window.__cut; true`);
 
         console.log('The status region waits for a count, however slow the answer');
-        await clearAll(); await settle(`document.getElementById('history-event-filters').hidden === false`, 'the list');
+        await clearAll(); await settle(`document.querySelectorAll('#history-events-list .event-item').length === 120`, 'the list');
         await ev(`(() => { const real = window.fetch; window.__slow = real; window.fetch = async (u, o) => { if (/\\/events\\?/.test(String(u)) && /[?&]q=/.test(String(u))) await new Promise(r => setTimeout(r, 1300)); return real(u, o); }; return true; })()`); // sleep-ok: the answer must come later than the region's settle (500 ms)
         await ev(`window.__writes = 0; new MutationObserver(m => { window.__writes += m.length; }).observe(document.querySelector('#history-event-search-bar .list-bar-live'), { childList: true, characterData: true, subtree: true }); true`);
         await type('#hev-search', 'heads up');
@@ -119,10 +118,35 @@ async function run() {
         check('and it says it, once the answer is in', (await count()) === '10 events');
         await ev(`window.fetch = window.__slow; true`);
 
+        console.log('The tool groups are in the same Filters menu and narrow the rows loaded, with or without a search');
+        await clearAll(); await settle(`document.querySelectorAll('#history-events-list .event-item').length === 120`, 'the list');
+        check('the menu has a Show box for each tool group, all ticked', (await ev(`document.querySelectorAll('#history-event-search-bar .list-bar-kept input:checked').length`)) === 15);
+        await ev(`window.__evReqs = 0; const r0 = window.fetch; window.__r0 = r0; window.fetch = (u, o) => { if (/\\/events\\?/.test(String(u))) window.__evReqs++; return r0(u, o); }; true`);
+        await ev(`document.getElementById('hev-g-read').click(); true`);
+        await settle(`document.querySelectorAll('#history-events-list .event-item').length === 90`, 'the list without Read');
+        check('Show Read unticked hides the 30 Reads, nothing is asked of the server', (await rows()).every(s => !s.startsWith('Read ')) && (await ev(`window.__evReqs`)) === 0, `${(await rows()).length} rows`);
+        check('a chip names it, the Filters button counts it, and the page keeps it in its Set', (await ev(`[...document.querySelectorAll('#history-event-search-bar .list-bar-chip-text')].map(e => e.textContent).join()`)) === 'Hidden: Read' && (await ev(`document.querySelector('#history-event-search-bar .list-bar-filter-btn').textContent`)) === 'Filters (1)' && (await ev(`[...window.__coral.historyFilterHidden].join()`)) === 'read');
+        await type('#hev-search', 'read notes');
+        await settle(`document.querySelector('#history-event-search-bar .list-bar-count').textContent === '30 events'`, 'the 30 reads');
+        check('a search with Read hidden: the server counts 30, the rows are filtered out, and it says so', (await ev(`document.querySelector('#history-events-list .event-empty')?.textContent`)) === 'All events filtered out', await count());
+        await ev(`window.__evReqs = 0; document.getElementById('hev-g-read').click(); true`);
+        await settle(`document.querySelectorAll('#history-events-list .event-item').length === 30`, 'the reads back');
+        check('ticking Read again shows the 30 matches, with no new request (the search is not run again)', (await rows()).every(s => s.startsWith('Read notes')) && (await count()) === '30 events' && (await ev(`window.__evReqs`)) === 0, String(await ev(`window.__evReqs`)));
+        await ev(`window.fetch = window.__r0; true`);
+        await clearAll(); await settle(`document.querySelectorAll('#history-events-list .event-item').length === 120`, 'the list');
+        await ev(`document.getElementById('hev-g-read').click(); true`);
+        await settle(`document.querySelectorAll('#history-events-list .event-item').length === 90`, 'without Read again');
+        await ev(`document.querySelector('#history-event-search-bar .list-bar-chip').click(); true`);
+        await settle(`document.querySelectorAll('#history-events-list .event-item').length === 120`, 'the chip clears it');
+        check('removing the chip shows every group again', (await ev(`window.__coral.historyFilterHidden.size`)) === 0);
+        await ev(`window.__coral.historyFilterHidden.add('bash'); T.ht.loadHistoryEvents('${SID}').then(() => true)`); // opening a session clears the page's Set: the bar follows it
+        await settle(`document.querySelectorAll('#history-events-list .event-item').length === 120`, 'the session opened again');
+        check('the bar follows the page\'s Set (a session opened clears it): no chip, every box ticked', (await ev(`document.querySelectorAll('#history-event-search-bar .list-bar-chip').length`)) === 0 && (await ev(`document.querySelectorAll('#history-event-search-bar .list-bar-kept input:checked').length`)) === 15);
+
         console.log('A search belongs to the session on screen');
         await ev(`document.activeElement && document.activeElement.blur(); T.ht.loadHistoryEvents('another-session-id').then(() => true)`);
         await settle(`document.querySelector('#hev-search').value === ''`, 'the other session');
-        check('another session starts with an empty bar and its own list', (await count()) === '' && (await ev(`document.querySelectorAll('#history-event-search-bar .list-bar-chip').length`)) === 0 && (await ev(`!document.getElementById('history-event-filters').hidden`)));
+        check('another session starts with an empty bar and its own list', (await count()) === '' && (await ev(`document.querySelectorAll('#history-event-search-bar .list-bar-chip').length`)) === 0);
     } finally { if (standIn) await standIn.stop().catch(() => {}); await client.close(); }
     const failed = results.filter(r => r === 'FAIL').length;
     console.log(failed ? `\n${failed} FAILED` : '\nALL PASS');

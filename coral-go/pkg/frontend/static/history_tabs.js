@@ -5,7 +5,6 @@ import { escapeHtml, sanitizeMarkdown } from './utils.js';
 import { eventRowHtml, renderActivityChart } from './event_row.js';
 import { setHistoryEventsSession, syncHistoryEventSearch } from './history_events_search.js';
 import { FILTER_GROUPS, eventVisible, historyEventsView } from './event_icons.js';
-import { filterItemHtml, refillFilterList } from './filter_dropdown.js';
 
 // The icon and filter definitions are shared with the live Activity view (event_icons.js)
 // Per-session filter state for history
@@ -37,65 +36,11 @@ export async function loadHistoryEvents(sessionId) {
     if (countEl) countEl.textContent = historyEvents.length > 0 ? historyEvents.length : '';
 
     renderHistoryActivityChart();
-    renderHistoryEventFilters();
     renderHistoryEventTimeline();
 }
 
 function renderHistoryActivityChart() {
     renderActivityChart(document.getElementById('history-activity-chart'), historyEvents, FILTER_GROUPS);
-}
-
-function renderHistoryEventFilters() {
-    const container = document.getElementById('history-event-filters');
-    if (!container) return;
-
-    const activeCount = FILTER_GROUPS.length - historyFilterHidden.size;
-    const badge = historyFilterHidden.size > 0 ? `<span class="filter-btn-badge">${activeCount}/${FILTER_GROUPS.length}</span>` : '';
-
-    container.innerHTML = `<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="history"
-        aria-haspopup="menu" aria-expanded="${document.getElementById('filter-dropdown') ? 'true' : 'false'}">
-        <span class="event-filter-char">&#xe152;</span>
-        <span class="filter-btn-label">Filter</span>
-        ${badge}
-    </button>`;
-}
-
-export function toggleHistoryEventFilter(key) {
-    if (!FILTER_GROUPS.some(g => g.key === key)) return; // only a filter this list has
-    if (historyFilterHidden.has(key)) {
-        historyFilterHidden.delete(key);
-    } else {
-        historyFilterHidden.add(key);
-    }
-    _refreshHistoryFilterDropdown();
-    renderHistoryEventFilters();
-    renderHistoryEventTimeline();
-}
-
-export function toggleAllHistoryEventFilters() {
-    if (historyFilterHidden.size === 0) {
-        for (const group of FILTER_GROUPS) historyFilterHidden.add(group.key);
-    } else {
-        historyFilterHidden.clear();
-    }
-    _refreshHistoryFilterDropdown();
-    renderHistoryEventFilters();
-    renderHistoryEventTimeline();
-}
-
-function _refreshHistoryFilterDropdown() {
-    const dropdown = document.getElementById('filter-dropdown');
-    if (!dropdown) return;
-    // Re-render dropdown items in place
-    const items = FILTER_GROUPS.map(group => {
-        const isHidden = historyFilterHidden.has(group.key);
-        const checked = !isHidden;
-        const count = historyEvents.filter(group.match).length;
-        const countHtml = `<span class="filter-item-count">${count}</span>`;
-        return filterItemHtml(group, 'history', checked, countHtml);
-    }).join('');
-
-    refillFilterList(dropdown, items);
 }
 
 function renderHistoryEventTimeline() {

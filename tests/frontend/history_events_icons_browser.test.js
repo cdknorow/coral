@@ -42,22 +42,15 @@ const STUB = `(() => {
         assert.match(rows[2].tip, /^Auto-accept paused: Paused/, 'and the paused one');
         console.log('   ✓ tool-auto-accept / tool-auto-accept-paused with their titles');
 
-        console.log('2. The filter list has an Auto-accept group that counts and hides them');
-        await ev(`document.querySelector('#history-event-filters .filter-dropdown-btn').click(); true`);
-        await waitFor(`!!document.querySelector('#filter-dropdown .filter-dropdown-item')`, 'the filter list', 4000);
-        // The first render of the list already counts each group (it used to count only after a toggle).
-        const firstCounts = await ev(`[...document.querySelectorAll('#filter-dropdown .filter-dropdown-item')].map(i => [i.dataset.key, (i.querySelector('.filter-item-count') || {}).textContent])`);
-        assert.deepEqual(firstCounts.find(c => c[0] === 'autoaccept'), ['autoaccept', '2'], `the Auto-accept group counts 2 on the first render (${JSON.stringify(firstCounts)})`);
-        assert.deepEqual(firstCounts.find(c => c[0] === 'read'), ['read', '1'], 'and Read counts 1');
-        const labels = await ev(`[...document.querySelectorAll('#filter-dropdown .filter-dropdown-item .filter-item-label')].map(n => n.textContent.trim())`);
-        assert.ok(labels.includes('Auto-accept'), `the list has an Auto-accept group (${JSON.stringify(labels)})`);
-        await ev(`document.querySelector('#filter-dropdown .filter-dropdown-item[data-key=autoaccept]').click(); true`);
+        console.log('2. The Filters menu of the bar has a Show Auto-accept box that hides them');
+        const labels = await ev(`[...document.querySelectorAll('#history-event-search-bar .list-bar-kept .list-bar-field-label')].map(n => n.textContent.trim())`);
+        assert.ok(labels.includes('Show Auto-accept'), `the menu has an Auto-accept group (${JSON.stringify(labels)})`);
+        assert.equal(await ev(`document.getElementById('hev-g-autoaccept').checked`), true, 'shown by default');
+        await ev(`document.getElementById('hev-g-autoaccept').click(); true`);
         await waitFor(`document.querySelectorAll('#history-events-list .event-item').length === 2`, 'the auto-accept events to be hidden', 4000);
         assert.deepEqual(await ev(`[...document.querySelectorAll('#history-events-list .event-icon')].map(r => r.className.replace('event-icon ', ''))`), ['tool-read', 'tool-goal'], 'only the other events remain');
-        // After a toggle the list redraws with the same counts.
-        await waitFor(`!!document.querySelector('#filter-dropdown .filter-dropdown-item[data-key=autoaccept] .filter-item-count')`, 'the counts', 4000);
-        assert.equal(await ev(`document.querySelector('#filter-dropdown .filter-dropdown-item[data-key=autoaccept] .filter-item-count').textContent.trim()`), '2', 'the Auto-accept group counts both events');
-        console.log('   ✓ an Auto-accept group; unticking it hides both, and it counts 2');
+        assert.deepEqual(await ev(`[...window.__coral.historyFilterHidden]`), ['autoaccept'], 'the page keeps the hidden group where it kept it (the CDP suites read it)');
+        console.log('   ✓ an Auto-accept box; unticking it hides both');
 
         console.log('\nAll history event icon checks passed');
     } finally {

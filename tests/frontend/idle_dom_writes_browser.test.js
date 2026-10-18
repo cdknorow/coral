@@ -31,10 +31,10 @@ const BASE = require('./test_base').BASE;
                 { id: 2, event_type: 'tool_use', tool_name: 'Read', summary: 'main.go', created_at: '2026-10-16T10:02:00Z' }];
             window.__muts = 0;
             window.__mutLog = []; new MutationObserver(l => { for (const m of l) { const el = m.target.nodeType === 1 ? m.target : m.target.parentElement; if (!el || !window.__watched.some(id => { const w = document.getElementById(id); return w && w.contains(el); })) continue; window.__muts++; window.__mutLog.push(m.type + ' ' + (m.attributeName || '') + ' ' + (m.target.id || m.target.className || m.target.nodeName)); } }).observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
-            // Only what this suite is about: the task list, its toggle and count, and the activity timeline and filter. The rest of the page
+            // Only what this suite is about: the task list, its toggle and count, and the activity timeline and its search bar (nothing may be written to it while it idles). The rest of the page
             // (the live session header and the activity chart redraw from their own feeds) is not under test, and a busy machine lets one of
             // those land inside the window (a 6-shard epoch run failed with 2 such mutations).
-            window.__watched = ['board-task-list', 'board-task-hide-toggle-container', 'task-bar-count', 'agentic-state-events', 'event-filters'];
+            window.__watched = ['board-task-list', 'board-task-hide-toggle-container', 'task-bar-count', 'agentic-state-events', 'event-search-bar'];
             return true;
         })()`);
         // The mutation observer reports after the call returns: let a task finish before reading the count.

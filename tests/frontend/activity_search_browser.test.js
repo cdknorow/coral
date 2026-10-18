@@ -68,7 +68,7 @@ async function run() {
         await settle(`!!document.querySelector('#event-search-bar .list-bar-search') && document.querySelectorAll('#agentic-state-events .event-item').length === 50`, 'the bar and the live feed (the newest 50)');
 
         console.log('The live feed, with nothing asked for');
-        check('the bar is above the feed, empty, with the live feed\'s own filter beside it', (await ev(`!document.getElementById('event-search-bar').hidden && !document.getElementById('event-filters').hidden`)));
+        check('the bar is above the feed, and it is the only filter button (the older tool-group menu is gone)', (await ev(`!document.getElementById('event-search-bar').hidden && document.querySelectorAll('#agentic-panel-activity .list-bar-filter-btn').length === 1 && !document.querySelector('.filter-dropdown-btn, #event-filters')`)));
         check('the feed shows the newest 50 events, as before', (await rows()).length === 50 && (await rows())[0].startsWith('Heads up 9'), (await rows())[0]);
         check('the count says nothing yet, and so does the status region', (await count()) === '' && (await live()) === '', JSON.stringify([await count(), await live()]));
 
@@ -77,7 +77,6 @@ async function run() {
         await settle(`document.querySelector('#event-search-bar .list-bar-count').textContent === '70 events'`, 'the count of the matches');
         let r = await rows();
         check('the results are the matches, newest first, 50 of them with a Load more', r.length === 50 && r[0] === 'Edit file-69.go' && (await ev(`!!document.querySelector('#agentic-state-events .event-more')`)), `${r.length} rows, first ${r[0]}`);
-        check('the live feed\'s own filter is hidden while the results show', (await ev(`document.getElementById('event-filters').hidden`)));
         await settle(`document.querySelector('#event-search-bar .list-bar-live').textContent === '70 events'`, 'the status region says the settled count');
         check('a screen reader is told the count once, after the change', (await live()) === '70 events', await live());
         await ev(`document.querySelector('#agentic-state-events .event-more').click(); true`);
@@ -96,7 +95,7 @@ async function run() {
 
         console.log('A type, a day range and the order');
         await clearAll();
-        await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 50 && document.getElementById('event-filters').hidden === false`, 'the live feed back');
+        await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 50 && !document.querySelector('#agentic-state-events .event-more')`, 'the live feed back');
         await pick('#ev-type', 'prompt');
         await settle(`document.querySelector('#event-search-bar .list-bar-count').textContent === '10 events'`, 'the prompts');
         r = await rows();
@@ -122,17 +121,43 @@ async function run() {
         check('From today until today keeps them', (await count()) === '10 events');
 
         console.log('A search the server cut says N+');
-        await clearAll(); await settle(`document.getElementById('event-filters').hidden === false`, 'the feed');
+        await clearAll(); await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 50`, 'the feed');
         await ev(`(() => { const real = window.fetch; window.__cut = real; window.fetch = async (u, o) => { const r = await real(u, o); if (/\\/events\\?/.test(String(u)) && /[?&]q=/.test(String(u))) { const d = await r.json(); d.truncated = true; return new Response(JSON.stringify(d), { status: 200, headers: { 'content-type': 'application/json' } }); } return r; }; return true; })()`);
         await type('#ev-search', 'read notes');
         await settle(`document.querySelector('#event-search-bar .list-bar-count').textContent === '30+ events'`, 'the cut count');
         check('the count says 30+ events', (await count()) === '30+ events', await count());
         await ev(`window.fetch = window.__cut; true`);
 
+        console.log('The tool groups are in the same Filters menu and narrow the rows loaded, with or without a search');
+        await clearAll(); await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 50`, 'the feed');
+        check('the menu has a Show box for each tool group, all ticked', (await ev(`document.querySelectorAll('#event-search-bar .list-bar-kept input:checked').length`)) === 15);
+        await ev(`window.__evReqs = 0; const r0 = window.fetch; window.__r0 = r0; window.fetch = (u, o) => { if (/\\/events\\?/.test(String(u))) window.__evReqs++; return r0(u, o); }; true`);
+        await ev(`document.getElementById('ev-g-read').click(); true`);
+        await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 20`, 'the feed without Read');
+        check('Show Read unticked hides the 30 Reads of the 50 loaded, nothing is asked of the server', (await rows()).every(s => !s.startsWith('Read ')) && (await ev(`window.__evReqs`)) === 0, `${(await rows()).length} rows, ${await ev(`window.__evReqs`)} requests`);
+        check('a chip names it and the Filters button counts it', (await ev(`[...document.querySelectorAll('#event-search-bar .list-bar-chip-text')].map(e => e.textContent).join()`)) === 'Hidden: Read' && (await ev(`document.querySelector('#event-search-bar .list-bar-filter-btn').textContent`)) === 'Filters (1)');
+        check('the page keeps the hidden group in its Set', (await ev(`[...T.state.eventFiltersHidden].join()`)) === 'read');
+        await type('#ev-search', 'read notes');
+        await settle(`document.querySelector('#event-search-bar .list-bar-count').textContent === '30 events'`, 'the 30 reads');
+        check('a search with Read hidden: the server counts 30, the rows are filtered out, and it says so', (await ev(`document.querySelector('#agentic-state-events .event-empty')?.textContent`)) === 'All events filtered out', await count());
+        await ev(`window.__evReqs = 0; document.getElementById('ev-g-read').click(); true`);
+        await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 30`, 'the reads back');
+        check('ticking Read again shows the 30 matches, with no new request for it (the search is not run again)', (await rows()).every(s => s.startsWith('Read notes')) && (await count()) === '30 events' && (await ev(`window.__evReqs`)) === 0, String(await ev(`window.__evReqs`)));
+        await ev(`window.fetch = window.__r0; true`);
+        await clearAll(); await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 50`, 'the feed');
+        await ev(`document.getElementById('ev-g-read').click(); true`);
+        await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 20`, 'the feed without Read again');
+        await ev(`document.querySelector('#event-search-bar .list-bar-chip').click(); true`);
+        await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 50`, 'the chip clears it');
+        check('removing the chip shows every group again', (await ev(`T.state.eventFiltersHidden.size`)) === 0);
+        await ev(`T.state.eventFiltersHidden.add('bash'); T.as.renderEventTimeline(); true`); // the page's own Set changed from outside the bar
+        check('the bar follows the page\'s Set: a chip and an unticked box', (await ev(`[...document.querySelectorAll('#event-search-bar .list-bar-chip-text')].map(e => e.textContent).join()`)) === 'Hidden: Bash' && (await ev(`document.getElementById('ev-g-bash').checked`)) === false);
+        await ev(`T.state.eventFiltersHidden.clear(); T.as.renderEventTimeline(); true`);
+
         console.log('A search belongs to the agent on screen');
         await ev(`document.activeElement && document.activeElement.blur(); true`); // choosing another agent is a click elsewhere: the box is not being typed in (a field being typed in is left as typed)
         await ev(`T.state.currentSession = { name: '${OTHER}', type: 'live', session_id: 'sid-${OTHER}', agent_type: 'claude' }; T.state.currentAgentEvents = []; T.as.renderEventTimeline(); true`);
-        await settle(`!document.getElementById('event-filters').hidden`, 'the other agent');
+        await settle(`document.querySelector('#ev-search').value === ''`, 'the other agent');
         check('another agent starts with an empty bar and its own feed', (await ev(`document.querySelector('#ev-search').value`)) === '' && (await count()) === '' && (await ev(`document.querySelectorAll('#event-search-bar .list-bar-chip').length`)) === 0);
         await ev(`T.state.currentSession = { name: '${AGENT}', type: 'live', session_id: '${SID}', agent_type: 'claude' }; T.as.renderEventTimeline(); true`);
         check('and going back does not bring the old search back', (await ev(`document.querySelector('#ev-search').value`)) === '');

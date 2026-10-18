@@ -7,8 +7,9 @@ import { createEventSearch } from './event_search.js';
 const current = () => state.currentSession;
 
 const search = createEventSearch({
-    idp: 'ev', hostId: 'event-search-bar', listId: 'agentic-state-events', filterBarId: 'event-filters',
+    idp: 'ev', hostId: 'event-search-bar', listId: 'agentic-state-events',
     key: () => { const s = current(); return s && s.name ? `${s.name}:${s.session_id || ''}` : ''; },
+    hidden: () => (state.eventFiltersHidden ||= new Set()),
     sessionId: () => (current() && current().session_id) || '',
     request: params => { const s = current(); return serverFetch(serverForSession(s.name, s.session_id || ''), `/api/sessions/live/${encodeURIComponent(s.name)}/events?${params}`); },
 });

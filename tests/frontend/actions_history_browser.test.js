@@ -1,10 +1,8 @@
-// CSP stage 2, slice 3 (#3645): the History view, the activity filter dropdown (live and history)
-// and the changed/starred files on delegated data-on-* actions.
+// CSP stage 2, slice 3 (#3645): the History view and the changed/starred files on delegated data-on-* actions
+// (the activity filter dropdown that was here went when its tool groups moved into the shared bar, #4798: activity_groups_browser).
 //  - History: each tab button opens its tab and is the one marked active (switchHistoryTab now
 //    reads data-tab, not the onclick text); an unknown tab does nothing; the summary editor opens
 //    and cancels; the tag dropdown shows and hides; a branch chip's copy button copies its branch.
-//  - The filter dropdown opens from either view's button; an item toggles its filter (and an
-//    unknown key changes nothing); Toggle All; an item click doesn't close the dropdown.
 //  - Files, with paths holding &, <, ' and a space: copy, star, preview, edit and the row get the
 //    file's exact path (the old onclick chain passed it HTML-escaped); a diff row opens in diff
 //    mode; the diff mode select sends only a mode it offers; nothing inline is left.
@@ -87,49 +85,6 @@ const PATHS = ["src/a&b <x>.go", "docs/it's here.md"];
         await ev(`(() => { const chip = document.querySelector('#history-session-branch'); chip.querySelector('.branch-text').textContent = 'feature/x&y'; chip.querySelector('[data-on-click="copy-branch"]').click(); return true; })()`);
         await until(`window.__copied.includes('feature/x&y')`, 'the copied branch', 3000);
         check('a branch chip\'s copy button copies its branch', (await ev(`window.__copied`)).includes('feature/x&y'), JSON.stringify(await ev(`window.__copied`)));
-
-        // ── The filter dropdown (history, then live) ───────────────────────
-        const filt = await ev(`(async () => {
-            const h = await import(${MOD} + 'history_tabs.js');
-            const box = document.getElementById('history-event-filters');
-            if (box && !box.querySelector('[data-on-click="filter-dropdown"]')) box.innerHTML = '<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="history">Filter</button>';
-            box.querySelector('[data-on-click="filter-dropdown"]').click();
-            const dd = document.getElementById('filter-dropdown');
-            if (!dd) return { opened: false };
-            const item = dd.querySelector('[data-on-click="filter-toggle"]');
-            const key = item.dataset.key, before = window.__coral.historyFilterHidden.has(key);
-            item.click();
-            const toggled = window.__coral.historyFilterHidden.has(key) !== before;
-            const stillOpen = !!document.getElementById('filter-dropdown');
-            const size = window.__coral.historyFilterHidden.size;
-            const bad = document.createElement('div'); bad.setAttribute('data-on-click', 'filter-toggle'); bad.dataset.mode = 'history'; bad.dataset.key = 'not-a-filter';
-            document.body.appendChild(bad); bad.click(); bad.remove();
-            const unknownIgnored = window.__coral.historyFilterHidden.size === size && !window.__coral.historyFilterHidden.has('not-a-filter');
-            const n = document.querySelectorAll('#filter-dropdown [data-on-click="filter-toggle"]').length;
-            document.getElementById('filter-dropdown').querySelector('[data-on-click="filter-toggle-all"]').click();
-            const all = window.__coral.historyFilterHidden.size === 0 || window.__coral.historyFilterHidden.size === n;
-            // Close it as a person does (an outside click), so its close listener goes too.
-            await new Promise(r => setTimeout(r, 0));
-            document.body.click();
-            return { opened: true, mode: item.dataset.mode, toggled, stillOpen, unknownIgnored, all };
-        })()`);
-        check('history: the Filter button opens the dropdown, an item toggles its filter and keeps it open',
-            filt.opened && filt.mode === 'history' && filt.toggled && filt.stillOpen, JSON.stringify(filt));
-        check('history: an unknown filter key changes nothing; Toggle All toggles them all', filt.unknownIgnored && filt.all, JSON.stringify(filt));
-        const live = await ev(`(async () => {
-            const a = await import(${MOD} + 'agentic_state.js');
-            const btn = document.createElement('div'); btn.id = 'event-filters'; btn.innerHTML = '<button class="filter-dropdown-btn" data-on-click="filter-dropdown" data-mode="live">Filter</button>';
-            const had = document.getElementById('event-filters');
-            const host = had || btn;
-            if (!had) document.body.appendChild(btn); else if (!had.querySelector('[data-on-click="filter-dropdown"]')) had.innerHTML = btn.innerHTML;
-            host.querySelector('[data-on-click="filter-dropdown"]').click();
-            const dd = document.getElementById('filter-dropdown');
-            const out = { opened: !!dd, mode: dd?.querySelector('[data-on-click="filter-toggle"]')?.dataset.mode };
-            dd?.remove();
-            if (!had) btn.remove();
-            return out;
-        })()`);
-        check('live: the Filter button opens the same dropdown in live mode', live.opened && live.mode === 'live', JSON.stringify(live));
 
         // ── Changed and starred files ──────────────────────────────────────
         await ev(`(async () => {

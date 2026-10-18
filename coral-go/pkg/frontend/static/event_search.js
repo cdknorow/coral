@@ -3,17 +3,19 @@
  * cursor: #4745, #4779), the same words, a bar of each with its own ids. The server does the work: the search covers every event, in pages ("Load more" follows the cursor), and says so when it
  * stopped at its bound (N+). With nothing asked for the list is what it was (the live feed, the session's last events); the search belongs to the one on screen and goes when it does.
  *
- *   createEventSearch({ idp, hostId, listId, filterBarId, key(), request(params), sessionId() })
+ *   createEventSearch({ idp, hostId, listId, key(), request(params), sessionId(), hidden() })
  *     key()      who is on screen now ('' for nobody): another one starts with no search
  *     request()  the GET for these URLSearchParams (the caller knows the route and the server)
  *     sessionId() the session_id parameter for the request ('' for none)
+ *     hidden()   the Set of tool-group keys the list hides (Read, Bash ...): it stays where the page keeps it, the bar shows it and changes it in place. Tool groups narrow the rows loaded, the server is not asked.
  *   returns { isSearching(), sync(redraw), loadMore() }. */
 import { morphHtml } from './dom_morph.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { registerActions } from './actions.js';
 import { buildListBar } from './list_bar.js';
 import { eventRowHtml } from './event_row.js';
-import { EMPTY, TYPES, TYPE_LABEL, SORTS, SORT_LABEL, clean, chips, isFiltered, isQuery, without, toParams, countText } from './activity_filters.js';
+import { FILTER_GROUPS, eventVisible } from './event_icons.js';
+import { EMPTY, TYPES, TYPE_LABEL, SORTS, SORT_LABEL, clean, chips, isFiltered, isQuery, without, toParams, countText, groupField, hiddenGroups, withHidden, queryKey } from './activity_filters.js';
 
 const SEARCHES = new Map(); // idp -> its search, for the Load more button (one action serves every list)
 registerActions({
@@ -34,6 +36,8 @@ export function createEventSearch(cfg) {
             { type: 'select', key: 'type', id: `${cfg.idp}-type`, label: 'Type', values: TYPES, labels: TYPE_LABEL, any: 'Any type' },
             { type: 'date', key: 'from', id: `${cfg.idp}-from`, label: 'From' },
             { type: 'date', key: 'to', id: `${cfg.idp}-to`, label: 'Until' },
+            // the tool groups, one checkbox each (checked: that kind of event shows)
+            ...FILTER_GROUPS.map(g => ({ type: 'check', key: groupField(g.key), id: `${cfg.idp}-g-${g.key}`, label: `Show ${g.title}`, wrapClass: 'list-bar-field list-bar-kept' })),
         ],
         model: { EMPTY, clean, chips, isFiltered, without },
     };
@@ -51,13 +55,16 @@ export function createEventSearch(cfg) {
         if (list.error) return `<div class="event-empty">${escapeHtml(list.error)}</div>`;
         if (list.busy && !list.events.length) return '<div class="event-empty">Searching…</div>';
         if (!list.events.length) return '<div class="event-empty">No events match</div>';
+        const visible = list.events.filter(e => eventVisible(e, cfg.hidden()));
+        if (!visible.length) return '<div class="event-empty">All events filtered out</div>';
         const more = list.next ? `<button class="btn btn-small event-more" type="button" data-on-click="event-search-more" data-search="${escapeAttr(cfg.idp)}"${list.more ? ' disabled' : ''}>${list.more ? 'Loading…' : 'Load more'}</button>` : '';
-        return list.events.map(eventRowHtml).join('') + more;
+        return visible.map(eventRowHtml).join('') + more;
     }
 
     /** The bar shows the filters and the count (only when they changed: a live feed redraws the panel on every event). */
     function show() {
         if (!bar) return;
+        filters = withHidden(filters, cfg.hidden()); // the page's Set is the truth for the tool groups
         const c = counts(), sig = JSON.stringify([filters, c]);
         if (sig !== shown) { shown = sig; bar.set(filters, c); }
     }
@@ -66,8 +73,6 @@ export function createEventSearch(cfg) {
         const container = document.getElementById(cfg.listId);
         if (container && searching()) morphHtml(container, resultsHtml());
         show();
-        const own = document.getElementById(cfg.filterBarId);
-        if (own) own.hidden = searching(); // the list's own type filter does not apply to a search's results
     }
 
     async function fetchPage(cursor) {
@@ -98,6 +103,17 @@ export function createEventSearch(cfg) {
         draw();
     }
 
+    /** The bar changed: a tool group only narrows what is loaded (the page's Set is changed, the list drawn again); anything else is a new query. */
+    function onBar(next) {
+        const was = filters;
+        filters = clean(next);
+        const hidden = cfg.hidden();
+        hidden.clear(); for (const k of hiddenGroups(filters)) hidden.add(k);
+        if (queryKey(was) !== queryKey(filters)) { run(); return; }
+        shown = '';
+        if (searching()) draw(); else { show(); if (redraw) redraw(); }
+    }
+
     /** The next page of the results (the "Load more" button). */
     async function loadMore() {
         if (!searching() || !list.next || list.more) return;
@@ -121,14 +137,12 @@ export function createEventSearch(cfg) {
         const host = document.getElementById(cfg.hostId);
         if (!host) return false;
         const now = cfg.key();
-        if (now !== key) { key = now; seq++; filters = { ...EMPTY }; list = { ...NONE }; shown = ''; }
-        if (!bar) bar = buildListBar(spec, f => { filters = clean(f); run(); });
+        if (now !== key) { key = now; seq++; filters = withHidden({ ...EMPTY }, cfg.hidden()); list = { ...NONE }; shown = ''; }
+        if (!bar) bar = buildListBar(spec, onBar);
         if (bar.node.parentElement !== host) host.append(bar.node);
         host.hidden = !now;
         if (!searching()) {
             show();
-            const own = document.getElementById(cfg.filterBarId);
-            if (own) own.hidden = false;
             return false;
         }
         draw();

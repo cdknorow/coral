@@ -12,7 +12,7 @@ const { pathToFileURL } = require('node:url');
     assert.deepEqual(m.clean(undefined), m.EMPTY);
     assert.deepEqual(m.clean({ type: 'weird', sort: 'random', from: '2026-13-40', to: 'tomorrow', q: 5 }), m.EMPTY);
     assert.equal(m.clean({ q: 'a\u0000b\nc ' + 'x'.repeat(300) }).q.length, 200);
-    assert.deepEqual(m.clean({ type: 'prompt', sort: 'oldest', from: '2026-10-05', to: '2026-10-06', q: ' Edit ' }), { q: 'Edit', type: 'prompt', from: '2026-10-05', to: '2026-10-06', sort: 'oldest' });
+    assert.deepEqual(m.clean({ type: 'prompt', sort: 'oldest', from: '2026-10-05', to: '2026-10-06', q: ' Edit ' }), { ...m.EMPTY, q: 'Edit', type: 'prompt', from: '2026-10-05', to: '2026-10-06', sort: 'oldest' });
 
     // isFiltered: the sort alone is not a filter, but it is a query (the live feed has one order).
     assert.equal(m.isFiltered(m.EMPTY), false);
@@ -20,6 +20,20 @@ const { pathToFileURL } = require('node:url');
     assert.equal(m.isQuery({ ...m.EMPTY, sort: 'oldest' }), true);
     assert.equal(m.isQuery(m.EMPTY), false);
     for (const k of ['q', 'type', 'from', 'to']) assert.equal(m.isFiltered({ ...m.EMPTY, [k]: k === 'type' ? 'goal' : k === 'q' ? 'x' : '2026-10-05' }), true, k);
+
+    // the tool groups: every group is shown by default; a hidden one counts as a filter (the Filters badge, Clear all) but is NOT part of the query: it narrows the rows already loaded.
+    assert.deepEqual(m.hiddenGroups(m.EMPTY), []);
+    const hid = m.withHidden(m.EMPTY, ['read', 'bash']);
+    assert.deepEqual(m.hiddenGroups(hid), ['read', 'bash']);
+    assert.equal(hid.g_read, false); assert.equal(hid.g_write, true);
+    assert.equal(m.isFiltered(hid), true); assert.equal(m.isQuery(hid), false, 'a hidden group is not a query');
+    assert.equal(m.queryKey(hid), m.queryKey(m.EMPTY), 'and does not change what the server is asked');
+    assert.notEqual(m.queryKey({ ...m.EMPTY, q: 'x' }), m.queryKey(m.EMPTY));
+    assert.deepEqual(m.hiddenGroups(m.clean({ g_read: false, g_nothing: false, g_bash: 0 })), ['read'], 'only a literal false hides a group of this list');
+    assert.deepEqual(m.hiddenGroups(m.withHidden(m.EMPTY, new Set(['goal', 'not-a-group']))), ['goal'], 'a Set works and an unknown key is ignored');
+    assert.deepEqual(m.chips(hid).map(c => c.label), ['Hidden: Read, Bash']);
+    assert.deepEqual(m.without(hid, 'groups'), m.EMPTY, 'removing the chip shows every group again');
+    assert.deepEqual(m.toParams(hid, { sessionId: 'sid1' }).map(([k, v]) => k), ['session_id', 'sort', 'limit'], 'no tool group reaches the request');
 
     // every choice stands for event types the server accepts (a lower-case word), and none is empty.
     for (const t of m.TYPES) { assert.ok(m.TYPE_LABEL[t], t); assert.ok(m.TYPE_WORDS[t].length && m.TYPE_WORDS[t].every(w => /^[a-z0-9_]{1,40}$/.test(w)), t); }

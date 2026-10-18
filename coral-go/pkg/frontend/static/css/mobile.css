@@ -1061,12 +1061,6 @@
     }
 
     /* Board card folder footer: tighter */
-
-    /* Filter dropdown: full width on mobile */
-    .filter-dropdown {
-        width: calc(100vw - 40px);
-        max-width: 280px;
-    }
 }
 
 /* ── Mobile Panel Overlay ─────────────────────────────────── */
