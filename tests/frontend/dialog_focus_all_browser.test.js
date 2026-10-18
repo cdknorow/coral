@@ -39,7 +39,11 @@ const { connect } = require('./agent_view_harness');
             for (let i = 0; i < focusables + 2; i++) { await key('Tab'); if (!(await inside())) { left = true; break; } }
             await key('Tab', true); if (!(await inside())) left = true;
             if (left) problems.push(`${id}: Tab left the dialog`);
-            await key('Escape'); await sleep(120); // sleep-ok: the close handlers and the focus return run on the next frame
+            await key('Escape');
+            // A lazy dialog's hide function is a stub that loads the dialog's code first (the dialogs here are forced open without it, which the page never does), so on a cold or slow machine
+            // the close arrives after the module has loaded, not on the next frame: wait for it (up to 5 s) rather than for 120 ms.
+            await waitFor(`getComputedStyle(document.getElementById(${JSON.stringify(id)})).display === 'none'`, `${id} to close on Escape`, 5000).catch(() => {});
+            await sleep(120); // sleep-ok: the focus return runs on the frame after the close
             const closed = await ev(`getComputedStyle(document.getElementById(${JSON.stringify(id)})).display === 'none'`);
             if (!closed) { problems.push(`${id}: Escape did not close it`); await ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'none'; true`); }
             const back = await ev(`document.activeElement && document.activeElement.hasAttribute('data-zz-opener')`);
