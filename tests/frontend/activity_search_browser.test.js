@@ -103,7 +103,7 @@ async function run() {
         check('Type: Prompts shows the 10 prompts', r.length === 10 && r.every(s => s.startsWith('Fix the login bug')), r.join(' | '));
         check('and a chip names it', (await ev(`[...document.querySelectorAll('#event-search-bar .list-bar-chip-text')].map(e => e.textContent).join()`)) === 'Type: Prompts');
         await pick('#ev-type', 'permission');
-        await settle(`document.querySelector('#agentic-state-events .event-empty')`, 'no stop events');
+        await settle(`document.querySelector('#agentic-state-events .event-empty')?.textContent === 'No events match'`, 'no stop events');
         check('a type with no events (no permission request was made) says so, and the count is 0 events', (await ev(`document.querySelector('#agentic-state-events .event-empty').textContent`)) === 'No events match' && (await count()) === '0 events', await count());
         await pick('#ev-type', 'prompt');
         await pick('#ev-sort', 'oldest');
@@ -112,7 +112,7 @@ async function run() {
         const day = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const today = day(new Date()), yesterday = day(new Date(Date.now() - 86400000));
         await ev(`document.querySelector('#ev-to').value = ${JSON.stringify(yesterday)}; document.querySelector('#ev-to').dispatchEvent(new Event('change', { bubbles: true })); true`);
-        await settle(`document.querySelector('#agentic-state-events .event-empty')`, 'nothing until yesterday');
+        await settle(`document.querySelector('#agentic-state-events .event-empty')?.textContent === 'No events match'`, 'nothing until yesterday');
         check('Until yesterday leaves nothing (the events are from today)', (await count()) === '0 events', await count());
         await ev(`document.querySelector('#ev-to').value = ${JSON.stringify(today)}; document.querySelector('#ev-to').dispatchEvent(new Event('change', { bubbles: true })); true`);
         await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 10`, 'until today');

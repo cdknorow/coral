@@ -150,7 +150,7 @@ export function buildListBar(spec, onChange) {
                 count.textContent = text;
                 if (!announce || !text) return; // an empty text (no counts yet) is not a count to say
                 clearTimeout(liveTimer);
-                liveTimer = setTimeout(() => { announce = false; live.textContent = count.textContent; }, LIVE_SETTLE_MS);
+                liveTimer = setTimeout(() => { if (!count.textContent) return; /* no count to say yet (the answer is slower than the settle): keep the flag for it */ announce = false; live.textContent = count.textContent; }, LIVE_SETTLE_MS);
             };
             if (counts && counts.text != null) { say(counts.text); return; } // a panel that words its own count (the agent list's: its search text narrows it too)
             say(!counts ? '' : isFiltered(f) ? `${counts.matched} of ${all}` : `${all} ${counts.all === 1 && !counts.truncated ? spec.noun : (spec.plural || spec.noun + 's')}`);
