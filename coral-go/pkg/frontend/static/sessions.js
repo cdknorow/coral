@@ -275,15 +275,15 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         // Retry in the pane; a switch meanwhile drops the result.
         const failed = (err) => {
             console.error('[coral]', err);
-            if (generation === switchGeneration) showVendorLoadError(container, 'The terminal', loadThenAttach);
+            if (generation === switchGeneration) showVendorLoadError(container, 'The terminal', () => { if (generation === switchGeneration) { _terminalStarted = true; loadThenAttach(); } });
         };
         let attached = () => {};
         const tryAttach = () => {
             if (generation !== switchGeneration) return;
             // The terminal stopped being wanted while xterm.js loaded (Chat view, Back to the list closed the socket and
             // cleared _terminalStarted): no socket is opened for a view that is not showing (#4518). A later switch to
-            // Terminal attaches then.
-            if (!_terminalStarted) { attached(); return; }
+            // Terminal attaches then. A view that still wants it (a popout always does) attaches whatever cleared the flag.
+            if (!_terminalStarted && !(agentViewVisible() && terminalWanted())) { attached(); return; }
             try { attach(); attached(); } catch (err) { _terminalStarted = false; failed(err); }
         };
         const loadThenAttach = () => {
