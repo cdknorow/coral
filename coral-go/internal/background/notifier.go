@@ -470,7 +470,7 @@ func (n *BoardNotifier) nudgeAgent(ctx context.Context, pass *notifyPass, a Agen
 		return err != nil || n > 0
 	}
 	deliver := func() (bool, error) {
-		return deliverAutomatedIfWanted(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
+		return deliverNudgeFn(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
 	}
 	skipped, err := deliver()
 	if err != nil && pass.cached && !skipped {
@@ -493,6 +493,9 @@ func (n *BoardNotifier) nudgeAgent(ctx context.Context, pass *notifyPass, a Agen
 	n.notified[sessName] = notifyState{count: unread, latestID: latestID, at: n.now()}
 	n.notifiedMu.Unlock()
 }
+
+// deliverNudgeFn delivers a nudge (tests replace it, to see each nudge and to fail some).
+var deliverNudgeFn = deliverAutomatedIfWanted
 
 // nudgeDue reports whether an agent with unread messages (latestID the newest) is nudged now: one nudge until the
 // agent reads, which covers more messages arriving meanwhile (the agent reads them all at once), with a reminder once
