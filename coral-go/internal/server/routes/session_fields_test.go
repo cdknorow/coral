@@ -10,6 +10,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/config"
@@ -317,4 +318,31 @@ func TestSessionFields_ArchivedWithLivePaneNeverWaits(t *testing.T) {
 		require.Equal(t, true, row["archived"], name)
 		require.Equal(t, false, row["waiting_for_input"], "%s: archived never waits", name)
 	}
+}
+
+// The feed's rows are the list's rows (#4599: they came from two builders, and the feed's had drifted: no prompt,
+// model or cache tokens, its own team-name query, a sleeping agent's lingering terminal shown awake). Every field,
+// with an awake agent, a prompt, a sleeping placeholder and an archived one.
+func TestFeedRowsAreTheListRows(t *testing.T) {
+	h, sid := sessionFieldsFixture(t)
+	ctx := context.Background()
+	prompt, board := "build the widget", "widgets"
+	require.NoError(t, h.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: "22222222-2222-3333-4444-555555555555", AgentType: "codex", AgentName: "sleeper", WorkingDir: "/tmp/s", Prompt: &prompt, BoardName: &board, IsSleeping: 1}))
+	require.NoError(t, h.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: "33333333-2222-3333-4444-555555555555", AgentType: "claude", AgentName: "archived", WorkingDir: "/tmp/a", IsSleeping: 1, IsArchived: 1}))
+	require.NoError(t, h.ss.SetDisplayName(ctx, sid, "Widget Dev"))
+
+	w := httptest.NewRecorder()
+	h.List(w, httptest.NewRequest("GET", "/api/sessions/live", nil))
+	require.Equal(t, 200, w.Code)
+	var list []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &list))
+	ws, err := h.buildSessionListForWS(httptest.NewRequest("GET", "/ws/coral", nil))
+	require.NoError(t, err)
+	b, err := json.Marshal(ws)
+	require.NoError(t, err)
+	var feed []map[string]any
+	require.NoError(t, json.Unmarshal(b, &feed))
+	require.Len(t, list, 3)
+	assert.Equal(t, list, feed)
+	assert.Equal(t, "claude-sonnet-4-5", feed[0]["model"], "the fields the feed's own builder left out are there")
 }

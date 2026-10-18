@@ -28,11 +28,48 @@ import (
 func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	trace := newPhaseTrace("live-list")
 	defer trace.finish()
+	sessions, err := h.liveSessionRows(r, trace, false)
+	var unavailable *listUnavailable
+	switch {
+	case errors.As(err, &unavailable):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": unavailable.msg, "code": "agent_metadata_unavailable"})
+		return
+	case err != nil:
+		errInternalServer(w, err.Error())
+		return
+	}
+	// Polled by every open dashboard: an unchanged list is a 304 with no body (#3439).
+	if snap := h.remoteSnapshot(); snap.Configured() {
+		httputil.WriteJSONValidated(w, r, http.StatusOK, map[string]any{
+			"sessions": mergeRemote(sessions, snap), // each remote sorts its own rows
+			"servers":  snap.Servers,
+		})
+		return
+	}
+	httputil.WriteJSONValidated(w, r, http.StatusOK, emptyIfNil(sessions))
+}
+
+// listUnavailable is a live list that can't be built right now: the agents' metadata could not be read.
+type listUnavailable struct{ msg string }
+
+func (e *listUnavailable) Error() string { return e.msg }
+
+var (
+	errListMetadata      = &listUnavailable{"Agent metadata is temporarily unavailable; try again."}
+	errListSubscriptions = &listUnavailable{"Agent subscriptions are temporarily unavailable; try again."}
+)
+
+// liveSessionRows is the live list's rows, archived last: what /api/sessions/live and the /ws/coral feed both send
+// (#4599: the feed had its own copy of this, which had drifted from the list's). A metadata read that fails is a
+// listUnavailable; the list answers it 503, and the feed skips that tick. full enriches every row now (the feed:
+// a tick's rows are compared with the last tick's, #4308, so they must not depend on background warming); without
+// it a list of more than 8 agents leaves cold rows' log and transcript work to the background and marks them
+// enrichment_pending (the HTTP list).
+func (h *SessionsHandler) liveSessionRows(r *http.Request, trace *phaseTrace, full bool) ([]map[string]any, error) {
 	trace.begin("terminal_discovery")
 	agents, err := h.discoverAgents(r)
 	if err != nil {
-		errInternalServer(w, err.Error())
-		return
+		return nil, err
 	}
 	trace.end("terminal_discovery", "agents", len(agents))
 
@@ -40,8 +77,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	allLive, err := h.ss.GetAllLiveSessions(ctx)
 	if err != nil {
 		slog.Warn("failed to list live session metadata", "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent metadata is temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
-		return
+		return nil, errListMetadata
 	}
 	liveSleeping := make(map[string]bool)
 	liveArchived := make(map[string]bool)
@@ -114,13 +150,11 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	trace.endPool("db_reads", h.db, "reads", len(reads))
 	if displayErr != nil {
 		slog.Warn("failed to read live session identities", "error", displayErr)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent metadata is temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
-		return
+		return nil, errListMetadata
 	}
 	if subsErr != nil {
 		slog.Warn("failed to get board subscriptions", "error", subsErr)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent subscriptions are temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
-		return
+		return nil, errListSubscriptions
 	}
 	if goalsErr != nil {
 		slog.Warn("failed to get latest goals", "error", goalsErr)
@@ -192,7 +226,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	liveSIDs := make(map[string]bool) // track session IDs already in results
 	// Keep the response path bounded for large teams: cold log enrichment is
 	// warmed asynchronously and appears on the next sidebar refresh.
-	largeList := len(agents) > 8
+	largeList := !full && len(agents) > 8
 	trace.begin("state_transcript_enrichment")
 	for _, agent := range agents {
 		agentStarted := time.Now()
@@ -420,16 +454,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.addBoardLabels(r.Context(), sessions)
-	sessions = archivedLast(sessions)
-	// Polled by every open dashboard: an unchanged list is a 304 with no body (#3439).
-	if snap := h.remoteSnapshot(); snap.Configured() {
-		httputil.WriteJSONValidated(w, r, http.StatusOK, map[string]any{
-			"sessions": mergeRemote(sessions, snap), // each remote sorts its own rows
-			"servers":  snap.Servers,
-		})
-		return
-	}
-	httputil.WriteJSONValidated(w, r, http.StatusOK, emptyIfNil(sessions))
+	return archivedLast(sessions), nil
 }
 
 // ResolveSession returns the authoritative routing and identity metadata for a
