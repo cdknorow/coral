@@ -430,28 +430,19 @@ function _onPaste(e) {
         'This terminal isn\u2019t in paste mode, so each line is sent as if typed and runs on its own.', go);
 }
 
-export function createTerminal(containerEl) {
-    dbg('createTerminal called, existing terminal:', !!terminal);
-
-    if (typeof Terminal === 'undefined') {
-        console.warn('xterm.js not loaded, falling back to semantic renderer');
-        return null;
+/** The terminal already built, for the next agent: its socket let go and a full reset queued behind what it still has to draw. */
+function _reuseTerminal() {
+    disconnectTerminalWs();
+    terminal.write("\x1bc");
+    dbg('createTerminal: reusing existing terminal, queued buffer reset');
+    if (fitAddon) {
+        requestAnimationFrame(() => _sizeLocal());
     }
+    return terminal;
+}
 
-    // Reuse existing terminal. xterm processes write() calls asynchronously, so
-    // clear()/reset() here can be overtaken by output that was already queued by
-    // the previous session. Queue an ANSI full reset instead: it is parsed after
-    // all old writes and before any replay from the new socket.
-    if (terminal) {
-        disconnectTerminalWs();
-        terminal.write("\x1bc");
-        dbg('createTerminal: reusing existing terminal, queued buffer reset');
-        if (fitAddon) {
-            requestAnimationFrame(() => _sizeLocal());
-        }
-        return terminal;
-    }
-
+/** A new xterm terminal with the saved scrollback and font size, the theme and its add-ons. */
+function _buildTerminal() {
     const scrollback = parseInt((state.settings || {}).terminal_scrollback, 10) || 20000;
     const fontSize = parseInt((state.settings || {}).terminal_font_size, 10) || 13;
     _baseFont = fontSize;
@@ -483,7 +474,10 @@ export function createTerminal(containerEl) {
     _selectionDisposable = terminal.onSelectionChange(() => {
         state.isSelecting = terminal.hasSelection();
     });
+}
 
+/** What is typed goes to the socket: text batched over 12 ms, controls and escapes at once, xterm's own answers to queries dropped. */
+function _wireTerminalInput() {
     // Forward all keyboard input via xterm.js onData → WebSocket → tmux.
     // Keystrokes are batched over a short window (12ms) so rapid typing
     // produces fewer WebSocket messages and tmux subprocess calls.
@@ -561,17 +555,10 @@ export function createTerminal(containerEl) {
             _inputTimer = setTimeout(_flushInput, INPUT_BATCH_MS);
         }
     });
+}
 
-    // Escape hatch: Ctrl+Shift+Escape unfocuses terminal
-    // (attachCustomKeyEventHandler can be called before open)
-    terminal.attachCustomKeyEventHandler((ev) => {
-        if (ev.type === 'keydown' && ev.key === 'Escape' && ev.ctrlKey && ev.shiftKey) {
-            terminal.blur();
-            return false;
-        }
-        return true;
-    });
-
+/** Opens the terminal in the container: the fit button, the canvas renderer, ownership on click and the paste handler. */
+function _openTerminal(containerEl) {
     terminal.open(containerEl);
     _containerEl = containerEl;
     const fitBtn = _fitButton();
@@ -591,7 +578,10 @@ export function createTerminal(containerEl) {
     containerEl.addEventListener('paste', _onPaste, true);
     dbg('terminal.open() done, container:', containerEl.offsetWidth, 'x', containerEl.offsetHeight,
         'display:', containerEl.style.display, 'cols:', terminal.cols, 'rows:', terminal.rows);
+}
 
+/** Fits once the layout has settled (the first fit right after open() reads 0 columns in a webview). */
+function _fitWhenLaidOut(containerEl) {
     // Defer fit() to allow the layout engine to settle. In macOS WebKit
     // webview (used by coral-app), synchronous fit() right after open()
     // computes 0 cols/rows because the container hasn't been laid out yet.
@@ -604,7 +594,10 @@ export function createTerminal(containerEl) {
                 'container:', containerEl.offsetWidth, 'x', containerEl.offsetHeight);
         }
     });
+}
 
+/** Watches the container's size: a terminal at the bottom goes back there when shown again, and the prompt stays in view. */
+function _watchContainerSize(containerEl) {
     // ResizeObserver catches layout changes that rAF misses (e.g. when the
     // container transitions from display:none to flex, or sidebar resizes).
     if (typeof ResizeObserver !== 'undefined') {
@@ -629,7 +622,10 @@ export function createTerminal(containerEl) {
         });
         _resizeObserver.observe(containerEl);
     }
+}
 
+/** The container scrolls while following a taller pane; the cursor line (the prompt) is kept in view. */
+function _wireRevealScroll(containerEl) {
     // Following a taller pane: the container scrolls, and the cursor line (the prompt) is kept in view (revealCursor).
     _scrolledAway = false;
     if (_revealScroll) containerEl.removeEventListener('scroll', _revealScroll);
@@ -641,7 +637,10 @@ export function createTerminal(containerEl) {
     containerEl.addEventListener('scroll', _revealScroll, { passive: true });
     if (_cursorDisposable) _cursorDisposable.dispose();
     _cursorDisposable = typeof terminal.onCursorMove === 'function' ? terminal.onCursorMove(() => revealCursor()) : null;
+}
 
+/** The terminal's focus state, and what xterm's resize tells the pane. */
+function _wireFocusAndResize(containerEl) {
     // Focus management: track terminal focus state
     // (terminal.textarea is only available after open())
     if (terminal.textarea) {
@@ -665,6 +664,47 @@ export function createTerminal(containerEl) {
         // following the pane's own size (#3422).
         if (!_following && mayResizePane()) _sendResize(cols, rows);
     });
+}
+
+export function createTerminal(containerEl) {
+    dbg('createTerminal called, existing terminal:', !!terminal);
+
+    if (typeof Terminal === 'undefined') {
+        console.warn('xterm.js not loaded, falling back to semantic renderer');
+        return null;
+    }
+
+    // Reuse existing terminal. xterm processes write() calls asynchronously, so
+    // clear()/reset() here can be overtaken by output that was already queued by
+    // the previous session. Queue an ANSI full reset instead: it is parsed after
+    // all old writes and before any replay from the new socket.
+    if (terminal) {
+        return _reuseTerminal();
+    }
+
+    _buildTerminal();
+
+    _wireTerminalInput();
+
+    // Escape hatch: Ctrl+Shift+Escape unfocuses terminal
+    // (attachCustomKeyEventHandler can be called before open)
+    terminal.attachCustomKeyEventHandler((ev) => {
+        if (ev.type === 'keydown' && ev.key === 'Escape' && ev.ctrlKey && ev.shiftKey) {
+            terminal.blur();
+            return false;
+        }
+        return true;
+    });
+
+    _openTerminal(containerEl);
+
+    _fitWhenLaidOut(containerEl);
+
+    _watchContainerSize(containerEl);
+
+    _wireRevealScroll(containerEl);
+
+    _wireFocusAndResize(containerEl);
 
     return terminal;
 }
