@@ -67,7 +67,7 @@ func (h *BoardHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		q.Shown = shownText
+		q.Shown = shownTextMemoized
 	}
 	res, err := h.bs.QueryMessages(r.Context(), q)
 	if err != nil {

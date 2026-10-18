@@ -86,7 +86,7 @@ func (h *BoardHandler) queryAllTasks(w http.ResponseWriter, r *http.Request) boo
 			errBadRequest(w, "q can't contain a secret (a token, a key or a password): it would match what the redaction hides")
 			return true
 		}
-		query.Shown = shownText
+		query.Shown = shownTextMemoized
 	}
 	out := map[string]any{}
 	var res *board.TaskQueryResult
