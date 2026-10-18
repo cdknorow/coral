@@ -2216,138 +2216,145 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid task ID")
 		return
 	}
-	var raw struct {
-		SubscriberID  string          `json:"subscriber_id"`
-		Title         *string         `json:"title,omitempty"`
-		Body          *string         `json:"body,omitempty"`
-		Priority      *string         `json:"priority,omitempty"`
-		AssignedTo    *string         `json:"assigned_to,omitempty"`
-		BlockedBy     json.RawMessage `json:"blocked_by,omitempty"`
-		RemoveBlocker *int64          `json:"remove_blocker,omitempty"`
-		ClearBlockers bool            `json:"clear_blockers,omitempty"`
-	}
-	if err := decodeJSON(r, &raw); err != nil {
+	var edit taskEdit
+	if err := decodeJSON(r, &edit); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	attrWho, attrOK := attributedTo(w, r, raw.SubscriberID)
+	attrWho, attrOK := attributedTo(w, r, edit.SubscriberID)
 	if !attrOK {
 		return
 	}
-	raw.SubscriberID = attrWho
-	if raw.Title != nil && refuseTextTooLarge(w, "title_too_large", "a task title", len(*raw.Title), maxTaskTitleBytes) {
+	edit.SubscriberID = attrWho
+	if !h.allowTaskEdit(w, r, project, taskID, &edit) {
 		return
 	}
-	if raw.Body != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "task body changes require the revisioned /amend endpoint with a reason and base_revision"})
-		return
-	}
-
-	removingBlockers := raw.RemoveBlocker != nil || raw.ClearBlockers
-	if removingBlockers && (len(raw.BlockedBy) > 0 || raw.Title != nil || raw.Priority != nil || raw.AssignedTo != nil || (raw.RemoveBlocker != nil && (raw.ClearBlockers || *raw.RemoveBlocker <= 0))) {
-		errBadRequest(w, "use either remove_blocker (positive task ID) or clear_blockers, without other edits")
-		return
-	}
-	if (raw.AssignedTo != nil || removingBlockers) && !h.requireTaskPlanner(w, r, project, raw.SubscriberID) {
-		return
-	}
-	// A task's title is typed into its assignee's terminal: only a planner or the assignee
-	// changes what it says (#3668).
-	if raw.Title != nil || raw.Priority != nil {
-		current, err := h.bs.GetTask(r.Context(), project, taskID)
-		if err != nil || current == nil {
-			errNotFound(w, "Task not found")
-			return
-		}
-		if !h.requirePlannerOrAssignee(w, r.Context(), project, current, raw.SubscriberID, "change its title or priority") {
-			return
-		}
-	}
-	if raw.AssignedTo != nil && h.refuseArchivedAssignee(w, r.Context(), project, *raw.AssignedTo) {
-		return
-	}
-	update := board.TaskUpdate{
-		Title:      raw.Title,
-		Body:       raw.Body,
-		Priority:   raw.Priority,
-		AssignedTo: raw.AssignedTo,
-	}
-
-	if len(raw.BlockedBy) > 0 {
-		deps, err := parseBlockedBy(raw.BlockedBy, project)
-		if err != nil {
-			errBadRequest(w, err.Error())
-			return
-		}
-		update.BlockedBy = &deps
-	}
-
-	before, _ := h.bs.GetTask(r.Context(), project, taskID)
-	var task *board.Task
-	var prevStatus string
-	if removingBlockers {
-		var blocker int64
-		if raw.RemoveBlocker != nil {
-			blocker = *raw.RemoveBlocker
-		}
-		task, prevStatus, err = h.bs.RemoveTaskBlockers(r.Context(), project, taskID, blocker)
-	} else {
-		task, prevStatus, err = h.bs.UpdateTask(r.Context(), project, taskID, update, 32)
-	}
+	before, task, prevStatus, err := h.applyTaskEdit(r.Context(), project, taskID, &edit)
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
 	}
 	_ = h.bs.TouchTask(r.Context(), project, taskID)
-	h.goBG(func() {
-		ctx := context.Background()
-		nudged := false
-		notification := fmt.Sprintf("[Task #%d edited] %s", task.ID, task.Title)
-		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
-
-		// Notify on status transitions from dependency changes
-		if prevStatus == "pending" && task.Status == "blocked" {
-			assignee := ""
-			if task.AssignedTo != nil {
-				assignee = *task.AssignedTo
-			}
-			if assignee != "" {
-				msg := fmt.Sprintf("[Task #%d blocked] %s — @%s task is now blocked, please pause work", task.ID, task.Title, assignee)
-				h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", msg, nil)
-			}
-		} else if prevStatus == "blocked" && task.Status == "pending" {
-			assignee := ""
-			if task.AssignedTo != nil {
-				assignee = *task.AssignedTo
-			}
-			msg := fmt.Sprintf("[Task #%d unblocked] %s", task.ID, task.Title)
-			if assignee != "" {
-				msg += fmt.Sprintf(" — @%s your task is now ready", assignee)
-			}
-			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", msg, nil)
-
-			if assignee != "" {
-				h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
-				nudged = true
-			}
-		}
-		if raw.AssignedTo != nil && task.Status == "pending" {
-			previous := ""
-			if before != nil && before.AssignedTo != nil {
-				previous = *before.AssignedTo
-			}
-			current := ""
-			if task.AssignedTo != nil {
-				current = *task.AssignedTo
-			}
-			if !nudged && current != "" && current != previous {
-				if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, current, task.ID); !hasActive {
-					h.sendTaskNudge(ctx, project, current, taskClaimNudge(task.ID))
-				}
-			}
-		}
-	})
+	reassigned := edit.AssignedTo != nil
+	h.goBG(func() { h.announceTaskEdit(context.Background(), project, reassigned, before, task, prevStatus) })
 	writeJSON(w, http.StatusOK, task)
+}
+
+// taskEdit is an UpdateTask request: edits to a task's title, priority, assignee or blockers.
+type taskEdit struct {
+	SubscriberID  string          `json:"subscriber_id"`
+	Title         *string         `json:"title,omitempty"`
+	Body          *string         `json:"body,omitempty"`
+	Priority      *string         `json:"priority,omitempty"`
+	AssignedTo    *string         `json:"assigned_to,omitempty"`
+	BlockedBy     json.RawMessage `json:"blocked_by,omitempty"`
+	RemoveBlocker *int64          `json:"remove_blocker,omitempty"`
+	ClearBlockers bool            `json:"clear_blockers,omitempty"`
+}
+
+func (e *taskEdit) removesBlockers() bool { return e.RemoveBlocker != nil || e.ClearBlockers }
+
+// allowTaskEdit refuses an edit that is too large, changes the body (that is /amend), mixes removing blockers with
+// other edits, or isn't its actor's to make: assigning or removing blockers is a planner's, the title or priority
+// a planner's or the assignee's, and an archived member is never assigned.
+func (h *BoardHandler) allowTaskEdit(w http.ResponseWriter, r *http.Request, project string, taskID int64, e *taskEdit) bool {
+	if e.Title != nil && refuseTextTooLarge(w, "title_too_large", "a task title", len(*e.Title), maxTaskTitleBytes) {
+		return false
+	}
+	if e.Body != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "task body changes require the revisioned /amend endpoint with a reason and base_revision"})
+		return false
+	}
+	removing := e.removesBlockers()
+	if removing && (len(e.BlockedBy) > 0 || e.Title != nil || e.Priority != nil || e.AssignedTo != nil || (e.RemoveBlocker != nil && (e.ClearBlockers || *e.RemoveBlocker <= 0))) {
+		errBadRequest(w, "use either remove_blocker (positive task ID) or clear_blockers, without other edits")
+		return false
+	}
+	if (e.AssignedTo != nil || removing) && !h.requireTaskPlanner(w, r, project, e.SubscriberID) {
+		return false
+	}
+	// A task's title is typed into its assignee's terminal: only a planner or the assignee
+	// changes what it says (#3668).
+	if e.Title != nil || e.Priority != nil {
+		current, err := h.bs.GetTask(r.Context(), project, taskID)
+		if err != nil || current == nil {
+			errNotFound(w, "Task not found")
+			return false
+		}
+		if !h.requirePlannerOrAssignee(w, r.Context(), project, current, e.SubscriberID, "change its title or priority") {
+			return false
+		}
+	}
+	return e.AssignedTo == nil || !h.refuseArchivedAssignee(w, r.Context(), project, *e.AssignedTo)
+}
+
+// applyTaskEdit makes the edit: its blockers removed, or its fields and blocked_by updated. It returns the task
+// before and after, and the status it had.
+func (h *BoardHandler) applyTaskEdit(ctx context.Context, project string, taskID int64, e *taskEdit) (before, task *board.Task, prevStatus string, err error) {
+	update := board.TaskUpdate{
+		Title:      e.Title,
+		Body:       e.Body,
+		Priority:   e.Priority,
+		AssignedTo: e.AssignedTo,
+	}
+	if len(e.BlockedBy) > 0 {
+		deps, err := parseBlockedBy(e.BlockedBy, project)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		update.BlockedBy = &deps
+	}
+	before, _ = h.bs.GetTask(ctx, project, taskID)
+	if e.removesBlockers() {
+		var blocker int64
+		if e.RemoveBlocker != nil {
+			blocker = *e.RemoveBlocker
+		}
+		task, prevStatus, err = h.bs.RemoveTaskBlockers(ctx, project, taskID, blocker)
+	} else {
+		task, prevStatus, err = h.bs.UpdateTask(ctx, project, taskID, update, 32)
+	}
+	return before, task, prevStatus, err
+}
+
+// announceTaskEdit posts that the task was edited and, when its blockers changed its status, that it is blocked
+// or ready (nudging a ready task's assignee); a pending task given to someone new nudges them to claim it, unless
+// that nudge was just sent or they are busy with another task.
+func (h *BoardHandler) announceTaskEdit(ctx context.Context, project string, reassigned bool, before, task *board.Task, prevStatus string) {
+	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d edited] %s", task.ID, task.Title), nil)
+	assignee := taskAssignee(task)
+	nudged := false
+	switch {
+	case prevStatus == "pending" && task.Status == "blocked":
+		if assignee != "" {
+			msg := fmt.Sprintf("[Task #%d blocked] %s — @%s task is now blocked, please pause work", task.ID, task.Title, assignee)
+			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", msg, nil)
+		}
+	case prevStatus == "blocked" && task.Status == "pending":
+		msg := fmt.Sprintf("[Task #%d unblocked] %s", task.ID, task.Title)
+		if assignee != "" {
+			msg += fmt.Sprintf(" — @%s your task is now ready", assignee)
+		}
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", msg, nil)
+		if assignee != "" {
+			h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
+			nudged = true
+		}
+	}
+	if !reassigned || task.Status != "pending" || nudged || assignee == "" || assignee == taskAssignee(before) {
+		return
+	}
+	if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID); !hasActive {
+		h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
+	}
+}
+
+// taskAssignee is who a task is assigned to, or "" (also for no task).
+func taskAssignee(t *board.Task) string {
+	if t == nil || t.AssignedTo == nil {
+		return ""
+	}
+	return *t.AssignedTo
 }
 
 // AmendTask applies a planner-authorized, revision-checked body/instruction amendment.
