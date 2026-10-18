@@ -5,7 +5,6 @@
 // Also the header's glyph buttons (the svg icons and the Chat/Terminal toggle) scale. Run against an isolated dev server.
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
-const { framesJs } = require('./helpers/wait');
 const src = fs.readFileSync(__dirname + '/phone_layout_browser.test.js', 'utf8');
 const SCAN = eval(src.match(/const SCAN = (`[\s\S]*?`);/)[1]);
 const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden';
@@ -19,21 +18,10 @@ const GROUPS = ['tabs', 'drawers', 'dialogs', 'wide', 'light'];
 module.exports = async function runScenes(group) {
     if (!GROUPS.includes(group)) throw new Error('text200_scenes: unknown group ' + JSON.stringify(group) + ', expected one of ' + GROUPS.join(', '));
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
-    // settle(ms): return as soon as the page geometry has held still for ~120 ms, or after ms at most -- never
-    // longer, never throwing. A no-worse replacement for the fixed settle-sleeps (#4768): the views and dialogs
-    // fill over frames with no completion event, and the scans below measure geometry, so each must run once the
-    // layout has settled. If geometry never settles it falls back to the full ms, exactly as the sleep did.
-    // framesJs keeps a backgrounded page advancing (raf_hygiene).
-    const settle = ms => ev(`(async () => {
-        const fp = () => { let s = 0; for (const e of document.querySelectorAll('body *')) { const b = e.getBoundingClientRect(); s += b.left + b.top + b.width + b.height; } return Math.round(s); };
-        const start = performance.now(); let prev = fp(), since = start;
-        while (performance.now() - start < ${ms}) {
-            await ${framesJs(1)};
-            const v = fp();
-            if (v === prev) { if (performance.now() - since >= 120) return true; } else { prev = v; since = performance.now(); }
-        }
-        return true;
-    })()`);
+    // settle(ms): wait for the layout to stop moving before a scan measures its geometry (#4768). One shared copy
+    // in helpers/wait.js; it is no worse than the old fixed settle-sleeps (caps at ms, never throws) and usually
+    // far faster. The views and dialogs fill over frames with no completion event, so the scans below settle first.
+    const { settle } = require('./helpers/wait').bind(ev);
     const report = []; const problems = [];
     try {
         await Page.enable();

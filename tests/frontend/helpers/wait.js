@@ -82,12 +82,31 @@ const framesJs = (n = 2, maxMs = 250) => `new Promise(r => { let k = ${n}; const
 // deferred to requestAnimationFrame to be on screen and laid out. Bounded, see above.
 const nextFrame = ev => ev(framesJs(2));
 
+// settle(ms, quietMs): resolves once the page's geometry (the sum of every element's bounding rect) has held
+// still for quietMs, or after ms at most -- never longer, never throwing. For a scan or snapshot that measures
+// geometry after panels and dialogs fill over frames with no completion event: it is no worse than a fixed
+// sleep(ms) (it falls back to the full ms if the geometry never settles) and usually far faster. framesJs keeps a
+// backgrounded page advancing (raf_hygiene). Suites: phone_layout, text200_scenes, settings_modal_trace (#4768).
+async function settle(ev, ms, quietMs = 120) {
+    return ev(`(async () => {
+        const fp = () => { let s = 0; for (const e of document.querySelectorAll('body *')) { const b = e.getBoundingClientRect(); s += b.left + b.top + b.width + b.height; } return Math.round(s); };
+        const start = performance.now(); let prev = fp(), since = start;
+        while (performance.now() - start < ${ms}) {
+            await ${framesJs(1)};
+            const v = fp();
+            if (v === prev) { if (performance.now() - since >= ${quietMs}) return true; } else { prev = v; since = performance.now(); }
+        }
+        return true;
+    })()`);
+}
+
 module.exports = {
-    waitFor, waitStable, coralReady, nextFrame, framesJs,
+    waitFor, waitStable, coralReady, nextFrame, framesJs, settle,
     bind: ev => ({
         nextFrame: () => nextFrame(ev),
         waitFor: (expression, what, opts) => waitFor(ev, expression, what, opts),
         waitStable: (expression, what, quietMs, opts) => waitStable(ev, expression, what, quietMs, opts),
         coralReady: (step, ...args) => coralReady(ev, step, ...args),
+        settle: (ms, quietMs) => settle(ev, ms, quietMs),
     }),
 };

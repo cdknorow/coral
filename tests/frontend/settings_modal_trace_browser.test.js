@@ -30,8 +30,8 @@ const SCEN = [
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
     const { Page, Runtime, Network, Fetch, Emulation } = client;
     const ev = async expression => { const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 500)); return r.result.value; };
-    const { waitFor } = require('./helpers/wait').bind(ev);
-    const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: the dialog's loads answer over several frames; there is no completion event
+    const { waitFor, settle } = require('./helpers/wait').bind(ev);
+    const { framesJs } = require('./helpers/wait');
     const trace = {};
     let cloud = false;
     try {
@@ -61,7 +61,7 @@ const SCEN = [
         const run = async (name, settings, answers, group, local) => {
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
             await waitFor(`!!window.T || !!window.__coralStatic || document.readyState === 'complete'`, 'the page', { timeout: 15000 });
-            await sleep(2500); // sleep-ok: the page's own startup loads (and, on the hub, its sign-in check) settle over frames
+            await settle(2500); // the page's own startup loads (and, on the hub, its sign-in check) settle over frames; settle caps at 2500 ms
             assert.equal(await ev(`document.body.classList.contains('cloud-mode')`), cloud, 'the page is served as the hub or as a local Coral: ' + name + ' wants cloud=' + cloud);
             const out = await ev(`(async () => {
                 const st = window.__coralStatic || '/static/';
@@ -80,7 +80,7 @@ const SCEN = [
                     return real(u, o);
                 };
                 state.settings = ${JSON.stringify(settings)};
-                try { await modals.showSettingsModal(${JSON.stringify(group)}); await new Promise(r => setTimeout(r, 1200)); /* sleep-ok: the dialog's requests answer over several frames */ } finally { window.fetch = real; }
+                try { await modals.showSettingsModal(${JSON.stringify(group)}); await (async () => { const start = performance.now(); let n = -1, since = start; while (performance.now() - start < 1200) { await ${framesJs(1)}; if (window.__fetched.length === n) { if (performance.now() - since >= 150) break; } else { n = window.__fetched.length; since = performance.now(); } } })(); /* wait for the dialog's fetches to arrive (the data) before reading, capped at 1200 ms -- no fixed sleep */ } finally { window.fetch = real; }
                 return true;
             })()`);
             void out;
