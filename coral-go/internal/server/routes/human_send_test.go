@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -242,6 +243,89 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		assert.Equal(t, []string{"2"}, typed)
 		assert.Zero(t, enters)
 	})
+	t.Run("two messages at once: one at a time through the box, each acknowledged for its own submission", func(t *testing.T) {
+		// Security's probe on #4587: two sends 25 ms apart to an agent that takes typed text and loses the first
+		// Enter of each message. Without the gate both were typed into one box and both said "sent".
+		h := setup(t, "codex", true)
+		term := h.term
+		var mu sync.Mutex
+		box, enters, submitted, merged := "", 0, []string{}, false
+		typedAfter := map[string]int{} // a message -> how many had been submitted when it was typed
+		term.show(codexReady(t, ""))
+		term.onType = func(text string) {
+			mu.Lock()
+			if box != "" {
+				merged = true
+			}
+			typedAfter[text] = len(submitted)
+			box += text
+			enters = 0
+			b := box
+			mu.Unlock()
+			term.show(codexReady(t, b)) // its Enter is lost
+		}
+		term.onEnter = func() {
+			mu.Lock()
+			if enters++; enters == 1 || box == "" {
+				mu.Unlock()
+				return // lost
+			}
+			submitted = append(submitted, box)
+			box = ""
+			mu.Unlock()
+			term.show(codexReady(t, ""))
+			h.submit()
+		}
+		var wg sync.WaitGroup
+		codes := make([]int, 2)
+		for i, text := range []string{"deploy to staging", "rm -rf the build"} {
+			wg.Add(1)
+			go func() { defer wg.Done(); codes[i] = h.send(text).Code }()
+			time.Sleep(25 * time.Millisecond) // sleep-ok: the probe's gap between the two sends
+		}
+		wg.Wait()
+		mu.Lock()
+		defer mu.Unlock()
+		assert.False(t, merged, "never both messages in the box")
+		assert.Equal(t, []string{"deploy to staging", "rm -rf the build"}, submitted, "each submitted on its own")
+		assert.Equal(t, 1, typedAfter["rm -rf the build"], "the second typed only after the first was submitted")
+		assert.Equal(t, []int{http.StatusOK, http.StatusOK}, codes)
+	})
+	t.Run("a message left unsubmitted: a different one is refused untyped, the same one gets Enter", func(t *testing.T) {
+		h := setup(t, "codex", true)
+		term := h.term
+		term.show(codexReady(t, ""))
+		term.onType = func(text string) { term.show(codexReady(t, text)) } // every Enter lost
+		rec := h.send("deploy to staging")
+		require.Equal(t, http.StatusConflict, rec.Code)
+		require.Equal(t, "not_submitted", code(rec))
+		rec = h.send("rm -rf the build")
+		assert.Equal(t, http.StatusConflict, rec.Code)
+		assert.Equal(t, "box_not_empty", code(rec))
+		var out map[string]any
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		assert.Equal(t, true, out["not_sent"])
+		typed, _ := term.counts()
+		assert.Equal(t, []string{"deploy to staging"}, typed, "the second never typed after the first")
+		term.onEnter = func() { term.show(codexReady(t, "")); h.submit() }
+		rec = h.send("deploy to staging")
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		typed, _ = term.counts()
+		assert.Equal(t, []string{"deploy to staging"}, typed, "Enter, not a second copy")
+		rec = h.send("rm -rf the build") // the box is clear now
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	})
+	t.Run("a leftover cleared in the terminal no longer blocks", func(t *testing.T) {
+		h := setup(t, "codex", true)
+		term := h.term
+		term.show(codexReady(t, ""))
+		term.onType = func(text string) { term.show(codexReady(t, text)) }
+		require.Equal(t, "not_submitted", code(h.send("first")))
+		term.show(codexReady(t, "")) // a person cleared the box
+		term.onType = func(string) { h.submit() }
+		rec := h.send("second")
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	})
 	t.Run("claude: submitted by its own Enter: no Enter more", func(t *testing.T) {
 		h := setup(t, "claude", true)
 		ready := claudeUnnumbered(t, "ready.txt")
@@ -252,4 +336,65 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		_, enters := h.term.counts()
 		assert.Zero(t, enters)
 	})
+}
+
+// The gate bounds the messages waiting for one agent and in all, and a cancelled wait gives up its place (#4587).
+func TestHumanSendGateBoundsAndCancel(t *testing.T) {
+	var g humanSendGate
+	ctx := context.Background()
+	leave, err := g.enter(ctx, "a")
+	require.NoError(t, err)
+	type result struct {
+		leave func()
+		err   error
+	}
+	waiting := make(chan result, humanSendMaxWaiting)
+	for i := 0; i < humanSendMaxWaiting; i++ {
+		go func() { l, err := g.enter(ctx, "a"); waiting <- result{l, err} }()
+	}
+	require.Eventually(t, func() bool { g.mu.Lock(); defer g.mu.Unlock(); return g.agents["a"].count == 1+humanSendMaxWaiting }, time.Second, time.Millisecond)
+	_, err = g.enter(ctx, "a")
+	assert.ErrorIs(t, err, errSendBusy, "a fifth waiter for one agent is refused at once")
+	l2, err := g.enter(ctx, "b")
+	require.NoError(t, err, "another agent is not held up")
+	l2()
+
+	// A cancelled waiter gives up its place, and a new one fits again.
+	cctx, cancel := context.WithCancel(ctx)
+	leave() // one waiter takes the turn; a place frees
+	r := <-waiting
+	require.NoError(t, r.err)
+	got := make(chan error, 1)
+	go func() { _, err := g.enter(cctx, "a"); got <- err }()
+	require.Eventually(t, func() bool { g.mu.Lock(); defer g.mu.Unlock(); return g.agents["a"].count == 1+humanSendMaxWaiting }, time.Second, time.Millisecond)
+	cancel()
+	assert.ErrorIs(t, <-got, context.Canceled)
+	g.mu.Lock()
+	assert.Equal(t, humanSendMaxWaiting, g.agents["a"].count, "its place is given back")
+	g.mu.Unlock()
+	r.leave()
+	for i := 0; i < humanSendMaxWaiting-1; i++ {
+		r := <-waiting
+		require.NoError(t, r.err)
+		r.leave()
+	}
+	g.mu.Lock()
+	assert.Empty(t, g.agents, "nothing kept once every turn ended")
+	assert.Zero(t, g.inFlight)
+	g.mu.Unlock()
+
+	// In all: humanSendMaxInFlight under way across agents, then refused.
+	var leaves []func()
+	for i := 0; i < humanSendMaxInFlight; i++ {
+		l, err := g.enter(ctx, fmt.Sprintf("agent-%d", i))
+		require.NoError(t, err)
+		leaves = append(leaves, l)
+	}
+	_, err = g.enter(ctx, "one-more")
+	assert.ErrorIs(t, err, errSendBusy)
+	for _, l := range leaves {
+		l()
+	}
+	_, err = g.enter(ctx, "one-more")
+	assert.NoError(t, err)
 }

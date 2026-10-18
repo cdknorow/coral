@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -22,6 +23,10 @@ import (
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 )
+
+// composerSendsPerSocket bounds the composer_send deliveries under way on one terminal socket (#4587, Security):
+// each can wait seconds, and a flood of frames would otherwise start a goroutine each.
+const composerSendsPerSocket = 4
 
 // wsAcceptOptions returns WebSocket accept options with origin validation: only
 // this server's own page (the Origin's host is the request's Host). Other ports of
@@ -799,6 +804,7 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Reader goroutine: receives terminal input from the client (JSON text frames)
+	var composing atomic.Int32 // composer_send deliveries under way on this socket
 	go func() {
 		defer safego.Recover("server/routes/websocket:787")
 		defer cancel()
@@ -839,10 +845,18 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 				// waits for a starting agent's input box and confirms the text left it), and answered by id only
 				// once it was submitted. In its own goroutine: it can wait seconds, and the terminal's own
 				// keystrokes and resizes go on meanwhile.
+				// At most composerSendsPerSocket of them under way per socket: over that, refused at once.
 				if msg.Data != "" && msg.ID != nil {
 					id := *msg.ID
+					if composing.Load() >= composerSendsPerSocket {
+						_, hs, _ := humanSendError(errSendBusy)
+						wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_input_failed", "error": hs["error"], "code": hs["code"], "not_sent": true, "id": id})
+						continue
+					}
+					composing.Add(1)
 					go func() {
 						defer safego.Recover("server/routes/websocket:composer_send")
+						defer composing.Add(-1)
 						err := h.deliverHumanSend(ctx, name, agentType, sessionID, msg.Data)
 						switch {
 						case err == nil:

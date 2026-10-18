@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -25,6 +26,13 @@ import (
 //     typed again (bounded) while the agent is still starting and its box is empty (its keystrokes were lost), else
 //     "not confirmed". Never "sent" without one of the two. (A PTY's rendered screen can lag Codex's redraws, so the
 //     screen alone said "not submitted" for a message the agent had taken: the event is checked first.)
+// One message at a time per agent (Security's MUST on #4587): the steps above assume they are the box's only writer.
+// Two sends at once typed both texts into one box ("deploy to stagingrm -rf the build"), each then saw its own text
+// gone and both said "sent" with nothing submitted. A second send waits for the first to be confirmed or refused and
+// starts from a fresh screen; waiters are bounded (humanSendMaxWaiting per agent, humanSendMaxInFlight in all), over
+// that it is refused untyped (409 agent_busy), and a cancelled request gives up its place. A message left in the box
+// unsubmitted is remembered: while it is still there, a different message is refused untyped (409 box_not_empty)
+// rather than typed after it; the same message gets Enter, as above.
 
 var (
 	// How long a message waits for a starting agent's input box.
@@ -39,7 +47,86 @@ var (
 	humanSendConfirmWait = 2500 * time.Millisecond
 	// Times a message lost while the agent started is typed again, at most.
 	humanSendRetypes = 2
+	// Messages waiting behind the one being delivered to an agent, at most; and messages being delivered or waiting, in all.
+	humanSendMaxWaiting  = 4
+	humanSendMaxInFlight = 32
 )
+
+// humanSendGate lets one message at a time through to each agent. Its zero value is ready.
+type humanSendGate struct {
+	mu        sync.Mutex
+	agents    map[string]*humanSendTurn
+	inFlight  int
+	leftovers map[string]string // agent -> a message of ours left in its box unsubmitted
+}
+
+// leftover is the message last left unsubmitted in the agent's box ("" for none); setLeftover records or ("") clears it.
+func (g *humanSendGate) leftover(key string) string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.leftovers[key]
+}
+
+func (g *humanSendGate) setLeftover(key, text string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if text == "" {
+		delete(g.leftovers, key)
+		return
+	}
+	if g.leftovers == nil {
+		g.leftovers = map[string]string{}
+	}
+	g.leftovers[key] = text
+}
+
+// humanSendTurn is one agent's turn: a one-slot channel held by the message being delivered, and how many hold or
+// wait for it.
+type humanSendTurn struct {
+	slot  chan struct{}
+	count int
+}
+
+// enter waits for the agent's turn (key: its session id, else its terminal name). It refuses at once, with
+// errSendBusy, when humanSendMaxWaiting messages already wait for this agent or humanSendMaxInFlight are under way in
+// all, and gives up its place when ctx ends. The returned leave ends the turn.
+func (g *humanSendGate) enter(ctx context.Context, key string) (leave func(), err error) {
+	g.mu.Lock()
+	t := g.agents[key]
+	if t == nil {
+		t = &humanSendTurn{slot: make(chan struct{}, 1)}
+		if g.agents == nil {
+			g.agents = map[string]*humanSendTurn{}
+		}
+		g.agents[key] = t
+	}
+	if t.count > humanSendMaxWaiting || g.inFlight >= humanSendMaxInFlight {
+		if t.count == 0 {
+			delete(g.agents, key)
+		}
+		g.mu.Unlock()
+		return nil, errSendBusy
+	}
+	t.count++
+	g.inFlight++
+	g.mu.Unlock()
+	done := func() {
+		g.mu.Lock()
+		t.count--
+		g.inFlight--
+		if t.count == 0 {
+			delete(g.agents, key)
+		}
+		g.mu.Unlock()
+	}
+	select {
+	case t.slot <- struct{}{}:
+		return func() { <-t.slot; done() }, nil
+	case <-ctx.Done():
+		done()
+		return nil, ctx.Err()
+	}
+}
 
 // errHumanSend is a message refused or not submitted: code and text for the dashboard.
 type errHumanSend struct{ code, text string }
@@ -50,6 +137,8 @@ var (
 	errSendNotReady     = &errHumanSend{"agent_not_ready", "The agent isn't ready for messages yet: your message was not sent. Try again in a moment."}
 	errSendNotSubmit    = &errHumanSend{"not_submitted", "Your message is in the agent's input box but wasn't submitted. Send it again to submit it, or press Enter in its terminal."}
 	errSendNotConfirmed = &errHumanSend{"not_confirmed", "The agent didn't confirm your message: it may not have been sent. Check its terminal before sending it again."}
+	errSendBusy         = &errHumanSend{"agent_busy", "Other messages to this agent are still being sent: yours was not sent. Try again in a moment."}
+	errSendLeftover     = &errHumanSend{"box_not_empty", "An earlier message is still in the agent's input box, not submitted: yours was not sent. Send that one again, or clear it in its terminal."}
 )
 
 // humanScreen is the agent's screen as text, for its input box: the PTY's rendered (its output is not the
@@ -68,7 +157,25 @@ func (h *SessionsHandler) humanScreen(ctx context.Context, name, agentType, sess
 
 // deliverHumanSend types a person's message into the agent's input box and submits it, with the care above. A
 // terminal whose screen can't be read, or an agent whose input box Coral doesn't know, gets the plain send.
-func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType, sessionID, text string) error {
+func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType, sessionID, text string) (err error) {
+	key := sessionID
+	if key == "" {
+		key = name
+	}
+	leave, err := h.sendGate.enter(ctx, key)
+	if err != nil {
+		return err
+	}
+	defer leave()
+	lo := h.sendGate.leftover(key)
+	defer func() {
+		switch {
+		case err == errSendNotSubmit:
+			h.sendGate.setLeftover(key, text)
+		case err == nil && lo == text:
+			h.sendGate.setLeftover(key, "") // the leftover itself, submitted now
+		}
+	}()
 	send := func() error { return h.terminal.SendInput(ctx, name, text, agentType, sessionID) }
 	if !ptymanager.InputBoxKnown(agentType) {
 		return send()
@@ -94,6 +201,12 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	}
 	if open, _ := ptymanager.PromptOnScreen(screen); open {
 		return send() // an answer to the prompt, typed as before: no input box to confirm it in
+	}
+	if lo != "" && lo != text {
+		if ptymanager.TextInInputBox(screen, lo) {
+			return errSendLeftover
+		}
+		h.sendGate.setLeftover(key, "") // submitted or cleared since
 	}
 	es, canEnter := h.terminal.(ptymanager.EnterSender)
 	base := h.latestEventID(ctx, sessionID)

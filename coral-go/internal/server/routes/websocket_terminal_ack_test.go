@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -196,4 +198,72 @@ func setupTerminalTestServerWith(t *testing.T, backend ptymanager.TerminalBacken
 	server := httptest.NewServer(r)
 	t.Cleanup(server.Close)
 	return server
+}
+
+// blockingTerminal holds every SendInput until release is closed, counting them (#4587's flood test).
+type blockingTerminal struct {
+	ptymanager.SessionTerminal
+	release chan struct{}
+	entered atomic.Int32
+}
+
+func (b *blockingTerminal) SendInput(ctx context.Context, name, text, agentType, sessionID string) error {
+	b.entered.Add(1)
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return b.SessionTerminal.SendInput(ctx, name, text, agentType, sessionID)
+}
+
+// A flood of composer_send frames on one socket (Security's MUST on #4587): at most composerSendsPerSocket deliveries
+// are under way; the rest are refused at once, as busy and not sent, and nothing more is typed for them.
+func TestWSTerminal_ComposerSendFloodIsBounded(t *testing.T) {
+	backend, client := newTerminalTestTmuxBackend(t)
+	term := &blockingTerminal{SessionTerminal: ptymanager.NewTmuxSessionTerminal(client), release: make(chan struct{})}
+	server := setupTerminalTestServerWith(t, backend, term)
+	tmuxName := spawnTestSession(t, backend, "composer-flood", "f6a7b8c9-2222-4222-8333-444455556666", "")
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+
+	const frames = 100
+	for i := 1; i <= frames; i++ {
+		sendTerminalJSON(t, ctx, conn, map[string]any{"type": "composer_send", "data": fmt.Sprintf("echo flood_%d", i), "id": i})
+	}
+	busy := map[float64]bool{}
+	rctx, rcancel := context.WithTimeout(ctx, 10*time.Second)
+	defer rcancel()
+	for len(busy) < frames-composerSendsPerSocket {
+		typ, data, err := conn.Read(rctx)
+		require.NoError(t, err, "waiting for the busy answers (%d so far)", len(busy))
+		if typ == websocket.MessageBinary {
+			continue
+		}
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(data, &m))
+		require.NotEqual(t, "terminal_input_ack", m["type"], "nothing is acknowledged while every delivery is held")
+		if m["type"] == "terminal_input_failed" {
+			assert.Equal(t, "agent_busy", m["code"])
+			assert.Equal(t, true, m["not_sent"])
+			busy[m["id"].(float64)] = true
+		}
+	}
+	assert.EqualValues(t, 1, term.entered.Load(), "one delivery typing; the others under way wait their turn for this agent")
+	close(term.release)
+	acks := 0
+	for acks < composerSendsPerSocket {
+		typ, data, err := conn.Read(rctx)
+		require.NoError(t, err, "waiting for the acks (%d so far)", acks)
+		if typ == websocket.MessageBinary {
+			continue
+		}
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(data, &m))
+		if m["type"] == "terminal_input_ack" {
+			assert.False(t, busy[m["id"].(float64)], "an acknowledged send was not one refused")
+			acks++
+		}
+	}
+	assert.EqualValues(t, composerSendsPerSocket, term.entered.Load(), "only the deliveries under way were typed")
 }

@@ -40,6 +40,8 @@ type SessionsHandler struct {
 	// boardStatus shares one computation of a board's status among the requests that arrive
 	// together (#3721); it keeps nothing, so a status is never stale.
 	boardStatus *replyCache
+	// sendGate lets a person's messages through to each agent one at a time (#4587, human_send.go).
+	sendGate humanSendGate
 	// inOldTmux reports an agent session still running in Coral's private tmux server, for a
 	// pty Coral's wake (#3634). Tests replace it.
 	inOldTmux func(ctx context.Context, sessionName string) bool
