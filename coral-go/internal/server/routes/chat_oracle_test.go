@@ -29,56 +29,89 @@ import (
 // Chat, split into resolving the session, reading its transcript, its notices and the history page (#4713), answers
 // as chatBefore4713 (the handler at v1.4.92, below) does. Two handlers share one store, board and terminal, each with
 // its own caches (the metadata cache a request warms decides how the next one resolves), and take the same requests
-// in step. The sessions have Claude transcripts of 0 to 260 messages; some share an agent name, some resume an
-// earlier one. Requests name a session by id, by name or not at all, with or without its type, id and directory,
+// in step, with fresh caches each seed. The sessions have Claude transcripts of 0 to 560 messages; two share a name,
+// in different directories, one of them Codex with only a Codex rollout (Security's #4755 scenarios: the id decides
+// between them, and once the first ends the name finds the other); one is found only by its working directory (a
+// decoy folder listed first holds another); one resumes an earlier one; one Claude and one agy transcript (no Coral
+// marker) have no live session. Mid-seed the database changes under the caches. Requests name a session by id, by name or not at all, with or without its type, id and directory,
 // and ask for history pages (limit, before, offset, trim), new messages after an index, or a message by key. The
 // status and body are compared. Each kind of answer has a floor.
 
-func chatOracleSetup(t *testing.T) (old, cur *httptest.Server, sids []string, names []string) {
+func chatOracleSetup(t *testing.T) (old, cur *httptest.Server, sids []string, names []string, handlers [2]*SessionsHandler) {
 	_, h, _, ss := setupSessionsTestServer(t)
 	h2 := NewSessionsHandler(h.db, h.cfg, nil, h.terminal, h.bs)
 	dir := t.TempDir()
 	projectDir := filepath.Join(dir, "project")
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	brain := filepath.Join(t.TempDir(), "brain")
+	t.Setenv("ANTIGRAVITY_DATA_DIR", brain)
 	ctx := context.Background()
 	line := func(v any) string { b, _ := json.Marshal(v); return string(b) + "\n" }
-	for i, n := range []int{0, 3, 40, 130, 260, 7, 560, 12} {
-		sid := fmt.Sprintf("%08x-4713-4000-8000-0000000000%02d", i, i)
+	claudeTranscript := func(n int, word string) string {
 		var b strings.Builder
 		for k := 0; k < n; k++ {
-			if k%2 == 0 && k > 0 { // the previous call's output, long enough for a trim to cut
+			switch {
+			case k%2 == 0 && k > 0: // the previous call's output, long enough for a trim to cut
 				b.WriteString(line(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []any{
 					map[string]any{"type": "tool_result", "tool_use_id": fmt.Sprintf("t%d", k-1), "content": strings.Repeat("output line ", 60)},
 				}}}))
-				continue
-			}
-			if k%2 == 0 {
-				b.WriteString(line(map[string]any{"type": "user", "message": map[string]any{"content": fmt.Sprintf("question %d", k)}}))
-			} else {
+			case k%2 == 0:
+				b.WriteString(line(map[string]any{"type": "user", "message": map[string]any{"content": fmt.Sprintf("%s question %d", word, k)}}))
+			default:
 				b.WriteString(line(map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "content": []any{
-					map[string]any{"type": "text", "text": fmt.Sprintf("answer %d", k)},
+					map[string]any{"type": "text", "text": fmt.Sprintf("%s answer %d", word, k)},
 					map[string]any{"type": "tool_use", "id": fmt.Sprintf("t%d", k), "name": "Bash", "input": map[string]any{"command": strings.Repeat("echo long ", 40+k%7)}},
 				}}}))
 			}
 		}
-		require.NoError(t, os.WriteFile(filepath.Join(projectDir, sid+".jsonl"), []byte(b.String()), 0o644))
-		name := []string{"alpha", "beta", "shared", "shared", "gamma", "delta", "epsilon", "orphan"}[i]
-		if i == 7 { // a transcript Coral has no live session for: read by its id, as a Claude one by default
-			sids, names = append(sids, sid), append(names, name)
+		return b.String()
+	}
+	write := func(path, content string) {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+	}
+	const wdDir = "/tmp/wd-4713" // a working directory whose project folder holds the session's transcript
+	for i, n := range []int{0, 3, 40, 130, 260, 7, 560, 12, 9, 6} {
+		sid := fmt.Sprintf("%08x-4713-4000-8000-0000000000%02d", i, i)
+		name := []string{"alpha", "beta", "shared", "shared", "gamma", "delta", "epsilon", "orphan", "wd", "agy-orphan"}[i]
+		sids, names = append(sids, sid), append(names, name)
+		agentType, workDir := "claude", projectDir
+		switch i {
+		case 3: // the shared name's Codex twin, in its own directory: a Codex rollout, no Claude transcript (read as Claude it is not found)
+			agentType, workDir = "codex", "/repo-codex-twin"
+			var b strings.Builder
+			b.WriteString(line(map[string]any{"timestamp": "2026-10-18T10:00:00.000Z", "type": "session_meta", "payload": map[string]any{"id": "rollout-" + sid, "cwd": "/repo"}}))
+			for k := 0; k < n; k++ {
+				b.WriteString(line(map[string]any{"timestamp": fmt.Sprintf("2026-10-18T10:%02d:00.000Z", k%60), "type": "event_msg",
+					"payload": map[string]any{"type": "user_message", "message": fmt.Sprintf("codex question %d", k), "images": []any{}}}))
+			}
+			write(filepath.Join(codexHome, "sessions", "2026", "10", "18", "rollout-2026-10-18T10-00-00-"+sid+".jsonl"), b.String())
+		case 8: // found by its working directory: its project folder has it, and a decoy folder (listed first) a different one
+			workDir = wdDir
+			write(filepath.Join(dir, strings.ReplaceAll(wdDir, "/", "-"), sid+".jsonl"), claudeTranscript(n, "wd"))
+			write(filepath.Join(dir, "+decoy", sid+".jsonl"), claudeTranscript(n, "decoy"))
+		case 9: // an agy transcript with no Coral marker and no live session: read by the generic path only
+			var b strings.Builder
+			for k := 0; k < n; k++ {
+				b.WriteString(line(map[string]any{"type": []string{"USER_INPUT", "PLANNER_RESPONSE"}[k%2], "content": fmt.Sprintf("agy answer %d", k),
+					"created_at": "2026-10-18T10:00:00Z", "step_index": k}))
+			}
+			write(filepath.Join(brain, sid, ".system_generated", "logs", "transcript.jsonl"), b.String())
+		default:
+			write(filepath.Join(projectDir, sid+".jsonl"), claudeTranscript(n, "claude"))
+		}
+		if i == 7 || i == 9 { // transcripts Coral has no live session for
 			continue
 		}
-		agentType := "claude"
-		if i == 3 {
-			agentType = "codex" // two sessions share a name: which one a lookup finds shows in the reply
-		}
-		ls := &store.LiveSession{SessionID: sid, AgentType: agentType, AgentName: name, WorkingDir: projectDir}
+		ls := &store.LiveSession{SessionID: sid, AgentType: agentType, AgentName: name, WorkingDir: workDir}
 		if i == 5 {
-			prev := sids[3]
+			prev := sids[2]
 			ls.ResumeFromID = &prev // a replacement reading its ancestor's transcript too
 		}
 		require.NoError(t, ss.RegisterLiveSession(ctx, ls))
-		sids, names = append(sids, sid), append(names, name)
 	}
 	mk := func(handler http.HandlerFunc) *httptest.Server {
 		r := chi.NewRouter()
@@ -87,11 +120,27 @@ func chatOracleSetup(t *testing.T) (old, cur *httptest.Server, sids []string, na
 		t.Cleanup(srv.Close)
 		return srv
 	}
-	return mk(h.chatBefore4713), mk(h2.Chat), sids, names
+	return mk(h.chatBefore4713), mk(h2.Chat), sids, names, [2]*SessionsHandler{h, h2}
+}
+
+// resetChatCaches starts a handler's chat caches afresh: the metadata cache, the transcript reader (which keeps each
+// session's resolved path) and the resume lineage, so a lookup a cache would answer is made again.
+func resetChatCaches(h *SessionsHandler) {
+	h.chatMeta = newChatMetaCache()
+	h.jsonl = jsonl.NewSessionReader()
+	h.resumeMu.Lock()
+	h.resumeCache, h.resumeKnown = map[string]string{}, map[string]bool{}
+	h.resumeMu.Unlock()
 }
 
 func chatOracleRequest(rng *rand.Rand, sids, names []string) (string, url.Values) {
+	if rng.Intn(6) == 0 { // the shared name alone: the first session with it answers, and the name is never cached
+		return "shared", url.Values{}
+	}
 	i := rng.Intn(len(sids))
+	if rng.Intn(4) == 0 { // the working-directory session and the agy transcript, more often
+		i = []int{8, 9}[rng.Intn(2)]
+	}
 	q := url.Values{}
 	var path string
 	switch rng.Intn(4) {
@@ -102,11 +151,20 @@ func chatOracleRequest(rng *rand.Rand, sids, names []string) (string, url.Values
 	default:
 		path = "nobody-here"
 	}
-	if rng.Intn(2) == 0 {
+	switch rng.Intn(6) {
+	case 0, 1, 2:
 		q.Set("session_id", sids[i])
+	case 3: // another session's id under this name or id: the id decides
+		q.Set("session_id", sids[rng.Intn(len(sids))])
 	}
-	if rng.Intn(2) == 0 {
+	switch rng.Intn(6) {
+	case 0, 1, 2:
 		q.Set("agent_type", "claude")
+	case 3:
+		q.Set("agent_type", "agy")
+	}
+	if i == 9 && rng.Intn(2) == 0 {
+		q.Set("agent_type", "agy") // what the agy transcript is
 	}
 	if rng.Intn(3) == 0 {
 		q.Set("working_directory", "/nowhere") // a directory that isn't the transcript's: the reader finds it anyway, or not
@@ -140,11 +198,21 @@ func chatGet(t *testing.T, srv *httptest.Server, path string, q url.Values) (int
 }
 
 func TestChatAgreesWithBefore4713(t *testing.T) {
-	old, cur, sids, names := chatOracleSetup(t)
+	old, cur, sids, names, handlers := chatOracleSetup(t)
+	db := handlers[0].db
+	ctx := context.Background()
 	kinds := map[string]int{}
-	for seed := int64(1); seed <= 150; seed++ {
+	for seed := int64(1); seed <= 300; seed++ {
 		rng := rand.New(rand.NewSource(seed))
+		resetChatCaches(handlers[0])
+		resetChatCaches(handlers[1])
 		for k := 0; k < 6; k++ {
+			if k == 3 { // the database changes under what the caches hold: a moved working directory, and the shared name's first twin ends
+				_, err := db.ExecContext(ctx, "UPDATE live_sessions SET working_dir = '/elsewhere' WHERE session_id = ?", sids[8])
+				require.NoError(t, err)
+				_, err = db.ExecContext(ctx, "UPDATE live_sessions SET status = 'stopped' WHERE session_id = ?", sids[2])
+				require.NoError(t, err)
+			}
 			path, q := chatOracleRequest(rng, sids, names)
 			oc, ob := chatGet(t, old, path, q)
 			nc, nb := chatGet(t, cur, path, q)
@@ -177,8 +245,23 @@ func TestChatAgreesWithBefore4713(t *testing.T) {
 			if len(msgs) > 0 && q.Get("session_id") == "" && path != sids[0] && !strings.HasPrefix(path, "0") {
 				kinds["resolved by name"]++
 			}
+			for word, kind := range map[string]string{"codex question": "the codex twin read as codex", "wd answer": "found by its working directory",
+				"decoy answer": "the decoy, with no working directory to go by", "agy answer": "an agy transcript by the generic read"} {
+				if strings.Contains(nb, word) {
+					kinds[kind]++
+				}
+			}
+			if sid := q.Get("session_id"); sid != "" && path != sid && !strings.HasPrefix(path, sid[:8]) && len(msgs) > 0 {
+				kinds["a session found by its id under another name"]++
+			}
 			if len(msgs) > 100 {
 				kinds["a page of more than 100"]++
+			}
+			if k >= 3 && path == "shared" && len(q) == 0 && strings.Contains(nb, "codex question") {
+				kinds["the shared name after its first twin ended: the other twin"]++
+			}
+			if k >= 3 && strings.Contains(nb, "wd answer") && q.Get("working_directory") == "" {
+				kinds["a working directory the cache remembers"]++
 			}
 			if len(msgs) > 0 && strings.HasSuffix(path, "07") {
 				kinds["a transcript with no live session"]++
@@ -187,11 +270,17 @@ func TestChatAgreesWithBefore4713(t *testing.T) {
 				kinds["a resumed session by id alone"]++
 			}
 		}
+		_, err := db.ExecContext(ctx, "UPDATE live_sessions SET working_dir = ? WHERE session_id = ?", "/tmp/wd-4713", sids[8])
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, "UPDATE live_sessions SET status = 'active' WHERE session_id = ?", sids[2]) // live again, in its place
+		require.NoError(t, err)
 	}
 	t.Logf("compared, per kind: %v", kinds)
 	for _, k := range []string{"bad before refused", "a message by key", "history page with more", "history page, all of it", "empty page",
 		"trimmed", "new messages after an index", "resolved by name", "a resumed session by id alone", "a page of more than 100",
-		"a transcript with no live session"} {
+		"a transcript with no live session", "the codex twin read as codex", "found by its working directory",
+		"the decoy, with no working directory to go by", "an agy transcript by the generic read", "a session found by its id under another name",
+		"a working directory the cache remembers", "the shared name after its first twin ended: the other twin"} {
 		assert.GreaterOrEqual(t, kinds[k], 10, "%q went (almost) unexercised", k)
 	}
 }
