@@ -388,3 +388,17 @@ onBoardPage(() => {
     const active = document.querySelector('#agentic-block-top .agentic-tab.active');
     if (active?.dataset.tab) switchAgenticTab(active.dataset.tab, 'top');
 });
+
+// The sidebar's tab strip is a tablist: Left and Right move the focus to the neighbouring tab, Home and End to the first and the last shown one (Enter or Space opens it, as
+// on any button); Tab still moves through them (UX's NIT on #4539).
+document.addEventListener('keydown', e => {
+    const cur = e.target.closest?.('#agentic-block-top .agentic-state-tabs .agentic-tab');
+    if (!cur || e.altKey || e.ctrlKey || e.metaKey || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    const tabs = [...cur.parentElement.querySelectorAll('.agentic-tab')].filter(tabShown);
+    const at = tabs.indexOf(cur);
+    if (at < 0) return;
+    const next = e.key === 'Home' ? tabs[0] : e.key === 'End' ? tabs[tabs.length - 1]
+        : tabs[(at + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+    e.preventDefault();
+    next.focus();
+});

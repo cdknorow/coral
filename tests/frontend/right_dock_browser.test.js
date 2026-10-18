@@ -184,6 +184,23 @@ const BASE = require('./test_base').BASE;
         b = await bar();
         assert.deepEqual({ more: b.more, select: b.select, del: b.del }, { more: false, select: true, del: true }, 'closed sidebar: the buttons inline: ' + JSON.stringify(b));
 
+        console.log('11b. The tab strip is keyboard-operable: Left and Right move the focus, Home and End go to the ends');
+        await Emulation.setDeviceMetricsOverride({ width: 1400, height: 800, deviceScaleFactor: 1, mobile: false });
+        await ev(`switchNavTab('history'); true`);
+        await waitFor(`document.getElementById('agentic-state').dataset.page === 'chats'`, 'Chats');
+        await ev(`window.selectBoardProject(${JSON.stringify(BOARD)}); true`);
+        await waitFor(`document.getElementById('agentic-state').dataset.page === 'board'`, 'the board');
+        await ev(`window.toggleAgenticPanel(true); true`);
+        await waitFor(`document.getElementById('agentic-state').getBoundingClientRect().width > 300`, 'the sidebar open');
+        const press = k => ev(`(() => { const e = document.activeElement; e.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, bubbles: true, cancelable: true })); return document.activeElement.dataset.tab || document.activeElement.id; })()`);
+        await ev(`document.getElementById('agentic-tab-subscribers').focus(); true`);
+        assert.equal(await press('ArrowRight'), 'team-artifacts');
+        assert.equal(await press('End'), 'saved');
+        assert.equal(await press('ArrowRight'), 'subscribers', 'wraps around');
+        assert.equal(await press('ArrowLeft'), 'saved');
+        assert.equal(await press('Home'), 'subscribers');
+        console.log('   ✓');
+
         console.log('12. A board starts with its sidebar open only when its messages keep room: closed at 1024 px, open at 1400 px (until the person chooses)');
         await ev(`localStorage.removeItem('coral-agentic-collapsed:board'); true`);
         for (const [width, open] of [[1024, false], [1400, true]]) {
