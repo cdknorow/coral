@@ -4200,3 +4200,8 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 /* Large text on a phone: the settings menu has Saved, the top bar does not (see saved_marks.js). */
 .saved-in-menu #saved-btn { display: none; }
 .saved-in-menu .saved-menu-item { display: flex; }
+
+/* The install help where an agent CLI is missing (#4569): the vendor's page as a link in the theme's link colour, and a quiet note. */
+.acf-cli-warning .cli-install-link, .acf-cli-warning .cli-install-note { margin: 6px 0 0; }
+.acf-cli-warning .cli-install-link a { display: block; color: var(--accent); overflow-wrap: anywhere; }
+.acf-cli-warning .cli-install-note { color: var(--text-secondary); font-size: 0.75rem; line-height: 1.5; }
