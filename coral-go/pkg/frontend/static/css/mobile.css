@@ -908,6 +908,13 @@
         height: auto; /* the base row is 16 px high; a name that wraps to a second line overflowed it and the state chip was drawn over that line (#4612) */
     }
 
+    /* the phone's name wraps instead, so its whole end is there: no split */
+    #mobile-session-list .session-label.session-label-split { display: block; }
+    #mobile-session-list .session-label-split .session-label-name { display: inline; }
+    #mobile-session-list .session-label-split .sln-head { white-space: normal; }
+    #mobile-session-list .session-label-split .sln-tail { white-space: normal; }
+    #mobile-session-list .session-label-split .session-label-tags { display: inline; white-space: normal; }
+
     #mobile-session-list .session-label {
         white-space: normal;
         line-height: 1.35;

@@ -80,6 +80,13 @@ export function openRowMenu(btn, menu) {
     return true;
 }
 
+const LABEL_TAIL = 7, LABEL_SPLIT_OVER = 16;
+/** [head, tail] for a name longer than 16 characters (the tail is its last 7, never in the middle of a character), else [name, '']. */
+export function splitLabel(name) {
+    const chars = Array.from(String(name));
+    return chars.length > LABEL_SPLIT_OVER ? [chars.slice(0, -LABEL_TAIL).join(''), chars.slice(-LABEL_TAIL).join('')] : [String(name), ''];
+}
+
 export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) {
     const dotClass = getDotClass(s);
     const isActive = !state.selectedTeam && state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
@@ -122,6 +129,8 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
     // shows on the goal line below when there is no summary.
     const identity = resolveSessionIdentity(s);
     const displayLabel = identity;
+    // A long name is cut with an ellipsis, and agents of one team share a prefix: its last characters never shrink, so the end that tells them apart stays ("release-engineering-coo...-4-9").
+    const [nameHead, nameTail] = splitLabel(displayLabel);
     const reminder = getCachedAgentAvailability(s);
     const reminderTag = reminder?.reminder
         ? `<span class="agent-reminder-icon" title="Periodic reminder every ${escapeAttr(Math.max(1, Math.round((reminder.reminder_interval_seconds || 300) / 60)))} min" aria-label="Periodic reminder active">⏰</span>`
@@ -322,7 +331,7 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
         <div class="session-info">
             <div class="session-name-row">
                 <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" title="${escapeAttr(stateInfo.label)}" aria-hidden="true"></span>
-                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>${autoAcceptChip(s)}${terminalGoneChip(s)}
+                <span class="session-label${nameTail ? ' session-label-split' : ''}" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${nameTail ? `<span class="sln-head">${escapeHtml(nameHead)}</span><span class="sln-tail">${escapeHtml(nameTail)}</span>` : escapeHtml(displayLabel)}</span>${nameTail ? `<span class="session-label-tags">${reminderTag}${typeTag}${dirChip}</span>` : `${reminderTag}${typeTag}${dirChip}`}</span>${autoAcceptChip(s)}${terminalGoneChip(s)}
                 <span class="session-name-spacer"></span>
                 ${stale ? '' : waitingBadge + ctxPill}
                 ${goalBtn}

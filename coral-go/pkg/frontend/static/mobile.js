@@ -105,10 +105,16 @@ function _listHeader(agentList) {
                 </div>
             </details>
             <button class="btn btn-small btn-primary" data-on-click="launch-show">+ New</button>
+            <div class="mobile-search-row" id="mobile-search-row">
+                <input type="search" class="sidebar-search-input mobile-search-input" placeholder="Search agents" autocomplete="off" aria-label="Search agents" data-on-input="agent-search-filter" data-on-keydown="agent-search-key">
+            </div>
         `;
     agentList.prepend(header);
     return header;
 }
+
+// The phone's Agents page has its own Search agents box under the list header's controls (#4624): the sidebar's search is not on the phone. It is the same search (filterLiveAgents,
+// Enter and Escape as there); a wide screen's box takes over its text when the list goes back to the sidebar (restoreSidebarList).
 
 export function syncMobileAgentList() {
     if (document.body.classList.contains('popout-mode')) return;
@@ -118,6 +124,8 @@ export function syncMobileAgentList() {
     if (!agentList || agentList.dataset.mode === 'history') return;
 
     _listHeader(agentList);
+    const phoneBox = agentList.querySelector('#mobile-search-row input'), sideBox = document.getElementById('agent-search-input');
+    if (phoneBox && sideBox && !phoneBox.value) phoneBox.value = sideBox.value; // a search typed on a wide screen is still in the box
     syncDisplayMenu();   // the phone's copy of the ≡ menu (#3991)
     // The servers button (#3085) lives in the sidebar's search row on wider screens.
     if (window.renderServerSwitcher) window.renderServerSwitcher();
@@ -135,6 +143,9 @@ export function restoreSidebarList() {
     const list = document.getElementById('mobile-session-list');
     if (!list || !_sidebarHome || !_sidebarHome.parent.isConnected) return;
     list.id = 'live-sessions-list';
+    // The search the phone's box held carries over to the sidebar's own box.
+    const phoneSearch = document.querySelector('#mobile-search-row input'), sideSearch = document.getElementById('agent-search-input');
+    if (phoneSearch && sideSearch) sideSearch.value = phoneSearch.value;
     _sidebarHome.parent.insertBefore(list, _sidebarHome.next && _sidebarHome.next.parentNode === _sidebarHome.parent ? _sidebarHome.next : null);
     _sidebarHome = null;
 }

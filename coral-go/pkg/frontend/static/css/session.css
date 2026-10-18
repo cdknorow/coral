@@ -2333,3 +2333,14 @@
 
 /* The agent's model under its row in the list: "Claude · Opus 4.1" (#4066) */
 .session-model { margin-top: 1px; font-size: var(--fs-sm, 11px); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* A long agent name keeps its last characters (#4624): the head shrinks with an ellipsis, the tail and the chips after it do not push it out, and the chips give way first. */
+.session-label.session-label-split { display: flex; align-items: baseline; min-width: 0; text-overflow: clip; }
+.session-label-split .session-label-name { display: flex; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.session-label-split .sln-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-label-split .sln-tail { flex: none; white-space: nowrap; }
+.session-label-split .session-label-tags { flex: 0 100 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
+
+/* The phone's Search agents box, under the list header's controls (#4624) */
+.mobile-list-header .mobile-search-row { flex: 1 0 100%; }
+.mobile-list-header .mobile-search-input { width: 100%; box-sizing: border-box; height: var(--ctl-h); padding-left: 12px; }
