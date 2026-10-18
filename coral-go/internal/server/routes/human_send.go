@@ -268,8 +268,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			if time.Since(typedAt) < confirmWait {
 				continue
 			}
-			if busy && ptymanager.InputBoxOnScreen(screen) {
-				return nil // typed to an agent in the middle of a turn, and not in its box: queued behind its work (#4794)
+			if busy && ptymanager.InputBoxEmpty(screen) {
+				return nil // typed to an agent in the middle of a turn, and its box is empty: queued behind its work (#4794). A box
+				// holding anything else (an image chip and the text the match above could not read, a draft) may still hold the message.
 			}
 			if retyped < humanSendRetypes && h.agentHasNoEvents(ctx, sessionID) && ptymanager.InputBoxEmpty(screen) {
 				if err := send(); err != nil { // its keystrokes were lost while it started: none of it is in the box

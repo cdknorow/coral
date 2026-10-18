@@ -526,6 +526,16 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 		assert.Equal(t, "not_confirmed", code(rec))
 	})
+	t.Run("claude: a mid-turn agent whose box still holds the message (an image chip and the text): not confirmed (#4794, Security)", func(t *testing.T) {
+		h := setup(t, "claude", true)
+		h.event("tool_use")
+		img := attach(t)
+		h.term.show(ready(""))
+		h.term.onType = func(string) { h.term.show(claude("[Image #1] and this")) } // typed, its Enter lost: still sitting in the box, not found as typed
+		rec := h.send(img("ffff6666_f.png") + " and this")
+		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		assert.Equal(t, "not_confirmed", code(rec))
+	})
 	t.Run("claude: an image and text an idle agent never takes: not confirmed", func(t *testing.T) {
 		h := setup(t, "claude", true)
 		img := attach(t)
