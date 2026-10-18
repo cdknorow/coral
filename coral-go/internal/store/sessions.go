@@ -533,6 +533,54 @@ func (s *SessionStore) UpsertFTS(ctx context.Context, sessionID, body string) er
 	})
 }
 
+// FTSItem is a session's search text for UpsertFTSBatch.
+type FTSItem struct {
+	SessionID string
+	Body      string
+}
+
+// ftsBatchIDs is how many sessions' old rows one DELETE removes: session_fts is an FTS5 table, so a delete by session id is a scan of
+// every transcript's text, and one statement with many ids scans once for all of them (#4669; UpsertFTS made one scan per session).
+const ftsBatchIDs = 100
+
+// UpsertFTSBatch is UpsertFTS for many sessions in few transactions: each chunk of ftsBatchIDs sessions is one transaction, one DELETE of
+// their old rows (one scan of the table) and one INSERT each. A session named twice in items keeps its last body. The result is what
+// calling UpsertFTS for each, in order, gives.
+func (s *SessionStore) UpsertFTSBatch(ctx context.Context, items []FTSItem) error {
+	last := make(map[string]int, len(items)) // the last body of each session
+	for i, it := range items {
+		last[it.SessionID] = i
+	}
+	var kept []FTSItem
+	for i, it := range items {
+		if last[it.SessionID] == i {
+			kept = append(kept, it)
+		}
+	}
+	for start := 0; start < len(kept); start += ftsBatchIDs {
+		chunk := kept[start:min(start+ftsBatchIDs, len(kept))]
+		err := s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+			ids := make([]any, len(chunk))
+			for i, it := range chunk {
+				ids[i] = it.SessionID
+			}
+			if _, err := tx.ExecContext(ctx, "DELETE FROM session_fts WHERE session_id IN ("+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+")", ids...); err != nil {
+				return err
+			}
+			for _, it := range chunk {
+				if _, err := tx.ExecContext(ctx, "INSERT INTO session_fts (session_id, body) VALUES (?, ?)", it.SessionID, it.Body); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // EnqueueForSummarization adds a session to the summarization queue.
 // If the session already exists with a 'failed' status, it is reset to 'pending'
 // so it will be retried (e.g. after re-indexing with a corrected source_file).

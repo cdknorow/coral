@@ -67,6 +67,9 @@ func (idx *SessionIndexer) Run(ctx context.Context) error {
 	}
 }
 
+// indexerFTSBatch is how many sessions' search text one pass collects before writing it (store.UpsertFTSBatch).
+const indexerFTSBatch = 100
+
 // RunOnce performs a single indexing pass over all registered scanners.
 func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 	started := time.Now()
@@ -100,6 +103,23 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 	}
 	agentNames, _ := idx.store.GetAgentNames(ctx, sessionIDs)
 
+	// The search text is written in batches: a delete of a session's old text scans the whole search table, so one delete for a batch
+	// of sessions is one scan instead of one for each (#4669). If a batch fails its sessions are written one by one, to find the one.
+	var pending []store.FTSItem
+	flush := func() {
+		if len(pending) == 0 {
+			return
+		}
+		if err := idx.store.UpsertFTSBatch(ctx, pending); err != nil {
+			idx.logger.Warn("upsert FTS batch failed, writing its sessions one by one", "sessions", len(pending), "error", err)
+			for _, it := range pending {
+				if err := idx.store.UpsertFTS(ctx, it.SessionID, it.Body); err != nil {
+					idx.logger.Warn("upsert FTS failed", "session", it.SessionID, "error", err)
+				}
+			}
+		}
+		pending = pending[:0]
+	}
 	for _, s := range allSessions {
 		si := &store.SessionIndex{
 			SessionID:      s.SessionID,
@@ -121,13 +141,15 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 		}
 
 		if s.FTSBody != "" && !s.FTSUnchanged {
-			if err := idx.store.UpsertFTS(ctx, s.SessionID, s.FTSBody); err != nil {
-				idx.logger.Warn("upsert FTS failed", "session", s.SessionID, "error", err)
+			pending = append(pending, store.FTSItem{SessionID: s.SessionID, Body: s.FTSBody})
+			if len(pending) >= indexerFTSBatch {
+				flush()
 			}
 		}
 
 		indexed++
 	}
+	flush()
 
 	if os.Getenv("CORAL_DEBUG_PHASES") == "1" {
 		idx.logger.Info("indexer pass complete", "indexed", indexed, "scanners", len(idx.scanners), "sessions", len(allSessions), "duration_ms", time.Since(started).Milliseconds())
