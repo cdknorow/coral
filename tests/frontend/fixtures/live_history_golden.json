@@ -1,0 +1,31 @@
+{
+  "about": "what refreshLiveHistory showed and asked for at each step, for live_history_golden_browser.test.js: sha256 of the chat html, the requests and the load-more state, and the readable lines. CORAL_UPDATE_GOLDEN=1 rewrites it.",
+  "hashes": {
+    "first load with messages and older ones": "80494ad989bd51ecf347142972c7baa227c066df674be254dde8ed39f8f45a22",
+    "a poll that brings new messages": "ab85627c974210a5fffd162fc0dd8837161bd075c404dd1cbb40e04adf61f350",
+    "a poll with nothing new": "ab85627c974210a5fffd162fc0dd8837161bd075c404dd1cbb40e04adf61f350",
+    "an empty conversation": "affaf94baa38f4f1b421c1897d3e143aaa68900fa499679029d2e7e0536c32a0",
+    "the transcript got shorter: loaded again from its start": "66c647f0603af85d5c8fe727f227a485d11c0f716ea84a8ba7efd0b33af4dcdc",
+    "the first load fails with the server error": "a983b123856d22c1a633ed2d0b788162ad1e15d6b0d39eb179bca81d0f135843",
+    "the first load fails with a reply that is not JSON": "a983b123856d22c1a633ed2d0b788162ad1e15d6b0d39eb179bca81d0f135843",
+    "Retry after a failure loads again": "a93f13453b5166305a2b07eab5b6f67441e53fd7526b7e793ee2d2278f70a96c",
+    "the first load is refused as busy": "70014237fe0afc90abf9c142713bf57db474cd262ce34a841e0dd2e41ba6ac29",
+    "an open prompt, a login notice and a usage limit ride on the reply": "ae37e39968f3c8da81ab203c8b50d314e66844d2a549fcca12b2503b492ea7e0",
+    "the kept page of an agent seen a moment ago shows at once": "ab20d6632cb2f97b6f26ae926555c5e5508627eb676d46f095e6aabc90de91eb",
+    "a switch while the answer is on its way renders nothing": "e77e46bb3d6bfcd46e15c1a7e534af8ca4f1f70d3f6a594e1ace034537a7e3cb"
+  },
+  "lines": {
+    "first load with messages and older ones": "kids 5 [load-more-btn,chat-bubble,chat-bubble,chat-bubble,chat-bubble] | older true | loading false busy false error false | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | Load older messagesYouPlease fix the build Looking at it now. content_copyYouand add a test Done: both. content_copy",
+    "a poll that brings new messages": "kids 7 [load-more-btn,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-note,chat-bubble] | older true | loading false busy false error false | requests {\"after\":\"6\"} | Load older messagesYouPlease fix the build Looking at it now. content_copyYouand add a test Done: both. content_copyInterruptedStopped. content_copy",
+    "a poll with nothing new": "kids 7 [load-more-btn,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-note,chat-bubble] | older true | loading false busy false error false | requests {\"after\":\"6\"} | Load older messagesYouPlease fix the build Looking at it now. content_copyYouand add a test Done: both. content_copyInterruptedStopped. content_copy",
+    "an empty conversation": "kids 1 [chat-empty] | older false | loading false busy false error false | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | No messages yetType below and press Enter to send, Shift+Enter for a new line. The agent's replies and steps appear here.",
+    "the transcript got shorter: loaded again from its start": "kids 2 [chat-bubble,chat-bubble] | older false | loading false busy false error false | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} ; {\"after\":\"6\"} ; {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | YouPlease fix the build Looking at it now. content_copy",
+    "the first load fails with the server error": "kids 1 [chat-load-error] | older false | loading false busy false error true | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | Could not load this conversation. Reload the page to try again. Retry",
+    "the first load fails with a reply that is not JSON": "kids 1 [chat-load-error] | older false | loading false busy false error true | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | Could not load this conversation. Reload the page to try again. Retry",
+    "Retry after a failure loads again": "kids 2 [chat-bubble,chat-bubble] | older false | loading false busy false error false | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | YouPlease fix the build Looking at it now. content_copy",
+    "the first load is refused as busy": "kids 1 [loading-indicator] | older false | loading true busy true error false | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | Loading… (Coral busy, retrying)",
+    "an open prompt, a login notice and a usage limit ride on the reply": "kids 4 [chat-bubble,chat-bubble,chat-note,chat-needs-input] | older false | loading false busy false error false | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | YouPlease fix the build Looking at it now. content_copywarningYou hit the usage limitSign-in neededClaude needs you to sign inexpiredSign in from the terminal. Nothing runs until you do.Open terminal",
+    "the kept page of an agent seen a moment ago shows at once": "kids 8 [load-more-btn,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-note,chat-bubble,chat-needs-input] | older true | loading false busy false error false | requests {\"after\":\"6\"} | Load older messagesYouPlease fix the build Looking at it now. content_copyYouand add a test Done: both. content_copyInterruptedStopped. content_copySign-in neededClaude needs you to sign inexpiredSign in from the terminal. Nothing runs until you do.Open terminal",
+    "a switch while the answer is on its way renders nothing": "kids 0 [] | older false | loading false busy false error false | requests {\"after\":\"2\"} | "
+  }
+}
