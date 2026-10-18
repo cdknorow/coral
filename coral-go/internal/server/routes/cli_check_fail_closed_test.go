@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,6 +67,16 @@ func TestCLICheckNeverRunsThePathCLIInsteadOfAConfiguredOne(t *testing.T) {
 	})
 
 	t.Run("no configured path still checks PATH", func(t *testing.T) {
+		// This subtest runs the real PATH CLI (--version) and asserts it ran. A
+		// whole-module go test can make the probe's default 3 s bound fire before the
+		// fork+exec completes, killing the stub before it records its run (#4818): the
+		// marker goes missing though routing was correct. The assertion is that the
+		// PATH CLI is the one run, not that it runs within 3 s, so give the probe room
+		// (the stand-in prerequisite_analytics_test.go uses for the same reason).
+		prevProbe := cliProbeTimeout
+		cliProbeTimeout = 30 * time.Second
+		t.Cleanup(func() { cliProbeTimeout = prevProbe })
+
 		h := newSystemHandlerForTest(t)
 		w := httptest.NewRecorder()
 		h.CLICheck(w, httptest.NewRequest(http.MethodGet, "/api/system/cli-check?type=claude", nil))
