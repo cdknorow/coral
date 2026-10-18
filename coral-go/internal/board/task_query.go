@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // The task query on GET /api/board/tasks (#4540): filters, sort, paging and a choice of the fields that come back, all in SQL. Every column and expression that reaches the SQL text is a constant from this file;
@@ -367,14 +370,61 @@ func placeholders(n int) string { return strings.TrimSuffix(strings.Repeat("?,",
 
 // QueryTasks runs q. The statement text is built only from the constants above and "?" placeholders.
 func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult, error) {
-	sortExpr := "created_at"
-	sortName := "created_at"
-	if q.SortUpdated {
-		sortExpr, sortName = updatedAtSQL, "updated_at"
+	stmt, args, wantVerification := taskQueryStatement(q)
+	rows, err := s.reader().QueryxContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
 	}
-	var cols []string
-	wantVerification := false
-	for _, f := range q.Fields {
+	defer rows.Close()
+	page, err := scanTaskQueryPage(rows, q, wantVerification)
+	if err != nil {
+		return nil, err
+	}
+	if slices.Contains(q.Fields, "board_label") {
+		s.addBoardLabels(ctx, page.res.Tasks, page.boards)
+	}
+	if wantVerification {
+		if err := s.addVerification(ctx, page.res.Tasks, page.vTasks); err != nil {
+			return nil, err
+		}
+	}
+	if page.more {
+		page.res.NextCursor = page.last.encode()
+	}
+	return page.res, nil
+}
+
+// taskQuerySort is the expression the rows are sorted (and paged) on, and its name in a cursor.
+func taskQuerySort(q *TaskQuery) (expr, name string) {
+	if q.SortUpdated {
+		return updatedAtSQL, "updated_at"
+	}
+	return "created_at", "created_at"
+}
+
+// taskQueryStatement is q's SELECT and its arguments; wantVerification says the status and completion columns the
+// verification state is worked out from were added.
+func taskQueryStatement(q *TaskQuery) (stmt string, args []any, wantVerification bool) {
+	sortExpr, _ := taskQuerySort(q)
+	cols, wantVerification := taskQueryColumnList(q.Fields, sortExpr)
+	join, where, args := taskQueryWhere(q, sortExpr)
+	dir := "DESC"
+	if !q.Desc {
+		dir = "ASC"
+	}
+	stmt = "SELECT " + strings.Join(cols, ", ") + " FROM board_tasks" + join
+	if len(where) > 0 {
+		stmt += " WHERE " + strings.Join(where, " AND ")
+	}
+	stmt += " ORDER BY " + sortExpr + " " + dir + ", id " + dir + " LIMIT ?"
+	args = append(args, q.Limit+1)
+	return stmt, args, wantVerification
+}
+
+// taskQueryColumnList is the columns asked for, each under its field's name, then the hidden ones every page needs
+// (_id, _board, _sort) and, for verification, _status and _completed. board_label and verification are not columns.
+func taskQueryColumnList(fields []string, sortExpr string) (cols []string, wantVerification bool) {
+	for _, f := range fields {
 		if f == "board_label" {
 			continue
 		}
@@ -388,8 +438,12 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 		cols = append(cols, `status AS "_status"`, `completed_at AS "_completed"`)
 	}
 	cols = append(cols, `id AS "_id"`, `board_id AS "_board"`, sortExpr+` AS "_sort"`)
-	var where []string
-	var args []any
+	return cols, wantVerification
+}
+
+// taskQueryWhere is q's filters and cursor as WHERE terms (joined with AND) and their arguments, with the join the
+// verification filter needs.
+func taskQueryWhere(q *TaskQuery, sortExpr string) (join string, where []string, args []any) {
 	in := func(col string, vals []string) {
 		if len(vals) == 0 {
 			return
@@ -404,7 +458,6 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 	in("assigned_to", q.AssignedTo)
 	in("board_id", q.Boards)
 	in("created_by", q.CreatedBy)
-	join := ""
 	if len(q.Verifications) > 0 {
 		join = " LEFT JOIN task_workflows w ON w.task_id = board_tasks.id"
 		var alts []string
@@ -428,32 +481,31 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 		where = append(where, updatedAtSQL+" >= ?")
 		args = append(args, q.UpdatedSince)
 	}
-	cmp := "<"
-	dir := "DESC"
-	if !q.Desc {
-		cmp, dir = ">", "ASC"
-	}
 	if q.cursor != nil {
+		cmp := "<"
+		if !q.Desc {
+			cmp = ">"
+		}
 		where = append(where, "("+sortExpr+" "+cmp+" ? OR ("+sortExpr+" = ? AND id "+cmp+" ?))")
 		args = append(args, q.cursor.Val, q.cursor.Val, q.cursor.ID)
 	}
-	stmt := "SELECT " + strings.Join(cols, ", ") + " FROM board_tasks" + join
-	if len(where) > 0 {
-		stmt += " WHERE " + strings.Join(where, " AND ")
-	}
-	stmt += " ORDER BY " + sortExpr + " " + dir + ", id " + dir + " LIMIT ?"
-	args = append(args, q.Limit+1)
+	return join, where, args
+}
 
-	rows, err := s.reader().QueryxContext(ctx, stmt, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	res := &TaskQueryResult{Tasks: []map[string]any{}}
-	var boards []string
-	var vTasks []Task
-	var last queryTaskCursor
-	more := false
+// taskQueryPage is a page as read: the rows (hidden columns removed), each row's board and, for verification, its
+// status and completion; the cursor of the last row kept, and whether a row past the limit came.
+type taskQueryPage struct {
+	res    *TaskQueryResult
+	boards []string
+	vTasks []Task
+	last   queryTaskCursor
+	more   bool
+}
+
+// scanTaskQueryPage reads up to q.Limit rows; the one more the statement asks for only says there are more.
+func scanTaskQueryPage(rows *sqlx.Rows, q *TaskQuery, wantVerification bool) (*taskQueryPage, error) {
+	_, sortName := taskQuerySort(q)
+	page := &taskQueryPage{res: &TaskQueryResult{Tasks: []map[string]any{}}}
 	for rows.Next() {
 		m := map[string]any{}
 		if err := rows.MapScan(m); err != nil {
@@ -464,69 +516,68 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 				m[k] = string(b)
 			}
 		}
-		if len(res.Tasks) == q.Limit {
-			more = true
+		if len(page.res.Tasks) == q.Limit {
+			page.more = true
 			break
 		}
 		id, _ := m["_id"].(int64)
 		sortVal, _ := m["_sort"].(string)
-		last = queryTaskCursor{Sort: sortName, Desc: q.Desc, Val: sortVal, ID: id}
+		page.last = queryTaskCursor{Sort: sortName, Desc: q.Desc, Val: sortVal, ID: id}
 		board, _ := m["_board"].(string)
-		boards = append(boards, board)
+		page.boards = append(page.boards, board)
 		if wantVerification {
 			t := Task{ID: id}
 			t.Status, _ = m["_status"].(string)
 			if c, ok := m["_completed"].(string); ok {
 				t.CompletedAt = &c
 			}
-			vTasks = append(vTasks, t)
+			page.vTasks = append(page.vTasks, t)
 			delete(m, "_status")
 			delete(m, "_completed")
 		}
 		delete(m, "_id")
 		delete(m, "_board")
 		delete(m, "_sort")
-		res.Tasks = append(res.Tasks, m)
+		page.res.Tasks = append(page.res.Tasks, m)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for _, f := range q.Fields {
-		if f == "board_label" {
-			labels := s.BoardLabels(ctx, boards)
-			for i, m := range res.Tasks {
-				if l := labels[boards[i]]; l != "" {
-					m["board_label"] = l
-				}
+	return page, nil
+}
+
+// addBoardLabels sets each row's board_label from its board (boards[i] is row i's); a board without a label is left out.
+func (s *Store) addBoardLabels(ctx context.Context, tasks []map[string]any, boards []string) {
+	labels := s.BoardLabels(ctx, boards)
+	for i, m := range tasks {
+		if l := labels[boards[i]]; l != "" {
+			m["board_label"] = l
+		}
+	}
+}
+
+// addVerification sets each row's verification state from its stored workflow (vTasks[i] is row i's).
+func (s *Store) addVerification(ctx context.Context, tasks []map[string]any, vTasks []Task) error {
+	ids := make([]int64, len(vTasks))
+	for i := range vTasks {
+		ids[i] = vTasks[i].ID
+	}
+	data, err := s.loadWorkflowData(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i, t := range vTasks {
+		// A task whose workflow cannot be read has no state, as in the whole rows.
+		var state any
+		if w, werr := decodeWorkflow(data[t.ID], true); werr == nil {
+			finishWorkflow(&t, w)
+			if t.Verification != nil {
+				state = t.Verification
 			}
-			break
 		}
+		tasks[i]["verification"] = state
 	}
-	if wantVerification {
-		ids := make([]int64, len(vTasks))
-		for i := range vTasks {
-			ids[i] = vTasks[i].ID
-		}
-		data, err := s.loadWorkflowData(ctx, ids)
-		if err != nil {
-			return nil, err
-		}
-		for i, t := range vTasks {
-			// A task whose workflow cannot be read has no state, as in the whole rows.
-			var state any
-			if w, werr := decodeWorkflow(data[t.ID], true); werr == nil {
-				finishWorkflow(&t, w)
-				if t.Verification != nil {
-					state = t.Verification
-				}
-			}
-			res.Tasks[i]["verification"] = state
-		}
-	}
-	if more {
-		res.NextCursor = last.encode()
-	}
-	return res, nil
+	return nil
 }
 
 // QueryTaskRows runs q for the whole task rows (q.Fields nil), as ListAllTasks returns them: the matching ids and the next cursor
