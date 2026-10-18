@@ -724,6 +724,15 @@ func (s *Server) registerStatic(r *chi.Mux) {
 			s.bundleBase = "/static/bb/" + s.staticVersion + "/"
 		}
 	}
+	// The build id of the frontend this binary serves (it hashes every embedded static file and the bundle's bytes): two
+	// servers that print the same id serve the same JavaScript, whatever tree they were built from (#4528).
+	if s.staticVersion != "" {
+		family := "bundled"
+		if s.bundleBase == "" {
+			family = "original files"
+		}
+		log.Printf("[STARTUP] dashboard build %s (%s)", s.staticVersion, family)
+	}
 	// Service worker needs wider scope header
 	r.Get("/static/sw.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Service-Worker-Allowed", "/")

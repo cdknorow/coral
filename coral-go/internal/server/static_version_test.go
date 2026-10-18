@@ -69,6 +69,40 @@ func TestBundleVersionNamesTheBytesItServes(t *testing.T) {
 	assert.NotEqual(t, base, build(staticSub, []byte(swapped), "v1"), "the stylesheet order changes the version")
 }
 
+// #4528: two hand-built servers were reported to serve the same bundle for two trees that differ in one JS file. They cannot:
+// a function added to a bundled module (live_chat.js, as #4518 did) changes the tree's version and the bundle's, and the bundle
+// the new version names carries the new code. (The report's hash was the unpatched tree's: both servers ran unpatched code.)
+func TestAChangedModuleIsServedUnderANewBuild(t *testing.T) {
+	staticSub, err := fs.Sub(staticFS, "static")
+	require.NoError(t, err)
+	index, err := fs.ReadFile(frontend.Templates, "templates/index.html")
+	require.NoError(t, err)
+	serve := func(tree fs.FS) (string, *frontend.Bundle) {
+		v, err := staticBuildVersion(tree)
+		require.NoError(t, err)
+		b, err := frontend.BuildBundle(tree, index)
+		require.NoError(t, err)
+		return bundleVersion(v, b), b
+	}
+	base, b0 := serve(staticSub)
+	tree := copyTree(t, staticSub)
+	require.Contains(t, tree, "live_chat.js")
+	tree["live_chat.js"] = &fstest.MapFile{Data: append(append([]byte{}, tree["live_chat.js"].Data...),
+		[]byte("\nexport function zz4528Prefetch() { return 'zz4528-marker'; }\n")...)}
+	changed, b1 := serve(tree)
+	assert.NotEqual(t, base, changed, "a changed module is served under another build id")
+	has := func(b *frontend.Bundle) bool {
+		for _, data := range b.Files {
+			if strings.Contains(string(data), "zz4528-marker") {
+				return true
+			}
+		}
+		return false
+	}
+	assert.False(t, has(b0), "the unchanged tree's bundle has no marker")
+	assert.True(t, has(b1), "the changed tree's bundle carries the new code")
+}
+
 // The /static/b/ version hashes the minifier too: the same files through another esbuild or other
 // options (or with minifying off) are other bytes.
 func TestStaticBuildVersionIncludesTheMinifier(t *testing.T) {
