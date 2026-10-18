@@ -54,7 +54,7 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 		var wg sync.WaitGroup
 		for _, sess := range pty.ListSessions() {
 			wg.Add(1)
-			go func(name string) { defer wg.Done(); pty.Kill(name) }(naming.SessionName(sess.AgentType, sess.SessionID))
+			go func(name string) { defer wg.Done(); pty.KillWithin(name, 200*time.Millisecond) }(naming.SessionName(sess.AgentType, sess.SessionID))
 		}
 		wg.Wait()
 		pty.Close()
@@ -161,7 +161,7 @@ func livePTYFixture(t *testing.T) (string, *store.DB, *store.SessionStore, *ptym
 		var wg sync.WaitGroup
 		for _, sess := range pty.ListSessions() {
 			wg.Add(1)
-			go func(name string) { defer wg.Done(); pty.Kill(name) }(naming.SessionName(sess.AgentType, sess.SessionID))
+			go func(name string) { defer wg.Done(); pty.KillWithin(name, 200*time.Millisecond) }(naming.SessionName(sess.AgentType, sess.SessionID))
 		}
 		wg.Wait()
 		pty.Close()
@@ -233,7 +233,7 @@ func (b *oldKillFails) Kill(name string) error {
 		return b.PTYBackend.Kill(name)
 	}
 	if b.gone {
-		b.PTYBackend.Kill(name)
+		b.PTYBackend.KillWithin(name, 200*time.Millisecond)
 	}
 	return b.err
 }

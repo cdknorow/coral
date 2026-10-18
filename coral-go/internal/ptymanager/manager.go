@@ -370,9 +370,17 @@ func (m *PTYBackend) Close() error {
 	m.sessions = make(map[string]*session)
 	m.mu.Unlock()
 
+	// Together, not one after another: each waits up to 5 s for its process, so N sessions that ignore SIGTERM held a shutdown (and every
+	// test that leaves shells behind) for N times that (#4852).
+	var wg sync.WaitGroup
 	for _, s := range sessions {
-		s.kill()
+		wg.Add(1)
+		go func(s *session) {
+			defer wg.Done()
+			s.kill()
+		}(s)
 	}
+	wg.Wait()
 	return nil
 }
 

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/pkg/redact"
@@ -54,12 +53,18 @@ func TestTrimNeverShowsAPieceOfAToken(t *testing.T) {
 	page := func(content string) []map[string]any {
 		return []map[string]any{{"type": "tool_result", "tool_use_id": "t1", "content": content}}
 	}
+	// check is called from several goroutines (#4852): it reports with t.Errorf, never t.Fatal or require.
 	check := func(t *testing.T, content, secret string, n int) {
-		t.Helper()
 		body, err := json.Marshal(map[string]any{"messages": trimChatPage(page(content), n)})
-		require.NoError(t, err)
+		if err != nil {
+			t.Errorf("trim=%d: %v", n, err)
+			return
+		}
 		red, err := secrets.Redactor().Reply(body, true)
-		require.NoError(t, err)
+		if err != nil {
+			t.Errorf("trim=%d: %v", n, err)
+			return
+		}
 		out := string(red)
 		if shown := trimSecretShown(out, secret); shown != "" {
 			t.Errorf("trim=%d shows %q of %q", n, shown, secret)
@@ -68,14 +73,11 @@ func TestTrimNeverShowsAPieceOfAToken(t *testing.T) {
 	for _, tk := range tokens {
 		filler := strings.Repeat("log line\n", 28) // 252 bytes: the token crosses trim=256..
 		content := filler + tk.text + "\nafter the token\n" + strings.Repeat("more output\n", 40)
-		for n := trimMin; n <= len(filler)+len(tk.text)+2; n++ {
-			check(t, content, tk.secret, n)
-		}
+		lo, hi := trimMin, len(filler)+len(tk.text)+2
+		parallelFor(hi-lo+1, func(i int) bool { check(t, content, tk.secret, lo+i); return true })
 		// At the ceiling: the token crosses 64 KB.
 		big := strings.Repeat("x", trimMax-10) + " " + tk.text + " " + strings.Repeat("y", 100)
-		for n := trimMax - 12; n <= trimMax; n++ {
-			check(t, big, tk.secret, n)
-		}
+		parallelFor(13, func(i int) bool { check(t, big, tk.secret, trimMax-12+i); return true })
 	}
 }
 
@@ -89,15 +91,20 @@ func TestTrimNeverShowsAPieceOfAPEMKey(t *testing.T) {
 	}
 	key.WriteString("-----END RSA PRIVATE KEY-----")
 	content := strings.Repeat("cat id_rsa\n", 20) + key.String() + "\ndone\n" + strings.Repeat("z", 1000)
-	for n := trimMin; n <= len(content); n++ {
+	parallelFor(len(content)-trimMin+1, func(i int) bool { // on several goroutines: t.Errorf, not t.Fatal (#4852)
+		n := trimMin + i
 		body, _ := json.Marshal(map[string]any{"messages": trimChatPage([]map[string]any{{"type": "tool_result", "content": content}}, n)})
 		red, err := secrets.Redactor().Reply(body, true)
-		require.NoError(t, err)
-		out := string(red)
-		if shown := trimSecretShown(out, line); shown != "" {
-			t.Fatalf("trim=%d shows %q", n, shown)
+		if err != nil {
+			t.Errorf("trim=%d: %v", n, err)
+			return false
 		}
-	}
+		if shown := trimSecretShown(string(red), line); shown != "" {
+			t.Errorf("trim=%d shows %q", n, shown)
+			return false
+		}
+		return true
+	})
 }
 
 // What is cut was redacted first: a token wholly inside the kept part is the marker there.
