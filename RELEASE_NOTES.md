@@ -1,5 +1,32 @@
 # Release Notes
 
+## v1.4.88 — A navigable Settings, Team Artifacts search, and working install links
+
+### Changes
+
+- **Settings is navigable:** a wide dialog with its eight groups down the left (General, Agents, Terminal, Notifications, Files and Git, Storage and cleanup, Network and Hub, Security and privacy), one pane at a time, each label and control on one row, on/off settings drawn as switches, and every explanation behind an (i) button. On a phone, in a small window or with large text, the groups become a selector at the top.
+- **Team Artifacts has a search box, filters, sort and Load more,** all answered by the server, so a search covers every artifact, not just the loaded page, with a count such as "12 of 340". The API (`GET /api/board/{project}/artifacts`) gains the same search, filters, sort, cursor paging and totals.
+- **The Coral Hub icon in the top bar opens the hub when connected,** and the Connect to Coral Hub screen when not (it no longer opens Settings).
+- **Sleep All and Wake All are gone from the top-bar gear menu.**
+- **An unverified task shows nothing,** in the list or the detail; only a task with evidence attached keeps its small icon.
+
+### Fixes
+
+- **The Antigravity install command points at Google's live installer,** and a missing CLI links its vendor's official install page, in the theme's link colour.
+- **Through Coral Hub, the New Agent dialog can check whether a CLI is installed** (it showed "Could not check claude CLI (HTTP 404)"); the check is at the Launch tier and its reply carries no path.
+
+### Security and privacy
+
+- **Through Coral Hub, the Team Artifacts search matches what the viewer sees, after redaction,** so it can't be used to guess a redacted secret a character at a time; and the task filters (assigned_to, created_by, board) now refuse a value containing a secret.
+
+### Known issue
+
+- **The Team Artifacts search's Clear buttons can be reached by Tab while hidden;** fixed in v1.4.89.
+
+### Other changes
+
+- **Tests and CI:** new browser and Go tests for all of the above.
+
 ## v1.4.87 — Prompts answered from Chat that really close, honest permission presets per CLI, and task verification
 
 ### Changes
@@ -13,7 +40,7 @@
 
 - **Prompts on the PTY backend are read with a small screen renderer of Coral's own:** it acts only on text, cursor moves and erases, with bounded input and work, and it is fuzz-tested.
 - **Antigravity's capabilities win over the dashboard's permission flag,** so a read-only preset no longer launches with `--dangerously-skip-permissions`.
-- **Only a server-run check counts as verification;** checks decided from what the worker itself uploads count as evidence, not verified.
+- **Of the completion gates, only a server-run check makes a task verified;** gates decided from what the worker uploads (report, test evidence, landed revision) give evidence, not verified. A reviewer other than the author still verifies.
 - **The Codex hook reads its rollout file through the safe file layer** (no symlink as its name), and only for shell commands.
 
 ### Fixes
