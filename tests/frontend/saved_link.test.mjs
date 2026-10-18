@@ -19,7 +19,7 @@ const bad = [
     q({ saved: hex.toUpperCase(), kind: 'agent', ref: 's' }), q({ saved: hex + '0', kind: 'agent', ref: 's' }), q({ saved: hex.slice(1), kind: 'agent', ref: 's' }),
     q({ saved: '0', kind: 'board', ref: 's' }), q({ saved: '012', kind: 'board', ref: 's' }), q({ saved: '1'.repeat(17), kind: 'board', ref: 's' }), q({ saved: '-1', kind: 'board', ref: 's' }),
     q({ saved: hex, kind: 'agent', ref: '' }), q({ saved: hex, kind: 'agent', ref: '   ' }), q({ saved: hex, kind: 'agent', ref: '..' }), q({ saved: hex, kind: 'agent', ref: '../../etc' }), q({ saved: hex, kind: 'agent', ref: 'a/b' }), q({ saved: hex, kind: 'agent', ref: 'a\\b' }), q({ saved: hex, kind: 'agent', ref: 'x..y' }), q({ saved: hex, kind: 'agent', ref: '.' }),
-    q({ saved: hex, kind: 'agent', ref: 'a\nb' }), q({ saved: hex, kind: 'agent', ref: 'a\tb' }), q({ saved: hex, kind: 'agent', ref: 'a​b' }), q({ saved: hex, kind: 'agent', ref: 'x'.repeat(201) }),
+    q({ saved: hex, kind: 'agent', ref: 'a\nb' }), q({ saved: hex, kind: 'agent', ref: 'a\tb' }), q({ saved: hex, kind: 'agent', ref: 'a\u200bb' }), q({ saved: hex, kind: 'agent', ref: 'x'.repeat(201) }),
 ];
 for (const s of bad) assert.equal(parseSavedLink(s, true), null, 'not a link: ' + JSON.stringify(s));
 for (const server of ['../x', 'a/b', 'a b', '', 'A'.repeat(33), 'x\ny', '%2e%2e', 'a?b=c', '-'.repeat(40)]) {

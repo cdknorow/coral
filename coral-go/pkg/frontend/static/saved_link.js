@@ -13,7 +13,7 @@
 const SERVER_RE = /^(?:[a-z0-9-]{1,32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const KEY_RE = { agent: /^[0-9a-f]{20}$/, board: /^[1-9][0-9]{0,15}$/ };
 // eslint-disable-next-line no-control-regex
-const BAD_REF_RE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/;
+const BAD_REF_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/;
 
 /** The saved item a URL query means ({kind, ref, key, server}), or null when it has none or any part is not shaped right. `hub` is whether this dashboard is the Coral Hub's. */
 export function parseSavedLink(search, hub = false) {
