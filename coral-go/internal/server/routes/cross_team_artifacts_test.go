@@ -41,6 +41,10 @@ func newArtifactEnv(t *testing.T) *artifactEnv {
 	t.Cleanup(func() { bs.Close() })
 	e := &artifactEnv{t: t, h: NewBoardHandler(bs), dir: t.TempDir(), now: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}
 	e.h.coralDir = e.dir
+	// A received-artifact store runs in a goBG goroutine that writes under coralDir (e.dir). Drain those before the
+	// test ends, or a still-running write races t.TempDir's RemoveAll ("directory not empty", #4601 flake). Registered
+	// after the t.TempDir calls above, so it runs before their cleanup (LIFO) and before the store closes.
+	t.Cleanup(func() { e.h.WaitBackground() })
 	e.h.received.now = func() time.Time { return e.now }
 	e.r = chi.NewRouter()
 	e.r.Get("/api/board/{project}/settings", e.h.GetBoardSettings)
