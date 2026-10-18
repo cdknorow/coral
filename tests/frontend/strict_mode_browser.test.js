@@ -39,6 +39,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         headers: { 'Content-Type': 'application/json' }, body: ${body === undefined ? 'undefined' : JSON.stringify(JSON.stringify(body))} })
         .then(async r => ({ status: r.status, data: await r.json().catch(() => null) }))`);
     let sid = null, name = null;
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         // Strict mode is on: no credential, no answer (Node has no cookie; the page without it neither).
         const anon = await fetch(`${BASE}/api/settings`).then(r => r.status);
@@ -136,6 +137,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         check('no error', false, e.message);
     } finally {
         if (sid) await api('POST', `/api/sessions/live/${encodeURIComponent(name)}/kill`, { agent_type: 'terminal', session_id: sid }).catch(() => {});
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
     const failed = results.filter(r => !r).length;

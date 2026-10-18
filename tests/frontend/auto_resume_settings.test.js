@@ -30,6 +30,7 @@ const BASE = require('./test_base').BASE;
       return new Response('{}');};
   })()`);
   const checked = () => ev(`document.getElementById('settings-auto-resume').checked`);
+  const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
   try {
     await Page.enable(); await Page.navigate({ url: BASE }); await Page.loadEventFired();
     // The real server first (before the page's fetch is replaced): only a boolean is taken.
@@ -72,5 +73,8 @@ const BASE = require('./test_base').BASE;
     assert.deepEqual(row, { checked: false, label: 'Resume agents stopped by an API error' }, 'the Settings dialog');
 
     console.log('PASS auto-resume setting: off by default, shown as saved, saved as a boolean, validated');
-  } finally { await client.close(); }
+  } finally {
+    await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
+    await client.close();
+  }
 })().catch(error => { console.error(error); process.exit(1); });

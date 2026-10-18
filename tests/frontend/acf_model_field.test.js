@@ -27,8 +27,10 @@ function check(label, cond, detail) {
     console.log(line);
 }
 
+let guard; // the settings this suite changes are put back, whether it ends or throws (#4849)
 async function run() {
     const client = await CDP({ port: CDP_PORT });
+    guard = await require('./helpers/settings_guard').guardSettings();
     const { Page, Runtime, Input, DOM } = client;
     await Promise.all([Page.enable(), Runtime.enable(), DOM.enable()]);
 
@@ -177,6 +179,7 @@ async function run() {
     await switchType('agy');
     check('S10 provider switch replaces known stored model', await modelValue() === '');
 
+    await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
     await client.close();
 
     const failures = results.filter(r => r.verdict === 'FAIL');
@@ -187,7 +190,8 @@ async function run() {
     }
 }
 
-run().catch(e => {
+run().catch(async e => {
     console.error('harness error:', e);
+    if (guard) await guard.restore().catch(() => {});
     process.exit(2);
 });

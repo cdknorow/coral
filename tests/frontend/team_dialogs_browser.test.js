@@ -8,6 +8,7 @@ const BASE = require('./test_base').BASE;
 
 (async () => {
     const { client, Page, ev, waitFor, PRELOAD, install } = await connect();
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install();
@@ -141,5 +142,8 @@ const BASE = require('./test_base').BASE;
         await waitFor(`!!document.querySelector('.team-wizard-success')`, 'the polled success', { timeout: 9000 });
         assert.equal(await ev(`document.querySelector('.team-wizard-success p').textContent`), '1 agents created for "Polled"');
         console.log('PASS team dialogs');
-    } finally { await client.close(); }
+    } finally {
+      await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
+      await client.close();
+    }
 })().catch(e => { console.error(e); process.exit(1); });

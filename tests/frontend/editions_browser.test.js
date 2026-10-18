@@ -112,6 +112,7 @@ async function run() {
         await until(`getComputedStyle(document.getElementById('welcome-screen')).display !== 'none'`, 'the home view');
     };
 
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         for (const [w, h, mobile, label] of [[1280, 800, false, 'desktop'], [390, 844, true, 'phone']]) {
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
@@ -323,6 +324,7 @@ async function run() {
         check('no page exceptions', exceptions.length === 0, JSON.stringify(exceptions));
     } finally {
         await put({ welcome_pending: 'False', home_editions_hidden: 'False' }).catch(() => {});
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
 }

@@ -50,6 +50,7 @@ async function run() {
       pills: Array.from(li.querySelectorAll('.session-attention-pill, .session-ctx-pill')).map(p => p.textContent.trim()), goal: q('.session-goal') ? q('.session-goal').textContent.replace(/\\s+/g,' ').trim() : null, goalTitle: q('.session-goal') ? q('.session-goal').getAttribute('title') : null,
       kebabFirst: (() => { window.closeSidebarKebabs(); const kb = q('.sidebar-kebab-btn'); if (kb) window.toggleSidebarKebab(kb); /* a row's menu is drawn when it opens (#4611) */ const m = q('.sidebar-kebab-menu'); const f = m ? Array.from(m.children).find(c => c.matches('.overflow-menu-item')) : null; const t = f ? f.textContent.trim() : null; window.closeSidebarKebabs(); return t; })(),
       padding: cs(li).padding, hasUuidText: li.textContent.includes(li.dataset.sessionId) }; })`);
+  const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
   try {
     await boot(1440, 900, false);
     let R = await rows(); const by = Object.fromEntries(R.map(r => [r.sid, r]));
@@ -173,7 +174,10 @@ async function run() {
     await until(`/Auto Bot|Renamed Bot/.test(document.getElementById('session-name').textContent)`, 'the phone row selected');
     check('14 cloned phone row: Enter selects (delegated handler survives cloneNode)', await ev(`/Auto Bot|Renamed Bot/.test(document.getElementById('session-name').textContent)`));
     check('14 cloned phone row: kebab first item is Open Agent Tab', await ev(`(() => { window.closeSidebarKebabs(); const kb = document.querySelector('#mobile-session-list [data-session-id="${B}"] .sidebar-kebab-btn'); if (kb) window.toggleSidebarKebab(kb); const m = document.querySelector('#mobile-session-list [data-session-id="${B}"] .sidebar-kebab-menu'); const f = m ? Array.from(m.children).find(c => c.matches('.overflow-menu-item')) : null; const t = f ? f.textContent.trim() : null; window.closeSidebarKebabs(); return t; })()`) === 'Open Agent Tab');
-  } finally { await client.close(); }
+  } finally {
+    await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
+    await client.close();
+  }
   const f = results.filter(v => v === 'FAIL').length; console.log(`\n${results.length - f}/${results.length} checks passed`); process.exit(f ? 1 : 0);
 }
 run().catch(e => { console.error('HARNESS ERROR:', e); process.exit(2); });

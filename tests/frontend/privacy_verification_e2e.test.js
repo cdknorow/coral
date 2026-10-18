@@ -14,6 +14,7 @@ const BASE = require('./test_base').BASE;
   };
 
   const resetPrivacy = () => ev(`fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telemetry_enabled: true, remote_access_enabled: false }) }).then(r => r.ok)`);
+  const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
   try {
     await Page.enable();
     await Page.navigate({ url: BASE });
@@ -127,6 +128,7 @@ const BASE = require('./test_base').BASE;
     console.log('PASS end-to-end privacy UI verification on live dashboard DOM');
   } finally {
     await resetPrivacy().catch(() => {});
+    await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
     await client.close();
   }
 })().catch(error => {

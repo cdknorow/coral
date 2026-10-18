@@ -32,6 +32,7 @@ const BASE = require('./test_base').BASE;
         await waitFor(`(document.getElementById('settings-hub-mode-status') || {}).textContent !== ''`, 'the hub mode status', 8000);
     };
 
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Promise.all([Page.enable(), Network.enable()]);
         await Network.setBypassServiceWorker({ bypass: true });
@@ -110,6 +111,7 @@ const BASE = require('./test_base').BASE;
     } finally {
         // Never leave the shared test server marked as a hub.
         try { await ev(`fetch('/api/system/hub-mode', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"enabled":false}' }).then(r => r.status)`); } catch {}
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
 })().catch(err => {

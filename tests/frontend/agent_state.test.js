@@ -139,6 +139,7 @@ async function run() {
             nameX: nx, h: li.getBoundingClientRect().height, labelDecoration: getComputedStyle(name).textDecorationLine }]; })))()`;
     const TOASTS = `document.querySelectorAll('.notification-toast').length`;
 
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await boot(1440, 900, false, false);
         // task_idle / waiting_on come from the team's board /status and /poll, fetched after the first render. Hard-wait
@@ -273,6 +274,7 @@ async function run() {
         check('mobile Ready for input rows render no status chip; the dot and aria-label still say Ready for input', [ID.turnSolo, ID.turnMember, ID.turnOrch].every(id => m[id] && m[id].mobileChip === null && m[id].pills.length === 0 && /your-turn/.test(m[id].dotCls || '') && m[id].dotHidden === false && /, Ready for input(,|$)/.test(m[id].aria || '')), JSON.stringify([ID.turnSolo, ID.turnMember, ID.turnOrch].map(id => m[id] && { chip: m[id].mobileChip, dot: m[id].dotCls, dotHidden: m[id].dotHidden, aria: m[id].aria })));
         check('mobile clone: same data-state per row, idle dot hidden, unread chip hidden in favour of the meta pill', Object.entries(EXPECT).every(([sid, e]) => m[sid] && m[sid].state === e.state) && m[ID.idle].dotHidden === true && (!m[ID.turnMember].unread || !m[ID.turnMember].unread.shown), JSON.stringify({ idle: m[ID.idle] && m[ID.idle].dotHidden, unread: m[ID.turnMember] && m[ID.turnMember].unread }));
     } finally {
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
     const failed = results.filter(v => v === 'FAIL').length;

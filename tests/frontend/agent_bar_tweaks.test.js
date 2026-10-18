@@ -138,6 +138,7 @@ async function run() {
     // Keep the HTTP stub and the rendered list in lockstep.
     const setFixture = (sessions) => evalInPage(`window.__fixture = ${JSON.stringify(sessions)}; window._coralSetLiveSessions(window.__fixture); true`);
 
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.navigate({ url: BASE + '/' });
         await Page.loadEventFired();
@@ -648,6 +649,7 @@ async function run() {
         await setFixture(SESSIONS);
         check('desktop still hides mobile rows after switching back', await evalInPage(`getComputedStyle(document.querySelector('#live-sessions-list [data-session-id="sid-c"] .session-mobile-meta')).display`) === 'none');
     } finally {
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
 }

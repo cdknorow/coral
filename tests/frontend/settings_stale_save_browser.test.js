@@ -26,6 +26,7 @@ const BASE = require('./test_base').BASE;
   const save = () => ev(`import(${MOD}+'modals.js').then(m=>m.applySettings()).then(()=>true)`);
   const CLAUDE = 'settings-cli-path-claude', CODEX = 'settings-cli-path-codex', WDIR = 'settings-working-dir';
   let original = {};
+  const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
   try {
     await Page.enable(); await Page.navigate({ url: BASE }); await Page.loadEventFired();
     await ev(`new Promise(r=>{const t=setInterval(()=>{if(window.__coralStatic||document.readyState==='complete'){clearInterval(t);r(true)}},50)})`);
@@ -78,6 +79,7 @@ const BASE = require('./test_base').BASE;
       await ev(`fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify({
         cli_path_claude: original.cli_path_claude || '', cli_path_codex: original.cli_path_codex || '', default_working_dir: original.default_working_dir || '' })})}).then(r=>r.status)`);
     } catch { /* the page is gone: nothing to restore through it */ }
+    await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
     await client.close();
   }
 })().catch(error => { console.error(error); process.exit(1); });

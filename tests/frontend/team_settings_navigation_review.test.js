@@ -15,6 +15,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
   const visible=selector=>{const e=d.querySelector(selector),r=e.getBoundingClientRect();return {visible:!!r.width&&!!r.height&&r.top>=0&&r.bottom<=innerHeight,top:r.top,bottom:r.bottom};};
   return {viewport:[innerWidth,innerHeight],dialog:{height:d.clientHeight,scrollHeight:d.scrollHeight,scrollTop:d.scrollTop},header:visible('header'),tabs:visible('[role=tablist]'),save:visible('[type=submit]'),close:visible('header button'),promptDetails:d.querySelectorAll('.prompt-inspection-content details').length,horizontalOverflow:document.documentElement.scrollWidth>innerWidth||d.scrollWidth>d.clientWidth};
  })()`);
+ const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
  try {
   await Page.enable();const ready=Page.domContentEventFired();await Page.navigate({url:BASE});await ready;console.log("DOM ready");
   await ev(`import((window.__coralStatic||'/static/')+'team_working_mode.js').then(m=>window.openSettings=m.showTeamWorkingMode)`);
@@ -95,5 +96,5 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
    assert.equal(row.horizontalOverflow,false);
   }
   console.log('PASS: controls reachable, prompt disclosure, keyboard tabs, Global persistence, partial-save feedback and edit preservation. Escape status recorded separately.');
- } finally {fs.writeFileSync('/tmp/coral-1273-geometry.json',JSON.stringify(results,null,2));await client.close();}
+ } finally {fs.writeFileSync('/tmp/coral-1273-geometry.json',JSON.stringify(results,null,2));await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message))); await client.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

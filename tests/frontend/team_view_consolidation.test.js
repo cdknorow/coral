@@ -11,6 +11,7 @@ const BASE = require('./test_base').BASE;
     return r.result.value;
   };
 
+  const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
   try {
     await Page.enable();
     await Page.navigate({ url: BASE });
@@ -226,6 +227,7 @@ const BASE = require('./test_base').BASE;
 
     console.log('ALL CONSOLIDATION CHECKS PASSED!');
   } finally {
+    await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
     await client.close();
   }
 })().catch(e => {
