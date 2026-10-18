@@ -11,10 +11,10 @@ import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch } from './server_base.js';
 import { rebaseChanges } from './settings_diff.js';
 
-export const HEALTH_LIMITS = { minutes: [5, 1440], nudges: [1, 5], reviewers: 8 };
+const HEALTH_LIMITS = { minutes: [5, 1440], nudges: [1, 5], reviewers: 8 };
 
 // The server's defaults (DefaultHealthSettings); held_notice is the Lead's #4225 field, filled in only when the server returns it.
-export const HEALTH_DEFAULTS = {
+const HEALTH_DEFAULTS = {
     on: true, interval_min: 10, recipient: '', all_clear: true, default_reviewers: [],
     auto_delegate: { on: true },
     claim_nudge: { on: true, after_min: 10, nudges: 2 },
@@ -39,7 +39,7 @@ function rule(key, title, why, on, knobs, extra = '') {
 }
 
 /** The panel's HTML for a health object and the team's members (active subscribers: { subscriber_id, job_title }). */
-export function healthPanelHTML(h, members) {
+function healthPanelHTML(h, members) {
     const names = members.map(m => m.subscriber_id);
     const rcpt = h.recipient || '';
     const options = [`<option value="">The orchestrator (default)</option>`]
@@ -77,7 +77,7 @@ const field = (form, name) => form.elements[name];
 const num = (form, name) => parseInt(field(form, name).value, 10);
 
 /** The form's values as a health object: what it shows over what was read (so a field it does not know goes back as it was). */
-export function readHealth(form, base) {
+function readHealth(form, base) {
     const h = JSON.parse(JSON.stringify(base));
     h.on = field(form, 'on').checked;
     h.interval_min = num(form, 'interval_min');
@@ -96,7 +96,7 @@ export function readHealth(form, base) {
 const snapshot = form => JSON.stringify(Array.from(form.elements).filter(el => el.name).map(el => ({ name: el.name, type: el.type, value: el.type === 'checkbox' ? el.checked : el.value })));
 
 /** The first problem with the numbers or reviewers, in plain words, and the field to focus; null when the form is fine. */
-export function healthProblem(form) {
+function healthProblem(form) {
     for (const el of form.querySelectorAll('input[type=number]:not(:disabled)')) {
         const v = el.value.trim();
         const n = Number(v);

@@ -1039,7 +1039,7 @@ export function applyLiveViewMode(override) {
 // showing for terminalPrefetch.idleMs on a link that is not metered or slow. It loads once; every later switch finds it ready.
 export const terminalPrefetch = { idleMs: 2000 };
 let _prefetchTimer = null;
-export function prefetchTerminal() {
+function prefetchTerminal() {
     if (xtermReady()) return;
     loadXterm().catch(() => { /* a failed prefetch is retried by the switch itself, which shows its own Retry */ });
 }

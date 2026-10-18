@@ -37,7 +37,7 @@ export async function maybeOfferHubSignin() {
     showHubNotice();
 }
 
-export function showHubNotice() {
+function showHubNotice() {
     const opener = document.activeElement;
     const modal = el('div', 'modal'); modal.id = 'hub-signin-notice';
     modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'hub-signin-notice-title');

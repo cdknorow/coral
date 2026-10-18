@@ -8,13 +8,13 @@ import { isCloud, sessionServer, normServer, splitKey, serverFetch, LOCAL_SERVER
 import { onBuilt } from './lazy_dom.js';
 
 // The bookmark is an inline SVG (the shape the Team Artifacts' Keep button uses), filled when saved: the Material Icons subset has no bookmark.
-export const BOOKMARK_SVG = '<svg class="bm" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
+const BOOKMARK_SVG = '<svg class="bm" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
 export const SAVE_BUTTON = `<button type="button" class="chat-save-btn" title="Save for later" aria-label="Save for later" aria-pressed="false">${BOOKMARK_SVG}</button>`;
 export const BOARD_SAVE_BUTTON = (ref, title, said) => `<button type="button" class="mb-save-btn" data-conv-ref="${escapeAttr(ref)}" data-conv-title="${escapeAttr(title)}" data-said="${escapeAttr(said)}" title="Save for later" aria-label="Save for later" aria-pressed="false">${BOOKMARK_SVG}</button>`;
 
 // The conversation a message button belongs to: {kind, ref, server, agentType, title}, or null where there is nothing to save to. ref is the id or name the server
 // that has the conversation knows it by (a board's bare name, not the hub's server/name key); server is that server ("local" for this one).
-export function conversationOf(btn) {
+function conversationOf(btn) {
     if (btn.classList.contains('mb-save-btn')) {
         const { server, name } = splitKey(btn.dataset.convRef || '');
         if (!name) return null;
@@ -70,7 +70,7 @@ function keyOf(btn) {
 }
 
 /** Show each save button's state (filled when saved). A button with no conversation to save to is hidden. */
-export async function syncSavedButtons(root) {
+async function syncSavedButtons(root) {
     if (!root || isCloud()) return;
     const btns = [...root.querySelectorAll('.chat-save-btn, .mb-save-btn')];
     if (!btns.length) return;
@@ -155,7 +155,7 @@ export function setSavedCount(n) {
     const tc = document.getElementById('saved-tab-count');
     if (tc) tc.textContent = n > 0 ? (n > 99 ? '99+' : String(n)) : '';
 }
-export function refreshSavedCount() {
+function refreshSavedCount() {
     clearTimeout(countTimer);
     countTimer = setTimeout(() => {
         if (isCloud()) return;

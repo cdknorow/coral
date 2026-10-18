@@ -181,7 +181,7 @@ function _cursorBox(el) {
     return { top, bottom: top + cell, pad: parseFloat(getComputedStyle(el).paddingBottom) || 0 };
 }
 
-export function revealCursor() {
+function revealCursor() {
     const el = _containerEl;
     if (!terminal || !el || !_following || _scrolledAway) return;
     const box = _cursorBox(el);

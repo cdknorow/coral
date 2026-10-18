@@ -14,7 +14,7 @@
 export const FIRST_PAGE = 30;
 export const CHAT_TRIM = 2048;
 
-export const PREFETCH_TTL_MS = 15000;
+const PREFETCH_TTL_MS = 15000;
 const DEEP_LINK = /^\/agents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 
 let early = null; // { sid, controller, promise, timer }

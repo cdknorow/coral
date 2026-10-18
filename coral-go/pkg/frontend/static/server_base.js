@@ -84,7 +84,7 @@ function resolveDots(path) {
 /** A request for a registered server must stay inside its proxy: its path, with dot segments resolved and percent-escapes decoded (up to three layers, so
  *  %252e%252e is seen too), still starts with /api/remote/<server>/. A value that came from another machine (an id, a name, a path) must never walk a hub request out of
  *  the proxy to the hub's own routes (/api/servers/..., /api/settings/...): this is the last check, whatever built the URL (Security, #4551). Throws when it does not. */
-export function assertInProxy(full, base) {
+function assertInProxy(full, base) {
     const raw = String(full);
     const refuse = why => { throw new Error(`refused a request that would leave the proxy of ${base || 'a server'} (${why})`); };
     if (!raw.startsWith(base + '/')) refuse('not under the proxy');

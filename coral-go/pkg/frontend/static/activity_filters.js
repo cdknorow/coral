@@ -25,7 +25,7 @@ export const SORTS = ['newest', 'oldest'];
 export const SORT_LABEL = { newest: 'Newest first', oldest: 'Oldest first' };
 /** The tool groups (Read, Write, Bash ... ): the Filters menu has a checkbox for each, g_<key>, checked while that kind of event shows. They narrow the rows already loaded (the live feed, or the pages of a
  *  search), the server is not asked: they are not part of the query. */
-export const GROUP_KEYS = FILTER_GROUPS.map(g => g.key);
+const GROUP_KEYS = FILTER_GROUPS.map(g => g.key);
 export const groupField = key => `g_${key}`;
 export const EMPTY = { q: '', type: '', from: '', to: '', sort: 'newest', ...Object.fromEntries(GROUP_KEYS.map(k => [groupField(k), true])) };
 

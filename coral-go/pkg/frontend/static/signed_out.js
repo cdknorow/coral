@@ -31,7 +31,7 @@ async function stillSignedOut() {
 }
 
 /** Try again (the button, or the tab coming back to the front after the sign-in): signed in -> reload the page, which restores the view. */
-export async function retrySignIn({ quiet = false } = {}) {
+async function retrySignIn({ quiet = false } = {}) {
     if (_checking || !isSignedOut()) return false;
     _checking = true;
     const status = _dialog && _dialog.querySelector('#signed-out-status');

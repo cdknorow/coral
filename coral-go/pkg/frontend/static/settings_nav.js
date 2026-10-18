@@ -21,7 +21,7 @@ const shown = () => panes().filter(p => !p.dataset.empty);
 function tabFor(id) { return document.getElementById(`settings-tab-${id}`); }
 
 /** Opens the pane for a group; an unknown or empty group opens the first one. Returns the group shown. */
-export function showSettingsGroup(id, { focus = false, remember = true } = {}) {
+function showSettingsGroup(id, { focus = false, remember = true } = {}) {
     const list = shown();
     const pane = list.find(p => p.dataset.group === id) || list[0];
     if (!pane) return null;

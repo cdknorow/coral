@@ -74,7 +74,7 @@ export function noMachine(servers = state.servers) {
     return machineState(servers) === 'none';
 }
 
-export const MACHINES_OFFLINE = 'Your machines are offline';
+const MACHINES_OFFLINE = 'Your machines are offline';
 /** What a machine-dependent action (Browse) says when there is nothing to run it on, or '' when there is. */
 export function machineBlock(servers = state.servers) {
     const m = machineState(servers);

@@ -7,9 +7,9 @@ const LOCAL_SERVER = 'local'; // server_base.js's LOCAL_SERVER; not imported so 
 
 const TYPE_NAMES = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', agy: 'Antigravity', antigravity: 'Antigravity', pi: 'Pi' };
 
-export const MODELS_CACHE_PREFIX = 'coral-models:v1:';
+const MODELS_CACHE_PREFIX = 'coral-models:v1:';
 
-export function typeName(agentType) {
+function typeName(agentType) {
     return TYPE_NAMES[agentType] || (agentType ? agentType.charAt(0).toUpperCase() + agentType.slice(1) : '');
 }
 
@@ -27,7 +27,7 @@ export function writeModelsCache(server, agentType, data) {
 }
 
 /** A short name from a model id when the list has no display name: claude-opus-4-1-20250805 gives "Opus 4.1". */
-export function shortModelName(id) {
+function shortModelName(id) {
     let s = String(id || '').trim();
     if (!s) return '';
     s = s.replace(/^claude-/, '').replace(/-\d{8}$/, '').replace(/\[[^\]]*\]$/, '');

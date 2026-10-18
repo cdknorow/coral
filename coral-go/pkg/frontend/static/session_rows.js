@@ -90,7 +90,7 @@ export function kebabId(kind, key) {
 
 const LABEL_TAIL = 7, LABEL_SPLIT_OVER = 16;
 /** [head, tail] for a name longer than 16 characters (the tail is its last 7, never in the middle of a character), else [name, '']. */
-export function splitLabel(name) {
+function splitLabel(name) {
     const chars = Array.from(String(name));
     return chars.length > LABEL_SPLIT_OVER ? [chars.slice(0, -LABEL_TAIL).join(''), chars.slice(-LABEL_TAIL).join('')] : [String(name), ''];
 }

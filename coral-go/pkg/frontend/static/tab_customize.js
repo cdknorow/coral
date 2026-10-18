@@ -213,7 +213,7 @@ function onDocKey(e) {
     closeCustomize(true);
 }
 
-export function closeCustomize(refocus) {
+function closeCustomize(refocus) {
     popover()?.remove();
     document.removeEventListener('click', onOutside, true);
     document.removeEventListener('keydown', onDocKey, true);
@@ -222,7 +222,7 @@ export function closeCustomize(refocus) {
     if (refocus) btn?.focus();
 }
 
-export function openCustomize() {
+function openCustomize() {
     if (isOpen()) return;
     const pop = document.createElement('div');
     pop.id = 'tab-customize';

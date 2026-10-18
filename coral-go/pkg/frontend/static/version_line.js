@@ -5,7 +5,7 @@ import { onBuilt } from './lazy_dom.js';
 import { fetchSystemStatus } from './system_status.js';
 
 /** "Coral v1.4.88" for a server version ("1.4.88" or "v1.4.88"); a build name that is not a number ("dev") is shown as it is; '' for none. */
-export function versionText(v) {
+function versionText(v) {
     if (typeof v !== 'string' || !v.trim()) return '';
     const t = v.trim().replace(/^v(?=\d)/i, '');
     return /^\d/.test(t) ? `Coral v${t}` : `Coral ${t}`;

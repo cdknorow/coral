@@ -70,7 +70,7 @@ export function forgetAccountMemory() {
 
 /** An agent panel's unsent request (agent_ui.js keeps it per agent in sessionStorage); another person at this browser must not read it. */
 const PANEL_DRAFT_PREFIX = 'coral-panel-request:';
-export function purgePanelDrafts() {
+function purgePanelDrafts() {
     // Through safe_storage (#4116): it already answers a blocked sessionStorage with no keys.
     const keys = browserSession.keys().filter(k => k.startsWith(PANEL_DRAFT_PREFIX));
     for (const k of keys) browserSession.remove(k);

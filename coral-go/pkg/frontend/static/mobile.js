@@ -143,7 +143,7 @@ export function syncMobileAgentList() {
 }
 
 /** Wide screen: the list goes back into the sidebar as #live-sessions-list, where it was. */
-export function restoreSidebarList() {
+function restoreSidebarList() {
     const list = document.getElementById('mobile-session-list');
     if (!list || !_sidebarHome || !_sidebarHome.parent.isConnected) return;
     list.id = 'live-sessions-list';

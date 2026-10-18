@@ -28,7 +28,7 @@ const BOARD = new Set(['team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-del
 // The sleeping bar's buttons name their action in data-action.
 const BAR = { wake: 'launch', restart: 'launch', unarchive: 'interact' };
 
-export function tierOf(el) {
+function tierOf(el) {
     if (el.closest('#sleeping-composer')) return BAR[el.dataset.action] || '';
     if (el.classList.contains('mobile-send-btn')) return 'interact';
     const a = el.dataset.onClick;

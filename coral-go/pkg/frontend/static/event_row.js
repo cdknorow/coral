@@ -17,13 +17,13 @@ function parseDetail(ev) {
     try { return JSON.parse(ev.detail_json); } catch { return null; }
 }
 
-export function eventFailed(ev) {
+function eventFailed(ev) {
     const d = parseDetail(ev);
     return !!(d && d.failed);
 }
 
 /** Extra facts for the row tooltip: duration, HTTP status and size, failure reason. */
-export function eventDetailText(ev) {
+function eventDetailText(ev) {
     const parts = [];
     const dur = formatDuration(ev.duration_ms);
     if (dur) parts.push(`took ${dur}`);
@@ -37,7 +37,7 @@ export function eventDetailText(ev) {
 }
 
 /** Right-aligned duration chip; empty when the source reported no timing. */
-export function durationChip(ev) {
+function durationChip(ev) {
     const dur = formatDuration(ev.duration_ms);
     if (!dur) return '';
     const slow = Number(ev.duration_ms) >= 10000 ? ' slow' : '';

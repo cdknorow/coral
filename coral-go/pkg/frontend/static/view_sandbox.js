@@ -53,7 +53,7 @@ const EXTRA_READ_PATHS = [
     `/api/sessions/history/${SEG}/(tasks|git)`,
     `/api/board/${SEG}/(messages/all|subscribers)`,
 ].map(p => new RegExp(`^${p}$`));
-export const VIEW_READ_PATHS = [...BASIC_READ_PATHS, ...EXTRA_READ_PATHS];
+const VIEW_READ_PATHS = [...BASIC_READ_PATHS, ...EXTRA_READ_PATHS];
 
 /** What a view of this provenance will be able to see, for the confirm gate. */
 export const API_VIEW_SEES = 'the list of agents, their tasks, tags, board names and the chat-history list';

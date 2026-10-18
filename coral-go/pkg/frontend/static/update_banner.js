@@ -26,7 +26,7 @@ export function isStale(ownBuild, headerValue) {
 
 /** Whether a request URL is an answer from another machine relayed by this hub (/api/remote/<server>/...): its build is that
  *  machine's, never the build of the page this hub serves (#3990). */
-export function isRelayed(url, base = location.href) {
+function isRelayed(url, base = location.href) {
     try { return /^\/api\/remote\//.test(new URL(url, base).pathname); } catch { return false; }
 }
 

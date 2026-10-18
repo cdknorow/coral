@@ -32,7 +32,7 @@ function createWorkGroup() {
 // A reply to a turn that Coral's own notice started (the unread-messages notice, the health check, task-queue notices, stop-hook
 // feedback; #4171) folds into the steps group when it is short: under FOLD_REPLY_MAX characters and one paragraph. A longer reply, and
 // every reply to a message from the user, stays on the page.
-export const FOLD_REPLY_MAX = 280;
+const FOLD_REPLY_MAX = 280;
 
 export function isShortReply(text) {
     const t = String(text || "").trim();
@@ -40,7 +40,7 @@ export function isShortReply(text) {
 }
 
 /** The first sentence of a reply, for the group's label. */
-export function firstSentence(text) {
+function firstSentence(text) {
     const t = String(text || "").replace(/\s+/g, " ").trim();
     const m = /^.*?[.!?](?=\s|$)/.exec(t);
     return (m ? m[0] : t).trim();

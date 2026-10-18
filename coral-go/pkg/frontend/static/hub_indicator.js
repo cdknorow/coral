@@ -69,7 +69,7 @@ export function indicatorLabel(st, state, now = new Date(), locale) {
 }
 
 /** What a click does, and so the start of the tooltip and name: 'Open Coral Hub' when connected, else 'Connect to Coral Hub'. The status follows in brackets. */
-export function indicatorTitle(st, state, now = new Date(), locale) {
+function indicatorTitle(st, state, now = new Date(), locale) {
     const action = state === 'connected' ? 'Open Coral Hub' : 'Connect to Coral Hub';
     return `${action} (${indicatorLabel(st, state, now, locale).replace(/^Coral Hub: /, '')})`;
 }

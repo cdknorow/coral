@@ -560,7 +560,7 @@ const EMOJI_CATEGORIES = [
     { name: "Symbols", emojis: ["✨", "💫", "🌟", "❤️", "🏆", "👑", "🎪", "🎵", "🌈", "☀️", "🌙", "❄️", "🔮", "🎲", "♟️"] },
 ];
 
-export function showEmojiPicker(onSelect) {
+function showEmojiPicker(onSelect) {
     // Remove existing picker
     const existing = document.getElementById("emoji-picker-popover");
     if (existing) existing.remove();

@@ -14,7 +14,7 @@ const tabsEl = () => document.querySelector('.top-nav-tabs');
 const isPhone = () => window.matchMedia('(max-width: 767px)').matches;
 
 /** The tabs that exist right now, in order: {id, arg, label, active, el}. */
-export function availableTabs() {
+function availableTabs() {
     const cloud = document.body.classList.contains('cloud-mode');
     return [...document.querySelectorAll('.top-nav-tabs > .top-nav-tab[data-arg]')]
         .filter(el => !el.hidden && el.style.display !== 'none' && !(cloud && el.hasAttribute('data-local-only')))
@@ -130,7 +130,7 @@ function layoutSelect() {
 
 let _scheduled = 0;
 let _obs = null;
-export function syncNav() {
+function syncNav() {
     cancelAnimationFrame(_scheduled);
     _scheduled = requestAnimationFrame(() => {
         layoutRow(); layoutSelect();

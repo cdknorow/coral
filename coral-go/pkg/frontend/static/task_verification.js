@@ -5,7 +5,7 @@
 // (Object keys, not quoted strings: the icon-name lint reads a quoted word that is a Material icon name as an icon.)
 const LABEL = { verified: 'Verified', evidence: 'Evidence attached', unverified: 'Unverified' };
 const ICON = { verified: 'verified_user', evidence: 'description', unverified: 'help_outline' };
-export const VERIFY_STATES = Object.keys(LABEL);
+const VERIFY_STATES = Object.keys(LABEL);
 
 /** Who confirmed it, as words: the server's "by" may be a name, a list of names or nothing. */
 function byText(by) {
