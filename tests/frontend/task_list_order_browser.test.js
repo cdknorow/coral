@@ -80,12 +80,14 @@ const open = [
         console.log('Narrow dock: the Priority and Agent header labels do not touch, and neither is cut');
         // The dock is not shown on this page: the list goes into a visible host of the dock's width (its styles are by class).
         await ev(`(() => { const host = document.createElement('div'); host.id = 'qa-dock'; host.style.cssText = 'position:fixed;left:0;top:0;height:500px;z-index:99999;background:var(--bg-primary);display:flex;flex-direction:column'; host.appendChild(document.getElementById('board-task-list')); document.body.appendChild(host); return true; })()`);
-        for (const w of (process.env.QA_WIDTHS || '300,330,360,420,520').split(',').map(Number)) {
+        for (const w of (process.env.QA_WIDTHS || '300,330,360,420,520,680,770,790,900').split(',').map(Number)) {
             await ev(`document.getElementById('qa-dock').style.width = '${w}px'; true`);
             await ev(framesJs(2)); // the layout settles after the width changes
             const g = await ev(`(() => { const h = document.querySelector('#board-task-list .board-task-header'); const r = c => { const e = h.querySelector('.' + c); const b = e.getBoundingClientRect(); const range = document.createRange(); range.selectNodeContents(e); const t = range.getBoundingClientRect(); return { left: b.left, right: b.right, top: Math.round(b.top), textLeft: t.left, textRight: t.right, clipped: e.scrollWidth > e.clientWidth + 1 }; };
                 const row = document.querySelector('#board-task-list .board-task-item:not(.board-task-header)'); const rb = c => row.querySelector('.' + c).getBoundingClientRect();
                 return { priority: r('board-task-priority'), agent: r('board-task-assignee'), id: r('board-task-id'), width: document.getElementById('board-task-list').clientWidth, row: { priorityLeft: rb('board-task-priority').left, agentLeft: rb('board-task-assignee').left } }; })()`);
+            const over = await ev(`(() => { const l = document.getElementById('board-task-list'); return { scroll: l.scrollWidth, client: l.clientWidth, cost: !!document.querySelector('#board-task-list .board-task-item:not(.board-task-header) .board-task-cost') && getComputedStyle(document.querySelector('#board-task-list .board-task-item:not(.board-task-header) .board-task-cost')).display !== 'none' }; })()`);
+            if (!process.env.QA_WIDTHS) assert.ok(over.scroll <= over.client + 1, `at ${w}px the list scrolls sideways (Cost and Created cut off, #4877): ${JSON.stringify(over)}`);
             const gap = g.agent.textLeft - g.priority.textRight;
             if (process.env.QA_WIDTHS) console.log(`   ${w}px: gap ${gap.toFixed(1)} priority ${JSON.stringify(g.priority)} agent-left ${g.agent.left} (second line: ${g.agent.left < g.priority.left})`);
             if (process.env.QA_WIDTHS) continue;

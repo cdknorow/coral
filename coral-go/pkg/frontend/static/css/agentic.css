@@ -814,7 +814,7 @@ body.panel-dragging .agentic-state {
 /* A narrow panel (the sidebar) cannot fit every column, and the title used to be pushed
    off-screen behind a sideways scroll. There each row wraps: status, id, priority and agent
    on the first line, the full title on its own line below; Type, Cost and Created are hidden. */
-@container (max-width: 640px) {
+@container (max-width: 789px) {
     .board-task-list .board-task-item { min-width: 0; flex-wrap: wrap; row-gap: 2px; }
     .board-task-list .board-task-item .board-task-type,
     .board-task-list .board-task-item .board-task-cost,
@@ -831,11 +831,11 @@ body.panel-dragging .agentic-state {
 .board-task-item {
     display: flex;
     align-items: center;
-    /* Fixed columns (398px) + gaps and padding (84px) + a 160px description.
-       Below this the list scrolls sideways. A fixed floor, not fit-content:
+    /* Fixed columns (676px: status 96, id 42, priority 58, type 50, agent 110, cost 60, created 100, and the 160px description) + 7 gaps (70px) + padding (24px).
+       The wrapped layout above takes over below 790px (a container is a few px wider than the list it scrolls in), so the list does not scroll sideways with Cost and Created cut off in a 680px dock (#4877). A fixed floor, not fit-content:
        every row gets the same width, so backgrounds and borders line up and
        long descriptions still truncate instead of stretching their row. */
-    min-width: 642px;
+    min-width: 770px;
     width: 100%;
     box-sizing: border-box;
     gap: 10px;
