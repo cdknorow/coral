@@ -218,3 +218,7 @@
 ::selection { background: rgba(88, 166, 255, 0.3); }
 .md-typeset hr { border-bottom-color: var(--md-default-fg-color--lightest); }
 .md-typeset blockquote { border-left-color: #30363d; color: var(--md-default-fg-color--light); }
+
+/* The Coral mark is white (the app's own): on the light scheme's pale header it is drawn dark. */
+[data-md-color-scheme="default"] .md-header__button.md-logo img,
+[data-md-color-scheme="default"] .md-nav__button.md-logo img { filter: invert(1); }

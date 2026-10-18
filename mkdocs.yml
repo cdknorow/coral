@@ -9,8 +9,8 @@ use_directory_urls: true
 
 theme:
   name: material
-  logo: assets/coral.png
-  favicon: assets/coral.png
+  logo: assets/coral-icon.png
+  favicon: assets/favicon.png
   font: false
   palette:
     # Dark by default (the coralhub.dev look); the second entry is the matching light scheme.
