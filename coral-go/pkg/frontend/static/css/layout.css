@@ -1035,3 +1035,7 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p 
 @media (prefers-reduced-motion: reduce) {
     .hub-indicator[data-state="connecting"] { animation: none; }
 }
+
+/* Through the Coral Hub, a launch the machine's access level refuses says so as the form opens (#4586). */
+.launch-access-note { margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--warning, #d29922); background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.8125rem; line-height: 1.4; }
+.launch-access-note[hidden] { display: none; }

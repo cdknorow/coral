@@ -86,6 +86,8 @@ let _lastExplained = 0;
 /** Tell the user why the hub or their machine refused a request (JSON 403 bodies only), once per few seconds. */
 function explainRefusal(resp) {
     if (Date.now() - _lastExplained < 3000) return;
+    // A launch says its own refusal, with the machine's name (launch_server.js): one toast, not two (#4586).
+    if (/\/api\/sessions\/launch(-team)?$/.test(settingsPath(resp.url || ''))) return;
     if (!/json/i.test(resp.headers.get('Content-Type') || '')) return;
     resp.clone().json().then(async body => {
         const { refusalMessage } = await importOnce('./cloud_servers.js');

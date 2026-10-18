@@ -1,0 +1,87 @@
+// Coral Hub, a machine the hub limits to View (#4586): the launch dialog says so when it opens (a note, the launch buttons dimmed) instead of after the form is filled in, and a click
+// on Launch gives one "Blocked" toast and sends nothing. The Servers tab's Add a machine steps lead with the install step. Served as the hub would serve it (boot flag mode "cloud",
+// as in hub_nav_browser), the machine's list and access level answered by the test.
+//
+// Expects CORAL_TEST_URL + CDP_PORT from the runner.
+const assert = require('node:assert/strict');
+const CDP = require('chrome-remote-interface');
+const BASE = require('./test_base').BASE;
+
+(async () => {
+    const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
+    const { Page, Runtime, Network, Fetch, Emulation } = client;
+    const ev = async expression => { const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
+    const { waitFor } = require('./helpers/wait').bind(ev);
+    let mode = 'view', launched = 0;
+    try {
+        await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
+        await Network.setCacheDisabled({ cacheDisabled: true });
+        await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' },
+            { urlPattern: `${BASE}/api/servers*`, requestStage: 'Request' }, { urlPattern: `${BASE}/api/sessions/live*`, requestStage: 'Request' }, { urlPattern: `${BASE}/api/remote/*`, requestStage: 'Request' }] });
+        const json = (id, status, body) => Fetch.fulfillRequest({ requestId: id, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
+        Fetch.requestPaused(async e => {
+            const u = e.request.url;
+            if (u.endsWith('/auth/session')) return json(e.requestId, 200, { authenticated: true, email: 'tester@example.com', csrf: 'x' });
+            if (/\/api\/servers(\?|$)/.test(u)) return json(e.requestId, 200, { servers: [{ id: 'box-b', label: 'Box B', online: true, access_mode: mode, local_mode: 'launch', created_at: '2026-10-01T00:00:00Z', last_seen: '2026-10-18T00:00:00Z' }] });
+            if (/\/api\/sessions\/live(\?|$)/.test(u)) return json(e.requestId, 200, { sessions: [], servers: [{ id: 'box-b', label: 'Box B', status: 'online' }] });
+            if (/\/api\/remote\//.test(u)) { if (/\/api\/sessions\/launch$/.test(u)) { launched++; return json(e.requestId, 403, { error: 'access_mode', hub_mode: 'view', required: 'launch' }); } return json(e.requestId, 200, {}); }
+            if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
+            const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });
+            let html = base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body;
+            html = html.replace('{"mode":"local"}', '{"mode":"cloud"}');
+            const headers = (e.responseHeaders || []).filter(h => !/^content-length$/i.test(h.name));
+            await Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
+        });
+        const open = async () => {
+            await Emulation.setDeviceMetricsOverride({ width: 1280, height: 756, deviceScaleFactor: 1, mobile: false });
+            await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+            await waitFor(`document.body.classList.contains('cloud-mode') && (window.__coralState || true) && document.querySelector('[data-on-click^="m-show-launch-modal"]')`, 'the hub dashboard', { timeout: 15000 });
+        };
+        const openLaunch = async () => {
+            await ev(`document.querySelector('[data-on-click^="m-show-launch-modal"]').click(); true`);
+            await waitFor(`!!document.getElementById('launch-modal') && getComputedStyle(document.getElementById('launch-modal')).display !== 'none'`, 'the launch dialog', { timeout: 6000 });
+            await ev(`(() => { const s = document.getElementById('launch-server'); s.value = 'box-b'; window._onLaunchServerChange('box-b'); return true; })()`);
+        };
+        const toasts = () => ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent)`);
+
+        console.log('1. A machine at View: the dialog says so as it opens, the launch buttons are dimmed');
+        await open(); await openLaunch();
+        await waitFor(`!document.getElementById('launch-access-note').hidden && /Blocked/.test(document.getElementById('launch-access-note').textContent)`, 'the note', { timeout: 8000 });
+        assert.match(await ev(`document.getElementById('launch-access-note').textContent`), /Box B needs Launch/);
+        await ev(`window._selectLaunchType('agent'); true`);
+        assert.equal(await ev(`document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`), true);
+        assert.equal(await ev(`document.querySelectorAll('.toast').length`), 0, 'nothing was toasted yet');
+
+        console.log('2. Launch with the form filled in: one toast, nothing sent');
+        await ev(`document.getElementById('launch-dir').value = '/work/project'; document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').click(); true`);
+        await waitFor(`document.querySelectorAll('.toast').length >= 1`, 'the toast', { timeout: 6000 });
+        await new Promise(r => setTimeout(r, 1500)); // sleep-ok: a second toast, if there were one, arrives after the refusal; there is nothing to wait on for its absence
+        const t = await toasts();
+        assert.equal(t.length, 1, JSON.stringify(t)); assert.match(t[0], /^Blocked: Box B needs Launch/);
+        assert.equal(launched, 0, 'the refused launch was never sent');
+
+        console.log('3. A machine at Launch: no note, no dimming');
+        mode = 'launch';
+        await open(); await openLaunch();
+        await waitFor(`document.getElementById('launch-server').value === 'box-b'`, 'the server picked', { timeout: 6000 });
+        assert.equal(await ev(`document.getElementById('launch-access-note').hidden`), true);
+        assert.equal(await ev(`document.querySelectorAll('#launch-modal .hub-blocked').length`), 0);
+
+        console.log('3b. The hub refuses a launch the dialog did not know to be blocked: one toast, not two');
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); window._selectLaunchType('agent'); document.getElementById('launch-dir').value = '/work/project'; document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').click(); true`);
+        await waitFor(`document.querySelectorAll('.toast').length >= 1`, 'the refusal', { timeout: 6000 });
+        await new Promise(r => setTimeout(r, 1500)); // sleep-ok: a second toast, if there were one, arrives after the refusal; there is nothing to wait on for its absence
+        const t2 = await toasts();
+        assert.equal(t2.length, 1, JSON.stringify(t2)); assert.match(t2[0], /^Blocked: /);
+        assert.equal(launched, 1);
+
+        console.log('4. The Add a machine steps lead with the install step');
+        await ev(`window.switchNavTab('servers'); true`);
+        await waitFor(`!!document.querySelector('.cs-enroll ol li')`, 'the steps', { timeout: 8000 });
+        const steps = await ev(`[...document.querySelectorAll('.cs-enroll ol li')].map(l => l.textContent)`);
+        assert.match(steps[0], /^Install Coral.*brew install --cask cdknorow\/coral\/coral.*github\.com\/cdknorow\/coral\/releases/);
+        assert.match(steps[1], /Connect to Coral Hub/); assert.equal(steps.length, 4);
+        assert.equal(await ev(`document.querySelector('.cs-enroll ol li a').href`), 'https://github.com/cdknorow/coral/releases');
+        console.log('   ✓');
+    } finally { await client.close(); }
+})().catch(e => { console.error(e); process.exit(1); });

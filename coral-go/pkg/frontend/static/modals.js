@@ -5,6 +5,7 @@ import { checkAgentCLI } from './prerequisites.js';
 
 import { state } from './state.js';
 import { showToast, escapeHtml, escapeAttr, copyText, boardNameProblem, boardNameSlug } from './utils.js';
+import { blockedReason } from './hub_access.js';
 import { registerActions, tokenOf, textOf } from './actions.js';
 import { loadLiveSessions } from './api.js';
 import { refreshChangedFiles } from './changed_files.js';
@@ -170,6 +171,7 @@ export function showLaunchModal(server, lock = false) {
     }
 
     _syncMobileLaunchSections();
+    _syncLaunchAccess();
     if (launch.server !== LOCAL_SERVER) _onLaunchServerChange(launch.server, { force: true });
 }
 
@@ -247,6 +249,7 @@ async function _onLaunchServerChange(value, { force = false } = {}) {
     if (next === launch.server && !force) return;
     const prev = launch.server;
     launch.server = next;
+    _syncLaunchAccess();
     const note = document.getElementById('launch-server-note');
     if (note) note.textContent = next === LOCAL_SERVER ? '' : 'Loading…';
     // Nothing from the previous server may survive: directory, board server, board choice.
@@ -304,10 +307,26 @@ setDirServerResolver(inputId => {
 
 /** Toast and return true when `server` cannot be launched on. */
 function _launchBlocked(server) {
-    const why = launchBlockReason(server, isHub(), state.servers);
+    const why = launchBlockReason(server, isHub(), state.servers) || blockedReason(server, 'launch');
     if (why) showToast(why, true);
     return !!why;
 }
+
+// Through the Coral Hub a machine at View (or Interact) refuses a launch: say so when the form opens, with the launch buttons dimmed, instead of after it is filled in (#4586).
+// The buttons stay clickable; a click says the same reason in one toast (_launchBlocked).
+function _syncLaunchAccess() {
+    const modal = document.getElementById('launch-modal');
+    if (!modal) return;
+    const why = isHub() ? blockedReason(_effectiveServer(launch.server), 'launch') : '';
+    const note = document.getElementById('launch-access-note');
+    if (note) { note.hidden = !why; note.textContent = why; }
+    for (const b of modal.querySelectorAll('[data-on-click="m-launch-session"], [data-on-click="m-launch-team"]')) {
+        b.classList.toggle('hub-blocked', !!why);
+        if (why) { b.setAttribute('aria-disabled', 'true'); b.title = why; } else { b.removeAttribute('aria-disabled'); b.removeAttribute('title'); }
+    }
+}
+document.addEventListener('coral:server-access-loaded', () => { if (document.getElementById('launch-modal')?.style.display === 'flex') _syncLaunchAccess(); });
+
 
 /**
  * Send a launch to `server` and surface the outcome. Returns the response data
