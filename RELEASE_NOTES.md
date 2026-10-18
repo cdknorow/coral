@@ -1,5 +1,35 @@
 # Release Notes
 
+## v1.4.91 — Limits on everything a caller can grow, a lighter chat transcript, and keyboard-friendly menus
+
+### Changes
+
+- **Long chats use far less memory:** Coral keeps a window of each conversation's newest messages and reads older pages from a checkpoint near them, in chunks of at most 8 MiB, instead of holding the whole transcript.
+- **Action menus work with the keyboard and screen readers:** an agent row's menu, and the team, workflow and folder group menus, are proper menu buttons; Tab out of a menu closes it.
+- **A long agent name keeps its distinguishing end,** and the phone's Agents page has a search box.
+- **"Load earlier" on the board draws only the page it adds.**
+- **`coral-board export` reads every message of a board,** a page at a time, and says when it cannot.
+- **The live session feed (/ws/coral) sends the same rows as the session list,** so it now includes the prompt, model, model source and cache token counts; nothing was removed or renamed.
+
+### Fixes
+
+- **In a PTY terminal, Enter is now sent as the key a keyboard sends (a carriage return) for every agent,** so a raw-mode CLI submits instead of getting a new line.
+- **Antigravity (agy):** a permission prompt that wraps across lines is read correctly, and auto-accept reads the PTY screen.
+- **An unsubmitted chat message is remembered by its mark, not its text.**
+
+### Security and privacy
+
+- **Every size a caller can grow now has a limit:** list pages are capped at 500, request headers at 64 KiB, a terminal at 1000 × 300, a launch-team at 32 agents with at most 2 team generations at once, a board post at 256 KiB, task titles, bodies and wait reasons, open tasks per agent, active waits, notifications, UI panels and their events, the hook task cache, the file list cache, and the failed-key limiter. A refusal carries a message that `coral-board` shows (413 too large, 507 disk nearly full, 409 a limit reached, 429 too fast).
+- **Writes that could fill the disk are refused with 507 when it is nearly full.**
+- **Each agent session has a write budget** on the routes an agent can loop on (a burst of 60, then 240 a minute); its 429 is marked as a limit on that sender, so the dashboard keeps polling.
+- **Each write of a reply on the local listener has a 60-second deadline** (rolling, per 64 KiB written), so a client that stops reading frees the handler; a slow client that keeps reading is not cut. Event streams and WebSockets have none.
+- **A cut task list keeps every open task,** then the newest done ones, so the coordination report still sees the board's whole open state (it logs when it received a cut list).
+
+### Other changes
+
+- **Simpler code, behaviour unchanged:** board status, Restart, launches, settings, the auto-accept shell check, cross-team sends, the notification pass, startup, the health rules, the orchestrator's check, `coral-board wait` and the agent list's rendering are split into named steps; several of them are compared with the old code on random inputs. One duration and one cost formatter replace ten copies.
+- **Tests and CI:** gofmt runs on every gate branch, the gate summary shows each flaky or failed suite's first failing line, and the landing and release scripts are in the repository; the agent list's whole markup is pinned by a golden test; launch tests no longer depend on a real agent CLI.
+
 ## v1.4.90 — Chat that knows when a message was really sent, agy auto-accept, and a Coral Hub first run
 
 ### Changes
