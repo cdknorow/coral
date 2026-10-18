@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, '../../coral-go/pkg/frontend
 const start = source.indexOf('function _taskDetailHtml(');
 const end = source.indexOf('\nlet _editOriginalTask', start);
 const escape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-const context = vm.createContext({ escapeHtml: escape, escapeAttr: escape, _priorityRank: {}, formatTaskDate: String, _verifyBadge: () => '' }); // the detail's verification badge (#4564) is drawn by tasks.js; none of these tasks has one
+const context = vm.createContext({ escapeHtml: escape, escapeAttr: escape, _priorityRank: {}, formatTaskDate: String, _verifyLine: () => '' }); // the detail's verification line (#4564) is drawn by tasks.js; none of these tasks has one
 vm.runInContext(source.slice(start, end), context);
 const candidate = { submitted_by: '<img src=x>', submitted_at: 'now', proposed_outcome: 'success', reason: 'Review <pending>', message: '<script>bad()</script>', artifacts: [{ name: 'build', content: '<img onerror=bad()>', revision: 'rev-42' }] };
 const task = { id: 1, title: 'Build', status: 'in_progress', workflow: { completion_review: candidate } };

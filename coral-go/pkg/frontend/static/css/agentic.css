@@ -1488,48 +1488,20 @@ body.panel-dragging .agentic-state {
     cursor: pointer;
 }
 
-/* The two controls (Hide done, and the verification filter) sit side by side and wrap under each other only when there is no room. */
-#board-task-hide-toggle-container { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
-/* The verification filter beside it (#4564). */
-.board-task-verify-filter {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--fs-md);
-    font-weight: 400;
-    text-transform: none;
-    letter-spacing: 0;
-    color: var(--text-muted);
-    white-space: nowrap;
-}
-.board-task-verify-select { font-size: inherit; max-width: 100%; }
-
-/* A finished task's verification (#4564): the state in words, with a coloured border and icon as extra cues, never colour alone. The text keeps readable
-   colours of its own (primary, or muted for Unverified) in both themes. */
-.board-task-verify {
+/* A finished task's verification (#4564), quietly: a small muted icon after the title for a task nothing independently confirmed; its words are the tooltip and the accessible name.
+   The icon keeps 3:1 (the muted text colour), and the task detail has one plain muted line (below). */
+.board-task-verify-mark {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    margin-right: 6px;
-    padding: 0 6px;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    line-height: 1.5;
-    white-space: nowrap;
-    color: var(--text-primary);
-    vertical-align: baseline;
+    margin-left: 6px;
+    color: var(--text-muted);
+    vertical-align: middle;
     cursor: help;
+    border-radius: 3px;
 }
-.board-task-verify .material-icons { font-size: 0.875rem; }
-.board-task-verify:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.board-task-verify.verified { border-color: var(--success); }
-.board-task-verify.verified .material-icons { color: var(--success); }
-.board-task-verify.evidence { border-color: var(--accent); }
-.board-task-verify.evidence .material-icons { color: var(--accent); }
-.board-task-verify.unverified { color: var(--text-muted); }
-.board-task-verify.unverified .material-icons { color: var(--text-muted); }
+.board-task-verify-mark .material-icons { font-size: 0.9375rem; }
+.board-task-verify-mark:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.task-detail-verification { margin: -4px 0 10px; font-size: var(--fs-md); color: var(--text-muted); }
 
 /* ── Task Detail Modal ─────────────────────────────────────── */
 

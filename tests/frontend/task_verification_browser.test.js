@@ -1,7 +1,7 @@
-// A finished task's verification badge (#4564): Verified (who confirmed it on hover), Evidence attached, Unverified ("Marked done by the agent; no reviewer or check confirmed it"), in the
-// board's Tasks list (the right sidebar's Tasks tab) and the task's detail, with a filter (all, verified, evidence, unverified). A label, never a blocker: the text is the label (not colour alone),
-// it reaches 4.5:1 in both themes, a screen reader reads its sentence, and it fits a 390 px phone. The tasks are the real isolated server's; the verification field (Backend's #4563: {state, by, at})
-// is added to its answers in the page, and a task without the field gets no badge.
+// A finished task's verification, quietly (#4564, operator feedback): in the board's Tasks list a small muted icon after the title for a task nothing independently confirmed (Evidence attached, Unverified),
+// its words only in the tooltip and the accessible name, and nothing at all for a verified one; in the task detail one plain muted line ("Verified by ..." or "Not independently verified"), no chip; no filter in the
+// list (the API's filter is for agents and coral-hub). The icon reaches 3:1 in both themes and fits a 390 px phone. The tasks are the real isolated server's; the verification field (Backend's #4563:
+// {state, by, at}) is added to its answers in the page, and a task without the field gets nothing.
 //
 // Drives Chrome over CDP through agent_view_harness.js; run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
@@ -41,23 +41,21 @@ const ADD = `(() => {
         fs.writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
     };
     const api = (method, path, body) => ev(`fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${body ? JSON.stringify(JSON.stringify(body)) : 'undefined'} }).then(async r => ({ status: r.status, body: await r.json().catch(() => null) }))`);
-    const rows = () => ev(`[...document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)')].map(r => ({ title: r.querySelector('.board-task-desc').textContent.trim(), badge: (() => { const b = r.querySelector('.board-task-verify'); return b ? { text: b.lastChild.textContent.trim(), cls: b.className.replace('board-task-verify', '').trim(), aria: b.getAttribute('aria-label'), title: b.title, role: b.getAttribute('role') } : null; })() }))`);
-    // WCAG contrast of the badge text against what is behind it, and of its icon.
+    const rows = () => ev(`[...document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)')].map(r => ({ title: r.querySelector('.board-task-desc').textContent.replace(/[a-z_]+$/, m => m).trim(), mark: (() => { const b = r.querySelector('.board-task-verify-mark'); return b ? { cls: b.className.replace('board-task-verify-mark', '').trim(), aria: b.getAttribute('aria-label'), title: b.title, role: b.getAttribute('role'), words: b.textContent.trim() } : null; })() }))`);
+    // WCAG contrast of each mark's icon against what is behind it, counting every opacity on the way up (a dimmed row dims what is in it).
     const CONTRAST = `(() => {
         const lum = c => { const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
         const parse = s => { const m = s.match(/rgba?\\(([^)]+)\\)/); if (!m) return null; const p = m[1].split(',').map(x => parseFloat(x)); return { rgb: p.slice(0, 3), a: p.length > 3 ? p[3] : 1 }; };
-        // What shows is the colour blended over what is behind it by every opacity on the way up (a dimmed row dims its badge).
         const opacityOf = el => { let o = 1; for (let e = el; e; e = e.parentElement) o *= parseFloat(getComputedStyle(e).opacity); return o; };
         const bgOf = el => { let bg = [255, 255, 255]; const chain = []; for (let e = el; e; e = e.parentElement) chain.push(e); for (const e of chain.reverse()) { const c = parse(getComputedStyle(e).backgroundColor); if (c && c.a > 0) bg = bg.map((v, i) => Math.round(c.rgb[i] * c.a + v * (1 - c.a))); } return bg; };
         const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
         const out = {};
-        for (const b of document.querySelectorAll('#board-task-list .board-task-verify')) {
-            const st = b.classList.contains('verified') ? 'verified' : b.classList.contains('evidence') ? 'evidence' : 'unverified';
+        for (const b of document.querySelectorAll('#board-task-list .board-task-verify-mark')) {
+            const st = b.classList.contains('evidence') ? 'evidence' : 'unverified';
             const bg = bgOf(b), o = opacityOf(b);
             const seen = rgb => rgb.map((v, i) => Math.round(v * o + bg[i] * (1 - o)));
-            const worst = out[st] || { text: 99, icon: 99 };
-            const text = Math.round(ratio(seen(parse(getComputedStyle(b).color).rgb), bg) * 100) / 100, icon = Math.round(ratio(seen(parse(getComputedStyle(b.querySelector('.material-icons')).color).rgb), bg) * 100) / 100;
-            out[st] = { text: Math.min(worst.text, text), icon: Math.min(worst.icon, icon) };
+            const icon = Math.round(ratio(seen(parse(getComputedStyle(b.querySelector('.material-icons')).color).rgb), bg) * 100) / 100;
+            out[st] = Math.min(out[st] || 99, icon);
         }
         return out;
     })()`;
@@ -83,59 +81,54 @@ const ADD = `(() => {
         await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-tab-tasks').click(); true`);
         await waitFor(`document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length === 8`, 'eight task rows', 10000, `JSON.stringify({ n: document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length, txt: document.getElementById('board-task-list').textContent.slice(0, 160), tab: document.getElementById('agentic-panel-tasks').className, bt: (T.state.currentBoardTasks || []).length, page: document.getElementById('agentic-state').dataset.page, proj: T.state.boardPageProject })`);
 
-        console.log('1. Each finished task shows its state in words, with who confirmed it on hover and in its accessible name; open tasks and a task the server sent no state for show none');
-        const r1 = Object.fromEntries((await rows()).map(r => [r.title.replace(/^.*?((?:v|e|u|n)-\w+|open-one)$/, '$1'), r.badge]));
-        assert.deepEqual(r1['v-one'].text, 'Verified'); assert.equal(r1['v-one'].cls, 'verified');
-        assert.equal(r1['v-one'].aria, r1['v-one'].title, 'the hover text is the accessible name');
-        assert.match(r1['v-one'].title, /^Verified by QA Engineer, Security Reviewer, /);
-        assert.equal(r1['v-one'].role, 'img');
-        assert.equal(r1['e-one'].text, 'Evidence attached'); assert.equal(r1['e-one'].cls, 'evidence');
-        assert.equal(r1['e-one'].title, 'Evidence attached; no reviewer or check has confirmed it');
+        console.log('1. Quiet: no chip, no words, no filter in the list; a small muted icon after the title only for evidence attached and unverified (the words are its tooltip and accessible name); nothing for a verified task, an open one, or one the server sent no state for');
+        const norm = r => r.title.replace(/[a-z_]*$/, '').trim();
+        const r1 = Object.fromEntries((await rows()).map(r => [r.title.match(/(?:v|e|u|n)-[\w-]+|open-one/)[0].replace(/(help_outline|description|verified_user)$/, ''), r.mark]));
+        assert.equal(r1['v-one'], null, 'a verified task shows nothing'); assert.equal(r1['v-two'], null);
+        assert.equal(r1['n-one'], null, 'no state from the server, nothing shown'); assert.equal(r1['open-one'], null, 'an open task has none');
+        assert.equal(r1['e-one'].cls, 'evidence'); assert.equal(r1['e-one'].title, 'Evidence attached; no reviewer or check has confirmed it'); assert.equal(r1['e-one'].aria, r1['e-one'].title); assert.equal(r1['e-one'].role, 'img');
         assert.equal(r1['e-gate'].title, 'Evidence attached (gate:report); no reviewer or check has confirmed it');
-        assert.equal(r1['u-one'].text, 'Unverified'); assert.equal(r1['u-one'].cls, 'unverified');
-        assert.equal(r1['u-one'].title, 'Marked done by the agent; no reviewer or check confirmed it');
-        assert.equal(r1['n-one'], null, 'no state from the server, no badge');
-        assert.equal(r1['open-one'], null, 'an open task has none');
-
+        assert.equal(r1['u-one'].cls, 'unverified'); assert.equal(r1['u-one'].title, 'Marked done by the agent; no reviewer or check confirmed it'); assert.equal(r1['u-one'].aria, r1['u-one'].title);
+        assert.deepEqual(await ev(`({ chips: document.querySelectorAll('#board-task-list .board-task-verify').length, filter: document.querySelectorAll('.board-task-verify-select, .board-task-verify-filter').length,
+            marks: [...document.querySelectorAll('#board-task-list .board-task-verify-mark')].map(m => m.textContent.trim().length > 0 && /^[a-z_]+$/.test(m.textContent.trim())).every(Boolean) })`), { chips: 0, filter: 0, marks: true }, 'no chip, no filter, and a mark is an icon with no words');
         await shot('verify-list-dark');
-        console.log('2. The task detail names it too');
-        await ev(`[...document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)')].find(r => r.textContent.includes('v-two')).click(); true`);
-        await waitFor(`!!document.querySelector('#task-detail-content .task-detail-meta .board-task-verify')`, 'the badge in the detail', 8000);
-        assert.equal(await ev(`document.querySelector('#task-detail-content .task-detail-meta .board-task-verify').lastChild.textContent.trim()`), 'Verified');
-        await ev(`document.querySelector('#task-detail-modal [data-on-click="task-close"]').click(); true`);
 
-        console.log('3. The filter: all, verified, evidence attached, unverified; open tasks always stay; the choice is remembered');
-        const select = `document.querySelector('.board-task-verify-select')`;
-        assert.equal(await ev(`!!${select}`), true, 'the filter is there');
-        const titles = async () => (await rows()).map(r => r.title.replace(/^.*?((?:v|e|u|n)-\w+|open-one)$/, '$1')).sort();
-        const pick = async v => { await ev(`${select}.value = '${v}'; ${select}.dispatchEvent(new Event('change', { bubbles: true })); true`); await sleep(150); }; // sleep-ok: the list redraws on the change; no completion event
-        await pick('verified'); assert.deepEqual(await titles(), ['open-one', 'v-one', 'v-two']);
-        await pick('evidence'); assert.deepEqual(await titles(), ['e-gate', 'e-one', 'open-one']);
-        await pick('unverified'); assert.deepEqual(await titles(), ['open-one', 'u-one', 'u-two']);
-        assert.equal(await ev(`localStorage.getItem('coral-task-verify-filter')`), 'unverified');
-        await pick('all'); assert.equal((await titles()).length, 8);
+        console.log('2. The task detail has one plain muted line (no chip)');
+        const detailLine = async title => {
+            await ev(`[...document.querySelectorAll('#board-task-list .board-task-item')].find(r => r.textContent.includes(${JSON.stringify(title)})).click(); true`);
+            await waitFor(`!!document.querySelector('#task-detail-content .task-detail-title') && document.querySelector('#task-detail-content .task-detail-title').textContent.includes(${JSON.stringify(title)})`, 'the detail of ' + title, 8000);
+            if (title === 'e-one') await shot('verify-detail');
+            const out = await ev(`({ line: (document.querySelector('#task-detail-content .task-detail-verification') || {}).textContent || null, chip: !!document.querySelector('#task-detail-content .board-task-verify, #task-detail-content .board-task-verify-mark') })`);
+            await ev(`document.querySelector('#task-detail-modal [data-on-click="task-close"]').click(); true`);
+            await sleep(120); // sleep-ok: the dialog closes over a frame
+            return out;
+        };
+        let d = await detailLine('v-two'); assert.match(d.line, /^Verified by QA Engineer, Security Reviewer, /); assert.equal(d.chip, false);
+        d = await detailLine('e-one'); assert.equal(d.line, 'Not independently verified (evidence attached)');
+        d = await detailLine('e-gate'); assert.equal(d.line, 'Not independently verified (evidence attached: gate:report)');
+        d = await detailLine('u-one'); assert.equal(d.line, 'Not independently verified');
+        d = await detailLine('n-one'); assert.equal(d.line, null, 'no state from the server, no line');
 
-        console.log('4. The text reaches 4.5:1 and the icon 3:1 in both themes');
+        console.log('3. The icon reaches 3:1 in both themes');
         for (const theme of ['dark', 'light']) {
             await ev(`import((window.__coralStatic || '/static/') + 'settings_core.js').then(m => { m.clearCustomThemeVars(); m.applyTheme('${theme}'); return true; })`);
             await sleep(400); // sleep-ok: the theme is applied over a frame
-            const c = await ev(CONTRAST);
-            assert.deepEqual(Object.keys(c).sort(), ['evidence', 'unverified', 'verified']);
             if (theme === 'light') await shot('verify-list-light');
-            for (const [st, v] of Object.entries(c)) { assert.ok(v.text >= 4.5, `${theme}: the ${st} text is ${v.text}:1`); assert.ok(v.icon >= 3, `${theme}: the ${st} icon is ${v.icon}:1`); }
+            const c = await ev(CONTRAST);
+            assert.deepEqual(Object.keys(c).sort(), ['evidence', 'unverified']);
+            for (const [st, v] of Object.entries(c)) assert.ok(v >= 3, `${theme}: the ${st} icon is ${v}:1`);
         }
 
-        console.log('5. A 390 px phone, touch: the badges and the filter fit, the filter is a 44 px target, nothing scrolls sideways');
+        console.log('4. A 390 px phone, touch: the icons fit the row and nothing scrolls sideways');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
         await Emulation.setTouchEmulationEnabled({ enabled: true });
         await sleep(400); // sleep-ok: the layout settles over frames after a viewport change; there is no completion event
         await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-tab-tasks').click(); true`);
-        await waitFor(`document.querySelectorAll('#board-task-list .board-task-verify').length === 6`, 'the badges on the phone', 8000);
-        const phone = await ev(`(() => { const sel = document.querySelector('.board-task-verify-select').getBoundingClientRect(); const dock = document.getElementById('agentic-state');
-            const over = [...document.querySelectorAll('#board-task-list .board-task-verify')].filter(b => b.getBoundingClientRect().right > dock.getBoundingClientRect().right + 1 || b.getBoundingClientRect().left < dock.getBoundingClientRect().left - 1).length;
-            return { selH: Math.round(sel.height), over, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
-        assert.ok(phone.selH >= 44, 'the filter is a touch target: ' + JSON.stringify(phone));
-        assert.equal(phone.over, 0, 'no badge is cut off: ' + JSON.stringify(phone));
+        await waitFor(`document.querySelectorAll('#board-task-list .board-task-verify-mark').length === 4`, 'the icons on the phone', 8000);
+        const phone = await ev(`(() => { const dock = document.getElementById('agentic-state').getBoundingClientRect();
+            const over = [...document.querySelectorAll('#board-task-list .board-task-verify-mark')].filter(b => b.getBoundingClientRect().right > dock.right + 1 || b.getBoundingClientRect().left < dock.left - 1).length;
+            return { over, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
+        assert.equal(phone.over, 0, 'no icon is cut off: ' + JSON.stringify(phone));
         assert.ok(phone.page <= 0, 'no sideways scroll: ' + JSON.stringify(phone));
         await shot('verify-list-phone');
         await Emulation.setTouchEmulationEnabled({ enabled: false });

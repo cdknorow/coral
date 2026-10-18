@@ -21,7 +21,6 @@
         min-width: var(--control-touch-height);
         min-height: var(--control-touch-height);
     }
-    .board-task-verify-select { min-height: var(--control-touch-height); }
 
     /* The Open Agent Tab link is an anchor; centre its icon in the larger box. */
     #terminal-open-window-link:not([hidden]) {

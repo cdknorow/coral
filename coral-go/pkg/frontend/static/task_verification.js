@@ -13,8 +13,9 @@ function byText(by) {
     return list.join(', ');
 }
 
-/** {state, label, icon, detail} for a finished task that carries a verification state, else null (an open task, or a server that does not send one: nothing is claimed).
- *  detail is the sentence for the tooltip and the accessible name; date(iso) formats the time. */
+/** {state, label, icon, detail, line, confirmed} for a finished task that carries a verification state, else null (an open task, or a server that does not send one: nothing is claimed).
+ *  detail is the sentence for the tooltip and the accessible name; line is the one plain line the task detail shows; confirmed is true when reviewers or a gate verified it;
+ *  date(iso) formats the time. */
 export function verificationOf(task, date = x => String(x)) {
     if (!task || task.status !== 'completed') return null;
     const v = task.verification;
@@ -24,5 +25,7 @@ export function verificationOf(task, date = x => String(x)) {
     const detail = v.state === 'evidence' ? `Evidence attached${by ? ` (${by})` : ''}; no reviewer or check has confirmed it`
         : v.state === 'unverified' ? 'Marked done by the agent; no reviewer or check confirmed it'
         : `Verified${by ? ` by ${by}` : ' by reviewers or a gate'}${at ? `, ${at}` : ''}`;
-    return { state: v.state, label: LABEL[v.state], icon: ICON[v.state], detail };
+    const confirmed = !(v.state === 'evidence' || v.state === 'unverified');
+    const line = confirmed ? detail : v.state === 'evidence' ? `Not independently verified (evidence attached${by ? `: ${by}` : ''})` : 'Not independently verified';
+    return { state: v.state, label: LABEL[v.state], icon: ICON[v.state], detail, line, confirmed };
 }
