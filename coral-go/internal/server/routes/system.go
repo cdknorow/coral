@@ -8,6 +8,7 @@ import (
 	"github.com/cdknorow/coral/internal/agentmodels"
 	"github.com/cdknorow/coral/internal/agentprio"
 	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/updatecheck"
 	"math"
@@ -1526,8 +1527,8 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if running >= maxGenerateRunning {
 		h.generateJobsMu.Unlock()
-		w.Header().Set("Retry-After", "10")
-		writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Teams are already being generated: try again in a moment.", "code": "busy"})
+		// A limit on this action, not an overloaded Coral: the marker keeps the dashboard's overload watch from pausing its pollers.
+		httputil.WriteActionLimit(w, 10, "busy", "Teams are already being generated: try again in a moment.")
 		return
 	}
 	for len(h.generateJobs) >= maxGenerateJobs {

@@ -19,6 +19,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
@@ -236,6 +237,7 @@ func TestTeamGenerationIsCappedAtTwoRunning(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, third.Code, third.Body.String())
 	assert.Contains(t, third.Body.String(), `"code":"busy"`)
 	assert.NotEmpty(t, third.Header().Get("Retry-After"))
+	assert.Equal(t, "action", third.Header().Get(httputil.ActionLimitHeader), "marked as a limit on this action, not an overloaded Coral")
 	h.generateJobsMu.Lock()
 	assert.Len(t, h.generateJobs, 2, "the refused request left no job record")
 	// The kept records are bounded: a hundred finished ones, and a new job evicts the oldest finished.
