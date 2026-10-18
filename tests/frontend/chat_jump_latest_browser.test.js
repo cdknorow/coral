@@ -7,6 +7,7 @@
 // agent_view_harness.js (the agent's transcript is served by an in-page mock).
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { framesJs } = require('./helpers/wait');
 
 const BASE = require('./test_base').BASE;
 
@@ -136,7 +137,7 @@ const BASE = require('./test_base').BASE;
             // post-cap frame (which pins if it hasn't released) has run, and only then assert still released (Lead's note).
             await waitFor(`(async () => { const st = (await import(${S} + 'state.js')).state; return !st.autoScroll && !${BTN}.hidden; })()`, `${v.name}: the jump let go (not pinned)`, 4000);
             await waitFor(`performance.now() - window.__cjlT0 > 1000`, `${v.name}: past the watch's 1s cap`, 4000); // sleep-ok: the product's own window
-            await ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`); // let the watch's post-cap frame run
+            await ev(framesJs(2)); // let the watch's post-cap frame run (bounded; a hidden page falls back to a timeout)
             assert.ok(await ev(`(async () => { const st = (await import(${S} + 'state.js')).state; const c = ${C}; return !st.autoScroll && c.scrollHeight - c.scrollTop - c.clientHeight > c.clientHeight; })()`), `${v.name}: not pulled down after scrolling up (still released past the watch window)`);
             await ev(`delete ${C}.scrollTo; true`);
 
@@ -149,7 +150,7 @@ const BASE = require('./test_base').BASE;
                 c.dispatchEvent(new Event('scroll')); return true; })()`);
             await waitFor(`(async () => { const st = (await import(${S} + 'state.js')).state; return !st.autoScroll && !${BTN}.hidden; })()`, `${v.name}: let go despite the height growing`, 4000);
             await waitFor(`performance.now() - window.__cjlT0 > 1000`, `${v.name}: past the watch's 1s cap (grow case)`, 4000); // sleep-ok: the product's own window
-            await ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`); // let the watch's post-cap frame run
+            await ev(framesJs(2)); // let the watch's post-cap frame run (bounded; a hidden page falls back to a timeout)
             assert.ok(await ev(`(async () => { const st = (await import(${S} + 'state.js')).state; const c = ${C}; return !st.autoScroll && c.scrollHeight - c.scrollTop - c.clientHeight > c.clientHeight; })()`), `${v.name}: not pulled down when the height grew mid-jump (still released past the watch window)`);
             await ev(`(() => { const c = ${C}; c.querySelector('[data-grew-mid-jump]')?.remove(); delete c.scrollTo; return true; })()`);
 
