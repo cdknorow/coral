@@ -15,7 +15,6 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -240,10 +239,7 @@ func (h *SessionsHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, err.Error())
 		return
 	}
-	go func() {
-		defer safego.Recover("server/routes/sessions_tasks:h.notifyPersonalTaskReadiness")
-		h.notifyPersonalTaskReadiness(context.Background(), taskID)
-	}()
+	h.scheduleTaskReadiness(taskID)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

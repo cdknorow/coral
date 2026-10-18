@@ -12,7 +12,6 @@ import (
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -318,10 +317,7 @@ func (h *SessionsHandler) finishAgentTask(w http.ResponseWriter, r *http.Request
 		return
 	}
 	task, _ = h.ts.GetAgentTask(r.Context(), taskID)
-	go func() {
-		defer safego.Recover("server/routes/agent_tasks:h.notifyPersonalTaskReadiness")
-		h.notifyPersonalTaskReadiness(context.Background(), taskID)
-	}()
+	h.scheduleTaskReadiness(taskID)
 	writeJSON(w, http.StatusOK, viewAgentTask(task))
 }
 
