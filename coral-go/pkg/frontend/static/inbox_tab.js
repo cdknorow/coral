@@ -27,10 +27,12 @@ export function updateInboxTab() {
     if (!badge) return;
     const n = show ? waitingCount() : 0;
     const text = n > 99 ? '99+' : n > 0 ? String(n) : '';
+    // Only what changed is written: nav_tabs.js redraws the row on any change to it, and this runs for every message of the feed (setting hidden to
+    // the value it has is still a change to a MutationObserver).
     if (badge.textContent !== text) badge.textContent = text;
-    badge.hidden = n === 0;
-    if (n > 0) tab.setAttribute('aria-label', `Inbox, ${n} waiting for input`);
-    else tab.removeAttribute('aria-label');
+    if (badge.hidden !== (n === 0)) badge.hidden = n === 0;
+    const label = n > 0 ? `Inbox, ${n} waiting for input` : null;
+    if (tab.getAttribute('aria-label') !== label) { if (label) tab.setAttribute('aria-label', label); else tab.removeAttribute('aria-label'); }
 }
 
 /** Called by switchNavTab('hub-inbox'): the page is loaded the first time the tab is shown, and kept after. */

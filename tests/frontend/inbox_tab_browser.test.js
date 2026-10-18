@@ -29,6 +29,7 @@ async function run() {
     const { Page, Runtime, Network, Fetch, Emulation } = client;
     const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
+    const { framesJs } = require('./helpers/wait');
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: proves a negative (nothing loaded) and lets the page's first requests settle
     let cloud = true, inboxHits = 0;
     const SW = path.join(__dirname, '..', '..', 'coral-go', 'pkg', 'frontend', 'static');
@@ -83,6 +84,13 @@ async function run() {
         b = await badge(); check('past 99 it says 99+', b.text === '99+', JSON.stringify(b));
         await feed({ total: 5, waiting: 0 });
         b = await badge(); check('none waiting: no badge and the plain name', b.hidden && b.text === '' && b.label === null, JSON.stringify(b));
+        await ev(framesJs(4)); // the row's own redraw after the badge changed has finished
+        await ev(`window.__navMut = 0; new MutationObserver(r => { window.__navMut += r.length; window.__navWhat = (window.__navWhat || []).concat(r.map(x => x.type + ':' + (x.target.id || x.target.className || x.target.nodeName) + ':' + (x.attributeName || ''))); }).observe(document.querySelector('.top-nav-tabs'), { attributes: true, childList: true, characterData: true, subtree: true }); true`);
+        await feed({ total: 3, waiting: 0 }); await feed({ total: 3, waiting: 0 });
+        check('a feed message that changes no count does not touch the tab row (the row redraws on any change)', (await ev(`new Promise(r => setTimeout(r, 50)).then(() => window.__navMut)`)) === 0, JSON.stringify(await ev(`window.__navWhat`))); // sleep-ok: the observer reports after the messages' tasks
+        await feed({ total: 3, waiting: 2 });
+        check('and one that does change it does', (await ev(`new Promise(r => setTimeout(r, 50)).then(() => window.__navMut)`)) > 0); // sleep-ok: the observer reports after the message's task
+        await feed({ total: 3, waiting: 3 });
         await feed({ total: 3, waiting: 3 });
         check('a visible badge is not a bare dot: it has text', (await ev(`document.getElementById('nav-tab-hub-inbox-badge').textContent.length > 0`)));
 
