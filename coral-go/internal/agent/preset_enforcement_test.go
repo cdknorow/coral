@@ -174,7 +174,8 @@ func TestTeamConfigDocPresetTableMatchesTheLaunch(t *testing.T) {
 	}
 	rowRe := regexp.MustCompile("(?m)^\\| ([^|`]+?) \\| `([^`]+)` \\| `([^`]+)` \\|$")
 	rows := map[string][2]string{}
-	for _, m := range rowRe.FindAllStringSubmatch(string(doc), -1) {
+	// A Windows checkout gives the doc CRLF line endings, and (?m)$ matches only before \n.
+	for _, m := range rowRe.FindAllStringSubmatch(strings.ReplaceAll(string(doc), "\r\n", "\n"), -1) {
 		rows[m[1]] = [2]string{m[2], m[3]}
 	}
 	for _, p := range readUIPresets(t) {
