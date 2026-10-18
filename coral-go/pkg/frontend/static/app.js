@@ -1122,10 +1122,8 @@ async function initLocalStore() {
     setInterval(() => loadSessionDrafts(ageOutStored()), DAY_MS); // interval-ok: daily, browser storage only, no request
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-    beginDashboardAnalytics();
-    if (window.innerWidth > 767) buildWelcome(); // a phone starts on the agent list and builds the welcome screen only if it is shown (#4497)
-    try {
+/** Platform detection and what is particular to the platform the page runs in (the Coral app on macOS or Windows, or a browser). */
+function initPlatform() {
     // Initialize platform detection and platform-specific behavior
     platform.init();
     if (platform.isNative) {
@@ -1135,7 +1133,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else {
         initBrowser();
     }
+}
 
+/** Every fetch of the page goes through a wrapper that sends a signed-out 401 of Coral's own /api to the sign-in page. */
+function installUnauthorizedRedirect() {
     // A 401 from Coral's /api (session ended; strict mode #3418): to /auth?return_to=this page,
     // once (auth_redirect.js). The Coral Hub has its own redirect (cloud.js).
     const _origFetch = window.fetch;
@@ -1147,20 +1148,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         return resp;
     };
+}
 
-    // Back off on 429/502/503 (#3403): every poller pauses while Coral (or the hub) is overloaded.
-    installOverloadWatch();
-
-    await initCloud();   // no-op unless the page's boot data says mode "cloud"
-    await initLocalStore();
-    loadSettings().then(initEditions).catch(e => console.error('ways to run Coral:', e)).finally(() => markReady('settings'));
-    initServersUi();   // reveals hub-only entry points when /api/health reports hub:true
-
-    // Single-agent popout mode (/agent/{uuid}): chrome-free workspace only.
-    // Marked before any renderer runs so CSS and storage scoping apply.
-    const popout = applyPopoutBodyClass();
-    if (!popout) initHubIndicator(); // the Coral Hub connection in the header (#3544)
-
+/** The first loads (the agent list, tags, pinned folders, views, the feed's socket, history, the scheduler, the board) and the filter state the URL asked for. */
+function loadInitialData(popout) {
     // Restore filter state from URL query params before first load
     const restored = deserializeFromUrl();
     historyPage = restored.page;
@@ -1193,10 +1184,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (popout) markReady('history'); // a popout has no history list
     initMobile();
+}
 
-    initPrerequisiteChecks();
-    attachAllDialogFocus();   // focus in and back for every dialog in the shell (#4026)
-
+/** The history filters: the search box, the advanced panel, the mode, source and chat-type buttons, tags, dates, durations and Clear. */
+function wireHistoryFilters() {
     // ── Filter event wiring ─────────────────────────────────────────────
 
     // Search bar with debounce
@@ -1350,7 +1341,10 @@ document.addEventListener("DOMContentLoaded", async () => {
             loadHistoryFiltered();
         });
     }
+}
 
+/** The command box and the inputs around it: image drop, the file search, the @file and /command mentions, the notes, the macro dialog's Enter and the box's own keys. */
+function wireComposer() {
     // Image drag-and-drop on command pane
     initImageDrop();
 
@@ -1390,7 +1384,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Global keyboard shortcuts removed — terminal input now handled by
     // xterm.js onData when the terminal is focused.
+}
 
+/** Scroll tracking of the capture pane and the live history, and pausing capture updates while text in the terminal pane is selected. */
+function wirePaneScroll() {
     // Auto-scroll detection for capture pane and live history
     const capture = document.getElementById("pane-capture");
     capture.addEventListener("scroll", () => {
@@ -1415,7 +1412,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         state.isSelecting = !!inCapture;
         if (pauseBadge) pauseBadge.style.display = state.isSelecting ? "" : "none";
     });
+}
 
+/** The sidebars and the side panel: collapsible sections, the overflow menu, the resize handles, the preview pane and the saved tabs. */
+function initPanels() {
     // Sidebar collapsible sections
     initSidebarCollapse();
     initAgenticPanelCollapse();
@@ -1449,14 +1449,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     initBoardChatResize();
     initPreviewPane();
     restoreAgenticTabs();
+}
 
-    // Initialize nav tabs — hide history section on load (Agents tab is default)
-    if (!popout) {
-        switchNavTab('agents');
-    } else {
-        initPopout();
-    }
-
+/** The window's own events: a hidden page pauses its polling, a resize refits the terminal and the pane width. */
+function wireWindowEvents() {
     // Pause polling when tab is hidden; refresh immediately when visible again.
     // Skip in native apps — WKWebView may report document.hidden=true permanently.
     if (!platform.isNative) {
@@ -1482,7 +1478,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.addEventListener("mouseup", () => {
         setTimeout(() => { fitTerminal(); syncPaneWidth(); }, 50);
     });
+}
 
+/** The page's route: its path, or an old hash link, shown once the handlers are in place. */
+function startRoute(popout) {
     // The page's route (#3532): its path, or an old hash link, shown once the handlers are in place.
     if (!popout) {
         registerRouteHandlers();
@@ -1491,6 +1490,47 @@ document.addEventListener("DOMContentLoaded", async () => {
         startNav();
         if (savedLink) Promise.all([savedLink, liveListReady]).then(([item]) => item && importOnce('./saved.js').then(m => m.openSavedLink(item))).catch(() => {});
     }
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+    beginDashboardAnalytics();
+    if (window.innerWidth > 767) buildWelcome(); // a phone starts on the agent list and builds the welcome screen only if it is shown (#4497)
+    try {
+    initPlatform();
+    installUnauthorizedRedirect();
+
+    // Back off on 429/502/503 (#3403): every poller pauses while Coral (or the hub) is overloaded.
+    installOverloadWatch();
+
+    await initCloud();   // no-op unless the page's boot data says mode "cloud"
+    await initLocalStore();
+    loadSettings().then(initEditions).catch(e => console.error('ways to run Coral:', e)).finally(() => markReady('settings'));
+    initServersUi();   // reveals hub-only entry points when /api/health reports hub:true
+
+    // Single-agent popout mode (/agent/{uuid}): chrome-free workspace only.
+    // Marked before any renderer runs so CSS and storage scoping apply.
+    const popout = applyPopoutBodyClass();
+    if (!popout) initHubIndicator(); // the Coral Hub connection in the header (#3544)
+
+    loadInitialData(popout);
+
+    initPrerequisiteChecks();
+    attachAllDialogFocus();   // focus in and back for every dialog in the shell (#4026)
+
+    wireHistoryFilters();
+    wireComposer();
+    wirePaneScroll();
+    initPanels();
+
+    // Initialize nav tabs — hide history section on load (Agents tab is default)
+    if (!popout) {
+        switchNavTab('agents');
+    } else {
+        initPopout();
+    }
+
+    wireWindowEvents();
+    startRoute(popout);
     dashboardInitialized();
     } catch (error) {
         dashboardFailed('init_failed');
