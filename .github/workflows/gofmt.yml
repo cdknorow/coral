@@ -1,9 +1,10 @@
 name: gofmt
 # Every Go file under coral-go/ stays gofmt-clean. Runs on pushes to main (most changes land there
-# directly) as well as on pull requests. Fix locally with: cd coral-go && gofmt -w <files listed>.
+# directly), on pushes to ci/** (the landing agent's gate branches, so a batch fails here before it lands,
+# #4605) and on pull requests. Fix locally with: cd coral-go && gofmt -w <files listed>.
 on:
   push:
-    branches: [main]
+    branches: [main, "ci/**"]
     paths:
       - "coral-go/**.go"
       - ".github/workflows/gofmt.yml"

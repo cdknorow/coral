@@ -160,6 +160,15 @@ jobs:
           lines = [("green: " if green else "NOT green: ") + f"{passed}/{len(rows)} suites passed" + (f", {len(flaky)} FLAKY" if flaky else "") + (f", {len(failed)} FAILED" if failed else "") + (f", {len(ends)} end-check failure(s)" if ends else "") + f"; parts: {os.environ['PARTS_RESULT']}"]
           if flaky: lines.append("FLAKY: " + ", ".join(flaky))
           if failed: lines.append("FAILED: " + ", ".join(failed))
+          # Each flaky or failed suite's first failing line, from its first failing attempt (results.json keeps a
+          # non-passing attempt's output), so a flake can be fixed from one occurrence without opening the part's log.
+          import re as _re
+          _pat = _re.compile(r'\[FAIL\]|AssertionError|Error:|timed out|TIMEOUT')
+          for r in rows:
+              if r.get('status') not in ('flaky', 'fail', 'timeout'): continue
+              outs = [a.get('output', '') for a in r.get('attempts', []) if a.get('status') != 'pass'] or [r.get('output', '')]
+              first = next((l.strip() for l in (outs[0] or '').splitlines() if _pat.search(l)), '')
+              if first: lines.append(f"  {r['test']}: {first[:300]}")
           for part, block in ends: lines.append(f"{part}: " + " / ".join(block))
           print("\n".join(lines))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as s:
