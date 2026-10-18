@@ -115,6 +115,21 @@ const { connect } = require('./agent_view_harness');
         await sleep(300); // sleep-ok: the redraw is scheduled on a frame; there is no completion event
         w = await where();
         assert.ok(!w.onRow && (w.onButton || w.inMenu), 'after a redraw the focus is on the button (or still in the menu), never dropped to the row: ' + JSON.stringify(w));
+        // The group menus (a team's, a folder's) are the same pattern: named for the group, a menu with menu items, and the same keys.
+        await ev(`window.__m.add('team-a-1', 'T', 2, { sleeping: false, board_project: 'team-a' }); window.__m.add('team-a-2', 'T', 2, { sleeping: false, board_project: 'team-a' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
+        await waitFor(`document.querySelectorAll('#live-sessions-list .group-kebab-btn').length >= 1`, 'a group menu button', 6000);
+        const groups = await ev(`[...document.querySelectorAll('#live-sessions-list .group-kebab-btn')].map(b => ({ label: b.getAttribute('aria-label'), popup: b.getAttribute('aria-haspopup'), expanded: b.getAttribute('aria-expanded'), role: b.nextElementSibling.getAttribute('role'), menuLabel: b.nextElementSibling.getAttribute('aria-label') }))`);
+        assert.ok(groups.length >= 1 && groups.every(g => /^More actions for .+/.test(g.label) && g.popup === 'menu' && g.expanded === 'false' && g.role === 'menu' && /^Actions for .+/.test(g.menuLabel)), 'every group menu button is named, a menu button, closed: ' + JSON.stringify(groups));
+        const GB = `document.querySelector('#live-sessions-list .group-kebab-btn')`;
+        await ev(`${GB}.focus(); true`);
+        await key('Enter', 13);
+        await waitFor(`document.activeElement.closest('.sidebar-kebab-menu') !== null`, 'Enter moves the focus into the group menu', 4000);
+        const gItems = await ev(`[...document.activeElement.closest('.sidebar-kebab-menu').querySelectorAll('.overflow-menu-item')].map(i => i.getAttribute('role'))`);
+        assert.ok(gItems.length >= 2 && gItems.every(r => r === 'menuitem'), 'the group menu items are menu items: ' + JSON.stringify(gItems));
+        const g1 = await ev(`document.activeElement.textContent.replace(/\\s+/g, ' ').trim()`);
+        await key('ArrowDown', 40); assert.notEqual(await ev(`document.activeElement.textContent.replace(/\\s+/g, ' ').trim()`), g1, 'Down moves in a group menu');
+        await key('Escape', 27);
+        assert.ok(await ev(`document.activeElement === ${GB} && ${GB}.getAttribute('aria-expanded') === 'false'`), 'Escape returns the focus to the group button');
         console.log('   ✓ the button names the agent, says it opens a menu and whether it is open; Enter and Space open it onto the first item, arrows, Home and End move, Escape returns to the button');
         console.log('\nPASS keyboard flows: docs list, reduced motion, reflow, composer tab order, row menu');
     } finally { await client.close(); }

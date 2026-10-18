@@ -649,7 +649,7 @@ function closeSidebarKebabs({ restoreFocus = false } = {}) {
 
 // Up, Down, Home and End move between a menu's items (it says aria-haspopup="menu"); Escape closes it from inside.
 document.addEventListener('keydown', e => {
-    const menu = e.target.closest?.('.sidebar-kebab-menu[data-lazy-menu]');
+    const menu = e.target.closest?.('.sidebar-kebab-menu');
     if (!menu) return;
     const items = [...menu.querySelectorAll('.overflow-menu-item')];
     const at = items.indexOf(document.activeElement);
@@ -686,8 +686,10 @@ function toggleSidebarKebab(btn, event) {
         const left = Math.min(rect.left, viewportWidth - menuWidth - 8);
         menu.style.left = Math.max(4, left) + 'px';
         menu.style.visibility = '';
+        // Every item is a menu item for a screen reader (the row menus are marked as they are drawn).
+        for (const it of menu.querySelectorAll('.overflow-menu-item')) if (!it.hasAttribute('role')) it.setAttribute('role', 'menuitem');
         // Opened from the keyboard (Enter or Space is a click with no pointer): the focus goes to the first item.
-        if (event && event.detail === 0 && menu.dataset.lazyMenu) menu.querySelector('.overflow-menu-item')?.focus({ preventScroll: true });
+        if (event && event.detail === 0) menu.querySelector('.overflow-menu-item')?.focus({ preventScroll: true });
         // Hide any visible tooltips so they don't cover the menu
         document.querySelectorAll('.session-tooltip').forEach(t => t.style.display = 'none');
     }
