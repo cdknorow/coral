@@ -1,5 +1,28 @@
 # Release Notes
 
+## v1.4.92 — A ceiling on agents starting agents, a default artifact store limit, and faster CI
+
+### Changes
+
+- **Screen readers hear what a chat send is doing:** one persistent live region announces it, and the message bubbles' labels no longer carry a role of their own.
+
+### Fixes
+
+- **Restarting an agent on the PTY backend works again;** it answered an error.
+- **After a send is confirmed, the Working row goes back below the Sent bubble** instead of staying above it.
+- **The Launch dialog's agent form is readable in the light theme** (4.5:1 contrast).
+
+### Security and privacy
+
+- **An agent may not start live agents past 64:** launching, or launch-team, with an agent's token is refused with 429 agent_limit once Coral already has 64 live agents running (sleeping ones are not counted); the Operator and the dashboard are never refused. Raise it with the agent_launch_limit setting (0 for none).
+- **The artifact store has a 20 GiB limit when none is set:** a new upload past it is refused (artifact_quota) and nothing is ever deleted; set `artifact_store_max_bytes` (0 for no limit) or raise it in Settings > Storage. A Coral that already holds 16 GiB or more when it upgrades has its limit raised once to twice its size, logged and said in Settings > Storage, so an upgrade never stops uploads on its own; a limit you set yourself is never changed.
+
+### Other changes
+
+- **Simpler code, behaviour unchanged:** `coral-board` working-mode and read, a review verdict, a job run and a git poll, the six background services' ticker loops, the board's task query, task dependencies and unread counts, the team settings, agent selection and Settings dialogs are split into named steps, and the Settings, Info, flag shortcut and CLI dialogs are their own modules (modals.js from 3,118 to 1,880 lines); the review verdict is compared with the old code, and each dialog's behaviour is pinned step by step before its split.
+- **Faster CI:** windows-tests runs in three shards (about 11 minutes down to 7), the CDP gate's six parts have about equal recorded time (about 6 minutes down to 5), and the release's notices step prints its time per phase.
+- **Tests:** two flaky tests fixed (the chat's jump-to-latest release and a received-artifact cleanup).
+
 ## v1.4.91 — Limits on everything a caller can grow, a lighter chat transcript, and keyboard-friendly menus
 
 ### Changes
