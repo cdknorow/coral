@@ -33,21 +33,7 @@ func (h *ViewsHandler) ListViews(w http.ResponseWriter, r *http.Request) {
 // GetView returns a single view.
 // GET /api/views/{id}
 func (h *ViewsHandler) GetView(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		errBadRequest(w, "invalid id")
-		return
-	}
-	view, err := h.vs.GetView(r.Context(), id)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	if view == nil {
-		errNotFound(w, "view not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, view)
+	getByID(w, r, "id", "invalid id", "view not found", h.vs.GetView)
 }
 
 // viewWriteAllowed admits only the positively identified local dashboard (loopback peer, localhost Host, same-origin

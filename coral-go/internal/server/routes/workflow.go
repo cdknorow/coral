@@ -68,21 +68,7 @@ func (h *WorkflowHandler) ListWorkflows(w http.ResponseWriter, r *http.Request) 
 // GetWorkflow returns a single workflow by ID.
 // GET /api/workflows/{workflowID}
 func (h *WorkflowHandler) GetWorkflow(w http.ResponseWriter, r *http.Request) {
-	workflowID, err := strconv.ParseInt(chi.URLParam(r, "workflowID"), 10, 64)
-	if err != nil {
-		errBadRequest(w, "invalid workflow ID")
-		return
-	}
-	wf, err := h.ws.GetWorkflow(r.Context(), workflowID)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	if wf == nil {
-		errNotFound(w, "workflow not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, wf)
+	getByID(w, r, "workflowID", "invalid workflow ID", "workflow not found", h.ws.GetWorkflow)
 }
 
 // GetWorkflowByName returns a single workflow by name.
@@ -528,21 +514,7 @@ func (h *WorkflowHandler) ListRecentRuns(w http.ResponseWriter, r *http.Request)
 // GetWorkflowRun returns a single run with step results.
 // GET /api/workflows/runs/{runID}
 func (h *WorkflowHandler) GetWorkflowRun(w http.ResponseWriter, r *http.Request) {
-	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
-	if err != nil {
-		errBadRequest(w, "invalid run ID")
-		return
-	}
-	run, err := h.ws.GetWorkflowRun(r.Context(), runID)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	if run == nil {
-		errNotFound(w, "run not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, run)
+	getByID(w, r, "runID", "invalid run ID", "run not found", h.ws.GetWorkflowRun)
 }
 
 // KillWorkflowRun kills a running workflow.

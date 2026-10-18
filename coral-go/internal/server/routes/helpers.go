@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/cdknorow/coral/internal/diskguard"
@@ -276,4 +277,25 @@ func refuseIfDiskLow(w http.ResponseWriter) bool {
 		"not_sent":   true,
 	})
 	return true
+}
+
+// getByID answers GET of one row named by a numeric URL parameter, the way GetView, GetWorkflow and
+// GetWorkflowRun each did: 400 with badID when the parameter is not a number, 500 for a store
+// failure, 404 with missing when the store has no such row, else the row as JSON.
+func getByID[T any](w http.ResponseWriter, r *http.Request, param, badID, missing string, get func(ctx context.Context, id int64) (*T, error)) {
+	id, err := strconv.ParseInt(chi.URLParam(r, param), 10, 64)
+	if err != nil {
+		errBadRequest(w, badID)
+		return
+	}
+	row, err := get(r.Context(), id)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if row == nil {
+		errNotFound(w, missing)
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
 }

@@ -341,93 +341,61 @@ func extractFileItems(data interface{}) []map[string]string {
 	return result
 }
 
-// ── Agent templates ─────────────────────────────────────────────────
+// ── Agent and command templates ─────────────────────────────────────
+//
+// The two kinds are the same three requests over different folders of the components repository
+// ("agents" and "commands"): the categories, the templates in one, and one template with its
+// frontmatter. The list's key in the reply is the kind's name; a template's own fields differ.
 
 // ListAgentCategories lists agent template categories (top-level directories).
 // GET /api/templates/agents
 func (h *TemplatesHandler) ListAgentCategories(w http.ResponseWriter, r *http.Request) {
-	data, err := h.githubFetch("cli-tool/components/agents")
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"error":      err.Error(),
-			"categories": []interface{}{},
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"categories": emptyIfNil(extractDirItems(data, "dir"))})
+	h.listCategories(w, "agents")
 }
 
 // ListAgentsInCategory lists agent templates in a category.
 // GET /api/templates/agents/{category}
 func (h *TemplatesHandler) ListAgentsInCategory(w http.ResponseWriter, r *http.Request) {
-	category, _, ok := templateSegments(w, r, false)
-	if !ok {
-		return
-	}
-	if err := h.known("agents", category, ""); err != nil {
-		refuseUnknown(w, err, map[string]interface{}{"agents": []interface{}{}})
-		return
-	}
-	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/agents/%s", category))
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"error":  err.Error(),
-			"agents": []interface{}{},
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"agents":   emptyIfNil(extractFileItems(data)),
-		"category": category,
-	})
+	h.listInCategory(w, r, "agents")
 }
 
 // GetAgentTemplate returns a specific agent template with parsed frontmatter.
 // GET /api/templates/agents/{category}/{name}
 func (h *TemplatesHandler) GetAgentTemplate(w http.ResponseWriter, r *http.Request) {
-	category, name, ok := templateSegments(w, r, true)
-	if !ok {
-		return
-	}
-	filename := name
-	if !strings.HasSuffix(filename, ".md") {
-		filename += ".md"
-	}
-
-	if err := h.known("agents", category, filename); err != nil {
-		refuseUnknown(w, err, nil)
-		return
-	}
-	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/agents/%s/%s", category, filename))
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"error": err.Error()})
-		return
-	}
-
-	dataMap, ok := data.(map[string]interface{})
-	if !ok {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"error": "unexpected response format"})
-		return
-	}
-
-	content := decodeGitHubFileContent(dataMap)
-	meta, body := parseFrontmatter(content)
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"name":        metaOrDefault(meta, "name", name),
-		"description": metaOrDefault(meta, "description", ""),
-		"tools":       metaOrDefault(meta, "tools", ""),
-		"model":       metaOrDefault(meta, "model", ""),
-		"body":        body,
-		"category":    category,
+	h.getTemplate(w, r, "agents", func(meta map[string]string) map[string]interface{} {
+		return map[string]interface{}{
+			"tools": metaOrDefault(meta, "tools", ""),
+			"model": metaOrDefault(meta, "model", ""),
+		}
 	})
 }
-
-// ── Command templates ───────────────────────────────────────────────
 
 // ListCommandCategories lists command template categories.
 // GET /api/templates/commands
 func (h *TemplatesHandler) ListCommandCategories(w http.ResponseWriter, r *http.Request) {
-	data, err := h.githubFetch("cli-tool/components/commands")
+	h.listCategories(w, "commands")
+}
+
+// ListCommandsInCategory lists command templates in a category.
+// GET /api/templates/commands/{category}
+func (h *TemplatesHandler) ListCommandsInCategory(w http.ResponseWriter, r *http.Request) {
+	h.listInCategory(w, r, "commands")
+}
+
+// GetCommandTemplate returns a specific command template with parsed frontmatter.
+// GET /api/templates/commands/{category}/{name}
+func (h *TemplatesHandler) GetCommandTemplate(w http.ResponseWriter, r *http.Request) {
+	h.getTemplate(w, r, "commands", func(meta map[string]string) map[string]interface{} {
+		return map[string]interface{}{
+			"allowed_tools": metaOrDefault(meta, "allowed-tools", ""),
+			"argument_hint": metaOrDefault(meta, "argument-hint", ""),
+		}
+	})
+}
+
+// listCategories answers a kind's category list; a failed fetch is a 200 with the error and no categories.
+func (h *TemplatesHandler) listCategories(w http.ResponseWriter, kind string) {
+	data, err := h.githubFetch("cli-tool/components/" + kind)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"error":      err.Error(),
@@ -438,34 +406,33 @@ func (h *TemplatesHandler) ListCommandCategories(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, map[string]interface{}{"categories": emptyIfNil(extractDirItems(data, "dir"))})
 }
 
-// ListCommandsInCategory lists command templates in a category.
-// GET /api/templates/commands/{category}
-func (h *TemplatesHandler) ListCommandsInCategory(w http.ResponseWriter, r *http.Request) {
+// listInCategory answers the templates of one category of a kind, under the kind's own key.
+func (h *TemplatesHandler) listInCategory(w http.ResponseWriter, r *http.Request, kind string) {
 	category, _, ok := templateSegments(w, r, false)
 	if !ok {
 		return
 	}
-	if err := h.known("commands", category, ""); err != nil {
-		refuseUnknown(w, err, map[string]interface{}{"commands": []interface{}{}})
+	if err := h.known(kind, category, ""); err != nil {
+		refuseUnknown(w, err, map[string]interface{}{kind: []interface{}{}})
 		return
 	}
-	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/commands/%s", category))
+	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/%s/%s", kind, category))
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"error":    err.Error(),
-			"commands": []interface{}{},
+			"error": err.Error(),
+			kind:    []interface{}{},
 		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"commands": emptyIfNil(extractFileItems(data)),
+		kind:       emptyIfNil(extractFileItems(data)),
 		"category": category,
 	})
 }
 
-// GetCommandTemplate returns a specific command template with parsed frontmatter.
-// GET /api/templates/commands/{category}/{name}
-func (h *TemplatesHandler) GetCommandTemplate(w http.ResponseWriter, r *http.Request) {
+// getTemplate answers one template of a kind with its frontmatter: the name, description, body and
+// category every kind has, and the kind's own fields from fields.
+func (h *TemplatesHandler) getTemplate(w http.ResponseWriter, r *http.Request, kind string, fields func(meta map[string]string) map[string]interface{}) {
 	category, name, ok := templateSegments(w, r, true)
 	if !ok {
 		return
@@ -475,11 +442,11 @@ func (h *TemplatesHandler) GetCommandTemplate(w http.ResponseWriter, r *http.Req
 		filename += ".md"
 	}
 
-	if err := h.known("commands", category, filename); err != nil {
+	if err := h.known(kind, category, filename); err != nil {
 		refuseUnknown(w, err, nil)
 		return
 	}
-	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/commands/%s/%s", category, filename))
+	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/%s/%s/%s", kind, category, filename))
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"error": err.Error()})
 		return
@@ -493,14 +460,12 @@ func (h *TemplatesHandler) GetCommandTemplate(w http.ResponseWriter, r *http.Req
 
 	content := decodeGitHubFileContent(dataMap)
 	meta, body := parseFrontmatter(content)
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"name":          metaOrDefault(meta, "name", name),
-		"description":   metaOrDefault(meta, "description", ""),
-		"allowed_tools": metaOrDefault(meta, "allowed-tools", ""),
-		"argument_hint": metaOrDefault(meta, "argument-hint", ""),
-		"body":          body,
-		"category":      category,
-	})
+	reply := fields(meta)
+	reply["name"] = metaOrDefault(meta, "name", name)
+	reply["description"] = metaOrDefault(meta, "description", "")
+	reply["body"] = body
+	reply["category"] = category
+	writeJSON(w, http.StatusOK, reply)
 }
 
 func metaOrDefault(meta map[string]string, key, fallback string) string {
