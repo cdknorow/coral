@@ -360,17 +360,17 @@ function _reviewRequested(t) {
 let _taskSortField = 'created_at';
 let _taskSortAsc = false; // default newest first
 let _hideCompleted = browserLocal.get('coral-hide-completed') === 'true'; // off by default, persisted
-/** A finished task's verification (#4564), quietly: in the list a small muted icon after the title for a task nothing independently confirmed (Evidence attached, Unverified), its
- *  words only in the tooltip and the accessible name; a verified task shows nothing. '' where there is nothing to say. */
+/** A finished task's verification (#4564), quietly: in the list a small muted icon after the title only for Evidence attached, its words only in the tooltip and the accessible name; a
+ *  verified or an unverified task shows nothing. '' where there is nothing to say. */
 function _verifyMark(t) {
     const v = verificationOf(t, formatTaskDate);
-    if (!v || v.confirmed) return '';
+    if (!v || !v.mark) return '';
     return `<span class="board-task-verify-mark ${v.state}" role="img" tabindex="0" title="${escapeAttr(v.detail)}" aria-label="${escapeAttr(v.detail)}"><span class="material-icons" aria-hidden="true">${v.icon}</span></span>`;
 }
-/** The task detail's one plain muted line: who verified it, or that nothing independently did. */
+/** The task detail's one plain muted line: who verified it, or that evidence is attached; nothing for an unverified task. */
 function _verifyLine(t) {
     const v = verificationOf(t, formatTaskDate);
-    return v ? `<div class="task-detail-verification">${escapeHtml(v.line)}</div>` : '';
+    return v && v.line ? `<div class="task-detail-verification">${escapeHtml(v.line)}</div>` : '';
 }
 
 function _toggleTaskSort(field) {

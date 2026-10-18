@@ -1,5 +1,5 @@
-// A finished task's verification, quietly (#4564, operator feedback): in the board's Tasks list a small muted icon after the title for a task nothing independently confirmed (Evidence attached, Unverified),
-// its words only in the tooltip and the accessible name, and nothing at all for a verified one; in the task detail one plain muted line ("Verified by ..." or "Not independently verified"), no chip; no filter in the
+// A finished task's verification, quietly (#4564, operator feedback): in the board's Tasks list a small muted icon after the title only for Evidence attached,
+// its words only in the tooltip and the accessible name, and nothing at all for a verified or an unverified one; in the task detail one plain muted line ("Verified by ..." or "Not independently verified (evidence attached)"), none for unverified, no chip; no filter in the
 // list (the API's filter is for agents and coral-hub). The icon reaches 3:1 in both themes and fits a 390 px phone. The tasks are the real isolated server's; the verification field (Backend's #4563:
 // {state, by, at}) is added to its answers in the page, and a task without the field gets nothing.
 //
@@ -51,7 +51,7 @@ const ADD = `(() => {
         const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
         const out = {};
         for (const b of document.querySelectorAll('#board-task-list .board-task-verify-mark')) {
-            const st = b.classList.contains('evidence') ? 'evidence' : 'unverified';
+            const st = 'evidence';
             const bg = bgOf(b), o = opacityOf(b);
             const seen = rgb => rgb.map((v, i) => Math.round(v * o + bg[i] * (1 - o)));
             const icon = Math.round(ratio(seen(parse(getComputedStyle(b.querySelector('.material-icons')).color).rgb), bg) * 100) / 100;
@@ -81,14 +81,14 @@ const ADD = `(() => {
         await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-tab-tasks').click(); true`);
         await waitFor(`document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length === 8`, 'eight task rows', 10000, `JSON.stringify({ n: document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length, txt: document.getElementById('board-task-list').textContent.slice(0, 160), tab: document.getElementById('agentic-panel-tasks').className, bt: (T.state.currentBoardTasks || []).length, page: document.getElementById('agentic-state').dataset.page, proj: T.state.boardPageProject })`);
 
-        console.log('1. Quiet: no chip, no words, no filter in the list; a small muted icon after the title only for evidence attached and unverified (the words are its tooltip and accessible name); nothing for a verified task, an open one, or one the server sent no state for');
+        console.log('1. Quiet: no chip, no words, no filter in the list; a small muted icon after the title only for evidence attached (the words are its tooltip and accessible name); nothing for a verified task, an unverified one, an open one, or one the server sent no state for');
         const norm = r => r.title.replace(/[a-z_]*$/, '').trim();
         const r1 = Object.fromEntries((await rows()).map(r => [r.title.match(/(?:v|e|u|n)-[\w-]+|open-one/)[0].replace(/(help_outline|description|verified_user)$/, ''), r.mark]));
         assert.equal(r1['v-one'], null, 'a verified task shows nothing'); assert.equal(r1['v-two'], null);
         assert.equal(r1['n-one'], null, 'no state from the server, nothing shown'); assert.equal(r1['open-one'], null, 'an open task has none');
         assert.equal(r1['e-one'].cls, 'evidence'); assert.equal(r1['e-one'].title, 'Evidence attached; no reviewer or check has confirmed it'); assert.equal(r1['e-one'].aria, r1['e-one'].title); assert.equal(r1['e-one'].role, 'img');
         assert.equal(r1['e-gate'].title, 'Evidence attached (gate:report); no reviewer or check has confirmed it');
-        assert.equal(r1['u-one'].cls, 'unverified'); assert.equal(r1['u-one'].title, 'Marked done by the agent; no reviewer or check confirmed it'); assert.equal(r1['u-one'].aria, r1['u-one'].title);
+        assert.equal(r1['u-one'], null, 'an unverified task shows nothing in the list'); assert.equal(r1['u-two'], null);
         assert.deepEqual(await ev(`({ chips: document.querySelectorAll('#board-task-list .board-task-verify').length, filter: document.querySelectorAll('.board-task-verify-select, .board-task-verify-filter').length,
             marks: [...document.querySelectorAll('#board-task-list .board-task-verify-mark')].map(m => m.textContent.trim().length > 0 && /^[a-z_]+$/.test(m.textContent.trim())).every(Boolean) })`), { chips: 0, filter: 0, marks: true }, 'no chip, no filter, and a mark is an icon with no words');
         await shot('verify-list-dark');
@@ -106,7 +106,7 @@ const ADD = `(() => {
         let d = await detailLine('v-two'); assert.match(d.line, /^Verified by QA Engineer, Security Reviewer, /); assert.equal(d.chip, false);
         d = await detailLine('e-one'); assert.equal(d.line, 'Not independently verified (evidence attached)');
         d = await detailLine('e-gate'); assert.equal(d.line, 'Not independently verified (evidence attached: gate:report)');
-        d = await detailLine('u-one'); assert.equal(d.line, 'Not independently verified');
+        d = await detailLine('u-one'); assert.equal(d.line, null, 'an unverified task has no line');
         d = await detailLine('n-one'); assert.equal(d.line, null, 'no state from the server, no line');
 
         console.log('3. The icon reaches 3:1 in both themes');
@@ -115,7 +115,7 @@ const ADD = `(() => {
             await sleep(400); // sleep-ok: the theme is applied over a frame
             if (theme === 'light') await shot('verify-list-light');
             const c = await ev(CONTRAST);
-            assert.deepEqual(Object.keys(c).sort(), ['evidence', 'unverified']);
+            assert.deepEqual(Object.keys(c).sort(), ['evidence']);
             for (const [st, v] of Object.entries(c)) assert.ok(v >= 3, `${theme}: the ${st} icon is ${v}:1`);
         }
 
@@ -124,7 +124,7 @@ const ADD = `(() => {
         await Emulation.setTouchEmulationEnabled({ enabled: true });
         await sleep(400); // sleep-ok: the layout settles over frames after a viewport change; there is no completion event
         await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-tab-tasks').click(); true`);
-        await waitFor(`document.querySelectorAll('#board-task-list .board-task-verify-mark').length === 4`, 'the icons on the phone', 8000);
+        await waitFor(`document.querySelectorAll('#board-task-list .board-task-verify-mark').length === 2`, 'the icons on the phone', 8000);
         const phone = await ev(`(() => { const dock = document.getElementById('agentic-state').getBoundingClientRect();
             const over = [...document.querySelectorAll('#board-task-list .board-task-verify-mark')].filter(b => b.getBoundingClientRect().right > dock.right + 1 || b.getBoundingClientRect().left < dock.left - 1).length;
             return { over, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
