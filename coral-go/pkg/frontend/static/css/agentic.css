@@ -2577,31 +2577,31 @@ body.panel-dragging .agentic-state {
 .team-artifacts-status { padding: 8px 12px; font-size: 0.75rem; color: var(--text-secondary); }
 
 /* The Team Artifacts search, filter menu, sort and chips (#4573). The search is on its own row; the filters are a menu; at a narrow width (a phone, 200% text) everything wraps. */
-.ta-bar { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 8px; position: relative; }
-.ta-search-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ta-search-wrap { position: relative; flex: 1 1 12em; min-width: 0; }
-.ta-search { width: 100%; box-sizing: border-box; padding: 6px 28px 6px 8px; font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; }
-.ta-search::-webkit-search-cancel-button { display: none; }
-.ta-clear-q { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--text-secondary); font-size: 1.125rem; line-height: 1; cursor: pointer; border-radius: 4px; }
-.ta-count { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
-.ta-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ta-filter-btn, .ta-clear-all, .ta-select, .ta-by, .ta-field input[type="date"] { font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
-.ta-filter-btn, .ta-clear-all { cursor: pointer; }
-.ta-filter-btn[aria-expanded="true"] { background: var(--bg-hover); }
-.ta-sort, .ta-field { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); }
-.ta-sort { margin-left: auto; }
-.ta-menu { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: var(--shadow-lg); }
-.ta-menu[hidden] { display: none; }
-.ta-menu .ta-field { justify-content: space-between; flex-wrap: wrap; }
-.ta-menu .ta-field > :last-child { min-width: 0; flex: 1 1 8em; max-width: 100%; box-sizing: border-box; } /* wraps under its label when the text is large or the panel narrow */
-.ta-kept { justify-content: flex-start; cursor: pointer; }
-.ta-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.ta-chips[hidden] { display: none; }
-.ta-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; font-size: 0.75rem; color: var(--text-primary); background: var(--bg-hover); border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
-.ta-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ta-chip-x { color: var(--text-secondary); }
-.ta-chip-all { background: none; }
-.ta-search:focus-visible, .ta-clear-q:focus-visible, .ta-filter-btn:focus-visible, .ta-clear-all:focus-visible, .ta-select:focus-visible, .ta-by:focus-visible, .ta-chip:focus-visible, .ta-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.list-bar-bar { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 8px; position: relative; }
+.list-bar-search-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.list-bar-search-wrap { position: relative; flex: 1 1 12em; min-width: 0; }
+.list-bar-search { width: 100%; box-sizing: border-box; padding: 6px 28px 6px 8px; font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; }
+.list-bar-search::-webkit-search-cancel-button { display: none; }
+.list-bar-clear-q { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--text-secondary); font-size: 1.125rem; line-height: 1; cursor: pointer; border-radius: 4px; }
+.list-bar-count { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+.list-bar-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.list-bar-filter-btn, .list-bar-clear-all, .list-bar-select, .list-bar-by, .list-bar-field input[type="date"] { font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.list-bar-filter-btn, .list-bar-clear-all { cursor: pointer; }
+.list-bar-filter-btn[aria-expanded="true"] { background: var(--bg-hover); }
+.list-bar-sort, .list-bar-field { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); }
+.list-bar-sort { margin-left: auto; }
+.list-bar-menu { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: var(--shadow-lg); }
+.list-bar-menu[hidden] { display: none; }
+.list-bar-menu .list-bar-field { justify-content: space-between; flex-wrap: wrap; }
+.list-bar-menu .list-bar-field > :last-child { min-width: 0; flex: 1 1 8em; max-width: 100%; box-sizing: border-box; } /* wraps under its label when the text is large or the panel narrow */
+.list-bar-kept { justify-content: flex-start; cursor: pointer; }
+.list-bar-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.list-bar-chips[hidden] { display: none; }
+.list-bar-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; font-size: 0.75rem; color: var(--text-primary); background: var(--bg-hover); border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
+.list-bar-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-bar-chip-x { color: var(--text-secondary); }
+.list-bar-chip-all { background: none; }
+.list-bar-search:focus-visible, .list-bar-clear-q:focus-visible, .list-bar-filter-btn:focus-visible, .list-bar-clear-all:focus-visible, .list-bar-select:focus-visible, .list-bar-by:focus-visible, .list-bar-chip:focus-visible, .list-bar-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .team-artifacts-scroll { flex-shrink: 0; max-width: 100%; }
 /* Fits its panel: Size and Task are in each row's Details (#3044). */
 .team-artifacts-list { width: 100%; table-layout: fixed; border-collapse: collapse; color: var(--text-primary); font-size: var(--fs-base); line-height: 1.5; }

@@ -74,7 +74,7 @@ const STUB = `(() => {
     const reqs = () => ev(`window.__req.length`);
     const last = () => ev(`window.__req[window.__req.length - 1]`);
     const settle = async n => waitFor(`window.__req.length >= ${n} && document.getElementById('agentic-panel-team-artifacts-view').getAttribute('aria-busy') === 'false'`, `request ${n} answered`, 8000);
-    const count = () => ev(`document.querySelector('.ta-count').textContent`);
+    const count = () => ev(`document.querySelector('.list-bar-count').textContent`);
     const open = async (width = 1200, height = 900) => {
         await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
@@ -87,7 +87,7 @@ const STUB = `(() => {
             const {showView} = await import((window.__coralStatic||'/static/')+'utils.js'); showView('live-session-view');
             const side = document.getElementById('agentic-state'); side.classList.remove('collapsed'); side.style.width = '680px'; files.initFileSearch(); files.syncFilesViewerSession(); return true; })()`);
         await ev(`localStorage.removeItem('coral-agentic-tab-top'); document.getElementById('agentic-tab-team-artifacts').click(); true`);
-        await waitFor(`!!document.querySelector('.ta-search') && document.querySelectorAll('tr.team-artifact-row').length > 0`, 'the list and its search bar', 8000);
+        await waitFor(`!!document.querySelector('.list-bar-search') && document.querySelectorAll('tr.team-artifact-row').length > 0`, 'the list and its search bar', 8000);
     };
 
     try {
@@ -106,7 +106,7 @@ const STUB = `(() => {
 
         console.log('2. Search is the server\'s (it finds a file that is not on the loaded page) and debounced (typing sends one request after the pause)');
         const before = await reqs();
-        await ev(`document.querySelector('.ta-search').focus(); true`);
+        await ev(`document.querySelector('.list-bar-search').focus(); true`);
         await type('zeb');
         await sleep(100); // sleep-ok: inside the debounce
         assert.equal(await reqs(), before, 'nothing is sent while the person is still typing');
@@ -117,22 +117,22 @@ const STUB = `(() => {
         r = await last(); assert.equal(r.query.q, 'zebra');
         assert.deepEqual(await names(), ['zebra-plan.png'.replace('.png', '.' + DATA[12].name.split('.')[1])]);
         assert.equal(await count(), '1 of 14');
-        assert.equal(await ev(`document.activeElement === document.querySelector('.ta-search')`), true, 'the focus stays in the search box while the list is rebuilt');
-        assert.equal(await ev(`document.querySelector('.ta-search').value`), 'zebra');
-        await ev(`document.querySelector('.ta-clear-q').click(); true`);
+        assert.equal(await ev(`document.activeElement === document.querySelector('.list-bar-search')`), true, 'the focus stays in the search box while the list is rebuilt');
+        assert.equal(await ev(`document.querySelector('.list-bar-search').value`), 'zebra');
+        await ev(`document.querySelector('.list-bar-clear-q').click(); true`);
         await settle(before + 2);
         assert.equal((await last()).query.q, undefined); assert.equal((await names()).length, 5); assert.equal(await count(), '14 artifacts');
-        assert.equal(await ev(`document.activeElement === document.querySelector('.ta-search')`), true, 'clearing returns to the box');
+        assert.equal(await ev(`document.activeElement === document.querySelector('.list-bar-search')`), true, 'clearing returns to the box');
 
         console.log('3. The filters: type, origin, uploaded by, kept, dates; each is a request parameter and a chip; a chip removes its filter; Clear all removes the rest');
-        const menu = async () => { if (await ev(`document.querySelector('.ta-menu').hidden`)) await ev(`document.querySelector('.ta-filter-btn').click(); true`); };
+        const menu = async () => { if (await ev(`document.querySelector('.list-bar-menu').hidden`)) await ev(`document.querySelector('.list-bar-filter-btn').click(); true`); };
         const pickSel = async (id, v) => { await menu(); const n = await reqs(); await ev(`(() => { const s = document.getElementById('${id}'); s.value = '${v}'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`); await settle(n + 1); };
         await pickSel('ta-kind', 'image');
         r = await last(); assert.equal(r.query.kind, 'image');
         assert.ok((await names()).every(n => n.endsWith('.png')), JSON.stringify(await names())); assert.equal(await count(), '4 of 14');
         await pickSel('ta-origin', 'received'); r = await last(); assert.equal(r.query.origin, 'received');
         await pickSel('ta-kind', ''); r = await last(); assert.equal(r.query.kind, undefined);
-        assert.deepEqual(await ev(`[...document.querySelectorAll('.ta-chips .ta-chip-text')].map(e => e.textContent)`), ['Origin: Received']);
+        assert.deepEqual(await ev(`[...document.querySelectorAll('.list-bar-chips .list-bar-chip-text')].map(e => e.textContent)`), ['Origin: Received']);
         await pickSel('ta-origin', '');
         // uploaded by, typed (exact name, debounced like the search)
         await menu(); let n = await reqs();
@@ -147,16 +147,16 @@ const STUB = `(() => {
         await settle(n + 2);
         r = await last();
         assert.equal(r.query.since, new Date(2026, 9, 5).toISOString()); assert.equal(r.query.until, new Date(2026, 9, 10).toISOString());
-        const chipTexts = await ev(`[...document.querySelectorAll('.ta-chips .ta-chip-text')].map(e => e.textContent)`);
+        const chipTexts = await ev(`[...document.querySelectorAll('.list-bar-chips .list-bar-chip-text')].map(e => e.textContent)`);
         assert.deepEqual(chipTexts, ['By: Dev One', 'Kept', '2026-10-05 to 2026-10-09'], JSON.stringify(chipTexts));
-        assert.equal(await ev(`document.querySelector('.ta-filter-btn').textContent`), 'Filters (3)');
+        assert.equal(await ev(`document.querySelector('.list-bar-filter-btn').textContent`), 'Filters (3)');
         await shot('ta-search-chips');
         // a chip removes its filter
-        n = await reqs(); await ev(`[...document.querySelectorAll('.ta-chip')].find(c => c.textContent.startsWith('Kept')).click(); true`); await settle(n + 1);
+        n = await reqs(); await ev(`[...document.querySelectorAll('.list-bar-chip')].find(c => c.textContent.startsWith('Kept')).click(); true`); await settle(n + 1);
         assert.equal((await last()).query.kept, undefined); assert.equal(await ev(`document.getElementById('ta-kept').checked`), false);
-        n = await reqs(); await ev(`document.querySelector('.ta-chip-all').click(); true`); await settle(n + 1);
+        n = await reqs(); await ev(`document.querySelector('.list-bar-chip-all').click(); true`); await settle(n + 1);
         r = await last(); assert.deepEqual(Object.keys(r.query).sort(), ['limit', 'offset', 'sort']); assert.equal((await names()).length, 5);
-        assert.equal(await ev(`document.querySelector('.ta-chips').hidden`), true);
+        assert.equal(await ev(`document.querySelector('.list-bar-chips').hidden`), true);
 
         console.log('4. Sort: newest, oldest, name, size');
         const sortTo = async v => { const k = await reqs(); await ev(`(() => { const s = document.getElementById('ta-sort'); s.value = '${v}'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`); await settle(k + 1); };
@@ -180,32 +180,32 @@ const STUB = `(() => {
 
         console.log('6. The last search and filters are remembered per board (and the sort), and another board starts empty');
         n = await reqs(); await ev(`document.getElementById('ta-sort').value = 'name'; document.getElementById('ta-sort').dispatchEvent(new Event('change', { bubbles: true })); true`); await settle(n + 1);
-        n = await reqs(); await ev(`document.querySelector('.ta-search').focus(); true`); await type('golf'); await settle(n + 1);
+        n = await reqs(); await ev(`document.querySelector('.list-bar-search').focus(); true`); await type('golf'); await settle(n + 1);
         const stored = await ev(`localStorage.getItem(${JSON.stringify('coral-team-artifacts-filters:' + TEAM)})`);
         assert.deepEqual(JSON.parse(stored), { q: 'golf', kind: '', origin: '', by: '', kept: false, from: '', to: '', sort: 'name' });
         await open(); await showTeam();
-        assert.equal(await ev(`document.querySelector('.ta-search').value`), 'golf'); r = await last(); assert.equal(r.query.q, 'golf'); assert.equal(r.query.sort, 'name');
+        assert.equal(await ev(`document.querySelector('.list-bar-search').value`), 'golf'); r = await last(); assert.equal(r.query.q, 'golf'); assert.equal(r.query.sort, 'name');
         assert.equal(await ev(`document.getElementById('ta-sort').value`), 'name');
         await showTeam({ board_project: 'another-board' });
         await waitFor(`window.__req[window.__req.length - 1].project === 'another-board'`, 'the other board', 6000);
-        assert.equal(await ev(`document.querySelector('.ta-search').value`), ''); assert.equal((await last()).query.q, undefined);
+        assert.equal(await ev(`document.querySelector('.list-bar-search').value`), ''); assert.equal((await last()).query.q, undefined);
         // storage that throws does not break the panel
         await ev(`(() => { const s = Storage.prototype.setItem; Storage.prototype.setItem = function () { throw new Error('quota'); }; window.__setItem = s; return true; })()`);
-        n = await reqs(); await ev(`document.querySelector('.ta-search').focus(); true`); await type('x'); await settle(n + 1);
+        n = await reqs(); await ev(`document.querySelector('.list-bar-search').focus(); true`); await type('x'); await settle(n + 1);
         assert.equal((await last()).query.q, 'x'); await ev(`Storage.prototype.setItem = window.__setItem; true`);
 
         console.log('7. The keyboard: Enter in the box searches at once; the Filters button opens the menu (focus inside), Escape closes it and returns to the button; a chip is a button');
         await ev(`localStorage.clear()`); await open(); await showTeam();
         n = await reqs();
-        await ev(`document.querySelector('.ta-search').focus(); true`); await type('lima'); await press('Enter', 'Enter', 13);
+        await ev(`document.querySelector('.list-bar-search').focus(); true`); await type('lima'); await press('Enter', 'Enter', 13);
         await settle(n + 1); assert.equal((await last()).query.q, 'lima');
-        await ev(`document.querySelector('.ta-filter-btn').focus(); true`); await press('Enter', 'Enter', 13);
-        assert.equal(await ev(`document.querySelector('.ta-filter-btn').getAttribute('aria-expanded')`), 'true');
+        await ev(`document.querySelector('.list-bar-filter-btn').focus(); true`); await press('Enter', 'Enter', 13);
+        assert.equal(await ev(`document.querySelector('.list-bar-filter-btn').getAttribute('aria-expanded')`), 'true');
         assert.equal(await ev(`document.activeElement.id`), 'ta-kind', 'the focus goes into the menu');
         await press('Escape', 'Escape', 27);
-        assert.equal(await ev(`document.querySelector('.ta-filter-btn').getAttribute('aria-expanded')`), 'false');
-        assert.equal(await ev(`document.activeElement === document.querySelector('.ta-filter-btn')`), true);
-        n = await reqs(); await ev(`document.querySelector('.ta-chip').focus(); true`); await press('Enter', 'Enter', 13); await settle(n + 1);
+        assert.equal(await ev(`document.querySelector('.list-bar-filter-btn').getAttribute('aria-expanded')`), 'false');
+        assert.equal(await ev(`document.activeElement === document.querySelector('.list-bar-filter-btn')`), true);
+        n = await reqs(); await ev(`document.querySelector('.list-bar-chip').focus(); true`); await press('Enter', 'Enter', 13); await settle(n + 1);
         assert.equal((await last()).query.q, undefined, 'a chip removes its filter from the keyboard');
 
         console.log('8. A 390 px phone, touch: the search on its own row, the menu fits, every control is 44 px, nothing scrolls sideways; and at 200% text');
@@ -216,11 +216,11 @@ const STUB = `(() => {
             await showTeam();
             await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-state').style.width = ''; ${big ? "document.documentElement.style.fontSize = '32px';" : ''} true`);
             await sleep(400); // sleep-ok: layout settles after the viewport change
-            await ev(`document.querySelector('.ta-filter-btn').click(); true`);
-            await ev(`document.getElementById('ta-by').value = 'Dev One'; document.querySelector('.ta-search').value = 'lima'; true`);
-            const m = await ev(`(() => { const R = e => e.getBoundingClientRect(); const dock = R(document.getElementById('agentic-state')); const search = R(document.querySelector('.ta-search')), btn = R(document.querySelector('.ta-filter-btn'));
-                const small = [...document.querySelectorAll('.ta-search, .ta-filter-btn, .ta-select, .ta-by, .ta-kept, .ta-field input[type=date]')].filter(e => e.getClientRects().length && R(e).height < 43.5).map(e => e.id || e.className);
-                const out = [...document.querySelectorAll('.ta-bar *')].filter(e => e.getClientRects().length && (R(e).right > dock.right + 1 || R(e).left < dock.left - 1)).map(e => e.id || e.className).slice(0, 4);
+            await ev(`document.querySelector('.list-bar-filter-btn').click(); true`);
+            await ev(`document.getElementById('ta-by').value = 'Dev One'; document.querySelector('.list-bar-search').value = 'lima'; true`);
+            const m = await ev(`(() => { const R = e => e.getBoundingClientRect(); const dock = R(document.getElementById('agentic-state')); const search = R(document.querySelector('.list-bar-search')), btn = R(document.querySelector('.list-bar-filter-btn'));
+                const small = [...document.querySelectorAll('.list-bar-search, .list-bar-filter-btn, .list-bar-select, .list-bar-by, .list-bar-kept, .list-bar-field input[type=date]')].filter(e => e.getClientRects().length && R(e).height < 43.5).map(e => e.id || e.className);
+                const out = [...document.querySelectorAll('.list-bar-bar *')].filter(e => e.getClientRects().length && (R(e).right > dock.right + 1 || R(e).left < dock.left - 1)).map(e => e.id || e.className).slice(0, 4);
                 return { searchAbove: search.bottom <= btn.top + 1, searchW: Math.round(search.width), dock: Math.round(dock.width), small, out, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
             assert.ok(m.searchAbove, `the search is on its own row: ${JSON.stringify(m)}`);
             assert.deepEqual(m.small, [], `every control is a 44 px target (${big ? '200%' : '100%'}): ${JSON.stringify(m)}`);

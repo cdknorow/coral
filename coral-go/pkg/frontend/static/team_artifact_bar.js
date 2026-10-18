@@ -13,8 +13,8 @@ const SPEC = {
     fields: [
         { type: 'select', key: 'kind', id: 'ta-kind', label: 'Type', values: KINDS, labels: KIND_LABEL, any: 'Any type' },
         { type: 'select', key: 'origin', id: 'ta-origin', label: 'Origin', values: ORIGINS, labels: ORIGIN_LABEL, any: 'Any origin' },
-        { type: 'text', key: 'by', id: 'ta-by', className: 'ta-by', label: 'Uploaded by', max: 80, placeholder: 'Agent or person', datalist: 'ta-by-list' },
-        { type: 'check', key: 'kept', id: 'ta-kept', label: 'Kept only', wrapClass: 'ta-field ta-kept' },
+        { type: 'text', key: 'by', id: 'ta-by', className: 'list-bar-by', label: 'Uploaded by', max: 80, placeholder: 'Agent or person', datalist: 'ta-by-list' },
+        { type: 'check', key: 'kept', id: 'ta-kept', label: 'Kept only', wrapClass: 'list-bar-field list-bar-kept' },
         { type: 'date', key: 'from', id: 'ta-from', label: 'From' },
         { type: 'date', key: 'to', id: 'ta-to', label: 'Until' },
     ],

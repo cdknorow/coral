@@ -1,7 +1,7 @@
 /* The search, filter and sort bar the list panels share (#4744), taken from Team Artifacts' (#4573): a search box with the count beside it, a Filters button that opens a menu, a Sort select and the chips of
  * the filters that are on. It is built once and kept in its panel (the panel's list is rebuilt on every change, which would take the keyboard focus out of a search box typed into), and told what to show with
  * set(). The server does the work: the bar only collects what to ask for. Each panel gives a spec (its fields, sorts and words) and a model (its filters: EMPTY, clean, chips, isFiltered, without; the panel's
- * own *_filters.js, which is pure). The classes are ta-* (agentic.css, touch.css); the ids come from the spec so two bars never share one. */
+ * own *_filters.js, which is pure). The classes are list-bar-* (agentic.css, touch.css); the ids come from the spec so two bars never share one. */
 
 const DEBOUNCE_MS = 300;
 
@@ -13,9 +13,9 @@ function make(tag, className, text) {
 }
 
 function selectField(id, label, values, labels, anyLabel) {
-    const wrap = make('label', 'ta-field');
-    wrap.append(make('span', 'ta-field-label', label));
-    const s = make('select', 'ta-select'); s.id = id;
+    const wrap = make('label', 'list-bar-field');
+    wrap.append(make('span', 'list-bar-field-label', label));
+    const s = make('select', 'list-bar-select'); s.id = id;
     if (anyLabel) s.append(new Option(anyLabel, ''));
     for (const v of values) s.append(new Option(labels[v], v));
     wrap.append(s);
@@ -26,7 +26,7 @@ function selectField(id, label, values, labels, anyLabel) {
 function buildField(spec) {
     if (spec.type === 'select') return { ...selectField(spec.id, spec.label, spec.values, spec.labels, spec.any), spec };
     if (spec.type === 'text') {
-        const wrap = make('label', 'ta-field'); wrap.append(make('span', 'ta-field-label', spec.label));
+        const wrap = make('label', 'list-bar-field'); wrap.append(make('span', 'list-bar-field-label', spec.label));
         const input = make('input', spec.className); input.type = 'text'; input.id = spec.id; input.maxLength = spec.max; input.placeholder = spec.placeholder; input.autocomplete = 'off';
         let list = null;
         if (spec.datalist) {
@@ -38,10 +38,10 @@ function buildField(spec) {
     }
     if (spec.type === 'check') {
         const wrap = make('label', spec.wrapClass); const input = make('input'); input.type = 'checkbox'; input.id = spec.id;
-        wrap.append(input, make('span', 'ta-field-label', spec.label));
+        wrap.append(input, make('span', 'list-bar-field-label', spec.label));
         return { wrap, input, spec };
     }
-    const wrap = make('label', 'ta-field'); wrap.append(make('span', 'ta-field-label', spec.label));
+    const wrap = make('label', 'list-bar-field'); wrap.append(make('span', 'list-bar-field-label', spec.label));
     const input = make('input'); input.type = 'date'; input.id = spec.id; wrap.append(input);
     return { wrap, input, spec };
 }
@@ -52,31 +52,31 @@ export function buildListBar(spec, onChange) {
     const p = spec.idp;
     let f = { ...EMPTY };
     let timer = 0;
-    const node = make('div', 'ta-bar');
+    const node = make('div', 'list-bar-bar');
     node.setAttribute('role', 'search'); node.setAttribute('aria-label', spec.label);
 
-    const searchRow = make('div', 'ta-search-row');
-    const wrap = make('div', 'ta-search-wrap');
-    const q = make('input', 'ta-search'); q.type = 'search'; q.id = `${p}-search`; q.placeholder = spec.placeholder; q.maxLength = 200; q.autocomplete = 'off'; q.spellcheck = false;
+    const searchRow = make('div', 'list-bar-search-row');
+    const wrap = make('div', 'list-bar-search-wrap');
+    const q = make('input', 'list-bar-search'); q.type = 'search'; q.id = `${p}-search`; q.placeholder = spec.placeholder; q.maxLength = 200; q.autocomplete = 'off'; q.spellcheck = false;
     q.setAttribute('aria-label', spec.searchLabel);
-    const clearQ = make('button', 'ta-clear-q', '×'); clearQ.type = 'button'; clearQ.setAttribute('aria-label', 'Clear search'); clearQ.hidden = true;
+    const clearQ = make('button', 'list-bar-clear-q', '×'); clearQ.type = 'button'; clearQ.setAttribute('aria-label', 'Clear search'); clearQ.hidden = true;
     wrap.append(q, clearQ);
-    const count = make('span', 'ta-count'); count.setAttribute('role', 'status'); count.setAttribute('aria-live', 'polite');
+    const count = make('span', 'list-bar-count'); count.setAttribute('role', 'status'); count.setAttribute('aria-live', 'polite');
     searchRow.append(wrap, count);
 
-    const controls = make('div', 'ta-controls');
-    const filterBtn = make('button', 'ta-filter-btn', 'Filters'); filterBtn.type = 'button';
+    const controls = make('div', 'list-bar-controls');
+    const filterBtn = make('button', 'list-bar-filter-btn', 'Filters'); filterBtn.type = 'button';
     filterBtn.setAttribute('aria-haspopup', 'true'); filterBtn.setAttribute('aria-expanded', 'false'); filterBtn.setAttribute('aria-controls', `${p}-menu`);
     const sort = selectField(`${p}-sort`, 'Sort', spec.sorts.values, spec.sorts.labels);
-    sort.wrap.classList.add('ta-sort'); sort.input.setAttribute('aria-label', spec.sorts.aria);
+    sort.wrap.classList.add('list-bar-sort'); sort.input.setAttribute('aria-label', spec.sorts.aria);
     controls.append(filterBtn, sort.wrap);
 
-    const menu = make('div', 'ta-menu'); menu.id = `${p}-menu`; menu.hidden = true; menu.setAttribute('role', 'group'); menu.setAttribute('aria-label', 'Filters');
+    const menu = make('div', 'list-bar-menu'); menu.id = `${p}-menu`; menu.hidden = true; menu.setAttribute('role', 'group'); menu.setAttribute('aria-label', 'Filters');
     const fields = spec.fields.map(buildField);
-    const clearAll = make('button', 'ta-clear-all', 'Clear all'); clearAll.type = 'button';
+    const clearAll = make('button', 'list-bar-clear-all', 'Clear all'); clearAll.type = 'button';
     menu.append(...fields.map(x => x.wrap), clearAll);
 
-    const chipList = make('ul', 'ta-chips'); chipList.setAttribute('aria-label', 'Active filters'); chipList.hidden = true;
+    const chipList = make('ul', 'list-bar-chips'); chipList.setAttribute('aria-label', 'Active filters'); chipList.hidden = true;
     node.append(searchRow, controls, menu, chipList);
 
     const apply = next => { f = clean(next); onChange({ ...f }); };
@@ -120,13 +120,13 @@ export function buildListBar(spec, onChange) {
             sort.input.value = f.sort;
             const list = chips(f);
             chipList.replaceChildren(...list.map(c => {
-                const li = make('li'); const b = make('button', 'ta-chip'); b.type = 'button';
-                b.append(make('span', 'ta-chip-text', c.label), make('span', 'ta-chip-x', '×'));
+                const li = make('li'); const b = make('button', 'list-bar-chip'); b.type = 'button';
+                b.append(make('span', 'list-bar-chip-text', c.label), make('span', 'list-bar-chip-x', '×'));
                 b.setAttribute('aria-label', `Remove filter: ${c.label}`);
                 b.addEventListener('click', () => { clearTimeout(timer); apply(without(f, c.key)); q.focus(); });
                 li.append(b); return li;
             }));
-            if (list.length > 1) { const li = make('li'); const b = make('button', 'ta-chip ta-chip-all', 'Clear all'); b.type = 'button'; b.addEventListener('click', () => { everything(); q.focus(); }); li.append(b); chipList.append(li); }
+            if (list.length > 1) { const li = make('li'); const b = make('button', 'list-bar-chip list-bar-chip-all', 'Clear all'); b.type = 'button'; b.addEventListener('click', () => { everything(); q.focus(); }); li.append(b); chipList.append(li); }
             chipList.hidden = !list.length;
             filterBtn.textContent = isFiltered(f) ? `Filters (${list.filter(c => c.key !== 'q').length})` : 'Filters';
             const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned

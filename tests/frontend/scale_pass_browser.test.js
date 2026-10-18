@@ -37,7 +37,7 @@ const { connect } = require('./agent_view_harness');
         await waitFor(`document.querySelectorAll('tr.team-artifact-row').length === 3`, 'the three rows', 8000);
         const v = '#agentic-panel-team-artifacts-view';
         assert.equal(await ev(`document.querySelector('${v} .team-artifacts-heading span').textContent`), 'Team Artifacts · perf-board');
-        assert.equal(await ev(`document.querySelector('${v} .ta-count').textContent`), '500+ artifacts');
+        assert.equal(await ev(`document.querySelector('${v} .list-bar-count').textContent`), '500+ artifacts');
         assert.equal(await ev(`document.querySelector('${v} .team-artifacts-status').textContent`), 'Showing 3 of 500+');
 
         console.log('2. Servers: Add server above a long list, under a short one');

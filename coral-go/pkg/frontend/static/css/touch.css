@@ -187,14 +187,14 @@
        the Servers tab's Access select. */
     .explorer-item,
     .files-search-input,
-    .ta-search, .ta-filter-btn, .ta-clear-all, .ta-select, .ta-by, .ta-chip, .ta-field input[type="date"],
+    .list-bar-search, .list-bar-filter-btn, .list-bar-clear-all, .list-bar-select, .list-bar-by, .list-bar-chip, .list-bar-field input[type="date"],
     .team-artifacts-action,
     .cs-launch select {
         min-height: var(--control-touch-height);
     }
-    .ta-kept { min-height: var(--control-touch-height); }
-    .ta-kept input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
-    .ta-clear-q { width: var(--control-touch-height); height: var(--control-touch-height); right: 0; }
+    .list-bar-kept { min-height: var(--control-touch-height); }
+    .list-bar-kept input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
+    .list-bar-clear-q { width: var(--control-touch-height); height: var(--control-touch-height); right: 0; }
 }
 
 /* Inline icons drawn as <svg width="N" height="N"> follow the text size like the icon font's glyphs do (#4344, #4352): the attributes are pixels, so a
