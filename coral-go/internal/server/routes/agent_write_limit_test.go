@@ -50,7 +50,8 @@ func TestAgentWriteBucketsAreBounded(t *testing.T) {
 	now := time.Now()
 	l := newAgentWriteLimiter()
 	l.now = func() time.Time { return now }
-	for i := 0; i < 3*agentWriteMaxKeys; i++ {
+	// Past the cap by 2,000 keys: each insert at the cap prunes the whole map, so three times the cap took seconds for nothing more (#4852).
+	for i := 0; i < agentWriteMaxKeys+2000; i++ {
 		l.take(fmt.Sprintf("session-%d", i))
 		now = now.Add(time.Millisecond)
 	}

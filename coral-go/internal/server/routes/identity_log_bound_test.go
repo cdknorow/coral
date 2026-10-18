@@ -15,10 +15,10 @@ func TestIdentityLogMemoryIsBounded(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	o := NewIdentityObserver(nil, nil, func(*http.Request) bool { return false })
 	o.now = func() time.Time { return now }
-	for i := 0; i < 100_000; i++ {
+	for i := 0; i < 8*identityLogKeysMax; i++ { // eight times the cap in one interval (each insert at the cap prunes the map: 100,000 took seconds, #4852)
 		o.logOnce(fmt.Sprintf("k%d", i), "test line")
 	}
-	assert.LessOrEqual(t, len(o.lastLog), identityLogKeysMax, "100,000 distinct keys in one interval")
+	assert.LessOrEqual(t, len(o.lastLog), identityLogKeysMax, "eight times the cap in distinct keys in one interval")
 	// Once the interval has passed, the old keys are forgotten and new ones are logged again.
 	now = now.Add(identityLogInterval + time.Second)
 	o.logOnce("fresh", "test line")
