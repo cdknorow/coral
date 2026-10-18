@@ -998,7 +998,7 @@ body.panel-dragging .agentic-state {
     letter-spacing: 0.3px;
 }
 
-.board-task-priority-critical { background: rgba(var(--error-rgb), 0.15); color: var(--error); }
+.board-task-priority-critical { background: rgba(var(--error-rgb), 0.15); color: var(--error-text); }
 .board-task-priority-high { background: rgba(var(--warning-rgb), 0.15); color: var(--warning); }
 .board-task-priority-medium { background: rgba(136,136,136,0.1); color: var(--text-secondary); }
 .board-task-priority-low { background: rgba(136,136,136,0.06); color: var(--text-muted); }
@@ -2351,7 +2351,7 @@ body.panel-dragging .agentic-state {
 .list-bar-chips[hidden] { display: none; }
 .list-bar-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; font-size: 0.75rem; color: var(--text-primary); background: var(--bg-hover); border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
 .list-bar-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.list-bar-chip-x { color: var(--text-secondary); }
+.list-bar-chip-x { color: var(--text-primary); } /* 4.4:1 in the light theme with the secondary text colour on the chip's fill (#4851) */
 .list-bar-chip-all { background: none; }
 .list-bar-search:focus-visible, .list-bar-clear-q:focus-visible, .list-bar-filter-btn:focus-visible, .list-bar-clear-all:focus-visible, .list-bar-select:focus-visible, .list-bar-by:focus-visible, .list-bar-chip:focus-visible, .list-bar-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .team-artifacts-scroll { flex-shrink: 0; max-width: 100%; }
