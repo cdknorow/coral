@@ -133,181 +133,221 @@ type State struct {
 // Claude Code sends about a minute after a turn ends maps here, and it never
 // downgrades a request that is still pending.
 func Derive(in Input) State {
-	state := State{NotStarted: in.NotStarted, Sleeping: in.Sleeping}
-	var latestType string
+	d := &deriver{state: State{NotStarted: in.NotStarted, Sleeping: in.Sleeping}, pending: map[string]int{}}
+	for _, event := range in.Events {
+		before := d.phase()
+		if !event.At.IsZero() {
+			d.state.LastEvent = event.At
+		}
+		if !d.apply(event) {
+			continue
+		}
+		if event.Type != "session_end" {
+			d.state.Gone = false
+		}
+		if d.phase() != before && !event.At.IsZero() {
+			d.state.Since = event.At
+		}
+	}
+	d.summarise(in)
+	d.override(in)
+	return d.state
+}
+
+// deriver folds a session's events into its State.
+type deriver struct {
+	state      State
+	latestType string
 	// What a request replaced, restored when Coral's own held notice is cleared.
-	var beforeType string
-	var beforeAwaiting bool
+	beforeType     string
+	beforeAwaiting bool
 	// pending counts the agent's open requests per tool (PermissionRequest). Claude
 	// runs tool calls in parallel, so another tool's event must not clear a request
 	// that is still open (#3481, Backend's MUST 3).
-	pending := map[string]int{}
-	open := 0
-	clearRequest := func() {
-		state.NeedsInput = false
-		state.WaitingReason = ""
-		state.WaitingSummary = ""
-		state.WaitingKind = ""
-		pending, open = map[string]int{}, 0
+	pending map[string]int
+	open    int
+}
+
+func (d *deriver) clearRequest() {
+	d.state.NeedsInput = false
+	d.state.WaitingReason = ""
+	d.state.WaitingSummary = ""
+	d.state.WaitingKind = ""
+	d.pending, d.open = map[string]int{}, 0
+}
+
+func (d *deriver) raise(event Event, kind string) {
+	// A request already open keeps its kind: the agent's PermissionRequest says
+	// "plan" or "question", the notification that follows only "permission".
+	if !d.state.NeedsInput || d.state.WaitingKind == "" {
+		d.state.WaitingKind = kind
 	}
-	raise := func(event Event, kind string) {
-		// A request already open keeps its kind: the agent's PermissionRequest says
-		// "plan" or "question", the notification that follows only "permission".
-		if !state.NeedsInput || state.WaitingKind == "" {
-			state.WaitingKind = kind
-		}
-		if !state.NeedsInput {
-			beforeType, beforeAwaiting = latestType, state.AwaitingUser
-		}
-		latestType = "notification"
-		state.NeedsInput = true
-		state.AwaitingUser = false
-		state.WaitingReason = "notification"
-		state.WaitingSummary = event.Summary
+	if !d.state.NeedsInput {
+		d.beforeType, d.beforeAwaiting = d.latestType, d.state.AwaitingUser
 	}
-	phase := func() string {
-		switch {
-		case state.NeedsInput:
-			return "request"
-		case latestType == "tool_use" || latestType == "prompt_submit":
-			return "turn"
-		case latestType == "":
-			return "none"
-		}
-		return "idle"
+	d.latestType = "notification"
+	d.state.NeedsInput = true
+	d.state.AwaitingUser = false
+	d.state.WaitingReason = "notification"
+	d.state.WaitingSummary = event.Summary
+}
+
+// phase is what the session is in: a request, a turn, idle, or nothing yet.
+func (d *deriver) phase() string {
+	switch {
+	case d.state.NeedsInput:
+		return "request"
+	case d.latestType == "tool_use" || d.latestType == "prompt_submit":
+		return "turn"
+	case d.latestType == "":
+		return "none"
 	}
-	for _, event := range in.Events {
-		before := phase()
-		if !event.At.IsZero() {
-			state.LastEvent = event.At
+	return "idle"
+}
+
+// apply takes one event. It reports false for a notification that changes nothing of the session's phase
+// (Coral's held notice ended, or one held over the agent's own request): its time sets nothing either.
+func (d *deriver) apply(event Event) bool {
+	switch event.Type {
+	case "tool_use":
+		d.toolUsed(event)
+	case "session_reset", "prompt_submit":
+		d.latestType = event.Type
+		d.clearRequest()
+		d.state.AwaitingUser = false
+	case "auto_accept":
+		// Coral answered the prompt (auto-accept): the agent is now
+		// running the approved tool.
+		d.latestType = "tool_use"
+		d.clearRequest()
+		d.state.AwaitingUser = false
+	case "stop":
+		d.latestType = event.Type
+		d.clearRequest()
+		d.state.AwaitingUser = true
+		d.state.LastStop = event.At
+	case "permission_request":
+		// The agent's own hook (Claude's PermissionRequest or Elicitation) says a
+		// request to the user is open, at once rather than ~6 s later (#3481).
+		d.raise(event, event.Kind)
+		if event.Kind != "elicitation" {
+			d.pending[event.ToolName]++
+			d.open++
 		}
-		switch event.Type {
-		case "tool_use":
-			// A tool finished. It answers its own tool's request (an approval); a
-			// request for another tool stays open.
-			if open > 0 {
-				if pending[event.ToolName] > 0 {
-					pending[event.ToolName]--
-					open--
-				}
-				if open > 0 {
-					break
-				}
-			}
-			latestType = event.Type
-			clearRequest()
-			state.AwaitingUser = false
-		case "session_reset", "prompt_submit":
-			latestType = event.Type
-			clearRequest()
-			state.AwaitingUser = false
-		case "auto_accept":
-			// Coral answered the prompt (auto-accept): the agent is now
-			// running the approved tool.
-			latestType = "tool_use"
-			clearRequest()
-			state.AwaitingUser = false
-		case "stop":
-			latestType = event.Type
-			clearRequest()
-			state.AwaitingUser = true
-			state.LastStop = event.At
-		case "permission_request":
-			// The agent's own hook (Claude's PermissionRequest or Elicitation) says a
-			// request to the user is open, at once rather than ~6 s later (#3481).
-			raise(event, event.Kind)
-			if event.Kind != "elicitation" {
-				pending[event.ToolName]++
-				open++
-			}
-		case "request_resolved":
-			// An elicitation was answered (accept, decline or cancel): the agent goes on.
-			if state.NeedsInput && state.WaitingKind == "elicitation" {
-				clearRequest()
-				latestType = "tool_use"
-				state.AwaitingUser = false
-			}
-		case "session_end":
-			latestType = ""
-			clearRequest()
-			state.AwaitingUser = false
-			state.Gone = true
-		case "notification":
-			if event.Summary == HeldInputEndedSummary {
-				// Coral's held sends were delivered or dropped: its own notice no
-				// longer stands. A request the agent made itself is kept (#3471).
-				if state.NeedsInput && IsHeldInputSummary(state.WaitingSummary) {
-					clearRequest()
-					latestType, state.AwaitingUser = beforeType, beforeAwaiting
-				}
-				continue
-			}
-			if IsHeldInputSummary(event.Summary) && state.NeedsInput && !IsHeldInputSummary(state.WaitingSummary) {
-				// Coral's held notice while the agent's own request is open: the request is
-				// what the agent waits on, so it stays as it is (#3655). Replacing its summary
-				// made OwnRequest false, and the gate read the agent as idle with its menu open.
-				continue
-			}
-			class := Classify(event.Summary)
-			if event.Kind != "" {
-				class = ClassifyType(event.Kind)
-			}
-			switch class {
-			case NotificationNeedsInput:
-				raise(event, notificationKinds[event.Kind])
-			case NotificationAwaitingUser:
-				if !state.NeedsInput {
-					latestType = "notification"
-					state.AwaitingUser = true
-				}
-			}
+	case "request_resolved":
+		// An elicitation was answered (accept, decline or cancel): the agent goes on.
+		if d.state.NeedsInput && d.state.WaitingKind == "elicitation" {
+			d.clearRequest()
+			d.latestType = "tool_use"
+			d.state.AwaitingUser = false
 		}
-		if event.Type != "session_end" {
-			state.Gone = false
+	case "session_end":
+		d.latestType = ""
+		d.clearRequest()
+		d.state.AwaitingUser = false
+		d.state.Gone = true
+	case "notification":
+		return d.notified(event)
+	}
+	return true
+}
+
+// toolUsed: a tool finished. It answers its own tool's request (an approval); a
+// request for another tool stays open.
+func (d *deriver) toolUsed(event Event) {
+	if d.open > 0 {
+		if d.pending[event.ToolName] > 0 {
+			d.pending[event.ToolName]--
+			d.open--
 		}
-		if phase() != before && !event.At.IsZero() {
-			state.Since = event.At
+		if d.open > 0 {
+			return
 		}
 	}
-	state.InTurn = !state.NeedsInput && (latestType == "tool_use" || latestType == "prompt_submit")
-	state.OwnRequest = state.NeedsInput && !IsHeldInputSummary(state.WaitingSummary)
-	state.Working = (latestType == "tool_use" || latestType == "prompt_submit") &&
+	d.latestType = event.Type
+	d.clearRequest()
+	d.state.AwaitingUser = false
+}
+
+// notified takes a notification: Coral's held notice ending, Coral's held notice (never over the agent's own
+// request), a request to the user, or the idle reminder. It reports false for the two that change nothing.
+func (d *deriver) notified(event Event) bool {
+	if event.Summary == HeldInputEndedSummary {
+		// Coral's held sends were delivered or dropped: its own notice no
+		// longer stands. A request the agent made itself is kept (#3471).
+		if d.state.NeedsInput && IsHeldInputSummary(d.state.WaitingSummary) {
+			d.clearRequest()
+			d.latestType, d.state.AwaitingUser = d.beforeType, d.beforeAwaiting
+		}
+		return false
+	}
+	if IsHeldInputSummary(event.Summary) && d.state.NeedsInput && !IsHeldInputSummary(d.state.WaitingSummary) {
+		// Coral's held notice while the agent's own request is open: the request is
+		// what the agent waits on, so it stays as it is (#3655). Replacing its summary
+		// made OwnRequest false, and the gate read the agent as idle with its menu open.
+		return false
+	}
+	class := Classify(event.Summary)
+	if event.Kind != "" {
+		class = ClassifyType(event.Kind)
+	}
+	switch class {
+	case NotificationNeedsInput:
+		d.raise(event, notificationKinds[event.Kind])
+	case NotificationAwaitingUser:
+		if !d.state.NeedsInput {
+			d.latestType = "notification"
+			d.state.AwaitingUser = true
+		}
+	}
+	return true
+}
+
+// summarise sets what follows from the events as a whole: in a turn, the agent's own request, working (a turn
+// with output in the last two minutes).
+func (d *deriver) summarise(in Input) {
+	d.state.InTurn = !d.state.NeedsInput && (d.latestType == "tool_use" || d.latestType == "prompt_submit")
+	d.state.OwnRequest = d.state.NeedsInput && !IsHeldInputSummary(d.state.WaitingSummary)
+	d.state.Working = (d.latestType == "tool_use" || d.latestType == "prompt_submit") &&
 		in.StalenessSeconds < 120
 	// No authoritative stuck signal exists in the event schema yet. Keep the
 	// field explicit and false rather than inventing a timeout heuristic.
-	state.Stuck = false
-	state.Done = false
+	d.state.Stuck = false
+	d.state.Done = false
+}
+
+// override applies what outranks the events: a sign-in the agent waits on, a startup prompt, an archived session.
+func (d *deriver) override(in Input) {
 	if in.NeedsLogin {
 		// Nothing runs until the user signs in: whatever the events say, the agent waits
 		// on this, and automated input is held (an Enter would answer the login screen).
-		state.NeedsLogin = true
-		state.NeedsInput, state.AwaitingUser, state.Working, state.InTurn, state.NotStarted = true, false, false, false, false
-		state.WaitingReason, state.WaitingKind = "login", KindLogin
-		state.WaitingSummary = in.LoginReason
-		if state.WaitingSummary == "" {
-			state.WaitingSummary = LoginSummary
+		d.state.NeedsLogin = true
+		d.state.NeedsInput, d.state.AwaitingUser, d.state.Working, d.state.InTurn, d.state.NotStarted = true, false, false, false, false
+		d.state.WaitingReason, d.state.WaitingKind = "login", KindLogin
+		d.state.WaitingSummary = in.LoginReason
+		if d.state.WaitingSummary == "" {
+			d.state.WaitingSummary = LoginSummary
 		}
-		state.OwnRequest = true
+		d.state.OwnRequest = true
 	}
 	if in.StartupPrompt != "" && !in.NeedsLogin {
 		// Nothing runs until the prompt is answered: a request to the user, as a login is.
-		state.NeedsInput, state.AwaitingUser, state.Working, state.InTurn, state.NotStarted = true, false, false, false, false
-		state.WaitingReason, state.WaitingKind = in.StartupPrompt, KindStartup
-		state.WaitingSummary = in.StartupSummary
-		if state.WaitingSummary == "" {
-			state.WaitingSummary = StartupSummary
+		d.state.NeedsInput, d.state.AwaitingUser, d.state.Working, d.state.InTurn, d.state.NotStarted = true, false, false, false, false
+		d.state.WaitingReason, d.state.WaitingKind = in.StartupPrompt, KindStartup
+		d.state.WaitingSummary = in.StartupSummary
+		if d.state.WaitingSummary == "" {
+			d.state.WaitingSummary = StartupSummary
 		}
-		state.OwnRequest = true
+		d.state.OwnRequest = true
 	}
 	if in.Archived {
-		state.NeedsLogin = false
-		clearRequest()
-		state.AwaitingUser = false
-		state.Working = false
-		state.InTurn = false
-		state.OwnRequest = false
+		d.state.NeedsLogin = false
+		d.clearRequest()
+		d.state.AwaitingUser = false
+		d.state.Working = false
+		d.state.InTurn = false
+		d.state.OwnRequest = false
 	}
-	return state
 }
 
 // SignedInSince reports whether an event after t shows an agent is past a sign-in its CLI
