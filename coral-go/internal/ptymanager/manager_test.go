@@ -258,21 +258,25 @@ func TestPTYBackendRestart(t *testing.T) {
 		t.Fatalf("Restart failed: %v", err)
 	}
 
-	time.Sleep(300 * time.Millisecond)
-
+	// The new command's output, waited for rather than slept for (#4870: 300 ms was too little on a loaded machine).
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		data, err = backend.Replay("restart-test")
+		if err != nil {
+			t.Fatalf("Replay after restart failed: %v", err)
+		}
+		content = string(data)
+		if strings.Contains(content, "AFTER") || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(content, "AFTER") {
+		t.Errorf("expected capture to contain 'AFTER' after restart, got %q", content)
+	}
 	// Session should still be running
 	if !backend.IsRunning("restart-test") {
 		t.Error("expected session to be running after restart")
-	}
-
-	// Capture should show new output
-	data, err = backend.Replay("restart-test")
-	if err != nil {
-		t.Fatalf("Replay after restart failed: %v", err)
-	}
-	content = string(data)
-	if !strings.Contains(content, "AFTER") {
-		t.Errorf("expected capture to contain 'AFTER' after restart, got %q", content)
 	}
 
 	backend.Kill("restart-test")

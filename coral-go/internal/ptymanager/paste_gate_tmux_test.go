@@ -25,8 +25,8 @@ import (
 // bracketed paste on, as the real CLIs behave (#3457): in its menu a typed digit is
 // an answer and a bracketed paste is ignored (recorded in "ignored"); in its input
 // box pastes and typed text are appended and Enter submits (recorded in
-// "received"). With the file "menu-after-paste" present, a menu opens right after
-// the next paste lands in the box; with "late", the box is repainted 800 ms after a
+// "received"). With the file "menu-after-paste" present, a menu opens over the
+// next paste, drawn in the same frame; with "late", the box is repainted 800 ms after a
 // paste; with "draft", the box opens holding that text once the menu is answered (a
 // person's draft). Like Claude 2.1.299 it draws a no-break space after its marker.
 // With "suggestion", an empty box shows that text faint (SGR 2), as Claude shows its
@@ -59,8 +59,14 @@ while IFS= read -r -s -n1 -d '' c; do
       else
         box+="$paste"
         if [ -f "$dir/late" ]; then sleep 0.8; fi
-        draw_box
-        if [ -f "$dir/menu-after-paste" ]; then rm -f "$dir/menu-after-paste"; state=menu; draw_menu; fi
+        if [ -f "$dir/menu-after-paste" ]; then
+          # the box with the paste and the menu over it in one frame, one write, as a CLI paints it (#4870): two
+          # writes left a moment, on a loaded machine, when the box showed the text and no menu yet
+          rm -f "$dir/menu-after-paste"; state=menu
+          frame="$(draw_box; draw_menu; printf .)"; printf '%s' "${frame%.}"
+        else
+          draw_box
+        fi
       fi
       paste=""
     fi
