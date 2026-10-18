@@ -261,21 +261,8 @@ function restoreFocus(root) {
     hit.focus(); focusKey = null;
 }
 
-function render() {
-    const root = document.getElementById(`${panels[source]}-view`);
-    if (!root || !isArtifactSource()) return;
-    { const k = focusKeyOf(root); if (k) focusKey = k; else if (document.activeElement && document.activeElement !== document.body && !root.contains(document.activeElement)) focusKey = null; }
-    const {items, busy, error, hasMore, truncated} = caches[source];
-    const personal = source === 'artifacts';
-    const scopeName = personal ? state.currentSession?.display_name || state.currentSession?.name || 'Selected agent' : team && keyLabel(team); // a board's name, never its id
-    // Everything but the search bar is rebuilt: the bar keeps what is typed in it and its focus (only the team list has one).
-    syncFilters();
-    const showBar = !personal && !!team;
-    if (!bar) bar = buildBar(setFilters);
-    for (const c of [...root.children]) if (c !== bar.node) c.remove();
-    if (showBar) { if (bar.node.parentElement !== root) root.append(bar.node); } else bar.node.remove();
-    const before = node => (showBar ? root.insertBefore(node, bar.node) : root.append(node));
-    root.setAttribute('aria-busy', String(busy));
+/** The panel's heading: its title, Refresh, and the button that copies how an agent publishes an artifact. */
+function buildHeading({ personal, scopeName, busy }) {
     const heading = el('div', 'team-artifacts-heading');
     heading.append(el('span', '', (personal || team) ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
     const refresh = el('button', 'team-artifacts-action', 'Refresh');
@@ -296,28 +283,152 @@ function render() {
         } catch { helpIcon.textContent = 'error_outline'; }
         setTimeout(() => { helpIcon.textContent = 'content_copy'; }, 1500);
     });
-    heading.append(refresh, help); before(heading);
-    if (notice) {
-        // The visible line is for the eye; screen readers get it from the live region that is always in the page (a region that appears with its text is often missed).
-        const n = el('div', 'team-artifacts-status team-artifacts-notice', notice);
-        n.setAttribute('aria-hidden', 'true');
-        before(n);
-        const live = document.getElementById(`${panels[source]}-live`);
-        if (live) live.textContent = notice;
-        notice = '';
-    }
+    heading.append(refresh, help);
+    return heading;
+}
+
+/** The line that says how the last delete went (the eye's copy; a screen reader gets it from the live region). */
+function buildNotice(text) {
+    const n = el('div', 'team-artifacts-status team-artifacts-notice', text);
+    n.setAttribute('aria-hidden', 'true');
+    return n;
+}
+
+/** The status line: what to select, the load's error, "Loading…", the count or why the list is empty. */
+function buildStatus({ personal, items, busy, error, truncated }) {
     const status = el('div', 'team-artifacts-status');
     status.setAttribute('role', error ? 'alert' : 'status');
     status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
         : error ? error : busy ? (personal ? 'Loading agent artifacts…' : 'Loading team artifacts…')
         : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : isFiltered(filters) ? 'No artifacts match this search.' : 'No artifacts shared by this team yet.') : (!personal && counts && counts.matched > items.length) ? `Showing ${items.length} of ${counts.matched}${truncated ? '+' : ''}` : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
     if (error) status.dataset.state = 'error';
-    root.append(status);
-    if (error) {
-        const retry = el('button', 'team-artifacts-action team-artifacts-retry', 'Retry');
-        retry.type = 'button'; retry.addEventListener('click', () => { afterRetry = true; load(items.length > 0); });
-        root.append(retry);
+    return status;
+}
+
+/** Retry, after a failed load. */
+function buildRetry(items) {
+    const retry = el('button', 'team-artifacts-action team-artifacts-retry', 'Retry');
+    retry.type = 'button'; retry.addEventListener('click', () => { afterRetry = true; load(items.length > 0); });
+    return retry;
+}
+
+/** Load more, while the server has more. */
+function buildMore(busy) {
+    const more = el('button', 'team-artifacts-action team-artifacts-more', busy ? 'Loading…' : 'Load more');
+    more.type = 'button'; more.disabled = busy;
+    more.addEventListener('click', () => load(true));
+    return more;
+}
+
+/** One artifact's row: its name and Details, type, created time and actions. */
+function buildRow(item) {
+    const row = el('tr', 'team-artifact-row');
+    const unverified = isUnverified(item);
+    const badge = originBadge(item);
+    const info = el('td', 'team-artifact-info team-artifact-col-name');
+    const name = readableName(item);
+    const link = artifactLink(item);
+    const doPreview = () => {
+        if (!link || !previewArtifact) return;
+        const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})(?:\?v=\d+)?$/i.exec(item.uri || '');
+        previewArtifact({
+            ...item, name,
+            uri: managed ? `coral://artifacts/${managed[1].toLowerCase()}` : (item.uri || ''),
+            external_url: link.preview ? null : link.url,
+        });
+    };
+    const title = el(link ? 'button' : 'span', 'team-artifact-name', name);
+    if (link) {
+        title.type = 'button';
+        title.addEventListener('click', doPreview);
     }
+    title.title = name;
+    info.append(title);
+    if (badge) {
+        const chip = el('span', `team-artifact-badge team-artifact-badge-${badge.kind}`, badge.text);
+        chip.title = badge.text; // one line with an ellipsis; the whole text is here and in Details
+        info.append(chip);
+        row.dataset.origin = badge.kind;
+    }
+    const date = item.created_at ? new Date(item.created_at) : null;
+    const created = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : '—';
+    // An artifact uploaded outside a task says so (#3045).
+    const task = item.task_id ? `#${item.task_id}` : 'No task';
+    const type = unverified ? '—' : artifactType(item);
+    const size = unverified ? '—' : sizeLabel(item.size) || '—';
+    const details = el('details', 'team-artifact-details');
+    const summary = el('summary', '', 'Details');
+    summary.setAttribute('aria-label', `Details for ${name}`);
+    const fields = el('dl');
+    for (const [label, value] of [
+        ['Name', name], ['Type', unverified ? null : type], ['MIME', unverified ? null : item.media_type || 'Unknown'],
+        ['Size', unverified ? null : size], ['Task', task], ['Task title', item.task_title],
+        ['Created', created], ['Producer', item.produced_by],
+        ['Status', unverified ? 'Link not verified: this team has not uploaded this file, so Coral shows no size, type or preview' : null],
+        ['Sent to', item.source === 'shared' ? item.shared_to : null],
+        ['Sent by', item.source === 'shared' || item.source === 'received' ? item.sent_by : null],
+        ['Received from', item.source === 'received' ? item.received_from : null],
+        ['Board (claimed by the sender)', item.source === 'received' ? item.from_board : null],
+        ['Also received from', item.source === 'received' ? alsoReceivedLines(item.also_received_from) : null],
+        ['Checked', item.source === 'received' ? 'Not scanned: this file came from another computer' : null],
+        ['Source', item.source], ['References', item.reference_count],
+    ]) {
+        if (Array.isArray(value)) {
+            // One line per source: server names hold spaces, brackets and hyphens, so a comma list is not readable.
+            if (value.length) fields.append(el('dt', '', label), ...value.map(v => el('dd', '', v)));
+        } else if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
+    }
+    details.append(summary, fields);info.append(details);row.append(info);
+    row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-created', created));
+    const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
+    if (link) {
+        const actions = el('div', 'team-artifact-actions');
+        const preview = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-preview');
+        preview.type = 'button';
+        preview.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/></svg>';
+        preview.title = 'Preview';
+        preview.setAttribute('aria-label', `Preview ${name}`);
+        preview.addEventListener('click', doPreview);
+        actions.append(preview);
+        const download = el('a', 'team-artifacts-action team-artifact-icon-btn');
+        download.href = link.url;
+        if (link.preview) {
+            download.download = name;
+            download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3h12v-3"/><path d="M8 2v8m-3-3 3 3 3-3"/></svg>';
+            download.title = 'Download';
+        } else {
+            download.target = '_blank'; download.rel = 'noopener noreferrer';
+            download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4"/><path d="M14 2 7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>';
+            download.title = 'Open link';
+        }
+        if (link.preview) bindDownload(download, link.url, name);
+        download.setAttribute('aria-label', `${link.preview ? 'Download' : 'Open'} ${name}`);
+        actions.append(download, copyLinkButton(link.url, name));
+        if (canDelete(link)) {
+            const hex = /([a-f0-9]{64})/.exec(link.url)[1];
+            const del = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-delete');
+            del.type = 'button';
+            del.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4"/></svg>';
+            del.title = 'Delete';
+            del.setAttribute('aria-label', `Delete ${name}`);
+            del.addEventListener('click', () => deleteArtifact(hex, name, sizeLabel(item.size)));
+            const keep = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-keep');
+            keep.type = 'button';
+            keep.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
+            const isKept = !!kept?.has(hex);
+            keep.setAttribute('aria-pressed', String(isKept));
+            keep.setAttribute('aria-label', `Keep ${name}`);
+            keep.title = isKept ? 'Kept: never pruned (click to release)' : 'Keep: never prune this';
+            keep.addEventListener('click', () => toggleKeep(hex, name, keep));
+            actions.append(keep, del);
+        }
+        actionCell.append(actions);
+    } else actionCell.append(el('span', 'team-artifact-missing', unverified ? 'Not verified' : item.available === false ? 'Missing' : 'Unavailable'));
+    return row;
+}
+
+/** The table of artifacts, in a scrolling box. */
+function buildList(items, personal) {
     // The table fits its panel at any width: Size and Task live in each row's
     // Details, and a narrow panel drops Type and Created (also in Details).
     const scroll = el('div', 'team-artifacts-scroll');
@@ -332,117 +443,39 @@ function render() {
     }
     head.append(headers);list.append(head);
     const rows = el('tbody');list.append(rows);
-    for (const item of items) {
-        const row = el('tr', 'team-artifact-row');
-        const unverified = isUnverified(item);
-        const badge = originBadge(item);
-        const info = el('td', 'team-artifact-info team-artifact-col-name');
-        const name = readableName(item);
-        const link = artifactLink(item);
-        const doPreview = () => {
-            if (!link || !previewArtifact) return;
-            const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})(?:\?v=\d+)?$/i.exec(item.uri || '');
-            previewArtifact({
-                ...item, name,
-                uri: managed ? `coral://artifacts/${managed[1].toLowerCase()}` : (item.uri || ''),
-                external_url: link.preview ? null : link.url,
-            });
-        };
-        const title = el(link ? 'button' : 'span', 'team-artifact-name', name);
-        if (link) {
-            title.type = 'button';
-            title.addEventListener('click', doPreview);
-        }
-        title.title = name;
-        info.append(title);
-        if (badge) {
-            const chip = el('span', `team-artifact-badge team-artifact-badge-${badge.kind}`, badge.text);
-            chip.title = badge.text; // one line with an ellipsis; the whole text is here and in Details
-            info.append(chip);
-            row.dataset.origin = badge.kind;
-        }
-        const date = item.created_at ? new Date(item.created_at) : null;
-        const created = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : '—';
-        // An artifact uploaded outside a task says so (#3045).
-        const task = item.task_id ? `#${item.task_id}` : 'No task';
-        const type = unverified ? '—' : artifactType(item);
-        const size = unverified ? '—' : sizeLabel(item.size) || '—';
-        const details = el('details', 'team-artifact-details');
-        const summary = el('summary', '', 'Details');
-        summary.setAttribute('aria-label', `Details for ${name}`);
-        const fields = el('dl');
-        for (const [label, value] of [
-            ['Name', name], ['Type', unverified ? null : type], ['MIME', unverified ? null : item.media_type || 'Unknown'],
-            ['Size', unverified ? null : size], ['Task', task], ['Task title', item.task_title],
-            ['Created', created], ['Producer', item.produced_by],
-            ['Status', unverified ? 'Link not verified: this team has not uploaded this file, so Coral shows no size, type or preview' : null],
-            ['Sent to', item.source === 'shared' ? item.shared_to : null],
-            ['Sent by', item.source === 'shared' || item.source === 'received' ? item.sent_by : null],
-            ['Received from', item.source === 'received' ? item.received_from : null],
-            ['Board (claimed by the sender)', item.source === 'received' ? item.from_board : null],
-            ['Also received from', item.source === 'received' ? alsoReceivedLines(item.also_received_from) : null],
-            ['Checked', item.source === 'received' ? 'Not scanned: this file came from another computer' : null],
-            ['Source', item.source], ['References', item.reference_count],
-        ]) {
-            if (Array.isArray(value)) {
-                // One line per source: server names hold spaces, brackets and hyphens, so a comma list is not readable.
-                if (value.length) fields.append(el('dt', '', label), ...value.map(v => el('dd', '', v)));
-            } else if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
-        }
-        details.append(summary, fields);info.append(details);row.append(info);
-        row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-created', created));
-        const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
-        if (link) {
-            const actions = el('div', 'team-artifact-actions');
-            const preview = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-preview');
-            preview.type = 'button';
-            preview.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/></svg>';
-            preview.title = 'Preview';
-            preview.setAttribute('aria-label', `Preview ${name}`);
-            preview.addEventListener('click', doPreview);
-            actions.append(preview);
-            const download = el('a', 'team-artifacts-action team-artifact-icon-btn');
-            download.href = link.url;
-            if (link.preview) {
-                download.download = name;
-                download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3h12v-3"/><path d="M8 2v8m-3-3 3 3 3-3"/></svg>';
-                download.title = 'Download';
-            } else {
-                download.target = '_blank'; download.rel = 'noopener noreferrer';
-                download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4"/><path d="M14 2 7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>';
-                download.title = 'Open link';
-            }
-            if (link.preview) bindDownload(download, link.url, name);
-            download.setAttribute('aria-label', `${link.preview ? 'Download' : 'Open'} ${name}`);
-            actions.append(download, copyLinkButton(link.url, name));
-            if (canDelete(link)) {
-                const hex = /([a-f0-9]{64})/.exec(link.url)[1];
-                const del = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-delete');
-                del.type = 'button';
-                del.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4"/></svg>';
-                del.title = 'Delete';
-                del.setAttribute('aria-label', `Delete ${name}`);
-                del.addEventListener('click', () => deleteArtifact(hex, name, sizeLabel(item.size)));
-                const keep = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-keep');
-                keep.type = 'button';
-                keep.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
-                const isKept = !!kept?.has(hex);
-                keep.setAttribute('aria-pressed', String(isKept));
-                keep.setAttribute('aria-label', `Keep ${name}`);
-                keep.title = isKept ? 'Kept: never pruned (click to release)' : 'Keep: never prune this';
-                keep.addEventListener('click', () => toggleKeep(hex, name, keep));
-                actions.append(keep, del);
-            }
-            actionCell.append(actions);
-        } else actionCell.append(el('span', 'team-artifact-missing', unverified ? 'Not verified' : item.available === false ? 'Missing' : 'Unavailable'));
-        rows.append(row);
+    for (const item of items) rows.append(buildRow(item));
+    scroll.append(list);
+    return scroll;
+}
+
+function render() {
+    const root = document.getElementById(`${panels[source]}-view`);
+    if (!root || !isArtifactSource()) return;
+    { const k = focusKeyOf(root); if (k) focusKey = k; else if (document.activeElement && document.activeElement !== document.body && !root.contains(document.activeElement)) focusKey = null; }
+    const {items, busy, error, hasMore, truncated} = caches[source];
+    const personal = source === 'artifacts';
+    const scopeName = personal ? state.currentSession?.display_name || state.currentSession?.name || 'Selected agent' : team && keyLabel(team); // a board's name, never its id
+    // Everything but the search bar is rebuilt: the bar keeps what is typed in it and its focus (only the team list has one).
+    syncFilters();
+    const showBar = !personal && !!team;
+    if (!bar) bar = buildBar(setFilters);
+    for (const c of [...root.children]) if (c !== bar.node) c.remove();
+    if (showBar) { if (bar.node.parentElement !== root) root.append(bar.node); } else bar.node.remove();
+    const before = node => (showBar ? root.insertBefore(node, bar.node) : root.append(node));
+    root.setAttribute('aria-busy', String(busy));
+    before(buildHeading({ personal, scopeName, busy }));
+    if (notice) {
+        before(buildNotice(notice));
+        // The visible line is for the eye; screen readers get it from the live region that is always in the page (a region that appears with its text is often missed).
+        const live = document.getElementById(`${panels[source]}-live`);
+        if (live) live.textContent = notice;
+        notice = '';
     }
-    if (items.length) { scroll.append(list); root.append(scroll); } // no header over nothing: an empty list or a failed load shows its line only
-    if (hasMore) {
-        const more = el('button', 'team-artifacts-action team-artifacts-more', busy ? 'Loading…' : 'Load more');
-        more.type = 'button'; more.disabled = busy;
-        more.addEventListener('click', () => load(true)); root.append(more);
-    }
+    const status = buildStatus({ personal, items, busy, error, truncated });
+    root.append(status);
+    if (error) root.append(buildRetry(items));
+    if (items.length) root.append(buildList(items, personal)); // no header over nothing: an empty list or a failed load shows its line only
+    if (hasMore) root.append(buildMore(busy));
     if (truncated) root.append(el('div', 'team-artifacts-status', 'Some older artifacts are not included in this list.'));
     if (showBar) {
         bar.names([...new Set(items.flatMap(i => [i.produced_by, i.sent_by]).filter(n => typeof n === 'string' && n))].sort().slice(0, 50)); // the names on screen, offered in the Uploaded by field
