@@ -2142,6 +2142,9 @@ button.subscriber-history-link {
     margin: 4px 0;
 }
 
+.overflow-menu-version { padding: 4px 14px 6px; font-size: 0.6875rem; color: var(--text-muted); user-select: text; }
+#coral-version-row[hidden] { display: none; }
+
 .overflow-menu-tier {
     padding: 6px 14px;
     font-size: 0.6875rem;

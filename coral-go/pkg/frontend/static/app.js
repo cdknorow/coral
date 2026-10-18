@@ -25,6 +25,7 @@ import { KILL_LOG_NOTE_MANY, buildSessionTooltip, showTeamDetails, hideTeamDetai
 import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
+import './version_line.js';
 import './modal_chrome.js'; // modal backdrop/Escape/Tab handling for every dialog (#3140)
 import { attachAllDialogFocus } from './dialog_focus.js';
 import './board_choice.js'; // the duplicate-name choice used by the lazy modals.js (#3538): loaded at startup so a launch never fails on it
