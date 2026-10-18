@@ -110,6 +110,12 @@ const B = 'more-4538';
             await waitFor(shown('#mb-select-btn'), `${name}: a tap opens the menu`);
             assert.equal(await active(), 'mb-more-btn', 'a tap leaves focus on More');
             assert.equal(await ev(`document.getElementById('mb-pause-btn').textContent.trim()`), 'Resume Board', 'the menu shows the current label');
+            // Red is Delete's alone in the menu: paused, Resume Board is in the warning colour (UX's NIT on #4538).
+            const colors = await ev(`(() => { const c = id => getComputedStyle(document.getElementById(id)).color, probe = document.createElement('span');
+                probe.style.color = 'var(--warning)'; document.body.appendChild(probe); const w = getComputedStyle(probe).color; probe.remove();
+                return { pause: c('mb-pause-btn'), del: c('mb-delete-btn'), warning: w }; })()`);
+            assert.equal(colors.pause, colors.warning, `${name}: Resume Board is in the warning colour (${JSON.stringify(colors)})`);
+            assert.notEqual(colors.pause, colors.del, `${name}: not Delete's red`);
             await clickItem('mb-pause-btn');
             await waitFor(`document.getElementById('mb-pause-btn').textContent.trim() === 'Pause Board'`, `${name}: resumed`);
             await openMenu(); await clickItem('mb-delete-btn');
