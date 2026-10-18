@@ -118,6 +118,8 @@ func (s *Server) useMiddleware(r *chi.Mux) {
 	}
 	r.Use(routes.BoardResolveMemo) // one board resolve per request, shared by the identity layer and the resolver below (#4303)
 	r.Use(s.identity.Middleware)
+	// One write budget per agent session for the routes an agent can loop on (#4602): a burst of 60, then 240 a minute.
+	r.Use(routes.AgentWriteLimit())
 	// Nobody but the Operator writes as the Operator; after the identity binding, so its 403 stands (#4207).
 	r.Use(routes.RejectOperatorImpersonation)
 	// A board's name in /api/board/<key>/... resolves to its id (#3536), after the identity
