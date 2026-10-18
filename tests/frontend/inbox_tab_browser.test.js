@@ -15,6 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
+const { safePaused } = require('./helpers/paused');
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
 const results = [];
@@ -40,7 +41,7 @@ async function run() {
             { urlPattern: `${BASE}/api/servers*`, requestStage: 'Request' }, { urlPattern: `${BASE}/api/sessions/live*`, requestStage: 'Request' }, { urlPattern: `${BASE}/inbox*`, requestStage: 'Request' }] });
         const json = (id, status, body) => Fetch.fulfillRequest({ requestId: id, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
         let csp = '';
-        Fetch.requestPaused(async e => {
+        safePaused(client, async e => {
             const u = e.request.url;
             if (u.endsWith('/auth/session')) return json(e.requestId, 200, { authenticated: true, email: 'tester@example.com', csrf: 'x' });
             if (/\/api\/servers(\?|$)/.test(u)) return json(e.requestId, 200, { servers: [{ id: 'box-a', label: 'Box A', online: true, created_at: '2026-10-01T00:00:00Z', last_seen: '2026-10-18T00:00:00Z' }] });
