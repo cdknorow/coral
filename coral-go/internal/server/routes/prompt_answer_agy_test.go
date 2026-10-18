@@ -300,5 +300,3 @@ esc to cancel                                            Gemini 3.8 Flash · hig
 	assert.True(t, decMin.Prompt)
 	assert.False(t, decMin.Approve, "wrapped option 2 on minimal screen should not be approved")
 }
-
-

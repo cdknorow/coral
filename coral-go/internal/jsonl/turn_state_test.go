@@ -201,4 +201,3 @@ func TestReadAgyAPIError(t *testing.T) {
 	require.False(t, ok)
 	require.Empty(t, errText)
 }
-

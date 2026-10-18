@@ -197,7 +197,7 @@ func TestAgyUsageLimitText(t *testing.T) {
 		"user@example.com (Google AI Pro)",
 		"Gemini 3.8 Flash (High)",
 		"? for shortcuts · View model quota usage", // near miss on idle screen
-		"Quota available: 100%",                     // near miss
+		"Quota available: 100%",                    // near miss
 	}
 	assert.Empty(t, h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": idle}))
 
@@ -235,7 +235,6 @@ func TestAgyUsageLimitText(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Resource has been exhausted (e.g. check quota).", h.usageLimitText(at.Agy, sid, "", map[string]any{"recent_lines": idle}))
 }
-
 
 // A CLI's message is capped before the dashboard shows it, without splitting a character.
 func TestCapCLIText(t *testing.T) {
