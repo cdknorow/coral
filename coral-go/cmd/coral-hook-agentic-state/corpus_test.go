@@ -145,9 +145,21 @@ func TestAgyHookCorpus(t *testing.T) {
 		if name == "PostToolUse" && (event["tool_name"] != "run_command" || strings.HasPrefix(event["summary"].(string), "Failed")) {
 			t.Errorf("PostToolUse: %v (an empty error is not a failure)", event)
 		}
+		if name == "SessionStart" && event["summary"] != "Session started" {
+			t.Errorf("SessionStart: %v (agy sends no source: a launch is a start, not a /clear, #4577)", event["summary"])
+		}
+		if name == "PostToolUse" {
+			if detail, _ := event["detail_json"].(map[string]any); event["summary"] != "Ran: date" || detail["command"] != "date" {
+				t.Errorf("PostToolUse: %v %v (agy's run_command reads as a command, #4577)", event["summary"], event["detail_json"])
+			}
+		}
 		if name == "Stop" && event["summary"] != "Agent stopped: no_tool_call" {
 			t.Errorf("Stop: %v", event["summary"])
 		}
+	}
+	// A source agy names is kept.
+	if c, _ := fromAgy(map[string]any{"source": "resume"}, "SessionStart"); parseAgenticEvent(c, "SessionStart", "sid")["summary"] != "Session resumed" {
+		t.Error("a named source is kept")
 	}
 	// A failed tool call (agy reports error text) is a failure.
 	c, _ := fromAgy(map[string]any{"toolCall": map[string]any{"name": "run_command"}, "error": "declined", "stepIdx": 2.0}, "PostToolUse")

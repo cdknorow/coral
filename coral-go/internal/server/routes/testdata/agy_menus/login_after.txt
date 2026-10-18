@@ -1,0 +1,40 @@
+
+     ▄▀▀▄
+    ▀▀▀▀▀▀
+   ▀▀▀▀▀▀▀▀
+  ▄▀▀    ▀▀▄
+ ▄▀▀      ▀▀▄
+
+ Welcome to the Antigravity CLI. You are currently not signed in.
+
+ Select Google Cloud sign-in method:
+ > 1. Continue with Google Cloud
+   2. Use advanced SSO config
+
+   ↑/↓ Navigate · enter Select · esc Back
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

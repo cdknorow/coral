@@ -422,8 +422,9 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := opt.Action
-	if screen.Unnumbered {
-		action = "unnumbered" // its Enter is sent here, never by confirmAnswer
+	byArrows := screen.Unnumbered || navigatesByArrows(body.AgentType)
+	if byArrows {
+		action = "arrows" // its Enter is sent here, never by confirmAnswer
 		if moved, err := h.selectUnnumbered(r.Context(), name, body.AgentType, body.SessionID, screen, body.N); err != nil {
 			writeTerminalError(w, err)
 			return
@@ -436,7 +437,7 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		writeTerminalError(w, err)
 		return
 	}
-	if opt.Action == "text" && !screen.Unnumbered {
+	if opt.Action == "text" && !byArrows {
 		// The digit turns the option into a text field; type into it, then Enter
 		time.Sleep(promptTextDelay)
 		if err := h.terminal.SendInput(r.Context(), name, text, body.AgentType, body.SessionID); err != nil {
@@ -459,8 +460,20 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answered": opt.Label})
 }
 
-// selectUnnumbered answers option n of a menu without numbers: the arrow keys move its selection from the
-// option selected now, and Enter is sent only once the screen shows the same menu with option n selected.
+// navigatesByArrows: agent CLIs whose menus ignore a digit and take only the arrow keys and Enter, even when
+// their options are numbered ("↑/↓ Navigate · enter Select"): Antigravity, which "gemini" launches too
+// (#4577, verified on agy 1.4.2: a digit leaves the selection where it was).
+func navigatesByArrows(agentType string) bool {
+	switch agentType {
+	case at.Agy, at.Antigravity, at.Gemini:
+		return true
+	}
+	return false
+}
+
+// selectUnnumbered answers option n of a menu answered with the arrow keys (one without numbers, or any menu
+// of an agent that navigatesByArrows): the arrows move its selection from the option selected now, and Enter
+// is sent only once the screen shows the same menu with option n selected.
 // It reports false, having sent no Enter, when that isn't seen in time (the menu changed or went).
 func (h *SessionsHandler) selectUnnumbered(ctx context.Context, name, agentType, sessionID string, before promptScreen, n int) (bool, error) {
 	as, isArrow := h.terminal.(ptymanager.ArrowSender)

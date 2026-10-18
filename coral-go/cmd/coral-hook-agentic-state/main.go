@@ -388,7 +388,14 @@ func fromAgy(d map[string]any, event string) (map[string]any, bool) {
 		out["error"] = errMsg
 	}
 	switch event {
-	case "SessionStart", "PreToolUse", "PostToolUse":
+	case "SessionStart":
+		// agy 1.4.2 names no source: its SessionStart is the session starting, never a /clear (#4577). A
+		// source it names is kept.
+		out["source"] = "startup"
+		if src, _ := d["source"].(string); src != "" {
+			out["source"] = src
+		}
+	case "PreToolUse", "PostToolUse":
 	case "PreInvocation":
 		if n, _ := d["invocationNum"].(float64); n != 0 {
 			return nil, false
@@ -499,7 +506,7 @@ func makeToolDetail(tool string, inp map[string]any) map[string]any {
 		detail["description"], _ = inp["description"].(string)
 		detail["subagent_type"], _ = inp["subagent_type"].(string)
 	default:
-		return nil
+		return hooks.AgyToolDetail(tool, inp)
 	}
 	return detail
 }

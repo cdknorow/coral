@@ -1,0 +1,40 @@
+
+     ▄▀▀▄
+    ▀▀▀▀▀▀
+   ▀▀▀▀▀▀▀▀
+  ▄▀▀    ▀▀▄
+ ▄▀▀      ▀▀▄
+
+ Welcome to the Antigravity CLI. You are currently not signed in.
+
+ Select login method:
+ > 1. Google OAuth
+   2. Use a Google Cloud project
+
+   ↑/↓ Navigate · enter Select
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

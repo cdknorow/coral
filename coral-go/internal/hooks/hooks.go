@@ -207,7 +207,38 @@ func MakeToolSummary(tool string, inp map[string]any) string {
 	case "WebSearch":
 		q, _ := inp["query"].(string)
 		return "Searched: " + Truncate(q, 60)
+	// Antigravity's tools (#4577; their argument names as agy 1.4.2 sends them)
+	case "run_command":
+		return "Ran: " + Truncate(StrVal(inp, "CommandLine"), 80)
+	case "view_file":
+		return "Read " + filepath.Base(StrVal(inp, "AbsolutePath"))
+	case "write_to_file":
+		return "Wrote " + filepath.Base(StrVal(inp, "TargetFile"))
+	case "replace_file_content", "multi_replace_file_content":
+		return "Edited " + filepath.Base(StrVal(inp, "TargetFile"))
+	case "search_web":
+		return "Searched: " + Truncate(StrVal(inp, "Query"), 60)
+	case "read_url_content":
+		return "Fetched " + Truncate(StrVal(inp, "Url"), 60)
 	default:
 		return "Used " + tool
 	}
+}
+
+// AgyToolDetail is the detail an activity row shows for an Antigravity tool call, under the keys the other
+// CLIs' calls use (command, file_path, query, url), or nil for another tool.
+func AgyToolDetail(tool string, inp map[string]any) map[string]any {
+	switch tool {
+	case "run_command":
+		return map[string]any{"command": StrVal(inp, "CommandLine")}
+	case "view_file":
+		return map[string]any{"file_path": StrVal(inp, "AbsolutePath")}
+	case "write_to_file", "replace_file_content", "multi_replace_file_content":
+		return map[string]any{"file_path": StrVal(inp, "TargetFile")}
+	case "search_web":
+		return map[string]any{"query": StrVal(inp, "Query")}
+	case "read_url_content":
+		return map[string]any{"url": StrVal(inp, "Url")}
+	}
+	return nil
 }
