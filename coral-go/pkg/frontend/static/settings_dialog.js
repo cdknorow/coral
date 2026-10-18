@@ -845,7 +845,8 @@ export function hideSettingsModal() {
     document.getElementById("settings-modal").style.display = "none";
 }
 
-export async function applySettings() {
+/** What the dialog's controls hold: the payload to save (only what the person changed, and on the hub only the per-user keys) and the values the page applies once it is saved. */
+function readSettingsForm() {
     const themeValue = document.getElementById("settings-theme")?.value || "dark";
     const engineName = document.getElementById("settings-renderer-select").value;
     const agentType = document.getElementById("settings-agent-type")?.value || "claude";
@@ -864,7 +865,6 @@ export async function applySettings() {
     const terminalFontSize = document.getElementById("settings-terminal-font-size")?.value || "13";
     const terminalScrollback = document.getElementById("settings-terminal-scrollback")?.value || "20000";
     const checkUpdates = document.getElementById("settings-check-updates")?.checked ?? true;
-    browserLocal.set("coral-update-check-enabled", checkUpdates ? "true" : "false");
     const showScrollbars = document.getElementById("settings-show-scrollbars")?.checked ?? true;
     const fileSearchMode = document.getElementById("settings-file-search-mode")?.value || "directory";
     const fileSearchLimit = document.getElementById("settings-file-search-limit")?.value || "500";
@@ -937,90 +937,106 @@ export async function applySettings() {
     // The hub accepts only the per-user keys (anything else refuses the whole request); the machine ones are hidden.
     if (isCloud()) payload = filterSettingsPayload(payload).kept;
 
+    return { themeValue, theme, customTheme, payload, checkUpdates, fitPaneWidth, terminalFontSize, terminalScrollback, showScrollbars, gitDiffMode, remoteAccessEnabled, debugInputLog };
+}
+
+/** Sends the payload (nothing, when nothing changed) and takes it into state.settings and the privacy status. Returns true when there was nothing to save; throws when the server refuses. */
+async function saveSettings({ payload, remoteAccessEnabled, debugInputLog }) {
+    // Nothing to save when no setting changed and neither the database encryption choice nor the backend and wake choices did (they are saved apart).
+    const sideChange = databaseEncryptionChanged() || await importOnce('./terminal_backend.js').then(tb => tb.hasUnsavedBackendChange(), () => true);
+    const nothingToSave = Object.keys(payload).length === 0 && !sideChange;
+    if (!isCloud()) await saveDatabaseEncryptionSettings();
+    // Nothing changed: nothing to write.
+    const response = Object.keys(payload).length === 0 ? { ok: true } : await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        // A refused value (e.g. a CLI path that isn't an executable file, #3364) says why.
+        const data = await response.json().catch(() => null);
+        const err = new Error(`settings save failed (${response.status})`);
+        if (data && typeof data.error === 'string') err.userMessage = data.error;
+        throw err;
+    }
+    state.settings = { ...state.settings, ...payload };
+    if (_settingsAtOpen) _settingsAtOpen = { ..._settingsAtOpen, ...payload }; // the dialog stays open on a cancelled backend change
+    if (!isCloud() && state.privacyStatus) {
+        state.privacyStatus.remote_access_enabled = remoteAccessEnabled;
+        state.privacyStatus.remote_access_restart_required = state.privacyStatus.remote_access_effective !== remoteAccessEnabled;
+    }
+    if (!isCloud() && state.privacyStatus) {
+        const log = state.privacyStatus.debug_input_log || {};
+        state.privacyStatus.debug_input_log = { ...log, enabled: log.forced === true || debugInputLog };
+        // The server knows whether a log file is now kept on disk; refresh from it.
+        try {
+            const fresh = await fetch('/api/system/privacy');
+            if (fresh.ok) {
+                const body = await fresh.json();
+                if (body && body.debug_input_log) state.privacyStatus.debug_input_log = body.debug_input_log;
+            }
+        } catch { /* keep the local guess */ }
+    }
+    if (!isCloud()) renderRemoteAccessStatus(state.privacyStatus);
+    if (!isCloud()) renderDebugInputLogStatus(state.privacyStatus);
+    return nothingToSave;
+}
+
+/** Puts the saved settings on the page: the theme, the open session's capture, the terminal, the scrollbars, the changed files. */
+async function applySettingsEffects({ theme, customTheme, fitPaneWidth, terminalFontSize, terminalScrollback, showScrollbars, gitDiffMode }, oldGitDiffMode) {
+    // Defaults may have changed — force next ACF open to re-fetch.
+    _invalidateDefaultModels();
+
+    // Clear any previously applied custom CSS variables
+    clearCustomThemeVars();
+
+    if (customTheme) {
+        // Load and apply the custom theme (sets base + variables)
+        await applyCustomThemeByName(customTheme);
+    } else {
+        // Apply built-in theme
+        applyTheme(theme);
+    }
+
+    // If a live session is selected, force re-render with new default
+    if (state.currentSession?.session_id) {
+        const el = document.getElementById("pane-capture");
+        if (el && el._lastCapture) {
+            renderCaptureText(el, el._lastCapture);
+        }
+    }
+
+    // Trigger pane width sync if the setting was just enabled
+    if (fitPaneWidth) {
+        syncPaneWidth();
+    }
+
+    // Apply font size and scrollback to existing terminal
+    const term = getTerminal();
+    if (term) {
+        term.options.fontSize = parseInt(terminalFontSize, 10) || 13;
+        term.options.scrollback = parseInt(terminalScrollback, 10) || 20000;
+        const { fitTerminal } = await importOnce('./xterm_renderer.js');
+        fitTerminal();
+    }
+
+    // Apply scrollbar visibility
+    document.body.classList.toggle('no-scrollbars', !showScrollbars);
+
+    // Refresh changed files if git diff mode changed
+    if (gitDiffMode !== oldGitDiffMode) {
+        refreshChangedFiles();
+    }
+}
+
+export async function applySettings() {
+    const form = readSettingsForm();
+    browserLocal.set("coral-update-check-enabled", form.checkUpdates ? "true" : "false");
     const oldGitDiffMode = state.settings?.git_diff_mode || 'previous_commit';
 
     try {
-        // Nothing to save when no setting changed and neither the database encryption choice nor the backend and wake choices did (they are saved apart).
-        const sideChange = databaseEncryptionChanged() || await importOnce('./terminal_backend.js').then(tb => tb.hasUnsavedBackendChange(), () => true);
-        const nothingToSave = Object.keys(payload).length === 0 && !sideChange;
-        if (!isCloud()) await saveDatabaseEncryptionSettings();
-        // Nothing changed: nothing to write.
-        const response = Object.keys(payload).length === 0 ? { ok: true } : await fetch("/api/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
-        if (!response.ok) {
-            // A refused value (e.g. a CLI path that isn't an executable file, #3364) says why.
-            const data = await response.json().catch(() => null);
-            const err = new Error(`settings save failed (${response.status})`);
-            if (data && typeof data.error === 'string') err.userMessage = data.error;
-            throw err;
-        }
-        state.settings = { ...state.settings, ...payload };
-        if (_settingsAtOpen) _settingsAtOpen = { ..._settingsAtOpen, ...payload }; // the dialog stays open on a cancelled backend change
-        if (!isCloud() && state.privacyStatus) {
-            state.privacyStatus.remote_access_enabled = remoteAccessEnabled;
-            state.privacyStatus.remote_access_restart_required = state.privacyStatus.remote_access_effective !== remoteAccessEnabled;
-        }
-        if (!isCloud() && state.privacyStatus) {
-            const log = state.privacyStatus.debug_input_log || {};
-            state.privacyStatus.debug_input_log = { ...log, enabled: log.forced === true || debugInputLog };
-            // The server knows whether a log file is now kept on disk; refresh from it.
-            try {
-                const fresh = await fetch('/api/system/privacy');
-                if (fresh.ok) {
-                    const body = await fresh.json();
-                    if (body && body.debug_input_log) state.privacyStatus.debug_input_log = body.debug_input_log;
-                }
-            } catch { /* keep the local guess */ }
-        }
-        if (!isCloud()) renderRemoteAccessStatus(state.privacyStatus);
-        if (!isCloud()) renderDebugInputLogStatus(state.privacyStatus);
-        // Defaults may have changed — force next ACF open to re-fetch.
-        _invalidateDefaultModels();
-
-        // Clear any previously applied custom CSS variables
-        clearCustomThemeVars();
-
-        if (customTheme) {
-            // Load and apply the custom theme (sets base + variables)
-            await applyCustomThemeByName(customTheme);
-        } else {
-            // Apply built-in theme
-            applyTheme(theme);
-        }
-
-        // If a live session is selected, force re-render with new default
-        if (state.currentSession?.session_id) {
-            const el = document.getElementById("pane-capture");
-            if (el && el._lastCapture) {
-                renderCaptureText(el, el._lastCapture);
-            }
-        }
-
-        // Trigger pane width sync if the setting was just enabled
-        if (fitPaneWidth) {
-            syncPaneWidth();
-        }
-
-        // Apply font size and scrollback to existing terminal
-        const term = getTerminal();
-        if (term) {
-            term.options.fontSize = parseInt(terminalFontSize, 10) || 13;
-            term.options.scrollback = parseInt(terminalScrollback, 10) || 20000;
-            const { fitTerminal } = await importOnce('./xterm_renderer.js');
-            fitTerminal();
-        }
-
-        // Apply scrollbar visibility
-        document.body.classList.toggle('no-scrollbars', !showScrollbars);
-
-        // Refresh changed files if git diff mode changed
-        if (gitDiffMode !== oldGitDiffMode) {
-            refreshChangedFiles();
-        }
-
+        const nothingToSave = await saveSettings(form);
+        await applySettingsEffects(form, oldGitDiffMode);
         showToast(nothingToSave ? NOTHING_TO_SAVE : "Settings saved");
     } catch (e) {
         showToast(e && e.userMessage ? `Failed to save settings: ${e.userMessage}` : "Failed to save settings", true);
