@@ -1,5 +1,32 @@
 # Release Notes
 
+## v1.4.90 — Chat that knows when a message was really sent, agy auto-accept, and a Coral Hub first run
+
+### Changes
+
+- **Chat says Sent only when the agent actually submitted the message,** and shows the conversation's own state while an agent is still starting, instead of an unopened terminal connection's. Messages to one agent go one at a time, and a message is never typed after one that wasn't submitted.
+- **Auto-accept now works for Antigravity (agy) agents when you turn it on:** it answers permission prompts with the one-time option only ("Yes, run command", "Yes, allow once"), never an "always allow" one, and only when a tool call is actually pending; it doesn't act on questions, plans, sign-in or trust menus. Usage and rate limits are detected for agy too.
+- **Coral Hub first run:** with no machine connected, the Agents page shows "Connect your first machine" with a button to enroll one; all-offline machines and machines with no agents get their own lines. Add a machine leads with installing Coral, and a machine at View says it can't launch as soon as the dialog opens (one message, nothing sent).
+- **The Coral Hub account menu has Account and Saved for later,** and a link can open one saved message directly.
+- **Through Coral Hub, the New Agent dialog's CLI check reaches the machine,** and a refusal says it needs the Launch tier.
+- **The agent list is lighter:** each row's action menu is drawn when you open it (with 100 agents the list drops from about 7,500 to 2,400 elements).
+- **The Coral Hub's wording calls a connected computer a "machine"** throughout sign-in and enrollment.
+
+### Fixes
+
+- **On a phone, a long agent name that wraps no longer has its state chip drawn over the second line.**
+- **A terminal that follows a pane taller than its window keeps its prompt line in view.**
+
+### Security and privacy
+
+- **One message at a time to each agent, bounded:** two sends close together can no longer type both texts into an agent's input box (a second message waits for the first, with a limit), and nothing is typed after a message that wasn't submitted.
+- **The Coral Hub's CLI check passes only the exact allowlisted query** (an agent type, optionally the recheck flag, never a path); every other system route stays refused through the hub.
+
+### Other changes
+
+- **Faster board reads and tmux commands with many agents:** a board's numbered agent names are cached, mention terms are memoized, and tmux commands build their environment in one pass.
+- **Tests and CI:** the CDP gate can repeat chosen suites many times on a manual run, for verifying a flake fix; a scalability harness for many mock agents; unused and duplicate CSS removed; new tests for all of the above.
+
 ## v1.4.89 — A Codex transcript privacy fix, a health check that says who waits on whom, and agy prompts answered from Chat
 
 ### Security and privacy
