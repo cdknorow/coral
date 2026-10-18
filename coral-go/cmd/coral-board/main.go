@@ -551,27 +551,94 @@ func cmdWorkingMode(args []string) {
 	}
 }
 
+// workingModeFlags is a working-mode command line.
+type workingModeFlags struct {
+	board, custom, mode, create, edit, reset, name, instructions, file string
+	guidance, presets                                                  bool
+	seen                                                               map[string]bool // the flags given
+}
+
 func runWorkingMode(args []string) error {
-	fs := flag.NewFlagSet("working-mode", flag.ContinueOnError)
-	boardName := fs.String("board", "", "Team board (defaults to current board)")
-	custom := fs.String("custom-instructions", "", "Custom team rules; empty clears them")
-	mode := fs.String("mode", "", "Select a built-in or custom workflow preset")
-	guidance := fs.Bool("dependency-guidance", false, "Include guidance about dependent tasks")
-	presets := fs.Bool("presets", false, "List presets and effective team instructions")
-	create := fs.String("create", "", "Create custom preset ID")
-	edit := fs.String("edit", "", "Edit preset ID (built-ins become team-local overrides)")
-	reset := fs.String("reset", "", "Reset built-in preset ID to shipped instructions")
-	name := fs.String("name", "", "Custom preset display name")
-	instructions := fs.String("instructions", "", "Preset instructions; empty is allowed")
-	file := fs.String("instructions-file", "", "Read preset instructions from a UTF-8 file")
-	if err := fs.Parse(args); err != nil {
+	f, err := parseWorkingModeFlags(args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 0 {
-		return fmt.Errorf("unexpected working-mode arguments")
+	if err := checkWorkingModeFlags(f.seen); err != nil {
+		return err
 	}
-	seen := map[string]bool{}
-	fs.Visit(func(f *flag.Flag) { seen[f.Name] = true })
+	project := f.board
+	if project == "" {
+		if st := loadState(); st != nil {
+			project = st.Project
+		}
+	}
+	if project == "" {
+		return fmt.Errorf("working-mode requires --board outside a joined board")
+	}
+	request := func(method, target string, body any) ([]byte, error) {
+		data, status, err := apiCallRaw(method, target, body)
+		if err != nil {
+			return nil, err
+		}
+		if status < 200 || status >= 300 {
+			return nil, fmt.Errorf("working-mode: HTTP %d: %s", status, data)
+		}
+		return data, nil
+	}
+	method, path, body, err := workingModeRequest(f, project)
+	if err != nil {
+		return err
+	}
+	if body == nil && method == "PUT" { // a selection: the current mode, with the flags' changes
+		if body, err = updatedWorkingMode(f, func() ([]byte, error) { return request("GET", path, nil) }); err != nil {
+			return err
+		}
+	}
+	data, err := request(method, path, body)
+	if err != nil {
+		return err
+	}
+	var out any
+	if err := json.Unmarshal(data, &out); err != nil {
+		return err
+	}
+	pretty, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(pretty))
+	return nil
+}
+
+// parseWorkingModeFlags reads working-mode's flags, noting which were given.
+func parseWorkingModeFlags(args []string) (workingModeFlags, error) {
+	var f workingModeFlags
+	fs := flag.NewFlagSet("working-mode", flag.ContinueOnError)
+	fs.StringVar(&f.board, "board", "", "Team board (defaults to current board)")
+	fs.StringVar(&f.custom, "custom-instructions", "", "Custom team rules; empty clears them")
+	fs.StringVar(&f.mode, "mode", "", "Select a built-in or custom workflow preset")
+	fs.BoolVar(&f.guidance, "dependency-guidance", false, "Include guidance about dependent tasks")
+	fs.BoolVar(&f.presets, "presets", false, "List presets and effective team instructions")
+	fs.StringVar(&f.create, "create", "", "Create custom preset ID")
+	fs.StringVar(&f.edit, "edit", "", "Edit preset ID (built-ins become team-local overrides)")
+	fs.StringVar(&f.reset, "reset", "", "Reset built-in preset ID to shipped instructions")
+	fs.StringVar(&f.name, "name", "", "Custom preset display name")
+	fs.StringVar(&f.instructions, "instructions", "", "Preset instructions; empty is allowed")
+	fs.StringVar(&f.file, "instructions-file", "", "Read preset instructions from a UTF-8 file")
+	if err := fs.Parse(args); err != nil {
+		return f, err
+	}
+	if fs.NArg() != 0 {
+		return f, fmt.Errorf("unexpected working-mode arguments")
+	}
+	f.seen = map[string]bool{}
+	fs.Visit(func(fl *flag.Flag) { f.seen[fl.Name] = true })
+	return f, nil
+}
+
+// checkWorkingModeFlags: one preset operation (list, create, edit, reset) or an update of the selected mode, never
+// both; preset content only with --create or --edit, which need it; instructions inline or from a file, not both.
+func checkWorkingModeFlags(seen map[string]bool) error {
 	operations := 0
 	for _, key := range []string{"presets", "create", "edit", "reset"} {
 		if seen[key] {
@@ -592,85 +659,66 @@ func runWorkingMode(args []string) error {
 	if editing && !seen["instructions"] && !seen["instructions-file"] {
 		return fmt.Errorf("--create and --edit require --instructions or --instructions-file")
 	}
-	project := *boardName
-	if project == "" {
-		if st := loadState(); st != nil {
-			project = st.Project
-		}
-	}
-	if project == "" {
-		return fmt.Errorf("working-mode requires --board outside a joined board")
-	}
-	path := "/" + url.PathEscape(project) + "/working-mode"
-	request := func(method, target string, body any) ([]byte, error) {
-		data, status, err := apiCallRaw(method, target, body)
-		if err != nil {
-			return nil, err
-		}
-		if status < 200 || status >= 300 {
-			return nil, fmt.Errorf("working-mode: HTTP %d: %s", status, data)
-		}
-		return data, nil
-	}
-	method := "GET"
-	var body any
-	if *presets {
+	return nil
+}
+
+// workingModeRequest is the request the flags make on project's working mode: GET it (or its presets), POST a new
+// preset or PUT an edited one (instructions inline or read from the file), POST a built-in's reset, or PUT the
+// selected mode updated (its body nil here: updatedWorkingMode fills it from the current one).
+func workingModeRequest(f workingModeFlags, project string) (method, path string, body any, err error) {
+	path = "/" + url.PathEscape(project) + "/working-mode"
+	method = "GET"
+	if f.presets {
 		path += "/presets"
 	}
-	if editing {
-		if seen["instructions-file"] {
-			data, err := os.ReadFile(*file)
+	switch {
+	case f.seen["create"] || f.seen["edit"]:
+		instructions := f.instructions
+		if f.seen["instructions-file"] {
+			data, err := os.ReadFile(f.file)
 			if err != nil {
-				return err
+				return "", "", nil, err
 			}
-			*instructions = string(data)
+			instructions = string(data)
 		}
-		body = map[string]string{"id": *create, "name": *name, "instructions": *instructions}
+		body = map[string]string{"id": f.create, "name": f.name, "instructions": instructions}
 		path += "/presets"
 		method = "POST"
-		if seen["edit"] {
+		if f.seen["edit"] {
 			method = "PUT"
-			path += "/" + url.PathEscape(*edit)
+			path += "/" + url.PathEscape(f.edit)
 		}
-	} else if seen["reset"] {
+	case f.seen["reset"]:
 		method = "POST"
-		path += "/presets/" + url.PathEscape(*reset) + "/reset"
-	} else if selection {
-		data, err := request("GET", path, nil)
-		if err != nil {
-			return err
-		}
-		var current map[string]any
-		if err := json.Unmarshal(data, &current); err != nil {
-			return err
-		}
-		if seen["mode"] {
-			current["mode"] = *mode
-		}
-		if seen["custom-instructions"] {
-			current["custom_instructions"] = *custom
-		}
-		if seen["dependency-guidance"] {
-			current["dependency_guidance"] = *guidance
-		}
-		delete(current, "instructions")
-		body = current
+		path += "/presets/" + url.PathEscape(f.reset) + "/reset"
+	case f.seen["mode"] || f.seen["custom-instructions"] || f.seen["dependency-guidance"]:
 		method = "PUT"
 	}
-	data, err := request(method, path, body)
+	return method, path, body, nil
+}
+
+// updatedWorkingMode is the current working mode (read by get) with the flags' mode, custom instructions and
+// dependency guidance in place, and without its computed instructions.
+func updatedWorkingMode(f workingModeFlags, get func() ([]byte, error)) (map[string]any, error) {
+	data, err := get()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	var out any
-	if err := json.Unmarshal(data, &out); err != nil {
-		return err
+	var current map[string]any
+	if err := json.Unmarshal(data, &current); err != nil {
+		return nil, err
 	}
-	pretty, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
+	if f.seen["mode"] {
+		current["mode"] = f.mode
 	}
-	fmt.Println(string(pretty))
-	return nil
+	if f.seen["custom-instructions"] {
+		current["custom_instructions"] = f.custom
+	}
+	if f.seen["dependency-guidance"] {
+		current["dependency_guidance"] = f.guidance
+	}
+	delete(current, "instructions")
+	return current, nil
 }
 
 func cmdJoin() {
@@ -841,55 +889,64 @@ func printMentionWarnings(w io.Writer, result map[string]any) {
 	}
 }
 
+// readArgs is a read command line: one message by id, the newest N, or the unread (all of them with --all), as
+// text or one JSON object per line.
+type readArgs struct {
+	messageID       int
+	useLast         bool
+	lastN           int
+	readAll, asJSON bool
+}
+
+// parseReadArgs reads read's flags anywhere on the command line: --id N, --last N, --all (-a), --json. A later flag
+// overrides an earlier one, and a value that is not a number leaves what it had (0), as fmt.Sscanf does.
+func parseReadArgs(args []string) readArgs {
+	var r readArgs
+	for i, arg := range args {
+		if arg == "--id" && i+1 < len(args) {
+			fmt.Sscanf(args[i+1], "%d", &r.messageID)
+		}
+	}
+	for i, arg := range args {
+		if arg == "--last" && i+1 < len(args) {
+			r.useLast = true
+			fmt.Sscanf(args[i+1], "%d", &r.lastN)
+		}
+	}
+	for _, arg := range args {
+		if arg == "--all" || arg == "-a" {
+			r.readAll = true
+		}
+		if arg == "--json" {
+			r.asJSON = true
+		}
+	}
+	return r
+}
+
+// readPath is the request for r on project: the message by id, the newest N, or the subscriber's unread (50; all of
+// them, read or not, with --all).
+func readPath(r readArgs, project, subscriberID string) string {
+	switch {
+	case r.messageID > 0:
+		return fmt.Sprintf("/%s/messages/all?id=%d", url.PathEscape(project), r.messageID)
+	case r.useLast:
+		return fmt.Sprintf("/%s/messages/all?limit=%d", url.PathEscape(project), r.lastN)
+	case r.readAll:
+		return fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50&all=true", url.PathEscape(project), url.QueryEscape(subscriberID))
+	}
+	return fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50", url.PathEscape(project), url.QueryEscape(subscriberID))
+}
+
 func cmdRead() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
 		os.Exit(1)
 	}
-
-	// Check for --id N
-	messageID := 0
-	for i, arg := range os.Args {
-		if arg == "--id" && i+1 < len(os.Args) {
-			fmt.Sscanf(os.Args[i+1], "%d", &messageID)
-		}
-	}
-
-	// Check for --last N
-	useLast := false
-	lastN := 0
-	for i, arg := range os.Args {
-		if arg == "--last" && i+1 < len(os.Args) {
-			useLast = true
-			fmt.Sscanf(os.Args[i+1], "%d", &lastN)
-		}
-	}
-
-	// Check for --all and --json
-	readAll, asJSON := false, false
-	for _, arg := range os.Args {
-		if arg == "--all" || arg == "-a" {
-			readAll = true
-		}
-		if arg == "--json" {
-			asJSON = true
-		}
-	}
-
+	r := parseReadArgs(os.Args)
 	subscriberID := resolveSubscriberID()
-	var path string
-	if messageID > 0 {
-		path = fmt.Sprintf("/%s/messages/all?id=%d", url.PathEscape(st.Project), messageID)
-	} else if useLast {
-		path = fmt.Sprintf("/%s/messages/all?limit=%d", url.PathEscape(st.Project), lastN)
-	} else if readAll {
-		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50&all=true", url.PathEscape(st.Project), url.QueryEscape(subscriberID))
-	} else {
-		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50", url.PathEscape(st.Project), url.QueryEscape(subscriberID))
-	}
-
-	data, err := getBoard(path)
+	data, err := getBoard(readPath(r, st.Project, subscriberID))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -898,23 +955,30 @@ func cmdRead() {
 	json.Unmarshal(data, &messages)
 
 	if len(messages) == 0 {
-		if messageID > 0 {
-			fmt.Fprintf(os.Stderr, "Message #%d not found.\n", messageID)
+		if r.messageID > 0 {
+			fmt.Fprintf(os.Stderr, "Message #%d not found.\n", r.messageID)
 			os.Exit(1)
 		}
 		fmt.Println("No new messages.")
 		return
 	}
-
 	// --json: one message object per line, exactly as the server returned it (scripts read
 	// subscriber_id from it, which the text form doesn't show; #3487).
-	if asJSON {
+	if r.asJSON {
 		for _, m := range messages {
 			line, _ := json.Marshal(m)
 			fmt.Println(string(line))
 		}
 		return
 	}
+	printMessages(messages)
+	if r.useLast && r.messageID == 0 {
+		markSkippedRead(st.Project, subscriberID, messages)
+	}
+}
+
+// printMessages prints each message as "[YYYY-MM-DDTHH:MM] role: content" (the poster's title, else its id).
+func printMessages(messages []map[string]any) {
 	for _, m := range messages {
 		ts, _ := m["created_at"].(string)
 		if len(ts) > 16 {
@@ -927,37 +991,37 @@ func cmdRead() {
 		content, _ := m["content"].(string)
 		fmt.Printf("[%s] %s: %s\n", ts, role, content)
 	}
+}
 
-	// --last shows the newest messages rather than reading in order; mark
-	// the board read up to them so the unread count (and the nudges about
-	// it) covers only what arrives next, and say what was passed over.
-	if useLast && messageID == 0 {
-		var fromID, throughID float64
-		for _, m := range messages {
-			id, _ := m["id"].(float64)
-			if fromID == 0 || id < fromID {
-				fromID = id
-			}
-			if id > throughID {
-				throughID = id
-			}
+// markSkippedRead: --last shows the newest messages rather than reading in order; it marks the board read up to them
+// so the unread count (and the nudges about it) covers only what arrives next, and says what was passed over.
+func markSkippedRead(project, subscriberID string, messages []map[string]any) {
+	var fromID, throughID float64
+	for _, m := range messages {
+		id, _ := m["id"].(float64)
+		if fromID == 0 || id < fromID {
+			fromID = id
 		}
-		result, _, err := apiCall("POST", "/"+url.PathEscape(st.Project)+"/messages/mark-read", map[string]any{
-			"subscriber_id": subscriberID,
-			"through_id":    int64(throughID),
-			"from_id":       int64(fromID),
-		})
-		if err == nil {
-			if n, _ := result["skipped"].(float64); n > 0 {
-				first, _ := result["first_skipped_id"].(float64)
-				last, _ := result["last_skipped_id"].(float64)
-				plural := "s"
-				if n == 1 {
-					plural = ""
-				}
-				fmt.Printf("\n(%.0f earlier unread message%s, #%.0f–#%.0f, skipped and marked read. Read one with: coral-board read --id <id>)\n", n, plural, first, last)
-			}
+		if id > throughID {
+			throughID = id
 		}
+	}
+	result, _, err := apiCall("POST", "/"+url.PathEscape(project)+"/messages/mark-read", map[string]any{
+		"subscriber_id": subscriberID,
+		"through_id":    int64(throughID),
+		"from_id":       int64(fromID),
+	})
+	if err != nil {
+		return
+	}
+	if n, _ := result["skipped"].(float64); n > 0 {
+		first, _ := result["first_skipped_id"].(float64)
+		last, _ := result["last_skipped_id"].(float64)
+		plural := "s"
+		if n == 1 {
+			plural = ""
+		}
+		fmt.Printf("\n(%.0f earlier unread message%s, #%.0f–#%.0f, skipped and marked read. Read one with: coral-board read --id <id>)\n", n, plural, first, last)
 	}
 }
 
