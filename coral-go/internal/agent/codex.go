@@ -209,188 +209,177 @@ func codexIndexMessage(entry map[string]any) (role, text string) {
 
 func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 	files := &launchFiles{}
-	bin := resolveBinary(params.CLIPath, "codex")
-	var parts []string
 	// raw: the shell syntax this builder makes itself; every other part is quoted (#3362).
-	var raw []string
-
-	// Export env vars so child processes (coral-board, hooks) inherit them.
-	// formatEnvExport generates platform-appropriate syntax (export on Unix,
-	// $env: on PowerShell) and quotes values so the shell never expands them.
-	for _, kv := range CoralEnv(params) {
-		export := formatEnvExport(kv[0], kv[1])
-		raw = append(raw, export)
-		parts = append(parts, export)
-	}
-	// NOTE: PATH injection is handled by callers via WrapWithBundlePath()
-
-	// Binary and resume
-	if params.ResumeSessionID != "" {
-		resumeID := params.ResumeSessionID
-		if link := transcriptlink.Codex(resumeID); link.ThreadID != "" {
-			resumeID = link.ThreadID
-		}
-		parts = append(parts, bin, "resume", resumeID)
-	} else {
-		parts = append(parts, bin)
-	}
-
-	// System prompt injection via -c developer_instructions
-	// Combines protocol file + board system prompt (CLI usage, role instructions)
-	// The temp file path is from os.TempDir() (safe). Content sources (protocol files,
-	// board prompts) are trusted internal strings.
-	var sysParts []string
-	if proto := readProtocolFile(params.ProtocolPath); proto != "" {
-		sysParts = append(sysParts, proto)
-	}
-	boardSysPrompt := BuildBoardSystemPrompt(params.BoardName, params.Role, "", params.PromptOverrides, params.BoardType)
-	if boardSysPrompt != "" {
-		sysParts = append(sysParts, boardSysPrompt)
-	}
-	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
-
-	if len(sysParts) > 0 {
-		sysFile := files.write("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
-		instructions := fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile))
+	parts, raw := codexStart(params)
+	if instructions := codexInstructions(files, params); instructions != "" {
 		raw = append(raw, instructions)
 		parts = append(parts, "-c", instructions)
 	}
-
-	// Codex does not read Claude's settings.json, so install Coral's activity
-	// hook directly in its config. Without these hooks Codex sessions can still
-	// appear active, but no tool/thinking/stop events reach the activity view.
-	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
-		parts = append(parts, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(ResolveHookCommand("coral-hook-agentic-state"))))
-	}
-
+	parts = append(parts, codexHookArgs()...)
 	// Note: Codex's sandbox may strip env vars from child processes.
 	// coral-board handles this via board_state file fallback (reads job_title
 	// from ~/.coral/board_state_{session}.json when CORAL_SUBSCRIBER_ID is unavailable).
-
-	// Permission flags from capabilities
-	bypassSandbox := false
-	permissionApplied := false
-	if perms := TranslateToCodexPermissions(params.Capabilities); perms != nil {
-		permissionApplied = true
-		if perms.BypassSandbox {
-			bypassSandbox = true
-			parts = append(parts, "--dangerously-bypass-approvals-and-sandbox")
-		} else if perms.FullAuto {
-			parts = appendCodexFullAuto(parts)
-		} else {
-			if perms.SandboxMode != "" {
-				parts = append(parts, "--sandbox", perms.SandboxMode)
-			}
-			if perms.ApprovalPolicy != "" {
-				parts = append(parts, "-a", normalizeCodexApprovalPolicy(perms.ApprovalPolicy))
-			}
-		}
-		if perms.Search {
-			parts = append(parts, "--search")
-		}
-	}
-
-	// User-provided flags — translate or drop Claude-specific flags
-	claudeOnlyFlags := map[string]bool{
-		"--settings": true, "--session-id": true, "--resume": true,
-	}
-	for i := 0; i < len(params.Flags); i++ {
-		flag := params.Flags[i]
-		if flag == "--permission-mode" {
-			if i+1 < len(params.Flags) {
-				i++
-				if !permissionApplied {
-					parts, bypassSandbox, permissionApplied = appendCodexPermissionMode(parts, bypassSandbox, params.Flags[i])
-				}
-			}
-			continue
-		}
-		if strings.HasPrefix(flag, "--permission-mode=") {
-			if !permissionApplied {
-				mode := strings.TrimPrefix(flag, "--permission-mode=")
-				parts, bypassSandbox, permissionApplied = appendCodexPermissionMode(parts, bypassSandbox, mode)
-			}
-			continue
-		}
-		if flag == "--dangerously-skip-permissions" {
-			// Translate to Codex equivalent, but skip if bypass was already added
-			if !bypassSandbox && !permissionApplied {
-				parts = appendCodexFullAuto(parts)
-				permissionApplied = true
-			}
-			continue
-		}
-		if flag == "--dangerously-bypass-approvals-and-sandbox" {
-			if !bypassSandbox && !permissionApplied {
-				parts = append(parts, flag)
-				bypassSandbox = true
-				permissionApplied = true
-			}
-			continue
-		}
-		if flag == "--full-auto" {
-			// Newer Codex versions removed the alias; emit its equivalent directly.
-			if !bypassSandbox && !permissionApplied {
-				parts = appendCodexFullAuto(parts)
-				permissionApplied = true
-			}
-			continue
-		}
-		if flag == "-a" && i+1 < len(params.Flags) {
-			// Older Coral permission profiles used Codex's former "untrusted"
-			// policy. Current Codex accepts only on-request or never.
-			parts = append(parts, flag, normalizeCodexApprovalPolicy(params.Flags[i+1]))
-			i++
-			permissionApplied = true
-			continue
-		}
-		if strings.HasPrefix(flag, "-a=") {
-			parts = append(parts, "-a="+normalizeCodexApprovalPolicy(strings.TrimPrefix(flag, "-a=")))
-			permissionApplied = true
-			continue
-		}
-		if flag == "--approval-mode" && i+1 < len(params.Flags) {
-			parts = append(parts, flag, normalizeCodexApprovalPolicy(params.Flags[i+1]))
-			i++
-			permissionApplied = true
-			continue
-		}
-		if strings.HasPrefix(flag, "--approval-mode=") {
-			parts = append(parts, "--approval-mode="+normalizeCodexApprovalPolicy(strings.TrimPrefix(flag, "--approval-mode=")))
-			permissionApplied = true
-			continue
-		}
-		if flag == "--sandbox" || strings.HasPrefix(flag, "--sandbox=") {
-			permissionApplied = true
-		}
-		if claudeOnlyFlags[flag] {
-			slog.Warn("dropping Claude-specific flag for Codex agent", "flag", flag)
-			continue
-		}
-		parts = append(parts, flag)
-	}
-
+	parts, bypassSandbox, permissionApplied := codexCapabilityFlags(parts, params.Capabilities)
+	parts, bypassSandbox, permissionApplied = codexUserFlags(parts, params.Flags, bypassSandbox, permissionApplied)
 	if !permissionApplied {
-		parts, bypassSandbox, permissionApplied = appendCodexPermissionMode(parts, bypassSandbox, params.PermissionMode)
+		parts, _, _ = appendCodexPermissionMode(parts, bypassSandbox, params.PermissionMode)
 	}
-
-	// Action prompt as separate positional argument
-	actionPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
-	if actionPrompt == "" {
-		actionPrompt = params.Prompt
-	}
-
-	if actionPrompt != "" {
-		promptFile := files.write("codex_prompt", params.SessionID, "txt", []byte(actionPrompt))
-		arg := FormatPromptFileArg(promptFile)
+	if arg := codexActionPrompt(files, params); arg != "" {
 		raw = append(raw, arg)
 		// "--": a prompt that is only a flag ("--dangerously-skip-permissions") is the
 		// prompt, not that option (#3690). The prompt is the last argument.
 		parts = append(parts, "--", arg)
 	}
-
 	parts, raw = withSessionToken(parts, raw, params, "codex")
 	return files.done(ShellJoin(parts, raw...))
+}
+
+// codexStart is the command's start: Coral's environment exported, so child processes (coral-board, hooks)
+// inherit it, then the binary, resuming the conversation's own Codex thread when it is known. The exports are raw
+// shell syntax (formatEnvExport quotes their values for the platform's shell, so it never expands them).
+// PATH injection is handled by callers via WrapWithBundlePath().
+func codexStart(params LaunchParams) (parts, raw []string) {
+	for _, kv := range CoralEnv(params) {
+		export := formatEnvExport(kv[0], kv[1])
+		raw = append(raw, export)
+		parts = append(parts, export)
+	}
+	bin := resolveBinary(params.CLIPath, "codex")
+	if params.ResumeSessionID == "" {
+		return append(parts, bin), raw
+	}
+	resumeID := params.ResumeSessionID
+	if link := transcriptlink.Codex(resumeID); link.ThreadID != "" {
+		resumeID = link.ThreadID
+	}
+	return append(parts, bin, "resume", resumeID), raw
+}
+
+// codexInstructions is the -c developer_instructions value: the protocol file and the board system prompt (CLI
+// usage, role instructions) with Coral's session marker, read from a temporary file; "" when there is nothing.
+// The temp file path is from os.TempDir() (safe), and the content sources are trusted internal strings.
+func codexInstructions(files *launchFiles, params LaunchParams) string {
+	var sysParts []string
+	if proto := readProtocolFile(params.ProtocolPath); proto != "" {
+		sysParts = append(sysParts, proto)
+	}
+	if boardSysPrompt := BuildBoardSystemPrompt(params.BoardName, params.Role, "", params.PromptOverrides, params.BoardType); boardSysPrompt != "" {
+		sysParts = append(sysParts, boardSysPrompt)
+	}
+	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
+	if len(sysParts) == 0 {
+		return ""
+	}
+	sysFile := files.write("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
+	return fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile))
+}
+
+// codexHookEvents are the Codex hooks Coral's activity hook is installed for.
+var codexHookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"}
+
+// codexHookArgs install Coral's activity hook in Codex's config: Codex does not read Claude's settings.json, and
+// without these hooks a Codex session can still appear active, but no tool, thinking or stop events reach the
+// activity view.
+func codexHookArgs() []string {
+	var args []string
+	for _, event := range codexHookEvents {
+		args = append(args, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(ResolveHookCommand("coral-hook-agentic-state"))))
+	}
+	return args
+}
+
+// codexCapabilityFlags are the permission flags from the agent's capabilities, when it has them: bypass, full
+// auto, or a sandbox mode and approval policy, and web search. bypass and applied say what was set.
+func codexCapabilityFlags(parts []string, caps *Capabilities) (out []string, bypass, applied bool) {
+	perms := TranslateToCodexPermissions(caps)
+	if perms == nil {
+		return parts, false, false
+	}
+	switch {
+	case perms.BypassSandbox:
+		bypass = true
+		parts = append(parts, "--dangerously-bypass-approvals-and-sandbox")
+	case perms.FullAuto:
+		parts = appendCodexFullAuto(parts)
+	default:
+		if perms.SandboxMode != "" {
+			parts = append(parts, "--sandbox", perms.SandboxMode)
+		}
+		if perms.ApprovalPolicy != "" {
+			parts = append(parts, "-a", normalizeCodexApprovalPolicy(perms.ApprovalPolicy))
+		}
+	}
+	if perms.Search {
+		parts = append(parts, "--search")
+	}
+	return parts, bypass, true
+}
+
+// codexUserFlags adds the user's flags, translated for Codex: permission flags only when no permission was set
+// yet (Claude's --permission-mode and --dangerously-skip-permissions, Codex's bypass and the removed --full-auto
+// alias), approval policies normalized (the former "untrusted" is on-request), and Claude-only flags dropped.
+func codexUserFlags(parts, flags []string, bypass, applied bool) ([]string, bool, bool) {
+	claudeOnlyFlags := map[string]bool{
+		"--settings": true, "--session-id": true, "--resume": true,
+	}
+	for i := 0; i < len(flags); i++ {
+		flag := flags[i]
+		switch {
+		case flag == "--permission-mode":
+			if i+1 < len(flags) {
+				i++
+				if !applied {
+					parts, bypass, applied = appendCodexPermissionMode(parts, bypass, flags[i])
+				}
+			}
+		case strings.HasPrefix(flag, "--permission-mode="):
+			if !applied {
+				parts, bypass, applied = appendCodexPermissionMode(parts, bypass, strings.TrimPrefix(flag, "--permission-mode="))
+			}
+		case flag == "--dangerously-skip-permissions", flag == "--full-auto":
+			// Codex's equivalent (newer Codex versions removed the --full-auto alias), unless a permission is set.
+			if !bypass && !applied {
+				parts = appendCodexFullAuto(parts)
+				applied = true
+			}
+		case flag == "--dangerously-bypass-approvals-and-sandbox":
+			if !bypass && !applied {
+				parts = append(parts, flag)
+				bypass, applied = true, true
+			}
+		case (flag == "-a" || flag == "--approval-mode") && i+1 < len(flags):
+			// Older Coral permission profiles used Codex's former "untrusted" policy. Current Codex accepts only
+			// on-request or never.
+			parts = append(parts, flag, normalizeCodexApprovalPolicy(flags[i+1]))
+			i++
+			applied = true
+		case strings.HasPrefix(flag, "-a="), strings.HasPrefix(flag, "--approval-mode="):
+			name, value, _ := strings.Cut(flag, "=")
+			parts = append(parts, name+"="+normalizeCodexApprovalPolicy(value))
+			applied = true
+		case claudeOnlyFlags[flag]:
+			slog.Warn("dropping Claude-specific flag for Codex agent", "flag", flag)
+		default:
+			if flag == "--sandbox" || strings.HasPrefix(flag, "--sandbox=") {
+				applied = true
+			}
+			parts = append(parts, flag)
+		}
+	}
+	return parts, bypass, applied
+}
+
+// codexActionPrompt is the action prompt's argument, read from a temporary file: the board's action prompt, or the
+// launch prompt itself; "" when there is neither.
+func codexActionPrompt(files *launchFiles, params LaunchParams) string {
+	actionPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
+	if actionPrompt == "" {
+		actionPrompt = params.Prompt
+	}
+	if actionPrompt == "" {
+		return ""
+	}
+	return FormatPromptFileArg(files.write("codex_prompt", params.SessionID, "txt", []byte(actionPrompt)))
 }
 
 func normalizeCodexApprovalPolicy(policy string) string {
