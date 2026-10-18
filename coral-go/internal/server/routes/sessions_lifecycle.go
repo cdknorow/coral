@@ -1094,9 +1094,10 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 		// Inject distilled knowledge if available
 		resurrectPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), team.Name, m.AgentName, agentCfg.Prompt)
 
-		result, err := h.launchSession(ctx, workingDir, agentType, m.AgentName,
-			"", nil, resurrectPrompt, team.Name, "", "", "", agentCfg.Model, agentCfg.Capabilities,
-			agentCfg.Tools, agentCfg.Hooks)
+		result, err := h.launchSession(ctx, launchSpec{
+			WorkDir: workingDir, AgentType: agentType, DisplayName: m.AgentName, Prompt: resurrectPrompt, BoardName: team.Name,
+			Model: agentCfg.Model, Capabilities: agentCfg.Capabilities, Tools: agentCfg.Tools, Hooks: agentCfg.Hooks,
+		})
 		if err != nil {
 			log.Printf("[resurrect] failed to launch %s: %v", m.AgentName, err)
 			launched = append(launched, map[string]any{"name": m.AgentName, "error": err.Error()})

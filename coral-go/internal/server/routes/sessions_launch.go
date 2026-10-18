@@ -149,9 +149,11 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	if effectiveModel != "" {
 		launchFlags = append(append([]string{}, body.Flags...), "--model", effectiveModel)
 	}
-	result, err := h.launchSession(r.Context(), body.WorkingDir, body.AgentType, body.DisplayName,
-		body.ResumeSessionID, launchFlags, body.Prompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, body.Capabilities,
-		body.Tools, body.Hooks)
+	result, err := h.launchSession(r.Context(), launchSpec{
+		WorkDir: body.WorkingDir, AgentType: body.AgentType, DisplayName: body.DisplayName, ResumeSessionID: body.ResumeSessionID,
+		Flags: launchFlags, Prompt: body.Prompt, BoardName: body.BoardName, BoardServer: body.BoardServer, Backend: body.Backend,
+		BoardType: body.BoardType, Model: effectiveModel, Capabilities: body.Capabilities, Tools: body.Tools, Hooks: body.Hooks,
+	})
 	if err != nil {
 		attempt.Finish(tracking.OutcomeFailure, classifyLaunchError(err), 0, 1)
 		errInternalServer(w, err.Error())
@@ -192,36 +194,41 @@ type launchTeamAgent struct {
 	Knowledge    string                 `json:"knowledge"`
 }
 
-// LaunchTeam launches multiple agents on a shared message board.
+// launchTeamRequest is a team launch's body.
+type launchTeamRequest struct {
+	BoardName          string            `json:"board_name"`
+	BoardID            string            `json:"board_id"`  // relaunch on this board (#3536)
+	NewBoard           bool              `json:"new_board"` // create another board even if the name exists
+	WorkingDir         string            `json:"working_dir"`
+	AgentType          string            `json:"agent_type"`
+	Flags              []string          `json:"flags"`
+	BoardServer        string            `json:"board_server"`
+	Backend            string            `json:"backend"`
+	BoardType          string            `json:"board_type"`
+	Worktree           bool              `json:"worktree"`
+	BaseBranch         string            `json:"base_branch"`
+	Agents             []launchTeamAgent `json:"agents"`
+	TeamKnowledgeIndex string            `json:"team_knowledge_index"`
+	WorkingMode        *struct {
+		Mode               string `json:"mode"`
+		DependencyGuidance bool   `json:"dependency_guidance"`
+		CustomInstructions string `json:"custom_instructions"`
+	} `json:"working_mode"`
+	WorkflowPresets []struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Instructions string `json:"instructions"`
+		Builtin      bool   `json:"builtin"`
+	} `json:"workflow_presets"`
+}
+
+// LaunchTeam launches multiple agents on a shared message board: the board decided and the request checked
+// before anything is written, then the template's knowledge, working mode and presets restored, the worktree
+// and the team record made, and each named member launched (one member's failure is its entry's error).
 // POST /api/sessions/launch-team
 func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
-	var body struct {
-		BoardName          string            `json:"board_name"`
-		BoardID            string            `json:"board_id"`  // relaunch on this board (#3536)
-		NewBoard           bool              `json:"new_board"` // create another board even if the name exists
-		WorkingDir         string            `json:"working_dir"`
-		AgentType          string            `json:"agent_type"`
-		Flags              []string          `json:"flags"`
-		BoardServer        string            `json:"board_server"`
-		Backend            string            `json:"backend"`
-		BoardType          string            `json:"board_type"`
-		Worktree           bool              `json:"worktree"`
-		BaseBranch         string            `json:"base_branch"`
-		Agents             []launchTeamAgent `json:"agents"`
-		TeamKnowledgeIndex string            `json:"team_knowledge_index"`
-		WorkingMode        *struct {
-			Mode               string `json:"mode"`
-			DependencyGuidance bool   `json:"dependency_guidance"`
-			CustomInstructions string `json:"custom_instructions"`
-		} `json:"working_mode"`
-		WorkflowPresets []struct {
-			ID           string `json:"id"`
-			Name         string `json:"name"`
-			Instructions string `json:"instructions"`
-			Builtin      bool   `json:"builtin"`
-		} `json:"workflow_presets"`
-	}
+	var body launchTeamRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
@@ -256,8 +263,69 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		}
 		body.BoardName = key
 	}
+	h.restoreTeamTemplate(r.Context(), &body)
 
-	// Write any bundled knowledge files from the template
+	memberTypes, skippedMembers := teamMemberTypes(body)
+	attempt := tracking.StartLaunch(tracking.KindTeam, tracking.TeamProvider(memberTypes), h.launchBackendLabel(body.Backend), len(body.Agents), false)
+	refuse := func(category, msg string) {
+		attempt.Finish(tracking.OutcomeFailure, category, 0, len(body.Agents))
+		errBadRequest(w, msg)
+	}
+	if msg := checkTeamRequest(body); msg != "" {
+		refuse(tracking.FailInvalidRequest, msg)
+		return
+	}
+	ctx := r.Context()
+	workingDir, worktreePath, msg := h.createTeamWorktree(ctx, body)
+	if msg != "" {
+		refuse(tracking.FailWorktreeFailed, msg)
+		return
+	}
+	teamID := h.createTeamRecord(ctx, body, workingDir, worktreePath)
+
+	// Load settings once so we can fall back to per-type default_model_<type>. A read that fails
+	// stops the team before any agent starts: the loop below would otherwise start its agents
+	// without the configured CLI path (#4350).
+	userSettings, err := h.launchSettings(ctx)
+	if err != nil {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailSpawnFailed, 0, len(body.Agents))
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
+	// An agent never starts a less-restricted agent (#4032): the team's own flags and each
+	// member's choices are limited, except a member that is exactly an entry of a team template
+	// the Operator saved (saved_team_templates, which an agent's token can't write).
+	fromAgent := agentCaller(r)
+	if fromAgent {
+		body.Flags = keepAgentLaunchFlags(body.Flags)
+	}
+	var launched []map[string]any
+	firstFailure := ""
+	for _, agentDef := range body.Agents {
+		if agentDef.Name == "" {
+			continue
+		}
+		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef) {
+			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
+		}
+		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID)
+		if category != "" && firstFailure == "" {
+			firstFailure = category
+		}
+		launched = append(launched, entry)
+	}
+
+	resp := map[string]any{"ok": true, "board": body.BoardName, "board_id": body.BoardName, "board_label": h.boardLabel(body.BoardName), "agents": launched}
+	if teamID > 0 {
+		resp["team_id"] = teamID
+	}
+	finishTeamLaunch(attempt, launched, skippedMembers, firstFailure, len(body.Agents))
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// restoreTeamTemplate writes what a team template brings besides its members: the members' knowledge files and the
+// team's knowledge index, its working mode and its workflow presets. A failure is logged; the launch goes on.
+func (h *SessionsHandler) restoreTeamTemplate(ctx context.Context, body *launchTeamRequest) {
 	if body.BoardName != "" {
 		coralDir := h.cfg.CoralDir()
 		hasKnowledge := false
@@ -279,239 +347,178 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[launch-team] restored %d agent knowledge files for team %s", len(body.Agents), body.BoardName)
 		}
 	}
-
-	// Restore working mode settings from template
 	if body.WorkingMode != nil && h.bs != nil {
 		wm := board.WorkingMode{
 			Mode:               body.WorkingMode.Mode,
 			DependencyGuidance: body.WorkingMode.DependencyGuidance,
 			CustomInstructions: body.WorkingMode.CustomInstructions,
 		}
-		if _, err := h.bs.SetWorkingMode(r.Context(), body.BoardName, wm); err != nil {
+		if _, err := h.bs.SetWorkingMode(ctx, body.BoardName, wm); err != nil {
 			log.Printf("[launch-team] failed to restore working mode for team %s: %v", body.BoardName, err)
 		} else {
 			log.Printf("[launch-team] restored working mode %q for team %s", wm.Mode, body.BoardName)
 		}
 	}
-
-	// Restore workflow presets from template
 	if len(body.WorkflowPresets) > 0 && h.bs != nil {
 		for _, p := range body.WorkflowPresets {
-			if p.Builtin {
-				h.bs.SaveWorkflowPreset(r.Context(), body.BoardName, p.ID, p.Name, p.Instructions, false)
-			} else {
-				h.bs.SaveWorkflowPreset(r.Context(), body.BoardName, p.ID, p.Name, p.Instructions, true)
-			}
+			h.bs.SaveWorkflowPreset(ctx, body.BoardName, p.ID, p.Name, p.Instructions, !p.Builtin)
 		}
 		log.Printf("[launch-team] restored %d workflow presets for team %s", len(body.WorkflowPresets), body.BoardName)
 	}
+}
 
-	// Label the team by the effective provider of the members that will
-	// actually launch (their own type, else the team's, else the Claude
-	// fallback launchSession applies): "mixed" only when those truly differ.
-	var memberTypes []string
-	skippedMembers := 0
+// teamMemberTypes is the effective provider of each member that will launch (its own type, else the team's; the
+// Claude fallback is launchSession's), for the team's analytics label ("mixed" only when those truly differ), and
+// how many unnamed members the launch skips.
+func teamMemberTypes(body launchTeamRequest) (types []string, skipped int) {
 	for _, a := range body.Agents {
 		if a.Name == "" {
-			skippedMembers++ // the launch loop skips unnamed members
+			skipped++ // the launch loop skips unnamed members
 			continue
 		}
 		t := body.AgentType
 		if a.AgentType != "" {
 			t = a.AgentType
 		}
-		memberTypes = append(memberTypes, t)
+		types = append(types, t)
 	}
-	teamProvider := tracking.TeamProvider(memberTypes)
-	attempt := tracking.StartLaunch(tracking.KindTeam, teamProvider, h.launchBackendLabel(body.Backend), len(body.Agents), false)
+	return types, skipped
+}
+
+// checkTeamRequest is why a team launch is refused before anything starts ("" when it isn't): the board, the
+// folder and the members required, and the team's type and every member's type and model valid. A team that
+// failed halfway would leave live agents behind.
+func checkTeamRequest(body launchTeamRequest) string {
 	if body.BoardName == "" || body.WorkingDir == "" || len(body.Agents) == 0 {
-		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
-		errBadRequest(w, "board_name, working_dir, and agents required")
-		return
+		return "board_name, working_dir, and agents required"
 	}
-	// Validate the team-level type and every per-agent override before
-	// launching anything: a team that fails halfway leaves live agents behind.
 	if err := agent.ValidateAgentType(body.AgentType); err != nil {
-		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
-		errBadRequest(w, err.Error())
-		return
+		return err.Error()
 	}
 	for _, a := range body.Agents {
 		if err := agent.ValidateAgentType(a.AgentType); err != nil {
-			attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
-			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, err))
-			return
+			return fmt.Sprintf("agent %q: %s", a.Name, err)
 		}
 		if a.Model != "" && !agentmodels.ValidModelValue(a.Model) {
-			attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
-			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, errInvalidModel))
-			return
+			return fmt.Sprintf("agent %q: %s", a.Name, errInvalidModel)
 		}
 	}
+	return ""
+}
 
-	ctx := r.Context()
-
-	// Create git worktree if requested
-	workingDir := body.WorkingDir
-	var worktreePath string
-	if body.Worktree && body.WorkingDir != "" {
-		branch := body.BaseBranch
-		if branch == "" {
-			branch = "main"
-		}
-		worktreeDir := filepath.Join(h.cfg.CoralDir(), "worktrees")
-		os.MkdirAll(worktreeDir, 0755)
-		worktreePath = filepath.Join(worktreeDir, body.BoardName)
-		worktreeBranch := fmt.Sprintf("coral-team/%s", body.BoardName)
-		cmd := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "-b", worktreeBranch, "--", worktreePath, branch)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			// Branch may already exist from a previous run — try without -b
-			cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "--", worktreePath, worktreeBranch)
-			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-				attempt.Finish(tracking.OutcomeFailure, tracking.FailWorktreeFailed, 0, len(body.Agents))
-				errBadRequest(w, fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2)))
-				return
-			}
-		}
-		workingDir = worktreePath
-		log.Printf("[launch-team] created worktree at %s (branch %s from %s)", worktreePath, worktreeBranch, branch)
+// createTeamWorktree makes the team's git worktree when it asks for one (branch coral-team/<board> from its base
+// branch, main by default; the branch reused when a previous run left it), and returns the folder its agents start
+// in, the worktree ("" for none), or why it failed.
+func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTeamRequest) (workingDir, worktreePath, failure string) {
+	if !body.Worktree || body.WorkingDir == "" {
+		return body.WorkingDir, "", ""
 	}
-
-	// Create team persistence record
-	var teamID int64
-	if h.teamStore != nil {
-		configJSON, _ := json.Marshal(body)
-		isWorktree := 0
-		if worktreePath != "" {
-			isWorktree = 1
-		}
-		team, err := h.teamStore.CreateTeam(ctx, &store.Team{
-			Name:       body.BoardName,
-			ConfigJSON: string(configJSON),
-			Status:     "running",
-			WorkingDir: workingDir,
-			IsWorktree: isWorktree,
-		})
-		if err != nil {
-			log.Printf("[launch-team] failed to create team record: %v", err)
-		} else {
-			teamID = team.ID
+	branch := body.BaseBranch
+	if branch == "" {
+		branch = "main"
+	}
+	worktreeDir := filepath.Join(h.cfg.CoralDir(), "worktrees")
+	os.MkdirAll(worktreeDir, 0755)
+	worktreePath = filepath.Join(worktreeDir, body.BoardName)
+	worktreeBranch := fmt.Sprintf("coral-team/%s", body.BoardName)
+	cmd := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "-b", worktreeBranch, "--", worktreePath, branch)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Branch may already exist from a previous run — try without -b
+		cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "--", worktreePath, worktreeBranch)
+		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+			return "", "", fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2))
 		}
 	}
+	log.Printf("[launch-team] created worktree at %s (branch %s from %s)", worktreePath, worktreeBranch, branch)
+	return worktreePath, worktreePath, ""
+}
 
-	var launched []map[string]any
-	firstFailure := ""
-
-	// Load settings once so we can fall back to per-type default_model_<type>. A read that fails
-	// stops the team before any agent starts: the loop below would otherwise start its agents
-	// without the configured CLI path (#4350).
-	userSettings, err := h.launchSettings(ctx)
+// createTeamRecord stores the team (its request, its folder, whether that is a worktree) and returns its id, 0
+// when there is no team store or the record could not be made.
+func (h *SessionsHandler) createTeamRecord(ctx context.Context, body launchTeamRequest, workingDir, worktreePath string) int64 {
+	if h.teamStore == nil {
+		return 0
+	}
+	configJSON, _ := json.Marshal(body)
+	isWorktree := 0
+	if worktreePath != "" {
+		isWorktree = 1
+	}
+	team, err := h.teamStore.CreateTeam(ctx, &store.Team{
+		Name:       body.BoardName,
+		ConfigJSON: string(configJSON),
+		Status:     "running",
+		WorkingDir: workingDir,
+		IsWorktree: isWorktree,
+	})
 	if err != nil {
-		attempt.Finish(tracking.OutcomeFailure, tracking.FailSpawnFailed, 0, len(body.Agents))
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
-		return
+		log.Printf("[launch-team] failed to create team record: %v", err)
+		return 0
 	}
+	return team.ID
+}
 
-	// An agent never starts a less-restricted agent (#4032): the team's own flags and each
-	// member's choices are limited, except a member that is exactly an entry of a team template
-	// the Operator saved (saved_team_templates, which an agent's token can't write).
-	fromAgent := agentCaller(r)
-	if fromAgent {
-		body.Flags = keepAgentLaunchFlags(body.Flags)
+// launchTeamMember launches one named member: its type and model over the team's (the model else the Settings
+// default for its type), its own flags or the team's (without their permission flags: launchSession derives those),
+// the team's distilled knowledge in its prompt. It returns the member's entry for the reply ({name, error} when it
+// failed) and, for a launch that failed, its analytics category.
+func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamRequest, def launchTeamAgent, userSettings map[string]string, workingDir, worktreePath string, teamID int64) (map[string]any, string) {
+	agentType := body.AgentType
+	if def.AgentType != "" {
+		agentType = def.AgentType
 	}
-	for _, agentDef := range body.Agents {
-		if agentDef.Name == "" {
-			continue
-		}
-		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef) {
-			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
-		}
-
-		// Per-agent type/model override team-level defaults
-		agentType := body.AgentType
-		if agentDef.AgentType != "" {
-			agentType = agentDef.AgentType
-		}
-
-		// Resolve model: per-agent request wins, else user's default_model_<type>.
-		effectiveModel := defaultModelFromSettings(userSettings, agentType, agentDef.Model)
-
-		// Per-agent flags carry the member's own permission mode from the UI.
-		// When present, use them (after stripping engine-specific permission
-		// flags that might not match this agent's type — launchSession will
-		// re-derive the correct flags from the cleaned set). Otherwise fall
-		// back to team-level flags (also cleaned).
-		var agentFlags []string
-		if len(agentDef.Flags) > 0 {
-			agentFlags = agentDef.Flags
-		} else {
-			agentFlags = stripAgentPermissionFlags(body.Flags)
-		}
-		if effectiveModel != "" && !agentmodels.ValidModelValue(effectiveModel) {
-			// Only a saved default can get here (each member's own model was checked above).
-			launched = append(launched, map[string]any{"name": agentDef.Name, "error": "the default model in Settings: " + errInvalidModel})
-			continue
-		}
-		if effectiveModel != "" {
-			agentFlags = append(agentFlags, "--model", effectiveModel)
-		}
-
-		// Inject distilled knowledge if available
-		agentPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, agentDef.Name, agentDef.Prompt)
-
-		result, err := h.launchSession(ctx, workingDir, agentType, agentDef.Name,
-			"", agentFlags, agentPrompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, agentDef.Capabilities,
-			agentDef.Tools, agentDef.Hooks)
-		if err != nil {
-			log.Printf("[launch-team] failed to launch agent %s: %v", agentDef.Name, err)
-			if firstFailure == "" {
-				firstFailure = classifyLaunchError(err)
-			}
-			launched = append(launched, map[string]any{"name": agentDef.Name, "error": err.Error()})
-			continue
-		}
-
-		sessionID := result["session_id"].(string)
-
-		// Store worktree info on the live session
-		if worktreePath != "" {
-			h.ss.UpdateWorktreeInfo(ctx, sessionID, worktreePath, body.WorkingDir)
-		}
-
-		// Create team member record and set team_id on live session
-		if teamID > 0 && h.teamStore != nil {
-			agentConfigJSON, _ := json.Marshal(agentDef)
-			h.teamStore.CreateTeamMember(ctx, &store.TeamMember{
-				TeamID:          teamID,
-				AgentName:       agentDef.Name,
-				AgentConfigJSON: string(agentConfigJSON),
-				SessionID:       &sessionID,
-				Status:          "active",
-			})
-			h.ss.SetTeamID(ctx, sessionID, teamID)
-		}
-
-		// Board subscription handled by setupBoardAndPrompt (prompt passed as CLI arg)
-		if body.BoardName != "" {
-			h.setupBoardAndPrompt(sessionID, result["session_name"].(string),
-				agentType, body.BoardName, launchedName(result, agentDef.Name))
-		}
-
-		launchResult := map[string]any{
-			"name": launchedName(result, agentDef.Name), "session_id": sessionID, "session_name": result["session_name"],
-		}
-		if worktreePath != "" {
-			launchResult["worktree_path"] = worktreePath
-		}
-		launched = append(launched, launchResult)
+	effectiveModel := defaultModelFromSettings(userSettings, agentType, def.Model)
+	agentFlags := def.Flags
+	if len(agentFlags) == 0 {
+		agentFlags = stripAgentPermissionFlags(body.Flags)
 	}
-
-	resp := map[string]any{"ok": true, "board": body.BoardName, "board_id": body.BoardName, "board_label": h.boardLabel(body.BoardName), "agents": launched}
-	if teamID > 0 {
-		resp["team_id"] = teamID
+	if effectiveModel != "" && !agentmodels.ValidModelValue(effectiveModel) {
+		// Only a saved default can get here (each member's own model was checked above).
+		return map[string]any{"name": def.Name, "error": "the default model in Settings: " + errInvalidModel}, ""
 	}
-	// launched holds both started members and {name, error} failures, so count
-	// each kind separately: only started members are real launches.
+	if effectiveModel != "" {
+		agentFlags = append(agentFlags, "--model", effectiveModel)
+	}
+	result, err := h.launchSession(ctx, launchSpec{
+		WorkDir: workingDir, AgentType: agentType, DisplayName: def.Name, Flags: agentFlags,
+		Prompt:    InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, def.Name, def.Prompt),
+		BoardName: body.BoardName, BoardServer: body.BoardServer, Backend: body.Backend, BoardType: body.BoardType,
+		Model: effectiveModel, Capabilities: def.Capabilities, Tools: def.Tools, Hooks: def.Hooks,
+	})
+	if err != nil {
+		log.Printf("[launch-team] failed to launch agent %s: %v", def.Name, err)
+		return map[string]any{"name": def.Name, "error": err.Error()}, classifyLaunchError(err)
+	}
+	sessionID := result["session_id"].(string)
+	if worktreePath != "" {
+		h.ss.UpdateWorktreeInfo(ctx, sessionID, worktreePath, body.WorkingDir)
+	}
+	if teamID > 0 && h.teamStore != nil {
+		agentConfigJSON, _ := json.Marshal(def)
+		h.teamStore.CreateTeamMember(ctx, &store.TeamMember{
+			TeamID:          teamID,
+			AgentName:       def.Name,
+			AgentConfigJSON: string(agentConfigJSON),
+			SessionID:       &sessionID,
+			Status:          "active",
+		})
+		h.ss.SetTeamID(ctx, sessionID, teamID)
+	}
+	// Board subscription handled by setupBoardAndPrompt (prompt passed as CLI arg)
+	if body.BoardName != "" {
+		h.setupBoardAndPrompt(sessionID, result["session_name"].(string), agentType, body.BoardName, launchedName(result, def.Name))
+	}
+	entry := map[string]any{"name": launchedName(result, def.Name), "session_id": sessionID, "session_name": result["session_name"]}
+	if worktreePath != "" {
+		entry["worktree_path"] = worktreePath
+	}
+	return entry, ""
+}
+
+// finishTeamLaunch records the team launch's outcome. launched holds both started members and {name, error}
+// failures, so each kind is counted separately: only started members are real launches. Unnamed members were
+// never launched: they count as failed (not started), with a fixed category, so requested == started + failed.
+func finishTeamLaunch(attempt *tracking.Attempt, launched []map[string]any, skipped int, firstFailure string, requested int) {
 	started, failed := 0, 0
 	for _, m := range launched {
 		if _, bad := m["error"]; bad {
@@ -520,10 +527,8 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			started++
 		}
 	}
-	// Unnamed members were never launched: count them as failed (not started)
-	// with a fixed category so requested == started + failed.
-	failed += skippedMembers
-	if skippedMembers > 0 && firstFailure == "" {
+	failed += skipped
+	if skipped > 0 && firstFailure == "" {
 		firstFailure = tracking.FailInvalidRequest
 	}
 	switch {
@@ -536,13 +541,12 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if started > 0 {
 		counts := map[string]string{
-			"agent_count": strconv.Itoa(started), "requested_agents": strconv.Itoa(len(body.Agents)),
+			"agent_count": strconv.Itoa(started), "requested_agents": strconv.Itoa(requested),
 			"started_agents": strconv.Itoa(started), "failed_agents": strconv.Itoa(failed),
 		}
 		tracking.TrackEvent(tracking.EventTeamLaunched, counts)
 		tracking.TrackOnce(tracking.EventFirstTeamLaunched, map[string]string{"agent_count": strconv.Itoa(started)})
 	}
-	writeJSON(w, http.StatusOK, resp)
 }
 
 // ResetTeam kills all agents on a board and re-launches them with their
@@ -669,9 +673,10 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		}
 		tools := store.UnmarshalFlags(cfg.Tools)
 		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, displayName, prompt)
-		result, err := h.launchSession(bgCtx, cfg.WorkingDir, cfg.AgentType, displayName,
-			"", flags, prompt, boardName, boardServer, "", boardType, modelStr, caps,
-			tools, nil)
+		result, err := h.launchSession(bgCtx, launchSpec{
+			WorkDir: cfg.WorkingDir, AgentType: cfg.AgentType, DisplayName: displayName, Flags: flags, Prompt: prompt,
+			BoardName: boardName, BoardServer: boardServer, BoardType: boardType, Model: modelStr, Capabilities: caps, Tools: tools,
+		})
 		if err != nil {
 			log.Printf("[reset-team] failed to re-launch %s: %v", displayName, err)
 			launched = append(launched, map[string]any{"name": displayName, "error": err.Error()})
@@ -726,123 +731,83 @@ func (h *SessionsHandler) launchSettings(ctx context.Context) (map[string]string
 	return s, nil
 }
 
-// launchSession creates a new agent session using the specified backend (tmux or pty).
-func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType, displayName, resumeSessionID string,
-	flags []string, prompt, boardName, boardServer, backend, boardType, model string, capabilities *agent.Capabilities,
-	tools []string, hooks map[string]interface{}) (_ map[string]any, retErr error) {
+// launchSpec is one agent to launch.
+type launchSpec struct {
+	WorkDir, AgentType, DisplayName string
+	ResumeSessionID                 string // a conversation to continue ("" for a new one)
+	Flags                           []string
+	Prompt                          string
+	BoardName, BoardServer          string
+	Backend                         string // the launch path asked for: "pty", "tmux" or "" (launchPath)
+	BoardType, Model                string
+	Capabilities                    *agent.Capabilities
+	Tools                           []string
+	Hooks                           map[string]interface{}
+}
 
-	if msg := launchDirError(workDir); msg != "" {
+// launchSession creates a new agent session using the specified backend (tmux or pty).
+func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_ map[string]any, retErr error) {
+	if msg := launchDirError(spec.WorkDir); msg != "" {
 		return nil, errors.New(msg)
 	}
-	absDir, _ := filepath.Abs(workDir)
-
+	absDir, _ := filepath.Abs(spec.WorkDir)
+	agentType, displayName := spec.AgentType, spec.DisplayName
 	if agentType == "" {
 		agentType = at.Claude
 	}
 	// A role another running agent already holds on this board gets a numbered name
 	// ("Backend Dev 2"), so the two never share a subscription, mentions or read state
 	// (#3543). On this Coral's boards only; a remote board's Coral decides its own.
-	if boardName != "" && (boardServer == "" || boardServer == "local") {
-		displayName = h.uniqueBoardRole(ctx, boardName, displayName, agentType)
+	if spec.BoardName != "" && (spec.BoardServer == "" || spec.BoardServer == "local") {
+		displayName = h.uniqueBoardRole(ctx, spec.BoardName, displayName, agentType)
 		picked := naming.SubscriberID(displayName, agentType)
 		defer func() {
 			if retErr != nil {
-				h.releaseRoleReservation(boardName, picked) // the launch failed: the name is free again
+				h.releaseRoleReservation(spec.BoardName, picked) // the launch failed: the name is free again
 			}
 		}()
 	}
-	if err := validateAgentModel(agentType, model); err != nil {
+	if err := validateAgentModel(agentType, spec.Model); err != nil {
 		return nil, err
 	}
-
-	// Resolve custom CLI path from settings
 	userSettings, err := h.launchSettings(ctx)
 	if err != nil {
 		return nil, err
 	}
-	cliPath := agent.ResolveCLIPath(userSettings, agentType)
-
-	// Check CLI availability before launching (skip for terminal type)
-	if agentType != at.Terminal {
-		checkBin := cliPath
-		if checkBin == "" {
-			if info := agent.GetCLIInfo(agentType); info != nil {
-				checkBin = info.Binary
-			}
-		}
-		if checkBin != "" {
-			if resolved, err := exec.LookPath(checkBin); err != nil {
-				// LookPath failed — try common install locations
-				if found := agent.FindCLIInCommonPaths(checkBin); found != "" {
-					cliPath = found
-					log.Printf("[launch] %s not on PATH, found at %s", checkBin, found)
-				} else {
-					info := agent.GetCLIInfo(agentType)
-					installCmd, installURL := "", ""
-					if info != nil {
-						installCmd, installURL = info.InstallCommand, info.InstallURL
-					}
-					if installURL != "" {
-						return nil, fmt.Errorf("%s CLI not found. Install it: %s (the vendor's page: %s)", checkBin, installCmd, installURL)
-					}
-					return nil, fmt.Errorf("%s CLI not found. Install it: %s", checkBin, installCmd)
-				}
-			} else if cliPath == "" {
-				cliPath = resolved
-			}
-		}
+	cliPath, err := resolveLaunchCLI(agentType, agent.ResolveCLIPath(userSettings, agentType))
+	if err != nil {
+		return nil, err
 	}
-
 	if err := agent.ValidateAgentType(agentType); err != nil {
 		return nil, err
 	}
-
-	// NOTE: this value selects the LAUNCH PATH, not the terminal a session ends
-	// up on. "pty" means "go through the TerminalBackend abstraction", which is
-	// how tmux-backed sessions are launched too — h.backend is a TmuxBackend in
-	// that case. It is persisted and drives the same branch on wake, so it must
-	// keep meaning exactly this. Use terminalKind below for what actually runs.
-	// When the server is using a PTY backend, always use PTY regardless of
-	// what the frontend requests — tmux is not available on this platform.
-	if _, isPTY := h.backend.(*ptymanager.PTYBackend); isPTY {
-		backend = "pty"
-	} else if backend == "" {
-		if h.backend != nil {
-			backend = "pty"
-		} else {
-			backend = "tmux"
-		}
-	}
+	backend := h.launchPath(spec.Backend)
 	folderName := filepath.Base(absDir)
-
 	sessionID := generateUUID()
 	sessionName := naming.SessionName(agentType, sessionID)
 	logFile := naming.LogFile(h.cfg.LogDir, agentType, sessionID)
 
 	isTerminal := agentType == at.Terminal
 	agentImpl := agent.GetAgent(agentType)
-	if resumeSessionID != "" && !isTerminal {
-		agent.TryPrepareResume(agentImpl, resumeSessionID, absDir)
+	if spec.ResumeSessionID != "" && !isTerminal {
+		agent.TryPrepareResume(agentImpl, spec.ResumeSessionID, absDir)
 	}
-
-	role := naming.SubscriberID(displayName, agentType)
-
 	launchParams := agent.LaunchParams{
 		SessionID:       sessionID,
 		SessionName:     sessionName,
 		ProtocolPath:    h.protocolPath(),
-		ResumeSessionID: resumeSessionID,
-		Flags:           flags,
+		ResumeSessionID: spec.ResumeSessionID,
+		Flags:           spec.Flags,
 		WorkingDir:      absDir,
-		BoardName:       boardName,
-		BoardLabel:      h.boardLabel(boardName),
-		Role:            role,
-		Prompt:          prompt,
+		BoardName:       spec.BoardName,
+		BoardLabel:      h.boardLabel(spec.BoardName),
+		Role:            naming.SubscriberID(displayName, agentType),
+		Prompt:          spec.Prompt,
 		PromptOverrides: promptOverrides(userSettings),
-		BoardType:       boardType,
-		Capabilities:    capabilities,
-		Tools:           tools,
-		Hooks:           hooks,
+		BoardType:       spec.BoardType,
+		Capabilities:    spec.Capabilities,
+		Tools:           spec.Tools,
+		Hooks:           spec.Hooks,
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
@@ -857,115 +822,18 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	// files can't be written, the launch fails with nothing left behind (#3601 W12).
 	var cmd string
 	if !isTerminal {
-		var err error
 		if cmd, err = launchCommand(agentImpl, launchParams); err != nil {
 			return nil, err
 		}
 	}
-
 	if backend == "pty" && h.backend != nil {
-		// PTY backend: spawn the agent process directly
-		// Spawn a shell first (empty command), then send the agent command as input.
-		// This matches the tmux pattern and works cross-platform — the shell
-		// interprets bash syntax like $(cat ...) correctly.
-		if err := h.backend.Spawn(sessionName, agentType, absDir, sessionID, "", 200, 50); err != nil {
-			return nil, fmt.Errorf("pty spawn failed: %w", err)
-		}
-		// PTY backend manages its own log file
-		logFile = h.backend.LogPath(sessionName)
-
-		// Wait for shell to initialize, then send the launch command
-		if !isTerminal && cmd != "" {
-			log.Printf("[launch] pty session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
-			if pb, ok := h.backend.(*ptymanager.PTYBackend); ok {
-				if !pb.WaitReady(sessionName, 5*time.Second) {
-					log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", sessionName)
-				}
-			} else {
-				time.Sleep(500 * time.Millisecond)
-			}
-			if err := h.startAgentCLI(ctx, boardName, sessionName, cmd); err != nil {
-				return nil, fmt.Errorf("pty launch command failed: %w", err)
-			}
+		if logFile, err = h.startOnBackend(ctx, spec.BoardName, sessionName, agentType, absDir, sessionID, cmd); err != nil {
+			return nil, err
 		}
 	} else {
-		// Tmux backend: create session, pipe-pane, send keys
 		backend = "tmux" // normalize if pty requested but no backend available
-
-		// Only check real tmux availability when the terminal is the real
-		// tmux terminal — tests inject a mock that should bypass this.
-		if tmuxTerm, isTmux := h.terminal.(*ptymanager.TmuxSessionTerminal); isTmux {
-			tmuxPath, ok := tmux.IsAvailable()
-			slog.Info("launch tmux availability",
-				"available", ok,
-				"resolved_path", tmuxPath,
-				"client_tmux_bin_before", tmuxTerm.Client().TmuxBin,
-				"socket", tmuxTerm.Client().SocketPath,
-				"path", os.Getenv("PATH"),
-			)
-			if !ok {
-				return nil, fmt.Errorf("tmux is required to launch agents but was not found on this system. Install tmux (e.g. 'brew install tmux' on macOS), then try again")
-			}
-			if tmuxPath != "" && tmuxTerm.Client().TmuxBin != tmuxPath {
-				slog.Info("launch updating tmux client binary",
-					"from", tmuxTerm.Client().TmuxBin,
-					"to", tmuxPath,
-				)
-				tmuxTerm.Client().TmuxBin = tmuxPath
-			}
-		}
-
-		// Create empty log file
-		ptymanager.ResetAgentLog(logFile) // 0600, never through a link (#3601, W17)
-
-		slog.Info("launch creating tmux session",
-			"session_name", sessionName,
-			"working_dir", absDir,
-			"terminal_type", fmt.Sprintf("%T", h.terminal),
-		)
-		if err := h.terminal.CreateSession(ctx, sessionName, absDir); err != nil {
-			slog.Error("launch tmux CreateSession failed",
-				"session_name", sessionName,
-				"working_dir", absDir,
-				"terminal_type", fmt.Sprintf("%T", h.terminal),
-				"error", err,
-			)
-			return nil, fmt.Errorf("tmux new-session failed: %w", err)
-		}
-		// Put the Coral environment into the tmux session so that anything the
-		// user runs by hand in that pane — coral-board especially — reaches the
-		// server that launched the agent. Same source as the agent's own env.
-		if tmuxTerm, ok := h.terminal.(*ptymanager.TmuxSessionTerminal); ok {
-			for _, kv := range agent.CoralEnv(launchParams) {
-				if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, kv[0], kv[1]); err != nil {
-					log.Printf("[launch] failed to set %s for %s: %v", kv[0], sessionName, err)
-				}
-			}
-			// Prepend Coral tools dir to PATH so coral-board and hooks are
-			// discoverable by subshells Claude spawns (e.g. Bash tool).
-			if binDir := agent.CoralToolsDir(); binDir != "" {
-				currentPath := os.Getenv("PATH")
-				if !strings.Contains(currentPath, binDir) {
-					currentPath = binDir + ":" + currentPath
-				}
-				if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, "PATH", currentPath); err != nil {
-					log.Printf("[launch] failed to set PATH for %s: %v", sessionName, err)
-				}
-			}
-		}
-
-		// Setup pipe-pane logging
-		h.terminal.StartLogging(ctx, sessionName, logFile)
-
-		// Set pane title using native tmux command (avoids shell echo)
-		h.terminal.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, agentType))
-
-		// Launch the agent (unless terminal)
-		if !isTerminal {
-			log.Printf("[launch] tmux session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
-			if err := h.startAgentCLI(ctx, boardName, sessionName+".0", cmd); err != nil {
-				return nil, err
-			}
+		if err := h.startOnTmux(ctx, launchParams, spec.BoardName, sessionName, agentType, absDir, folderName, logFile, cmd); err != nil {
+			return nil, err
 		}
 	}
 
@@ -987,31 +855,29 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		AgentName:     folderName,
 		WorkingDir:    absDir,
 		DisplayName:   ptr.NonEmpty(displayName),
-		ResumeFromID:  ptr.NonEmpty(resumeSessionID),
-		Flags:         store.MarshalFlags(flags),
-		Prompt:        ptr.NonEmpty(prompt),
-		BoardName:     ptr.NonEmpty(boardName),
-		BoardServer:   ptr.NonEmpty(boardServer),
+		ResumeFromID:  ptr.NonEmpty(spec.ResumeSessionID),
+		Flags:         store.MarshalFlags(spec.Flags),
+		Prompt:        ptr.NonEmpty(spec.Prompt),
+		BoardName:     ptr.NonEmpty(spec.BoardName),
+		BoardServer:   ptr.NonEmpty(spec.BoardServer),
 		Backend:       ptr.NonEmpty(backend),
-		BoardType:     ptr.NonEmpty(boardType),
-		Capabilities:  store.MarshalCapabilities(capabilities),
-		Model:         ptr.NonEmpty(model),
-		ContextWindow: proxy.LookupContextWindow(model),
-		Tools:         store.MarshalCapabilities(tools),
+		BoardType:     ptr.NonEmpty(spec.BoardType),
+		Capabilities:  store.MarshalCapabilities(spec.Capabilities),
+		Model:         ptr.NonEmpty(spec.Model),
+		ContextWindow: proxy.LookupContextWindow(spec.Model),
+		Tools:         store.MarshalCapabilities(spec.Tools),
 		PID:           shellPID,
 	})
 	h.noteLaunchedHooks(ctx, sessionID, agentType) // #3665
-	if agentType != at.Terminal {
+	if !isTerminal {
 		go func() {
 			defer safego.Recover("server/routes/sessions_launch:h.recordCLIVersion")
 			h.recordCLIVersion(sessionID, agentType, userSettings)
 		}() // #3481
 	}
-
 	if displayName != "" {
 		h.ss.SetDisplayName(ctx, sessionID, displayName)
 	}
-
 	return map[string]any{
 		"ok": true, "session_id": sessionID, "session_name": sessionName,
 		"agent_type": agentType, "working_dir": absDir,
@@ -1022,6 +888,164 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		// only the former is how a silent backend downgrade went unnoticed.
 		"terminal": terminalKind(h.backend),
 	}, nil
+}
+
+// resolveLaunchCLI is the CLI an agent of agentType starts with: cliPath (Settings > CLI Paths), else its binary
+// found on PATH or, failing that, in the common install places. A CLI found nowhere is an error naming how to
+// install it. A plain terminal has none.
+func resolveLaunchCLI(agentType, cliPath string) (string, error) {
+	if agentType == at.Terminal {
+		return cliPath, nil
+	}
+	checkBin := cliPath
+	if checkBin == "" {
+		if info := agent.GetCLIInfo(agentType); info != nil {
+			checkBin = info.Binary
+		}
+	}
+	if checkBin == "" {
+		return cliPath, nil
+	}
+	resolved, err := exec.LookPath(checkBin)
+	if err == nil {
+		if cliPath == "" {
+			cliPath = resolved
+		}
+		return cliPath, nil
+	}
+	// LookPath failed — try common install locations
+	if found := agent.FindCLIInCommonPaths(checkBin); found != "" {
+		log.Printf("[launch] %s not on PATH, found at %s", checkBin, found)
+		return found, nil
+	}
+	installCmd, installURL := "", ""
+	if info := agent.GetCLIInfo(agentType); info != nil {
+		installCmd, installURL = info.InstallCommand, info.InstallURL
+	}
+	if installURL != "" {
+		return "", fmt.Errorf("%s CLI not found. Install it: %s (the vendor's page: %s)", checkBin, installCmd, installURL)
+	}
+	return "", fmt.Errorf("%s CLI not found. Install it: %s", checkBin, installCmd)
+}
+
+// launchPath is the launch path for a requested one.
+//
+// NOTE: this value selects the LAUNCH PATH, not the terminal a session ends
+// up on. "pty" means "go through the TerminalBackend abstraction", which is
+// how tmux-backed sessions are launched too — h.backend is a TmuxBackend in
+// that case. It is persisted and drives the same branch on wake, so it must
+// keep meaning exactly this. Use terminalKind for what actually runs.
+// When the server is using a PTY backend, always use PTY regardless of
+// what the frontend requests — tmux is not available on this platform.
+func (h *SessionsHandler) launchPath(requested string) string {
+	if _, isPTY := h.backend.(*ptymanager.PTYBackend); isPTY {
+		return "pty"
+	}
+	if requested != "" {
+		return requested
+	}
+	if h.backend != nil {
+		return "pty"
+	}
+	return "tmux"
+}
+
+// startOnBackend starts the agent through the TerminalBackend: a shell first (empty command), then the agent's
+// start command typed into it once the shell is ready. This matches the tmux pattern and works cross-platform:
+// the shell interprets bash syntax like $(cat ...) correctly. It returns the log file the backend keeps.
+func (h *SessionsHandler) startOnBackend(ctx context.Context, team, sessionName, agentType, dir, sessionID, cmd string) (string, error) {
+	if err := h.backend.Spawn(sessionName, agentType, dir, sessionID, "", 200, 50); err != nil {
+		return "", fmt.Errorf("pty spawn failed: %w", err)
+	}
+	logFile := h.backend.LogPath(sessionName) // PTY backend manages its own log file
+	if cmd == "" {
+		return logFile, nil
+	}
+	log.Printf("[launch] pty session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
+	if pb, ok := h.backend.(*ptymanager.PTYBackend); ok {
+		if !pb.WaitReady(sessionName, 5*time.Second) {
+			log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", sessionName)
+		}
+	} else {
+		time.Sleep(500 * time.Millisecond)
+	}
+	if err := h.startAgentCLI(ctx, team, sessionName, cmd); err != nil {
+		return "", fmt.Errorf("pty launch command failed: %w", err)
+	}
+	return logFile, nil
+}
+
+// startOnTmux starts the agent in a new tmux session: the session (tmux checked first, on the real tmux
+// terminal), Coral's environment in it, its log and title, then the start command (none for a plain terminal).
+func (h *SessionsHandler) startOnTmux(ctx context.Context, params agent.LaunchParams, team, sessionName, agentType, dir, folderName, logFile, cmd string) error {
+	// Only check real tmux availability when the terminal is the real
+	// tmux terminal — tests inject a mock that should bypass this.
+	tmuxTerm, isTmux := h.terminal.(*ptymanager.TmuxSessionTerminal)
+	if isTmux {
+		tmuxPath, ok := tmux.IsAvailable()
+		slog.Info("launch tmux availability",
+			"available", ok,
+			"resolved_path", tmuxPath,
+			"client_tmux_bin_before", tmuxTerm.Client().TmuxBin,
+			"socket", tmuxTerm.Client().SocketPath,
+			"path", os.Getenv("PATH"),
+		)
+		if !ok {
+			return fmt.Errorf("tmux is required to launch agents but was not found on this system. Install tmux (e.g. 'brew install tmux' on macOS), then try again")
+		}
+		if tmuxPath != "" && tmuxTerm.Client().TmuxBin != tmuxPath {
+			slog.Info("launch updating tmux client binary",
+				"from", tmuxTerm.Client().TmuxBin,
+				"to", tmuxPath,
+			)
+			tmuxTerm.Client().TmuxBin = tmuxPath
+		}
+	}
+
+	ptymanager.ResetAgentLog(logFile) // 0600, never through a link (#3601, W17)
+	slog.Info("launch creating tmux session",
+		"session_name", sessionName,
+		"working_dir", dir,
+		"terminal_type", fmt.Sprintf("%T", h.terminal),
+	)
+	if err := h.terminal.CreateSession(ctx, sessionName, dir); err != nil {
+		slog.Error("launch tmux CreateSession failed",
+			"session_name", sessionName,
+			"working_dir", dir,
+			"terminal_type", fmt.Sprintf("%T", h.terminal),
+			"error", err,
+		)
+		return fmt.Errorf("tmux new-session failed: %w", err)
+	}
+	// Put the Coral environment into the tmux session so that anything the
+	// user runs by hand in that pane — coral-board especially — reaches the
+	// server that launched the agent. Same source as the agent's own env.
+	if isTmux {
+		for _, kv := range agent.CoralEnv(params) {
+			if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, kv[0], kv[1]); err != nil {
+				log.Printf("[launch] failed to set %s for %s: %v", kv[0], sessionName, err)
+			}
+		}
+		// Prepend Coral tools dir to PATH so coral-board and hooks are
+		// discoverable by subshells Claude spawns (e.g. Bash tool).
+		if binDir := agent.CoralToolsDir(); binDir != "" {
+			currentPath := os.Getenv("PATH")
+			if !strings.Contains(currentPath, binDir) {
+				currentPath = binDir + ":" + currentPath
+			}
+			if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, "PATH", currentPath); err != nil {
+				log.Printf("[launch] failed to set PATH for %s: %v", sessionName, err)
+			}
+		}
+	}
+	h.terminal.StartLogging(ctx, sessionName, logFile)
+	// Set pane title using native tmux command (avoids shell echo)
+	h.terminal.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, agentType))
+	if agentType == at.Terminal {
+		return nil
+	}
+	log.Printf("[launch] tmux session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
+	return h.startAgentCLI(ctx, team, sessionName+".0", cmd)
 }
 
 // validateAgentModel rejects only known Coral model IDs whose provider is

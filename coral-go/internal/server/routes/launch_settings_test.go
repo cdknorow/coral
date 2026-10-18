@@ -108,7 +108,7 @@ func TestLaunchFailsWhenSettingsCannotBeRead(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "settings could not be read")
 
-	_, err = handler.launchSession(context.Background(), t.TempDir(), "claude", "A", "", nil, "", "", "", "", "", "", nil, nil, nil)
+	_, err = handler.launchSession(context.Background(), launchSpec{WorkDir: t.TempDir(), AgentType: "claude", DisplayName: "A"})
 	assert.Error(t, err)
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
