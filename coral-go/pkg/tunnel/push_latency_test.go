@@ -307,8 +307,21 @@ func TestBulkPushStaysWithinTheInteractiveBoundOnASlowDownlink(t *testing.T) {
 				down, idleUI.p50.Round(time.Millisecond), idleUI.p95.Round(time.Millisecond), idleKey.p50.Round(time.Millisecond), idleKey.p95.Round(time.Millisecond),
 				rate/1024, down*1e6/8/1024, ui.p50.Round(time.Millisecond), ui.p95.Round(time.Millisecond), key.p50.Round(time.Millisecond), key.p95.Round(time.Millisecond))
 			if ui.p95 >= hubCriterion || key.p95 >= hubCriterion {
-				t.Logf("p95 missed the %v bound with load average %s: measuring once more", hubCriterion, loadavg())
-				ui, key, rate = measure()
+				// A p95 over the bound on a loaded host is usually that host, not the scheduler: measure
+				// twice more and judge the median of three, as the small-reply test does (#4859; keeps the
+				// 200 ms bound, only looks harder under load). loadavg is logged.
+				t.Logf("p95 missed the %v bound with load average %s: measuring twice more, median of 3", hubCriterion, loadavg())
+				uiP95s, keyP95s := []time.Duration{ui.p95}, []time.Duration{key.p95}
+				for i := 0; i < 2; i++ {
+					u2, k2, r2 := measure()
+					uiP95s, keyP95s, rate = append(uiP95s, u2.p95), append(keyP95s, k2.p95), r2
+				}
+				med3 := func(d []time.Duration) time.Duration {
+					sort.Slice(d, func(i, j int) bool { return d[i] < d[j] })
+					return d[1]
+				}
+				ui.p95, key.p95 = med3(uiP95s), med3(keyP95s)
+				t.Logf("median of 3: UI p95 %v, keystroke p95 %v", ui.p95.Round(time.Millisecond), key.p95.Round(time.Millisecond))
 			}
 			assert.Less(t, ui.p95, hubCriterion, "a UI request's p95 during a bulk push")
 			assert.Less(t, key.p95, hubCriterion, "a keystroke's p95 during a bulk push")
