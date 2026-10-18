@@ -7,6 +7,7 @@ import { selectLiveSession } from './sessions.js';
 import { pollEvery } from './overload.js';
 import { note, currentRoute } from './nav.js';
 import { KILL_LOG_NOTE } from './render.js';
+import { formatDuration as fmtDuration } from './format.js';
 
 let workflows = [];
 let selectedWorkflowId = null;
@@ -738,14 +739,7 @@ function statusIconChar(status) {
     }
 }
 
-function formatDuration(sec) {
-    if (sec < 60) return `${sec}s`;
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`;
-    const h = Math.floor(m / 60);
-    return `${h}h ${m % 60}m`;
-}
+const formatDuration = sec => fmtDuration(sec, { unit: 's', dropZeroSeconds: true });
 
 function showError(el, msg) {
     el.textContent = msg;

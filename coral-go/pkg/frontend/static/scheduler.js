@@ -6,6 +6,7 @@ import { registerActions, idOf, withId, uuidOf } from './actions.js';
 import { pollEvery } from './overload.js';
 import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 import { ensureBuilt } from './lazy_dom.js';
+import { formatDuration as fmtDuration } from './format.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -226,14 +227,7 @@ function renderRunsTable(runs) {
     </table>`;
 }
 
-function formatDuration(ms) {
-    const s = Math.floor(ms / 1000);
-    if (s < 60) return `${s}s`;
-    const m = Math.floor(s / 60);
-    if (m < 60) return `${m}m ${s % 60}s`;
-    const h = Math.floor(m / 60);
-    return `${h}h ${m % 60}m`;
-}
+const formatDuration = ms => fmtDuration(ms);
 
 // ── CRUD operations ──────────────────────────────────────────────────────
 

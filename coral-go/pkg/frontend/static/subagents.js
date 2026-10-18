@@ -5,6 +5,7 @@ import { _formatCost, _formatTokenCount, formatTaskDate } from './task_format.js
 import { redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
 import { serverFetch, serverForSession } from './server_base.js';
 import { state } from './state.js';
+import { formatDuration } from './format.js';
 
 // Which session state.currentSubagents belongs to. Lets a session switch drop
 // the previous agent's subagents at once instead of showing them until the
@@ -84,11 +85,7 @@ function _formatDuration(startIso, endIso) {
     if (endIso === undefined || endIso === '') return null;
     const start = Date.parse(startIso), end = endIso === null ? Date.now() : Date.parse(endIso);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
-    const secs = Math.round((end - start) / 1000);
-    if (secs < 60) return `${secs}s`;
-    const mins = Math.floor(secs / 60);
-    if (mins < 60) return `${mins}m ${secs % 60}s`;
-    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+    return formatDuration(Math.round((end - start) / 1000), { unit: 's' });
 }
 
 // How long an in-progress board task has been claimed, e.g. "42m" or "3h 5m".

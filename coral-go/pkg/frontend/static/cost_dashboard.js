@@ -6,13 +6,9 @@ import { registerActions, idOf, uuidOf, tokenOf, textOf } from './actions.js';
 import { state } from './state.js';
 import { pollEvery } from './overload.js';
 import { keyLabel } from './server_base.js';
-import { formatTokens } from './format.js';
+import { formatTokens, formatDuration, formatCost } from './format.js';
 
-function _formatCost(c) {
-    if (c === 0) return '$0.00';
-    if (c < 0.01) return '$' + c.toFixed(4);
-    return '$' + c.toFixed(2);
-}
+const _formatCost = c => formatCost(c, { zeroAsTwo: true });
 
 function _formatLatency(ms) {
     if (ms == null) return '\u2014';
@@ -45,14 +41,7 @@ function _formatDuration(startStr, endStr) {
         const end = endStr ? new Date(endStr) : new Date();
         const diffMs = end - start;
         if (diffMs < 0) return '\u2014';
-        const secs = Math.floor(diffMs / 1000);
-        if (secs < 60) return secs + 's';
-        const mins = Math.floor(secs / 60);
-        const remSecs = secs % 60;
-        if (mins < 60) return mins + 'm ' + remSecs + 's';
-        const hrs = Math.floor(mins / 60);
-        const remMins = mins % 60;
-        return hrs + 'h ' + remMins + 'm';
+        return formatDuration(diffMs);
     } catch { return '\u2014'; }
 }
 

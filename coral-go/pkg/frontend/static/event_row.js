@@ -1,17 +1,12 @@
 /* Shared pieces of an Activity row: how long the activity took and what else is known about it */
 
 import { escapeHtml } from './utils.js';
+import { formatDuration as fmtDuration } from './format.js';
 import { browserLocal } from './safe_storage.js';
 
 /** 850 -> "850ms", 9100 -> "9.1s", 75000 -> "1m 15s", 3720000 -> "1h 2m". */
 export function formatDuration(ms) {
-    const n = Number(ms);
-    if (!Number.isFinite(n) || n < 0) return '';
-    if (n < 1000) return `${Math.round(n)}ms`;
-    if (n < 60000) return `${(n / 1000).toFixed(1)}s`;
-    const totalSec = Math.round(n / 1000);
-    if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`;
-    return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`;
+    return fmtDuration(ms, { shape: 'precise' });
 }
 
 function parseDetail(ev) {

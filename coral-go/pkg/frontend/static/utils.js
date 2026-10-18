@@ -4,6 +4,7 @@ import { loadHighlight } from './vendor_loader.js';
 import { checkAgentView } from './agent_view.js';
 import { browserLocal } from './safe_storage.js';
 import { setDockPage } from './dock_page.js';
+import { formatDuration } from './format.js';
 /* Utility functions: HTML escaping and toast notifications */
 
 // Debug logging — enabled via ?debug=1 URL param or localStorage coral-debug=1
@@ -673,14 +674,7 @@ export function highlightCodeIn(root) {
  *  rounded on the total, so they carry into the hour: 3599s is "1h", never
  *  "60m", and nothing reads "69h 60m" (#3152). Empty for none or zero. */
 export function formatDurationSec(sec) {
-    const n = Number(sec);
-    if (!Number.isFinite(n) || n <= 0) return '';
-    if (n < 60) return `${Math.floor(n)}s`;
-    const mins = Math.round(n / 60);
-    if (mins < 60) return `${mins}m`;
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    return formatDuration(sec, { shape: 'rounded' });
 }
 
 /** The dashboard's board identity: the reserved Operator subscriber that task

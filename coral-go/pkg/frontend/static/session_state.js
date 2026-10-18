@@ -1,7 +1,7 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
 import { modelDisplayName } from './model_names.js';
 import { escapeHtml, escapeAttr } from './utils.js';
-import { formatTokens } from './format.js';
+import { formatTokens, formatCost } from './format.js';
 import { getCachedAgentAvailability } from './team_availability.js';
 import { isGoneAsleep } from './terminal_gone.js';
 import { keyLabel, sessionTeamKey } from './server_base.js';
@@ -280,6 +280,5 @@ export function _shortPath(fullPath, segments = 2) {
 }
 
 export function _formatCost(c) {
-    if (c < 0.01) return '$' + c.toFixed(4);
-    return '$' + c.toFixed(2);
+    return formatCost(c);
 }
