@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -103,6 +105,18 @@ func taskCacheName(taskID string) (string, bool) {
 	return "task_" + hex.EncodeToString(sum[:]), true
 }
 
+// The task cache holds at most taskCacheMax entries (#4602, M11): every task an agent creates adds a file and nothing
+// removed them. A write that adds one past the limit removes the oldest entries first (by modification time) down to
+// taskCacheKeep, at least taskCacheMax-taskCacheKeep of them. These are Coral's own cache files, never user data: an entry is
+// only a subject remembered for a later TaskUpdate, and a missing one is read back as "".
+var (
+	taskCacheMax  = 5000
+	taskCacheKeep = 4500
+)
+
+// taskCacheFile is exactly the name taskCacheName makes: only such files are ever counted or removed.
+var taskCacheFile = regexp.MustCompile(`^task_[0-9a-f]{64}$`)
+
 // TaskCacheWrite remembers a task's subject so a later TaskUpdate without one can find it.
 func TaskCacheWrite(taskID, subject string) error {
 	name, ok := taskCacheName(taskID)
@@ -112,6 +126,12 @@ func TaskCacheWrite(taskID, subject string) error {
 	if len(subject) > maxCachedSubject {
 		subject = subject[:maxCachedSubject]
 	}
+	isNew := false
+	if dir, err := CacheDir(); err == nil {
+		if _, err := os.Lstat(filepath.Join(dir, name)); errors.Is(err, os.ErrNotExist) {
+			isNew = true
+		}
+	}
 	f, err := openCacheFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return err
@@ -120,7 +140,44 @@ func TaskCacheWrite(taskID, subject string) error {
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
+	if isNew {
+		pruneTaskCache(name)
+	}
 	return err
+}
+
+// pruneTaskCache removes the oldest task entries when there are more than taskCacheMax, never keep (the one just written).
+func pruneTaskCache(keep string) {
+	dir, err := CacheDir()
+	if err != nil {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type entry struct {
+		name string
+		mod  time.Time
+	}
+	var tasks []entry
+	for _, e := range entries {
+		if !taskCacheFile.MatchString(e.Name()) || e.Name() == keep {
+			continue
+		}
+		info, err := e.Info() // lstat: a link is its own entry, never followed
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		tasks = append(tasks, entry{e.Name(), info.ModTime()})
+	}
+	if len(tasks)+1 <= taskCacheMax {
+		return
+	}
+	sort.Slice(tasks, func(i, j int) bool { return tasks[i].mod.Before(tasks[j].mod) })
+	for _, t := range tasks[:len(tasks)+1-taskCacheKeep] {
+		_ = os.Remove(filepath.Join(dir, t.name))
+	}
 }
 
 // TaskCacheRead returns the subject cached for a task, or "".

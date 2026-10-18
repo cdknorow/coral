@@ -181,6 +181,11 @@ files 0600). Builds before v1.4.40 kept this log and the task cache in the share
 (`$TMPDIR/coral_task_cache` or `/tmp/coral_task_cache`); that folder is no longer used, and you
 can delete it.
 
+The same folder holds the task cache, one `task_<hash>` file per task a hook saw (a subject
+remembered for a later update). It keeps at most 5,000 of them: the write that adds one more
+removes the oldest until 4,500 remain. They are Coral's own cache files, safe to delete; a missing
+one is just a subject the hook no longer remembers.
+
 ### A whole team stalled and produced nothing
 
 Agents told to coordinate over an unreachable board will troubleshoot it and then wait
