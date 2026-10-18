@@ -249,6 +249,9 @@ var columnMigrations = []struct {
 	{"live_sessions", "team_id", "INTEGER REFERENCES teams(id) ON DELETE SET NULL"},
 	{"live_sessions", "status", "TEXT NOT NULL DEFAULT 'active'"},
 	{"live_sessions", "context_window", "INTEGER NOT NULL DEFAULT 0"},
+	// The model a CLI without a transcript model (agy) last reported in a hook payload. Kept apart from model, which a
+	// restart passes back to the CLI as its --model: an observed id is for display only.
+	{"live_sessions", "observed_model", "TEXT"},
 	{"live_sessions", "stopped_at", "TEXT"},
 	// User-chosen colour for the agent's name in the sidebar (#rrggbb); NULL = palette default.
 	{"live_sessions", "name_color", "TEXT"},

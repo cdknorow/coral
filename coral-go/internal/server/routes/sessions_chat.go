@@ -436,13 +436,20 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 // GET /api/sessions/live/{name}/info
 // addTranscriptModel sets "model" to the model the session's transcript last recorded, when
 // one was read (#4065): the model the agent actually runs, after a /model switch too. Without
-// one, "model" stays the model it was launched or started with, if any. model_source says which.
-func (h *SessionsHandler) addTranscriptModel(entry map[string]any, sessionID string) {
-	if h.jsonl == nil || sessionID == "" {
+// one, "model" is the model a hook last reported (agy, which has no transcript model), then
+// the model it was launched or started with, if any. model_source says which.
+func (h *SessionsHandler) addTranscriptModel(entry map[string]any, sessionID string, observed *string) {
+	if sessionID == "" {
 		return
 	}
-	if m := h.jsonl.TranscriptModel(sessionID); m != "" {
+	m := ""
+	if h.jsonl != nil {
+		m = h.jsonl.TranscriptModel(sessionID)
+	}
+	if m != "" {
 		entry["model"], entry["model_source"] = m, "transcript"
+	} else if o := ptr.Value(observed); o != "" {
+		entry["model"], entry["model_source"] = o, "hook"
 	} else if _, ok := entry["model"]; ok {
 		entry["model_source"] = "launch"
 	}
@@ -476,6 +483,7 @@ func (h *SessionsHandler) Info(w http.ResponseWriter, r *http.Request) {
 
 	// Include log path and other metadata from live session record
 	if sessionID != "" {
+		var observed *string
 		if ls, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && ls != nil {
 			if ls.DisplayName != nil && *ls.DisplayName != "" {
 				result["agent_name"] = *ls.DisplayName
@@ -487,8 +495,9 @@ func (h *SessionsHandler) Info(w http.ResponseWriter, r *http.Request) {
 			if ls.Model != nil && *ls.Model != "" {
 				result["model"] = *ls.Model
 			}
+			observed = ls.ObservedModel
 		}
-		h.addTranscriptModel(result, sessionID)
+		h.addTranscriptModel(result, sessionID, observed)
 	}
 
 	// Look up git state by session_id first, then by name

@@ -26,16 +26,16 @@ func TestSessionModelFollowsTheTranscript(t *testing.T) {
 	h := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, newMockTerminal(), nil)
 
 	entry := map[string]any{"model": "opus"}
-	h.addTranscriptModel(entry, sid)
+	h.addTranscriptModel(entry, sid, nil)
 	assert.Equal(t, map[string]any{"model": "opus", "model_source": "launch"}, entry)
 
 	require.NoError(t, os.WriteFile(path, []byte(`{"sessionId":"`+sid+`","type":"assistant","message":{"model":"claude-sonnet-5-5","content":[]},"timestamp":"2026-10-16T00:00:00Z"}`+"\n"), 0o600))
 	h.jsonl.ReadClaudeTurnEvent(sid, "")
-	h.addTranscriptModel(entry, sid)
+	h.addTranscriptModel(entry, sid, nil)
 	assert.Equal(t, "claude-sonnet-5-5", entry["model"])
 	assert.Equal(t, "transcript", entry["model_source"])
 
 	none := map[string]any{}
-	h.addTranscriptModel(none, "another")
+	h.addTranscriptModel(none, "another", nil)
 	assert.Empty(t, none, "no model known: no field")
 }

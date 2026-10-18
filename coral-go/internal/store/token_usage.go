@@ -47,6 +47,21 @@ type UsageSummary struct {
 	NumSessions      int     `db:"num_sessions" json:"num_sessions"`
 }
 
+// ModelUsageSummary is token usage for one model id of one agent type. Model is "" for usage
+// that recorded no model (older rows, or a CLI that does not report one): that bucket is shown
+// as unknown, never filled with a guess.
+type ModelUsageSummary struct {
+	AgentType        string  `db:"agent_type" json:"agent_type"`
+	Model            string  `db:"model" json:"model"`
+	InputTokens      int64   `db:"input_tokens" json:"input_tokens"`
+	OutputTokens     int64   `db:"output_tokens" json:"output_tokens"`
+	CacheReadTokens  int64   `db:"cache_read_tokens" json:"cache_read_tokens"`
+	CacheWriteTokens int64   `db:"cache_write_tokens" json:"cache_write_tokens"`
+	TotalTokens      int64   `db:"total_tokens" json:"total_tokens"`
+	CostUSD          float64 `db:"cost_usd" json:"cost_usd"`
+	NumSessions      int     `db:"num_sessions" json:"num_sessions"`
+}
+
 // AgentUsageSummary represents per-agent (session) token usage aggregates.
 type AgentUsageSummary struct {
 	SessionID        string  `db:"session_id" json:"session_id"`
@@ -266,6 +281,31 @@ func (s *TokenUsageStore) GetUsageSummary(ctx context.Context, since string) ([]
 		args = append(args, since)
 	}
 	query += ` GROUP BY agent_type`
+	err := s.db.SelectContext(ctx, &summaries, query, args...)
+	return summaries, err
+}
+
+// GetUsageSummaryByModel returns totals grouped by agent type and the model id each row
+// recorded. Rows are per API call (hourly rows keep the model too), so a session that switched
+// models counts in each model's row with its tokens split between them. Usage with no recorded
+// model is one bucket with model "".
+func (s *TokenUsageStore) GetUsageSummaryByModel(ctx context.Context, since string) ([]ModelUsageSummary, error) {
+	summaries := []ModelUsageSummary{}
+	query := `SELECT agent_type, COALESCE(model, '') as model,
+	          COALESCE(SUM(input_tokens), 0) as input_tokens,
+	          COALESCE(SUM(output_tokens), 0) as output_tokens,
+	          COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+	          COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
+	          COALESCE(SUM(total_tokens), 0) as total_tokens,
+	          COALESCE(SUM(cost_usd), 0) as cost_usd,
+	          COUNT(DISTINCT session_id) as num_sessions
+	   FROM token_usage_all WHERE ` + sourceDedup
+	var args []interface{}
+	if since != "" {
+		query += " AND recorded_at >= ?"
+		args = append(args, since)
+	}
+	query += ` GROUP BY agent_type, COALESCE(model, '') ORDER BY cost_usd DESC, agent_type, model`
 	err := s.db.SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
 }

@@ -111,6 +111,12 @@ func (h *TokenUsageHandler) UsageSummary(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	byModel, err := h.ts.GetUsageSummaryByModel(r.Context(), since)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+
 	// Compute grand totals
 	var totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalTokens int64
 	var totalCost float64
@@ -128,6 +134,7 @@ func (h *TokenUsageHandler) UsageSummary(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"by_agent_type": summaries,
 		"by_agent":      byAgent,
+		"by_model":      byModel,
 		"totals": map[string]any{
 			"input_tokens":       totalInput,
 			"output_tokens":      totalOutput,

@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -546,4 +548,46 @@ func TestUsageSummaryByBranch_IgnoresSessionsWithoutGit(t *testing.T) {
 	totals := body["totals"].(map[string]any)
 	assert.Equal(t, float64(1000), totals["total_tokens"])
 	assert.Equal(t, float64(1), totals["num_agents"])
+}
+
+// #4588: the summary carries by_model, one row per agent type and model id; an unrecorded
+// model is "" and the list is [] (never null) when there is no usage.
+func TestUsageSummary_ByModel(t *testing.T) {
+	ts, _, router := setupTokenUsageTest(t)
+	ctx := context.Background()
+	for i, m := range []string{"claude-opus-5-5", "claude-sonnet-5-5", ""} {
+		require.NoError(t, ts.RecordUsage(ctx, &store.TokenUsage{
+			SessionID: "s1", AgentName: "a1", AgentType: "claude", Model: m,
+			RecordedAt:  fmt.Sprintf("2026-10-01T10:0%d:00Z", i),
+			InputTokens: 100 * (i + 1), OutputTokens: 10, CacheReadTokens: 5, CacheWriteTokens: 6, TotalTokens: 110, CostUSD: 0.1,
+		}))
+	}
+	require.NoError(t, ts.RecordUsage(ctx, &store.TokenUsage{
+		SessionID: "s2", AgentName: "a2", AgentType: "codex", Model: "gpt-5-codex",
+		RecordedAt: "2026-10-01T11:00:00Z", InputTokens: 7, TotalTokens: 7, CostUSD: 0.2,
+	}))
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/token-usage/summary", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		ByModel []map[string]any `json:"by_model"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	got := map[string]map[string]any{}
+	for _, r := range body.ByModel {
+		got[r["agent_type"].(string)+"|"+r["model"].(string)] = r
+	}
+	require.Len(t, got, 4, "%v", body.ByModel)
+	assert.EqualValues(t, 100, got["claude|claude-opus-5-5"]["input_tokens"])
+	assert.EqualValues(t, 5, got["claude|claude-opus-5-5"]["cache_read_tokens"])
+	assert.EqualValues(t, 6, got["claude|claude-opus-5-5"]["cache_write_tokens"])
+	assert.EqualValues(t, 1, got["claude|claude-opus-5-5"]["num_sessions"])
+	assert.EqualValues(t, 300, got["claude|"]["input_tokens"], "the unknown bucket")
+	assert.EqualValues(t, 7, got["codex|gpt-5-codex"]["input_tokens"])
+
+	empty := httptest.NewRecorder()
+	_, _, r2 := setupTokenUsageTest(t)
+	r2.ServeHTTP(empty, httptest.NewRequest(http.MethodGet, "/api/token-usage/summary", nil))
+	assert.Contains(t, empty.Body.String(), `"by_model":[]`)
 }

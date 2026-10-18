@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/agent"
+	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/safego"
 )
@@ -121,6 +123,22 @@ func (h *SessionsHandler) UpdateContextWindow(w http.ResponseWriter, r *http.Req
 	body.SessionID = sid
 	if body.SessionID == "" || body.Model == "" {
 		errBadRequest(w, "session_id and model are required")
+		return
+	}
+
+	// agy has no transcript model: its hook reports the model it runs, kept for display
+	// apart from the launch model a restart passes back to the CLI.
+	if ls, err := h.ss.GetLiveSession(r.Context(), body.SessionID); err == nil && ls != nil && (ls.AgentType == at.Agy || ls.AgentType == at.Antigravity) {
+		model := jsonl.CleanModelID(body.Model)
+		if model == "" {
+			errBadRequest(w, "model is not a model id")
+			return
+		}
+		if err := h.ss.SetObservedModel(r.Context(), body.SessionID, model); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "model": model, "observed": true})
 		return
 	}
 

@@ -170,6 +170,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	type liveExtra struct {
 		Prompt        *string
 		Model         *string
+		Observed      *string
 		Capabilities  *string
 		ContextWindow int
 	}
@@ -182,7 +183,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			liveBoardNames[session.SessionID] = [2]string{*session.BoardName, ptr.Value(session.DisplayName)}
 		}
 		liveExtras[session.SessionID] = liveExtra{
-			Prompt: session.Prompt, Model: session.Model, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
+			Prompt: session.Prompt, Model: session.Model, Observed: session.ObservedModel, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
 		}
 	}
 	trace.endPool("db_live_session_extras", h.db)
@@ -317,7 +318,9 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			entry[k] = v
 		}
 		// Include prompt, model, and capabilities from live_sessions DB
+		var observedModel *string
 		if extra, ok := liveExtras[sid]; ok {
+			observedModel = extra.Observed
 			if extra.Prompt != nil {
 				entry["prompt"] = *extra.Prompt
 			}
@@ -326,7 +329,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 			addCapabilities(entry, extra.Capabilities)
 		}
-		h.addTranscriptModel(entry, sid)
+		h.addTranscriptModel(entry, sid, observedModel)
 
 		// Include token usage data if available
 		if usage, ok := tokenUsageMap[sid]; ok {
@@ -406,6 +409,9 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		if ls.Model != nil && *ls.Model != "" {
 			entry["model"] = *ls.Model
+		}
+		if o := ptr.Value(ls.ObservedModel); o != "" {
+			entry["model"], entry["model_source"] = o, "hook"
 		}
 		addCapabilities(entry, ls.Capabilities)
 		for k, v := range autoAcceptFields(ls.AgentType, store.AutoAcceptState{}) {

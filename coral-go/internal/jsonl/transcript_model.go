@@ -28,6 +28,10 @@ func cleanModelID(m string) string {
 	return m
 }
 
+// CleanModelID is cleanModelID for callers outside the package: a model id a CLI reported, or ""
+// when it does not look like one.
+func CleanModelID(m string) string { return cleanModelID(m) }
+
 // claudeLineModel is an assistant entry's message.model, or "".
 func claudeLineModel(line []byte) string {
 	if !bytes.Contains(line, modelKey) || !bytes.Contains(line, assistantType) {

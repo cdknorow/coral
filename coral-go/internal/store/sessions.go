@@ -68,6 +68,8 @@ type LiveSession struct {
 	Capabilities  *string `db:"capabilities" json:"capabilities,omitempty"`
 	Model         *string `db:"model" json:"model,omitempty"`
 	ContextWindow int     `db:"context_window" json:"context_window,omitempty"`
+	// ObservedModel is the model a hook last reported (agy); display only, never a launch setting.
+	ObservedModel *string `db:"observed_model" json:"-"`
 	Tools         *string `db:"tools" json:"tools,omitempty"`
 	PID           int     `db:"pid" json:"pid,omitempty"`
 	WorktreePath  *string `db:"worktree_path" json:"worktree_path,omitempty"`
@@ -1082,7 +1084,7 @@ func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, e
 	var sessions []LiveSession
 	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, observed_model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE status = 'active' ORDER BY created_at`)
 	return sessions, err
 }
@@ -1205,7 +1207,7 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 	var ls LiveSession
 	err := s.reader().GetContext(ctx, &ls,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, status
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, observed_model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, status
 		 FROM live_sessions WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1335,6 +1337,12 @@ func (s *SessionStore) UpdateContextWindow(ctx context.Context, sessionID string
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE live_sessions SET context_window = ? WHERE session_id = ?",
 		contextWindow, sessionID)
+	return err
+}
+
+// SetObservedModel records the model a hook reported for a live session (display only).
+func (s *SessionStore) SetObservedModel(ctx context.Context, sessionID, model string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET observed_model = ? WHERE session_id = ?", model, sessionID)
 	return err
 }
 

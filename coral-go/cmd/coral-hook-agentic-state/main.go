@@ -49,6 +49,7 @@ func main() {
 		d["_coral_session_clear"] = true
 	}
 	agyEvent, hooksRev := opts.agyEvent, opts.hooksRev
+	agyModel := agyModelOf(d, agyEvent) // read before fromAgy rewrites the payload
 	if agyEvent != "" {
 		// Antigravity CLI (agy) hooks (#3481): its payload names neither the event nor
 		// the tool the way Claude's does; it is translated, and an event Coral doesn't
@@ -85,6 +86,14 @@ func main() {
 	if agentName == "" {
 		hooks.DebugLog(fmt.Sprintf("DROPPED (no agent_name): hook_type=%s", hookType))
 		return
+	}
+
+	if agyModel != "" {
+		// agy names its model in every payload; Coral shows it on the session (#4588).
+		report := map[string]any{"session_id": sessionID, "model": agyModel}
+		if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/context-window"), report); err != nil {
+			hooks.DebugLog(fmt.Sprintf("AGY_MODEL_POST_FAILED: agent=%s err=%v", hooks.LogID(agentName), err))
+		}
 	}
 
 	// PreToolUse: record the tool call that is starting so the chat can show
@@ -338,6 +347,21 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 // its parent's id, and binding that would show the parent's transcript in the child's chat.
 func codexThreadID(d map[string]any) string {
 	return hooks.StrVal(d, "session_id")
+}
+
+// agyModelOf is the model an agy hook payload names (modelName), for the two events that open
+// a session or a turn: a /model switch shows at the next turn's first PreInvocation. "" for
+// any other event or payload.
+func agyModelOf(d map[string]any, event string) string {
+	if event != "SessionStart" && event != "PreInvocation" {
+		return ""
+	}
+	if event == "PreInvocation" {
+		if n, _ := d["invocationNum"].(float64); n != 0 {
+			return ""
+		}
+	}
+	return hooks.StrVal(d, "modelName")
 }
 
 // fromAgy translates an agy (Antigravity CLI 1.3.5) hook payload into the Claude shape
