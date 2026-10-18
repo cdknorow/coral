@@ -82,6 +82,21 @@ const BASE = require('./test_base').BASE;
         assert.match(steps[0], /^Install Coral.*brew install --cask cdknorow\/coral\/coral.*github\.com\/cdknorow\/coral\/releases/);
         assert.match(steps[1], /Connect to Coral Hub/); assert.equal(steps.length, 4);
         assert.equal(await ev(`document.querySelector('.cs-enroll ol li a').href`), 'https://github.com/cdknorow/coral/releases');
+
+        console.log('5. The install link reads in the accent colour (4.5:1 on the page), on its own line, and is a 44 px target on a phone');
+        const contrast = await ev(`(() => { const lum = c => { const [r, g, b] = c.match(/[0-9.]+/g).slice(0, 3).map(Number).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+            const a = document.querySelector('.cs-enroll ol li a'); const fg = lum(getComputedStyle(a).color), bg = lum(getComputedStyle(document.body).backgroundColor);
+            return { ratio: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05), display: getComputedStyle(a).display }; })()`);
+        assert.ok(contrast.ratio >= 4.5, 'the link against the page: ' + JSON.stringify(contrast));
+        assert.equal(contrast.display, 'block');
+        await Emulation.setDeviceMetricsOverride({ width: 390, height: 756, deviceScaleFactor: 2, mobile: true });
+        await Emulation.setTouchEmulationEnabled({ enabled: true });
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+        await waitFor(`!!document.querySelector('.cloud-account-btn')`, 'the hub dashboard', { timeout: 15000 });
+        await ev(`window.switchNavTab('servers'); true`);
+        await waitFor(`!!document.querySelector('.cs-enroll ol li a')`, 'the steps', { timeout: 8000 });
+        const phone = await ev(`(() => { const r = document.querySelector('.cs-enroll ol li a').getBoundingClientRect(); return { h: Math.round(r.height), w: Math.round(r.width), inside: r.right <= innerWidth, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
+        assert.ok(phone.h >= 44 && phone.w >= 44 && phone.inside && phone.page <= 0, JSON.stringify(phone));
         console.log('   ✓');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
