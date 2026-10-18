@@ -8,6 +8,10 @@ import { showToast } from './utils.js';
 import { sessionServer, normServer, serverFetch, identityKey, LOCAL_SERVER } from './server_base.js';
 import { savedChanged, setSavedCount, validSavedItem, savedShowing, syncSavedButton } from './saved_marks.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
+import { buildListBar } from './list_bar.js';
+import { importOnce } from './import_once.js';
+// This module is loaded lazily, so its own parts are loaded the same way (a static import of a module not loaded at startup could not be retried: import_hygiene).
+const { KINDS, KIND_LABEL, SORTS, SORT_LABEL, EMPTY: SAVED_EMPTY, makeModel: savedModel, clean: cleanSaved, isFiltered: savedFiltered, toQuery: savedQuery } = await importOnce('./saved_filters.js');
 
 const $ = id => document.getElementById(id);
 let tab = 'open';
@@ -15,6 +19,11 @@ let items = [];
 let down = []; // the registered servers that did not answer the last read: {id, label}
 let multi = false; // more than one server answered: each item names its server
 const checks = new Map(); // item (uid) -> { state: 'live' | 'ended' | 'board' | 'gone' | 'noopen', why }
+// The search and filters (#4778): the server matches (q, kind, conv, order), so a search covers every saved message, not just the ones shown.
+let filters = { ...SAVED_EMPTY };
+let bar = null;
+let totals = { open: 0, done: 0 };
+const convTitles = new Map(); // conversation reference -> its title, from every list read: the Conversation filter's options (they must outlast a filter that leaves one)
 /** An item's identity across servers: ids are each server's own. */
 const uid = it => `${it.server}:${it.id}`;
 
@@ -45,7 +54,7 @@ function ago(iso) {
 async function load() {
     const remotes = state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online') : [];
     const read = async (server) => {
-        const r = await serverFetch(server, '/api/saved');
+        const r = await serverFetch(server, '/api/saved' + savedQuery(filters));
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         return { server, d };
@@ -56,10 +65,12 @@ async function load() {
     multi = remotes.length > 0;
     // Only what a server sent in a usable shape is listed (an id goes into a URL: saved_marks.js validSavedItem).
     items = answered.flatMap(a => (Array.isArray(a.d.items) ? a.d.items : []).filter(validSavedItem).map(i => ({ ...i, server: a.server })))
-        .sort((a, b) => (b.saved_at || '').localeCompare(a.saved_at || ''));
+        .sort((a, b) => (filters.sort === 'oldest' ? -1 : 1) * (b.saved_at || '').localeCompare(a.saved_at || ''));
+    for (const i of items) if (i.ref && !convTitles.has(i.ref)) convTitles.set(i.ref, i.title || i.ref);
     const open = answered.reduce((n, a) => n + (a.d.open || 0), 0), done = answered.reduce((n, a) => n + (a.d.done || 0), 0);
     $('saved-count-open').textContent = open ? `(${open})` : '';
     $('saved-count-done').textContent = done ? `(${done})` : '';
+    totals = { open, done };
     setSavedCount(open);
 }
 
@@ -154,14 +165,39 @@ function noticeNode(s) {
     return li;
 }
 
+const convLabel = ref => convTitles.get(ref) || ref;
+const savedSpec = () => ({
+    idp: 'sv', noun: 'message', label: 'Search and filter saved messages', searchLabel: 'Search saved messages', placeholder: 'Search saved messages',
+    sorts: { values: SORTS, labels: SORT_LABEL, aria: 'Sort saved messages' },
+    fields: [
+        { type: 'select', key: 'kind', id: 'sv-kind', label: 'Type', values: KINDS, labels: KIND_LABEL, any: 'Any type' },
+        { type: 'select', key: 'conv', id: 'sv-conv', label: 'From', values: [], labels: {}, any: 'Any conversation' },
+    ],
+    model: savedModel({ convLabel }),
+});
+
+/** The bar above the list, told the filters, the conversations there are and how many of the tab's messages match (the tab's own total, which a search does not change). */
+function syncBar(shownCount) {
+    const host = $('saved-bar');
+    if (!host) return;
+    if (!bar) { bar = buildListBar(savedSpec(), next => { filters = cleanSaved(next); refresh(); }); host.append(bar.node); }
+    const refs = [...convTitles.keys()].sort((a, b) => convLabel(a).localeCompare(convLabel(b)));
+    if (filters.conv && !refs.includes(filters.conv)) refs.push(filters.conv);
+    bar.setOptions('conv', refs, Object.fromEntries(refs.map(r => [r, convLabel(r)])));
+    bar.showField('conv', refs.length > 1 || !!filters.conv);
+    const all = tab === 'done' ? totals.done : totals.open;
+    bar.set(filters, { matched: shownCount, all: Math.max(all, shownCount) });
+}
+
 function render() {
     const list = $('saved-list');
     const shown = items.filter(i => (tab === 'done') === !!i.done_at);
+    syncBar(shown.length);
     list.replaceChildren(...down.map(noticeNode), ...shown.map(itemNode));
     if (!shown.length) {
         const li = document.createElement('li');
         li.className = 'saved-empty';
-        li.textContent = tab === 'done' ? 'Nothing marked done.' : 'Nothing saved yet. Use the bookmark on a message to save it for later.';
+        li.textContent = savedFiltered(filters) ? 'No saved messages match this search.' : tab === 'done' ? 'Nothing marked done.' : 'Nothing saved yet. Use the bookmark on a message to save it for later.';
         list.append(li);
     }
     for (const t of ['open', 'done']) {

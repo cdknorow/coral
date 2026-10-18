@@ -4273,3 +4273,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .mb-message-current .mb-hit { background: #ff9f1a; box-shadow: 0 0 0 1px #1f2328; }
 .mb-message-match { box-shadow: inset 3px 0 0 #ffd33d; }
 .mb-message-current { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* The Saved panel's search bar (#4778): the shared list bar between its tabs and its list. */
+.saved-bar:empty { display: none; }
+.saved-bar { flex: none; }
