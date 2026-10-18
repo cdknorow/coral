@@ -202,35 +202,11 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	}
 	dbcrypt.SetUnlockSurface(opts.UnlockSurface)
 	backendFlag := opts.BackendType // resolved against the saved setting once the database is open
-	exe, exeErr := os.Executable()
-	log.Printf("[STARTUP] %s version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
-		devStartupMarker,
-		config.ReportedVersion(),
-		config.TierName,
-		opts.BackendType,
-		os.Getpid(),
-		exe,
-		exeErr,
-		os.Getenv("PATH"),
-		os.Getenv("SHELL"),
-		os.Getenv("CORAL_TMUX_BIN"),
-	)
+	logStartup(opts)
 
-	// Ensure ~/.coral directory exists before any file operations
 	coralDir := cfg.CoralDir()
-	// A standard (non-sqlcipher) build cannot use database encryption. Refuse a
-	// requested or existing encrypted setup before anything is created, saved,
-	// locked or opened, so a rejected start leaves the Coral home untouched.
-	if err := dbcrypt.RejectUnsupportedEncryption(coralDir, cfg.DBPath, filepath.Join(coralDir, "messageboard.db")); err != nil {
+	if err := prepareDataDirs(cfg, coralDir); err != nil {
 		return nil, err
-	}
-	if err := config.EnsureDataDir(coralDir); err != nil { // this user only (#3637)
-		return nil, fmt.Errorf("failed to create data directory %s: %w", coralDir, err)
-	}
-
-	// Ensure DB parent directory exists (may differ from coralDir if overridden)
-	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0755); err != nil {
-		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 	lockPath := filepath.Join(coralDir, "coral-server.lock")
 	instance, err := acquireInstanceLock(lockPath)
@@ -244,141 +220,30 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		}
 	}()
 
-	// Resolve encryption before opening either database. The board database is
-	// separate and must use the same mode/key. No listener or service has been
-	// started at this point, so an unlock failure cannot expose partial state.
-	security, err := dbcrypt.Load(coralDir)
-	if err != nil {
-		return nil, err
-	}
-	// Missing security.json is the backwards-compatible plaintext setup.
-	// Normalize the empty bootstrap value before validating explicit modes.
-	if security.DatabaseEncryption == "" {
-		security.DatabaseEncryption = "disabled"
-	}
-	if envMode := strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION")); envMode != "" {
-		if _, statErr := os.Stat(filepath.Join(coralDir, dbcrypt.BootstrapName)); os.IsNotExist(statErr) {
-			security.DatabaseEncryption = envMode
-			if err := dbcrypt.Save(coralDir, security); err != nil {
-				return nil, fmt.Errorf("save database encryption setting: %w", err)
-			}
-		}
-	}
-	if security.DatabaseEncryption != "disabled" && security.DatabaseEncryption != "key_file" && security.DatabaseEncryption != "password" {
-		return nil, fmt.Errorf("unsupported database encryption mode %q", security.DatabaseEncryption)
-	}
 	boardPath := filepath.Join(coralDir, "messageboard.db")
-	if err := dbcrypt.CheckMigrationRecovery([]string{cfg.DBPath, boardPath}); err != nil {
+	security, dbKey, err := resolveDatabaseKey(cfg, coralDir, boardPath, opts)
+	if err != nil {
 		return nil, err
 	}
-	migrateRequested := strings.EqualFold(strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION_MIGRATE")), "1") || strings.EqualFold(strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION_MIGRATE")), "true")
-	var dbKey string
-	if migrateRequested && security.DatabaseEncryption == "key_file" {
-		keyPath := security.KeyFile
-		if keyPath == "" {
-			keyPath = dbcrypt.KeyName
-		}
-		if !filepath.IsAbs(keyPath) {
-			keyPath = filepath.Join(coralDir, keyPath)
-		}
-		if _, keyErr := os.Stat(keyPath); os.IsNotExist(keyErr) {
-			for _, path := range []string{cfg.DBPath, boardPath} {
-				encrypted, probeErr := dbcrypt.EncryptedFile(path)
-				if probeErr != nil {
-					return nil, probeErr
-				}
-				if encrypted {
-					return nil, fmt.Errorf("database key file is missing for encrypted database %s; refusing replacement", filepath.Base(path))
-				}
-			}
-		}
-		dbKey, err = dbcrypt.GenerateKeyFile(coralDir, security)
-	} else {
-		dbKey, err = dbcrypt.ResolveKey(coralDir, security, cfg.DBPath, boardPath)
-	}
-	if err != nil && !errors.Is(err, dbcrypt.ErrUnlockRequired) {
+	db, err := openDatabases(ctx, cfg, boardPath, dbKey, security)
+	if err != nil {
 		return nil, err
 	}
-	if errors.Is(err, dbcrypt.ErrUnlockRequired) {
-		if opts.PasswordPrompt == nil {
-			return nil, fmt.Errorf("database encryption requires an interactive password prompt")
-		}
-		dbKey, err = opts.PasswordPrompt()
-		if err != nil {
-			return nil, fmt.Errorf("database unlock cancelled: %w", err)
-		}
-		if strings.TrimSpace(dbKey) == "" {
-			return nil, fmt.Errorf("database unlock password is empty")
-		}
-	}
-	if dbKey != "" && security.DatabaseEncryption != "disabled" {
-		if security.DatabaseEncryption == "password" && security.KeySalt == "" {
-			salt := make([]byte, 16)
-			if _, saltErr := rand.Read(salt); saltErr != nil {
-				return nil, fmt.Errorf("generate password salt: %w", saltErr)
-			}
-			security.KeySalt = hex.EncodeToString(salt)
-			if saveErr := dbcrypt.Save(coralDir, security); saveErr != nil {
-				return nil, fmt.Errorf("save password salt: %w", saveErr)
-			}
-		}
-		dbKey, err = dbcrypt.PrepareStorageKey(dbKey, security.DatabaseEncryption, security.KeySalt)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if migrateRequested && dbKey != "" {
-		if err := dbcrypt.MigratePlaintexts([]string{cfg.DBPath, boardPath}, dbKey); err != nil {
-			return nil, fmt.Errorf("database migration failed: %w", err)
-		}
-	}
-
-	// Open database
-	openDone := noticeSlowOpen(cfg.DBPath)
-	db, err := store.OpenWithKey(ctx, cfg.DBPath, dbKey)
-	openDone()
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
-	dbcrypt.SetEffectiveMode(security.DatabaseEncryption)
-	// Probe the separate board database before constructing the server. A
-	// wrong key must fail closed rather than starting with only one DB open.
-	openDone = noticeSlowOpen(boardPath)
-	boardProbe, err := board.NewStoreWithKey(boardPath, dbKey)
-	openDone()
-	if err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to open board database: %w", err)
-	}
-	boardProbe.Close()
-	applyPrivacySettings(ctx, db, cfg, opts.RemoteAccess, opts.RemoteAccessPrompt)
-	applyHubModeSetting(ctx, db, cfg)
-	if err := applyCloudMaxMode(ctx, db, cfg); err != nil {
+	closeDB := func(err error) (*RunningServer, error) {
 		db.Close()
 		return nil, err
 	}
-	// Per-session agent tokens, before anything can launch an agent (#3387).
-	setupSessionTokens(db, cfg.CoralDir())
-	setupAgentTools(cfg.CoralDir())
-	removeOrphanProxyCA(cfg.CoralDir())
-	setupLaunchTempDir(db, cfg.CoralDir())
-	setupSessionStateSweep(db, cfg.CoralDir())
-	// Launch scripts a shell never sourced (its pane died first) are removed a day later (#4361).
-	if n := cmdhandoff.Sweep(); n > 0 {
-		log.Printf("[startup] removed %d launch script(s) older than a day from the temp folder", n)
+	if err := prepareWithDatabase(ctx, db, cfg, opts); err != nil {
+		return closeDB(err)
 	}
-
 	// Native TLS (#3355): load the pair before binding, so a bad pair stops startup.
 	tlsConfig, err := loadTLSConfig(opts.TLSCert, opts.TLSKey)
 	if err != nil {
-		db.Close()
-		return nil, err
+		return closeDB(err)
 	}
 	cfg.TLS = tlsConfig != nil
-	cfg.StrictLocalAuth, err = strictLocalAuth(cfg.CoralDir(), opts.StrictLocalAuth)
-	if err != nil {
-		db.Close()
-		return nil, err
+	if cfg.StrictLocalAuth, err = strictLocalAuth(cfg.CoralDir(), opts.StrictLocalAuth); err != nil {
+		return closeDB(err)
 	}
 
 	// Bind the port now and keep the listeners open to avoid a TOCTOU race
@@ -387,8 +252,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// (#3594).
 	lns, boundPort, err := listenAll(cfg)
 	if err != nil {
-		db.Close()
-		return nil, err
+		return closeDB(err)
 	}
 	// The DNS-rebinding check accepts exactly the names Coral listens on (#3594).
 	auth.SetListenHosts(cfg.ListenHosts())
@@ -402,39 +266,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// always its loopback listener when it has one (#3594).
 	agentenv.UseServerEnv(cfg.AgentHost(), boundPort, cfg.CoralDir())
 
-	// Apply terminal_replay_bytes setting from user_settings before any
-	// backend touches the replay buffer size.
-	applyReplayBytesFromSettings(ctx, db)
-
-	// The terminal input debug log (#3256): off unless the setting, CORAL_DEBUG_INPUT
-	// or --debug-input turns it on.
-	inputlog.Setup(cfg.CoralDir(), opts.DebugInput || inputlog.EnabledFromEnv())
-	savedBackend := ""
-	if settings, err := store.NewSessionStore(db).GetSettings(ctx); err == nil {
-		inputlog.SetSetting(config.Truthy(settings[inputlog.SettingKey]))
-		agentprio.SetSetting(settings[agentprio.SettingKey])
-		savedBackend = settings[routes.TerminalBackendSetting]
-	}
-	// The terminal backend (#3634): --backend, else the saved setting, else the OS default.
-	var backendForced bool
-	opts.BackendType, backendForced = ResolveBackend(backendFlag, savedBackend, runtime.GOOS)
-	cfg.TerminalBackend, cfg.TerminalBackendForced = opts.BackendType, backendForced
-	log.Printf("[STARTUP] terminal backend=%s (%s)", opts.BackendType, map[bool]string{true: "--backend", false: "Settings > Terminal backend, or the default"}[backendForced])
-	// Check if tmux is available when using tmux backend. We don't fail
-	// startup if it's missing — the dashboard still loads and the UI shows
-	// install instructions. Agent launch will fail until tmux is installed.
-	if opts.BackendType == "tmux" {
-		if _, ok := tmux.IsAvailable(); !ok {
-			log.Printf("[startup] tmux not found — agents cannot be launched until tmux is installed (brew install tmux)")
-		}
-	}
-	// Agents run at a lower OS priority than this server (#3437): the setting,
-	// or --agent-priority / CORAL_AGENT_PRIORITY.
-	forcedPriority := opts.AgentPriority
-	if forcedPriority == "" {
-		forcedPriority = os.Getenv(agentprio.EnvVar)
-	}
-	agentprio.Setup(forcedPriority)
+	applyStartupSettings(ctx, db, cfg, &opts, backendFlag)
 
 	// Select terminal backend and agent runtime
 	prepareLogDir(cfg.LogDir)
@@ -444,8 +276,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// Build the HTTP server
 	srv, err := server.NewWithKey(cfg, db, backend, terminal, dbKey)
 	if err != nil {
-		db.Close()
-		return nil, err
+		return closeDB(err)
 	}
 	srv.SetRestarter(opts.Restart)
 	loginToken, lerr := srv.WriteLoginToken()
@@ -482,14 +313,237 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	wd := startStallWatch(ctx, cfg.CoralDir(), srv.Router(), db, srv.BoardStore())
 	srv.StartMachineHealth(ctx, wd)
 
-	// Start HTTP server in background goroutine using the already-bound listener
-	onErr := opts.OnServerError
+	serveListeners(httpServer, lns, cfg, tlsConfig != nil, opts.OnServerError)
+
+	releaseOnError = false
+	return &RunningServer{
+		workflows:  workflows,
+		HTTPServer: httpServer,
+		Server:     srv,
+		LoginToken: loginToken,
+		DB:         db,
+		Backend:    backend,
+		instance:   instance,
+		lockPath:   lockPath,
+	}, nil
+}
+
+// logStartup writes the startup line: version, tier, backend asked for, process, executable and environment.
+func logStartup(opts Options) {
+	exe, exeErr := os.Executable()
+	log.Printf("[STARTUP] %s version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
+		devStartupMarker,
+		config.ReportedVersion(),
+		config.TierName,
+		opts.BackendType,
+		os.Getpid(),
+		exe,
+		exeErr,
+		os.Getenv("PATH"),
+		os.Getenv("SHELL"),
+		os.Getenv("CORAL_TMUX_BIN"),
+	)
+}
+
+// prepareDataDirs makes the Coral home (this user only, #3637) and the database's folder (it may be elsewhere).
+// A standard (non-sqlcipher) build cannot use database encryption: a requested or existing encrypted setup is
+// refused first, before anything is created, saved, locked or opened, so a rejected start leaves the Coral home
+// untouched.
+func prepareDataDirs(cfg *config.Config, coralDir string) error {
+	if err := dbcrypt.RejectUnsupportedEncryption(coralDir, cfg.DBPath, filepath.Join(coralDir, "messageboard.db")); err != nil {
+		return err
+	}
+	if err := config.EnsureDataDir(coralDir); err != nil {
+		return fmt.Errorf("failed to create data directory %s: %w", coralDir, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0755); err != nil {
+		return fmt.Errorf("failed to create database directory: %w", err)
+	}
+	return nil
+}
+
+// resolveDatabaseKey resolves the databases' encryption before either is opened: the mode (security.json, or
+// CORAL_DB_ENCRYPTION on a first start; missing security.json is the backwards-compatible plaintext setup), the key
+// (a key file, generated for a requested migration; or the password, asked for), and a requested migration of
+// plaintext databases. The board database is separate and must use the same mode and key. No listener or service
+// has been started yet, so an unlock failure cannot expose partial state.
+func resolveDatabaseKey(cfg *config.Config, coralDir, boardPath string, opts Options) (dbcrypt.Bootstrap, string, error) {
+	security, err := dbcrypt.Load(coralDir)
+	if err != nil {
+		return security, "", err
+	}
+	// Normalize the empty bootstrap value before validating explicit modes.
+	if security.DatabaseEncryption == "" {
+		security.DatabaseEncryption = "disabled"
+	}
+	if envMode := strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION")); envMode != "" {
+		if _, statErr := os.Stat(filepath.Join(coralDir, dbcrypt.BootstrapName)); os.IsNotExist(statErr) {
+			security.DatabaseEncryption = envMode
+			if err := dbcrypt.Save(coralDir, security); err != nil {
+				return security, "", fmt.Errorf("save database encryption setting: %w", err)
+			}
+		}
+	}
+	if security.DatabaseEncryption != "disabled" && security.DatabaseEncryption != "key_file" && security.DatabaseEncryption != "password" {
+		return security, "", fmt.Errorf("unsupported database encryption mode %q", security.DatabaseEncryption)
+	}
+	if err := dbcrypt.CheckMigrationRecovery([]string{cfg.DBPath, boardPath}); err != nil {
+		return security, "", err
+	}
+	migrateRequested := strings.EqualFold(strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION_MIGRATE")), "1") || strings.EqualFold(strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION_MIGRATE")), "true")
+	var dbKey string
+	if migrateRequested && security.DatabaseEncryption == "key_file" {
+		if err := refuseKeyFileReplacement(cfg, coralDir, boardPath, security); err != nil {
+			return security, "", err
+		}
+		dbKey, err = dbcrypt.GenerateKeyFile(coralDir, security)
+	} else {
+		dbKey, err = dbcrypt.ResolveKey(coralDir, security, cfg.DBPath, boardPath)
+	}
+	if err != nil && !errors.Is(err, dbcrypt.ErrUnlockRequired) {
+		return security, "", err
+	}
+	if errors.Is(err, dbcrypt.ErrUnlockRequired) {
+		if opts.PasswordPrompt == nil {
+			return security, "", fmt.Errorf("database encryption requires an interactive password prompt")
+		}
+		dbKey, err = opts.PasswordPrompt()
+		if err != nil {
+			return security, "", fmt.Errorf("database unlock cancelled: %w", err)
+		}
+		if strings.TrimSpace(dbKey) == "" {
+			return security, "", fmt.Errorf("database unlock password is empty")
+		}
+	}
+	if dbKey != "" && security.DatabaseEncryption != "disabled" {
+		if security.DatabaseEncryption == "password" && security.KeySalt == "" {
+			salt := make([]byte, 16)
+			if _, saltErr := rand.Read(salt); saltErr != nil {
+				return security, "", fmt.Errorf("generate password salt: %w", saltErr)
+			}
+			security.KeySalt = hex.EncodeToString(salt)
+			if saveErr := dbcrypt.Save(coralDir, security); saveErr != nil {
+				return security, "", fmt.Errorf("save password salt: %w", saveErr)
+			}
+		}
+		if dbKey, err = dbcrypt.PrepareStorageKey(dbKey, security.DatabaseEncryption, security.KeySalt); err != nil {
+			return security, "", err
+		}
+	}
+	if migrateRequested && dbKey != "" {
+		if err := dbcrypt.MigratePlaintexts([]string{cfg.DBPath, boardPath}, dbKey); err != nil {
+			return security, "", fmt.Errorf("database migration failed: %w", err)
+		}
+	}
+	return security, dbKey, nil
+}
+
+// refuseKeyFileReplacement: a migration to a key file whose key file is missing must not generate a new key while
+// either database is already encrypted (with the lost key).
+func refuseKeyFileReplacement(cfg *config.Config, coralDir, boardPath string, security dbcrypt.Bootstrap) error {
+	keyPath := security.KeyFile
+	if keyPath == "" {
+		keyPath = dbcrypt.KeyName
+	}
+	if !filepath.IsAbs(keyPath) {
+		keyPath = filepath.Join(coralDir, keyPath)
+	}
+	if _, keyErr := os.Stat(keyPath); !os.IsNotExist(keyErr) {
+		return nil
+	}
+	for _, path := range []string{cfg.DBPath, boardPath} {
+		encrypted, probeErr := dbcrypt.EncryptedFile(path)
+		if probeErr != nil {
+			return probeErr
+		}
+		if encrypted {
+			return fmt.Errorf("database key file is missing for encrypted database %s; refusing replacement", filepath.Base(path))
+		}
+	}
+	return nil
+}
+
+// openDatabases opens the sessions database and probes the separate board database with the same key before the
+// server is built: a wrong key fails closed rather than starting with only one database open.
+func openDatabases(ctx context.Context, cfg *config.Config, boardPath, dbKey string, security dbcrypt.Bootstrap) (*store.DB, error) {
+	openDone := noticeSlowOpen(cfg.DBPath)
+	db, err := store.OpenWithKey(ctx, cfg.DBPath, dbKey)
+	openDone()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	dbcrypt.SetEffectiveMode(security.DatabaseEncryption)
+	openDone = noticeSlowOpen(boardPath)
+	boardProbe, err := board.NewStoreWithKey(boardPath, dbKey)
+	openDone()
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to open board database: %w", err)
+	}
+	boardProbe.Close()
+	return db, nil
+}
+
+// prepareWithDatabase applies the saved settings that decide how the server binds (privacy, hub mode, Coral Hub
+// max mode), then sets up what agents need before anything can launch one: per-session tokens (#3387), the agent
+// tools, the launch temp folder and the session-state sweep, and removes stale files (an orphaned proxy CA, launch
+// scripts a shell never sourced, older than a day: #4361).
+func prepareWithDatabase(ctx context.Context, db *store.DB, cfg *config.Config, opts Options) error {
+	applyPrivacySettings(ctx, db, cfg, opts.RemoteAccess, opts.RemoteAccessPrompt)
+	applyHubModeSetting(ctx, db, cfg)
+	if err := applyCloudMaxMode(ctx, db, cfg); err != nil {
+		return err
+	}
+	setupSessionTokens(db, cfg.CoralDir())
+	setupAgentTools(cfg.CoralDir())
+	removeOrphanProxyCA(cfg.CoralDir())
+	setupLaunchTempDir(db, cfg.CoralDir())
+	setupSessionStateSweep(db, cfg.CoralDir())
+	if n := cmdhandoff.Sweep(); n > 0 {
+		log.Printf("[startup] removed %d launch script(s) older than a day from the temp folder", n)
+	}
+	return nil
+}
+
+// applyStartupSettings applies the saved settings the terminal needs before any backend starts: the replay buffer
+// size, the terminal input debug log (#3256: off unless the setting, CORAL_DEBUG_INPUT or --debug-input), the agents'
+// priority (#3437: the setting, or --agent-priority / CORAL_AGENT_PRIORITY), and the terminal backend (#3634:
+// --backend, else the saved setting, else the OS default), into opts and cfg. A tmux backend without tmux is
+// logged, not fatal: the dashboard still loads and shows install instructions; launches fail until it is installed.
+func applyStartupSettings(ctx context.Context, db *store.DB, cfg *config.Config, opts *Options, backendFlag string) {
+	applyReplayBytesFromSettings(ctx, db)
+	inputlog.Setup(cfg.CoralDir(), opts.DebugInput || inputlog.EnabledFromEnv())
+	savedBackend := ""
+	if settings, err := store.NewSessionStore(db).GetSettings(ctx); err == nil {
+		inputlog.SetSetting(config.Truthy(settings[inputlog.SettingKey]))
+		agentprio.SetSetting(settings[agentprio.SettingKey])
+		savedBackend = settings[routes.TerminalBackendSetting]
+	}
+	var backendForced bool
+	opts.BackendType, backendForced = ResolveBackend(backendFlag, savedBackend, runtime.GOOS)
+	cfg.TerminalBackend, cfg.TerminalBackendForced = opts.BackendType, backendForced
+	log.Printf("[STARTUP] terminal backend=%s (%s)", opts.BackendType, map[bool]string{true: "--backend", false: "Settings > Terminal backend, or the default"}[backendForced])
+	if opts.BackendType == "tmux" {
+		if _, ok := tmux.IsAvailable(); !ok {
+			log.Printf("[startup] tmux not found — agents cannot be launched until tmux is installed (brew install tmux)")
+		}
+	}
+	forcedPriority := opts.AgentPriority
+	if forcedPriority == "" {
+		forcedPriority = os.Getenv(agentprio.EnvVar)
+	}
+	agentprio.Setup(forcedPriority)
+}
+
+// serveListeners serves httpServer on every listener, in the background, with the dashboard's address and any
+// remote-access warning logged; a server error goes to onErr (logged as fatal when nil).
+func serveListeners(httpServer *http.Server, lns []net.Listener, cfg *config.Config, tls bool, onErr func(error)) {
 	if onErr == nil {
 		onErr = func(err error) { log.Printf("[FATAL] Server error: %v", err) }
 	}
 	go func() {
 		defer safego.Recover("startup/startup:464")
-		if tlsConfig != nil {
+		if tls {
 			log.Printf("Coral dashboard: https://localhost:%d (TLS; plain http:// only from this computer)", cfg.Port)
 		} else {
 			log.Printf("Coral dashboard: http://localhost:%d", cfg.Port)
@@ -509,18 +563,6 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 			onErr(err)
 		}
 	}()
-
-	releaseOnError = false
-	return &RunningServer{
-		workflows:  workflows,
-		HTTPServer: httpServer,
-		Server:     srv,
-		LoginToken: loginToken,
-		DB:         db,
-		Backend:    backend,
-		instance:   instance,
-		lockPath:   lockPath,
-	}, nil
 }
 
 // applyPrivacySettings loads persisted privacy controls before binding. Remote
