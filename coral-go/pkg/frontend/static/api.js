@@ -30,7 +30,7 @@
 import { state, loadSessionDrafts } from './state.js';
 import { renderLiveSessions, renderHistorySessions } from './render.js';
 import { buildApiParams } from './search_filters.js';
-import { serverUrl, serverForSession, initHub, fetchValidated } from './server_base.js';
+import { serverUrl, initHub, fetchValidated } from './server_base.js';
 import { updateServersTabVisibility } from './servers_tab.js';
 import { updateInboxTab } from './inbox_tab.js';
 import { ageOutStored } from './local_store.js';

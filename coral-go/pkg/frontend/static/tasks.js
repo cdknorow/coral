@@ -4,8 +4,8 @@ import { state } from './state.js';
 import { boardOfPage } from './dock_page.js';
 import { morphHtml } from './dom_morph.js';
 import { closeOnBackdropAndEscape, releaseEscape } from './dialog_close.js';
-import { registerTaskView, redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
-import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
+import { registerTaskView } from './task_hooks.js';
+import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { registerActions, idOf, withId, tokenOf, textOf } from './actions.js';
 import { addPendingMessage } from './live_chat.js';
 import { verificationOf } from './task_verification.js';
@@ -17,7 +17,7 @@ import { _claimedFor, _subagentTooltip, clearOpenSubagent, loadSubagents, showSu
 import { browserLocal } from './safe_storage.js';
 import { ensureBuilt } from './lazy_dom.js';
 import { buildTaskBar } from './task_bar.js';
-import { EMPTY as TASK_EMPTY, isQuery, isFiltered as taskFiltered, phases as taskPhases, toParams as taskParams, loadFilters as loadTaskFilters, saveFilters as saveTaskFilters } from './task_filters.js';
+import { EMPTY as TASK_EMPTY, isQuery, phases as taskPhases, toParams as taskParams, loadFilters as loadTaskFilters, saveFilters as saveTaskFilters } from './task_filters.js';
 export { clearOpenSubagent, loadSubagents } from './subagents.js';
 
 // ── Board task polling ───────────────────────────────────────────────

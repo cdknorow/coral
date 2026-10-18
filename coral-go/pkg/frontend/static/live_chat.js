@@ -1,7 +1,7 @@
 /* Live history view — renders JSONL messages as a read-only conversation log */
 
 import { state } from './state.js';
-import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast, copyText } from './utils.js';
+import { escapeHtml, renderMarkdown, showToast, copyText } from './utils.js';
 import { registerActions } from './actions.js';
 import { platform } from './platform/detect.js';
 import { fitTerminal, refreshTerminal } from './xterm_renderer.js';
@@ -9,12 +9,12 @@ import { loadXterm, xtermReady } from './vendor_loader.js';
 import { fireAgentView } from './agent_view.js';
 import { deriveSessionState } from './render.js';
 import { chatAgentAdapter } from './chat_agents.js';
-import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from './server_base.js';
+import { serverFetch, sessionServer, isCloud } from './server_base.js';
 import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
 import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from './overload.js';
-import { storeKey, onAccountForgotten } from './local_store.js';
-import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, isShortReply, lastContent, noticeStartedTurn, rollUpGroups, updateWorkGroupSummary } from './chat_content.js';
+import { onAccountForgotten } from './local_store.js';
+import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, isShortReply, noticeStartedTurn, rollUpGroups, updateWorkGroupSummary } from './chat_content.js';
 import { flashCopied, makeBubble } from './chat_bubbles.js';
 import { SAVE_BUTTON } from './saved_marks.js';
 import { unwrapPastedContent } from './pasted_content.js';

@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { escapeHtml, escapeAttr } from './utils.js';
-import { registerActions, idOf, textOf, tokenOf } from './actions.js';
+import { registerActions, idOf, textOf } from './actions.js';
 import { showToast } from './utils.js';
 
 let allTags = [];

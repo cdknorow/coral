@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
-import { registerActions, idOf, withId, uuidOf } from './actions.js';
+import { registerActions, withId, uuidOf } from './actions.js';
 import { pollEvery } from './overload.js';
 import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 import { ensureBuilt } from './lazy_dom.js';

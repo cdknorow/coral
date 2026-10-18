@@ -1,7 +1,7 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, getAgentColor, hexToRgba, showToast, externalMessageBadge, hubUserBadge, boardMessageDisplayText, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
-import { registerActions, idOf, withId, textOf } from './actions.js';
+import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, getAgentColor, showToast, externalMessageBadge, hubUserBadge, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
+import { registerActions, withId, textOf } from './actions.js';
 import { boardPageChanged } from './dock_page.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';

@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { inlineArtifactPath } from './artifact_paths.js';
 import { boardOfPage } from './dock_page.js';
 import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
-import { registerActions, idOf, textOf, tokenOf } from './actions.js';
+import { registerActions, textOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud, keyLabel } from './server_base.js';

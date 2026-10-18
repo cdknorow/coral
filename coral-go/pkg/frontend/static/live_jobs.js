@@ -2,7 +2,7 @@
 
 import { selectLiveSession } from './sessions.js';
 import { escapeHtml, escapeAttr } from './utils.js';
-import { registerActions, idOf, textOf, tokenOf } from './actions.js';
+import { registerActions, textOf, tokenOf } from './actions.js';
 
 let activeRuns = [];
 

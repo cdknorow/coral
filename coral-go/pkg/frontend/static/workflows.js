@@ -1,7 +1,7 @@
 /* Workflows: list, detail, run views, and CRUD */
 
 import { escapeHtml as esc, escapeAttr as escAttr, showView, showToast } from './utils.js';
-import { registerActions, idOf, withId, textOf } from './actions.js';
+import { registerActions, withId, textOf } from './actions.js';
 import { apiFetch, loadLiveSessions } from './api.js';
 import { selectLiveSession } from './sessions.js';
 import { pollEvery } from './overload.js';

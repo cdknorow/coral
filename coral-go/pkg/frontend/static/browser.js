@@ -1,7 +1,7 @@
 /* Directory browser for session launch modal */
 
 import { escapeHtml, escapeAttr } from './utils.js';
-import { registerActions, idOf, textOf, tokenOf } from './actions.js';
+import { registerActions, textOf } from './actions.js';
 import { serverFetch, LOCAL_SERVER, normServer } from './server_base.js';
 import { recentDirsKey, machineBlock } from './launch_server.js';
 import { browserLocal } from './safe_storage.js';

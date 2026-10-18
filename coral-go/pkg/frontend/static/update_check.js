@@ -1,7 +1,7 @@
 /* Update notification — checks for new Coral releases on GitHub */
 
 import { escapeHtml, showToast, escapeAttr } from './utils.js';
-import { registerActions, idOf, textOf, tokenOf } from './actions.js';
+import { registerActions, textOf } from './actions.js';
 import { browserLocal } from './safe_storage.js';
 
 /**

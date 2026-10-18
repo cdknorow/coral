@@ -1,6 +1,5 @@
 /* History tabs — read-only rendering of Activity, Tasks, and Agent Notes for historical sessions */
 
-import { state } from './state.js';
 import { escapeHtml, sanitizeMarkdown } from './utils.js';
 import { eventRowHtml, renderActivityChart } from './event_row.js';
 import { setHistoryEventsSession, syncHistoryEventSearch } from './history_events_search.js';

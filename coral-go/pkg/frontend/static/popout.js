@@ -14,7 +14,6 @@
 import { state } from './state.js';
 import { resolveSessionIdentity, deriveSessionState } from './render.js';
 import { toggleAgenticPanel } from './sidebar.js';
-import { fitTerminal } from './xterm_renderer.js';
 import { showView } from './utils.js';
 import { DESTRUCTIVE_ACTIONS, SEND_ACTIONS, actionSelector } from './actions.js';
 import { normServer, serverFetch, sessionServer, agentPath, parseAgentPath, isLocalServer } from './server_base.js';

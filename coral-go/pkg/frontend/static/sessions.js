@@ -10,7 +10,7 @@ import { HISTORY_PAGE, setHistoryWindow } from './history_pages.js';
 import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey, keyLabel } from './server_base.js';
 import { updateHeaderContext } from './header_context.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
-import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateSessionModel, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, terminalDotClass, applyTerminalDot } from './render.js';
+import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateSessionModel, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, applyTerminalDot } from './render.js';
 import { renderQuickActions, updateSidebarActive, renderAttachments } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';

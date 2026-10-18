@@ -9,7 +9,6 @@ import { fileIconHtml } from './file_explorer.js';
 import { openPreviewTab, openArtifactTab, setPreviewSession } from './preview_pane.js';
 import { storeKey, readStars, writeStars } from './local_store.js';
 import { serverFetch, serverForSession, sessionServer, currentServer, isCloud } from './server_base.js';
-import { agentName, apiQs } from './agent_file_api.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;

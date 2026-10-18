@@ -8,7 +8,7 @@
  * underneath, so closing the team view returns to it unchanged.
  */
 import { state } from './state.js';
-import { sessionTeamKey, splitKey, identityKey } from './server_base.js';
+import { sessionTeamKey, splitKey } from './server_base.js';
 import { showView } from './utils.js';
 import { showTeamAvailability } from './team_availability.js';
 import { showTeamWorkingMode, hasUnsavedTeamSettings, confirmTeamWorkspaceChange } from './team_working_mode.js';

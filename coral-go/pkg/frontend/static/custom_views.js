@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { escapeHtml, escapeAttr } from './utils.js';
-import { registerActions, idOf, textOf, tokenOf } from './actions.js';
+import { registerActions, idOf, tokenOf } from './actions.js';
 import { isCloud } from './server_base.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
 import { lockViewFrame, viewDocument, attachViewBridge, API_VIEW_SEES } from './view_sandbox.js';
