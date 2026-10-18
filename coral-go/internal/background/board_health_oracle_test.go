@@ -106,6 +106,10 @@ func runCheckOracle(t *testing.T, seed int64) {
 	ctx := context.Background()
 	rng := rand.New(rand.NewSource(seed))
 	calm := seed%8 == 0 // everyone working, nothing to judge: the all-clear lines
+	// The clock is read once, and every step's time is it plus whole minutes plus 30 s: the database stamps to the
+	// second, moments after it, so no comparison with a whole-minute window lands within seconds of its boundary,
+	// and the same seed gives the same check on every run.
+	base := time.Now().UTC()
 	dir := t.TempDir()
 	pathA, pathB := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
 	bs, err := board.NewStoreWithKey(pathA, "")
@@ -159,7 +163,7 @@ func runCheckOracle(t *testing.T, seed int64) {
 	for step := 0; step < 10; step++ {
 		// The database's own clock, a few minutes on: its stamps (posts, claims, completions) fall after the
 		// last check or before it, as the check's progress line needs both.
-		now := time.Now().UTC().Truncate(time.Second).Add(time.Duration(rng.Intn(5)) * time.Minute)
+		now := base.Add(30*time.Second + time.Duration(step+rng.Intn(5))*time.Minute)
 		bySession := map[string]AgentInfo{}
 		for _, name := range names {
 			if calm || rng.Intn(6) != 0 {
@@ -252,7 +256,7 @@ func runCheckOracle(t *testing.T, seed int64) {
 		case 0:
 			delete(lastCheck, "team")
 		case 1:
-			lastCheck["team"] = time.Now().UTC().Add(time.Minute)
+			lastCheck["team"] = now.Add(time.Minute)
 		}
 
 		// The same bytes on both sides.
