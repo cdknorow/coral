@@ -1,0 +1,27 @@
+{
+ "artifactDirectoryPath": "/HOME/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000",
+ "conversationId": "00000000-0000-4000-8000-000000000000",
+ "modelName": "gemini-3.8-flash-high",
+ "stepIdx": 4,
+ "toolCall": {
+  "name": "ask_question",
+  "args": {
+   "toolAction": "Asking a question",
+   "toolSummary": "Question to the user",
+   "Questions": [
+    {
+     "Question": "Which database should we use?",
+     "Options": [
+      "PostgreSQL",
+      "SQLite"
+     ]
+    }
+   ]
+  }
+ },
+ "transcriptPath": "/HOME/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000/.system_generated/logs/transcript_full.jsonl",
+ "workspacePaths": [
+  "/WORK/coral_agyhooks",
+  "/SCRATCH/capture_hooks"
+ ]
+}

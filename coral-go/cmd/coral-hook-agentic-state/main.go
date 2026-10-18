@@ -108,6 +108,17 @@ func main() {
 		if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/pending-tool"), pending); err != nil {
 			hooks.DebugLog(fmt.Sprintf("PENDING_POST_FAILED: agent=%s tool=%v err=%v", agentName, pending["tool_name"], err))
 		}
+		// agy sends no hook for a question to the user, only this PreToolUse: its ask_question always waits for the user, so the
+		// request is recorded as Claude's PermissionRequest records it (#4819). A tool permission prompt is not known from here: the
+		// server confirms those from the screen (it records the same event).
+		if event := agyWaitEvent(d, agyEvent, sessionID); event != nil {
+			if hooksRev > 0 {
+				event["hooks_rev"] = hooksRev
+			}
+			if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/events"), event); err != nil {
+				hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", base, agentName, event["event_type"], err))
+			}
+		}
 		return
 	}
 
@@ -209,6 +220,24 @@ func turnEndHandoff(base, agentName string, stopHookActive bool) []byte {
 		return nil
 	}
 	return out
+}
+
+// agyWaitEvent is the request event of an agy PreToolUse that can only be a wait: its ask_question tool, which stops for the user's
+// answer. It has Claude's AskUserQuestion shape (a permission_request of kind question, with the tool's name, so the tool's PostToolUse
+// answers it), keyed by the tool call's id. d is the payload after fromAgy. Any other tool, and any other agent, gives nil.
+func agyWaitEvent(d map[string]any, agyEvent, sessionID string) map[string]any {
+	tool, _ := d["tool_name"].(string)
+	if agyEvent == "" || tool != "ask_question" {
+		return nil
+	}
+	return map[string]any{
+		"event_type":  "permission_request",
+		"summary":     "Waiting for the user: question (" + hooks.Truncate(tool, 60) + ")",
+		"detail_json": map[string]any{"kind": "question", "tool_name": tool},
+		"tool_name":   tool,
+		"tool_use_id": hooks.StrVal(d, "tool_use_id"),
+		"session_id":  sessionID,
+	}
 }
 
 // parsePendingTool builds the pending-tool payload for a PreToolUse hook.

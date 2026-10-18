@@ -188,12 +188,14 @@ func (h *SessionsHandler) SetPendingTool(w http.ResponseWriter, r *http.Request)
 	body.ToolName = truncateUTF8(body.ToolName, 200)
 	body.ToolUseID = truncateUTF8(body.ToolUseID, 200)
 	h.hints.forget(body.SessionID) // a blocking tool may open a prompt: read the screen again
-	h.pending.set(body.SessionID, pendingTool{
+	t := pendingTool{
 		ToolUseID: body.ToolUseID,
 		ToolName:  body.ToolName,
 		Input:     trimPendingInput(body.ToolInput),
 		At:        time.Now(),
-	})
+	}
+	h.pending.set(body.SessionID, t)
+	h.watchForPrompt(body.SessionID, owner.SessionName, t) // agy sends no hook for a permission prompt (#4819)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
