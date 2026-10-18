@@ -978,6 +978,7 @@
         background: rgba(var(--working-rgb), 0.16);
         color: var(--working);
     }
+    [data-theme="light"] #mobile-session-list .session-status-chip.running { color: var(--accent-dim); } /* 3.8:1 with --working on its tint, 5.6:1 with this (#4851) */
 
     #mobile-session-list .session-status-chip.idle {
         background: rgba(148, 163, 184, 0.16);

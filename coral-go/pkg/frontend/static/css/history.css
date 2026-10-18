@@ -50,6 +50,7 @@
     color: var(--accent);
     border-bottom-color: var(--accent);
 }
+[data-theme="light"] .history-tab-btn.active { color: var(--accent-dim); } /* 4.4:1 with --accent on the light panel, 5.5:1 with this (#4851) */
 
 .history-tab-content {
     display: none;
