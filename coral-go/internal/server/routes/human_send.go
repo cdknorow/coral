@@ -3,7 +3,9 @@ package routes
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +29,10 @@ import (
 //     typed again (bounded) while the agent is still starting and its box is empty (its keystrokes were lost), else
 //     "not confirmed". Never "sent" without one of the two. (A PTY's rendered screen can lag Codex's redraws, so the
 //     screen alone said "not submitted" for a message the agent had taken: the event is checked first.)
+//   - a message with attached images (the composer puts their upload paths first) waits longer for its event: the CLI
+//     reads the images before its hook (#4794). And to an agent in the middle of a turn (its newest event a prompt
+//     taken or a tool used), a message no longer in its box once the wait is over was queued behind that work: the
+//     CLI takes it, with its UserPromptSubmit, only when the turn ends. Sent.
 // One message at a time per agent (Security's MUST on #4587): the steps above assume they are the box's only writer.
 // Two sends at once typed both texts into one box ("deploy to stagingrm -rf the build"), each then saw its own text
 // gone and both said "sent" with nothing submitted. A second send waits for the first to be confirmed or refused and
@@ -53,6 +59,8 @@ var (
 	humanSendExtraEnters = 3
 	// How long a message never seen in the box waits for the agent's event before it is typed again, or not confirmed.
 	humanSendConfirmWait = 2500 * time.Millisecond
+	// The same for a message with attached images (#4794): the CLI reads the images before its UserPromptSubmit hook.
+	humanSendAttachConfirmWait = 6 * time.Second
 	// Times a message lost while the agent started is typed again, at most.
 	humanSendRetypes = 2
 	// Messages waiting behind the one being delivered to an agent, at most; and messages being delivered or waiting, in all.
@@ -218,7 +226,11 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 		h.sendGate.setLeftover(key, ptymanager.BoxMark{}) // submitted or cleared since
 	}
 	es, canEnter := h.terminal.(ptymanager.EnterSender)
-	base := h.latestEventID(ctx, sessionID)
+	base, busy := h.latestEvent(ctx, sessionID)
+	confirmWait := humanSendConfirmWait
+	if attachesImages(text) {
+		confirmWait = humanSendAttachConfirmWait // its hook comes once the CLI has read the images (#4794)
+	}
 	// The same text already in the box: an earlier send of it that wasn't submitted. It gets Enter; typing it again
 	// would put a second copy in the box.
 	seen := canEnter && ptymanager.TextInInputBox(screen, text)
@@ -253,8 +265,11 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			if open, _ := ptymanager.PromptOnScreen(screen); command && open {
 				return nil // the command opened its own menu (/model's picker): it ran
 			}
-			if time.Since(typedAt) < humanSendConfirmWait {
+			if time.Since(typedAt) < confirmWait {
 				continue
+			}
+			if busy && ptymanager.InputBoxOnScreen(screen) {
+				return nil // typed to an agent in the middle of a turn, and not in its box: queued behind its work (#4794)
 			}
 			if retyped < humanSendRetypes && h.agentHasNoEvents(ctx, sessionID) && ptymanager.InputBoxEmpty(screen) {
 				if err := send(); err != nil { // its keystrokes were lost while it started: none of it is in the box
@@ -294,16 +309,32 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 // missing" is a message: its first word has a second slash).
 var slashCommandRe = regexp.MustCompile(`^/[A-Za-z][A-Za-z0-9_:.-]*(?:[ \t][^\n]*)?$`)
 
-// latestEventID is the id of the session's newest event (0 with none): a later prompt_submit is this send's.
-func (h *SessionsHandler) latestEventID(ctx context.Context, sessionID string) int64 {
+// latestEvent is the id of the session's newest event (0 with none): a later prompt_submit is this send's. busy is
+// whether that event leaves the agent in the middle of a turn (a prompt taken, or a tool used): a message typed
+// then is queued by the CLI and taken when the turn ends, with its UserPromptSubmit only then.
+func (h *SessionsHandler) latestEvent(ctx context.Context, sessionID string) (id int64, busy bool) {
 	if sessionID == "" || h.ts == nil {
-		return 0
+		return 0, false
 	}
 	events, err := h.ts.ListAgentEvents(ctx, "", 1, &sessionID)
 	if err != nil || len(events) == 0 {
-		return 0
+		return 0, false
 	}
-	return events[0].ID
+	return events[0].ID, events[0].EventType == "prompt_submit" || events[0].EventType == "tool_use"
+}
+
+// attachesImages reports whether a composer message has images attached: the composer puts their upload paths first
+// ("<uploads>/a.png <uploads>/b.png the text").
+func attachesImages(text string) bool {
+	if uploadDir == "" {
+		return false
+	}
+	prefix := filepath.ToSlash(uploadDir) + "/"
+	if !strings.HasPrefix(text, prefix) {
+		return false
+	}
+	name, _, _ := strings.Cut(text[len(prefix):], " ") // an upload's own name has no space, and no folder
+	return name != "" && !strings.Contains(name, "/")
 }
 
 // promptSubmittedAfter reports whether the agent recorded taking a prompt (prompt_submit) since the event base.

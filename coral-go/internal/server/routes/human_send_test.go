@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -464,6 +465,111 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, rec.Code)
 		assert.Equal(t, "not_confirmed", code(rec))
 	})
+
+	// #4794: a Chat send with attached images is "<upload path> ... <text>". The CLI may show each image as its own
+	// placeholder in the box, read the images before its UserPromptSubmit hook, or queue the message behind its turn.
+	attach := func(t *testing.T) (img func(name string) string) {
+		old, oldWait := uploadDir, humanSendAttachConfirmWait
+		uploadDir, humanSendAttachConfirmWait = t.TempDir()+"/Coral Data/uploads", 600*time.Millisecond // a space in the data dir's path
+		t.Cleanup(func() { uploadDir, humanSendAttachConfirmWait = old, oldWait })
+		return func(name string) string { return filepath.ToSlash(uploadDir) + "/" + name }
+	}
+	ready := func(string) string { return claudeUnnumbered(t, "ready.txt") } // the empty box, with its placeholder
+	t.Run("claude: an image alone, its hook after the image is read: sent", func(t *testing.T) {
+		h := setup(t, "claude", true)
+		img := attach(t)
+		h.term.show(ready(""))
+		h.term.onType = func(string) {
+			h.term.show(claude("[Image #1]"))
+			go func() { time.Sleep(300 * time.Millisecond); h.term.show(ready("")); h.submit() }()
+		}
+		rec := h.send(img("screenshot_20261018_102600_ab12.png"))
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	})
+	t.Run("claude: one image and text, its hook after the image is read: sent", func(t *testing.T) {
+		h := setup(t, "claude", true)
+		img := attach(t)
+		text := img("1a2b3c4d_shot.png") + " lets look at this"
+		h.term.show(ready(""))
+		h.term.onType = func(string) { go func() { time.Sleep(300 * time.Millisecond); h.submit() }() } // taken at once
+		rec := h.send(text)
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		typed, enters := h.term.counts()
+		assert.Equal(t, []string{text}, typed, "typed once")
+		assert.Zero(t, enters)
+	})
+	t.Run("claude: two images and text: sent", func(t *testing.T) {
+		h := setup(t, "claude", true)
+		img := attach(t)
+		h.term.show(ready(""))
+		h.term.onType = func(string) { go func() { time.Sleep(400 * time.Millisecond); h.submit() }() }
+		rec := h.send(img("aaaa1111_a.png") + " " + img("bbbb2222_b.png") + " which one is right")
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	})
+	t.Run("claude: an image and text to an agent in the middle of a turn: queued, sent", func(t *testing.T) {
+		h := setup(t, "claude", true)
+		h.event("tool_use") // working
+		img := attach(t)
+		h.term.show(ready("")) // the CLI takes it at once and holds it for the turn's end: never in the box, no hook yet
+		rec := h.send(img("cccc3333_c.png") + " also this")
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		typed, _ := h.term.counts()
+		assert.Len(t, typed, 1, "typed once, not again")
+	})
+	t.Run("claude: a message to an agent in the middle of a turn, with a menu over its box: not confirmed", func(t *testing.T) {
+		h := setup(t, "claude", true)
+		h.event("tool_use")
+		img := attach(t)
+		h.term.show(ready(""))
+		h.term.onType = func(string) { h.term.show(picker) } // no box to have queued it from: nothing says it was taken
+		rec := h.send(img("eeee5555_e.png") + " and this")
+		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		assert.Equal(t, "not_confirmed", code(rec))
+	})
+	t.Run("claude: an image and text an idle agent never takes: not confirmed", func(t *testing.T) {
+		h := setup(t, "claude", true)
+		img := attach(t)
+		h.term.show(ready(""))
+		rec := h.send(img("dddd4444_d.png") + " are you there")
+		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		assert.Equal(t, "not_confirmed", code(rec))
+	})
+	t.Run("a path that isn't an upload is part of the message, and waits only the usual time", func(t *testing.T) {
+		h := setup(t, "claude", true)
+		attach(t)
+		humanSendAttachConfirmWait = 5 * time.Second
+		h.term.show(ready(""))
+		start := time.Now()
+		rec := h.send("/tmp/build.png is missing")
+		assert.Equal(t, http.StatusConflict, rec.Code)
+		assert.Equal(t, "not_confirmed", code(rec))
+		assert.Less(t, time.Since(start), 2*time.Second, "not an attachment's wait")
+	})
+}
+
+// #4794: a message has images attached when it starts with an upload's path (the composer puts them first).
+func TestAttachesImages(t *testing.T) {
+	old := uploadDir
+	t.Cleanup(func() { uploadDir = old })
+	uploadDir = "/home/a b/.coral/uploads"
+	up := "/home/a b/.coral/uploads/"
+	for _, c := range []struct {
+		in   string
+		want bool
+	}{
+		{up + "x_1.png hello", true},
+		{up + "x_1.png " + up + "y_2.jpg two images", true},
+		{up + "x_1.png", true},
+		{"hello " + up + "x_1.png", false}, // not in front: the message's own words
+		{"/tmp/x.png hello", false},
+		{up + "sub/x.png hello", false}, // not an upload (uploads have no folders)
+		{up + " hello", false},
+		{"plain text", false},
+	} {
+		assert.Equal(t, c.want, attachesImages(c.in), c.in)
+	}
+	uploadDir = ""
+	assert.False(t, attachesImages(up+"x_1.png hello"), "no uploads folder known")
 }
 
 // A slash command is one line: a slash, a name, then nothing or its arguments (#4705).
