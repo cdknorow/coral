@@ -138,37 +138,8 @@ func (c *ClientSession) RelayArtifact(ctx context.Context, n int64, body io.Read
 	fail := func(err error) (RelayResponse, error) {
 		return RelayResponse{}, c.inboundErr(ctx, err, ErrRelayArtifactClosed)
 	}
-
-	// Idle watchdog: progress (a chunk read from the body and written) pushes it back; none for
-	// artifactIdleFor closes the stream and ends the call, also when it is the BODY that went quiet
-	// (a read that never returns is abandoned, not waited for).
-	var progress atomic.Int64
-	progress.Store(time.Now().UnixNano())
-	wdDone := make(chan struct{})
-	var stopWatchdog sync.Once
-	stopIdle := func() { stopWatchdog.Do(func() { close(wdDone) }) }
-	defer stopIdle()
-	idle := make(chan struct{})
-	go func() {
-		defer safego.Recover("tunnel/relay_artifact:watchdog")
-		t := time.NewTicker(idleFor / 4)
-		defer t.Stop()
-		for {
-			select {
-			case <-wdDone:
-				return
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				if time.Since(time.Unix(0, progress.Load())) >= idleFor {
-					close(idle)
-					_ = st.Close()
-					return
-				}
-			}
-		}
-	}()
-
+	wd := startArtifactWatchdog(ctx, st, idleFor)
+	defer wd.stop()
 	w := io.Writer(st)
 	if c.up != nil {
 		w = &upWriter{st: st, u: c.up, lane: lane, done: ctx.Done()}
@@ -176,122 +147,189 @@ func (c *ClientSession) RelayArtifact(ctx context.Context, n int64, body io.Read
 	if err := writeFrame(w, Header{Kind: KindRelay, Method: http.MethodPost, Path: RelayArtifactPath, ContentLength: n}); err != nil {
 		return fail(err)
 	}
-	// The hub's answer is read on its own goroutine from the start: a hub that refuses before it reads the
-	// body (over its budget, an unknown address, a switch off) answers and closes, and the answer is then
-	// the call's result however much of the body was still unsent; the upload is cut short by closing the
-	// stream, so the sender gets the hub's reason, not a stream error.
-	type reply struct {
-		resp RelayResponse
-		err  error
+	replies := c.awaitArtifactReply(st)
+	rd := artifactBodyReader{body: body, idle: wd.idle, done: ctx.Done(), ctxErr: ctx.Err}
+	if resp, err, done := sendArtifactBody(ctx, w, st, rd, replies, wd, n, fail); done {
+		return resp, err
 	}
-	replyCh := make(chan reply, 1)
+	// The whole body is sent: from here the hub is working (it may be waiting on the target), which the
+	// 120 s total bounds; the idle deadline is about bytes of the body.
+	wd.stop()
+	select {
+	case r := <-replies:
+		if r.err != nil {
+			return fail(r.err)
+		}
+		return r.resp, nil
+	case <-wd.idle:
+		return fail(errArtifactIdle)
+	case <-ctx.Done():
+		return fail(ctx.Err())
+	}
+}
+
+// artifactWatchdog ends an artifact request that makes no progress: progress (a chunk read from the body and
+// written) pushes it back; none for the idle time closes the stream and closes idle, also when it is the BODY
+// that went quiet (a read that never returns is abandoned, not waited for).
+type artifactWatchdog struct {
+	progress atomic.Int64
+	idle     chan struct{} // closed when the idle time passed with no progress
+	done     chan struct{} // closed by stop
+	once     sync.Once
+}
+
+func startArtifactWatchdog(ctx context.Context, st io.Closer, idleFor time.Duration) *artifactWatchdog {
+	wd := &artifactWatchdog{idle: make(chan struct{}), done: make(chan struct{})}
+	wd.touch()
+	go func() {
+		defer safego.Recover("tunnel/relay_artifact:watchdog")
+		t := time.NewTicker(idleFor / 4)
+		defer t.Stop()
+		for {
+			select {
+			case <-wd.done:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if time.Since(time.Unix(0, wd.progress.Load())) >= idleFor {
+					close(wd.idle)
+					_ = st.Close()
+					return
+				}
+			}
+		}
+	}()
+	return wd
+}
+
+// touch records progress now.
+func (wd *artifactWatchdog) touch() { wd.progress.Store(time.Now().UnixNano()) }
+
+// stop ends the watchdog (more than once is fine).
+func (wd *artifactWatchdog) stop() { wd.once.Do(func() { close(wd.done) }) }
+
+// artifactReply is the hub's answer to an artifact request, or why there is none.
+type artifactReply struct {
+	resp RelayResponse
+	err  error
+}
+
+// awaitArtifactReply reads the hub's answer on its own goroutine from the start: a hub that refuses before it reads
+// the body (over its budget, an unknown address, a switch off) answers and closes, and the answer is then the call's
+// result however much of the body was still unsent; the upload is cut short by closing the stream, so the sender
+// gets the hub's reason, not a stream error.
+func (c *ClientSession) awaitArtifactReply(st io.ReadCloser) <-chan artifactReply {
+	replies := make(chan artifactReply, 1)
 	go func() {
 		defer safego.Recover("tunnel/relay_artifact:reply")
 		b, err := readFrame(st, c.cfg.Limits.MaxHeaderBytes)
 		if err != nil {
-			replyCh <- reply{err: err}
+			replies <- artifactReply{err: err}
 			return
 		}
 		resp, err := c.readInboundReply(st, b, relayKind)
-		replyCh <- reply{resp, err}
+		replies <- artifactReply{resp, err}
 		if err == nil {
 			_ = st.Close() // answered: any write still blocked ends
 		}
 	}()
-	// answered: a write failed because the hub already answered (or never will): wait a moment for the
-	// answer that is, or is not, already there.
-	answered := func(werr error) (RelayResponse, error, bool) {
-		select {
-		case r := <-replyCh:
-			if r.err == nil {
-				return r.resp, nil, true
-			}
-		case <-time.After(2 * time.Second):
-		}
-		return RelayResponse{}, werr, false
-	}
-	buf := make([]byte, artifactChunk)
+	return replies
+}
+
+// artifactBodyReader reads the request's body on a goroutine, so that a body that goes quiet is abandoned on the
+// idle or total deadline, not waited for.
+type artifactBodyReader struct {
+	body   io.Reader
+	idle   <-chan struct{}
+	done   <-chan struct{}
+	ctxErr func() error
+}
+
+// read reads exactly p when full (a chunk), otherwise one Read (the check for a byte past n).
+func (rd artifactBodyReader) read(p []byte, full bool) (int, error) {
 	type chunk struct {
 		n   int
 		err error
 	}
-	// readChunk reads from the body in a goroutine so that a body that goes quiet is abandoned on the idle
-	// or total deadline, not waited for. full reads exactly p (a chunk); otherwise one Read (the check
-	// for a byte past n).
-	readChunk := func(p []byte, full bool) (int, error) {
-		res := make(chan chunk, 1)
-		go func() {
-			defer safego.Recover("tunnel/relay_artifact:read")
-			var m int
-			var err error
-			if full {
-				m, err = io.ReadFull(body, p)
-			} else {
-				m, err = body.Read(p)
-			}
-			res <- chunk{m, err}
-		}()
-		select {
-		case r := <-res:
-			return r.n, r.err
-		case <-idle:
-			return 0, errArtifactIdle
-		case <-ctx.Done():
-			return 0, ctx.Err()
+	res := make(chan chunk, 1)
+	go func() {
+		defer safego.Recover("tunnel/relay_artifact:read")
+		var m int
+		var err error
+		if full {
+			m, err = io.ReadFull(rd.body, p)
+		} else {
+			m, err = rd.body.Read(p)
 		}
+		res <- chunk{m, err}
+	}()
+	select {
+	case r := <-res:
+		return r.n, r.err
+	case <-rd.idle:
+		return 0, errArtifactIdle
+	case <-rd.done:
+		return 0, rd.ctxErr()
 	}
-	for left := n; left > 0; {
-		want := int64(len(buf))
-		if left < want {
-			want = left
+}
+
+// sendArtifactBody writes exactly n bytes of the body in chunks. done is set when the call ends here: the hub
+// answered while the body was being written (its answer is the result), a deadline, a write that failed, or a body
+// shorter or longer than n (the stream is closed, so the hub sees a short body or none, never an overrun).
+func sendArtifactBody(ctx context.Context, w io.Writer, st io.Closer, rd artifactBodyReader, replies <-chan artifactReply,
+	wd *artifactWatchdog, n int64, fail func(error) (RelayResponse, error)) (RelayResponse, error, bool) {
+	// answered: a write failed because the hub already answered (or never will): wait a moment for the
+	// answer that is, or is not, already there.
+	answered := func() (RelayResponse, bool) {
+		select {
+		case r := <-replies:
+			if r.err == nil {
+				return r.resp, true
+			}
+		case <-time.After(2 * time.Second):
 		}
-		m, rerr := readChunk(buf[:want], true)
+		return RelayResponse{}, false
+	}
+	buf := make([]byte, artifactChunk)
+	for left := n; left > 0; {
+		want := min(int64(len(buf)), left)
+		m, rerr := rd.read(buf[:want], true)
 		if errors.Is(rerr, errArtifactIdle) || (rerr != nil && ctx.Err() != nil) {
-			return fail(rerr)
+			resp, err := fail(rerr)
+			return resp, err, true
 		}
 		if m > 0 {
 			if _, err := w.Write(buf[:m]); err != nil {
 				if ctx.Err() == nil {
-					if resp, _, ok := answered(err); ok {
-						return resp, nil
+					if resp, ok := answered(); ok {
+						return resp, nil, true
 					}
 				}
-				return fail(err)
+				resp, err := fail(err)
+				return resp, err, true
 			}
-			progress.Store(time.Now().UnixNano())
+			wd.touch()
 			left -= int64(m)
 		}
 		if rerr != nil {
 			_ = st.Close() // short: the hub sees a stream that ends before its declared length
-			return RelayResponse{}, fmt.Errorf("%w: the body ended %d bytes short: %v", ErrArtifactLength, left, rerr)
+			return RelayResponse{}, fmt.Errorf("%w: the body ended %d bytes short: %v", ErrArtifactLength, left, rerr), true
 		}
 	}
 	// A byte past n fails the call: read through the same abandonable goroutine, so a body that gives n
 	// bytes and then blocks ends at the idle deadline instead of hanging the call.
 	var extra [1]byte
-	k, xerr := readChunk(extra[:], false)
+	k, xerr := rd.read(extra[:], false)
 	if errors.Is(xerr, errArtifactIdle) || (xerr != nil && ctx.Err() != nil) {
-		return fail(xerr)
+		resp, err := fail(xerr)
+		return resp, err, true
 	}
 	if k > 0 {
 		_ = st.Close()
-		return RelayResponse{}, fmt.Errorf("%w: the body is longer than the declared %d bytes", ErrArtifactLength, n)
+		return RelayResponse{}, fmt.Errorf("%w: the body is longer than the declared %d bytes", ErrArtifactLength, n), true
 	}
-	// The whole body is sent: from here the hub is working (it may be waiting on the target), which the
-	// 120 s total bounds; the idle deadline is about bytes of the body.
-	stopIdle()
-
-	select {
-	case r := <-replyCh:
-		if r.err != nil {
-			return fail(r.err)
-		}
-		return r.resp, nil
-	case <-idle:
-		return fail(errArtifactIdle)
-	case <-ctx.Done():
-		return fail(ctx.Err())
-	}
+	return RelayResponse{}, nil, false
 }
 
 // artifactIdleReader gives the body of a streamed request to the hub's hook: at most n bytes, each Read
