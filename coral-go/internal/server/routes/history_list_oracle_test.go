@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,9 +16,12 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -44,7 +48,7 @@ func historyListQuery(rng *rand.Rand) url.Values {
 	set("max_duration_sec", "0", "3600", "x")
 	set("q", "deploy", "team", "Team", "zzz", "fix")
 	today := time.Now().UTC().Format("2006-01-02") // the boards' messages are stamped today: the bounds' own day
-	set("date_from", "2026-10-01", "2026-10-10", "2026-12-01", today, today)
+	set("date_from", "2026-10-01", "2026-10-10", "2026-12-01", today, today, "2026-09-20")
 	set("date_to", "2026-10-05", "2026-10-20", "2025-01-01", today, today)
 	set("type", "all", "agent", "group", "bogus")
 	set("agent_name", "lead", "qa", "nobody")
@@ -55,6 +59,12 @@ func historyListQuery(rng *rand.Rand) url.Values {
 func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 	_, h, ss, _, _, _ := setupHistoryVerificationServer(t)
 	ctx := context.Background()
+	// The boards in a store at a known path, so the fixture can set message times the store itself only stamps now.
+	boardPath := filepath.Join(t.TempDir(), "board.db")
+	bs, err := board.NewStoreWithKey(boardPath, "")
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	h.bs = bs
 	if seed {
 		t1, err := ss.CreateTag(ctx, "urgent", "#f00")
 		require.NoError(t, err)
@@ -76,14 +86,29 @@ func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 				require.NoError(t, ss.AddSessionTag(ctx, sid, t2.ID))
 			}
 		}
-		for i, project := range []string{"team-alpha", "deploy-crew", "quiet"} {
-			for k := 0; k <= i; k++ {
+		for i, project := range []string{"team-alpha", "deploy-crew", "quiet", "long-board", "tie-board"} {
+			for k := 0; k <= i%3; k++ {
 				_, err := h.bs.Subscribe(ctx, project, fmt.Sprintf("member-%d", k), "Developer", fmt.Sprintf("s-%s-%d", project, k), nil, "all")
 				require.NoError(t, err)
 				_, err = h.bs.PostMessage(ctx, project, fmt.Sprintf("member-%d", k), []string{"let's deploy", "fix it", "hello team"}[k%3], nil)
 				require.NoError(t, err)
 			}
 		}
+		// long-board ran for a month (its first message a month before its last: a date_from between them keeps it);
+		// tie-board's last message is the same instant as an agent session's last, written +00:00 against Z.
+		raw, err := sqlx.Open("sqlite", boardPath+"?_pragma=busy_timeout(10000)")
+		require.NoError(t, err)
+		defer raw.Close()
+		for _, u := range []struct{ project, order, at string }{
+			{"long-board", "ASC", "2026-09-10T08:00:00Z"}, {"long-board", "DESC", "2026-10-12T09:00:00Z"},
+			{"tie-board", "ASC", "2026-10-14T08:00:00Z"}, {"tie-board", "DESC", "2026-10-15T12:00:00+00:00"},
+		} {
+			_, err := raw.ExecContext(ctx, "UPDATE board_messages SET created_at = ? WHERE id = (SELECT id FROM board_messages WHERE project = ? ORDER BY id "+u.order+" LIMIT 1)", u.at, u.project)
+			require.NoError(t, err)
+		}
+		tie, tieFirst := "2026-10-15T12:00:00Z", "2026-10-15T09:00:00Z"
+		require.NoError(t, ss.UpsertSessionIndex(ctx, &store.SessionIndex{SessionID: "0000aaaa-4713-4000-8000-00000000aaaa", SourceType: "claude",
+			SourceFile: "/tmp/none-tie", FirstTimestamp: &tieFirst, LastTimestamp: &tie, MessageCount: 5, DisplaySummary: "the tie", AgentName: "lead"}))
 	}
 	r := chi.NewRouter()
 	r.Get("/old", h.listSessionsBefore4713)
@@ -152,11 +177,22 @@ func TestListSessionsAgreesWithBefore4713(t *testing.T) {
 			if out.Total > len(out.Sessions) && len(out.Sessions) > 0 {
 				kinds["a page of more"]++
 			}
+			ids := map[string]bool{}
+			for _, s := range out.Sessions {
+				id, _ := s["session_id"].(string)
+				ids[id] = true
+			}
+			if ids["board:long-board"] && q.Get("date_from") > "2026-09-10" {
+				kinds["a board spanning date_from"]++
+			}
+			if ids["board:tie-board"] && ids["0000aaaa-4713-4000-8000-00000000aaaa"] {
+				kinds["the same instant as Z and +00:00 on one page"]++
+			}
 		}
 	}
 	t.Logf("compared, per kind: %v", kinds)
 	for _, k := range []string{"cold start", "rows (all)", "rows (agent)", "rows (group)", "empty page (all)", "empty page (agent)", "empty page (group)",
-		"merged agent and group rows", "a page of more"} {
+		"merged agent and group rows", "a page of more", "a board spanning date_from", "the same instant as Z and +00:00 on one page"} {
 		assert.GreaterOrEqual(t, kinds[k], 10, "%q went (almost) unexercised", k)
 	}
 }
