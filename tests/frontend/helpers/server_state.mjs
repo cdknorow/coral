@@ -27,10 +27,38 @@ export function snapshot(dataDir) {
   const tables = {};
   for (const t of SHARED_TABLES) {
     if (!have.has(t)) continue;
-    const lines = q(db, `SELECT * FROM ${t};`).split('\n').filter(Boolean).sort(); // sorted here: a table may have fewer columns than any fixed ORDER BY
+    const lines = q(db, `SELECT * FROM ${t}${t === 'live_sessions' ? " WHERE COALESCE(status, 'active') <> 'inactive'" : ''};`).split('\n').filter(Boolean).sort(); // sorted here: a table may have fewer columns than any fixed ORDER BY
     tables[t] = { rows: lines.length, hash: createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 12) };
   }
-  return { settings, tables };
+  // The agents that are running (a stopped one stays in live_sessions as a row marked inactive: the kill route soft-deletes) and the teams, by their ids and names: what a suite launched or created is what it adds (leftovers), and stopping it is the runner's job (cleanup).
+  const sessions = have.has('live_sessions') ? q(db, "SELECT session_id, agent_type, agent_name FROM live_sessions WHERE COALESCE(status, 'active') <> 'inactive';").split('\n').filter(Boolean).map(l => { const [id, type, name] = l.split('\u001f'); return { id, type, name }; }) : [];
+  const teams = have.has('teams') ? q(db, 'SELECT name FROM teams;').split('\n').filter(Boolean) : [];
+  return { settings, tables, sessions, teams };
+}
+
+/** What `after` has that `before` did not: the agents (by session id) and teams (by name) a suite left behind. */
+export function leftovers(before, after) {
+  const had = new Set((before.sessions || []).map(x => x.id)), hadTeams = new Set(before.teams || []);
+  return { sessions: (after.sessions || []).filter(x => !had.has(x.id)), teams: (after.teams || []).filter(t => !hadTeams.has(t)) };
+}
+
+/** Stop what a suite left running and remove its teams, through the server's own API (never by name or pattern: an agent is stopped by its session id, which the kill route takes in its body;
+ *  a team is removed by the exact name the diff found). base is the server's URL, key its API key. Returns {stopped, removed, failed: [text]}. */
+export async function cleanup(base, key, left, fetchImpl = fetch) {
+  const out = { stopped: [], removed: [], failed: [] };
+  const call = async (method, url, body) => {
+    const r = await fetchImpl(base + url, { method, headers: { authorization: 'Bearer ' + key, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(`${method} ${url}: HTTP ${r.status}`);
+  };
+  for (const x of left.sessions) {
+    try { await call('POST', `/api/sessions/live/${encodeURIComponent(x.name || x.id)}/kill`, { agent_type: x.type, session_id: x.id }); out.stopped.push(x.id); } catch (e) { out.failed.push(`agent ${x.id}: ${e.message}`); }
+  }
+  for (const t of left.teams) {
+    // The team record is deleted only once it is stopped, and the team kill route is what stops it (its members are already gone: they were stopped above, by id).
+    try { await call('POST', `/api/sessions/live/team/${encodeURIComponent(t)}/kill`, {}); } catch (e) { out.failed.push(`team ${t} (stop): ${e.message}`); continue; }
+    try { await call('DELETE', `/api/teams/detail/${encodeURIComponent(t)}`); out.removed.push(t); } catch (e) { out.failed.push(`team ${t}: ${e.message}`); }
+  }
+  return out;
 }
 
 /** What changed between two snapshots, as readable lines ([] when nothing did). */
