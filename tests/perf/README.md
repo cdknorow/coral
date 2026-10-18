@@ -57,3 +57,17 @@ It reuses `tests/latency/seed` (the dataset seeder, which also writes `targets.j
 - Long jobs start with `setsid … < /dev/null` so an ssh session doesn't stay attached.
 - strace is **started with** the server, not attached (epoch's `ptrace_scope`).
 - Record the machine load average with every table (epoch is shared with other agents' runs).
+
+## The big-board scale run (#4669)
+
+`scale.sh` with the long-lived board: `AGENTS=250 TABS=5 TAB_ROLES=chat,chat,board,list,list BOARD_MSGS=20000
+BOARD_TASKS=3000 TRANSCRIPT_TURNS=300 LOAD=1800 PERF_RUN=1 bash tests/perf/scale.sh` (epoch only). Before any agent starts
+`scale_seed.py` posts the messages and creates the tasks on team 1's board (`scale1`) through the real API and cancels about two
+thirds of the tasks; the server is then stopped and started again on that database and `startup.txt` gets the seconds to
+`/api/health` and to the first agent list. The mock agents write transcripts (`MOCK_AGENT_TRANSCRIPT=1`) and
+`scale_transcripts.py` grows every live session's file to a real-shaped length (log-normal turns, tool calls and results of up
+to tens of KB), in the isolated HOME only (it refuses the account's own `~/.claude`). `scale_load.py` then runs the tabs by
+role (two open chats on the largest transcripts, one on the busy board, the rest on the agent list) for `LOAD` seconds and
+writes the p50/p95/p99 per request, the RSS and goroutine series (a point every 30 s) and the CPU, heap, allocs, mutex and
+block profiles. `RESTART_END=1` times a second start on the finished data. SQLite lock waits: `lock-errors.txt` counts
+`database is locked` lines, and a separate short run with `CORAL_DEBUG_PHASES=1` logs the pool wait counters.

@@ -7,6 +7,13 @@
 # samples the server's process (CPU, RSS, threads from /proc; goroutines from the loopback pprof).
 # It writes p50/p95/p99/max per request, WebSocket frames and bytes per second, and the process
 # series to OUT.json. Stdlib only; the API key is read from KEYFILE.
+#
+# #4669: TAB_ROLES=chat,chat,board,list,list gives each tab a role (cycled): chat (an open chat on one of
+# the largest transcripts: the tail once, then a refresh after the last index every second and an older page
+# every 8 s, walking back), board (the busy board: messages every second, status, the task list every 3 s) or
+# list (the agent list pages). Without it every tab runs the one mixed set. BIG_FILE is scale_transcripts.py's
+# OUT.json: the chat tabs open its largest sessions. BOARD_NAME names the board the board tabs and the poster use.
+# The process section also holds the RSS and goroutine series, one point every 30 s.
 import base64, collections, json, os, socket, struct, sys, threading, time, urllib.parse, urllib.request
 
 BASE, KEYFILE, PID, PPORT, NTABS, DUR, OUT = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], int(sys.argv[5]), float(sys.argv[6]), sys.argv[7]
@@ -101,10 +108,45 @@ def ws_tab():
         with lock:
             ws["frames"] += 1; ws["bytes"] += ln; ws["per_sec"][int(time.time() - t0)] += 1
 
+ROLES = [r for r in os.environ.get("TAB_ROLES", "").split(",") if r]
+BIG = []
+if os.environ.get("BIG_FILE"):
+    try: BIG = json.load(open(os.environ["BIG_FILE"])).get("largest", [])
+    except Exception: pass
+
+
+def chat_specs(me):
+    st = {"total": None, "start": None}
+    base = {"agent_type": "claude", "session_id": me["session_id"], "working_directory": me.get("working_directory") or me.get("working_dir", ""), "trim": "2048"}
+
+    def fetch(params, name):
+        b = call("GET", "/api/sessions/live/%s/chat?%s" % (me["name"], urllib.parse.urlencode(dict(base, **params))), name=name)
+        try: d = json.loads(b or b"{}")
+        except Exception: return
+        if "total" in d: st["total"] = d["total"]
+        if name != "chat refresh 1s" and "start" in d: st["start"] = d["start"] if st["start"] is None else min(st["start"], d["start"])
+
+    def refresh():
+        if st["total"] is None: fetch({"limit": "100"}, "chat tail (open)")
+        else: fetch({"after": str(st["total"]), "limit": "100"}, "chat refresh 1s")
+
+    def older():
+        if st["start"]: fetch({"before": str(st["start"]), "limit": "100"}, "chat older page 8s")
+    return [(1.0, refresh), (8.0, older)]
+
+
 def tab(i, sessions, board):
+    role = ROLES[i % len(ROLES)] if ROLES else "mixed"
+    bysid = {s["session_id"]: s for s in sessions}
     me, other = sessions[i % len(sessions)], sessions[(i + 1) % len(sessions)]
-    q = urllib.parse.urlencode({"agent_type": "claude", "session_id": me["session_id"], "working_directory": me.get("working_dir", ""), "after": "0", "limit": "30", "trim": "2048"})
-    specs = [
+    if role == "chat":
+        k = sum(1 for r in ROLES[:i % len(ROLES)] if r == "chat") + (i // len(ROLES)) * ROLES.count("chat")
+        me = bysid.get(BIG[k % len(BIG)], me) if BIG else me
+        ths = [threading.Thread(target=ws_tab, daemon=True)] + [threading.Thread(target=every, args=(per, fn), daemon=True) for per, fn in chat_specs(me)]
+        for t in ths: t.start()
+        return ths
+    q = urllib.parse.urlencode({"agent_type": "claude", "session_id": me["session_id"], "working_directory": me.get("working_directory") or me.get("working_dir", ""), "after": "0", "limit": "30", "trim": "2048"})
+    full = [
         (1.0, "chat poll 1s", "/api/sessions/live/%s/chat?%s" % (me["name"], q)),
         (2.0, "poll 2s", "/api/sessions/live/%s/poll?agent_type=claude&session_id=%s" % (other["name"], other["session_id"])),
         (3.0, "board chat 3s", "/api/board/%s/messages/all?limit=50&format=dashboard" % board),
@@ -114,6 +156,9 @@ def tab(i, sessions, board):
         (10.0, "live list 10s", "/api/sessions/live"),
         (15.0, "token usage 15s", "/api/token-usage/summary"),
     ]
+    only = {"board": {"board chat 3s", "board status 5s", "board tasks 10s"}, "list": {"poll 2s", "sleep status 5s", "board status 5s", "live list 10s", "token usage 15s"}}
+    fast = {"board chat 3s": 1.0, "board status 5s": 2.0, "board tasks 10s": 3.0}  # the open board's own intervals
+    specs = [(fast.get(n, per) if role == "board" else per, n, path) for per, n, path in full if role == "mixed" or n in only[role]]
     ths = [threading.Thread(target=ws_tab, daemon=True)]
     for period, name, path in specs:
         ths.append(threading.Thread(target=every, args=(period, (lambda n, p: (lambda: call("GET", p, name=n)))(name, path)), daemon=True))
@@ -162,7 +207,7 @@ live = json.loads(call("GET", "/api/sessions/live", name="setup") or b"[]")
 sessions = [s for s in (live if isinstance(live, list) else live.get("sessions", [])) if s.get("session_id") and s.get("name")]
 if not sessions: sys.exit("no live sessions")
 boards = sorted({s.get("board_project") for s in sessions if s.get("board_project")})
-board = boards[0] if boards else ""
+board = os.environ.get("BOARD_NAME") or (boards[0] if boards else "")
 lat.pop("setup", None)
 samp = {}
 th = threading.Thread(target=lambda: samp.update(proc_sample()), daemon=True); th.start()
@@ -183,6 +228,7 @@ res["ws"] = {"connected": ws["connected"], "failed": ws["failed"], "frames": ws[
 if samp.get("cpu_pct"):
     c, g = samp["cpu_pct"][1:] or [0], [x for x in samp["goroutines"] if x] or [0]
     res["process"] = {"cpu_pct_avg": sum(c) / len(c), "cpu_pct_max": max(c), "rss_mb_max": max(samp["rss_mb"]), "rss_mb_end": samp["rss_mb"][-1],
-                      "threads_max": max(samp["threads"]), "goroutines_first": g[0], "goroutines_max": max(g), "goroutines_end": g[-1]}
+                      "threads_max": max(samp["threads"]), "goroutines_first": g[0], "goroutines_max": max(g), "goroutines_end": g[-1],
+                      "rss_series_30s_mb": [round(x, 1) for x in samp["rss_mb"][::15]], "goroutines_series_30s": samp["goroutines"][::15]}
 json.dump(res, open(OUT, "w"), indent=1)
 print(json.dumps(res["process"]), json.dumps(res["ws"]))
