@@ -153,7 +153,7 @@ GET /api/sessions/live/{name}/diff?session_id=uuid
 GET /api/sessions/live/{name}/search-files?q=query&session_id=uuid
 ```
 
-#### Set display name
+#### Set display name (Operator only)
 ```
 PUT /api/sessions/live/{name}/display-name
 Content-Type: application/json
@@ -161,13 +161,15 @@ Content-Type: application/json
 {"display_name": "My Agent"}
 ```
 
-#### Set icon
+#### Set icon (Operator only)
 ```
 PUT /api/sessions/live/{name}/icon
 Content-Type: application/json
 
 {"icon": "🤖"}
 ```
+
+An agent's session token is refused on these (and on `PUT /api/sessions/live/{name}/name-color`) with 403 `forbidden_for_agent`.
 
 ---
 

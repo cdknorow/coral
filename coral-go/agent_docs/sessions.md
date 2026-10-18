@@ -638,6 +638,8 @@ Open the session in a native terminal window (macOS only — uses `open -a Termi
 
 Set a custom display name for a session.
 
+Operator only: an agent's session token is refused (403 `forbidden_for_agent`). The dashboard, the signed command line and an API key may use it.
+
 **Request Body:**
 ```json
 {"display_name": "My Custom Name", "session_id": "abc123"}
@@ -652,6 +654,8 @@ Set a custom display name for a session.
 
 Set or clear the emoji icon for a session.
 
+Operator only, like the display name above.
+
 **Request Body:**
 ```json
 {"session_id": "abc123", "icon": "🤖"}
@@ -662,6 +666,15 @@ Pass `"icon": null` to clear.
 **Response:**
 ```json
 {"ok": true, "icon": "🤖"}
+```
+
+### PUT `/api/sessions/live/{name}/name-color`
+
+Set the colour a session's name is drawn in (`#rrggbb`; an empty `color` clears it). Operator only, like the display name above.
+
+**Request Body:**
+```json
+{"session_id": "abc123", "color": "#3b82f6"}
 ```
 
 ### POST `/api/sessions/live/{name}/context-window`
