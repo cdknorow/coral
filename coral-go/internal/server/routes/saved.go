@@ -3,14 +3,17 @@ package routes
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/redact"
@@ -22,8 +25,9 @@ import (
 // that is kept is redacted when it is saved, so a token pasted into a message is not stored.
 
 const (
-	maxSavedSnippet = 200
-	maxSavedField   = 300
+	maxSavedSnippet    = 200
+	maxSavedField      = 300
+	maxSavedSearchText = 200
 )
 
 var (
@@ -31,7 +35,7 @@ var (
 	savedBoardKey = regexp.MustCompile(`^[0-9]{1,18}$`)
 )
 
-// SavedList: GET /api/saved?state=open|done (default: both; kind and conv (the session id or the board) narrow it to one conversation, for the buttons' saved state; limit keeps the newest N).
+// SavedList: GET /api/saved?state=open|done (default: both; kind and conv (the session id or the board) narrow it to one conversation, for the buttons' saved state; q (#4745) keeps the bookmarks whose title or snippet holds that text, a plain case-insensitive substring of at most 200 characters; sort=newest|oldest; limit keeps the first N of the sort's order (the newest by default)).
 func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 	if refuseUnlessOperator(w, r, "see the saved messages") {
 		return
@@ -45,12 +49,53 @@ func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 	if state == "all" {
 		state = ""
 	}
+	if len(q["q"]) > 1 || len(q["sort"]) > 1 {
+		errBadRequest(w, "q and sort are given once")
+		return
+	}
+	text := strings.ToLower(strings.TrimSpace(q.Get("q")))
+	if len(text) > maxSavedSearchText || strings.ContainsAny(text, "\x00\r\n\t") {
+		errBadRequest(w, fmt.Sprintf("q is at most %d characters, without control characters", maxSavedSearchText))
+		return
+	}
+	oldest := false
+	switch q.Get("sort") {
+	case "", "newest":
+	case "oldest":
+		oldest = true
+	default:
+		errBadRequest(w, "unknown sort "+strconv.Quote(q.Get("sort"))+" (newest or oldest)")
+		return
+	}
+	shown := func(s string) string { return s }
+	if cloud.Tunneled(r) && text != "" {
+		// The reply is redacted after this handler has matched, so the match is made on what the viewer sees and a q holding a secret
+		// (one the redactor would change) can match nothing visible: refused (#4745).
+		if shownText(text) != text {
+			errBadRequest(w, "q can't contain a secret (a token, a key or a password): it would match what the redaction hides")
+			return
+		}
+		shown = shownTextMemoized
+	}
 	items, err := h.ss.ListSaved(r.Context(), state, q.Get("kind"), q.Get("conv"))
 	if err != nil {
 		errInternalServer(w, "could not read the saved messages")
 		return
 	}
-	// ?limit=N keeps the newest N items (limit=0: only the counts, which the top bar's badge asks for).
+	if text != "" { // a plain, case-insensitive substring of the title or the snippet
+		kept := items[:0:0]
+		for _, it := range items {
+			if strings.Contains(strings.ToLower(shown(it.Title)), text) || strings.Contains(strings.ToLower(shown(it.Snippet)), text) {
+				kept = append(kept, it)
+			}
+		}
+		items = kept
+	}
+	total := len(items)
+	if oldest {
+		slices.Reverse(items)
+	}
+	// ?limit=N keeps the newest N items (the oldest N with sort=oldest; limit=0: only the counts, which the top bar's badge asks for).
 	if raw := q.Get("limit"); raw != "" {
 		n, perr := strconv.Atoi(raw)
 		if perr != nil || n < 0 {
@@ -66,7 +111,7 @@ func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, "could not read the saved messages")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "open": open, "done": done})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "open": open, "done": done, "total": total})
 }
 
 // savedSnippet is text redacted, one line, and cut to maxSavedSnippet bytes where no token can be split. Text that can't be checked is not kept.

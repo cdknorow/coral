@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -205,6 +206,7 @@ func TestSavedRoutesAreAtTheTunnelsTiers(t *testing.T) {
 	}{
 		{"GET", "/api/saved", tunnel.TierView},
 		{"GET", "/api/saved?state=open&kind=agent&conv=abc", tunnel.TierView},
+		{"GET", "/api/saved?q=parser&sort=oldest&limit=20", tunnel.TierView},
 		{"POST", "/api/saved", tunnel.TierInteract},
 		{"PATCH", "/api/saved/1", tunnel.TierInteract},
 		{"DELETE", "/api/saved/1", tunnel.TierInteract},
@@ -440,4 +442,70 @@ func TestSavedMessagesAnswerTheServersAPIKeyButNeverAnAgent(t *testing.T) {
 		code, _ = g.do(c.m, c.p, map[string]string{}, agentSave(key, "x"))
 		assert.Equal(t, http.StatusForbidden, code, "no credential: "+c.m+" "+c.p)
 	}
+}
+
+// #4745: GET /api/saved?q=: the bookmarks whose title or snippet holds a plain, case-insensitive substring, newest first (sort=oldest the other
+// way), with the total of what matched, and through Coral Hub the match is on what the viewer sees.
+func TestSavedSearch(t *testing.T) {
+	const tok = "ghp_aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
+	g := newSavedRig(t)
+	save := func(kind, ref, key, title, snippet string) {
+		t.Helper()
+		code, out := g.do("POST", "/api/saved", savedAsOperator, map[string]any{"kind": kind, "ref": ref, "key": key, "agent_type": "claude", "title": title, "snippet": snippet, "said_at": "2026-10-17T08:00:00Z"})
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	save("agent", "sess-1", strings.Repeat("a1", 10), "ro-a", "Fix the Parser before Friday")
+	save("agent", "sess-1", strings.Repeat("b2", 10), "ro-a", "100% of tests pass")
+	save("board", "team-x", "1001", "team-x", "deploy plan for the parser")
+	save("agent", "sess-2", strings.Repeat("c3", 10), "key "+tok, "an unrelated note")
+	titles := func(out map[string]any) []string {
+		var ts []string
+		for _, it := range out["items"].([]any) {
+			ts = append(ts, it.(map[string]any)["snippet"].(string))
+		}
+		return ts
+	}
+	get := func(query string, hdr map[string]string) (int, map[string]any) {
+		return g.do("GET", "/api/saved?"+query, hdr, nil)
+	}
+	code, out := get("q=PARSER", savedAsOperator)
+	require.Equal(t, 200, code)
+	assert.Equal(t, []string{"deploy plan for the parser", "Fix the Parser before Friday"}, titles(out), "newest saved first, any case")
+	assert.EqualValues(t, 2, out["total"])
+	assert.EqualValues(t, 4, out["open"], "the counts are of all bookmarks")
+	code, out = get("q=parser&sort=oldest", savedAsOperator)
+	assert.Equal(t, []string{"Fix the Parser before Friday", "deploy plan for the parser"}, titles(out))
+	code, out = get("q=parser&sort=oldest&limit=1", savedAsOperator)
+	assert.Equal(t, []string{"Fix the Parser before Friday"}, titles(out), "limit keeps the first of the sort's order")
+	assert.EqualValues(t, 2, out["total"], "the total is every match")
+	code, out = get("q=TEAM-X", savedAsOperator)
+	assert.Equal(t, []string{"deploy plan for the parser"}, titles(out), "the title is searched too")
+	code, out = get("q="+url.QueryEscape("100%"), savedAsOperator)
+	assert.Equal(t, []string{"100% of tests pass"}, titles(out), "% is an ordinary character")
+	code, out = get("q=_", savedAsOperator)
+	assert.Equal(t, []string{"an unrelated note"}, titles(out), "_ is an ordinary character too: only the title with an underscore in it")
+	code, out = get("q=parser&kind=agent&conv=sess-1", savedAsOperator)
+	assert.Equal(t, []string{"Fix the Parser before Friday"}, titles(out), "with the other filters")
+	code, out = get("", savedAsOperator)
+	assert.EqualValues(t, 4, out["total"], "a reply with no q has its total too")
+	// refusals
+	for query, want := range map[string]string{"q=" + strings.Repeat("x", 201): "q is at most 200", "q=a&q=b": "given once", "sort=name": "unknown sort", "q=a%00b": "without control characters"} {
+		code, out = get(query, savedAsOperator)
+		assert.Equal(t, 400, code, query)
+		assert.Contains(t, fmt.Sprint(out["error"]), want, query)
+	}
+	// through the hub: the Operator's own request with the connector's stamp; a q holding a secret is refused, the marker finds the title
+	hub := map[string]string{testDashboardHeader: "1", tunnel.ViaHeader: "1"}
+	code, out = get("q="+tok, hub)
+	assert.Equal(t, 400, code)
+	assert.Contains(t, fmt.Sprint(out["error"]), "q can't contain a secret")
+	code, out = get("q=redacted", hub)
+	assert.Equal(t, 200, code)
+	assert.EqualValues(t, 1, out["total"], "the viewer sees [redacted token] in the title")
+	code, out = get("q=parser", hub)
+	assert.EqualValues(t, 2, out["total"])
+	code, out = get("q="+tok, savedAsOperator)
+	assert.EqualValues(t, 1, out["total"], "a local caller searches the stored title")
+	code, out = get("q=redacted", savedAsOperator)
+	assert.EqualValues(t, 0, out["total"])
 }

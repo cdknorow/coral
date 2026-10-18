@@ -23,7 +23,7 @@ All four routes answer only a person: the dashboard on this computer, the signed
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/saved?state=open\|done\|all&kind=agent\|board&conv=<session id or board>&limit=N` | `{"items": [...], "open": n, "done": n}`, newest saved first. `kind` and `conv` narrow it to one conversation; `limit` keeps the newest N (`limit=0`: only the counts, which the top bar's number asks for). |
+| GET | `/api/saved?state=open\|done\|all&kind=agent\|board&conv=<session id or board>&q=<text>&sort=newest\|oldest&limit=N` | `{"items": [...], "open": n, "done": n, "total": n}`, newest saved first. `kind` and `conv` narrow it to one conversation; `q` (#4745) keeps the bookmarks whose title or snippet holds that text (a plain, case-insensitive substring, at most 200 characters, given once; `%` and `_` are ordinary characters); `sort=oldest` reverses the order; `limit` keeps the first N of that order (`limit=0`: only the counts, which the top bar's number asks for). `total` is how many bookmarks the filters and `q` match, whatever `limit`; `open` and `done` count all bookmarks. Through Coral Hub the match is made on what the viewer sees, and a `q` holding a token, key or password is refused with a 400. |
 | POST | `/api/saved` | Save `{kind, ref, key, agent_type, title, snippet, said_at}`. `ref` is the session id or the board; `key` the message key (20 hex characters for an agent, the message id for a board). Saving a saved message again answers the bookmark that exists. At most 2,000 are kept (`409`). |
 | PATCH | `/api/saved/{id}` | `{"done": true\|false}`. |
 | DELETE | `/api/saved/{id}` | Remove. |
