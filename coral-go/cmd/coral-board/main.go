@@ -1222,6 +1222,49 @@ func parseMergeFile(path string) ([]exportEntry, error) {
 	return entries, nil
 }
 
+// exportPageSize is the most messages the server answers with at a time (it caps a list at 500).
+const exportPageSize = 500
+
+// exportMaxMessages bounds an export: past it the export says it stopped, never silently.
+const exportMaxMessages = 200_000
+
+// fetchAllMessages reads every message of a board, oldest first, a page at a time by id (after_id). The server caps a page
+// at 500, so one request for "limit=10000" used to stop at 500 without saying so (#4628). A server that does not page by
+// after_id answers the same newest page again: the export then says so and keeps that page.
+func fetchAllMessages(project string, get func(path string) ([]byte, error)) ([]map[string]any, error) {
+	var all []map[string]any
+	after := int64(0)
+	for len(all) < exportMaxMessages {
+		data, err := get(fmt.Sprintf("/%s/messages/all?after_id=%d&limit=%d", url.PathEscape(project), after, exportPageSize))
+		if err != nil {
+			return nil, err
+		}
+		var page []map[string]any
+		if err := json.Unmarshal(data, &page); err != nil {
+			return nil, fmt.Errorf("the message list is not a list: %v", err)
+		}
+		if len(page) == 0 {
+			return all, nil
+		}
+		last, _ := page[len(page)-1]["id"].(float64)
+		if int64(last) <= after {
+			// A page that does not come after the last one: this server ignores after_id and answers its newest page each time.
+			fmt.Fprintf(os.Stderr, "Warning: this Coral cannot page a board's messages; exported its newest %d only.\n", max(len(all), len(page)))
+			if len(all) == 0 {
+				return page, nil
+			}
+			return all, nil
+		}
+		all = append(all, page...)
+		after = int64(last)
+		if len(page) < exportPageSize {
+			return all, nil
+		}
+	}
+	fmt.Fprintf(os.Stderr, "Warning: the export stopped at %d messages; the board has more.\n", len(all))
+	return all, nil
+}
+
 func cmdExport() {
 	st := loadState()
 	if st == nil {
@@ -1254,13 +1297,11 @@ func cmdExport() {
 	}
 
 	// Fetch all messages
-	data, err := getBoard("/" + url.PathEscape(st.Project) + "/messages/all?limit=10000")
+	messages, err := fetchAllMessages(st.Project, getBoard)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	var messages []map[string]any
-	json.Unmarshal(data, &messages)
 
 	// Convert board messages to exportEntry
 	var entries []exportEntry
