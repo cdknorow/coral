@@ -23,6 +23,7 @@ import (
 	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -88,6 +89,41 @@ const defaultArtifactStoreMaxBytes int64 = 20 << 30
 // rather than having no cap (#4432, Security's #4431 SHOULD 2).
 const artifactStoreRefuse int64 = 1
 
+// ArtifactStoreAutoRaisedSetting is Coral's own record that it raised the store's limit at startup (RaiseArtifactStoreLimitIfOver): the
+// limit it wrote, in bytes. Settings > Storage shows a note while the saved limit is still that number, and says nothing once the Operator
+// has chosen another.
+const ArtifactStoreAutoRaisedSetting = "artifact_store_auto_raised"
+
+// RaiseArtifactStoreLimitIfOver is run once at startup (#4602, the Orchestrator's rule for the 20 GiB default). A Coral that has no limit
+// set and a store already at 80% of the default (16 GiB) or more would start refusing uploads the moment it upgraded, with nobody
+// watching: so the limit is written once, as twice the store's size rounded up to a whole GiB, and logged. It writes a setting and
+// deletes nothing; an Operator's own value (0 included) is never changed. It reports the limit it wrote, 0 when it wrote none.
+func RaiseArtifactStoreLimitIfOver(ctx context.Context, ss *store.SessionStore, coralDir string) int64 {
+	if ss == nil {
+		return 0
+	}
+	settings, err := ss.GetSettings(ctx)
+	if err != nil || strings.TrimSpace(settings[ArtifactStoreMaxBytesSetting]) != "" {
+		return 0
+	}
+	used, _, _ := storeFor(coralDir).size()
+	if used*5 < defaultArtifactStoreMaxBytes*4 {
+		return 0
+	}
+	const gib = int64(1) << 30
+	limit := (2*used + gib - 1) / gib * gib
+	if err := ss.SetSetting(ctx, ArtifactStoreMaxBytesSetting, strconv.FormatInt(limit, 10)); err != nil {
+		slog.Warn("artifact store: could not raise its limit above the new default", "used", used, "error", err)
+		return 0
+	}
+	if err := ss.SetSetting(ctx, ArtifactStoreAutoRaisedSetting, strconv.FormatInt(limit, 10)); err != nil {
+		slog.Warn("artifact store: raised its limit but could not record it", "error", err)
+	}
+	slog.Info("artifact store: it already held more than 80% of the new 20 GiB default, so its limit was raised once to twice its size; change it in Settings > Storage",
+		"used", humanBytes(used), "limit", humanBytes(limit))
+	return limit
+}
+
 func (h *SessionsHandler) artifactStoreMaxBytes() int64 {
 	if h.ss == nil {
 		return 0
@@ -136,6 +172,14 @@ func (h *SessionsHandler) getArtifactStore(w http.ResponseWriter, r *http.Reques
 		"bytes": b, "objects": n, "max_bytes": max,
 		"task_diffs":    map[string]int64{"bytes": tb, "files": tn},
 		"session_diffs": map[string]int64{"bytes": sb, "files": sn},
+	}
+	// The limit Coral raised by itself at startup (RaiseArtifactStoreLimitIfOver), while it is still the saved limit.
+	if h.ss != nil {
+		if saved, err := h.ss.GetSettings(r.Context()); err == nil && saved[ArtifactStoreAutoRaisedSetting] != "" && saved[ArtifactStoreAutoRaisedSetting] == saved[ArtifactStoreMaxBytesSetting] {
+			if n, err := strconv.ParseInt(saved[ArtifactStoreAutoRaisedSetting], 10, 64); err == nil {
+				out["auto_raised"] = n
+			}
+		}
 	}
 	out["received"] = h.receivedStatus(isOperatorRequest(r)) // #4441: the total received from other Corals and boards, its cap and the one-time notice; the digests of the unlisted files only for the Operator (#4489)
 	// ?detail=1 (#3554): by age, by board, kept and retention, for Settings > Storage.

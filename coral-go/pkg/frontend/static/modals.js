@@ -2221,6 +2221,8 @@ async function loadArtifactStoreSize({ fresh = false } = {}) {
             const full = atLimit || d.bytes * 5 >= d.max_bytes * 4;
             art += atLimit ? ` (limit ${_gib(d.max_bytes)} reached: new uploads are refused)` : full ? ` (limit ${_gib(d.max_bytes)}, ${Math.floor((d.bytes / d.max_bytes) * 100)}% full)` : ` (limit ${_gib(d.max_bytes)})`;
             if (full) art += '. Delete artifacts in Team Artifacts to make room, or raise the limit.';
+            // Coral raised an unset limit by itself when the 20 GiB default arrived (#4602): the Operator should know it, and can change it here.
+            if (d.auto_raised > 0 && d.auto_raised === d.max_bytes) art += `${full ? ' ' : '. '}The limit was raised to ${_gib(d.auto_raised)} automatically when the 20 GiB default arrived, because the store already held more than 16 GiB. Change it here.`;
         }
         const artNode = document.createElement('span');
         artNode.textContent = art;

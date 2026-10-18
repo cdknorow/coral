@@ -513,6 +513,8 @@ func prepareWithDatabase(ctx context.Context, db *store.DB, cfg *config.Config, 
 func applyStartupSettings(ctx context.Context, db *store.DB, cfg *config.Config, opts *Options, backendFlag string) {
 	applyReplayBytesFromSettings(ctx, db)
 	inputlog.Setup(cfg.CoralDir(), opts.DebugInput || inputlog.EnabledFromEnv())
+	// A store already at 80% of the 20 GiB default would start refusing uploads on this upgrade: its limit is raised once instead (#4602).
+	routes.RaiseArtifactStoreLimitIfOver(ctx, store.NewSessionStore(db), cfg.CoralDir())
 	savedBackend := ""
 	if settings, err := store.NewSessionStore(db).GetSettings(ctx); err == nil {
 		inputlog.SetSetting(config.Truthy(settings[inputlog.SettingKey]))

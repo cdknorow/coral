@@ -90,6 +90,11 @@ const GIB = 1024 ** 3;
         await shot('storage-ux-at-limit');
         const nolimit = await open(storeBody({ bytes: 3 * GIB, objects: 5, max: 0 }));
         assert.equal(nolimit.text.split('Saved task diffs')[0], 'Artifacts: 3.0 GiB in 5 files', 'no limit: just the total');
+        // #4602: a limit Coral raised by itself when the 20 GiB default arrived is said, while it is still the saved limit.
+        const raised = await open({ ...storeBody({ bytes: 17 * GIB, objects: 9, max: 34 * GIB }), auto_raised: 34 * GIB });
+        assert.match(raised.text, /^Artifacts: 17\.0 GiB in 9 files \(limit 34\.0 GiB\)\. The limit was raised to 34\.0 GiB automatically when the 20 GiB default arrived, because the store already held more than 16 GiB\. Change it here\./);
+        const changed = await open({ ...storeBody({ bytes: 17 * GIB, objects: 9, max: 50 * GIB }), auto_raised: 34 * GIB });
+        assert.doesNotMatch(changed.text, /raised to/, 'once the Operator saved another limit the note is gone');
 
         console.log('3. One line per kind in the age breakdown');
         await waitFor(`/Artifacts by age: /.test((document.getElementById('settings-storage-detail')?.textContent ?? ''))`, 'the breakdown', 8000);

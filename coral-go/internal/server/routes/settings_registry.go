@@ -206,12 +206,13 @@ var settingRegistry = map[string]settingSpec{
 	RetentionAckAtKey:            {class: settingOwnRoute},
 
 	// Coral's own.
-	retentionEnabledAtKey:    {class: settingCoral},
-	retentionSeenDaysKey:     {class: settingCoral},
-	RetentionLastKey:         {class: settingCoral},
-	"cloud_bootstrap_status": {class: settingCoral},
-	"demo_workflows_seeded":  {class: settingCoral},
-	"self_test":              {class: settingCoral},
+	retentionEnabledAtKey:          {class: settingCoral},
+	ArtifactStoreAutoRaisedSetting: {class: settingCoral},
+	retentionSeenDaysKey:           {class: settingCoral},
+	RetentionLastKey:               {class: settingCoral},
+	"cloud_bootstrap_status":       {class: settingCoral},
+	"demo_workflows_seeded":        {class: settingCoral},
+	"self_test":                    {class: settingCoral},
 }
 
 // lookupSetting is key's entry: an exact key of the registry, or cli_path_<type> and default_model_<type> for a
