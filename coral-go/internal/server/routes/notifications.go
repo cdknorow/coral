@@ -3,6 +3,7 @@ package routes
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -57,6 +58,13 @@ func checkNotificationLink(l *NotificationLink) error {
 	}
 	return errors.New("link.url must be docs://<name>, an http(s) address, or a dashboard path")
 }
+
+// What a notification may hold, and how many the store keeps (#4602).
+const (
+	maxNotificationTitle   = 200
+	maxNotificationMessage = 4096
+	maxNotificationItems   = 200
+)
 
 // Notification represents a UI notification pushed via the API.
 type Notification struct {
@@ -114,6 +122,9 @@ func (ns *NotificationStore) Push(n Notification) Notification {
 		n.Level = "info"
 	}
 	ns.items = append(ns.items, storedNotification{n: n, at: now})
+	if over := len(ns.items) - maxNotificationItems; over > 0 {
+		ns.items = append([]storedNotification(nil), ns.items[over:]...) // the oldest go first (#4602)
+	}
 	return n
 }
 
@@ -214,6 +225,12 @@ func (h *NotificationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Message == "" && body.Title == "" {
 		errBadRequest(w, "title or message is required")
+		return
+	}
+	// A toast is a line or two: bounded here, where a client or an agent chooses the text (#4602; the body cap alone was 8 MiB, held
+	// in memory for 5 minutes and sent to every open dashboard).
+	if len(body.Title) > maxNotificationTitle || len(body.Message) > maxNotificationMessage {
+		errBadRequest(w, fmt.Sprintf("a notification's title is at most %d bytes and its message at most %d", maxNotificationTitle, maxNotificationMessage))
 		return
 	}
 	// An agent (coral-agent notify, with its token) or the Operator; no anonymous

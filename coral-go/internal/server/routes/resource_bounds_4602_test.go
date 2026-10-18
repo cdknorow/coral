@@ -253,3 +253,33 @@ func TestTeamGenerationIsCappedAtTwoRunning(t *testing.T) {
 	assert.LessOrEqual(t, len(h.generateJobs), maxGenerateJobs)
 	h.generateJobsMu.Unlock()
 }
+
+// #4602: a notification's text is bounded where a client or an agent chooses it, and the store keeps at most 200.
+func TestNotificationCreateBoundsTheText(t *testing.T) {
+	store := NewNotificationStore()
+	h := NewNotificationHandler(store)
+	post := func(title, message string) int {
+		b, _ := json.Marshal(map[string]any{"title": title, "message": message})
+		req := httptest.NewRequest(http.MethodPost, "/api/notifications", bytes.NewReader(b))
+		req = req.WithContext(context.WithValue(req.Context(), callerKindKey{}, callerDashCookie))
+		rec := httptest.NewRecorder()
+		h.Create(rec, req)
+		return rec.Code
+	}
+	assert.Equal(t, http.StatusOK, post(strings.Repeat("t", maxNotificationTitle), strings.Repeat("m", maxNotificationMessage)), "the limits themselves pass")
+	assert.Equal(t, http.StatusBadRequest, post(strings.Repeat("t", maxNotificationTitle+1), "x"))
+	assert.Equal(t, http.StatusBadRequest, post("x", strings.Repeat("m", maxNotificationMessage+1)))
+	assert.Equal(t, http.StatusBadRequest, post("x", strings.Repeat("m", 4<<20)), "a 4 MiB message")
+}
+
+func TestNotificationStoreKeepsAtMost200(t *testing.T) {
+	store := NewNotificationStore()
+	var last Notification
+	for i := 0; i < 3*maxNotificationItems; i++ {
+		last = store.Push(Notification{Title: "n", Message: fmt.Sprintf("message %d", i)})
+	}
+	backlog, _ := store.Connect()
+	assert.Len(t, backlog, maxNotificationItems)
+	assert.Equal(t, last.ID, backlog[len(backlog)-1].ID, "the newest is kept")
+	assert.Equal(t, last.ID-int64(maxNotificationItems)+1, backlog[0].ID, "the oldest go first")
+}
