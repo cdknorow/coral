@@ -1,5 +1,5 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
-import { SESSION_STATES, _WORKTREE_ICON, _gitStateSummary, deriveSessionState, formatStaleness, getDotClass, getMobileStatusChip, resolveSessionIdentity, sessionGoalText, sessionStateInfo, sessionUnreadCount } from './session_state.js';
+import { SESSION_STATES, _WORKTREE_ICON, _gitStateSummary, deriveSessionState, getDotClass, getMobileStatusChip, resolveSessionIdentity, sessionGoalText, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 import { _saveSessionOrder } from './list_order.js';
 import { escapeHtml, escapeAttr, agentNameColor } from './utils.js';
 import { autoAcceptChip, autoAcceptMenuItem } from './auto_accept.js';
@@ -95,91 +95,26 @@ export function splitLabel(name) {
     return chars.length > LABEL_SPLIT_OVER ? [chars.slice(0, -LABEL_TAIL).join(''), chars.slice(-LABEL_TAIL).join('')] : [String(name), ''];
 }
 
-export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) {
-    const dotClass = getDotClass(s);
-    const isActive = !state.selectedTeam && state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
-
-    // Spec: remove agent type from the default row layout
-    const typeTag = "";
-
-    // Directory override chip
-    const hasDirOverride = teamDefaultDir && s.working_directory && s.working_directory !== teamDefaultDir;
-    // Directory override now lives in the tooltip (Directory row), not the row.
-    const dirChip = "";
-    void hasDirOverride;
-
-    // Branch is shown at folder level, except for agents on their own worktree:
-    // those are on a different branch than the folder, so each row says which.
-    const gsWt = s.git_state?.is_worktree ? s.git_state : null;
-    const branchTag = (gsWt && s.branch)
-        ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${escapeAttr(gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : '')}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
-        : "";
-    // One pill at most, from the shared state table. The attention states carry a
-    // warning pill; "Task assigned · idle" a neutral one (#3227). "Ready for input"
-    // has none: the tooltip and the aria-label carry that state (no dot) (task #175).
-    const stateInfo = sessionStateInfo(s);
-    const pillKind = stateInfo.attention ? 'waiting-badge session-state-pill session-attention-pill' : 'session-state-pill';
-    const waitingBadge = stateInfo.pill
-        ? ` <span class="badge ${pillKind}${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
-        : '';
-    // Context is secondary: any state pill owns line 1 and the ctx pill
-    // collapses to the dot's ring, which survives on every glyph.
-    const ctxPill = waitingBadge ? '' : _renderCtxPill(s);
-    const ctxHigh = s.context_pct !== null && s.context_pct !== undefined && s.context_pct >= 80;
-    const isTerminal = s.agent_type === "terminal";
-    const sid = s.session_id ? escapeAttr(s.session_id) : "";
-    // Goal line is rendered on every row (not just the active one):
-    // summary -> first user prompt -> inline "No goal yet" + generate button.
-    const goalText = sessionGoalText(s);
-    const goalBtn = "";
-    // Row label follows the shared identity chain (display_name -> auto_name
-    // -> board_job_title -> Agent/Terminal). The prompt is never a name; it
-    // shows on the goal line below when there is no summary.
-    const identity = resolveSessionIdentity(s);
-    const displayLabel = identity;
-    // A long name is cut with an ellipsis, and agents of one team share a prefix: its last characters never shrink, so the end that tells them apart stays ("release-engineering-coo...-4-9").
-    const [nameHead, nameTail] = splitLabel(displayLabel);
-    const reminder = getCachedAgentAvailability(s);
-    const reminderTag = reminder?.reminder
-        ? `<span class="agent-reminder-icon" title="Periodic reminder every ${escapeAttr(Math.max(1, Math.round((reminder.reminder_interval_seconds || 300) / 60)))} min" aria-label="Periodic reminder active">⏰</span>`
-        : '';
-    let goalLine = "";
-    if (goalText) {
-        goalLine = `<span class="session-goal${isCompact ? ' session-goal-compact' : ''}" title="${escapeAttr(goalText)}">${escapeHtml(goalText)}</span>`;
-    } else if (!isTerminal) {
-        // The "No goal yet" label is PASSIVE text: it sits where users click to
-        // select a row, so it must bubble to the row's click handler. Only the
-        // sparkle button requests a goal.
-        goalLine = `<span class="session-goal session-goal-empty${isCompact ? ' session-goal-compact' : ''}">
-                <button class="sidebar-goal-btn sidebar-goal-btn-inline" data-on-click="goal-request" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(sid)}" title="Generate goal" aria-label="Generate goal for ${escapeAttr(identity)}"><span class="material-icons" style="font-size:0.875rem" aria-hidden="true">auto_awesome</span></button>
-                <span class="session-goal-empty-label">No goal yet</span>
-            </span>`;
-    }
-    const isDone = !!state.killedSessions?.[s.session_id];
-    // A state without a chip class ("Ready for input") renders no mobile chip. The meta
-    // row is emitted without whitespace so :empty can collapse it on the phone.
+/** What the phone's row shows besides the name (the sidebar hides these): the state chip, the unread count, and the banner for an agent that needs the person. */
+function _mobileRowParts(s, stateInfo) {
     const mobileStatus = getMobileStatusChip(s);
     const mobileStatusChip = mobileStatus.className
         ? `<span class="session-status-chip ${escapeAttr(mobileStatus.className)}">${escapeHtml(mobileStatus.label)}</span>`
         : '';
-    const lastActivity = formatStaleness(s.staleness_seconds);
-    const needsAttention = sessionNeedsAttention(s);
     const mobileUnread = sessionUnreadCount(s);
     const unreadBoardBadge = mobileUnread > 0
         ? `<span class="session-mobile-meta-pill">${mobileUnread} unread</span>`
         : '';
-    const activityLabel = (s.waiting_for_input || s.not_started) ? "Waiting since" : "Last activity";
     const mobileAttentionBanner = stateInfo.key === 'needs_input'
         ? '<div class="session-mobile-banner">Waiting for your input</div>'
         : (stateInfo.key === 'check_terminal'
             ? '<div class="session-mobile-banner">Nothing yet — open the terminal</div>'
             : (stateInfo.key === 'stuck' ? '<div class="session-mobile-banner error">Session needs attention</div>' : ''));
-    // Unread board messages: a neutral count on line 2 (never an attention colour),
-    // shown on selected rows too.
-    const unreadCount = stateInfo.key === 'ended' ? 0 : sessionUnreadCount(s);
-    // The unread count on agent rows was not useful to users, so no chip is rendered.
-    void unreadCount;
-    const unreadChip = '';
+    return { mobileStatusChip, unreadBoardBadge, mobileAttentionBanner };
+}
+
+/** The items of an agent row's action menu (drawn when it opens): the done, archived, sleeping or awake set. */
+function _rowMenuContent(s, sid, isDone) {
     const _archiveItem = `
             <button class="overflow-menu-item" data-on-click="agent-archive" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(sid)}" data-mode="archive">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
@@ -302,7 +237,79 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                 Remove Agent
             </button>`;
-    const kebabMenuContent = isDone ? _doneMenu : (s.archived ? _archivedMenu : (s.sleeping ? _sleepingMenu : _awakeMenu));
+    return isDone ? _doneMenu : (s.archived ? _archivedMenu : (s.sleeping ? _sleepingMenu : _awakeMenu));
+}
+
+export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) {
+    const dotClass = getDotClass(s);
+    const isActive = !state.selectedTeam && state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
+
+    // Spec: remove agent type from the default row layout
+    const typeTag = "";
+
+    // Directory override chip
+    // Directory override now lives in the tooltip (Directory row), not the row.
+    const dirChip = "";
+
+    // Branch is shown at folder level, except for agents on their own worktree:
+    // those are on a different branch than the folder, so each row says which.
+    const gsWt = s.git_state?.is_worktree ? s.git_state : null;
+    const branchTag = (gsWt && s.branch)
+        ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${escapeAttr(gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : '')}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
+        : "";
+    // One pill at most, from the shared state table. The attention states carry a
+    // warning pill; "Task assigned · idle" a neutral one (#3227). "Ready for input"
+    // has none: the tooltip and the aria-label carry that state (no dot) (task #175).
+    const stateInfo = sessionStateInfo(s);
+    const pillKind = stateInfo.attention ? 'waiting-badge session-state-pill session-attention-pill' : 'session-state-pill';
+    const waitingBadge = stateInfo.pill
+        ? ` <span class="badge ${pillKind}${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
+        : '';
+    // Context is secondary: any state pill owns line 1 and the ctx pill
+    // collapses to the dot's ring, which survives on every glyph.
+    const ctxPill = waitingBadge ? '' : _renderCtxPill(s);
+    const ctxHigh = s.context_pct !== null && s.context_pct !== undefined && s.context_pct >= 80;
+    const isTerminal = s.agent_type === "terminal";
+    const sid = s.session_id ? escapeAttr(s.session_id) : "";
+    // Goal line is rendered on every row (not just the active one):
+    // summary -> first user prompt -> inline "No goal yet" + generate button.
+    const goalText = sessionGoalText(s);
+    const goalBtn = "";
+    // Row label follows the shared identity chain (display_name -> auto_name
+    // -> board_job_title -> Agent/Terminal). The prompt is never a name; it
+    // shows on the goal line below when there is no summary.
+    const identity = resolveSessionIdentity(s);
+    const displayLabel = identity;
+    // A long name is cut with an ellipsis, and agents of one team share a prefix: its last characters never shrink, so the end that tells them apart stays ("release-engineering-coo...-4-9").
+    const [nameHead, nameTail] = splitLabel(displayLabel);
+    const reminder = getCachedAgentAvailability(s);
+    const reminderTag = reminder?.reminder
+        ? `<span class="agent-reminder-icon" title="Periodic reminder every ${escapeAttr(Math.max(1, Math.round((reminder.reminder_interval_seconds || 300) / 60)))} min" aria-label="Periodic reminder active">⏰</span>`
+        : '';
+    let goalLine = "";
+    if (goalText) {
+        goalLine = `<span class="session-goal${isCompact ? ' session-goal-compact' : ''}" title="${escapeAttr(goalText)}">${escapeHtml(goalText)}</span>`;
+    } else if (!isTerminal) {
+        // The "No goal yet" label is PASSIVE text: it sits where users click to
+        // select a row, so it must bubble to the row's click handler. Only the
+        // sparkle button requests a goal.
+        goalLine = `<span class="session-goal session-goal-empty${isCompact ? ' session-goal-compact' : ''}">
+                <button class="sidebar-goal-btn sidebar-goal-btn-inline" data-on-click="goal-request" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(sid)}" title="Generate goal" aria-label="Generate goal for ${escapeAttr(identity)}"><span class="material-icons" style="font-size:0.875rem" aria-hidden="true">auto_awesome</span></button>
+                <span class="session-goal-empty-label">No goal yet</span>
+            </span>`;
+    }
+    const isDone = !!state.killedSessions?.[s.session_id];
+    // A state without a chip class ("Ready for input") renders no mobile chip. The meta
+    // row is emitted without whitespace so :empty can collapse it on the phone.
+    const { mobileStatusChip, unreadBoardBadge, mobileAttentionBanner } = _mobileRowParts(s, stateInfo);
+    const needsAttention = sessionNeedsAttention(s);
+    // Unread board messages: a neutral count on line 2 (never an attention colour),
+    // shown on selected rows too.
+    const unreadCount = stateInfo.key === 'ended' ? 0 : sessionUnreadCount(s);
+    // The unread count on agent rows was not useful to users, so no chip is rendered.
+    void unreadCount;
+    const unreadChip = '';
+    const kebabMenuContent = _rowMenuContent(s, sid, isDone);
     // The menu's items (about 50 elements a row) are drawn when it opens (#4611): the row holds an empty menu and this module the text for it.
     rememberRowMenu(s, kebabMenuContent);
     const rowMenuId = kebabId('agent', rowMenuKey(s.session_id, sessionServer(s), s.name));
@@ -325,7 +332,6 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
     const ariaLabel = `${identity}, ${stateInfo.label}`
         + (ctxHigh ? `, context ${s.context_pct >= 100 ? 'full' : Math.round(s.context_pct) + '%'}` : '')
         + (unreadCount > 0 ? `, ${unreadCount} unread` : '');
-    void lastActivity; void activityLabel;
     const stuckClass = stateInfo.key === 'stuck' ? ' is-stuck' : '';
     return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${stuckClass}${doneClass}${staleClass}"
         draggable="${stale ? 'false' : 'true'}"${stale ? ` aria-disabled="true" title="${escapeAttr(staleReason(s))}"` : ''}
