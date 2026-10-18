@@ -47,7 +47,7 @@ const fixtures = async () => {
         else if(p.includes('/scheduled/jobs/1/runs'))data={runs:[]};
         else if(p==='/api/agent-docs')data=[{name:'README',title:'Workspace guide'}];
         else if(p==='/api/agent-docs/README')data={content:'# Workspace guide\n\nUse the Files tabs to browse repository files and team artifacts.\n\n## Review a change\n\n1. Open the task.\n2. Check the evidence.\n3. Leave a concise result.\n\n```sh\ncoral-board read\n```\n\n| Source | Contents |\n| --- | --- |\n| Files | Changed repository files |\n| Team Artifacts | Shared evidence |'};
-        else if(p==='/api/token-usage/summary')data={totals:{input_tokens:48000,output_tokens:9200,cache_read_tokens:16000,num_sessions:4,cost_usd:2.48},by_agent_type:[{agent_type:'codex',num_sessions:4,input_tokens:48000,output_tokens:9200,cost_usd:2.48}],by_agent:[{session_id:'fixture-0',agent_name:'UI',board_name:'coral-task-workflows',cost_usd:2.48,input_tokens:48000,output_tokens:9200}]};
+        else if(p==='/api/token-usage/summary')data={totals:{input_tokens:48000,output_tokens:9200,cache_read_tokens:16000,num_sessions:4,cost_usd:2.48},by_model:[{model:'gpt-5-codex',agent_type:'codex',num_sessions:4,input_tokens:48000,output_tokens:9200,cost_usd:2.48}],by_agent:[{session_id:'fixture-0',agent_name:'UI',board_name:'coral-task-workflows',cost_usd:2.48,input_tokens:48000,output_tokens:9200}]};
         else if(p==='/api/token-usage/timeseries')data={series:[]};
         else if(p.includes('/token-usage/'))data=[];
         else if(p==='/api/themes')data={themes:[]};

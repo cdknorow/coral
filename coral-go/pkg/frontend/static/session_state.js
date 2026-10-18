@@ -1,4 +1,5 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
+import { modelDisplayName } from './model_names.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { formatTokens } from './format.js';
 import { getCachedAgentAvailability } from './team_availability.js';
@@ -194,6 +195,9 @@ export function buildSessionTooltip(s) {
         `<tr><td class="tt-label">Branch</td><td class="tt-value">${escapeHtml(branch)}</td></tr>`,
         `<tr><td class="tt-label">Agent</td><td class="tt-value">${escapeHtml(agent)}</td></tr>`,
     ];
+    // The model the agent is using now, from the CLI's own signals; no row while it is unknown (#4589).
+    const modelName = modelDisplayName(s.model, s.model_display);
+    if (modelName) rows.push(`<tr><td class="tt-label">Model</td><td class="tt-value" title="${escapeAttr(typeof s.model === 'string' ? s.model.trim() : '')}">${escapeHtml(modelName)}</td></tr>`);
     // Context window usage moved out of the row (AGENT_LIST_COMPACT): explicit
     // null (unknown model) must read "unknown", never 0% or full.
     const ctxText = (s.context_pct === null || s.context_pct === undefined)

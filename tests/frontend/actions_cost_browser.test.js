@@ -16,7 +16,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
 const SUMMARY = {
     totals: { input_tokens: 10, output_tokens: 20, cost_usd: 3 },
-    by_agent_type: [{ agent_type: 'claude', num_sessions: 2, cost_usd: 3 }],
+    by_model: [{ model: 'claude-opus-5-5', agent_type: 'claude', num_sessions: 2, cost_usd: 3 }],
     by_agent: [
         { session_id: 'aaaaaaaa-0000-4000-8000-000000000001', agent_name: 'Ended Agent', board_name: 'team-x', folder: 'proj', cost_usd: 2, requests: 5 },
         { session_id: 'aaaaaaaa-0000-4000-8000-000000000002', agent_name: 'Other Agent', board_name: 'team-y', folder: 'proj', cost_usd: 1, requests: 3 },

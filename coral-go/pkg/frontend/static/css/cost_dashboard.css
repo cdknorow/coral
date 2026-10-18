@@ -212,7 +212,8 @@
 .cost-table-container {
     border: 1px solid var(--border);
     border-radius: 8px;
-    overflow: hidden;
+    overflow-x: auto; /* a wide table scrolls inside its box on a phone instead of being cut off (#4589) */
+    overflow-y: hidden;
 }
 
 .cost-empty {
@@ -512,3 +513,6 @@
     stroke: var(--border-light);
     stroke-width: 0.5;
 }
+
+/* By Model shows a readable name ("Opus 5.5"), not an id, so it is not set in the code font (#4589). */
+#cost-by-model .cost-model-name { font-family: inherit; }

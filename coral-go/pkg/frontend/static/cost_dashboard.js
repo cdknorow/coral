@@ -1,5 +1,6 @@
 /* Token Usage Dashboard — token usage and cost UI */
 
+import { modelDisplayName } from './model_names.js';
 import { showView, escapeHtml, escapeAttr } from './utils.js';
 import { registerActions, idOf, uuidOf, tokenOf, textOf } from './actions.js';
 import { state } from './state.js';
@@ -288,6 +289,7 @@ function _closeDropdown() {
 function _getFilterExtractor(table, field) {
     const extractors = {
         'model:model': r => r.model || '',
+        'model:agent_type': r => r.agent_type || '',
         'agent:agent_name': r => r.display_name || r.agent_name || '',
         'agent:board_name': r => r.board_name || '',
         'agent:folder': r => r.folder || '',
@@ -397,9 +399,11 @@ export async function _refreshCostDashboard() {
             _setText('cost-total-requests', String(t.num_sessions || 0));
             _setText('cost-total-cost', _formatCost(t.cost_usd || 0));
 
-            // Render per-agent-type breakdown as model table
-            _renderModelTable((data.by_agent_type || []).map(a => ({
-                model: a.agent_type || 'unknown',
+            // One row per model id and agent type (#4589); a session that switched models is in each model's row.
+            _renderModelTable((data.by_model || []).map(a => ({
+                model: modelDisplayName(a.model, a.model_display) || 'unknown',
+                model_id: typeof a.model === 'string' ? a.model : '',
+                agent_type: a.agent_type || 'unknown',
                 requests: a.num_sessions || 0,
                 input_tokens: a.input_tokens || 0,
                 output_tokens: a.output_tokens || 0,
@@ -473,9 +477,10 @@ function _renderModelTable(rows) {
     const container = document.getElementById('cost-by-model');
     if (!container) return;
 
-    const filtered = _applyColFilters(rows, 'model', { model: r => r.model || '' });
+    const filtered = _applyColFilters(rows, 'model', { model: r => r.model || '', agent_type: r => r.agent_type || '' });
     const sorted = _sortRows(filtered, 'model', (r, f) => {
         if (f === 'model') return r.model || '';
+        if (f === 'agent_type') return r.agent_type || '';
         return r[f] || 0;
     });
 
@@ -486,6 +491,7 @@ function _renderModelTable(rows) {
 
     let html = `<table class="cost-table">
         <thead><tr>
+            ${_sortHeader('model', 'agent_type', 'Provider', '', true)}
             ${_sortHeader('model', 'model', 'Model', '', true)}
             ${_sortHeader('model', 'requests', 'Requests', 'cost-col-right')}
             ${_sortHeader('model', 'input_tokens', 'Input', 'cost-col-right')}
@@ -497,7 +503,8 @@ function _renderModelTable(rows) {
 
     for (const r of sorted) {
         html += `<tr>
-            <td class="cost-model-name">${escapeHtml(r.model)}</td>
+            <td>${escapeHtml(r.agent_type)}</td>
+            <td class="cost-model-name" title="${escapeAttr(r.model_id || '')}">${escapeHtml(r.model)}</td>
             <td class="cost-col-right">${r.requests}</td>
             <td class="cost-col-right">${formatTokens(r.input_tokens || 0)}</td>
             <td class="cost-col-right">${formatTokens(r.output_tokens || 0)}</td>
