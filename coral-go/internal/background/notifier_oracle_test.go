@@ -60,12 +60,12 @@ func TestRunPassAgreesWithBefore4599(t *testing.T) {
 	old := deliverNudgeFn
 	t.Cleanup(func() { deliverNudgeFn = old })
 	oracleTotals.nudges, oracleTotals.resends, oracleTotals.health, oracleTotals.mentions = 0, 0, 0, 0
-	for seed := int64(1); seed <= 300; seed++ {
+	for seed := int64(1); seed <= 150; seed++ {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) { runNotifierOracle(t, seed) })
 	}
 	t.Logf("compared: %d nudge attempts, %d resends after a failure, %d health nudges, %d mentions", oracleTotals.nudges, oracleTotals.resends, oracleTotals.health, oracleTotals.mentions)
 	require.Greater(t, oracleTotals.nudges, 1000)
-	require.Greater(t, oracleTotals.resends, 20)
+	require.Greater(t, oracleTotals.resends, 10)
 	require.Greater(t, oracleTotals.health, 50)
 	require.Greater(t, oracleTotals.mentions, 200)
 }

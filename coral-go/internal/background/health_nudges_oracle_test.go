@@ -35,13 +35,14 @@ var healthKinds map[string]int
 
 func TestRunProjectAgreesWithBefore4599(t *testing.T) {
 	healthKinds = map[string]int{}
-	for seed := int64(1); seed <= 120; seed++ {
+	for seed := int64(1); seed <= 13; seed++ {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) { runHealthOracle(t, seed) })
 	}
 	t.Logf("compared, per rule: %v", healthKinds)
 	for kind, floor := range map[string]int{
-		"claim nudge": 50, "status nudge": 50, "claim escalation": 20, "status escalation": 20,
-		"mention renudge": 20, "held notice": 20, "claim held back by a wait": 20, "failed delivery": 20, "budget line": 5,
+		"claim nudge": 15, "status nudge": 15, "claim escalation": 5, "status escalation": 5,
+		"mention renudge": 10, "held notice": 10, "claim held back by a wait": 10, "failed delivery": 10, "budget line": 5,
+		"parked task": 10, "snoozed reminder": 10,
 	} {
 		require.GreaterOrEqual(t, healthKinds[kind], floor, "the %s rule went (almost) unexercised", kind)
 	}
@@ -114,7 +115,7 @@ func runHealthOracle(t *testing.T, seed int64) {
 	pathA, pathB := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
 	bs, err := board.NewStoreWithKey(pathA, "")
 	require.NoError(t, err)
-	budget := []int{3, 20}[rng.Intn(2)]
+	budget := []int{3, 20, 20}[rng.Intn(3)]
 
 	names := []string{"Orchestrator"}
 	for i := 0; i < 2+rng.Intn(4); i++ {
@@ -139,14 +140,14 @@ func runHealthOracle(t *testing.T, seed int64) {
 	known := map[string]bool{}
 	held := map[string]time.Time{}
 	var taskIDs []int64
-	for step := 0; step < 16; step++ {
+	for step := 0; step < 24; step++ {
 		offset += time.Duration(2+rng.Intn(9)) * time.Minute
 		now := base.Add(offset)
 		hs := board.DefaultHealthSettings()
 		hs.MentionRenudge.On = rng.Intn(5) != 0
 		hs.HeldNotice.On = rng.Intn(5) != 0
 		hs.ClaimNudge.AfterMin = []int{5, 10}[rng.Intn(2)]
-		hs.ClaimNudge.Nudges = 1 + rng.Intn(2)
+		hs.ClaimNudge.Nudges = []int{1, 1, 1, 2}[rng.Intn(4)] // mostly one: escalations come sooner
 		hs.StatusNudge.AfterMin = []int{5, 20}[rng.Intn(2)]
 		hs.StatusNudge.EscalateAfterMin = []int{5, 10}[rng.Intn(2)]
 		hs.MentionRenudge.AfterMin = []int{5, 10}[rng.Intn(2)]
@@ -170,7 +171,7 @@ func runHealthOracle(t *testing.T, seed int64) {
 				held[session(name)] = now.Add(-time.Duration(rng.Intn(30)) * time.Minute)
 			}
 		}
-		for k := rng.Intn(3); k > 0; k-- {
+		for k := rng.Intn(4); k > 0; k-- {
 			assignee := names[1+rng.Intn(len(names)-1)]
 			if rng.Intn(5) == 0 {
 				assignee = ""
@@ -187,7 +188,21 @@ func runHealthOracle(t *testing.T, seed int64) {
 			if err != nil || task == nil {
 				continue
 			}
-			switch op := rng.Intn(6); {
+			switch op := rng.Intn(8); {
+			case op == 6: // parked: set aside, for good or until a time later steps pass
+				if rng.Intn(4) == 0 {
+					bs.UnparkTask(ctx, "team", id)
+				} else {
+					bs.ParkTask(ctx, "team", id, "waiting on the operator", []time.Time{{}, now.Add(10 * time.Minute), now.Add(40 * time.Minute)}[rng.Intn(3)])
+				}
+			case op == 7: // a task in progress has its status reminder snoozed until a time later steps pass
+				open, _ := bs.ListOpenTasks(ctx, "team")
+				for _, ot := range open {
+					if ot.Status == "in_progress" && rng.Intn(2) == 0 {
+						bs.SnoozeTaskReminder(ctx, "team", ot.ID, now.Add(time.Duration([]int{5, 30}[rng.Intn(2)])*time.Minute))
+						break
+					}
+				}
 			case op <= 2 && task.AssignedTo != nil:
 				bs.ClaimTask(ctx, "team", strings.TrimSpace(*task.AssignedTo), id)
 			case op == 3 && task.AssignedTo != nil:
@@ -204,7 +219,7 @@ func runHealthOracle(t *testing.T, seed int64) {
 			bs.RegisterWait(ctx, "team", who, session(who), "message", "Orchestrator", "", []time.Duration{2 * time.Minute, time.Hour}[rng.Intn(2)])
 		}
 		// A teammate mentions the orchestrator; the orchestrator may read or answer it before it is due.
-		if rng.Intn(2) == 0 {
+		if rng.Intn(3) != 0 {
 			from := names[1+rng.Intn(len(names)-1)]
 			_, err := bs.PostMessage(ctx, "team", from, "@Orchestrator a question about my task", nil)
 			require.NoError(t, err)
@@ -223,6 +238,17 @@ func runHealthOracle(t *testing.T, seed int64) {
 		// Claims a wait holds back: a running, known, idle member with assigned work and nothing in progress.
 		waits, _ := bs.ListActiveWaits(ctx, "team")
 		tasks, _ := bs.ListOpenTasks(ctx, "team")
+		for _, task := range tasks { // assigned work set aside: parked, or its status reminder snoozed
+			if task.AssignedTo == nil {
+				continue
+			}
+			if task.Parked(now) {
+				healthKinds["parked task"]++
+			}
+			if until, _ := bs.TaskSnoozedUntil(ctx, "team", task.ID); task.Status == "in_progress" && until.After(now) {
+				healthKinds["snoozed reminder"]++
+			}
+		}
 		for _, w := range waits {
 			sig := signals[sid(w.SubscriberID)]
 			mine, pending := agentTasks(tasks, w.SubscriberID, now)

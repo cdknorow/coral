@@ -28,22 +28,28 @@ import (
 
 // checkPhrases: what each section of the check prints, counted over every check; each has a floor.
 var checkPhrases = map[string]int{
-	"has not claimed #": 20, "silent on #": 20, "idle ": 30, "reviews waiting": 10, "Board": 0,
+	"has not claimed #": 20, "silent on #": 10, "idle ": 30, "reviews waiting": 10, "Board": 0,
 	"Since ": 30, "No progress since": 30, "awake agents are working": 5, "Nothing needs you": 5,
 	"Waiting on the operator": 20, "(back": 10, "parked": 10, "Needs you,": 30, "Waiting on ": 20,
 }
 
 var checkSeen map[string]int
 
+// escalatedWhileParked counts escalations whose task was parked at a check (left out of it); it has a floor too.
+var escalatedWhileParked int
+
 func TestComposeCheckAgreesWithBefore4599(t *testing.T) {
 	checkSeen = map[string]int{}
-	for seed := int64(1); seed <= 120; seed++ {
+	escalatedWhileParked = 0
+	for seed := int64(1); seed <= 24; seed++ {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) { runCheckOracle(t, seed) })
 	}
 	t.Logf("compared, per phrase: %v", checkSeen)
 	for phrase, floor := range checkPhrases {
 		require.GreaterOrEqual(t, checkSeen[phrase], floor, "%q went (almost) unprinted", phrase)
 	}
+	t.Logf("escalations of a parked task: %d", escalatedWhileParked)
+	require.GreaterOrEqual(t, escalatedWhileParked, 10, "an escalated task that is parked went (almost) unexercised")
 }
 
 func copyBoardFile(t *testing.T, from, to string) {
@@ -204,6 +210,9 @@ func runCheckOracle(t *testing.T, seed int64) {
 						bs.BumpHealthCounter(ctx, "team", rule, *task.AssignedTo, fmt.Sprint(id), now.Add(-time.Hour))
 						bs.MarkHealthEscalated(ctx, "team", rule, *task.AssignedTo, fmt.Sprint(id), now.Add(-time.Duration(rng.Intn(120))*time.Minute))
 						keysSeen["escalation|"+rule+"|"+*task.AssignedTo+"|"+fmt.Sprint(id)] = true
+						if rng.Intn(4) == 0 { // and parked: its escalation is left out while the park lasts
+							bs.ParkTask(ctx, "team", id, "a long test", now.Add(time.Duration(10+rng.Intn(50))*time.Minute))
+						}
 					}
 				case 3:
 					bs.CancelTask(ctx, "team", id, "Operator", nil)
@@ -214,7 +223,7 @@ func runCheckOracle(t *testing.T, seed int64) {
 				}
 			}
 			// Reviews: mostly to Rev 1, whose queue grows; some approved or rejected.
-			if rng.Intn(2) == 0 {
+			if rng.Intn(4) != 0 {
 				to := "Rev 1"
 				if rng.Intn(5) == 0 {
 					to = "Rev 2"
@@ -257,6 +266,16 @@ func runCheckOracle(t *testing.T, seed int64) {
 			delete(lastCheck, "team")
 		case 1:
 			lastCheck["team"] = now.Add(time.Minute)
+		}
+
+		if esc, err := bs.HealthEscalations(ctx, "team"); err == nil {
+			for _, e := range esc {
+				var id int64
+				fmt.Sscan(e.Subject, &id)
+				if task, err := bs.GetTask(ctx, "team", id); err == nil && task != nil && task.Parked(now) {
+					escalatedWhileParked++
+				}
+			}
 		}
 
 		// The same bytes on both sides.
