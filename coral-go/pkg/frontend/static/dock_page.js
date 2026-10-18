@@ -11,7 +11,7 @@ const KIND_OF_VIEW = {
     'history-session-view': 'chats',
     'chats-empty-view': 'chats',
 };
-/** Open on first use? The agent page and a board have always shown their side column; the others start closed. */
+/** Open on first use? The agent page has always shown its side column (a board does when the window is wide enough, dockOpenByDefault); the others start closed. */
 const OPEN_BY_DEFAULT = { agent: true, board: true, chats: false, other: false };
 /** The tab a kind of page opens on when it has no remembered one. */
 export const DEFAULT_TAB = { agent: 'files', board: 'subscribers', chats: 'saved', other: 'saved' };
@@ -20,7 +20,15 @@ let kind = 'agent';
 const hooks = [];
 
 export const dockKind = () => kind;
-export const dockOpenByDefault = k => OPEN_BY_DEFAULT[k ?? kind];
+/** A board starts with its sidebar open only when the message column stays about 560 px wide beside it (the row is at least that and the sidebar's 420 px); a narrower window starts it closed. */
+const BOARD_ROW_MIN = 980;
+export function dockOpenByDefault(k = kind) {
+    if (k === 'board') {
+        const row = document.querySelector('.main-row');
+        return !!row && row.getBoundingClientRect().width >= BOARD_ROW_MIN;
+    }
+    return OPEN_BY_DEFAULT[k];
+}
 
 /** A storage key for the page on screen: the agent page keeps its original keys, the others add their kind; a popout window has its own (it must not overwrite the dashboard's sizes). */
 export function dockKey(base, k = kind) {
@@ -49,7 +57,7 @@ export function setDockPage(viewId) {
     const next = KIND_OF_VIEW[viewId] || 'other';
     const dock = document.getElementById('agentic-state');
     if (dock) dock.dataset.page = next;
-    document.body.dataset.dockPage = next;
+    document.body.setAttribute('data-dock-page', next);
     if (next === kind && dock?.dataset.pageApplied) return;
     const previous = kind;
     kind = next;

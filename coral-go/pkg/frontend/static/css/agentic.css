@@ -2763,4 +2763,5 @@ button.team-artifact-name { cursor: pointer; }
 #agentic-state:not([data-page="agent"]) #agentic-tab-customize { display: none !important; }
 /* The sidebar is the whole height of the row; its tab strip and panels scroll inside it. */
 .main-row > .agentic-state { align-self: stretch; border-left: 1px solid var(--border); }
+.main-row > .agentic-state.collapsed { border-left: none; } /* shut, it leaves no line behind */
 .main-row > .task-bar-resize-handle { align-self: stretch; }

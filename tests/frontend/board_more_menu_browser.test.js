@@ -41,6 +41,10 @@ const B = 'more-4538';
 
         console.log('Desktop: unchanged (no More; Select, Export, Pause and Delete inline)');
         l = Page.loadEventFired(); await Page.navigate({ url: `${BASE}/board/${B}` }); await l; await coralReady();
+        // A board opens with the right sidebar open when the window is wide enough, and then the toolbar uses More too (right_dock_browser checks that): the sidebar is closed for the inline toolbar (#4539).
+        await waitFor(`document.body.hasAttribute('data-dock-open')`, 'the sidebar state');
+        if (await ev(`document.body.dataset.dockOpen === '1'`)) await ev(`document.getElementById('panel-toggle-btn').click(); true`);
+        await waitFor(`document.body.dataset.dockOpen === '0' && document.getElementById('agentic-state').getBoundingClientRect().width < 1 && getComputedStyle(document.getElementById('mb-more-btn')).display === 'none'`, 'the sidebar closed and More gone');
         await waitFor(shown('#mb-delete-btn'), 'the toolbar on a desktop');
         const desk = await ev(`(() => { const ids = ['mb-select-btn', 'mb-export-btn', 'mb-pause-btn', 'mb-delete-btn'];
             const r = ids.map(id => document.getElementById(id).getBoundingClientRect());

@@ -163,6 +163,38 @@ const BASE = require('./test_base').BASE;
             await waitFor(`!document.getElementById('agentic-state').classList.contains('mobile-panel-overlay')`, `the overlay closed on ${name}`);
         }
         await Emulation.setTouchEmulationEnabled({ enabled: false });
+
+        console.log('11. A desktop board with the sidebar open uses the toolbar\'s More menu (Lead\'s #4538); closed, the buttons are inline');
+        await Emulation.setDeviceMetricsOverride({ width: 1024, height: 800, deviceScaleFactor: 1, mobile: false });
+        await ev(`window.selectBoardProject(${JSON.stringify(BOARD)}); true`);
+        await waitFor(`document.getElementById('agentic-state').dataset.page === 'board' && document.getElementById('mb-select-btn').style.display !== 'none'`, 'the board toolbar');
+        const bar = () => ev(`(() => { const shown = id => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0; };
+            const h = document.querySelector('#messageboard-view .mb-header-actions').getBoundingClientRect();
+            return { more: shown('mb-more-btn'), select: shown('mb-select-btn'), del: shown('mb-delete-btn'), open: document.body.dataset.dockOpen, rows: Math.round(h.height) }; })()`);
+        await waitFor(`document.body.dataset.dockOpen === '1' && getComputedStyle(document.getElementById('mb-more-btn')).display !== 'none'`, 'More with the sidebar open', 4000);
+        let b = await bar();
+        assert.deepEqual({ more: b.more, select: b.select, del: b.del }, { more: true, select: false, del: false }, 'open sidebar: only More: ' + JSON.stringify(b));
+        await ev(`document.getElementById('mb-more-btn').click(); true`);
+        await waitFor(`document.getElementById('mb-select-btn').getClientRects().length > 0`, 'the menu items');
+        assert.deepEqual(await ev(`[...document.querySelectorAll('#mb-more-menu .mb-action-btn')].filter(e => e.getClientRects().length).map(e => e.id)`), ['mb-select-btn', 'mb-export-btn', 'mb-pause-btn', 'mb-delete-btn'], 'Delete last');
+        await shot('dock-board-more');
+        await ev(`document.getElementById('mb-more-btn').click(); true`);
+        await toggle(); // close the sidebar
+        await waitFor(`document.body.dataset.dockOpen === '0' && getComputedStyle(document.getElementById('mb-more-btn')).display === 'none'`, 'More gone with the sidebar closed', 4000);
+        b = await bar();
+        assert.deepEqual({ more: b.more, select: b.select, del: b.del }, { more: false, select: true, del: true }, 'closed sidebar: the buttons inline: ' + JSON.stringify(b));
+
+        console.log('12. A board starts with its sidebar open only when its messages keep room: closed at 1024 px, open at 1400 px (until the person chooses)');
+        await ev(`localStorage.removeItem('coral-agentic-collapsed:board'); true`);
+        for (const [width, open] of [[1024, false], [1400, true]]) {
+            await Emulation.setDeviceMetricsOverride({ width, height: 800, deviceScaleFactor: 1, mobile: false });
+            await ev(`switchNavTab('history'); true`);
+            await waitFor(`document.getElementById('agentic-state').dataset.page === 'chats'`, 'Chats');
+            await ev(`window.selectBoardProject(${JSON.stringify(BOARD)}); true`);
+            await waitFor(`document.getElementById('agentic-state').dataset.page === 'board' && document.body.dataset.dockOpen === '${open ? 1 : 0}'`, `the board's sidebar ${open ? 'open' : 'closed'} at ${width} px`, 4000, `JSON.stringify({ o: document.body.dataset.dockOpen, w: innerWidth })`);
+            assert.equal((await dock()).open, open, `at ${width} px`);
+            await ev(`localStorage.removeItem('coral-agentic-collapsed:board'); true`);
+        }
         console.log('   ✓');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

@@ -333,7 +333,7 @@ export function toggleAgenticPanel(forceState) {
 }
 
  function _syncPanelToggleBtn(isOpen) {
-    document.body.dataset.dockOpen = isOpen ? '1' : '0'; // for the page's own layout (the board's toolbar makes room when the sidebar is open)
+    document.body.setAttribute('data-dock-open', isOpen ? '1' : '0'); // for the page's own layout (the board's toolbar makes room when the sidebar is open)
     const btn = document.getElementById('panel-toggle-btn');
     if (btn) btn.classList.toggle('active', isOpen);
     const popoutBtn = document.getElementById('popout-panel-toggle-btn');

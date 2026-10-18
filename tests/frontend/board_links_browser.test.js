@@ -86,6 +86,9 @@ const HEX = 'c'.repeat(64);
             return getComputedStyle(a).textDecorationLine; })()`);
         check('post links are not underlined until hovered', hover === 'none', hover);
 
+        // The Subscribers list is in the right sidebar, which a board opens only in a wide window (#4539): open it.
+        await ev(`window.toggleAgenticPanel(true); true`);
+        await until(`document.getElementById('agentic-state').getBoundingClientRect().width > 300`, 'the sidebar open');
         const focus = await ev(`(() => { const out = {};
             for (const [k, sel] of [['link', '${POST} a'], ['subscriber', '#mb-subscribers-list .subscriber-history-link']]) {
                 const el = document.querySelector(sel); el.focus({ focusVisible: true });
