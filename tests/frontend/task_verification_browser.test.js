@@ -10,13 +10,14 @@ const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
 
 const BOARD = 'verify-4564-board';
-// The server's field, by title: v- verified (two reviewers), e- evidence (one name), u- unverified, n- none sent (an older server).
+// The server's field, by title: v- verified (two reviewers), e- evidence (by: []), u- unverified, n- none sent (an older server).
 const ADD = `(() => {
     const prev = window.fetch;
     const verification = t => {
         const at = '2026-10-17T20:15:00Z';
         if (/^v-/.test(t.title)) return { state: 'verified', by: ['QA Engineer', 'Security Reviewer'], at };
-        if (/^e-/.test(t.title)) return { state: 'evidence', by: 'the completion message', at };
+        if (t.title === 'e-gate') return { state: 'evidence', by: ['gate:report'], at }; // a gate's report names itself (df6a32ff)
+        if (/^e-/.test(t.title)) return { state: 'evidence', by: [], at }; // as #4563 sends it: no one confirmed it
         if (/^u-/.test(t.title)) return { state: 'unverified', by: [], at };
         return undefined;
     };
@@ -71,7 +72,7 @@ const ADD = `(() => {
         await ev(ADD);
         // A board with finished tasks of each kind and an open one, through the real API.
         const post = async (path, body) => { const r = await api('POST', `/api/board/${BOARD}${path}`, body); assert.ok(r.status < 300, path + ': ' + JSON.stringify(r)); return r.body; };
-        for (const title of ['v-one', 'v-two', 'e-one', 'u-one', 'u-two', 'n-one']) {
+        for (const title of ['v-one', 'v-two', 'e-one', 'e-gate', 'u-one', 'u-two', 'n-one']) {
             const t = await post('/tasks', { title, body: 'b ' + title, created_by: 'Operator' });
             await post('/tasks/claim', { subscriber_id: 'worker', task_id: t.id });
             await post('/tasks/' + t.id + '/complete', { subscriber_id: 'worker', message: 'done ' + title });
@@ -80,7 +81,7 @@ const ADD = `(() => {
         await ev(`window.selectBoardProject(${JSON.stringify(BOARD)}); true`);
         await waitFor(`document.getElementById('agentic-state').dataset.page === 'board'`, 'the board page');
         await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-tab-tasks').click(); true`);
-        await waitFor(`document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length === 7`, 'seven task rows', 10000, `JSON.stringify({ n: document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length, txt: document.getElementById('board-task-list').textContent.slice(0, 160), tab: document.getElementById('agentic-panel-tasks').className, bt: (T.state.currentBoardTasks || []).length, page: document.getElementById('agentic-state').dataset.page, proj: T.state.boardPageProject })`);
+        await waitFor(`document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length === 8`, 'eight task rows', 10000, `JSON.stringify({ n: document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length, txt: document.getElementById('board-task-list').textContent.slice(0, 160), tab: document.getElementById('agentic-panel-tasks').className, bt: (T.state.currentBoardTasks || []).length, page: document.getElementById('agentic-state').dataset.page, proj: T.state.boardPageProject })`);
 
         console.log('1. Each finished task shows its state in words, with who confirmed it on hover and in its accessible name; open tasks and a task the server sent no state for show none');
         const r1 = Object.fromEntries((await rows()).map(r => [r.title.replace(/^.*?((?:v|e|u|n)-\w+|open-one)$/, '$1'), r.badge]));
@@ -89,7 +90,8 @@ const ADD = `(() => {
         assert.match(r1['v-one'].title, /^Verified by QA Engineer, Security Reviewer, /);
         assert.equal(r1['v-one'].role, 'img');
         assert.equal(r1['e-one'].text, 'Evidence attached'); assert.equal(r1['e-one'].cls, 'evidence');
-        assert.match(r1['e-one'].title, /Evidence attached \(the completion message\); no reviewer or check has confirmed it/);
+        assert.equal(r1['e-one'].title, 'Evidence attached; no reviewer or check has confirmed it');
+        assert.equal(r1['e-gate'].title, 'Evidence attached (gate:report); no reviewer or check has confirmed it');
         assert.equal(r1['u-one'].text, 'Unverified'); assert.equal(r1['u-one'].cls, 'unverified');
         assert.equal(r1['u-one'].title, 'Marked done by the agent; no reviewer or check confirmed it');
         assert.equal(r1['n-one'], null, 'no state from the server, no badge');
@@ -108,10 +110,10 @@ const ADD = `(() => {
         const titles = async () => (await rows()).map(r => r.title.replace(/^.*?((?:v|e|u|n)-\w+|open-one)$/, '$1')).sort();
         const pick = async v => { await ev(`${select}.value = '${v}'; ${select}.dispatchEvent(new Event('change', { bubbles: true })); true`); await sleep(150); }; // sleep-ok: the list redraws on the change; no completion event
         await pick('verified'); assert.deepEqual(await titles(), ['open-one', 'v-one', 'v-two']);
-        await pick('evidence'); assert.deepEqual(await titles(), ['e-one', 'open-one']);
+        await pick('evidence'); assert.deepEqual(await titles(), ['e-gate', 'e-one', 'open-one']);
         await pick('unverified'); assert.deepEqual(await titles(), ['open-one', 'u-one', 'u-two']);
         assert.equal(await ev(`localStorage.getItem('coral-task-verify-filter')`), 'unverified');
-        await pick('all'); assert.equal((await titles()).length, 7);
+        await pick('all'); assert.equal((await titles()).length, 8);
 
         console.log('4. The text reaches 4.5:1 and the icon 3:1 in both themes');
         for (const theme of ['dark', 'light']) {
@@ -128,7 +130,7 @@ const ADD = `(() => {
         await Emulation.setTouchEmulationEnabled({ enabled: true });
         await sleep(400); // sleep-ok: the layout settles over frames after a viewport change; there is no completion event
         await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-tab-tasks').click(); true`);
-        await waitFor(`document.querySelectorAll('#board-task-list .board-task-verify').length === 5`, 'the badges on the phone', 8000);
+        await waitFor(`document.querySelectorAll('#board-task-list .board-task-verify').length === 6`, 'the badges on the phone', 8000);
         const phone = await ev(`(() => { const sel = document.querySelector('.board-task-verify-select').getBoundingClientRect(); const dock = document.getElementById('agentic-state');
             const over = [...document.querySelectorAll('#board-task-list .board-task-verify')].filter(b => b.getBoundingClientRect().right > dock.getBoundingClientRect().right + 1 || b.getBoundingClientRect().left < dock.getBoundingClientRect().left - 1).length;
             return { selH: Math.round(sel.height), over, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
