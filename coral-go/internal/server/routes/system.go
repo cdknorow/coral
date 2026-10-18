@@ -124,6 +124,12 @@ func TerminalKind(t ptymanager.SessionTerminal) string {
 // generateJobTTL is how long a team-generation job's result is kept.
 const generateJobTTL = 10 * time.Minute
 
+// At most this many team generations run at once (each is a CLI process), and this many job records are kept (#4602).
+const (
+	maxGenerateRunning = 2
+	maxGenerateJobs    = 50
+)
+
 // pruneGenerateJobsLocked drops the jobs older than generateJobTTL, when a job is added or asked
 // for. A goroutine per SystemHandler swept them every minute and never ended (#4167, goleak).
 func (h *SystemHandler) pruneGenerateJobsLocked() {
@@ -1485,6 +1491,32 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 
 	h.generateJobsMu.Lock()
 	h.pruneGenerateJobsLocked()
+	// Each job is a `claude` process of up to 120 s (and API spend): at most maxGenerateRunning at once, and the finished results kept
+	// are bounded too (#4602).
+	running := 0
+	for _, j := range h.generateJobs {
+		if j.Status == "pending" {
+			running++
+		}
+	}
+	if running >= maxGenerateRunning {
+		h.generateJobsMu.Unlock()
+		w.Header().Set("Retry-After", "10")
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Teams are already being generated: try again in a moment.", "code": "busy"})
+		return
+	}
+	for len(h.generateJobs) >= maxGenerateJobs {
+		oldest := ""
+		for id, j := range h.generateJobs {
+			if j.Status != "pending" && (oldest == "" || j.CreatedAt.Before(h.generateJobs[oldest].CreatedAt)) {
+				oldest = id
+			}
+		}
+		if oldest == "" {
+			break
+		}
+		delete(h.generateJobs, oldest)
+	}
 	h.generateJobs[jobID] = job
 	h.generateJobsMu.Unlock()
 

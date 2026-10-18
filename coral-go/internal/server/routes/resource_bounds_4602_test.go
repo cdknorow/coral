@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,11 +10,17 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -178,4 +185,71 @@ func TestResizeRouteRefusesAnAbsurdWidth(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, post(1001))
 	assert.Equal(t, http.StatusBadRequest, post(65535))
 	assert.Equal(t, http.StatusBadRequest, post(9))
+}
+
+// #4602: one launch-team request starts at most 32 agents.
+func TestLaunchTeamCapsAgentsPerRequest(t *testing.T) {
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	cfg := &config.Config{LogDir: t.TempDir()}
+	cfg.UseCoralDir(t.TempDir())
+	handler := NewSessionsHandler(db, cfg, nil, newMockTerminal(), bs)
+	launch := func(n int) (int, string) {
+		agents := make([]map[string]any, n)
+		for i := range agents {
+			agents[i] = map[string]any{"name": fmt.Sprintf("Agent %d", i), "prompt": "work"}
+		}
+		b, _ := json.Marshal(map[string]any{"board_name": "captest", "working_dir": t.TempDir(), "agents": agents})
+		rec := httptest.NewRecorder()
+		handler.LaunchTeam(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewReader(b)))
+		return rec.Code, rec.Body.String()
+	}
+	code, body := launch(maxLaunchTeamAgents + 1)
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, body, "too_many_agents")
+	assert.Contains(t, body, `"max":32`)
+	_, body = launch(maxLaunchTeamAgents)
+	assert.NotContains(t, body, "too_many_agents", "the cap itself is allowed")
+}
+
+// #4602: at most two team generations run at once, and the finished jobs kept are bounded.
+func TestTeamGenerationIsCappedAtTwoRunning(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake binary")
+	}
+	h := newSystemHandlerForTest(t)
+	fake := filepath.Join(t.TempDir(), "claude")
+	require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\nexec sleep 3\n"), 0o755))
+	require.NoError(t, store.NewSessionStore(h.db).SetSetting(context.Background(), agent.CLIPathSettingKey(at.Claude), fake)) // only the fake ever runs
+	generate := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.GenerateTeam(rec, httptest.NewRequest(http.MethodPost, "/api/teams/generate", strings.NewReader(`{"directive":"a small team"}`)))
+		return rec
+	}
+	assert.Equal(t, http.StatusAccepted, generate().Code)
+	assert.Equal(t, http.StatusAccepted, generate().Code)
+	third := generate()
+	assert.Equal(t, http.StatusTooManyRequests, third.Code, third.Body.String())
+	assert.Contains(t, third.Body.String(), `"code":"busy"`)
+	assert.NotEmpty(t, third.Header().Get("Retry-After"))
+	h.generateJobsMu.Lock()
+	assert.Len(t, h.generateJobs, 2, "the refused request left no job record")
+	// The kept records are bounded: a hundred finished ones, and a new job evicts the oldest finished.
+	for i := 0; i < 100; i++ {
+		h.generateJobs[fmt.Sprintf("old-%d", i)] = &generateJob{Status: "complete", CreatedAt: time.Now().Add(-time.Duration(i) * time.Second)}
+	}
+	for _, j := range h.generateJobs {
+		if j.Status == "pending" {
+			j.Status = "complete" // free the running slots
+		}
+	}
+	h.generateJobsMu.Unlock()
+	assert.Equal(t, http.StatusAccepted, generate().Code)
+	h.generateJobsMu.Lock()
+	assert.LessOrEqual(t, len(h.generateJobs), maxGenerateJobs)
+	h.generateJobsMu.Unlock()
 }

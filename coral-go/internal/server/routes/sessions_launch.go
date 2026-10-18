@@ -226,6 +226,12 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	// A team is a handful of agents; a launch-team that names hundreds would start that many CLI processes (an agent token may call
+	// this, #4602). The larger ceiling on live sessions an agent token started is a separate setting.
+	if len(body.Agents) > maxLaunchTeamAgents {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("a team can have at most %d agents per launch", maxLaunchTeamAgents), "code": "too_many_agents", "max": maxLaunchTeamAgents})
+		return
+	}
 	for _, a := range body.Agents {
 		if mcpGiven(a.MCPServers) {
 			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, errMCPNotSupported))
@@ -1668,3 +1674,6 @@ func launchCommand(ag agent.Agent, p agent.LaunchParams) (string, error) {
 	}
 	return agent.WrapWithBundlePath(cmd), nil
 }
+
+// maxLaunchTeamAgents is the most agents one launch-team request may start (#4602).
+const maxLaunchTeamAgents = 32
