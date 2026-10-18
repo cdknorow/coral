@@ -176,8 +176,9 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 }
 
 var (
-	// A menu's footer: Claude Code's "Enter to confirm · Esc to cancel"
-	menuFooterRe = regexp.MustCompile(`(?i)\benter to (confirm|select|continue)\b|\besc to cancel\b`)
+	// A menu's footer: Claude Code's "Enter to confirm · Esc to cancel", Antigravity's "↑/↓ Navigate · enter
+	// Confirm" (#4577)
+	menuFooterRe = regexp.MustCompile(`(?i)\benter to (confirm|select|continue)\b|\besc to cancel\b|↑/↓ navigate|\benter (confirm|select)\b`)
 	// The selected option of an unnumbered menu: its marker, then its label
 	markedLineRe = regexp.MustCompile(`^(\s*)[❯›>]\s+(\S.*?)\s*$`)
 )

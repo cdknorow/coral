@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -101,4 +102,30 @@ func TestParseAgyLoginMenu(t *testing.T) {
 	}
 	assert.False(t, navigatesByArrows("claude"))
 	assert.False(t, navigatesByArrows("codex"))
+}
+
+// agy's trust menu (unnumbered, "↑/↓ Navigate · enter Confirm", its status line below) and its permission menu
+// (numbered), from the 1.3.5 corpus the gate reads (internal/ptymanager/testdata/screens/agy), read as prompts
+// (#4577).
+func TestParseAgyTrustAndPermissionMenus(t *testing.T) {
+	sgr := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	read := func(name string) string {
+		b, err := os.ReadFile("../../ptymanager/testdata/screens/agy/1.3.5/" + name)
+		require.NoError(t, err)
+		return sgr.ReplaceAllString(string(b), "")
+	}
+	trust, ok := parsePromptScreen(read("trust.ansi"))
+	require.True(t, ok, "the trust menu is a prompt")
+	assert.True(t, trust.Unnumbered)
+	assert.Equal(t, []string{"Yes, I trust this folder", "No, exit"}, labels(trust.Options))
+	assert.True(t, trust.Options[0].Selected)
+	assert.Contains(t, trust.Question, "Do you trust the contents of this project?")
+
+	perm, ok := parsePromptScreen(read("permission_menu.ansi"))
+	require.True(t, ok, "the permission menu is a prompt")
+	assert.False(t, perm.Unnumbered)
+	assert.Equal(t, "Run this command?", perm.Question)
+	require.Len(t, perm.Options, 4)
+	assert.Equal(t, "Yes, run command", perm.Options[0].Label)
+	assert.Equal(t, "No, cancel", perm.Options[3].Label)
 }
