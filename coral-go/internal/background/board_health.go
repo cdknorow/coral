@@ -146,7 +146,10 @@ func (m *BoardHealthMonitor) checkProject(ctx context.Context, project string, b
 	m.mu.Unlock()
 }
 
-// composeCheck gathers a board's items and writes its check.
+// composeCheck gathers a board's items and writes its check: what Coral's own rules escalated, idle agents with no
+// work, a reviewer's growing queue, queue problems; what the orchestrator acknowledged left out while unchanged; then
+// the progress since the last check, the Operator's open questions and the roster. Its count is the items plus what
+// the roster calls for attention.
 func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch string, rcpt *board.Subscriber, bySession map[string]AgentInfo) (string, int, error) {
 	now := m.now()
 	subs, err := m.store.ListSubscribers(ctx, project)
@@ -157,30 +160,66 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 	if err != nil {
 		return "", 0, err
 	}
-	// A parked task raises no item (#4175 step 3): it is left out of everything below.
-	var tasks []board.Task
-	parked := map[string]bool{}
-	var backFromPark []int64
+	tasks, parked, backFromPark := m.splitParked(ctx, project, all, now)
+	waits, _ := m.store.ListActiveWaits(ctx, project)
+	waiting := map[string]bool{}
+	for _, w := range waits {
+		waiting[w.SubscriberID] = true
+	}
+
+	items := m.escalationItems(ctx, project, parked, now)
+	reviews, _ := m.store.OpenReviews(ctx, project)
+	reviewers, _ := m.store.Reviewers(ctx, project)
+	idle, agents, idleNoWork := m.idleItems(ctx, subs, bySession, orch, busyAgents(tasks), waiting, now)
+	items = append(items, idle...)
+	items = append(items, reviewItems(reviews, reviewers, parked, idleNoWork)...)
+	// 4. Queue problems (task numbers only).
+	issues, _, _ := taskQueueIssues(tasks)
+	for _, is := range issues {
+		items = append(items, teamhealth.Item{Rank: 4, Agent: "Board", Problem: is, Key: "queue|" + is, State: "shown"})
+	}
+	items = m.dropAcknowledged(ctx, project, items, now)
+
+	m.mu.Lock()
+	since, ok := m.lastCheck[project]
+	m.mu.Unlock()
+	if !ok {
+		since = now.Add(-m.interval)
+	}
+	p, _ := m.store.ProgressSince(ctx, project, since)
+	questions := m.operatorQuestions(ctx, project)
+	roster, attention := m.buildRoster(ctx, rosterInputs{project: project, recipient: rcpt, subs: subs, bySession: bySession, waits: waits, tasks: tasks, now: now})
+	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items, Questions: questions,
+		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts},
+		Parked:   len(parked), BackFromPark: backFromPark, Roster: roster}), len(items) + attention, nil
+}
+
+// splitParked leaves parked tasks out: a parked task raises no item (#4175 step 3). A task whose park ended is back:
+// said once in this check, and its park cleared now; cleared before the check is delivered, so a check that then
+// fails to go out loses this note (a notice only: the task itself is back on the list either way).
+func (m *BoardHealthMonitor) splitParked(ctx context.Context, project string, all []board.Task, now time.Time) (tasks []board.Task, parked map[string]bool, backFromPark []int64) {
+	parked = map[string]bool{}
 	for _, t := range all {
 		if t.Parked(now) {
 			parked[fmt.Sprint(t.ID)] = true
 			continue
 		}
-		// Its end passed: back, said once in this check, and the park cleared now. Cleared before
-		// the check is delivered, so a check that then fails to go out loses this note (a notice
-		// only: the task itself is back on the list either way).
 		if t.ParkedReason != nil {
 			backFromPark = append(backFromPark, t.ID)
 			_, _ = m.store.UnparkTask(ctx, project, t.ID)
 		}
 		tasks = append(tasks, t)
 	}
-	waits, _ := m.store.ListActiveWaits(ctx, project)
-	waiting := map[string]bool{}
-	for _, w := range waits {
-		waiting[w.SubscriberID] = true
+	return tasks, parked, backFromPark
+}
+
+// escalationItems: 1. what Coral's own rules escalated (a claim nudge, a status nudge), with what the agent last
+// said for a status one.
+func (m *BoardHealthMonitor) escalationItems(ctx context.Context, project string, parked map[string]bool, now time.Time) []teamhealth.Item {
+	esc, err := m.store.HealthEscalations(ctx, project)
+	if err != nil {
+		return nil
 	}
-	var items []teamhealth.Item
 	said := func(name string) string {
 		content, _, err := m.store.LastPostBy(ctx, project, name)
 		if err != nil || content == "" {
@@ -188,40 +227,44 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 		}
 		return teamhealth.ShownText(content, nil)
 	}
-
-	// 1. What Coral's own rules escalated.
-	if esc, err := m.store.HealthEscalations(ctx, project); err == nil {
-		for _, e := range esc {
-			if parked[e.Subject] {
-				continue
-			}
-			at, _ := time.Parse("2006-01-02T15:04:05.000Z", e.At)
-			ago := teamhealth.Age(now.Sub(at))
-			key := "escalation|" + e.Rule + "|" + e.Target + "|" + e.Subject
-			switch e.Rule {
-			case ruleClaimNudge:
-				items = append(items, teamhealth.Item{Rank: 1, Agent: teamhealth.Name(e.Target),
-					Problem: fmt.Sprintf("has not claimed #%s after Coral's claim nudges (escalated %s ago)", e.Subject, ago),
-					Suggest: fmt.Sprintf("ask it, or reassign #%s", e.Subject), Key: key, State: e.At})
-			case ruleStatusNudge:
-				items = append(items, teamhealth.Item{Rank: 1, Agent: teamhealth.Name(e.Target),
-					Problem: fmt.Sprintf("silent on #%s since Coral asked for a status (escalated %s ago)", e.Subject, ago),
-					Said:    said(e.Target), Suggest: fmt.Sprintf("check on it, or reassign #%s", e.Subject), Key: key, State: e.At})
-			}
+	var items []teamhealth.Item
+	for _, e := range esc {
+		if parked[e.Subject] {
+			continue
+		}
+		at, _ := time.Parse("2006-01-02T15:04:05.000Z", e.At)
+		ago := teamhealth.Age(now.Sub(at))
+		key := "escalation|" + e.Rule + "|" + e.Target + "|" + e.Subject
+		switch e.Rule {
+		case ruleClaimNudge:
+			items = append(items, teamhealth.Item{Rank: 1, Agent: teamhealth.Name(e.Target),
+				Problem: fmt.Sprintf("has not claimed #%s after Coral's claim nudges (escalated %s ago)", e.Subject, ago),
+				Suggest: fmt.Sprintf("ask it, or reassign #%s", e.Subject), Key: key, State: e.At})
+		case ruleStatusNudge:
+			items = append(items, teamhealth.Item{Rank: 1, Agent: teamhealth.Name(e.Target),
+				Problem: fmt.Sprintf("silent on #%s since Coral asked for a status (escalated %s ago)", e.Subject, ago),
+				Said:    said(e.Target), Suggest: fmt.Sprintf("check on it, or reassign #%s", e.Subject), Key: key, State: e.At})
 		}
 	}
+	return items
+}
 
-	// 2. An agent with nothing in progress and nothing assigned, idle: it needs work.
+// busyAgents: the assignees of a task in progress or pending.
+func busyAgents(tasks []board.Task) map[string]bool {
 	busy := map[string]bool{}
 	for _, t := range tasks {
 		if t.AssignedTo != nil && (t.Status == "in_progress" || t.Status == "pending") {
 			busy[*t.AssignedTo] = true
 		}
 	}
-	reviews, _ := m.store.OpenReviews(ctx, project)
-	reviewers, _ := m.store.Reviewers(ctx, project)
-	agents := 0
-	idleNoWork := map[string]bool{}
+	return busy
+}
+
+// idleItems: 2. a running agent (not the orchestrator) with nothing in progress or assigned, not waiting, idle by
+// its hook events for idleAfter: it needs work. It also counts the running agents, and returns who is idle with no
+// work (for the review rule).
+func (m *BoardHealthMonitor) idleItems(ctx context.Context, subs []board.Subscriber, bySession map[string]AgentInfo, orch string, busy, waiting map[string]bool, now time.Time) (items []teamhealth.Item, agents int, idleNoWork map[string]bool) {
+	idleNoWork = map[string]bool{}
 	for _, sub := range subs {
 		a, live := bySession[sub.SessionName]
 		if !live {
@@ -240,13 +283,18 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 			Problem: fmt.Sprintf("idle %s with nothing in progress or assigned", teamhealth.Age(now.Sub(sig.Since))),
 			Suggest: "assign it the next task", Key: "idle|" + sub.SubscriberID, State: sig.Since.UTC().Format(time.RFC3339)})
 	}
+	return items, agents, idleNoWork
+}
 
-	// 3. A reviewer with three or more reviews waiting while another reviewer is idle.
+// reviewItems: 3. a reviewer with three or more reviews waiting (parked tasks left out) while another reviewer is
+// idle with no work.
+func reviewItems(reviews map[string][]int64, reviewers map[string]bool, parked, idleNoWork map[string]bool) []teamhealth.Item {
 	var names []string
 	for r := range reviews {
 		names = append(names, r)
 	}
 	sort.Strings(names)
+	var items []teamhealth.Item
 	for _, r := range names {
 		var open []int64
 		for _, id := range reviews[r] {
@@ -267,54 +315,48 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 			}
 		}
 	}
+	return items
+}
 
-	// 4. Queue problems (task numbers only).
-	issues, _, _ := taskQueueIssues(tasks)
-	for _, is := range issues {
-		items = append(items, teamhealth.Item{Rank: 4, Agent: "Board", Problem: is, Key: "queue|" + is, State: "shown"})
-	}
-
-	// What the orchestrator acknowledged stays off the list while its state is the same (#4175
-	// step 3): the states shown are recorded, and acknowledged ones left out.
+// dropAcknowledged leaves out what the orchestrator acknowledged while its state is the same (#4175 step 3): the
+// states shown are recorded, acknowledged ones left out, and one whose acknowledgement lapsed is marked back.
+func (m *BoardHealthMonitor) dropAcknowledged(ctx context.Context, project string, items []teamhealth.Item, now time.Time) []teamhealth.Item {
 	states := map[string]string{}
 	for _, it := range items {
 		if it.Key != "" {
 			states[teamhealth.ItemID(it.Key)] = it.State
 		}
 	}
-	if acked, back, err := m.store.NoteHealthItems(ctx, project, states, now); err == nil {
-		kept := items[:0]
-		for _, it := range items {
-			if it.Key == "" || !acked[teamhealth.ItemID(it.Key)] {
-				it.Back = it.Key != "" && back[teamhealth.ItemID(it.Key)]
-				kept = append(kept, it)
-			}
-		}
-		items = kept
+	acked, back, err := m.store.NoteHealthItems(ctx, project, states, now)
+	if err != nil {
+		return items
 	}
+	kept := items[:0]
+	for _, it := range items {
+		if it.Key == "" || !acked[teamhealth.ItemID(it.Key)] {
+			it.Back = it.Key != "" && back[teamhealth.ItemID(it.Key)]
+			kept = append(kept, it)
+		}
+	}
+	return kept
+}
 
-	m.mu.Lock()
-	since, ok := m.lastCheck[project]
-	m.mu.Unlock()
-	if !ok {
-		since = now.Add(-m.interval)
+// operatorQuestions: the Operator's open questions (waits on the Operator), the asker's text shown safely.
+func (m *BoardHealthMonitor) operatorQuestions(ctx context.Context, project string) []teamhealth.Question {
+	qs, err := m.store.ListOperatorQuestions(ctx, project)
+	if err != nil {
+		return nil
 	}
-	p, _ := m.store.ProgressSince(ctx, project, since)
 	var questions []teamhealth.Question
-	if qs, err := m.store.ListOperatorQuestions(ctx, project); err == nil {
-		for _, q := range qs {
-			at, err := time.Parse(time.RFC3339, q.CreatedAt)
-			if err != nil {
-				continue
-			}
-			questions = append(questions, teamhealth.Question{Asker: teamhealth.Name(q.SubscriberID),
-				Text: teamhealth.ShownText(q.Reason, nil), Since: at})
+	for _, q := range qs {
+		at, err := time.Parse(time.RFC3339, q.CreatedAt)
+		if err != nil {
+			continue
 		}
+		questions = append(questions, teamhealth.Question{Asker: teamhealth.Name(q.SubscriberID),
+			Text: teamhealth.ShownText(q.Reason, nil), Since: at})
 	}
-	roster, attention := m.buildRoster(ctx, rosterInputs{project: project, recipient: rcpt, subs: subs, bySession: bySession, waits: waits, tasks: tasks, now: now})
-	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items, Questions: questions,
-		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts},
-		Parked:   len(parked), BackFromPark: backFromPark, Roster: roster}), len(items) + attention, nil
+	return questions
 }
 
 func taskList(ids []int64) string {
