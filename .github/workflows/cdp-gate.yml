@@ -93,7 +93,9 @@ jobs:
         run: |
           set -o pipefail
           # shellcheck disable=SC2086 # ARGS holds the runner's flags
-          node run_cdp_suites.mjs --timeout 180 --keep $ARGS --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          # --fail-on-leak: a suite that leaves the server's settings changed fails its part (exit 5), so a
+          # leak is fixed where it starts instead of breaking a later suite on the same shard (#4849).
+          node run_cdp_suites.mjs --timeout 180 --keep --fail-on-leak $ARGS --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
       - name: collect logs
         if: always()
         run: |
@@ -147,14 +149,14 @@ jobs:
           failed, flaky = by('fail') + by('timeout'), by('flaky')
           passed = len(rows) - len(failed) - len(flaky)
           # The runner's end checks are not suites: the #4354 sandbox (a real agent CLI was
-          # invoked) and a leaked tmux server fail a part with every suite passed, so read
+          # invoked), a leaked tmux server and (with --fail-on-leak) a suite that left settings changed fail a part with every suite passed, so read
           # each part's run.log for them too (a 238/238 count once hid six failed parts).
           ends = []
           for f in [os.path.join(d, 'run.log') for d in dirs if os.path.exists(os.path.join(d, 'run.log'))]:
               part, block = f.split('/')[1], None
               for line in open(f, errors='replace'):
                   line = line.rstrip('\n')
-                  if line.startswith('FAIL (#4354)') or line.startswith('LEAK:'):
+                  if line.startswith('FAIL (#4354)') or line.startswith('LEAK:') or line.startswith('SUITES THAT LEAVE SETTINGS CHANGED'):
                       block = [line]; ends.append((part, block)); continue
                   if block is not None:
                       if not line.strip() or line.startswith('results:'): block = None
