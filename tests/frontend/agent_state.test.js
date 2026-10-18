@@ -225,7 +225,13 @@ async function run() {
         const initialToasts = await ev(TOASTS);
         check('I no toasts for rows that already need input in the first full update (rising edge only)', initialToasts === 0, String(initialToasts));
         await ev(`document.querySelectorAll('.notification-toast').forEach(t => t.remove()); true`);
-        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.working, working: false, waiting_for_input: true, waiting_summary: 'permission?' }); await until(`${TOASTS} >= 1`, 'the needs-input toast');
+        // Pin the rising edge (#4861): put ID.working explicitly not-waiting first, so prevWaitingState is false
+        // whatever an earlier scene left, then clear the toast that baseline never raises. Wait for exactly one
+        // toast to be in the DOM — not a soft ">= 1" wait that, if it ever times out, lets the next line read 0.
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.working, working: true, waiting_for_input: false }); await nextFrame();
+        await ev(`document.querySelectorAll('.notification-toast').forEach(t => t.remove()); true`);
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.working, working: false, waiting_for_input: true, waiting_summary: 'permission?' });
+        await waitFor(`${TOASTS} === 1`, 'exactly one needs-input toast', { timeout: 10000 });
         check('I rising edge to Needs input raises exactly one toast', (await ev(TOASTS)) === 1, String(await ev(TOASTS)));
         await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.working, waiting_for_input: true }); await nextFrame();
         check('I a repeated tick in the same state raises no further toast', (await ev(TOASTS)) === 1, String(await ev(TOASTS)));
