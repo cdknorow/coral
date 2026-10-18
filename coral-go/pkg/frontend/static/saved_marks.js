@@ -5,6 +5,7 @@ import { state } from './state.js';
 import { importOnce } from './import_once.js';
 import { showToast, escapeAttr } from './utils.js';
 import { isCloud, sessionServer, normServer } from './server_base.js';
+import { onBuilt } from './lazy_dom.js';
 
 // The bookmark is an inline SVG (the shape the Team Artifacts' Keep button uses), filled when saved: the Material Icons subset has no bookmark.
 export const BOOKMARK_SVG = '<svg class="bm" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
@@ -97,10 +98,15 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 
 // The top bar's Saved button shows how many are open (#saved-btn .saved-count); refreshed at start and whenever the list changes.
 let countTimer = 0;
+let savedCount = 0;
+function paintCount(badge) { badge.textContent = savedCount > 0 ? (savedCount > 99 ? '99+' : String(savedCount)) : ''; badge.hidden = !(savedCount > 0); }
+// The settings menu is built on its first open (#4500), after the count may have arrived: paint it then.
+onBuilt('top-bar-settings-menu', menu => menu.querySelectorAll('.saved-menu-item .saved-count').forEach(paintCount));
 export function setSavedCount(n) {
     const b = document.getElementById('saved-btn');
     if (!b) return;
-    for (const badge of document.querySelectorAll('#saved-btn .saved-count, .saved-menu-item .saved-count')) { badge.textContent = n > 0 ? (n > 99 ? '99+' : String(n)) : ''; badge.hidden = !(n > 0); }
+    savedCount = n;
+    document.querySelectorAll('#saved-btn .saved-count, .saved-menu-item .saved-count').forEach(paintCount);
     b.setAttribute('aria-label', n > 0 ? `Saved for later, ${n} open` : 'Saved for later');
     b.classList.toggle('on', n > 0);
     const tc = document.getElementById('saved-tab-count');

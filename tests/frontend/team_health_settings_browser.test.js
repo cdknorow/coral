@@ -33,7 +33,7 @@ const { connect } = require('./agent_view_harness');
         await open();
 
         // 1. the tab: named, in the tablist, panel linked, roving order includes it
-        const tab = await ev(`(() => { const t = document.querySelector('[data-settings-tab=health]'); const p = document.getElementById(t.getAttribute('aria-controls')); return { role: t.getAttribute('role'), text: t.textContent, ctl: !!p, panelRole: p.getAttribute('role'), label: p.getAttribute('aria-labelledby'), tabIndex: t.tabIndex, hidden: p.hidden, order: [...document.querySelectorAll('[role=tablist] [role=tab]')].map(x => x.dataset.settingsTab) }; })()`);
+        const tab = await ev(`(() => { const t = document.querySelector('[data-settings-tab=health]'); const p = document.getElementById(t.getAttribute('aria-controls')); return { role: t.getAttribute('role'), text: t.textContent, ctl: !!p, panelRole: p.getAttribute('role'), label: p.getAttribute('aria-labelledby'), tabIndex: t.tabIndex, hidden: p.hidden, order: [...document.querySelectorAll('[role=tablist] [role=tab][data-settings-tab]')].map(x => x.dataset.settingsTab) }; })()`);
         assert.deepEqual(tab, { role: 'tab', text: 'Health check', ctl: true, panelRole: 'tabpanel', label: 'team-settings-tab-health', tabIndex: -1, hidden: true, order: ['workflow', 'prompts', 'global', 'health'] });
         await ev(`document.querySelector('[data-settings-tab=global]').focus(); true`);
         await key('ArrowRight', 'ArrowRight', 39);

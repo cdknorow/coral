@@ -302,6 +302,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         assert.equal(big.btn, 'none', 'no top bar button at large text'); assert.ok(big.selW >= 100, 'the view selector keeps its room: ' + JSON.stringify(big));
         await ev(`document.querySelector('[data-on-click="m-toggle-top-bar-settings"]').click(); true`);
         await waitFor(`getComputedStyle(document.getElementById('top-bar-settings-menu')).display !== 'none'`, 'the settings menu', 4000);
+        await waitFor(`document.querySelector('.saved-menu-item .saved-count').textContent === '2'`, 'the menu entry to show the count', 8000, `JSON.stringify({ menu: document.querySelector('.saved-menu-item .saved-count').textContent, bar: document.querySelector('#saved-btn .saved-count').textContent })`);
         const mi = await ev(`(() => { const e = document.querySelector('.saved-menu-item'); const r = e.getBoundingClientRect(); return { shown: getComputedStyle(e).display !== 'none' && r.width > 0, h: Math.round(r.height), count: e.querySelector('.saved-count').textContent, text: e.textContent.trim().replace(/\\s+/g, ' ') }; })()`);
         assert.ok(mi.shown && mi.h >= 43 && mi.count === '2' && /^Saved for later/.test(mi.text), 'the menu entry has the count and is a 44 px target: ' + JSON.stringify(mi));
         await ev(`document.querySelector('.saved-menu-item').click(); true`);
