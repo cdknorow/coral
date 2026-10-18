@@ -326,3 +326,21 @@ func TestRelayedMessageFromBoardIsAPlainLabel(t *testing.T) {
 	code, out := e.relay("auth", "", body)
 	assert.Equal(t, http.StatusOK, code, out)
 }
+
+// #4901: the attachment lines of a cross-team message are typed into the receiving Orchestrator's terminal, so a stored upload name (one made
+// before uploads were checked) is cleaned of control and formatting characters there too.
+func TestAttachmentLinesCarryOnlyPlainNames(t *testing.T) {
+	id := strings.Repeat("a", 64)
+	out := attachmentLines([]attachedArtifact{
+		{ID: id, Name: "report\x1b[2J\x07.md"}, {ID: id, Name: "a\u0085b\u2028c\u202ed.txt"}, {ID: id, Name: "\x1b\x1b"}, {ID: id, Name: "bad\xffutf8.txt"}, {ID: id, Name: "fine 🙂 (v2).md"},
+	})
+	for _, r := range out {
+		assert.False(t, (r < 0x20 && r != '\n') || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == '\u2028' || r == '\u2029' || r == '\u202e', "no control or formatting character in %q", out)
+	}
+	assert.Contains(t, out, "- report[2J.md: coral://artifacts/"+id)
+	assert.Contains(t, out, "- abcd.txt: ")
+	assert.Contains(t, out, "- artifact: ", "a name of only control characters is the default")
+	assert.Contains(t, out, "- badutf8.txt: ")
+	assert.Contains(t, out, "- fine 🙂 (v2).md: ")
+	assert.Equal(t, 5, strings.Count(out, "\n- "), "one line each")
+}

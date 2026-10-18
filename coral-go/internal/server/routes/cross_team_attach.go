@@ -245,11 +245,9 @@ func attachmentLines(atts []attachedArtifact) string {
 	var b strings.Builder
 	b.WriteString("\n\nAttached (in Team Artifacts):")
 	for _, a := range atts {
-		name := strings.TrimSpace(a.Name)
-		if name == "" {
-			name = "artifact"
-		}
-		fmt.Fprintf(&b, "\n- %s: coral://artifacts/%s", name, a.ID)
+		// A name stored before uploads were checked (#4901) may hold a control or formatting character; this line is typed into the receiving
+		// Orchestrator's terminal, so it is cleaned here as well, as the name sent to the hub already is.
+		fmt.Fprintf(&b, "\n- %s: coral://artifacts/%s", relayFileName(a.Name), a.ID)
 	}
 	return b.String()
 }
