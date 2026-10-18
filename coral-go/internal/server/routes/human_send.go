@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"errors"
+	"regexp"
 	"sync"
 	"time"
 
@@ -33,6 +34,13 @@ import (
 // that it is refused untyped (409 agent_busy), and a cancelled request gives up its place. A message left in the box
 // unsubmitted is remembered by its mark (a hash, its length and at most 200 characters, not the message): while it is still there, a different message is refused untyped (409 box_not_empty)
 // rather than typed after it; the same message gets Enter, as above.
+// A slash command (/compact, /clear, /model: one line, a slash and a command name) is the CLI's own: it sends no
+// UserPromptSubmit, and its Enter often takes it out of the box before the screen is read, so the rule above said
+// "not confirmed" for a command that ran (#4705). For a command any event from the agent since it was typed (a
+// /clear's SessionStart) counts, as does a menu it opens (/model's picker); with neither, a command no longer in the
+// box is sent once the wait for an event is over, from an agent that has started (one still starting with its box
+// empty gets it typed again, then "not confirmed", as a message does). A command still in the box after the Enters
+// is "not submitted", as a message is.
 
 var (
 	// How long a message waits for a starting agent's input box.
@@ -221,6 +229,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	} else if err := send(); err != nil {
 		return err
 	}
+	command := slashCommandRe.MatchString(text)
 	extra, retyped := 0, 0
 	typedAt, enteredAt := time.Now(), time.Now()
 	for {
@@ -230,6 +239,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 		if h.promptSubmittedAfter(ctx, sessionID, base) {
 			return nil
 		}
+		if command && h.eventAfter(ctx, sessionID, base, func(string) bool { return true }) {
+			return nil // the agent did something since: the command ran (a /clear's SessionStart)
+		}
 		screen, ok := h.humanScreen(ctx, name, agentType, sessionID)
 		if !ok {
 			return nil // the screen can no longer be read: as for a terminal that never could
@@ -237,6 +249,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 		if !ptymanager.TextInInputBox(screen, text) {
 			if seen {
 				return nil // it was in the box and has left it: submitted (or queued behind the agent's work)
+			}
+			if open, _ := ptymanager.PromptOnScreen(screen); command && open {
+				return nil // the command opened its own menu (/model's picker): it ran
 			}
 			if time.Since(typedAt) < humanSendConfirmWait {
 				continue
@@ -248,6 +263,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 				retyped++
 				typedAt, enteredAt = time.Now(), time.Now()
 				continue
+			}
+			if command && !h.agentHasNoEvents(ctx, sessionID) {
+				return nil // a CLI's own command sends no hook: out of the box, with nothing against it, it ran
 			}
 			return errSendNotConfirmed
 		}
@@ -272,6 +290,10 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	}
 }
 
+// slashCommandRe is a CLI command: a slash, a name, then nothing or arguments on the same line ("/tmp/x is
+// missing" is a message: its first word has a second slash).
+var slashCommandRe = regexp.MustCompile(`^/[A-Za-z][A-Za-z0-9_:.-]*(?:[ \t][^\n]*)?$`)
+
 // latestEventID is the id of the session's newest event (0 with none): a later prompt_submit is this send's.
 func (h *SessionsHandler) latestEventID(ctx context.Context, sessionID string) int64 {
 	if sessionID == "" || h.ts == nil {
@@ -286,6 +308,11 @@ func (h *SessionsHandler) latestEventID(ctx context.Context, sessionID string) i
 
 // promptSubmittedAfter reports whether the agent recorded taking a prompt (prompt_submit) since the event base.
 func (h *SessionsHandler) promptSubmittedAfter(ctx context.Context, sessionID string, base int64) bool {
+	return h.eventAfter(ctx, sessionID, base, func(typ string) bool { return typ == "prompt_submit" })
+}
+
+// eventAfter reports whether the agent recorded an event that match accepts since the event base.
+func (h *SessionsHandler) eventAfter(ctx context.Context, sessionID string, base int64, match func(eventType string) bool) bool {
 	if sessionID == "" || h.ts == nil {
 		return false
 	}
@@ -294,7 +321,7 @@ func (h *SessionsHandler) promptSubmittedAfter(ctx context.Context, sessionID st
 		return false
 	}
 	for _, e := range events {
-		if e.ID > base && e.EventType == "prompt_submit" {
+		if e.ID > base && match(e.EventType) {
 			return true
 		}
 	}

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -83,6 +85,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		term   *agentTerm
 		send   func(string) *httptest.ResponseRecorder
 		submit func()
+		event  func(typ string) // any event of the agent's (a /clear's SessionStart records session_reset)
 	}
 	setup := func(t *testing.T, agentType string, withEvent bool) harness {
 		_, handler, mock, ss := setupSessionsTestServer(t)
@@ -106,7 +109,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		})
 		r := chi.NewRouter()
 		r.Post("/api/sessions/live/{name}/send", handler.Send)
-		return harness{term: term, submit: func() { event("prompt_submit") }, send: func(text string) *httptest.ResponseRecorder {
+		return harness{term: term, submit: func() { event("prompt_submit") }, event: event, send: func(text string) *httptest.ResponseRecorder {
 			b, _ := json.Marshal(map[string]any{"command": text, "agent_type": agentType, "session_id": sid})
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/send", bytes.NewReader(b))
 			req = req.WithContext(context.WithValue(req.Context(), callerKindKey{}, callerDashCookie))
@@ -336,6 +339,126 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		_, enters := h.term.counts()
 		assert.Zero(t, enters)
 	})
+
+	// Slash commands (#4705): the CLI's own, with no UserPromptSubmit; its Enter takes the command out of the box
+	// before the screen is read. Stand-in screens from the real ready captures.
+	claude := func(inBox string) string {
+		ready := claudeUnnumbered(t, "ready.txt")
+		const placeholder = "❯\u00a0Try \"fix typecheck errors\"" // Claude draws a no-break space after its ❯
+		require.Contains(t, ready, placeholder)
+		return strings.Replace(ready, placeholder, "❯\u00a0"+inBox, 1)
+	}
+	agy := func(t *testing.T, inBox string) string {
+		b, err := os.ReadFile("../../ptymanager/testdata/screens/agy/1.3.5/idle.ansi")
+		require.NoError(t, err)
+		s := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(string(b), "")
+		box := regexp.MustCompile(`(?m)^>[ \t]*$`)
+		require.True(t, box.MatchString(s), "agy's empty input box")
+		return box.ReplaceAllLiteralString(s, "> "+inBox)
+	}
+	compacting := func(screen string) string { // working on it: a status line above the (empty) box
+		return strings.Replace(screen, "\n\n", "\n\n✻ Compacting conversation… (esc to interrupt)\n", 1)
+	}
+	const picker = "\n Select model\n Switch between models. Applies to this session.\n\n ❯ 1. Default (recommended)\n   2. Sonnet\n   3. Haiku\n\n Enter to confirm · Esc to exit\n"
+	for _, c := range []struct {
+		name, agentType string
+		ready           func(t *testing.T, inBox string) string
+	}{
+		{"claude", "claude", func(_ *testing.T, inBox string) string { return claude(inBox) }},
+		{"codex", "codex", codexReady},
+		{"agy", "agy", agy},
+	} {
+		t.Run(c.name+": /compact runs with no event and leaves the box at once: sent", func(t *testing.T) {
+			h := setup(t, c.agentType, true)
+			h.term.show(c.ready(t, ""))
+			h.term.onType = func(string) { h.term.show(compacting(c.ready(t, ""))) }
+			rec := h.send("/compact")
+			assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			typed, enters := h.term.counts()
+			assert.Equal(t, []string{"/compact"}, typed, "typed once")
+			assert.Zero(t, enters, "no Enter more")
+		})
+		t.Run(c.name+": /clear: its SessionStart is the evidence, at once", func(t *testing.T) {
+			h := setup(t, c.agentType, true)
+			humanSendConfirmWait = 2 * time.Second // what a command with no evidence waits: this one doesn't
+			h.term.show(c.ready(t, ""))
+			h.term.onType = func(string) { h.event("session_reset") }
+			start := time.Now()
+			rec := h.send("/clear")
+			assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			assert.Less(t, time.Since(start), time.Second, "confirmed by the event, not by the end of the wait")
+			typed, enters := h.term.counts()
+			assert.Equal(t, []string{"/clear"}, typed)
+			assert.Zero(t, enters)
+		})
+		t.Run(c.name+": /model opens its picker: sent at once, and no Enter into the picker", func(t *testing.T) {
+			h := setup(t, c.agentType, true)
+			humanSendConfirmWait = 2 * time.Second
+			h.term.show(c.ready(t, ""))
+			h.term.onType = func(string) { h.term.show(picker) }
+			start := time.Now()
+			rec := h.send("/model")
+			assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			assert.Less(t, time.Since(start), time.Second, "confirmed by the picker, not by the end of the wait")
+			typed, enters := h.term.counts()
+			assert.Equal(t, []string{"/model"}, typed)
+			assert.Zero(t, enters, "an Enter would pick a model")
+		})
+		t.Run(c.name+": a command left in the box: not submitted, as a message", func(t *testing.T) {
+			h := setup(t, c.agentType, true)
+			h.term.show(c.ready(t, ""))
+			h.term.onType = func(text string) { h.term.show(c.ready(t, text)) }
+			rec := h.send("/compact")
+			assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+			assert.Equal(t, "not_submitted", code(rec))
+			_, enters := h.term.counts()
+			assert.Equal(t, humanSendExtraEnters, enters)
+		})
+	}
+	t.Run("a command to an agent still starting whose keystrokes are lost: typed again, then not confirmed", func(t *testing.T) {
+		h := setup(t, "codex", false)
+		h.term.show(codexReady(t, ""))
+		rec := h.send("/compact")
+		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		assert.Equal(t, "not_confirmed", code(rec))
+		typed, enters := h.term.counts()
+		assert.Len(t, typed, 1+humanSendRetypes)
+		assert.Zero(t, enters)
+	})
+	t.Run("a message that starts with a path is a message: no evidence, not confirmed", func(t *testing.T) {
+		h := setup(t, "codex", true)
+		h.term.show(codexReady(t, ""))
+		rec := h.send("/tmp/build.log is missing")
+		assert.Equal(t, http.StatusConflict, rec.Code)
+		assert.Equal(t, "not_confirmed", code(rec))
+	})
+	t.Run("a menu after a message doesn't confirm it (the message may not have opened it)", func(t *testing.T) {
+		h := setup(t, "codex", true)
+		h.term.show(codexReady(t, ""))
+		h.term.onType = func(string) { h.term.show(picker) }
+		rec := h.send("hello")
+		assert.Equal(t, http.StatusConflict, rec.Code)
+		assert.Equal(t, "not_confirmed", code(rec))
+	})
+	t.Run("a message's own events other than prompt_submit don't confirm it", func(t *testing.T) {
+		h := setup(t, "codex", true)
+		h.term.show(codexReady(t, ""))
+		h.term.onType = func(string) { h.event("tool_use") }
+		rec := h.send("hello")
+		assert.Equal(t, http.StatusConflict, rec.Code)
+		assert.Equal(t, "not_confirmed", code(rec))
+	})
+}
+
+// A slash command is one line: a slash, a name, then nothing or its arguments (#4705).
+func TestSlashCommandRe(t *testing.T) {
+	for text, want := range map[string]bool{
+		"/compact": true, "/clear": true, "/model": true, "/model opus": true, "/review-pr 12": true, "/mcp:tool x": true,
+		"/tmp/build.log is missing": false, "/": false, "/ compact": false, "//compact": false, "compact": false,
+		" /compact": false, "/compact\nand more": false, "/model opus\nand more": false, "/9lives": false, "": false,
+	} {
+		assert.Equal(t, want, slashCommandRe.MatchString(text), "%q", text)
+	}
 }
 
 // The gate bounds the messages waiting for one agent and in all, and a cancelled wait gives up its place (#4587).
