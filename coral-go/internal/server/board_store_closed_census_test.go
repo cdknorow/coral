@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,23 +20,22 @@ import (
 // newTestServer or registers a Server close, unless it is the one test whose construction is meant
 // to fail (no Server is returned, so there is nothing to close).
 func TestEveryServerTestClosesItsBoardStore(t *testing.T) {
-	// The constructor by its own name, not httptest.NewServer or a router's New.
-	constructs := regexp.MustCompile(`\bNewWithKey\(|\bmustServer\(New|=\s*NewServer\(cfg`)
-	// A registration that ends the server: newTestServer (which does t.Cleanup(srv.Close)), or a
-	// direct srv/s.Close as a cleanup value or call.
-	closes := regexp.MustCompile(`\bnewTestServer\(|[a-zA-Z0-9_]*srv[0-9]*\.Close\b|\bs\.Close\b|Cleanup\(srv`)
-	// The only test whose construction is designed to return an error (srv is nil): #4157's api-key
-	// error. It asserts srv == nil, so there is no Server to close; its sessions.db is closed by the
-	// test, and the constructor closes the board store itself on that error path.
+	// A site that builds a Server directly: srv := mustServer(NewWithKey(...)), or NewServer(cfg...). The variable is the one to close.
+	construct := regexp.MustCompile(`(\w+)\s*,?\s*(?:err)?\s*:?=\s*(?:mustServer\()?(?:NewWithKey|NewServer)\(`)
+	// The only test whose construction is designed to return an error (srv is nil): #4157's api-key error. It asserts srv == nil, so
+	// there is no Server to close; its sessions.db is closed by the test, and the constructor closes the board store itself on that
+	// error path.
 	allow := map[string]bool{
-		"keystore_error_test.go": true, // NewWithKey returns an error; srv is nil
-		"test_server_test.go":    true, // defines newTestServer, the closer
+		"keystore_error_test.go":            true, // NewWithKey returns an error; srv is nil
+		"test_server_test.go":               true, // defines newTestServer, the closer
+		"board_store_closed_census_test.go": true, // this file: its comments and patterns name the constructors
 	}
 	files, err := filepath.Glob("*_test.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var bad []string
+	sites := 0
 	for _, f := range files {
 		if allow[f] {
 			continue
@@ -44,12 +44,26 @@ func TestEveryServerTestClosesItsBoardStore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s := string(src)
-		if constructs.MatchString(s) && !closes.MatchString(s) {
-			bad = append(bad, f)
+		lines := strings.Split(string(src), "\n")
+		for i, line := range lines {
+			m := construct.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			sites++
+			// Each construction site registers its own server's close within the next few lines (t.Cleanup(srv.Close) after
+			// t.TempDir, so it runs first by LIFO). A file-wide search let a second server in one test go unclosed behind the first's.
+			closer := regexp.MustCompile(`Cleanup\(` + regexp.QuoteMeta(m[1]) + `\.Close\b`)
+			end := min(i+5, len(lines))
+			if !closer.MatchString(strings.Join(lines[i+1:end], "\n")) {
+				bad = append(bad, fmt.Sprintf("%s:%d (%s)", f, i+1, m[1]))
+			}
 		}
 	}
+	if sites < 6 {
+		t.Fatalf("the census found %d construction sites, want the 7 or so that exist: its pattern no longer sees how a Server is built", sites)
+	}
 	if len(bad) > 0 {
-		t.Errorf("these server tests build a Server but never close it, so its board database is still open when t.TempDir is removed (Windows fails the cleanup, #4862); route them through newTestServer or add t.Cleanup(srv.Close):\n%s", strings.Join(bad, "\n"))
+		t.Errorf("these server tests build a Server and do not register its Close right after, so its board database is still open when t.TempDir is removed (Windows fails the cleanup, #4862); route them through newTestServer or add t.Cleanup(srv.Close) (after t.TempDir, so it runs first): %s", strings.Join(bad, ", "))
 	}
 }
