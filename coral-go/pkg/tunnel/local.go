@@ -557,7 +557,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		return
 	}
 	lm := l.lim.get(l.HubLimits)
-	class := classify(h.Kind, dec)
+	class := classify(h.Kind, dec, h.Query)
 	release, perUser, ok := lm.acquire(class, h.HubUser, l.limits())
 	if !ok {
 		lm.refused(class, dec, perUser)

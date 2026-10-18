@@ -3,6 +3,7 @@ package tunnel
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sync"
 	"sync/atomic"
@@ -131,16 +132,35 @@ var (
 	searchRoute = regexp.MustCompile(`^(/api/sessions/history/search|/api/sessions/live/[^/]+/(history/search|search-files)|/api/board/[^/]+/messages/(all|search)|/api/token-usage(/.*)?)$`)
 )
 
+// eventsRoute is an agent's events (live) or a session's (history): a plain list is cheap (a limit, SQL filters), but with q the
+// handler scans up to 200,000 events through the redactor, about 5 s of CPU (#4745, #4779).
+var eventsRoute = regexp.MustCompile(`^/api/sessions/(history|live)/[^/]+/events$`)
+
 // classify puts a stream in its pool: every WebSocket and the board's long polls are long-lived,
-// the search and full-history routes cost more, the rest is general.
-func classify(kind Kind, decodedPath string) requestClass {
+// the search and full-history routes cost more, the rest is general. rawQuery is the request's query string
+// (already validated): the events routes are a search only when they carry a non-empty q.
+func classify(kind Kind, decodedPath, rawQuery string) requestClass {
 	switch {
 	case kind == KindWS || longRoute.MatchString(decodedPath):
 		return classLong
 	case searchRoute.MatchString(decodedPath):
 		return classSearch
+	case eventsRoute.MatchString(decodedPath) && hasSearchText(rawQuery):
+		return classSearch
 	}
 	return classGeneral
+}
+
+// hasSearchText reports whether the query string has a q with a value (a repeated q counts if any is set: the
+// handler refuses it, but it is not a cheap request to answer first).
+func hasSearchText(rawQuery string) bool {
+	vals, _ := url.ParseQuery(rawQuery) // the pairs it could read: a bad escape drops that pair only
+	for _, v := range vals["q"] {
+		if v != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // poolsOf lists the pools a class takes a slot in.

@@ -210,9 +210,36 @@ func TestClassify(t *testing.T) {
 		"/api/sessions/live":                         classGeneral,
 		"/api/board/p/waits":                         classGeneral,
 	} {
-		assert.Equal(t, want, classify(KindHTTP, p), p)
+		assert.Equal(t, want, classify(KindHTTP, p, ""), p)
 	}
-	assert.Equal(t, classLong, classify(KindWS, "/ws/terminal/x"))
+	assert.Equal(t, classLong, classify(KindWS, "/ws/terminal/x", ""))
+}
+
+// #4786 (Backend's catch): the events routes are a search only with a q: a q search scans up to 200,000 events through the
+// redactor (about 5 s of CPU), while the plain list the Activity timeline and History fire is a limit and SQL filters.
+func TestClassifyEventsSearchNeedsAQuery(t *testing.T) {
+	for _, c := range []struct {
+		path, query string
+		want        requestClass
+	}{
+		{"/api/sessions/live/claude-x/events", "limit=50&session_id=abc", classGeneral},
+		{"/api/sessions/live/claude-x/events", "", classGeneral},
+		{"/api/sessions/live/claude-x/events", "q=x", classSearch},
+		{"/api/sessions/live/claude-x/events", "type=tool_use", classGeneral},
+		{"/api/sessions/live/claude-x/events", "q=", classGeneral},
+		{"/api/sessions/live/claude-x/events", "limit=5&q=", classGeneral},
+		{"/api/sessions/live/claude-x/events", "q=&q=x", classSearch},
+		{"/api/sessions/live/claude-x/events", "Q=x", classGeneral},
+		{"/api/sessions/live/claude-x/events", "q=%zz", classGeneral},
+		{"/api/sessions/history/sid-1/events", "limit=200", classGeneral},
+		{"/api/sessions/history/sid-1/events", "q=parser&sort=oldest", classSearch},
+		{"/api/sessions/history/sid-1/events", "type=notification", classGeneral},
+		{"/api/sessions/live/claude-x/events/counts", "q=x", classGeneral},
+		{"/api/sessions/history/sid-1/git", "q=x", classGeneral},
+		{"/api/sessions/live/claude-x/events/x", "q=x", classGeneral},
+	} {
+		assert.Equal(t, c.want, classify(KindHTTP, c.path, c.query), c.path+"?"+c.query)
+	}
 }
 
 // Security's SHOULD 1 on #3624: the deadline starts once the whole request has been sent, so a
