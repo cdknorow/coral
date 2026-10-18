@@ -18,7 +18,7 @@ func strconvQuote(s string) string { return strconv.Quote(strings.TrimSpace(s)) 
 
 // identityFields are the request fields, in a JSON body or the query string, that
 // name a board participant (#3376).
-var identityFields = []string{"subscriber_id", "session_id", "job_title", "assignee", "as", "from", "sender", "target", "created_by"}
+var identityFields = []string{"subscriber_id", "session_id", "session_name", "job_title", "assignee", "as", "from", "sender", "target", "created_by"}
 
 // selfIdentityFields are the fields by which a request says who it is from.
 var selfIdentityFields = map[string]bool{"subscriber_id": true, "session_id": true, "job_title": true, "as": true, "from": true, "sender": true, "created_by": true}

@@ -37,6 +37,8 @@ func TestRejectBadIdentities(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, do("GET", "/api/board/p/messages?"+f+"="+url.QueryEscape("a\nb"), ""), f)
 	}
 	assert.Equal(t, http.StatusBadRequest, do("POST", "/api/agent/tasks/claim", `{"session_id":"x‮y"}`))
+	assert.Equal(t, http.StatusBadRequest, do("POST", "/api/board/p/subscribe", `{"subscriber_id":"w","session_name":"claude-1\nrm -rf /tmp/x"}`), "session_name is stored in the subscription (#4780)")
+	assert.Equal(t, http.StatusOK, do("POST", "/api/board/p/subscribe", `{"subscriber_id":"w","session_name":"claude-00000006-3864-4864-8864-000000000006"}`), "a real session name passes")
 	assert.Equal(t, http.StatusBadRequest, do("PATCH", "/api/board/p/tasks/1", `{"assignee":"a\rb"}`))
 
 	body := `{"subscriber_id":"👩‍💻 Backend Dev","content":"line one\nline two"}`
