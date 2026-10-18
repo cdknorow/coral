@@ -52,8 +52,8 @@
 // results.json (path printed at the end) has every suite with its status and every attempt (with the
 // log of the Coral server it ran against); a failed attempt keeps its complete output, untruncated.
 //
-// --part K/N runs one Nth of the default-mode suites: the K-th of every N in name order (1 <= K <= N), so N
-// runs with K = 1..N cover each suite exactly once (CI's matrix, cdp-gate.yml). A part runs no sequences and no
+// --part K/N runs one Nth of the default-mode suites (1 <= K <= N): the N parts have about equal recorded time in
+// suite_durations.json (partsByDuration in suite_order.mjs), so N runs with K = 1..N cover each suite exactly once (CI's matrix, cdp-gate.yml). A part runs no sequences and no
 // strict phase: those run as their own parts (--sequences, --strict). --results-out FILE also writes results.json
 // there (the run's folder is removed when everything passes), for CI to upload and summarize.
 //
@@ -83,7 +83,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifySuites, problems } from './suites.mjs';
-import { loadDurations, orderLongestFirst } from './suite_order.mjs';
+import { loadDurations, orderLongestFirst, partsByDuration } from './suite_order.mjs';
 import { failingOutput } from './failing_output.mjs';
 
 // Linux: the run goes in a private network namespace with only loopback (#3466). Chrome cancels
@@ -503,12 +503,13 @@ try {
 console.log('');
 
 for (const t of STRICT_SUITES) if (!suites.cdp.includes(t)) { console.error(`STRICT_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
-let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : [...suites.cdp, ...suites.server])
-  .filter(f => !only || only.split(',').some(o => f.includes(o))).sort()
-  .filter((f, i) => !part || i % part.n === part.k - 1);
 // Longest first, from the durations of a previous run (suite_durations.json; update_suite_durations.mjs writes it): shards take the next
 // suite from one queue, and a long suite left to the end of an alphabetical queue would leave the other shards idle (#3916).
 const suiteDurations = loadDurations(path.join(here, 'suite_durations.json'));
+let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : [...suites.cdp, ...suites.server])
+  .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
+// --part K/N: the parts have about equal recorded time, not every Nth name (#4605: by name, the six CI parts ran 152 to 272 s of suites).
+if (part) tests = partsByDuration(tests, suiteDurations, part.n)[part.k - 1];
 tests = orderLongestFirst(tests, suiteDurations);
 if (Object.keys(suiteDurations).length) console.log(`queue: longest first (${tests.filter(t => typeof suiteDurations[t] === 'number').length} of ${tests.length} suites have a recorded duration in suite_durations.json)`);
 // The strict phase's results are named 'strict: <suite>' (the default-mode run of a suite is separate).

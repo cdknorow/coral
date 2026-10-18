@@ -1,11 +1,11 @@
-// The CDP runner's queue order (#3916): longest first from recorded durations; a suite with no recorded duration counts as the median; ties,
+// The CDP runner's queue order (#3916): longest first from recorded durations; CI's parts of about equal recorded time (#4605); a suite with no recorded duration counts as the median; ties,
 // and a missing or broken durations file, keep alphabetical order; durations come from a results.json's passing first attempts.
 //   node suite_order.test.mjs
 import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadDurations, orderLongestFirst, durationsFromResults } from './suite_order.mjs';
+import { loadDurations, orderLongestFirst, durationsFromResults, partsByDuration } from './suite_order.mjs';
 
 const tests = ['a.test.js', 'b.test.js', 'c.test.js', 'd.test.js', 'e.test.js', 'f.test.js'];
 assert.deepEqual(orderLongestFirst(tests, {}), tests, 'no durations: alphabetical');
@@ -38,4 +38,27 @@ assert.deepEqual(durationsFromResults([
 ]), { 'a.test.js': 12.3 }, 'main-queue passing first attempts only, one decimal');
 assert.deepEqual(durationsFromResults({ results: [{ test: 'z.test.js', attempts: [{ status: 'pass', secs: '2' }] }] }), { 'z.test.js': 2 }, 'a { results } wrapper works');
 assert.deepEqual(durationsFromResults(null), {});
+
+// CI's --part K/N (#4605): every suite in exactly one part, parts of about equal time, the same split on every call.
+assert.deepEqual(partsByDuration(tests, {}, 3), [['a.test.js', 'd.test.js'], ['b.test.js', 'e.test.js'], ['c.test.js', 'f.test.js']],
+    'no durations: the K-th of every N in name order, as before');
+// e (20) to part 1, b (9) to part 2, c (4) to part 3, d (4) to part 3 (4 < 9), f (2) to part 3 (8 < 9), a (1) to part 2 (9 < 10).
+assert.deepEqual(partsByDuration(tests, { 'a.test.js': 1, 'b.test.js': 9, 'c.test.js': 4, 'd.test.js': 4, 'e.test.js': 20, 'f.test.js': 2 }, 3),
+    [['e.test.js'], ['b.test.js', 'a.test.js'], ['c.test.js', 'd.test.js', 'f.test.js']], 'longest first into the lightest part');
+// c is unrecorded and counts as the median (4), exactly as in the queue order.
+assert.deepEqual(partsByDuration(tests, { 'a.test.js': 1, 'b.test.js': 9, 'd.test.js': 4, 'e.test.js': 20, 'f.test.js': 2 }, 3),
+    [['e.test.js'], ['b.test.js', 'a.test.js'], ['c.test.js', 'd.test.js', 'f.test.js']], 'an unrecorded suite counts as the median');
+{
+    // A realistic spread: 290 suites, 6 parts. Each suite once, and no part more than 5% over the even share.
+    const many = Array.from({ length: 290 }, (_, i) => `s${String(i).padStart(3, '0')}.test.js`);
+    const durs = {}; many.forEach((t, i) => { if (i % 7) durs[t] = 0.5 + ((i * 37) % 97) / 3; });
+    const parts = partsByDuration(many, durs, 6);
+    assert.deepEqual(parts.flat().sort(), many, 'every suite in exactly one part');
+    const known = Object.values(durs).sort((a, b) => a - b), med = known[Math.floor(known.length / 2)];
+    const sum = p => p.reduce((s, t) => s + (t in durs ? durs[t] : med), 0);
+    const share = parts.reduce((s, p) => s + sum(p), 0) / 6;
+    for (const p of parts) assert.ok(sum(p) <= share * 1.05, `a part has ${sum(p).toFixed(1)} s against an even share of ${share.toFixed(1)} s`);
+    assert.deepEqual(partsByDuration(many, durs, 6), parts, 'the same split on every call');
+    assert.deepEqual(partsByDuration(many, durs, 1), [orderLongestFirst(many, durs)], 'one part is every suite');
+}
 console.log('suite_order: ok');
