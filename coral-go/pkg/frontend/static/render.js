@@ -906,6 +906,8 @@ function _renderLiveSessions(sessions) {
     const focusedRow = document.activeElement && document.activeElement.closest
         ? document.activeElement.closest('.session-group-item[data-session-id]') : null;
     const focusedSid = focusedRow ? focusedRow.dataset.sessionId : null;
+    // Focus inside the row's action menu (or on its button) goes back to the button when the row is redrawn, not to the row (#4621).
+    const focusedInMenu = !!(focusedRow && document.activeElement.closest('.sidebar-kebab-wrapper'));
     _wireListKeyboard(list);
     _wireListKeyboard(document.getElementById('mobile-agent-list'));
 
@@ -1390,7 +1392,7 @@ function _renderLiveSessions(sessions) {
     // Restore keyboard focus to the same agent after the rebuild
     if (focusedSid) {
         const again = list.querySelector(`.session-group-item[data-session-id="${CSS.escape(focusedSid)}"]`);
-        if (again) again.focus({ preventScroll: true });
+        if (again) (focusedInMenu && again.querySelector('.sidebar-kebab-btn') || again).focus({ preventScroll: true });
     }
 
     // The phone's page takes the list itself (it is not copied: #4497)
@@ -1582,7 +1584,7 @@ function _wireListKeyboard(container) {
     container.dataset.kbWired = '1';
     container.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (window.closeSidebarKebabs) window.closeSidebarKebabs();
+            if (window.closeSidebarKebabs) window.closeSidebarKebabs({ restoreFocus: true });
             return;
         }
         const row = e.target.closest ? e.target.closest('.session-group-item') : null;
@@ -1939,7 +1941,7 @@ const dirOf = el => textOf(el.dataset.dir, 4096);
 const UPDOWN = { up: true, down: true };
 registerActions({
     'kebab-close': (el, event) => { event.stopPropagation(); window.closeSidebarKebabs(); },
-    'kebab-toggle': (el, event) => { event.stopPropagation(); window.toggleSidebarKebab(el); },
+    'kebab-toggle': (el, event) => { event.stopPropagation(); window.toggleSidebarKebab(el, event); },
     'agent-info': withAgent('showInfoDirect'),
     'agent-kill': withAgent('killSessionDirect'),
     'agent-restart': withAgent('restartDirect'),

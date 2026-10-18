@@ -4,6 +4,8 @@
 //   3. Reflow: at 640 px (a 1280 px screen at 200% zoom) and 320 px (400%) the home page, an agent's Chat view and Settings have
 //      no horizontal page scroll and nothing wider than the screen.
 //   4. The Chat composer's tab order: the text box first, then Stop, Send and Send options (the toolbar used to come first in the DOM).
+//   5. An agent row's action menu (#4621): the button names the agent and says it opens a menu and whether it is open; Enter moves the focus to the first item, Down and Up move
+//      between items, Escape closes it with the focus back on the button, and a redraw of the list while it is open puts the focus on the button, not the row.
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -87,6 +89,33 @@ const { connect } = require('./agent_view_harness');
             assert.equal(await ev(`!!document.activeElement.closest('#command-toolbar')`), false, `${w} px: Shift+Tab from the text box does not land on the toolbar (got ${back[0]})`);
         }
         console.log('   ✓ the text box comes first, then Stop, Send and Send options, at 1280 and 390 px');
-        console.log('\nPASS keyboard flows: docs list, reduced motion, reflow, composer tab order');
+        console.log('5. An agent row\'s action menu by keyboard');
+        await load(1280, 800);
+        await ev(`T.render.renderLiveSessions(T.state.liveSessions); true`);
+        await waitFor(`!!document.querySelector('#live-sessions-list [data-session-id] .sidebar-kebab-btn')`, 'the agent rows', 6000);
+        const BTN = `document.querySelector('#live-sessions-list [data-session-id] .sidebar-kebab-btn')`;
+        const attrs = await ev(`(() => { const b = ${BTN}; const m = b.nextElementSibling; return { label: b.getAttribute('aria-label'), popup: b.getAttribute('aria-haspopup'), expanded: b.getAttribute('aria-expanded'), role: m.getAttribute('role'), agent: b.closest('[data-session-id]').getAttribute('aria-label') }; })()`);
+        assert.match(attrs.label, /^More actions for .+/, 'the name carries the agent'); assert.equal(attrs.popup, 'menu'); assert.equal(attrs.expanded, 'false'); assert.equal(attrs.role, 'menu');
+        assert.ok(attrs.agent.startsWith(attrs.label.replace('More actions for ', '')), 'the agent in the name is the row\'s own: ' + JSON.stringify(attrs));
+        const where = () => ev(`(() => { const a = document.activeElement; const b = ${BTN}; return { onButton: a === b, inMenu: !!a.closest('.sidebar-kebab-menu'), onRow: a.classList.contains('session-group-item'), text: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 30), expanded: b.getAttribute('aria-expanded'), shown: getComputedStyle(b.nextElementSibling).display !== 'none' }; })()`);
+        await ev(`${BTN}.focus(); true`);
+        await key('Enter', 13);
+        await waitFor(`document.activeElement.closest('.sidebar-kebab-menu') !== null`, 'Enter moves the focus into the menu', 4000);
+        let w = await where(); assert.ok(w.inMenu && w.expanded === 'true' && w.shown, JSON.stringify(w));
+        const first = w.text;
+        await key('ArrowDown', 40); w = await where(); assert.ok(w.inMenu && w.text !== first, 'Down moves to the next item: ' + JSON.stringify(w));
+        await key('ArrowUp', 38); w = await where(); assert.equal(w.text, first, 'Up moves back');
+        await key('End', 35); const last = (await where()).text; assert.notEqual(last, first, 'End goes to the last item');
+        await key('Home', 36); assert.equal((await where()).text, first, 'Home goes to the first');
+        await key('Escape', 27); w = await where();
+        assert.ok(w.onButton && !w.shown && w.expanded === 'false', 'Escape closes it with the focus on the button: ' + JSON.stringify(w));
+        await key(' ', 32); await waitFor(`document.activeElement.closest('.sidebar-kebab-menu') !== null`, 'Space opens it too', 4000);
+        // A redraw of the list while it is open (the feed): the focus lands on the button, not the row.
+        await ev(`(() => { const s = T.state.liveSessions[0]; s.summary = 'changed while the menu is open'; s.status = 'working'; s.staleness_seconds = 99; T.render.renderLiveSessions(T.state.liveSessions); return true; })()`);
+        await sleep(300); // sleep-ok: the redraw is scheduled on a frame; there is no completion event
+        w = await where();
+        assert.ok(!w.onRow && (w.onButton || w.inMenu), 'after a redraw the focus is on the button (or still in the menu), never dropped to the row: ' + JSON.stringify(w));
+        console.log('   ✓ the button names the agent, says it opens a menu and whether it is open; Enter and Space open it onto the first item, arrows, Home and End move, Escape returns to the button');
+        console.log('\nPASS keyboard flows: docs list, reduced motion, reflow, composer tab order, row menu');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

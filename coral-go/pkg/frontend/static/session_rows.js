@@ -76,7 +76,7 @@ export function openRowMenu(btn, menu) {
     const row = btn.closest('.session-group-item');
     const html = row && rowMenus.get(rowMenuKey(row.dataset.sessionId, row.dataset.server, row.dataset.name));
     if (html === undefined) return false;
-    if (!menu.dataset.drawn) { menu.innerHTML = html; menu.dataset.drawn = '1'; }
+    if (!menu.dataset.drawn) { menu.innerHTML = html; menu.dataset.drawn = '1'; for (const it of menu.querySelectorAll('.overflow-menu-item')) if (!it.hasAttribute('role')) it.setAttribute('role', 'menuitem'); } // the auto-accept item is a menuitemcheckbox already
     return true;
 }
 
@@ -289,8 +289,8 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
     // The menu's items (about 50 elements a row) are drawn when it opens (#4611): the row holds an empty menu and this module the text for it.
     rememberRowMenu(s, kebabMenuContent);
     const kebabMenu = `<div class="sidebar-kebab-wrapper">
-        <button class="sidebar-kebab-btn" data-on-click="kebab-toggle" title="More actions">&#x22EE;</button>
-        <div class="sidebar-kebab-menu" style="display:none" data-lazy-menu="1"></div>
+        <button class="sidebar-kebab-btn" data-on-click="kebab-toggle" title="More actions" aria-label="More actions for ${escapeAttr(identity)}" aria-haspopup="menu" aria-expanded="false">&#x22EE;</button>
+        <div class="sidebar-kebab-menu" style="display:none" data-lazy-menu="1" role="menu" aria-label="Actions for ${escapeAttr(identity)}"></div>
     </div>`;
     const compactClass = isCompact ? ' session-compact' : '';
     const collapsedClass = collapsed ? ' group-collapsed' : '';

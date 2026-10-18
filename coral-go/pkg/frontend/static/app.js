@@ -634,11 +634,30 @@ window.closeSendMenu = function() {
     document.querySelectorAll('.send-btn-menu').forEach(m => m.style.display = 'none');
 };
 // ── Sidebar kebab menu helpers ───────────────────────────────────────────
-function closeSidebarKebabs() {
-    document.querySelectorAll('.sidebar-kebab-menu').forEach(m => m.style.display = 'none');
+// With restoreFocus (Escape) the focus goes back to the button of the menu that was open, when it was inside it (#4621).
+function closeSidebarKebabs({ restoreFocus = false } = {}) {
+    for (const m of document.querySelectorAll('.sidebar-kebab-menu')) {
+        const open = m.style.display !== 'none';
+        const btn = m.previousElementSibling;
+        m.style.display = 'none';
+        if (btn && btn.classList.contains('sidebar-kebab-btn')) {
+            btn.setAttribute('aria-expanded', 'false');
+            if (open && restoreFocus && m.contains(document.activeElement)) btn.focus({ preventScroll: true });
+        }
+    }
 }
 
-function toggleSidebarKebab(btn) {
+// Up, Down, Home and End move between a menu's items (it says aria-haspopup="menu"); Escape closes it from inside.
+document.addEventListener('keydown', e => {
+    const menu = e.target.closest?.('.sidebar-kebab-menu[data-lazy-menu]');
+    if (!menu) return;
+    const items = [...menu.querySelectorAll('.overflow-menu-item')];
+    const at = items.indexOf(document.activeElement);
+    const to = e.key === 'ArrowDown' ? (at + 1) % items.length : e.key === 'ArrowUp' ? (at <= 0 ? items.length - 1 : at - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : -1;
+    if (to >= 0 && items.length) { e.preventDefault(); items[to].focus(); }
+}, true);
+
+function toggleSidebarKebab(btn, event) {
     const menu = btn.nextElementSibling;
     const wasOpen = menu.style.display !== 'none';
     closeSidebarKebabs();
@@ -648,6 +667,7 @@ function toggleSidebarKebab(btn) {
             if (!openRowMenu(btn, menu)) return;
             markBlockedControls(menu);
         }
+        btn.setAttribute('aria-expanded', 'true');
         // Show off-screen first to measure, then position
         menu.style.visibility = 'hidden';
         menu.style.display = 'block';
@@ -666,6 +686,8 @@ function toggleSidebarKebab(btn) {
         const left = Math.min(rect.left, viewportWidth - menuWidth - 8);
         menu.style.left = Math.max(4, left) + 'px';
         menu.style.visibility = '';
+        // Opened from the keyboard (Enter or Space is a click with no pointer): the focus goes to the first item.
+        if (event && event.detail === 0 && menu.dataset.lazyMenu) menu.querySelector('.overflow-menu-item')?.focus({ preventScroll: true });
         // Hide any visible tooltips so they don't cover the menu
         document.querySelectorAll('.session-tooltip').forEach(t => t.style.display = 'none');
     }
