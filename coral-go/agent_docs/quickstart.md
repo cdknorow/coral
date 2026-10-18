@@ -56,8 +56,8 @@ setting. The launch API rejects an unsupported `agent_type` (`ValidateAgentType`
 |---|---|
 | **macOS** | Signed and notarized universal app (`Coral.v<version>.dmg`, Apple Silicon and Intel, macOS 13 minimum) with bundled tmux. The macOS 13 minimum is checked in the binaries but has not been run on a macOS 13 host. |
 | **Linux** | `coral-linux-amd64-<version>.tar.gz` (x86-64) or `coral-linux-arm64-<version>.tar.gz` (ARM64), statically linked. CLI/server only — no tray or desktop app. tmux is not bundled. |
-| **Windows** | No official asset is published for the regular bare-tag release. |
-| **Homebrew** | Not recommended: the public tap previously shipped a blank checksum and its repair has not been independently verified. Use the GitHub release. |
+| **Windows** | `Coral-<version>-x64.msi` (installer) or `Coral-<version>-x64-portable.zip`, x64. Not code-signed (SmartScreen warns of an unknown publisher; verify the download as the README shows). Agents run with the native pty backend (no tmux); the default port is 8450. |
+| **Homebrew** | `brew install --cask cdknorow/coral/coral` installs the release's macOS app; the release workflow updates the tap with each release's checksum. |
 
 ## 1. Install
 

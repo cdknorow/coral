@@ -2,7 +2,7 @@
 
 Coral brings coding agents into one dashboard. Start individual agents or teams, follow their conversations and tasks, inspect their files, and review the artifacts they produce.
 
-These guides cover the current **Go application**, including the macOS and Linux packages. Start with [installation and your first agent](getting-started.md).
+These guides cover the current **Go application**, including the macOS, Linux and Windows packages. Start with [installation and your first agent](getting-started.md).
 
 ## Get started
 

@@ -571,14 +571,14 @@ backup once Coral works as before. Measured on a 2 GB database: 15 s, 2.0 GB to
 
 ### Windows
 
-No official Windows asset is published for the regular release. Windows-specific source
-exists (for example `internal/background/process_windows.go`, and `cmd/coral/main.go` defaults
-Windows to the native PTY backend), but the regular release process does not build or test it
-and it is *unverified* here.
+Each release publishes `Coral-<version>-x64.msi` and `Coral-<version>-x64-portable.zip`. They are
+not code-signed, so SmartScreen warns that the publisher is unknown; verify the download (README,
+"Verify your download") before running it. On Windows Coral always uses the native PTY backend
+(ConPTY; there is no tmux) and listens on port 8450 by default, not 8420, which svchost can hold.
 
 ### Linux
 
-The tarball is **x86-64 only** — there is no arm64 build. It contains bare binaries with no
+There are two tarballs, x86-64 (`amd64`) and ARM64 (`arm64`). Each contains bare binaries with no
 installer, service unit, or desktop entry, and no tray or desktop app; Linux is CLI/server
 only. tmux is not bundled; install it or start with `--backend pty`.
 
