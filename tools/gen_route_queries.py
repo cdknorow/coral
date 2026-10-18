@@ -113,7 +113,8 @@ def params(body, seen, depth=0):
     if depth < 3:
         # Calls in the body only: the function's own signature "Name(w http.ResponseWriter, r *http.Request)" is not a
         # call, and matching it pulled in every handler of the same name (#3279).
-        for m in re.finditer(r'(?:\bh\.)?(\w+)\([^()]*\br\b[^()]*\)', body[body.find('{') + 1:]):
+        # r is the request; q is the url.Values a handler parsed from it (q := r.URL.Query(), #4713's parseHistoryListQuery(q)).
+        for m in re.finditer(r'(?:\bh\.)?(\w+)\([^()]*\b[rq]\b[^()]*\)', body[body.find('{') + 1:]):
             for (rt, fn), b2 in B.items():
                 if fn == m.group(1) and (rt, fn) not in seen:
                     seen.add((rt, fn))
