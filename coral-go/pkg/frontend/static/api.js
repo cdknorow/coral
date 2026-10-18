@@ -122,17 +122,6 @@ async function _loadLiveSessions(onFailure) {
     }
 }
 
-export async function loadHistorySessions() {
-    try {
-        const data = await apiFetch("/api/sessions/history");
-        // Handle new paginated response shape
-        const sessions = data.sessions || data;
-        renderHistorySessions(sessions, data.total, data.page, data.page_size);
-    } catch (e) {
-        console.error("Failed to load history sessions:", e);
-    }
-}
-
 export async function loadHistorySessionsPaged(page = 1, pageSize = 50) {
     try {
         const params = buildApiParams(page, pageSize);

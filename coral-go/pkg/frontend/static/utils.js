@@ -1142,12 +1142,6 @@ export function boardNameProblem(name) {
     return '';
 }
 
-/** A valid new board name made from free text ("Full Stack Team" → "full-stack-team"). */
-export function boardNameSlug(text) {
-    const slug = String(text || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 64).replace(/[-_]+$/, '');
-    return slug && !RESERVED_BOARD_NAMES.has(slug) ? slug : 'team';
-}
-
 /** Whether resp is Coral Hub's refusal of a reply too large to check for secrets (#3718: a JSON
  *  reply over 2 MiB), so a view can say why it is empty instead of showing "nothing". Reads a
  *  clone: resp's own body is left for the caller. */

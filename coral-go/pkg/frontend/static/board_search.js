@@ -23,7 +23,7 @@ const SPEC = {
 };
 
 const PAGE = 50;
-let _bar = null, _host = null, _results = null, _status = null, _hooks = null;
+let _bar = null, _results = null, _status = null, _hooks = null;
 let _project = null, _filters = { ...EMPTY };
 let _list = { ids: [], total: 0, cursor: '', busy: false, error: '', truncated: false }; // the matches, newest first
 let _index = -1; // the match on screen
@@ -143,7 +143,6 @@ export function mountBoardSearch(host, project, hooks) {
         if (_bar) { _bar.dispose(); _bar = null; }
         _status = null;
     }
-    _host = host;
     if (!_bar) {
         _bar = buildListBar(SPEC, run);
         const first = make('button', 'list-bar-filter-btn mb-tool-btn', 'First'); first.type = 'button'; first.title = 'The first message of the board';

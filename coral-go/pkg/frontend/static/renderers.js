@@ -332,9 +332,6 @@ const AGENT_DEFAULTS = {
     pi: "xterm",
 };
 
-/** Per-agent overrides stored at runtime (sessionId -> engineName). */
-const agentOverrides = {};
-
 /** Get all registered engine names. */
 export function getEngineNames() {
     return Object.keys(ENGINES);
@@ -342,9 +339,6 @@ export function getEngineNames() {
 
 /** Get the current engine name for a given agent. */
 export function getEngineName(agentType, sessionId) {
-    if (sessionId && agentOverrides[sessionId]) {
-        return agentOverrides[sessionId];
-    }
     // Fall back to global user setting before hardcoded agent-type defaults
     if (state.settings && state.settings.default_renderer && ENGINES[state.settings.default_renderer]) {
         return state.settings.default_renderer;
@@ -364,14 +358,5 @@ export function getRenderer(agentType, sessionId) {
     // If it's a sentinel string (like "xterm"), fall back to block-group
     if (typeof engine === 'string' || !engine) return ENGINES["block-group"];
     return engine;
-}
-
-/** Override the renderer for a specific agent session. */
-export function setRendererOverride(sessionId, engineName) {
-    if (!ENGINES[engineName]) {
-        console.warn(`Unknown render engine: ${engineName}`);
-        return;
-    }
-    agentOverrides[sessionId] = engineName;
 }
 

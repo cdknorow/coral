@@ -357,16 +357,6 @@ function _hideTopBarDropdown() {
     if (dropdown) dropdown.style.display = 'none';
 }
 
-export function showTopBarSearch() {
-    const el = document.getElementById('top-bar-search');
-    if (el) el.style.display = 'flex';
-}
-
-export function hideTopBarSearch() {
-    const el = document.getElementById('top-bar-search');
-    if (el) el.style.display = 'none';
-}
-
 function _updateSearchSelection() {
     const dropdown = document.getElementById('files-search-dropdown');
     if (!dropdown) return;
