@@ -155,7 +155,8 @@ type Store struct {
 	completionCheckRunner   CompletionCheckRunner
 	completionChecksEnabled bool
 	unreadCounts            unreadCountCache
-	noMentionIndex          bool // tests: read as before the mention index (#4465)
+	numbered                numberedCache // each board's numbered agent names (#4598)
+	noMentionIndex          bool          // tests: read as before the mention index (#4465)
 	mentionMu               sync.Mutex
 	mentionIndexAnswers     atomic.Int64 // queries the mention index answered (tests check it is used)
 	mentionIndexedTo        atomic.Int64 // the mention index's watermark, -1 until read (see mention_index.go)
@@ -684,6 +685,7 @@ func (s *Store) Subscribe(ctx context.Context, project, subscriberID, jobTitle, 
 	if err == nil {
 		s.ensureBoardRow(ctx, project)
 	}
+	s.subscribersChanged()
 	if err != nil {
 		return nil, err
 	}
@@ -699,6 +701,7 @@ func (s *Store) Unsubscribe(ctx context.Context, project, subscriberID string) (
 	result, err := s.db.ExecContext(ctx,
 		"UPDATE board_subscribers SET is_active = 0 WHERE project = ? AND subscriber_id = ? AND is_active = 1",
 		project, subscriberID)
+	s.subscribersChanged()
 	if err != nil {
 		return false, err
 	}
@@ -940,7 +943,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 			}
 		}
 
-		numbered := s.numberedNames(ctx, s.reader(), project)
+		numbered := s.numberedNamesCached(ctx, project)
 		for _, msg := range candidates {
 			if containsExplicitTag(msg.Content, subscriberID, sub.JobTitle, numbered) {
 				messages = append(messages, msg)
@@ -1189,6 +1192,51 @@ func (s *Store) CountMessages(ctx context.Context, project string) (int, error) 
 // mentionTerms returns the canonical list of mention patterns for a subscriber.
 // Used by CheckUnread (SQL LIKE), GetAllUnreadCounts (Go string matching), and ReadMessages.
 func mentionTerms(subscriberID, jobTitle string) []string {
+	return mentionTermsOf(subscriberID, jobTitle).terms
+}
+
+// termSet is a subscriber's mention terms and their lowercase forms. Shared between callers
+// (memoized): they only read it.
+type termSet struct {
+	terms []string
+	lower []string
+}
+
+var termMemo struct {
+	sync.Mutex
+	m map[[2]string]termSet
+}
+
+// termMemoLimit bounds the memo: a board has tens of subscribers, so this is generous; the map is
+// dropped when full.
+const termMemoLimit = 4096
+
+// mentionTermsOf is mentionTermsBuild, remembered per (subscriber, job title). containsExplicitTag
+// asks for the terms once per message per subscriber, and each ask built a map and slice and
+// lowercased every term (#4598: board.mentionTerms was 2% of the server's allocation at 100 agents).
+func mentionTermsOf(subscriberID, jobTitle string) termSet {
+	key := [2]string{subscriberID, jobTitle}
+	termMemo.Lock()
+	ts, ok := termMemo.m[key]
+	termMemo.Unlock()
+	if ok {
+		return ts
+	}
+	ts.terms = mentionTermsBuild(subscriberID, jobTitle)
+	ts.lower = make([]string, len(ts.terms))
+	for i, t := range ts.terms {
+		ts.lower[i] = strings.ToLower(t)
+	}
+	termMemo.Lock()
+	if termMemo.m == nil || len(termMemo.m) >= termMemoLimit {
+		termMemo.m = make(map[[2]string]termSet)
+	}
+	termMemo.m[key] = ts
+	termMemo.Unlock()
+	return ts
+}
+
+func mentionTermsBuild(subscriberID, jobTitle string) []string {
 	terms := []string{"@notify-all", "@notify_all", "@notifyall", "@all"}
 	seen := make(map[string]bool)
 	for _, t := range terms {
@@ -1243,9 +1291,15 @@ func numberedSuffix(s string, i int) string {
 // numberedNames is the set of a board's active subscriber ids that end in " <digits>"
 // (numbered agents, #3543), lowercased, for containsExplicitTag.
 func (s *Store) numberedNames(ctx context.Context, q sqlx.QueryerContext, project string) map[string]bool {
+	names, _ := s.numberedNamesErr(ctx, q, project)
+	return names
+}
+
+// numberedNamesErr is numberedNames that also reports a failed read.
+func (s *Store) numberedNamesErr(ctx context.Context, q sqlx.QueryerContext, project string) (map[string]bool, error) {
 	var ids []string
 	if err := sqlx.SelectContext(ctx, q, &ids, `SELECT subscriber_id FROM board_subscribers WHERE project = ? AND is_active = 1`, project); err != nil {
-		return nil
+		return nil, err
 	}
 	var out map[string]bool
 	for _, id := range ids {
@@ -1257,7 +1311,7 @@ func (s *Store) numberedNames(ctx context.Context, q sqlx.QueryerContext, projec
 			out[lower] = true
 		}
 	}
-	return out
+	return out, nil
 }
 
 func isAlphaNum(b byte) bool {
@@ -1277,9 +1331,9 @@ func containsExplicitTag(content, subscriberID, jobTitle string, numbered ...map
 		names = numbered[0]
 	}
 	contentLower := strings.ToLower(content)
-	terms := mentionTerms(subscriberID, jobTitle)
-	for _, term := range terms {
-		tLower := strings.ToLower(term)
+	ts := mentionTermsOf(subscriberID, jobTitle)
+	for ti, term := range ts.terms {
+		tLower := ts.lower[ti]
 		idx := 0
 		for {
 			pos := strings.Index(contentLower[idx:], tLower)
@@ -1453,7 +1507,7 @@ func (s *Store) confirmedMention(ctx context.Context, project, subscriberID, job
 	}
 	// The numbered names are read before the candidates' cursor is opened, so this never holds
 	// two reader connections at once (Security's #3549 review).
-	numbered := s.numberedNames(ctx, s.reader(), project)
+	numbered := s.numberedNamesCached(ctx, project)
 	order := ""
 	if newest {
 		order = " ORDER BY m.id DESC"
@@ -1714,7 +1768,7 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 			for _, sub := range streamed {
 				minStart = min(minStart, sub.start)
 			}
-			numbered := s.numberedNames(ctx, s.reader(), project)
+			numbered := s.numberedNamesCached(ctx, project)
 			// Stream messages instead of retaining every unread body in memory.
 			rows, err := s.reader().QueryxContext(ctx,
 				"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND id <= ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
@@ -2021,6 +2075,7 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 	}
 	err = tx.Commit()
 	s.unreadCounts.invalidate()
+	s.subscribersChanged()
 	return err
 }
 

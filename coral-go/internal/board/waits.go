@@ -263,7 +263,7 @@ func (s *Store) ResolveMatchingMessageWaits(ctx context.Context, project, sender
 
 		target := strings.TrimSpace(w.TargetID)
 		matches := false
-		numbered := s.numberedNames(ctx, s.reader(), project)
+		numbered := s.numberedNamesCached(ctx, project)
 		explicitlyForWaiter := containsExplicitTag(content, w.SubscriberID, jobTitle, numbered)
 		explicitlyForSomeoneElse := false
 		if !explicitlyForWaiter {
