@@ -280,7 +280,7 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 		}
 		// agy's PostToolUse says error "" for a command that exited non-zero: its transcript has the code (#4577).
 		if step, isAgy := d["_agy_step"].(int64); isAgy && hookType == "PostToolUse" && tool == "run_command" {
-			if code, ok := agyToolResult(hooks.StrVal(d, "transcript_path"), step); ok {
+			if code, ok := agyToolResult(hooks.StrVal(d, "_agy_artifacts"), hooks.StrVal(d, "transcript_path"), step); ok {
 				detail = withDetail(detail, "exit_code", code)
 				shellFailed = shellFailed || code != 0
 			}
@@ -395,6 +395,9 @@ func fromAgy(d map[string]any, event string) (map[string]any, bool) {
 	}
 	if path, _ := d["transcriptPath"].(string); path != "" {
 		out["transcript_path"] = path
+	}
+	if dir, _ := d["artifactDirectoryPath"].(string); dir != "" {
+		out["_agy_artifacts"] = dir // the conversation's folder: a step's output (agyToolResult)
 	}
 	if errMsg, _ := d["error"].(string); errMsg != "" && event == "PostToolUse" {
 		out["error"] = errMsg
@@ -625,19 +628,50 @@ func readTranscriptTail(path string) ([]byte, bool) {
 // named in the hook payload): agy's PostToolUse says error "" whatever the command's exit code, and the
 // step's GENERIC record (step_index = the hook's stepIdx) says "The command exited with code N." (#4577,
 // agy 1.4.2). A record not written yet is looked for again, briefly.
-var agyToolResult = func(path string, step int64) (int, bool) {
+var agyToolResult = func(artifacts, path string, step int64) (int, bool) {
+	// agy 1.4.2 runs PostToolUse before it appends the step to its transcript, but after it has written the step's
+	// output to <conversation>/.system_generated/steps/<stepIdx>/output.txt, which starts with the same line (the
+	// Antigravity CLI tester's live re-test of #4577).
+	if code, ok := agyStepOutputResult(artifacts, step); ok {
+		return code, true
+	}
 	if filepath.Base(path) != "transcript_full.jsonl" {
 		return 0, false
 	}
-	for attempt := 0; attempt < 6; attempt++ {
-		if attempt > 0 {
-			time.Sleep(25 * time.Millisecond)
-		}
-		if code, ok := findAgyToolResult(path, step); ok {
-			return code, true
-		}
+	return findAgyToolResult(path, step)
+}
+
+// agyStepOutputMax: how much of a step's output.txt is read (its exit line is near the start).
+const agyStepOutputMax = 16 << 10
+
+// agyStepOutputResult is the exit code in a run_command step's output.txt, under the conversation folder the hook
+// payload names (artifactDirectoryPath): opened through safefs (the folder resolved, nothing out of it, no symlink as
+// the file, a regular file), the start of it read, its first "exited with code" line, one integer out.
+func agyStepOutputResult(artifacts string, step int64) (int, bool) {
+	if !filepath.IsAbs(artifacts) || step < 0 {
+		return 0, false
 	}
-	return 0, false
+	root, err := safefs.OpenRoot(artifacts)
+	if err != nil {
+		return 0, false
+	}
+	defer root.Close()
+	f, _, err := root.Open(filepath.Join(".system_generated", "steps", strconv.FormatInt(step, 10), "output.txt"))
+	if err != nil {
+		return 0, false
+	}
+	defer f.Close()
+	buf := make([]byte, agyStepOutputMax)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return 0, false
+	}
+	m := agyExitRe.FindSubmatch(buf[:n])
+	if m == nil {
+		return 0, false
+	}
+	code, err := strconv.Atoi(string(m[1]))
+	return code, err == nil
 }
 
 // agyExitRe: the line of a run_command's result that gives its exit code. Only the first such line counts:

@@ -1,0 +1,8 @@
+Created At: 2026-10-18T00:52:14-07:00
+Completed At: 2026-10-18T00:52:14-07:00
+
+The command exited with code 1.
+Stdout:
+
+Stderr:
+

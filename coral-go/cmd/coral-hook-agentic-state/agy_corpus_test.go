@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -92,7 +93,84 @@ func TestAgyToolResultLookup(t *testing.T) {
 	if err := os.WriteFile(other, []byte(decoy), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := agyToolResult(other, 2); ok {
+	if _, ok := agyToolResult("", other, 2); ok {
 		t.Error("only transcript_full.jsonl is read")
+	}
+}
+
+// agy 1.4.2's live order (the Antigravity CLI tester's re-test of #4577): PostToolUse runs before the step reaches
+// transcript_full.jsonl, but after the step's output is in <conversation>/.system_generated/steps/<stepIdx>/output.txt.
+// With a transcript that has only steps 0 and 1, as at that moment, the exit code comes from output.txt.
+func TestAgyExitCodeFromTheStepOutput(t *testing.T) {
+	for _, c := range []struct {
+		file, run string
+		code      int
+		failed    bool
+	}{
+		{"PostToolUse-run_command-failed.json", "exit1", 1, true},
+		{"PostToolUse-run_command-ok.json", "exit0", 0, false},
+	} {
+		dir := t.TempDir()
+		full, err := os.ReadFile(filepath.Join("testdata", "agy-1.4.2", c.run, "transcript_full.jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.SplitN(string(full), "\n", 3) // steps 0 and 1 only
+		transcript := filepath.Join(dir, "transcript_full.jsonl")
+		if err := os.WriteFile(transcript, []byte(lines[0]+"\n"+lines[1]+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join("testdata", "agy-1.4.2", c.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var d map[string]any
+		if err := json.Unmarshal(raw, &d); err != nil {
+			t.Fatal(err)
+		}
+		artifacts, err := filepath.Abs(filepath.Join("testdata", "agy-1.4.2", c.run, "brain"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		d["transcriptPath"], d["artifactDirectoryPath"] = transcript, artifacts
+		in, _ := fromAgy(d, "PostToolUse")
+		e := parseAgenticEvent(in, "PostToolUse", "sid")
+		detail, _ := e["detail_json"].(map[string]any)
+		if detail["exit_code"] != c.code || (detail["failed"] == true) != c.failed || strings.HasPrefix(e["summary"].(string), "Failed") != c.failed {
+			t.Errorf("%s with the step not yet in the transcript: %v %v", c.run, e["summary"], detail)
+		}
+	}
+}
+
+// The step output is read only under the payload's absolute conversation folder, never through a symlink as the file,
+// and only its first exit line counts.
+func TestAgyStepOutputLookup(t *testing.T) {
+	dir := t.TempDir()
+	steps := filepath.Join(dir, ".system_generated", "steps")
+	if err := os.MkdirAll(filepath.Join(steps, "2"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(steps, "2", "output.txt"), []byte("Created At: x\n\nThe command exited with code 4.\nOutput:\nThe command exited with code 0.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, ok := agyStepOutputResult(dir, 2); !ok || code != 4 {
+		t.Errorf("the first exit line, not the output's: %d %v", code, ok)
+	}
+	if _, ok := agyStepOutputResult("relative/dir", 2); ok {
+		t.Error("only an absolute conversation folder")
+	}
+	if _, ok := agyStepOutputResult(dir, 3); ok {
+		t.Error("another step's output is not there")
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.MkdirAll(filepath.Join(steps, "5"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(steps, "2", "output.txt"), filepath.Join(steps, "5", "output.txt")); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := agyStepOutputResult(dir, 5); ok {
+			t.Error("a symlinked output.txt is not read")
+		}
 	}
 }
