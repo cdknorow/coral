@@ -108,6 +108,14 @@ const BASE = require('./test_base').BASE;
         await ev(`document.querySelector('body > .modal:not([id]) [data-action=close]').click(); true`);
         assert.equal(await ev(`document.querySelectorAll('body > .modal:not([id])').length`), 0);
 
+        console.log('Quick Launch from the welcome screen: an unknown template is refused, a partly failed launch says how many');
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); document.getElementById('quick-launch-template').value = 'No Such Team'; document.getElementById('quick-launch-board-name').value = 'quick-1'; document.getElementById('quick-launch-workdir').value = '/work/project'; window._quickLaunchTeam(); true`);
+        await waitFor(`[...document.querySelectorAll('.toast')].some(t => t.textContent.trim().replace(/×$/, '') === 'Template not found')`, 'the unknown-template toast');
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); window.__teamLaunches.length = 0; window.__launchAnswer = { status: 200, body: { agents: [{ name: 'A' }, { name: 'B', error: 'no cli' }, { name: 'C' }] } }; document.getElementById('quick-launch-template').value = 'Coding Team'; window._quickLaunchTeam(); true`);
+        await waitFor(`window.__teamLaunches.length === 1`, 'the quick launch request');
+        assert.equal((await ev(`window.__teamLaunches[0]`)).board_name, 'quick-1');
+        await waitFor(`[...document.querySelectorAll('.toast')].some(t => t.textContent.trim().replace(/×$/, '') === 'Launched 2 of 3 agents (1 failed)')`, 'the partial-launch toast');
+
         console.log('The wizard: both fields are required, a failed request shows its error, a finished job is reviewed in the team form');
         await ev(`window.hideLaunchModal(); window.showTeamWizardModal(); window.generateTeamFromWizard(); true`);
         assert.match(await ev(`document.getElementById('team-wizard-error').textContent`), /Add a directive/);

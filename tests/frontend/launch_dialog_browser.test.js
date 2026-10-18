@@ -15,6 +15,7 @@ const BASE = require('./test_base').BASE;
             window.__launches = []; window.__answer = { status: 200, body: { session_name: 's1', session_id: 'sid-s1' } }; window.__downloads = []; window.__pick = null;
             const real = window.fetch; const json = (b, status = 200) => Promise.resolve(new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } }));
             window.fetch = (u, o = {}) => { const p = new URL(String(u), location.href), m = o.method || 'GET';
+                if (p.pathname === '/api/sessions/launch' && m === 'POST' && window.__broken) { window.__launches.push(JSON.parse(o.body)); return Promise.resolve({ text: () => Promise.resolve(''), get status() { throw new Error('a response that cannot be read'); } }); }
                 if (p.pathname === '/api/sessions/launch' && m === 'POST') { window.__launches.push(JSON.parse(o.body)); return json(window.__answer.body, window.__answer.status); }
                 if (p.pathname === '/api/board/projects') return json([{ project: 'crew' }]);
                 if (p.pathname === '/api/system/cli-check') return json({ found: true, version: '1' });
@@ -82,6 +83,9 @@ const BASE = require('./test_base').BASE;
         await flush(); await ev(`window.launchTerminalToBoard('crew', '/work/board'); true`);
         await waitFor(`window.__launches.length === 1`, 'the terminal'); sent = await lastLaunch();
         assert.deepEqual([sent.agent_type, sent.display_name, sent.board_id, sent.board_name, sent.working_dir], ['terminal', 'Terminal', 'crew', 'crew', '/work/board']);
+        await flush(); await ev(`window.__broken = true; window.launchTerminalToBoard('crew', '/work/board'); true`);
+        await waitFor(`[...document.querySelectorAll('.toast')].some(t => t.textContent.trim().replace(/×$/, '') === 'Failed to launch terminal')`, 'the terminal failure toast');
+        await ev(`window.__broken = false; true`);
         await flush(); await ev(`window.launchDefaultAgent('/work/solo'); true`);
         await waitFor(`window.__launches.length === 1`, 'the default agent'); sent = await lastLaunch();
         assert.equal(sent.working_dir, '/work/solo'); assert.equal(typeof sent.agent_type, 'string'); assert.ok(Array.isArray(sent.flags)); assert.equal('board_name' in sent, false);
