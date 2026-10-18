@@ -19,14 +19,12 @@ import { pollEvery } from './overload.js';
 const INTERACT = new Set(['cmd-send', 'cmd-send-menu', 'cmd-send-team', 'send-menu-send', 'send-menu-team', 'send-menu-resend',
     'send-menu-protocol', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro', 'macro-show', 'macro-delete', 'cmd-mode-toggle',
     'agent-rename', 'agent-icon', 'agent-archive']);
-const LAUNCH = new Set(['agent-restart', 'agent-attach', 'agent-kill', 'agent-sleep', 'm-close-top-bar-settings-then-sleep-all-agents',
-    'm-close-top-bar-settings-then-wake-all-agents', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete']);
+const LAUNCH = new Set(['agent-restart', 'agent-attach', 'agent-kill', 'agent-sleep', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete']);
 // Turning auto-accept on needs Launch, turning it off Interact: the menu item says which by aria-checked.
 const AUTO_ACCEPT = 'agent-auto-accept';
-// What #3942 moved to Launch through the Hub: sleeping a team or every agent, pausing a board and deleting a board message.
+// What #3942 moved to Launch through the Hub: sleeping a team, pausing a board and deleting a board message.
 // Team sleep and a board's pause and delete act on the machine that holds the board.
 const BOARD = new Set(['team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete']);
-const SLEEP_ALL = 'm-close-top-bar-settings-then-sleep-all-agents';
 // The sleeping bar's buttons name their action in data-action.
 const BAR = { wake: 'launch', restart: 'launch', unarchive: 'interact' };
 
@@ -48,14 +46,6 @@ function serverOf(el) {
     return state.currentSession ? sessionServer(state.currentSession) : '';
 }
 
-// Sleep all acts on every connected server that has agents, one request each (render.js _cloudBulk): it is dimmed only when none of those
-// servers allows it (a server that refuses says so itself), with the first server's reason.
-function sleepAllReason() {
-    const servers = [...new Set((state.liveSessions || []).filter(s => !s.stale).map(s => sessionServer(s)))];
-    const reasons = servers.map(sv => blockedReason(sv, 'launch'));
-    return servers.length && reasons.every(Boolean) ? reasons[0] : '';
-}
-
 // The machine a board control acts on: the board named on the control (a team menu, the board panel), else the board that is open.
 function boardServerOf(el) {
     const b = el.dataset.board;
@@ -64,7 +54,6 @@ function boardServerOf(el) {
 
 function reasonFor(el, tier) {
     const a = el.dataset.onClick;
-    if (a === SLEEP_ALL) return sleepAllReason();
     if (BOARD.has(a)) return blockedReason(boardServerOf(el), tier);
     const r = blockedReason(serverOf(el), tier);
     if (r) return r;

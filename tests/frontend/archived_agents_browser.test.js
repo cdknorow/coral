@@ -205,12 +205,12 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         assert.ok(sb.main.includes('t1-arch-b-id') && !sb.archived.some(x => x.sid === 't1-arch-b-id'), 'woken agent back in the main list');
         console.log('   ✓ wake: 1 POST, 1 re-select, back in the main list');
 
-        console.log('7. Wake All and team wake leave archived agents archived');
-        for (const how of ['wake-all', 'team']) {
+        console.log('7. Team wake leaves archived agents archived');
+        for (const how of ['team']) {
             await ev(`for (const s of T.state.liveSessions) if (!s.archived) s.sleeping = true; for (const a of Object.values(window.__m.agents)) if (!a.archived) a.sleeping = true; T.render.renderLiveSessions(T.state.liveSessions)`);
-            if (how === 'wake-all') await ev(`(() => { window.wakeAllAgents(); return true; })()`); else await ev(`(() => { window.toggleTeamSleep('team-one', 'wake'); return true; })()`);
+            await ev(`(() => { window.toggleTeamSleep('team-one', 'wake'); return true; })()`);
             if (await modalOpen()) await ev(`document.getElementById('confirm-modal-yes').click()`);
-            await waitFor(`window.__m.requests.some(r => r.kind === '${how === 'wake-all' ? 'wake-all' : 'team-wake'}')`, `${how} request`, 3000);
+            await waitFor(`window.__m.requests.some(r => r.kind === 'team-wake')`, `${how} request`, 3000);
             await sleep(300);
             for (const sid of ['t2-arch-id', 'solo-arch-id', 'remote-arch-id', 'solo-awake-id']) {
                 const row = await agentRow(sid);
@@ -224,7 +224,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
             assert.ok(v.composer && v.inputDisabled && v.composerText === 'This agent is archived', `${how}: selecting an archived agent afterwards gives the archived view (${JSON.stringify({ composer: v.composer, input: v.inputDisabled, text: v.composerText })})`);
             await clearReqs();
         }
-        console.log('   ✓ Wake All and team wake: archived agents untouched');
+        console.log('   ✓ team wake: archived agents untouched');
 
         console.log('8. Archived flag from the feed updates the view in place');
         // Section 7's team wake woke t1-sleeper (team-one, not archived): put it back to sleep first.

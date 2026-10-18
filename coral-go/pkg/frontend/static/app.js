@@ -21,7 +21,7 @@ import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
 import { connectCoralWs, handleCoralMessage, _resetWaitingSeedForTests } from './websocket.js';
 import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys, sendModeToggle, cycleModeToggle, sendQuickCommand, refreshModeLabel, executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart, initImageDrop, removeAttachment, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon, showEmojiPicker } from './sessions.js';
-import { KILL_LOG_NOTE_MANY, buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, sleepAllAgents, wakeAllAgents, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, renderServerSwitcher, groupHeaderKey } from './render.js';
+import { KILL_LOG_NOTE_MANY, buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, renderServerSwitcher, groupHeaderKey } from './render.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
@@ -198,9 +198,7 @@ registerActions({
     'm-close-top-bar-settings-then-show-servers-modal': () => { window.__coral.closeTopBarSettings(); window.showServersModal(); },
     'm-close-top-bar-settings-then-show-settings-modal': () => { window.__coral.closeTopBarSettings(); window.showSettingsModal(); },
     'm-close-top-bar-settings-then-show-theme-configurator': () => { window.__coral.closeTopBarSettings(); window.showThemeConfigurator(); },
-    'm-close-top-bar-settings-then-sleep-all-agents': () => { window.__coral.closeTopBarSettings(); window.sleepAllAgents(); },
     'm-close-top-bar-settings-then-stop-all-auto-accept': () => { window.__coral.closeTopBarSettings(); window.stopAllAutoAccept(); },
-    'm-close-top-bar-settings-then-wake-all-agents': () => { window.__coral.closeTopBarSettings(); window.wakeAllAgents(); },
     'm-dismiss-auto-wake': () => { window.dismissAutoWake(); },
     'm-end-leftover-tmux': () => { window.endLeftoverTmux(); },
     'm-go-home': () => { window.__coral._goHome(); },
@@ -674,7 +672,7 @@ Object.assign(window, {
     toggleGroupCollapse, groupHeaderKey, killGroup, moveGroupUp, moveGroupDown,
     copyFolderPath, killBoard, dismissBoardKilled, setBoardAccentColor, resetTeam,
     moveSessionUp, moveSessionDown,
-    toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, sleepAllAgents, wakeAllAgents,
+    toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection,
     enterTeamContext, exitTeamContext, renderTeamSettingsTab,
     showTeamDetails, hideTeamDetails, buildSessionTooltip, showTeamAvailability, showTeamAvailabilityWorkspace, showTeamWorkingMode, showTeamWorkingModeWorkspace,
     shareAgentTeam, saveTeamFromSidebar, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge,

@@ -137,8 +137,6 @@ func TestDashboardModeTextMatchesTheRouteTable(t *testing.T) {
 		"agent-sleep":   {"POST /api/sessions/live/{sessionID}/sleep", "POST /api/sessions/live/{sessionID}/wake"},
 		"agent-restart": {"POST /api/sessions/live/{name}/restart"},
 		"team-sleep":    {"POST /api/sessions/live/team/{boardName}/sleep", "POST /api/sessions/live/team/{boardName}/wake"},
-		"m-close-top-bar-settings-then-sleep-all-agents": {"POST /api/sessions/live/sleep-all"},
-		"m-close-top-bar-settings-then-wake-all-agents":  {"POST /api/sessions/live/wake-all"},
 		"mb-pause":      {"POST /api/board/{project}/pause", "POST /api/board/{project}/resume"},
 		"mb-msg-delete": {"DELETE /api/board/{project}/messages/{messageID}"},
 	}
