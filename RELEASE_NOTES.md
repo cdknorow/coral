@@ -1,5 +1,31 @@
 # Release Notes
 
+## v1.4.87 — Prompts answered from Chat that really close, honest permission presets per CLI, and task verification
+
+### Changes
+
+- **Answering an agent's prompt from Chat now checks that the prompt closed:** Codex's menus get the Enter they need (and never a second one), Claude Code's unnumbered menus are answered, prompts are read on the PTY backend too, and an answer counts only once the prompt is gone (otherwise 409 `prompt_still_open`).
+- **The agent form says what each CLI enforces for the permissions you choose:** Claude's Allow and Deny, Codex's sandbox and approval mode, Antigravity's mode. Coral adds no permission layer of its own; the line names what the chosen CLI keeps, and no more. Codex can't enforce shell patterns per launch, so its presets set only the sandbox and approval mode, and the form says so.
+- **While a startup prompt (folder trust, hook review, a CLI update) holds an agent, it is marked as waiting for your input,** so Coral Hub's Needs you page and notifications see it.
+- **A finished board task carries a verification state** (for Coral Hub and agents: a field and a filter on the task API): verified when a reviewer other than the author approved it or a server-run check passed, evidence attached, or unverified. It is a label, never a blocker. In the dashboard it is quiet: a small muted icon after the title for a task that nobody independently confirmed (evidence attached or unverified), and one plain line in the task detail.
+
+### Security and privacy
+
+- **Prompts on the PTY backend are read with a small screen renderer of Coral's own:** it acts only on text, cursor moves and erases, with bounded input and work, and it is fuzz-tested.
+- **Antigravity's capabilities win over the dashboard's permission flag,** so a read-only preset no longer launches with `--dangerously-skip-permissions`.
+- **Only a server-run check counts as verification;** checks decided from what the worker itself uploads count as evidence, not verified.
+- **The Codex hook reads its rollout file through the safe file layer** (no symlink as its name), and only for shell commands.
+
+### Fixes
+
+- **A failed Codex shell command shows as a failed tool in the activity feed,** with its exit code.
+- **Codex's SessionStart is labelled by its source** (started, resumed, compacted, forked or /clear) instead of always "/clear".
+- **The sidebar's count badges reach 4.5:1 contrast in both themes** (they were 3.7 to 4.4:1).
+
+### Other changes
+
+- **Tests and CI:** new and steadier tests for all of the above, including a Windows line-ending fix in a docs table test.
+
 ## v1.4.86 — The right sidebar on every page, Save for later across servers, and no PATH CLI in place of a configured one
 
 ### Changes
