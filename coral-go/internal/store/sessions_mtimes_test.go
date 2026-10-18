@@ -1,0 +1,76 @@
+package store
+
+import (
+	"context"
+	"fmt"
+	"math/rand"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// indexedMtimesBefore4669 is the query GetIndexedMtimes ran before #4669, kept so the new one is compared with it.
+const indexedMtimesBefore4669 = `SELECT si.source_file, si.file_mtime FROM session_index si
+		 WHERE EXISTS (SELECT 1 FROM session_fts f WHERE f.session_id = si.session_id)`
+
+// #4669: GetIndexedMtimes reads the set of session ids in session_fts once instead of once per indexed session. On random indexes
+// (sessions with and without a full-text row, files shared by several sessions with different mtimes) it answers what the old
+// query answered, and its plan reads session_fts once (a list subquery) instead of probing it for each session, which on an FTS5
+// table is a scan of every transcript's text.
+func TestGetIndexedMtimesMatchesTheOldQueryAndDoesNotScanPerSession(t *testing.T) {
+	db := openTestDB(t)
+	s := NewSessionStore(db)
+	ctx := context.Background()
+	rnd := rand.New(rand.NewSource(4669))
+	withFTS, withoutFTS, sharedFile := 0, 0, 0
+	for i := 0; i < 80; i++ {
+		file := fmt.Sprintf("/history/%d.jsonl", i)
+		if i%7 == 3 && i > 0 {
+			file = fmt.Sprintf("/history/%d.jsonl", i-1) // two sessions in one file: the newest mtime wins
+			sharedFile++
+		}
+		sid := fmt.Sprintf("sess-%d", i)
+		require.NoError(t, s.UpsertSessionIndex(ctx, &SessionIndex{SessionID: sid, SourceType: "claude", SourceFile: file, FileMtime: float64(rnd.Intn(5000))}))
+		if rnd.Intn(3) != 0 {
+			require.NoError(t, s.UpsertFTS(ctx, sid, strings.Repeat("body text ", 1+rnd.Intn(30))))
+			withFTS++
+		} else {
+			withoutFTS++
+		}
+	}
+	require.GreaterOrEqual(t, withFTS, 30)
+	require.GreaterOrEqual(t, withoutFTS, 10)
+	require.GreaterOrEqual(t, sharedFile, 8)
+
+	got, err := s.GetIndexedMtimes(ctx)
+	require.NoError(t, err)
+	var rows []struct {
+		SourceFile string  `db:"source_file"`
+		FileMtime  float64 `db:"file_mtime"`
+	}
+	require.NoError(t, s.reader().SelectContext(ctx, &rows, indexedMtimesBefore4669))
+	want := map[string]float64{}
+	for _, r := range rows {
+		if prev, ok := want[r.SourceFile]; !ok || r.FileMtime > prev {
+			want[r.SourceFile] = r.FileMtime
+		}
+	}
+	require.NotEmpty(t, want)
+	assert.Equal(t, want, got)
+
+	plan, err := s.reader().QueryxContext(ctx, "EXPLAIN QUERY PLAN "+indexedMtimesSQL)
+	require.NoError(t, err)
+	defer plan.Close()
+	var lines []string
+	for plan.Next() {
+		var id, parent, unused int
+		var detail string
+		require.NoError(t, plan.Scan(&id, &parent, &unused, &detail))
+		lines = append(lines, detail)
+	}
+	all := strings.Join(lines, "\n")
+	assert.Contains(t, all, "LIST SUBQUERY", "the ids in session_fts are read once, into a list")
+	assert.NotContains(t, all, "EXISTS", "no per-session lookup of session_fts, which is a scan of every transcript's text")
+}

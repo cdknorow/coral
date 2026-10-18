@@ -592,6 +592,13 @@ func (s *SessionStore) GetAgentNames(ctx context.Context, sessionIDs []string) (
 	return result, nil
 }
 
+// indexedMtimesSQL lists the indexed files that also have a session_fts row. The set of session ids in session_fts is read once
+// (an uncorrelated IN): session_fts is an FTS5 table, so a lookup by session_id is a scan of its whole content, and a correlated
+// EXISTS made one scan, of every transcript's text, for each indexed session on every indexer pass (4.1 s for 250 sessions of
+// 1 MB; it grew with the square of the history, #4669).
+const indexedMtimesSQL = `SELECT si.source_file, si.file_mtime FROM session_index si
+	 WHERE si.session_id IN (SELECT session_id FROM session_fts)`
+
 // GetIndexedMtimes returns source_file -> file_mtime for sessions that are
 // fully indexed, so the indexer can skip re-reading files that have not changed.
 //
@@ -606,9 +613,7 @@ func (s *SessionStore) GetIndexedMtimes(ctx context.Context) (map[string]float64
 		SourceFile string  `db:"source_file"`
 		FileMtime  float64 `db:"file_mtime"`
 	}
-	err := s.reader().SelectContext(ctx, &rows,
-		`SELECT si.source_file, si.file_mtime FROM session_index si
-		 WHERE EXISTS (SELECT 1 FROM session_fts f WHERE f.session_id = si.session_id)`)
+	err := s.reader().SelectContext(ctx, &rows, indexedMtimesSQL)
 	if err != nil {
 		return nil, err
 	}
