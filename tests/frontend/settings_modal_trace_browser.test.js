@@ -71,7 +71,7 @@ const SCEN = [
                 const real = window.fetch; const json = (b, s = 200) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } }));
                 const A = ${JSON.stringify(answers)};
                 window.fetch = (u, o = {}) => {
-                    const url = String(u), p = new URL(url, location.href).pathname; window.__fetched.push(((o.method) || 'GET').toUpperCase() + ' ' + p);
+                    const url = String(u), p = new URL(url, location.href).pathname; if (p !== '/api/system/auto-wake') window.__fetched.push(((o.method) || 'GET').toUpperCase() + ' ' + p); // the page's own auto-wake poll comes when it comes, not from the dialog: it is left out of the fetches
                     if (p === '/api/system/privacy') return A.privacy === 500 ? json({}, 500) : json({ remote_access_enabled: true, debug_input_log: true, bind_host: '127.0.0.1' });
                     if (p === '/api/themes') return A.themes === 500 ? json({}, 500) : json({ themes: A.themes ? [{ name: 'Mine' }, { name: 'Other' }] : [] });
                     if (p === '/api/agent-models') return A.models === 500 ? json({}, 500) : json({ claude: ['opus', 'sonnet'], codex: ['gpt'], agy: ['gem'], pi: ['p1'] });
