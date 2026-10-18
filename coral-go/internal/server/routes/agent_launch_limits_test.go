@@ -35,6 +35,7 @@ func TestAgentCannotLaunchALessRestrictedAgent(t *testing.T) {
 			db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 			require.NoError(t, err)
 			t.Cleanup(func() { db.Close() })
+			stubCLIPaths(t, store.NewSessionStore(db))
 			terminal := newMockTerminal()
 			h := NewSessionsHandler(db, cfg, nil, terminal, nil)
 			body := map[string]any{"working_dir": t.TempDir(), "agent_type": "claude", "flags": bypassFlags}
@@ -129,6 +130,7 @@ func TestAgentLaunchOfASavedTemplateKeepsItsChoices(t *testing.T) {
 		db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 		require.NoError(t, err)
 		t.Cleanup(func() { db.Close() })
+		stubCLIPaths(t, store.NewSessionStore(db))
 		require.NoError(t, store.NewSessionStore(db).SetSetting(context.Background(), "saved_team_templates", saved))
 		terminal := newMockTerminal()
 		h := NewSessionsHandler(db, cfg, nil, terminal, nil)

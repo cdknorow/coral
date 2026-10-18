@@ -16,6 +16,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agentmodels"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
@@ -77,6 +78,7 @@ func TestLaunchRefusesAModelThatIsNotAModelID(t *testing.T) {
 			cfg := &config.Config{LogDir: t.TempDir()}
 			db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 			require.NoError(t, err)
+			stubCLIPaths(t, store.NewSessionStore(db))
 			terminal := newMockTerminal()
 			h := NewSessionsHandler(db, cfg, nil, terminal, nil)
 			body := map[string]any{"working_dir": t.TempDir(), "agent_type": "claude", "model": model}

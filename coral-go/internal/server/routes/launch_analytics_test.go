@@ -154,6 +154,9 @@ func TestLaunchFailuresUseControlledCategoriesAndNoRawText(t *testing.T) {
 
 func TestTeamLaunchCountsStartedAndFailedMembersSeparately(t *testing.T) {
 	sink := captureAnalytics(t)
+	// The helper stubs every agent type's cli_path (#4615), so this launch never depends on claude or codex being on PATH
+	// (it hit the v1.4.89 pre-push on a Mac without codex). The launch still "starts"; the failure cases below are driven
+	// by terminal.sendErr, not a missing CLI.
 	server, _, terminal, _ := setupSessionsTestServerWithConfig(t, config.Load(t.TempDir()))
 	body := func() map[string]any {
 		return map[string]any{

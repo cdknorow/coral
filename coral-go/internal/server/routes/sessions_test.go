@@ -1244,6 +1244,7 @@ func TestSessionsLaunchTeam_StripsForeignPermissionFlags(t *testing.T) {
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
+	stubCLIPaths(t, store.NewSessionStore(db))
 
 	terminal := newMockTerminal()
 	handler := NewSessionsHandler(db, cfg, nil, terminal, nil)
@@ -1287,6 +1288,7 @@ func TestSessionsLaunchTeam_PreservesToolsAndNeverMCP(t *testing.T) {
 	terminal := newMockTerminal()
 	handler := NewSessionsHandler(db, cfg, nil, terminal, bs)
 	ss := store.NewSessionStore(db)
+	stubCLIPaths(t, store.NewSessionStore(db))
 
 	workDir := t.TempDir()
 	body, _ := json.Marshal(map[string]any{
@@ -1607,6 +1609,12 @@ func TestSessionsRestartSleeping(t *testing.T) {
 func TestSessionsRestartInfersStoredAgentTypeWhenOmitted(t *testing.T) {
 	server, _, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
+	// This test asserts the restart emits the real agent binary as the command word (launchedAs below). The helper stubs
+	// cli_path for every type (#4615); clear the two it checks so the restart line carries the bare binary name. A restart
+	// never LookPaths or execs the CLI, so it needs no real binary on PATH.
+	for _, ct := range []string{"codex", "claude"} {
+		require.NoError(t, ss.SetSetting(ctx, "cli_path_"+ct, ""))
+	}
 	wd := t.TempDir()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
 		AgentName: "codex-sleepy", AgentType: "codex", WorkingDir: wd,
@@ -2464,6 +2472,20 @@ func agentToken(t *testing.T, h *SessionsHandler, sid, name string) string {
 	return tok
 }
 
+// stubCLIPaths points every agent type at a harmless stub binary so that a /launch resolves it from the cli_path_<type>
+// setting instead of exec.LookPath'ing the real CLI off PATH (#4615). A launch test must not depend on an agent CLI being
+// installed on the machine, nor ever run the operator's real CLI. Call it only in tests that reach the launch availability
+// check; a test that asserts on the emitted binary word (e.g. a restart, which never LookPaths) must not stub, and a test
+// that exercises CLI resolution itself sets or clears these settings as it needs.
+func stubCLIPaths(t *testing.T, ss *store.SessionStore) {
+	t.Helper()
+	for _, ct := range []string{"claude", "codex", "agy", "gemini", "pi"} {
+		if err := ss.SetSetting(context.Background(), "cli_path_"+ct, "/usr/bin/true"); err != nil {
+			t.Fatalf("stub cli_path_%s: %v", ct, err)
+		}
+	}
+}
+
 func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httptest.Server, *SessionsHandler, *mockSessionTerminal, *store.SessionStore) {
 	t.Helper()
 
@@ -2488,6 +2510,10 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	terminal := newMockTerminal()
 	handler := NewSessionsHandler(db, cfg, nil, terminal, bs)
 	ss := store.NewSessionStore(db)
+	// Every launch test built on this helper resolves its agent CLI from a stub, not from a real binary on PATH (#4615):
+	// the v1.4.89 pre-push failed on a Mac without codex. A restart/resume never LookPaths, so those paths keep emitting
+	// the real binary word; a test that asserts on that word, or that exercises CLI resolution, clears or sets its own.
+	stubCLIPaths(t, ss)
 
 	r := chi.NewRouter()
 	r.Use(testIdentity(db))
