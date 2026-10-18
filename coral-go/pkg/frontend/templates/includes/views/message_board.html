@@ -9,10 +9,17 @@
         <div class="mb-header-actions" style="margin-left:auto">
             <!-- At phone width the Subscribers column is hidden: this opens the same list as a sheet (#3610). -->
             <button type="button" class="mb-action-btn mb-subscribers-btn" id="mb-subscribers-btn" data-on-click="mb-subscribers" aria-haspopup="dialog" aria-controls="mb-subscribers-sheet" aria-expanded="false">Subscribers</button>
+            <!-- On a phone Select, Export, Pause and Delete sit in a More menu (#4538, UX #4536): the toolbar keeps one row at
+                 any text size. On a wider screen the group is laid out inline as before (display: contents). -->
+            <div class="mb-more" id="mb-more">
+            <button type="button" class="mb-action-btn mb-more-btn" id="mb-more-btn" data-on-click="mb-more" aria-haspopup="true" aria-expanded="false" aria-controls="mb-more-menu">More <svg class="mb-more-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 6 8 10 12 6"/></svg></button>
+            <div class="mb-more-menu" id="mb-more-menu" aria-label="More board actions">
             <button class="mb-action-btn" id="mb-select-btn" style="display:none" data-on-click="mb-select-mode" title="Select messages to export">Select</button>
             <button class="mb-action-btn" id="mb-export-btn" style="display:none" data-on-click="mb-export" title="Export — download board messages as Markdown">Export</button>
             <button class="mb-action-btn" id="mb-pause-btn" style="display:none" data-on-click="mb-pause" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
             <button class="mb-action-btn mb-action-danger" id="mb-delete-btn" style="display:none" data-on-click="mb-delete-board">Delete</button>
+            </div>
+            </div>
         </div>
     </div>
 

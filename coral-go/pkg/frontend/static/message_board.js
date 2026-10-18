@@ -171,6 +171,7 @@ onBoardLabelsChanged(() => {
 // ── View switching ───────────────────────────────────────────────────────
 
 export function selectBoardProject(project, messageId = null) {
+    setMoreOpen(false);
     currentProject = project;
     clearNewPill();
     state.currentBoardServer = splitKey(project).server;
@@ -223,6 +224,7 @@ export function selectBoardProject(project, messageId = null) {
 }
 
 export function showMessageBoardProjects() {
+    setMoreOpen(false);
     currentProject = null;
     clearNewPill();
     stopBoardPoll();
@@ -1398,12 +1400,67 @@ export function initMessageBoard() {
 
 export { loadBoardProjects };
 
+// ── The toolbar's More menu (#4538, UX #4536) ───────────────────────────────
+// On a phone the toolbar keeps Subscribers and puts Select, Export, Pause and Delete in a More menu (the same buttons: on a wider
+// screen their group is laid out inline and the More button is hidden, mobile.css). Arrow keys, Home and End move between its
+// items, Escape closes it with focus back on More; choosing an item, a click outside or leaving the board closes it.
+function moreItems() {
+    return [...document.querySelectorAll('#mb-more-menu .mb-action-btn')].filter(b => b.getClientRects().length && !b.disabled);
+}
+function setMoreOpen(open, { focus = false } = {}) {
+    const wrap = document.getElementById('mb-more');
+    const btn = document.getElementById('mb-more-btn');
+    if (!wrap || !btn) return;
+    wrap.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', String(open));
+    if (open && focus) moreItems()[0]?.focus();
+}
+function toggleMoreMenu(event) {
+    const open = !document.getElementById('mb-more')?.classList.contains('open');
+    // Opened from the keyboard (Enter or Space on More: a click whose detail, the pointer's click count, is 0), focus goes to the
+    // first item; a tap leaves it on More, also when focus is already there after an item's action.
+    setMoreOpen(open, { focus: open && event?.detail === 0 });
+}
+document.addEventListener('keydown', (e) => {
+    const wrap = document.getElementById('mb-more');
+    if (!wrap || !wrap.classList.contains('open') || !wrap.contains(document.activeElement)) return;
+    const items = moreItems();
+    const i = items.indexOf(document.activeElement);
+    let next = null;
+    if (e.key === 'ArrowDown') next = items[(i + 1) % items.length];
+    else if (e.key === 'ArrowUp') next = items[(i - 1 + items.length) % items.length];
+    else if (e.key === 'Home') next = items[0];
+    else if (e.key === 'End') next = items[items.length - 1];
+    else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation(); // not also the page's Escape
+        setMoreOpen(false);
+        document.getElementById('mb-more-btn')?.focus();
+        return;
+    }
+    if (next) { e.preventDefault(); next.focus(); }
+}, true);
+document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('mb-more');
+    if (!wrap || !wrap.classList.contains('open')) return;
+    if (e.target.closest?.('#mb-more-menu .mb-action-btn')) {
+        // The item's action runs (its own data-on-click); the menu closes, and focus goes back to More unless the action opened a dialog.
+        setTimeout(() => {
+            setMoreOpen(false);
+            if (!document.activeElement || document.activeElement === document.body || wrap.contains(document.activeElement)) document.getElementById('mb-more-btn')?.focus();
+        }, 0);
+    } else if (!e.target.closest?.('#mb-more')) {
+        setMoreOpen(false);
+    }
+});
+
 // The board's generated markup (#3645): data-on-* names, never code. Ids and names are checked
 // before use; a bad one does nothing. Deleting a message never asked first, and still doesn't.
 const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
 registerActions({
     'mb-project': el => { const p = textOf(el.dataset.project); if (p) selectBoardProject(p); },
     'mb-earlier': () => loadEarlierMessages(),
+    'mb-more': (el, event) => toggleMoreMenu(event),
     'mb-jump-latest': () => jumpToLatest(),
     'mb-msg-select': el => withId(el.dataset.msgId, id => toggleMessageSelect(id, el.checked)),
     'mb-msg-delete': el => withId(el.dataset.msgId, confirmDeleteBoardMessage),

@@ -3065,6 +3065,9 @@ button.subscriber-history-link {
     gap: 4px;
     align-items: center;
 }
+/* The board's More menu (#4538) is a phone's (mobile.css): on a wider screen its group is laid out inline, as before. */
+.mb-more, .mb-more-menu { display: contents; }
+.mb-action-btn.mb-more-btn { display: none; }
 
 .mb-action-btn {
     display: inline-flex;

@@ -544,13 +544,46 @@
     #messageboard-view.mb-has-board .mb-subscribers-btn {
         display: inline-flex;
     }
-    /* Five actions don't fit one row at phone width: they wrap, right-aligned, inside the gutter. */
+    /* At phone width the toolbar keeps Subscribers and a More menu with Select, Export, Pause and Delete (#4538, UX #4536:
+       five buttons wrapped to three rows at 200% text). Wrapping stays as the last resort. */
     #messageboard-view .mb-header-actions {
         flex-wrap: wrap;
         justify-content: flex-end;
         min-width: 0;
         max-width: 100%;
     }
+    #messageboard-view.mb-has-board .mb-more { display: inline-block; position: relative; }
+    #messageboard-view.mb-has-board .mb-more-btn { display: inline-flex; }
+    #messageboard-view .mb-more-menu {
+        display: none;
+        flex-direction: column;
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        min-width: 200px;
+        max-width: calc(100vw - 32px);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px 0;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+    }
+    #messageboard-view .mb-more.open .mb-more-menu { display: flex; }
+    #messageboard-view .mb-more-menu .mb-action-btn {
+        width: 100%;
+        min-height: 44px;
+        justify-content: flex-start;
+        padding: 8px 16px;
+        border: 0;
+        border-radius: 0;
+        background: none;
+        white-space: normal;
+        text-align: left;
+    }
+    #messageboard-view .mb-more-menu .mb-action-btn:hover,
+    #messageboard-view .mb-more-menu .mb-action-btn:focus-visible { background: var(--bg-hover); }
+    #messageboard-view .mb-more.open .mb-more-chevron { transform: rotate(180deg); }
 
     #mb-board {
         padding-bottom: 0 !important;
