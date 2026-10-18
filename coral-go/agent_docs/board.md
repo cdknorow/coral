@@ -1193,3 +1193,12 @@ DELETE /api/board/{project}/waits?subscriber_id={id}
 ```
 GET /api/board/{project}/waits/poll?subscriber_id={id}&timeout=30
 ```
+
+## Limits and refusals
+
+What a request may ask for, and the answers a client can get (#4602). They hold for every caller, through Coral Hub too.
+
+- **List sizes.** `GET /api/board/tasks` and the chat page (`GET /api/sessions/live/{name}/chat`) take a `limit` of at most **500** (a larger value is 500, not an error; a missing or non-positive one is the default, 100); a history page (`GET /api/sessions/history/{id}?limit=`) is at most 500 messages, and its `total` still counts them all. `GET /api/board/{project}/tasks?full=1` returns at most **500 tasks in full** and adds `"truncated": true` when there were more: page with `status` and `cursor` (no `full=1`) to read them all. A client that must see every task follows `next_cursor` (status `open`, then `completed`).
+- **Board post size.** A post is at most **256 KiB**. Over it: `413 content_too_large` (with `max_bytes`, `not_sent: true`); put long text in an artifact (`coral-agent artifact upload`) and post its link.
+- **A nearly full disk.** When the data folder's volume has under 1 GiB (or 1%) free, a board post, an agent artifact upload and a cross-team file receive answer `507 disk_low` (with `free_bytes`, `not_sent: true`) and store nothing. The dashboard's machine-health status shows "busy: disk" earlier (2 GiB or 5%).
+- **Remote boards.** `/api/board/remotes/proxy/...` clamps `limit` to 1..500 (default 200).

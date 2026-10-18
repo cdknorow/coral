@@ -552,3 +552,8 @@ through separate requests, not one atomic transaction. If saving reports an
 error, the feedback identifies whether working mode, global health, or both
 failed. Reopen the dialog to inspect the persisted values. The first-claim
 snapshot rule applies only to working-mode guidance, not to the health switch.
+
+## Limits (#4602)
+
+- **`POST /api/sessions/launch-team`** starts at most **32 agents** per request: more is `400 too_many_agents` (with `max`), before anything is created.
+- **`POST /api/teams/generate`** runs at most **2 generations at once**: a third is `429 busy` with `Retry-After: 10` and no job; at most 50 job records are kept (a new job evicts the oldest finished one).

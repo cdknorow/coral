@@ -1008,3 +1008,8 @@ All endpoints return JSON. Error format:
 | 409 | Conflict (e.g. input sent to a sleeping or archived agent) |
 | 500 | Internal server error |
 | 503 | Agent metadata temporarily unavailable (`code: "agent_metadata_unavailable"`); retry |
+
+## Limits (#4602)
+
+- **Terminal size.** `POST /api/sessions/live/{name}/resize` takes `columns` from **10 to 1000** (otherwise `400`), and a `terminal_resize` frame on the terminal socket is clamped to 10-1000 columns and 1-300 rows (no rows, or a negative number, is 50).
+- **Pages.** A chat or history page is at most 500 messages (see [board.md](board.md#limits-and-refusals)).

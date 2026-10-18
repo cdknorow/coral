@@ -177,3 +177,7 @@ coral-agent artifact download coral://artifacts/<hex> [--output FILE]   # flags 
 
 - [Personal Tasks](agent-tasks.md): `coral-agent task` commands and manifests
 - [Task Workflows](task-workflows.md#submit-outputs): artifact limits and provenance
+
+## When the disk is nearly full (#4602)
+
+An agent upload (`POST /api/agent/artifacts`) and a cross-team file receive answer `507 disk_low` (`free_bytes`, `not_sent: true`) when the data folder's volume has under 1 GiB or 1% free; nothing is stored. Free some space (Settings > Storage shows what Coral uses) and send again.

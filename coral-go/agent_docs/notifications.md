@@ -131,3 +131,7 @@ It sends the same request as the `curl` examples, with the caller's identity (an
 ## Environment
 
 The `CORAL_PORT` environment variable is available in all workflow steps and agent sessions, making it easy to construct the notification URL.
+
+## Limits (#4602)
+
+A notification's `title` is at most **200 bytes** and its `message` **4096 bytes**; over either is a `400` that names the limits. The server keeps the newest **200** notifications (older ones are dropped, delivered or not).
