@@ -1077,6 +1077,8 @@ body.panel-dragging .agentic-state {
     .board-task-list .board-task-item .board-task-cost,
     .board-task-list .board-task-item .board-task-time { display: none; }
     .board-task-list .board-task-item .board-task-desc { order: 10; flex: 1 0 100%; min-width: 0; padding-left: 106px; box-sizing: border-box; }
+    /* Two lines of the title, not one cut at the edge: with hundreds of tasks the title is how a row is told apart. */
+    .board-task-list .board-task-item:not(.board-task-header) .board-task-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
     .board-task-list .board-task-header .board-task-desc { display: none; }
 }
 

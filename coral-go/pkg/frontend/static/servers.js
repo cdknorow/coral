@@ -192,11 +192,16 @@ function render() {
     // The periodic refresh must not pull focus out of a row the user is on.
     const activeRow = document.activeElement && m.contains(document.activeElement) ? document.activeElement.closest('.servers-row') : null;
     const keep = activeRow && _editing === null ? { row: activeRow.id, action: document.activeElement.dataset.action } : null;
+    // A long list pushes "Add server" screens below the fold: with many machines it sits above the list, beside how many answer.
+    const many = remotes.length > 5;
+    const online = remotes.filter(s => s.status === 'online').length;
+    const topBar = `<div class="servers-top"><span class="servers-summary" role="status">${remotes.length} servers, ${online} online${online < remotes.length ? `, ${remotes.length - online} not` : ''}</span><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>`;
     m.innerHTML = `<p class="servers-intro">Servers whose agents and teams appear in this hub. The hub stores each server's API key (encrypted); a key grants full control of that server.</p>
             ${_loadError ? `<div class="servers-form-error" role="alert">${escHtml(_loadError)}</div>` : ''}
+            ${many && _editing === null ? topBar : ''}
             <ul class="servers-list" aria-label="Registered servers">${rowHtml(local)}${remotes.map(rowHtml).join('')}</ul>
             ${!remotes.length && !_loadError ? '<p class="servers-empty">No remote servers yet.</p>' : ''}
-            ${_editing !== null ? formHtml() : '<div class="servers-form-actions"><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>'}`;
+            ${_editing !== null ? formHtml() : many ? '' : '<div class="servers-form-actions"><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>'}`;
     if (keep) {
         const r = document.getElementById(keep.row);
         const again = r && (keep.action ? r.querySelector(`[data-action="${keep.action}"]`) : null);

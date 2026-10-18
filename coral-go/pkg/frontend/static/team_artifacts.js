@@ -6,7 +6,7 @@ import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.j
 import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
-import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud } from './server_base.js';
+import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud, keyLabel } from './server_base.js';
 import { refreshDistill, startDistill, distillJob } from './knowledge_distill.js';
 import { browserLocal } from './safe_storage.js';
 import { buildBar } from './team_artifact_bar.js';
@@ -35,7 +35,7 @@ function syncFilters() {
 /** The list's totals from the reply: total (after the search and filters) and all (the whole list before them: "12 of 340"). */
 function noteCounts(data, cache) {
     const matched = Number.isSafeInteger(data.total) ? data.total : cache.items.length;
-    counts = { matched, all: Number.isSafeInteger(data.all) ? Math.max(data.all, matched) : matched };
+    counts = { matched, all: Number.isSafeInteger(data.all) ? Math.max(data.all, matched) : matched, truncated: !!data.truncated };
 }
 function setFilters(next) {
     filters = next;
@@ -267,7 +267,7 @@ function render() {
     { const k = focusKeyOf(root); if (k) focusKey = k; else if (document.activeElement && document.activeElement !== document.body && !root.contains(document.activeElement)) focusKey = null; }
     const {items, busy, error, hasMore, truncated} = caches[source];
     const personal = source === 'artifacts';
-    const scopeName = personal ? state.currentSession?.display_name || state.currentSession?.name || 'Selected agent' : team;
+    const scopeName = personal ? state.currentSession?.display_name || state.currentSession?.name || 'Selected agent' : team && keyLabel(team); // a board's name, never its id
     // Everything but the search bar is rebuilt: the bar keeps what is typed in it and its focus (only the team list has one).
     syncFilters();
     const showBar = !personal && !!team;
@@ -310,7 +310,7 @@ function render() {
     status.setAttribute('role', error ? 'alert' : 'status');
     status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
         : error ? error : busy ? (personal ? 'Loading agent artifacts…' : 'Loading team artifacts…')
-        : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : isFiltered(filters) ? 'No artifacts match this search.' : 'No artifacts shared by this team yet.') : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
+        : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : isFiltered(filters) ? 'No artifacts match this search.' : 'No artifacts shared by this team yet.') : (!personal && counts && counts.matched > items.length) ? `Showing ${items.length} of ${counts.matched}${truncated ? '+' : ''}` : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
     if (error) status.dataset.state = 'error';
     root.append(status);
     if (error) {

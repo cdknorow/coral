@@ -101,7 +101,8 @@ export function buildBar(onChange) {
             if (list.length > 1) { const li = make('li'); const b = make('button', 'ta-chip ta-chip-all', 'Clear all'); b.type = 'button'; b.addEventListener('click', () => { everything(); q.focus(); }); li.append(b); chipList.append(li); }
             chipList.hidden = !list.length;
             filterBtn.textContent = isFiltered(f) ? `Filters (${list.filter(c => c.key !== 'q').length})` : 'Filters';
-            count.textContent = !counts ? '' : isFiltered(f) ? `${counts.matched} of ${counts.all}` : `${counts.all} artifact${counts.all === 1 ? '' : 's'}`;
+            const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned
+            count.textContent = !counts ? '' : isFiltered(f) ? `${counts.matched} of ${all}` : `${all} artifact${counts.all === 1 && !counts.truncated ? '' : 's'}`;
         },
         /** The names seen in the list, offered in the Uploaded by field (typed text still works). */
         names(list) { byList.replaceChildren(...list.map(n => new Option(n))); },

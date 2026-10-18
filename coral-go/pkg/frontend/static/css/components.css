@@ -3751,6 +3751,8 @@ button.subscriber-history-link {
 .modal-content label.servers-check { display: flex; align-items: flex-start; gap: var(--space-md); }
 .modal-content label.servers-check input { width: auto; margin-top: 3px; flex-shrink: 0; }
 .servers-form-actions { display: flex; justify-content: flex-end; gap: var(--space-md); }
+.servers-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-md); margin: 0 0 var(--space-lg); }
+.servers-summary { color: var(--text-secondary); font-size: var(--fs-base); }
 /* The Add/Edit server form in the Servers tab (a page, not a dialog) looks like the dialogs' forms (#4324): labels above full-width fields that
    share the field look, a checkbox row of its own, and wrapping help text; nothing wider than the page at 390 px or 200% text. */
 .servers-form { min-width: 0; max-width: 100%; }
@@ -3768,7 +3770,7 @@ button.subscriber-history-link {
 .servers-form .servers-help { overflow-wrap: anywhere; }
 .servers-form-actions { flex-wrap: wrap; margin-top: var(--space-lg); }
 @media (max-width: 767px), (pointer: coarse) {
-    .servers-form input:not([type="checkbox"]):not([type="radio"]), .servers-form-actions .btn { min-height: var(--control-touch-height, 44px); }
+    .servers-form input:not([type="checkbox"]):not([type="radio"]), .servers-form-actions .btn, .servers-top .btn { min-height: var(--control-touch-height, 44px); }
     .servers-form label.servers-check { min-height: var(--control-touch-height, 44px); } /* the whole row is the tap target; the box stays by the first line */
 }
 @media (pointer: coarse) { .servers-row-actions .btn { min-height: 44px; } }
