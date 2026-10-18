@@ -67,15 +67,8 @@ onAgentView('coral:terminal-unwanted', () => {
 });
 onAgentView('coral:agent-view-hidden', () => { if (_terminalStarted) closeTerminalSocket(); });
 
-export async function selectLiveSession(name, agentType, sessionId, server) {
-    // Identity is (server, name). Callers that only know the session id (hash
-    // restore, toasts) omit `server` and it is resolved from the live list.
-    const srv = normServer(server || serverForSession(name, sessionId));
-    dbg('selectLiveSession', { name, agentType, sessionId, server: srv });
-    // Selecting an agent leaves the team view (declining to discard unsaved team settings cancels).
-    if (state.selectedTeam && window.exitTeamContext && await window.exitTeamContext({ goBack: false }) === false) return;
-    const generation = ++switchGeneration;
-    agentSwitchStarted(name, sessionId || null); // window.__coralReady.agentSelected (#3118)
+// The agent being left: its refreshers, terminal socket and file cache stop, and what was typed in its box is kept. Returns the box.
+function _leaveCurrentAgent() {
     stopCaptureRefresh();
     stopLiveHistoryPoll();
     _attachTerminal = null;
@@ -88,7 +81,11 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     if (oldKey) {
         saveSessionDraft(oldKey, input.value);
     }
+    return input;
+}
 
+// The session being chosen becomes the current one: found in the live list, with what the list knows of it. Returns that record and its display name.
+function _enterAgent(name, agentType, sessionId, srv) {
     // Look up display_name and working_directory from live sessions data
     const agentData = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === srv);
     const displayName = agentData ? agentData.display_name : null;
@@ -105,41 +102,11 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         // every agent (a terminal agent is listed under its folder's name). Reconnects use it (#3469).
         tmux_session: agentData?.tmux_session || null,
     };
+    return { agentData, displayName };
+}
 
-    syncFilesViewerSession();
-    refreshAgentUI();
-    // A sleeping agent keeps its transcript readable; the composer offers Wake
-    // instead of sending. The popout corrects this from its resolver below.
-    applySleepingView(!!(agentData && agentData.sleeping), { manageInput: !isPopout(), archived: !!(agentData && agentData.archived) });
-    // Cloud Hub: show the read-only chip at once for a View-only server (#3068).
-    syncUnreachableBanner(); // an agent on an unreachable server shows why (#3151)
-    syncAutoAcceptHeader(); // AUTO chip in the header while auto-accept is on (#3182)
-    clearComposerError(); // the last agent's send error is not this one's (#3218)
-    syncTerminalGoneHeader(); // "Terminal gone · Restart" for an agent whose terminal is gone
-    refreshHubAccess(state.currentSession);
-
-    // Restore input text for the new session
-    const newKey = sessionKey(state.currentSession);
-    input.value = state.sessionInputText[newKey] || "";
-    renderAttachments();
-    input.focus();
-
-    // Show live view, hide others
-    showView("live-session-view");
-
-    // The agent's page (#3532): a new history entry, or the same one when it is already this
-    // agent's (a link, Back, a re-select), keeping its sub-tab. The popout's URL is its identity.
-    if (!isPopout()) {
-        const route = liveRoute(srv, sessionId);
-        const cur = currentRoute();
-        if (cur && cur.view === 'agents' && cur.id === String(sessionId || '').toLowerCase() && cur.server === route.server) route.sub = cur.sub;
-        note(route);
-    }
-
-    // Show loading skeleton
-    const captureWrapper = document.getElementById("capture-wrapper");
-    captureWrapper.classList.add("loading-skeleton");
-
+// The agent's header, composer placeholder and ownership group, by the shared identity chain (display name, auto name, board title, "Agent"/"Terminal").
+function _drawAgentHeader(name, agentType, sessionId, srv, agentData, displayName) {
     // Update header via the shared identity chain (display_name -> auto_name -> board_job_title -> "Agent"/"Terminal")
     // Popout: the resolver record is authoritative at selection time (the live
     // list may only enrich later ticks), so identity comes from it first.
@@ -186,31 +153,10 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     // Reset summary/status before loading new session detail
     const summaryEl = document.getElementById("session-summary");
     if (summaryEl) summaryEl.style.display = "none";
+}
 
-    // Use cached data from WS for immediate display (no blocking fetch)
-    const agent = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === srv);
-    if (agent) {
-        updateSessionStatus(agent.status);
-        updateSessionSummary(agent.summary);
-    }
-    updateHeaderContext(agent || agentData || null);
-    captureWrapper.classList.remove("loading-skeleton");
-    updateSessionBranch(agent?.branch || null, agent?.repo_name || null, agent?.git_state || null);
-    updateSessionFolder(agent?.working_directory || "");
-    updateSessionModel(agent?.agent_type || agentType, agent?.model || "", srv);
-    updateWaitingIndicator(agent || {});
-    updateTokenUsage(sessionId);
-
-    // Set up quick action buttons
-    state.currentCommands = (agent && agent.commands) || [
-        { name: "compact", command: "/compact", description: "Compress conversation history" },
-        { name: "clear", command: "/clear", description: "Clear conversation and start fresh" },
-    ];
-    renderQuickActions();
-
-    // Highlight in sidebar
-    updateSidebarActive();
-
+// The Board chat tab shows for an agent on a board (and the sidebar opens it unless another tab is saved), and hides for one that is not.
+function _syncBoardTab(agentData, srv) {
     // Show/hide Board chat tab based on whether agent is on a board
     const boardTab = document.getElementById('agentic-tab-board');
     if (agentData && agentData.board_project) {
@@ -230,15 +176,10 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
             switchAgenticTab('files', 'top');
         }
     }
+}
 
-    // Reset live history and start capture/terminal FIRST (fastest path to visible output)
-    resetLiveHistory();
-    // Clear stale task state from previous session before starting refresh
-    state.currentAgentTasks = [];
-    state.currentBoardTasks = [];
-    renderTaskList();
-    state.currentAgentEvents = []; // the previous agent's activity goes now; the first poll fills the new one
-    renderEventTimeline();
+// The center pane's source for the agent: the xterm terminal and its socket, or the capture pane. Returns what settles when the terminal is attached (at once when there is none).
+function _startTerminalOrCapture(name, agentType, sessionId, srv, agentData, generation) {
     const mode = getRendererMode(agentType, sessionId);
     dbg('renderer mode:', mode, 'xterm loaded:', xtermReady());
     // Always start capture refresh — it polls tasks and events for any mode
@@ -305,18 +246,11 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         disposeTerminal();
         resetSyncedCols();
     }
+    return terminalAttached;
+}
 
-    // Sync tmux pane width to match browser display after layout settles
-    setTimeout(syncPaneWidth, 100);
-
-    // Show terminal or chat in the center pane (starts the transcript poll in chat mode)
-    // A sleeping agent has no terminal to show: its history is the view.
-    const transcriptReady = applyLiveViewMode(state.currentSession.sleeping ? "chat" : undefined);
-    const chatView = !!document.getElementById("capture-wrapper")?.classList.contains("chat-mode");
-    (chatView ? Promise.resolve(transcriptReady).catch(() => {}) : terminalAttached).then(() => {
-        if (generation === switchGeneration) agentViewReady(name, chatView ? 'chat' : 'terminal', sessionId || null);
-    });
-
+// What loads in the background once an agent is chosen: its subagents, its board's tasks, its notes, and (after the transcript) its changed files.
+function _loadAgentSecondary(name, sessionId, agentData, srv, generation, transcriptReady) {
     // Load secondary data in background (non-blocking, after terminal is connected)
     // The agent's tasks and events come with the first capture poll (startCaptureRefresh, above): GET /poll carries both,
     // so they are not fetched again here (#3720).
@@ -341,6 +275,105 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         // tab fetch it when used, and the server caches it.
     };
     Promise.resolve(transcriptReady).catch(() => {}).then(loadFiles);
+}
+
+export async function selectLiveSession(name, agentType, sessionId, server) {
+    // Identity is (server, name). Callers that only know the session id (hash
+    // restore, toasts) omit `server` and it is resolved from the live list.
+    const srv = normServer(server || serverForSession(name, sessionId));
+    dbg('selectLiveSession', { name, agentType, sessionId, server: srv });
+    // Selecting an agent leaves the team view (declining to discard unsaved team settings cancels).
+    if (state.selectedTeam && window.exitTeamContext && await window.exitTeamContext({ goBack: false }) === false) return;
+    const generation = ++switchGeneration;
+    agentSwitchStarted(name, sessionId || null); // window.__coralReady.agentSelected (#3118)
+    const input = _leaveCurrentAgent();
+
+    const { agentData, displayName } = _enterAgent(name, agentType, sessionId, srv);
+
+    syncFilesViewerSession();
+    refreshAgentUI();
+    // A sleeping agent keeps its transcript readable; the composer offers Wake
+    // instead of sending. The popout corrects this from its resolver below.
+    applySleepingView(!!(agentData && agentData.sleeping), { manageInput: !isPopout(), archived: !!(agentData && agentData.archived) });
+    // Cloud Hub: show the read-only chip at once for a View-only server (#3068).
+    syncUnreachableBanner(); // an agent on an unreachable server shows why (#3151)
+    syncAutoAcceptHeader(); // AUTO chip in the header while auto-accept is on (#3182)
+    clearComposerError(); // the last agent's send error is not this one's (#3218)
+    syncTerminalGoneHeader(); // "Terminal gone · Restart" for an agent whose terminal is gone
+    refreshHubAccess(state.currentSession);
+
+    // Restore input text for the new session
+    const newKey = sessionKey(state.currentSession);
+    input.value = state.sessionInputText[newKey] || "";
+    renderAttachments();
+    input.focus();
+
+    // Show live view, hide others
+    showView("live-session-view");
+
+    // The agent's page (#3532): a new history entry, or the same one when it is already this
+    // agent's (a link, Back, a re-select), keeping its sub-tab. The popout's URL is its identity.
+    if (!isPopout()) {
+        const route = liveRoute(srv, sessionId);
+        const cur = currentRoute();
+        if (cur && cur.view === 'agents' && cur.id === String(sessionId || '').toLowerCase() && cur.server === route.server) route.sub = cur.sub;
+        note(route);
+    }
+
+    // Show loading skeleton
+    const captureWrapper = document.getElementById("capture-wrapper");
+    captureWrapper.classList.add("loading-skeleton");
+
+    _drawAgentHeader(name, agentType, sessionId, srv, agentData, displayName);
+
+    // Use cached data from WS for immediate display (no blocking fetch)
+    const agent = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === srv);
+    if (agent) {
+        updateSessionStatus(agent.status);
+        updateSessionSummary(agent.summary);
+    }
+    updateHeaderContext(agent || agentData || null);
+    captureWrapper.classList.remove("loading-skeleton");
+    updateSessionBranch(agent?.branch || null, agent?.repo_name || null, agent?.git_state || null);
+    updateSessionFolder(agent?.working_directory || "");
+    updateSessionModel(agent?.agent_type || agentType, agent?.model || "", srv);
+    updateWaitingIndicator(agent || {});
+    updateTokenUsage(sessionId);
+
+    // Set up quick action buttons
+    state.currentCommands = (agent && agent.commands) || [
+        { name: "compact", command: "/compact", description: "Compress conversation history" },
+        { name: "clear", command: "/clear", description: "Clear conversation and start fresh" },
+    ];
+    renderQuickActions();
+
+    // Highlight in sidebar
+    updateSidebarActive();
+
+    _syncBoardTab(agentData, srv);
+
+    // Reset live history and start capture/terminal FIRST (fastest path to visible output)
+    resetLiveHistory();
+    // Clear stale task state from previous session before starting refresh
+    state.currentAgentTasks = [];
+    state.currentBoardTasks = [];
+    renderTaskList();
+    state.currentAgentEvents = []; // the previous agent's activity goes now; the first poll fills the new one
+    renderEventTimeline();
+    const terminalAttached = _startTerminalOrCapture(name, agentType, sessionId, srv, agentData, generation);
+
+    // Sync tmux pane width to match browser display after layout settles
+    setTimeout(syncPaneWidth, 100);
+
+    // Show terminal or chat in the center pane (starts the transcript poll in chat mode)
+    // A sleeping agent has no terminal to show: its history is the view.
+    const transcriptReady = applyLiveViewMode(state.currentSession.sleeping ? "chat" : undefined);
+    const chatView = !!document.getElementById("capture-wrapper")?.classList.contains("chat-mode");
+    (chatView ? Promise.resolve(transcriptReady).catch(() => {}) : terminalAttached).then(() => {
+        if (generation === switchGeneration) agentViewReady(name, chatView ? 'chat' : 'terminal', sessionId || null);
+    });
+
+    _loadAgentSecondary(name, sessionId, agentData, srv, generation, transcriptReady);
 }
 
 export async function selectHistorySession(sessionId, locator = null) {
