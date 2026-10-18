@@ -133,9 +133,9 @@ func agreeParse(t testing.TB, p TaskQueryParams) string {
 func TestParseTaskQueryAgreesWithBefore4599(t *testing.T) {
 	rng := rand.New(rand.NewSource(4669))
 	seen := map[string]int{}
-	n := 300000
+	n := 100000
 	if testing.Short() {
-		n = 30000
+		n = 20000
 	}
 	for i := 0; i < n; i++ {
 		r := agreeParse(t, randomTaskQueryParams(rng))

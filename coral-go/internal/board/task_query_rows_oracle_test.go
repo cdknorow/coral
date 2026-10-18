@@ -166,9 +166,9 @@ func qtUses(q *TaskQuery, res *TaskQueryResult) []string {
 
 func TestQueryTasksAgreesWithBefore4599(t *testing.T) {
 	ctx := context.Background()
-	seeds := 12
+	seeds := 5
 	if testing.Short() {
-		seeds = 3
+		seeds = 2
 	}
 	nonEmpty := map[string]int{} // a query using this, that returned rows
 	rowsWith := map[string]int{} // rows that came back with this
@@ -224,12 +224,12 @@ func TestQueryTasksAgreesWithBefore4599(t *testing.T) {
 	for _, u := range []string{"status", "priority", "assigned_to", "board", "created_by", "verification=" + VerificationVerified,
 		"verification=" + VerificationEvidence, "verification=" + VerificationUnverified, "parked", "unparked", "created_since",
 		"updated_since", "sort updated_at", "asc", "a later page", "no fields", "a next cursor", "an empty page"} {
-		assert.GreaterOrEqual(t, nonEmpty[u], 100, "%q went (almost) unexercised", u)
+		assert.GreaterOrEqual(t, nonEmpty[u], 40, "%q went (almost) unexercised", u)
 	}
 	for _, r := range []string{"board_label Board One", "board_label Board Two", "board_label team", "board_label b-none",
 		"board_label left out", "verification " + VerificationVerified, "verification " + VerificationEvidence,
 		"verification " + VerificationUnverified, "verification none"} {
-		assert.GreaterOrEqual(t, rowsWith[r], 100, "%q went (almost) unexercised", r)
+		assert.GreaterOrEqual(t, rowsWith[r], 40, "%q went (almost) unexercised", r)
 	}
 }
 

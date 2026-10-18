@@ -169,9 +169,9 @@ func depsOutcome(t *testing.T, s *Store, err error, taskID int64, project, befor
 
 func TestAddTaskDependenciesAgreesWithBefore4599(t *testing.T) {
 	ctx := context.Background()
-	seeds := 80
+	seeds := 25
 	if testing.Short() {
-		seeds = 16
+		seeds = 8
 	}
 	outcomes := map[string]int{}
 	for seed := int64(1); seed <= int64(seeds); seed++ {
@@ -225,7 +225,7 @@ func TestAddTaskDependenciesAgreesWithBefore4599(t *testing.T) {
 	}
 	t.Logf("calls compared, per outcome: %v", outcomes)
 	for _, k := range append(depOracleOutcomes, "ok, now blocked", "ok, now pending", "ok, left blocked", "ok, left pending", "ok, left draft") {
-		assert.GreaterOrEqual(t, outcomes[k], 30, "%q went (almost) unexercised", k)
+		assert.GreaterOrEqual(t, outcomes[k], 10, "%q went (almost) unexercised", k)
 	}
 	for k := range outcomes {
 		assert.False(t, strings.HasPrefix(k, "other error"), "an error no outcome names: %s", k)

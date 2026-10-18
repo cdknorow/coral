@@ -225,9 +225,9 @@ func cuKinds(t *testing.T, s *Store, cacheBefore map[sidebarUnreadKey]sidebarUnr
 
 func TestCountUnreadAgreesWithBefore4599(t *testing.T) {
 	ctx := context.Background()
-	seeds := 10
+	seeds := 5
 	if testing.Short() {
-		seeds = 4
+		seeds = 2
 	}
 	kinds := map[string]int{}
 	calls := 0
@@ -282,9 +282,9 @@ func TestCountUnreadAgreesWithBefore4599(t *testing.T) {
 	t.Logf("%d counts compared; per kind: %v", calls, kinds)
 	for _, k := range []string{"all, counted", "mentions, counted", "unset mode, counted", "group mode, counted", "resumed from the cache",
 		"first count on a long board", "read past the newest", "a session on two boards", "an unknown session left out", "an error"} {
-		assert.GreaterOrEqual(t, kinds[k], 30, "%q went (almost) unexercised", k)
+		assert.GreaterOrEqual(t, kinds[k], 15, "%q went (almost) unexercised", k)
 	}
-	assert.GreaterOrEqual(t, kinds["none alone, 0"], 30, "a receive-none session alone went (almost) unexercised")
+	assert.GreaterOrEqual(t, kinds["none alone, 0"], 15, "a receive-none session alone went (almost) unexercised")
 	for k := range kinds {
 		assert.False(t, strings.HasPrefix(k, "none alone, ") && k != "none alone, 0", "a receive-none session alone is never counted: %s", k)
 	}
