@@ -67,6 +67,14 @@ func (h *SessionsHandler) agentUI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p, err := h.db.PutAgentUI(r.Context(), sid, id, b.Title, b.HTML)
+		if errors.Is(err, store.ErrUIPanelLimit) || errors.Is(err, store.ErrUIHTMLLimit) {
+			code := "panel_limit"
+			if errors.Is(err, store.ErrUIHTMLLimit) {
+				code = "panel_html_limit"
+			}
+			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "message": err.Error(), "code": code})
+			return
+		}
 		if err != nil {
 			errInternalServer(w, err.Error())
 			return

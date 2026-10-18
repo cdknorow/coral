@@ -62,6 +62,12 @@ inline CSS/JavaScript and embedded images work, external libraries/network calls
 do not. Prefer responsive layouts with accessible labels and keyboard controls.
 Expanding a panel currently reloads it; save important responses before expanding.
 
+A session has at most **20 panels** and **32 MiB of HTML** in all (the HTML of the
+panel you replace is not counted twice). A publish past either is refused with
+`409` and a `code` of `panel_limit` or `panel_html_limit` and a `message` that
+says why (`coral-agent ui publish` prints it); remove a panel first. Updating a
+panel that exists always works.
+
 Interactive HTML can return structured user input:
 
 ```html
@@ -88,6 +94,8 @@ per control, and do not emit acknowledgements that carry no useful information.
 `emit` resolves only after storage succeeds. Event actions use 1–64 letters,
 digits, underscores or hyphens; requests must fit in 16 KiB. The event queue is
 non-destructive: save the last processed event `id`, then pass it as `--after`.
+A panel keeps its newest **1,000 events**: the oldest are dropped as new ones arrive, so
+read and save your position often.
 Read up to 100 events per call. After saving an interaction, Coral sends the
 owning agent a terminal notification with the panel ID, revision, event ID, and
 read command. The payload stays in the queue; it is not interpolated into the
