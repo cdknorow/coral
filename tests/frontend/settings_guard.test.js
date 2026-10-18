@@ -51,6 +51,16 @@ const { execFileSync } = require('node:child_process');
             assert.equal(await g3.restore(), 3);
             assert.deepEqual(rows(), ["note=it's here", 'theme=dark']);
         } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+        // Under the runner nothing goes through the API (a strict shard refuses a request with no credential): the server here would fail a GET.
+        server.close(); await new Promise(r => setTimeout(r, 20));
+        const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sguard2-'));
+        try {
+            execFileSync('sqlite3', [path.join(dir2, 'sessions.db'), "CREATE TABLE user_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO user_settings VALUES ('theme', 'dark');"]);
+            const g4 = await guardSettings({ base: 'http://127.0.0.1:1', dataDir: dir2 }); // nothing listens there
+            execFileSync('sqlite3', [path.join(dir2, 'sessions.db'), "INSERT INTO user_settings VALUES ('added', 'x');"]);
+            assert.equal(await g4.restore(), 1);
+            assert.equal(execFileSync('sqlite3', [path.join(dir2, 'sessions.db'), 'SELECT count(*) FROM user_settings;'], { encoding: 'utf8' }).trim(), '1');
+        } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
         console.log('settings_guard: ok');
-    } finally { server.close(); }
+    } finally { try { server.close(); } catch { /* closed above */ } }
 })().catch(e => { console.error(e); process.exit(1); });

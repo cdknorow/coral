@@ -16,7 +16,17 @@ const { BASE } = require('../test_base');
 
 const quote = s => "'" + String(s).replace(/'/g, "''") + "'";
 
-async function readSettings(base) {
+// Under the runner the settings are read from the shard's database, not through the API: a strict shard (--strict-local-auth) answers a request with no credential with 401, and a suite's
+// node-side calls send none (#4849 follow-up). Alone, through the API.
+function readFromDb(dataDir) {
+    const out = execFileSync('sqlite3', ['-readonly', '-separator', '\u001f', path.join(dataDir, 'sessions.db'), 'SELECT key, value FROM user_settings;'], { encoding: 'utf8', maxBuffer: 16 << 20 });
+    const settings = {};
+    for (const line of out.split('\n')) { if (!line) continue; const i = line.indexOf('\u001f'); settings[line.slice(0, i)] = line.slice(i + 1); }
+    return settings;
+}
+
+async function readSettings(base, dataDir = '') {
+    if (dataDir) return readFromDb(dataDir);
     const r = await fetch(base + '/api/settings');
     if (!r.ok) throw new Error(`GET /api/settings: HTTP ${r.status}`);
     const d = await r.json();
@@ -24,11 +34,11 @@ async function readSettings(base) {
 }
 
 async function guardSettings({ base = BASE, dataDir = process.env.CORAL_TEST_DATA_DIR || '' } = {}) {
-    const before = await readSettings(base);
+    const before = await readSettings(base, dataDir);
     return {
         before,
         async restore() {
-            const after = await readSettings(base);
+            const after = await readSettings(base, dataDir);
             const changed = Object.keys({ ...before, ...after }).filter(k => before[k] !== after[k]);
             if (!changed.length) return 0;
             if (dataDir) {
