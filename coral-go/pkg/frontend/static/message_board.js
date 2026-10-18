@@ -15,6 +15,7 @@ import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from
 import { note } from './nav.js';
 import { keyRoute } from './routes.js';
 import { attachDialogFocus } from './dialog_focus.js';
+import { mountBoardSearch, highlightBoard, setBoardMembers, resetBoardSearch } from './board_search.js';
 
 let currentProject = null;
 let pollTimer = null;
@@ -210,6 +211,7 @@ export function selectBoardProject(project, messageId = null) {
         }).catch(() => {});
     }
     document.getElementById('messageboard-title').textContent = 'Message Board';
+    mountBoardSearch(document.getElementById('mb-tools'), project, SEARCH_HOOKS);
 
     // Ensure dashboard is subscribed as a reader
     subscribeDashboard(project);
@@ -227,6 +229,7 @@ export function selectBoardProject(project, messageId = null) {
 
 export function showMessageBoardProjects() {
     setMoreOpen(false);
+    resetBoardSearch();
     currentProject = null;
     state.boardPageProject = null;
     clearNewPill();
@@ -468,6 +471,42 @@ function prependEarlier(container, count) {
     return true;
 }
 
+// The jump's landing: the message in the middle of the board with the focus on it (Save for Later's jump and the search's, #4510, #4771); the one before it loses its mark.
+function revealMessage(target) {
+    for (const old of document.querySelectorAll('#mb-messages .chat-search-target')) if (old !== target) old.classList.remove('chat-search-target');
+    const run = target.closest('details');
+    if (run) run.open = true; // a task-queue line inside a collapsed row
+    target.classList.add('chat-search-target');
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.setAttribute('tabindex', '-1'); // the focus goes to the message
+    target.focus({ preventScroll: true });
+}
+
+/** Go to a message of the board, loading the older pages until it is there (the board's own jump; the search's matches use it). */
+function focusMessageById(id) {
+    const container = document.getElementById('mb-messages');
+    const target = container && container.querySelector(`[data-message-id="${CSS.escape(String(id))}"]`);
+    if (target) { revealMessage(target); highlightBoard(container); return; }
+    pendingMessageId = String(id);
+    loadEarlierMessages();
+}
+
+/** "First": every older page is loaded, and the board is at its first message. */
+async function jumpToFirst() {
+    const container = document.getElementById('mb-messages');
+    if (!container) return;
+    for (let guard = 0; _loadedOffset > 0 && guard < 400; guard++) {
+        const before = _loadedOffset;
+        await loadEarlierMessages();
+        if (_loadedOffset >= before) break;
+    }
+    container.scrollTop = 0;
+    const first = container.querySelector(ROW);
+    if (first) { first.setAttribute('tabindex', '-1'); first.focus({ preventScroll: true }); }
+}
+
+const SEARCH_HOOKS = { me: OPERATOR_ID, redraw: () => highlightBoard(document.getElementById('mb-messages')), jumpTo: id => focusMessageById(id), first: () => jumpToFirst(), latest: () => jumpToLatest() };
+
 function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
     const container = document.getElementById('mb-messages');
     wireBoardScroll(container);
@@ -500,13 +539,9 @@ function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
     if (pendingMessageId) {
         const target = container.querySelector(`[data-message-id="${CSS.escape(pendingMessageId)}"]`);
         if (target) {
-            const run = target.closest('details');
-            if (run) run.open = true; // a task-queue line inside a collapsed row
-            target.classList.add('chat-search-target');
-            target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            target.setAttribute('tabindex', '-1'); // the focus goes to the message, for Save for Later's jump and the search's (#4510)
-            target.focus({ preventScroll: true });
+            revealMessage(target);
             pendingMessageId = null;
+            highlightBoard(container);
             return; // the jump decides the scroll position
         } else if (_loadedOffset > 0) {
             // Search hits may be older than the initial latest page. Keep
@@ -514,6 +549,7 @@ function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
             loadEarlierMessages();
         }
     }
+    highlightBoard(container);
     if (keepAnchor) {
         // Older messages went in above: what you were reading stays where it was.
         container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight);
@@ -557,6 +593,7 @@ function appendNewMessages(count) {
     for (const el of added) resolveBoardArtifacts(el, state.currentBoardServer);
     if (wasAtBottom) trimBoardWindow(container);
     updateBoardHeader(container);
+    highlightBoard(container);
     if (wasAtBottom) container.scrollTop = container.scrollHeight;
     else noteUnseenMessages(count);
 }
@@ -675,6 +712,7 @@ async function navigateToAgentHistoryByName(displayName) {
 async function loadBoardSubscribers(project) {
     try {
         const subs = await fetchSubscribers(project);
+        setBoardMembers([...new Set(subs.map(s => s.job_title || s.subscriber_id).filter(n => typeof n === 'string' && n))].sort().slice(0, 50)); // the From field's names
         // The column and the phone sheet (#3610) show the same list.
         const lists = ['mb-subscribers-list', 'mb-subscribers-sheet-list'].map(id => document.getElementById(id)).filter(Boolean);
         if (!subs.length) {

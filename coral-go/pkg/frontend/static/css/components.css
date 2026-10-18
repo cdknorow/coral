@@ -4258,3 +4258,18 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
     .settings-info-btn { width: 44px; height: 44px; border-radius: var(--radius-md); }
     .settings-modal-body select, .settings-modal-body input[type="text"], .settings-modal-body input[type="number"], .settings-modal-body input[type="password"], .settings-modal-body .btn { min-height: 44px; }
 }
+
+/* The board's search (#4771): the bar under the header, First and Latest beside Filters, the results line, and the matches marked in the messages. The marks are dark text on a yellow that
+   passes 4.5:1 in both themes (checked by board_search_browser). */
+.mb-tools { flex: none; padding: 0 var(--space-md, 12px); }
+.mb-tools:empty { display: none; }
+.mb-tools .list-bar-bar { padding-left: 0; padding-right: 0; }
+.mb-search-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mb-search-status[hidden] { display: none; }
+.mb-search-results { margin-right: auto; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+.mb-search-step { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; padding: 2px 6px; }
+.mb-search-step:disabled { opacity: 0.45; cursor: default; }
+.mb-hit { background: #ffd33d; color: #1f2328; border-radius: 2px; padding: 0 1px; }
+.mb-message-current .mb-hit { background: #ff9f1a; box-shadow: 0 0 0 1px #1f2328; }
+.mb-message-match { box-shadow: inset 3px 0 0 #ffd33d; }
+.mb-message-current { box-shadow: inset 3px 0 0 var(--accent); }
