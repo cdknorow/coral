@@ -2,6 +2,9 @@
 
 Run Coral on several machines (a laptop, a workstation, a cloud box) and see all of their agents and teams in one dashboard. One Coral server acts as the **hub**. The others are **remotes** (also called spokes). The hub shows the remotes' agents next to its own, lets you open their chat and terminal views, and lets you launch agents and teams on them.
 
+!!! note "Server or machine"
+    This page is about the hub you run yourself (`coral --hub`), whose screens say **server**: the Servers tab, **Add server**, the **Server** picker. In the hosted Coral Hub the same things are called **machines** (**Add a machine**, "Machines connected to your account").
+
 A remote is an ordinary standalone Coral server. It needs no special mode and no changes. The hub calls the same API your browser uses, through an authenticated proxy.
 
 !!! note "What the hub does not do"
@@ -32,7 +35,7 @@ Hub mode is a startup setting on purpose. It cannot be switched on from the web 
 
 ### 3. Add the remote
 
-In the hub's top bar, open the settings menu and choose **Servers**. This entry appears only in hub mode. Add a server with:
+In the hub's top bar, open the settings menu and choose **Servers**. This entry appears only in hub mode, and opens the **Servers** tab (once a remote is registered the tab stays in the top bar). Select **Add server** and fill in:
 
 | Field | Meaning |
 | --- | --- |
@@ -49,7 +52,7 @@ The hub checks the remote's health with the key before it saves anything. Use **
 
 ## Using it
 
-- **Sidebar.** Remote agents and teams appear with a server badge. If there are no remotes, the sidebar looks exactly as it does without the hub. The Servers dialog and a status strip show whether each remote is online, unreachable, or has a rejected key.
+- **Sidebar.** Remote agents and teams appear with a server badge. If there are no remotes, the sidebar looks exactly as it does without the hub. The Servers tab and a status strip show whether each remote is online, unreachable, or has a rejected key.
 - **Chat and terminal.** Select a remote agent as you would a local one. Chat, terminal, files, tasks, notes and the message board all go through the hub to the remote, and their paths are the remote's paths.
 - **Offline remotes.** When a remote is unreachable its last known agents stay in the list, greyed out and not actionable, until it comes back.
 - **Popout.** A remote agent opens at `/agent/{server}/{id}`. The old `/agent/{id}` still means a local agent.
