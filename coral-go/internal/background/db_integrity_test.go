@@ -2,9 +2,12 @@ package background
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
+
+	"github.com/cdknorow/coral/internal/store"
 )
 
 // integrityDB makes a database file with a table spread over many pages; damage writes over
@@ -92,4 +97,75 @@ func TestDBIntegrityStopsWithCoral(t *testing.T) {
 		t.Fatal("Run did not stop with its context")
 	}
 	assert.Empty(t, DatabaseWarning(), "no check ran")
+}
+
+// #4735: a problem the read pool reports is checked again on the writer's connection before it is shown: damage the second
+// check also finds is shown, a problem it does not find is not (and clears an earlier notice).
+func TestDBIntegrityConfirmsOnTheWriterBeforeWarning(t *testing.T) {
+	resetIntegrity(t)
+	good, bad := integrityDB(t, false), integrityDB(t, true)
+
+	NewDBIntegrity(map[string]*sqlx.DB{"bad.db": bad}).ConfirmOn(map[string]*sqlx.DB{"bad.db": good}).RunOnce(context.Background())
+	assert.Empty(t, DatabaseWarning(), "the first check said damaged, the confirming one found nothing: no notice")
+
+	integrity.set("bad.db", "an earlier notice")
+	NewDBIntegrity(map[string]*sqlx.DB{"bad.db": bad}).ConfirmOn(map[string]*sqlx.DB{"bad.db": good}).RunOnce(context.Background())
+	assert.Empty(t, DatabaseWarning(), "a confirmed-ok check clears the notice")
+
+	NewDBIntegrity(map[string]*sqlx.DB{"bad.db": bad}).ConfirmOn(map[string]*sqlx.DB{"bad.db": bad}).RunOnce(context.Background())
+	assert.Contains(t, DatabaseWarning(), "Coral found damage in bad.db (", "damage both checks find is shown")
+
+	resetIntegrity(t)
+	NewDBIntegrity(map[string]*sqlx.DB{"bad.db": bad}).RunOnce(context.Background())
+	assert.Contains(t, DatabaseWarning(), "Coral found damage in bad.db (", "without a confirming connection the first check stands, as before")
+}
+
+// #4735: the real thing. While the indexer rewrites session_fts, quick_check on the read pool reports "fts5: corruption found
+// reading blob N" on a sound database (most checks did, in this test's first run: 144 of 146); the check with a confirmation on the
+// writer's connection does not warn. If the read pool never produces the false report in the tries, there is nothing to confirm
+// and the test is skipped.
+func TestDBIntegrityDoesNotAlarmWhileTheIndexerWrites(t *testing.T) {
+	resetIntegrity(t)
+	ctx := context.Background()
+	db, err := store.OpenWithKey(ctx, filepath.Join(t.TempDir(), "sessions.db"), "")
+	require.NoError(t, err)
+	defer db.Close()
+	s := store.NewSessionStore(db)
+	words := strings.Fields("function handler request response error cache index session transcript window cursor refactor rename extract inline fixture assert mutation oracle floor build vet lint format alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima")
+	body := func(i, n int) string {
+		var b strings.Builder
+		for b.Len() < n {
+			b.WriteString(words[(i*7+b.Len()*13)%len(words)])
+			b.WriteString(fmt.Sprintf(" w%d ", (b.Len()*31+i+n)%7000))
+		}
+		return b.String()
+	}
+	for i := 0; i < 100; i++ {
+		require.NoError(t, s.UpsertFTS(ctx, fmt.Sprintf("sess-%d", i), body(i, 32<<10)))
+	}
+	var stop atomic.Bool
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { // the indexer: a changed session's text is rewritten
+		defer wg.Done()
+		for round := 0; !stop.Load(); round++ {
+			_ = s.UpsertFTS(ctx, fmt.Sprintf("sess-%d", round%100), body(round%100, 32<<10+round%4096))
+		}
+	}()
+	defer func() { stop.Store(true); wg.Wait() }()
+	falseReports := 0
+	for try := 0; try < 40; try++ {
+		if problems, err := QuickCheck(ctx, db.Reader()); err == nil && len(problems) > 0 {
+			falseReports++
+			resetIntegrity(t)
+			NewDBIntegrity(map[string]*sqlx.DB{"sessions.db": db.Reader()}).ConfirmOn(map[string]*sqlx.DB{"sessions.db": db.DB}).RunOnce(ctx)
+			require.Empty(t, DatabaseWarning(), "the writer's check found nothing wrong: no notice (the read pool said %v)", problems)
+			if falseReports >= 3 {
+				break
+			}
+		}
+	}
+	if falseReports == 0 {
+		t.Skip("the read pool did not report the false damage in 40 tries")
+	}
 }

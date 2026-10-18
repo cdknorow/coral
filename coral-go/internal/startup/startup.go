@@ -1112,7 +1112,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	if bs := srv.BoardStore(); bs != nil {
 		integrityTargets["messageboard.db"] = bs.Reader()
 	}
-	dbIntegrity := background.NewDBIntegrity(integrityTargets)
+	dbIntegrity := background.NewDBIntegrity(integrityTargets).ConfirmOn(map[string]*sqlx.DB{"sessions.db": db.DB}) // a problem is checked again with writes paused (#4735)
 	safego.Go("db_integrity", func() { dbIntegrity.Run(ctx) })
 
 	// A pty Coral wakes the agents that were running when it last stopped (#3636): one pass per

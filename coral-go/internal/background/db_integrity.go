@@ -17,6 +17,16 @@ import (
 // runs once on each database's read pool (a read: it never blocks writes for long and changes
 // nothing). Damage is logged and shown on the dashboard with what the user can do; Coral never
 // repairs or deletes anything on its own.
+//
+// A problem the read pool reports is confirmed before it is shown (#4735): while the indexer rewrites
+// the search index (session_fts), FTS5's own integrity check, which quick_check runs, reads it
+// part by part across commits and reports "fts5: corruption found reading blob N" on a database
+// that is sound (a writer rewriting session_fts rows and this check on the read pool: 144 of 146
+// checks reported it; the same database was ok on the writer's connection, in FTS5's integrity-check
+// and when opened afresh). The startup check coincides with the indexer's startup pass, so the
+// operator saw "damaged" at 4 of 10 starts and "ok" at the next one, with a different blob each time.
+// The check is therefore repeated on the writer's connection, which no write can interleave with,
+// and only what that finds is shown.
 
 // quickCheckLimit bounds the problems quick_check reports per database.
 const quickCheckLimit = 5
@@ -49,7 +59,15 @@ func QuickCheck(ctx context.Context, db *sqlx.DB) ([]string, error) {
 // DBIntegrity is the one-time check.
 type DBIntegrity struct {
 	targets map[string]*sqlx.DB // by file name
+	confirm map[string]*sqlx.DB // by file name: the connection a reported problem is checked again on (no write can run beside it)
 	First   time.Duration
+}
+
+// ConfirmOn sets, by file name, the connection a problem found on the read pool is checked again on before it is
+// reported: the database's writer connection. It returns j.
+func (j *DBIntegrity) ConfirmOn(confirm map[string]*sqlx.DB) *DBIntegrity {
+	j.confirm = confirm
+	return j
 }
 
 // NewDBIntegrity checks targets (file name to read pool) a minute after start.
@@ -86,6 +104,27 @@ func (j *DBIntegrity) RunOnce(ctx context.Context) {
 		case err != nil:
 			log.Printf("[integrity] could not check %s: %v", name, err)
 			continue
+		}
+		if len(problems) > 0 {
+			if c := j.confirm[name]; c != nil {
+				first := problems[0]
+				again, cerr := QuickCheck(ctx, c)
+				switch {
+				case ctx.Err() != nil:
+					return
+				case cerr != nil && isCorruption(cerr):
+					problems = []string{cerr.Error()}
+				case cerr != nil:
+					log.Printf("[integrity] could not check %s again: %v", name, cerr)
+					continue
+				case len(again) == 0:
+					log.Printf("[integrity] %s: ok (%s); the first check said %q while Coral was writing, and a check with writes paused found nothing", name, time.Since(start).Round(time.Millisecond), first)
+					integrity.set(name, "")
+					continue
+				default:
+					problems = again
+				}
+			}
 		}
 		if len(problems) == 0 {
 			log.Printf("[integrity] %s: ok (%s)", name, time.Since(start).Round(time.Millisecond))
