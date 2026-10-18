@@ -1211,11 +1211,6 @@
         font-size: 0.8125rem;
     }
 
-    /* Hide search on very small screens to save space */
-    .top-bar-search {
-        display: none !important;
-    }
-
     /* Modal padding: tighter on small phones */
     .modal-content {
         padding: 16px !important;

@@ -120,60 +120,6 @@
 /* The phone's current-view dropdown (<= 767 px: mobile.css shows it in place of the row). */
 .nav-select { display: none; }
 
-/* ── Top Bar Search ────────────────────────────────────────── */
-
-.top-bar-search {
-    display: flex;
-    align-items: center;
-    position: relative;
-    flex: 0 1 250px;
-    max-width: 300px;
-}
-
-.top-bar-search-icon {
-    position: absolute;
-    left: 8px;
-    font-size: 1rem;
-    color: var(--text-secondary);
-    pointer-events: none;
-}
-
-.top-bar-search-input {
-    width: 100%;
-    padding: 6px 10px 6px 30px;
-    font-size: var(--fs-md);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    outline: none;
-}
-
-.top-bar-search-input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15);
-}
-
-.topbar-search-dropdown {
-    position: fixed;
-    top: auto;
-    bottom: auto;
-    left: auto;
-    width: 300px;
-    max-height: 400px;
-    overflow-y: auto;
-    z-index: 99999;
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-}
-
-.top-bar-search-input::placeholder {
-    color: var(--text-secondary);
-    opacity: 0.6;
-}
-
 .top-bar-title {
     display: inline-flex;
     align-items: center;

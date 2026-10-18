@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, refusedTooLarge } from './utils.js';
 import { registerActions, textOf } from './actions.js';
-import { fetchFileList, fuzzyFilter, getDirBrowseResults } from './file_mention.js';
+import { fetchFileList, fuzzyFilter } from './file_mention.js';
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
 import { fileIconHtml } from './file_explorer.js';
 import { openPreviewTab, openArtifactTab, setPreviewSession } from './preview_pane.js';
@@ -236,125 +236,6 @@ export function initFileSearch() {
     input.addEventListener('blur', () => {
         setTimeout(_hideSearchDropdown, 200);
     });
-}
-
-// Top bar search — prominent file search that renders results in its own dropdown.
-export function initTopBarSearch() {
-    const input = document.getElementById('topbar-file-search');
-    if (!input || input.dataset.searchBound) return;
-    input.dataset.searchBound = '1';
-    // Clear any browser autofill that snuck in
-    input.value = '';
-
-    let debounce;
-    function doSearch() {
-        clearTimeout(debounce);
-        const q = input.value.trim();
-        if (!q) {
-            _hideTopBarDropdown();
-            return;
-        }
-        debounce = setTimeout(async () => {
-            if (!state.currentSession || state.currentSession.type !== 'live') {
-                _renderTopBarResults(null, 'Select an agent to search files');
-                return;
-            }
-            const mode = (state.settings || {}).file_search_mode || 'directory';
-            if (mode === 'directory') {
-                const browse = await getDirBrowseResults(q);
-                if (!browse || browse.results.length === 0) {
-                    _renderTopBarResults(null, 'No files found');
-                    return;
-                }
-                _renderTopBarResults(browse.results.slice(0, 50));
-            } else {
-                const files = await fetchFileList();
-                if (!files || files.length === 0) {
-                    _renderTopBarResults(null, 'No files found');
-                    return;
-                }
-                const matches = fuzzyFilter(files, q);
-                _renderTopBarResults(matches);
-            }
-        }, 200);
-    }
-
-    input.addEventListener('input', doSearch);
-    input.addEventListener('keyup', doSearch);
-    input.addEventListener('focus', () => {
-        if (!input.value.trim()) _showWorkingDir();
-    });
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            input.value = '';
-            _hideTopBarDropdown();
-        }
-    });
-    input.addEventListener('blur', () => setTimeout(_hideTopBarDropdown, 200));
-}
-
-async function _showWorkingDir() {
-    const dir = state.currentSession?.working_directory;
-    if (!dir) {
-        _renderTopBarResults(null, 'Select an agent to search files');
-        return;
-    }
-    const mode = (state.settings || {}).file_search_mode || 'directory';
-    if (mode === 'directory') {
-        const browse = await getDirBrowseResults('');
-        if (browse && browse.results.length > 0) {
-            _renderTopBarResults(browse.results.slice(0, 20), null, dir);
-        } else {
-            _renderTopBarResults(null, 'Type to search files...', dir);
-        }
-    } else {
-        const files = await fetchFileList();
-        if (files && files.length > 0) {
-            _renderTopBarResults(files.slice(0, 20), null, dir);
-        } else {
-            _renderTopBarResults(null, 'Type to search files...', dir);
-        }
-    }
-}
-
-function _renderTopBarResults(files, message, workingDir) {
-    const dropdown = document.getElementById('topbar-search-dropdown');
-    if (!dropdown) return;
-
-    // Position fixed dropdown below the search input
-    const input = document.getElementById('topbar-file-search');
-    if (input) {
-        const rect = input.getBoundingClientRect();
-        dropdown.style.top = (rect.bottom + 4) + 'px';
-        dropdown.style.left = rect.left + 'px';
-        dropdown.style.width = Math.max(rect.width, 300) + 'px';
-    }
-
-    // Working directory header
-    const dir = workingDir || state.currentSession?.working_directory;
-    const dirHeader = dir
-        ? `<div class="topbar-search-dir" style="padding:6px 12px;font-size:0.6875rem;color:var(--text-secondary);border-bottom:1px solid var(--border);font-family:var(--font-mono)"><span class="material-icons" style="font-size:0.8125rem;vertical-align:-2px;margin-right:4px" aria-hidden="true">folder</span>${escapeHtml(dir)}</div>`
-        : '';
-
-    if (message) {
-        dropdown.innerHTML = dirHeader + `<div class="file-mention-item" style="color:var(--text-secondary);cursor:default">${escapeHtml(message)}</div>`;
-        dropdown.style.display = 'block';
-        return;
-    }
-    if (!files || files.length === 0) {
-        dropdown.innerHTML = dirHeader + '<div class="file-mention-item" style="color:var(--text-secondary);cursor:default">No matches</div>';
-        dropdown.style.display = 'block';
-        return;
-    }
-    dropdown.innerHTML = dirHeader + files.slice(0, 20).map(fp => {
-        return `<div class="file-mention-item" data-on-mousedown="file-mention" data-path="${escapeAttr(fp)}">${escapeHtml(fp)}</div>`;
-    }).join('');
-    dropdown.style.display = 'block';
-}
-
-function _hideTopBarDropdown() {
-    const dropdown = document.getElementById('topbar-search-dropdown');
-    if (dropdown) dropdown.style.display = 'none';
 }
 
 function _updateSearchSelection() {
@@ -672,7 +553,6 @@ registerActions({
     'file-preview': (el, event) => { event.stopPropagation(); const p = pathOf(el); if (p) openFilePreview(p, ...diffOpts(el)); },
     'file-edit': (el, event) => { event.stopPropagation(); const p = pathOf(el); if (p) openFileEdit(p, ...diffOpts(el)); },
     // On mousedown, as before: the @-mention list closes on the input's blur, which a click comes after.
-    'file-mention': (el, event) => { event.preventDefault(); const p = pathOf(el); if (p) openFilePreview(p); },
     // Only a mode this list offers.
     'diff-mode': el => { if (_diffModes.includes(el.value)) setGitDiffMode(el.value); },
 });
