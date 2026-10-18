@@ -81,6 +81,7 @@ func setupAgentHistoryTestEnv(t *testing.T) *testHistoryEnv {
 		})
 	})
 	r.Get("/api/agent/history/search", h.SearchAgentHistory)
+	r.Get("/api/agent/history/search-old", h.searchAgentHistoryBefore4834) // the #4834 oracle's old copy
 	r.Get("/api/agent/history/context", h.GetAgentHistoryContext)
 	r.Get("/api/sessions/live/{name}/history/search", h.SearchAgentHistoryForLive)
 	r.Get("/api/sessions/live/{name}/history/context", h.GetAgentHistoryContextForLive)

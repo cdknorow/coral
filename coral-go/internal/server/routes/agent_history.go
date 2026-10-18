@@ -73,220 +73,210 @@ type AgentHistoryContextResponse struct {
 // GET /api/agent/history/search
 func (h *SessionsHandler) SearchAgentHistory(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-
 	sessionID, ok := historyCaller(w, r, q)
 	if !ok {
 		return
 	}
-
-	searchQuery := strings.TrimSpace(q.Get("query"))
-	if searchQuery == "" {
-		searchQuery = strings.TrimSpace(q.Get("q"))
-	}
-	if searchQuery == "" {
-		errBadRequest(w, "query parameter 'query' or 'q' is required")
+	p, refused := parseHistorySearch(r, q)
+	if refused != nil {
+		refused(w)
 		return
 	}
-	if len(searchQuery) > 1000 {
-		errBadRequest(w, "query exceeds maximum length of 1000 characters")
+	sessions, refused := h.historySearchSessions(r.Context(), sessionID, p)
+	if refused != nil {
+		refused(w)
 		return
 	}
+	phrases, terms := parseSearchQuery(p.query)
+	var allMatches []AgentHistoryMatch
+	var sessionsSearched []SessionSearchStatus
+	for _, item := range sessions {
+		status, matches := h.searchHistorySession(r.Context(), item, p, phrases, terms)
+		sessionsSearched = append(sessionsSearched, status)
+		allMatches = append(allMatches, matches...)
+	}
+	sortHistoryMatches(allMatches)
+	results, hasMore := pageHistoryMatches(allMatches, p.offset, p.limit)
+	writeJSON(w, http.StatusOK, AgentHistorySearchResponse{
+		Query:            p.query,
+		Status:           historySearchStatus(sessionsSearched),
+		TotalMatches:     len(allMatches),
+		HasMore:          hasMore,
+		Limit:            p.limit,
+		Offset:           p.offset,
+		Results:          results,
+		SessionsSearched: sessionsSearched,
+	})
+}
 
+// historySearch is a history search's request: the query, the roles searched, which sessions of the lineage
+// (all, the current one only, or one named), the page and the excerpt length.
+type historySearch struct {
+	query            string
+	roles            map[string]bool
+	includeAncestors bool
+	targetSessionID  string
+	limit, offset    int
+	maxExcerptChars  int
+}
+
+// parseHistorySearch reads a history search's parameters: the query (query or q, required, at most 1000
+// characters), the roles (assistant and user by default), include_ancestors (on unless false, 0 or no), a target
+// session, the page (limit 20, at most 100) and the excerpt length (50 to 1000, 300 by default).
+func parseHistorySearch(r *http.Request, q url.Values) (historySearch, answer) {
+	p := historySearch{query: strings.TrimSpace(q.Get("query")), includeAncestors: true}
+	if p.query == "" {
+		p.query = strings.TrimSpace(q.Get("q"))
+	}
+	if p.query == "" {
+		return p, func(w http.ResponseWriter) { errBadRequest(w, "query parameter 'query' or 'q' is required") }
+	}
+	if len(p.query) > 1000 {
+		return p, func(w http.ResponseWriter) { errBadRequest(w, "query exceeds maximum length of 1000 characters") }
+	}
 	rolesParam := q.Get("roles")
 	if rolesParam == "" {
 		rolesParam = "assistant,user"
 	}
-	allowedRoles := parseRoles(rolesParam)
-
-	includeAncestors := true
-	if inc := q.Get("include_ancestors"); inc != "" {
-		if inc == "false" || inc == "0" || inc == "no" {
-			includeAncestors = false
-		}
+	p.roles = parseRoles(rolesParam)
+	if inc := q.Get("include_ancestors"); inc == "false" || inc == "0" || inc == "no" {
+		p.includeAncestors = false
 	}
+	p.targetSessionID = strings.TrimSpace(q.Get("target_session_id"))
+	p.limit = clampLimit(queryInt(r, "limit", 20), 20, 100)
+	p.offset = clampOffset(queryInt(r, "offset", 0))
+	p.maxExcerptChars = min(max(queryInt(r, "max_excerpt_chars", 300), 50), 1000)
+	return p, nil
+}
 
-	targetSessionID := strings.TrimSpace(q.Get("target_session_id"))
-
-	limit := clampLimit(queryInt(r, "limit", 20), 20, 100)
-	offset := clampOffset(queryInt(r, "offset", 0))
-
-	maxExcerptChars := queryInt(r, "max_excerpt_chars", 300)
-	if maxExcerptChars < 50 {
-		maxExcerptChars = 50
-	} else if maxExcerptChars > 1000 {
-		maxExcerptChars = 1000
-	}
-
-	// Authenticate caller session and resolve proven resume ancestry
-	ancestry, err := h.ss.GetSessionAncestry(r.Context(), sessionID)
+// historySearchSessions are the sessions a search reads: the caller's proven lineage (its own session and its
+// resume_from_id ancestors), or only its current session, or one session of the lineage it names (refused when the
+// name is outside it).
+func (h *SessionsHandler) historySearchSessions(ctx context.Context, sessionID string, p historySearch) ([]store.SessionLineageItem, answer) {
+	ancestry, err := h.ss.GetSessionAncestry(ctx, sessionID)
 	if err != nil {
-		errInternalServer(w, err.Error())
-		return
+		return nil, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
 	}
 	if len(ancestry) == 0 {
-		errNotFound(w, "Unknown session; run this from inside a Coral agent")
-		return
+		return nil, func(w http.ResponseWriter) { errNotFound(w, "Unknown session; run this from inside a Coral agent") }
 	}
-
-	// Validate target_session_id if specified (must be in lineage)
-	var sessionsToSearch []store.SessionLineageItem
-	if targetSessionID != "" {
-		var matched *store.SessionLineageItem
-		for i := range ancestry {
-			if ancestry[i].SessionID == targetSessionID {
-				matched = &ancestry[i]
-				break
+	if p.targetSessionID != "" {
+		for _, item := range ancestry {
+			if item.SessionID == p.targetSessionID {
+				return []store.SessionLineageItem{item}, nil
 			}
 		}
-		if matched == nil {
+		return nil, func(w http.ResponseWriter) {
 			writeJSON(w, http.StatusForbidden, map[string]string{
 				"error": "Unauthorized: session is not within the authenticated session lineage",
 			})
-			return
 		}
-		sessionsToSearch = []store.SessionLineageItem{*matched}
-	} else if !includeAncestors {
-		sessionsToSearch = ancestry[:1]
-	} else {
-		sessionsToSearch = ancestry
 	}
+	if !p.includeAncestors {
+		return ancestry[:1], nil
+	}
+	return ancestry, nil
+}
 
-	phrases, terms := parseSearchQuery(searchQuery)
-
-	var allMatches []AgentHistoryMatch
-	var sessionsSearched []SessionSearchStatus
-
-	for _, item := range sessionsToSearch {
-		roleLabel := "ancestor"
-		if item.IsCurrent {
-			roleLabel = "current"
-		}
-
-		messages, errMsg, err := h.loadSessionMessages(r.Context(), item)
-		if err != nil {
-			sessionsSearched = append(sessionsSearched, SessionSearchStatus{
-				SessionID:        item.SessionID,
-				Role:             roleLabel,
-				Status:           "transcript_unavailable",
-				MessagesSearched: 0,
-				Error:            err.Error(),
-			})
+// searchHistorySession searches one session's transcript: its status (ready with the messages searched, empty, or
+// its transcript unavailable with why) and each message of an allowed role whose text matches, with an excerpt
+// around the first match.
+func (h *SessionsHandler) searchHistorySession(ctx context.Context, item store.SessionLineageItem, p historySearch, phrases, terms []string) (SessionSearchStatus, []AgentHistoryMatch) {
+	status := SessionSearchStatus{SessionID: item.SessionID, Role: "ancestor"}
+	if item.IsCurrent {
+		status.Role = "current"
+	}
+	messages, errMsg, err := h.loadSessionMessages(ctx, item)
+	switch {
+	case err != nil:
+		status.Status, status.Error = "transcript_unavailable", err.Error()
+		return status, nil
+	case errMsg != "":
+		status.Status, status.Error = "transcript_unavailable", errMsg
+		return status, nil
+	case len(messages) == 0:
+		status.Status = "empty"
+		return status, nil
+	}
+	status.Status, status.MessagesSearched = "ready", len(messages)
+	var matches []AgentHistoryMatch
+	for idx, msg := range messages {
+		msgRole, _ := msg["type"].(string)
+		if !p.roles[msgRole] {
 			continue
 		}
-		if errMsg != "" {
-			sessionsSearched = append(sessionsSearched, SessionSearchStatus{
-				SessionID:        item.SessionID,
-				Role:             roleLabel,
-				Status:           "transcript_unavailable",
-				MessagesSearched: 0,
-				Error:            errMsg,
-			})
+		text := extractSearchableMessageText(msg)
+		if text == "" {
 			continue
 		}
-		if len(messages) == 0 {
-			sessionsSearched = append(sessionsSearched, SessionSearchStatus{
-				SessionID:        item.SessionID,
-				Role:             roleLabel,
-				Status:           "empty",
-				MessagesSearched: 0,
-			})
+		matched, offsets, matchedTerms := matchMessage(text, phrases, terms)
+		if !matched {
 			continue
 		}
-
-		sessionsSearched = append(sessionsSearched, SessionSearchStatus{
-			SessionID:        item.SessionID,
-			Role:             roleLabel,
-			Status:           "ready",
-			MessagesSearched: len(messages),
+		firstOffset := 0
+		if len(offsets) > 0 {
+			firstOffset = offsets[0][0]
+		}
+		timestamp, _ := msg["timestamp"].(string)
+		matches = append(matches, AgentHistoryMatch{
+			SessionID:    item.SessionID,
+			IsCurrent:    item.IsCurrent,
+			MessageIndex: idx,
+			Role:         msgRole,
+			Timestamp:    timestamp,
+			Excerpt:      makeBoundedExcerpt(text, firstOffset, p.maxExcerptChars),
+			MatchOffsets: offsets,
+			MatchTerms:   matchedTerms,
 		})
-
-		for idx, msg := range messages {
-			msgRole, _ := msg["type"].(string)
-			if !allowedRoles[msgRole] {
-				continue
-			}
-
-			text := extractSearchableMessageText(msg)
-			if text == "" {
-				continue
-			}
-
-			matched, offsets, matchedTerms := matchMessage(text, phrases, terms)
-			if !matched {
-				continue
-			}
-
-			firstOffset := 0
-			if len(offsets) > 0 {
-				firstOffset = offsets[0][0]
-			}
-			excerpt := makeBoundedExcerpt(text, firstOffset, maxExcerptChars)
-			timestamp, _ := msg["timestamp"].(string)
-
-			allMatches = append(allMatches, AgentHistoryMatch{
-				SessionID:    item.SessionID,
-				IsCurrent:    item.IsCurrent,
-				MessageIndex: idx,
-				Role:         msgRole,
-				Timestamp:    timestamp,
-				Excerpt:      excerpt,
-				MatchOffsets: offsets,
-				MatchTerms:   matchedTerms,
-			})
-		}
 	}
+	return status, matches
+}
 
-	// Sort matches descending by timestamp (newest first).
-	sort.SliceStable(allMatches, func(i, j int) bool {
-		ti, errI := parseFlexibleTimestamp(allMatches[i].Timestamp)
-		tj, errJ := parseFlexibleTimestamp(allMatches[j].Timestamp)
+// sortHistoryMatches orders matches newest first; at the same time (or one unparsable), the current session's
+// before an ancestor's, then the later message first.
+func sortHistoryMatches(matches []AgentHistoryMatch) {
+	sort.SliceStable(matches, func(i, j int) bool {
+		ti, errI := parseFlexibleTimestamp(matches[i].Timestamp)
+		tj, errJ := parseFlexibleTimestamp(matches[j].Timestamp)
 		if errI == nil && errJ == nil && !ti.Equal(tj) {
 			return ti.After(tj)
 		}
-		if allMatches[i].IsCurrent != allMatches[j].IsCurrent {
-			return allMatches[i].IsCurrent
+		if matches[i].IsCurrent != matches[j].IsCurrent {
+			return matches[i].IsCurrent
 		}
-		return allMatches[i].MessageIndex > allMatches[j].MessageIndex
+		return matches[i].MessageIndex > matches[j].MessageIndex
 	})
+}
 
-	// Determine overall status
-	status := "complete"
-	allReady := true
-	anyReady := false
-	for _, s := range sessionsSearched {
+// historySearchStatus is complete when every session searched was ready, partial when some were, and unavailable
+// when none was.
+func historySearchStatus(sessions []SessionSearchStatus) string {
+	allReady, anyReady := true, false
+	for _, s := range sessions {
 		if s.Status == "ready" {
 			anyReady = true
 		} else {
 			allReady = false
 		}
 	}
-	if !anyReady {
-		status = "unavailable"
-	} else if !allReady {
-		status = "partial"
+	switch {
+	case !anyReady:
+		return "unavailable"
+	case !allReady:
+		return "partial"
 	}
+	return "complete"
+}
 
-	totalMatches := len(allMatches)
-	start := min(offset, totalMatches)
-	end := min(start+limit, totalMatches)
-
-	results := allMatches[start:end]
+// pageHistoryMatches is the requested page of the matches (never nil), and whether more follow it.
+func pageHistoryMatches(matches []AgentHistoryMatch, offset, limit int) ([]AgentHistoryMatch, bool) {
+	start := min(offset, len(matches))
+	end := min(start+limit, len(matches))
+	results := matches[start:end]
 	if results == nil {
 		results = []AgentHistoryMatch{}
 	}
-
-	resp := AgentHistorySearchResponse{
-		Query:            searchQuery,
-		Status:           status,
-		TotalMatches:     totalMatches,
-		HasMore:          end < totalMatches,
-		Limit:            limit,
-		Offset:           offset,
-		Results:          results,
-		SessionsSearched: sessionsSearched,
-	}
-
-	writeJSON(w, http.StatusOK, resp)
+	return results, end < len(matches)
 }
 
 // GetAgentHistoryContext retrieves a window of conversation turns surrounding a target turn.
