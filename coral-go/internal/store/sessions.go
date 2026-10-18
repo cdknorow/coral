@@ -754,8 +754,10 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 		args = append(args, params.DateFrom+"T00:00:00")
 	}
 	if params.DateTo != "" {
-		whereClauses = append(whereClauses, "si.last_timestamp <= ?")
-		args = append(args, params.DateTo+"T23:59:59")
+		// Through the end of the date_to day, fractions of a second included: "~" sorts after every character of a timestamp, so
+		// "< date~" is every timestamp that begins with a date up to date_to (a session ending at 23:59:59.5 is not after "T23:59:59").
+		whereClauses = append(whereClauses, "si.last_timestamp < ?")
+		args = append(args, params.DateTo+"~")
 	}
 
 	// Duration filters

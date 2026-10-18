@@ -521,3 +521,32 @@ func TestCLIVersions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"v-1": "2.1.300"}, got, "an unknown version stays NULL")
 }
+
+// #4779: date_to is the end of that day: a session whose last timestamp has a fraction of a second at 23:59:59 is on the day, and one at
+// 00:00:00 of the next day is not.
+func TestListSessionsPagedDateToIncludesTheWholeDay(t *testing.T) {
+	db := openTestDB(t)
+	s := NewSessionStore(db)
+	ctx := context.Background()
+	first := "2026-10-18T09:00:00"
+	for id, last := range map[string]string{
+		"a-noon":     "2026-10-18T12:00:00",
+		"b-end":      "2026-10-18T23:59:59",
+		"c-frac":     "2026-10-18T23:59:59.500000+00:00",
+		"d-frac-z":   "2026-10-18T23:59:59.999Z",
+		"e-next-day": "2026-10-19T00:00:00",
+		"f-next-frc": "2026-10-19T00:00:00.000001+00:00",
+		"g-earlier":  "2026-10-17T23:59:59.5Z",
+	} {
+		last := last
+		f := first
+		require.NoError(t, s.UpsertSessionIndex(ctx, &SessionIndex{SessionID: id, SourceType: "claude", SourceFile: "/f/" + id, FirstTimestamp: &f, LastTimestamp: &last, MessageCount: 1, FileMtime: 1}))
+	}
+	res, err := s.ListSessionsPaged(ctx, SessionListParams{Page: 1, PageSize: 50, DateTo: "2026-10-18"})
+	require.NoError(t, err)
+	var ids []string
+	for _, it := range res.Sessions {
+		ids = append(ids, it.SessionID)
+	}
+	require.ElementsMatch(t, []string{"a-noon", "b-end", "c-frac", "d-frac-z", "g-earlier"}, ids)
+}

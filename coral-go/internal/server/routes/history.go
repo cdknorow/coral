@@ -253,10 +253,12 @@ func (h *HistoryHandler) boardHistoryRows(r *http.Request, searchQ, dateFrom, da
 		projects = filtered
 	}
 	if dateTo != "" {
-		cutoff := dateTo + "T23:59:59"
+		// Every timestamp that begins with the date_to date is inside the day, whatever follows the seconds (a message at
+		// 23:59:59.5Z is not after "T23:59:59"): "~" sorts after every character of a timestamp, so this is the date's prefix.
+		cutoff := dateTo + "~"
 		filtered := projects[:0]
 		for _, p := range projects {
-			if p.FirstMessageAt != nil && *p.FirstMessageAt <= cutoff {
+			if p.FirstMessageAt != nil && *p.FirstMessageAt < cutoff {
 				filtered = append(filtered, p)
 			}
 		}
