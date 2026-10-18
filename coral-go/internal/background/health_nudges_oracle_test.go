@@ -130,14 +130,18 @@ func runHealthOracle(t *testing.T, seed int64) {
 	}
 	// The clock: the database's own now, plus an offset that grows by minutes each step, so the posts and task
 	// activity it stamps fall inside and then past the rules' windows (an hour for mentions).
-	offset := time.Duration(0)
+	// The clock is read once, and every step's time is it plus whole minutes plus 30 s: the database stamps to the
+	// second, moments after it, so no comparison with a whole-minute rule window lands within seconds of its
+	// boundary, and the same seed gives the same result on every run.
+	offset := 30 * time.Second
+	base := time.Now().UTC()
 	signals := map[string]agentSignal{}
 	known := map[string]bool{}
 	held := map[string]time.Time{}
 	var taskIDs []int64
 	for step := 0; step < 16; step++ {
 		offset += time.Duration(2+rng.Intn(9)) * time.Minute
-		now := time.Now().UTC().Truncate(time.Second).Add(offset)
+		now := base.Add(offset)
 		hs := board.DefaultHealthSettings()
 		hs.MentionRenudge.On = rng.Intn(5) != 0
 		hs.HeldNotice.On = rng.Intn(5) != 0
@@ -208,8 +212,13 @@ func runHealthOracle(t *testing.T, seed int64) {
 		switch rng.Intn(6) {
 		case 0:
 			bs.ReadMessages(ctx, "team", "Orchestrator", 100)
-		case 1:
-			bs.PostMessage(ctx, "team", "Orchestrator", "on it", nil)
+		case 1: // the orchestrator acted since (a hook event now): no re-nudge for what came before. A post would do
+			// the same, but the database stamps it to the second, and a post and a mention made within one second
+			// compare as equal or not by chance, which made the same seed differ from run to run.
+			known[sid("Orchestrator")] = true
+			sig := signals[sid("Orchestrator")]
+			sig.LastEvent = now
+			signals[sid("Orchestrator")] = sig
 		}
 		// Claims a wait holds back: a running, known, idle member with assigned work and nothing in progress.
 		waits, _ := bs.ListActiveWaits(ctx, "team")
@@ -240,10 +249,14 @@ func runHealthOracle(t *testing.T, seed int64) {
 				TeamBudget:  budget,
 				deliver: func(_ context.Context, a AgentInfo, key, text string) error {
 					k := a.DisplayName + "|" + key + "|" + text
-					tries[k]++
 					sent[i] = append(sent[i], k)
+					// Which deliveries fail: by the agent and the gate key, not the text, which can carry a
+					// clock time (a mention re-nudge's "since 15:04") and would make the same seed differ by
+					// the time of day.
+					who := a.DisplayName + "|" + key
+					tries[who]++
 					hh := fnv.New32a()
-					fmt.Fprintf(hh, "%d|%s|%d", step, k, tries[k])
+					fmt.Fprintf(hh, "%d|%s|%d", step, who, tries[who])
 					if hh.Sum32()%6 == 0 {
 						failed[i]++
 						return errors.New("not delivered")
