@@ -26,6 +26,14 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     const json = (status, body, headers = {}) => ({ status, body, headers });
     try {
         await Promise.all([Page.enable(), Runtime.enable(), client.Network.enable()]);
+        // The dashboard's service worker (scope '/') answers page navigations with its own fetch, which this page's Fetch
+        // interception never sees, so once it is active /auth and /zz-done reach the real server: no stamped page ("timed out
+        // waiting for this navigation's page (create)") and the "stub never saw /zz-done" of cdp-gate 39053381027. It installs
+        // when any suite in the shard loads '/', so whether it was active depended on the order. Make it active here, always,
+        // and bypass it: every navigation below goes through the interception whatever ran before.
+        await Page.navigate({ url: BASE + '/' });
+        await waitFor(`!!navigator.serviceWorker && Promise.race([navigator.serviceWorker.ready.then(r => !!r.active && !!navigator.serviceWorker.controller), new Promise(r => setTimeout(() => r(false), 100))])`, 'the dashboard\'s service worker to control the page', 10000);
+        await client.Network.setBypassServiceWorker({ bypass: true });
         // What navigated the page, for a failure's report (the replaced-page flake): every document request the browser made (who started it, whether it is a redirect hop and
         // from where) and every request this test served, newest last.
         const navLog = []; const servedLog = [];
@@ -156,7 +164,9 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         // an unsafe return_to is ignored
         await open('signin', '?return_to=//evil.example');
         replies = [json(200, { ok: true })]; await type('password', 'x'); await submit('signin-form');
-        await waitFor(`location.pathname === '/'`, 'a safe fallback for an unsafe return_to');
+        // The fallback is the navigation to '/' (the dashboard then routes its address to a view, /agents, as soon as it has
+        // loaded: waiting for location.pathname === '/' raced that), so wait for the browser's own navigation to it.
+        { const end = Date.now() + 6000; while (!navLog.some(x => x.startsWith('GET / ') && x.endsWith(`@${navSeq}`))) { if (Date.now() > end) await failReport(new Error('timed out waiting for a safe fallback for an unsafe return_to')); await sleep(20); } }
         assert.ok((await ev('location.host')).length > 0 && !(await ev('location.host')).includes('evil'));
         // That safe fallback is the real dashboard at '/', still loading. It can redirect again (to /auth, which this test serves) a moment later, and a late
         // redirect like that replaced the NEXT step's page under it with a freshly stamped one (the flake: 'timed out waiting for redirect after creating'). End it

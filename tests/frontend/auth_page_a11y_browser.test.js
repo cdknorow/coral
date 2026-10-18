@@ -22,7 +22,11 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     let page = 'signin';
     let reply = { status: 401, body: { error: 'wrong' } };
     try {
-        await Promise.all([Page.enable(), Runtime.enable()]);
+        await Promise.all([Page.enable(), Runtime.enable(), client.Network.enable()]);
+        // The dashboard's service worker answers page navigations with its own fetch, which the Fetch interception below never
+        // sees: once any suite in the shard has loaded '/', /auth would reach the real server (auth_page_browser's create-page
+        // flake). Bypass it.
+        await client.Network.setBypassServiceWorker({ bypass: true });
         await Fetch.enable({ patterns: [{ urlPattern: BASE + '/auth*' }] });
         client.on('Fetch.requestPaused', p => {
             const u = new URL(p.request.url);
