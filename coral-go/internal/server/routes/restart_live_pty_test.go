@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -143,23 +144,18 @@ func (spawnFails) Spawn(string, string, string, string, string, uint16, uint16) 
 	return errors.New("fork/exec: resource temporarily unavailable")
 }
 
-// Backend's SHOULD on #4767: a restart or resume of a live pty agent whose new terminal can't start leaves the
-// agent running. The old terminal was ended before the spawn, so a failed spawn left the agent dead with a 500.
-func TestRestartOfALivePTYSessionWhoseSpawnFailsLeavesItRunning(t *testing.T) {
+// livePTYFixture is a pty backend, a store and a data directory for restarting live pty agents, with
+// /usr/bin/true as the claude CLI; every pty session is ended at the end.
+func livePTYFixture(t *testing.T) (string, *store.DB, *store.SessionStore, *ptymanager.PTYBackend) {
 	t.Setenv("HOME", t.TempDir())
 	dataDir, err := os.MkdirTemp("/tmp", "rp")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(dataDir) })
-	cfg := config.Load(dataDir)
-	cfg.LogDir = filepath.Join(dataDir, "logs")
-	require.NoError(t, os.MkdirAll(cfg.LogDir, 0o700))
 	db, err := storetest.Open(t, filepath.Join(dataDir, "s.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	ss := store.NewSessionStore(db)
-	ctx := context.Background()
-	require.NoError(t, ss.SetSetting(ctx, "cli_path_claude", "/usr/bin/true"))
-
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", "/usr/bin/true"))
 	pty := ptymanager.NewPTYBackend()
 	t.Cleanup(func() {
 		var wg sync.WaitGroup
@@ -170,37 +166,120 @@ func TestRestartOfALivePTYSessionWhoseSpawnFailsLeavesItRunning(t *testing.T) {
 		wg.Wait()
 		pty.Close()
 	})
-	// Not a *PTYBackend: the restart goes the pty way because the stored session says pty.
-	h := NewSessionsHandler(db, cfg, spawnFails{pty}, ptymanager.NewPTYSessionTerminal(pty), nil)
+	return dataDir, db, ss, pty
+}
+
+// livePTYRequest registers a live claude agent on pty with its terminal running, and restarts or resumes it.
+func livePTYRequest(t *testing.T, r http.Handler, ss *store.SessionStore, pty *ptymanager.PTYBackend, dataDir, route, sid string) (string, *httptest.ResponseRecorder) {
+	ctx := context.Background()
+	name := naming.SessionName("claude", sid)
+	require.NoError(t, pty.Spawn(name, "claude", dataDir, sid, "", 80, 24))
+	onPTY := "pty"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: sid, AgentName: "tester", AgentType: "claude", WorkingDir: dataDir, Backend: &onPTY,
+	}))
+	fields := map[string]any{"session_id": sid, "agent_type": "claude"}
+	if route == "resume" {
+		fields = map[string]any{"session_id": "4767eeee-0000-4000-8000-000000000005", "agent_type": "claude", "current_session_id": sid}
+	}
+	body, _ := json.Marshal(fields)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/"+route, bytes.NewReader(body)))
+	return name, rec
+}
+
+func ptyLifecycleRouter(h *SessionsHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Post("/api/sessions/live/{name}/restart", h.Restart)
 	r.Post("/api/sessions/live/{name}/resume", h.Resume)
+	return r
+}
 
+// Backend's SHOULD on #4767: a restart or resume of a live pty agent whose new terminal can't start leaves the
+// agent running. The old terminal was ended before the spawn, so a failed spawn left the agent dead with a 500.
+func TestRestartOfALivePTYSessionWhoseSpawnFailsLeavesItRunning(t *testing.T) {
+	dataDir, db, ss, pty := livePTYFixture(t)
+	// Not a *PTYBackend: the restart goes the pty way because the stored session says pty.
+	h := NewSessionsHandler(db, config.Load(dataDir), spawnFails{pty}, ptymanager.NewPTYSessionTerminal(pty), nil)
+	r := ptyLifecycleRouter(h)
 	for _, route := range []string{"restart", "resume"} {
 		t.Run(route, func(t *testing.T) {
 			sid := map[string]string{"restart": "4767ffff-0000-4000-8000-000000000006", "resume": "47670000-0000-4000-8000-000000000007"}[route]
-			name := naming.SessionName("claude", sid)
-			require.NoError(t, pty.Spawn(name, "claude", dataDir, sid, "", 80, 24))
-			onPTY := "pty"
-			require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
-				SessionID: sid, AgentName: "tester", AgentType: "claude", WorkingDir: dataDir, Backend: &onPTY,
-			}))
-			fields := map[string]any{"session_id": sid, "agent_type": "claude"}
-			if route == "resume" {
-				fields = map[string]any{"session_id": "4767eeee-0000-4000-8000-000000000005", "agent_type": "claude", "current_session_id": sid}
-			}
-			body, _ := json.Marshal(fields)
-			req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/"+route, bytes.NewReader(body))
-			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, req)
+			before := len(pty.ListSessions())
+			name, rec := livePTYRequest(t, r, ss, pty, dataDir, route, sid)
 			assert.Equal(t, http.StatusInternalServerError, rec.Code, rec.Body.String())
 			assert.Contains(t, rec.Body.String(), "pty spawn failed")
 			assert.True(t, pty.IsRunning(name), "the old terminal still runs")
-			assert.Len(t, pty.ListSessions(), 1+map[string]int{"restart": 0, "resume": 1}[route], "no new terminal")
-			ls, err := ss.GetLiveSession(ctx, sid)
+			assert.Len(t, pty.ListSessions(), before+1, "no new terminal")
+			ls, err := ss.GetLiveSession(context.Background(), sid)
 			require.NoError(t, err)
 			require.NotNil(t, ls)
 			assert.Equal(t, "active", ls.Status, "the agent is still live in the store")
 		})
+	}
+}
+
+// oldKillFails is the pty backend with a Kill of one name that fails: with err, after really ending the
+// terminal when gone is set (its process exited between the restart finding it and ending it).
+type oldKillFails struct {
+	*ptymanager.PTYBackend
+	name string
+	err  error
+	gone bool
+}
+
+func (b *oldKillFails) Kill(name string) error {
+	if name != b.name {
+		return b.PTYBackend.Kill(name)
+	}
+	if b.gone {
+		b.PTYBackend.Kill(name)
+	}
+	return b.err
+}
+
+// #4767 follow-up (Backend's SHOULD and INFO): when the old pty terminal can't be ended, the new one is ended
+// too and the request fails, leaving no orphan shell running with no agent; when it is already gone (its process
+// exited just before), it counts as ended and the restart goes on.
+func TestRestartOfALivePTYSessionWhoseOldTerminalCantBeEnded(t *testing.T) {
+	gone := ptymanager.NewPTYBackend()
+	assert.ErrorIs(t, gone.Kill("claude-nobody"), ptymanager.ErrTerminalGone, "a pty Kill of a session that isn't there says the terminal is gone")
+	gone.Close()
+
+	dataDir, db, ss, pty := livePTYFixture(t)
+	n := 0
+	for _, route := range []string{"restart", "resume"} {
+		for _, alreadyGone := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, already gone %v", route, alreadyGone), func(t *testing.T) {
+				n++
+				sid := fmt.Sprintf("4767%04d-0000-4000-8000-0000000000%02d", n, 10+n)
+				fake := &oldKillFails{PTYBackend: pty, name: naming.SessionName("claude", sid), gone: alreadyGone,
+					err: errors.New("operation not permitted")}
+				if alreadyGone {
+					fake.err = fmt.Errorf("%w: session %q not found", ptymanager.ErrTerminalGone, fake.name)
+				}
+				h := NewSessionsHandler(db, config.Load(dataDir), fake, ptymanager.NewPTYSessionTerminal(pty), nil)
+				before := map[string]bool{}
+				for _, s := range pty.ListSessions() {
+					before[naming.SessionName(s.AgentType, s.SessionID)] = true
+				}
+				name, rec := livePTYRequest(t, ptyLifecycleRouter(h), ss, pty, dataDir, route, sid)
+				var started []string
+				for _, s := range pty.ListSessions() {
+					if k := naming.SessionName(s.AgentType, s.SessionID); !before[k] && k != name {
+						started = append(started, k)
+					}
+				}
+				if alreadyGone {
+					require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+					assert.Len(t, started, 1, "the agent runs in its new terminal")
+					return
+				}
+				assert.Equal(t, http.StatusInternalServerError, rec.Code, rec.Body.String())
+				assert.Contains(t, rec.Body.String(), "pty "+route+" failed")
+				assert.True(t, pty.IsRunning(name), "the old terminal still runs")
+				assert.Empty(t, started, "the new terminal is ended: no orphan shell")
+			})
+		}
 	}
 }

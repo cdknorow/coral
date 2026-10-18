@@ -50,7 +50,7 @@ func (m *PTYBackend) Kill(name string) error {
 	s, ok := m.sessions[name]
 	if !ok {
 		m.mu.Unlock()
-		return fmt.Errorf("session %q not found", name)
+		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
 	}
 	delete(m.sessions, name)
 	m.mu.Unlock()

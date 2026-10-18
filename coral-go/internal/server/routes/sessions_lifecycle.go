@@ -540,8 +540,8 @@ func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (
 			}
 			if p.pane != nil {
 				// A live pty terminal: ended once its replacement runs under the new name (pty has no rename), so a
-				// spawn that fails leaves the agent running.
-				if err := h.backend.Kill(p.pane.SessionName); err != nil {
+				// spawn that fails leaves the agent running. One whose process exited since it was found is ended.
+				if err := h.backend.Kill(p.pane.SessionName); err != nil && !errors.Is(err, ptymanager.ErrTerminalGone) {
 					h.backend.Kill(p.newSessionName)
 					return "", fail(fmt.Sprintf("pty restart failed: %v", err))
 				}
@@ -833,7 +833,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if pane != nil { // ended once its replacement runs: a spawn that fails leaves the agent running
-			if err := h.backend.Kill(pane.SessionName); err != nil {
+			if err := h.backend.Kill(pane.SessionName); err != nil && !errors.Is(err, ptymanager.ErrTerminalGone) {
 				h.backend.Kill(newSessionName)
 				errInternalServer(w, fmt.Sprintf("pty resume failed: %v", err))
 				return
