@@ -12,7 +12,7 @@ import { registerActions, idOf } from './actions.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions, KILL_LOG_NOTE } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
-import { addPendingMessage, removePendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
+import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
@@ -122,8 +122,22 @@ export async function sendCommand({ nudge = false } = {}) {
         const sentAt = Date.now();
         const hasAttachments = sessionAttachments.length > 0;
 
-        // Try WebSocket path first (sends text, then Enter separately)
-        if (!hasAttachments) {
+        // A message to an agent: one composer_send frame, answered only once the agent's input box has taken and
+        // submitted it (#4587: an Enter typed while it started was lost, the text sat in its box, and Chat said Sent).
+        if (!hasAttachments && targetAgentType !== 'terminal') {
+            const xterm = await _getXtermModule();
+            const id = nextInputId();
+            if (xterm.sendComposerWs(command, id)) {
+                const accepted = awaitSocketAccept(targetSession, [id]);
+                addPendingMessage(sentSessionId, command, sentAt, { sending: true });
+                input.value = "";
+                xterm.focusTerminal();
+                accepted.then(ok => _settleSocketSend(targetSession, command, sentAt, ok));
+                return;
+            }
+        }
+        // A shell: the WebSocket path types it as keystrokes (text, then Enter separately)
+        if (!hasAttachments && targetAgentType === 'terminal') {
             const xterm = await _getXtermModule();
             // The server acknowledges the text and the Enter by id (#3276).
             const textId = nextInputId();
@@ -136,7 +150,7 @@ export async function sendCommand({ nudge = false } = {}) {
                 setTimeout(() => {
                     if (!xterm.sendTerminalInputWs("\r", enterId)) refuseSocketSends(targetSession.session_id, enterId);
                 }, 300);
-                addPendingMessage(sentSessionId, command, sentAt);
+                addPendingMessage(sentSessionId, command, sentAt, { sending: true });
                 input.value = "";
                 xterm.focusTerminal();
                 accepted.then(ok => _settleSocketSend(targetSession, command, sentAt, ok));
@@ -144,7 +158,16 @@ export async function sendCommand({ nudge = false } = {}) {
             }
         }
 
-        // Fall back to POST endpoint
+        // Fall back to POST endpoint. The message shows as Sending until this request's answer: Sent only when it says
+        // the message was submitted (#4587; the server waits for a starting agent and confirms the submit). The box
+        // is emptied meanwhile, so a second click has nothing to send again, and a refusal puts the text back.
+        addPendingMessage(sentSessionId, command, sentAt, { sending: true });
+        input.value = "";
+        const notSent = () => {
+            removePendingMessage(sentSessionId, sentAt);
+            // The typed text only: the attachments stay attached until a send of them succeeds.
+            if (!input.value && state.currentSession && state.currentSession.session_id === sentSessionId) input.value = textPart;
+        };
         try {
             const resp = await serverFetch(sessionServer(targetSession), `/api/sessions/live/${encodeURIComponent(targetSessionName)}/send`, {
                 method: "POST",
@@ -152,6 +175,7 @@ export async function sendCommand({ nudge = false } = {}) {
                 body: JSON.stringify({ command, agent_type: targetAgentType, session_id: sentSessionId }),
             });
             if (!resp.ok) {
+                notSent();
                 // Plain text naming the server; never the raw response (#3151). The draft stays.
                 // Said under the composer (#3218); a gone terminal also marks the agent and offers Restart.
                 const { text, code } = await responseError(resp, sessionServer(targetSession), `The message was not sent (HTTP ${resp.status}).`);
@@ -161,12 +185,12 @@ export async function sendCommand({ nudge = false } = {}) {
             }
             const result = await resp.json();
             if (result.error) {
+                notSent();
                 showComposerError(result.error);
                 console.error("Send error:", result.error);
             } else {
                 clearComposerError();
-                addPendingMessage(sentSessionId, command, sentAt);
-                input.value = "";
+                confirmPendingMessage(sentSessionId, sentAt);
                 clearAttachments(targetSession);
                 const key = sessionKey(targetSession);
                 if (key) saveSessionDraft(key, "");
@@ -174,6 +198,7 @@ export async function sendCommand({ nudge = false } = {}) {
                 _getXtermModule().then(m => m.focusTerminal());
             }
         } catch (e) {
+            notSent();
             showComposerError("The message was not sent. Check the connection and try again.");
             console.error("Send exception:", e);
         }
@@ -189,6 +214,7 @@ function _settleSocketSend(session, command, sentAt, ok) {
     const input = document.getElementById("command-input");
     const onIt = !!(input && state.currentSession && sessionKey(state.currentSession) === key);
     if (ok) {
+        confirmPendingMessage(session.session_id, sentAt);
         // Text typed since the send is a new draft and stays.
         if (key && saved.trim() === command) saveSessionDraft(key, "");
         showToast(`Sent: ${command}`);

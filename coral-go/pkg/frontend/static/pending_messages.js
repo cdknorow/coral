@@ -17,9 +17,11 @@ import { browserLocal } from './safe_storage.js';
 // the bottom of the chat so it does not seem to vanish: "Sent" when the agent
 // was free and is taking it now, "Queued" when it was busy and the message
 // waits behind the current work. The Working row sits between the two.
+// Before either, "Sending…" while the server has not yet said the agent's
+// input box took it and it was submitted (#4587): Sent means submitted.
 const PENDING_TTL_MS = 15 * 60 * 1000;
 const STORAGE_KEY_PENDING = "coral-pending-messages";
-const pendingBySession = new Map(); // session_id -> [{ id, text, at, queued }]
+const pendingBySession = new Map(); // session_id -> [{ id, text, at, queued, sending }]
 let pendingSeq = 0;
 const recentUserEntriesBySession = new Map();
 
@@ -33,7 +35,8 @@ export function loadPendingFromStorage() {
         const now = Date.now();
         for (const [sid, list] of Object.entries(obj)) {
             if (Array.isArray(list)) {
-                const valid = list.filter(p => p && p.text && (now - (p.at || 0) < PENDING_TTL_MS));
+                // A send still unconfirmed when the page went is not known to have been submitted: its draft is kept instead.
+                const valid = list.filter(p => p && p.text && !p.sending && (now - (p.at || 0) < PENDING_TTL_MS));
                 if (valid.length > 0) {
                     pendingBySession.set(sid, valid);
                     for (const p of valid) {
@@ -163,8 +166,9 @@ export function isCoralNudge(content) {
 	return CORAL_NUDGE_RES.some(re => re.test(text));
 }
 
-/** Record a message just sent to an agent so the chat can show it right away. */
-export function addPendingMessage(sessionId, text, sentAt = Date.now()) {
+/** Record a message just sent to an agent so the chat can show it right away. sending: it shows "Sending…" until
+ *  confirmPendingMessage (the server said it was submitted) or removePendingMessage (it was not). */
+export function addPendingMessage(sessionId, text, sentAt = Date.now(), { sending = false } = {}) {
     if (!sessionId || !normalizeMsg(text)) return;
     // Panel retries carry one stable identity even when the first delivery's
     // transcript arrived before the retry began. Never add a second notice.
@@ -175,7 +179,7 @@ export function addPendingMessage(sessionId, text, sentAt = Date.now()) {
         || (state.currentSession && state.currentSession.session_id === sessionId ? state.currentSession : { session_id: sessionId });
     const queued = agentIsBusy(session);
     const list = pendingBySession.get(sessionId) || [];
-    list.push({ id: ++pendingSeq, text, at: sentAt, queued });
+    list.push({ id: ++pendingSeq, text, at: sentAt, queued, sending });
     pendingBySession.set(sessionId, list);
     // A fast transcript poll may beat the send response. Reconcile against
     // unconsumed recent receipts instead of waiting for another transcript entry.
@@ -190,6 +194,16 @@ export function addPendingMessage(sessionId, text, sentAt = Date.now()) {
         syncWorkingIndicator(container, state.currentSession);
         container.scrollTop = container.scrollHeight;
     }
+}
+
+/** The server said the send at sentAt was submitted: its bubble says Sent (or Queued) from now on (#4587). */
+export function confirmPendingMessage(sessionId, sentAt) {
+    const p = (pendingBySession.get(sessionId) || []).find(x => x.at === sentAt);
+    if (!p || !p.sending) return;
+    p.sending = false;
+    savePendingToStorage();
+    const container = document.getElementById("live-history-messages");
+    if (container && state.currentSession && state.currentSession.session_id === sessionId) syncPendingBubbles(container, sessionId);
 }
 
 /** Withdraw the pending bubble of a send that was refused (its terminal was gone, #3218). */
@@ -335,10 +349,11 @@ export function syncPendingBubbles(container, sessionId) {
     const list = (pendingBySession.get(sessionId) || []).filter(p => now - p.at < PENDING_TTL_MS);
     pendingBySession.set(sessionId, list);
     savePendingToStorage();
-    const sent = syncPendingGroup(container, "pending-sent", list.filter(p => !p.queued), "Sent");
-    const queued = syncPendingGroup(container, "pending-queued", list.filter(p => p.queued), "Queued");
-    // Always last, below any newly rendered messages: sent, then queued
-    for (const wrap of [sent, queued]) {
+    const sent = syncPendingGroup(container, "pending-sent", list.filter(p => !p.queued && !p.sending), "Sent");
+    const queued = syncPendingGroup(container, "pending-queued", list.filter(p => p.queued && !p.sending), "Queued");
+    const sending = syncPendingGroup(container, "pending-sending", list.filter(p => p.sending), "Sending…");
+    // Always last, below any newly rendered messages: sent, then queued, then the ones still sending
+    for (const wrap of [sent, queued, sending]) {
         if (wrap && container.lastElementChild !== wrap) container.appendChild(wrap);
     }
 }

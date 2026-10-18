@@ -4,12 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // readWSFrame returns the next JSON text frame that satisfies match (binary output and
@@ -143,4 +150,50 @@ func TestWSTerminal_NonIntegerIDIsTypedWithoutAnAck(t *testing.T) {
 	ack := readWSFrame(t, ctx, conn, 5*time.Second, frameType("terminal_input_ack"))
 	require.NotNil(t, ack)
 	assert.EqualValues(t, 5, ack["id"], "the string and null ids got no ack; the next integer id did")
+}
+
+// #4587: a message from Chat's composer is one composer_send frame. The server types it and submits it (its Enter
+// too), and answers with the frame's id once it was submitted: here the shell ran it.
+func TestWSTerminal_ComposerSendIsSubmittedThenAcknowledged(t *testing.T) {
+	backend, client := newTerminalTestTmuxBackend(t)
+	server := setupTerminalTestServerWith(t, backend, ptymanager.NewTmuxSessionTerminal(client))
+	tmuxName := spawnTestSession(t, backend, "composer-agent", "f6a7b8c9-1111-4222-8333-444455556666", "")
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "composer_send", "data": "echo COMPOSED_$((40+2))", "id": 31})
+	// The shell's output and the ack arrive in either order: read both.
+	var out strings.Builder
+	var ack map[string]any
+	rctx, rcancel := context.WithTimeout(ctx, 10*time.Second)
+	defer rcancel()
+	for ack == nil || !strings.Contains(out.String(), "COMPOSED_42") {
+		typ, data, err := conn.Read(rctx)
+		require.NoError(t, err, "waiting for the ack and the output (so far %q, ack %v)", out.String(), ack)
+		if typ == websocket.MessageBinary {
+			out.Write(data)
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal(data, &m) == nil && m["type"] == "terminal_input_ack" {
+			ack = m
+		}
+	}
+	assert.EqualValues(t, 31, ack["id"])
+	assert.Contains(t, out.String(), "COMPOSED_42", "typed and submitted: the shell ran it, with no separate Enter")
+}
+
+// setupTerminalTestServerWith is setupTerminalTestServer with the session terminal production has (a composer
+// message goes through it).
+func setupTerminalTestServerWith(t *testing.T, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal) *httptest.Server {
+	t.Helper()
+	db, err := storetest.Open(t, t.TempDir()+"/test.db")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	handler := NewSessionsHandler(db, &config.Config{WSPollIntervalS: 1, LogDir: t.TempDir()}, backend, terminal, nil)
+	r := chi.NewRouter()
+	r.Get("/ws/terminal/{name}", handler.WSTerminal)
+	server := httptest.NewServer(r)
+	t.Cleanup(server.Close)
+	return server
 }

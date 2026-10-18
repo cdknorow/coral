@@ -51,6 +51,7 @@ const { connect } = require('./agent_view_harness');
             const sent = await ev(`window.__tws.sent.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(m => m && m.type === 'terminal_resize')`);
             if (sent.length) assert.deepEqual([sent[sent.length - 1].cols, sent[sent.length - 1].rows], [g.cols, g.rows], label + ': the last resize sent to the server is the size on screen');
             assert.equal(g.state, 'connected', label + ': connected');
+            assert.equal(g.stateText, 'Terminal connected', label + ': named as the terminal\'s state (#4587)');
             assert.equal(g.hintInContainer, false, label + ': the hint no longer floats in the terminal');
             assert.equal(g.hintInBar, true);
             assert.ok(g.barBottom <= g.vh + 0.5, label + ': the bar is on screen');
@@ -59,7 +60,7 @@ const { connect } = require('./agent_view_harness');
             assert.equal(await ev(`document.getElementById('terminal-statusbar').dataset.state`), 'ended', label + ': the bar says the session ended');
             // chat view: no bar
             await ev(`window.setLiveViewMode('chat'); true`); await sleep(500); // sleep-ok: layout settles over a few frames; there is no completion event
-            assert.equal(await ev(`getComputedStyle(document.getElementById('terminal-statusbar')).display !== 'none' && document.getElementById('terminal-statusbar').getBoundingClientRect().height > 0 && getComputedStyle(document.getElementById('xterm-container')).display !== 'none'`), false, label + ': no terminal bar in the Chat view');
+            assert.equal(await ev(`getComputedStyle(document.getElementById('terminal-statusbar')).display !== 'none' && document.getElementById('terminal-statusbar').getBoundingClientRect().height > 0`), false, label + ': no terminal bar in the Chat view (#4587: it said Connecting there, with no terminal socket)');
         }
         console.log('\nPASS terminal bottom bar: under the terminal, last row fully visible, size and state shown');
     } finally { await client.close(); }

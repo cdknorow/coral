@@ -155,6 +155,32 @@ func boxTextState(box, text string, hadPlaceholder bool) boxState {
 	return boxOther
 }
 
+// TextInInputBox reports whether screen's input box (read under anything drawn above it) holds text: a person's
+// message typed but not submitted (#4587). All of a short text and nothing else (a box that merely contains it, as
+// Codex's placeholder "Ask Codex to do anything" contains "do", is not it), the start of a long one, or the
+// placeholder an agent shows for a long paste.
+func TextInInputBox(screen, text string) bool {
+	box, ok := inputBoxTextAny(screen)
+	if !ok {
+		return false
+	}
+	if strings.Contains(box, pastePlaceholder) {
+		return collapsible(text)
+	}
+	want, got := []rune(squeeze(text)), squeeze(box)
+	if len(want) > pastePrefixRunes {
+		return strings.Contains(got, string(want[:pastePrefixRunes]))
+	}
+	return len(want) > 0 && got == string(want)
+}
+
+// InputBoxEmpty reports whether screen shows the agent's input box empty (or holding only its placeholder), with
+// no prompt open over it.
+func InputBoxEmpty(screen string) bool {
+	box, ok := inputBoxText(screen)
+	return ok && boxPlaceholder(box)
+}
+
 // pastePlaceholder starts what an agent shows instead of a long paste
 // ("[Pasted text #1 +12 lines]").
 const pastePlaceholder = "[Pasted"

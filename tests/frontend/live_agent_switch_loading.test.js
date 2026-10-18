@@ -177,7 +177,8 @@ const { framesJs } = require('./helpers/wait');
 
         assert.equal(betaResults.hasLoading, false, 'Loading indicator MUST NOT remain stuck on fetch error');
         assert.equal(betaResults.errorEl, true, 'Error state must be rendered on failure');
-        assert.ok(betaResults.errorText.includes('Transcript corrupted or backend lock timeout'), 'Specific error message should be displayed');
+        // The conversation's own words (#4587, coral-hub's O2); the server's reason goes to the console, not the chat.
+        assert.equal(betaResults.errorText, 'Could not load this conversation. Reload the page to try again.', 'the load-failure line');
         assert.equal(betaResults.retryBtn, true, 'Retry button should be available');
         console.log('   ✓ Failed request settled error state and retry button verified');
 

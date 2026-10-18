@@ -47,7 +47,8 @@ const CLOUD_PRELOAD = `(() => {
         window.__wsSent.push(typeof d === 'string' ? d : '[binary]');
         try {
             const m = typeof d === 'string' ? JSON.parse(d) : null;
-            if (m && m.type === 'terminal_input' && Number.isInteger(m.id)) setTimeout(() => window.__wsInject(JSON.stringify({ type: 'terminal_input_ack', id: m.id })), 0);
+            // A message to an agent is one composer_send frame (#4587), answered the same way once submitted.
+            if (m && (m.type === 'terminal_input' || m.type === 'composer_send') && Number.isInteger(m.id)) setTimeout(() => window.__wsInject(JSON.stringify({ type: 'terminal_input_ack', id: m.id })), 0);
         } catch (e) { /* not JSON: nothing to acknowledge */ }
     };
     FakeTerm.prototype.close = function () { this.readyState = 3; };

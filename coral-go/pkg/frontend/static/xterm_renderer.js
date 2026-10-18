@@ -954,6 +954,18 @@ export function terminalInputAcks() {
 
 /** Send raw terminal input data over the WebSocket (used by textarea integration). With an
  *  id, the server acknowledges or refuses it by that id (#3276). */
+/** sendComposerWs sends a message from Chat's composer to an agent as one composer_send frame: the server types it
+ * and submits it (waiting for a starting agent's input box, pressing Enter again while the text is still in the box)
+ * and answers by id only once it was submitted (#4587). False when the socket can't take it (callers fall back to
+ * POST /send, which does the same). */
+export function sendComposerWs(data, id) {
+    if (terminalWs && terminalWs.readyState === WebSocket.OPEN && !_paneClosed) {
+        terminalWs.send(JSON.stringify({ type: "composer_send", data, id }));
+        return true;
+    }
+    return false;
+}
+
 export function sendTerminalInputWs(data, id) {
     // After terminal_closed the server reads nothing more from this socket, though it may
     // still be open: callers fall back to HTTP, which says when the terminal is gone (#3218).

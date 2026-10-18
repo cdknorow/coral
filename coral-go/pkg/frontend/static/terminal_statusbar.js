@@ -1,10 +1,12 @@
 /* The slim bar under the Terminal view (#4044): the connection state, the terminal's size in columns and rows, and the typing hint.
  * It finishes the view and keeps the last terminal line off the window's edge. Everything it shows is already known to the page. */
 
+// The terminal socket's states, named as the terminal's (#4587, coral-hub's O2): the bar is in the Terminal view only, and the
+// Chat view, which opens no terminal socket, never shows them.
 const STATES = {
-    connecting: 'Connecting',
-    connected: 'Connected',
-    reconnecting: 'Reconnecting',
+    connecting: 'Connecting to terminal…',
+    connected: 'Terminal connected',
+    reconnecting: 'Terminal disconnected',
     ended: 'Session ended',
     restarting: 'Restarting',
 };

@@ -52,7 +52,13 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		if held := h.sendAutomatedHTTP(w, r, name, body.AgentType, body.SessionID, body.Command, "/send", send); held {
 			return
 		}
-	} else if err := send(r.Context()); err != nil {
+	} else if err := h.deliverHumanSend(r.Context(), name, body.AgentType, body.SessionID, body.Command); err != nil {
+		// A person's message is submitted, or refused or reported as not submitted: never "sent" for text left
+		// in the agent's input box (#4587).
+		if status, out, ok := humanSendError(err); ok {
+			writeJSON(w, status, out)
+			return
+		}
 		writeTerminalError(w, err)
 		return
 	}

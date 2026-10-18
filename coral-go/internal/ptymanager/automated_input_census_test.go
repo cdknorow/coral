@@ -45,6 +45,8 @@ var allowedSenders = map[string]string{
 	"internal/server/routes/prompt_answer.go\tSessionsHandler.selectUnnumbered\tSendEnter": "human: picks an option (once the arrows have selected it)",
 	"internal/server/routes/prompt_answer.go\tSessionsHandler.confirmAnswer\tSendEnter":    "human: picks an option (the Enter a Codex menu needs once the digit has selected it, #4543)",
 	"internal/server/routes/sessions_input.go\tSessionsHandler.Send\tSendInput":            "human, else gated",
+	"internal/server/routes/human_send.go\tSessionsHandler.deliverHumanSend\tSendInput":    "human: a person's message from Chat (#4587)",
+	"internal/server/routes/human_send.go\tSessionsHandler.deliverHumanSend\tSendEnter":    "human: the same message's Enter again, while exactly its text is still in the box (#4587)",
 	"internal/server/routes/sessions_input.go\tSessionsHandler.Keys\tSendRawInput":         "human, else gated",
 	// Launch commands typed into a fresh shell, before any agent CLI runs.
 	"internal/server/routes/sessions_lifecycle.go\tsendLaunchCommand\tSendToTarget": "launch command",

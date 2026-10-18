@@ -22,7 +22,7 @@ import { CHAT_TRIM, FIRST_PAGE, takeChatPrefetch } from './chat_page.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 import { INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, isCoralNudge, normalizeNudgeText, noteAgentActivity, noteInterrupt, rememberUserMessage, syncPendingBubbles, syncWorkingIndicator } from './pending_messages.js';
 import { browserLocal } from './safe_storage.js';
-export { addPendingMessage, loadPendingFromStorage, removePendingMessage } from './pending_messages.js';
+export { addPendingMessage, confirmPendingMessage, loadPendingFromStorage, removePendingMessage } from './pending_messages.js';
 export { linkifyRefs } from './chat_bubbles.js';
 
 let historyPollInterval = null;
@@ -501,7 +501,7 @@ export async function refreshLiveHistory() {
 
     // Show loading indicator on first load
     if (!initialLoadDone && !container.querySelector('.loading-indicator') && !container.querySelector('.chat-load-error') && container.children.length === 0) {
-        container.innerHTML = '<div class="loading-indicator">Loading chat history</div>';
+        container.innerHTML = '<div class="loading-indicator" role="status">Loading conversation…</div>';
     }
 
     const params = chatParams(session);
@@ -650,13 +650,13 @@ export async function refreshLiveHistory() {
         console.error("Failed to refresh live history:", e);
         if (generation === historyGeneration && !initialLoadDone) {
             container.innerHTML = `<div class="chat-load-error" role="alert">
-                <span class="chat-error-message">Failed to load chat history (${escapeHtml(e.message || 'error')})</span>
+                <span class="chat-error-message">Could not load this conversation. Reload the page to try again.</span>
                 <button type="button" class="btn btn-secondary btn-small chat-retry-btn">Retry</button>
             </div>`;
             const retryBtn = container.querySelector('.chat-retry-btn');
             if (retryBtn) {
                 retryBtn.onclick = () => {
-                    container.innerHTML = '<div class="loading-indicator">Loading chat history</div>';
+                    container.innerHTML = '<div class="loading-indicator" role="status">Loading conversation…</div>';
                     refreshInFlight = -1;
                     refreshLiveHistory();
                 };

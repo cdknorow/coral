@@ -834,6 +834,31 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 			// client is told, like the 409 terminal_gone of POST /send and /keys (#3218).
 			var sendErr error
 			switch msg.Type {
+			case "composer_send":
+				// A message from Chat's composer (#4587): typed and submitted with deliverHumanSend's care (it
+				// waits for a starting agent's input box and confirms the text left it), and answered by id only
+				// once it was submitted. In its own goroutine: it can wait seconds, and the terminal's own
+				// keystrokes and resizes go on meanwhile.
+				if msg.Data != "" && msg.ID != nil {
+					id := *msg.ID
+					go func() {
+						defer safego.Recover("server/routes/websocket:composer_send")
+						err := h.deliverHumanSend(ctx, name, agentType, sessionID, msg.Data)
+						switch {
+						case err == nil:
+							wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_input_ack", "id": id})
+						case errors.Is(err, ptymanager.ErrTerminalGone):
+							wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": true, "id": id})
+						default:
+							out := map[string]any{"type": "terminal_input_failed", "error": "The message could not be sent to the agent's terminal.", "not_sent": true, "id": id}
+							if _, hs, ok := humanSendError(err); ok {
+								out["error"], out["code"], out["not_sent"] = hs["error"], hs["code"], hs["not_sent"]
+							}
+							wsWriteJSON(ctx, conn, out)
+						}
+					}()
+				}
+				continue
 			case "terminal_input":
 				if msg.Data != "" {
 					// A person's keystrokes: the PTY backend records them for the gate
