@@ -1,5 +1,30 @@
 # Release Notes
 
+## v1.4.94 — A Coral Hub Inbox tab, open work first in the task list, and a search index you can repair
+
+### Changes
+
+- **Through Coral Hub, the dashboard has an Inbox tab:** it shows the hub's Inbox page, with the number of agents waiting for input as its badge (on the phone too, in the view list).
+- **The task list shows open and active work first by default,** finished tasks after; a third click on a sorted column gives the default order back.
+- **coral db rebuild-search** rebuilds the session search index after a backup.
+- **Team Artifacts, Servers and the task list read better with many items,** and the narrow dock's Priority and Agent headers no longer touch.
+
+### Fixes
+
+- **Saved for later opened from the home view can be closed:** the bookmark toggles it, Escape closes it, and its panel has a close button.
+- **The startup database check no longer reports damage that isn't there;** it now confirms a problem before warning, and clears the notice when a recheck passes.
+
+### Security and privacy
+
+- **The Inbox tab's frame loads only the hub's own /inbox page,** set once by the dashboard, with no referrer, no extra permissions and no messages between the frame and the dashboard; the dashboard's own security policy is unchanged.
+- **The database backups that coral db compact and rebuild-search write are now readable only by you** (they were created with the default file mode, which let other users of the computer read them wherever the data folder allowed it).
+
+### Other changes
+
+- **Simpler code, behaviour unchanged:** the task detail, the board's task list, the live feed handler, the chat's history refresh and terminal creation in the dashboard, and the terminal's paste check, its state decision and the live session rows on the server are split into named steps, each behind a test that pins what it does.
+- **Docs:** the install guides list the Windows downloads, the Linux arm64 tarball and the Homebrew tap; the hub and desktop alert pages say what Coral shows.
+- **Tests:** every CDP suite that intercepts requests guards against the browser closing mid-request, which made hub_account_menu flaky.
+
 ## v1.4.93 — Open terminal works from a waiting agent, slash commands read as sent, and simpler code
 
 ### Fixes
