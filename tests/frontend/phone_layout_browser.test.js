@@ -6,6 +6,7 @@
 // server, mock agents. Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { framesJs } = require('./helpers/wait');
 
 const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.id : e.tagName.toLowerCase()) + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\\\s+/).slice(0, 2).join('.') : '');
         const vis = e => { if (!e.getClientRects().length) return false; const cs = getComputedStyle(e); if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false; for (let p = e.parentElement; p; p = p.parentElement) { if (p.hasAttribute && p.hasAttribute('hidden')) return false; const pc = getComputedStyle(p); if (pc.display === 'none' || pc.visibility === 'hidden') return false; } return true; };
@@ -24,7 +25,21 @@ const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.i
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
-    const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: panels and dialogs fill from several answers; there is no completion event
+    // settle(ms): return as soon as the page geometry has held still for ~120 ms, or after ms at most -- never
+    // longer, never throwing. A no-worse replacement for the old fixed settle-sleeps (#4768): the panels and
+    // dialogs fill over frames with no completion event, and the scans below measure geometry, so each must run
+    // once the layout has settled. If geometry never settles (constant motion) it falls back to the full ms,
+    // exactly as the sleep did. Uses framesJs so a backgrounded page still advances (raf_hygiene).
+    const settle = ms => ev(`(async () => {
+        const fp = () => { let s = 0; for (const e of document.querySelectorAll('body *')) { const b = e.getBoundingClientRect(); s += b.left + b.top + b.width + b.height; } return Math.round(s); };
+        const start = performance.now(); let prev = fp(), since = start;
+        while (performance.now() - start < ${ms}) {
+            await ${framesJs(1)};
+            const v = fp();
+            if (v === prev) { if (performance.now() - since >= 120) return true; } else { prev = v; since = performance.now(); }
+        }
+        return true;
+    })()`);
     const board = 'phone-layout-' + Date.now();
     const problems = [];
     let tag = '';
@@ -58,37 +73,37 @@ const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.i
             await ev(`window.__coralReady.then(() => true)`);
             await ev(`(async () => { for (const c of ['hello team', 'a longer second message with some words']) await fetch('/api/board/${board}/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'pl', as: 'QA', content: c }) });
                 localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('phone-bot-with-a-long-name', 'A', 8, { sleeping: false, board_project: '${board}' }); window.__m.add('second-bot', 'B', 5, { sleeping: true }); return true; })()`);
-            await sleep(900); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await settle(900);
             tag = String(w);
             await scan('agents list');
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(1800); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(1800);
             await scan('agent chat');
-            await ev(`window.setLiveViewMode('terminal'); true`); await sleep(1500); await scan('agent terminal'); await ev(`window.setLiveViewMode('chat'); true`); await sleep(500); // sleep-ok: panels and dialogs fill from several answers; no completion event
-            for (const tab of ['history', 'workflows', 'jobs', 'tokens', 'docs', 'board']) { await ev(`window.switchNavTab('${tab}'); true`).catch(() => {}); await sleep(1500); await scan('tab ' + tab); } // sleep-ok: panels and dialogs fill from several answers; no completion event
-            await ev(`window.switchNavTab('agents'); true`); await sleep(500); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await ev(`window.setLiveViewMode('terminal'); true`); await settle(1500); await scan('agent terminal'); await ev(`window.setLiveViewMode('chat'); true`); await settle(500);
+            for (const tab of ['history', 'workflows', 'jobs', 'tokens', 'docs', 'board']) { await ev(`window.switchNavTab('${tab}'); true`).catch(() => {}); await settle(1500); await scan('tab ' + tab); }
+            await ev(`window.switchNavTab('agents'); true`); await settle(500);
             // the side panel overlay: Tasks and Board
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(1200); // sleep-ok: panels and dialogs fill from several answers; no completion event
-            await ev(`(document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); true`); await sleep(800); // sleep-ok: panels and dialogs fill from several answers; no completion event
-            for (const tab of ['tasks', 'board', 'files', 'notes']) { await ev(`window.switchAgenticTab('${tab}', 'top'); true`); await sleep(900); await scan('side panel ' + tab, '#agentic-state'); } // sleep-ok: panels and dialogs fill from several answers; no completion event
-            await ev(`window.switchAgenticTab('board', 'top'); true`); await sleep(900); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(1200);
+            await ev(`(document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); true`); await settle(800);
+            for (const tab of ['tasks', 'board', 'files', 'notes']) { await ev(`window.switchAgenticTab('${tab}', 'top'); true`); await settle(900); await scan('side panel ' + tab, '#agentic-state'); }
+            await ev(`window.switchAgenticTab('board', 'top'); true`); await settle(900);
             // keyboard up: the window 400 px tall with a box focused
-            await ev(`(document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`); await sleep(500); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await ev(`(document.getElementById('agentic-mobile-close-btn') || document.createElement('i')).click(); true`); await settle(500);
             await ev(`document.getElementById('command-input').focus(); true`);
-            await Emulation.setDeviceMetricsOverride({ width: w, height: 400, deviceScaleFactor: 1, mobile: true }); await sleep(1000); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await Emulation.setDeviceMetricsOverride({ width: w, height: 400, deviceScaleFactor: 1, mobile: true }); await settle(1000);
             const kb = await ev(`(() => { const r = s => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, h: b.height }; }; return { input: r('#command-input'), send: r('.command-pane .mobile-send-btn:not(.mobile-send-team-btn)'), msgs: r('#live-history-messages'), vh: innerHeight }; })()`);
             if (!(kb.input && kb.input.top >= 0 && kb.input.bottom <= kb.vh + 0.5)) problems.push(`${w}|keyboard up: the composer box is not fully in view ${JSON.stringify(kb.input)}`);
             if (!(kb.send && kb.send.bottom <= kb.vh + 0.5)) problems.push(`${w}|keyboard up: Send is not in view ${JSON.stringify(kb.send)}`);
             if (!(kb.msgs && kb.msgs.h >= 120)) problems.push(`${w}|keyboard up: the conversation is squeezed to ${kb.msgs && kb.msgs.h} px`);
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); (document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); window.switchAgenticTab('board', 'top'); true`); await sleep(1000); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); (document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); window.switchAgenticTab('board', 'top'); true`); await settle(1000);
             const kbb = await ev(`(() => { const e = document.getElementById('board-panel-input'); if (!e || !e.getClientRects().length) return null; const b = e.getBoundingClientRect(); e.focus(); return { top: b.top, bottom: b.bottom, vh: innerHeight }; })()`);
             if (kbb && !(kbb.top >= 0 && kbb.bottom <= kbb.vh + 0.5)) problems.push(`${w}|keyboard up: the board message box is not fully in view ${JSON.stringify(kbb)}`);
-            await Emulation.setDeviceMetricsOverride({ width: w, height: 800, deviceScaleFactor: 1, mobile: true }); await sleep(500); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await Emulation.setDeviceMetricsOverride({ width: w, height: 800, deviceScaleFactor: 1, mobile: true }); await settle(500);
             await ev(`window.switchNavTab('agents'); true`);
             // Settings and every dialog
-            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`); await sleep(1500); await scan('settings', '#settings-modal'); await ev(`window.hideSettingsModal(); true`); // sleep-ok: panels and dialogs fill from several answers; no completion event
+            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`); await settle(1500); await scan('settings', '#settings-modal'); await ev(`window.hideSettingsModal(); true`);
             const ids = await ev(`[...document.querySelectorAll('.modal[role=dialog]')].map(m => m.id).filter(id => id !== 'settings-modal')`);
             for (const id of ids) {
-                await ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'flex'; true`); await sleep(120); // sleep-ok: panels and dialogs fill from several answers; no completion event
+                await ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'flex'; true`); await settle(120);
                 await scan('dialog ' + id, '#' + id);
                 await ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'none'; true`);
             }
@@ -101,23 +116,23 @@ const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.i
             await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
             await ev(`window.__coralReady.then(() => true)`);
             const now = new Date().toISOString();
-            await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('phone-bot-with-a-long-name', 'A', 8, { sleeping: false }); window.__m.add('sleepy-bot', 'B', 5, { sleeping: true }); window.__m.add('archived-bot', 'C', 3, { archived: true }); true`); await sleep(900); // sleep-ok: the first live list renders from several answers; no completion event
+            await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('phone-bot-with-a-long-name', 'A', 8, { sleeping: false }); window.__m.add('sleepy-bot', 'B', 5, { sleeping: true }); window.__m.add('archived-bot', 'C', 3, { archived: true }); true`); await settle(900);
             tag = '375 extra';
-            await ev(`window.selectLiveSession('sleepy-bot', 'claude', 'sleepy-bot-id', 'local'); true`); await sleep(1500); // sleep-ok: the Chat view settles over several answers
+            await ev(`window.selectLiveSession('sleepy-bot', 'claude', 'sleepy-bot-id', 'local'); true`); await settle(1500);
             await scan('sleeping agent (wake bar)');
-            await ev(`window.selectLiveSession('archived-bot', 'claude', 'archived-bot-id', 'local'); true`); await sleep(1500); // sleep-ok: the Chat view settles over several answers
+            await ev(`window.selectLiveSession('archived-bot', 'claude', 'archived-bot-id', 'local'); true`); await settle(1500);
             await scan('archived agent (unarchive bar)');
             // the terminal with real xterm output
             await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); window.setLiveViewMode('terminal'); true`);
             await waitFor(`!!window.__tws && !!document.querySelector('#xterm-container .xterm')`, 'the terminal', 15000);
-            await ev(`(() => { const b = new TextEncoder().encode(Array.from({ length: 80 }, (_, i) => 'line ' + i + ' of the build output with a fairly long line of text that wraps at phone width\\r\\n').join('')); window.__tws.onmessage({ data: b.buffer }); return true; })()`); await sleep(1200); // sleep-ok: xterm writes and the fit run over frames
-            await scan('terminal with output'); await ev(`window.setLiveViewMode('chat'); true`); await sleep(500); // sleep-ok: the view switches over a frame
+            await ev(`(() => { const b = new TextEncoder().encode(Array.from({ length: 80 }, (_, i) => 'line ' + i + ' of the build output with a fairly long line of text that wraps at phone width\\r\\n').join('')); window.__tws.onmessage({ data: b.buffer }); return true; })()`); await settle(1200);
+            await scan('terminal with output'); await ev(`window.setLiveViewMode('chat'); true`); await settle(500);
             // the Launch dialog, step 1 and step 2 (and the Agent Configuration section open)
-            await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await sleep(1000); // sleep-ok: the dialog fills from several answers
+            await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await settle(1000);
             await scan('launch dialog step 1', '#launch-modal');
-            await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await sleep(1500); // sleep-ok: the dialog fills from several answers
+            await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1500);
             await scan('launch dialog step 2', '#launch-modal');
-            await ev(`{ const t = [...document.querySelectorAll('#launch-step-agent *')].filter(e => /^\\s*Agent Configuration/.test(e.textContent) && e.children.length < 3).pop(); if (t) (t.closest('[data-on-click], button') || t).click(); } true`); await sleep(800); // sleep-ok: the section opens over a frame
+            await ev(`{ const t = [...document.querySelectorAll('#launch-step-agent *')].filter(e => /^\\s*Agent Configuration/.test(e.textContent) && e.children.length < 3).pop(); if (t) (t.closest('[data-on-click], button') || t).click(); } true`); await settle(800);
             await scan('launch dialog step 2, Agent Configuration open', '#launch-modal');
             await ev(`document.getElementById('launch-modal').style.display = 'none'; true`);
             // the Servers tab with a hub fixture
@@ -125,39 +140,39 @@ const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.i
                 { id: 'm2', label: 'Old Laptop with a rather long display name', url: 'http://192.168.1.50:8420', status: 'unreachable', last_seen: now, last_error: 'dial tcp 192.168.1.50:8420: i/o timeout' },
                 { id: 'm3', label: 'epoch', url: 'https://epoch.example.net:8420', status: 'unauthorized', last_seen: now, last_error: 'the server rejected the API key' }];
             await ev(`window.__hubStub = ${JSON.stringify(SERVERS)}; (async () => { const s = await import((window.__coralStatic || '/static/') + 'state.js'); s.state.hub = true; s.state.servers = ${JSON.stringify(SERVERS)}; const t = await import((window.__coralStatic || '/static/') + 'servers_tab.js'); t.updateServersTabVisibility(); return true; })()`);
-            await ev(`window.switchNavTab('servers'); true`); await waitFor(`!!document.querySelector('#server-row-m2')`, 'the servers list', 8000); await sleep(500); // sleep-ok: the rows settle over a frame
+            await ev(`window.switchNavTab('servers'); true`); await waitFor(`!!document.querySelector('#server-row-m2')`, 'the servers list', 8000); await settle(500);
             await scan('servers tab', '#servers-view');
-            await ev(`document.querySelector('[data-action=add]').click(); true`); await sleep(600); // sleep-ok: the form opens over a frame
+            await ev(`document.querySelector('[data-action=add]').click(); true`); await settle(600);
             await scan('servers tab, Add form', '#servers-view');
             await ev(`window.switchNavTab('agents'); true`);
             // landscape: 640 x 320
             await Emulation.setDeviceMetricsOverride({ width: 640, height: 320, deviceScaleFactor: 1, mobile: true });
             tag = '640x320';
-            await sleep(800); // sleep-ok: the layout re-flows over frames
+            await settle(800);
             await scan('landscape: agents list');
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(1500); // sleep-ok: the Chat view settles over several answers
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(1500);
             await scan('landscape: agent chat');
             const lk = await ev(`(() => { const r = s => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, h: b.height }; }; return { input: r('#command-input'), msgs: r('#live-history-messages'), vh: innerHeight }; })()`);
             if (!(lk.input && lk.input.bottom <= lk.vh + 0.5 && lk.input.top >= 0)) problems.push(`640x320|landscape: the composer box is not in view ${JSON.stringify(lk.input)}`);
             if (!(lk.msgs && lk.msgs.h >= 60)) problems.push(`640x320|landscape: the conversation is squeezed to ${lk.msgs && lk.msgs.h} px`);
-            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`); await sleep(1200); // sleep-ok: Settings fills from several answers
+            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`); await settle(1200);
             await scan('landscape: settings', '#settings-modal'); await ev(`window.hideSettingsModal(); true`);
             // 200 percent text on the home and agent views (the root font size doubled: everything sized in rem or em follows)
             await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
             tag = '390 text 200%';
-            await ev(`document.documentElement.style.fontSize = '200%'; window.switchNavTab('agents'); true`); await sleep(800); // sleep-ok: the layout re-flows over frames
+            await ev(`document.documentElement.style.fontSize = '200%'; window.switchNavTab('agents'); true`); await settle(800);
             await ev(`window.selectLiveSession('', '', '', 'local'); true`).catch(() => {});
             await scan('home / agents list');
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(1500); // sleep-ok: the Chat view settles over several answers
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(1500);
             await scan('agent chat');
             await ev(`document.documentElement.style.fontSize = ''; true`);
             // 200 percent page zoom on a 390 px phone is a 195 px wide page: a probe of how far the layout holds
             await Emulation.setDeviceMetricsOverride({ width: 195, height: 422, deviceScaleFactor: 2, mobile: true });
             tag = '195 (390 px at 200% zoom)';
-            await ev(`T.render.renderLiveSessions(T.state.liveSessions); true`); await sleep(800); // sleep-ok: the layout re-flows over frames
+            await ev(`T.render.renderLiveSessions(T.state.liveSessions); true`); await settle(800);
             await ev(`window.selectLiveSession('', '', '', 'local'); true`).catch(() => {});
             await scan('home / agents list');
-            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await sleep(1500); // sleep-ok: the Chat view settles over several answers
+            await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(1500);
             await scan('agent chat');
         }
         assert.deepEqual(problems, [], 'phone layout problems:\n  ' + problems.join('\n  '));
