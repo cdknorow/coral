@@ -5,13 +5,6 @@
 1	agent_config_form.js	presetHTML
 1	agent_config_form.js	title
 1	agent_config_form.js	uid
-1	agentic_state.js	activeCount
-1	agentic_state.js	badge
-2	agentic_state.js	count
-1	agentic_state.js	formatClockTime(ev.created_at)
-1	agentic_state.js	items
-1	agentic_state.js	recentHtml
-1	agentic_state.js	statusText
 1	artifact_preview.js	rows
 1	artifact_viewer.js	renderMarkdownStrict(content)
 1	auto_accept.js	`<button type="button" class="overflow-menu-item auto-accept-menu-item" role="menuitemcheckbox" aria-checked="
@@ -40,7 +33,6 @@
 2	changed_files.js	cls
 2	changed_files.js	copyBtn
 1	changed_files.js	dels
-1	changed_files.js	dirHeader
 2	changed_files.js	editBtn
 1	changed_files.js	emptyOptions
 1	changed_files.js	emptySelect
@@ -206,24 +198,14 @@
 1	event_row.js	r.cls
 1	event_row.js	slow
 1	event_row.js	typeCls
-1	filter_dropdown.js	countHtml
-1	filter_dropdown.js	group.label
 1	folder_tags.js	available.map(t => `<span class="tag-dropdown-item" style="background:${escapeHtml(t.color)}" data-on-click="f
 1	folder_tags.js	availableHtml
 1	folder_tags.js	createHtml
 1	folder_tags.js	currentHtml
 1	folder_tags.js	currentTags.map(t => `<span class="tag-pill" style="background:${escapeHtml(t.color)}"> ${escapeHtml(t.name)} 
 1	folder_tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeHtml(t.color)}" title="${escapeHtml(t.
-1	history_tabs.js	activeCount
-1	history_tabs.js	badge
-1	history_tabs.js	count
-1	history_tabs.js	durationChip(ev)
-1	history_tabs.js	formatClockTime(ev.created_at)
 1	history_tabs.js	icon
-1	history_tabs.js	icon.char
-1	history_tabs.js	icon.cls
 1	history_tabs.js	statusClass
-1	history_tabs.js	typeCls
 1	live_chat.js	COPY_BUTTON
 2	live_chat.js	bodyHtml
 1	live_chat.js	cls
@@ -240,7 +222,7 @@
 1	live_jobs.js	elapsed
 1	live_jobs.js	onClick
 1	live_jobs.js	triggerBadge
-1	message_board.js	BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''))
+1	message_board.js	BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''), String(m.j
 1	message_board.js	_totalMessages
 1	message_board.js	agentCheckboxes || '<p style="font-size:0.8125rem;color:var(--text-muted)">No subscribers</p>'
 1	message_board.js	alignClass
@@ -310,7 +292,6 @@
 2	render.js	boardSleepIcon
 1	render.js	bottomMeta
 1	render.js	bottomMeta ? `<div class="session-row-bottom">${bottomMeta}</div>` : ""
-2	render.js	branchLine
 2	render.js	copyBtn
 2	render.js	countBadge
 2	render.js	distillChip(boardName)
