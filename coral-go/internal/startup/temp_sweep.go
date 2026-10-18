@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/diskguard"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -24,6 +25,7 @@ const staleTempAge = 24 * time.Hour
 // process naming them; in the shared temp folder, only sessions this Coral saw end). The channel
 // closes when the sweep is over.
 func setupLaunchTempDir(db *store.DB, dataDir string) <-chan struct{} {
+	diskguard.Use(dataDir) // the routes that can fill this volume refuse when it is nearly full (#4602)
 	if err := agent.SetTempDir(filepath.Join(dataDir, "tmp")); err != nil {
 		log.Printf("[startup] %v; launch temp files stay in %s", err, os.TempDir())
 	}

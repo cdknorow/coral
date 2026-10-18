@@ -3,6 +3,7 @@ package routes
 import (
 	"encoding/json"
 	"errors"
+	"github.com/cdknorow/coral/internal/diskguard"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -255,4 +256,22 @@ func clampTerminalSize(cols, rows int) (uint16, uint16) {
 		rows = defaultTerminalRows
 	}
 	return uint16(max(minTerminalCols, min(cols, maxTerminalCols))), uint16(min(rows, maxTerminalRows))
+}
+
+// refuseIfDiskLow answers 507 disk_low and reports true when the volume Coral stores its data on is nearly full (under 1 GiB or 1%
+// free, internal/diskguard): the routes that can fill it (agent artifact uploads, board posts, a cross-team file) refuse before a
+// write fails halfway, since a full disk makes SQLite fail for every agent at once (#4602). Events and the Operator's settings are not
+// refused: they are small, and refusing them would hide the state of the agents that should show the problem.
+func refuseIfDiskLow(w http.ResponseWriter) bool {
+	low, free := diskguard.Low()
+	if !low {
+		return false
+	}
+	writeJSON(w, http.StatusInsufficientStorage, map[string]any{
+		"error":      "The disk Coral stores its data on is almost full, so this was not saved. Free some space (Settings > Storage shows what Coral uses) and try again.",
+		"code":       "disk_low",
+		"free_bytes": free,
+		"not_sent":   true,
+	})
+	return true
 }

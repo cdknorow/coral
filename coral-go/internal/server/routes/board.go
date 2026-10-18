@@ -987,6 +987,20 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "content required")
 		return
 	}
+	// A post is a message, not a document: reports and logs go to artifacts. The 4 MiB body cap alone let one post be 4 MiB in the
+	// database and in every agent's terminal (#4602).
+	if len(body.Content) > maxBoardPostContent {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+			"error":     fmt.Sprintf("a board post is at most %d KiB (this one is %d KiB): put the long text in an artifact (coral-agent artifact upload) and post its link", maxBoardPostContent>>10, len(body.Content)>>10),
+			"code":      "content_too_large",
+			"max_bytes": maxBoardPostContent,
+			"not_sent":  true,
+		})
+		return
+	}
+	if refuseIfDiskLow(w) {
+		return
+	}
 	body.Content = unescapeLineBreaks(body.Content)
 	// Terminal control goes before anything reads the text (#3580): mentions, links and the
 	// stored post all see what readers will see.
@@ -1753,8 +1767,10 @@ func formatBlockerList(deps []board.TaskDep) string {
 
 // maxFullTaskRows caps GET /api/board/{project}/tasks?full=1, and maxAllTasksRows the plain GET /api/board/tasks (#4602).
 const (
-	maxFullTaskRows = 500
-	maxAllTasksRows = 500
+	// maxBoardPostContent is the longest board post (#4602).
+	maxBoardPostContent = 256 << 10
+	maxFullTaskRows     = 500
+	maxAllTasksRows     = 500
 )
 
 // ListTasks returns a page of the board's task list (#3269).

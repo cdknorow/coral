@@ -351,6 +351,9 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 	if mediaType == "" {
 		mediaType = mediatype.Generic
 	}
+	if refuseIfDiskLow(w) {
+		return
+	}
 	coralDir := h.cfg.CoralDir()
 	st := storeFor(coralDir)
 	// The hourly cap is per agent session (its verified token); token-less uploads, possible

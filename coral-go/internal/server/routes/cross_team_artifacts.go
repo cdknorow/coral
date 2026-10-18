@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/cdknorow/coral/internal/diskguard"
 	"io"
 	"log/slog"
 	"net/http"
@@ -296,6 +298,10 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		receivedRefuse(w, http.StatusForbidden, "hub_server_untrusted", "X-Coral-Hub-Server is only accepted from Coral Hub", "")
+		return
+	}
+	if low, free := diskguard.Low(); low {
+		receivedRefuse(w, http.StatusInsufficientStorage, "disk_low", fmt.Sprintf("the disk this Coral stores its data on is almost full (%d MiB free): the file was not stored", free>>20), "")
 		return
 	}
 	src = strings.ToLower(src)
