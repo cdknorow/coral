@@ -326,6 +326,8 @@ export function toggleAgenticPanel(forceState) {
     }
     browserLocal.set(dockKey('coral-agentic-collapsed'), isCollapsed);
     _syncPanelToggleBtn(!isCollapsed);
+    // Opened on the Saved tab: its list is read now (the tab's switch skips a shut sidebar, agentic_state.js)
+    if (!isCollapsed && panel.querySelector('#agentic-block-top .agentic-tab.active')?.dataset.tab === 'saved') window.switchAgenticTab?.('saved', 'top');
     // Fit terminal immediately and again after CSS transition completes
     fitTerminal();
     setTimeout(() => fitTerminal(), 50);

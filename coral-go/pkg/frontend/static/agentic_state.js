@@ -308,8 +308,9 @@ export function switchAgenticTab(tabName, blockId) {
 
     if (tabName === 'agent-ui') refreshAgentUI();
 
-    // Saved for later (#4510): the list is read when its tab is shown
-    if (tabName === 'saved') importOnce('./saved.js').then(m => m.showSaved()).catch(() => {});
+    // Saved for later (#4510): the list is read when its tab is shown, not while the sidebar is shut behind it (the home page's tab is Saved, and startup must not load the list: #4326);
+    // opening the sidebar on it reads the list (sidebar.js)
+    if (tabName === 'saved' && !document.getElementById('agentic-state')?.classList.contains('collapsed')) importOnce('./saved.js').then(m => m.showSaved()).catch(() => {});
 
     // Start/stop board task polling based on tab
     if (tabName === 'tasks') {

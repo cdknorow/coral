@@ -98,6 +98,13 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual({ page: d.page, open: d.open, active: d.active, panel: d.panel }, { page: 'chats', open: true, active: 'saved', panel: ['saved'] });
         await shot('dock-chats-saved');
 
+        console.log('6b. A shut sidebar whose tab is Saved reads nothing; opening it with the panel button reads the list');
+        await toggle(); // close it (Chats)
+        await waitFor(`document.getElementById('agentic-state').classList.contains('collapsed')`, 'closed');
+        await ev(`document.getElementById('saved-list').replaceChildren(); true`);
+        await toggle(); // open it with the panel button, not the Saved button
+        await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 1`, 'the list read when the sidebar opened on Saved', 8000);
+
         console.log('7. Each kind of page keeps its own state: closing it on the board leaves Chats and the agent page as they were; coming back finds the board as left');
         await ev(`window.selectBoardProject(${JSON.stringify(BOARD)}); true`);
         await waitFor(`document.querySelectorAll('#mb-messages .mb-message').length === 1`, 'the board', 8000);
