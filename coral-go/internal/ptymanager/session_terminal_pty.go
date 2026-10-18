@@ -246,7 +246,7 @@ func isSessionName(name string) bool {
 
 func (p *PTYSessionTerminal) RestartPane(_ context.Context, target, _ string) error {
 	DropHeld(target, "restarted") // nothing held for the old process is typed into a new one (#3431)
-	return p.backend.Restart(target, "")
+	return p.backend.Restart(p.resolveSessionKey(target), "")
 }
 
 func (p *PTYSessionTerminal) RenameSession(_ context.Context, _, _ string) error {

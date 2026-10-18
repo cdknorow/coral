@@ -226,6 +226,34 @@ func TestPTYSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
 	assert.Contains(t, output, marker)
 }
 
+// ── RestartPane ──────────────────────────────────────────────────────
+
+func TestPTYSessionTerminal_RestartPane_ByBareSessionID(t *testing.T) {
+	skipIfWindows(t)
+	terminal, _ := newTestTerminal(t)
+	ctx := context.Background()
+
+	sid := "00004697-0001-4000-8000-000000000001"
+	sessName := "claude-" + sid
+	dir := t.TempDir()
+
+	err := terminal.CreateSession(ctx, sessName, dir)
+	skipIfPTYSpawnDenied(t, err)
+	require.NoError(t, err)
+
+	pane, err := terminal.FindSession(ctx, sessName, "claude", sid)
+	require.NoError(t, err)
+	require.NotNil(t, pane)
+	require.Equal(t, sid, pane.Target, "PTY pane target is its bare session ID")
+
+	// RestartPane receives pane.Target (the bare session ID) from sessions_lifecycle.go
+	err = terminal.RestartPane(ctx, pane.Target, dir)
+	require.NoError(t, err)
+
+	// Session should still exist after restart
+	assert.True(t, terminal.HasSession(ctx, sessName))
+}
+
 // ── ResizeSession ────────────────────────────────────────────────────
 
 func TestPTYSessionTerminal_ResizeSession(t *testing.T) {
