@@ -1277,7 +1277,10 @@ function jumpToLatest() {
         const watch = () => {
             const top = container.scrollTop, height = container.scrollHeight;
             if (height - top - container.clientHeight < 2) { pin(); return; }
-            if (height === lastHeight && top < lastTop - 1) return; // scrolled back up: yours
+            // Scrolled back up: yours. A real drop in the top counts even when a message grew the height that frame
+            // (#4601: the old height===lastHeight guard pinned the view against a scroll-up that landed on the same frame
+            // as a reply); content above that shrinks can pull the top up on its own, so the drop must exceed that shrink.
+            if (top < lastTop - 1 - Math.max(0, lastHeight - height)) return;
             still = top === lastTop ? still + 1 : 0;
             lastTop = top;
             lastHeight = height;

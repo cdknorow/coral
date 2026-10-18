@@ -129,11 +129,29 @@ const BASE = require('./test_base').BASE;
 
             console.log(`${v.name}: scrolling back up during a jump lets go of it`);
             await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
-            // The jump starts down (100 px, as a smooth scroll's first step) and, before the next frame, you scroll 300 px back up.
-            await ev(`(() => { const c = ${C}; c.scrollTo = () => { c.scrollTop += 100; }; ${BTN}.click(); c.scrollTop -= 300;
-                return new Promise(r => setTimeout(() => r(true), 1300)); })()`); // sleep-ok: past the watch's second
-            assert.ok(await ev(`(() => { const c = ${C}; return c.scrollHeight - c.scrollTop - c.clientHeight > c.clientHeight; })()`), `${v.name}: not pulled down after scrolling up`);
+            // The jump starts down (100 px, a smooth scroll's first step) and, before the next frame, you scroll 300 px back up.
+            await ev(`(() => { const c = ${C}; window.__cjlT0 = performance.now(); c.scrollTo = () => { c.scrollTop += 100; }; ${BTN}.click(); c.scrollTop -= 300; c.dispatchEvent(new Event('scroll')); return true; })()`);
+            // The released state goes true at once (your scroll event turns autoScroll off and shows the button), so it alone
+            // would pass before the old rule's pin. Wait past the watch's own 1s cap, then a couple of real frames so its
+            // post-cap frame (which pins if it hasn't released) has run, and only then assert still released (Lead's note).
+            await waitFor(`(async () => { const st = (await import(${S} + 'state.js')).state; return !st.autoScroll && !${BTN}.hidden; })()`, `${v.name}: the jump let go (not pinned)`, 4000);
+            await waitFor(`performance.now() - window.__cjlT0 > 1000`, `${v.name}: past the watch's 1s cap`, 4000); // sleep-ok: the product's own window
+            await ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`); // let the watch's post-cap frame run
+            assert.ok(await ev(`(async () => { const st = (await import(${S} + 'state.js')).state; const c = ${C}; return !st.autoScroll && c.scrollHeight - c.scrollTop - c.clientHeight > c.clientHeight; })()`), `${v.name}: not pulled down after scrolling up (still released past the watch window)`);
             await ev(`delete ${C}.scrollTo; true`);
+
+            // The same scroll-up, but the height grows on that very frame (a reply lands at the bottom): the release must
+            // still fire (#4601 — the old height===lastHeight rule missed it and pinned the view against the user).
+            console.log(`${v.name}: a scroll-up still lets go when the height grows that frame`);
+            await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
+            await ev(`(() => { const c = ${C}; window.__cjlT0 = performance.now(); c.scrollTo = () => { c.scrollTop += 100; }; ${BTN}.click(); c.scrollTop -= 300;
+                const grow = document.createElement('div'); grow.style.height = '600px'; grow.dataset.grewMidJump = '1'; c.appendChild(grow);
+                c.dispatchEvent(new Event('scroll')); return true; })()`);
+            await waitFor(`(async () => { const st = (await import(${S} + 'state.js')).state; return !st.autoScroll && !${BTN}.hidden; })()`, `${v.name}: let go despite the height growing`, 4000);
+            await waitFor(`performance.now() - window.__cjlT0 > 1000`, `${v.name}: past the watch's 1s cap (grow case)`, 4000); // sleep-ok: the product's own window
+            await ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`); // let the watch's post-cap frame run
+            assert.ok(await ev(`(async () => { const st = (await import(${S} + 'state.js')).state; const c = ${C}; return !st.autoScroll && c.scrollHeight - c.scrollTop - c.clientHeight > c.clientHeight; })()`), `${v.name}: not pulled down when the height grew mid-jump (still released past the watch window)`);
+            await ev(`(() => { const c = ${C}; c.querySelector('[data-grew-mid-jump]')?.remove(); delete c.scrollTo; return true; })()`);
 
             console.log(`${v.name}: scrolling to the bottom by hand clears the count`);
             await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
