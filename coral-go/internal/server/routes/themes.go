@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -16,16 +15,22 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/store"
 )
 
 // ThemesHandler handles theme CRUD endpoints.
 type ThemesHandler struct {
 	cfg       *config.Config
 	themesDir string
+	ss        *store.SessionStore // the CLI paths of Settings > CLI Paths; nil in tests that need none
 }
+
+// SetDB gives the handler the settings that say which CLI to run (#4354).
+func (h *ThemesHandler) SetDB(db *store.DB) { h.ss = store.NewSessionStore(db) }
 
 func NewThemesHandler(cfg *config.Config) *ThemesHandler {
 	return &ThemesHandler{
@@ -505,7 +510,16 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find an available LLM CLI — try requested type first, then fall back
-	cliPath, cliArgs := resolveThemeCLI(body.AgentType)
+	// The CLI a configured path names, never the one on PATH instead of it (#4354).
+	var settings map[string]string
+	if h.ss != nil {
+		var serr error
+		if settings, serr = h.ss.GetSettingsForCLI(r.Context()); serr != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Coral's settings could not be read; try again"})
+			return
+		}
+	}
+	cliPath, cliArgs := resolveThemeCLI(settings, body.AgentType)
 	if cliPath == "" {
 		errInternalServer(w, "No LLM CLI found — install Claude Code (npm install -g @anthropic-ai/claude-code) or Antigravity CLI (agy)")
 		return
@@ -567,7 +581,15 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 
 // resolveThemeCLI finds an available LLM CLI for theme generation.
 // Tries the requested agent type first, then falls back to others.
-func resolveThemeCLI(agentType string) (path string, args []string) {
+//
+// Each CLI is found the way launch finds it (agent.FindCLI): the path in Settings > CLI Paths when
+// one is set, and a set path that cannot be run skips that CLI rather than running the one on
+// PATH (#4354). Only a CLI with no configured path is looked up on PATH.
+func resolveThemeCLI(settings map[string]string, agentType string) (path string, args []string) {
+	find := func(binary string) (string, bool) {
+		p, err := agent.FindCLI(settings, binary)
+		return p, err == nil
+	}
 	type cliOption struct {
 		binary string
 		args   []string
@@ -590,7 +612,7 @@ func resolveThemeCLI(agentType string) (path string, args []string) {
 		for _, target := range targets {
 			for _, opt := range options {
 				if opt.binary == target {
-					if p, err := exec.LookPath(opt.binary); err == nil {
+					if p, ok := find(opt.binary); ok {
 						return p, opt.args
 					}
 				}
@@ -600,7 +622,7 @@ func resolveThemeCLI(agentType string) (path string, args []string) {
 
 	// Fall back to any available CLI
 	for _, opt := range options {
-		if p, err := exec.LookPath(opt.binary); err == nil {
+		if p, ok := find(opt.binary); ok {
 			return p, opt.args
 		}
 	}

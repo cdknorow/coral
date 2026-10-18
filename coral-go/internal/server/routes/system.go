@@ -814,13 +814,28 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		installCmd = info.InstallCommand
 		// The CLI path setting is what launch runs, so a check by type looks
 		// there first: a configured path is not reported as "not found" (#3169).
+		// It is never replaced by the CLI on PATH (#4354): this check RUNS what it finds
+		// (--version), so unreadable settings or a configured path that cannot be run is
+		// said so, as launch and the model listing say it (#4350, #4432).
 		if h.ss != nil {
-			if settings, _ := h.ss.GetSettings(r.Context()); settings != nil {
-				if p := agent.ResolveCLIPath(settings, agentType); p != "" {
-					if _, err := cliLookPath(p); err == nil {
-						binaryPath = p
-					}
+			settings, serr := h.ss.GetSettingsForCLI(r.Context())
+			if serr != nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Coral's settings could not be read; try again"})
+				return
+			}
+			if p := agent.ResolveCLIPath(settings, agentType); p != "" {
+				if _, err := cliLookPath(p); err != nil {
+					writeJSON(w, http.StatusOK, map[string]any{
+						"found":      false,
+						"status":     tracking.PrereqMissing,
+						"binary":     p,
+						"agent_type": agentType,
+						"configured": true,
+						"message":    "the CLI path set in Settings > CLI Paths can't be run: fix it or clear it to use the one on PATH",
+					})
+					return
 				}
+				binaryPath = p
 			}
 		}
 	}

@@ -37,6 +37,8 @@ export async function checkAgentCLI(type, element, {force = false, command = '',
             renderCLI(element, `${type} CLI found, but version check ${data.status === 'timeout' ? 'timed out' : 'failed'}.`, recheck); return;
         }
         if (data.found) { element.style.display = 'none'; return; }
+        // A configured path that cannot be run (#4354): say so, not that the CLI is missing (it is never swapped for the one on PATH).
+        if (data.configured && data.message) { renderCLI(element, `${type}: ${data.message}`, recheck); return; }
         renderCLI(element, `${type} CLI was not found.`, recheck, {command:data.install_command || command});
     };
     if (force) cache.delete(cacheKey);
