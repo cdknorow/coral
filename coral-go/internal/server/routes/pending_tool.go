@@ -49,6 +49,21 @@ func (p *pendingTools) get(sessionID string, now time.Time) (pendingTool, bool) 
 	return t, ok
 }
 
+// prune drops the pending tool of every session isLive refuses, and any older than pendingToolTTL, and returns how many it
+// dropped (#4602, L6: a session that ended with a prompt open left its entry for ever).
+func (p *pendingTools) prune(isLive func(sessionID string) bool, now time.Time) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := 0
+	for id, t := range p.m {
+		if !isLive(id) || now.Sub(t.At) > pendingToolTTL {
+			delete(p.m, id)
+			n++
+		}
+	}
+	return n
+}
+
 // durationMs returns the server-observed duration of a matching tool call.
 // Some agents report duration_ms themselves; Codex currently does not, so its
 // PreToolUse and PostToolUse hook arrival times provide the fallback.

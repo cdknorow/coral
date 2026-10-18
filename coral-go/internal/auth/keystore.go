@@ -32,6 +32,8 @@ const (
 	legacyCookieName = "coral_session"
 	rateLimitWindow  = time.Minute
 	rateLimitMax     = 10
+	// maxRateIPs is the most addresses the failed-key limiter tracks at once.
+	maxRateIPs = 10000
 )
 
 // Session represents an authenticated session.
@@ -338,18 +340,22 @@ func (ks *KeyStore) CheckRateLimit(ip string) bool {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	// Lazy cleanup: prune expired entries when map grows too large
-	if len(ks.rateMap) > 1000 {
-		now := time.Now()
-		for k, e := range ks.rateMap {
-			if now.Sub(e.windowAt) > rateLimitWindow {
-				delete(ks.rateMap, k)
-			}
-		}
-	}
-
 	entry, ok := ks.rateMap[ip]
 	if !ok {
+		// At most maxRateIPs addresses are tracked (#4602, L6): expired ones are swept only when the map is full (the old sweep ran
+		// on every call past 1,000 entries, a scan of the whole map per request). If it is still full, a flood of addresses: the
+		// new one is not counted, as the password throttle does; a wrong key is refused all the same.
+		if len(ks.rateMap) >= maxRateIPs {
+			now := time.Now()
+			for k, e := range ks.rateMap {
+				if now.Sub(e.windowAt) > rateLimitWindow {
+					delete(ks.rateMap, k)
+				}
+			}
+			if len(ks.rateMap) >= maxRateIPs {
+				return true
+			}
+		}
 		ks.rateMap[ip] = &rateLimitEntry{count: 1, windowAt: time.Now()}
 		return true
 	}

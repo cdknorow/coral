@@ -90,6 +90,7 @@ func (h *SessionsHandler) pruneSessionCaches(ctx context.Context) int {
 	dropped += pruneSessionMap(&h.cliVersionTried, isLive)
 	dropped += pruneSessionMap(&h.hooksRev, isLive)
 	dropped += pruneSessionMap(&h.hooksNoRev, isLive)
+	dropped += h.pending.prune(isLive, time.Now()) // tool calls started and never finished (#4602, L6)
 	if dropped > 0 {
 		slog.Debug("pruned caches of ended sessions", "entries", dropped, "live", len(keep))
 	}
