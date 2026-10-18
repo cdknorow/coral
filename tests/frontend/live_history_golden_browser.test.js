@@ -32,6 +32,8 @@ const STEPS = [
         pending: { name: 'Bash', input: { command: 'rm -rf x' } }, prompt_options: { question: 'Run it?', options: ['Yes', 'No'], review: [] }, needs_login: true, login_reason: 'expired', limit_notice: 'You hit the usage limit' } };`, 1],
     ['the kept page of an agent seen a moment ago shows at once', `__chat.answer = { status: 200, body: { messages: __chat.msgs.slice(0, 4), total: 6, start: 2, has_more: true } }; __reset();`, 1,
         `__chat.answer = { status: 200, body: { messages: __chat.msgs.slice(4), total: 6, start: 2, has_more: true } };`],
+    ['a kept page: the agent is switched while it builds', `__reset(); __chat.answer = { status: 200, body: { messages: __chat.msgs.slice(0, 4), total: 6, start: 2, has_more: true } };`, 1],
+    ['a kept page: its build throws, so the first page is loaded as for an agent not seen before', `__reset(); __chat.answer = { status: 200, body: { messages: __chat.msgs.slice(0, 4), total: 6, start: 2, has_more: true } };`, 1],
     ['a switch while the answer is on its way renders nothing', `__reset(); __chat.delay = 150; __chat.answer = { status: 200, body: { messages: __chat.msgs.slice(0, 2), total: 2, start: 0, has_more: false } };`, 1,
         `__reset();`],
 ];
@@ -51,6 +53,7 @@ const STEPS = [
             let c = document.getElementById('live-history-messages');
             if (!c) { c = document.createElement('div'); c.id = 'live-history-messages'; document.body.appendChild(c); }
             window.__chat = { msgs: ${JSON.stringify(MSGS)}, answer: null, delay: 0, requests: [] };
+            const realAppend = Element.prototype.appendChild; Element.prototype.appendChild = function (n) { if (window.__throwBuild && !this.isConnected) throw new Error('the build was made to fail'); return realAppend.call(this, n); }; // a kept page is built off screen: this makes that build throw
             window.__reset = () => { T.chat.clearKeptChatPages(); T.chat.resetLiveHistory(); window.__chat.delay = 0; };
             window.__first = () => window.T.chat.refreshLiveHistory();
             const real = window.fetch;
@@ -77,6 +80,8 @@ const STEPS = [
             if (calls === 0) await ev(`new Promise(r => setTimeout(r, 500))`); // sleep-ok: the retry's request and render land over several frames; there is no completion event
             if (name.startsWith('the kept page')) { await ev(`${after}; window.T.chat.refreshLiveHistory(); true`); await ev(`new Promise(r => setTimeout(r, 400))`); // sleep-ok: the poll's answer and render land over several frames
             await ev(`window.__chat.requests.length = 0; __chat.answer = { status: 200, body: { messages: [], total: 6, start: 2, has_more: true } }; window.T.chat.resetLiveHistory(); window.T.chat.refreshLiveHistory(); true`); await ev(`new Promise(r => setTimeout(r, 500))`); } // sleep-ok: the kept page is built in slices
+            if (name.startsWith('a kept page: the agent is switched')) { await ev(`window.__chat.requests.length = 0; window.T.chat.resetLiveHistory(); window.T.chat.refreshLiveHistory(); window.T.chat.resetLiveHistory(); true`); await ev(`new Promise(r => setTimeout(r, 600))`); } // sleep-ok: the kept page is built in slices and the answer, if one were asked for, lands over frames
+            if (name.startsWith('a kept page: its build throws')) { await ev(`window.__chat.requests.length = 0; window.__throwBuild = true; window.T.chat.resetLiveHistory(); window.T.chat.refreshLiveHistory(); true`); await ev(`new Promise(r => setTimeout(r, 700))`); await ev(`window.__throwBuild = false; true`); } // sleep-ok: the failed build, then the first page's request and render, land over frames
             if (name.startsWith('a switch while')) { await ev(`window.__chat.requests.length = 0; window.T.chat.refreshLiveHistory(); new Promise(r => setTimeout(r, 30)).then(() => window.__reset()); true`); await ev(`new Promise(r => setTimeout(r, 500))`); } // sleep-ok: the answer is delayed on purpose
             if (name.startsWith('the transcript got shorter')) { await ev(`${after}; true`); await ev(`window.T.chat.refreshLiveHistory(); true`); await ev(`new Promise(r => setTimeout(r, 600))`); } // sleep-ok: the reload is scheduled after the refresh ends
             out[name] = await ev(SNAP);

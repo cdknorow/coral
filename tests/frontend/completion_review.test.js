@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../coral-go/pkg/frontend/static/tasks.js'), 'utf8');
-const start = source.indexOf('function _taskDetailHtml(');
+const start = source.indexOf('function _taskDetailHeadHtml('); // the detail is built by helpers (#4702): from the first of them to the end of _taskDetailHtml
 const end = source.indexOf('\nlet _editOriginalTask', start);
 const escape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const context = vm.createContext({ escapeHtml: escape, escapeAttr: escape, _priorityRank: {}, formatTaskDate: String, _verifyLine: () => '' }); // the detail's verification line (#4564) is drawn by tasks.js; none of these tasks has one

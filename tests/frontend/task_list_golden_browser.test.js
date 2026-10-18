@@ -37,6 +37,7 @@ const SUBAGENTS = [{ id: 'a1', description: 'Search the repo', subagent_type: 'E
         await ev(`(async () => {
             const st = window.__coralStatic || '/static/';
             const T = window.T = { state: (await import(st + 'state.js')).state, tasks: await import(st + 'tasks.js') };
+            const FROZEN = Date.parse('2026-10-18T12:00:00Z'); Date.now = () => FROZEN; // the claimed-for time reads the clock: frozen, the trace does not drift with the hour
             window.__page = { tasks: [], next_cursor: '', total_open: null, total_completed: null };
             const json = (b, status = 200) => Promise.resolve(new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } }));
             const real = window.fetch;

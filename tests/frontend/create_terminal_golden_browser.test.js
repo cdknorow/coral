@@ -65,7 +65,7 @@ const sha = t => require('node:crypto').createHash('sha256').update(t).digest('h
         await ev(`window.__sent.length = 0; window.__term.resize(91, 26); true`); await sleep(60); await record('a resize of the terminal is told to the pane');
 
         await fresh(); await ev(`window.__term.input('q', true); true`); await sleep(40); await record('input before the socket is open is queued');
-        await ev(`T.x.connectTerminalWs('t1', 'claude', 'sess-t1', 'local'); true`); await sleep(120); await record('and sent once it opens');
+        await ev(`T.x.connectTerminalWs('t1', 'claude', 'sess-t1', 'local'); true`); await waitFor(`window.__sockets.length === 1 && window.__sockets[0].readyState === 1`, 'the socket open'); await record('and sent once it opens');
 
         await ev(`window.__sockets.length = 0; window.__sent.length = 0; window.__term2 = T.x.createTerminal(window.__host); window.__same = window.__term2 === window.__term; true`); await record('creating again reuses the terminal and lets go of the socket');
         assert.equal(await ev(`window.__same`), true);

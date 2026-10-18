@@ -57,6 +57,7 @@ const AGENT_TASK = { id: 40, title: 'My own task', agent_name: 'solo', started_a
         await ev(`(async () => {
             const st = window.__coralStatic || '/static/';
             const T = window.T = { state: (await import(st + 'state.js')).state, tasks: await import(st + 'tasks.js') };
+            const FROZEN = Date.parse('2026-10-18T12:00:00Z'); Date.now = () => FROZEN; // the claimed-for time reads the clock: frozen, the trace does not drift with the hour
             T.state.currentSession = { name: 'solo', type: 'live', board_project: 'team-a', session_id: 'sid-solo' }; T.state.selectedTeam = null;
             window.__tasks = ${JSON.stringify(TASKS)}; window.__agentTask = ${JSON.stringify(AGENT_TASK)};
             const json = (b, status = 200) => Promise.resolve(new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } }));

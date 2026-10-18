@@ -12,6 +12,8 @@
     "the first load is refused as busy": "70014237fe0afc90abf9c142713bf57db474cd262ce34a841e0dd2e41ba6ac29",
     "an open prompt, a login notice and a usage limit ride on the reply": "ae37e39968f3c8da81ab203c8b50d314e66844d2a549fcca12b2503b492ea7e0",
     "the kept page of an agent seen a moment ago shows at once": "ab20d6632cb2f97b6f26ae926555c5e5508627eb676d46f095e6aabc90de91eb",
+    "a kept page: the agent is switched while it builds": "79afd4a5aad80465b273dc8181911bdaa9bd80110f176be3acbf36325479933c",
+    "a kept page: its build throws, so the first page is loaded as for an agent not seen before": "ee91e4f3fa7c3c853cd32c2997a8317c756936fff96ad28112f599c0e0e632dd",
     "a switch while the answer is on its way renders nothing": "e77e46bb3d6bfcd46e15c1a7e534af8ca4f1f70d3f6a594e1ace034537a7e3cb"
   },
   "lines": {
@@ -26,6 +28,8 @@
     "the first load is refused as busy": "kids 1 [loading-indicator] | older false | loading true busy true error false | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | Loading… (Coral busy, retrying)",
     "an open prompt, a login notice and a usage limit ride on the reply": "kids 4 [chat-bubble,chat-bubble,chat-note,chat-needs-input] | older false | loading false busy false error false | requests {\"after\":\"0\",\"limit\":\"30\",\"offset\":\"0\",\"trim\":\"2048\"} | YouPlease fix the build Looking at it now. content_copywarningYou hit the usage limitSign-in neededClaude needs you to sign inexpiredSign in from the terminal. Nothing runs until you do.Open terminal",
     "the kept page of an agent seen a moment ago shows at once": "kids 8 [load-more-btn,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-note,chat-bubble,chat-needs-input] | older true | loading false busy false error false | requests {\"after\":\"6\"} | Load older messagesYouPlease fix the build Looking at it now. content_copyYouand add a test Done: both. content_copyInterruptedStopped. content_copySign-in neededClaude needs you to sign inexpiredSign in from the terminal. Nothing runs until you do.Open terminal",
+    "a kept page: the agent is switched while it builds": "kids 0 [] | older false | loading false busy false error false | requests  | ",
+    "a kept page: its build throws, so the first page is loaded as for an agent not seen before": "kids 10 [load-more-btn,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-bubble,chat-needs-input] | older true | loading false busy false error false | requests {\"after\":\"6\"} | Load older messagesYouPlease fix the build Looking at it now. content_copyYouand add a test Done: both. content_copyYouPlease fix the build Looking at it now. content_copyYouand add a test Done: both. content_copySign-in neededClaude needs you to sign inexpiredSign in from the terminal. Nothing runs until you do.Open terminal",
     "a switch while the answer is on its way renders nothing": "kids 0 [] | older false | loading false busy false error false | requests {\"after\":\"2\"} | "
   }
 }
