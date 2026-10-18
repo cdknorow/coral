@@ -33,7 +33,7 @@ var (
 
 // SavedList: GET /api/saved?state=open|done (default: both; kind and conv (the session id or the board) narrow it to one conversation, for the buttons' saved state; limit keeps the newest N).
 func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
-	if refuseUnlessPerson(w, r, "see the saved messages") {
+	if refuseUnlessOperator(w, r, "see the saved messages") {
 		return
 	}
 	q := r.URL.Query()
@@ -102,7 +102,7 @@ func cleanSavedField(s string) string {
 
 // SavedAdd: POST /api/saved {kind, ref, key, agent_type, title, snippet, said_at}. Saving a saved message again answers the bookmark that exists.
 func (h *SystemHandler) SavedAdd(w http.ResponseWriter, r *http.Request) {
-	if refuseUnlessPerson(w, r, "save a message") {
+	if refuseUnlessOperator(w, r, "save a message") {
 		return
 	}
 	var body struct {
@@ -163,7 +163,7 @@ func savedID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 
 // SavedUpdate: PATCH /api/saved/{id} {"done": bool}: marks it done, or open again.
 func (h *SystemHandler) SavedUpdate(w http.ResponseWriter, r *http.Request) {
-	if refuseUnlessPerson(w, r, "change a saved message") {
+	if refuseUnlessOperator(w, r, "change a saved message") {
 		return
 	}
 	id, ok := savedID(w, r)
@@ -191,7 +191,7 @@ func (h *SystemHandler) SavedUpdate(w http.ResponseWriter, r *http.Request) {
 
 // SavedDelete: DELETE /api/saved/{id}.
 func (h *SystemHandler) SavedDelete(w http.ResponseWriter, r *http.Request) {
-	if refuseUnlessPerson(w, r, "remove a saved message") {
+	if refuseUnlessOperator(w, r, "remove a saved message") {
 		return
 	}
 	id, ok := savedID(w, r)

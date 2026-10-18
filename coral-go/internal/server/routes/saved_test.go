@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -411,4 +412,32 @@ func TestHistoryDetailFindsAMessageByItsKey(t *testing.T) {
 	assert.Equal(t, "message 12", msgs[idx].(map[string]any)["content"], "the index is the message's place in the transcript")
 	assert.EqualValues(t, len(msgs), out["total"])
 	assert.Equal(t, false, get("?find_key=" + strings.Repeat("f", 20))["found"])
+}
+
+// A hub reaches a registered server with that server's API key and nothing of the browser (#4551): the key is the Operator's, so the saved messages
+// answer it; an agent's token is not, even with the key beside it, and a bare script (no credential) is not either.
+func TestSavedMessagesAnswerTheServersAPIKeyButNeverAnAgent(t *testing.T) {
+	g := newSavedRig(t)
+	key := strings.Repeat("c3", 10)
+	viaKey := map[string]string{"Authorization": "Bearer the-servers-key"} // the identity layer classes it api_key (it refuses a wrong key before any handler)
+
+	code, a := g.do("POST", "/api/saved", viaKey, agentSave(key, "saved through a hub"))
+	require.Equal(t, http.StatusOK, code, a)
+	id := int(a["id"].(float64))
+	code, list := g.do("GET", "/api/saved", viaKey, nil)
+	require.Equal(t, http.StatusOK, code)
+	assert.Len(t, list["items"], 1)
+	code, _ = g.do("PATCH", "/api/saved/"+strconv.Itoa(id), viaKey, map[string]any{"done": true})
+	assert.Equal(t, http.StatusOK, code, "Done through the key")
+	code, _ = g.do("DELETE", "/api/saved/"+strconv.Itoa(id), viaKey, nil)
+	assert.Equal(t, http.StatusOK, code, "Remove through the key")
+
+	both := map[string]string{"Authorization": "Bearer the-servers-key", testAgentHeader: "s1"}
+	for _, c := range []struct{ m, p string }{{"GET", "/api/saved"}, {"POST", "/api/saved"}, {"PATCH", "/api/saved/1"}, {"DELETE", "/api/saved/1"}} {
+		code, out := g.do(c.m, c.p, both, agentSave(key, "x"))
+		assert.Equal(t, http.StatusForbidden, code, "an agent token with a key beside it: "+c.m+" "+c.p)
+		assert.Equal(t, "operator_only", out["code"])
+		code, _ = g.do(c.m, c.p, map[string]string{}, agentSave(key, "x"))
+		assert.Equal(t, http.StatusForbidden, code, "no credential: "+c.m+" "+c.p)
+	}
 }

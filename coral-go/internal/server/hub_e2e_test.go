@@ -1584,3 +1584,50 @@ func (t *fakeTerminal) FindSession(ctx context.Context, name, agentType, session
 	}
 	return nil, nil
 }
+
+// ── Save for Later through the proxy (#4551) ─────────────────────────────
+
+// A hub saves a message on a registered server through /api/remote/{id}/api/saved: the remote sees the hub's key and nothing of the browser, which is the Operator's,
+// so the bookmark lands on that server and nowhere else (the other server does not have it); Done and Remove reach the right server.
+func TestHubE2E_SavedMessagesOnARegisteredServer(t *testing.T) {
+	env := newE2EEnv(t)
+	hub := newE2EHub(t, env, "", true)
+	a := newE2ERemote(t, "a", nil)
+	b := newE2ERemote(t, "b", nil)
+	require.Equal(t, 201, hub.register("a", a.url(), a.key(), true).Code)
+	require.Equal(t, 201, hub.register("b", b.url(), b.key(), true).Code)
+
+	key := strings.Repeat("a1", 10)
+	code, body := hub.do("POST", "/api/remote/a/api/saved", map[string]any{"kind": "agent", "ref": "sess-a", "key": key, "title": "agent on a", "snippet": "saved on a"})
+	require.Equal(t, 200, code, string(body))
+	var made struct {
+		ID int `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal(body, &made))
+	require.NotZero(t, made.ID)
+
+	list := func(path string) []byte {
+		code, body := hub.do("GET", path, nil)
+		require.Equal(t, 200, code, string(body))
+		return body
+	}
+	assert.Contains(t, string(list("/api/remote/a/api/saved")), "saved on a")
+	assert.NotContains(t, string(list("/api/remote/b/api/saved")), "saved on a", "the other server does not have it")
+
+	// The remote answered the hub's key (Authorization: Bearer), not a cookie or a browser header.
+	var reached bool
+	for _, q := range a.seen() {
+		if q.Path == "/api/saved" && q.Auth == "Bearer "+a.key() {
+			reached = true
+			assert.Empty(t, q.Cookie)
+		}
+	}
+	assert.True(t, reached, "the remote saw the saved routes called with the hub's key")
+
+	code, body = hub.do("PATCH", fmt.Sprintf("/api/remote/a/api/saved/%d", made.ID), map[string]any{"done": true})
+	require.Equal(t, 200, code, string(body))
+	assert.Contains(t, string(list("/api/remote/a/api/saved?state=done")), "saved on a")
+	code, body = hub.do("DELETE", fmt.Sprintf("/api/remote/a/api/saved/%d", made.ID), nil)
+	require.Equal(t, 200, code, string(body))
+	assert.NotContains(t, string(list("/api/remote/a/api/saved?state=done")), "saved on a")
+}

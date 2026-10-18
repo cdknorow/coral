@@ -140,7 +140,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         await waitFor(`!${C}.querySelector('[data-msg-key="${hex(OLD)}"]')`, 'the old message to be off screen', 6000);
         await ev(`document.getElementById('saved-btn').click(); true`);
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 2`, 'the Saved tab', 6000);
-        await ev(`[...document.querySelectorAll('#saved-list .saved-item')].find(li => li.querySelector('.snip').textContent && li.dataset.id === String(${list.items[0].id})).querySelector('.saved-open').click(); true`);
+        await ev(`[...document.querySelectorAll('#saved-list .saved-item')].find(li => li.querySelector('.snip').textContent && li.dataset.id === "local:" + ${list.items[0].id}).querySelector('.saved-open').click(); true`);
         await waitFor(`!!${C}.querySelector('[data-msg-key="${hex(OLD)}"].chat-search-target')`, 'the jump to the old message', 12000);
         const at = await ev(`(() => { const t = ${C}.querySelector('[data-msg-key="${hex(OLD)}"]'); const r = t.getBoundingClientRect(), c = ${C}.getBoundingClientRect(); return { focused: document.activeElement === t, visible: r.top >= c.top - 1 && r.bottom <= c.bottom + 1 }; })()`);
         assert.ok(at.focused, 'the focus is on the message'); assert.ok(at.visible, 'the message is in view');

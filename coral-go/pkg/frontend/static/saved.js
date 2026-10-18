@@ -5,14 +5,18 @@
  * it, the board message was deleted) is marked Gone on its item, which keeps its snippet and can only be removed. */
 import { state } from './state.js';
 import { showToast } from './utils.js';
-import { sessionServer, normServer } from './server_base.js';
+import { sessionServer, normServer, serverFetch, identityKey, LOCAL_SERVER } from './server_base.js';
 import { savedChanged, setSavedCount } from './saved_marks.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
 
 const $ = id => document.getElementById(id);
 let tab = 'open';
 let items = [];
-const checks = new Map(); // item id -> { state: 'live' | 'ended' | 'board' | 'gone', why }
+let down = []; // the registered servers that did not answer the last read: {id, label}
+let multi = false; // more than one server answered: each item names its server
+const checks = new Map(); // item (uid) -> { state: 'live' | 'ended' | 'board' | 'gone' | 'noopen', why }
+/** An item's identity across servers: ids are each server's own. */
+const uid = it => `${it.server}:${it.id}`;
 
 const ICON = { agent: 'smart_toy', board: 'forum', ended: 'history' };
 
@@ -36,28 +40,47 @@ function ago(iso) {
     return when(iso);
 }
 
+/** This server's saved messages, and in hub mode every online registered server's (#4551), newest saved first. This server failing is an error; a registered server
+ *  that does not answer is a line saying so, and its items are left out. Each item is tagged with the server that has it. */
 async function load() {
-    const r = await fetch('/api/saved');
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    items = d.items || [];
-    $('saved-count-open').textContent = d.open ? `(${d.open})` : '';
-    $('saved-count-done').textContent = d.done ? `(${d.done})` : '';
-    setSavedCount(d.open || 0);
+    const remotes = state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online') : [];
+    const read = async (server) => {
+        const r = await serverFetch(server, '/api/saved');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        return { server, d };
+    };
+    const [local, ...others] = await Promise.all([read(LOCAL_SERVER), ...remotes.map(s => read(s.id).catch(() => ({ server: s.id, failed: true, label: s.label || s.id })))]);
+    const answered = [local, ...others.filter(o => !o.failed)];
+    down = others.filter(o => o.failed).map(o => ({ id: o.server, label: o.label }));
+    multi = remotes.length > 0;
+    items = answered.flatMap(a => (a.d.items || []).map(i => ({ ...i, server: a.server })))
+        .sort((a, b) => (b.saved_at || '').localeCompare(a.saved_at || ''));
+    const open = answered.reduce((n, a) => n + (a.d.open || 0), 0), done = answered.reduce((n, a) => n + (a.d.done || 0), 0);
+    $('saved-count-open').textContent = open ? `(${open})` : '';
+    $('saved-count-done').textContent = done ? `(${done})` : '';
+    setSavedCount(open);
+}
+
+/** The name of a server for people: its label, else its id; "This computer" for the hub itself. */
+function serverName(id) {
+    if (normServer(id) === LOCAL_SERVER) return 'This computer';
+    const s = (state.servers || []).find(x => x && x.id === id);
+    return (s && s.label) || id;
 }
 
 // Is the agent one this server has running now? (a live agent opens in Chat; an ended one in Chats)
-function liveAgent(ref) {
-    return (state.liveSessions || []).find(s => s.session_id === ref && normServer(sessionServer(s)) === 'local') || null;
+function liveAgent(it) {
+    return (state.liveSessions || []).find(s => s.session_id === it.ref && normServer(sessionServer(s)) === normServer(it.server)) || null;
 }
 
 function srcLabel(it) { return it.title || it.ref; }
 
 function chipFor(it) {
-    const c = checks.get(it.id);
+    const c = checks.get(uid(it));
     if (c && c.state === 'gone') return { text: 'Gone', cls: 'gone' };
     if (it.kind === 'board') return { text: 'Board', cls: '' };
-    if (c ? c.state === 'ended' : !liveAgent(it.ref)) return { text: 'Ended agent', cls: 'ended' };
+    if (c ? (c.state === 'ended' || c.state === 'noopen') : !liveAgent(it)) return { text: 'Ended agent', cls: 'ended' };
     return { text: 'Agent', cls: '' };
 }
 
@@ -81,22 +104,24 @@ function btn(cls, label, name, icon, onClick) {
 
 function itemNode(it) {
     const done = !!it.done_at;
-    const chk = checks.get(it.id);
+    const chk = checks.get(uid(it));
     const gone = chk && chk.state === 'gone';
+    const noopen = chk && chk.state === 'noopen'; // kept, but this hub cannot open it
     const chip = chipFor(it);
     const li = document.createElement('li');
     li.className = `saved-item${gone ? ' gone' : ''}${done ? ' done' : ''}`;
-    li.dataset.id = String(it.id);
+    li.dataset.id = uid(it);
     const top = document.createElement('div'); top.className = 'top';
     const ic = document.createElement('span'); ic.className = 'material-icons'; ic.setAttribute('aria-hidden', 'true');
     ic.textContent = it.kind === 'board' ? ICON.board : (chip.cls === 'ended' ? ICON.ended : ICON.agent);
     const src = document.createElement('span'); src.className = 'src'; src.textContent = srcLabel(it); src.title = srcLabel(it);
     const kind = document.createElement('span'); kind.className = `kind ${chip.cls}`.trim(); kind.textContent = chip.text;
     top.append(ic, src, kind);
+    if (multi) { const sv = document.createElement('span'); sv.className = 'server'; sv.textContent = serverName(it.server); top.append(sv); }
     const snip = document.createElement('p'); snip.className = 'snip'; snip.textContent = it.snippet || '(no text)';
     li.append(top, snip);
-    const why = document.createElement('p'); why.className = 'why'; why.setAttribute('role', 'status'); why.hidden = !gone;
-    if (gone) {
+    const why = document.createElement('p'); why.className = 'why'; why.setAttribute('role', 'status'); why.hidden = !(gone || noopen);
+    if (gone || noopen) {
         const w = document.createElement('span'); w.className = 'material-icons'; w.setAttribute('aria-hidden', 'true'); w.textContent = 'error_outline';
         const t = document.createElement('span'); t.textContent = chk.why;
         why.append(w, t);
@@ -111,7 +136,7 @@ function itemNode(it) {
     const acts = document.createElement('div'); acts.className = 'acts';
     if (!gone) {
         const o = openLabel(it);
-        acts.append(btn('btn-primary saved-open', o.text, o.name, 'launch', () => openItem(it, li)));
+        if (!noopen) acts.append(btn('btn-primary saved-open', o.text, o.name, 'launch', () => openItem(it, li)));
         acts.append(btn('saved-done', done ? 'Reopen' : 'Done', done ? 'Move back to Open' : 'Mark done', done ? 'replay' : 'done', () => setDone(it, !done)));
     }
     acts.append(btn('saved-remove', 'Remove', 'Remove from saved', 'close', () => remove(it)));
@@ -119,10 +144,19 @@ function itemNode(it) {
     return li;
 }
 
+/** One line for a server that did not answer: its items are left out, not an error. */
+function noticeNode(s) {
+    const li = document.createElement('li');
+    li.className = 'saved-note';
+    li.setAttribute('role', 'status');
+    li.textContent = `${serverName(s.id)} did not answer, so its saved messages are not shown.`;
+    return li;
+}
+
 function render() {
     const list = $('saved-list');
     const shown = items.filter(i => (tab === 'done') === !!i.done_at);
-    list.replaceChildren(...shown.map(itemNode));
+    list.replaceChildren(...down.map(noticeNode), ...shown.map(itemNode));
     if (!shown.length) {
         const li = document.createElement('li');
         li.className = 'saved-empty';
@@ -142,14 +176,14 @@ function render() {
 let verifyRun = 0;
 async function verify(shown) {
     const run = ++verifyRun;
-    const todo = shown.filter(i => !checks.has(i.id)).slice(0, 60);
+    const todo = shown.filter(i => !checks.has(uid(i))).slice(0, 60);
     let next = 0;
     const worker = async () => {
         while (next < todo.length) {
             const it = todo[next++];
             const found = await probe(it).catch(() => null);
             if (run !== verifyRun || !found) continue;
-            checks.set(it.id, found);
+            checks.set(uid(it), found);
             swap(it);
         }
     };
@@ -158,7 +192,7 @@ async function verify(shown) {
 
 /** An item drawn again (its chip, its actions): the focus stays on the same button when it was inside, or moves to the item's first. */
 function swap(it) {
-    const li = $('saved-list').querySelector(`[data-id="${it.id}"]`);
+    const li = $('saved-list').querySelector(`[data-id="${uid(it)}"]`);
     if (!li) return;
     const had = li.contains(document.activeElement) ? [...li.querySelectorAll('.btn')].indexOf(document.activeElement) : -2;
     const next = itemNode(it);
@@ -168,14 +202,16 @@ function swap(it) {
 
 async function probe(it) {
     if (it.kind === 'board') {
-        const r = await fetch(`/api/board/${encodeURIComponent(it.ref)}/messages/all?id=${Number(it.key)}`);
+        const r = await serverFetch(it.server, `/api/board/${encodeURIComponent(it.ref)}/messages/all?id=${Number(it.key)}`);
         if (r.status === 404) return { state: 'gone', why: 'This message was deleted from the board, or the board was.' };
         return r.ok ? { state: 'board' } : null;
     }
-    const live = liveAgent(it.ref);
+    const live = liveAgent(it);
+    // An ended agent's transcript is in the History of the server that had it, which this hub cannot browse for another server (Chats is this computer's): the item is kept, not opened.
+    if (!live && normServer(it.server) !== LOCAL_SERVER) return { state: 'noopen', why: `This agent has ended. Its history is on ${serverName(it.server)}, and Chats shows only this computer's, so the message cannot be opened from here. The saved text above is kept.` };
     const url = live ? `/api/sessions/live/${encodeURIComponent(live.name)}/chat?session_id=${encodeURIComponent(it.ref)}&agent_type=${encodeURIComponent(live.agent_type || it.agent_type || '')}&find_key=${encodeURIComponent(it.key)}`
         : `/api/sessions/history/${encodeURIComponent(it.ref)}?find_key=${encodeURIComponent(it.key)}`;
-    const r = await fetch(url);
+    const r = await serverFetch(live ? it.server : LOCAL_SERVER, url);
     if (r.status === 404) return { state: 'gone', why: 'The transcript is gone (the agent was removed), so there is nothing to jump to. The saved text above is all that is left.' };
     if (!r.ok) return null;
     const d = await r.json();
@@ -193,13 +229,13 @@ function closeOverlay() { if (window.innerWidth <= 767) window.toggleAgenticPane
 function status(text) { $('saved-status').textContent = ''; requestAnimationFrame(() => { $('saved-status').textContent = text; }); }
 
 function neighbour(it) {
-    const li = $('saved-list').querySelector(`[data-id="${it.id}"]`);
+    const li = $('saved-list').querySelector(`[data-id="${uid(it)}"]`);
     return li?.nextElementSibling?.querySelector('.btn') || li?.previousElementSibling?.querySelector('.btn');
 }
 
 async function setDone(it, done) {
     const next = neighbour(it);
-    const r = await fetch(`/api/saved/${it.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done }) });
+    const r = await serverFetch(it.server, `/api/saved/${it.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done }) });
     if (!r.ok) { showToast('Could not change the saved message', true); return; }
     await refresh();
     status(done ? 'Marked done' : 'Moved back to Open');
@@ -209,7 +245,7 @@ async function setDone(it, done) {
 
 async function remove(it) {
     const next = neighbour(it);
-    const r = await fetch(`/api/saved/${it.id}`, { method: 'DELETE' });
+    const r = await serverFetch(it.server, `/api/saved/${it.id}`, { method: 'DELETE' });
     if (!r.ok && r.status !== 404) { showToast('Could not remove the saved message', true); return; }
     await refresh();
     status('Removed from saved');
@@ -288,10 +324,10 @@ function tagTarget(el) {
 async function openItem(it, li) {
     try {
         const found = await probe(it);
-        if (found && found.state === 'gone') { checks.set(it.id, found); swap(it); $('saved-list').querySelector(`[data-id="${it.id}"] .saved-remove`)?.focus(); return; }
+        if (found && found.state === 'gone') { checks.set(uid(it), found); swap(it); $('saved-list').querySelector(`[data-id="${uid(it)}"] .saved-remove`)?.focus(); return; }
         if (it.kind === 'board') {
             closeOverlay();
-            window.selectBoardProject(it.ref, Number(it.key));
+            window.selectBoardProject(identityKey(it.server, it.ref), Number(it.key));
             // the board marks and focuses the message when it is drawn; the tag and the bar follow
             for (let i = 0; i < 100; i++) {
                 const t = document.querySelector(`#mb-messages [data-message-id="${CSS.escape(it.key)}"].chat-search-target`);
@@ -300,7 +336,7 @@ async function openItem(it, li) {
             }
             return;
         }
-        const live = liveAgent(it.ref);
+        const live = liveAgent(it);
         const index = found ? found.index : 0;
         closeOverlay();
         if (live) {

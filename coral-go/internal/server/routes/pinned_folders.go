@@ -72,6 +72,16 @@ func refuseUnlessPerson(w http.ResponseWriter, r *http.Request, what string) boo
 	return true
 }
 
+// refuseUnlessOperator is refuseUnlessPerson for data that is the Operator's own and that a hub reaches through its API key: a person, or the server's key
+// (operatorOrKeyCaller). It answers 403 operator_only and reports true when the caller is neither.
+func refuseUnlessOperator(w http.ResponseWriter, r *http.Request, what string) bool {
+	if operatorOrKeyCaller(r) {
+		return false
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can " + what, "code": "operator_only"})
+	return true
+}
+
 // ListPinnedFolders: GET /api/pinned-folders.
 func (h *SystemHandler) ListPinnedFolders(w http.ResponseWriter, r *http.Request) {
 	pins, err := h.ss.ListPinnedFolders(r.Context())

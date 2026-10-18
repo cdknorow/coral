@@ -740,6 +740,25 @@ func humanInputCaller(r *http.Request) bool {
 	return false
 }
 
+// operatorOrKeyCaller reports whether the request is the Operator's: a person (humanInputCaller), or the server's own
+// API key, which is how a hub reaches a registered server (pkg/hubproxy sends "Authorization: Bearer <key>" and nothing of the browser) and which the identity
+// layer already treats as the Operator (actorFor). The identity middleware refuses a key that is not valid before any handler runs, so a token-less request of
+// the api_key kind has one. An agent's session token is never the Operator, whatever else the request carries. Used where a person's own data is at stake and the
+// hub must be able to act for them (the saved messages, #4551); input to an agent keeps the stricter humanInputCaller.
+func operatorOrKeyCaller(r *http.Request) bool {
+	if humanInputCaller(r) {
+		return true
+	}
+	if r.Header.Get(store.SessionTokenHeader) != "" {
+		return false
+	}
+	if _, ok := r.Context().Value(verifiedSessionKey{}).(*store.SessionTokenOwner); ok {
+		return false
+	}
+	kind, _ := r.Context().Value(callerKindKey{}).(string)
+	return kind == callerAPIKey
+}
+
 // classify names the caller of a request that carries no session token.
 func (o *IdentityObserver) classify(r *http.Request) string {
 	switch {

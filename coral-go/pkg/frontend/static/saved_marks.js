@@ -1,10 +1,10 @@
 /* Save for Later (#4510), the buttons on messages: a bookmark button on each message of an agent's Chat view (live or in History) and of a board, filled when
- * the message is saved. The Saved list and the jump back are in saved.js, which loads when the list is opened. Bookmarks live on this server (the Operator's own,
- * GET/POST/PATCH/DELETE /api/saved); an agent or board on a registered remote server has no button. */
+ * the message is saved. The Saved list and the jump back are in saved.js, which loads when the list is opened. Bookmarks live on the server that has the conversation (the
+ * Operator's own, GET/POST/PATCH/DELETE /api/saved there): this server's, or a registered remote server's through the hub's proxy (#4551, serverFetch). */
 import { state } from './state.js';
 import { importOnce } from './import_once.js';
 import { showToast, escapeAttr } from './utils.js';
-import { isCloud, sessionServer, normServer } from './server_base.js';
+import { isCloud, sessionServer, normServer, splitKey, serverFetch, LOCAL_SERVER } from './server_base.js';
 import { onBuilt } from './lazy_dom.js';
 
 // The bookmark is an inline SVG (the shape the Team Artifacts' Keep button uses), filled when saved: the Material Icons subset has no bookmark.
@@ -12,24 +12,24 @@ export const BOOKMARK_SVG = '<svg class="bm" width="16" height="16" viewBox="0 0
 export const SAVE_BUTTON = `<button type="button" class="chat-save-btn" title="Save for later" aria-label="Save for later" aria-pressed="false">${BOOKMARK_SVG}</button>`;
 export const BOARD_SAVE_BUTTON = (ref, title, said) => `<button type="button" class="mb-save-btn" data-conv-ref="${escapeAttr(ref)}" data-conv-title="${escapeAttr(title)}" data-said="${escapeAttr(said)}" title="Save for later" aria-label="Save for later" aria-pressed="false">${BOOKMARK_SVG}</button>`;
 
-// The conversation a message button belongs to: {kind, ref, agentType, title}, or null where there is nothing to save to (a remote server's).
+// The conversation a message button belongs to: {kind, ref, server, agentType, title}, or null where there is nothing to save to. ref is the id or name the server
+// that has the conversation knows it by (a board's bare name, not the hub's server/name key); server is that server ("local" for this one).
 export function conversationOf(btn) {
     if (btn.classList.contains('mb-save-btn')) {
-        const ref = btn.dataset.convRef || '';
-        if (!ref || ref.includes('/') || ref.includes('@')) return null; // a remote board's key carries its server
-        return { kind: 'board', ref, agentType: '', title: btn.dataset.convTitle || ref };
+        const { server, name } = splitKey(btn.dataset.convRef || '');
+        if (!name) return null;
+        return { kind: 'board', ref: name, server: normServer(server), agentType: '', title: btn.dataset.convTitle || name };
     }
     const s = state.currentSession;
     if (!s) return null;
-    if (s.type === 'history') return s.name ? { kind: 'agent', ref: s.name, agentType: s.agent_type || '', title: s.display_name || s.name } : null;
+    if (s.type === 'history') return s.name ? { kind: 'agent', ref: s.name, server: LOCAL_SERVER, agentType: s.agent_type || '', title: s.display_name || s.name } : null;
     if (s.type !== 'live' || !s.session_id) return null;
-    if (normServer(sessionServer(s)) !== 'local') return null;
-    return { kind: 'agent', ref: s.session_id, agentType: s.agent_type || '', title: s.display_name || s.name || s.session_id };
+    return { kind: 'agent', ref: s.session_id, server: normServer(sessionServer(s)), agentType: s.agent_type || '', title: s.display_name || s.name || s.session_id };
 }
 
 // `${kind}:${ref}` -> { items: Map(key -> bookmark), loaded: Promise }, kept while the conversation is on screen and refreshed when the list changes.
 const sets = new Map();
-const setKey = c => `${c.kind}:${c.ref}`;
+const setKey = c => `${c.server}|${c.kind}:${c.ref}`;
 
 function setFor(c) {
     const k = setKey(c);
@@ -39,7 +39,7 @@ function setFor(c) {
         sets.set(k, e);
     }
     if (!e.loaded) {
-        e.loaded = fetch(`/api/saved?kind=${encodeURIComponent(c.kind)}&conv=${encodeURIComponent(c.ref)}`).then(r => (r.ok ? r.json() : { items: [] }))
+        e.loaded = serverFetch(c.server, `/api/saved?kind=${encodeURIComponent(c.kind)}&conv=${encodeURIComponent(c.ref)}`).then(r => (r.ok ? r.json() : { items: [] }))
             .then(d => { e.items = new Map((d.items || []).map(i => [i.key, i])); return e; })
             .catch(() => { e.loaded = null; return e; });
     }
@@ -116,7 +116,10 @@ export function refreshSavedCount() {
     clearTimeout(countTimer);
     countTimer = setTimeout(() => {
         if (isCloud()) return;
-        fetch('/api/saved?limit=0').then(r => (r.ok ? r.json() : null)).then(d => { if (d) setSavedCount(d.open || 0); }).catch(() => {});
+        // This server's open items and every online registered server's, in hub mode (a server that does not answer counts none).
+        const servers = [LOCAL_SERVER, ...(state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online').map(s => s.id) : [])];
+        Promise.all(servers.map(id => serverFetch(id, '/api/saved?limit=0').then(r => (r.ok ? r.json() : null)).then(d => (d && d.open) || 0).catch(() => 0)))
+            .then(counts => setSavedCount(counts.reduce((a, b) => a + b, 0)));
     }, 50);
 }
 document.addEventListener('coral:saved-changed', refreshSavedCount);
@@ -128,7 +131,7 @@ function postBody(c, key, btn) {
 }
 
 async function save(c, key, body) {
-    const r = await fetch('/api/saved', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const r = await serverFetch(c.server, '/api/saved', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const out = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(out.error || `HTTP ${r.status}`);
     (await setFor(c)).items.set(key, out);
@@ -148,7 +151,7 @@ document.addEventListener('click', async (e) => {
     btn.disabled = true;
     try {
         if (have) {
-            const r = await fetch(`/api/saved/${have.id}`, { method: 'DELETE' });
+            const r = await serverFetch(c.server, `/api/saved/${have.id}`, { method: 'DELETE' });
             if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
             entry.items.delete(key);
             paint(btn, false);
