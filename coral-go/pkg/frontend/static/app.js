@@ -913,6 +913,9 @@ function notFound(message, listRoute) {
     return go(listRoute, { replace: true });
 }
 
+// The query the page was opened with, read before anything rewrites the URL (a link to one saved message, #4596, is in it).
+const START_SEARCH = location.search;
+
 // Settles once the first live list has loaded (or failed): an agent link needs the list.
 let _liveListLoaded;
 const liveListReady = new Promise(r => { _liveListLoaded = r; });
@@ -1438,7 +1441,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     // The page's route (#3532): its path, or an old hash link, shown once the handlers are in place.
     if (!popout) {
         registerRouteHandlers();
+        // A link to one saved message (#4596): read before the route is written, run once the live list is in.
+        const savedLink = START_SEARCH.includes('saved=') ? importOnce('./saved_link.js').then(m => m.parseSavedLink(START_SEARCH, isCloud())).catch(() => null) : null;
         startNav();
+        if (savedLink) Promise.all([savedLink, liveListReady]).then(([item]) => item && importOnce('./saved.js').then(m => m.openSavedLink(item))).catch(() => {});
     }
     dashboardInitialized();
     } catch (error) {

@@ -322,6 +322,20 @@ function tagTarget(el) {
     el.classList.add('saved-jump');
 }
 
+/** The jump a link makes (#4596, saved_link.js): the same as the Saved tab's Open. A message that is gone says so in a toast, and the Saved tab is the place to see what is left of it. */
+export async function openSavedLink(it) {
+    try {
+        const found = await probe(it);
+        if (found && found.state === 'gone') { showToast(found.why, true); return false; }
+        if (found && found.state === 'noopen') { showToast(found.why, true); return false; }
+    } catch (e) {
+        showToast(`Could not open the saved message: ${e.message}`, true);
+        return false;
+    }
+    await openItem(it, null);
+    return true;
+}
+
 async function openItem(it, li) {
     try {
         const found = await probe(it);
