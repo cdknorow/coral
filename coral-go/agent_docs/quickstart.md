@@ -25,11 +25,16 @@ Coral supports exactly four agent CLIs:
 |---|---|---|
 | Claude Code | `claude` | [Claude Code documentation](https://code.claude.com/docs/en/overview) |
 | Codex | `codex` | [openai/codex](https://github.com/openai/codex) |
-| Antigravity CLI | `agy` | [antigravity.google](https://antigravity.google) |
+| Antigravity CLI | `agy` | [antigravity.google](https://antigravity.google), or `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
 | Pi.dev | `pi` | [pi.dev](https://pi.dev) |
 
 Follow each vendor's current instructions; install commands change and Coral does not
-maintain them. A custom executable can be set per agent type with the `cli_path_<type>`
+maintain them. Where a CLI is missing, Coral's prerequisite check and the Launch dialog link to
+these official pages (and show the one-line command where the vendor has one).
+
+The Antigravity installer puts `agy` in `~/.local/bin`. Coral looks there itself, so it finds `agy`
+even when that folder is not on your `PATH`. To run `agy` in your own terminal, add
+`export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` or `~/.bashrc` and open a new terminal. A custom executable can be set per agent type with the `cli_path_<type>`
 setting. The launch API rejects an unsupported `agent_type` (`ValidateAgentType` in
 `internal/agent/agent.go`); adding a new agent requires a source change and a rebuild.
 

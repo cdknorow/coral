@@ -6,7 +6,7 @@ This page describes Coral v1.3.23. Coral runs the agent CLIs you already use, ea
 
 | Requirement | Notes |
 |---|---|
-| **An agent CLI** | At least one of Claude Code (`claude`), Codex (`codex`), Antigravity (`agy`) or Pi (`pi`), installed **and signed in**. Coral does not install or authenticate these. Follow each vendor's own instructions: [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://github.com/openai/codex), [Antigravity](https://antigravity.google), [Pi](https://pi.dev). |
+| **An agent CLI** | At least one of Claude Code (`claude`), Codex (`codex`), Antigravity (`agy`) or Pi (`pi`), installed **and signed in**. Coral does not install or authenticate these. Follow each vendor's own instructions: [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://github.com/openai/codex), [Antigravity](https://antigravity.google) (`curl -fsSL https://antigravity.google/cli/install.sh \| bash`; the installer puts `agy` in `~/.local/bin`, which Coral checks too, and which you add to your `PATH` to run `agy` in your own terminal), [Pi](https://pi.dev). |
 | **git** | Needed for worktree, branch and diff features. |
 | **tmux** | Included in the macOS app. Linux needs your own tmux for the default backend. See [Platforms](#platforms). |
 

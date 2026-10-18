@@ -314,16 +314,30 @@ func ValidateAgentType(agentType string) error {
 type CLIInfo struct {
 	Binary         string `json:"binary"`
 	InstallCommand string `json:"install_command"`
+	// InstallURL is the vendor's own install page (never a third-party guide), shown as a link where the CLI is missing.
+	InstallURL string `json:"install_url"`
+	// InstallNote is what to do after installing, when the installer leaves the CLI where PATH may not reach (agy: ~/.local/bin).
+	InstallNote string `json:"install_note,omitempty"`
 }
+
+// agyInstallNote: the Antigravity installer puts agy in ~/.local/bin. Coral looks there itself (FindCLIInCommonPaths), so it finds
+// agy even when that folder is not on PATH; a terminal of your own needs it on PATH.
+const agyInstallNote = "The installer puts agy in ~/.local/bin. Coral looks there too, so it finds agy either way. To run agy in your own terminal, put that folder on your PATH: add export PATH=\"$HOME/.local/bin:$PATH\" to ~/.zshrc or ~/.bashrc, then open a new terminal."
+
+// Antigravity's official installer (the script moved from /install.sh to /cli/install.sh) and its official page.
+const (
+	agyInstallCommand = "curl -fsSL https://antigravity.google/cli/install.sh | bash"
+	agyInstallURL     = "https://antigravity.google"
+)
 
 // agentCLIs maps agent types to their required CLI tools and install instructions.
 var agentCLIs = map[string]CLIInfo{
-	at.Claude:      {Binary: "claude", InstallCommand: "npm install -g @anthropic-ai/claude-code"},
-	at.Agy:         {Binary: "agy", InstallCommand: "curl -fsSL https://antigravity.google/install.sh | bash"},
-	at.Antigravity: {Binary: "agy", InstallCommand: "curl -fsSL https://antigravity.google/install.sh | bash"},
-	at.Gemini:      {Binary: "agy", InstallCommand: "curl -fsSL https://antigravity.google/install.sh | bash"},
-	at.Codex:       {Binary: "codex", InstallCommand: "npm install -g @openai/codex"},
-	at.Pi:          {Binary: "pi", InstallCommand: "npm install -g @mariozechner/pi-coding-agent"},
+	at.Claude:      {Binary: "claude", InstallCommand: "npm install -g @anthropic-ai/claude-code", InstallURL: "https://code.claude.com/docs/en/overview"},
+	at.Agy:         {Binary: "agy", InstallCommand: agyInstallCommand, InstallURL: agyInstallURL, InstallNote: agyInstallNote},
+	at.Antigravity: {Binary: "agy", InstallCommand: agyInstallCommand, InstallURL: agyInstallURL, InstallNote: agyInstallNote},
+	at.Gemini:      {Binary: "agy", InstallCommand: agyInstallCommand, InstallURL: agyInstallURL, InstallNote: agyInstallNote},
+	at.Codex:       {Binary: "codex", InstallCommand: "npm install -g @openai/codex", InstallURL: "https://github.com/openai/codex"},
+	at.Pi:          {Binary: "pi", InstallCommand: "npm install -g @mariozechner/pi-coding-agent", InstallURL: "https://pi.dev"},
 }
 
 // GetCLIInfo returns CLI info for an agent type, or nil if unknown.

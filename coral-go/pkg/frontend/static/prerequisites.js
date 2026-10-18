@@ -11,7 +11,9 @@ function start(element) {
     return controller;
 }
 function current(element, controller) { return element.isConnected && requests.get(element) === controller; }
-function renderCLI(element, text, recheck, {pending = false, command = ''} = {}) {
+// Only an https address becomes a link (a server's answer is data, not markup).
+const httpsURL = u => typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : '';
+function renderCLI(element, text, recheck, {pending = false, command = '', url = '', note = ''} = {}) {
     element.replaceChildren(); element.style.display = '';
     element.setAttribute('role','status'); element.setAttribute('aria-live','polite');
     const label = document.createElement('span'); label.textContent = text; element.append(label);
@@ -19,19 +21,24 @@ function renderCLI(element, text, recheck, {pending = false, command = ''} = {})
         const help = document.createElement('p'); help.textContent = 'Install in your terminal, then check again: ';
         const code = document.createElement('code'); code.textContent = command; help.append(code); element.append(help);
     }
+    if (httpsURL(url)) {
+        const p = document.createElement('p'); p.className = 'cli-install-link'; p.append('Or follow the official install page: ');
+        const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = url.replace(/^https:\/\//, ''); p.append(a); element.append(p);
+    }
+    if (note && typeof note === 'string') { const p = document.createElement('p'); p.className = 'cli-install-note'; p.textContent = String(note); element.append(p); }
     const button = document.createElement('button'); button.type = 'button'; button.className = 'btn btn-small';
     button.textContent = pending ? 'Checking…' : 'Check again'; button.disabled = pending;
     button.addEventListener('click', recheck); element.append(button);
 }
 
-export async function checkAgentCLI(type, element, {force = false, command = '', server = 'local'} = {}) {
+export async function checkAgentCLI(type, element, {force = false, command = '', url = '', note = '', server = 'local'} = {}) {
     if (!element) return;
     // Multi-server hub: the CLI must exist on the server the agent will run on.
     server = normServer(server);
     const cacheKey = server === 'local' ? type : `${server}|${type}`;
     const controller = start(element);
     if (type === 'terminal') { element.style.display = 'none'; return; }
-    const recheck = () => checkAgentCLI(type, element, {force:true,command,server});
+    const recheck = () => checkAgentCLI(type, element, {force:true,command,url,note,server});
     const show = data => {
         if (data.found && (data.status === 'probe_failed' || data.status === 'timeout')) {
             renderCLI(element, `${type} CLI found, but version check ${data.status === 'timeout' ? 'timed out' : 'failed'}.`, recheck); return;
@@ -39,7 +46,7 @@ export async function checkAgentCLI(type, element, {force = false, command = '',
         if (data.found) { element.style.display = 'none'; return; }
         // A configured path that cannot be run (#4354): say so, not that the CLI is missing (it is never swapped for the one on PATH).
         if (data.configured && data.message) { renderCLI(element, `${type}: ${data.message}`, recheck); return; }
-        renderCLI(element, `${type} CLI was not found.`, recheck, {command:data.install_command || command});
+        renderCLI(element, `${type} CLI was not found.`, recheck, {command:data.install_command || command, url:data.install_url || url, note:data.install_note || note});
     };
     if (force) cache.delete(cacheKey);
     const cached = cache.get(cacheKey);

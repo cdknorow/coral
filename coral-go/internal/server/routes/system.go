@@ -803,7 +803,7 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var installCmd string
+	var installCmd, installURL, installNote string
 	if binaryPath == "" {
 		info := agent.GetCLIInfo(agentType)
 		if info == nil {
@@ -811,7 +811,7 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		binaryPath = info.Binary
-		installCmd = info.InstallCommand
+		installCmd, installURL, installNote = info.InstallCommand, info.InstallURL, info.InstallNote
 		// The CLI path setting is what launch runs, so a check by type looks
 		// there first: a configured path is not reported as "not found" (#3169).
 		// It is never replaced by the CLI on PATH (#4354): this check RUNS what it finds
@@ -863,6 +863,12 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 			}
 			if installCmd != "" {
 				result["install_command"] = installCmd
+			}
+			if installURL != "" {
+				result["install_url"] = installURL // the vendor's own page, shown as a link (#4569)
+			}
+			if installNote != "" {
+				result["install_note"] = installNote
 			}
 			if trackable {
 				tracking.TrackPrerequisite(tool, tracking.PrereqMissing, source)

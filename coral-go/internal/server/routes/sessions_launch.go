@@ -772,9 +772,12 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 					log.Printf("[launch] %s not on PATH, found at %s", checkBin, found)
 				} else {
 					info := agent.GetCLIInfo(agentType)
-					installCmd := ""
+					installCmd, installURL := "", ""
 					if info != nil {
-						installCmd = info.InstallCommand
+						installCmd, installURL = info.InstallCommand, info.InstallURL
+					}
+					if installURL != "" {
+						return nil, fmt.Errorf("%s CLI not found. Install it: %s (the vendor's page: %s)", checkBin, installCmd, installURL)
 					}
 					return nil, fmt.Errorf("%s CLI not found. Install it: %s", checkBin, installCmd)
 				}

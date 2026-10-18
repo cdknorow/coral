@@ -10,7 +10,7 @@ const base=require('./test_base').BASE;
  const shot=async name=>{if(!process.env.CORAL_SCREENSHOT_DIR)return;fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR,{recursive:true});const {data}=await c.Page.captureScreenshot({format:'png'});fs.writeFileSync(process.env.CORAL_SCREENSHOT_DIR+'/'+name+'.png',Buffer.from(data,'base64'));};
  try{
  await c.Page.enable();await c.Emulation.setDeviceMetricsOverride({width:1100,height:900,deviceScaleFactor:1,mobile:false});
- await c.Page.addScriptToEvaluateOnNewDocument({source:`window.calls=[];window.pending=[];window.cliMode='normal';window.cli={claude:{found:false,status:'missing',agent_type:'claude',install_command:'install claude externally'},codex:{found:false,status:'missing',agent_type:'codex'}};window.statusData={startup_complete:true,tmux_available:false,tmux_required:true,effective_backend:'tmux',tmux_install_command:'brew install tmux'};window.statusMode='normal';
+ await c.Page.addScriptToEvaluateOnNewDocument({source:`window.calls=[];window.pending=[];window.cliMode='normal';window.cli={claude:{found:false,status:'missing',agent_type:'claude',install_command:'install claude externally',install_url:'https://code.claude.com/docs/en/overview',install_note:'Put it on your PATH, then check again.'},codex:{found:false,status:'missing',agent_type:'codex'}};window.statusData={startup_complete:true,tmux_available:false,tmux_required:true,effective_backend:'tmux',tmux_install_command:'brew install tmux'};window.statusMode='normal';
  window.WebSocket=class{constructor(){this.readyState=0}send(){}close(){}addEventListener(){}removeEventListener(){}};
  const real=fetch;window.fetch=async(url,options={})=>{const u=new URL(url,location.origin);const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});if(!u.pathname.startsWith('/api/'))return real(url,options);calls.push({url:u.pathname+u.search,method:options.method||'GET',cache:options.cache});
  if(u.pathname==='/api/system/cli-check'){if(cliMode==='http')return json({error:'backend failure'},503);if(cliMode==='network')throw Error('Network unavailable');const data=cli[u.searchParams.get('type')]||{found:true,status:'available'};if(cliMode==='defer')return new Promise(r=>pending.push(()=>r(json(data))));return json(data);}
@@ -20,6 +20,14 @@ const base=require('./test_base').BASE;
  await c.Page.navigate({url:base});await c.Page.loadEventFired();await settle();
  await ev(`(async()=>{window.checks=await import((window.__coralStatic||'/static/')+'prerequisites.js');const p=document.createElement('div');p.id='fixture';p.className='modal-content';p.style.cssText='position:fixed;top:140px;left:20px;width:560px;height:700px;overflow:auto;z-index:99999;background:var(--bg-primary);padding:16px';document.body.append(p);await (await import((window.__coralStatic||'/static/')+'lazy_panels.js')).loadModals();window.renderAgentConfigForm('fixture',{showPreset:false,showName:false,value:{agentType:'claude'}})})()`);await settle();
  assert.match(await text(),/claude CLI was not found/);assert.match(await text(),/Install in your terminal/);await shot('prerequisites-missing');
+ // #4569: the vendor's own install page is a link (https only, safe to open) and the note shows; a server's answer is data, not markup.
+ assert.deepEqual(await ev(`(()=>{const a=document.querySelector('#fixture .acf-cli-warning a');return a&&{href:a.href,target:a.target,rel:a.rel,text:a.textContent}})()`),{href:'https://code.claude.com/docs/en/overview',target:'_blank',rel:'noopener noreferrer',text:'code.claude.com/docs/en/overview'});
+ assert.match(await text(),/Put it on your PATH, then check again\./);
+ await ev(`window.cli.claude.install_url='javascript:alert(1)';window.cli.claude.install_note='<b>x</b>'`);await click('#fixture .acf-cli-warning button');
+ assert.equal(await ev(`document.querySelectorAll('#fixture .acf-cli-warning a').length`),0,'only an https address is a link');
+ assert.equal(await ev(`document.querySelectorAll('#fixture .acf-cli-warning b').length`),0,'a note is text, not markup');
+ assert.match(await text(),/<b>x<\/b>/);
+ await ev(`window.cli.claude.install_url='https://code.claude.com/docs/en/overview';window.cli.claude.install_note=''`);await click('#fixture .acf-cli-warning button');
  await ev(`window.cli.claude={found:true,status:'available',agent_type:'claude'}`);await click('#fixture .acf-cli-warning button');
  assert.equal(await ev(`document.querySelector('#fixture .acf-cli-warning').style.display`),'none');
  assert.ok(await ev(`calls.some(x=>x.url.includes('source=cli_recheck')&&x.cache==='no-store')`));
