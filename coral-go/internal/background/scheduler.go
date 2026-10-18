@@ -646,43 +646,9 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		s.runningMu.Unlock()
 	}()
 
-	workingDir := rc.repoPath
-	var worktreeDir string
-
-	// Create worktree if configured
-	var runBranch, baseBranch string
-	if rc.createWorktree && rc.repoPath != "" {
-		worktreeDir = s.runWorktreeDir(rc.repoPath, runID)
-		baseBranch = rc.baseBranch
-		if baseBranch == "" {
-			baseBranch = "main"
-		}
-		// Git refuses to check out a branch that is already checked out in
-		// another worktree, and the user's own working copy almost always has
-		// the base branch checked out — which is exactly what our docs give as
-		// the default. Checking out the base directly therefore failed on every
-		// run of a correctly configured job. Branch from the base instead:
-		// worktreeDir is already keyed on runID, so the branch keys the same
-		// way and each run stays isolated from every other.
-		runBranch = fmt.Sprintf("coral/job-run-%d", runID)
-		err := gitutil.ValidRef(baseBranch) // a stored job is checked again (#3601, weak site W24)
-		errMsg := ""
-		if err != nil {
-			errMsg = fmt.Sprintf("base_branch refused: %v", err)
-		} else if err = runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", runBranch, "--", worktreeDir, baseBranch); err != nil {
-			errMsg = fmt.Sprintf("git worktree add failed: %v", err)
-		}
-		if err != nil {
-			s.logger.Error(errMsg, "run_id", runID)
-			now := time.Now().UTC().Format(store.ISOFormat)
-			s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
-				"status":      "failed",
-				"error_msg":   errMsg,
-				"finished_at": now,
-			})
-			return
-		}
-		workingDir = worktreeDir
+	wt, ok := s.prepareRunWorktree(ctx, watchCtx, runID, rc)
+	if !ok {
+		return
 	}
 
 	// Update run with worktree path
@@ -690,7 +656,7 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
 		"status":        "running",
 		"started_at":    startedAt,
-		"worktree_path": workingDir,
+		"worktree_path": wt.workingDir,
 	})
 
 	// Launch the agent via the configured launch function
@@ -698,55 +664,112 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	if s.launchFn != nil {
 		// Pass the working dir via a modified job
 		jobCopy := job
-		jobCopy.RepoPath = workingDir
+		jobCopy.RepoPath = wt.workingDir
 		launchErr = s.launchFn(watchCtx, jobCopy, runID)
 	}
-
-	// Post-launch setup: tag session and register auto-accept
 	if launchErr == nil {
-		run, err := s.store.GetScheduledRun(ctx, runID)
-		if err == nil && run != nil && run.SessionID != nil {
-			// Tag the session (e.g. "scheduled" or "task")
-			if rc.tag != "" {
-				s.tagSession(ctx, *run.SessionID, rc.tag)
-			}
-			// Register for auto-accept if enabled
-			if rc.autoAccept {
-				autoAcceptMu.Lock()
-				AutoAcceptSessions[*run.SessionID] = job.AgentType + "-" + *run.SessionID
-				AutoAcceptLimits[*run.SessionID] = rc.maxAutoAccepts
-				autoAcceptMu.Unlock()
-			}
-		}
+		s.afterLaunch(ctx, runID, job, rc)
 	}
 
-	// Determine final status
-	now := time.Now().UTC().Format(store.ISOFormat)
-	status := "completed"
-	exitReason := "agent_done"
+	status, exitReason := runOutcome(launchErr, watchCtx.Err())
+	s.finishRun(ctx, runID, job, status, exitReason, launchErr != nil)
+
+	// Cleanup worktree if configured
+	if rc.cleanupWorktree && wt.worktreeDir != "" {
+		s.cleanupWorktree(rc.repoPath, wt.worktreeDir, wt.runBranch, wt.baseBranch)
+	}
+	if rc.autoAccept {
+		s.unregisterAutoAccept(ctx, runID)
+	}
+}
+
+// runWorktree is where a run's agent works: the repository, or a worktree made for the run on its own branch.
+type runWorktree struct {
+	workingDir, worktreeDir, runBranch, baseBranch string
+}
+
+// prepareRunWorktree makes the run's worktree when the job asks for one, branching coral/job-run-<id> from the base
+// branch (main by default): git refuses to check out a branch that is already checked out in another worktree, and
+// the user's own working copy almost always has the base branch checked out, which is exactly what our docs give as
+// the default, so checking out the base directly failed on every run of a correctly configured job. The worktree
+// is keyed on the run, and the branch the same way, so each run stays isolated. A base branch refused (a stored job
+// is checked again, #3601 weak site W24) or a worktree that can't be made fails the run (ok false).
+func (s *JobScheduler) prepareRunWorktree(ctx, watchCtx context.Context, runID int64, rc runConfig) (runWorktree, bool) {
+	wt := runWorktree{workingDir: rc.repoPath}
+	if !rc.createWorktree || rc.repoPath == "" {
+		return wt, true
+	}
+	wt.worktreeDir = s.runWorktreeDir(rc.repoPath, runID)
+	wt.baseBranch = rc.baseBranch
+	if wt.baseBranch == "" {
+		wt.baseBranch = "main"
+	}
+	wt.runBranch = fmt.Sprintf("coral/job-run-%d", runID)
+	err := gitutil.ValidRef(wt.baseBranch)
+	errMsg := ""
+	if err != nil {
+		errMsg = fmt.Sprintf("base_branch refused: %v", err)
+	} else if err = runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", wt.runBranch, "--", wt.worktreeDir, wt.baseBranch); err != nil {
+		errMsg = fmt.Sprintf("git worktree add failed: %v", err)
+	}
+	if err != nil {
+		s.logger.Error(errMsg, "run_id", runID)
+		now := time.Now().UTC().Format(store.ISOFormat)
+		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
+			"status":      "failed",
+			"error_msg":   errMsg,
+			"finished_at": now,
+		})
+		return wt, false
+	}
+	wt.workingDir = wt.worktreeDir
+	return wt, true
+}
+
+// afterLaunch tags the launched session (e.g. "scheduled" or "task") and registers it for auto-accept when the job
+// asks.
+func (s *JobScheduler) afterLaunch(ctx context.Context, runID int64, job store.ScheduledJob, rc runConfig) {
+	run, err := s.store.GetScheduledRun(ctx, runID)
+	if err != nil || run == nil || run.SessionID == nil {
+		return
+	}
+	if rc.tag != "" {
+		s.tagSession(ctx, *run.SessionID, rc.tag)
+	}
+	if rc.autoAccept {
+		autoAcceptMu.Lock()
+		AutoAcceptSessions[*run.SessionID] = job.AgentType + "-" + *run.SessionID
+		AutoAcceptLimits[*run.SessionID] = rc.maxAutoAccepts
+		autoAcceptMu.Unlock()
+	}
+}
+
+// runOutcome is a run's final status and reason: completed when the agent is done, failed with the launch's error,
+// killed when it ran past its time.
+func runOutcome(launchErr, watchErr error) (status, exitReason string) {
+	status, exitReason = "completed", "agent_done"
 	if launchErr != nil {
-		status = "failed"
-		exitReason = launchErr.Error()
+		status, exitReason = "failed", launchErr.Error()
 	}
-	if watchCtx.Err() == context.DeadlineExceeded {
-		status = "killed"
-		exitReason = "timeout"
+	if watchErr == context.DeadlineExceeded {
+		status, exitReason = "killed", "timeout"
 	}
+	return status, exitReason
+}
 
-	// A run that timed out or failed after launching must not leave its agent
-	// running (audit HIGH-02): kill the session before the worktree is removed
-	// from under it. A user's kill (KillRun) has already killed it, and a Coral
-	// shutdown cancels ctx itself; agents outlive a restart, so neither kills here.
+// finishRun records the run's outcome. A run that timed out or failed after launching must not leave its agent
+// running (audit HIGH-02): its session is killed before the worktree is removed from under it. A user's kill
+// (KillRun) has already killed it and recorded the kill, which the "failed" its cancel produces must not overwrite;
+// a Coral shutdown cancels ctx itself, and agents outlive a restart, so neither kills here.
+func (s *JobScheduler) finishRun(ctx context.Context, runID int64, job store.ScheduledJob, status, exitReason string, launchFailed bool) {
+	now := time.Now().UTC().Format(store.ISOFormat)
 	userKilled := false
 	if run, err := s.store.GetScheduledRun(ctx, runID); err == nil && run != nil {
 		userKilled = run.Status == "killed"
-		if !userKilled && ctx.Err() == nil && (status == "killed" || launchErr != nil) {
+		if !userKilled && ctx.Err() == nil && (status == "killed" || launchFailed) {
 			s.killRunSession(ctx, run, job.AgentType)
 		}
 	}
-
-	// KillRun has already recorded the user's kill; don't
-	// overwrite it with the "failed" that its cancel produces here.
 	if !userKilled {
 		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
 			"status":      status,
@@ -754,24 +777,19 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 			"exit_reason": exitReason,
 		})
 	}
+}
 
-	// Cleanup worktree if configured
-	if rc.cleanupWorktree && worktreeDir != "" {
-		s.cleanupWorktree(rc.repoPath, worktreeDir, runBranch, baseBranch)
+// unregisterAutoAccept removes the run's session (from its run record) from auto-accept.
+func (s *JobScheduler) unregisterAutoAccept(ctx context.Context, runID int64) {
+	run, err := s.store.GetScheduledRun(ctx, runID)
+	if err != nil || run == nil || run.SessionID == nil {
+		return
 	}
-
-	// Unregister auto-accept if set
-	if rc.autoAccept {
-		// We don't have the session_id here directly, but the run record does
-		run, err := s.store.GetScheduledRun(ctx, runID)
-		if err == nil && run != nil && run.SessionID != nil {
-			autoAcceptMu.Lock()
-			delete(AutoAcceptSessions, *run.SessionID)
-			delete(AutoAcceptCounts, *run.SessionID)
-			delete(AutoAcceptLimits, *run.SessionID)
-			autoAcceptMu.Unlock()
-		}
-	}
+	autoAcceptMu.Lock()
+	delete(AutoAcceptSessions, *run.SessionID)
+	delete(AutoAcceptCounts, *run.SessionID)
+	delete(AutoAcceptLimits, *run.SessionID)
+	autoAcceptMu.Unlock()
 }
 
 // tagSession ensures a tag exists and applies it to a session.

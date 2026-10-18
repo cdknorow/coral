@@ -179,10 +179,38 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("discover agents: %w", err)
 	}
+	dirToAgents := p.groupByGitRoot(ctx, agents)
+	p.logger.Debug("git poll starting", "dirs", len(dirToAgents), "agents", len(agents))
+	seen := make(map[string]bool, len(agents))
 
-	// Group agents by git root, so agents in different subdirectories of one
-	// repository share a single scan (they used to be scanned once per
-	// working directory, with identical results).
+	// A folder that is no longer anyone's working directory is forgotten.
+	for workdir := range p.failing {
+		if _, live := dirToAgents[workdir]; !live {
+			delete(p.failing, workdir)
+		}
+	}
+	for workdir, dirAgents := range dirToAgents {
+		p.pollDir(ctx, workdir, dirAgents, seen)
+	}
+
+	// Forget agents that are gone, so the map stays bounded.
+	for key := range p.written {
+		if !seen[key] {
+			delete(p.written, key)
+		}
+	}
+
+	totalDur := time.Since(pollStart)
+	p.logger.Debug("git poll complete", "dirs", len(dirToAgents), "total_ms", totalDur.Milliseconds())
+	if totalDur > 5*time.Second {
+		p.logger.Warn("git poll slow", "total_ms", totalDur.Milliseconds(), "dirs", len(dirToAgents))
+	}
+	return nil
+}
+
+// groupByGitRoot groups the agents by their working directory's git root, so agents in different subdirectories of
+// one repository share a single scan (they used to be scanned once per working directory, with identical results).
+func (p *GitPoller) groupByGitRoot(ctx context.Context, agents []AgentInfo) map[string][]AgentInfo {
 	rootOf := make(map[string]string)
 	dirToAgents := make(map[string][]AgentInfo)
 	for _, agent := range agents {
@@ -198,127 +226,103 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 		}
 		dirToAgents[root] = append(dirToAgents[root], agent)
 	}
+	return dirToAgents
+}
 
-	p.logger.Debug("git poll starting", "dirs", len(dirToAgents), "agents", len(agents))
-	seen := make(map[string]bool, len(agents))
-
-	// A folder that is no longer anyone's working directory is forgotten.
-	for workdir := range p.failing {
-		if _, live := dirToAgents[workdir]; !live {
-			delete(p.failing, workdir)
-		}
+// pollDir scans one repository and writes each of its agents' git snapshot and changed files, noting them in seen.
+// A folder whose git query fails is warned about once and checked again every gitFailureBackoff; the changed files
+// are capped at maxChangedFiles, and a failed list is written empty (the last one would otherwise show as current).
+func (p *GitPoller) pollDir(ctx context.Context, workdir string, dirAgents []AgentInfo, seen map[string]bool) {
+	dirStart := time.Now()
+	retryAt, failed := p.failing[workdir]
+	if failed && p.now().Before(retryAt) {
+		return
 	}
-
-	for workdir, dirAgents := range dirToAgents {
-		dirStart := time.Now()
-		retryAt, failed := p.failing[workdir]
-		if failed && p.now().Before(retryAt) {
-			continue
-		}
-
-		queryStart := time.Now()
-		gitInfo, err := queryGit(ctx, workdir)
-		queryDur := time.Since(queryStart)
-		if err != nil {
-			// Warned once per folder; it is then checked again every gitFailureBackoff.
-			if !failed {
-				p.logger.Warn("git query failed (not a git repository?); checking this folder again every 30 minutes", "workdir", workdir, "duration_ms", queryDur.Milliseconds(), "error", err)
-			} else {
-				p.logger.Debug("git query still failing", "workdir", workdir, "error", err)
-			}
-			p.failing[workdir] = p.now().Add(gitFailureBackoff)
-			continue
-		}
-		if failed {
-			delete(p.failing, workdir)
-			p.logger.Info("git query works again", "workdir", workdir)
-		}
-		if gitInfo == nil {
-			continue
-		}
-		p.logger.Debug("git query", "workdir", workdir, "branch", gitInfo.Branch, "duration_ms", queryDur.Milliseconds())
-
-		filesStart := time.Now()
-		changedFiles, err := queryChangedFilesFrom(ctx, workdir, gitInfo.status, gitInfo.statusErr)
-		filesDur := time.Since(filesStart)
-		if err != nil {
-			// Leaving the last list in place would show it as current
-			// indefinitely; an empty cache makes the Files view recompute.
-			p.logger.Warn("git changed files query failed; clearing cached list", "workdir", workdir, "duration_ms", filesDur.Milliseconds(), "error", err)
-			changedFiles = []store.ChangedFile{}
+	queryStart := time.Now()
+	gitInfo, err := queryGit(ctx, workdir)
+	queryDur := time.Since(queryStart)
+	if err != nil {
+		if !failed {
+			p.logger.Warn("git query failed (not a git repository?); checking this folder again every 30 minutes", "workdir", workdir, "duration_ms", queryDur.Milliseconds(), "error", err)
 		} else {
-			p.logger.Debug("git changed files", "workdir", workdir, "file_count", len(changedFiles), "duration_ms", filesDur.Milliseconds())
+			p.logger.Debug("git query still failing", "workdir", workdir, "error", err)
 		}
+		p.failing[workdir] = p.now().Add(gitFailureBackoff)
+		return
+	}
+	if failed {
+		delete(p.failing, workdir)
+		p.logger.Info("git query works again", "workdir", workdir)
+	}
+	if gitInfo == nil {
+		return
+	}
+	p.logger.Debug("git query", "workdir", workdir, "branch", gitInfo.Branch, "duration_ms", queryDur.Milliseconds())
 
-		// Cap file count to prevent DB thrashing on large monorepos
-		if len(changedFiles) > maxChangedFiles {
-			p.logger.Warn("capping changed files", "workdir", workdir, "agents", len(dirAgents), "total", len(changedFiles), "cap", maxChangedFiles)
-			changedFiles = changedFiles[:maxChangedFiles]
-		}
-		filesHash := hashChangedFiles(workdir, changedFiles)
+	filesStart := time.Now()
+	changedFiles, err := queryChangedFilesFrom(ctx, workdir, gitInfo.status, gitInfo.statusErr)
+	filesDur := time.Since(filesStart)
+	if err != nil {
+		p.logger.Warn("git changed files query failed; clearing cached list", "workdir", workdir, "duration_ms", filesDur.Milliseconds(), "error", err)
+		changedFiles = []store.ChangedFile{}
+	} else {
+		p.logger.Debug("git changed files", "workdir", workdir, "file_count", len(changedFiles), "duration_ms", filesDur.Milliseconds())
+	}
+	// Cap file count to prevent DB thrashing on large monorepos
+	if len(changedFiles) > maxChangedFiles {
+		p.logger.Warn("capping changed files", "workdir", workdir, "agents", len(dirAgents), "total", len(changedFiles), "cap", maxChangedFiles)
+		changedFiles = changedFiles[:maxChangedFiles]
+	}
+	filesHash := hashChangedFiles(workdir, changedFiles)
 
-		// Look up PR number for non-default branches
-		prNumber := 0
-		if gitInfo.RemoteURL != nil && gitInfo.Branch != "main" && gitInfo.Branch != "master" && gitInfo.Branch != "HEAD" {
-			prNumber = p.lookupPR(ctx, *gitInfo.RemoteURL, gitInfo.Branch, workdir)
-		}
-
-		dbStart := time.Now()
-		for _, agent := range dirAgents {
-			sessionID := agent.SessionID
-			var sidPtr *string
-			if sessionID != "" {
-				sidPtr = &sessionID
-			}
-
-			snap := &store.GitSnapshot{
-				AgentName:        agent.AgentName,
-				AgentType:        agent.AgentType,
-				WorkingDirectory: workdir,
-				Branch:           gitInfo.Branch,
-				CommitHash:       gitInfo.CommitHash,
-				CommitSubject:    gitInfo.CommitSubject,
-				CommitTimestamp:  &gitInfo.CommitTimestamp,
-				SessionID:        sidPtr,
-				RemoteURL:        gitInfo.RemoteURL,
-				PRNumber:         prNumber,
-				Worktree:         gitInfo.Worktree,
-				BaseBranch:       gitInfo.BaseBranch,
-				Ahead:            gitInfo.Ahead,
-				Behind:           gitInfo.Behind,
-				DirtyCount:       gitInfo.DirtyCount,
-			}
-			if err := p.store.UpsertGitSnapshot(ctx, snap); err != nil {
-				p.logger.Warn("upsert snapshot failed", "agent", agent.AgentName, "error", err)
-			}
-
-			key := writtenKey(agent.AgentName, sidPtr)
-			seen[key] = true
-			p.writeChangedFiles(ctx, key, agent.AgentName, workdir, changedFiles, sidPtr, filesHash)
-		}
-		p.logger.Debug("git db writes", "workdir", workdir, "agents", len(dirAgents), "duration_ms", time.Since(dbStart).Milliseconds())
-
-		dirDur := time.Since(dirStart)
-		if dirDur > 2*time.Second {
-			p.logger.Warn("git poll slow for directory", "workdir", workdir, "total_ms", dirDur.Milliseconds(),
-				"query_ms", queryDur.Milliseconds(), "files_ms", filesDur.Milliseconds())
-		}
+	// Look up PR number for non-default branches
+	prNumber := 0
+	if gitInfo.RemoteURL != nil && gitInfo.Branch != "main" && gitInfo.Branch != "master" && gitInfo.Branch != "HEAD" {
+		prNumber = p.lookupPR(ctx, *gitInfo.RemoteURL, gitInfo.Branch, workdir)
 	}
 
-	// Forget agents that are gone, so the map stays bounded.
-	for key := range p.written {
-		if !seen[key] {
-			delete(p.written, key)
+	dbStart := time.Now()
+	for _, agent := range dirAgents {
+		snap := snapshotFor(agent, workdir, gitInfo, prNumber)
+		if err := p.store.UpsertGitSnapshot(ctx, snap); err != nil {
+			p.logger.Warn("upsert snapshot failed", "agent", agent.AgentName, "error", err)
 		}
+		key := writtenKey(agent.AgentName, snap.SessionID)
+		seen[key] = true
+		p.writeChangedFiles(ctx, key, agent.AgentName, workdir, changedFiles, snap.SessionID, filesHash)
 	}
+	p.logger.Debug("git db writes", "workdir", workdir, "agents", len(dirAgents), "duration_ms", time.Since(dbStart).Milliseconds())
 
-	totalDur := time.Since(pollStart)
-	p.logger.Debug("git poll complete", "dirs", len(dirToAgents), "total_ms", totalDur.Milliseconds())
-	if totalDur > 5*time.Second {
-		p.logger.Warn("git poll slow", "total_ms", totalDur.Milliseconds(), "dirs", len(dirToAgents))
+	if dirDur := time.Since(dirStart); dirDur > 2*time.Second {
+		p.logger.Warn("git poll slow for directory", "workdir", workdir, "total_ms", dirDur.Milliseconds(),
+			"query_ms", queryDur.Milliseconds(), "files_ms", filesDur.Milliseconds())
 	}
+}
 
-	return nil
+// snapshotFor is an agent's git snapshot of its repository (a nil session id for an agent without one).
+func snapshotFor(agent AgentInfo, workdir string, g *gitInfo, prNumber int) *store.GitSnapshot {
+	var sidPtr *string
+	if agent.SessionID != "" {
+		sessionID := agent.SessionID
+		sidPtr = &sessionID
+	}
+	return &store.GitSnapshot{
+		AgentName:        agent.AgentName,
+		AgentType:        agent.AgentType,
+		WorkingDirectory: workdir,
+		Branch:           g.Branch,
+		CommitHash:       g.CommitHash,
+		CommitSubject:    g.CommitSubject,
+		CommitTimestamp:  &g.CommitTimestamp,
+		SessionID:        sidPtr,
+		RemoteURL:        g.RemoteURL,
+		PRNumber:         prNumber,
+		Worktree:         g.Worktree,
+		BaseBranch:       g.BaseBranch,
+		Ahead:            g.Ahead,
+		Behind:           g.Behind,
+		DirtyCount:       g.DirtyCount,
+	}
 }
 
 func writtenKey(agentName string, sessionID *string) string {
