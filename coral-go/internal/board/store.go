@@ -1649,14 +1649,51 @@ func (s *Store) getUnreadCounts(ctx context.Context, sessionNames []string) (map
 }
 
 func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bool) (map[string]int, error) {
-	var subs []struct {
-		Project      string `db:"project"`
-		SubscriberID string `db:"subscriber_id"`
-		SessionName  string `db:"session_name"`
-		JobTitle     string `db:"job_title"`
-		LastReadID   int64  `db:"last_read_id"`
-		ReceiveMode  string `db:"receive_mode"`
+	subs, err := s.activeUnreadSubscribers(ctx, sessionNames)
+	if err != nil {
+		return nil, err
 	}
+	if len(subs) == 0 {
+		return map[string]int{}, nil
+	}
+	groups, err := s.groupMembers(ctx, subs)
+	if err != nil {
+		return nil, err
+	}
+	epoch := s.unreadCounts.epoch.Load()
+	result, byProject := s.unreadCountStarts(subs, epoch)
+	for project, projectSubs := range byProject {
+		hi, err := s.countProjectUnread(ctx, project, projectSubs, groups)
+		if err != nil {
+			return nil, err
+		}
+		for _, sub := range projectSubs {
+			result[sub.SessionName] += sub.count
+			s.unreadCounts.storeSidebarUnread(sub.key, sidebarUnreadEntry{lastReadID: sub.LastReadID, jobTitle: sub.JobTitle, receiveMode: sub.ReceiveMode,
+				scannedTo: max(hi, sub.start), count: sub.count, epoch: epoch})
+		}
+	}
+	if retry && s.unreadCounts.epoch.Load() != epoch {
+		// Messages were deleted or groups changed meanwhile: cached bases may
+		// be stale, so count again.
+		return s.countUnread(ctx, sessionNames, false)
+	}
+	return result, nil
+}
+
+// unreadSubscriber is an active subscription as the unread counts read it.
+type unreadSubscriber struct {
+	Project      string `db:"project"`
+	SubscriberID string `db:"subscriber_id"`
+	SessionName  string `db:"session_name"`
+	JobTitle     string `db:"job_title"`
+	LastReadID   int64  `db:"last_read_id"`
+	ReceiveMode  string `db:"receive_mode"`
+}
+
+// activeUnreadSubscribers is every active subscription, or (sessionNames not nil) those of these sessions.
+func (s *Store) activeUnreadSubscribers(ctx context.Context, sessionNames []string) ([]unreadSubscriber, error) {
+	var subs []unreadSubscriber
 	query := "SELECT project, subscriber_id, session_name, job_title, last_read_id, receive_mode FROM board_subscribers WHERE is_active = 1"
 	var args []any
 	if sessionNames != nil {
@@ -1669,9 +1706,13 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 	if err := s.reader().SelectContext(ctx, &subs, s.reader().Rebind(query), args...); err != nil {
 		return nil, err
 	}
-	if len(subs) == 0 {
-		return map[string]int{}, nil
-	}
+	return subs, nil
+}
+
+type unreadGroupKey struct{ project, groupID string }
+
+// groupMembers is each group's members, over the boards subs are on (a group receive mode counts its members' posts).
+func (s *Store) groupMembers(ctx context.Context, subs []unreadSubscriber) (map[unreadGroupKey]map[string]bool, error) {
 	projects := make([]string, 0, len(subs))
 	seen := make(map[string]bool)
 	for _, sub := range subs {
@@ -1692,33 +1733,35 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 	if err := s.reader().SelectContext(ctx, &groupRows, s.reader().Rebind(query), args...); err != nil {
 		return nil, err
 	}
-
-	type groupKey struct{ project, groupID string }
-	groupsByKey := make(map[groupKey]map[string]bool)
+	groupsByKey := make(map[unreadGroupKey]map[string]bool)
 	for _, gr := range groupRows {
-		key := groupKey{gr.Project, gr.GroupID}
+		key := unreadGroupKey{gr.Project, gr.GroupID}
 		if groupsByKey[key] == nil {
 			groupsByKey[key] = make(map[string]bool)
 		}
 		groupsByKey[key][gr.SubscriberID] = true
 	}
+	return groupsByKey, nil
+}
 
-	// Group subscribers by project. Counts are incremental (see
-	// unread_cache.go): each subscriber resumes at its cached watermark, and a
-	// project's messages are streamed once from the lowest of them.
-	type subInfo struct {
-		SubscriberID string
-		SessionName  string
-		JobTitle     string
-		LastReadID   int64
-		ReceiveMode  string
-		key          sidebarUnreadKey
-		start        int64
-		count        int
-	}
-	epoch := s.unreadCounts.epoch.Load()
+// unreadCount is one subscription being counted: where its count resumes (start) and what it holds so far.
+type unreadCount struct {
+	SubscriberID string
+	SessionName  string
+	JobTitle     string
+	LastReadID   int64
+	ReceiveMode  string
+	key          sidebarUnreadKey
+	start        int64
+	count        int
+}
+
+// unreadCountStarts groups the subscriptions by board, each resuming at its cached watermark (see unread_cache.go), and
+// gives every session a count of 0 to start from. A subscription receiving nothing ("none") is not counted; an unset
+// mode is "mentions".
+func (s *Store) unreadCountStarts(subs []unreadSubscriber, epoch uint64) (map[string]int, map[string][]*unreadCount) {
 	result := make(map[string]int)
-	byProject := make(map[string][]*subInfo)
+	byProject := make(map[string][]*unreadCount)
 	for _, sub := range subs {
 		result[sub.SessionName] += 0
 		rm := sub.ReceiveMode
@@ -1728,99 +1771,97 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 		if rm == "" {
 			rm = "mentions"
 		}
-		info := &subInfo{SubscriberID: sub.SubscriberID, SessionName: sub.SessionName, JobTitle: sub.JobTitle, LastReadID: sub.LastReadID, ReceiveMode: rm,
+		info := &unreadCount{SubscriberID: sub.SubscriberID, SessionName: sub.SessionName, JobTitle: sub.JobTitle, LastReadID: sub.LastReadID, ReceiveMode: rm,
 			key: sidebarUnreadKey{sub.Project, sub.SubscriberID, sub.SessionName}}
 		info.start, info.count = s.unreadCounts.sidebarUnreadStart(info.key, sub.LastReadID, sub.JobTitle, rm, epoch)
 		byProject[sub.Project] = append(byProject[sub.Project], info)
 	}
+	return result, byProject
+}
 
-	for project, projectSubs := range byProject {
-		var hi int64
-		if err := s.reader().GetContext(ctx, &hi, "SELECT COALESCE(MAX(id), 0) FROM board_messages WHERE project = ?", project); err != nil {
-			return nil, err
+// countProjectUnread adds to each of one board's subscriptions its unread messages up to the board's newest, hi, which it
+// returns. A subscriber that receives everything is counted by the index: streaming every
+// message's content for it took minutes on a long board (#3875). The others are
+// matched in Go, and a first count (nothing cached) looks back at most unreadWindow
+// messages.
+func (s *Store) countProjectUnread(ctx context.Context, project string, projectSubs []*unreadCount, groups map[unreadGroupKey]map[string]bool) (int64, error) {
+	var hi int64
+	if err := s.reader().GetContext(ctx, &hi, "SELECT COALESCE(MAX(id), 0) FROM board_messages WHERE project = ?", project); err != nil {
+		return 0, err
+	}
+	var streamed []*unreadCount
+	floor := int64(-1)
+	for _, sub := range projectSubs {
+		if sub.ReceiveMode == "all" {
+			var n int
+			if err := s.reader().GetContext(ctx, &n,
+				"SELECT COUNT(*) FROM board_messages WHERE project = ? AND id > ? AND id <= ? AND subscriber_id != ? AND subscriber_id != 'Coral Task Queue'",
+				project, sub.start, hi, sub.SubscriberID); err != nil {
+				return 0, err
+			}
+			sub.count += n
+			continue
 		}
-		// A subscriber that receives everything is counted by the index: streaming every
-		// message's content for it took minutes on a long board (#3875). The others are
-		// matched in Go, and a first count (nothing cached) looks back at most unreadWindow
-		// messages.
-		var streamed []*subInfo
-		floor := int64(-1)
-		for _, sub := range projectSubs {
-			if sub.ReceiveMode == "all" {
-				var n int
-				if err := s.reader().GetContext(ctx, &n,
-					"SELECT COUNT(*) FROM board_messages WHERE project = ? AND id > ? AND id <= ? AND subscriber_id != ? AND subscriber_id != 'Coral Task Queue'",
-					project, sub.start, hi, sub.SubscriberID); err != nil {
-					return nil, err
-				}
-				sub.count += n
+		if sub.start == sub.LastReadID {
+			if floor < 0 {
+				floor = s.unreadFloor(ctx, project)
+			}
+			sub.start = max(sub.start, floor)
+		}
+		streamed = append(streamed, sub)
+	}
+	if len(streamed) > 0 {
+		if err := s.streamUnread(ctx, project, streamed, hi, groups); err != nil {
+			return 0, err
+		}
+	}
+	return hi, nil
+}
+
+// streamUnread counts, for each subscription in streamed, the board's messages after its start up to hi that reach it:
+// not its own, and naming it (mentions) or from its group's members (a group mode).
+func (s *Store) streamUnread(ctx context.Context, project string, streamed []*unreadCount, hi int64, groups map[unreadGroupKey]map[string]bool) error {
+	minStart := streamed[0].start
+	for _, sub := range streamed {
+		minStart = min(minStart, sub.start)
+	}
+	numbered := s.numberedNamesCached(ctx, project)
+	// Stream messages instead of retaining every unread body in memory.
+	rows, err := s.reader().QueryxContext(ctx,
+		"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND id <= ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
+		project, minStart, hi)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id int64
+		var sender, content string
+		if err := rows.Scan(&id, &sender, &content); err != nil {
+			rows.Close()
+			return err
+		}
+		for _, sub := range streamed {
+			if id <= sub.start || sender == sub.SubscriberID {
 				continue
 			}
-			if sub.start == sub.LastReadID {
-				if floor < 0 {
-					floor = s.unreadFloor(ctx, project)
-				}
-				sub.start = max(sub.start, floor)
+			eligible := false
+			switch sub.ReceiveMode {
+			case "mentions":
+				eligible = containsExplicitTag(content, sub.SubscriberID, sub.JobTitle, numbered)
+			default:
+				eligible = groups[unreadGroupKey{project, sub.ReceiveMode}][sender]
 			}
-			streamed = append(streamed, sub)
-		}
-		if len(streamed) > 0 {
-			minStart := streamed[0].start
-			for _, sub := range streamed {
-				minStart = min(minStart, sub.start)
+			if eligible {
+				sub.count++
 			}
-			numbered := s.numberedNamesCached(ctx, project)
-			// Stream messages instead of retaining every unread body in memory.
-			rows, err := s.reader().QueryxContext(ctx,
-				"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND id <= ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
-				project, minStart, hi)
-			if err != nil {
-				return nil, err
-			}
-			for rows.Next() {
-				var id int64
-				var sender, content string
-				if err := rows.Scan(&id, &sender, &content); err != nil {
-					rows.Close()
-					return nil, err
-				}
-				for _, sub := range streamed {
-					if id <= sub.start || sender == sub.SubscriberID {
-						continue
-					}
-					eligible := false
-					switch sub.ReceiveMode {
-					case "mentions":
-						eligible = containsExplicitTag(content, sub.SubscriberID, sub.JobTitle, numbered)
-					default:
-						eligible = groupsByKey[groupKey{project, sub.ReceiveMode}][sender]
-					}
-					if eligible {
-						sub.count++
-					}
-				}
-			}
-			readErr := rows.Err()
-			closeErr := rows.Close()
-			if readErr != nil {
-				return nil, readErr
-			}
-			if closeErr != nil {
-				return nil, closeErr
-			}
-		}
-		for _, sub := range projectSubs {
-			result[sub.SessionName] += sub.count
-			s.unreadCounts.storeSidebarUnread(sub.key, sidebarUnreadEntry{lastReadID: sub.LastReadID, jobTitle: sub.JobTitle, receiveMode: sub.ReceiveMode,
-				scannedTo: max(hi, sub.start), count: sub.count, epoch: epoch})
 		}
 	}
-	if retry && s.unreadCounts.epoch.Load() != epoch {
-		// Messages were deleted or groups changed meanwhile: cached bases may
-		// be stale, so count again.
-		return s.countUnread(ctx, sessionNames, false)
+	readErr := rows.Err()
+	closeErr := rows.Close()
+	if readErr != nil {
+		return readErr
 	}
-	return result, nil
+	return closeErr
 }
 
 // GetAllUnreadStates returns unread counts together with the latest eligible
